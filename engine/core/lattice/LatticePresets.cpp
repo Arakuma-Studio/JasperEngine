@@ -108,8 +108,23 @@ namespace{
 
     // R' - R of one point for a preset (spec §4). axis a, the perpendicular axes p1 = a+1 and
     // p2 = a+2 (cyclic, so (a, p1, p2) is right-handed) and b = toward.
+    // the cage's proportions, every component finite and > 0 (an invalid one takes the largest
+    // valid one, all invalid: the unit cube)
+    void proportionsOf(const lattice::PresetParams& params, double out[3]){
+        const double given[3] = {params.proportions.x, params.proportions.y, params.proportions.z};
+        double largest = 0.0;
+        for (int c = 0; c < 3; c++){
+            if (std::isfinite(given[c]) && given[c] > 0.0) largest = std::max(largest, given[c]);
+        }
+        for (int c = 0; c < 3; c++){
+            out[c] = (std::isfinite(given[c]) && given[c] > 0.0) ? given[c] : (largest > 0.0 ? largest : 1.0);
+        }
+    }
+
     Vector3 presetDisplacement(const lattice::PresetParams& params, int a, int b, const Vector3& rest, int index){
         const double amount = params.amount;
+        double size[3];
+        proportionsOf(params, size);
         const int p1 = (a + 1) % 3;
         const int p2 = (a + 2) % 3;
         double r[3] = {rest.x, rest.y, rest.z};
@@ -138,13 +153,14 @@ namespace{
             }
             case lattice::LatticePreset::TWIST:{
                 // counterclockwise seen from +axis (p1 toward p2), amount degrees at the +0.5 end
+                // in the cage's proportions, so a non-square cross-section turns rigidly
                 const double angle = amount * PI / 180.0 * along;
                 const double c = std::cos(angle);
                 const double s = std::sin(angle);
-                const double x = r[p1];
-                const double y = r[p2];
-                r[p1] = x * c - y * s;
-                r[p2] = x * s + y * c;
+                const double x = r[p1] * size[p1];
+                const double y = r[p2] * size[p2];
+                r[p1] = (x * c - y * s) / size[p1];
+                r[p2] = (x * s + y * c) / size[p2];
                 break;
             }
             case lattice::LatticePreset::BEND:{
@@ -158,14 +174,17 @@ namespace{
                 //   a' = -0.5 + (R - b) sin(theta s)
                 //   b' = R - (R - b) cos(theta s)
                 // the third coordinate is unchanged. Written below without the R - R cancellation.
+                // b is measured in axis lengths (the cage's proportions): on a cage taller than
+                // wide the arc still turns by theta in the world and the cross-section stays rigid.
                 const double theta = amount * PI / 180.0;
                 const double phi = theta * along;
                 const double sinPhi = std::sin(phi);
                 const double cosPhi = std::cos(phi);
                 const double halfSin = std::sin(phi * 0.5);
-                const double bv = r[b];
+                const double ratio = size[b] / size[a];
+                const double bv = r[b] * ratio;
                 r[a] = -0.5 + sinPhi / theta - bv * sinPhi;
-                r[b] = 2.0 * halfSin * halfSin / theta + bv * cosPhi;
+                r[b] = (2.0 * halfSin * halfSin / theta + bv * cosPhi) / ratio;
                 break;
             }
             case lattice::LatticePreset::BULGE:{
@@ -242,6 +261,11 @@ std::vector<std::string> lattice::presetNames(){
         names.push_back(entry.name);
     }
     return names;
+}
+
+Vector3 lattice::presetProportions(const Matrix4& latticeWorld){
+    const Matrix3 linear = latticeWorld.linear();
+    return Vector3(linear.column(0).length(), linear.column(1).length(), linear.column(2).length());
 }
 
 void lattice::applyPreset(int rx, int ry, int rz, std::vector<Vector3>& offsets,

@@ -10,6 +10,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/LatticeBindingsCmd.h"
 #include "command/type/LatticePointsCmd.h"
+#include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "lattice/LatticeSolver.h"
 #include "render/SceneRender.h"
@@ -686,8 +687,13 @@ bool LatticeEditorOps::applyPreset(Project* project, uint32_t sceneId, Entity en
         return fail(error, std::string(lattice::presetName(params.preset)) + " needs a toward axis other than its axis");
     }
 
+    // bend and twist in the cage's proportions (spec §12 Agent UX pass): true angles in the world
+    lattice::PresetParams proportional = params;
+    if (const Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){
+        proportional.proportions = lattice::presetProportions(transform->modelMatrix);
+    }
     std::vector<Vector3> result = lattice->offsets;
-    lattice::applyPreset(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, result, params, points);
+    lattice::applyPreset(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, result, proportional, points);
     return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
 }
 
@@ -910,6 +916,78 @@ bool LatticeEditorOps::unbind(Project* project, uint32_t sceneId, Entity entity,
     }
     return push(sceneId, new LatticeBindingsCmd(project, sceneId, target, bindings, modifier->includeChildren))
         ? true : fail(error, "the binding could not be removed");
+}
+
+bool LatticeEditorOps::follow(Project* project, uint32_t sceneId, Entity entity, Entity follower, Entity rest,
+                              Entity* restOut, std::string* error){
+    SceneProject* sceneProject = sceneOf(project, sceneId, error);
+    if (!sceneProject) return false;
+    Scene* scene = sceneProject->scene;
+    if (!latticeOf(scene, entity, error)) return false;
+
+    if (follower == NULL_ENTITY || !scene->isEntityCreated(follower)){
+        return fail(error, "follower entity " + std::to_string(follower) + " does not exist in this scene");
+    }
+    const Transform* transform = scene->findComponent<Transform>(follower);
+    if (!transform){
+        return fail(error, entityLabel(scene, follower) + " has no Transform: nothing to place");
+    }
+    if (follower == entity || isDescendantOf(scene, entity, follower)){
+        return fail(error, "the lattice is " + entityLabel(scene, follower) + " or below it: the follower would move its own cage. "
+                    "Make the follower a GameObject outside the lattice's parents");
+    }
+    // a target is deformed by the lattice; moving it with the cage too would deform it twice
+    for (Entity target : findTargets(scene, entity)){
+        const LatticeModifierComponent* modifier = scene->findComponent<LatticeModifierComponent>(target);
+        if (target == follower || (modifier && modifier->includeChildren && isDescendantOf(scene, follower, target))){
+            return fail(error, entityLabel(scene, follower) + " is deformed by this lattice (bound" +
+                        std::string(target == follower ? "" : " through " + entityLabel(scene, target)) +
+                        "): a follower is moved by the cage, a target is bent by it, not both. Follow with a GameObject that is not bound");
+        }
+    }
+    const LatticeFollowerComponent* existing = scene->findComponent<LatticeFollowerComponent>(follower);
+    if (rest == NULL_ENTITY && existing && existing->rest != NULL_ENTITY && scene->isEntityCreated(existing->rest) &&
+            existing->rest != follower && !isDescendantOf(scene, existing->rest, follower)){
+        rest = existing->rest;
+    }
+    if (rest != NULL_ENTITY){
+        if (!scene->isEntityCreated(rest) || !scene->findComponent<Transform>(rest)){
+            return fail(error, "rest entity " + std::to_string(rest) + " does not exist in this scene (or has no Transform)");
+        }
+        if (rest == follower || isDescendantOf(scene, rest, follower)){
+            return fail(error, "the rest is " + entityLabel(scene, follower) + " or below it (the follower would move it): "
+                        "omit rest to get an empty sibling where it stands");
+        }
+    }
+
+    CommandHistory* history = CommandHandle::get(sceneId);
+    const size_t mark = history->mark();
+    if (!existing && !push(sceneId, new AddComponentCmd(project, sceneId, follower, ComponentType::LatticeFollowerComponent))){
+        return fail(error, "the Lattice Follower could not be added");
+    }
+    auto* multi = new MultiPropertyCmd();
+    if (rest == NULL_ENTITY){
+        // the inspector's Create Rest Here: an empty sibling where the follower stands
+        auto* create = new CreateEntityCmd(project, sceneId, scene->getEntityName(follower) + " Rest", EntityCreationType::GAMEOBJECT, transform->parent);
+        create->setQuiet(true);
+        if (!push(sceneId, create)){
+            delete multi;
+            history->groupSince(mark);
+            history->undo();
+            return fail(error, "the rest GameObject could not be created");
+        }
+        rest = create->getEntity();
+        const Transform* now = scene->findComponent<Transform>(follower);
+        multi->addPropertyCmd<Vector3>(project, sceneId, rest, ComponentType::Transform, "position", now->position);
+        multi->addPropertyCmd<Quaternion>(project, sceneId, rest, ComponentType::Transform, "rotation", now->rotation);
+        multi->addPropertyCmd<Vector3>(project, sceneId, rest, ComponentType::Transform, "scale", now->scale);
+    }
+    multi->addPropertyCmd<Entity>(project, sceneId, follower, ComponentType::LatticeFollowerComponent, "lattice", entity);
+    multi->addPropertyCmd<Entity>(project, sceneId, follower, ComponentType::LatticeFollowerComponent, "rest", rest);
+    push(sceneId, multi);
+    history->groupSince(mark);
+    if (restOut) *restOut = rest;
+    return true;
 }
 
 std::vector<Entity> LatticeEditorOps::findTargets(Scene* scene, Entity lattice){

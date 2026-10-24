@@ -37,6 +37,7 @@
 #include "component/Joint3DComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
 #include "component/LatticeTracksComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/Light2DComponent.h"
@@ -2476,14 +2477,35 @@ struct Key {
     std::vector<int> points;
     std::vector<Vector3> offsets;
     bool current = false;
+    bool rest = false;     // "rest": every keyed point at zero
+    std::string pose;      // a pose name: the pose's offsets
     EaseType ease = EaseType::LINEAR;
 };
 
-// A lattice key's points: {"<index>": [x,y,z]}, [[[i,j,k] | index, [x,y,z]], ...] or "current"
+// A lattice key's points: {"<index>": [x,y,z]}, [[[i,j,k] | index, [x,y,z]], ...], "current",
+// "rest" or the name of one of the lattice's poses
 bool parseLatticePoints(const Json& v, const LatticeComponent& lattice, Key& key, std::string& error) {
-    if (v.is_string() && lowerText(v.get<std::string>()) == "current") {
-        key.current = true;
-        return true;
+    if (v.is_string()) {
+        const std::string name = v.get<std::string>();
+        if (lowerText(name) == "current") {
+            key.current = true;
+            return true;
+        }
+        if (lowerText(name) == "rest") {
+            key.rest = true;
+            return true;
+        }
+        std::string poses;
+        for (const LatticePose& pose : lattice.poses) {
+            if (pose.name == name) {
+                key.pose = name;
+                return true;
+            }
+            poses += (poses.empty() ? "" : ", ") + pose.name;
+        }
+        error = "points: " + v.dump() + " is not \"current\", \"rest\" or a pose of the lattice (" +
+                (poses.empty() ? std::string("it has no poses: save one with edit_lattice ops [{op: pose, save: name}]") : "poses: " + poses) + ").";
+        return false;
     }
     const int rx = std::clamp(lattice.resolutionX, 2, 16), ry = std::clamp(lattice.resolutionY, 2, 16),
               rz = std::clamp(lattice.resolutionZ, 2, 16);
@@ -2576,7 +2598,8 @@ bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::
                 return false;
             }
             if (!lattice || !parseLatticePoints(item[field], *lattice, key, error)) {
-                error = "keys[" + std::to_string(i) + "]." + (lattice ? error : std::string("points: the target has no Lattice."));
+                error = "keys[" + std::to_string(i) + "]." + (lattice ? (std::string(field) == "value" ? "value (a lattice key's points): " : "") + error
+                                                                       : std::string("points: the target has no Lattice."));
                 return false;
             }
             if (has(item, "ease") && !parseEase(item["ease"], key.ease, error)) {
@@ -2690,6 +2713,46 @@ void resolveCurrentLatticeKeys(uint32_t sceneId, Entity latticeEntity, const Lat
     }
 }
 
+// "rest" and pose keys name every point the other keys, the poses used and (merging) the track
+// already animate, so each holds the whole shape at its time (every point when none is named)
+void resolveShapeLatticeKeys(const LatticeComponent& lattice, const LatticeTracksComponent* existing, std::vector<Key>& keys) {
+    const int count = std::clamp(lattice.resolutionX, 2, 16) * std::clamp(lattice.resolutionY, 2, 16) * std::clamp(lattice.resolutionZ, 2, 16);
+    auto poseOf = [&lattice](const std::string& name) -> const LatticePose* {
+        for (const LatticePose& pose : lattice.poses) {
+            if (pose.name == name) return &pose;
+        }
+        return nullptr;
+    };
+    std::set<int> points;
+    bool shapes = false;
+    for (const Key& key : keys) {
+        if (key.rest || !key.pose.empty()) {
+            shapes = true;
+            if (const LatticePose* pose = key.pose.empty() ? nullptr : poseOf(key.pose)) {
+                for (size_t p = 0; p < pose->offsets.size() && static_cast<int>(p) < count; p++) {
+                    if (!(pose->offsets[p] == Vector3(0, 0, 0))) points.insert(static_cast<int>(p));
+                }
+            }
+        } else {
+            points.insert(key.points.begin(), key.points.end());
+        }
+    }
+    if (!shapes) return;
+    if (existing) points.insert(existing->points.begin(), existing->points.end());
+    if (points.empty()) {
+        for (int p = 0; p < count; p++) points.insert(p);
+    }
+    for (Key& key : keys) {
+        if (!key.rest && key.pose.empty()) continue;
+        const LatticePose* pose = key.pose.empty() ? nullptr : poseOf(key.pose);
+        key.points.assign(points.begin(), points.end());
+        key.offsets.clear();
+        for (int p : key.points) {
+            key.offsets.push_back(pose && static_cast<size_t>(p) < pose->offsets.size() ? pose->offsets[static_cast<size_t>(p)] : Vector3(0, 0, 0));
+        }
+    }
+}
+
 // Lattice keys as a whole track: one column per point any key names; a key that does not name
 // a point gets it interpolated in time between the nearest keys naming it (held past the first
 // and last). Merge: each key is set into the existing track (LatticeTrackKeys::setKey). Linear
@@ -2792,9 +2855,11 @@ Json keysJson(Scene* scene, Entity action, Channel channel, size_t limit) {
         if (channel == Channel::Rotation) item["value"] = McpValues::toJson(keys[i].quat);
         else if (channel == Channel::Morph) item["value"] = keys[i].weights;
         else if (channel == Channel::Lattice) {
+            // a key holding every animated point at zero reads as "rest" (it is what "rest" writes)
+            const bool rest = std::all_of(keys[i].offsets.begin(), keys[i].offsets.end(), [](const Vector3& o) { return o == Vector3(0, 0, 0); });
             Json points = Json::object();
             for (size_t n = 0; n < keys[i].points.size(); n++) points[std::to_string(keys[i].points[n])] = McpValues::toJson(keys[i].offsets[n]);
-            item["points"] = points;
+            item["points"] = rest ? Json("rest") : points;
         }
         else item["value"] = McpValues::toJson(keys[i].vec);
         if (i + 1 < keys.size()) item["ease"] = easeName(keys[i].ease);
@@ -2967,7 +3032,19 @@ void editAnimationTool(const CallPtr& call) {
             if (has(item, "target") && (trackTarget = resolveRef(target.scene, item["target"], error)) == NULL_ENTITY) { failWith(where + ".target: " + error); return; }
             if (trackTarget == NULL_ENTITY) { failWith(where + ": no target GameObject (pass target)."); return; }
             LatticeComponent* lattice = scene->findComponent<LatticeComponent>(trackTarget);
-            if (channel == Channel::Lattice && !lattice) { failWith(where + ": the target has no Lattice to animate."); return; }
+            if (channel == Channel::Lattice && !lattice) {
+                // the usual mistake: the mesh instead of the cage that deforms it
+                std::string cages;
+                if (const LatticeModifierComponent* modifier = scene->findComponent<LatticeModifierComponent>(trackTarget)) {
+                    for (const LatticeBinding& binding : modifier->bindings) {
+                        if (binding.lattice != NULL_ENTITY && scene->isEntityCreated(binding.lattice))
+                            cages += (cages.empty() ? "" : ", ") + ("\"" + scene->getEntityName(binding.lattice) + "\" [" + std::to_string(binding.lattice) + "]");
+                    }
+                }
+                failWith(where + ": \"" + scene->getEntityName(trackTarget) + "\" has no Lattice to animate: a lattice track's target is the cage "
+                         "(the lattice GameObject), not the mesh it deforms" + (cages.empty() ? std::string(".") : "; its cage: " + cages + "."));
+                return;
+            }
             if (channel != Channel::Morph && !scene->findComponent<Transform>(trackTarget)) { failWith(where + ": the target has no Transform to animate."); return; }
             std::vector<Key> keys;
             if (!parseKeys(channel, has(item, "keys") ? item["keys"] : Json(), keys, error, lattice)) { failWith(where + "." + error); return; }
@@ -2976,8 +3053,9 @@ void editAnimationTool(const CallPtr& call) {
             Entity track = findTrack(scene, kept, trackTarget, channel, frameIndex);
             const bool merge = lowerText(stringOr(item, "mode", "replace")) == "merge";
             if (channel == Channel::Lattice) {
-                resolveCurrentLatticeKeys(target.sceneId(), trackTarget, *lattice,
-                                          track != NULL_ENTITY ? scene->findComponent<LatticeTracksComponent>(track) : nullptr, keys);
+                const LatticeTracksComponent* existing = track != NULL_ENTITY ? scene->findComponent<LatticeTracksComponent>(track) : nullptr;
+                resolveCurrentLatticeKeys(target.sceneId(), trackTarget, *lattice, existing, keys);
+                resolveShapeLatticeKeys(*lattice, merge ? existing : nullptr, keys);
             }
             if (track != NULL_ENTITY && channel == Channel::Lattice) {
                 addLatticeTrackWrites(*edits, target, track, latticeTrackData(scene, track, keys, *lattice, merge));
@@ -4533,8 +4611,8 @@ void registerWorldTools(McpRegistry& registry) {
     add("edit_animation", "Edit Animation",
         "Author an Animation timeline (seconds); no animation: creates one under target. tracks: keys {time, "
         "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys), "
-        "morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]]] or \"current\" = "
-        "editor keying); ease to the next key: linear, step, "
+        "morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]]], \"current\" = "
+        "editor keying, \"rest\" or a pose name); ease to the next key: linear, step, "
         "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. "
         "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
         "pre-call indices.",

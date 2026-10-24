@@ -89,6 +89,14 @@ namespace jasperengine::editor{
         static bool bind(Project* project, uint32_t sceneId, Entity lattice, Entity target, const LatticeBinding& binding,
                          bool includeChildren, std::string* error = nullptr);
         static bool unbind(Project* project, uint32_t sceneId, Entity lattice, Entity target, std::string* error = nullptr);
+        // makes `follower` follow the lattice (spec §6.3; its Lattice Follower added when missing):
+        // each frame it is placed where `rest` ends up through the cage. rest NULL_ENTITY: the
+        // follower's own rest when it already has one, else a new empty sibling where the follower
+        // stands ("<name> Rest", the inspector's Create Rest Here). One undo step; `restOut` gets
+        // the rest used. Refused when the follower is the lattice, or the rest or the lattice is
+        // the follower or below it (the follower would move them).
+        static bool follow(Project* project, uint32_t sceneId, Entity lattice, Entity follower, Entity rest,
+                           Entity* restOut = nullptr, std::string* error = nullptr);
         // entities whose LatticeModifierComponent lists this lattice
         static std::vector<Entity> findTargets(Scene* scene, Entity lattice);
 

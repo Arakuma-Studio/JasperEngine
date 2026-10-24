@@ -22,6 +22,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/LatticeComponent.h"
+#include "component/LatticeFollowerComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -199,13 +200,21 @@ std::vector<Entity> meshesReached(SceneProject* sp, Entity target, bool includeC
 // and disabled lattices do not count
 int latticesOnMesh(Scene* scene, Entity mesh) {
     int count = 0;
-    auto countOf = [scene](const LatticeModifierComponent& modifier) {
+    // a lattice a nearer modifier binds is not applied again (LatticeRender)
+    std::vector<Entity> nearer;
+    auto countOf = [scene, &nearer](const LatticeModifierComponent& modifier) {
         int n = 0;
         if (!modifier.enabled) return 0;
+        std::vector<Entity> level;
         for (const LatticeBinding& binding : modifier.bindings) {
             if (!isLattice(scene, binding.lattice)) continue;
-            if (scene->getComponent<LatticeComponent>(binding.lattice).enabled) n++;
+            if (std::find(nearer.begin(), nearer.end(), binding.lattice) != nearer.end()) continue;
+            if (scene->getComponent<LatticeComponent>(binding.lattice).enabled) {
+                n++;
+                level.push_back(binding.lattice);
+            }
         }
+        nearer.insert(nearer.end(), level.begin(), level.end());
         return n;
     };
     if (LatticeModifierComponent* own = scene->findComponent<LatticeModifierComponent>(mesh)) count += countOf(*own);
@@ -218,6 +227,24 @@ int latticesOnMesh(Scene* scene, Entity mesh) {
         transform = scene->findComponent<Transform>(parent);
     }
     return count;
+}
+
+// the nearest ancestor of `target` whose enabled modifier hands `lattice` down (includeChildren),
+// NULL_ENTITY when none: the target already inherits that lattice
+Entity inheritedFrom(Scene* scene, Entity target, Entity lattice) {
+    Transform* transform = scene->findComponent<Transform>(target);
+    for (int hops = 0; transform && transform->parent != NULL_ENTITY && hops < 4096; hops++) {
+        const Entity parent = transform->parent;
+        if (LatticeModifierComponent* modifier = scene->findComponent<LatticeModifierComponent>(parent)) {
+            if (modifier->enabled && modifier->includeChildren) {
+                for (const LatticeBinding& binding : modifier->bindings) {
+                    if (binding.lattice == lattice) return parent;
+                }
+            }
+        }
+        transform = scene->findComponent<Transform>(parent);
+    }
+    return NULL_ENTITY;
 }
 
 // ------------------------------------------------------------------ names
@@ -861,12 +888,32 @@ bool opPreset(Session& s, const Json& op, const std::string& where, Json& result
     if (has(op, "axis") && !parseAxis(op["axis"], params.axis, where + ".axis", error)) return false;
     // bend and shear need another axis: the next one by default
     params.toward = static_cast<lattice::LatticeAxis>((static_cast<int>(params.axis) + 1) % 3);
-    if (has(op, "toward") && !parseAxis(op["toward"], params.toward, where + ".toward", error)) return false;
+    // "-x": toward -x (the amount negated)
+    bool negative = false;
+    if (has(op, "toward")) {
+        Json toward = op["toward"];
+        if (toward.is_string() && toward.get<std::string>().size() == 2 && (toward.get<std::string>()[0] == '-' || toward.get<std::string>()[0] == '+')) {
+            negative = toward.get<std::string>()[0] == '-';
+            toward = toward.get<std::string>().substr(1);
+        }
+        std::string ignored;
+        if (!parseAxis(toward, params.toward, where + ".toward", ignored)) {
+            return fail(error, where + ".toward", op["toward"].dump() + " is not an axis. Use one of: x, y, z, -x, -y, -z.");
+        }
+    }
+    const bool directed = params.preset == lattice::LatticePreset::BEND || params.preset == lattice::LatticePreset::SHEAR;
+    if (directed && params.toward == params.axis) {
+        const int a = static_cast<int>(params.axis);
+        return fail(error, where + ".toward", std::string(lattice::presetName(params.preset)) + " needs a toward axis other than its axis (" +
+                    AXIS_NAMES[a] + "): use " + AXIS_NAMES[(a + 1) % 3] + " or " + AXIS_NAMES[(a + 2) % 3] + " (or -" +
+                    AXIS_NAMES[(a + 1) % 3] + ", -" + AXIS_NAMES[(a + 2) % 3] + ").");
+    }
     if (!has(op, "amount")) {
         return fail(error, where + ".amount", "is required: squash 0..0.95, stretch/taper/bulge a fraction, twist/bend degrees, "
                     "shear and noise local units.");
     }
     if (!readNumber(op["amount"], params.amount, where + ".amount", error)) return false;
+    if (negative && directed) params.amount = -params.amount;
     if (has(op, "seed")) {
         if (!op["seed"].is_number_integer() || op["seed"].get<long long>() < 0 || op["seed"].get<long long>() > 0xFFFFFFFFLL) {
             return fail(error, where + ".seed", "must be an integer 0..4294967295.");
@@ -925,7 +972,7 @@ bool opFit(Session& s, const Json& op, const std::string& where, Json& result, s
     return true;
 }
 
-bool opBind(Session& s, const Json& op, const std::string& where, Json&, std::string& error) {
+bool opBind(Session& s, const Json& op, const std::string& where, Json& result, std::string& error) {
     if (!checkKeys(op, {"op", "target", "weight", "stage", "submesh", "mask", "include_children"}, where, error)) return false;
     if (!has(op, "target")) return fail(error, where + ".target", "is required: the GameObject to deform.");
     Entity target = NULL_ENTITY;
@@ -967,6 +1014,15 @@ bool opBind(Session& s, const Json& op, const std::string& where, Json&, std::st
     }
     std::string why;
     if (!LatticeEditorOps::bind(s.project, s.sceneId, s.entity, target, binding, includeChildren, &why)) return opFailed(error, where, why);
+    // a child that already inherits the lattice: its own binding replaces the inherited one there
+    // (each lattice deforms a mesh once), which is how one child is tuned or excluded (weight 0)
+    if (const Entity from = inheritedFrom(s.scene(), target, s.entity); from != NULL_ENTITY) {
+        const std::string note = label(s.scene(), target) + " also inherits this lattice from " + label(s.scene(), from) +
+            " (include_children): its own binding (weight " + Json(McpValues::number(binding.weight)).dump() + ") replaces that one for it" +
+            (binding.weight == 0 ? ", so it is excluded." : ". weight 0 excludes it; unbind it to inherit again.");
+        result["overrides"] = McpRefs::entityJson(s.sp, from);
+        s.notes.push_back(note);
+    }
     return true;
 }
 
@@ -976,7 +1032,28 @@ bool opUnbind(Session& s, const Json& op, const std::string& where, Json&, std::
     Entity target = NULL_ENTITY;
     if (!resolveTarget(s, op["target"], target, where + ".target", error)) return false;
     std::string why;
-    if (!LatticeEditorOps::unbind(s.project, s.sceneId, s.entity, target, &why)) return opFailed(error, where, why);
+    if (!LatticeEditorOps::unbind(s.project, s.sceneId, s.entity, target, &why)) {
+        // a child reached through its parent's include_children has no binding of its own to remove
+        if (const Entity from = inheritedFrom(s.scene(), target, s.entity); from != NULL_ENTITY) {
+            why = label(s.scene(), target) + " has no binding of its own: it inherits this lattice from " + label(s.scene(), from) +
+                  " (include_children). To exclude it, bind it with weight 0 ({op: bind, target, weight: 0}: its own binding "
+                  "replaces the inherited one); to free the whole group, unbind " + label(s.scene(), from) + ".";
+        }
+        return opFailed(error, where, why);
+    }
+    return true;
+}
+
+bool opFollow(Session& s, const Json& op, const std::string& where, Json& result, std::string& error) {
+    if (!checkKeys(op, {"op", "target", "rest"}, where, error)) return false;
+    if (!has(op, "target")) return fail(error, where + ".target", "is required: the GameObject that follows the deformed surface (a prop, a light).");
+    Entity target = NULL_ENTITY, rest = NULL_ENTITY;
+    if (!resolveTarget(s, op["target"], target, where + ".target", error)) return false;
+    if (has(op, "rest") && !resolveTarget(s, op["rest"], rest, where + ".rest", error)) return false;
+    std::string why;
+    if (!LatticeEditorOps::follow(s.project, s.sceneId, s.entity, target, rest, &rest, &why)) return opFailed(error, where, why);
+    result["target"] = McpRefs::entityJson(s.sp, target);
+    result["rest"] = McpRefs::entityJson(s.sp, rest);
     return true;
 }
 
@@ -1027,6 +1104,9 @@ bool opBake(Session& s, const Json& op, const std::string& where, Json& result, 
         return opFailed(error, where + ".target", label(s.scene(), target) + " cannot be baked: " + why);
     }
     if (!LatticeEditorOps::bake(s.project, s.sceneId, target, &path, &note, &why)) return opFailed(error, where, why);
+    if (LatticeEditorOps::findTargets(s.scene(), s.entity).empty()) {
+        note += std::string(note.empty() ? "" : " ") + "The lattice deforms nothing now: delete it (delete_entities) unless you bind it again.";
+    }
     result["target"] = McpRefs::entityJson(s.sp, target);
     result["path"] = path;
     if (!note.empty()) result["note"] = note;
@@ -1038,7 +1118,7 @@ using OpFn = bool (*)(Session&, const Json&, const std::string&, Json&, std::str
 const std::vector<std::pair<const char*, OpFn>>& opTable() {
     static const std::vector<std::pair<const char*, OpFn>> table = {
         {"set", opSet}, {"move", opMove}, {"reset", opReset}, {"preset", opPreset}, {"mirror", opMirror},
-        {"fit", opFit}, {"bind", opBind}, {"unbind", opUnbind}, {"pose", opPose}, {"bake", opBake}
+        {"fit", opFit}, {"bind", opBind}, {"unbind", opUnbind}, {"follow", opFollow}, {"pose", opPose}, {"bake", opBake}
     };
     return table;
 }
@@ -1098,6 +1178,35 @@ Json warningsOf(const Session& s, const LatticeView& view) {
     if (targets.empty()) {
         warn("no_targets", "The lattice deforms nothing yet: bind a GameObject (op bind) or create it with create.targets.");
     }
+    // followers: one without a rest stays put; one whose rest is outside a fading cage gets
+    // less of the deformation (a prop on top of a squashed box floats above it)
+    auto followers = scene->getComponentArray<LatticeFollowerComponent>();
+    for (size_t f = 0; f < followers->size(); f++) {
+        const LatticeFollowerComponent& follower = followers->getComponentFromIndex(f);
+        const Entity entity = followers->getEntity(f);
+        if (follower.lattice != s.entity || !follower.enabled) continue;
+        Transform* rest = (follower.rest != NULL_ENTITY && scene->isEntityCreated(follower.rest))
+            ? scene->findComponent<Transform>(follower.rest) : nullptr;
+        if (!rest) {
+            warn("follower_no_rest", label(scene, entity) + " follows this lattice but has no rest, so it stays put: follow it again "
+                 "({op: follow, target}) to give it one where it stands.", Json{{"entity", McpRefs::entityJson(s.sp, entity)}});
+            continue;
+        }
+        if (!view.invertible || view.component->outside != LatticeOutside::FADE) continue;
+        const Vector3 u = view.inverse * rest->worldPosition + Vector3(0.5f, 0.5f, 0.5f);
+        const Vector3 inside(std::clamp(u.x, 0.0f, 1.0f), std::clamp(u.y, 0.0f, 1.0f), std::clamp(u.z, 0.0f, 1.0f));
+        const float d = (u - inside).length();
+        if (d <= 1e-4f) continue;
+        const float fade = view.component->fadeDistance;
+        const float q = fade > 0 ? std::min(d / fade, 1.0f) : 1.0f;
+        const float share = 1.0f - q * q * (3.0f - 2.0f * q);
+        char percent[16];
+        std::snprintf(percent, sizeof(percent), "%.0f%%", share * 100.0f);
+        warn("follower_outside", label(scene, entity) + "'s rest is outside the cage, where the deformation fades: it follows only " +
+             percent + " of it. Set outside: \"extend\" (the border deformation continues outward), or fit the cage around it too.",
+             Json{{"entity", McpRefs::entityJson(s.sp, entity)}, {"share", McpValues::number(share)}});
+    }
+
     std::set<Entity> crowded;
     for (Entity target : targets) {
         const LatticeModifierComponent& modifier = scene->getComponent<LatticeModifierComponent>(target);
@@ -1159,6 +1268,16 @@ Json describe(const Session& s, const LatticeView& view, bool points, const std:
         }
     }
     data["targets"] = targets;
+    Json followers = Json::array();
+    auto followerArray = scene->getComponentArray<LatticeFollowerComponent>();
+    for (size_t f = 0; f < followerArray->size(); f++) {
+        const LatticeFollowerComponent& follower = followerArray->getComponentFromIndex(f);
+        if (follower.lattice != s.entity) continue;
+        const bool hasRest = follower.rest != NULL_ENTITY && scene->isEntityCreated(follower.rest);
+        followers.push_back(Json{{"entity", McpRefs::entityJson(s.sp, followerArray->getEntity(f))},
+                                 {"rest", hasRest ? McpRefs::entityJson(s.sp, follower.rest) : Json(nullptr)}});
+    }
+    if (!followers.empty()) data["followers"] = followers;
 
     int moved = 0;
     float maxLocal = 0, maxWorld = 0;
@@ -1223,7 +1342,9 @@ void editLatticeRun(const CallPtr& call, bool waited) {
     const bool edits = has(args, "create") || has(args, "resolution") || has(args, "interpolation") || has(args, "outside") ||
                        has(args, "fade_distance") || (has(args, "ops") && !(args["ops"].is_array() && args["ops"].empty()));
     if (edits && s.sp->playState != ScenePlayState::STOPPED) {
-        call->fail("Scene " + std::to_string(s.sp->id) + " is playing; stop play mode before editing it.");
+        call->fail("Scene " + std::to_string(s.sp->id) + " is playing; stop play mode before editing it. Play-mode changes are "
+                   "lost at stop anyway: to try one in the running game use eval_lua (object(\"<cage>\", \"Lattice\"):applyPreset("
+                   "\"squash\", \"y\", 0.3), setOffset...); edit_lattice without edits reads the running cage.");
         return;
     }
     if (!edits) {
@@ -1338,8 +1459,8 @@ void registerLatticeTools(McpRegistry& registry) {
         "then ops in order: set {points: [{ijk|index, offset|position, space}]}, move {select, offset, "
         "rotate (deg), scale, pivot center|lattice|[x,y,z], space, falloff {radius, curve}}, reset {select}, "
         "preset {name, axis, toward, amount, seed, mode, select}, mirror {axis, from +|-}, fit {targets, "
-        "padding}, bind {target, weight, stage, submesh, mask, include_children}, unbind {target}, pose "
-        "{save|apply|delete: name, weight}, bake {target}. select (default all): all, exterior, interior, "
+        "padding}, bind {target, weight, stage, submesh, mask, include_children}, unbind {target}, follow "
+        "{target, rest}, pose {save|apply|delete: name, weight}, bake {target}. select (default all): all, exterior, interior, "
         "selected, +x..-z, [points] or {face, i, j, k (n|[lo,hi]), points, box, sphere (world)} intersected. "
         "Offsets are lattice-local (cage = unit cube). Returns targets, moved_points, max_offset, warnings, "
         "points (detail points), samples (sample: world points -> deformed, stretch). No edits: a read (play "
@@ -1354,7 +1475,7 @@ void registerLatticeTools(McpRegistry& registry) {
         {"outside", stringEnum("", {"extend", "fade"})},
         {"fade_distance", number("")},
         {"ops", array(Json{{"type", "object"}, {"properties", {{"op", stringEnum("", {"set", "move", "reset", "preset", "mirror",
-                                                                                         "fit", "bind", "unbind", "pose", "bake"})}}},
+                                                                                         "fit", "bind", "unbind", "follow", "pose", "bake"})}}},
                            {"required", {"op"}}}, "")},
         {"sample", array(Json{{"type", "array"}}, "")},
         {"detail", stringEnum("", {"summary", "points"})}
