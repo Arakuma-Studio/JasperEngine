@@ -2902,6 +2902,8 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
 
     YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
     Stream::decodeSceneProject(runtime.get(), sceneNode, true);
+    // the file's id differs if loading replaced a duplicate
+    runtime->id = source->id;
     runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
     Stream::decodeSceneProjectEntities(this, runtime.get(), sceneNode);
     pauseEngineScene(runtime->scene, true);
@@ -3848,7 +3850,7 @@ void editor::Project::removeScene(uint32_t sceneId) {
     deleteSceneProject(&(*it));
 
     // Remove C++ source file
-    generator.clearSceneSource(it->name, getProjectInternalPath());
+    generator.clearSceneSource(it->id, it->name, getProjectInternalPath());
 
     // Cleanup Prefabs
     cleanupPrefabsForScene(sceneId);
@@ -5804,19 +5806,19 @@ void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
     const auto baked = bakePrefabsForExport();
     std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, sceneProject->id, getProjectPath(), getProjectInternalPath(),
         [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
-    generator.writeSceneSource(sceneProject->scene, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
+    generator.writeSceneSource(sceneProject->scene, sceneProject->id, sceneProject->name, sceneProject->entities, getSceneCamera(sceneProject), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(sceneProject->scene));
 }
 
 bool editor::Project::hasMissingSceneSources() const {
     return std::any_of(scenes.begin(), scenes.end(), [&](const SceneProject& sceneProject){
-        return !generator.hasSceneSource(sceneProject.name, getProjectInternalPath());
+        return !generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath());
     });
 }
 
 // Scenes the editor never saved or played, like one created outside it
 void editor::Project::writeMissingSceneSources() {
     for (const SceneProject& sceneProject : scenes) {
-        if (generator.hasSceneSource(sceneProject.name, getProjectInternalPath())) {
+        if (generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath())) {
             continue;
         }
 
@@ -7463,7 +7465,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 const auto baked = bakePrefabsForExport();
                 std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
                     [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
-                generator.writeSceneSource(entry.runtime->scene, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
+                generator.writeSceneSource(entry.runtime->scene, entry.runtime->id, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
 
                 {
                     std::scoped_lock lock(playSessionMutex);
