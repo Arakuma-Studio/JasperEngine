@@ -86,6 +86,7 @@ namespace jasperengine{
 		std::vector<Entity> animationChildEntities(const AnimationComponent& animcomp);
 		void animationStopChildren(const std::vector<Entity>& children);
 		void animationPauseChildren(const std::vector<Entity>& children);
+		void animationApplyEnd(ActionComponent& action, AnimationComponent& animcomp, bool durationPassed);
 
 		// Sprite action functions
 		void setSpriteTextureRect(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim);

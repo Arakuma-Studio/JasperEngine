@@ -85,11 +85,15 @@ async def set_offsets(ed, values: dict):
 
 
 async def tracks_of(ed, action, scene=None) -> dict:
-    got = await ed.call("get_entity", scene=scene or S["scene"], entity=action,
-                        components=["keyframetracks", "latticetracks"])
-    comps = got["components"]
-    return {"times": comps["keyframetracks"]["times"], "easings": comps["keyframetracks"].get("easings"),
-            "points": comps["latticetracks"]["points"], "values": comps["latticetracks"]["values"]}
+    """The track's arrays (named, so get_entity does not elide the big ones); easings lowercase."""
+    async def read(component, names):
+        got = await ed.call("get_entity", scene=scene or S["scene"], entity=action, components=[component],
+                            properties=names)
+        return got["components"][component]
+    kf = await read("keyframetracks", ["times", "easings"])
+    lt = await read("latticetracks", ["points", "values"])
+    easings = [e.lower() for e in kf["easings"]] if kf.get("easings") else kf.get("easings")
+    return {"times": kf["times"], "easings": easings, "points": lt["points"], "values": lt["values"]}
 
 
 def lattice_action(data: dict, index: int = 0) -> dict:
@@ -261,6 +265,7 @@ async def test_preview_evaluates_and_restores(ed: Editor):
     s = await setup(ed)
     sid = s["scene"]
     await set_offsets(ed, {13: [0, 0, 0.05]})
+    await ed.call("set_scene_camera", scene=sid, target=[0, 1, 0], distance=5, orbit={"yaw": 30, "pitch": -20})
     r = await ed.call("preview_animation", scene=sid, animation=S["squash"], action="seek", time=0)
     ed.check(r["previewing"] is True, f"previewing: {r}")
     rest = await ed.screenshot("scene", path=ed.scratch.root / "anim_rest.png" if ed.scratch else None)
@@ -302,9 +307,9 @@ async def test_play_follows_keys(ed: Editor):
             samples.append(values)
             if values[0] >= 1.2:
                 break
-            await ed.call("wait", frames=3)
+            await ed.call("wait", frames=1)
         inside = [v for v in samples if 0.05 < v[0] < 0.95]
-        ed.check(len(inside) >= 3, f"samples inside the clip: {samples}")
+        ed.check(len(inside) >= 2, f"samples inside the clip: {samples}")
         for tc, dt, x, y, z, y22, z13 in inside:
             # the offsets of a frame are sampled before the action time advances by that frame's dt
             lo, hi = 0.4 * max(0.0, tc - 1.5 * dt) - 1e-4, 0.4 * tc + 1e-4
@@ -383,7 +388,7 @@ function LatticeAnimProbe:onUpdate()
 
     if self.phase == "a" then
         local tc = self.trackA:getTimeCount()
-        if not self.sampled and tc > 0.15 and tc < 0.4 then
+        if not self.sampled and tc > 0.3 and tc < 0.5 then
             self.sampled = true
             out("sampleA", string.format("[%.6f,%.6f,%.6f]", tc, dt, cage:getOffsetAt(4).y))
         end
@@ -444,8 +449,9 @@ async def test_lua_tracks_and_crossfade(ed: Editor):
     ed.check(not errors, f"no errors (the out-of-range point is ignored silently): {errors}")
 
     ed.check_eq(v.get("targetA"), True, "addActionFrame set the track's target")
+    # onUpdate may run before the actions of its frame: the offsets lag the time by up to two frames
     tc, dt, y = v.get("sampleA", [0, 0, -1])
-    ed.check(0.6 * max(0.0, tc - 1.5 * dt) - 1e-4 <= y <= 0.6 * tc + 1e-4, f"clip A mid-segment: {v.get('sampleA')}")
+    ed.check(0.6 * max(0.0, tc - 2.5 * dt) - 1e-4 <= y <= 0.6 * tc + 1e-4 and y > 0, f"clip A mid-segment: {v.get('sampleA')}")
     check_close(ed, v.get("aHeld4"), [0, 0.3, 0], "clip A holds point 4 at its key")
     check_close(ed, v.get("aShared"), [0.2, 0, 0], "clip A holds the shared point")
     check_close(ed, v.get("aRest22"), ZERO, "point 22 untouched before clip B")

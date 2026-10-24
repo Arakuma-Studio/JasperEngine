@@ -4312,7 +4312,7 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- terrain
     add("sculpt_terrain", "Sculpt / Paint Terrain",
-        "Terrain-window brush strokes (as a mouse drag): the brush moves along each stroke's points, holding "
+        "Terrain-window brush strokes (a mouse drag): the brush moves along each stroke's points, "
         "seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
         "~strength*1.5*seconds_per_point per point (repeat points for big hills). ramp: first to last point; "
         "stamp needs mask; place/erase_object: asset, one per point within size. Missing maps are created. "
@@ -4515,7 +4515,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("set_sprite_animation", "Set Sprite Animation",
         "Create (or update: animation) a Sprite Animation, a child of the sprite cycling its frames (indices or "
         "names, default all) by fps or frame_ms (number or one per frame). autoplay (default true when new) "
-        "starts it on play; make several (Idle, Run) and switch them in scripts.",
+        "starts it on play; make several (Idle, Run), switch them in scripts.",
         object({
             {"scene", sceneRef()},
             {"sprite", entityRef("Sprite with frames.")},
@@ -4533,11 +4533,11 @@ void registerWorldTools(McpRegistry& registry) {
     add("edit_animation", "Edit Animation",
         "Author an Animation timeline (seconds); no animation: creates one under target. tracks: keys {time, "
         "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys), "
-        "morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]],...] or \"current\": as "
+        "morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]]] or \"current\" = "
         "editor keying); ease to the next key: linear, step, "
         "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. "
         "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "
-        "indices from before the call.",
+        "pre-call indices.",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef("Animation to edit.")},
@@ -4574,8 +4574,8 @@ void registerWorldTools(McpRegistry& registry) {
 
     add("get_animation", "Get Animation",
         "An Animation's timeline: loop, duration, autoplay, target and actions (index, kind, GameObject, target, "
-        "start_time, duration, lane, keys or tween values). For another GameObject: the animations targeting it "
-        "or its children (model clips too).",
+        "start_time, duration, lane, keys or tween values). For another GameObject: animations targeting it or "
+        "its children (model clips too).",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Animation, or an animated GameObject.")},
@@ -4584,7 +4584,7 @@ void registerWorldTools(McpRegistry& registry) {
         getAnimationTool, true, true);
 
     add("preview_animation", "Preview Animation",
-        "Edit-mode preview (Animation window controls): play, pause, seek (time), stop (restores the authored "
+        "Edit-mode preview (Animation window): play, pause, seek (time), stop (restores the authored "
         "state; always stop when done). Selects the animation; wait_ms lets it play first.",
         object({
             {"scene", sceneRef()},
@@ -4687,8 +4687,8 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- shape points
     add("set_shape_points", "Set Shape Points",
         "Set the points of a Polygon (UI), Polygon Mesh, Shadow Caster 2D or Line Renderer: points (local), "
-        "circle or rect. Polygon order outline converts a convex outline to the triangle strip; strip uses "
-        "points as is. Line renderers: polyline (closed joins ends) or lines.",
+        "circle or rect. Polygon order outline converts a convex outline to the triangle strip; strip: points "
+        "as is. Line renderers: polyline (closed joins ends) or lines.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
