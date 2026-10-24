@@ -462,7 +462,8 @@ namespace jasperengine::editor{
 
         // ---- Fluid Simulation (InspectorFluid.cpp): Post-processing-style groups, presets, the
         // preview bar (FluidSystem::setPreview), the Scene view's Paint Dye toggle and the stats
-        void drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // readOnly: the property rows disabled, the preview bar and the stats still work
+        void drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly);
         // why the fluid draws nothing (device, simulator error, no surface for Material)
         void drawFluidStatus(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawFluidPreviewBar(SceneProject* sceneProject, const std::vector<Entity>& entities);

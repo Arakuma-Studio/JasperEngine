@@ -389,7 +389,7 @@ void editor::InspectorWindow::drawFluidStats(SceneProject* sceneProject, const s
     ImGui::TreePop();
 }
 
-void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities, bool readOnly){
     Scene* scene = sceneProject->scene;
     entities.erase(std::remove_if(entities.begin(), entities.end(), [&](Entity entity) {
         return !scene->findComponent<FluidSimulationComponent>(entity);
@@ -506,9 +506,11 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         return on;
     };
 
-    // ---- what keeps it from running, the preview bar
+    // ---- what keeps it from running, the preview bar (transient, not edits: they also work on
+    // a read-only fluid, one the running game made; only the rows below are disabled then)
     drawFluidStatus(sceneProject, entities);
     drawFluidPreviewBar(sceneProject, entities);
+    ImGui::BeginDisabled(readOnly);
 
     // ---- preset: the solver and look fields of a named look, one undo step
     beginTable(cpType, labelWidth, "preset");
@@ -726,6 +728,8 @@ void editor::InspectorWindow::drawFluidSimulationComponent(ComponentType cpType,
         endTable();
         ImGui::TreePop();
     }
+
+    ImGui::EndDisabled();
 
     // ---- runtime stats
     drawFluidStats(sceneProject, entities);
