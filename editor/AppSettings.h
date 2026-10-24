@@ -4,11 +4,26 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 #include "yaml-cpp/yaml.h"
 
 namespace jasperengine::editor {
+
+// Preferences > Logging (settings.yaml "logging"). Defaults are the editor's behaviour
+// before categories existed: Info everywhere, the log file at Info.
+struct LoggingSettings {
+    std::map<std::string, std::string> categoryLevels;   // category -> level name (only those changed)
+    std::string fileLevel = "info";
+    bool backtraceOnError = true;
+    bool showSource = true;
+
+    bool operator==(const LoggingSettings& other) const {
+        return categoryLevels == other.categoryLevels && fileLevel == other.fileLevel &&
+               backtraceOnError == other.backtraceOnError && showSource == other.showSource;
+    }
+};
 
 struct PanelVisibilitySettings {
     bool hierarchy = true;
@@ -19,6 +34,7 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool mcp = false;
     bool game = true;
+    bool undoHistory = true;
 
     bool operator==(const PanelVisibilitySettings& other) const {
         return hierarchy == other.hierarchy
@@ -28,7 +44,8 @@ struct PanelVisibilitySettings {
             && animation == other.animation
             && terrain == other.terrain
             && mcp == other.mcp
-            && game == other.game;
+            && game == other.game
+            && undoHistory == other.undoHistory;
     }
 
     bool operator!=(const PanelVisibilitySettings& other) const {
@@ -65,6 +82,13 @@ class AppSettings {
 private:
     static std::filesystem::path configFilePath;
     static YAML::Node settingsData;
+    // settingsData as last read from (or written to) the file
+    static YAML::Node loadedSettings;
+    static bool autosaveEnabled;
+    static int autosaveIntervalSeconds;
+    // settingsData parsed into the members
+    static bool applySettings(const YAML::Node& node);
+    static bool writeMerged();
     
     // Recent projects list (max 10)
     static std::vector<std::filesystem::path> recentProjects;
@@ -124,6 +148,15 @@ private:
     static bool htmlUiAutoImport;
     static bool htmlUiVerboseDiagnostics;
 
+    // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
+    // together (MB, 0 = unlimited), standalone selection changes as steps, and the Play Mode
+    // Changes review on Stop
+    static int undoMaxSteps;
+    static int undoMemoryLimitMB;
+    static bool undoRecordSelection;
+    static bool undoReviewPlayChanges;
+    static LoggingSettings loggingSettings;
+
     // Private methods
     static void ensureConfigDirectory();
 
@@ -138,6 +171,8 @@ public:
     // preferUserDirectory: keep the files in the per-user config directory unless the working
     // directory already has a settings.yaml (MCP mode, started in the client's folder)
     static bool initialize(bool preferUserDirectory = false);
+    // An explicit settings file (tests)
+    static bool initializeWithFile(const std::filesystem::path& file);
 
     // Directory where editor config files live (settings.yaml, layout ini, ...)
     static std::filesystem::path getConfigDirectory();
@@ -231,9 +266,39 @@ public:
     static bool getHtmlUiVerboseDiagnostics();
     static void setHtmlUiVerboseDiagnostics(bool enabled);
 
+    // Undo settings, applied to CommandHistory/Project when set or loaded (clamped to their ranges)
+    static constexpr int minUndoMaxSteps = 50;
+    static constexpr int maxUndoMaxSteps = 10000;
+    static constexpr int defaultUndoMaxSteps = 1000;
+    static constexpr int minUndoMemoryLimitMB = 64;
+    static constexpr int maxUndoMemoryLimitMB = 8192;
+    static constexpr int defaultUndoMemoryLimitMB = 512;
+    static int getUndoMaxSteps();
+    static int getUndoMemoryLimitMB();
+    static bool getUndoRecordSelection();
+    static bool getUndoReviewPlayChanges();
+    static void setUndo(int maxSteps, int memoryLimitMB, bool recordSelection, bool reviewPlayChanges);
+    static void applyUndoSettings();
+    // Preferences > Logging; set applies them to the logger at once (then --log-level again)
+    static LoggingSettings getLoggingSettings();
+    static void setLoggingSettings(const LoggingSettings& settings);
+    static void applyLoggingSettings();
+
     // Load and save settings
     static bool loadSettings();
+    // Locked read-merge-write: only the top-level keys this process changed since its load
+    // are written over the file's, recent projects merge as an ordered union (docs/data-safety.md)
     static bool saveSettings();
+
+    // Scene Auto Save (Editor Settings > General): a backup of each modified scene, never the
+    // scene file itself
+    static constexpr int defaultAutosaveInterval = 60;
+    static constexpr int minAutosaveInterval = 30;
+    static constexpr int maxAutosaveInterval = 300;
+    static bool isAutosaveEnabled();
+    static void setAutosaveEnabled(bool enabled);
+    static int getAutosaveIntervalSeconds();
+    static void setAutosaveIntervalSeconds(int seconds);
 };
 
 } // namespace jasperengine::editor

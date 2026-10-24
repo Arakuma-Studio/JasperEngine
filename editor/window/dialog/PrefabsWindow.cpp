@@ -14,10 +14,10 @@
 
 namespace jasperengine::editor {
 
-static constexpr float dialogWidth = 820.0f;
-static constexpr float dialogHeight = 520.0f;
-static constexpr float dialogButtonWidth = 120.0f;
-static constexpr ImGuiWindowFlags noScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+static constexpr float prefabsDialogWidth = 820.0f;
+static constexpr float prefabsDialogHeight = 520.0f;
+static constexpr float prefabsDialogButtonWidth = 120.0f;
+static constexpr ImGuiWindowFlags prefabsNoScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 static const ImVec4 MISSING_COLOR = ImVec4(0.96f, 0.36f, 0.36f, 1.0f);
 
@@ -99,15 +99,15 @@ void PrefabsWindow::show() {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImVec2 size(
-        std::min(Theme::dpi(dialogWidth), viewport->WorkSize.x * 0.9f),
-        std::min(Theme::dpi(dialogHeight), viewport->WorkSize.y * 0.9f)
+        std::min(Theme::dpi(prefabsDialogWidth), viewport->WorkSize.x * 0.9f),
+        std::min(Theme::dpi(prefabsDialogHeight), viewport->WorkSize.y * 0.9f)
     );
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal |
                              ImGuiWindowFlags_NoResize |
-                             noScrollFlags;
+                             prefabsNoScrollFlags;
 
     if (ImGui::BeginPopupModal("Prefabs##PrefabsModal", &m_isOpen, flags)) {
         if (!m_isOpen) {
@@ -291,7 +291,7 @@ void PrefabsWindow::drawPrefabs() {
     ImGui::Separator();
 
     const float footerWidth = std::max(1.0f, ImGui::GetWindowWidth() - style.WindowPadding.x * 2.0f);
-    const float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(dialogButtonWidth));
+    const float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(prefabsDialogButtonWidth));
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     // Unity-style footer: buttons on the right, primary first.
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x + std::max(0.0f, footerWidth - buttonsWidth), footerY));

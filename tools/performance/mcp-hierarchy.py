@@ -184,7 +184,7 @@ def main():
         path = Path(temp)
         (path / "test.cpp").write_text(fixture)
         flags = ["-O1", "-g", "-fsanitize=address,undefined", "-fno-omit-frame-pointer"] if args.sanitize else ["-O2"]
-        subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-I", str(ROOT / "engine/libs/json"), *flags, str(path / "test.cpp"), "-o", str(path / "test")], check=True)
+        subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-I", str(ROOT / "engine/libs/json"), *flags, str(path / "test.cpp"), "-o", str(path / "test")], check=True)
         subprocess.run([str(path / "test")], check=True)
 
 

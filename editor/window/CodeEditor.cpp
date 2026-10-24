@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CodeEditor.h"
+#include "DocumentFile.h"
 
 #include "Backend.h"
 #include "AppSettings.h"
@@ -468,9 +469,7 @@ editor::CodeEditor::CodeEditor(Project* project) : lastScriptWatchTime(0.0), isF
 }
 
 editor::CodeEditor::~CodeEditor() {
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
 }
 
 fs::path editor::CodeEditor::resolveFilepath(const fs::path& relPath) const {
@@ -534,12 +533,13 @@ void editor::CodeEditor::updateAllProjectSymbols() {
     fs::path projectPath = project->getProjectPath();
 
     isParsingSymbols = true;
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
 
-    symbolParseThread = std::thread([this, projectPath, openFiles = std::move(openFiles),
-                                     luaContents = std::move(luaContents), cppContents = std::move(cppContents)]() mutable {
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.name = "code-symbols";
+    symbolParseTask = jobs::submit([this, projectPath, openFiles = std::move(openFiles),
+                                    luaContents = std::move(luaContents), cppContents = std::move(cppContents)]() mutable {
         collectProjectSources(projectPath, openFiles, luaContents, cppContents);
 
         std::vector<ProjectSymbol> parsedLua;
@@ -561,7 +561,7 @@ void editor::CodeEditor::updateAllProjectSymbols() {
             newSymbolsReady = true;
         }
         isParsingSymbols = false;
-    });
+    }, options);
 }
 
 void editor::CodeEditor::applyParsedProjectSymbols() {
@@ -1028,12 +1028,11 @@ void editor::CodeEditor::addScriptEvent(const std::string& filepath, size_t even
             }
             if (isTarget) target = &open->second;
         } else if (change.texts[i] != texts[i]) {
-            std::ofstream file(resolveFilepath(paths[i]), std::ios::trunc);
-            if (!file.is_open()) {
-                Out::error("Could not write file: %s", key.c_str());
+            const io::WriteResult written = DocumentFiles::write(resolveFilepath(paths[i]), change.texts[i]);
+            if (!written.ok()) {
+                Out::error(DocumentFiles::saveFailureMessage(paths[i], written));
                 continue;
             }
-            file << change.texts[i];
         }
     }
 
@@ -1328,12 +1327,11 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
             }
         }
 
-        std::ofstream file(resolveFilepath(headerPath), std::ios::trunc);
-        if (!file.is_open()) {
-            Out::error("Could not write header file: %s", headerPath.string().c_str());
+        const io::WriteResult written = DocumentFiles::write(resolveFilepath(headerPath), headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos));
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(headerPath, written));
             return;
         }
-        file << headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos);
     }
 
     SceneProject* selectedScene = project->getSelectedScene();
@@ -1383,9 +1381,7 @@ bool editor::CodeEditor::isFocused() const {
 }
 
 void editor::CodeEditor::closeAll() {
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
     editors.clear();
     changedFilesQueue.clear();
     pendingEventFile.clear();
@@ -1395,14 +1391,11 @@ void editor::CodeEditor::closeAll() {
 bool editor::CodeEditor::save(EditorInstance& instance) {
     try {
         fs::path fullPath = resolveFilepath(instance.filepath);
-        std::ofstream file(fullPath);
-        if (!file.is_open()) {
+        const io::WriteResult written = DocumentFiles::write(fullPath, instance.editor->GetText());
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(instance.filepath, written));
             return false;
         }
-
-        file << instance.editor->GetText();
-        file.close();
-        if (!file) return false;
 
         instance.savedUndoIndex = instance.editor->GetUndoIndex();
         instance.isModified = false;

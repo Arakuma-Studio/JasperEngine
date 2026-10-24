@@ -105,6 +105,12 @@ The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
 `onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
 disabled entry) are skipped.
 
+The subscriptions belong to the script (`this`): when the script goes away they are removed even
+without the `UNREGISTER_*` (and its timers cancelled). Timers: `#include "util/Scheduler.h"`,
+`Scheduler::game().after(2.0, [this]() { ... }, TimeDomain::Game, {.ownerKey = ownerKeyOf(this)})`,
+or keep the handles in a `TimerGroup` member. Logging with a category and the call's file:line:
+`JE_LOG_WARN(logCategoryScript(), "hp %d", hp)` (`"log/Logger.h"`).
+
 ## Rules that bite
 
 - Includes are quoted and resolve against the engine API snapshot: `"Engine.h"`,
@@ -141,14 +147,49 @@ disabled entry) are skipped.
   target_include_directories(${JASPERENGINE_TARGET} PRIVATE ${JASPERENGINE_SCRIPTS_DIR}/Source/Public)
   target_link_libraries(${JASPERENGINE_TARGET} PRIVATE mylib)
   ```
-- The C++ standard is a project setting (`cxxStandard`: 17, 20 or 23); do not set
-  `CMAKE_CXX_STANDARD` yourself.
+- The C++ standard is a project setting (`cxxStandard`: 20, the default, or 23); do not set
+  `CMAKE_CXX_STANDARD` yourself. The engine and its API headers need C++20. The compilers that
+  build it: GCC 11, Clang 16, Apple Clang 15, MSVC 19.30 (Visual Studio 2022) or newer; the
+  generated `CMakeLists.txt` stops with a message naming the compiler below those. C++23 exports
+  to Xcode need Xcode 16 or newer.
 - Code that must build with a physics backend disabled in the export guards on
   `JASPERENGINE_PHYSICS_2D` / `JASPERENGINE_PHYSICS_3D`.
 - Verify: `compile_scripts` builds the scripts without playing and returns the compiler
   errors as `file:line:column: message` (project-relative): fix, compile again, then play and
   read the Console for runtime failures ("Script crash in scene ..." entries). Play builds too
   (incrementally after a compile_scripts), and a compile error then shows in the Console.
+
+## Moving from C++17
+
+A project saved with `cxxStandard: 17` opens as C++20: the editor logs one Console warning
+(`Project C++ standard 17 is no longer supported; the project now builds with C++20 ...`) and the
+next Play or `compile_scripts` builds at C++20. Its compile errors show the usual way. Most
+C++17 code compiles unchanged; what C++20 changed:
+
+- `u8"..."` literals are `const char8_t[]`: they no longer convert to `const char*` or
+  `std::string`. Drop the `u8` prefix (sources are UTF-8) or copy the characters over.
+- `std::filesystem::path::u8string()` and `generic_u8string()` return `std::u8string`, and
+  `std::filesystem::u8path()` is deprecated. Convert with
+  `std::string(s.begin(), s.end())`, and build paths from UTF-8 with
+  `std::filesystem::path(std::u8string(text.begin(), text.end()))`.
+- `[=]` in a member function capturing `this` implicitly is deprecated: write `[=, this]`
+  (or `[this]`, or `[*this]` for a copy).
+- Compound assignment and `++`/`--` on a `volatile` variable are deprecated: write
+  `x = x + y`.
+- A class with a user-declared constructor (even `= default` or `= delete`) is no longer an
+  aggregate: `T{1, 2}` needs a matching constructor, or remove the declared ones.
+- Arithmetic and bitwise operators between two different enumeration types, or between an
+  enumeration and a floating-point value, are deprecated: cast to the underlying type first.
+- `char8_t`, `concept`, `requires`, `consteval`, `constinit`, `co_await`, `co_yield` and
+  `co_return` are keywords and can no longer name things.
+- `a == b` also tries `b == a`: a non-`const` member `operator==` can become ambiguous. Make it
+  `const`, or a free function with symmetric parameters.
+
+Every export builds with the oldest standard libraries the engine supports (GCC 11's, and
+libc++ for macOS 10.15 and iOS 13), so scripts that ship to every platform stay off `<format>`,
+`std::jthread` and stop tokens, `<semaphore>`/`<latch>`/`<barrier>` and `std::atomic` waits,
+`<memory_resource>`, floating-point `std::to_chars`/`from_chars`, `<syncstream>`, `<chrono>`
+calendars and time zones, coroutines and modules.
 
 ## Tools
 

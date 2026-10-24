@@ -414,15 +414,15 @@ bool editor::ModelLoadCmd::execute(){
 
     Signature signature = scene->getSignature(entity);
     if (!signature.test(scene->getComponentId<Transform>())){
-        Log::error("Entity %lu does not have a Transform component", entity);
+        Log::error("Entity %u does not have a Transform component", entity);
         return false;
     }
     if (!signature.test(scene->getComponentId<MeshComponent>())){
-        Log::error("Entity %lu does not have a MeshComponent", entity);
+        Log::error("Entity %u does not have a MeshComponent", entity);
         return false;
     }
     if (!signature.test(scene->getComponentId<ModelComponent>())){
-        Log::error("Entity %lu does not have a ModelComponent", entity);
+        Log::error("Entity %u does not have a ModelComponent", entity);
         return false;
     }
 
@@ -599,4 +599,20 @@ void editor::ModelLoadCmd::undo(){
         createEntityCmd->undo();
         entity = NULL_ENTITY;
     }
+}
+
+std::string editor::ModelLoadCmd::describe() const{
+    const std::string file = CommandNames::file(modelPath);
+    if (createEntityCmd){
+        return "Create Model " + file;
+    }
+    return "Load Model " + file + " (" + CommandNames::entity(project, sceneId, entity) + ")";
+}
+
+size_t editor::ModelLoadCmd::memoryBytes() const{
+    return sizeof(*this) + yamlFootprint(oldTransform) + yamlFootprint(oldMesh) + yamlFootprint(oldModel) +
+        (oldSubEntitiesDeleteCmd ? oldSubEntitiesDeleteCmd->memoryBytes() : 0) +
+        (createEntityCmd ? createEntityCmd->memoryBytes() : 0) +
+        reusedEntities.capacity() * sizeof(Entity) + parkedEntities.capacity() * sizeof(ParkedEntity) +
+        movedParts.capacity() * sizeof(MovedPart);
 }

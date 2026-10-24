@@ -14,11 +14,11 @@
 #include "util/BackgroundRelease.h"
 
 #include "imgui.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <cstring>
 #include <chrono>
-#include <future>
 #include <optional>
 #include <unordered_set>
 
@@ -58,11 +58,11 @@ namespace {
     // Bumped by every clipboard write that is not ours
     uint64_t foreignWrites = 0;
 
-    // The text of the last copy, emitted on a worker: YAML text of a thousand GameObjects
+    // The text of the last copy, emitted by a Background job: YAML text of a thousand GameObjects
     // takes as long to write as they take to encode. Until it lands, the copy is kept in
     // ownEntry and is the clipboard for this editor.
     struct PendingText {
-        std::future<std::string> text;
+        jobs::Task<std::string> text;
         uint64_t foreignWrites = 0;
     };
     std::optional<PendingText> pendingText;
@@ -204,7 +204,7 @@ namespace {
         if (!pendingText) {
             return;
         }
-        if (!wait && pendingText->text.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (!wait && !pendingText->text.isReady()) {
             return;
         }
         std::string text = pendingText->text.get();
@@ -253,7 +253,10 @@ namespace {
 
         PendingText pending;
         pending.foreignWrites = foreignWrites;
-        pending.text = std::async(std::launch::async, [doc]() {
+        jobs::SubmitOptions options;
+        options.lane = jobs::Lane::Background;
+        options.name = "clipboard-emit";
+        pending.text = jobs::submit([doc]() {
             YAML::Emitter out;
             out << doc;
             std::string text;
@@ -263,7 +266,7 @@ namespace {
             text.append(out.c_str(), out.size());
             text += '\n';
             return text;
-        });
+        }, options);
         pendingText = std::move(pending);
 
         replaceEntry(ownEntry, std::move(entry));
@@ -312,7 +315,7 @@ namespace {
         }
     }
 
-    const editor::Prefab::Instance* instanceRootedAt(editor::Project* project, Scene* scene, uint32_t sceneId, Entity entity, std::filesystem::path* path = nullptr) {
+    const editor::Prefab::Instance* clipboardInstanceRootedAt(editor::Project* project, Scene* scene, uint32_t sceneId, Entity entity, std::filesystem::path* path = nullptr) {
         const PrefabComponent* component = scene->findComponent<PrefabComponent>(entity);
         if (!component || component->path.empty()) {
             return nullptr;
@@ -335,7 +338,7 @@ namespace {
         collectBranch(scene, root, coverage);
         std::unordered_set<Entity> seen(coverage.begin(), coverage.end());
         for (size_t i = 0; i < coverage.size(); i++) {
-            if (!instanceRootedAt(project, scene, sceneId, coverage[i])) {
+            if (!clipboardInstanceRootedAt(project, scene, sceneId, coverage[i])) {
                 continue;
             }
             // every level rooted there (an instance of a Prefab Variant roots its bases' too)
@@ -490,8 +493,18 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     return copyGameObjects(project, sceneId, requested, nullptr);
 }
 
+std::shared_ptr<editor::GameObjectsClip> editor::EntityClipboard::snapshotGameObjects(Project* project, uint32_t sceneId,
+                                                                                     const std::vector<Entity>& entities) {
+    std::shared_ptr<GameObjectsClip> clip;
+    if (!copyGameObjects(project, sceneId, entities, nullptr, &clip, false)) {
+        return nullptr;
+    }
+    return clip;
+}
+
 bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& requested,
-                                              std::unordered_map<Entity, YAML::Node>* encodedRoots) {
+                                              std::unordered_map<Entity, YAML::Node>* encodedRoots,
+                                              std::shared_ptr<GameObjectsClip>* clipOut, bool write) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->scene) {
         return false;
@@ -610,7 +623,7 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     for (Entity root : roots) {
         // A prefab member copied on its own is a plain GameObject, the prefab instances
         // below it still paste as instances
-        const bool member = !instanceRootedAt(project, scene, sceneId, root) &&
+        const bool member = !clipboardInstanceRootedAt(project, scene, sceneId, root) &&
             !project->findPrefabPathFor(sceneId, root).empty();
         YAML::Node encoded = member ?
             Stream::encodeEntity(root, scene, project, sceneProject, true) :
@@ -633,7 +646,7 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     YAML::Node instancesNode(YAML::NodeType::Sequence);
     std::vector<std::tuple<Entity, std::filesystem::path, const Prefab::Instance*>> levels;
     for (Entity entity : covered) {
-        if (!instanceRootedAt(project, scene, sceneId, entity)) {
+        if (!clipboardInstanceRootedAt(project, scene, sceneId, entity)) {
             continue;
         }
         // outer levels first (a variant's, then its bases')
@@ -670,6 +683,13 @@ bool editor::EntityClipboard::copyGameObjects(Project* project, uint32_t sceneId
     }
     if (!clip->externalNames.empty()) {
         doc["external"] = encodeExternalNames(clip->externalNames);
+    }
+
+    if (clipOut) {
+        *clipOut = clip;
+    }
+    if (!write) {
+        return true;
     }
 
     Entry entry;
