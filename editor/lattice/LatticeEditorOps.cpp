@@ -522,20 +522,47 @@ std::vector<Vector3> LatticeEditorOps::transformedOffsets(int rx, int ry, int rz
         }
     }
 
+    // falloff: the moved points' box grown by the radius rejects most far points before the
+    // nearest-point search (squared distances, stops at the first point at distance 0)
+    const bool useFalloff = falloff.enabled && falloff.radius > 0.0f;
+    std::vector<Vector3> movedPositions;
+    Vector3 reachMin(std::numeric_limits<float>::max());
+    Vector3 reachMax(-std::numeric_limits<float>::max());
+    if (useFalloff){
+        movedPositions.reserve(moved.size());
+        for (int other : moved){
+            if (other >= 0 && other < count){
+                const Vector3& p = current[(size_t)other];
+                movedPositions.push_back(p);
+                reachMin = Vector3(std::min(reachMin.x, p.x), std::min(reachMin.y, p.y), std::min(reachMin.z, p.z));
+                reachMax = Vector3(std::max(reachMax.x, p.x), std::max(reachMax.y, p.y), std::max(reachMax.z, p.z));
+            }
+        }
+        reachMin = reachMin - Vector3(falloff.radius);
+        reachMax = reachMax + Vector3(falloff.radius);
+    }
+
     const WeightedTransform transform(localTransform);
     std::vector<Vector3> result = base;
     for (int index = 0; index < count; index++){
         float weight = 0.0f;
         if (isMoved[(size_t)index]){
             weight = 1.0f;
-        }else if (falloff.enabled && falloff.radius > 0.0f){
-            float nearest = std::numeric_limits<float>::max();
-            for (int other : moved){
-                if (other >= 0 && other < count){
-                    nearest = std::min(nearest, current[(size_t)index].distance(current[(size_t)other]));
+        }else if (useFalloff && !movedPositions.empty()){
+            const Vector3& p = current[(size_t)index];
+            if (p.x < reachMin.x || p.y < reachMin.y || p.z < reachMin.z ||
+                    p.x > reachMax.x || p.y > reachMax.y || p.z > reachMax.z){
+                continue;
+            }
+            float nearestSq = std::numeric_limits<float>::max();
+            for (const Vector3& q : movedPositions){
+                const Vector3 d = p - q;
+                nearestSq = std::min(nearestSq, d.dotProduct(d));
+                if (nearestSq <= 0.0f){
+                    break;
                 }
             }
-            weight = falloffWeight(falloff, nearest);
+            weight = falloffWeight(falloff, std::sqrt(nearestSq));
         }
         if (weight <= 0.0f){
             continue;
