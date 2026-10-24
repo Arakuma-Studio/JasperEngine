@@ -48,6 +48,16 @@ def missing_group(listing: dict, *, guid: str | None = None, last_path: str | No
     return None
 
 
+def cli_json(stdout: str) -> dict:
+    """The JSON object a CLI command prints (log lines may come before and after it)"""
+    offset = 0
+    for line in stdout.splitlines(keepends=True):
+        if line.startswith("{"):
+            return json.JSONDecoder().raw_decode(stdout[offset:])[0]
+        offset += len(line)
+    raise AssertionError("no JSON in the output:\n" + stdout)
+
+
 def run_cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     return subprocess.run(harness.editor_command() + list(args), capture_output=True, text=True, cwd=cwd, env=env, timeout=600)
@@ -138,18 +148,18 @@ async def test_rename_touches_no_referrers(ed: Editor):
     ed.check(mask in (ed.project / "Main.scene").read_text(), "the saved scene does not hold the texture's GUID")
     referrers = ["Main.scene", "Closed.scene", "prefabs/Lamp.prefab", "materials/Brick.material", "project.yaml"]
     before = mtimes(ed, referrers)
-    result = await ed.call("move_asset", path="assets/textures/mask.png", to="assets/textures/moved/m2.png")
-    ed.check_eq(sorted(result["files_written"]), ["assets/textures/moved/m2.png", "assets/textures/moved/m2.png.meta"])
+    result = await ed.call("move_asset", path="assets/textures/mask.png", to="assets/m2.png")
+    ed.check_eq(sorted(result["files_written"]), ["assets/m2.png", "assets/m2.png.meta"])
     ed.check_eq(result["guid"], mask)
     ed.check_eq(mtimes(ed, referrers), before, "a referrer file was written")
     ed.check(not (ed.project / "assets/textures/mask.png.meta").exists(), "the meta stayed behind")
     # the open scene follows in memory
     entity = await ed.call("get_entity", scene="Main.scene", entity="Speaker", components=["light"], properties=["spotMask"])
-    ed.check("assets/textures/moved/m2.png" in json.dumps(entity), f"{entity}")
+    ed.check("assets/m2.png" in json.dumps(entity), f"{entity}")
     # the closed scene, opened, binds it by GUID
     await ed.call("open_scene", scene="Closed.scene")
     spot = await ed.call("get_entity", scene="Closed.scene", entity="Spot", components=["light"], properties=["spotMask"])
-    ed.check("assets/textures/moved/m2.png" in json.dumps(spot), f"{spot}")
+    ed.check("assets/m2.png" in json.dumps(spot), f"{spot}")
     ed.check_eq((await ed.call("resolve_asset", asset=mask))["resolved_by"], "live")
     await ed.call("close_scene", scene="Closed.scene")
     # back, for the tests after
@@ -231,11 +241,11 @@ async def test_cli_check_and_migrate(ed: Editor):
         run_cli("scene-dump", "--project", str(project), "--out", str(dump_before))
         first = run_cli("assets", "migrate", "--project", str(project))
         ed.check(first.returncode == 0, first.stderr)
-        written = set(json.loads(first.stdout)["files_written"])
+        written = set(cli_json(first.stdout)["files_written"])
         ed.check({"Main.scene", "Closed.scene", "prefabs/Lamp.prefab", "materials/Brick.material", "project.yaml"} <= written, f"{written}")
         ed.check("filenameGuid" in (project / "Closed.scene").read_text(), "the closed scene has no GUID references")
         second = run_cli("assets", "migrate", "--project", str(project))
-        ed.check_eq(json.loads(second.stdout)["files_written"], [], "a second migrate wrote files")
+        ed.check_eq(cli_json(second.stdout)["files_written"], [], "a second migrate wrote files")
         dump_after = work / "after.yaml"
         run_cli("scene-dump", "--project", str(project), "--out", str(dump_after))
 
@@ -250,11 +260,11 @@ async def test_cli_check_and_migrate(ed: Editor):
 
         check = run_cli("assets", "check", "--project", str(project))
         ed.check(check.returncode == 0, check.stdout + check.stderr)
-        ed.check_eq(json.loads(check.stdout)["missing"], [])
+        ed.check_eq(cli_json(check.stdout)["missing"], [])
         (project / "assets/sounds/beep.wav").unlink()
         check = run_cli("assets", "check", "--project", str(project))
         ed.check(check.returncode == 1, "assets check did not fail on a missing asset")
-        ed.check(any(g["last_path"] == "assets/sounds/beep.wav" for g in json.loads(check.stdout)["missing"]), check.stdout)
+        ed.check(any(g["last_path"] == "assets/sounds/beep.wav" for g in cli_json(check.stdout)["missing"]), check.stdout)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
