@@ -381,15 +381,13 @@ void ActionSystem::actionStop(Entity entity){
 }
 
 void ActionSystem::actionComponentStop(ActionComponent& action){
-    // Dispatch from a copy so a callback can remove/destroy the component that
-    // owns the original subscription list without invalidating call().
-    auto onStop = action.onStop;
-
     action.state = ActionState::Stopped;
     action.stopTrigger = false;
     action.timecount = 0;
 
-    onStop.call();
+    // not from a copy, which would still call the scripts unsubscribed meanwhile: call()
+    // keeps its subscriber list even when a callback destroys the component
+    action.onStop.call();
 }
 
 void ActionSystem::actionPause(Entity entity){
@@ -413,14 +411,10 @@ void ActionSystem::actionPause(Entity entity){
 }
 
 void ActionSystem::actionComponentPause(ActionComponent& action){
-    // Dispatch from a copy so a callback can remove/destroy the component that
-    // owns the original subscription list without invalidating call().
-    auto onPause = action.onPause;
-
     action.state = ActionState::Paused;
     action.pauseTrigger = false;
 
-    onPause.call();
+    action.onPause.call();
 }
 
 void ActionSystem::actionUpdate(double dt, ActionComponent& action){

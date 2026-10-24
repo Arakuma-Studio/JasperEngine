@@ -122,13 +122,53 @@ namespace jasperengine {
     class FunctionSubscribe<Ret(Args...)> {
 
     private:
-        std::vector<std::function<Ret(Args...)>> functions;
-        std::vector<std::string> tags;
+        // One subscription, shared by the copies of this object (a component array relocates
+        // its components by copying them)
+        struct Subscriber {
+            std::string tag;
+            std::function<Ret(Args...)> function;
+            // the FunctionSubscribe objects that list it
+            int owners = 0;
+            // unsubscribed from all of them, or disabled by the crash guard: a running call skips it
+            bool removed = false;
+        };
+        using SubscriberList = std::vector<std::shared_ptr<Subscriber>>;
+
+        // Copied on write: a running call iterates the list it started with, so a callback can
+        // subscribe, unsubscribe or destroy this object, and a call allocates nothing
+        std::shared_ptr<SubscriberList> subscribers;
         bool enabled = true;
 
+        void release(const std::shared_ptr<Subscriber>& subscriber) {
+            if (--subscriber->owners == 0) {
+                subscriber->removed = true;
+            }
+        }
+
+        SubscriberList& editableSubscribers() {
+            if (!subscribers) {
+                subscribers = std::make_shared<SubscriberList>();
+            } else if (subscribers.use_count() > 1) {
+                subscribers = std::make_shared<SubscriberList>(*subscribers);
+            }
+            return *subscribers;
+        }
+
         void removeAt(size_t index) {
-            functions.erase(functions.begin() + index);
-            tags.erase(tags.begin() + index);
+            SubscriberList& list = editableSubscribers();
+            release(list[index]);
+            list.erase(list.begin() + index);
+        }
+
+        void copyFrom(const FunctionSubscribe& t) {
+            if (t.subscribers) {
+                for (const auto& subscriber : *t.subscribers) {
+                    subscriber->owners++;
+                }
+            }
+            clear();
+            subscribers = t.subscribers;
+            enabled = t.enabled;
         }
 
         template<typename T, size_t... Idx>
@@ -136,11 +176,33 @@ namespace jasperengine {
             return std::bind(funcPtr, obj, MyPlaceholder<Idx + 1>{}...);
         }
 
+        #ifdef JASPERENGINE_CRASH_GUARD
+        static std::string crashDescription(const CrashInfo& ci) {
+            return std::string(ci.name ? ci.name : "UNKNOWN") +
+                   " (" + (ci.description ? ci.description : "") +
+                   ") [code=" + std::to_string(ci.code) + "]";
+        }
+        #endif
+
     public:
 
         FunctionSubscribe() = default;
-        FunctionSubscribe(const FunctionSubscribe&) = default;
-        FunctionSubscribe& operator = (const FunctionSubscribe&) = default;
+
+        FunctionSubscribe(const FunctionSubscribe& t) {
+            copyFrom(t);
+        }
+
+        ~FunctionSubscribe() {
+            clear();
+        }
+
+        FunctionSubscribe& operator = (const FunctionSubscribe& t) {
+            if (this != &t) {
+                copyFrom(t);
+            }
+
+            return *this;
+        }
 
         FunctionSubscribe(std::function<Ret(Args...)> function){
             add("cFunction", function);
@@ -171,18 +233,28 @@ namespace jasperengine {
         }
 
         bool hasSubscribers() const {
-            return !functions.empty();
+            if (subscribers) {
+                for (const auto& subscriber : *subscribers) {
+                    if (!subscriber->removed) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
 
         bool add(const std::string& tag, lua_State *L){
             std::function<Ret(Args...)> function = LuaFunction<Ret>(L);
-            return add(tag, function);
+            return add(tag, std::move(function));
         }
 
         bool add(const std::string& tag, std::function<Ret(Args...)> function) {
             remove(tag);
-            functions.push_back(function);
-            tags.push_back(tag);
+            SubscriberList& list = editableSubscribers();
+            // drops the ones the crash guard disabled
+            list.erase(std::remove_if(list.begin(), list.end(),
+                [](const std::shared_ptr<Subscriber>& subscriber) { return subscriber->removed; }), list.end());
+            list.push_back(std::make_shared<Subscriber>(Subscriber{tag, std::move(function), 1}));
             return true;
         }
 
@@ -207,24 +279,21 @@ namespace jasperengine {
         }
 
         bool remove(const std::string& tag){
-            auto it = find(tags.begin(), tags.end(), tag);
-            if (it == tags.end()){
-                return false;
+            for (size_t i = 0; subscribers && i < subscribers->size(); i++) {
+                if ((*subscribers)[i]->tag == tag) {
+                    removeAt(i);
+                    return true;
+                }
             }
 
-            auto index{ std::distance(tags.begin(), it) };
-            tags.erase(it);
-            functions.erase(functions.begin() + index);
-
-            return true;
+            return false;
         }
 
         size_t removeByTagSubstring(const std::string& substring){
             size_t removed = 0;
-            for (size_t i = 0; i < tags.size(); ) {
-                if (tags[i].find(substring) != std::string::npos) {
-                    tags.erase(tags.begin() + i);
-                    functions.erase(functions.begin() + i);
+            for (size_t i = 0; subscribers && i < subscribers->size(); ) {
+                if ((*subscribers)[i]->tag.find(substring) != std::string::npos) {
+                    removeAt(i);
                     ++removed;
                 } else {
                     ++i;
@@ -240,11 +309,18 @@ namespace jasperengine {
                 }
             }else{
                 if constexpr (std::is_void<Ret>::value) {
-                    for (size_t i = 0; i < functions.size(); ) {
-                        auto& function = functions[i];
+                    // held: a callback can change or destroy this object
+                    const std::shared_ptr<const SubscriberList> list = subscribers;
+                    if (!list) {
+                        return;
+                    }
+                    for (const auto& subscriber : *list) {
+                        if (subscriber->removed) {
+                            continue;
+                        }
+                        auto& function = subscriber->function;
                         #ifdef JASPERENGINE_CRASH_GUARD
                         // Use crash protection if handler is registered
-                        auto& tag = tags[i];
                         auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
                         if (crashHandler) {
                             CrashInfo ci{};
@@ -253,14 +329,10 @@ namespace jasperengine {
                             }, &ci);
 
                             if (!ok) {
-                                std::string errorInfo = std::string(ci.name ? ci.name : "UNKNOWN") + 
-                                                    " (" + (ci.description ? ci.description : "") + 
-                                                    ") [code=" + std::to_string(ci.code) + "]";
+                                crashHandler(subscriber->tag, crashDescription(ci));
 
-                                crashHandler(tag, errorInfo);
-
-                                removeAt(i);
-                                continue;
+                                // not removeAt(): the callback may have destroyed this object
+                                subscriber->removed = true;
                             }
                         } else {
                             function(args...);
@@ -268,8 +340,6 @@ namespace jasperengine {
                         #else
                         function(args...);
                         #endif
-
-                        ++i;
                     }
                 } else {
                     return callRet(args..., Ret());
@@ -282,11 +352,18 @@ namespace jasperengine {
             if (!enabled){
                 return def;
             }
-            for (size_t i = 0; i < functions.size(); ) {
-                auto& function = functions[i];
+            // held: a callback can change or destroy this object
+            const std::shared_ptr<const SubscriberList> list = subscribers;
+            if (!list) {
+                return def;
+            }
+            for (const auto& subscriber : *list) {
+                if (subscriber->removed) {
+                    continue;
+                }
+                auto& function = subscriber->function;
                 #ifdef JASPERENGINE_CRASH_GUARD
                 // Use crash protection if handler is registered
-                auto& tag = tags[i];
                 auto& crashHandler = FunctionSubscribeGlobal::getCrashHandler();
                 if (crashHandler) {
                     Ret result{};
@@ -298,14 +375,10 @@ namespace jasperengine {
                     if (ok) {
                         return result;
                     } else {
-                        std::string errorInfo = std::string(ci.name ? ci.name : "UNKNOWN") + 
-                                            " (" + (ci.description ? ci.description : "") + 
-                                            ") [code=" + std::to_string(ci.code) + "]";
+                        crashHandler(subscriber->tag, crashDescription(ci));
 
-                        crashHandler(tag, errorInfo);
-
-                        removeAt(i);
-                        continue;
+                        // not removeAt(): the callback may have destroyed this object
+                        subscriber->removed = true;
                     }
                 } else {
                     return function(args...);
@@ -322,8 +395,12 @@ namespace jasperengine {
         }
 
         void clear(){
-            functions.clear();
-            tags.clear();
+            if (subscribers) {
+                for (const auto& subscriber : *subscribers) {
+                    release(subscriber);
+                }
+                subscribers.reset();
+            }
         }
     };
 

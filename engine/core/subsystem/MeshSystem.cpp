@@ -2658,6 +2658,50 @@ size_t MeshSystem::getTerrainGridArraySize(int rootGridSize, int levels){
     return size;
 }
 
+float MeshSystem::terrainTexelCoord(float local, float terrainSize, int size){
+    return ((local + terrainSize * 0.5f) / terrainSize) * static_cast<float>(size) - 0.5f;
+}
+
+float MeshSystem::sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
+    if (!pixels || width <= 0 || height <= 0 || channels <= 0){
+        return 0.0f;
+    }
+
+    // a clamped coordinate blends the edge texel with itself, as the clamp-to-edge sampler does
+    texelX = std::clamp(texelX, 0.0f, static_cast<float>(width - 1));
+    texelY = std::clamp(texelY, 0.0f, static_cast<float>(height - 1));
+    const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
+    const int lowerY = std::clamp(static_cast<int>(std::floor(texelY)), 0, height - 1);
+    const int upperX = std::min(lowerX + 1, width - 1);
+    const int upperY = std::min(lowerY + 1, height - 1);
+    const float blendX = texelX - static_cast<float>(lowerX);
+    const float blendY = texelY - static_cast<float>(lowerY);
+
+    auto texel = [&](int x, int y){
+        const size_t texelIndex = static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x);
+        const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
+        if (bytesPerChannel >= 2){
+            // 16-bit little-endian (native unsigned short) heightmap sample
+            const unsigned int value = static_cast<unsigned int>(pixels[index]) |
+                                       (static_cast<unsigned int>(pixels[index + 1]) << 8);
+            return static_cast<float>(value) / 65535.0f;
+        }
+        return pixels[index] / 255.0f;
+    };
+
+    const float lower = texel(lowerX, lowerY) + (texel(upperX, lowerY) - texel(lowerX, lowerY)) * blendX;
+    const float upper = texel(lowerX, upperY) + (texel(upperX, upperY) - texel(lowerX, upperY)) * blendX;
+    return lower + (upper - lower) * blendY;
+}
+
+float MeshSystem::sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ){
+    if (terrainSize <= std::numeric_limits<float>::epsilon()){
+        return 0.0f;
+    }
+    return sampleTerrainHeightTexels(pixels, width, height, channels, bytesPerChannel,
+                                     terrainTexelCoord(localX, terrainSize, width), terrainTexelCoord(localZ, terrainSize, height));
+}
+
 bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint){
 
     const unsigned char* pixels = nullptr;
@@ -2694,36 +2738,7 @@ bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain
             return true;
         }
 
-        const float normalizedX = std::clamp((localX + halfSize) / terrain.terrainSize, 0.0f, 1.0f);
-        const float normalizedZ = std::clamp((localZ + halfSize) / terrain.terrainSize, 0.0f, 1.0f);
-        const float texelX = normalizedX * static_cast<float>(width - 1);
-        const float texelZ = normalizedZ * static_cast<float>(height - 1);
-        const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
-        const int lowerZ = std::clamp(static_cast<int>(std::floor(texelZ)), 0, height - 1);
-        const int upperX = std::min(lowerX + 1, width - 1);
-        const int upperZ = std::min(lowerZ + 1, height - 1);
-        const float blendX = texelX - static_cast<float>(lowerX);
-        const float blendZ = texelZ - static_cast<float>(lowerZ);
-
-        auto samplePixel = [&](int sampleX, int sampleZ){
-            const size_t texelIndex = static_cast<size_t>(sampleZ) * static_cast<size_t>(width) + static_cast<size_t>(sampleX);
-            const size_t index = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-            if (bytesPerChannel >= 2){
-                // 16-bit little-endian (native unsigned short) heightmap sample
-                const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                           (static_cast<unsigned int>(pixels[index + 1]) << 8);
-                return static_cast<float>(value) / 65535.0f;
-            }
-            return pixels[index] / 255.0f;
-        };
-
-        const float height00 = samplePixel(lowerX, lowerZ);
-        const float height10 = samplePixel(upperX, lowerZ);
-        const float height01 = samplePixel(lowerX, upperZ);
-        const float height11 = samplePixel(upperX, upperZ);
-        const float lowerBlend = height00 + (height10 - height00) * blendX;
-        const float upperBlend = height01 + (height11 - height01) * blendX;
-        sampledHeight = (lowerBlend + (upperBlend - lowerBlend) * blendZ) * terrain.maxHeight;
+        sampledHeight = sampleTerrainHeight(pixels, width, height, channels, bytesPerChannel, terrain.terrainSize, localX, localZ) * terrain.maxHeight;
         return true;
     };
 
@@ -3231,31 +3246,8 @@ void MeshSystem::sampleTerrainSurface(TerrainComponent& terrain, float localX, f
         return;
     }
 
-    const float halfSize = terrain.terrainSize * 0.5f;
-
     auto sampleHeight = [&](float x, float z){
-        const float texelX = std::clamp((x + halfSize) / terrain.terrainSize, 0.0f, 1.0f) * (width - 1);
-        const float texelZ = std::clamp((z + halfSize) / terrain.terrainSize, 0.0f, 1.0f) * (mapHeight - 1);
-        const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
-        const int lowerZ = std::clamp(static_cast<int>(std::floor(texelZ)), 0, mapHeight - 1);
-        const int upperX = std::min(lowerX + 1, width - 1);
-        const int upperZ = std::min(lowerZ + 1, mapHeight - 1);
-        const float blendX = texelX - lowerX;
-        const float blendZ = texelZ - lowerZ;
-
-        auto texel = [&](int sampleX, int sampleZ){
-            const size_t index = (static_cast<size_t>(sampleZ) * width + sampleX) * channels * bytesPerChannel;
-            if (bytesPerChannel >= 2){
-                const unsigned int value = static_cast<unsigned int>(pixels[index]) |
-                                           (static_cast<unsigned int>(pixels[index + 1]) << 8);
-                return terrain.maxHeight * value / 65535.0f;
-            }
-            return terrain.maxHeight * pixels[index] / 255.0f;
-        };
-
-        const float lower = texel(lowerX, lowerZ) + (texel(upperX, lowerZ) - texel(lowerX, lowerZ)) * blendX;
-        const float upper = texel(lowerX, upperZ) + (texel(upperX, upperZ) - texel(lowerX, upperZ)) * blendX;
-        return lower + (upper - lower) * blendZ;
+        return terrain.maxHeight * sampleTerrainHeight(pixels, width, mapHeight, channels, bytesPerChannel, terrain.terrainSize, x, z);
     };
 
     const float delta = terrain.terrainSize / static_cast<float>(width);

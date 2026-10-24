@@ -230,6 +230,16 @@ namespace jasperengine{
         // Height and normal in terrain-local space, the surface the foliage scatter uses
         void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);
 
+        // Heightmap lookups as the terrain vertex shader does them (so collider, ray casts,
+        // height queries and brushes meet the rendered surface): linear filtering with texel
+        // centres at (i + 0.5) / size, clamped to the edge texels.
+        // Texel coordinate of a terrain-local position along one axis of a size-texel map
+        static float terrainTexelCoord(float local, float terrainSize, int size);
+        // Normalized [0,1] height of the R channel (8 or 16-bit) at a texel coordinate
+        static float sampleTerrainHeightTexels(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY);
+        // Normalized [0,1] height at a terrain-local position; 0 without pixels
+        static float sampleTerrainHeight(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float terrainSize, float localX, float localZ);
+
         bool hasPendingAsyncModelLoads() const;
         void cancelAsyncModelLoads();
         static void cancelAllAsyncModelLoads();
