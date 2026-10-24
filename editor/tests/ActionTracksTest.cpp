@@ -352,3 +352,36 @@ TEST(ActionTriggers, OnStopDestroyingItsEntity) {
     EXPECT_TRUE(other.isRunning()) << "the other action is untouched";
     EXPECT_GT(other.getTimeCount(), 0.25f);
 }
+
+TEST(ActionTriggers, ChildOnStartMovingTheComponentArrays) {
+    Scene scene;
+    Entity target = createTarget(scene);
+
+    PositionTween tween(&scene);
+    tween.setAction(Vector3(0, 0, 0), Vector3(10, 0, 0), 1.0f);
+
+    Animation animation(&scene);
+    animation.addActionFrame(0.375f, 0.0f, tween.getEntity(), target);
+    animation.start();
+
+    // the child's start adds enough ActionComponents to move their array: animationUpdate
+    // writes the child's timecount right after starting it
+    std::vector<Entity> added;
+    tween.getComponent<ActionComponent>().onStart.add("grow", std::function<void()>([&scene, &added]() {
+        if (!added.empty()) return;
+        for (int i = 0; i < 64; i++) {
+            Entity e = scene.createEntity();
+            scene.addComponent<ActionComponent>(e, ActionComponent());
+            added.push_back(e);
+        }
+    }));
+
+    // the animation reaches 0.5 s on the third update, 0.125 s into the child's frame
+    step(scene, 0.25, 3);
+    ASSERT_EQ(added.size(), 64u);
+    EXPECT_TRUE(tween.isRunning());
+    EXPECT_NEAR(positionOf(scene, target).x, 1.25f, 1e-4f) << "the child got its timecount after the move";
+    EXPECT_TRUE(animation.isRunning());
+    step(scene, 0.25, 1);
+    EXPECT_NEAR(positionOf(scene, target).x, 3.75f, 1e-4f);
+}

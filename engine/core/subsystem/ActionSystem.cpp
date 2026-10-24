@@ -294,6 +294,15 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
 
     actionComponentStart(action);
 
+    // onStart is user code: it may destroy the entity or add components, which moves
+    // component arrays, so nothing found before it is used after it
+    ActionComponent* started = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
+    if (!started){
+        return;
+    }
+    signature = scene->getSignature(entity);
+    const Entity target = started->target;
+
     // Reset blend weight to full when an animation starts without a pending fade
     // (a fade-in sets weight/fadeSpeed before triggering start, so preserve those).
     if (signature.test(scene->getComponentId<AnimationComponent>())){
@@ -305,14 +314,14 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
         }
     }
 
-    if (action.target != NULL_ENTITY){
-        Signature targetSignature = scene->getSignature(action.target);
+    if (target != NULL_ENTITY && scene->isEntityCreated(target)){
+        Signature targetSignature = scene->getSignature(target);
 
         if (signature.test(scene->getComponentId<SpriteAnimationComponent>())){
             SpriteAnimationComponent& spriteanim = scene->getComponent<SpriteAnimationComponent>(entity);
             if (targetSignature.test(scene->getComponentId<SpriteComponent>()) && targetSignature.test(scene->getComponentId<MeshComponent>())){
-                SpriteComponent& sprite = scene->getComponent<SpriteComponent>(action.target);
-                MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
+                SpriteComponent& sprite = scene->getComponent<SpriteComponent>(target);
+                MeshComponent& mesh = scene->getComponent<MeshComponent>(target);
 
                 spriteActionStart(mesh, sprite, spriteanim);
 
@@ -322,17 +331,17 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
         if (signature.test(scene->getComponentId<ParticleSystemComponent>())){
             ParticleSystemComponent& particles = scene->getComponent<ParticleSystemComponent>(entity);
             if (targetSignature.test(scene->getComponentId<MeshComponent>())) {
-                MeshComponent& mesh = scene->getComponent<MeshComponent>(action.target);
+                MeshComponent& mesh = scene->getComponent<MeshComponent>(target);
 
-                scene->getSystem<MeshSystem>()->createInstancedMesh(action.target);
-                targetSignature = scene->getSignature(action.target);
+                scene->getSystem<MeshSystem>()->createInstancedMesh(target);
+                targetSignature = scene->getSignature(target);
 
-                InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(action.target);
+                InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(target);
 
                 particleActionStart(particles, instmesh, mesh);
             }
             if (targetSignature.test(scene->getComponentId<PointsComponent>()) ){
-                PointsComponent& points = scene->getComponent<PointsComponent>(action.target);
+                PointsComponent& points = scene->getComponent<PointsComponent>(target);
 
                 particleActionStart(particles, points);
 
@@ -342,10 +351,14 @@ void ActionSystem::actionStart(Entity entity, bool newRun){
 }
 
 void ActionSystem::actionComponentStart(ActionComponent& action){
+    // Dispatch from a copy, as actionComponentStop does: a callback that adds components
+    // moves the array holding the original subscription list while call() iterates it.
+    auto onStart = action.onStart;
+
     action.state = ActionState::Running;
     action.startTrigger = false;
 
-    action.onStart.call();
+    onStart.call();
 }
 
 void ActionSystem::actionStop(Entity entity){
@@ -473,31 +486,47 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
         }
     }
 
-    for (int i = 0; i < animcomp.actions.size(); i++){
+    // A child's onStart is user code that can add components, which moves component arrays:
+    // the animation's own components are found again after each start
+    ActionComponent* parent = &action;
+    AnimationComponent* anim = &animcomp;
 
-        float timeDiff = action.timecount - animcomp.actions[i].startTime;
+    for (size_t i = 0; i < anim->actions.size(); i++){
 
-        Signature isignature = scene->getSignature(animcomp.actions[i].action);
+        float timeDiff = parent->timecount - anim->actions[i].startTime;
+        Entity child = anim->actions[i].action;
+
+        Signature isignature = scene->getSignature(child);
 
         if (isignature.test(scene->getComponentId<ActionComponent>())){
 
             if (timeDiff >= 0) {
                 //TODO: Support loop actions
-                ActionComponent& iaction = scene->getComponent<ActionComponent>(animcomp.actions[i].action);
                 // an action that ended starts again every frame to hold its last value, and
                 // again on each loop: only its first start in this run of the animation is a
                 // new run (a relative track keeps the pose it started from)
-                bool newRun = !animcomp.actions[i].started;
-                animcomp.actions[i].started = true;
-                if (iaction.state != ActionState::Running) {
-                    actionStart(animcomp.actions[i].action, newRun);
+                bool newRun = !anim->actions[i].started;
+                anim->actions[i].started = true;
+                if (scene->getComponent<ActionComponent>(child).state != ActionState::Running) {
+                    actionStart(child, newRun);
+
+                    parent = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
+                    anim = parent ? scene->findComponent<AnimationComponent>(entity) : nullptr;
+                    if (!anim || i >= anim->actions.size()){
+                        return;
+                    }
                 }
 
-                iaction.timecount = timeDiff * iaction.speed;
-                iaction.weight = animcomp.weight;
+                ActionComponent* iaction = scene->isEntityCreated(child) ? scene->findComponent<ActionComponent>(child) : nullptr;
+                if (!iaction){
+                    continue;
+                }
 
-                float frameDuration = getFrameDuration(animcomp.actions[i]) / iaction.speed;
-                actionsEnd = std::max(actionsEnd, animcomp.actions[i].startTime + frameDuration);
+                iaction->timecount = timeDiff * iaction->speed;
+                iaction->weight = anim->weight;
+
+                float frameDuration = getFrameDuration(anim->actions[i]) / iaction->speed;
+                actionsEnd = std::max(actionsEnd, anim->actions[i].startTime + frameDuration);
 
                 if (timeDiff > frameDuration) {
                     totalActionsPassed++;
@@ -508,21 +537,21 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
 
     }
 
-    bool actionsPassed = totalActionsPassed == animcomp.actions.size();
+    bool actionsPassed = totalActionsPassed == (int)anim->actions.size();
     // timecount already runs at the action's speed
-    bool durationPassed = animcomp.duration >= 0 && action.timecount >= animcomp.duration;
+    bool durationPassed = anim->duration >= 0 && parent->timecount >= anim->duration;
 
     if (actionsPassed || durationPassed) {
-        if (!animcomp.loop) {
+        if (!anim->loop) {
             actionStop(entity);
         }else{
-            float loopDuration = durationPassed ? animcomp.duration : actionsEnd;
+            float loopDuration = durationPassed ? anim->duration : actionsEnd;
 
             // keep the overshoot, or the cycle gets longer at lower frame rates
-            if (loopDuration > 0 && action.timecount >= loopDuration){
-                action.timecount = std::fmod(action.timecount, loopDuration);
+            if (loopDuration > 0 && parent->timecount >= loopDuration){
+                parent->timecount = std::fmod(parent->timecount, loopDuration);
             }else{
-                action.timecount = 0;
+                parent->timecount = 0;
             }
         }
     }
@@ -929,8 +958,10 @@ Quaternion ActionSystem::getQuaternionModifierValue(float& value, Quaternion& fr
 
 Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames, SpriteComponent& sprite){
     if (frames.size() > 0){
-        // value 1 is the modifier's end: the last frame, not one past it
-        size_t frameIndex = std::min(static_cast<size_t>(frames.size() * value), frames.size() - 1);
+        // value 1 is the modifier's end: the last frame, not one past it (and an ease
+        // overshooting below 0 the first: a negative float cast to size_t is undefined)
+        float position = std::min(std::max(value, 0.0f), 1.0f) * (float)frames.size();
+        size_t frameIndex = std::min(static_cast<size_t>(position), frames.size() - 1);
         int id = frames[frameIndex];
 
         if (sprite.framesRect.validIndex(id) && (unsigned int)id < sprite.numFramesRect){
@@ -943,8 +974,10 @@ Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames
 
 Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames, PointsComponent& points){
     if (frames.size() > 0){
-        // value 1 is the modifier's end: the last frame, not one past it
-        size_t frameIndex = std::min(static_cast<size_t>(frames.size() * value), frames.size() - 1);
+        // value 1 is the modifier's end: the last frame, not one past it (and an ease
+        // overshooting below 0 the first: a negative float cast to size_t is undefined)
+        float position = std::min(std::max(value, 0.0f), 1.0f) * (float)frames.size();
+        size_t frameIndex = std::min(static_cast<size_t>(position), frames.size() - 1);
         int id = frames[frameIndex];
 
         if (points.framesRect.validIndex(id) && (unsigned int)id < points.numFramesRect){
