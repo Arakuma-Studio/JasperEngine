@@ -266,7 +266,7 @@ unsigned int Text::getNumChars() const{
 Vector2 Text::getCharPosition(unsigned int index) const{
     TextComponent& textcomp = getComponent<TextComponent>();
 
-    if (index >= 0 && index < textcomp.charPositions.size()){
+    if (index < textcomp.charPositions.size()){
         return textcomp.charPositions[index];
     }
 

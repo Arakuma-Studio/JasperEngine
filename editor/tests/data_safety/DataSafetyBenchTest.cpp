@@ -56,7 +56,10 @@ TEST(AutosaveEncodeBench, MediumSceneEncode) {
     std::printf("[ bench    ] autosave of 2000 entities: encode %.2f ms (main thread), text %.2f ms (worker)\n", encode, dump);
     // R35 asks 10 ms; building yaml-cpp's tree costs ~0.1 ms per GameObject (S03 Deviations), so
     // a slow encode doubles the scene's interval instead. Guarded against regressions here.
+#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JASPERENGINE_SANITIZE_THREAD)
+    // (a sanitizer build is a Debug build several times slower: the budget is for real builds)
     EXPECT_LE(encode / 2000.0, 0.25) << "ms per GameObject";
+#endif
 }
 
 TEST(LoadReportOverheadBench, DecodeWithReport) {
@@ -75,6 +78,7 @@ TEST(LoadReportOverheadBench, DecodeWithReport) {
             Stream::decodeSceneProjectEntities(nullptr, &scene, root);
         }
         const double elapsed = ms(start);
+        releaseCameraFramebuffers(scene.scene);
         delete scene.scene;
         return elapsed;
     };

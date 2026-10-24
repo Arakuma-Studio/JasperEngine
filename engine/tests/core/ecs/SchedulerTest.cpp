@@ -213,7 +213,8 @@ TEST(SchedulerTest, SevenSystemsOneWaveEachInOrder){
     }
 }
 
-TEST(SchedulerTest, ParallelEqualsSerial){
+// over 5 s: a Slow suite (docs/testing.md)
+TEST(SchedulerTestSlow, ParallelEqualsSerial){
     const uint64_t serial = runSynthetic(true);
     const uint64_t parallel = runSynthetic(false);
     EXPECT_EQ(serial, parallel);

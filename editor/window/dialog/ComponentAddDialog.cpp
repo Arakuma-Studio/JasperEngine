@@ -13,7 +13,7 @@ namespace editor {
 
 namespace {
 
-    std::string toLower(std::string text) {
+    std::string componentAddToLower(std::string text) {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
         return text;
     }
@@ -215,7 +215,7 @@ void ComponentAddDialog::show() {
     if (strcmp(previousSearch, m_searchBuffer) != 0) {
         m_highlighted = 0;
     }
-    const std::string search = toLower(m_searchBuffer);
+    const std::string search = componentAddToLower(m_searchBuffer);
     const bool searching = !search.empty();
 
     // Rows of the current page
@@ -235,7 +235,7 @@ void ComponentAddDialog::show() {
     if (searching) {
         for (int c = 0; c < (int)m_categories.size(); c++) {
             for (const ComponentEntry& entry : m_categories[c].entries) {
-                std::string name = toLower(Catalog::getComponentDisplayName(entry.type));
+                std::string name = componentAddToLower(Catalog::getComponentDisplayName(entry.type));
                 if (name.find(search) == std::string::npos) continue;
                 if (!canAdd(entry.type)) continue;
                 rows.push_back({Row::Component, c, entry.type, entry.description, true});

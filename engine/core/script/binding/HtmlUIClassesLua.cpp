@@ -233,7 +233,7 @@ namespace {
         return listenerCall(L, self ? UIElementAccess::get(*self) : nullptr, false);
     }
 
-    Rml::ElementDocument* documentOf(UIDocument* document){
+    Rml::ElementDocument* luaDocumentOf(UIDocument* document){
         return document ? document->getScene()->getSystem<UIDocumentSystem>()->getDocument(document->getEntity()) : nullptr;
     }
 
@@ -242,7 +242,7 @@ namespace {
         if (!document)
             return nullptr;
         document->getBody();
-        return documentOf(document);
+        return luaDocumentOf(document);
     }
 
     int documentAddEventListener(lua_State* L){
@@ -255,7 +255,7 @@ namespace {
 
     int documentRemoveEventListener(lua_State* L){
         UIDocument* self = luabridge::detail::Userdata::get<UIDocument>(L, 1, false);
-        Rml::Element* element = documentOf(self);
+        Rml::Element* element = luaDocumentOf(self);
         if (!element)
             return 0;
         return listenerCall(L, element, false);

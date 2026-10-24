@@ -6549,7 +6549,7 @@ RigidbodyComponent editor::Stream::decodeRigidbodyComponent(const YAML::Node& no
         dof("rotationZ", RigidbodyAllowedDOF_RotationZ);
         // None crashes Jolt on body creation, and a static body is how you freeze
         // everything, so an all-false map falls back to All.
-        body.allowedDOFs = dofs == 0 ? RigidbodyAllowedDOF_All : dofs;
+        body.allowedDOFs = dofs == 0 ? static_cast<uint8_t>(RigidbodyAllowedDOF_All) : dofs;
     }
 
     if (node["numColliders"]) body.numColliders = YamlNumbers::as<unsigned int>(node["numColliders"]);

@@ -124,7 +124,7 @@ namespace {
     }
 
     // <input> of a text type or <textarea>; withSelect adds <select>, which takes keys but no text
-    bool isTextControl(Rml::Element* element, bool withSelect){
+    bool inputIsTextControl(Rml::Element* element, bool withSelect){
         if (!element)
             return false;
 
@@ -184,7 +184,7 @@ namespace {
         if (isGamepadDirection(key))
             return (selectOpen || isInputOfType(focus, {"range"})) ? arrowKey(key) : Rml::Input::KI_UNKNOWN;
         if (key == GamepadUIKey::A){
-            if (isTextControl(focus, false))
+            if (inputIsTextControl(focus, false))
                 return Rml::Input::KI_UNKNOWN;
             return isInputOfType(focus, {"checkbox", "radio"}) ? Rml::Input::KI_SPACE : Rml::Input::KI_RETURN;
         }
@@ -396,7 +396,7 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
         // false: propagation was stopped (a text field handling the key) or the default prevented
         const bool propagated = rmlContext->ProcessKeyDown(RmlKeyMap::toRmlKey(key), RmlKeyMap::toRmlModifiers(mods));
 
-        if (isTextControl(focus, true)){
+        if (inputIsTextControl(focus, true)){
             // a text field takes every key but Escape and the function keys. RmlUi's text
             // widget stops the propagation of every key it sees, so that cannot tell here
             consumed = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
@@ -485,7 +485,7 @@ bool UIDocumentSystem::hasFocusedTextInput() const{
     if (!keys)
         return false;
 
-    return isTextControl(focusedElement(keys->getRmlContext()), false);
+    return inputIsTextControl(focusedElement(keys->getRmlContext()), false);
 }
 
 bool UIDocumentSystem::hasPointerCapture(int pointer, int button, bool touch) const{
@@ -556,7 +556,7 @@ bool UIDocumentSystem::eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool
         }else if (key == GamepadUIKey::A){
             consumed = true;
             // a text field: the virtual keyboard (Android, iOS, Web), as a tap on it
-            if (!prevented && isTextControl(focus, false))
+            if (!prevented && inputIsTextControl(focus, false))
                 keys->getTextInputHandler().requestKeyboard();
         }else if (key == GamepadUIKey::B){
             // an open select closes, as on Escape in a browser

@@ -101,7 +101,6 @@ float Light::getRange() const{
 
 void Light::setIntensity(float intensity){
     LightComponent& lightcomp = getComponent<LightComponent>();
-    Transform& transform = getComponent<Transform>();
 
     if (intensity > 0 && lightcomp.intensity == 0){
         lightcomp.needUpdateShadowCamera = true;

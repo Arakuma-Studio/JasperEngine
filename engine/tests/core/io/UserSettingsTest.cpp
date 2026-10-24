@@ -8,7 +8,7 @@
 #include "System.h"
 #include "io/AtomicFile.h"
 #include "support/TestTempDir.h"
-#include "support/TestEngine.h"
+#include "TestSystem.h"
 
 #include <gtest/gtest.h>
 
@@ -18,27 +18,22 @@ using jasperengine::test::TestTempDir;
 
 namespace {
 
-    // The engine's System, with the user data directory a test chooses (support/TestEngine)
-    using UserDataSystem = jasperengine::test::CoreTestSystem;
-
-    UserDataSystem& engineSystem(){
-        return jasperengine::test::testEngine();
-    }
-
+    // The test binary's System (TestMain started the engine with it), its user data directory
+    // pointed at the test's own directory
     class UserSettingsTest: public ::testing::Test {
     protected:
         void SetUp() override {
-            system = &engineSystem();
-            system->userDataDir = dir.path();
-            system->syncs = 0;
+            system = &test::TestSystem::get();
+            system->setUserDataPath(dir.path().string());
+            system->fileSystemSyncs = 0;
         }
         void TearDown() override {
             io::setAtomicFileFaultInjector(nullptr);
-            system->userDataDir.clear();
+            system->setUserDataPath("");
         }
 
         TestTempDir dir{"usersettings"};
-        UserDataSystem* system = nullptr;
+        test::TestSystem* system = nullptr;
     };
 
 }
@@ -49,7 +44,7 @@ TEST_F(UserSettingsTest, AtomicOnCrash){
     const fs::path file = dir / "UserSettings.xml";
     ASSERT_TRUE(fs::exists(file));
     const std::string saved = TestTempDir::read(file);
-    EXPECT_GE(system->syncs, 2);
+    EXPECT_GE(system->fileSystemSyncs, 2);
 
     // the process "dies" in the middle of the next save: the rename never happens
     io::setAtomicFileFaultInjector([](std::string_view step, const fs::path&) -> std::error_code {
@@ -61,8 +56,9 @@ TEST_F(UserSettingsTest, AtomicOnCrash){
     EXPECT_EQ(TestTempDir::read(file), saved);
     EXPECT_EQ(UserSettings::getIntegerForKey("level"), 3);
     EXPECT_EQ(UserSettings::getStringForKey("player"), "Ada");
-    for (const auto& entry : fs::directory_iterator(dir.path()))
+    for (const auto& entry : fs::directory_iterator(dir.path())){
         EXPECT_FALSE(io::isTemporarySiblingName(entry.path().filename().string())) << entry.path();
+    }
 
     UserSettings::setIntegerForKey("level", 5);
     EXPECT_EQ(UserSettings::getIntegerForKey("level"), 5);

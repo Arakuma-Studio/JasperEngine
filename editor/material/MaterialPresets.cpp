@@ -307,7 +307,7 @@ namespace {
             pass.stencil = masked;
     }
 
-    std::vector<MaterialPreset> makePresets(){
+    std::vector<MaterialPreset> makeMaterialPresets(){
         std::vector<MaterialPreset> presets;
 
         presets.push_back({"outline_hull", "Outline (hull)",
@@ -423,7 +423,7 @@ bool isMaterialBlended(const Material& material, const std::string& meshShader){
 }
 
 const std::vector<MaterialPreset>& getMaterialPresets(){
-    static const std::vector<MaterialPreset> presets = makePresets();
+    static const std::vector<MaterialPreset> presets = makeMaterialPresets();
     return presets;
 }
 

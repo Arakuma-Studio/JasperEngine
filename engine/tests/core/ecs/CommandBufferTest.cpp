@@ -7,7 +7,7 @@
 #include "EntityRegistry.h"
 #include "Scene.h"
 #include "EcsTestUtil.h"
-#include "support/TestEngine.h"
+#include "LogCapture.h"
 
 #include <gtest/gtest.h>
 
@@ -17,7 +17,7 @@
 
 using namespace jasperengine;
 using jasperengine::test::makeTransformEntity;
-using jasperengine::test::testEngine;
+using jasperengine::test::LogCapture;
 
 namespace {
 
@@ -147,9 +147,9 @@ TEST(CommandBufferTest, StaleReferenceSkippedWithWarning){
     EntityCommandBuffer buffer;
     buffer.add<MeshComponent>(ref, MeshComponent());
     buffer.setName(ref, "stale");
-    testEngine().clearLogs();
+    LogCapture log;
     buffer.playback(registry);
-    EXPECT_GE(testEngine().countLogs(D_LOG_WARN, "no longer exists"), 2u);
+    EXPECT_GE(log.count(D_LOG_WARN, "no longer exists"), 2u);
     EXPECT_FALSE(registry.getSignature(reused).test(registry.getComponentId<MeshComponent>()));
     EXPECT_NE(registry.getEntityName(reused), "stale");
 }
