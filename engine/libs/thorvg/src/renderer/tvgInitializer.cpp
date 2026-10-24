@@ -135,10 +135,8 @@ uint16_t THORVG_VERSION_NUMBER()
 
 // JasperEngine local change: an AddressSanitizer build keeps the sanitizer's operator new/delete. ThorVG
 // replaces only the unsized forms, and ASan's own sized operator delete then frees ThorVG's malloc
-// blocks (alloc-dealloc-mismatch at the first static initializer of every binary). The unit-test tree
-// keeps its own too: jasperengine-core-tests counts allocations in its operator new
-// (engine/tests/core/support/AllocationCounterTest.cpp).
-#if !defined(JASPERENGINE_SANITIZE_ADDRESS) && !defined(JASPERENGINE_TEST_OPERATOR_NEW)
+// blocks (alloc-dealloc-mismatch at the first static initializer of every binary).
+#ifndef JASPERENGINE_SANITIZE_ADDRESS
 void* operator new(std::size_t size)
 {
     return tvg::malloc(size);

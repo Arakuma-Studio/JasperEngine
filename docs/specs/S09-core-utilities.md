@@ -592,8 +592,8 @@ Land S09 early in wave 1 so the others build on it.
   bundle until something else relinked. `engine/CMakeLists.txt` now lists those files as the
   target's `LINK_DEPENDS` (globbed with `CONFIGURE_DEPENDS`).
 - **Tests** live in S02's targets: `engine/tests/core/log/`, `engine/tests/core/util/`
-  (`jasperengine-core-tests`, plus `support/AllocationCounterTest.cpp`, the binary's counting
-  `operator new`), `editor/tests/OutTest.cpp` and `editor/tests/util/CrashHandlerTest.cpp` with
+  (`jasperengine-core-tests`, the per-thread count of S06's
+  `support/AllocationCounter.h`, which counts at `malloc` on Linux), `editor/tests/OutTest.cpp` and `editor/tests/util/CrashHandlerTest.cpp` with
   the `je_log_crash_helper` executable (`jasperengine-editor-tests`), and
   `tools/mcp/tests/test_core_utilities.py`. Benchmarks are the `*Bench` suites, with
   `JASPER_TEST_PERF_SLACK`.

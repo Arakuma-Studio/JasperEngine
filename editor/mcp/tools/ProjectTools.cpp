@@ -1004,6 +1004,67 @@ const std::vector<Setting>& settingsTable() {
         }
         add(boolField("player.async_loading", "Load the start scene asynchronously behind the loading scene.",
                       [](Project& p) -> bool& { return p.getLoadingSettings().asyncLoading; }));
+        // ---- threading (Project Settings > Player > Threading)
+        {
+            struct ThreadCount {
+                const char* key;
+                const char* description;
+                int minimum;
+                int maximum;
+                int ThreadingProjectSettings::*field;
+            };
+            const ThreadCount counts[] = {
+                {"player.threading.workers", "Job system workers: -1 Auto, 1-15. Applies on the next launch.", 1, 15, &ThreadingProjectSettings::workers},
+                {"player.threading.reserved_frame_workers", "Workers kept free of Background work: -1 Auto, 0-4. Applies live.", 0, 4, &ThreadingProjectSettings::reservedFrameWorkers},
+                {"player.threading.io_threads", "Asset reader threads: -1 Auto, 0-4. Applies on the next launch.", 0, 4, &ThreadingProjectSettings::ioThreads},
+            };
+            for (const ThreadCount& count : counts) {
+                Setting s;
+                s.key = count.key;
+                s.type = "int";
+                s.description = count.description;
+                const auto field = count.field;
+                const int minimum = count.minimum;
+                const int maximum = count.maximum;
+                s.get = [field](McpContext& ctx) { return Json(ctx.project()->getThreadingSettings().*field); };
+                s.set = [field, minimum, maximum](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                    long long v;
+                    if (!readInt(value, -1, maximum, v, error)) return false;
+                    if (v >= 0 && v < minimum) {
+                        error = "must be -1 (Auto) or " + std::to_string(minimum) + "-" + std::to_string(maximum);
+                        return false;
+                    }
+                    if (apply) {
+                        ThreadingProjectSettings settings = ctx.project()->getThreadingSettings();
+                        settings.*field = static_cast<int>(v);
+                        ctx.project()->setThreadingSettings(settings);
+                    }
+                    return true;
+                };
+                add(s);
+            }
+        }
+        {
+            Setting s;
+            s.key = "player.threading.web_pump_budget_ms";
+            s.type = "number";
+            s.description = "Web builds without threads: Background job time per frame (ms, 0.5-50).";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getThreadingSettings().webPumpBudgetMs); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.5, 50.0, v, error)) return false;
+                if (apply) {
+                    ThreadingProjectSettings settings = ctx.project()->getThreadingSettings();
+                    settings.webPumpBudgetMs = static_cast<float>(v);
+                    ctx.project()->setThreadingSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("player.threading.web_multithreaded", "Web export also builds a pthreads player, picked when the page is cross-origin isolated.",
+                        [](Project& p) { return p.getThreadingSettings().webMultithreaded; },
+                        [](Project& p, bool v) { ThreadingProjectSettings settings = p.getThreadingSettings(); settings.webMultithreaded = v; p.setThreadingSettings(settings); }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
 

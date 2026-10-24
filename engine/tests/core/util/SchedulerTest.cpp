@@ -16,7 +16,6 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
 
 TEST(SchedulerTest, OrderingFifoEqualDue) {
     Scheduler scheduler("test");
@@ -282,7 +281,7 @@ TEST(SchedulerTest, ZeroAllocSmallCallable) {
     // warm: the slot pool and the heap grow once
     for (int i = 0; i < 1000; i++) scheduler.after(0.0, [&sum]() { sum++; }, TimeDomain::Game);
     scheduler.process(TimeDomain::Game);
-    ScopedAllocationCount count;
+    testsupport::ThreadAllocationCount count;
     for (int round = 0; round < 10; round++) {
         for (int i = 0; i < 1000; i++) {
             void* a = &sum;
@@ -307,8 +306,8 @@ TEST(SchedulerTest, Process10kUnder2ms) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     EXPECT_EQ(sum, 20000);
     std::printf("[bench] 10k timers inserted and processed: %.3f ms (budget 2)\n", ms);
-    if (perfSlack() > 0.0) {
-        EXPECT_LE(ms, 2.0 * perfSlack());
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(ms, 2.0 * testsupport::perfSlack());
     }
 }
 
@@ -327,8 +326,8 @@ TEST(SchedulerBench, AfterAndIdleProcess) {
     const double processNs = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count() / count;
     EXPECT_EQ(ran, 0u);
     std::printf("[bench] after(): %.1f ns (budget 150), process() with nothing due: %.1f ns (budget 30)\n", afterNs, processNs);
-    if (perfSlack() > 0.0) {
-        EXPECT_LE(afterNs, 150.0 * perfSlack());
-        EXPECT_LE(processNs, 30.0 * perfSlack());
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(afterNs, 150.0 * testsupport::perfSlack());
+        EXPECT_LE(processNs, 30.0 * testsupport::perfSlack());
     }
 }

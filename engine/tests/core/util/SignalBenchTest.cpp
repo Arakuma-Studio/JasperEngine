@@ -12,7 +12,6 @@
 #include <functional>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
 
 namespace {
     // out of line, so the direct call is a real std::function call too
@@ -37,8 +36,8 @@ TEST(SignalBench, InvokeOneSubscriberOverDirectCall) {
     const double eventNs = time([&](int v) { event.call(v); });
     std::printf("[bench] std::function %.2f ns, Signal::invoke %.2f ns, FunctionSubscribe::call %.2f ns (budget +5)\n",
                 directNs, signalNs, eventNs);
-    if (perfSlack() > 0.0) {
-        EXPECT_LE(signalNs - directNs, 5.0 * perfSlack());
-        EXPECT_LE(eventNs - directNs, 5.0 * perfSlack());
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(signalNs - directNs, 5.0 * testsupport::perfSlack());
+        EXPECT_LE(eventNs - directNs, 5.0 * testsupport::perfSlack());
     }
 }

@@ -9,11 +9,12 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 
 | Suite | What it covers | Run it | Results |
 |---|---|---|---|
-| `jasperengine-core-tests` | engine code (`engine/core`, `engine/renders`) against the static engine: ECS, math, registry, shaders, render state, utilities; `*Gpu` suites render into a headless device | `tools/build.sh unit-tests` | `build/test-results/core.xml` |
+| `jasperengine-core-tests` | engine code (`engine/core`, `engine/renders`) against the static engine: ECS, math, registry, shaders, render state, utilities, the job system, allocators and asset I/O; `*Gpu` suites render into a headless device | `tools/build.sh unit-tests` | `build/test-results/core.xml` |
 | `jasperengine-editor-tests` | editor logic (`editor/`): scene serialization (`Stream`), undo (`CommandHistory`), the asset database | `tools/build.sh unit-tests` | `build/test-results/editor.xml` |
 | `jasperengine-htmlui-tests` | the HTML/CSS UI, with its golden images | `tools/build.sh htmlui-tests` (`HTMLUI_BACKEND=vulkan`) | `build/test-results/htmlui-<backend>.xml` |
 | `jasperengine-htmlui-editor-tests` | the HTML UI importers against a local HTTP fixture server | `tools/build.sh htmlui-editor-tests` | `build/test-results/htmlui-editor.xml` |
 | MCP tests | the editor's MCP server, driven like an agent (`tools/mcp/tests/test_*.py`) | `tools/build.sh linux`, then `tools/build.sh mcp-tests -j 2` | `build/test-results/mcp.json` |
+| Benchmarks | the job system's and the allocators' budgets (S06 R23-R26): `je-bench-jobs`, `je-bench-memory`, gated by `tools/perf/check_bench.py` against `tools/perf/bench-thresholds.json` | `docs/jobs-memory.md` (on an otherwise idle machine) | their `--json` files |
 | Smoke test | export, build and run a project, then open it in the editor; screenshots | `tools/smoke-test.sh tools/fixtures/post-processing` | `build/smoke/` |
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
 | Tool checks | the CI scripts' own tests, the notices, the presets | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
@@ -148,10 +149,12 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
 - `ImageCompare`: `EXPECT_GOLDEN("name")` compares the target with `golden/name.png`; on a
   mismatch `<build>/test-output/` gets `name.actual.png` and `name.diff.png`.
 - googletest 1.17 and googlemock (`libs/googletest/`, tests only).
-- `engine/tests/core/support/AllocationCounter.h` (core tests): `ScopedAllocationCount` counts the
-  heap allocations of the calling thread (the binary replaces `operator new`), for zero-allocation
-  tests; `perfSlack()` scales performance budgets by `JASPER_TEST_PERF_SLACK` (0 under a
-  sanitizer: budgets are only printed). `*Bench` suites (`LoggerBench`, `SchedulerBench`,
+- `engine/tests/core/support/AllocationCounter.h` (core tests and the S06 benches): counts heap
+  allocations at `malloc` (wrapped by GNU ld, so on Linux; elsewhere `countsAllocations()` is
+  false and the counts stay 0). `AllocationCountScope` counts the whole process,
+  `ThreadAllocationCount` only the calling thread (for code that must not allocate while the
+  logger's drain thread or the workers may); `perfSlack()` scales performance budgets by
+  `JASPER_TEST_PERF_SLACK` (0 under a sanitizer: budgets are only printed). `*Bench` suites (`LoggerBench`, `SchedulerBench`,
   `SignalBench`) check the S09 budgets that way and print `[bench]` lines.
 
 ### Golden images

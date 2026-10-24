@@ -592,6 +592,11 @@ namespace jasperengine::editor{
 
         Conector conector;
         Generator generator;
+        // Play's startup and stop jobs (process channel): waited for when the project goes
+        jobs::Task<void> playStartupTask;
+        jobs::Task<void> playStopTask;
+        // the scene save writing on the io-write channel
+        jobs::Task<void> sceneSaveTask;
 
         std::string name;
 
@@ -638,6 +643,7 @@ namespace jasperengine::editor{
 
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
+        ThreadingProjectSettings threadingSettings;
         TerrainEditorSettings terrainEditorSettings;
         bool simulateTouch;
 
@@ -1040,6 +1046,7 @@ namespace jasperengine::editor{
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
+        ~Project();
 
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
@@ -1232,6 +1239,12 @@ namespace jasperengine::editor{
         void setStartSceneId(uint32_t sceneId);
 
         LoadingSettings& getLoadingSettings();
+        const ThreadingProjectSettings& getThreadingSettings() const;
+        // Stores them and applies what applies live (the reserve, the web pump budget) to
+        // the editor's job system; the worker and reader counts apply on the next launch
+        void setThreadingSettings(const ThreadingProjectSettings& settings);
+        // the runtime form (Engine::setThreadingSettings)
+        static ThreadingSettings toEngineThreading(const ThreadingProjectSettings& settings);
         const LoadingSettings& getLoadingSettings() const;
 
         TerrainEditorSettings& getTerrainEditorSettings();

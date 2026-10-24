@@ -36,7 +36,7 @@ TEST(LoggerTest, FilteredCallFormatsNothing) {
     LogCategory& category = logCategoryLoggerTest();
     Logger::setCategoryLevel(category, LogLevel::Warn);
     sideEffects = 0;
-    ScopedAllocationCount allocations;
+    testsupport::ThreadAllocationCount allocations;
     for (int i = 0; i < 1000000; i++) {
         JE_LOG_INFO(category, "never formatted %d", sideEffect());
     }

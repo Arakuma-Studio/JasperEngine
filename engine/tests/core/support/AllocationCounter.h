@@ -1,31 +1,57 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#ifndef JASPER_TEST_ALLOCATION_COUNTER_H
-#define JASPER_TEST_ALLOCATION_COUNTER_H
+#ifndef TESTS_ALLOCATIONCOUNTER_H
+#define TESTS_ALLOCATIONCOUNTER_H
 
-#include <cstddef>
+// The test binaries count heap allocations (AllocationCounter.cpp): an AllocationCountScope
+// counts every allocation of the process (every thread) while it is open, so "0 allocations at
+// steady state" can be checked through the whole job system; a ThreadAllocationCount counts
+// only the calling thread's, for code that must not allocate while other threads (the logger's
+// drain thread, workers) may.
 
-namespace jasperengine { namespace test {
+#include <cstdint>
 
-    // Heap allocations (operator new) made by the calling thread: the core tests' binary
-    // replaces the global operator new (support/AllocationCounterTest.cpp) to count them
-    size_t threadAllocations();
+namespace testsupport {
 
-    // The allocations the calling thread made during its lifetime: ScopedAllocationCount c; ...; c.count()
-    class ScopedAllocationCount {
+    class AllocationCountScope {
     public:
-        ScopedAllocationCount(): start(threadAllocations()) {}
-        size_t count() const { return threadAllocations() - start; }
+        AllocationCountScope();
+        ~AllocationCountScope();
+
+        AllocationCountScope(const AllocationCountScope&) = delete;
+        AllocationCountScope& operator=(const AllocationCountScope&) = delete;
+
+        // allocations since the scope opened
+        uint64_t count() const;
 
     private:
-        size_t start;
+        uint64_t start;
+    };
+
+    // every allocation of the process so far
+    uint64_t totalAllocations();
+
+    // false where the test binary cannot count (no GNU ld --wrap): the zero-allocation tests skip
+    bool countsAllocations();
+
+    // the calling thread's allocations so far
+    uint64_t threadAllocations();
+
+    // The calling thread's allocations since construction: ThreadAllocationCount c; ...; c.count()
+    class ThreadAllocationCount {
+    public:
+        ThreadAllocationCount(): start(threadAllocations()) {}
+        uint64_t count() const { return threadAllocations() - start; }
+
+    private:
+        uint64_t start;
     };
 
     // How much slower the build server may be than the performance budgets (JASPER_TEST_PERF_SLACK,
-    // default 1); 0 under a sanitizer, where budgets are not checked
+    // default 1); 0 under a sanitizer, where budgets are only printed
     double perfSlack();
 
-} }
+}
 
-#endif
+#endif // TESTS_ALLOCATIONCOUNTER_H

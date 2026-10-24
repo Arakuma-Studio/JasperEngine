@@ -34,7 +34,7 @@ namespace {
     using Clock = std::chrono::steady_clock;
 
     void expectWithin(double measured, double budget, const char* what) {
-        const double slack = perfSlack();
+        const double slack = testsupport::perfSlack();
         std::printf("[bench] %s: %.3f (budget %.3f)\n", what, measured, budget);
         if (slack > 0.0) {
             EXPECT_LE(measured, budget * slack) << what;
@@ -74,7 +74,7 @@ TEST(LoggerBench, AsyncEnabled4Threads) {
             latencies[t].reserve(perThread);
             // the thread's buffers warm up first
             Logger::write(LogLevel::Info, logCategoryBench(), text);
-            ScopedAllocationCount count;
+            testsupport::ThreadAllocationCount count;
             for (int i = 0; i < perThread; i++) {
                 const auto start = Clock::now();
                 Logger::write(LogLevel::Info, logCategoryBench(), text, nullptr, 0, &keys[t * perThread + i]);

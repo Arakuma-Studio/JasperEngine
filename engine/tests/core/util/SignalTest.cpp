@@ -14,7 +14,6 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
 
 TEST(SignalTest, SubscribeInvokeUnsubscribe) {
     Signal<int> signal;
@@ -158,7 +157,7 @@ TEST(SignalTest, ZeroAllocInvoke) {
     std::vector<Subscription> subscriptions;
     for (int i = 0; i < 8; i++) subscriptions.push_back(signal.subscribe([&sum](int v) { sum += v; }));
     signal.invoke(1);
-    ScopedAllocationCount count;
+    testsupport::ThreadAllocationCount count;
     for (int i = 0; i < 1000; i++) signal.invoke(1);
     EXPECT_EQ(count.count(), 0u);
     EXPECT_EQ(sum, 8 * 1001);

@@ -469,9 +469,7 @@ editor::CodeEditor::CodeEditor(Project* project) : lastScriptWatchTime(0.0), isF
 }
 
 editor::CodeEditor::~CodeEditor() {
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
 }
 
 fs::path editor::CodeEditor::resolveFilepath(const fs::path& relPath) const {
@@ -535,12 +533,13 @@ void editor::CodeEditor::updateAllProjectSymbols() {
     fs::path projectPath = project->getProjectPath();
 
     isParsingSymbols = true;
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
 
-    symbolParseThread = std::thread([this, projectPath, openFiles = std::move(openFiles),
-                                     luaContents = std::move(luaContents), cppContents = std::move(cppContents)]() mutable {
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.name = "code-symbols";
+    symbolParseTask = jobs::submit([this, projectPath, openFiles = std::move(openFiles),
+                                    luaContents = std::move(luaContents), cppContents = std::move(cppContents)]() mutable {
         collectProjectSources(projectPath, openFiles, luaContents, cppContents);
 
         std::vector<ProjectSymbol> parsedLua;
@@ -562,7 +561,7 @@ void editor::CodeEditor::updateAllProjectSymbols() {
             newSymbolsReady = true;
         }
         isParsingSymbols = false;
-    });
+    }, options);
 }
 
 void editor::CodeEditor::applyParsedProjectSymbols() {
@@ -1382,9 +1381,7 @@ bool editor::CodeEditor::isFocused() const {
 }
 
 void editor::CodeEditor::closeAll() {
-    if (symbolParseThread.joinable()) {
-        symbolParseThread.join();
-    }
+    symbolParseTask.wait();
     editors.clear();
     changedFilesQueue.clear();
     pendingEventFile.clear();

@@ -34,9 +34,9 @@
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
 #include "shader/RuntimeShaderCompiler.h"
-#ifndef NO_THREAD_SUPPORT
-    #include "thread/ThreadPoolManager.h"
-#endif
+#include "io/AssetIOService.h"
+#include "jobs/JobSystem.h"
+#include "memory/Arena.h"
 
 #include "sokol_time.h"
 #if defined(__APPLE__)
@@ -702,23 +702,14 @@ bool Engine::isSimulationHeld(){
     return simulationHeld;
 }
 
+// Honoured everywhere: without threads (single-thread web) the job system runs the loads
+// from its per-frame pump, so they still complete over several frames.
 void Engine::setAsyncLoading(bool enable){
-    #ifndef NO_THREAD_SUPPORT
-        asyncLoading = enable;
-    #else
-        if (enable){
-            Log::warn("Threads are not available");
-        }
-        asyncLoading = false;
-    #endif
+    asyncLoading = enable;
 }
 
 bool Engine::isAsyncLoading(){
-    #ifndef NO_THREAD_SUPPORT
-        return asyncLoading;
-    #else
-        return false;
-    #endif
+    return asyncLoading;
 }
 
 void Engine::startAsyncThread(){
@@ -761,18 +752,46 @@ bool Engine::isViewLoaded(){
 }
 
 void Engine::setMaxResourceLoadingThreads(size_t maxThreads) {
-    #ifndef NO_THREAD_SUPPORT
-        ThreadPoolManager::shutdown();
-        ThreadPoolManager::initialize(maxThreads);
-    #endif
+    // live: the gate's counters change, the pool is never rebuilt
+    jobs::system().getGate().setMaxOverride((int)std::min<size_t>(maxThreads, 64));
 }
 
 size_t Engine::getQueuedResourceCount() {
-    #ifndef NO_THREAD_SUPPORT
-        return ThreadPoolManager::getInstance().getQueueSize();
-    #else
+    if (!jobs::hasSystem())
         return 0;
-    #endif
+    return jobs::system().getAssetJobCount();
+}
+
+namespace{
+    ThreadingSettings& threadingSettingsStorage(){
+        static ThreadingSettings settings;
+        return settings;
+    }
+
+    jobs::Config jobConfigFor(const ThreadingSettings& settings){
+        jobs::Config config;
+        config.workers = settings.workers;
+        config.reserveForFrame = settings.reservedFrameWorkers;
+        return config;
+    }
+
+    // the job system and the asset readers, with the settings known now
+    void startJobs(){
+        const ThreadingSettings& settings = threadingSettingsStorage();
+        jobs::initialize(jobConfigFor(settings));
+        if (!AssetIOService::instance().isRunning())
+            AssetIOService::instance().start(settings.ioThreads);
+    }
+}
+
+void Engine::setThreadingSettings(const ThreadingSettings& settings) {
+    threadingSettingsStorage() = settings;
+    // a running system takes the reserve live (initialize) and warns about the worker count
+    startJobs();
+}
+
+const ThreadingSettings& Engine::getThreadingSettings() {
+    return threadingSettingsStorage();
 }
 
 void Engine::setFramebuffer(Framebuffer* framebuffer){
@@ -1123,10 +1142,7 @@ namespace {
 }
 
 void Engine::systemInit(int argc, char* argv[], System* system){
-    #ifndef NO_THREAD_SUPPORT
-        size_t maxThreads = std::max(1u, std::thread::hardware_concurrency() - 1);
-        ThreadPoolManager::initialize(maxThreads);
-    #endif
+    jobs::markMainThread();
 
     System::setSystemInstance(system);
 
@@ -1159,6 +1175,10 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     #ifndef NO_CPP_INIT
     getOnInit().call();
     #endif
+
+    // after the game's init, which sets the project's threading settings first; anything
+    // that ran jobs earlier started them with the defaults
+    startJobs();
 }
 
 void Engine::systemViewLoaded(){
@@ -1332,6 +1352,18 @@ void Engine::systemDraw(){
     updateGamepadNavigation();
 
     drawSemaphore.acquire();
+
+    // memory the last-but-one frame allocated per frame goes back now
+    memory::frameArena().beginFrame();
+    // job results posted for the main thread, then (single-thread mode) the queued jobs:
+    // everything urgent, Background work for the pump budget
+    jobs::drainMainQueue();
+    if (jobs::hasSystem()){
+        jobs::JobSystem& jobSystem = jobs::system();
+        if (jobSystem.isSingleThreaded())
+            jobSystem.pump(threadingSettingsStorage().webPumpBudgetMs);
+        jobSystem.sampleFrame();
+    }
 
     // async uploads of the last frame, while the scenes that queued them still exist
     SystemRender::executeQueue();
@@ -1517,10 +1549,6 @@ void Engine::systemViewDestroyed(){
     clearPools();
 
     drawSemaphore.release();
-
-    #ifndef NO_THREAD_SUPPORT
-        ThreadPoolManager::shutdown();
-    #endif
 }
 
 void Engine::systemShutdown(){
@@ -1533,7 +1561,12 @@ void Engine::systemShutdown(){
 
     removeAllSceneLayers(true);
 
-    // what the game logged reaches its sinks before the process goes
+    // the readers submit decode jobs, so they stop first; queued submit() jobs end
+    // Cancelled, enqueueDetached() jobs run, every thread joins
+    AssetIOService::instance().stop();
+    jobs::shutdown();
+
+    // what the game logged (the workers' last lines too) reaches its sinks before the process goes
     if (engineOwnsLogger) {
         engineOwnsLogger = false;
         Logger::shutdown();

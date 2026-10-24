@@ -11,7 +11,6 @@
 #include <vector>
 
 using namespace jasperengine;
-using namespace jasperengine::test;
 
 namespace {
 
@@ -180,7 +179,7 @@ TEST(FunctionSubscribeCompatTest, ZeroAllocCall) {
     event.add("a", [&sum](int v) { sum += v; });
     event.add("b", [&sum](int v) { sum += v; });
     event.call(1);
-    ScopedAllocationCount count;
+    testsupport::ThreadAllocationCount count;
     for (int i = 0; i < 1000; i++) event.call(1);
     EXPECT_EQ(count.count(), 0u);
     EXPECT_EQ(sum, 2002);

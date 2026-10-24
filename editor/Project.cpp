@@ -226,6 +226,13 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
+editor::Project::~Project(){
+    // the jobs capture the project
+    playStartupTask.wait();
+    playStopTask.wait();
+    sceneSaveTask.wait();
+}
+
 editor::Project::Project(){
     resetConfigs();
 }
@@ -2780,6 +2787,26 @@ const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
     return loadingSettings;
 }
 
+const editor::ThreadingProjectSettings& editor::Project::getThreadingSettings() const{
+    return threadingSettings;
+}
+
+ThreadingSettings editor::Project::toEngineThreading(const ThreadingProjectSettings& settings){
+    ThreadingSettings engine;
+    engine.workers = settings.workers;
+    engine.reservedFrameWorkers = settings.reservedFrameWorkers;
+    engine.ioThreads = settings.ioThreads;
+    engine.webPumpBudgetMs = settings.webPumpBudgetMs;
+    return engine;
+}
+
+void editor::Project::setThreadingSettings(const ThreadingProjectSettings& settings){
+    threadingSettings = settings;
+    Engine::setThreadingSettings(toEngineThreading(settings));
+    // the standalone build's main.cpp bakes them in
+    markGeneratedSourcesDirty();
+}
+
 editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
     return terrainEditorSettings;
 }
@@ -4666,6 +4693,7 @@ void editor::Project::resetConfigs() {
     vsyncEnabled = defaultVSyncEnabled;
     playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    setThreadingSettings(ThreadingProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
     windowHeight = defaultWindowHeight;
@@ -6095,7 +6123,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -6153,7 +6181,10 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
 
-    std::thread([this, sceneId, savePath, policy, callback = std::move(callback)]() mutable {
+    // a long disk write: the io-write channel (one write at a time, in order)
+    jobs::SubmitOptions saveOptions;
+    saveOptions.name = "scene-save";
+    sceneSaveTask = jobs::system().ioWriteChannel().submit([this, sceneId, savePath, policy, callback = std::move(callback)]() mutable {
         bool success = false;
         try {
             success = writeSceneToPath(sceneId, savePath, false, policy);
@@ -6174,7 +6205,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
             if (callback) callback(success);
         });
-    }).detach();
+    }, saveOptions);
 }
 
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
@@ -7754,7 +7785,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }
@@ -8202,10 +8233,13 @@ void editor::Project::start(uint32_t sceneId) {
     // Read on the UI thread: the startup thread must not race the settings dialog
     const LocalBuildSettings buildSettings = AppSettings::getBuildSettings(getProjectPath() / "project.yaml");
 
-    std::thread startupThread([this, session, sceneId, buildSettings]() {
+    // waits on the C++ build and the library load: the process channel; the project holds
+    // the task, so closing it waits for the startup instead of leaving it on a freed project
+    jobs::SubmitOptions startupOptions;
+    startupOptions.name = "play-startup";
+    playStartupTask = jobs::system().processChannel().submit([this, session, sceneId, buildSettings]() {
         runPlayStartup(session, sceneId, buildSettings);
-    });
-    startupThread.detach();
+    }, startupOptions);
 }
 
 void editor::Project::pause(uint32_t sceneId) {
@@ -8331,13 +8365,13 @@ void editor::Project::stop(uint32_t sceneId) {
     // Clear crash handler when stopping
     jasperengine::CrashHook::set(nullptr);
 
-    // Request cancellation asynchronously (returns a future we can wait on later if needed)
-    auto cancelFuture = generator.cancelBuild();
+    // Request cancellation without blocking; the stop job waits for the build to end
+    generator.cancelBuild();
 
-    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, cancelFuture = std::move(cancelFuture)]() mutable {
-        if (cancelFuture.valid()) {
-            cancelFuture.wait();
-        }
+    // waits on processes (the build, the startup job), so it runs on the process channel
+    jobs::SubmitOptions stopOptions;
+    stopOptions.name = "play-stop";
+    playStopTask = jobs::system().processChannel().submit([this, session, sceneId, startupSucceededAtStop]() mutable {
         generator.waitForBuildToComplete();
 
         // Wait for the connect/startup thread to finish to avoid races
@@ -8413,8 +8447,7 @@ void editor::Project::stop(uint32_t sceneId) {
                 if (activePlaySession == session) activePlaySession.reset();
             }
         });
-    });
-    finalizeStopThread.detach();
+    }, stopOptions);
 }
 
 void editor::Project::stopActivePlay() {

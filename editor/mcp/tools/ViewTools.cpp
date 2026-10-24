@@ -30,6 +30,7 @@
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/JobsMemoryWindow.h"
 #include "window/SceneWindow.h"
 
 #include "imgui.h"
@@ -1066,9 +1067,12 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TerrainEditWindow::WINDOW_NAME;
     } else if (window == "mcp") {
         imguiName = McpActivityWindow::WINDOW_NAME;
+    } else if (window == "jobs_memory") {
+        app.getJobsMemoryWindow()->setOpen(true);
+        imguiName = JobsMemoryWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
-                   "preferences.");
+                   "jobs_memory, preferences.");
         return;
     }
     // A window opened just now exists after its next draw
@@ -1238,7 +1242,7 @@ void registerViewTools(McpRegistry& registry) {
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "preferences"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "jobs_memory", "preferences"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},

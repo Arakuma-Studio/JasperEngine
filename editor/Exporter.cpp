@@ -27,6 +27,8 @@
 #include "stb_image_write.h"
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <array>
 #include <cctype>
 #include <cstdint>
@@ -422,12 +424,20 @@ namespace {
 editor::Exporter::Exporter() {
 }
 
+void editor::Exporter::waitForExport() {
+    // a process-channel job (generate_shaders) must not wait on its own channel: poll
+    if (jobs::isInChannelJob()) {
+        while (exportTask.isValid() && !exportTask.isReady())
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        return;
+    }
+    exportTask.wait();
+}
+
 editor::Exporter::~Exporter() {
     cancelRequested.store(true);
     commandRunner.cancel();
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 }
 
 void editor::Exporter::setProgress(const std::string& step, float value) {
@@ -476,9 +486,7 @@ bool editor::Exporter::isCancelled() const {
 }
 
 void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 
     this->project = proj;
     this->config = cfg;
@@ -489,14 +497,14 @@ void editor::Exporter::startExport(Project* proj, const ExportConfig& cfg) {
         this->progress.started = true;
     }
 
-    // Launch export process in a separate thread so UI does not block
-    exportThread = std::thread(&Exporter::runExport, this);
+    // Run the export on the process channel so the UI does not block
+    jobs::SubmitOptions options;
+    options.name = "export";
+    exportTask = jobs::system().processChannel().submit([this]() { runExport(); }, options);
 }
 
 bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 
     this->project = proj;
     this->config = cfg;
@@ -514,9 +522,7 @@ bool editor::Exporter::exportProject(Project* proj, const ExportConfig& cfg) {
 }
 
 bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
-    if (exportThread.joinable()) {
-        exportThread.join();
-    }
+    waitForExport();
 
     this->project = nullptr;
     this->config = cfg;
@@ -535,6 +541,8 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 
 void editor::Exporter::runExport() {
     const bool shaderGenerationOnly = (project == nullptr);
+    if (project && config.mode == ExportMode::Web)
+        config.webMultithreaded = config.webMultithreaded || project->getThreadingSettings().webMultithreaded;
     const bool buildMode = !shaderGenerationOnly && config.mode != ExportMode::SourceCode;
 
     // Generation steps report progress in the [0,1] SourceCode range; for build
@@ -599,6 +607,21 @@ void editor::Exporter::runExport() {
             : collectWebArtifacts();
         if (!collected) return;
         if (isCancelled()) { setError("Build cancelled"); return; }
+
+        if (config.mode == ExportMode::Web && config.webMultithreaded) {
+            // the same project again, with pthreads, in a build tree of its own
+            setProgressRaw("Building the multithreaded web player...", BUILD_PROGRESS_START);
+            buildDirName = "build-threads";
+            extraCMakeArgs = "-DEMSCRIPTEN_THREAD_SUPPORT=ON ";
+            const bool threadsBuilt = configureBuild() && !isCancelled() && runBuild() && !isCancelled()
+                && collectWebThreadsArtifacts();
+            buildDirName = "build";
+            extraCMakeArgs.clear();
+            if (!threadsBuilt) {
+                if (isCancelled()) setError("Build cancelled");
+                return;
+            }
+        }
 
         setProgressRaw("Build complete", 1.0f);
         {
@@ -795,7 +818,7 @@ bool editor::Exporter::configureBuild() {
 
     if (isCancelled()) { setError("Build cancelled"); return false; }
 
-    const fs::path buildDir = config.targetDir / "build";
+    const fs::path buildDir = config.targetDir / buildDirName;
 
     // Only explicit VS kits are pinned. Default export may freely select a
     // different toolchain because it rebuilds the engine from source.
@@ -811,7 +834,7 @@ bool editor::Exporter::configureBuild() {
         }
         emcmake = emsdk.emcmake;
         Out::info("Using Emscripten %s", emsdk.description.c_str());
-        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend;
+        kitId = "web\n" + emcmake + "\n" + config.buildType + "\n" + config.graphicBackend + "\n" + extraCMakeArgs;
     } else {
         std::string effectiveGenerator = getEffectiveGenerator();
         // The Xcode generator builds a macOS .app bundle (MACOSX_BUNDLE in the
@@ -890,6 +913,7 @@ bool editor::Exporter::configureBuild() {
     if (!config.graphicBackend.empty()) {
         cmd += "-DGRAPHIC_BACKEND=" + config.graphicBackend + " ";
     }
+    cmd += extraCMakeArgs;
     cmd += "\"" + toCMakePath(config.targetDir.string()) + "\" ";
     cmd += "-B \"" + toCMakePath(buildDir.string()) + "\"";
 
@@ -929,7 +953,7 @@ bool editor::Exporter::runBuild() {
 
     if (isCancelled()) { setError("Build cancelled"); return false; }
 
-    const fs::path buildDir = config.targetDir / "build";
+    const fs::path buildDir = config.targetDir / buildDirName;
 
     unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
     jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
@@ -1382,6 +1406,125 @@ bool editor::Exporter::collectWebArtifacts() {
         }
     }
 
+    return true;
+}
+
+namespace {
+
+    // Our own cross-origin isolation service worker: a static host that sends no COOP/COEP
+    // headers still gets an isolated page (needed for SharedArrayBuffer, so for threads) after
+    // one reload. It adds the headers to every same-origin response it serves.
+    const char* const COI_SERVICE_WORKER = R"js(// Cross-origin isolation for the multithreaded web player (JasperEngine export).
+// Adds Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy to the responses of this
+// origin, so browsers allow SharedArrayBuffer on hosts that cannot send those headers.
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", (event) => {
+    const request = event.request;
+    if (request.cache === "only-if-cached" && request.mode !== "same-origin") return;
+    event.respondWith(fetch(request).then((response) => {
+        if (response.status === 0) return response;
+        const headers = new Headers(response.headers);
+        headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+        headers.set("Cross-Origin-Opener-Policy", "same-origin");
+        headers.set("Cross-Origin-Resource-Policy", "same-origin");
+        return new Response(response.body, {status: response.status, statusText: response.statusText, headers});
+    }).catch((error) => { console.error(error); throw error; }));
+});
+)js";
+
+    // Picks the player: the pthreads build when the page is cross-origin isolated, else the
+    // single-thread one. Without isolation it registers the service worker above and reloads
+    // once (some hosts then serve an isolated page).
+    std::string webPlayerLoader(const std::string& app) {
+        return std::string(R"js(<script>
+(function () {
+    var isolated = self.crossOriginIsolated === true;
+    if (!isolated && window.isSecureContext && "serviceWorker" in navigator && !sessionStorage.getItem("jasperengine-coi-reload")) {
+        navigator.serviceWorker.register("coi-serviceworker.js").then(function (registration) {
+            if (!navigator.serviceWorker.controller) {
+                sessionStorage.setItem("jasperengine-coi-reload", "1");
+                window.location.reload();
+            }
+        }).catch(function (error) { console.warn("coi-serviceworker: " + error); });
+    }
+    var threads = isolated && typeof SharedArrayBuffer !== "undefined";
+    console.log("crossOriginIsolated=" + isolated + " threads=" + threads);
+    var base = threads ? "threads/" : "";
+    window.Module = window.Module || {};
+    var locate = Module.locateFile;
+    Module.locateFile = function (path, prefix) { return locate ? locate(base + path, prefix) : base + path; };
+    var script = document.createElement("script");
+    script.async = true;
+    script.src = base + ")js") + app + R"js(.js";
+    document.body.appendChild(script);
+})();
+</script>)js";
+    }
+
+}
+
+bool editor::Exporter::collectWebThreadsArtifacts() {
+    setProgressRaw("Copying multithreaded artifacts...", 0.97f);
+
+    const fs::path buildDir = config.targetDir / buildDirName;
+    const std::string appName = getAppName();
+    const fs::path threadsDir = config.destinationDir / "threads";
+
+    std::error_code ec;
+    fs::create_directories(threadsDir, ec);
+    if (ec) {
+        setError("Failed to create " + threadsDir.string() + ": " + ec.message());
+        return false;
+    }
+    // the player's code and data; the page is the single-thread build's
+    for (const char* ext : {".js", ".wasm", ".data", ".worker.js"}) {
+        const fs::path src = buildDir / (appName + ext);
+        const bool required = std::string(ext) == ".js" || std::string(ext) == ".wasm";
+        if (!fs::exists(src, ec)) {
+            if (required) {
+                setError("Built multithreaded web output not found: " + src.string());
+                return false;
+            }
+            fs::remove(threadsDir / (appName + ext), ec);
+            continue;
+        }
+        fs::copy_file(src, threadsDir / (appName + ext), fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            setError("Failed to copy " + src.filename().string() + ": " + ec.message());
+            return false;
+        }
+    }
+
+    if (!FileUtils::writeIfChanged(config.destinationDir / "coi-serviceworker.js", COI_SERVICE_WORKER)) {
+        setError("Failed to write coi-serviceworker.js");
+        return false;
+    }
+    // what hosts that read a _headers file (and the dev server) send for isolation
+    FileUtils::writeIfChanged(config.destinationDir / "_headers",
+        "/*\n  Cross-Origin-Opener-Policy: same-origin\n  Cross-Origin-Embedder-Policy: require-corp\n");
+
+    // the page loads the player through the loader instead of its own <script src>
+    const fs::path page = config.destinationDir / (appName + ".html");
+    std::string html;
+    {
+        std::ifstream in(page, std::ios::binary);
+        html.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    }
+    const std::string marker = "src=\"" + appName + ".js\"";
+    const size_t at = html.find(marker);
+    const size_t open = at == std::string::npos ? std::string::npos : html.rfind("<script", at);
+    const size_t close = at == std::string::npos ? std::string::npos : html.find("</script>", at);
+    if (open == std::string::npos || close == std::string::npos) {
+        setError("The web page does not load " + appName + ".js with a <script src>; the multithreaded build cannot be wired in (custom HTML shell?)");
+        return false;
+    }
+    html.replace(open, close + 9 - open, webPlayerLoader(appName));
+    if (!FileUtils::writeIfChanged(page, html)) {
+        setError("Failed to write " + page.string());
+        return false;
+    }
+    Out::info("Multithreaded web player in threads/: the page uses it when cross-origin isolated (COOP/COEP headers or coi-serviceworker.js)");
     return true;
 }
 
