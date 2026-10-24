@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/CommandMemory.h"
 #include "Project.h"
 
 #include <filesystem>
@@ -45,6 +47,11 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Revert Intensity (Sun)", "Apply Added Component Light (Sun)", "Revert GameObject State (Sun)"
+        std::string describe() const override;
+        const char* typeName() const override { return "PrefabOverrideCmd"; }
+        size_t memoryBytes() const override { return sizeof(*this) + CommandMemory::of(before); }
     };
 
 }

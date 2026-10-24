@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "Catalog.h"
 #include "command/PrefabEditUndo.h"
@@ -46,5 +47,15 @@ namespace jasperengine::editor {
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // "Remove Component Light (Sun)"
+        std::string describe() const override;
+        const char* typeName() const override { return "RemoveComponentCmd"; }
+        size_t memoryBytes() const override;
+        void collectKeepCommands(KeepContext& context) const override;
+
+        uint32_t getSceneId() const { return (uint32_t)sceneId; }
+        ComponentType getComponentType() const { return componentType; }
+        std::vector<Entity> getEntities() const;
     };
 }

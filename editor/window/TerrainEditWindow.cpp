@@ -10,6 +10,7 @@
 #include "Stream.h"
 #include "Theme.h"
 #include "command/CommandHandle.h"
+#include "command/CommandNames.h"
 #include "command/PrefabEditUndo.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -1003,6 +1004,23 @@ public:
     void undo() override{
         apply(beforeSnapshot, true);
     }
+
+    // "Sculpt Terrain (Island)", "Paint Terrain (Island)", "Paint Details (Island)"
+    std::string describe() const override{
+        const char* verb = ref.target == TerrainMapTarget::HeightMap ? "Sculpt Terrain" :
+            (ref.target == TerrainMapTarget::BlendMap ? "Paint Terrain" : "Paint Details");
+        return std::string(verb) + " (" + editor::CommandNames::entity(project, sceneId, entity) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainTextureEditCmd"; }
+
+    // Off-thread release: the destructor only frees map snapshots and override records; no editor/engine/GPU state (S24 R8).
+    bool releaseOffThread() const override{ return true; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + beforeSnapshot.pixels.capacity() + afterSnapshot.pixels.capacity() +
+            beforeSnapshot.path.size() + afterSnapshot.path.size();
+    }
 };
 
 editor::TerrainEditWindow::TerrainEditWindow(Project* project){
@@ -1198,6 +1216,18 @@ public:
     bool affectsStructure() const override{
         return createHostCmd != nullptr;
     }
+
+    // "Paint Trees (Island)"
+    std::string describe() const override{
+        return "Paint Trees (" + editor::CommandNames::entity(project, sceneId, terrainEntity) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainInstancePlaceCmd"; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + assetPath.size() + (createHostCmd ? createHostCmd->memoryBytes() : 0) +
+            (loadHostCmd ? loadHostCmd->memoryBytes() : 0) + (mergeHostCmd ? mergeHostCmd->memoryBytes() : 0);
+    }
 };
 
 class editor::TerrainEditWindow::TerrainInstanceEraseCmd: public editor::Command{
@@ -1262,6 +1292,20 @@ public:
     bool affectsStructure() const override{
         return false;
     }
+
+    // "Erase Trees (Rock)": the instanced GameObject they are erased from
+    std::string describe() const override{
+        return "Erase Trees (" + editor::CommandNames::entity(project, sceneId, host) + ")";
+    }
+
+    const char* typeName() const override{ return "TerrainInstanceEraseCmd"; }
+
+    size_t memoryBytes() const override{
+        return sizeof(*this) + indices.capacity() * sizeof(size_t) + removed.capacity() * sizeof(InstanceData);
+    }
+
+    // Off-thread release: the destructor only frees index and instance vectors; no editor/engine/GPU state (S24 R8).
+    bool releaseOffThread() const override{ return true; }
 };
 
 // One undo step per stroke: each stamp merges into the previous one while the stroke id
@@ -1327,6 +1371,21 @@ public:
             }
         }
         return false;
+    }
+
+    // A stroke's stamps are all of one kind: named by the first
+    std::string describe() const override{
+        return commands.empty() ? std::string("Paint Trees") : commands.front()->describe();
+    }
+
+    const char* typeName() const override{ return "TerrainObjectStrokeCmd"; }
+
+    size_t memoryBytes() const override{
+        size_t bytes = sizeof(*this) + commands.capacity() * sizeof(editor::Command*);
+        for (const editor::Command* command : commands){
+            bytes += command->memoryBytes();
+        }
+        return bytes;
     }
 };
 
@@ -2144,7 +2203,34 @@ bool editor::TerrainEditWindow::applyObjectErase(SceneProject* sceneProject, Ent
 }
 
 void editor::TerrainEditWindow::clearStroke(){
+    stroke.edit.commit();
     stroke = ActiveStroke();
+}
+
+void editor::TerrainEditWindow::openStrokeEdit(SceneProject* sceneProject){
+    stroke.wasModified = sceneProject->isModified;
+    stroke.edit = CommandHandle::get(sceneProject->id)->beginInteractive(std::string());
+    stroke.editStarted = true;
+}
+
+bool editor::TerrainEditWindow::strokeCancelled(){
+    if (!stroke.editStarted || stroke.edit.isOpen()){
+        return false;
+    }
+    // Placement commands were undone by the cancel; a map stroke only wrote pixels
+    SceneProject* sceneProject = project->getScene(stroke.sceneId);
+    if (!stroke.placement && sceneProject && sceneProject->scene->isEntityCreated(stroke.entity)){
+        if (TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(stroke.entity)){
+            if (Texture* texture = TerrainMapUtils::findTexture(*terrain, stroke.ref)){
+                applySnapshotToTexture(project, *texture, stroke.beforeSnapshot);
+                TerrainMapUtils::refresh(sceneProject, stroke.entity, stroke.ref);
+                TerrainMapUtils::refreshSharing(project, stroke.sceneId, stroke.entity, stroke.ref);
+            }
+        }
+        sceneProject->isModified = stroke.wasModified;
+    }
+    stroke = ActiveStroke();
+    return true;
 }
 
 bool editor::TerrainEditWindow::createMapForTarget(const TerrainMapRef& ref, int width, int height){
@@ -3539,6 +3625,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
         stroke.placementStrokeId = ++placementStrokeCounter;
         stroke.instanced = useInstancedPlacement();
         stroke.placedPoints = collectPlacedPoints(sceneProject, entity);
+        openStrokeEdit(sceneProject);
 
         // Ctrl swaps place and erase for the stroke, matching the paint brushes.
         stroke.effectiveMode = brushMode;
@@ -3568,6 +3655,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
     stroke.sceneId = sceneProject->id;
     stroke.entity = entity;
     stroke.ref = ref;
+    openStrokeEdit(sceneProject);
 
     // Modifiers picked up at stroke start and held for the whole stroke:
     // Shift turns any sculpt brush into Smooth, Ctrl inverts Raise/Lower and paint/erase.
@@ -3608,7 +3696,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
 }
 
 bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
-    if (!stroke.active || !isEditingScene(scene)){
+    if (!stroke.active || !isEditingScene(scene) || strokeCancelled()){
         return false;
     }
 
@@ -3638,7 +3726,7 @@ bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
 }
 
 void editor::TerrainEditWindow::endStroke(){
-    if (!stroke.active){
+    if (!stroke.active || strokeCancelled()){
         return;
     }
 

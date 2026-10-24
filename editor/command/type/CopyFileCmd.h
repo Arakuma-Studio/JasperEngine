@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include <map>
 #include <vector>
@@ -42,6 +43,16 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Copy File a.png", "Move 2 Files"
+        std::string describe() const override {
+            std::vector<fs::path> names;
+            for (const FileCopyData& file : files) {
+                names.push_back(file.filename);
+            }
+            return std::string(copy ? "Copy " : "Move ") + (files.size() == 1 ? "File " : "") + CommandNames::files(names);
+        }
+        const char* typeName() const override { return "CopyFileCmd"; }
 
     };
 

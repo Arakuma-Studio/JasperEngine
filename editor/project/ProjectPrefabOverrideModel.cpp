@@ -1314,7 +1314,9 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
             kept.push_back(entity);
         }
     }
-    sceneProject->selectedEntities = kept;
+    SelectionState keptSelection;
+    keptSelection.entities = kept;
+    setSelection(sceneProject->id, keptSelection, SelectionCause::Forced);
     sceneProject->isModified = wasModified;
     sceneProject->needUpdateRender = true;
     sceneProject->structureVersion++;

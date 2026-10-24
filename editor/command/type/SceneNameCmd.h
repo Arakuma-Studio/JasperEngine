@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include <cstdint>
 #include <string>
@@ -28,6 +29,11 @@ namespace jasperengine::editor{
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // "Rename Scene Level1 → Level2"
+        std::string describe() const override { return "Rename Scene " + oldName + CommandNames::ARROW + newName; }
+        const char* typeName() const override { return "SceneNameCmd"; }
+        bool isNoOp() const override { return oldName == newName; }
     };
 
 }

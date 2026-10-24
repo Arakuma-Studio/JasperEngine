@@ -16,6 +16,7 @@
 #include "Stream.h"
 #include "Factory.h"
 #include "Catalog.h"
+#include "command/CommandHistory.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -946,9 +947,8 @@ static EntityCreationType creationKind(const YAML::Node& op) {
 }
 
 static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
-    std::vector<std::unique_ptr<Command>> done;
-    std::vector<std::unique_ptr<Command>> undone;
-    size_t playFloor = 0;
+    // the editor's own history: its merges, no-op drops, groups and play floor
+    CommandHistory history(NULL_PROJECT_SCENE);
     static const std::map<std::string, PrefabOverrideCmd::Operation> operations = {
         {"recordProperty", PrefabOverrideCmd::Operation::RecordProperty}, {"revertProperty", PrefabOverrideCmd::Operation::RevertProperty},
         {"applyProperty", PrefabOverrideCmd::Operation::ApplyProperty}, {"recordState", PrefabOverrideCmd::Operation::RecordState},
@@ -961,13 +961,9 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
         const std::string name = op["op"].as<std::string>();
         std::cout << "op " << name << (op["entity"] ? " " + op["entity"].as<std::string>() : std::string()) << "\n";
         auto runCommand = [&](Command* command) {
-            std::unique_ptr<Command> owned(command);
-            if (!owned->execute()) {
+            if (!history.addCommandNoMerge(command)) {
                 std::cout << "  (failed)\n";
-                return;
             }
-            done.push_back(std::move(owned));
-            undone.clear();
         };
         if (name == "save") {
             for (SceneProject& sceneProject : project.getScenes()) {
@@ -1018,10 +1014,9 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             }
             // Stop drops what was done while playing from the history
             if (name == "playStart") {
-                playFloor = done.size();
+                history.beginPlaySession();
             } else {
-                while (done.size() > playFloor) done.pop_back();
-                undone.clear();
+                history.endPlaySession(true);
             }
             continue;
         }
@@ -1055,18 +1050,19 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
             continue;
         }
         if (name == "undo") {
-            if (!done.empty()) {
-                done.back()->undo();
-                undone.push_back(std::move(done.back()));
-                done.pop_back();
-            }
+            history.undo();
             continue;
         }
         if (name == "redo") {
-            if (!undone.empty()) {
-                undone.back()->execute();
-                done.push_back(std::move(undone.back()));
-                undone.pop_back();
+            history.redo();
+            continue;
+        }
+        if (name == "history") {
+            // the steps, oldest first: "id name", the redo tail marked
+            const std::vector<const UndoEntry*> entries = history.entries();
+            for (size_t i = 0; i < entries.size(); i++) {
+                std::cout << "  " << entries[i]->info.id << " " << entries[i]->name()
+                          << (i < history.appliedCount() ? "" : " (redo)") << "\n";
             }
             continue;
         }
