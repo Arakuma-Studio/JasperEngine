@@ -57,6 +57,13 @@ namespace jasperengine::editor{
 
         // the Hierarchy shows nothing of a lattice's points
         bool affectsStructure() const override { return false; }
+
+        // "Move Lattice Points (Cage)" for offsets, "Edit Lattice (Cage)" for a whole state
+        std::string describe() const override;
+        const char* typeName() const override { return "LatticePointsCmd"; }
+        // the lattice is as it was (a drag back where it started)
+        bool isNoOp() const override;
+        size_t memoryBytes() const override;
     };
 
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticePointsCmd.h"
+#include "command/CommandNames.h"
 
 #include "Catalog.h"
 #include "util/EntityClipboard.h"
@@ -149,4 +150,39 @@ bool editor::LatticePointsCmd::mergeWith(Command* otherCommand){
     prefabUndo.mergeOlder(otherCmd->prefabUndo);
     wasModified = wasModified && otherCmd->wasModified;
     return true;
+}
+
+std::string editor::LatticePointsCmd::describe() const{
+    const std::string subject = " (" + CommandNames::entity(project, sceneId, entity) + ")";
+    return (wholeState ? "Edit Lattice" : "Move Lattice Points") + subject;
+}
+
+bool editor::LatticePointsCmd::isNoOp() const{
+    if (oldState.offsets != newState.offsets){
+        return false;
+    }
+    if (!wholeState){
+        return true;
+    }
+    if (oldState.resolutionX != newState.resolutionX || oldState.resolutionY != newState.resolutionY ||
+        oldState.resolutionZ != newState.resolutionZ || oldState.poses.size() != newState.poses.size()){
+        return false;
+    }
+    for (size_t i = 0; i < oldState.poses.size(); i++){
+        if (oldState.poses[i].name != newState.poses[i].name || oldState.poses[i].offsets != newState.poses[i].offsets){
+            return false;
+        }
+    }
+    return true;
+}
+
+size_t editor::LatticePointsCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this);
+    for (const LatticePointsState* state : {&oldState, &newState}){
+        bytes += state->offsets.capacity() * sizeof(Vector3);
+        for (const LatticePose& pose : state->poses){
+            bytes += sizeof(LatticePose) + pose.name.capacity() + pose.offsets.capacity() * sizeof(Vector3);
+        }
+    }
+    return bytes;
 }

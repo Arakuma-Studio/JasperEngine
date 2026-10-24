@@ -45,6 +45,8 @@ namespace {
         }
 
         bool affectsStructure() const override { return false; }
+        std::string describe() const override { return "Set " + name; }
+        const char* typeName() const override { return "SetValue"; }
     };
 
     // Restores the hook whatever a test does

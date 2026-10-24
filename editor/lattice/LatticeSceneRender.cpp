@@ -11,6 +11,7 @@
 #include "App.h"
 #include "Project.h"
 #include "PrefabStage.h"
+#include "command/CommandHandle.h"
 #include "lattice/LatticeEditorOps.h"
 #include "lattice/LatticeSolver.h"
 
@@ -723,9 +724,19 @@ void SceneRender::dragLatticePoints(Project* project, uint32_t sceneId, const Ma
             values.push_back(result[i]);
         }
     }
-    if (!changed.empty()){
-        LatticeEditorOps::setOffsetsContinuous(project, sceneId, latticeDrag.lattice, changed, values);
+    if (changed.empty()){
+        return;
     }
+    // the drag is one interactive edit (S24): Esc puts the points back, and once it is
+    // cancelled nothing more is written until the mouse is released
+    if (dragEditStarted && !dragEdit.isOpen()){
+        return;
+    }
+    if (!dragEditStarted){
+        dragEdit = CommandHandle::get(sceneId)->beginInteractive(std::string());
+        dragEditStarted = true;
+    }
+    LatticeEditorOps::setOffsetsContinuous(project, sceneId, latticeDrag.lattice, changed, values);
 }
 
 void SceneRender::endLatticeDrag(){

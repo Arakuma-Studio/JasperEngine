@@ -89,3 +89,11 @@ void editor::AddActionFrameCmd::undo(){
         createCmd->undo();
     }
 }
+
+std::string editor::AddActionFrameCmd::describe() const{
+    return "Add Action (" + CommandNames::entity(project, sceneId, animEntity) + ")";
+}
+
+size_t editor::AddActionFrameCmd::memoryBytes() const{
+    return sizeof(*this) + (createCmd ? createCmd->memoryBytes() : 0) + (actionsCmd ? actionsCmd->memoryBytes() : 0);
+}

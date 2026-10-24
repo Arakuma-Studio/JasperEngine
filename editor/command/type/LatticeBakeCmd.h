@@ -59,6 +59,11 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Bake Lattice (Rock)", "Bake Lattice (3 Objects)": the Models baked
+        std::string describe() const override;
+        const char* typeName() const override { return "LatticeBakeCmd"; }
+        size_t memoryBytes() const override;
     };
 
 }
