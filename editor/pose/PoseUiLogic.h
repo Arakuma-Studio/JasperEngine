@@ -5,13 +5,15 @@
 // animation phase 4, sections 3 and 4): pose name mirroring, labels, the timing bar's layout,
 // hit testing, snapping and edge drags, the pose strip's selection and reorder index maths,
 // the pose edits behind the strip's menu and shortcuts, feel preset matching, mixed values of
-// a multi-selection, and the Global Edit delta maths. Tested in jasperengine-pose-tests.
+// a multi-selection, the Global Edit delta maths, and the Templates tab's filter, labels and
+// edits (phase 6, section 4). Tested in jasperengine-pose-tests.
 
 #pragma once
 
 #include "pose/HumanBones.h"
 #include "pose/PoseMath.h"
 #include "pose/PoseTypes.h"
+#include "pose/PoseTemplates.h"
 
 #include <array>
 #include <cstdint>
@@ -214,5 +216,24 @@ namespace jasperengine::editor::poseui{
     int applyGlobalEditDelta(const pose::BodyPose& base, const pose::BodyPose& current,
                              pose::BodyPose& target, std::vector<int>* changedSlots = nullptr,
                              float thresholdDegrees = 0.01f);
+
+    // ---- Templates tab (phase 6, section 4) ----
+
+    // A card's second line: "4 poses · loop", "1 pose · once"
+    std::string templateSummary(size_t poseCount, bool loop);
+    // The categories of `templates` in list order, each once (compared without case)
+    std::vector<std::string> templateCategories(const std::vector<PoseTemplateInfo>& templates);
+    // The filter of the tab: `category` ("" = all) compared without case; every word of
+    // `search` must occur (without case) in the name, the category or the description
+    bool templateMatches(const PoseTemplateInfo& info, const std::string& category, const std::string& search);
+    // The default file of a new animation from a template: `<directory>/<template file stem>.poseanim`
+    // (directory project-relative, "" = the project root), " 1", " 2"... appended while `exists`
+    // says the path is taken
+    std::string templateAnimationPath(const std::string& directory, const std::string& templateName,
+                                      const std::function<bool(const std::string&)>& exists);
+    // Replace Poses in Current Animation / Append Poses as one edit (PoseTemplates::apply):
+    // Replace selects pose 0, Append selects the appended poses (the first one primary)
+    Edit applyTemplate(const pose::PoseAnimationData& data, const pose::PoseAnimationData& templateData,
+                       PoseTemplateApply mode, const std::vector<int>& selected, int primary);
 
 }

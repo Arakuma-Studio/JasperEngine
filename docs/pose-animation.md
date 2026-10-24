@@ -100,10 +100,15 @@ Templates are ready-made animations that work on any humanoid. The Templates tab
 Animation window shows them as cards (a picture of the middle pose on your character, the name and
 `N poses · loop` or `once`; hover for the description), with a category filter and a search field.
 
-- **Click** a card to create a new animation from it, next to the model file, and start editing it.
+- **Click** a card to create a new animation from it: the dialog proposes
+  `<model folder>/<template name>.poseanim` (numbered when that file exists); the new animation
+  previews on your character and opens on the Pose tab. One undo step.
 - **Right-click** a card: **Replace Poses in Current Animation** (the template's poses and feel,
-  one undo step; the asset keeps its preview model), **Append Poses**, and for your own templates
-  **Show in Project** and **Delete**.
+  one undo step; the asset keeps its preview model), **Append Poses** (added after the current
+  poses, the feel stays), and for your own templates (marked "user") **Show in Project** and
+  **Delete** (asks first; undo brings it back).
+- Without a character the cards have no pictures ("Bind a character to preview templates"). The
+  window lists the templates also while no character or no animation is picked.
 - **Save Current as Template...** stores the current animation as a project template (name,
   description, category). Project templates live in `<project>/pose-templates/`, so they are
   shared with everyone working on the project; one with the same name as a built-in template
@@ -209,10 +214,9 @@ The complete reference is in [docs/mcp/guide/lua-api.md](mcp/guide/lua-api.md) (
 - **The character floats or sinks.** A grounded pose always puts its lowest point on the floor; do
   not raise the hips to lift a pose, turn **Grounded** off and set **Lift**. A pose that leans so
   far that it would fall shows an orange balance marker (with Show balance on): move the hips over the supporting foot
-  (drag the hips handle, or bring the standing leg under the body). Between two very different
-  poses (a deep crouch and standing) the in-between frames are interpolated, so the feet can dip
-  slightly into the floor during a fast, springy transition; a softer feel or a longer transition
-  reduces it.
+  (drag the hips handle, or bring the standing leg under the body). The in-between frames are
+  grounded too: between two grounded poses the feet stay on the floor, and a jump's frames are only
+  kept from going below it.
 - **A joint bends the wrong way or stops.** Joint limits are on by default: values outside the
   natural range are clamped (the angle fields show them in red). Turn joint limits off in the
   Humanize tab for stylised poses. A swing longer than 180 degrees is the same as a shorter swing

@@ -241,6 +241,10 @@ fs::path editor::PoseTemplates::userFile(const fs::path& projectPath, const std:
     return file;
 }
 
+std::string editor::PoseTemplates::fileStem(const std::string& name){
+    return safeFileStem(name);
+}
+
 std::string editor::PoseTemplates::fileText(const pose::PoseAnimationData& data, const pose::PoseAnimationTemplateInfo& info){
     pose::PoseAnimationData copy = data;
     copy.previewModel.clear();

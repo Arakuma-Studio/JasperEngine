@@ -200,6 +200,26 @@ Entity editor::SceneWindow::findSelectableObjectByRay(uint32_t sceneId, float x,
     return resolveStructureSelection(sceneId, hitSceneId, hitEntity);
 }
 
+bool editor::SceneWindow::poseClick(uint32_t sceneId, float x, float y, Entity* picked, Entity* rawHit) {
+    if (picked) *picked = NULL_ENTITY;
+    if (rawHit) *rawHit = NULL_ENTITY;
+    SceneProject* sceneProject = project->getScene(sceneId);
+    if (!sceneProject || !sceneProject->sceneRender || !sceneProject->sceneRender->getPoseViewport()) {
+        return false;
+    }
+    // the raw hit and what selection makes of it (a collapsed Hierarchy parent of the model)
+    uint32_t rawSceneId = sceneId;
+    const Entity raw = project->findObjectByRay(sceneId, x, y, &rawSceneId);
+    if (rawSceneId != sceneId) {
+        // a scene layered over this one: not the posed model
+        return sceneProject->sceneRender->getPoseViewport()->clicked(NULL_ENTITY);
+    }
+    const Entity selectable = resolveStructureSelection(sceneId, rawSceneId, raw);
+    if (picked) *picked = selectable;
+    if (rawHit) *rawHit = raw;
+    return sceneProject->sceneRender->getPoseViewport()->clicked(selectable, raw);
+}
+
 bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, bool shiftPressed) {
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject || !sceneProject->sceneRender) {
@@ -1374,9 +1394,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                     sceneProject->sceneRender->isPoseEditing()){
                 // posing (pose animation): a click on empty space or on anything but the posed
                 // model and its bones leaves posing, also when the selection stays the same
-                uint32_t pickedSceneId = sceneId;
-                Entity picked = findSelectableObjectByRay(sceneId, x, y, &pickedSceneId);
-                sceneProject->sceneRender->getPoseViewport()->clicked(pickedSceneId == sceneId ? picked : NULL_ENTITY);
+                poseClick(sceneId, x, y);
             }
             if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease){
                 // Remember sub-selection anchors BEFORE re-selecting, so we can tell

@@ -67,6 +67,22 @@ def same_as_unposed(ed: Editor, text: str, what: str) -> None:
     ed.check(False, f"{what}: the scene file differs from the unposed save:\n{diff}")
 
 
+NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:e[-+]?\d+)?")
+
+
+def same_line(a: str, b: str, tol: float = 1e-5) -> bool:
+    """Two scene file lines are the same text with numbers equal within `tol` (relative)."""
+    if a == b:
+        return True
+    if NUMBER.sub("#", a) != NUMBER.sub("#", b):
+        return False
+    for x, y in zip(NUMBER.findall(a), NUMBER.findall(b)):
+        fx, fy = float(x), float(y)
+        if abs(fx - fy) > tol * max(1.0, abs(fx), abs(fy)):
+            return False
+    return True
+
+
 def saved_rotation(text: str, name: str):
     """The transform rotation of the GameObject `name` in a scene file's text."""
     match = re.search(r"name: " + re.escape(name) + r"\n\s+components:\n\s+transform:\n\s+position: \[[^\]]*\]\n\s+rotation: \[([^\]]*)\]",
@@ -265,3 +281,31 @@ async def test_project_window_thumbnail(ed: Editor):
     image = pngdiff.decode(r.images[0][0])
     ed.check(image[0] >= 64 and not pngdiff.flat(image, 8), "the thumbnail shows the character")
     (ed.scratch.root / "poseanim-thumbnail.png").write_bytes(r.images[0][0])
+
+
+async def test_save_after_moving_the_posed_character(ed: Editor):
+    """The hero moved while posing: a save right after writes the bones' world matrices and the
+    skinned mesh bounds where the hero is now, byte for byte the file an unposed save writes."""
+    st = (await focus(ed, index=0))["state"]
+    ed.check_eq(st["mode"], "posing", f"posing: {st}")
+    await ed.call("set_transform", entity="Hero", position=[0.45, 0.0, 0.3])
+    try:
+        await ed.call("wait", seconds=0.3)
+        ed.check(not close(await bone_rotation(ed), S["rest"]), "still posed after the move")
+        await ed.call("save_scene", scene="Main Scene")
+        posed = (ed.project / SCENE_FILE).read_text(encoding="utf-8")
+        # the same scene saved unposed: play mode leaves the session idle, the bones at rest
+        await ed.call("play", action="start")
+        await ed.call("play", action="stop")
+        ed.check_eq((await state(ed))["mode"], "idle", "idle after play mode")
+        await ed.call("wait", seconds=0.3)
+        await ed.call("save_scene", scene="Main Scene")
+        idle = (ed.project / SCENE_FILE).read_text(encoding="utf-8")
+        # the same text, numbers within float rounding: the render system recomputes the bounds
+        # from skinning matrices that cancel the model's move up to the last bits
+        a, b = idle.splitlines(), posed.splitlines()
+        ed.check_eq(len(a), len(b), "the same lines")
+        bad = [(x, y) for x, y in zip(a, b) if not same_line(x, y)]
+        ed.check(not bad, f"the save right after the move writes what an unposed save writes: {bad[:6]}")
+    finally:
+        await ed.call("undo", scene="Main Scene")

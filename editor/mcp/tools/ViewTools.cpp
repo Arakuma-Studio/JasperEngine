@@ -1000,8 +1000,11 @@ bool mcpTestHooks() {
 // posing Scene view through the same calls as the mouse in SceneWindow. {onion: {previous, next,
 // opacity}, ghost_during_preview, joint: slot or "" (the rings shown), handle: slot or
 // ring_l/u/f/free | press: [x, y] (view px), drag: [[x, y], ...], shift, ctrl, release (true),
-// click: [x, y] (a click the handles do not take: what SceneWindow does on release), global_edit:
-// begin | apply_all | apply_selected | cancel (after the drag), close_window: true (last)}
+// click: [x, y] (a click the handles do not take: what SceneWindow does on release; the result
+// names the selection pick and the raw hit; collapsed_parent: a GameObject whose collapsed Hierarchy
+// row holds the model, for this click), global_edit: begin | apply_all | apply_selected |
+// cancel (after the drag), ghost_check: true (each ghost's independence of the model),
+// close_window: true (last)}
 bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
     if (!mcpTestHooks()) {
         call->fail("pose.viewport: unknown key (valid: entity, path, index, play, tab).");
@@ -1104,13 +1107,31 @@ bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Js
         }
         const float cx = p[0].get<float>();
         const float cy = p[1].get<float>();
-        // as SceneWindow: the handles first, then what the click picks
+        // as SceneWindow: the handles first, then what the click picks (the same rule: the
+        // selection pick and the raw hit)
         const bool took = render->poseMouseDown(cx, cy, false, false);
         if (took) render->mouseReleaseEvent(cx, cy);
-        uint32_t pickedScene = session.sceneId();
-        const Entity picked = took ? NULL_ENTITY : project->findObjectByRay(session.sceneId(), cx, cy, &pickedScene);
+        SceneWindow* sceneWindow = call->ctx().sceneWindow();
+        if (hook.contains("collapsed_parent") && sceneWindow) {
+            // the Hierarchy row of this GameObject collapsed over the posed model (what the
+            // Hierarchy tells the Scene view each frame for its collapsed rows)
+            std::string error;
+            SceneProject* sp = project->getScene(session.sceneId());
+            const Entity parent = sp ? w3::resolveLiveEntity(project, sp, hook["collapsed_parent"], error) : NULL_ENTITY;
+            if (parent == NULL_ENTITY) {
+                call->fail("pose.viewport.collapsed_parent: " + error);
+                return false;
+            }
+            sceneWindow->setStructureSelectionParent(session.sceneId(), session.model(), parent);
+        }
+        Entity picked = NULL_ENTITY, raw = NULL_ENTITY;
         out["click_took_handle"] = took;
-        out["left_posing"] = !took && viewport->clicked(pickedScene == session.sceneId() ? picked : NULL_ENTITY);
+        out["left_posing"] = !took && sceneWindow && sceneWindow->poseClick(session.sceneId(), cx, cy, &picked, &raw);
+        // the GameObjects the click picked: as selection resolves it, and the raw hit
+        Scene* scene = session.scene();
+        auto nameOf = [scene](Entity e) { return e != NULL_ENTITY && scene && scene->isEntityCreated(e) ? Json(scene->getEntityName(e)) : Json(); };
+        out["click_picked"] = nameOf(picked);
+        out["click_hit"] = nameOf(raw);
     }
     if (hook.contains("global_edit")) {
         const std::string action = hook["global_edit"].is_string() ? hook["global_edit"].get<std::string>() : std::string();
@@ -1132,10 +1153,83 @@ bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Js
         }
         out["global_edit"] = ok;
     }
+    if (hook.value("ghost_check", false)) {
+        // each ghost's independence of the model (PoseViewport::checkGhosts)
+        Json checks = Json::array();
+        for (const PoseViewport::GhostCheck& check : viewport->checkGhosts()) {
+            checks.push_back({{"kind", check.kind}, {"bones", check.bones}, {"own_bones", check.ownBones},
+                              {"foreign_references", check.foreignReferences}, {"differing", check.differing},
+                              {"mismatched", check.mismatched}});
+        }
+        out["ghost_check"] = checks;
+    }
     if (hook.value("close_window", false)) {
         window->setOpen(false);
         out["closed"] = true;
     }
+    return true;
+}
+
+// pose.templates (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): the
+// Templates tab's actions through the window's own functions (the ones its cards, menu and dialogs
+// call). {category, search (the filter), create: {name, path ("" = the save dialog's default)},
+// apply: {name, mode: replace | append}, save: {name, description, category}, show: name,
+// delete: name}; the result has the default path of create's template.
+bool poseTemplatesHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
+    if (!mcpTestHooks()) {
+        call->fail("pose.templates: unknown key (valid: entity, path, index, play, tab).");
+        return false;
+    }
+    if (!hook.is_object()) {
+        call->fail("pose.templates must be an object.");
+        return false;
+    }
+    auto text = [&hook](const Json& object, const char* key) {
+        return object.contains(key) && object[key].is_string() ? object[key].get<std::string>() : std::string();
+    };
+    if (hook.contains("category") || hook.contains("search")) {
+        window->setTemplateFilter(text(hook, "category"), text(hook, "search"));
+    }
+    std::string error;
+    Json result = Json::object();
+    if (hook.contains("create")) {
+        const Json& create = hook["create"];
+        const std::string name = text(create, "name");
+        result["default_path"] = window->templateAnimationPath(name);
+        if (!window->createFromTemplate(name, text(create, "path"), &error)) {
+            call->fail("pose.templates.create: " + error);
+            return false;
+        }
+    }
+    if (hook.contains("apply")) {
+        const Json& apply = hook["apply"];
+        const std::string mode = text(apply, "mode");
+        if (mode != "replace" && mode != "append") {
+            call->fail("pose.templates.apply.mode: replace or append.");
+            return false;
+        }
+        if (!window->applyTemplate(text(apply, "name"), mode == "append" ? PoseTemplateApply::Append : PoseTemplateApply::Replace,
+                                   &error)) {
+            call->fail("pose.templates.apply: " + error);
+            return false;
+        }
+    }
+    if (hook.contains("save")) {
+        const Json& save = hook["save"];
+        if (!window->saveAsTemplate(text(save, "name"), text(save, "description"), text(save, "category"), &error)) {
+            call->fail("pose.templates.save: " + error);
+            return false;
+        }
+    }
+    if (hook.contains("show") && !window->showTemplateInProject(text(hook, "show"), &error)) {
+        call->fail("pose.templates.show: " + error);
+        return false;
+    }
+    if (hook.contains("delete") && !window->deleteTemplate(text(hook, "delete"), &error)) {
+        call->fail("pose.templates.delete: " + error);
+        return false;
+    }
+    out["templates"] = result;
     return true;
 }
 
@@ -1149,7 +1243,8 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
     }
     for (auto it = pose.begin(); it != pose.end(); ++it) {
         const std::string& key = it.key();
-        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab" && key != "viewport") {
+        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab" && key != "viewport" &&
+                key != "templates") {
             call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
             return false;
         }
@@ -1201,7 +1296,7 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
     }
     if (pose.contains("tab")) {
         if (!pose["tab"].is_string()) {
-            call->fail("pose.tab: Pose, Feel, Humanize or map_bones (the bone mapping popup).");
+            call->fail("pose.tab: Pose, Feel, Humanize, Templates or map_bones (the bone mapping popup).");
             return false;
         }
         const std::string tab = pose["tab"].get<std::string>();
@@ -1215,6 +1310,9 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
         }
     }
     if (pose.contains("viewport") && !poseViewportHook(call, window, pose["viewport"], hookResult)) {
+        return false;
+    }
+    if (pose.contains("templates") && !poseTemplatesHook(call, window, pose["templates"], hookResult)) {
         return false;
     }
     return true;
@@ -1236,6 +1334,12 @@ Json poseWindowState(const CallPtr& call) {
     }
     if (!state.emptyState.empty()) data["empty_state"] = state.emptyState;
     if (!state.status.empty()) data["status"] = state.status;
+    // the Templates tab (phase 6) while it shows: the cards after the filter
+    if (state.templates.shown) {
+        data["templates"] = {{"cards", state.templates.cards}, {"user", state.templates.user},
+                             {"visible", state.templates.visible}, {"thumbnails", state.templates.thumbnails}, {"hint", state.templates.hint},
+                             {"category", state.templates.category}, {"search", state.templates.search}};
+    }
     // the Scene view posing the character (phase 5): handles in Scene view pixels, ghosts, floor
     PoseEditSession& session = call->ctx().app().getPoseAnimationWindow()->getSession();
     if (PoseViewport* viewport = posedViewport(call->ctx().project(), session)) {

@@ -12,6 +12,7 @@
 #include "Project.h"
 #include "ecs/Entity.h"
 #include "pose/PoseEditSession.h"
+#include "pose/PoseTemplates.h"
 #include "pose/PoseThumbnails.h"
 #include "pose/PoseUiLogic.h"
 #include "imgui.h"
@@ -27,6 +28,7 @@ namespace jasperengine::editor{
     class PoseAnimationWindow{
     public:
         static constexpr const char* WINDOW_NAME = "Pose Animation";
+        static constexpr const char* TEMPLATES_TAB = "Templates";
 
         // Extra tabs after Pose, Feel and Humanize (phase 6 adds Templates): drawn inside the
         // window's tab bar with the window, whose session and actions they may use
@@ -81,6 +83,38 @@ namespace jasperengine::editor{
         static std::string createAsset(Project* project, const std::filesystem::path& directory,
                                        const std::string& baseName, const std::string& previewModel, std::string* error);
 
+        // ---- the Templates tab (phase 6, section 4; PoseAnimationWindowTemplates.cpp) ----
+
+        // A new animation from the template `name` at `path` (project-relative; "" = the save
+        // dialog's default), previewing the character's model; it is opened and the Pose tab shown
+        bool createFromTemplate(const std::string& name, const std::string& path, std::string* error);
+        // The save dialog's default: <model dir>/<template name>.poseanim (numbered when taken);
+        // "" without a character
+        std::string templateAnimationPath(const std::string& name);
+        // Replace Poses in Current Animation (the template's settings and poses, the preview
+        // model kept) / Append Poses: one undo step
+        bool applyTemplate(const std::string& name, PoseTemplateApply mode, std::string* error);
+        // Save Current as Template...: the open animation as a project template (one undo step)
+        bool saveAsTemplate(const std::string& name, const std::string& description, const std::string& category,
+                            std::string* error);
+        // Delete (project templates only, one undo step) and Show in Project
+        bool deleteTemplate(const std::string& name, std::string* error);
+        bool showTemplateInProject(const std::string& name, std::string* error);
+        // the category combo ("" = all) and the search field
+        void setTemplateFilter(const std::string& category, const std::string& search);
+
+        // What the Templates tab showed in its last draw (MCP state)
+        struct TemplatesState{
+            bool shown = false;                 // drawn in the last frame (the tab or an empty state)
+            std::vector<std::string> cards;     // the names after the filter, in order
+            std::vector<std::string> user;      // the cards with the "user" badge
+            int visible = 0;                    // cards on screen (not scrolled out of the tab)
+            int thumbnails = 0;                 // cards with their rendered thumbnail
+            bool hint = false;                  // "Bind a character to preview templates"
+            std::string category;
+            std::string search;
+        };
+
         // What the window shows (MCP focus_window's state of this window)
         struct State{
             bool open = false;
@@ -103,6 +137,7 @@ namespace jasperengine::editor{
             bool editable = false;              // not locked by a scene save or play mode
             std::string layout;                 // "stacked" or "columns"
             float thumbnailHeight = 116.0f;
+            TemplatesState templates;
         };
         State getState();
 
@@ -190,6 +225,50 @@ namespace jasperengine::editor{
         std::string pendingOpenPath;
         uint32_t pendingOpenScene = 0;
         Entity pendingOpenEntity = NULL_ENTITY;
+
+        // Templates tab: the list (PoseTemplates, re-read when the project's template files
+        // change) with each template's middle pose realised on the bound rig for its thumbnail
+        struct TemplateEntry{
+            PoseTemplate tmpl;
+            bool posed = false;
+            pose::HumanPose middle;
+            uint64_t hash = 0;
+        };
+        std::vector<TemplateEntry> templateEntries;
+        bool templatesLoaded = false;
+        std::string templateStamp;              // the project template files as last read
+        double templateCheckTime = 0.0;
+        std::weak_ptr<pose::PoseRig> templateRig;   // the rig the middle poses are realised on
+        std::string templateCategory;
+        char templateSearch[64] = {};
+        std::string templateMenu;               // the card the context menu is open for
+        std::string templateClicked;            // a card clicked this frame (handled after the grid)
+        int templatesDrawnFrame = -1;
+        TemplatesState templatesShown;
+        // the save dialog of a card click
+        bool templateCreateRequested = false;
+        std::string templateCreateName;
+        char templateCreatePath[512] = {};
+        std::string templateCreateError;
+        // the Delete confirmation
+        bool templateDeleteRequested = false;
+        std::string templateDeleteName;
+        std::string templateDeleteError;
+        // Save Current as Template...
+        bool templateSaveRequested = false;
+        char templateSaveName[PoseTemplates::MAX_NAME_LENGTH + 1] = {};
+        char templateSaveDescription[256] = {};
+        char templateSaveCategory[64] = {};
+        std::string templateSaveError;
+
+        void refreshTemplates(bool force);
+        TemplateEntry* findTemplate(const std::string& name);
+        void drawTemplatesTab();
+        // true when the card shows its rendered thumbnail
+        bool drawTemplateCard(TemplateEntry& entry, const ImVec2& pos, float cardWidth, float cardHeight);
+        void drawTemplateMenu();
+        void drawTemplatePopups();
+        void openTemplateCreateDialog(const std::string& name);
 
         void drawSetupRow();
         void drawBody();

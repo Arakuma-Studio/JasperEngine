@@ -81,9 +81,11 @@ namespace jasperengine::editor{
         // the mouse left the view: nothing is hovered (the session's handle flag goes false)
         void hoverEnd();
         bool isDragging() const;
-        // A left click (no drag) the handles did not take picked `picked` (NULL_ENTITY: empty
-        // space): anything but the posed model or its bones leaves posing. True when it did.
-        bool clicked(Entity picked);
+        // A left click (no drag) the handles did not take picked `picked` (what selection
+        // resolves the hit to, e.g. a collapsed Hierarchy parent; NULL_ENTITY: empty space) on
+        // the raw hit `rawHit` (the GameObject the ray hit): anything but the posed model or its
+        // bones leaves posing. A raw hit on the model counts as on it. True when it left.
+        bool clicked(Entity picked, Entity rawHit = NULL_ENTITY);
 
         // the joint whose rings show (HumanBone::Count: none); false when the rig lacks it
         bool setActiveJoint(pose::HumanBone bone);
@@ -111,6 +113,19 @@ namespace jasperengine::editor{
         };
         State getState() const;
 
+        // How independent each ghost is of the model (the MCP test hook's ghost_check): its own
+        // copy of every skeleton bone, no reference from its model copy to the model's
+        // GameObjects, and its slot bones turned where its pose differs from the model's pose
+        struct GhostCheck{
+            std::string kind;
+            int bones = 0;                       // skeleton bones of the rig
+            int ownBones = 0;                    // ... the ghost has its own copy of
+            int foreignReferences = 0;           // ghost model/bone references to GameObjects outside the ghost
+            int differing = 0;                   // slots whose ghost rotation differs from the model's (as expected)
+            int mismatched = 0;                  // slots where that is not as the two poses say
+        };
+        std::vector<GhostCheck> checkGhosts() const;
+
         // hides everything, drops the ghosts and ends a drag without committing it
         void clear();
 
@@ -123,6 +138,7 @@ namespace jasperengine::editor{
             std::string kind;
             Vector4 color;
             bool colorSet = false;
+            pose::HumanPose pose;                // the pose it shows
         };
 
         struct Drag{
@@ -179,7 +195,7 @@ namespace jasperengine::editor{
         bool posing = false;
         bool previewing = false;
         pose::HumanBone activeJoint = pose::HumanBone::Count;
-        const void* activeRig = nullptr;
+        std::weak_ptr<const pose::PoseRig> activeRig;   // the session's rig (a remap makes a new one)
         poseview::HandleKind hoverKind = poseview::HandleKind::None;
         pose::HumanBone hoverBone = pose::HumanBone::Count;
         int hoverRing = -1;
@@ -228,6 +244,7 @@ namespace jasperengine::editor{
         void updateMetrics(const pose::PoseRig& rig, const pose::HumanPose& pose);
         struct RingLimitCache{
             bool valid = false;
+            std::weak_ptr<const pose::PoseRig> rig;   // the rig it was measured on (a remap makes a new one)
             pose::HumanBone bone = pose::HumanBone::Count;
             Vector3 axisModel;
             pose::HumanPose pose;
