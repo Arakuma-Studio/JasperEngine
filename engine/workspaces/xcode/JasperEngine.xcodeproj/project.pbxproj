@@ -477,6 +477,7 @@
 		713D8341259D408300567F9F /* ViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 713D8334259D407A00567F9F /* ViewController.m */; };
 		713D834E259D408800567F9F /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 713D8335259D407A00567F9F /* main.m */; };
 		713D835B259D408C00567F9F /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 713D8336259D407A00567F9F /* AppDelegate.m */; };
+		7885CE65446ED78C3C4BEB63 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = E15B1987F43388FDFC1D3305 /* SceneDelegate.m */; };
 		713E580627BA9CB700376680 /* MeshPolygon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 713E580427BA9CB700376680 /* MeshPolygon.cpp */; };
 		713E580727BA9CB700376680 /* MeshPolygon.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 713E580427BA9CB700376680 /* MeshPolygon.cpp */; };
 		713E580827BA9CB700376680 /* MeshPolygon.h in Headers */ = {isa = PBXBuildFile; fileRef = 713E580527BA9CB700376680 /* MeshPolygon.h */; };
@@ -4065,6 +4066,8 @@
 		713D8334259D407A00567F9F /* ViewController.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = ViewController.m; sourceTree = "<group>"; };
 		713D8335259D407A00567F9F /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
 		713D8336259D407A00567F9F /* AppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		425D2643C998FF7D5BFC56C9 /* SceneDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SceneDelegate.h; sourceTree = "<group>"; };
+		E15B1987F43388FDFC1D3305 /* SceneDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = SceneDelegate.m; sourceTree = "<group>"; };
 		713D8337259D407A00567F9F /* ViewController.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ViewController.h; sourceTree = "<group>"; };
 		713E580427BA9CB700376680 /* MeshPolygon.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MeshPolygon.cpp; sourceTree = "<group>"; };
 		713E580527BA9CB700376680 /* MeshPolygon.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshPolygon.h; sourceTree = "<group>"; };
@@ -7427,6 +7430,8 @@
 				7128CFAB25BA717500965B51 /* Main.storyboard */,
 				713D8333259D407A00567F9F /* AppDelegate.h */,
 				713D8336259D407A00567F9F /* AppDelegate.m */,
+				425D2643C998FF7D5BFC56C9 /* SceneDelegate.h */,
+				E15B1987F43388FDFC1D3305 /* SceneDelegate.m */,
 				710AD75025B733E100A7B12F /* EngineView.h */,
 				710AD75125B7343400A7B12F /* EngineView.mm */,
 				71C5A10A2F0A11B000A1B2C0 /* KeyCodesIOS.h */,
@@ -13378,6 +13383,7 @@
 				710AD75225B7343400A7B12F /* EngineView.mm in Sources */,
 				713D8341259D408300567F9F /* ViewController.m in Sources */,
 				713D835B259D408C00567F9F /* AppDelegate.m in Sources */,
+				7885CE65446ED78C3C4BEB63 /* SceneDelegate.m in Sources */,
 				713D82E4259D32FE00567F9F /* JasperEngineApple.mm in Sources */,
 				711607082A0D1F0C0052A9C3 /* AdMobAdapter.m in Sources */,
 				7158F43F259C2C82006E55D3 /* Renderer.mm in Sources */,

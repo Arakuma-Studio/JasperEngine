@@ -571,6 +571,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/main.m
             ${PLATFORM_ROOT}/ios/AppDelegate.h
             ${PLATFORM_ROOT}/ios/AppDelegate.m
+            ${PLATFORM_ROOT}/ios/SceneDelegate.h
+            ${PLATFORM_ROOT}/ios/SceneDelegate.m
             ${PLATFORM_ROOT}/ios/EngineView.h
             ${PLATFORM_ROOT}/ios/EngineView.mm
             ${PLATFORM_ROOT}/ios/KeyCodesIOS.h
