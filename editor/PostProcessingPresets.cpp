@@ -348,7 +348,7 @@ std::string describeDynamicResolution(const DynamicResolutionStatus& status, std
         std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (pinned)", status.scale);
         return text;
     }
-    if (!status.running) return "Dynamic resolution off (fixed resolution, or not the main camera's view)";
+    if (!status.running) return std::string("Dynamic resolution idle: ") + status.idle;
     const std::string source = status.source;
     if (source == "gpu") {
         std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (GPU %.1f / %.1f ms)", status.scale, status.smoothedMs, status.targetMs);

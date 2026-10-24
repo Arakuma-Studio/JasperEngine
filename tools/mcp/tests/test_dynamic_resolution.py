@@ -74,7 +74,8 @@ async def test_dynamic_resolution_in_play(ed: Editor):
     for _ in range(5):
         await ed.call("wait", frames=10)
         got = await status(ed, sid)
-        ed.check(got["dynamic_resolution"]["running"] is False and got["render_scale_applied"] == 1.0,
+        ed.check(got["dynamic_resolution"]["running"] is False and got["dynamic_resolution"]["idle"] == "edit mode" and
+                 got["render_scale_applied"] == 1.0,
                  f"edit mode keeps scale 1: {got['dynamic_resolution']}")
     await ed.call("set_post_processing_debug", scene=sid, fake_gpu_ms=None)
 

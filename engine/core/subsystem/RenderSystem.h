@@ -383,6 +383,7 @@ namespace jasperengine{
 	struct DynamicResolutionStatus {
 		bool enabled = false;          // the settings ask for it
 		bool running = false;          // the controller drives the scale (Play / the game, no fixed resolution)
+		const char* idle = "off";      // why it does not run ("" while it does): off, edit mode, fixed resolution...
 		bool overridden = false;       // a pinned scale (setDynamicResolutionOverride) replaces it
 		float scale = 1.0f;            // the render scale the main camera draws at
 		float minScale = 1.0f;         // its range
@@ -570,12 +571,10 @@ namespace jasperengine{
 		bool disableFixedResolution = false;
 
 		// Editor-only override that keeps dynamic resolution off (edit mode: the controller runs
-		// in Play and in exported games only); the editor's default, never set at runtime
-#ifdef JASPERENGINE_EDITOR
-		bool disableDynamicResolution = true;
-#else
+		// in Play and in exported games only). Like disableFixedResolution it defaults to false:
+		// the editor's views of a scene set it every frame (SceneRender), a Play copy's renderer
+		// keeps the game's behaviour
 		bool disableDynamicResolution = false;
-#endif
 
 		static uint32_t pixelsWhite[64];
 		static uint32_t pixelsBlack[64];
@@ -1369,6 +1368,8 @@ namespace jasperengine{
 		// scale there (getAppliedRenderScale) and is never written to the settings
 		DynamicResolutionController dynamicResolution;
 		bool dynamicResolutionRunning = false;
+		// why the controller did not run this frame ("" when it did), DynamicResolutionStatus::idle
+		const char* dynamicResolutionIdle = "off";
 		float dynamicResolutionScale = 1.0f;
 		// what the controller is configured with, and the view it measured (a change resets it)
 		DynamicResolutionConfig dynamicResolutionConfig;

@@ -1555,7 +1555,7 @@ void inspectColorLutTool(const CallPtr& call) {
 }
 
 Json dynamicResolutionToJson(const DynamicResolutionStatus& status) {
-    return Json{{"enabled", status.enabled}, {"running", status.running}, {"overridden", status.overridden},
+    return Json{{"enabled", status.enabled}, {"running", status.running}, {"idle", status.idle}, {"overridden", status.overridden},
                 {"scale", McpValues::number(status.scale)}, {"min_scale", McpValues::number(status.minScale)},
                 {"max_scale", McpValues::number(status.maxScale)}, {"source", status.source},
                 {"smoothed_ms", McpValues::number(status.smoothedMs)}, {"target_ms", McpValues::number(status.targetMs)},
@@ -1938,7 +1938,7 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Get Post-processing Status";
         tool.description =
             "What the scene's renderer applies now: tail_color, uber, uber_features, render_scale (settings) and "
-            "render_scale_applied, passes (estimate), dynamic_resolution {enabled, running, scale, source gpu|frame, "
+            "render_scale_applied, passes (estimate), dynamic_resolution {enabled, running, idle, scale, source gpu|frame, "
             "smoothed_ms, target_ms, saturated_low, ineffective, accepted_changes, probe_seconds}, debug pins.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;

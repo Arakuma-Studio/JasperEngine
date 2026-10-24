@@ -1944,9 +1944,9 @@ OVERRIDES[('Mesh', 'getMaterial')] = {
 OVERRIDES[('Scene', 'getDynamicResolution')] = {
     'doc': ['Dynamic resolution as the renderer applies it: `scale` (the render scale drawn at), `source`',
             '("gpu", "frame" or "none": the law of the last measurement), `smoothedMs` / `targetMs`, and',
-            '`enabled`, `running`, `overridden`, `minScale`, `maxScale`, `saturatedLow`, `ineffective`,',
+            '`enabled`, `running`, `idle` (why not), `overridden`, `minScale`, `maxScale`, `saturatedLow`, `ineffective`,',
             '`acceptedChanges`, `probeSeconds`.'],
-    'overloads': [([], '{enabled: boolean, running: boolean, overridden: boolean, scale: number, minScale: number, '
+    'overloads': [([], '{enabled: boolean, running: boolean, idle: string, overridden: boolean, scale: number, minScale: number, '
                        'maxScale: number, source: string, smoothedMs: number, targetMs: number, saturatedLow: boolean, '
                        'ineffective: boolean, acceptedChanges: integer, probeSeconds: number}')],
 }

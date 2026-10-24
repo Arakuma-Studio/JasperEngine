@@ -1610,6 +1610,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             const DynamicResolutionStatus status = render ? render->getDynamicResolutionStatus() : DynamicResolutionStatus();
             table["enabled"] = status.enabled;
             table["running"] = status.running;
+            table["idle"] = std::string(status.idle);
             table["overridden"] = status.overridden;
             table["scale"] = status.scale;
             table["minScale"] = status.minScale;

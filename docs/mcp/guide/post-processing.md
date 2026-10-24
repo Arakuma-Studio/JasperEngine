@@ -199,7 +199,7 @@ While playing, the Inspector's "Applied now" readout shows `Dynamic resolution 0
 misses the target, or when the scale buys too little for the content. Scene shading varies
 between min^2 and max^2 of native.
 
-`get_post_processing_status` gives `dynamic_resolution {enabled, running, scale, source (gpu |
+`get_post_processing_status` gives `dynamic_resolution {enabled, running, idle (why it does not run), scale, source (gpu |
 frame), smoothed_ms, target_ms, saturated_low, ineffective, accepted_changes, probe_seconds}` and
 `render_scale_applied`. `set_post_processing_debug` (editor only, not saved) pins
 `time_seconds` (the time grain, VHS and film damage animate with), `force_render_scale` (0.5-1,

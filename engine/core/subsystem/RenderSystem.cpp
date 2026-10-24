@@ -5206,6 +5206,7 @@ DynamicResolutionStatus RenderSystem::getDynamicResolutionStatus() const{
     DynamicResolutionStatus status;
     status.enabled = scene && scene->getPostProcessing().dynamicResolutionEnabled;
     status.running = dynamicResolutionRunning;
+    status.idle = dynamicResolutionRunning ? "" : (status.enabled ? dynamicResolutionIdle : "off");
     status.overridden = dynamicResolutionOverride > 0.0f && !disableDynamicResolution;
     status.scale = getAppliedRenderScale();
     status.maxScale = postTiers.renderScale;
@@ -5241,8 +5242,19 @@ void RenderSystem::updateDynamicResolution(){
     const PostProcessingSettings& settings = scene->getPostProcessing();
     // the frame's own view of the main scene, post-processed, with the uber pass drawing at a
     // render scale (fixed resolution draws at its own size)
-    const bool run = postTiers.dynamicResolution && postTiers.uber && !disableDynamicResolution && Engine::getMainScene() == scene &&
-                     primaryView.postProcessing && !(scene->isFixedResolutionEnabled() && !disableFixedResolution);
+    if (!postTiers.dynamicResolution || !postTiers.uber)
+        dynamicResolutionIdle = "off";
+    else if (disableDynamicResolution)
+        dynamicResolutionIdle = "edit mode";
+    else if (Engine::getMainScene() != scene)
+        dynamicResolutionIdle = "not the main scene";
+    else if (!primaryView.postProcessing)
+        dynamicResolutionIdle = "the view is not post-processed";
+    else if (scene->isFixedResolutionEnabled() && !disableFixedResolution)
+        dynamicResolutionIdle = "fixed resolution";
+    else
+        dynamicResolutionIdle = "";
+    const bool run = dynamicResolutionIdle[0] == '\0';
     const bool connected = dynamicResolutionConnected;
     dynamicResolutionConnected = false;
     if (!run){
