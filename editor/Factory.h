@@ -164,6 +164,9 @@ namespace jasperengine::editor{
         static std::string prefabToFunctionName(const std::filesystem::path& prefabPath);
         static std::string prefabToBuildFunctionName(const std::filesystem::path& prefabPath);
         static std::string prefabToFileName(const std::filesystem::path& prefabPath);
+        // File and symbol name of a scene's generated source: never the name of main.cpp,
+        // scene_scripts.cpp, a prefab or another scene, even ignoring case
+        static std::string sceneToFileName(uint32_t sceneId, const std::string& sceneName);
 
         static std::string createComponent(int indentSpaces, EntityRegistry* scene, Entity entity, ComponentType componentType, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", bool assignExisting = false, const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
         static std::string createAllComponents(int indentSpaces, EntityRegistry* scene, Entity entity, const fs::path& projectPath, std::string sceneName = "", std::string entityName = "", const std::unordered_map<Entity, std::string>* entityVarNames = nullptr);
@@ -171,7 +174,7 @@ namespace jasperengine::editor{
         // older source counts as missing and is written again.
         static const char* const sceneSourceHeader;
 
-        static std::string createScene(int indentSpaces, Scene* scene, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances = {}, const SceneResources& resources = {});
+        static std::string createScene(int indentSpaces, Scene* scene, uint32_t sceneId, std::string name, std::vector<Entity> entities, Entity camera, const fs::path& projectPath, const fs::path& generatedPath, const std::vector<PrefabInstanceInfo>& prefabInstances = {}, const SceneResources& resources = {});
 
         // The source of a prefab's build_prefab_* / create_prefab_* functions from its baked
         // instance. prefabGuid: the asset GUID of a prefab path (written on the bare root)

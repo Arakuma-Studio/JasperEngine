@@ -3,8 +3,6 @@
 
 #import "AdMobAdapter.h"
 
-#import "AppDelegate.h"
-#import "ViewController.h"
 #import "Renderer.h"
 
 #include <UserMessagingPlatform/UserMessagingPlatform.h>
@@ -15,17 +13,17 @@
 
 @property(nonatomic, strong) GADInterstitialAd *interstitial;
 
-@property(nonatomic, strong) ViewController *rootController;
-
 @end
 
 @implementation AdMobAdapter
 
-- (nonnull instancetype)init {
-    
-    _rootController = (ViewController*)[[(AppDelegate*) [[UIApplication sharedApplication]delegate] window] rootViewController];
-    
-    return self;
+- (UIViewController *)rootViewController {
+    // the window of the engine's view: the scene's, the app delegate has none
+    UIViewController *controller = Renderer.view.window.rootViewController;
+    while (controller.presentedViewController && !controller.presentedViewController.isBeingDismissed) {
+        controller = controller.presentedViewController;
+    }
+    return controller;
 }
 
 - (void)initializeAdMob:(Boolean)tagForChildDirectedTreatment and:(Boolean)tagForUnderAgeOfConsent {
@@ -74,7 +72,7 @@
             } else {
                 if (UMPConsentInformation.sharedInstance.consentStatus == UMPConsentStatusRequired) {
                     [form
-                     presentFromViewController:self->_rootController
+                     presentFromViewController:[self rootViewController]
                           completionHandler:^(NSError *_Nullable dismissError) {
                             [self loadInterstitial:adUnitID];
                           }];
@@ -106,7 +104,7 @@
 
 - (void)showInterstitial {
     if (self.interstitial) {
-        [self.interstitial presentFromRootViewController:_rootController];
+        [self.interstitial presentFromRootViewController:[self rootViewController]];
     } else {
         NSLog(@"Ad wasn't ready");
     }

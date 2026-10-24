@@ -1,7 +1,8 @@
 """W5 build tools: get_build_info, build_project (jobs, cancel), generate_shaders, run_build.
 
 Starts from a brand-new project (`mcp --create`): saves its scene, sets the start scene, exports
-the C++ source project, cancels a Desktop build, generates shaders and checks run_build's process
+the C++ source project (its Xcode workspace compiles the project's generated sources in both app
+targets: checked by parsing project.pbxproj, no Xcode needed), cancels a Desktop build, generates shaders and checks run_build's process
 handling with stand-in "players" (shell scripts).
 
 The full Desktop build (compiles the engine from source with cmake + g++, ~20-60 min at 3 jobs on
@@ -14,6 +15,7 @@ import stat
 import time
 from pathlib import Path
 
+import pbxproj
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Build Test"}
@@ -37,6 +39,48 @@ def make_script(path: Path, body: str) -> Path:
     path.write_text("#!/bin/sh\n" + body)
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return path
+
+
+async def check_xcode_workspace(ed: Editor, out: Path) -> None:
+    """The exported Xcode workspace compiles the project's own sources, as the CMake build does:
+    each scene's (named by its id, so a scene called "main" leaves main.cpp alone), the prefabs',
+    scene_scripts.cpp and the C++ scripts, in both app targets."""
+    project_dir = out / "project"
+    pbx_file = out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj"
+    ed.check(pbx_file.is_file(), f"no {pbx_file}")
+    try:
+        root = pbxproj.parse(pbx_file.read_text(encoding="utf-8"))
+    except ValueError as e:
+        ed.fail(f"the exported project.pbxproj does not parse: {e}")
+    ed.check_eq(pbxproj.dangling_references(root), [], "references to objects the project.pbxproj lacks")
+
+    info = await ed.call("get_build_info")
+    for scene in info["scenes"]:
+        found = sorted(p.name for p in project_dir.glob(f"scene_*_{scene['id']}.cpp"))
+        ed.check_eq(len(found), 1, f"the generated source of scene {scene['name']!r} ({scene['id']}): {found}")
+    sources = sorted(p.relative_to(project_dir).as_posix() for p in project_dir.rglob("*")
+                     if p.suffix in (".cpp", ".c") and p.is_file()
+                     and not p.relative_to(project_dir).as_posix().startswith(("assets/", "lua/")))
+    ed.check_in("main.cpp", sources)
+    ed.check_in("scene_scripts.cpp", sources)
+    ed.check(any(s.startswith("scene_") and s != "scene_scripts.cpp" for s in sources), f"scene sources: {sources}")
+
+    in_group = pbxproj.group_paths(root, "../../project")
+    for name in ("JasperEngine iOS", "JasperEngine macOS"):
+        compiled = pbxproj.target_sources(root, name)
+        for source in sources:
+            ed.check_eq(compiled.count(Path(source).name), 1, f"{name} compiles {source} once: {compiled}")
+            ed.check_eq(in_group.get(source), "PBXFileReference", f"{source} in the project group: {in_group}")
+        for settings in pbxproj.target_settings(root, name):
+            ed.check_in("$(SRCROOT)/../../project", settings["HEADER_SEARCH_PATHS"], f"{name} include directories")
+            ed.check_in("$(SRCROOT)/../../project/scripts", settings["HEADER_SEARCH_PATHS"], f"{name} include directories")
+    for name in ("jasperengine-ios", "jasperengine-macos", "JasperEngine iOS", "JasperEngine macOS"):
+        for settings in pbxproj.target_settings(root, name):
+            ed.check(settings["CLANG_CXX_LANGUAGE_STANDARD"].startswith("c++"), f"{name}: {settings['CLANG_CXX_LANGUAGE_STANDARD']}")
+    for settings in pbxproj.project_settings(root):
+        definitions = settings["GCC_PREPROCESSOR_DEFINITIONS"]
+        ed.check(any(d.startswith("MAX_SUBMESHES=") for d in definitions), f"scene capacities: {definitions}")
+        ed.check_eq(len(definitions), len(set(definitions)), f"no definition twice: {definitions}")
 
 
 async def test_build_info(ed: Editor):
@@ -99,6 +143,7 @@ async def test_source_export(ed: Editor):
     ed.check("how_to_build" in result, "how_to_build")
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
+    await check_xcode_workspace(ed, out)
 
     # a non-empty directory needs overwrite
     msg = await ed.call("build_project", mode="source", output_dir=str(out), expect_error=True)
@@ -106,6 +151,8 @@ async def test_source_export(ed: Editor):
     r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True,
                       backends=["opengl", "opengles"], timeout_seconds=600)
     ed.check_eq(r["status"], "succeeded")
+    # exporting again patches the workspace the same way
+    await check_xcode_workspace(ed, out)
 
     # the remembered output dir is the default next time
     info = await ed.call("get_build_info")

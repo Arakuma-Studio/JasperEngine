@@ -443,7 +443,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+        # Xcode 27 starts at macOS 12
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0")
 
         # Only the Xcode generator assembles the real .app that the storyboard
         # entry point in platform/apple needs, shared with iOS. Every other
@@ -483,6 +484,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             list(APPEND PLATFORM_RESOURCES
                 ${PLATFORM_ROOT}/macos/Main.storyboard
             )
+            set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_CONTENT_DIR:${APP_NAME}>/Resources)
 
             list(APPEND PLATFORM_PROPERTIES
                 MACOSX_BUNDLE_INFO_PLIST "${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist"
@@ -569,6 +571,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/main.m
             ${PLATFORM_ROOT}/ios/AppDelegate.h
             ${PLATFORM_ROOT}/ios/AppDelegate.m
+            ${PLATFORM_ROOT}/ios/SceneDelegate.h
+            ${PLATFORM_ROOT}/ios/SceneDelegate.m
             ${PLATFORM_ROOT}/ios/EngineView.h
             ${PLATFORM_ROOT}/ios/EngineView.mm
             ${PLATFORM_ROOT}/ios/KeyCodesIOS.h
@@ -588,6 +592,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/LaunchScreen.storyboard
             ${PLATFORM_ROOT}/ios/Main.storyboard
         )
+        set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_DIR:${APP_NAME}>)
 
         list(APPEND PLATFORM_LIBS
             -ObjC
@@ -609,7 +614,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0")
+        # Xcode 27 starts at iOS 15
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 
         list(APPEND PLATFORM_PROPERTIES
             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${APP_BUNDLE_IDENTIFIER}
@@ -1253,6 +1259,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/lua ${LUA_DEST_DIR}
         )
         install(DIRECTORY ${LUA_DEST_DIR} DESTINATION bin)
+    endif()
+
+    # Apple apps read the assets and scripts from inside their bundle
+    if(DEFINED BUNDLE_RESOURCES_DIR)
+        foreach(PROJECT_CONTENT assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${PROJECT_CONTENT}")
+                add_custom_command(
+                    TARGET ${APP_NAME} POST_BUILD
+                    COMMAND "${CMAKE_COMMAND}" -E remove_directory ${BUNDLE_RESOURCES_DIR}/${PROJECT_CONTENT}
+                    COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/${PROJECT_CONTENT} ${BUNDLE_RESOURCES_DIR}/${PROJECT_CONTENT}
+                )
+            endif()
+        endforeach()
     endif()
 
     set_target_properties(

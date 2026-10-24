@@ -883,8 +883,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     std::string factorySources = "set(FACTORY_SOURCES\n";
     std::unordered_set<std::string> addedFactorySources;
     for (const auto& sceneData : scenes) {
-        std::string sceneName = Factory::toIdentifier(sceneData.name);
-        std::string filename = sceneName + ".cpp";
+        std::string filename = Factory::sceneToFileName(sceneData.id, sceneData.name) + ".cpp";
         if (addedFactorySources.insert(filename).second) {
             factorySources += "    " + internalPathStr + "/generated/" + filename + "\n";
         }
@@ -1995,22 +1994,20 @@ std::vector<editor::PrefabInstanceInfo> editor::Generator::writePrefabSources(co
     return prefabInstances;
 }
 
-void editor::Generator::writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources){
+void editor::Generator::writeSceneSource(Scene* scene, uint32_t sceneId, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
-    std::string sceneIdStr = Factory::toIdentifier(sceneName);
+    std::string sceneContent = Factory::createScene(0, scene, sceneId, sceneName, entities, camera, projectPath, generatedPath, prefabInstances, resources);
 
-    std::string sceneContent = Factory::createScene(0, scene, sceneName, entities, camera, projectPath, generatedPath, prefabInstances, resources);
-
-    std::string filename = sceneIdStr + ".cpp";
+    std::string filename = Factory::sceneToFileName(sceneId, sceneName) + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
 
     FileUtils::writeIfChanged(sourceFile, sceneContent);
 }
 
-void editor::Generator::clearSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) {
+void editor::Generator::clearSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) {
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
-    std::string filename = Factory::toIdentifier(sceneName) + ".cpp";
+    std::string filename = Factory::sceneToFileName(sceneId, sceneName) + ".cpp";
     const fs::path sourceFile = generatedPath / filename;
 
     if (fs::exists(sourceFile)) {
@@ -2022,9 +2019,9 @@ void editor::Generator::clearSceneSource(const std::string& sceneName, const fs:
     }
 }
 
-bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const {
+bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& sceneName, const fs::path& projectInternalPath) const {
     // one written by an older editor lacks what main.cpp calls
-    std::ifstream file(getGeneratedPath(projectInternalPath) / (Factory::toIdentifier(sceneName) + ".cpp"));
+    std::ifstream file(getGeneratedPath(projectInternalPath) / (Factory::sceneToFileName(sceneId, sceneName) + ".cpp"));
     std::string header;
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
@@ -2065,7 +2062,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Forward declarations for per-scene initialization functions (defined in generated scene .cpp files)
     for (const auto& sceneData : scenes) {
-        std::string sceneName = Factory::toIdentifier(sceneData.name);
+        std::string sceneName = Factory::sceneToFileName(sceneData.id, sceneData.name);
         mainContent += "void create_" + sceneName + "(Scene* scene);\n";
         mainContent += "SceneResources resources_" + sceneName + "();\n";
     }
@@ -2077,7 +2074,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     std::map<uint32_t, std::string> sceneIdToName;
     for (const auto& sceneData : scenes) {
-        std::string sceneName = "_" + Factory::toIdentifier(sceneData.name);
+        std::string sceneName = "_" + Factory::sceneToFileName(sceneData.id, sceneData.name);
         mainContent += "static Scene* " + sceneName + " = nullptr;\n";
         sceneIdToName[sceneData.id] = sceneName;
     }
@@ -2087,12 +2084,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // cross-scene references resolve, then build and start the new ones
     auto emitStackSetup = [&](const SceneBuildInfo& sceneData) {
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    bool " + sceneName + "_needsInit = false;\n";
         }
         mainContent += "\n";
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    if (!" + sceneName + "){\n";
             mainContent += "        " + sceneName + " = new Scene();\n";
             mainContent += "        SceneManager::setScenePtr(" + std::to_string(sceneId) + ", " + sceneName + ");\n";
@@ -2101,14 +2098,14 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         }
         mainContent += "\n";
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    if (" + sceneName + "_needsInit) {\n";
             mainContent += "        create" + sceneName + "(" + sceneName + ");\n";
             mainContent += "    }\n";
         }
         mainContent += "\n";
         for (const auto sceneId : sceneData.involvedScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             mainContent += "    if (" + sceneName + "_needsInit) {\n";
             mainContent += "        initScripts(" + sceneName + ");\n";
             mainContent += "    }\n";
@@ -2118,14 +2115,25 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // Per-stack load and add functions. The add one only creates the scenes, leaving the
     // running stack alone; SceneManager::addChildScene() puts them on screen.
     for (const auto& sceneData : scenes) {
-        std::string stackId = Factory::toIdentifier(sceneData.name);
+        std::string stackId = Factory::sceneToFileName(sceneData.id, sceneData.name);
         mainContent += "// --- Scene stack: " + sceneData.name + " ---\n";
 
         mainContent += "void load_" + stackId + "() {\n";
+        // A loaded stack starts again, except scenes still on screen (the loading scene)
+        for (const auto sceneId : sceneData.involvedScenes) {
+            std::string sceneName = sceneIdToName[sceneId];
+            mainContent += "    if (" + sceneName + " && !Engine::isSceneRunning(" + sceneName + ")) {\n";
+            mainContent += "        cleanupScripts(" + sceneName + ");\n";
+            mainContent += "        SceneManager::removeScenePtr(" + std::to_string(sceneId) + ");\n";
+            mainContent += "        delete " + sceneName + ";\n";
+            mainContent += "        " + sceneName + " = nullptr;\n";
+            mainContent += "    }\n";
+        }
+        mainContent += "\n";
         emitStackSetup(sceneData);
         mainContent += "\n";
         for (const auto sceneId : sceneData.activeScenes) {
-            std::string sceneName = "_" + Factory::toIdentifier(sceneIdToName[sceneId]);
+            std::string sceneName = sceneIdToName[sceneId];
             if (sceneData.id == sceneId) {
                 mainContent += "    Engine::setScene(" + sceneName + ");\n";
             } else {
@@ -2136,7 +2144,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         for (const auto& sceneDataAux: scenes) {
             if (sceneDataAux.id == sceneData.id) continue;
             if (std::find(sceneData.involvedScenes.begin(), sceneData.involvedScenes.end(), sceneDataAux.id) != sceneData.involvedScenes.end()) continue;
-            std::string sceneName = "_" + Factory::toIdentifier(sceneDataAux.name);
+            std::string sceneName = "_" + Factory::sceneToFileName(sceneDataAux.id, sceneDataAux.name);
 
             // A script run by initScripts() above may have added a stack of its own through
             // SceneManager::addChildScene(). Deleting any of its scenes here would leave a
@@ -2146,7 +2154,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
             std::string guard = sceneName;
             for (const auto& owner : scenes) {
                 if (std::find(owner.involvedScenes.begin(), owner.involvedScenes.end(), sceneDataAux.id) == owner.involvedScenes.end()) continue;
-                guard += " && !Engine::isSceneRunning(_" + Factory::toIdentifier(owner.name) + ")";
+                guard += " && !Engine::isSceneRunning(_" + Factory::sceneToFileName(owner.id, owner.name) + ")";
             }
             mainContent += "    if (" + guard + ") {\n";
             mainContent += "        cleanupScripts(" + sceneName + ");\n";
@@ -2253,7 +2261,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // Register all stacks with SceneManager
     for (const auto& sceneData : scenes) {
-        std::string stackId = Factory::toIdentifier(sceneData.name);
+        std::string stackId = Factory::sceneToFileName(sceneData.id, sceneData.name);
         std::string sceneIds;
         for (size_t i = 0; i < sceneData.activeScenes.size(); i++) {
             if (i > 0) sceneIds += ", ";
