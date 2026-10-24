@@ -271,6 +271,97 @@ TEST(PlacementWorldControl, WallStopsTargetAndSlidingKeepsFullSpeed) {
     (void)wall;
 }
 
+// A mover that starts deep inside something (the fixture's Overlap pair: two unit cubes 0.2 m
+// into each other on the floor, or a cube sunk into the floor slab) is lifted out by a Move
+// drag, released and settled: it passes through what it started in while driven, nothing is
+// launched, nothing outruns maxSpeed, nothing leaves the floor or falls out of the world, and
+// everything ends at rest on something
+TEST(PlacementWorldControl, DeepOverlapLiftedOutThenSettled) {
+    struct Case { Vector3 b; int other; Vector3 lift; int dragSteps; };
+    // other: 0 = A is context, 1 = A is a mover too, 2 = A is a pushed neighbour
+    std::vector<Case> cases;
+    for (const Vector3& b : {Vector3(0.8f, 0.5f, 0), Vector3(0.2f, 0.5f, 0), Vector3(0.0f, 0.5f, 0), Vector3(0.2f, 0.1f, 0.1f),
+                             Vector3(0.8f, 0.0f, 0), Vector3(0.8f, -0.3f, 0)}) {
+        for (int other = 0; other < 3; other++) {
+            for (const Vector3& lift : {Vector3(0, 1, 0), Vector3(0.5f, 1, 0), Vector3(0, 0, 0), Vector3(-0.3f, 0.5f, 0)}) {
+                for (int dragSteps : {0, 10, 60}) cases.push_back({b, other, lift, dragSteps});
+            }
+        }
+    }
+    for (const Case& c : cases) {
+        SCOPED_TRACE(testing::Message() << "B at (" << c.b.x << ", " << c.b.y << ") other " << c.other << " lift (" << c.lift.x << ", "
+                                        << c.lift.y << ") over " << c.dragSteps << " steps");
+        TestScene t;
+        t.box(Vector3(12, 0.2f, 12), Vector3(0, -0.1f, 0));
+        const Entity overlap = t.entity(Vector3(3.5f, 0, 0));
+        const Entity a = t.box(Vector3(1, 1, 1), Vector3(0, 0.5f, 0), overlap);
+        const Entity b = t.box(Vector3(1, 1, 1), c.b, overlap);
+        t.resolve();
+
+        PlacementWorldSettings settings;
+        settings.pushNeighbours = c.other == 2;
+        PlacementWorld world(&t.scene, settings);
+        ASSERT_TRUE(world.addMover(b));
+        if (c.other == 1) ASSERT_TRUE(world.addMover(a));
+        AABB region = world.getMoversBounds();
+        region = AABB(region.getMinimum() - Vector3(2, 2, 2), region.getMaximum() + Vector3(2, 2, 2));
+        settings.killY = region.getMinimum().y - 50.0f;
+        world.setSettings(settings);
+        world.ensureContext(region);
+        ASSERT_EQ(world.getNeighbours().size(), c.other == 2 ? 1u : 0u);
+
+        float fastest = 0.0f;
+        auto check = [&]() {
+            for (const PlacementBodyState& state : world.getStates()) {
+                fastest = std::max(fastest, state.linearVelocity.length());
+                ASSERT_FALSE(state.fellOut) << state.entity;
+            }
+        };
+        const PlacementPose start = world.getState(b).pose;
+        for (int i = 0; i < c.dragSteps; i++) {
+            const float along = std::min(1.0f, (i + 1) / float(std::max(1, c.dragSteps / 2)));
+            world.setTarget(b, {start.position + c.lift * along, start.rotation});
+            world.step();
+            check();
+        }
+        // released where it is, as the session's settle does
+        world.clearTargets();
+        world.stopAll();
+        world.wakeAll();
+        int steps = 0;
+        for (; steps < 1200 && !world.allAsleep(); steps++) {
+            world.step();
+            check();
+        }
+        EXPECT_TRUE(world.allAsleep());
+        EXPECT_LE(fastest, settings.tuning.maxSpeed + 1e-3f);
+        for (const PlacementBodyState& state : world.getStates()) {
+            EXPECT_GT(state.pose.position.y, 0.49f) << state.entity;
+            EXPECT_LT(std::fabs(state.pose.position.x - 3.5f), 5.0f) << state.entity;
+            EXPECT_LT(std::fabs(state.pose.position.z), 5.0f) << state.entity;
+            EXPECT_FALSE(state.restingOn.empty()) << state.entity;
+        }
+    }
+}
+
+// Nothing outruns maxSpeed, a fall included; a lower limit applies at once
+TEST(PlacementWorldControl, SpeedIsCappedAtMaxSpeed) {
+    TestScene t;
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 0, 0));
+    t.resolve();
+
+    PlacementWorldSettings settings;
+    PlacementWorld world(&t.scene, settings);
+    ASSERT_TRUE(world.addMover(crate));
+    for (int i = 0; i < 240; i++) world.step();
+    EXPECT_NEAR(world.getState(crate).linearVelocity.length(), settings.tuning.maxSpeed, 1e-3f);
+    settings.tuning.maxSpeed = 4.0f;
+    world.setSettings(settings);
+    EXPECT_NEAR(world.getState(crate).linearVelocity.length(), 4.0f, 1e-3f);
+    world.step();
+    EXPECT_NEAR(world.getState(crate).linearVelocity.length(), 4.0f, 1e-3f);
+}
+
 TEST(PlacementWorldControl, ContactSlowsOnlyMotionIntoIt) {
     TestScene t;
     t.box(Vector3(0.2f, 3, 12), Vector3(3, 0, 0));
