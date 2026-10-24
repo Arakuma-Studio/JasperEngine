@@ -15,7 +15,9 @@ using namespace jasperengine;
 
 TEST(ShaderKey, PacksTypePropertiesAndCustomId){
     const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, 0x41, 3);
-    EXPECT_EQ(key, (uint64_t(3) << 48) | (uint64_t(ShaderType::MESH) << 32) | 0x41);
+    EXPECT_EQ(key.type, uint16_t(ShaderType::MESH));
+    EXPECT_EQ(key.properties, 0x41u);
+    EXPECT_EQ(key.customId, 3u);
     EXPECT_EQ(ShaderPool::getShaderTypeFromKey(key), ShaderType::MESH);
     EXPECT_EQ(ShaderPool::getPropertiesFromKey(key), 0x41u);
     EXPECT_EQ(ShaderPool::getCustomIdFromKey(key), 3u);
