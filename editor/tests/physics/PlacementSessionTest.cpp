@@ -11,7 +11,6 @@
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "JasperEngine.h"
-#include "Platform.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -45,13 +44,12 @@ using nlohmann::json;
 
 namespace {
 
-    // ---- one headless project for the whole binary (Engine::systemInit runs once)
+    // ---- one headless project for the whole binary (on the engine TestMain started)
 
     struct Headless {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
-        std::unique_ptr<editor::Platform> platform;
     };
 
     Headless& headless() {
@@ -67,10 +65,7 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: placement\n";
             AppSettings::initialize();
             out.project.reset(new Project());
-            out.platform.reset(new editor::Platform(out.project.get()));
-            static char arg0[] = "jasperengine-editor-tests";
-            static char* argv[] = {arg0, nullptr};
-            Engine::systemInit(1, argv, out.platform.get());
+            // the engine runs already: S02's TestMain started it with its TestSystem
             Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
@@ -90,7 +85,7 @@ namespace {
         placementProjectSwitching();
         ShaderPool::setShaderBuilder(nullptr);
         ShaderBuilder::requestShutdown();
-        Engine::systemShutdown();
+        // (TestMain's environment shuts the engine down)
     }
 
     [[maybe_unused]] ::testing::Environment* const engineShutdown = ::testing::AddGlobalTestEnvironment(new EngineShutdown);

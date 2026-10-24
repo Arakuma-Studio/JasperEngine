@@ -4,9 +4,9 @@
 // jasperengine-texsynth-tests: the texture synthesis core (editor/texsynth) on generated images.
 
 #include "texsynth/SynthesisRecipe.h"
-#include "util/FileUtils.h"
 #include "texsynth/Synthesizer.h"
 #include "texsynth/TextureSynthesis.h"
+#include "util/FileUtils.h"
 
 #include <gtest/gtest.h>
 
@@ -14,6 +14,8 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -1027,7 +1029,9 @@ namespace {
     // in a child process: an address-space limit makes the synthesis' allocations fail
     void synthesizeOutOfMemory() {
         Request r = basicRequest(Mode::Guided, 0, 0);
-        r.examples[0] = Example::fromImage(noiseImage(2048, 2048, 1, 4));
+        // big enough that the free space the parent's allocator already holds (a test process
+        // that runs the engine has many threads, each with its malloc arena) can't hold it
+        r.examples[0] = Example::fromImage(noiseImage(4096, 4096, 1, 4));
         r.targetGuide = ImageInput::fromImage(noiseImage(64, 64, 2));
         long pages = 0;
         std::ifstream("/proc/self/statm") >> pages;
@@ -1038,7 +1042,11 @@ namespace {
         setrlimit(RLIMIT_AS, &rl);
         const Result result = synthesize(r);
         const bool failed = result.status == Status::Failed && !result.errors.empty() && result.errors[0].message.find("out of memory") != std::string::npos;
-        std::exit(failed ? 0 : 1);
+        if (!failed) std::fprintf(stderr, "status %d: %s\n", static_cast<int>(result.status),
+                                  result.errors.empty() ? "no error" : result.errors[0].message.c_str());
+        // _Exit: the forked child of a test process that runs the engine (S02's TestMain: the
+        // logger, the job system) must not run its exit handlers
+        std::_Exit(failed ? 0 : 1);
     }
 
 }

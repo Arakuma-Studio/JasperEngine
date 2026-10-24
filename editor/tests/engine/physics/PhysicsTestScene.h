@@ -30,18 +30,11 @@ namespace jasperengine::physicstest {
         return Quaternion(Angle::radToDefault(radians), axis.normalized());
     }
 
-    // Log goes through System::instance(), which Engine::systemInit sets up; the tests run without
-    // an engine otherwise
-    class TestSystem : public System {
-    public:
-        int getScreenWidth() override { return 0; }
-        int getScreenHeight() override { return 0; }
-    };
-
+    // Log goes through System::instance(): S02's TestMain (engine/tests/support) starts the engine
+    // with its TestSystem before any test, so a scene needs nothing more (a second
+    // Engine::systemInit would restart the job system and the logger under the running tests)
     inline bool installTestSystem() {
-        static TestSystem system;
-        static const bool installed = [](){ Engine::systemInit(0, nullptr, &system); return true; }();
-        return installed;
+        return true;
     }
 
     // TextureDataPool keys a texture's pixels by id: every test heightmap needs its own

@@ -38,23 +38,9 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    // File (the glTF loader's reads) goes through System::instance(), which the editor's
-    // Platform provides: a bare one, set once for the test binary
-    class FileSystemOnly : public System {
-    public:
-        int getScreenWidth() override { return 1000; }
-        int getScreenHeight() override { return 480; }
-    };
-
+    // File (the glTF loader's reads) goes through System::instance(): S02's TestMain started
+    // the engine with its TestSystem for the whole binary
     class GltfMeshOffset : public ::testing::Test {
-    protected:
-        static void SetUpTestSuite() {
-            static FileSystemOnly* system = nullptr;
-            if (!system) {
-                system = new FileSystemOnly();
-                Engine::systemInit(0, nullptr, system);
-            }
-        }
     };
 
     // one triangle: positions (0,0,0) (1,0,0) (0,1,0), normals +Z, ushort indices

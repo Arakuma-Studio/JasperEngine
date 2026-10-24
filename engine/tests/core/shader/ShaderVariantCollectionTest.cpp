@@ -41,10 +41,13 @@ TEST(ShaderKey, CustomShadersAreInterned){
     EXPECT_EQ(ShaderPool::getCustomShaderName(first), "shaders/test_variant_a");
 }
 
-TEST(ShaderKey, NormalizeDropsRetiredPropertyBits){
-    const uint32_t valid = ShaderPool::getValidPropertyMask(ShaderType::MESH);
-    EXPECT_EQ(valid & (1u << 5), 0u);    // the retired 'Pcf' bit
-    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, 0xFFFFFFFFu, 2);
+TEST(ShaderKey, NormalizeDropsBitsWithoutAProperty){
+    const uint64_t valid = ShaderPool::getValidPropertyMask(ShaderType::MESH);
+    // MESH bit 5, the old 'Pcf', is Stochastic Tiling since the 64-bit keys (the stale bit of
+    // older files is stripped where they are read, editor::Stream); bit 63 names nothing
+    EXPECT_NE(valid & (uint64_t(1) << 5), 0u);
+    EXPECT_EQ(valid & (uint64_t(1) << 63), 0u);
+    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, ~uint64_t(0), 2);
     EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(key)), valid);
     EXPECT_EQ(ShaderPool::getCustomIdFromKey(ShaderPool::normalizeKey(key)), 2u);
 }
@@ -90,7 +93,7 @@ TEST(ShaderVariantCollection, AddsEachVariantOnce){
 
 TEST(ShaderVariantCollection, KeysAreNormalized){
     ShaderVariantCollection collection;
-    EXPECT_TRUE(collection.addKey(ShaderPool::getShaderKey(ShaderType::MESH, 0x1 | (1u << 5))));
+    EXPECT_TRUE(collection.addKey(ShaderPool::getShaderKey(ShaderType::MESH, 0x1 | (uint64_t(1) << 63))));
     EXPECT_TRUE(collection.contains(ShaderType::MESH, 0x1));
     EXPECT_FALSE(collection.add(ShaderType::MESH, 0x1));
 }
