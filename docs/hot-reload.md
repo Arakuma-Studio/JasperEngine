@@ -80,7 +80,9 @@ it saves. That call's result carries `external_changes`:
 `source` says whether the change came from the watcher's journal or from the stat scan used when
 the watcher is off or degraded. The call waits up to 10 s for the reloads it started; what still
 reloads is in `pending`. A reload that failed is a problem (the previous version is kept). A
-change the watcher already reloaded before the call is reported once and reloaded once.
+change the watcher already reloaded before the call is reported once and reloaded once, with
+the problems that reload found; the HTML UI documents it reloaded are in `ui_reloaded` when the
+call's flush delivered the change, else counted in `ui_current`.
 
 `sync_files` takes `wait` (default true: return after its reloads, at most 30 s),
 `rebuild_models` (rebuild a model whose hierarchy changed) and `auto_refresh` (the preference).

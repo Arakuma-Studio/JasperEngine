@@ -544,8 +544,6 @@ Each backend test is parameterised over `{Native, Polling}`.
 - **Model materials.** "Submeshes not overridden or linked" are the ones without
   `overrideFields` (MeshSystem's existing submesh overrides, which loadGLTF restores).
 - **Prefab Mode Reload** closes the stage without saving and opens the prefab again.
-- **AC19 frame times** are the intervals between consecutive drawn frames (gaps over 1 s are
-  idling, not frames).
 - **AC21** (manual Windows/macOS) and **AC23** (a wasm test run) could not be run here: the
   procedure and the record are in `docs/specs/acceptance/S05.md`; on Android, iOS and the web
   `FileWatchService` allocates nothing and `start` returns false by construction.
@@ -561,3 +559,7 @@ Each backend test is parameterised over `{Native, Polling}`.
   control's. Measured: control 465 frames median 15.1 / max 46.3 ms, reload 365 frames median
   14.5 / max 50.1 ms, reload latency ≤ 270 ms. `frame_ms` is each drawn frame's work time
   (start to present), not the interval between frames (an idle editor draws on demand).
+- **What the watcher reloaded before a call** keeps the `external_changes` contract: its
+  problems (a Lua syntax error, an HTML UI finding) come with the next call, and the HTML UI
+  documents it reloaded are that call's `ui_reloaded` when the call's `flush` delivered them,
+  else `ui_current` (as when the old 0.25 s UI poller was first).
