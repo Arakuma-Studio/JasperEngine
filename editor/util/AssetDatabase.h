@@ -31,6 +31,7 @@
 #include <thread>
 #include <memory>
 #include "jobs/SerialQueue.h"
+#include "jobs/JobSystem.h"
 #include <unordered_map>
 #include <vector>
 
