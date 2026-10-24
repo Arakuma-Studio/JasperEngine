@@ -8,7 +8,7 @@
 - right-click > Rename: the file keeps its GUID and its meta goes along, the thumbnail cache
   gains no file (thumbnails are keyed by GUID), and no referrer is written
 
-Screenshots of each step go to the scratch directory (kept with --keep).
+Screenshots of each step go to build/test-results/asset-identity-ui/.
 """
 
 from __future__ import annotations
@@ -92,8 +92,12 @@ def meta_guid(ed: Editor, rel: str) -> str:
     return yaml.safe_load((ed.project / (rel + ".meta")).read_text())["guid"]
 
 
+SHOTS = REPO / "build" / "test-results" / "asset-identity-ui"
+
+
 async def shot(ed: Editor, name: str) -> None:
-    await ed.screenshot("editor", (ed.scratch.root if ed.scratch else Path("/tmp")) / f"{name}.png", focus=False, max_width=0)
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    await ed.screenshot("editor", SHOTS / f"{name}.png", focus=False, max_width=0)
 
 
 async def open_textures(ed: Editor) -> dict:
