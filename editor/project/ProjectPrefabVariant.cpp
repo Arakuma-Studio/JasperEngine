@@ -277,12 +277,12 @@ std::filesystem::path editor::Project::getPrefabFileBase(const std::filesystem::
                         break;
                     }
                 }
-                if (!rootNode && members.size() > 0 && header.version >= Prefab::FILE_VERSION) {
+                if (!rootNode && members.size() > 0 && header.version >= Prefab::ROOT_LAYOUT_VERSION) {
                     rootNode.reset(members[0]);
                 }
             }
             const std::string prefabKey = Catalog::getComponentName(ComponentType::PrefabComponent, true);
-            if (rootNode && rootNode.IsMap() && header.version >= Prefab::FILE_VERSION && rootNode["components"] &&
+            if (rootNode && rootNode.IsMap() && header.version >= Prefab::ROOT_LAYOUT_VERSION && rootNode["components"] &&
                     rootNode["components"].IsMap() && rootNode["components"][prefabKey]) {
                 const YAML::Node base = rootNode["components"][prefabKey];
                 if (base["guid"]) entry.baseGuid = base["guid"].as<std::string>();

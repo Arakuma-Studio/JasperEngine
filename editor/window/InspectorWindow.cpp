@@ -14767,3 +14767,8 @@ void editor::InspectorWindow::show(){
         setOpen(false);
     }
 }
+
+// the rows InspectorShadows.cpp draws
+template void editor::InspectorWindow::drawScenePropertyRow<float>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<bool>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<ShadowQuality>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);

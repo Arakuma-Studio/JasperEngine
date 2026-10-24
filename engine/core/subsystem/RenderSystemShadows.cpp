@@ -791,8 +791,6 @@ void RenderSystem::processLights(CameraShadows& view, int numLights, const Camer
             pointData.projection[pointLight] = Vector4(guard, face.nearFar.x, face.nearFar.y, texelPerUnit);
             pointData.bias[pointLight] = Vector4(light.shadowBias * texelPerUnit, light.shadowNormalBias * texelPerUnit, 0.0f, (float)resolution);
             pointData.filtering[pointLight] = Vector4(filter.x, filter.y, light.shadowSourceRadius, std::clamp(light.shadowStrength, 0.0f, 1.0f));
-            const ShadowSlotState& state = view.projectiveSlots[0];
-            (void)state;
             pointData.state[pointLight] = Vector4(pathCode(view.pointSlots[light.shadowMapIndex].lastPath), 0.0f, 0.0f, 0.0f);
             continue;
         }
@@ -1660,8 +1658,6 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             anyKept = false;
         }
 
-        const uint32_t drawsBefore = Engine::getPendingDrawCalls();
-
         // the static layers first: static casters into the static cache
         if (anyStatic){
             shadowStaticPassRender.setLabel(pointAtlas ? "point shadow static" : "shadow static");
@@ -1711,7 +1707,6 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
                 shadowStats.drawCalls[static_cast<int>(decision.path)] += Engine::getPendingDrawCalls() - slotDrawsBefore;
         }
         pass.endRenderPass();
-        (void)drawsBefore;
     };
 
     if (frame){
