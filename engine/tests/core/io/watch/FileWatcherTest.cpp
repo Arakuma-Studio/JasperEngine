@@ -201,8 +201,9 @@ TEST_P(FileWatcherTests, DirectoryMoveExpands) {
 
     const fs::path moved = dir.path / "art" ;
     fs::create_directories(moved);
-    std::this_thread::sleep_for(ms(400));
-    take();
+    // the new folder is known before the move (a loaded host's poll may take longer than 400 ms)
+    const std::vector<FileChange> made = collect(1);
+    ASSERT_TRUE(names(made, "art")) << describe(made);
     fs::rename(folder, moved / "textures");
     const std::vector<FileChange> got = collect(51);
     EXPECT_EQ(countKind(got, FileChangeKind::Moved, true), 1u) << describe(got);

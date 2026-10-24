@@ -349,7 +349,9 @@ async def test_bulk_checkout(ed: Editor):
         if fw["pending"] == 0 and fw["reloading"] == 0:
             break
         time.sleep(0.1)
-    ed.check(time.monotonic() - t0 <= 10.0 + 1.0, "the burst settled within 10 s")
+    took = time.monotonic() - t0
+    print(f"     [bulk] settled in {took:.1f} s, slowest editor_status {slowest:.3f} s, last {stats['file_watcher']!r}")
+    ed.check(took <= 10.0 + 1.0, f"the burst settled within 10 s (took {took:.1f} s, slowest call {slowest:.3f} s)")
     ed.check(slowest < 0.2 + 0.3, f"editor_status stayed responsive (slowest {slowest:.3f} s)")
     lines = await ed.console_since(contains="[Hot Reload]")
     ed.check(len(lines) <= 10, f"{len(lines)} [Hot Reload] lines: {[e['message'] for e in lines][:12]!r}")
