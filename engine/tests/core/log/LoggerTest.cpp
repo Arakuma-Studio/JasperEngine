@@ -3,6 +3,7 @@
 
 #include "log/LogTestSupport.h"
 #include "support/AllocationCounter.h"
+#include "TempDir.h"
 
 #include "Log.h"
 #include "script/LuaBinding.h"
@@ -221,7 +222,9 @@ TEST(LoggerTest, SafetyValve) {
     }
     EXPECT_EQ(plain, 200u);
     EXPECT_EQ(summaries, 1u);
-    if (!printed.empty()) EXPECT_EQ(printed[0].category, "lua");
+    if (!printed.empty()) {
+        EXPECT_EQ(printed[0].category, "lua");
+    }
 
     for (int i = 0; i < 3; i++) {
         JE_LOG_ONCE(Warn, logCategoryLoggerTest(), "logged once");

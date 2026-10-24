@@ -1936,10 +1936,10 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     {
         PlayerLoggingSettings logging;
-        if (node["playerLogging"].IsMap()) {
+        if (node["playerLogging"].IsDefined() && node["playerLogging"].IsMap()) {
             const YAML::Node loggingNode = node["playerLogging"];
             LogLevel level;
-            if (loggingNode["level"].IsScalar() && parseLogLevel(loggingNode["level"].as<std::string>().c_str(), level)) {
+            if (loggingNode["level"].IsDefined() && loggingNode["level"].IsScalar() && parseLogLevel(loggingNode["level"].as<std::string>().c_str(), level)) {
                 logging.level = logLevelName(level);
             }
             if (loggingNode["fileLog"].IsDefined()) logging.fileLog = YamlNumbers::as<bool>(loggingNode["fileLog"]);

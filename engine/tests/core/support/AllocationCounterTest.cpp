@@ -85,6 +85,6 @@ TEST(AllocationCounter, CountsTheCallingThreadsAllocations) {
     EXPECT_GE(count.count(), 1u);
     ScopedAllocationCount none;
     volatile int sum = 0;
-    for (int i = 0; i < 10; i++) sum += i;
+    for (int i = 0; i < 10; i++) sum = sum + i;
     EXPECT_EQ(none.count(), 0u);
 }

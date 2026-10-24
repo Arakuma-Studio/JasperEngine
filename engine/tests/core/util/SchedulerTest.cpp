@@ -215,11 +215,14 @@ TEST(SchedulerTest, FramesAndFixedSteps) {
             scheduler.advance(TimeDomain::FixedSteps, 1.0);
             scheduler.process(TimeDomain::FixedSteps);
         }
-        if (frame == 1) EXPECT_EQ(steps, 1) << "two fixed-step iterations";
+        if (frame == 1) {
+            EXPECT_EQ(steps, 1) << "two fixed-step iterations";
+        }
         scheduler.advance(TimeDomain::Frames, 1.0);
         scheduler.process(TimeDomain::Frames);
-        if (frame == 1) EXPECT_EQ(frames, 1);
-        if (frame == 2) EXPECT_EQ(frames, 1);
+        if (frame <= 2) {
+            EXPECT_EQ(frames, 1) << "frame " << frame;
+        }
     }
     EXPECT_EQ(frames, 11);
 }
@@ -304,7 +307,9 @@ TEST(SchedulerTest, Process10kUnder2ms) {
     const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     EXPECT_EQ(sum, 20000);
     std::printf("[bench] 10k timers inserted and processed: %.3f ms (budget 2)\n", ms);
-    if (perfSlack() > 0.0) EXPECT_LE(ms, 2.0 * perfSlack());
+    if (perfSlack() > 0.0) {
+        EXPECT_LE(ms, 2.0 * perfSlack());
+    }
 }
 
 TEST(SchedulerBench, AfterAndIdleProcess) {

@@ -36,7 +36,9 @@ namespace {
     void expectWithin(double measured, double budget, const char* what) {
         const double slack = perfSlack();
         std::printf("[bench] %s: %.3f (budget %.3f)\n", what, measured, budget);
-        if (slack > 0.0) EXPECT_LE(measured, budget * slack) << what;
+        if (slack > 0.0) {
+            EXPECT_LE(measured, budget * slack) << what;
+        }
     }
 
 }
