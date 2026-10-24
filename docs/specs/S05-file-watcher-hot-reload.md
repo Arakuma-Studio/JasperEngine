@@ -584,3 +584,9 @@ Each backend test is parameterised over `{Native, Polling}`.
   problems (a Lua syntax error, an HTML UI finding) come with the next call, and the HTML UI
   documents it reloaded are that call's `ui_reloaded` when the call's `flush` delivered them,
   else `ui_current` (as when the old 0.25 s UI poller was first).
+- **S06 landed during the stream**: the reload decodes run on `jobs::submit` (Background lane,
+  so they give way to the frame's own jobs) instead of `ThreadPoolManager`.
+- **ThreadSanitizer** (S02's `SANITIZE=thread`) reported every watch backend's flush: libstdc++'s
+  `std::timed_mutex::try_lock_for` locks through `pthread_mutex_clocklock`, which TSan does not
+  intercept, so the unlock that follows reads as "unlock of an unlocked mutex". The backends
+  use a plain mutex and a try-lock loop with the same timeout (`watch::lockWithin`).
