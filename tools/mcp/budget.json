@@ -75,8 +75,8 @@
             "reason": "grandfathered by S31: 1707 chars when the limits were set, +5% (tighter than its HTML UI cap 1956)"
         },
         "play": {
-            "limit": 1632,
-            "reason": "grandfathered by S31: 1555 chars when the limits were set, +5%"
+            "limit": 1709,
+            "reason": "grandfathered by S31 at 1555 chars (+5% = 1632); S24 added keep_changes (+154): 1709 when S31 merged S24"
         },
         "wait": {
             "limit": 1610,
