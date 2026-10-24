@@ -63,6 +63,38 @@ namespace {
         return value;
     }
 
+    // Where the document's own content starts on `line`, npos for a line before it: blank, a
+    // comment, a directive or a bare document start marker ("--- {...}" starts at the brace)
+    size_t documentContentStart(const std::string& line) {
+        size_t start = 0;
+        if (line.compare(0, 3, "---") == 0) {
+            start = 3;
+        } else if (!line.empty() && line[0] == '%') {
+            return std::string::npos;
+        }
+        start = line.find_first_not_of(" \t", start);
+        if (start == std::string::npos || line[start] == '#') {
+            return std::string::npos;
+        }
+        return start;
+    }
+
+    // The top-level `guid` of a flow style document, empty without one
+    std::string flowGuid(const fs::path& path) {
+        std::string text;
+        if (!readText(path, text)) {
+            return {};
+        }
+        try {
+            const YAML::Node node = YAML::Load(text);
+            if (node.IsMap() && node["guid"] && node["guid"].IsScalar()) {
+                return node["guid"].Scalar();
+            }
+        } catch (const std::exception&) {
+        }
+        return {};
+    }
+
     bool skippedDirectory(const std::string& name) {
         // '.jasperengine' holds generated files and the cache, '.trash' deleted files, 'build'
         // the build artifacts (the same set Project::findProjectFiles skips)
@@ -110,13 +142,27 @@ std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
     // GUIDs normally precede the entity data. Stop reading at that line instead of
     // loading and copying every prefab in full when the asset database opens.
     std::string line;
+    bool inContent = false;
     while (std::getline(file, line)) {
+        size_t valueEnd = line.size();
+        if (valueEnd > 0 && line[valueEnd - 1] == '\r') {
+            --valueEnd;
+        }
         if (isGuidLine(line, 0)) {
-            size_t valueEnd = line.size();
-            if (valueEnd > 0 && line[valueEnd - 1] == '\r') {
-                --valueEnd;
-            }
             return guidValue(line, 0, valueEnd);
+        }
+        if (inContent) {
+            continue;
+        }
+        const size_t content = documentContentStart(line.substr(0, valueEnd));
+        if (content == std::string::npos) {
+            continue;
+        }
+        inContent = true;
+        if (line[content] == '{') {
+            // a flow style map (written by another tool): its keys are not lines, parse it
+            file.close();
+            return flowGuid(fullPath);
         }
     }
     return {};
@@ -185,12 +231,22 @@ bool editor::AssetDatabase::writeGuid(const fs::path& fullPath, const std::strin
     }
     if (!verified) {
         try {
-            YAML::Node node = YAML::Load(text);
+            const YAML::Node node = YAML::Load(text);
             if (!node.IsMap()) {
                 return false;
             }
-            node["guid"] = guid;
-            updated = YAML::Dump(node) + "\n";
+            // block style at the top, the GUID first: the line readGuid looks for, and the
+            // line edits above work on the next write (nested values keep their style)
+            YAML::Node rewritten(YAML::NodeType::Map);
+            rewritten.SetStyle(YAML::EmitterStyle::Block);
+            rewritten.force_insert("guid", guid);
+            for (const auto& entry : node) {
+                if (entry.first.IsScalar() && entry.first.Scalar() == "guid") {
+                    continue;
+                }
+                rewritten.force_insert(entry.first, entry.second);
+            }
+            updated = YAML::Dump(rewritten) + "\n";
         } catch (const std::exception& e) {
             Out::warning("Could not write the GUID of %s: %s", fullPath.string().c_str(), e.what());
             return false;
