@@ -22,6 +22,7 @@ File::File(FILE *fp) {
 }
 
 File::File(const char *aFilename, bool write){
+    fileHandle = NULL;   // open() leaves it untouched on an invalid filename
     open(aFilename, write);
 }
 
@@ -93,5 +94,9 @@ void File::flush(){
 }
 
 void File::close(){
-    fclose(fileHandle);
+    // idempotent: an explicit close() followed by the destructor must not fclose twice
+    if (fileHandle){
+        fclose(fileHandle);
+        fileHandle = NULL;
+    }
 }

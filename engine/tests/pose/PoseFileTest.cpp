@@ -9,6 +9,7 @@
 
 #include "Engine.h"
 #include "System.h"
+#include "io/File.h"
 #include "pose/HumanBones.h"
 #include "pose/PoseFile.h"
 #include "PoseTestUtil.h"
@@ -156,6 +157,34 @@ TEST(PoseFile, Utf8PathsAreWrittenAndRead){
     std::vector<std::string> warnings;
     ASSERT_TRUE(loadPoseAnimationFile(path, loaded, warnings, &error)) << error;
     EXPECT_EQ(loaded.previewModel, "models/hero.gltf");
+}
+
+TEST(PoseFile, EngineFileCloseIsIdempotent){
+    // File::close() then the destructor (or a second close()) closed the FILE* twice (undefined
+    // behaviour, a double free in glibc): close() nulls the handle
+    posetest::ScratchDir dir;
+    const std::string path = dir.file("close.bin");
+    {
+        File file;
+        ASSERT_EQ(file.open(path.c_str(), true), FileErrors::FILEDATA_OK);
+        unsigned char bytes[3] = {1, 2, 3};
+        EXPECT_EQ(file.write(bytes, 3), 3u);
+        file.close();
+        EXPECT_EQ(file.getFilePtr(), nullptr);
+        file.close();
+        EXPECT_EQ(file.getFilePtr(), nullptr);
+    }   // the destructor runs on a closed file
+    EXPECT_EQ(slurp(path), std::string("\x01\x02\x03"));
+    {
+        File file(path.c_str());
+        ASSERT_NE(file.getFilePtr(), nullptr);
+        EXPECT_EQ(file.length(), 3u);
+        file.close();
+    }
+    {
+        File invalid(static_cast<const char*>(nullptr));   // open() fails before setting the handle
+        EXPECT_EQ(invalid.getFilePtr(), nullptr);
+    }
 }
 
 TEST(PoseFile, SaveAndLoadHumanoidOverrides){
