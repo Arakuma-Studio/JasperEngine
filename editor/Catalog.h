@@ -395,6 +395,11 @@ namespace jasperengine::editor{
                     return scene->getGravity3D();
                 }
             }
+            else if (propertyName == "physics_interpolation") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isPhysicsInterpolation();
+                }
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) {
                     return scene->getLightState();
@@ -598,6 +603,9 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_gravity_3d") {
                 if constexpr (std::is_same_v<T, Vector3>) return d.gravity3D;
             }
+            else if (propertyName == "physics_interpolation") {
+                if constexpr (std::is_same_v<T, bool>) return d.physicsInterpolation;
+            }
             else if (propertyName == "light_state") {
                 if constexpr (std::is_same_v<T, LightState>) return d.lightState;
             }
@@ -751,6 +759,11 @@ namespace jasperengine::editor{
             else if (propertyName == "physics_gravity_3d") {
                 if constexpr (std::is_same_v<T, Vector3>) {
                     scene->setGravity3D(value);
+                }
+            }
+            else if (propertyName == "physics_interpolation") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setPhysicsInterpolation(value);
                 }
             }
             else if (propertyName == "light_state") {

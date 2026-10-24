@@ -218,6 +218,11 @@ namespace jasperengine{
         void setGravity3D(Vector3 gravity);
         void setGravity3D(float x, float y, float z);
 
+        // forwarder to PhysicsSystem::setInterpolation: bodies drawn between their last two
+        // fixed steps, so they move smoothly at any frame rate
+        void setPhysicsInterpolation(bool interpolation);
+        bool isPhysicsInterpolation() const;
+
         void setDefaultMeshShader(const std::string& path);
         const std::string& getDefaultMeshShader() const;
 

@@ -259,6 +259,7 @@ namespace jasperengine {
 
         static uint64_t lastTime;
         static double updateTimeCount;
+        static int fixedStepsLeft;
         
         static double deltatime;
         static double maxDeltatime;
@@ -388,6 +389,9 @@ namespace jasperengine {
         // physics-driven entities to remove temporal aliasing.
         static double getInterpolationAlpha();
 
+        // Fixed steps still to run in this frame, the current one included (1 outside the fixed phase)
+        static int getFixedStepsLeft();
+
         static void setMouseCursor(CursorType type);
         static CursorType getMouseCursor();
 
@@ -457,8 +461,8 @@ namespace jasperengine {
         static void clearUnusedPools();
 
         static void clearAllSubscriptions(bool includeLifecycle);
-        // Callbacks scripts left on a scene's components. Needed before the code behind them
-        // goes away, like the editor unloading the project library
+        // Callbacks scripts left on a scene's components and physics events. Needed before the
+        // code behind them goes away, like the editor unloading the project library
         static void clearComponentSubscriptions(Scene* scene);
         static void removeSubscriptionsByTag(const std::string& substring);
 

@@ -14720,7 +14720,7 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Physics");
 
                 if (ImGui::BeginTable("scene_physics_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Gravity"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Interpolate"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     if (sceneProject->sceneType == SceneType::SCENE_3D) {
@@ -14730,6 +14730,8 @@ void editor::InspectorWindow::show(){
                         drawScenePropertyRow<Vector2>(sceneProject, "physics_gravity_2d", "Gravity", ScenePropertyInputType::DragFloat, -1.0f, 0.0f, 1.0f,
                             "Gravity applied to 2D physics bodies (meters/s^2).");
                     }
+                    drawScenePropertyRow<bool>(sceneProject, "physics_interpolation", "Interpolate", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                        "Draws bodies between their last two fixed steps, so they move smoothly at any frame rate (a frame behind the simulation by up to one step). Bodies moved by a script or an animation keep the pose they were given.");
 
                     ImGui::EndTable();
                 }

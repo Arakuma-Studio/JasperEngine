@@ -6,6 +6,8 @@
 
 #include "Engine.h"
 #include "math/Vector2.h"
+#include "math/Vector3.h"
+#include "math/Quaternion.h"
 #include "util/HybridArray.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "box2d/box2d.h"
@@ -73,6 +75,19 @@ namespace jasperengine{
         BodyType type = BodyType::STATIC;
         bool newBody = true;
         Vector2 loadedScale = Vector2::UNIT_SCALE;
+
+        // Runtime state of the body sync (PhysicsSystem), not saved
+        // kinematic, moving to its Transform with a velocity over the frame's fixed steps
+        bool followingTransform = false;
+#ifdef JASPERENGINE_PHYSICS_2D
+        // pose before the last step, drawn towards the current one
+        b2Transform previousTransform = b2Transform_identity;
+#endif
+        // world pose physics and the Transform last agreed on (written to the Transform, or
+        // the body put at it): a Transform still there was moved by nobody else since
+        bool hasSyncedPose = false;
+        Vector3 syncedPosition;
+        Quaternion syncedRotation;
     };
 
 }

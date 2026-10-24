@@ -168,6 +168,7 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addFunction("setGravity3D",
             luabridge::overload<Vector3>(&PhysicsSystem::setGravity3D),
             luabridge::overload<float, float, float>(&PhysicsSystem::setGravity3D))
+        .addProperty("interpolation", &PhysicsSystem::isInterpolation, &PhysicsSystem::setInterpolation)
 #ifdef JASPERENGINE_PHYSICS_2D
         .addProperty("pointsToMeterScale2D", &PhysicsSystem::getPointsToMeterScale2D,  &PhysicsSystem::setPointsToMeterScale2D)
         .addProperty("beginContact2D", [] (PhysicsSystem* self, lua_State* L) { return &self->beginContact2D; }, [] (PhysicsSystem* self, lua_State* L) { self->beginContact2D = L; })
