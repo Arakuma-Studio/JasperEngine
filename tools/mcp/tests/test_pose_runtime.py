@@ -27,6 +27,8 @@ S: dict = {}
 
 ANIM = "anims/raise.poseanim"
 ONE_SHOT = "anims/oneshot.poseanim"
+# long enough (2.12 s) to be seen half way through between two tool calls on a loaded machine
+LONG_SHOT = "anims/longshot.poseanim"
 HAND = "mixamorig:LeftHand"
 ARM = "mixamorig:LeftArm"
 
@@ -98,6 +100,7 @@ async def frames(ed: Editor, seconds: float):
 async def test_add_component(ed: Editor):
     write_asset(ed, ANIM, animation([pose("Down", 0, hold=0.3), pose("T", 90, hold=0.3), pose("Up", 150, hold=0.3)]))
     write_asset(ed, ONE_SHOT, animation([pose("Down", 0, hold=0.05), pose("T", 90, hold=0.05)], loop=False))
+    write_asset(ed, LONG_SHOT, animation([pose("Down", 0, hold=1.0), pose("T", 90, hold=1.0)], loop=False))
 
     types = await ed.call("list_component_types")
     ed.check("poseanimator" in json.dumps(types).lower(), f"poseanimator not listed: {json.dumps(types)[:400]}")
@@ -229,22 +232,31 @@ async def test_empty_path_restores_the_bones(ed: Editor):
 
 
 async def test_negative_speed_one_shot_starts_at_the_end(ed: Editor):
-    await lua(ed, f"""
-        local a = object('Hero', 'Model'):getPoseAnimator()
-        a:setSpeed(-1)
-        a:play()
-        a:setAnimation('{ONE_SHOT}')
-    """)
-    deadline = time.monotonic() + 30
-    while not (await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isLoaded()"))[0]:
-        ed.check(time.monotonic() < deadline, "the one-shot never loaded")
-        await frames(ed, 0.05)
-    v = await lua(ed, "local a = object('Hero', 'Model'):getPoseAnimator(); return a:getTime(), a:getLength(), a:isPlaying()")
-    ed.check(v[2] and v[0] > 0.3 * v[1], f"backwards from the end: time {v[0]} of {v[1]}, playing {v[2]}")
-    await frames(ed, 1.5)
-    v = await lua(ed, "local a = object('Hero', 'Model'):getPoseAnimator(); return a:getTime(), a:isPlaying()")
-    ed.check_eq(v, [0, False], "the backwards one-shot ends at time 0")
-    await lua(ed, f"local a = object('Hero', 'Model'):getPoseAnimator(); a:setSpeed(1); a:setAnimation('{ANIM}'); a:play()")
+    try:
+        await lua(ed, f"""
+            local a = object('Hero', 'Model'):getPoseAnimator()
+            a:setSpeed(-1)
+            a:play()
+            a:setAnimation('{LONG_SHOT}')
+        """)
+        deadline = time.monotonic() + 30
+        while not (await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isLoaded()"))[0]:
+            ed.check(time.monotonic() < deadline, "the one-shot never loaded")
+            await frames(ed, 0.05)
+        v = await lua(ed, "local a = object('Hero', 'Model'):getPoseAnimator(); return a:getTime(), a:getLength(), a:isPlaying()")
+        ed.check(v[2] and 0.5 * v[1] < v[0] < v[1], f"backwards from the end: time {v[0]} of {v[1]}, playing {v[2]}")
+        await frames(ed, 0.2)
+        later = await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():getTime()")
+        ed.check(later[0] < v[0], f"time goes down: {v[0]} -> {later[0]}")
+        deadline = time.monotonic() + 30
+        while (await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isPlaying()"))[0]:
+            ed.check(time.monotonic() < deadline, "the backwards one-shot never ended")
+            await frames(ed, 0.2)
+        v = await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():getTime()")
+        ed.check_eq(v, [0], "the backwards one-shot ends at time 0")
+    finally:
+        # the next tests play forwards whatever happened here
+        await lua(ed, f"local a = object('Hero', 'Model'):getPoseAnimator(); a:setSpeed(1); a:setAnimation('{ANIM}'); a:play()")
     deadline = time.monotonic() + 30
     while not (await lua(ed, "return object('Hero', 'Model'):getPoseAnimator():isLoaded()"))[0]:
         ed.check(time.monotonic() < deadline, "the animator never loaded again")
