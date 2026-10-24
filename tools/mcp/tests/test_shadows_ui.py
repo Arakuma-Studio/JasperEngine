@@ -1,12 +1,12 @@
 """3D shadows in the Inspector (spec S10 AC17), scripted with real mouse input (xdotool in the
-harness's Xvfb, 1600x900, default layout) and checked through MCP: each shadow row an agent cannot
-reach through set_properties alone (Shadow Type, Resolution, Bias, Normal Bias, Shadow Distance,
-Cascade Count, the split bar's drag, Static Shadow Caster) edits the light or mesh as one named
-undo step, and undo puts the value back.
+harness's Xvfb, 1600x900, default layout) and checked through MCP: the shadow rows of the AC's list
+(Shadow Type, Resolution, Bias, Normal Bias, Shadow Distance, Cascade Count, the split bar's drag,
+Static Shadow Caster) each edit the light or mesh as one named undo step, and undo puts the value
+back.
 
-Row positions are offsets inside the Inspector panel (focus_window's rect) measured in the default
-layout; every action is verified through MCP, and the screenshots of each step go to
-build/test-output/shadows-ui, so a layout change fails with the pictures to look at."""
+The rows' positions are window coordinates measured in the default layout; every action is
+verified through MCP, and the screenshots of each step go to build/test-output/shadows-ui, so a
+layout change fails with the pictures to look at."""
 
 from __future__ import annotations
 
@@ -16,8 +16,10 @@ import shutil
 import subprocess
 
 import harness
+import pngdiff
 from harness import Editor, skip
 
+CI = True
 EDITOR = {"xvfb": "harness", "create": True, "name": "Shadows UI"}
 TIMEOUT = 900
 
@@ -41,11 +43,9 @@ class Ui:
     def xdo(self, *args: str) -> str:
         return subprocess.run(["xdotool", *args], env=self.env, capture_output=True, text=True, timeout=20).stdout
 
-    def at(self, rect: dict, offset: tuple[float, float]) -> tuple[int, int]:
-        return (int(self.origin[0] + rect["x"] + offset[0]), int(self.origin[1] + rect["y"] + offset[1]))
-
     async def move(self, point: tuple[int, int]):
-        self.xdo("mousemove", str(point[0]), str(point[1]))
+        """to a point in window coordinates"""
+        self.xdo("mousemove", str(self.origin[0] + point[0]), str(self.origin[1] + point[1]))
         await asyncio.sleep(0.25)
 
     async def click(self, point: tuple[int, int]):
@@ -53,19 +53,11 @@ class Ui:
         self.xdo("click", "1")
         await asyncio.sleep(0.6)
 
-    async def scroll(self, point: tuple[int, int], clicks: int):
-        await self.move(point)
-        for _ in range(abs(clicks)):
-            self.xdo("click", "5" if clicks > 0 else "4")
-            await asyncio.sleep(0.05)
-        await asyncio.sleep(0.4)
-
 
 async def editor_shot(ed: Editor, name: str):
     r = await ed.call_raw("screenshot", {"view": "editor", "max_width": 1600})
     ed.check(not r.is_error and r.images, f"no editor screenshot: {r.text[:300]}")
     SHOT_DIR.mkdir(parents=True, exist_ok=True)
-    import pngdiff
     (SHOT_DIR / f"{name}.png").write_bytes(pngdiff.encode(pngdiff.decode(r.images[0][0])))
 
 
@@ -196,7 +188,7 @@ async def test_inspector_shadow_rows_undo(ed: Editor):
         ui.xdo("mousedown", "1")
         await asyncio.sleep(0.3)
         for k in range(1, 9):
-            ui.xdo("mousemove", str(handle[0] + 2 * k), str(y))
+            ui.xdo("mousemove", str(ui.origin[0] + handle[0] + 2 * k), str(ui.origin[1] + y))
             await asyncio.sleep(0.05)
         await asyncio.sleep(0.3)
         ui.xdo("mouseup", "1")
@@ -212,35 +204,3 @@ async def test_inspector_shadow_rows_undo(ed: Editor):
         got = await ed.call("get_entity", scene=sid, entity=cube, components=["mesh"])
         return harness.find_key(got, "staticShadowCaster")
     await edit_and_undo(ed, sid, "static_shadow_caster", static_flag, lambda: ui.click(STATIC_SHADOW_CASTER), differs)
-
-
-async def test_inspector_layout(ed: Editor):
-    """The Shadows rows of a light and a mesh in the Inspector, scrolled into view: pictures."""
-    if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
-        skip("needs xdotool and the harness's Xvfb")
-    ui = Ui(ed)
-    made = await ed.call("create_scene", name="InspectorShadows", type="3D", path="scenes/InspectorShadows")
-    sid = made["scene"]["id"]
-    await ed.call("select_scene", scene=sid)
-    found = await ed.call("find_entities", scene=sid, component="light")
-    sun = harness.entity_id_of(harness.find_entities(found)[0])
-    cube = (await ed.call("create_entity", scene=sid, type="cube", name="Crate", select=False))["entity_id"]
-
-    await ed.call("select_entities", scene=sid, entities=[sun])
-    rect = (await ed.call("focus_window", window="inspector"))["rect"]
-    print(f"     [ui] inspector rect {rect}, window origin {ui.origin}")
-    await ed.call("wait", frames=4)
-    await editor_shot(ed, "light_0")
-    middle = ui.at(rect, (rect["width"] / 2, rect["height"] / 2))
-    for k in range(1, 4):
-        await ui.scroll(middle, 5)
-        await ed.call("wait", frames=4)
-        await editor_shot(ed, f"light_{k}")
-
-    await ed.call("select_entities", scene=sid, entities=[cube])
-    await ed.call("wait", frames=4)
-    await editor_shot(ed, "mesh_0")
-    for k in range(1, 3):
-        await ui.scroll(middle, 5)
-        await ed.call("wait", frames=4)
-        await editor_shot(ed, f"mesh_{k}")
