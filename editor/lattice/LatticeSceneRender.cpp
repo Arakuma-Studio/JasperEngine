@@ -260,9 +260,6 @@ AABB SceneRender::getLatticePointsAABB(Entity entity, const std::vector<int>& po
 }
 
 void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool selected, bool editable){
-    lines.overlay->clearLines();
-    lines.depth->clearLines();
-
     Transform& transform = scene->getComponent<Transform>(entity);
     LatticeComponent& lattice = scene->getComponent<LatticeComponent>(entity);
     const int rx = lattice.resolutionX;
@@ -270,6 +267,9 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
     const int rz = lattice.resolutionZ;
     const int count = rx * ry * rz;
     if (rx < LATTICE_MIN_RESOLUTION || ry < LATTICE_MIN_RESOLUTION || rz < LATTICE_MIN_RESOLUTION || (int)lattice.offsets.size() != count){
+        lines.cached = false;
+        lines.overlay->clearLines();
+        lines.depth->clearLines();
         lines.overlay->setVisible(false);
         lines.depth->setVisible(false);
         return;
@@ -281,6 +281,33 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
     // (flat sprites inside a thin cage) draw it all over the scene
     const bool depthTested = cameracomp.type == CameraType::CAMERA_PERSPECTIVE;
     const float overlayFactor = depthTested ? view.behindOpacity : 1.0f;
+    const int thicknessPx = std::max(1, (int)std::lround(view.lineThickness * overlayScale));
+
+    // an unselected cage of 1-px lines is the same from every camera: kept while its lattice,
+    // transform and the settings it is drawn with stay the same
+    if (!selected && thicknessPx == 1){
+        const float settings[] = {depthTested ? 1.0f : 0.0f, overlayFactor, view.stretchColoring ? 1.0f : 0.0f,
+            view.lineColor[0], view.lineColor[1], view.lineColor[2], view.lineColor[3],
+            view.squashColor[0], view.squashColor[1], view.squashColor[2], view.squashColor[3],
+            view.stretchColor[0], view.stretchColor[1], view.stretchColor[2], view.stretchColor[3]};
+        const size_t settingsCount = sizeof(settings) / sizeof(settings[0]);
+        if (lines.cached && lines.cachedResolution[0] == rx && lines.cachedResolution[1] == ry && lines.cachedResolution[2] == rz &&
+                lines.cachedModel == transform.modelMatrix && lines.cachedOffsets == lattice.offsets &&
+                lines.cachedSettings.size() == settingsCount && std::equal(settings, settings + settingsCount, lines.cachedSettings.begin())){
+            lines.depth->setVisible(depthTested);
+            lines.overlay->setVisible(true);
+            return;
+        }
+        lines.cached = true;
+        lines.cachedModel = transform.modelMatrix;
+        lines.cachedOffsets = lattice.offsets;
+        lines.cachedResolution[0] = rx;
+        lines.cachedResolution[1] = ry;
+        lines.cachedResolution[2] = rz;
+        lines.cachedSettings.assign(settings, settings + settingsCount);
+    }else{
+        lines.cached = false;
+    }
 
     const Matrix4& vm = cameracomp.viewMatrix;
     Vector3 camRight(vm.get(0, 0), vm.get(1, 0), vm.get(2, 0));
@@ -292,7 +319,9 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
 
     const float alpha = selected ? 1.0f : unselectedAlpha;
     const Vector4 lineColor = withAlpha(toVector4(view.lineColor), alpha);
-    const int thickness = std::max(1, (int)std::lround(view.lineThickness * overlayScale));
+    const int thickness = thicknessPx;
+    lines.overlay->clearLines();
+    lines.depth->clearLines();
 
     auto addLine = [&](const Vector3& a, const Vector3& b, const Vector4& color){
         if (thickness == 1){
@@ -312,8 +341,10 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
         }
     };
 
-    std::vector<Vector3> rest((size_t)count);
-    std::vector<Vector3> world((size_t)count);
+    std::vector<Vector3>& rest = latticeRestScratch;
+    std::vector<Vector3>& world = latticeWorldScratch;
+    rest.resize((size_t)count);
+    world.resize((size_t)count);
     bool deformed = false;
     for (int k = 0; k < rz; k++){
         for (int j = 0; j < ry; j++){
@@ -329,7 +360,7 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
         }
     }
 
-    auto forEachEdge = [&](const std::function<void(int, int)>& edge){
+    auto forEachEdge = [&](auto&& edge){
         for (int k = 0; k < rz; k++){
             for (int j = 0; j < ry; j++){
                 for (int i = 0; i < rx; i++){
@@ -705,4 +736,36 @@ void SceneRender::endLatticeDrag(){
         }
     }
     latticeDrag = LatticeDrag();
+}
+
+void SceneRender::redirectDrivenFollowers(Scene* target, std::vector<Entity>& entities){
+    if (!target || entities.empty()){
+        return;
+    }
+    const ToolsLayer& tools = gizmoTools();
+    const GizmoSelected gizmo = tools.getGizmoSelected();
+    bool position = false;
+    bool rotation = false;
+    bool scale = false;
+    if (gizmo == GizmoSelected::TRANSLATE){
+        position = true;
+    }else if (gizmo == GizmoSelected::ROTATE){
+        rotation = true;
+    }else if (gizmo == GizmoSelected::SCALE){
+        scale = true;
+    }else if (gizmo == GizmoSelected::OBJECT2D && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
+        position = true;
+    }else{
+        return;
+    }
+    std::vector<Entity> redirected;
+    redirected.reserve(entities.size());
+    for (Entity entity : entities){
+        Entity rest = LatticeEditorOps::getFollowerDrivingRest(target, entity, position, rotation, scale);
+        Entity edited = rest != NULL_ENTITY ? rest : entity;
+        if (std::find(redirected.begin(), redirected.end(), edited) == redirected.end()){
+            redirected.push_back(edited);
+        }
+    }
+    entities.swap(redirected);
 }

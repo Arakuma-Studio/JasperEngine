@@ -242,3 +242,98 @@ async def test_prefab_instance_resolution_keeps_its_grid(ed: Editor):
     state = await lattice_state(ed, sid, cage)
     res = [state["resolutionX"], state["resolutionY"], state["resolutionZ"]]
     ed.check_eq(len(state["offsets"]), res[0] * res[1] * res[2], f"after undo too: {res}, {len(state['offsets'])} offsets")
+
+
+# -- Lattice Follower in the editor (LatticeSystem drives its Transform every frame) ---------------
+
+
+def transform_overrides(info, entity: int) -> list[str]:
+    """The Transform properties `entity` overrides (get_prefab_info lists the whole instance's)."""
+    return [p for e in info.get("overrides", []) if e.get("kind") == "property" and e.get("component") == "transform"
+            and (e.get("entity") or {}).get("id") == entity for p in e.get("properties", [])]
+
+
+async def world_x(ed: Editor, scene: int, entity: int) -> float:
+    return (await ed.call("get_entity", scene=scene, entity=entity))["world"]["position"][0]
+
+
+async def unsaved(ed: Editor, scene: int) -> bool:
+    status = await ed.call("editor_status")
+    return scene in status["unsaved"]["scene_ids"]
+
+
+async def test_follower_setup_and_no_spurious_state(ed: Editor):
+    made = await ed.call("create_scene", name="Followers", type="3D", path="scenes/Followers")
+    sid = made["scene"]["id"]
+    S["fscene"] = sid
+    await ed.call("select_scene", scene=sid)
+    await ed.call("focus_window", window="scene", scene=sid)
+    rig = (await ed.call("create_entity", type="empty", scene=sid, name="Rig"))["entity_id"]
+    cage = (await ed.call("create_entity", type="empty", scene=sid, name="Cage", parent=rig, scale=[2, 2, 2]))["entity_id"]
+    await ed.call("add_component", scene=sid, entity=cage, component="lattice")
+    rest = (await ed.call("create_entity", type="empty", scene=sid, name="Rest", parent=rig, position=[0.4, 0, 0]))["entity_id"]
+    follower = (await ed.call("create_entity", type="box", scene=sid, name="Follower", parent=rig, position=[0.4, 0, 0],
+                              scale=[0.2, 0.2, 0.2]))["entity_id"]
+    await ed.call("add_component", scene=sid, entity=follower, component="latticefollower")
+    await ed.call("set_properties", scene=sid, entity=follower, values={"latticefollower": {"lattice": cage, "rest": rest}})
+    S.update(rig=rig, fcage=cage, rest=rest, follower=follower)
+    await ed.call("create_prefab", scene=sid, entity=rig, path="prefabs/Rig.prefab")
+
+    # a point of the instance's cage moved: the follower follows, nothing else is an override
+    await ed.call("set_properties", scene=sid, entity=cage, values={"lattice": {"offsets[14]": [0.25, 0, 0]}})
+    await ed.call("wait", frames=10)
+    moved = await world_x(ed, sid, follower)
+    ed.check(moved > 0.45, f"the follower follows the cage: x {moved}")
+    info = await ed.call("get_prefab_info", scene=sid, entity=follower, usage=False)
+    ed.check_eq(transform_overrides(info, follower), [], f"the driven Transform is not an override of the instance: {info.get('overrides')}")
+
+    # undo of the cage edit: the follower goes back to its rest, redo moves it again
+    await ed.call("undo", scene=sid)
+    await ed.call("wait", frames=10)
+    ed.check(abs(await world_x(ed, sid, follower) - 0.4) < 1e-4, "undo of the cage edit puts the follower back")
+    await ed.call("redo", scene=sid)
+    await ed.call("wait", frames=10)
+    ed.check(abs(await world_x(ed, sid, follower) - moved) < 1e-4, "redo moves it again")
+    info = await ed.call("get_prefab_info", scene=sid, entity=follower, usage=False)
+    ed.check_eq(transform_overrides(info, follower), [], "still no override on the follower")
+
+    # saved, the scene stays saved while the follower is driven
+    await ed.call("save_scene", scene=sid)
+    await ed.call("wait", frames=20)
+    ed.check(not await unsaved(ed, sid), "the driven follower does not mark the scene modified")
+    info = await ed.call("get_prefab_info", scene=sid, entity=follower, usage=False)
+    ed.check_eq(transform_overrides(info, follower), [], "nor after the save")
+
+
+async def test_follower_gizmo_moves_the_rest(ed: Editor):
+    sid, follower, rest = S["fscene"], S["follower"], S["rest"]
+    await ed.call("select_scene", scene=sid)
+    await ed.call("focus_window", window="scene", scene=sid)
+    position = (await ed.call("get_entity", scene=sid, entity=follower))["world"]["position"]
+    await ed.call("set_scene_camera", scene=sid, position=[position[0], position[1] + 1.5, position[2] + 4.0], target=position)
+    await ed.call("select_entities", scene=sid, entities=[follower])
+    ls.focus_editor(ed)
+    await ls.settle(ed, 10)
+    rest_before = await world_x(ed, sid, rest)
+    follower_before = await world_x(ed, sid, follower)
+
+    # the Move gizmo's centre sits on the follower, in the middle of the view (the camera's target)
+    cx, cy = (SCENE_VIEW[0] + SCENE_VIEW[2]) // 2, (SCENE_VIEW[1] + SCENE_VIEW[3]) // 2
+    await ls.drag(ed, (cx, cy), (cx + 80, cy))
+    await ed.call("wait", frames=10)
+    rest_after = await world_x(ed, sid, rest)
+    follower_after = await world_x(ed, sid, follower)
+    ed.check(rest_after > rest_before + 0.05, f"dragging a driven follower moves its rest: {rest_before} -> {rest_after}")
+    ed.check(follower_after > follower_before + 0.05, f"and the follower follows it: {follower_before} -> {follower_after}")
+    info = await ed.call("get_prefab_info", scene=sid, entity=follower, usage=False)
+    ed.check_eq(transform_overrides(info, follower), [], f"no override on the driven follower: {info.get('overrides')}")
+    info = await ed.call("get_prefab_info", scene=sid, entity=rest, usage=False)
+    ed.check_in("position", transform_overrides(info, rest), "the rest's position is the instance's override")
+
+    # one undo step puts the rest back, and the follower with it
+    await ed.call("undo", scene=sid)
+    await ed.call("wait", frames=10)
+    ed.check(abs(await world_x(ed, sid, rest) - rest_before) < 1e-5, "undo puts the rest back")
+    ed.check(abs(await world_x(ed, sid, follower) - follower_before) < 1e-4, "and the follower follows")
+    info = await ed.call("get_prefab_info", scene=sid, entity=rest, usage=False)
+    ed.check_eq(transform_overrides(info, rest), [], "and drops the rest's override")

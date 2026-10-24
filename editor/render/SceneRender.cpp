@@ -1095,6 +1095,8 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    // a driven Lattice Follower: the gizmo moves its rest (LatticeSceneRender.cpp)
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 viewDir = gizmoViewDirection();
 
@@ -1363,6 +1365,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     if (editLayer.active){
         selEntities = editLayer.selection;
     }
+    redirectDrivenFollowers(target, selEntities);
 
     Vector3 gizmoPosition = tools.getGizmoPosition();
     Matrix4 gizmoRMatrix = tools.getGizmoRotation().getRotationMatrix();

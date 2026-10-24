@@ -14,6 +14,8 @@
 #include "lattice/LatticeSolver.h"
 #include "render/SceneRender.h"
 #include "subsystem/LatticeSystem.h"
+#include "component/LatticeFollowerComponent.h"
+#include "Scene.h"
 
 #include <algorithm>
 #include <cmath>
@@ -414,6 +416,32 @@ std::vector<int> LatticeEditorOps::getSelectedOrAllPoints(uint32_t sceneId, Enti
         return selected;
     }
     return allPoints(pointCountOf(component));
+}
+
+Entity LatticeEditorOps::getFollowerDrivingRest(Scene* scene, Entity entity, bool position, bool rotation, bool scale){
+    if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)){
+        return NULL_ENTITY;
+    }
+    const LatticeFollowerComponent* follower = scene->findComponent<LatticeFollowerComponent>(entity);
+    if (!follower || !follower->enabled || !scene->isEntityActiveInHierarchy(entity) || !scene->findComponent<Transform>(entity)){
+        return NULL_ENTITY;
+    }
+    if (!((position && follower->applyPosition) || (rotation && follower->applyRotation) || (scale && follower->applyScale))){
+        return NULL_ENTITY;
+    }
+    // the conditions LatticeSystem::updateFollowers moves it under
+    const Entity lattice = follower->lattice;
+    const Entity rest = follower->rest;
+    if (lattice == NULL_ENTITY || rest == NULL_ENTITY || !scene->isEntityCreated(lattice) || !scene->isEntityCreated(rest) ||
+        !scene->findComponent<LatticeComponent>(lattice) || !scene->findComponent<Transform>(lattice) ||
+        !scene->findComponent<Transform>(rest)){
+        return NULL_ENTITY;
+    }
+    LatticeSystem* system = scene->getSystem<LatticeSystem>().get();
+    if (!system || !system->isValidFollower(entity, lattice, rest)){
+        return NULL_ENTITY;
+    }
+    return rest;
 }
 
 Entity LatticeEditorOps::getEditedLattice(Project* project, uint32_t sceneId){
