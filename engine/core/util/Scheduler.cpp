@@ -184,7 +184,12 @@ Scheduler::Slot& Scheduler::slotAt(uint32_t index) const {
 }
 
 uint32_t Scheduler::allocateSlot() {
-    // mutex held
+    // mutex held; what the owner thread freed is its own to reuse first
+    if (!ownerFreed.empty() && isOwnerThread()) {
+        const uint32_t index = ownerFreed.back();
+        ownerFreed.pop_back();
+        return index;
+    }
     if (freeSlots.empty()) {
         const size_t count = chunkCount.load(std::memory_order_relaxed);
         if (count == MAX_CHUNKS) return UINT32_MAX;
@@ -202,16 +207,22 @@ uint32_t Scheduler::allocateSlot() {
 
 void Scheduler::freeSlot(uint32_t index, Slot& slot) {
     // owner thread: the task (and what it captured) goes now, stale handles become inert
-    Task task = std::move(slot.task);
     slot.inUse = false;
     slot.queued = false;
+    // heap entries of its last push are stale from now on, even once the slot is reused
+    slot.seq = 0;
     const uint64_t state = slot.state.load(std::memory_order_acquire);
     slot.state.store((generationOf(state) + 1) << kGenerationShift, std::memory_order_release);
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        freeSlots.push_back(index);
-    }
-    task.reset();
+    slot.task.reset();
+    // back to the free list in batches (returnFreed): no lock per task
+    ownerFreed.push_back(index);
+}
+
+void Scheduler::returnFreed() {
+    if (ownerFreed.empty()) return;
+    std::lock_guard<std::mutex> lock(mutex);
+    freeSlots.insert(freeSlots.end(), ownerFreed.begin(), ownerFreed.end());
+    ownerFreed.clear();
 }
 
 TimerHandle Scheduler::schedule(TimeDomain domain, double dueOrDelay, bool absolute, double period, Task task,
@@ -258,7 +269,7 @@ TimerHandle Scheduler::schedule(TimeDomain domain, double dueOrDelay, bool absol
 void Scheduler::push(TimeDomain domain, uint32_t index, Slot& slot) {
     slot.seq = nextSeq++;
     std::vector<HeapEntry>& heap = heaps[static_cast<size_t>(domain)];
-    heap.push_back(HeapEntry{slot.due, slot.seq, index, generationOf(slot.state.load(std::memory_order_relaxed))});
+    heap.push_back(HeapEntry{slot.due, slot.seq, index});
     std::push_heap(heap.begin(), heap.end(), [](const HeapEntry& a, const HeapEntry& b) { return greaterEntry(a, b); });
 }
 
@@ -357,6 +368,7 @@ size_t Scheduler::cancelOwner(uint64_t ownerKey) {
     for (const TimerHandle& handle : owned) {
         if (cancel(handle)) cancelled++;
     }
+    returnFreed();
     return cancelled;
 }
 
@@ -368,7 +380,7 @@ double Scheduler::now(TimeDomain domain) const {
     return time[static_cast<size_t>(domain)];
 }
 
-bool Scheduler::runSlot(uint32_t index, Slot& slot) {
+bool Scheduler::runSlot(uint32_t index, Slot& slot, bool guarded) {
     uint64_t state = slot.state.load(std::memory_order_acquire);
     // started unless cancelled first: after this a cancel only stops repeats
     while (true) {
@@ -392,7 +404,7 @@ bool Scheduler::runSlot(uint32_t index, Slot& slot) {
             JE_LOG_ERROR(logCategoryEngine(), "A %s failed with an unknown error.", name);
         }
     };
-    if (CrashHook::active()) {
+    if (guarded) {
         std::string errorInfo;
         const bool ok = CrashHook::runGuarded([](void* data) { (*static_cast<decltype(run)*>(data))(); }, &run, errorInfo);
         if (!ok) {
@@ -403,7 +415,7 @@ bool Scheduler::runSlot(uint32_t index, Slot& slot) {
         run();
     }
     running = previous;
-    ran.fetch_add(1, std::memory_order_relaxed);
+    ran++;
     state = slot.state.fetch_and(~kRunning, std::memory_order_acq_rel) & ~kRunning;
     return !(state & kCancelled);
 }
@@ -416,16 +428,16 @@ size_t Scheduler::process(TimeDomain domain) {
     const double nowTime = time[static_cast<size_t>(domain)] + 1e-9 * std::max(1.0, std::abs(time[static_cast<size_t>(domain)]));
     // only what was scheduled before this call, and due now
     const uint64_t seqLimit = nextSeq;
+    const bool guarded = CrashHook::active();
     size_t count = 0;
     while (!heap.empty() && heap.front().due <= nowTime) {
         std::pop_heap(heap.begin(), heap.end(), compare);
         const HeapEntry entry = heap.back();
         heap.pop_back();
         Slot& slot = slotAt(entry.slot);
-        const uint64_t state = slot.state.load(std::memory_order_acquire);
-        if (generationOf(state) != entry.generation || !slot.inUse) continue;   // freed (cancelled) since
-        if (entry.seq >= seqLimit || entry.seq != slot.seq) {
-            if (entry.seq == slot.seq) deferred.push_back(entry);
+        if (!slot.inUse || entry.seq != slot.seq) continue;   // freed (cancelled) or pushed again since
+        if (entry.seq >= seqLimit) {
+            deferred.push_back(entry);
             continue;
         }
         // periods that elapsed: one run (up to 8 with catchUp), the next due keeps the phase
@@ -436,7 +448,7 @@ size_t Scheduler::process(TimeDomain domain) {
         int runs = slot.catchUp ? static_cast<int>(std::min<uint64_t>(missed, kMaxCatchUp)) : 1;
         bool keep = true;
         while (runs-- > 0 && keep) {
-            keep = runSlot(entry.slot, slot);
+            keep = runSlot(entry.slot, slot, guarded);
             count++;
             if (!keep) break;
             if (slot.counted && --slot.remaining == 0) keep = false;
@@ -456,6 +468,7 @@ size_t Scheduler::process(TimeDomain domain) {
         std::push_heap(heap.begin(), heap.end(), compare);
     }
     deferred.clear();
+    returnFreed();
     return count;
 }
 
@@ -468,11 +481,12 @@ size_t Scheduler::processPosted() {
         inboxSize.store(0, std::memory_order_release);
     }
     size_t count = 0;
+    const bool guarded = CrashHook::active();
     for (const InboxEntry& entry : inboxWork) {
         Slot& slot = slotAt(entry.slot);
         if (!slot.inUse || generationOf(slot.state.load(std::memory_order_acquire)) != entry.generation) continue;
         if (entry.posted) {
-            runSlot(entry.slot, slot);
+            runSlot(entry.slot, slot, guarded);
             count++;
             if (slot.inUse) freeSlot(entry.slot, slot);
             continue;
@@ -481,6 +495,7 @@ size_t Scheduler::processPosted() {
         push(slot.domain, entry.slot, slot);
     }
     inboxWork.clear();
+    returnFreed();
     return count;
 }
 
@@ -501,6 +516,7 @@ void Scheduler::sweepCancelled() {
         }
     }
     for (uint32_t index : cancelled) freeSlot(index, slotAt(index));
+    returnFreed();
 }
 
 void Scheduler::clear() {
@@ -524,6 +540,7 @@ void Scheduler::clear() {
         cancelledCount.fetch_add(1, std::memory_order_relaxed);
         freeSlot(index, slotAt(index));
     }
+    returnFreed();
 }
 
 double Scheduler::nextDueRealTime() const {
@@ -540,13 +557,13 @@ SchedulerStats Scheduler::stats() const {
         for (const HeapEntry& entry : heaps[d]) {
             const Slot& slot = slotAt(entry.slot);
             const uint64_t state = slot.state.load(std::memory_order_acquire);
-            if (slot.inUse && generationOf(state) == entry.generation && entry.seq == slot.seq && !(state & kCancelled)) {
+            if (slot.inUse && entry.seq == slot.seq && !(state & kCancelled)) {
                 result.pending[d]++;
             }
         }
     }
     result.posted = inboxSize.load(std::memory_order_acquire);
-    result.ran = ran.load(std::memory_order_relaxed);
+    result.ran = ran;
     result.cancelled = cancelledCount.load(std::memory_order_relaxed);
     return result;
 }
@@ -558,9 +575,9 @@ std::vector<TimerInfo> Scheduler::pending(const TimeDomain* domain, size_t max) 
         for (const HeapEntry& entry : heaps[d]) {
             const Slot& slot = slotAt(entry.slot);
             const uint64_t state = slot.state.load(std::memory_order_acquire);
-            if (!slot.inUse || generationOf(state) != entry.generation || entry.seq != slot.seq || (state & kCancelled)) continue;
+            if (!slot.inUse || entry.seq != slot.seq || (state & kCancelled)) continue;
             TimerInfo info;
-            info.id = handleId(entry.slot, entry.generation);
+            info.id = handleId(entry.slot, generationOf(state));
             info.domain = static_cast<TimeDomain>(d);
             info.due = slot.due;
             info.remaining = slot.due - time[d];

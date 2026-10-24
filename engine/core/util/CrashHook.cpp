@@ -10,6 +10,8 @@
 
 using namespace jasperengine;
 
+std::atomic<bool> jasperengine::detail::crashHookActive{false};
+
 namespace je_crash_hook {}
 using namespace je_crash_hook;
 
@@ -18,7 +20,6 @@ namespace je_crash_hook {
     struct HookState {
         std::mutex mutex;
         std::shared_ptr<CrashHandler> handler;
-        std::atomic<bool> active{false};
     };
 
     HookState& hookState() {
@@ -32,11 +33,7 @@ void CrashHook::set(CrashHandler handler) {
     HookState& state = hookState();
     std::lock_guard<std::mutex> lock(state.mutex);
     state.handler = handler ? std::make_shared<CrashHandler>(std::move(handler)) : nullptr;
-    state.active.store(state.handler != nullptr, std::memory_order_release);
-}
-
-bool CrashHook::active() noexcept {
-    return hookState().active.load(std::memory_order_acquire);
+    detail::crashHookActive.store(state.handler != nullptr, std::memory_order_release);
 }
 
 bool CrashHook::report(const std::string& tag, const std::string& errorInfo) {

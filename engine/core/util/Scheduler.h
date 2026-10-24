@@ -159,11 +159,11 @@ namespace jasperengine {
 
     private:
         struct Slot;
+        // a slot's seq changes with every push: an entry whose seq differs is stale
         struct HeapEntry {
             double due;
             uint64_t seq;
             uint32_t slot;
-            uint64_t generation;
         };
         struct InboxEntry {
             uint32_t slot;
@@ -181,6 +181,7 @@ namespace jasperengine {
         std::atomic<Slot*> chunks[MAX_CHUNKS];
         std::atomic<size_t> chunkCount{0};
         std::vector<uint32_t> freeSlots;
+        std::vector<uint32_t> ownerFreed;      // freed by the owner thread, handed back in batches
         std::vector<InboxEntry> inbox;
         std::vector<InboxEntry> inboxWork;     // the swapped inbox (owner thread)
         std::atomic<size_t> inboxSize{0};
@@ -188,7 +189,7 @@ namespace jasperengine {
         std::vector<HeapEntry> deferred;       // scheduled during a process(): back after it
         double time[TIME_DOMAIN_COUNT] = {0};
         uint64_t nextSeq = 1;
-        std::atomic<uint64_t> ran{0};
+        uint64_t ran = 0;                      // owner thread
         std::atomic<uint64_t> cancelledCount{0};
         std::atomic<uint64_t> remoteCancels{0};
         TimerHandle running;
@@ -198,8 +199,9 @@ namespace jasperengine {
         void freeSlot(uint32_t index, Slot& slot);
         TimerHandle schedule(TimeDomain domain, double dueOrDelay, bool absolute, double period, Task task, const TimerOpts& opts);
         void push(TimeDomain domain, uint32_t index, Slot& slot);
-        bool runSlot(uint32_t index, Slot& slot);
+        bool runSlot(uint32_t index, Slot& slot, bool guarded);
         void sweepCancelled();
+        void returnFreed();
     };
 
 }

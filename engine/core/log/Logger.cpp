@@ -21,6 +21,7 @@
     #define NOMINMAX
     #endif
     #include <windows.h>
+    #include <intrin.h>
 #else
     #include <pthread.h>
     #include <time.h>
@@ -48,6 +49,10 @@ namespace je_logger {
     // the rate limit: records per key per second, and how many keys are tracked
     constexpr uint32_t kValveLimit = 200;
     constexpr size_t kValveSlots = 256;
+    // the table in stripes, each with a lock of its own: producers of different call sites
+    // rarely meet
+    constexpr size_t kValveStripes = 16;
+    constexpr size_t kValveStripeSlots = kValveSlots / kValveStripes;
     constexpr size_t kValveProbe = 8;
     constexpr size_t kValveSampleBytes = 80;
     constexpr int64_t kValveWindowMs = 1000;
@@ -228,6 +233,16 @@ namespace je_logger {
         return state;
     }
 
+    void logCpuRelax() {
+#if (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
+        __builtin_ia32_pause();
+#elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+        _mm_pause();
+#elif defined(__aarch64__) && (defined(__GNUC__) || defined(__clang__))
+        asm volatile("yield");
+#endif
+    }
+
     // Monotonic milliseconds; async-signal-safe (clock_gettime / GetTickCount64)
     int64_t logMonotonicMs() {
 #if defined(_WIN32)
@@ -310,7 +325,7 @@ namespace je_logger {
         uint32_t backtraceCount = 0;
         std::atomic<uint64_t> backtracesOmitted{0};
 
-        std::mutex valveMutex;
+        std::array<std::mutex, kValveStripes> valveMutexes;
         std::array<ValveSlot, kValveSlots> valve;
         std::atomic<int64_t> nextValveSweepMs{0};
         std::atomic<uint64_t> suppressed{0};
@@ -585,12 +600,14 @@ namespace je_logger {
     // collected into summaries (emitted by the caller, outside the valve lock).
     bool valvePass(LoggerState& s, uint64_t key, LogLevel level, const LogCategory& category, std::string_view sample,
                    int64_t nowMs, ValveSummary* summaries, size_t& summaryCount) {
-        std::lock_guard<std::mutex> lock(s.valveMutex);
-        const size_t start = static_cast<size_t>(key % kValveSlots);
+        const size_t stripe = static_cast<size_t>((key >> 8) % kValveStripes);
+        std::lock_guard<std::mutex> lock(s.valveMutexes[stripe]);
+        const size_t base = stripe * kValveStripeSlots;
+        const size_t start = static_cast<size_t>(key % kValveStripeSlots);
         ValveSlot* slot = nullptr;
         ValveSlot* victim = nullptr;
         for (size_t probe = 0; probe < kValveProbe; probe++) {
-            ValveSlot& candidate = s.valve[(start + probe) % kValveSlots];
+            ValveSlot& candidate = s.valve[base + (start + probe) % kValveStripeSlots];
             if (candidate.key == key) {
                 slot = &candidate;
                 break;
@@ -649,9 +666,10 @@ namespace je_logger {
     void sweepValve(LoggerState& s, int64_t nowMs) {
         ValveSummary summaries[16];
         size_t count = 0;
-        {
-            std::lock_guard<std::mutex> lock(s.valveMutex);
-            for (ValveSlot& slot : s.valve) {
+        for (size_t stripe = 0; stripe < kValveStripes && count < 16; stripe++) {
+            std::lock_guard<std::mutex> lock(s.valveMutexes[stripe]);
+            for (size_t i = 0; i < kValveStripeSlots; i++) {
+                ValveSlot& slot = s.valve[stripe * kValveStripeSlots + i];
                 if (slot.key == 0 || nowMs - slot.windowStartMs < kValveWindowMs) continue;
                 if (slot.suppressed > 0) {
                     if (count == 16) break;
@@ -884,7 +902,12 @@ namespace je_logger {
             // logged from inside an Inline sink: no second lock, no waiting
             deliverLocked(s, nullptr, record, false);
         } else {
-            std::unique_lock<std::mutex> lock(s.queueMutex);
+            // a short spin before sleeping on the lock: producers hold it for a copy only
+            std::unique_lock<std::mutex> lock(s.queueMutex, std::defer_lock);
+            for (int spin = 0; spin < 200 && !lock.try_lock(); spin++) {
+                logCpuRelax();
+            }
+            if (!lock.owns_lock()) lock.lock();
             thread.holdsQueueLock = true;
             // a record logged from inside a sink on the drain thread must not wait for itself
             deliverLocked(s, &lock, record, !thread.isDrainThread);

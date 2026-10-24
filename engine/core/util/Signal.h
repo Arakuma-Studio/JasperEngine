@@ -198,9 +198,11 @@ namespace jasperengine {
                 }
                 ~Scope() {
                     if (--list.depth == 0) {
-                        // the last thing done with the list: it may delete itself here
-                        std::shared_ptr<SlotList> self = std::move(list.keepAlive);
                         if (list.dirty || !list.pending.empty()) list.compact();
+                        // the owner went away during the invoke: the last thing done with the list
+                        if (list.keepAlive) {
+                            std::shared_ptr<SlotList> self = std::move(list.keepAlive);
+                        }
                     }
                 }
             };
