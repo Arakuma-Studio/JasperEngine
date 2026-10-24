@@ -429,11 +429,11 @@ void Texture::destroy(){
 }
 
 // The sampler is part of the pool key, so the next getRender() takes (or builds) the texture of
-// the new one. The old one is removed from the pool unless other Textures still use it (a
-// loading placeholder is not the pool's, and leaves its entry alone).
+// the new one. The old one is removed from the pool unless other Textures still use it (also
+// when it was invalidated; a loading placeholder is not the pool's, and leaves its entry alone).
 void Texture::releaseSamplerRender(const std::string& previousRenderId){
     if (render && previousRenderId != getRenderId()){
-        const bool pooled = render == TexturePool::get(previousRenderId);
+        const bool pooled = TexturePool::holds(previousRenderId, render);
         render.reset();
         if (pooled){
             TexturePool::remove(previousRenderId);
