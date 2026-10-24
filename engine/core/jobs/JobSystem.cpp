@@ -1625,7 +1625,15 @@ void Scheduler::channelSubmit(ChannelState* channel, TaskState* task){
     for (ChannelState* registered : channels)
         sumCaps += registered->cap;
     const size_t limit = (size_t)std::min<int>(blockingBudget, (int)sumCaps);
-    if (blockingIdleThreads == 0 && blockingThreads.size() < limit && channel->running < channel->cap){
+    // The idle threads cover the jobs a thread may start now (queued, under their channel's cap),
+    // this one and the ones submitted before it that no woken thread has picked yet; one more
+    // thread when they don't. (Counting only "is a thread idle" let two submits in a row share
+    // one idle thread: it could take the second and leave the first queued for good, as a
+    // watcher job waiting for the job submitted just before it.)
+    uint32_t startable = 0;
+    for (ChannelState* registered : channels)
+        startable += std::min(registered->queued, registered->cap > registered->running ? registered->cap - registered->running : 0u);
+    if ((int)startable > blockingIdleThreads && blockingThreads.size() < limit && channel->running < channel->cap){
         const int index = (int)blockingThreads.size();
         blockingThreads.emplace_back([this, index](){ blockingThreadMain(index); });
     }else{
