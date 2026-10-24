@@ -39,7 +39,6 @@ namespace jasperengine::editor{
 
     class Project;
     class PoseAnimationDocument;
-    using PoseRealisation = pose::PoseRealisation;   // pose/PoseRealisation.h (phase 2 moved it to the engine)
     struct PoseRigInfo;
 
     class PoseEditSession{
@@ -97,7 +96,7 @@ namespace jasperengine::editor{
         const std::string& modelFile() const { return modelPath; }
         // the document realised on the bound rig (keys, frames, timeline, metrics); null
         // without a rig or a document
-        std::shared_ptr<const PoseRealisation> realisation();
+        std::shared_ptr<const pose::PoseRealisation> realisation();
         // closes the document (bones restored, Idle)
         void closeDocument();
 

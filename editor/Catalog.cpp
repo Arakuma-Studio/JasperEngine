@@ -4929,8 +4929,9 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
     if (updateFlags & UpdateFlags_PoseAnimator_Reload){
         if (PoseAnimatorComponent* animator = registry->findComponent<PoseAnimatorComponent>(entity)){
             animator->weight = std::clamp(animator->weight, 0.0f, 1.0f);
-            // the same path keeps what is loaded (a weight change); a new one loads
-            if (!animator->runtime || animator->runtime->path != animator->animation){
+            // the same path keeps what is loaded (a weight change); a new one loads, and so does
+            // the same one again after it failed (the file may be fixed now)
+            if (!animator->runtime || animator->runtime->path != animator->animation || animator->runtime->failed){
                 animator->needsLoad = true;
             }
         }

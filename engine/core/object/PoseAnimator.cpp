@@ -58,6 +58,10 @@ void PoseAnimator::pause(){
     PoseAnimatorComponent& animator = getComponent<PoseAnimatorComponent>();
     animator.started = true;
     animator.playing = false;
+    // a live transition freezes where it is (play() goes back to playback, goToPose starts anew)
+    if (animator.runtime && animator.runtime->transitionActive){
+        animator.runtime->transitionPaused = true;
+    }
 }
 
 void PoseAnimator::stop(){
@@ -66,8 +70,13 @@ void PoseAnimator::stop(){
     animator.playing = false;
     animator.time = 0;
     if (animator.runtime){
-        animator.runtime->transitionActive = false;
-        animator.runtime->pending = pose::PoseGoTo();
+        pose::PoseAnimatorRuntime& runtime = *animator.runtime;
+        runtime.pending = pose::PoseGoTo();
+        // key pose 0 itself: in a loop, time 0 still has the tail of the move back to it
+        runtime.transitionActive = runtime.isLoaded();
+        runtime.transitionArrived = true;
+        runtime.transitionPaused = false;
+        runtime.transitionKey = 0;
     }
 }
 

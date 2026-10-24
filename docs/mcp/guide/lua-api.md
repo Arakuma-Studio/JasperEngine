@@ -769,8 +769,9 @@ Plays a pose animation (`.poseanim`, path relative to the assets folder) live on
 Model; it lives on the Model's GameObject. `PoseAnimator(scene, entity)` adds the component when
 missing, `model:getPoseAnimator()` does the same. It runs in play mode and in games, not in the
 editor's edit mode. Models load asynchronously: until `isLoaded()` the animator waits (calls made
-before are kept: `play`, `goToPose`...). A missing or invalid file logs one error and disables the
-animator until `setAnimation` is called again.
+before are kept: `play`, `goToPose`...). A missing or invalid file logs one error and leaves the bones
+alone; the animator tries the file again every second (and at once on `setAnimation`), so a fixed
+file plays without a restart.
 
 `setAnimation(path)` / `getAnimation()` (loads again), `play()`, `pause()`, `stop()` (time 0,
 shows pose 0), `isPlaying()`, `setTime(t)` / `getTime()` / `getLength()` (seconds),
