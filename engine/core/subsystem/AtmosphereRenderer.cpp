@@ -291,9 +291,16 @@ void AtmosphereRenderer::update(double dt){
 
     // the bake runs once started (planPass starts it when clouds or a noise first draw)
     AtmosphereNoise& noise = AtmosphereNoise::get();
+    // (without workers the main thread bakes a slice a frame: 4 ms, a few items)
     if (noise.isStarted() && !noise.isReady())
-        noise.advance(1.0);
+        noise.advance(4.0);
     if (noise.isReady() && !noiseShape.isCreated()){
+        static bool logged = false;
+        if (!logged){
+            logged = true;
+            Log::print("Atmosphere: cloud noise baked in %.0f ms (%s)", noise.getBakeMilliseconds(),
+                      noise.isThreaded() ? "background jobs" : "main thread, time-sliced");
+        }
         const std::vector<uint8_t>& shape = noise.getShape();
         const std::vector<uint8_t>& detail = noise.getDetail();
         const std::vector<uint8_t>& weather = noise.getWeather();

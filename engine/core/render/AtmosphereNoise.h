@@ -55,6 +55,9 @@ namespace jasperengine{
 
         bool isStarted() const;
         bool isReady() const;
+        // wall time from start() to the bytes being ready (ms), -1 before; how it ran
+        double getBakeMilliseconds() const { return bakeMilliseconds; }
+        bool isThreaded() const { return threaded; }
 
         // RGBA8, x fastest, then y, then z (rows top first for the weather map)
         const std::vector<uint8_t>& getShape() const;
@@ -73,6 +76,8 @@ namespace jasperengine{
         bool threaded = false;
         std::vector<jobs::Task<void>> tasks;
         int nextItem = 0;   // unthreaded: the next item to run
+        double startedAt = 0.0;
+        double bakeMilliseconds = -1.0;
 
         void beginNormalise();
         bool tasksDone();

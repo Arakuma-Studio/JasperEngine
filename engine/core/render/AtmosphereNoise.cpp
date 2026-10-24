@@ -422,6 +422,7 @@ void AtmosphereNoise::start(bool threaded){
         return;
     this->threaded = threaded;
     nextItem = 0;
+    startedAt = nowMilliseconds();
     if (threaded){
         std::shared_ptr<State> shared = state;
         tasks.reserve(ITEMS);
@@ -469,6 +470,7 @@ bool AtmosphereNoise::advance(double budgetMilliseconds){
         }
         state->releaseValues();
         state->phase = 3;
+        bakeMilliseconds = nowMilliseconds() - startedAt;
         return true;
     }
 
@@ -483,6 +485,7 @@ bool AtmosphereNoise::advance(double budgetMilliseconds){
             if (nextItem == ITEMS){
                 state->releaseValues();
                 state->phase = 3;
+                bakeMilliseconds = nowMilliseconds() - startedAt;
                 return true;
             }
         }
