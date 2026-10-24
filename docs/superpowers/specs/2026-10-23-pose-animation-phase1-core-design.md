@@ -386,8 +386,19 @@ Then, with humanize: in-betweens (`inbetweens > 0`): `maxDeg = lerp(180, 12, inb
 a running state per bone follows the frames with `rotateTowards(state, frame, maxDeg)` (hips
 position not limited); loops run one warm-up pass first and force the last frame equal to the
 first. Then follow-through (4.9), then joint limits (via `toBodyPose` / `clampToLimits` /
-`fromBodyPose` keeping the frame's hips position) when `jointLimits`. Frames are the single
-source for preview, bake and runtime playback.
+`fromBodyPose` keeping the frame's hips position) when `jointLimits`. Last, with a rig (always,
+not only with humanize), the ground correction: the hips position is interpolated linearly while
+the legs swing, so a fast springy move between a deep crouch and standing would sink the feet
+(about 0.05 to 0.07 humanScale for a jump's crouch and landing). Each frame's time (after the
+`stepRate` quantisation, as `sample` sees it) is classified on the timeline: inside the hold of
+a grounded key (`PoseKey::grounded`), or inside a segment whose both end keys are grounded, the
+hips move along up so the lowest point is exactly on the floor (`groundPose` with the rig's
+skin, as the keys are grounded); inside a segment with exactly one grounded end they move up
+only when the lowest point is below the floor (no penetration; lifts and jump launches are
+kept); otherwise the frame is unchanged. A loop's last segment leads back to key 0 (the same
+rule at the wrap) and its last frame stays a copy of the first. `SamplerInput::grounded` holds
+the keys' flags (`makeSamplerInput` fills it; empty = no correction). (Added in the polish
+round.) Frames are the single source for preview, bake and runtime playback.
 
 **Auto timing** `void autoTiming(PoseAnimationData&, const std::vector<HumanPose>& realised, float humanScale)`:
 motion of segment `i` = mean angle between the poses' bone rotations (degrees) + 100 * hips travel
@@ -504,7 +515,9 @@ engine's mesh buffers.
 11. Sampler: telescoping (all e = 1 gives the last key exactly); loop seam (sample(0) ==
     sample(len)); overlap delays deep bones; stepRate quantises; moving holds drift during a
     hold; life loops seamlessly; frames count and last == first when looping; in-betweens cap
-    the per-frame rotation; one-pose animations are static.
+    the per-frame rotation; one-pose animations are static; a springy crouch to stand between
+    grounded keys stays exactly on the floor, a jump's launch and flight frames are not pulled
+    down.
 12. Auto timing: preserves total length, larger motion gets a longer snap, snaps to the step
     grid, zero motion is a no-op.
 13. Follow-through: the three effects of 4.9 on synthetic hips motion; loop steady state.

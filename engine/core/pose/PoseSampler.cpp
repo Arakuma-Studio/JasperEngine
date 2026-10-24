@@ -193,6 +193,55 @@ namespace jasperengine::pose {
             }
         }
 
+        // How the frame at `time` (already stepped by the choppiness) is grounded (4.8 frames):
+        // Exact inside the hold of a grounded key or a segment between two grounded keys,
+        // NoPenetration inside a segment with one grounded end, None otherwise
+        enum class FrameGrounding { None, NoPenetration, Exact };
+
+        FrameGrounding frameGrounding(const SamplerInput& input, double time){
+            const PoseTimeline& timeline = input.timeline;
+            const size_t n = input.keys.size();
+            const size_t segments = std::min(timeline.segmentCount(), timeline.loop ? n : n - 1);
+            auto grounded = [&](size_t key){ return input.grounded[key % n]; };
+            for (size_t s = 0; s < segments; s++){
+                if (time < timeline.start[s]){
+                    return grounded(s) ? FrameGrounding::Exact : FrameGrounding::None;   // the hold of key s
+                }
+                if (time < timeline.start[s] + std::max(0.0, static_cast<double>(timeline.transitions[s].duration))){
+                    const bool from = grounded(s), to = grounded(s + 1);
+                    return from && to ? FrameGrounding::Exact : (from || to ? FrameGrounding::NoPenetration : FrameGrounding::None);
+                }
+            }
+            // after the last segment: the last key's hold, or the wrap of a loop (the instant of
+            // frame 0, inside key 0's hold or its first segment)
+            if (timeline.loop){
+                return segments > 0 && time > 0.0 ? frameGrounding(input, 0.0) : FrameGrounding::None;
+            }
+            return grounded(n - 1) ? FrameGrounding::Exact : FrameGrounding::None;
+        }
+
+        // the ground correction of the frames: keeps the feet on the floor between grounded keys
+        // (the hips are interpolated linearly while the legs swing, so a crouch to stand dips the
+        // body into the floor) and never lets a frame next to a grounded key go below it
+        void groundFrames(std::vector<HumanPose>& result, const SamplerInput& input, double length, int count, bool loop){
+            const PoseRig& rig = *input.rig;
+            const PoseSkin* skin = rig.skin();
+            const double floor = rig.floorHeight();
+            const double tolerance = 1e-6 * rig.humanScale();
+            const int last = loop ? count - 1 : count;   // a loop's last frame is a copy of frame 0
+            for (int f = 0; f <= last; f++){
+                double t = f * length / count;
+                if (input.settings.stepRate > 0.0f){
+                    t = std::floor(t * input.settings.stepRate + 1e-4) / input.settings.stepRate;   // as sample() does
+                }
+                const FrameGrounding grounding = frameGrounding(input, t);
+                if (grounding == FrameGrounding::Exact ||
+                        (grounding == FrameGrounding::NoPenetration && rig.lowestPointPrecise(result[f], skin) < floor - tolerance)){
+                    rig.groundPose(result[f], 0.0f, skin);
+                }
+            }
+        }
+
     }
 
     double hash01(uint32_t seed, int bone, int axis, int k){
@@ -242,6 +291,9 @@ namespace jasperengine::pose {
         input.settings = data.settings;
         input.timeline = buildTimeline(data);
         input.rig = rig;
+        for (const PoseKey& key : data.poses){
+            input.grounded.push_back(key.grounded);
+        }
         return input;
     }
 
@@ -423,6 +475,11 @@ namespace jasperengine::pose {
                     frame.rotations[b] = rig.localFromAngles(bone, angles);
                 }
             }
+        }
+
+        // ground correction, last: after the in-betweens, follow-through and limits moved the legs
+        if (input.rig && input.keys.size() > 1 && input.grounded.size() == input.keys.size()){
+            groundFrames(result, input, length, count, loop);
         }
 
         if (loop){
