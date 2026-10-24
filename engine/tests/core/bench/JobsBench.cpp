@@ -144,17 +144,28 @@ namespace{
             for (auto& job : jobs)
                 job.get();
         };
+        // both sides timed in blocks, the fastest block of each: a neighbour taking cores on a
+        // shared machine slows some blocks, not the scheduler (every iteration still runs, for
+        // the deadlock check)
         JobSystem serialSystem(benchConfig(0));
-        const auto serialStart = bench::Clock::now();
-        for (int i = 0; i < 20; i++)
-            nestedRun(serialSystem);
-        const double serial = bench::secondsSince(serialStart) / 20;
+        double serial = 1e9;
+        for (int block = 0; block < 5; block++){
+            const auto start = bench::Clock::now();
+            for (int i = 0; i < 4; i++)
+                nestedRun(serialSystem);
+            serial = std::min(serial, bench::secondsSince(start) / 4);
+        }
 
         JobSystem system(benchConfig());
-        const auto start = bench::Clock::now();
-        for (int i = 0; i < iterations; i++)
-            nestedRun(system);
-        const double parallel = bench::secondsSince(start) / iterations;
+        constexpr int kBlock = 50;
+        double parallel = 1e9;
+        for (int done = 0; done < iterations; done += kBlock){
+            const int count = std::min(kBlock, iterations - done);
+            const auto start = bench::Clock::now();
+            for (int i = 0; i < count; i++)
+                nestedRun(system);
+            parallel = std::min(parallel, bench::secondsSince(start) / count);
+        }
         completed = true;
         return serial / parallel;
     }

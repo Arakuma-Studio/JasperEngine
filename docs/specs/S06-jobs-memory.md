@@ -668,6 +668,9 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   - The range p99 comes from batches of 256 timed allocate+free pairs, with the median of 5
     runs' p99.
   - R25 frame protection is the median of three 500-frame runs' p99.
+  - R24 nested speedup times both sides in blocks (serial in 5 blocks of 4 runs, parallel in
+    blocks of 50 of the 1 000 iterations) and takes the fastest block of each. A neighbour on
+    the server slows some blocks; the scheduler's speedup is the undisturbed one.
   - "The stats add ≤ 2 % to R23" is measured where it is stable: a multi-threaded throughput
     run varies by about 10 % between runs, more than the budget. The bench first takes the
     stats' cost per job on one thread: 0 workers and the pump, as the median relative
