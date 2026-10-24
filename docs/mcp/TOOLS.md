@@ -1211,12 +1211,15 @@ Read (no arguments) or change the Game view toolbar settings (editor preferences
 
 Hints: idempotent
 
-Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before screenshot.
+Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `close` | boolean |  | preferences: close it. |
+| `console` | object {collapse, hidden_categories, select} |  |  |
+| `page` | string |  | preferences: General, Code Editor, External Tools, Logging, Shader Cache. |
 | `scene` | integer or string |  | window scene: whose tab. |
-| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"terrain"` \| `"mcp"` | yes |  |
+| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"terrain"` \| `"mcp"` \| `"preferences"` | yes |  |
 
 
 ### `frame_entity`
