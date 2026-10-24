@@ -3,6 +3,8 @@
 
 #include "Project.h"
 #include "reload/HotReloadService.h"
+#include "util/CrashHook.h"
+#include "util/Scheduler.h"
 #include "io/AtomicFile.h"
 #include "Factory.h"
 #include "Workspace.h"
@@ -42,6 +44,9 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
+#include "command/PlayChangeReview.h"
+#include "command/UndoTimeline.h"
+#include "command/type/SelectionCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "Stream.h"
@@ -225,15 +230,73 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
+bool editor::Project::recordSelectionInUndo = true;
+
+editor::Project::Project(){
+    resetConfigs();
+    installUndoHooks();
+}
+
 editor::Project::~Project(){
     // the jobs capture the project
     playStartupTask.wait();
     playStopTask.wait();
     sceneSaveTask.wait();
+    // the hooks point here: an editor or tool with a later Project installs its own
+    if (UndoTimeline::getProjectHistory() == &projectHistory){
+        UndoTimeline::setProjectHistory(nullptr);
+        UndoTimeline::selectedScene = nullptr;
+        UndoTimeline::historyName = nullptr;
+        CommandHistory::selectionHooks = CommandHistory::SelectionHooks();
+        CommandHistory::beforeMutation = nullptr;
+    }
 }
 
-editor::Project::Project(){
-    resetConfigs();
+void editor::Project::installUndoHooks(){
+    UndoTimeline::setProjectHistory(&projectHistory);
+    UndoTimeline::selectedScene = [this]() { return getSelectedSceneId(); };
+    UndoTimeline::historyName = [this](uint32_t sceneId) -> std::string {
+        if (sceneId == NULL_PROJECT_SCENE){
+            return "Project";
+        }
+        const SceneProject* sceneProject = getScene(sceneId);
+        return "Scene '" + (sceneProject ? sceneProject->name : std::to_string(sceneId)) + "'";
+    };
+    CommandHistory::selectionHooks.read = [this](size_t sceneId, SelectionState& state) {
+        const uint32_t id = (uint32_t)sceneId;
+        if (id == NULL_PROJECT_SCENE || !getScene(id) || isPlayRuntimeScene(id)){
+            return false;
+        }
+        state = getSelection(id);
+        return true;
+    };
+    CommandHistory::selectionHooks.restore = [this](size_t sceneId, const SelectionState& state) {
+        SceneProject* sceneProject = getScene((uint32_t)sceneId);
+        if (!sceneProject || !sceneProject->scene){
+            return;
+        }
+        // the GameObjects that exist again
+        SelectionState existing;
+        for (Entity entity : state.entities){
+            if (sceneProject->scene->isEntityCreated(entity)){
+                existing.entities.push_back(entity);
+            }
+        }
+        existing.active = existing.entities.empty() ? NULL_ENTITY : existing.entities.back();
+        setSelection((uint32_t)sceneId, existing, SelectionCause::Restore);
+    };
+    // Play start/stop swaps the scene for its snapshot: no edit may land meanwhile
+    CommandHistory::beforeMutation = [this](std::string& whyNot) {
+        for (const SceneProject& sceneProject : scenes){
+            switch (sceneProject.playState){
+                case ScenePlayState::SAVING: whyNot = "saving before Play"; return false;
+                case ScenePlayState::LOADING: whyNot = "Play mode is starting"; return false;
+                case ScenePlayState::CANCELLING: whyNot = "Play mode is stopping"; return false;
+                default: break;
+            }
+        }
+        return true;
+    };
 }
 
 fs::path editor::Project::normalizeToProjectRelative(const fs::path& path) const {
@@ -1735,6 +1798,14 @@ void editor::Project::setVSyncEnabled(bool enabled){
 
 bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
+}
+
+void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
+    playerLogging = settings;
+}
+
+const editor::PlayerLoggingSettings& editor::Project::getPlayerLogging() const{
+    return playerLogging;
 }
 
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
@@ -3751,6 +3822,8 @@ bool editor::Project::reloadSceneFromDisk(uint32_t sceneId, std::string* error) 
     const bool selected = selectedScene == sceneId;
     editor::getEditorHost().clearSceneWindowState(sceneId);
     deleteSceneProject(sceneProject);
+    // the steps were made on the copy the file replaces (S24 R23, as when a scene closes)
+    CommandHandle::remove(sceneId);
     if (!loadScene(fullPath, true, false)) return fail("Cannot reload " + fullPath.filename().string() + ": it did not load (see the Console).");
     sceneProject = getScene(sceneId);
     if (sceneProject) {
@@ -3829,6 +3902,8 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     } else {
         it->opened = false;
         it->expandedInline = false;
+        // a closed scene keeps no history (S24 R23)
+        CommandHandle::remove(sceneId);
     }
 
     editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -4621,6 +4696,7 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setThreadingSettings(ThreadingProjectSettings());
     windowMode = defaultWindowMode;
@@ -4667,6 +4743,7 @@ void editor::Project::resetConfigs() {
     materialFileLinks.clear();
     tabs.clear();
     projectHistory.clear();
+    PlayChangeReview::get().discardAll();
 
     editor::getEditorHost().updateWindowTitle(name);
 
@@ -4902,7 +4979,15 @@ std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* 
 void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
 
-    const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    // Stop's restore: only what was alive before Play stays. GameObjects an edit made while
+    // playing are tracked, yet go too (their steps go with the play session; Play Mode
+    // Changes can make them again)
+    std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    if (!sceneProject->playStateEntities.empty()) {
+        for (Entity entity : sceneProject->entities) {
+            if (!sceneProject->playStateEntities.count(entity)) keep.erase(entity);
+        }
+    }
 
     for (Entity entity : scene->getEntityList()) {
         // an owner's removal can destroy other entities in this list
@@ -4910,6 +4995,8 @@ void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
             scene->destroyEntity(entity);
         }
     }
+    sceneProject->entities.erase(std::remove_if(sceneProject->entities.begin(), sceneProject->entities.end(),
+        [scene](Entity entity) { return !scene->isEntityCreated(entity); }), sceneProject->entities.end());
 }
 
 bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
@@ -5075,6 +5162,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             }
         }
 
+        // Play Mode Changes: what was edited while playing, read before the snapshot puts the
+        // edit-time scene back (runtime copies have no history)
+        if (!entry.ownedRuntime) {
+            PlayChangeReview::get().capture(this, sceneProject);
+        }
+
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
 
@@ -5082,6 +5175,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         if (!entry.ownedRuntime) {
             // the edit-time scene itself played (runtime copies have no history)
             CommandHandle::get(sceneProject->id)->endPlaySession(restoredFromSnapshot);
+            if (restoredFromSnapshot) {
+                PlayChangeReview::get().afterRestore(this, sceneProject);
+            } else {
+                // nothing was rolled back: the play edits stayed
+                PlayChangeReview::get().discard(sceneProject->id);
+            }
         }
 
         Entity cameraEntity = sceneProject->scene->getCamera();
@@ -7156,27 +7255,88 @@ void editor::Project::markSelectionChanged(SceneProject* sceneProject){
     }
 }
 
-void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
-    // Ctrl-click deselect reaches the selection only through here.
-    markSelectionChanged(getScene(sceneId));
-    getScene(sceneId)->selectedEntities = selectedEntities;
+void editor::Project::setSelection(uint32_t sceneId, const SelectionState& state, SelectionCause cause){
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject){
+        return;
+    }
+    // the active GameObject last; no copy when the state already is that way, and none at
+    // all when nothing changes (a click on what is selected)
+    const bool ordered = state.active == NULL_ENTITY || (!state.entities.empty() && state.entities.back() == state.active) ||
+        std::find(state.entities.begin(), state.entities.end(), state.active) == state.entities.end();
+    if (ordered && sceneProject->selectedEntities == state.entities){
+        return;
+    }
+    std::vector<Entity> entities = state.entities;
+    if (!ordered){
+        entities.erase(std::find(entities.begin(), entities.end(), state.active));
+        entities.push_back(state.active);
+        if (sceneProject->selectedEntities == entities){
+            return;
+        }
+    }
+
+    const bool record = cause == SelectionCause::User && recordSelectionInUndo && !CommandHistory::isApplying() &&
+        !isPlayRuntimeScene(sceneId) && !UndoTimeline::canRedo(sceneId);
+    if (record){
+        SelectionState after;
+        after.entities = std::move(entities);
+        after.active = after.entities.empty() ? NULL_ENTITY : after.entities.back();
+        // its execute writes the selection; a refused push still selects
+        if (CommandHandle::get(sceneId)->addCommand(new SelectionCmd(this, sceneId, getSelection(sceneId), after, selectionGesture))){
+            return;
+        }
+        entities = after.entities;
+    }
+
+    markSelectionChanged(sceneProject);
+    sceneProject->selectedEntities = std::move(entities);
 }
 
-void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    // The selection outline/gizmo is rendered, so a selection change needs a redraw.
-    markSelectionChanged(getScene(sceneId));
-    std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
+editor::SelectionState editor::Project::getSelection(uint32_t sceneId) const{
+    SelectionState state;
+    if (const SceneProject* sceneProject = getScene(sceneId)){
+        state.entities = sceneProject->selectedEntities;
+        state.active = state.entities.empty() ? NULL_ENTITY : state.entities.back();
+    }
+    return state;
+}
 
-    entities.clear();
-    if (selectedEntity != NULL_ENTITY){
-        entities.push_back(selectedEntity);
+void editor::Project::beginSelectionGesture(){
+    selectionGesture++;
+    selectionGestureHeld = true;
+}
+
+void editor::Project::endSelectionGesture(){
+    selectionGestureHeld = false;
+    selectionGesture++;
+}
+
+void editor::Project::nextSelectionFrame(){
+    if (!selectionGestureHeld){
+        selectionGesture++;
     }
 }
 
+void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
+    // Ctrl-click deselect reaches the selection only through here.
+    SelectionState state;
+    state.entities = std::move(selectedEntities);
+    setSelection(sceneId, state);
+}
+
+void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
+    SelectionState state;
+    if (selectedEntity != NULL_ENTITY){
+        state.entities.push_back(selectedEntity);
+    }
+    setSelection(sceneId, state);
+}
+
 void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    markSelectionChanged(getScene(sceneId));
-    std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
-    Scene* scene = getScene(sceneId)->scene;
+    SceneProject* sceneProject = getScene(sceneId);
+    std::vector<Entity> entities = sceneProject->selectedEntities;
+    Scene* scene = sceneProject->scene;
     auto transforms = scene->getComponentArray<Transform>();
 
     if (selectedEntity != NULL_ENTITY){
@@ -7208,6 +7368,10 @@ void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity)
         }),
         entities.end()
     );
+
+    SelectionState state;
+    state.entities = std::move(entities);
+    setSelection(sceneId, state);
 }
 
 bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
@@ -7221,22 +7385,25 @@ bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
 }
 
 void editor::Project::deselectDestroyedEntities(SceneProject* sceneProject){
-    std::vector<Entity>& selected = sceneProject->selectedEntities;
-    auto destroyed = std::remove_if(selected.begin(), selected.end(), [sceneProject](Entity entity) {
+    const std::vector<Entity>& selected = sceneProject->selectedEntities;
+    auto destroyed = std::find_if(selected.begin(), selected.end(), [sceneProject](Entity entity) {
         return !sceneProject->scene->isEntityCreated(entity);
     });
-    if (destroyed != selected.end()){
-        selected.erase(destroyed, selected.end());
-        markSelectionChanged(sceneProject);
+    if (destroyed == selected.end()){
+        return;
     }
+    SelectionState state;
+    for (Entity entity : selected){
+        if (sceneProject->scene->isEntityCreated(entity)){
+            state.entities.push_back(entity);
+        }
+    }
+    // not a step of its own: what destroyed them is
+    setSelection(sceneProject->id, state, SelectionCause::Forced);
 }
 
 void editor::Project::clearSelectedEntities(uint32_t sceneId){
-    SceneProject* sceneProject = getScene(sceneId);
-    if (!sceneProject->selectedEntities.empty()){
-        markSelectionChanged(sceneProject);
-    }
-    sceneProject->selectedEntities.clear();
+    setSelection(sceneId, SelectionState());
 }
 
 void editor::Project::clearAllSelections(uint32_t sceneId){
@@ -7542,7 +7709,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         PrefabManager::clearAll();
         ObjectManager::clearAll();
         clearPlayPrefabTemplates();
-        jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+        Scheduler::game().clear();
+        jasperengine::CrashHook::set(nullptr);
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
             sceneProject->playState = ScenePlayState::STOPPED;
@@ -8103,7 +8271,7 @@ void editor::Project::start(uint32_t sceneId) {
         return;
     }
 
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = 
+    jasperengine::CrashHook::set(
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {
             // Log the scene and entity context
             SceneProject* sceneProject = getScene(sceneId);
@@ -8136,7 +8304,7 @@ void editor::Project::start(uint32_t sceneId) {
                     stop(sceneId);
                 }
             });
-        };
+        });
 
     auto session = std::make_shared<PlaySession>();
     session->mainSceneId = sceneId;
@@ -8159,6 +8327,8 @@ void editor::Project::start(uint32_t sceneId) {
     // Play starts from the project's layer collision matrices, whatever an earlier Play's
     // scripts did to them
     applyLayerCollisionMatrices();
+    // a review left from the last Play of this scene goes with the new one
+    PlayChangeReview::get().discard(sceneId);
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
@@ -8291,10 +8461,12 @@ void editor::Project::stop(uint32_t sceneId) {
         Engine::onShutdown.call();
         Engine::pauseGameEvents(true);
         Engine::clearAllSubscriptions(true);
+        // the play's timers and coroutines (Lua's Timer): none runs after Stop
+        Scheduler::game().clear();
     }
 
     // Clear crash handler when stopping
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+    jasperengine::CrashHook::set(nullptr);
 
     // Request cancellation without blocking; the stop job waits for the build to end
     generator.cancelBuild();
@@ -8331,6 +8503,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // and timers the scripts' onShutdown made
+            Scheduler::game().clear();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {

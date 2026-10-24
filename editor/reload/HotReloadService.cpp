@@ -7,8 +7,8 @@
 
 #include "AppSettings.h"
 #include "EditorHost.h"
-#include "Out.h"
 #include "Project.h"
+#include "log/Logger.h"
 
 #include <algorithm>
 #include <cmath>
@@ -550,10 +550,10 @@ void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, do
         notify(job.path, job.kind, Event::Reloaded);
         notify(job.path, job.kind, Event::Content);
     } else if (warning) {
-        Out::warning("[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
+        JE_LOG_WARN(logCategoryAsset(), "[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
         addLateProblem({{"path", record.path}, {"severity", "warning"}, {"message", error}});
     } else {
-        Out::error("[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
+        JE_LOG_ERROR(logCategoryAsset(), "[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
         // a shader reports its compile errors with their lines itself
         if (job.kind != "shader") addLateProblem({{"path", record.path}, {"message", "Reload failed: " + error + " (the previous version is kept)."}});
         // a later save of the same bytes would not be tried again otherwise
@@ -603,7 +603,7 @@ void HotReloadService::writeBatchLine(const Batch& batch) {
     // one line per batch (R25: a checkout of 10,000 files is not 10,000 lines)
     if (ok.empty()) return;
     if (ok.size() == 1) {
-        Out::info("[Hot Reload] Reloaded %s (%s, %d ms)", ok[0]->path.c_str(), ok[0]->kind.c_str(), static_cast<int>(std::lround(ok[0]->ms)));
+        JE_LOG_INFO(logCategoryAsset(), "[Hot Reload] Reloaded %s (%s, %d ms)", ok[0]->path.c_str(), ok[0]->kind.c_str(), static_cast<int>(std::lround(ok[0]->ms)));
         return;
     }
     std::map<std::string, size_t> byKind;
@@ -612,7 +612,7 @@ void HotReloadService::writeBatchLine(const Batch& batch) {
     std::stable_sort(kinds.begin(), kinds.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
     std::string text;
     for (const auto& [kind, count] : kinds) text += (text.empty() ? "" : ", ") + reloadCountOf(count, kind);
-    Out::info("[Hot Reload] Reloaded %zu files: %s", ok.size(), text.c_str());
+    JE_LOG_INFO(logCategoryAsset(), "[Hot Reload] Reloaded %zu files: %s", ok.size(), text.c_str());
 }
 
 bool HotReloadService::idleFor(const std::vector<fs::path>& paths) const {
@@ -719,7 +719,7 @@ void HotReloadService::reloadFromDisk(uint32_t sceneId) {
         if (!project) return;
         std::string error;
         if (!project->reloadSceneFromDisk(sceneId, &error)) {
-            Out::error("[Hot Reload] %s", error.c_str());
+            JE_LOG_ERROR(logCategoryAsset(), "[Hot Reload] %s", error.c_str());
             return;
         }
         externallyChangedScenes.erase(sceneId);

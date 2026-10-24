@@ -4,6 +4,7 @@
 #include "EditorHost.h"
 
 #include "Out.h"
+#include "util/Scheduler.h"
 
 using namespace jasperengine::editor;
 
@@ -146,4 +147,10 @@ void jasperengine::editor::setEditorHost(EditorHost* host) {
 
 EditorHost& jasperengine::editor::getEditorHost() {
     return *s_activeHost;
+}
+
+jasperengine::Scheduler& jasperengine::editor::scheduler() {
+    // Never destroyed: tasks posted by threads still running at exit
+    static Scheduler* instance = new Scheduler("editor");
+    return *instance;
 }

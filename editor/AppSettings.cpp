@@ -3,6 +3,9 @@
 
 #include "AppSettings.h"
 #include "DocumentFile.h"
+#include "Project.h"
+#include "command/CommandHistory.h"
+#include "command/PlayChangeReview.h"
 #include "Out.h"
 #include "io/AtomicFile.h"
 #include "io/ScopedFileLock.h"
@@ -135,7 +138,12 @@ bool AppSettings::assetAutoRefresh = true;
 std::string AppSettings::assetWatcher = "auto";
 float AppSettings::assetPollingInterval = 1.0f;
 bool AppSettings::assetLogReloads = true;
+int AppSettings::undoMaxSteps = AppSettings::defaultUndoMaxSteps;
+int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
+bool AppSettings::undoRecordSelection = true;
+bool AppSettings::undoReviewPlayChanges = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
+LoggingSettings AppSettings::loggingSettings;
 
 bool AppSettings::initialize(bool preferUserDirectory) {
     // Settings live in the working directory, where a run from a build tree
@@ -333,6 +341,7 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
+                if (panelsNode["undo_history"]) panelVisibility.undoHistory = panelsNode["undo_history"].as<bool>();
             }
             if (editorNode["game_view"]) {
                 auto gameNode = editorNode["game_view"];
@@ -365,6 +374,36 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (htmlUiNode["verbose_diagnostics"]) htmlUiVerboseDiagnostics = htmlUiNode["verbose_diagnostics"].as<bool>();
         }
         UIDocumentSystem::setVerboseDiagnostics(htmlUiVerboseDiagnostics);
+
+        if (settingsData["undo"]) {
+            auto undoNode = settingsData["undo"];
+            if (undoNode["max_steps"]) undoMaxSteps = undoNode["max_steps"].as<int>();
+            if (undoNode["memory_limit_mb"]) undoMemoryLimitMB = undoNode["memory_limit_mb"].as<int>();
+            if (undoNode["record_selection"]) undoRecordSelection = undoNode["record_selection"].as<bool>();
+            if (undoNode["review_play_changes"]) undoReviewPlayChanges = undoNode["review_play_changes"].as<bool>();
+        }
+        applyUndoSettings();
+        loggingSettings = LoggingSettings();
+        if (settingsData["logging"]) {
+            auto loggingNode = settingsData["logging"];
+            if (loggingNode["levels"] && loggingNode["levels"].IsMap()) {
+                for (const auto& item : loggingNode["levels"]) {
+                    LogLevel level;
+                    const std::string name = item.second.as<std::string>();
+                    if (parseLogLevel(name.c_str(), level)) {
+                        loggingSettings.categoryLevels[item.first.as<std::string>()] = logLevelName(level);
+                    }
+                }
+            }
+            if (loggingNode["file_level"]) {
+                LogLevel level;
+                const std::string name = loggingNode["file_level"].as<std::string>();
+                if (parseLogLevel(name.c_str(), level)) loggingSettings.fileLevel = logLevelName(level);
+            }
+            if (loggingNode["backtrace_on_error"]) loggingSettings.backtraceOnError = loggingNode["backtrace_on_error"].as<bool>();
+            if (loggingNode["show_source"]) loggingSettings.showSource = loggingNode["show_source"].as<bool>();
+        }
+        applyLoggingSettings();
 
         return true;
     } catch (const std::exception& e) {
@@ -480,6 +519,7 @@ bool AppSettings::saveSettings() {
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
+        panelsNode["undo_history"] = panelVisibility.undoHistory;
         editorNode["panels"] = panelsNode;
         YAML::Node gameNode;
         gameNode["aspect"] = gameViewSettings.aspect;
@@ -507,6 +547,25 @@ bool AppSettings::saveSettings() {
         htmlUiNode["auto_import"] = htmlUiAutoImport;
         htmlUiNode["verbose_diagnostics"] = htmlUiVerboseDiagnostics;
         settingsData["html_ui"] = htmlUiNode;
+
+        YAML::Node undoNode;
+        undoNode["max_steps"] = undoMaxSteps;
+        undoNode["memory_limit_mb"] = undoMemoryLimitMB;
+        undoNode["record_selection"] = undoRecordSelection;
+        undoNode["review_play_changes"] = undoReviewPlayChanges;
+        settingsData["undo"] = undoNode;
+        if (loggingSettings == LoggingSettings()) {
+            if (settingsData["logging"]) settingsData.remove("logging");
+        } else {
+            YAML::Node loggingNode;
+            YAML::Node levelsNode(YAML::NodeType::Map);
+            for (const auto& [category, level] : loggingSettings.categoryLevels) levelsNode[category] = level;
+            loggingNode["levels"] = levelsNode;
+            loggingNode["file_level"] = loggingSettings.fileLevel;
+            loggingNode["backtrace_on_error"] = loggingSettings.backtraceOnError;
+            loggingNode["show_source"] = loggingSettings.showSource;
+            settingsData["logging"] = loggingNode;
+        }
         if (settingsData["ai_assistant"]) settingsData.remove("ai_assistant");
 
         return writeMerged();
@@ -804,6 +863,42 @@ void AppSettings::setLogReloads(bool enabled) {
     assetLogReloads = enabled;
 }
 
+int AppSettings::getUndoMaxSteps() {
+    return undoMaxSteps;
+}
+
+int AppSettings::getUndoMemoryLimitMB() {
+    return undoMemoryLimitMB;
+}
+
+bool AppSettings::getUndoRecordSelection() {
+    return undoRecordSelection;
+}
+
+bool AppSettings::getUndoReviewPlayChanges() {
+    return undoReviewPlayChanges;
+}
+
+void AppSettings::setUndo(int maxSteps, int memoryLimitMB, bool recordSelection, bool reviewPlayChanges) {
+    undoMaxSteps = maxSteps;
+    undoMemoryLimitMB = memoryLimitMB;
+    undoRecordSelection = recordSelection;
+    undoReviewPlayChanges = reviewPlayChanges;
+    applyUndoSettings();
+}
+
+void AppSettings::applyUndoSettings() {
+    undoMaxSteps = std::clamp(undoMaxSteps, minUndoMaxSteps, maxUndoMaxSteps);
+    // 0 = unlimited, else within the range
+    if (undoMemoryLimitMB != 0) {
+        undoMemoryLimitMB = std::clamp(undoMemoryLimitMB, minUndoMemoryLimitMB, maxUndoMemoryLimitMB);
+    }
+    CommandHistory::maxEntries = static_cast<size_t>(undoMaxSteps);
+    CommandHistory::memoryLimit = static_cast<size_t>(undoMemoryLimitMB) * 1024 * 1024;
+    Project::recordSelectionInUndo = undoRecordSelection;
+    PlayChangeReview::enabled = undoReviewPlayChanges;
+}
+
 bool AppSettings::getHtmlUiAutoImport() {
     return htmlUiAutoImport;
 }
@@ -819,6 +914,34 @@ bool AppSettings::getHtmlUiVerboseDiagnostics() {
 void AppSettings::setHtmlUiVerboseDiagnostics(bool enabled) {
     htmlUiVerboseDiagnostics = enabled;
     UIDocumentSystem::setVerboseDiagnostics(enabled);
+}
+
+LoggingSettings AppSettings::getLoggingSettings() {
+    return loggingSettings;
+}
+
+void AppSettings::setLoggingSettings(const LoggingSettings& settings) {
+    loggingSettings = settings;
+    applyLoggingSettings();
+}
+
+void AppSettings::applyLoggingSettings() {
+    // every category back to Info, then the ones the preferences change
+    for (size_t i = 0; i < Logger::categoryCount(); i++) {
+        Logger::setCategoryLevel(Logger::categoryAt(i), LogLevel::Info);
+    }
+    for (const auto& [category, levelName] : loggingSettings.categoryLevels) {
+        LogLevel level;
+        if (parseLogLevel(levelName.c_str(), level)) {
+            Logger::setCategoryLevel(Logger::registerCategory(category, LogLevel::Info), level);
+        }
+    }
+    LogLevel fileLevel = LogLevel::Info;
+    parseLogLevel(loggingSettings.fileLevel.c_str(), fileLevel);
+    Out::setFileLevel(fileLevel);
+    Out::setFileShowsSource(loggingSettings.showSource);
+    Logger::setBacktraceOnError(loggingSettings.backtraceOnError);
+    Out::applyLevelOverride();
 }
 
 bool AppSettings::getEditorVSyncEnabled() {

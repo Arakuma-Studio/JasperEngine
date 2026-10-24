@@ -47,6 +47,11 @@ namespace jasperengine::editor {
         bool m_logReloads = true;
         bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;
+        int m_undoMaxSteps = AppSettings::defaultUndoMaxSteps;
+        int m_undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
+        bool m_undoRecordSelection = true;
+        bool m_undoReviewPlayChanges = true;
+        LoggingSettings m_logging;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;
         char m_categorySearch[64] = {0};
@@ -61,17 +66,22 @@ namespace jasperengine::editor {
         void drawGeneralSettings();
         void drawCodeEditorSettings();
         void drawAssetPipelineSettings();
+        void drawUndoSettings();
         void drawExternalToolsSettings();
         // Row drawers for the External Tools table.
         void drawCMakeSettings();
         void drawWebSettings();
         void drawVideoImportSettings();
+        void drawLoggingSettings();
         void drawAdvancedSettings();
         bool applySettings();
 
     public:
-        // `category`: the page to show ("Asset Pipeline"...), else the last one
-        void open(Project* project, const char* category = nullptr);
+        void open(Project* project);
+        // Shows a page by its name ("General", "Logging" ...); false for an unknown one
+        bool showPage(const std::string& name);
+        const char* pageName() const;
+        void close() { m_isOpen = false; }
         void show();
         bool isOpen() const { return m_isOpen; }
     };

@@ -31,7 +31,7 @@ void editor::SceneWindow::drawExternalChangeBar(SceneProject& sceneProject) {
     ImGui::AlignTextToFramePadding();
     const std::string name = sceneChanged ? sceneProject.name : std::string("project.yaml");
     ImGui::Text(ICON_FA_TRIANGLE_EXCLAMATION "  %s changed on disk.", name.c_str());
-    ImGui::SetItemTooltip(sceneChanged ? "Another program wrote the file. Reload reads it (your unsaved changes go; not an undo step);\n"
+    ImGui::SetItemTooltip(sceneChanged ? "Another program wrote the file. Reload reads it (your unsaved changes and the scene's undo history go);\n"
                                          "Keep Mine keeps the editor's copy, written over the file on the next save."
                                        : "Another program wrote the project settings. Reload opens the project again;\n"
                                          "Keep Mine keeps the editor's settings, written over the file on the next save.");

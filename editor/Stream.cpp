@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Stream.h"
+#include "log/Logger.h"
 #include "StreamSchema.h"
 #include "StreamPreserved.h"
 #include "StreamMigrations.h"
@@ -1575,6 +1576,14 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     root["scalingMode"] = scalingModeToString(project->getScalingMode());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
+    if (!(project->getPlayerLogging() == PlayerLoggingSettings())) {
+        const PlayerLoggingSettings& logging = project->getPlayerLogging();
+        YAML::Node loggingNode;
+        loggingNode["level"] = logging.level;
+        loggingNode["fileLog"] = logging.fileLog;
+        loggingNode["backtrace"] = logging.backtrace;
+        root["playerLogging"] = loggingNode;
+    }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
 
     root["windowMode"] = windowModeToString(project->getWindowMode());
@@ -1936,6 +1945,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["vsync"].IsDefined()) {
         project->setVSyncEnabled(YamlNumbers::as<bool>(node["vsync"]));
+    }
+
+    {
+        PlayerLoggingSettings logging;
+        if (node["playerLogging"].IsDefined() && node["playerLogging"].IsMap()) {
+            const YAML::Node loggingNode = node["playerLogging"];
+            LogLevel level;
+            if (loggingNode["level"].IsDefined() && loggingNode["level"].IsScalar() && parseLogLevel(loggingNode["level"].as<std::string>().c_str(), level)) {
+                logging.level = logLevelName(level);
+            }
+            if (loggingNode["fileLog"].IsDefined()) logging.fileLog = YamlNumbers::as<bool>(loggingNode["fileLog"]);
+            if (loggingNode["backtrace"].IsDefined()) logging.backtrace = YamlNumbers::as<bool>(loggingNode["backtrace"]);
+        }
+        project->setPlayerLogging(logging);
     }
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {

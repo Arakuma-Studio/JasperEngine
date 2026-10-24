@@ -105,6 +105,12 @@ The method name must be the Engine event's name (`onUpdate`, `onFixedUpdate`,
 `onPostUpdate`, `onKeyDown`, ...). Events of a disabled script (inactive GameObject or
 disabled entry) are skipped.
 
+The subscriptions belong to the script (`this`): when the script goes away they are removed even
+without the `UNREGISTER_*` (and its timers cancelled). Timers: `#include "util/Scheduler.h"`,
+`Scheduler::game().after(2.0, [this]() { ... }, TimeDomain::Game, {.ownerKey = ownerKeyOf(this)})`,
+or keep the handles in a `TimerGroup` member. Logging with a category and the call's file:line:
+`JE_LOG_WARN(logCategoryScript(), "hp %d", hp)` (`"log/Logger.h"`).
+
 ## Rules that bite
 
 - Includes are quoted and resolve against the engine API snapshot: `"Engine.h"`,

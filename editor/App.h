@@ -9,6 +9,7 @@
 #include "EditorHost.h"
 #include "PlatformMenu.h"
 #include "Project.h"
+#include "command/UndoTimeline.h"
 
 #include "window/InspectorWindow.h"
 #include "window/HierarchyWindow.h"
@@ -57,6 +58,8 @@ namespace jasperengine::editor::mcp {
 namespace jasperengine::editor{
 
     class JobsMemoryWindow;
+    class UndoHistoryWindow;
+    class PlayModeChangesWindow;
 
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
@@ -101,9 +104,9 @@ namespace jasperengine::editor{
     private:
         Project project;
 
-        std::mutex mainThreadTaskMutex;
-        std::queue<std::function<void()>> mainThreadTasks;
         std::thread::id mainThreadId;
+        // the editor scheduler's Real clock
+        std::chrono::steady_clock::time_point lastSchedulerTime{};
 
         // Whether engineRender() drew a scene this frame, and a wake callback the
         // backend loop uses to decide when it can idle.
@@ -178,6 +181,8 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         JobsMemoryWindow* jobsMemoryWindow;
+        UndoHistoryWindow* undoHistoryWindow;
+        PlayModeChangesWindow* playModeChangesWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
@@ -259,6 +264,16 @@ namespace jasperengine::editor{
         void pasteSelection(bool asChild);
 
         PlatformMenuModel buildMenuModel();
+        // Where Ctrl+Z and Edit > Undo go now (UndoTimeline::resolveTarget)
+        UndoTimeline::Target undoTarget() const;
+        // Edit > Undo/Redo and Ctrl+Z/Ctrl+Y: the Code editor's own, or one timeline step
+        void undoRedo(bool undo);
+        // Esc and Ctrl+Z in a drag, popups and focus loss (S24 R12)
+        void handleInteractiveEdits(bool popupOpen);
+        // The ImGui widget being dragged (an Inspector slider, a colour picker, an Animation
+        // window key): its edits are one InteractiveEdit, opened by its first command
+        InteractiveEdit widgetEdit;
+        ImGuiID widgetEditItem = 0;
         void executeMenuCommand(const PlatformMenuCommand& command);
         void showImGuiMenuItems(const std::vector<PlatformMenuItem>& items);
         void showImGuiMenu(const PlatformMenuModel& menu);
@@ -364,6 +379,9 @@ namespace jasperengine::editor{
 
         bool didRenderScene() const { return renderedSceneThisFrame; }
         bool hasPendingMainThreadTasks();
+        // How long the idle backend loop may sleep: until the editor scheduler's next timer,
+        // at most maxSeconds
+        double idleWaitSeconds(double maxSeconds) const;
         // Main thread only: keeps the loop drawing while a worker thread drives the UI.
         void requestRedraw();
         // The editor's drawn frames since the last call (editor_status frame_ms, S05 R31):
@@ -409,10 +427,14 @@ namespace jasperengine::editor{
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
+        UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }
+        PlayModeChangesWindow* getPlayModeChangesWindow() const { return playModeChangesWindow; }
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        // Preferences (Edit > Preferences), for the MCP focus_window tool
+        EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
         PlayInput* getPlayInput() const;
         void resetLayout();
 

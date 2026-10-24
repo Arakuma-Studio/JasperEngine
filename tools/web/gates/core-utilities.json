@@ -1,0 +1,35 @@
+{
+  "description": "tools/test-projects/core-utilities (WEB_PROJECT=core-utilities tools/build.sh web): the logger's browser console sink (levels, order) and a Lua Timer in a build without pthreads. No pixel check: the scene is empty. lua/main.lua runs before the C++ init.",
+  "isolated": true,
+  "console": [
+    {
+      "text": "(WARN): [gate] lua warning 1",
+      "level": "warning"
+    },
+    {
+      "text": "[gate] cpp info 2",
+      "level": "log"
+    },
+    {
+      "text": "(WARN): [gate] cpp warning 3",
+      "level": "warning"
+    },
+    {
+      "text": "(ERROR): [gate] cpp error 4",
+      "level": "error"
+    },
+    {
+      "text": "(WARN): [render] [gate] category warning 5",
+      "level": "warning"
+    },
+    {
+      "text": "[gate] timer fired after 0.",
+      "level": "warning"
+    },
+    {
+      "text": "[gate] coroutine resumed",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

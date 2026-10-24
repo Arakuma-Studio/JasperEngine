@@ -74,6 +74,25 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
     add_definitions("-DJASPERENGINE_VSYNC_ENABLED=${JASPERENGINE_VSYNC_ENABLED_VALUE}")
 
+    # Player > Logging (the Exporter sets them): the game's log level, player.log, backtraces
+    if(DEFINED JASPERENGINE_LOG_LEVEL)
+        add_definitions("-DJASPERENGINE_LOG_LEVEL=\"${JASPERENGINE_LOG_LEVEL}\"")
+    endif()
+    if(DEFINED JASPERENGINE_LOG_FILE)
+        if(JASPERENGINE_LOG_FILE)
+            add_definitions("-DJASPERENGINE_LOG_FILE=1")
+        else()
+            add_definitions("-DJASPERENGINE_LOG_FILE=0")
+        endif()
+    endif()
+    if(DEFINED JASPERENGINE_LOG_BACKTRACE)
+        if(JASPERENGINE_LOG_BACKTRACE)
+            add_definitions("-DJASPERENGINE_LOG_BACKTRACE=1")
+        else()
+            add_definitions("-DJASPERENGINE_LOG_BACKTRACE=0")
+        endif()
+    endif()
+
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
         set(JASPERENGINE_WINDOW_WIDTH 960)
     endif()
@@ -865,6 +884,19 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/Log.cpp
+    core/log/Logger.cpp
+    core/log/LogFormat.cpp
+    core/log/Backtrace.cpp
+    core/log/sinks/ConsoleSink.cpp
+    core/log/sinks/RotatingFileSink.cpp
+    core/log/sinks/MemorySink.cpp
+    core/log/sinks/CallbackSink.cpp
+    core/log/sinks/PlatformSink.cpp
+    core/log/sinks/PlatformSinks.cpp
+    core/log/sinks/AndroidLogSink.cpp
+    core/log/sinks/EmscriptenConsoleSink.cpp
+    core/log/sinks/DebuggerSink.cpp
+    core/log/sinks/AppleLogSink.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
     core/System.cpp
@@ -1093,14 +1125,17 @@ set(JASPERENGINE_SRCS
     core/util/Angle.cpp
     core/util/Base64.cpp
     core/util/Color.cpp
+    core/util/CrashHook.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
     core/util/JoltJobAdapter.cpp
     core/util/LunaSVGRuntime.cpp
     core/util/PostColorLut.cpp
+    core/util/Scheduler.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
+    core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
@@ -1177,6 +1212,15 @@ target_link_libraries(jasperengine PRIVATE Threads::Threads)
 # the file watcher's FSEvents backend (core/io/watch/backends/FsEventsBackend.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
     target_link_libraries(jasperengine PUBLIC "-framework CoreServices")
+endif()
+
+# the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
+if(WIN32)
+    target_link_libraries(jasperengine PRIVATE dbghelp)
+elseif(ANDROID)
+    target_link_libraries(jasperengine PRIVATE log)
+elseif(NOT APPLE AND NOT EMSCRIPTEN)
+    target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
@@ -1313,6 +1357,22 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             SHARED
             ${all_code_files}
         )
+    endif()
+
+    # emcc packs project/assets and project/lua into the .data file at link time
+    # (--preload-file), which ninja does not see: list them as link inputs so an
+    # edited script or asset relinks instead of shipping the previous bundle.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set(EM_PRELOAD_DEPENDS)
+        foreach(preloadDir assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
+            endif()
+        endforeach()
+        if(EM_PRELOAD_DEPENDS)
+            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
+        endif()
     endif()
 
     if(WIN32)

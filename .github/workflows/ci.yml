@@ -504,6 +504,12 @@ jobs:
       - name: Browser gate
         run: tools/build.sh web-gate
 
+      - name: Build the core utilities gate project (logger, Lua Timer)
+        run: WEB_PROJECT=core-utilities tools/build.sh web
+
+      - name: Browser gate, core utilities
+        run: GATE=core-utilities tools/build.sh web-gate
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:

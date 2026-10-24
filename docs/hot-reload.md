@@ -20,7 +20,7 @@ reload. (Specification: [specs/S05-file-watcher-hot-reload.md](specs/S05-file-wa
 | C++ script | Its properties are read again; the scripts need a build, as before. |
 | HTML UI (`.html`, `.css` and what documents read) | The documents reading it reload (`[HTML UI] Reloaded ...` in the Console). |
 | Prefab not open | Its instances follow the file (unsaved edits in the editor win). |
-| Open scene, open prefab, `project.yaml` | **Never reloaded on its own.** The Scene view shows a bar: *"Level1 changed on disk. [Reload] [Keep Mine]"*. Reload reads the file (asking first when there are unsaved changes; it is not an undo step). Keep Mine keeps the editor's copy, written over the file on the next save. |
+| Open scene, open prefab, `project.yaml` | **Never reloaded on its own.** The Scene view shows a bar: *"Level1 changed on disk. [Reload] [Keep Mine]"*. Reload reads the file (asking first when there are unsaved changes; it is not an undo step, and the scene's undo history is cleared, as when it closes). Keep Mine keeps the editor's copy, written over the file on the next save. |
 | Code editor buffer | Without unsaved edits it reloads; with unsaved edits the Files Changed prompt asks. |
 
 Files added, deleted or renamed outside the editor update the Project window (only the folder

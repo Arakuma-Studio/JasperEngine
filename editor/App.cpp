@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/Scheduler.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -12,12 +13,16 @@
 
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
+#include "command/UndoTimeline.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/PlayModeChangesWindow.h"
+#include "window/UndoHistoryWindow.h"
+#include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 #include "reload/HotReloadService.h"
@@ -104,6 +109,7 @@ ImFont* editor::App::codeFont = nullptr;
 ImFont* editor::App::boldFont = nullptr;
 
 editor::App::App(){
+    scheduler().setOwnerThread();
     mainThreadId = std::this_thread::get_id();
     inspectorWindow = new InspectorWindow(&project);
     consoleWindow = new ConsoleWindow();
@@ -113,7 +119,10 @@ editor::App::App(){
     // the open project's files changing on disk reload (S05)
     project.setWatchFiles(true);
     mainToolbar = new MainToolbar(&project);
-    statusBar = new StatusBar([this]() { editorSettingsWindow.open(&project, "Asset Pipeline"); });
+    statusBar = new StatusBar([this]() {
+        editorSettingsWindow.open(&project);
+        editorSettingsWindow.showPage("Asset Pipeline");
+    });
     inspectorWindow->setSceneWindow(sceneWindow);
     hierarchyWindow = new HierarchyWindow(&project, sceneWindow);
     codeEditor = new CodeEditor(&project);
@@ -124,6 +133,17 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     jobsMemoryWindow = new JobsMemoryWindow();
+    undoHistoryWindow = new UndoHistoryWindow(&project);
+    playModeChangesWindow = new PlayModeChangesWindow(&project);
+    // Stop found edits that can be kept: the window opens, or after an agent's Stop the
+    // Console says where they are (S24 R30)
+    PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
+        if (PlayChangeReview::get().isQuietStop()) {
+            Out::info("%zu play-mode change%s can be kept: Window > General > Play Mode Changes", rows, rows == 1 ? "" : "s");
+            return;
+        }
+        playModeChangesWindow->openFor(sceneId);
+    };
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -254,6 +274,8 @@ enum class AppMenuCommand : uint32_t {
     ToggleTerrain,
     ToggleMcpActivity,
     ToggleJobsMemory,
+    ToggleUndoHistory,
+    TogglePlayModeChanges,
     FocusScene,
     FocusGame,
     StepFrame,
@@ -431,19 +453,32 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     // Project settings are not tracked by the scene and script dirty flags.
     bool canSaveAll = !isProjectBusy && !saveDialogInProgress;
 
+    // One timeline whatever window had focus (S24 R21): only a text field or the Code editor
+    // keep their own undo, and then the items say plain Undo/Redo
     bool canUndo = false;
     bool canRedo = false;
-    if (!textInput) {
-        if (lastFocusedWindow == LastFocusedWindow::Resources) {
-            canUndo = project.getProjectCommandHistory()->canUndo();
-            canRedo = project.getProjectCommandHistory()->canRedo();
-        } else if (lastFocusedWindow == LastFocusedWindow::Code) {
+    std::string undoLabel = "Undo";
+    std::string redoLabel = "Redo";
+    switch (undoTarget()) {
+        case UndoTimeline::Target::TextField:
+            break;
+        case UndoTimeline::Target::CodeEditor:
             canUndo = codeEditor->canUndoLastFocused();
             canRedo = codeEditor->canRedoLastFocused();
-        } else if (hasSelectedScene) {
-            canUndo = CommandHandle::get(selectedSceneId)->canUndo();
-            canRedo = CommandHandle::get(selectedSceneId)->canRedo();
-        }
+            break;
+        case UndoTimeline::Target::Timeline:
+            if (hasSelectedScene) {
+                canUndo = UndoTimeline::canUndo(selectedSceneId);
+                canRedo = UndoTimeline::canRedo(selectedSceneId);
+                undoLabel = UndoTimeline::undoLabel(selectedSceneId);
+                redoLabel = UndoTimeline::redoLabel(selectedSceneId);
+            } else {
+                canUndo = UndoTimeline::canUndo(NULL_PROJECT_SCENE);
+                canRedo = UndoTimeline::canRedo(NULL_PROJECT_SCENE);
+                undoLabel = UndoTimeline::undoLabel(NULL_PROJECT_SCENE);
+                redoLabel = UndoTimeline::redoLabel(NULL_PROJECT_SCENE);
+            }
+            break;
     }
 
     // Single-key shortcuts (F, F2) must not steal keys from text fields, the code
@@ -503,11 +538,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
-        menuShortcut(AppMenuCommand::Undo, "Undo", "Ctrl+Z", canUndo),
+        menuShortcut(AppMenuCommand::Undo, undoLabel, "Ctrl+Z", canUndo),
 #if defined(__APPLE__)
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Shift+Z", canRedo),
+        menuShortcut(AppMenuCommand::Redo, redoLabel, "Ctrl+Shift+Z", canRedo),
 #else
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Y", canRedo),
+        menuShortcut(AppMenuCommand::Redo, redoLabel, "Ctrl+Y", canRedo),
 #endif
         menuSeparator(),
         menuShortcut(AppMenuCommand::SelectAll, "Select All", "Ctrl+A", canSelectAll()),
@@ -570,7 +605,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleInspector, windowMenuLabel(InspectorWindow::WINDOW_NAME), "Ctrl+3"),
             menuShortcut(AppMenuCommand::ToggleHierarchy, windowMenuLabel(HierarchyWindow::WINDOW_NAME), "Ctrl+4"),
             menuShortcut(AppMenuCommand::ToggleProject, windowMenuLabel(ProjectWindow::WINDOW_NAME), "Ctrl+5"),
-            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C")
+            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C"),
+            menuCommand(AppMenuCommand::ToggleUndoHistory, windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::TogglePlayModeChanges, windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
@@ -685,24 +722,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             exit();
             break;
         case AppMenuCommand::Undo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                project.getProjectCommandHistory()->undo();
-                projectWindow->refreshCurrentDirectory();
-            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                codeEditor->undoLastFocused();
-            } else if (project.getSelectedScene()) {
-                CommandHandle::get(project.getSelectedSceneId())->undo();
-            }
+            undoRedo(true);
             break;
         case AppMenuCommand::Redo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                project.getProjectCommandHistory()->redo();
-                projectWindow->refreshCurrentDirectory();
-            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                codeEditor->redoLastFocused();
-            } else if (project.getSelectedScene()) {
-                CommandHandle::get(project.getSelectedSceneId())->redo();
-            }
+            undoRedo(false);
             break;
         case AppMenuCommand::RenameSelection:
             if (!hierarchyWindow->renameSelected()) inspectorWindow->focusNameInput();
@@ -747,6 +770,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleJobsMemory:
             showEditorWindow(jobsMemoryWindow);
+            break;
+        case AppMenuCommand::ToggleUndoHistory:
+            showEditorWindow(undoHistoryWindow);
+            break;
+        case AppMenuCommand::TogglePlayModeChanges:
+            showEditorWindow(playModeChangesWindow);
             break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
@@ -982,6 +1011,70 @@ void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
             }
         }
         ImGui::EndMainMenuBar();
+    }
+}
+
+editor::UndoTimeline::Target editor::App::undoTarget() const{
+    UndoTimeline::FocusedWindow focused = UndoTimeline::FocusedWindow::None;
+    switch (lastFocusedWindow) {
+        case LastFocusedWindow::None: focused = UndoTimeline::FocusedWindow::None; break;
+        case LastFocusedWindow::AnySceneWindow: focused = UndoTimeline::FocusedWindow::Scene; break;
+        case LastFocusedWindow::Resources: focused = UndoTimeline::FocusedWindow::Resources; break;
+        case LastFocusedWindow::Code: focused = UndoTimeline::FocusedWindow::Code; break;
+    }
+    return UndoTimeline::resolveTarget(ImGui::GetIO().WantTextInput, codeEditor->isFocused(), focused);
+}
+
+void editor::App::undoRedo(bool undo){
+    switch (undoTarget()) {
+        case UndoTimeline::Target::TextField:
+            return;
+        case UndoTimeline::Target::CodeEditor:
+            if (undo) codeEditor->undoLastFocused();
+            else codeEditor->redoLastFocused();
+            return;
+        case UndoTimeline::Target::Timeline:
+            break;
+    }
+    const bool dragging = CommandHistory::anyInteractiveOpen();
+    std::string why;
+    const uint32_t sceneId = project.getSelectedScene() ? project.getSelectedSceneId() : NULL_PROJECT_SCENE;
+    const bool done = undo ? UndoTimeline::undo(sceneId, &why) : UndoTimeline::redo(sceneId, &why);
+    if (dragging) {
+        // the cancelled drag's widget lets go of the mouse
+        ImGui::ClearActiveID();
+    }
+    if (!done && why.rfind("Busy", 0) == 0) {
+        Out::warning(why);
+    }
+}
+
+void editor::App::handleInteractiveEdits(bool popupOpen){
+    ImGuiIO& io = ImGui::GetIO();
+    // Esc puts a drag's values back; a text field keeps Esc for its own revert. First: ImGui
+    // lets go of the dragged widget on Esc itself, which must not read as a drag that ended
+    if (CommandHistory::anyInteractiveOpen() && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        for (CommandHistory* history : std::vector<CommandHistory*>(CommandHistory::all())) {
+            history->cancelInteractive();
+        }
+        ImGui::ClearActiveID();
+        return;
+    }
+    // the widget let go last frame: its drag is one step
+    const ImGuiID active = ImGui::GetActiveID();
+    if (widgetEdit.isOpen() && active != widgetEditItem) {
+        widgetEdit.commit();
+    }
+    if (active == 0) {
+        // no widget can hold a command the history dropped
+        CommandHistory::flushReleased();
+    }
+    if (!CommandHistory::anyInteractiveOpen()) {
+        return;
+    }
+    // A menu or popup opening, or the editor window losing focus, ends the drag as it is
+    if (popupOpen || io.AppFocusLost) {
+        CommandHistory::commitInteractiveEdits();
     }
 }
 
@@ -1342,6 +1435,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(viewport.x - rightWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(ProjectWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -1367,6 +1462,8 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 3);
+    stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 4);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -1917,7 +2014,11 @@ void editor::App::show(){
         }
     }
 
+    // the selection changes of one frame are one undo step
+    project.nextSelectionFrame();
+
     ImGuiIO& io = ImGui::GetIO();
+    handleInteractiveEdits(ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     bool isUndo = !io.WantTextInput && (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift);
     bool isRedo = !io.WantTextInput && ((io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y)) || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && io.KeyShift));
 
@@ -1986,16 +2087,13 @@ void editor::App::show(){
         // space to keys events
     }
 
-    if (!popupOpen && !projectWindow->isFocused() && !jobsMemoryWindow->isFocused() && !codeEditor->isFocused()){
-        uint32_t sceneId = project.getSelectedSceneId();
+    // Ctrl+Z / Ctrl+Y: the timeline from any window but a text field or the Code editor,
+    // which keep their own undo (S24 R21)
+    if (!popupOpen && (isUndo || isRedo) && undoTarget() == UndoTimeline::Target::Timeline) {
+        undoRedo(isUndo);
+    }
 
-        // Update the Undo and Redo button logic:
-        if (isUndo) {
-            CommandHandle::get(sceneId)->undo();
-        }
-        if (isRedo) {
-            CommandHandle::get(sceneId)->redo();
-        }
+    if (!popupOpen && !projectWindow->isFocused() && !jobsMemoryWindow->isFocused() && !codeEditor->isFocused()){
 
         if (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace)) deleteSelection();
 
@@ -2022,17 +2120,6 @@ void editor::App::show(){
         if (!io.WantTextInput && !io.KeyCtrl && !io.KeyShift && !io.KeyAlt &&
             hierarchyWindow->isFocused() && ImGui::IsKeyPressed(ImGuiKey_F, false)) {
             executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::FrameSelected), {}});
-        }
-    }
-
-    if (!popupOpen && (projectWindow->isFocused() || jobsMemoryWindow->isFocused())) {
-        if (isUndo) {
-            project.getProjectCommandHistory()->undo();
-            projectWindow->refreshCurrentDirectory();
-        }
-        if (isRedo) {
-            project.getProjectCommandHistory()->redo();
-            projectWindow->refreshCurrentDirectory();
         }
     }
 
@@ -2082,6 +2169,8 @@ void editor::App::show(){
     inspectorWindow->show();
     mcpActivityWindow->show();
     jobsMemoryWindow->show();
+    undoHistoryWindow->show();
+    playModeChangesWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -2268,6 +2357,31 @@ void editor::App::engineInit(int argc, char** argv) {
         }
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
+    };
+    // A drag on a widget is one undo step (S24 R11): its first command opens the edit; a
+    // command the history drops waits until no widget may still point at it
+    CommandHistory::deferReleases = true;
+    CommandHistory::beforeRecord = [this](CommandHistory& history){
+        if (UndoOriginScope::current().kind != UndoOriginKind::User || !ImGui::GetCurrentContext()) {
+            return;
+        }
+        const ImGuiID active = ImGui::GetActiveID();
+        if (active == 0 || (widgetEdit.isOpen() && widgetEditItem == active)) {
+            return;
+        }
+        widgetEdit.commit();
+        widgetEdit = history.beginInteractive(std::string());
+        widgetEditItem = active;
+    };
+    // The Edit menu labels and the Undo History panel follow every history change; the loop
+    // idles otherwise. An undo or redo of an asset step refreshes the Project window.
+    UndoTimeline::onChanged = [this](){
+        requestRedraw();
+    };
+    UndoTimeline::onProjectChanged = [this](){
+        if (projectWindow) {
+            projectWindow->refreshCurrentDirectory();
+        }
     };
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
@@ -3230,18 +3344,19 @@ void editor::App::finishBenchmark() {
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
     if (!task) return;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        mainThreadTasks.push(std::move(task));
-    }
+    scheduler().post(std::move(task));
     // Wake an idle backend loop so cross-thread work runs promptly.
     std::lock_guard<std::mutex> lock(wakeMutex);
     if (wakeCallback) wakeCallback();
 }
 
 bool editor::App::hasPendingMainThreadTasks() {
-    std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-    return !mainThreadTasks.empty();
+    return scheduler().hasPosted();
+}
+
+double editor::App::idleWaitSeconds(double maxSeconds) const {
+    const double next = scheduler().nextDueRealTime();
+    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
@@ -3913,26 +4028,18 @@ void editor::App::processNextSaveDialog() {
 void editor::App::processMainThreadTasks() {
     if (projectLoading) return;
 
-    std::queue<std::function<void()>> tasks;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        std::swap(tasks, mainThreadTasks);
+    // FIFO, one failing task neither drops the ones behind it (an MCP call waiting for its
+    // turn would never be answered) nor takes the editor down (Scheduler logs it)
+    Scheduler& tasks = scheduler();
+    tasks.processPosted();
+    const auto now = std::chrono::steady_clock::now();
+    if (lastSchedulerTime != std::chrono::steady_clock::time_point{}) {
+        tasks.advance(TimeDomain::Real, std::chrono::duration<double>(now - lastSchedulerTime).count());
     }
-
-    while (!tasks.empty()) {
-        auto task = std::move(tasks.front());
-        tasks.pop();
-        if (!task) continue;
-        // One failing task must not drop the ones queued behind it (an MCP call waiting
-        // for its turn would never be answered) nor take the editor down
-        try {
-            task();
-        } catch (const std::exception& e) {
-            Out::error("A main-thread task failed: %s", e.what());
-        } catch (...) {
-            Out::error("A main-thread task failed with an unknown error.");
-        }
-    }
+    lastSchedulerTime = now;
+    tasks.process(TimeDomain::Real);
+    tasks.advance(TimeDomain::Frames, 1.0);
+    tasks.process(TimeDomain::Frames);
 }
 
 bool editor::App::isMainThread() const {
@@ -3960,6 +4067,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
+    undoHistoryWindow->setOpen(visibility.undoHistory);
 }
 
 void editor::App::persistPanelVisibilitySettings() {
@@ -3972,6 +4080,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
+    visibility.undoHistory = undoHistoryWindow->isOpen();
 
     if (visibility != AppSettings::getPanelVisibility()) {
         AppSettings::setPanelVisibility(visibility);

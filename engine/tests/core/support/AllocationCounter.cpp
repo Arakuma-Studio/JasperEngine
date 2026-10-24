@@ -10,6 +10,8 @@
 
 #include "AllocationCounter.h"
 
+#include <cstdlib>
+
 #if defined(JE_TEST_COUNTS_ALLOCATIONS)
 
 #include <atomic>
@@ -22,6 +24,8 @@
 
 namespace{
     std::atomic<uint64_t> allocations{0};
+    // static TLS of the executable: reading it never allocates
+    thread_local uint64_t threadCount = 0;
 
     // JE_TEST_TRACE_ALLOCATIONS=1 prints the stack of each allocation counted inside an
     // AllocationCountScope (the first 20), to find what reached the heap
@@ -39,6 +43,7 @@ namespace{
 
     void count(){
         allocations.fetch_add(1, std::memory_order_relaxed);
+        threadCount++;
         if (openScopes.load(std::memory_order_relaxed) > 0 && !tracing && traceEnabled() && traced.fetch_add(1) < 20){
             tracing = true;
             void* frames[24];
@@ -129,6 +134,10 @@ namespace testsupport {
         return true;
     }
 
+    uint64_t threadAllocations(){
+        return threadCount;
+    }
+
 }
 
 #else
@@ -140,7 +149,22 @@ namespace testsupport {
     uint64_t AllocationCountScope::count() const{ return 0; }
     uint64_t totalAllocations(){ return 0; }
     bool countsAllocations(){ return false; }
+    uint64_t threadAllocations(){ return 0; }
 
 }
 
 #endif
+
+namespace testsupport {
+
+    double perfSlack(){
+    #if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+        return 0.0;
+    #else
+        const char* value = std::getenv("JASPER_TEST_PERF_SLACK");
+        const double slack = value ? std::atof(value) : 1.0;
+        return slack > 0.0 ? slack : 1.0;
+    #endif
+    }
+
+}

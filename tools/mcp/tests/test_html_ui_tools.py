@@ -55,11 +55,12 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
           "list_ui_effects": 900, "set_ui_effect_time": 500}
 # S03 (data safety, R37/R38): +1479 for get_load_report (225), discard_scene_backup (146),
 # list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
+# S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
+# undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
+# focus_window's undo_history / play_mode_changes panels (35)
 # S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
 # and editor_status' file_watcher and frame_ms
-# S06 (jobs and memory): +914, measured on the S05 branch after merging it (editor_status' jobs
-# and memory, the new project tool, view and script tool texts)
-TOTAL_LIMIT = 99800 + 837 + 1479 + 395 + 914
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2164 + 395
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

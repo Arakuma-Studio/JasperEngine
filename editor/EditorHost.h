@@ -12,6 +12,10 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine {
+    class Scheduler;
+}
+
 namespace jasperengine::editor {
 
     class CodeEditor;
@@ -114,5 +118,10 @@ namespace jasperengine::editor {
 
     void setEditorHost(EditorHost* host);
     EditorHost& getEditorHost();
+
+    // The editor's scheduler (engine/core/util/Scheduler.h): enqueueMainThreadTask posts to
+    // it, and the App processes it once per editor frame on the Real and Frames clocks (editor
+    // frames), where the main-thread tasks run (also while Play is paused or stopped)
+    Scheduler& scheduler();
 
 }

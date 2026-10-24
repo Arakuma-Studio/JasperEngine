@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "Project.h"
 #include <cstdint>
 #include <string>
@@ -102,6 +104,17 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Create Cube": the name it got
+        std::string describe() const override { return "Create " + entityName; }
+        const char* typeName() const override { return "CreateEntityCmd"; }
+        // The GameObject as it is now, pasted back with its id
+        void collectKeepCommands(KeepContext& context) const override { context.addCreated(entity); }
+        size_t memoryBytes() const override {
+            return sizeof(*this) + entityName.size() + childEntities.capacity() * sizeof(ChildEntityData);
+        }
+        uint32_t getSceneId() const { return sceneId; }
+        Entity getParent() const { return parent; }
 
 
         Entity getEntity();

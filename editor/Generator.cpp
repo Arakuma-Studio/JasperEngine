@@ -763,7 +763,8 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     std::string sourceContent;
 
     if (!scriptFiles.empty()) {
-        sourceContent += "static void deleteCppScripts(jasperengine::Scene* scene, jasperengine::ScriptComponent& scriptComp) {\n";
+        // the scene is not needed any more: a script's subscriptions are found by its address
+        sourceContent += "static void deleteCppScripts(jasperengine::ScriptComponent& scriptComp) {\n";
         sourceContent += "    {\n";
         sourceContent += "        for (auto& scriptEntry : scriptComp.scripts) {\n";
         sourceContent += "            if (scriptEntry.type == ScriptType::LUA) continue;\n";
@@ -771,9 +772,8 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         sourceContent += "            if (scriptEntry.instance) {\n";
         for (const auto& s : scriptFiles) {
             sourceContent += "                if (scriptEntry.className == \"" + s.className + "\") {\n";
-            sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(scriptEntry.instance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            // its REGISTER_* subscriptions and its timers
+            sourceContent += "                    SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(scriptEntry.instance));\n";
             sourceContent += "                    delete static_cast<" + s.className + "*>(scriptEntry.instance);\n";
             sourceContent += "                }\n";
         }
@@ -800,9 +800,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
             sourceContent += "                for (auto& prop : scriptEntry.properties) {\n";
             sourceContent += "                    if (!prop.ownedInstance) continue;\n";
             sourceContent += "\n";
-            sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(prop.ownedInstance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(prop.ownedInstance));\n";
             sourceContent += "\n";
             sourceContent += deleteContent;
             sourceContent += "\n";
@@ -821,7 +819,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
     if (!scriptFiles.empty()) {
         sourceContent += "    const auto& scriptsArray = scene->getComponentArray<ScriptComponent>();\n";
         sourceContent += "    for (size_t i = 0; i < scriptsArray->size(); i++) {\n";
-        sourceContent += "        deleteCppScripts(scene, scriptsArray->getComponentFromIndex(i));\n";
+        sourceContent += "        deleteCppScripts(scriptsArray->getComponentFromIndex(i));\n";
         sourceContent += "    }\n";
     }
     sourceContent += "}\n\n";
@@ -833,7 +831,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         sourceContent += "    for (size_t i = 0; i < count; i++) {\n";
         sourceContent += "        if (!scene->isEntityCreated(entities[i])) continue;\n";
         sourceContent += "        if (jasperengine::ScriptComponent* scriptComp = scene->findComponent<jasperengine::ScriptComponent>(entities[i])) {\n";
-        sourceContent += "            deleteCppScripts(scene, *scriptComp);\n";
+        sourceContent += "            deleteCppScripts(*scriptComp);\n";
         sourceContent += "        }\n";
         sourceContent += "    }\n";
     } else {

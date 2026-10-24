@@ -72,6 +72,15 @@ namespace jasperengine::editor{
         INTO
     };
 
+    // Where a selection change comes from (Project::setSelection): the user (a standalone
+    // change is an undo step), an undo/redo putting a stored selection back, or forced
+    // (GameObjects destroyed, a scene reloaded). Only User changes are recorded.
+    enum class SelectionCause{
+        User,
+        Restore,
+        Forced
+    };
+
     enum class TabType{
         SCENE,
         CODE_EDITOR,
@@ -576,6 +585,18 @@ namespace jasperengine::editor{
 
     using ComponentRecovery = std::map<std::string, ComponentRecoveryEntry>;
 
+    // Project Settings > Player > Logging (project.yaml "playerLogging"). The defaults are what
+    // games did before: everything from Info on to the platform log, no file, no backtraces.
+    struct PlayerLoggingSettings {
+        std::string level = "info";      // trace, debug, info, warn, error, off
+        bool fileLog = false;            // desktop: <userdata>/logs/player.log, 1 MB x 2
+        bool backtrace = false;          // errors record their call stack
+
+        bool operator==(const PlayerLoggingSettings& other) const {
+            return level == other.level && fileLog == other.fileLog && backtrace == other.backtrace;
+        }
+    };
+
     class Project{
     private:
 
@@ -594,6 +615,7 @@ namespace jasperengine::editor{
         Scaling scalingMode;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
+        PlayerLoggingSettings playerLogging;
         int htmlUiMsaaSamples;
         WindowMode windowMode;
         unsigned int windowWidth;
@@ -628,6 +650,9 @@ namespace jasperengine::editor{
         IOSProjectSettings iosProjectSettings;
         AndroidProjectSettings androidProjectSettings;
         CommandHistory projectHistory;
+        uint64_t selectionGesture = 1;
+        bool selectionGestureHeld = false;
+        void installUndoHooks();
 
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
@@ -1031,6 +1056,8 @@ namespace jasperengine::editor{
 
         Project();
         ~Project();
+        Project(const Project&) = delete;
+        Project& operator=(const Project&) = delete;
 
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
@@ -1065,6 +1092,10 @@ namespace jasperengine::editor{
 
         void setVSyncEnabled(bool enabled);
         bool isVSyncEnabled() const;
+
+        // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
+        void setPlayerLogging(const PlayerLoggingSettings& settings);
+        const PlayerLoggingSettings& getPlayerLogging() const;
 
         // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
         // them), applied to the editor's documents at once and written into exports
@@ -1531,6 +1562,20 @@ namespace jasperengine::editor{
         // What the running scene made for itself: listed while playing, destroyed by Stop,
         // and never part of the authored entities a file keeps
         std::vector<Entity> getPlayCreatedEntities(const SceneProject* sceneProject) const;
+
+        // Every write to a scene's selection: the GameObjects in order, the active one last.
+        // A User change outside a command is an undo step ("Select Player", R15) unless the
+        // timeline has a redo tail or Record Selection in Undo is off; changes made while a
+        // command runs belong to that command's step.
+        void setSelection(uint32_t sceneId, const SelectionState& state, SelectionCause cause = SelectionCause::User);
+        SelectionState getSelection(uint32_t sceneId) const;
+        // Selection changes until the end are one undo step (a box select drag); otherwise the
+        // changes of one frame are (nextSelectionFrame, called once per editor frame)
+        void beginSelectionGesture();
+        void endSelectionGesture();
+        void nextSelectionFrame();
+        // Editor Settings > Undo > Record Selection in Undo
+        static bool recordSelectionInUndo;
 
         void replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities);
         // A running scene and its Stop destroy entities the Hierarchy lets the user select

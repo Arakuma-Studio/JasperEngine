@@ -4,11 +4,26 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <string>
 #include <vector>
 #include "yaml-cpp/yaml.h"
 
 namespace jasperengine::editor {
+
+// Preferences > Logging (settings.yaml "logging"). Defaults are the editor's behaviour
+// before categories existed: Info everywhere, the log file at Info.
+struct LoggingSettings {
+    std::map<std::string, std::string> categoryLevels;   // category -> level name (only those changed)
+    std::string fileLevel = "info";
+    bool backtraceOnError = true;
+    bool showSource = true;
+
+    bool operator==(const LoggingSettings& other) const {
+        return categoryLevels == other.categoryLevels && fileLevel == other.fileLevel &&
+               backtraceOnError == other.backtraceOnError && showSource == other.showSource;
+    }
+};
 
 struct PanelVisibilitySettings {
     bool hierarchy = true;
@@ -19,6 +34,7 @@ struct PanelVisibilitySettings {
     bool terrain = false;
     bool mcp = false;
     bool game = true;
+    bool undoHistory = true;
 
     bool operator==(const PanelVisibilitySettings& other) const {
         return hierarchy == other.hierarchy
@@ -28,7 +44,8 @@ struct PanelVisibilitySettings {
             && animation == other.animation
             && terrain == other.terrain
             && mcp == other.mcp
-            && game == other.game;
+            && game == other.game
+            && undoHistory == other.undoHistory;
     }
 
     bool operator!=(const PanelVisibilitySettings& other) const {
@@ -134,6 +151,15 @@ private:
     static float assetPollingInterval;        // seconds, 0.25..10
     static bool assetLogReloads;
     static bool htmlUiVerboseDiagnostics;
+
+    // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
+    // together (MB, 0 = unlimited), standalone selection changes as steps, and the Play Mode
+    // Changes review on Stop
+    static int undoMaxSteps;
+    static int undoMemoryLimitMB;
+    static bool undoRecordSelection;
+    static bool undoReviewPlayChanges;
+    static LoggingSettings loggingSettings;
 
     // Private methods
     static void ensureConfigDirectory();
@@ -255,6 +281,24 @@ public:
     static void setHtmlUiAutoImport(bool enabled);
     static bool getHtmlUiVerboseDiagnostics();
     static void setHtmlUiVerboseDiagnostics(bool enabled);
+
+    // Undo settings, applied to CommandHistory/Project when set or loaded (clamped to their ranges)
+    static constexpr int minUndoMaxSteps = 50;
+    static constexpr int maxUndoMaxSteps = 10000;
+    static constexpr int defaultUndoMaxSteps = 1000;
+    static constexpr int minUndoMemoryLimitMB = 64;
+    static constexpr int maxUndoMemoryLimitMB = 8192;
+    static constexpr int defaultUndoMemoryLimitMB = 512;
+    static int getUndoMaxSteps();
+    static int getUndoMemoryLimitMB();
+    static bool getUndoRecordSelection();
+    static bool getUndoReviewPlayChanges();
+    static void setUndo(int maxSteps, int memoryLimitMB, bool recordSelection, bool reviewPlayChanges);
+    static void applyUndoSettings();
+    // Preferences > Logging; set applies them to the logger at once (then --log-level again)
+    static LoggingSettings getLoggingSettings();
+    static void setLoggingSettings(const LoggingSettings& settings);
+    static void applyLoggingSettings();
 
     // Load and save settings
     static bool loadSettings();

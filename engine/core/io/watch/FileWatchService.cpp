@@ -5,9 +5,9 @@
 
 #include "AtomicFile.h"
 #include "FileChangeCoalescer.h"
-#include "Log.h"
 #include "ProjectFileIndex.h"
 #include "jobs/detail/TimedWait.h"
+#include "log/Logger.h"
 
 #include <algorithm>
 #include <deque>
@@ -136,7 +136,7 @@ struct FileWatchService::Shared {
     std::function<void()> waker;
     std::atomic<std::thread::id> mainThread{std::thread::id()};
 
-    std::function<void(const std::string&)> warning = [](const std::string& message) { Log::warn("%s", message.c_str()); };
+    std::function<void(const std::string&)> warning = [](const std::string& message) { JE_LOG_WARN(logCategoryIO(), "%s", message.c_str()); };
 
     void warnOnceLocked(const std::string& key, const std::string& message) {
         if (!warned.insert(key).second) return;
