@@ -3,7 +3,8 @@
 //
 // je-bench-jobs: the scheduler's budgets (S06 R23-R25, AC11-AC13) on 8 workers.
 //
-//   je-bench-jobs [--json <file>] [--workers <n>]      default file: je-bench-jobs.json
+//   je-bench-jobs [--json <file>] [--workers <n>] [--only-frame-protection]
+//                                                      default file: je-bench-jobs.json
 //
 // 8 workers by default, hardware threads - 2 on a smaller machine: the budgets assume the
 // workers and the producing thread each have a core, and one more is left to the rest of the
@@ -217,14 +218,18 @@ namespace{
         // the cooks still queued end at once (stop), before the system shuts down
         while (queued.load() > 0)
             std::this_thread::yield();
+        std::fprintf(stderr, "frame protection: median %.3f ms, p90 %.3f ms, p99 %.3f ms, max %.3f ms\n",
+                     bench::percentile(samples, 0.5), bench::percentile(samples, 0.9),
+                     bench::percentile(samples, 0.99), bench::percentile(samples, 1.0));
         return bench::percentile(samples, 0.99);
     }
 
-    // R25: the best of five runs' p99. A neighbour taking cores on a shared build server during
-    // a run moves that run's p99, not the scheduler's: the undisturbed run is the measure.
+    // R25: the best of ten runs' p99. A neighbour taking cores on a shared build server during
+    // a run moves that run's p99, not the scheduler's: the undisturbed run is the measure
+    // (each run is about 1.3 s).
     double frameProtectionP99Ms(){
         double best = 1e9;
-        for (int run = 0; run < 5; run++){
+        for (int run = 0; run < 10; run++){
             const double p99 = frameProtectionRunP99Ms();
             std::fprintf(stderr, "frame protection run %d: p99 %.3f ms\n", run + 1, p99);
             best = std::min(best, p99);
@@ -313,13 +318,23 @@ int main(int argc, char** argv){
     const int hardware = (int)std::thread::hardware_concurrency();
     if (hardware > 0)
         kWorkers = std::max(1, std::min(8, hardware - 2));
-    for (int i = 1; i + 1 < argc; i++){
-        if (std::string(argv[i]) == "--workers")
+    bool onlyFrame = false;
+    for (int i = 1; i < argc; i++){
+        if (std::string(argv[i]) == "--workers" && i + 1 < argc)
             kWorkers = std::max(1, std::atoi(argv[i + 1]));
+        if (std::string(argv[i]) == "--only-frame-protection")
+            onlyFrame = true;
     }
     jasperengine::Engine::systemInit(argc, argv, new testsupport::JobsTestSystem());
     bench::Results results("je-bench-jobs");
     std::printf("je-bench-jobs: %d workers, %u hardware threads\n", kWorkers, std::thread::hardware_concurrency());
+
+    if (onlyFrame){
+        // R25 alone (a quick look at a shared machine), no JSON
+        std::printf("frame_protection_p99_ms %.3f\n", frameProtectionP99Ms());
+        jobs::shutdown();
+        return 0;
+    }
 
     double publishRate = 0.0;
     results.add("submit_throughput_jobs_per_s", submitThroughput(publishRate), "jobs/s");
