@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // Unity's AssetDatabase, for the asset types referenced by GUID: a 128-bit id written in
-// the asset file itself (a top-level `guid:` key), mapped to the file's project-relative
-// path. References store the GUID and the path as a hint, so a file renamed or moved,
-// inside the editor or outside it, is still found. Only .prefab files are tracked now;
-// isTrackedFile is the one place another type (scenes, materials) would be added.
-// The contract is in editor/project/PREFABS.md.
+// the asset file itself (a top-level `guid:` key in a .prefab, the top-level "guid" member of
+// an .anim clip's JSON), mapped to the file's project-relative path. References store the GUID
+// and the path as a hint, so a file renamed or moved, inside the editor or outside it, is still
+// found. .prefab and .anim files are tracked; isTrackedFile is the one place another type
+// (scenes, materials) would be added. The contract is in editor/project/PREFABS.md (clips:
+// animation clips spec 9.R8).
 
 #pragma once
 
@@ -41,10 +42,11 @@ namespace jasperengine::editor {
         static std::string legacyGuid(const std::filesystem::path& relativePath);
         static bool isGuid(const std::string& text);
 
-        // The file's top-level `guid:` value, empty without one
+        // The file's top-level `guid:` value (an .anim: its "guid" member), empty without one
         static std::string readGuid(const std::filesystem::path& fullPath);
         // Writes `guid` as the file's top-level `guid:` value, the rest of the file unchanged
-        // (a line replaced or inserted at the top)
+        // (a line replaced or inserted at the top; an .anim: the "guid" member replaced or
+        // inserted after "version", false for a file that is not a JasperEngine clip)
         static bool writeGuid(const std::filesystem::path& fullPath, const std::string& guid);
 
         // Scans the project: every tracked file gets a GUID (legacy files are upgraded on
