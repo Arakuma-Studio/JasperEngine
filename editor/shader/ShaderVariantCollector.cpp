@@ -149,7 +149,7 @@ namespace {
                 }
             }
             if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
-                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader, points->shaderFeatures)){
+                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader.path, points->shaderFeatures)){
                     facts |= FACT_SCENE_DEPTH;
                 }
             }
@@ -634,7 +634,7 @@ namespace {
 
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)
         void collectPoints(const PointsComponent* points){
-            const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS,
+            const uint16_t id = shaderId(points ? points->customShader.path : std::string(), ShaderType::POINTS,
                                          points ? points->shaderFeatures : std::vector<std::string>(),
                                          points ? points->blendMode : MaterialBlendMode::AUTO);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(false, false, true, false), id);

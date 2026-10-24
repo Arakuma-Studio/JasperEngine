@@ -246,7 +246,7 @@ namespace {
         auto data = [&](PropertyType type, uint64_t flags, auto member) -> PropertyData {
             return {type, flags, def ? (void*)&(def->*member) : nullptr, pass ? (void*)&(pass->*member) : nullptr};
         };
-        if (field == "shader") return data(PropertyType::String, UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, &MaterialPass::shader);
+        if (field == "shader") return data(PropertyType::Shader, UpdateFlags_Mesh_Reload | UpdateFlags_Shader_Uniforms, &MaterialPass::shader);
         if (field == "shaderParams") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &MaterialPass::shaderParams);
         if (field == "shaderTextures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture, &MaterialPass::shaderTextures);
         if (field == "shaderFeatures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload, &MaterialPass::shaderFeatures);
@@ -265,7 +265,7 @@ namespace {
         auto data = [&](PropertyType type, uint64_t flags, auto member) -> PropertyData {
             return {type, flags, def ? (void*)&(def->*member) : nullptr, hasRef ? (void*)&(material.*member) : nullptr};
         };
-        if (field == "shader") return data(PropertyType::String, UpdateFlags_Shader_Reload | UpdateFlags_Shader_Uniforms, &Material::shader);
+        if (field == "shader") return data(PropertyType::Shader, UpdateFlags_Shader_Reload | UpdateFlags_Shader_Uniforms, &Material::shader);
         if (field == "shaderParams") return data(PropertyType::Custom, UpdateFlags_Shader_Uniforms, &Material::shaderParams);
         if (field == "shaderTextures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload | UpdateFlags_Mesh_Texture, &Material::shaderTextures);
         if (field == "shaderFeatures") return data(PropertyType::Custom, UpdateFlags_Mesh_Reload, &Material::shaderFeatures);
@@ -310,7 +310,7 @@ namespace {
     static const FastPropertyDescriptor kUIProperties[] = {
         makeFastProperty<UIComponent, Vector4, &UIComponent::color>("color", PropertyType::Vector4, UpdateFlags_None),
         makeFastProperty<UIComponent, Texture, &UIComponent::texture>("texture", PropertyType::Texture, UpdateFlags_UI_Texture),
-        makeFastProperty<UIComponent, std::string, &UIComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
+        makeFastProperty<UIComponent, ShaderRef, &UIComponent::customShader>("customShader", PropertyType::Shader, UpdateFlags_Shader_Reload),
         makeFastProperty<UIComponent, ShaderUniformValues, &UIComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         // shader library: resolved when the UI loads its shader
         makeFastProperty<UIComponent, std::vector<std::pair<std::string, Texture>>, &UIComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
@@ -651,7 +651,7 @@ namespace {
 
     // enabled is the shared component checkbox (findEnabledGetter)
     static const FastPropertyDescriptor kUIDocumentProperties[] = {
-        makeFastProperty<UIDocumentComponent, std::string, &UIDocumentComponent::filename>("filename", PropertyType::String, UpdateFlags_UIDocument_Reload),
+        makeFastProperty<UIDocumentComponent, AssetRef, &UIDocumentComponent::filename>("filename", PropertyType::Asset, UpdateFlags_UIDocument_Reload),
         makeFastProperty<UIDocumentComponent, int, &UIDocumentComponent::sortOrder>("sortOrder", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<UIDocumentComponent, bool, &UIDocumentComponent::interactive>("interactive", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<UIDocumentComponent, UIDocumentRenderMode, &UIDocumentComponent::renderMode>("renderMode", PropertyType::Enum, UpdateFlags_UIDocument_Reload),
@@ -689,7 +689,7 @@ namespace {
 
     static const FastPropertyDescriptor kAudioSourceProperties[] = {
         makeFastProperty<AudioSourceComponent, AudioSourceState, &AudioSourceComponent::state>("state", PropertyType::Enum, UpdateFlags_AudioSource),
-        makeFastProperty<AudioSourceComponent, std::string, &AudioSourceComponent::filename>("filename", PropertyType::String, UpdateFlags_AudioSource),
+        makeFastProperty<AudioSourceComponent, AssetRef, &AudioSourceComponent::filename>("filename", PropertyType::Asset, UpdateFlags_AudioSource),
         makeFastProperty<AudioSourceComponent, bool, &AudioSourceComponent::enableClocked>("enableClocked", PropertyType::Bool, UpdateFlags_AudioSource),
         makeFastProperty<AudioSourceComponent, double, &AudioSourceComponent::volume>("volume", PropertyType::Double, UpdateFlags_AudioSource),
         makeFastProperty<AudioSourceComponent, float, &AudioSourceComponent::speed>("speed", PropertyType::Float, UpdateFlags_AudioSource),
@@ -713,7 +713,7 @@ namespace {
         makeFastProperty<SkyboxComponent, Vector4, &SkyboxComponent::color>("color", PropertyType::Vector4, UpdateFlags_None),
         makeFastProperty<SkyboxComponent, float, &SkyboxComponent::rotation>("rotation", PropertyType::Float, UpdateFlags_Sky),
         makeFastProperty<SkyboxComponent, bool, &SkyboxComponent::visible>("visible", PropertyType::Bool, UpdateFlags_None),
-        makeFastProperty<SkyboxComponent, std::string, &SkyboxComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
+        makeFastProperty<SkyboxComponent, ShaderRef, &SkyboxComponent::customShader>("customShader", PropertyType::Shader, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, ShaderUniformValues, &SkyboxComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         makeFastProperty<SkyboxComponent, std::vector<std::pair<std::string, Texture>>, &SkyboxComponent::shaderTextures>("shaderTextures", PropertyType::Custom, UpdateFlags_Shader_Reload),
         makeFastProperty<SkyboxComponent, std::vector<std::string>, &SkyboxComponent::shaderFeatures>("shaderFeatures", PropertyType::Custom, UpdateFlags_Shader_Reload),
@@ -789,8 +789,8 @@ namespace {
         makeFastProperty<MeshComponent, bool, &MeshComponent::transparent>("transparent", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::autoTransparency>("autoTransparency", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, CullingMode, &MeshComponent::cullingMode>("cullingMode", PropertyType::Enum, UpdateFlags_Mesh_Reload),
-        makeFastProperty<MeshComponent, std::string, &MeshComponent::customShader>("customShader", PropertyType::String, UpdateFlags_Shader_Reload),
-        makeFastProperty<MeshComponent, std::string, &MeshComponent::customDepthShader>("customDepthShader", PropertyType::String, UpdateFlags_Shader_Reload),
+        makeFastProperty<MeshComponent, ShaderRef, &MeshComponent::customShader>("customShader", PropertyType::Shader, UpdateFlags_Shader_Reload),
+        makeFastProperty<MeshComponent, ShaderRef, &MeshComponent::customDepthShader>("customDepthShader", PropertyType::Shader, UpdateFlags_Shader_Reload),
         makeFastProperty<MeshComponent, ShaderUniformValues, &MeshComponent::shaderUniforms>("shaderUniforms", PropertyType::Custom, UpdateFlags_Shader_Uniforms),
         makeFastProperty<MeshComponent, unsigned int, &MeshComponent::numSubmeshes>("numSubmeshes", PropertyType::UInt, UpdateFlags_None),
     };
@@ -849,7 +849,7 @@ namespace {
             }
             const size_t matFieldPos = fieldPos + 9;
             if (propertyName.compare(matFieldPos, 4, "name") == 0 && matFieldPos + 4 == propertyName.size()) {
-                return {PropertyType::String, UpdateFlags_None, (void*)&defSub.material.name, (void*)&sub.material.name};
+                return {PropertyType::Asset, UpdateFlags_None, (void*)&defSub.material.name, (void*)&sub.material.name};
             }
             if (propertyName.compare(matFieldPos, 15, "baseColorFactor") == 0 && matFieldPos + 15 == propertyName.size()) {
                 return {PropertyType::Vector4, UpdateFlags_None, (void*)&defSub.material.baseColorFactor, (void*)&sub.material.baseColorFactor};
@@ -1047,6 +1047,10 @@ namespace {
                     case ScriptPropertyType::Prefab:
                         result.ref = &prop.valueRef<PrefabAsset>();
                         result.def = &prop.defaultValueRef<PrefabAsset>();
+                        break;
+                    case ScriptPropertyType::Asset:
+                        result.ref = &prop.valueRef<AssetRef>();
+                        result.def = &prop.defaultValueRef<AssetRef>();
                         break;
                     default:
                         result.ref = nullptr;
@@ -1505,7 +1509,7 @@ namespace {
 
     PropertyData getTerrainFoliageLayerPropertyFast(TerrainFoliageLayer& layer, const std::string& fieldName) {
         static TerrainFoliageLayer def;
-        if (fieldName == ".meshPath") return {PropertyType::String, UpdateFlags_Terrain_Foliage, &def.meshPath, &layer.meshPath};
+        if (fieldName == ".meshPath") return {PropertyType::Asset, UpdateFlags_Terrain_Foliage, &def.meshPath, &layer.meshPath};
         if (fieldName == ".densityMap") return {PropertyType::Texture, UpdateFlags_Terrain_Foliage, &def.densityMap, &layer.densityMap};
         if (fieldName == ".density") return {PropertyType::Float, UpdateFlags_Terrain_Foliage, &def.density, &layer.density};
         if (fieldName == ".minScale") return {PropertyType::Float, UpdateFlags_Terrain_Foliage, &def.minScale, &layer.minScale};
@@ -2040,7 +2044,7 @@ namespace {
         ModelComponent& def = getDefaultComponent<ModelComponent>();
 
         if (propertyName == "filename") {
-            return {PropertyType::String, UpdateFlags_None, (void*)&def.filename, (void*)&comp->filename};
+            return {PropertyType::Asset, UpdateFlags_None, (void*)&def.filename, (void*)&comp->filename};
         }
 
         if (propertyName == "mergeStaticMeshes") {
@@ -2307,7 +2311,7 @@ namespace {
         ModelComponent* comp = static_cast<ModelComponent*>(compRef);
         ModelComponent& def = getDefaultComponent<ModelComponent>();
 
-        ps["filename"] = {PropertyType::String, UpdateFlags_Model, (void*)&def.filename, compRef ? (void*)&comp->filename : nullptr};
+        ps["filename"] = {PropertyType::Asset, UpdateFlags_Model, (void*)&def.filename, compRef ? (void*)&comp->filename : nullptr};
         ps["mergeStaticMeshes"] = {PropertyType::Bool, UpdateFlags_Model, (void*)&def.mergeStaticMeshes, compRef ? (void*)&comp->mergeStaticMeshes : nullptr};
         ps["skeleton"] = {PropertyType::Entity, UpdateFlags_Mesh_Reload, (void*)&def.skeleton, compRef ? (void*)&comp->skeleton : nullptr};
         ps["animations"] = {PropertyType::Custom, UpdateFlags_None, (void*)&def.animations, compRef ? (void*)&comp->animations : nullptr};
@@ -2600,7 +2604,7 @@ namespace {
             auto field = [&](const char* name, PropertyType type, void* defRef, void* ref) {
                 ps[prefix + name] = {type, UpdateFlags_Terrain_Foliage, defRef, layer ? ref : nullptr};
             };
-            field(".meshPath", PropertyType::String, (void*)&defLayer.meshPath, layer ? (void*)&layer->meshPath : nullptr);
+            field(".meshPath", PropertyType::Asset, (void*)&defLayer.meshPath, layer ? (void*)&layer->meshPath : nullptr);
             field(".densityMap", PropertyType::Texture, (void*)&defLayer.densityMap, layer ? (void*)&layer->densityMap : nullptr);
             field(".density", PropertyType::Float, (void*)&defLayer.density, layer ? (void*)&layer->density : nullptr);
             field(".minScale", PropertyType::Float, (void*)&defLayer.minScale, layer ? (void*)&layer->minScale : nullptr);
@@ -2784,7 +2788,7 @@ namespace {
             for (const char* field : kMaterialLibraryFields) {
                 ps["submeshes[" + idx + "].material." + field] = getMaterialLibraryProperty(sub.material, &defSub.material, field, compRef != nullptr);
             }
-            ps["submeshes[" + idx + "].material.name"] = {PropertyType::String, UpdateFlags_None, (void*)&defSub.material.name, compRef ? (void*)&sub.material.name : nullptr};
+            ps["submeshes[" + idx + "].material.name"] = {PropertyType::Asset, UpdateFlags_None, (void*)&defSub.material.name, compRef ? (void*)&sub.material.name : nullptr};
             ps["submeshes[" + idx + "].material.baseColorFactor"] = {PropertyType::Vector4, UpdateFlags_None, (void*)&defSub.material.baseColorFactor, compRef ? (void*)&sub.material.baseColorFactor : nullptr};
             ps["submeshes[" + idx + "].material.metallicFactor"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.metallicFactor, compRef ? (void*)&sub.material.metallicFactor : nullptr};
             ps["submeshes[" + idx + "].material.roughnessFactor"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.roughnessFactor, compRef ? (void*)&sub.material.roughnessFactor : nullptr};
@@ -2884,6 +2888,10 @@ namespace {
                         case ScriptPropertyType::Prefab:
                             propData.ref = &prop.valueRef<PrefabAsset>();
                             propData.def = &prop.defaultValueRef<PrefabAsset>();
+                            break;
+                        case ScriptPropertyType::Asset:
+                            propData.ref = &prop.valueRef<AssetRef>();
+                            propData.def = &prop.defaultValueRef<AssetRef>();
                             break;
                         default:
                             propData.ref = nullptr;
@@ -3010,7 +3018,7 @@ namespace {
         if (propertyName == "transparent") return {PropertyType::Bool, UpdateFlags_None, &def.transparent, &comp->transparent};
         if (propertyName == "autoTransparency") return {PropertyType::Bool, UpdateFlags_None, &def.autoTransparency, &comp->autoTransparency};
         if (propertyName == "texture") return {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, &comp->texture};
-        if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
+        if (propertyName == "customShader") return {PropertyType::Shader, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
         if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
         if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
@@ -3102,7 +3110,7 @@ namespace {
         ps["transparent"] = {PropertyType::Bool, UpdateFlags_None, &def.transparent, comp ? &comp->transparent : nullptr};
         ps["autoTransparency"] = {PropertyType::Bool, UpdateFlags_None, &def.autoTransparency, comp ? &comp->autoTransparency : nullptr};
         ps["texture"] = {PropertyType::Texture, UpdateFlags_Points_Texture, &def.texture, comp ? &comp->texture : nullptr};
-        ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
+        ps["customShader"] = {PropertyType::Shader, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
         ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
         ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
@@ -3146,7 +3154,7 @@ namespace {
         if (!comp) return PropertyData();
 
         if (propertyName == "maxLines") return {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, &comp->maxLines};
-        if (propertyName == "customShader") return {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
+        if (propertyName == "customShader") return {PropertyType::Shader, UpdateFlags_Shader_Reload, &def.customShader, &comp->customShader};
         if (propertyName == "shaderUniforms") return {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, &comp->shaderUniforms};
         if (propertyName == "shaderTextures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, &comp->shaderTextures};
         if (propertyName == "shaderFeatures") return {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, &comp->shaderFeatures};
@@ -3201,7 +3209,7 @@ namespace {
         LineRendererComponent& def = getDefaultComponent<LineRendererComponent>();
 
         ps["maxLines"] = {PropertyType::UInt, UpdateFlags_Lines_Reload, &def.maxLines, comp ? &comp->maxLines : nullptr};
-        ps["customShader"] = {PropertyType::String, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
+        ps["customShader"] = {PropertyType::Shader, UpdateFlags_Shader_Reload, &def.customShader, comp ? &comp->customShader : nullptr};
         ps["shaderUniforms"] = {PropertyType::Custom, UpdateFlags_Shader_Uniforms, &def.shaderUniforms, comp ? &comp->shaderUniforms : nullptr};
         ps["shaderTextures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderTextures, comp ? &comp->shaderTextures : nullptr};
         ps["shaderFeatures"] = {PropertyType::Custom, UpdateFlags_Shader_Reload, &def.shaderFeatures, comp ? &comp->shaderFeatures : nullptr};
@@ -4028,6 +4036,7 @@ editor::PropertyType editor::Catalog::scriptPropertyTypeToPropertyType(ScriptPro
         case jasperengine::ScriptPropertyType::Color3: return editor::PropertyType::Vector3;
         case jasperengine::ScriptPropertyType::Color4: return editor::PropertyType::Vector4;
         case jasperengine::ScriptPropertyType::EntityReference: return PropertyType::EntityReference;
+        case jasperengine::ScriptPropertyType::Asset: return PropertyType::Asset;
         default: return editor::PropertyType::Custom;
     }
 }
@@ -4313,6 +4322,12 @@ uint64_t editor::Catalog::getChangedUpdateFlags(ComponentType compType, void* ol
             case PropertyType::String:
                 changed = *static_cast<std::string*>(oldProp.ref) != *static_cast<std::string*>(newProp.ref);
                 break;
+            case PropertyType::Asset:
+                changed = *static_cast<AssetRef*>(oldProp.ref) != *static_cast<AssetRef*>(newProp.ref);
+                break;
+            case PropertyType::Shader:
+                changed = *static_cast<ShaderRef*>(oldProp.ref) != *static_cast<ShaderRef*>(newProp.ref);
+                break;
             case PropertyType::Font:
                 changed = *static_cast<FontArray*>(oldProp.ref) != *static_cast<FontArray*>(newProp.ref);
                 break;
@@ -4551,23 +4566,23 @@ std::string editor::Catalog::getShaderReferenceForProperty(Scene* scene, Entity 
                     return mesh->submeshes[submesh].material.extraPass->shader;
                 return RenderSystem::getSubmeshShader(*mesh, mesh->submeshes[submesh], scene->getDefaultCustomShader(ShaderType::MESH));
             }
-            return mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader;
+            return mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader.path;
         }
         case ComponentType::UIComponent:
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
-                return ui->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui->customShader;
+                return ui->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui->customShader.path;
             break;
         case ComponentType::PointsComponent:
             if (PointsComponent* points = scene->findComponent<PointsComponent>(entity))
-                return points->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points->customShader;
+                return points->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points->customShader.path;
             break;
         case ComponentType::LineRendererComponent:
             if (LineRendererComponent* lines = scene->findComponent<LineRendererComponent>(entity))
-                return lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader;
+                return lines->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines->customShader.path;
             break;
         case ComponentType::SkyboxComponent:
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
-                return sky->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky->customShader;
+                return sky->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky->customShader.path;
             break;
         default:
             break;
@@ -4684,7 +4699,7 @@ uint32_t editor::Catalog::getComponentSceneInputs(Scene* scene, Entity entity, C
         // submeshes drawing with it pick its variants through their materials
         const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (!mesh) return 0;
-        const std::string& shader = mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader;
+        const std::string& shader = mesh->customShader.empty() ? scene->getDefaultCustomShader(ShaderType::MESH) : mesh->customShader.path;
         uint32_t inputs = 0;
         for (unsigned int s = 0; s < mesh->numSubmeshes; s++) {
             if (mesh->submeshes[s].material.shader.empty()) inputs |= getShaderSceneInputs(shader, mesh->submeshes[s].material.shaderFeatures);
@@ -5373,6 +5388,18 @@ void editor::Catalog::copyPropertyValue(EntityRegistry* sourceRegistry, Entity s
         case PropertyType::String: {
             std::string* source = Catalog::getPropertyRef<std::string>(sourceRegistry, sourceEntity, compType, property);
             std::string* target = Catalog::getPropertyRef<std::string>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::Asset: {
+            AssetRef* source = Catalog::getPropertyRef<AssetRef>(sourceRegistry, sourceEntity, compType, property);
+            AssetRef* target = Catalog::getPropertyRef<AssetRef>(targetRegistry, targetEntity, compType, property);
+            if (source && target) *target = *source;
+            break;
+        }
+        case PropertyType::Shader: {
+            ShaderRef* source = Catalog::getPropertyRef<ShaderRef>(sourceRegistry, sourceEntity, compType, property);
+            ShaderRef* target = Catalog::getPropertyRef<ShaderRef>(targetRegistry, targetEntity, compType, property);
             if (source && target) *target = *source;
             break;
         }

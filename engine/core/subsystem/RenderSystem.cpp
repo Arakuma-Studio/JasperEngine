@@ -3705,7 +3705,7 @@ void RenderSystem::applyPostProcessing(){
         destroyBloomPrograms();
 
     // the user's LUT strip, read once per path (a missing or malformed one is logged and left out)
-    const std::string stripPath = settings.colorGradingEnabled ? settings.lutTexture : std::string();
+    const std::string stripPath = settings.colorGradingEnabled ? settings.lutTexture.path : std::string();
     if (stripPath != postLutStripPath){
         postLutStripPath = stripPath;
         if (!PostColorLut::loadStrip(stripPath, postLutStrip))
@@ -8065,7 +8065,7 @@ void RenderSystem::predictSceneInputUsers(){
         if ((points.loadCalled && !points.needReload) || points.sceneInputsPredicted)
             continue;
         points.sceneInputsPredicted = true;
-        const std::string& shader = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
+        const std::string& shader = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path;
         std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
         if (!manifest)
             continue;
@@ -9421,7 +9421,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     }
 
     ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4);
-    const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader;
+    const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path;
     const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures, ui.blendMode);
     ui.customShaderId = ShaderPool::registerCustomShader(uiShaderSrc);
     ui.shader = ShaderPool::get(ShaderType::UI, ui.shaderProperties, ui.customShaderId);
@@ -9627,7 +9627,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     }
 
     points.shaderProperties = ShaderPool::getPointsProperties(p_hasTexture, false, true, p_hasTextureRect) | postColorProperty(ShaderType::POINTS);
-    const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
+    const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path;
     const std::string pointsShaderSrc = getComponentShaderReference(pointsShaderBase, points.shaderFeatures, points.blendMode);
     points.customShaderId = ShaderPool::registerCustomShader(pointsShaderSrc);
     points.shader = ShaderPool::get(ShaderType::POINTS, points.shaderProperties, points.customShaderId);
@@ -9730,7 +9730,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     render.beginLoad(PrimitiveType::LINES);
 
     lines.shaderProperties = ShaderPool::getLinesProperties(false, true) | postColorProperty(ShaderType::LINES);
-    const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader;
+    const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader.path;
     const std::string linesShaderSrc = getComponentShaderReference(linesShaderBase, lines.shaderFeatures, lines.blendMode);
     lines.customShaderId = ShaderPool::registerCustomShader(linesShaderSrc);
     lines.shader = ShaderPool::get(ShaderType::LINES, lines.shaderProperties, lines.customShaderId);
@@ -10047,7 +10047,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
 
     render->beginLoad(PrimitiveType::TRIANGLES);
 
-    const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader;
+    const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader.path;
     const std::string skyShaderSrc = getComponentShaderReference(skyShaderBase, sky.shaderFeatures, MaterialBlendMode::AUTO);
     sky.customShaderId = ShaderPool::registerCustomShader(skyShaderSrc);
     sky.shaderProperties = postColorProperty(ShaderType::SKYBOX);

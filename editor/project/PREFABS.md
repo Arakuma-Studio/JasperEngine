@@ -87,12 +87,12 @@ So an id, once handed out, is never given to another GameObject of that prefab.
 
 ## 3. Asset GUIDs: `editor/util/AssetDatabase.{h,cpp}`
 
-`Project::getAssetDatabase()` maps GUID <-> project-relative path for the GUID-tracked
-asset types (`AssetDatabase::isTrackedFile`: `.prefab` now; add a type there, scenes may
-follow). The GUID lives in the asset file (top-level `guid:` key); the database is the
-index, rebuilt by a scan when the project opens, and cached in
-`.jasperengine/assetdb.yaml` (only used to decide which of two files with the same GUID keeps
-it).
+`Project::getAssetDatabase()` maps GUID <-> project-relative path for every asset of the
+project: the general contract (all types, `.meta` sidecars, former GUIDs, sub-assets, the
+dependency index, Missing Assets, `AssetOps`) is `docs/specs/S04-asset-identity.md`; this
+section is what prefabs add to it. A prefab's GUID lives in the file (top-level `guid:` key,
+and `formerGuids:` right after it); the database is the index, rebuilt by a scan when the
+project opens, and cached in `.jasperengine/assetdb/index.json` (a deletable cache).
 
 - **Scan on project load** (`AssetDatabase::open`, before any scene or prefab is read):
   every tracked file gets a GUID. A legacy file gets `legacyGuid(path)` (SHA-1 of its
@@ -105,16 +105,16 @@ it).
   GUID of a file that is gone, it is that file moved; with the GUID of a file that is still
   there, it is a copy and gets a new GUID. A gone file is removed. A file edited so that its
   GUID line disappeared gets it back.
-- **Editor file operations** keep it up to date (all through `Project`):
-  - rename / move (`RenameFileCmd`, `CopyFileCmd` move, and their undo) ->
-    `remapPrefabFilePath` -> `AssetDatabase::moveAssets` (GUIDs kept; a file renamed away
-    from `.prefab` is removed, one renamed to it is imported),
-  - delete (`DeleteFileCmd`) -> `cleanupPrefabFilePath` -> `removeAssets`; undo ->
-    `importPrefabFiles` (the file keeps its GUID),
-  - copy / paste / import from outside (`CopyFileCmd` copy) -> `importPrefabFiles(path,
-    copy=true, &copyGuids)`: a copy gets a new GUID unless its GUID is unknown (an import
-    from another project keeps it), and a redo gives it the same GUID again; undo ->
-    `cleanupPrefabFilePath`,
+- **Editor file operations** keep it up to date, all through `AssetOps`
+  (`editor/asset/AssetOps.cpp`: `RenameFileCmd`, `CopyFileCmd`, `DeleteFileCmd`, MCP
+  `move_asset` / `delete_asset`), which hands the database's changes to
+  `Project::onAssetFilesChanged` (`applyAssetChanges` below for the prefab files):
+  - rename / move -> `AssetDatabase::moveAssets` (GUIDs kept; a file renamed away from
+    `.prefab` is removed, one renamed to it is imported),
+  - delete (to the trash) -> `removeAssets`; undo -> `importAssets` (the file keeps its GUID),
+  - copy / paste / import from outside -> `importAssets(path, copy=true, &copyGuids)`: a
+    copy gets a new GUID unless its GUID is unknown (an import from another project keeps
+    it), and a redo gives it the same GUID again; undo -> `removeAssets`,
   - Create Prefab (`createPrefab`, redo keeps the GUID via `CreatePrefabCmd`) ->
     `registerAsset`; every `savePrefabToDisk` re-registers the file.
 - Changes reach the rest of the editor through `Project::applyAssetChanges`: Moved ->

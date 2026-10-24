@@ -852,6 +852,10 @@ std::string editor::Factory::formatPostProcessing(int indentSpaces, const PostPr
             case FieldType::String:
                 if (*(const std::string*)value != *(const std::string*)def) text = formatString(*(const std::string*)value);
                 break;
+            case FieldType::Asset:
+                // the game loads by path (an AssetRef assigned a path)
+                if (((const AssetRef*)value)->path != ((const AssetRef*)def)->path) text = formatString(((const AssetRef*)value)->path);
+                break;
             case FieldType::Enum:
                 if (*(const int*)value != *(const int*)def)
                     text = std::string(field.enumType) + "::" + field.enumValues[*(const int*)value];
@@ -906,6 +910,7 @@ std::string editor::Factory::formatScriptPropertyType(ScriptPropertyType type) {
         case ScriptPropertyType::Color4: return "ScriptPropertyType::Color4";
         case ScriptPropertyType::EntityReference: return "ScriptPropertyType::EntityReference";
         case ScriptPropertyType::Prefab: return "ScriptPropertyType::Prefab";
+        case ScriptPropertyType::Asset: return "ScriptPropertyType::Asset";
         default: return "ScriptPropertyType::Bool";
     }
 }
@@ -933,6 +938,10 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
         // found by GUID in PrefabManager, as in Play
         const auto& prefab = std::get<PrefabAsset>(value);
         return "PrefabAsset(" + formatString(prefab.getGuid()) + ", " + formatString(prefab.getPath()) + ")";
+    } else if (std::holds_alternative<AssetRef>(value)) {
+        // the path resolved at export; the GUID for Asset.guid / AssetRef.guid in scripts
+        const auto& ref = std::get<AssetRef>(value);
+        return "AssetRef(" + formatString(ref.path) + ", Guid::parse(" + formatString(ref.guid.str()) + "))";
     }
     return "ScriptPropertyValue{}";
 }
