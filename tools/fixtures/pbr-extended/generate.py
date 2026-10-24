@@ -1,6 +1,7 @@
 """Builds the materials and lighting fixtures (docs/specs/S11-materials-lighting.md AC11, AC15):
 
-tools/fixtures/pbr-extended (benchmarks, `jasperengine-editor benchmark --scene "<name>"`):
+build/pbr-extended, or the directory given (benchmarks, `jasperengine-editor benchmark --scene
+"<name>"`; written, not checked in: 200 spheres take 12 MB of scene file each):
   Lit Baseline       200 spheres of the built-in Lit, a sun (the reference frame time)
   Lobes Off          the same spheres carrying every lobe's values with each lobe disabled: draws
                      with the shader of before (within 2% of Lit Baseline and of a pre-S11 build)
@@ -17,7 +18,7 @@ compilation off, so a variant the export did not precompile is a missing shader 
   Hex                a hex tiled floor and a hex tiled terrain
   PBX_SCENE=<name> in the game's environment loads that scene instead of Lobes (SceneSelect.lua).
 
-    uv run --no-project --with mcp --with pyyaml python tools/fixtures/pbr-extended/generate.py
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/fixtures/pbr-extended/generate.py [dir]
 
 (JASPER_EDITOR selects the editor; it needs an S11 build.) Textures come from
 tools/fixtures/shader-library/assets/textures, the model from engine/tests/render/assets/khronos.
@@ -107,7 +108,13 @@ async def with_component(ed, sid, component):
 
 
 async def camera(ed, sid, position, target):
-    cam = (await with_component(ed, sid, "CameraComponent"))[0]
+    cams = await with_component(ed, sid, "CameraComponent")
+    if not cams:
+        # the project's first scene has a sun and a sky but no camera
+        cams = [(await ed.call("create_entity", scene=sid, type="camera", name="Camera", select=False))["entity_id"]]
+    if not await with_component(ed, sid, "LightComponent"):
+        await ed.call("create_entity", scene=sid, type="directional_light", name="Sun", select=False)
+    cam = cams[0]
     await ed.call("set_transform", scene=sid, entity=cam, position=list(position))
     await ed.call("set_properties", scene=sid, entity=cam, values={"camera": {"target": list(target)}})
 
@@ -116,13 +123,18 @@ async def sun(ed, sid):
     return (await with_component(ed, sid, "LightComponent"))[0]
 
 
+def pbr_paths(pbr):
+    """{lobe: {field: value}} as set_properties paths"""
+    return {f"{M}pbr.{lobe}.{field}": value for lobe, fields in pbr.items() for field, value in fields.items()}
+
+
 def material(pbr=None, texture=None):
     values = {M + "baseColorFactor": [0.75, 0.2, 0.15, 1], M + "metallicFactor": 0.1, M + "roughnessFactor": 0.45}
     if texture:
         values[M + "baseColorTexture"] = texture
         values[M + "baseColorFactor"] = [1, 1, 1, 1]
     if pbr is not None:
-        values[M + "pbr"] = pbr
+        values.update(pbr_paths(pbr))
     return values
 
 
@@ -136,7 +148,6 @@ async def sphere_grid(ed, sid, values):
             ids.append(made["entity_id"])
     await ed.call("set_properties", scene=sid, entities=ids, values={"mesh": values})
     await camera(ed, sid, (0, 0, 13), (0, 0, 0))
-    return ids
 
 
 def lobes_off():
@@ -215,13 +226,14 @@ async def build_export(out: Path) -> None:
 
         lobes = (await ed.call("list_scenes"))["scenes"][0]["id"]
         await ed.call("rename_scene", scene=lobes, name="Lobes")
+        await camera(ed, lobes, (0, 0.5, 9), (0, 0, 0))
         x = -4.5
         for lobe, pbr in LOBES.items():
             made = await ed.call("create_entity", scene=lobes, type="sphere", name=lobe, select=False, position=[x, 1.2, 0])
-            values = material(pbr, T + "floor_tiles.png" if lobe == "Hex" else None)
             if lobe == "Clearcoat":
-                values[M + "pbr"] = {"clearcoat": {"enabled": True, "factor": 1.0, "roughness": 0.1, "map": T + "clearcoat.png",
-                                                   "normalMap": T + "clearcoat_normal.png"}}
+                pbr = {"clearcoat": {"enabled": True, "factor": 1.0, "roughness": 0.1, "map": T + "clearcoat.png",
+                                     "normalMap": T + "clearcoat_normal.png"}}
+            values = material(pbr, T + "floor_tiles.png" if lobe == "Hex" else None)
             await ed.call("set_properties", scene=lobes, entity=made["entity_id"], values={"mesh": values})
             x += 1.5
         await ed.call("create_entity", scene=lobes, type="model", name="ClearCoatTest", select=False,
@@ -232,7 +244,6 @@ async def build_export(out: Path) -> None:
         lamp = await ed.call("create_entity", scene=lobes, type="point_light", name="Lamp", select=False, position=[0, 2.5, 2])
         await ed.call("set_properties", scene=lobes, entity=lamp["entity_id"], values={"light": {"intensity": 2.0, "range": 12}})
         await ed.call("set_light_unit", scene=lobes, entity=lamp["entity_id"], unit="lumen")
-        await camera(ed, lobes, (0, 0.5, 9), (0, 0, 0))
         made = await ed.call("create_entity", scene=lobes, type="empty", name="SceneSelect", select=False)
         await ed.call("create_script", kind="lua", name="SceneSelect", content=SCENE_SELECT)
         await ed.call("attach_script", scene=lobes, entity=made["entity_id"], path="SceneSelect.lua")
@@ -244,9 +255,9 @@ async def build_export(out: Path) -> None:
         glass = await ed.call("create_entity", scene=sid, type="sphere", name="Glass", select=False, position=[0, 1, 0], scale=[2, 2, 2])
         await ed.call("set_properties", scene=sid, entity=glass["entity_id"], values={"mesh": {
             M + "baseColorFactor": [1, 1, 1, 1], M + "metallicFactor": 0, M + "roughnessFactor": 0.05,
-            M + "pbr": {"transmission": {"enabled": True, "factor": 1.0},
-                        "volume": {"enabled": True, "thickness": 1.0, "attenuationColor": [0.7, 0.9, 1.0], "attenuationDistance": 4.0},
-                        "specular": {"enabled": True, "ior": 1.5}}}})
+            **pbr_paths({"transmission": {"enabled": True, "factor": 1.0},
+                         "volume": {"enabled": True, "thickness": 1.0, "attenuationColor": [0.7, 0.9, 1.0], "attenuationDistance": 4.0},
+                         "specular": {"enabled": True, "ior": 1.5}})}})
         await camera(ed, sid, (0, 1, 5), (0, 1, 0))
         await ed.call("save_scene", scene=sid)
 
@@ -254,7 +265,7 @@ async def build_export(out: Path) -> None:
         await terrain(ed, sid, True)
         floor = await ed.call("create_entity", scene=sid, type="plane", name="Floor", select=False, position=[0, 8, 30], scale=[6, 1, 6])
         await ed.call("set_properties", scene=sid, entity=floor["entity_id"], values={"mesh": {
-            M + "baseColorTexture": T + "floor_tiles.png", M + "pbr": {"hex": {"enabled": True}}, "submeshes[0].textureRect": [0, 0, 16, 16]}})
+            M + "baseColorTexture": T + "floor_tiles.png", M + "pbr.hex.enabled": True, "submeshes[0].textureRect": [0, 0, 16, 16]}})
         await ed.call("save_scene", scene=sid)
 
         await ed.call("save_project")
@@ -277,10 +288,10 @@ def copy_project(project: Path, out: Path, files) -> None:
     shutil.copytree(project / "assets", out / "assets", ignore=shutil.ignore_patterns("*.meta", ".*"))
 
 
-async def main() -> None:
-    await build_benchmarks(HERE)
+async def main(benchmarks: Path) -> None:
+    await build_benchmarks(benchmarks)
     await build_export(EXPORT)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "build" / "pbr-extended"))

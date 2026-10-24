@@ -33,7 +33,7 @@ namespace {
     struct Packed{
         TextureData data;
         ~Packed(){ data.releaseImageData(); }
-        const unsigned char* pixels() const { return static_cast<const unsigned char*>(data.getData()); }
+        const unsigned char* pixels() { return static_cast<const unsigned char*>(data.getData()); }
     };
 
 }
