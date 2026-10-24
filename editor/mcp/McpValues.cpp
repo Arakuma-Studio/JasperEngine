@@ -128,6 +128,12 @@ bool isPlayerClipProperty(ComponentType component, const std::string& propertyNa
            endsWith(propertyName, "].clip");
 }
 
+// clips[N].wrap: a ClipWrapMode (Catalog: Custom, one byte), set and read by its file name
+bool isPlayerWrapProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 6, "clips[") == 0 &&
+           endsWith(propertyName, "].wrap");
+}
+
 // String properties holding an asset reference instead of plain text: stored relative to the
 // assets folder, project-relative over MCP (a model's or document's filename, a Pose Animator's
 // animation, an Animation Player's clip)
@@ -2182,8 +2188,7 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         if (ref && ctx.component == ComponentType::AnimationPlayerComponent && name == "clips") {
             return playerClipsToJson(ctx.project, *static_cast<std::vector<AnimationPlayerClip>*>(ref));
         }
-        if (ref && ctx.component == ComponentType::AnimationPlayerComponent && name.compare(0, 6, "clips[") == 0 &&
-                endsWith(name, "].wrap")) {
+        if (ref && isPlayerWrapProperty(ctx.component, name)) {
             return anim::wrapName(*static_cast<ClipWrapMode*>(ref));
         }
         bool found = false;
@@ -2686,6 +2691,15 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             return multi;
         }
         case PropertyType::Custom:
+            if (isPlayerWrapProperty(component, propertyName)) {
+                // a one-byte enum by its file name
+                ClipWrapMode wrap = ClipWrapMode::Default;
+                if (!value.is_string() || !anim::wrapFromName(value.get<std::string>(), wrap)) {
+                    error = "Property " + propertyName + " is a wrap mode: " + clipWrapNames() + ".";
+                    return nullptr;
+                }
+                return new PropertyCmd<ClipWrapMode>(project, sceneId, entity, component, propertyName, wrap, onChanged);
+            }
             if (isScriptPrefabProperty(scene->scene, entity, component, propertyName)) {
                 PrefabAsset prefab;
                 std::string why;
@@ -3089,6 +3103,7 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                      endsWith(change.property, "shaderParams") || endsWith(change.property, "shaderTextures") ||
                      endsWith(change.property, "shaderFeatures") || change.property == "stencil" ||
                      endsWith(change.property, ".stencil") || endsWith(change.property, "material.extraPass") ||
+                     isPlayerWrapProperty(component, change.property) ||
                      isScriptPrefabProperty(scene->scene, entity, component, change.property));
                 if (typedProperty) {
                     std::string why;
