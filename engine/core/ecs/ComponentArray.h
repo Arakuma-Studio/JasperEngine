@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <memory>
 #include <new>
@@ -177,6 +178,8 @@ namespace jasperengine {
 
         // the cache line of the component in `slot` (JE_ECS_PREFETCH)
         virtual void prefetchComponent(size_t slot) const = 0;
+        // the heap blocks the component in `slot` points to (JE_ECS_PREFETCH)
+        virtual void prefetchOwned(size_t slot) const = 0;
 
         Tick stampTick(){
             return clock ? clock->stamp() : 0;
@@ -259,6 +262,15 @@ namespace jasperengine {
         // Starts loading what removing the entity's component touches: its slot's owner and
         // component (one index lookup; nothing is read but the index)
         bool hasTrivialRemoval() const { return trivialRemoval; }
+
+        // Starts loading the blocks the entity's component owns (what its destructor frees);
+        // the component's own line should be in cache already (prefetchEntity)
+        void prefetchOwnedBy(Entity entity) const {
+            const uint32_t slot = entityToSlot.find(entity);
+            if (slot != ecs::SparseIndex::kNone){
+                prefetchOwned(slot);
+            }
+        }
 
         JE_ECS_INLINE void prefetchEntity(Entity entity) const {
             const uint32_t slot = entityToSlot.find(entity);
@@ -528,6 +540,26 @@ namespace jasperengine {
             // its line would only crowd the cache)
             if constexpr (!std::is_trivially_destructible_v<T>){
                 JE_ECS_PREFETCH(slotPtr(slot));
+            }
+        }
+
+        // The destructor of a component that owns heap blocks (a string, a vector, a
+        // shared_ptr's control block) reads each block's allocator header: without a hint
+        // each is a cache miss in turn. The component's first 64 bytes are scanned for words
+        // that look like user-space pointers, and those are prefetched; a hint never faults,
+        // and a word that is no pointer costs at most a wasted line.
+        void prefetchOwned(size_t slot) const override {
+            if constexpr (!std::is_trivially_destructible_v<T> && sizeof(T) >= sizeof(uintptr_t)){
+                const unsigned char* bytes = reinterpret_cast<const unsigned char*>(slotPtr(slot));
+                constexpr size_t words = (sizeof(T) < 64 ? sizeof(T) : 64) / sizeof(uintptr_t);
+                constexpr uintptr_t kMaxUserAddress = sizeof(uintptr_t) == 8 ? static_cast<uintptr_t>(0x7fffffffffffULL) : UINTPTR_MAX;
+                for (size_t i = 0; i < words; i++){
+                    uintptr_t word;
+                    std::memcpy(&word, bytes + i * sizeof(uintptr_t), sizeof(word));
+                    if (word >= 0x10000 && word <= kMaxUserAddress && (word & 7) == 0){
+                        JE_ECS_PREFETCH(reinterpret_cast<const unsigned char*>(word) - 16);
+                    }
+                }
             }
         }
 
