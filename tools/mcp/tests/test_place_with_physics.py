@@ -4,7 +4,8 @@ a new project whose scene is built here from engine primitives (cubes, a cylinde
 - the schema (one tool, real constraints, defaults) and a fix-it error for every bad argument;
 - a preview changes nothing (get_entity before and after, the scene not modified);
 - drop: a cube lands on the floor at the right height, resting on it;
-- the same arguments with apply: true give the preview's state_hash and poses, and commit them;
+- the same arguments with apply: true commit the stored preview (from_preview, the preview's
+  state_hash and poses); after an edit in between, or with other arguments, they simulate again;
 - one undo puts every mover back; prefab instances get transform overrides;
 - the job: progress through get_job, cancel_job stops a run and nothing changes, a scene edit
   during a run fails it;
@@ -278,6 +279,7 @@ async def test_apply_matches_preview(ed: Editor):
     r = await place(ed, entities=["Crate", "Crate2"], apply=True)
     v = r.structured
     check(v["applied"] is True, f"applied: {v}")
+    check(v["from_preview"] is True and preview["from_preview"] is False, f"the stored preview was committed as it is: {v['from_preview']}")
     check(v["state_hash"] == preview["state_hash"], f"the same state_hash as the preview: {v['state_hash']} vs {preview['state_hash']}")
     check(v["steps"] == preview["steps"], "the same steps")
     for name in ("Crate", "Crate2"):
@@ -297,6 +299,30 @@ async def test_one_undo_restores(ed: Editor):
     await ed.call("redo")
     check(near((await world(ed, "Crate"))[0], by_path(S["preview"], "Crate")["after"]["position"], 1e-4), "redo commits it again")
     await ed.call("undo")
+
+
+async def test_apply_after_an_edit_simulates_again(ed: Editor):
+    preview = (await place(ed, entities=["Crate"])).structured
+    # an edit in between (even one that changes nothing in the end): the scene may read
+    # differently now, so the apply simulates again instead of committing the stored preview
+    await ed.call("set_transform", entity="Table", position=[-10, 0.5, -10])
+    v = (await place(ed, entities=["Crate"], apply=True)).structured
+    check(v["applied"] is True and v["from_preview"] is False, f"simulated again: {v['from_preview']}")
+    check(v["state_hash"] == preview["state_hash"], "the same scene content: the same result anyway")
+    await ed.call("undo")
+    # other arguments than the preview's: simulated
+    await place(ed, entities=["Crate"], seed=5, jitter={"position": 0.2})
+    v = (await place(ed, entities=["Crate"], seed=6, jitter={"position": 0.2}, apply=True)).structured
+    check(v["from_preview"] is False, "another seed is another simulation")
+    await ed.call("undo")
+    # a structure change in between drops the stored preview
+    await place(ed, entities=["Crate"])
+    await ed.call("create_entity", name="Extra", type="cube", position=[30, 0.5, -30])
+    v = (await place(ed, entities=["Crate"], apply=True)).structured
+    check(v["from_preview"] is False, "structure changed: simulated again")
+    await ed.call("undo")
+    await ed.call("delete_entities", entities=["Extra"])
+    check(await poses(ed, ["Crate"]) == {"Crate": S["start"]["Crate"]}, "back where it started")
 
 
 async def test_prefab_overrides_recorded(ed: Editor):

@@ -20,6 +20,8 @@
 #include "App.h"
 #include "EditorHost.h"
 #include "Project.h"
+#include "command/CommandHandle.h"
+#include "command/CommandHistory.h"
 #include "component/Transform.h"
 #include "physics/ConvexDecomposition.h"
 #include "physics/PlacementSession.h"
@@ -31,7 +33,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <map>
 #include <memory>
+#include <optional>
 #include <set>
 
 namespace jasperengine::editor::mcp {
@@ -516,6 +521,133 @@ std::shared_ptr<ShownPreview> showPreview(SceneProject* sp, const PlacementResul
     return preview;
 }
 
+// ---- previews an apply commits as they are
+
+// What a scene looked like to a run: its structure, its history (every edit, undo and redo bumps
+// the counter; the position and the latest command catch them too) and every Transform. Two
+// equal states read the same scene, so a result computed in one is valid in the other.
+struct SceneState {
+    uint64_t generation = 0;
+    Scene* scene = nullptr;
+    uint64_t structureVersion = 0;
+    uint64_t edits = 0;
+    size_t historyPosition = 0;
+    uint64_t transforms = 0;
+
+    bool operator==(const SceneState& o) const {
+        return generation == o.generation && scene == o.scene && structureVersion == o.structureVersion && edits == o.edits &&
+               historyPosition == o.historyPosition && transforms == o.transforms;
+    }
+};
+
+std::map<size_t, uint64_t>& sceneEdits() {
+    static std::map<size_t, uint64_t> edits;
+    return edits;
+}
+
+// Counts every command applied, undone or redone per scene, chained after the editor's own
+// listener (App sets it at startup, before any tool call)
+void watchSceneEdits() {
+    static bool installed = false;
+    if (installed) return;
+    installed = true;
+    std::function<void(size_t, bool)> previous = CommandHistory::onSceneModified;
+    CommandHistory::onSceneModified = [previous](size_t sceneId, bool structural) {
+        if (previous) previous(sceneId, structural);
+        sceneEdits()[sceneId]++;
+    };
+}
+
+uint64_t hashBytes(uint64_t h, const void* data, size_t size) {
+    const unsigned char* bytes = static_cast<const unsigned char*>(data);
+    for (size_t i = 0; i < size; i++) {
+        h ^= bytes[i];
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+SceneState sceneState(SceneProject* sp) {
+    SceneState state;
+    state.generation = texsynth::projectGeneration();
+    state.scene = sp->scene;
+    state.structureVersion = sp->structureVersion;
+    auto edits = sceneEdits().find(sp->id);
+    state.edits = edits != sceneEdits().end() ? edits->second : 0;
+    state.historyPosition = CommandHandle::get(sp->id)->position();
+    uint64_t h = 14695981039346656037ULL;
+    const size_t count = sp->entities.size();
+    h = hashBytes(h, &count, sizeof(count));
+    for (Entity entity : sp->entities) {
+        h = hashBytes(h, &entity, sizeof(entity));
+        if (const Transform* t = sp->scene->findComponent<Transform>(entity)) {
+            const float values[] = {t->position.x, t->position.y, t->position.z, t->rotation.x, t->rotation.y, t->rotation.z,
+                                    t->rotation.w, t->scale.x, t->scale.y, t->scale.z};
+            h = hashBytes(h, values, sizeof(values));
+            h = hashBytes(h, &t->parent, sizeof(t->parent));
+        }
+    }
+    state.transforms = h;
+    return state;
+}
+
+// The last previews (at most MAX_STORED_PREVIEWS): an apply with the same arguments on the same,
+// unchanged scene commits the stored result instead of simulating again. A preview may have asked
+// for convex decompositions (decompose: cached) that land before the apply; simulating again
+// would then build other shapes and give other poses.
+constexpr size_t MAX_STORED_PREVIEWS = 8;
+
+struct StoredPreview {
+    uint32_t sceneId = 0;
+    std::string fingerprint;
+    SceneState state;
+    PlacementResult result;
+};
+
+std::vector<StoredPreview>& storedPreviews() {
+    static std::vector<StoredPreview> list;
+    return list;
+}
+
+// Drops previews of another project, a closed scene or a scene whose structure changed
+void pruneStoredPreviews(Project* project) {
+    auto& list = storedPreviews();
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const StoredPreview& p) {
+        if (!project || p.state.generation != texsynth::projectGeneration()) return true;
+        SceneProject* sp = project->getScene(p.sceneId);
+        return !sp || sp->scene != p.state.scene || sp->structureVersion != p.state.structureVersion;
+    }), list.end());
+}
+
+void storePreview(Project* project, uint32_t sceneId, const std::string& fingerprint, const SceneState& state,
+                  const PlacementResult& result) {
+    if (fingerprint.empty()) return;
+    watchSceneEdits();
+    pruneStoredPreviews(project);
+    auto& list = storedPreviews();
+    list.erase(std::remove_if(list.begin(), list.end(), [&](const StoredPreview& p) {
+        return p.sceneId == sceneId && p.fingerprint == fingerprint;
+    }), list.end());
+    list.insert(list.begin(), StoredPreview{sceneId, fingerprint, state, result});
+    if (list.size() > MAX_STORED_PREVIEWS) list.resize(MAX_STORED_PREVIEWS);
+}
+
+// The stored preview of these arguments, taken out of the store, when the scene is as it was
+std::optional<PlacementResult> takeStoredPreview(Project* project, SceneProject* sp, const std::string& fingerprint) {
+    pruneStoredPreviews(project);
+    if (fingerprint.empty()) return std::nullopt;
+    auto& list = storedPreviews();
+    for (auto it = list.begin(); it != list.end(); ++it) {
+        if (it->sceneId != sp->id || it->fingerprint != fingerprint) continue;
+        const bool unchanged = it->state == sceneState(sp) && it->result.sceneStructureVersion == sp->structureVersion;
+        std::optional<PlacementResult> out;
+        if (unchanged) out = it->result;
+        list.erase(it);
+        return out;
+    }
+    return std::nullopt;
+}
+
 // ---- place_with_physics
 
 struct PlacementCall {
@@ -533,11 +665,18 @@ struct PlacementCall {
     enum class Phase { Start, Decomposing, Simulating, Finishing, Done } phase = Phase::Start;
     size_t decomposeTotal = 0;
     std::unique_ptr<PlacementRun> run;
+    std::optional<PlacementResult> fromPreview;   // apply: the stored preview it commits (no run)
+    SceneState startState;                         // a preview: the scene it read
+    std::string fingerprint;
     // filled when the job ends
     std::string text;
     std::vector<ToolImage> images;
 };
 using PlacementCallPtr = std::shared_ptr<PlacementCall>;
+
+const PlacementResult& placementResult(const PlacementCall& state) {
+    return state.fromPreview ? *state.fromPreview : state.run->result();
+}
 
 void scheduleTick(const PlacementCallPtr& state);
 
@@ -653,9 +792,9 @@ void captureAndFinish(const PlacementCallPtr& state, Json data) {
     auto capture = std::make_shared<PlacementCapture>();
     capture->state = state;
     capture->data = std::move(data);
-    if (!state->apply) capture->preview = showPreview(sp, state->run->result());
+    if (!state->apply) capture->preview = showPreview(sp, placementResult(*state));
     std::vector<Entity> movers;
-    for (const PlacementEntityResult& e : state->run->result().entities) {
+    for (const PlacementEntityResult& e : placementResult(*state).entities) {
         if (e.mover) movers.push_back(e.entity);
     }
     watchCapture(capture);
@@ -684,7 +823,7 @@ void captureAndFinish(const PlacementCallPtr& state, Json data) {
 // The run finished: commit when asked, build the result
 void finishPlacement(const PlacementCallPtr& state) {
     JobPtr job = state->job;
-    const PlacementResult& r = state->run->result();
+    const PlacementResult& r = placementResult(*state);
     Json data = specEcho(*state);
     if (r.cancelled || job->cancelRequested()) {
         state->phase = PlacementCall::Phase::Done;
@@ -719,13 +858,21 @@ void finishPlacement(const PlacementCallPtr& state) {
         if (!result.contains(it.key())) result[it.key()] = it.value();
     }
     result["applied"] = state->apply;
+    result["from_preview"] = state->fromPreview.has_value();
     state->text = summaryText(*state, r);
+    if (state->fromPreview) state->text += " (The stored preview of these arguments, committed without simulating again.)";
+    if (!state->apply) {
+        // kept for an apply with the same arguments, if the scene still reads the same then
+        SceneProject* sp = project->getScene(state->sceneId);
+        if (sp && sceneState(sp) == state->startState) storePreview(project, state->sceneId, state->fingerprint, state->startState, r);
+    }
     // decompose: cached asks for missing decompositions and uses hulls meanwhile: once they are
-    // in, the same arguments build other shapes
+    // in, a new simulation of the same arguments builds other shapes
     ConvexDecompositionCache* cache = placementDecompositionCache(project);
     if (!state->apply && state->spec.settings.decomposition == PlacementDecomposition::CACHED && cache && cache->pendingCount() > 0) {
-        const std::string warning = "Convex decompositions are still being computed in the background: an apply may use them and differ "
-                                    "from this preview. For an exact repeat pass decompose: always (waits for them) or never.";
+        const std::string warning = "Convex decompositions are still being computed in the background: an apply right after this "
+                                    "commits this preview, but a later run (or an apply after an edit) may use them and differ. "
+                                    "For runs that repeat exactly pass decompose: always (waits for them) or never.";
         if (!result.contains("warnings") || !result["warnings"].is_array()) result["warnings"] = Json::array();
         result["warnings"].push_back(warning);
         state->text += "\nWarning: " + warning;
@@ -787,6 +934,10 @@ void tick(const PlacementCallPtr& state) {
     Project* project = state->ctx->project();
     switch (state->phase) {
         case PlacementCall::Phase::Start: {
+            if (state->fromPreview) {
+                finishPlacement(state);
+                return;
+            }
             if (!startRun(state)) return;
             ConvexDecompositionCache* cache = placementDecompositionCache(project);
             if (state->spec.settings.decomposition == PlacementDecomposition::ALWAYS && cache && cache->pendingCount() > 0) {
@@ -903,6 +1054,10 @@ void placeWithPhysicsTool(const CallPtr& call) {
     // world poses of GameObjects made or moved this frame (a batch) are only computed between
     // frames otherwise
     McpValues::refreshTransforms(sp);
+    watchSceneEdits();
+    state->fingerprint = state->spec.fingerprint();
+    state->startState = sceneState(sp);
+    if (state->apply) state->fromPreview = takeStoredPreview(project, sp, state->fingerprint);
 
     const std::string title = std::string("Physics ") + placementModeName(state->spec.mode) + " of " +
                               std::to_string(state->spec.entities.size()) + " GameObject(s)" + (state->apply ? "" : " (preview)");

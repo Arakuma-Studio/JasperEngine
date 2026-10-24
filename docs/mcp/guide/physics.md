@@ -104,9 +104,10 @@ against a wall, or rest it on the surface a ray hits. 3D scenes only, not during
   `context: none` drops everything onto nothing; `context: [...]` uses only those GameObjects;
   `ignore_layers` leaves layers out. `push_neighbours: true` lets small loose objects in the way
   be knocked aside (they are committed too).
-- Each call is **a preview** (nothing changes) unless `apply: true`. The same arguments with
-  `apply: true` commit exactly the previewed poses (same `state_hash`) as one undo step, prefab
-  overrides recorded. Read `hint` and `warnings`.
+- Each call is **a preview** (nothing changes) unless `apply: true`. `apply: true` with the
+  same arguments commits exactly the previewed poses (`from_preview: true`, same `state_hash`)
+  as one undo step, prefab overrides recorded; if the scene changed in between (any edit, undo
+  or redo), it simulates again (`from_preview: false`). Read `hint` and `warnings`.
 
 | mode | needs | does |
 |---|---|---|
@@ -171,6 +172,7 @@ the view, so the same pixel means the same ray on the apply call).
 | field | meaning |
 |---|---|
 | `applied` | false for a preview |
+| `from_preview` | the apply committed the stored result of the preview with the same arguments (the editor keeps the last 8 previews, dropped when their scene's GameObjects change, the scene closes or another project opens); false when it simulated |
 | `mode`, `seed`, `state_hash` | what ran; the same arguments give the same `state_hash` |
 | `sim_seconds`, `steps`, `all_settled` | simulated time, fixed steps of 1/120 s, every body at rest |
 | `entities[]` | `{id, name, path, before, after, moved_m, rotated_deg, settled, settle_step, resting_on, max_penetration_m, collider, warnings}`: world poses (`position`, `rotation` as `[x,y,z,w]`) and `after.local`, the parent-space pose that is committed |
@@ -183,11 +185,12 @@ the view, so the same pixel means the same ray on the apply call).
 **Determinism.** Same editor binary, same platform, same scene and the same arguments give the
 same `state_hash` and poses: every call builds a fresh world, adds the movers in path order,
 steps a fixed 1/120 s, applies the seeded jitter before the first step and reads no clock. It
-is not promised across platforms or builds. One exception: with `decompose: cached` (the
-default) a concave mover's first run asks for its decomposition in the background and uses a
-hull meanwhile (a warning says so), so a later run uses the decomposition and can differ. For a
-preview that `apply` reproduces exactly, pass `decompose: always` (waits for the decomposition,
-progress "Decomposing 2/5") or `never`.
+is not promised across platforms or builds. With `decompose: cached` (the default) a concave
+mover's first run asks for its decomposition in the background and uses a hull meanwhile (a
+warning says so): a later preview uses the decomposition and can differ. The apply right after
+a preview is not affected (it commits the stored preview), but one that simulates again is: for
+runs that repeat exactly, pass `decompose: always` (waits for the decomposition, progress
+"Decomposing 2/5") or `never`.
 
 **Long runs** are jobs: the call waits up to `timeout_seconds` (default 120), then returns a
 `job_id` for `get_job` (progress "step 140/1200, 22 of 30 asleep"); `cancel_job` stops it and
