@@ -13,6 +13,7 @@
 #include "command/type/ObjectTransformCmd.h"
 #include "lattice/LatticeSolver.h"
 #include "render/SceneRender.h"
+#include "subsystem/LatticeSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -664,18 +665,15 @@ bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity 
         return true;
     }
 
-    const int oldCount = pointCountOf(*lattice);
-    LatticePointsState state = stateOf(*lattice);
-    state.resolutionX = rx;
-    state.resolutionY = ry;
-    state.resolutionZ = rz;
-    state.offsets = lattice::resample(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, lattice->offsets, rx, ry, rz);
-    for (LatticePose& pose : state.poses){
-        // a pose saved on this layout keeps its shape on the new one (others are resampled on use)
-        if ((int)pose.offsets.size() == oldCount){
-            pose.offsets = lattice::resample(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, pose.offsets, rx, ry, rz);
-        }
-    }
+    // the runtime's resampling (Lattice:setResolution in Lua gives the same offsets and poses)
+    LatticeComponent resampled;
+    resampled.resolutionX = lattice->resolutionX;
+    resampled.resolutionY = lattice->resolutionY;
+    resampled.resolutionZ = lattice->resolutionZ;
+    resampled.offsets = lattice->offsets;
+    resampled.poses = lattice->poses;
+    LatticeSystem::setResolution(resampled, rx, ry, rz);
+    LatticePointsState state = stateOf(resampled);
     if ((int)state.offsets.size() != rx * ry * rz){
         return fail(error, "resampling the offsets failed");
     }
@@ -905,14 +903,10 @@ bool LatticeEditorOps::applyPose(Project* project, uint32_t sceneId, Entity enti
         }
         return fail(error, "no pose named '" + name + "'" + (names.empty() ? std::string(": the lattice has no poses") : ": poses are " + names));
     }
-    if (pose->offsets.size() != lattice->offsets.size()){
-        return fail(error, "pose '" + name + "' has " + std::to_string(pose->offsets.size()) + " offsets but the lattice has " +
-                    std::to_string(lattice->offsets.size()) + " points: save it again at this resolution");
-    }
-
-    std::vector<Vector3> result(pose->offsets.size());
-    for (size_t i = 0; i < result.size(); i++){
-        result[i] = pose->offsets[i] * weight;
+    // a pose of another size is resampled as the runtime does (LatticeSystem::applyPose)
+    std::vector<Vector3> result = LatticeSystem::getPoseOffsets(*lattice, *pose);
+    for (Vector3& offset : result){
+        offset = offset * weight;
     }
     return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
 }

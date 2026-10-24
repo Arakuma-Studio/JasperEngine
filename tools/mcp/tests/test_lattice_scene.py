@@ -5,7 +5,8 @@ read-back: the selected lattice draws its cage; Ctrl+A selects every point, Alt+
 a click picks one point and a gizmo drag moves only it (LatticeEditorOps through LatticePointsCmd),
 one undo step that undo/redo restore exactly; a rectangle selects the points inside it (Shift adds);
 O turns the proportional falloff on and the same drag then moves the neighbours too, less; the
-right-click menu opens over the view; a prefab instance's dragged point is an offsets[i] override.
+right-click menu opens over the view; a prefab instance's dragged point is an offsets[i] override;
+in a 2D view one click takes the points stacked on one spot.
 
 Points are found on screen by colour: selected points are drawn in the selection orange (1, 0.6, 0),
 (255, 202, 0) on screen, and nothing else in this scene is (the lattice has no mesh, so no
@@ -316,3 +317,37 @@ async def test_prefab_instance_point_override(ed):
     ed.check_eq(moved(await offsets(ed)), [], "undo puts the point back")
     info = await ed.call("get_prefab_info", scene=S["scene"], entity=S["lattice"], usage=False)
     ed.check_eq(lattice_overrides(info), [], f"and drops the override: {info}")
+
+
+async def test_2d_stacked_points(ed):
+    # a 2D view looks down z: the three layers of a 3x3x3 cage around a sprite land on the
+    # same spots, and one click takes the whole stack (the sprite between them follows fully)
+    made = await ed.call("create_scene", name="Lattice 2D", type="2D", path="scenes/Lattice2D")
+    S["scene"] = made["scene"]["id"]
+    await ed.call("select_scene", scene=S["scene"])
+    await ed.call("focus_window", window="scene", scene=S["scene"])
+    await ed.call("create_entity", type="sprite", scene=S["scene"], name="Sprite")
+    lattice = (await ed.call("create_entity", type="empty", scene=S["scene"], name="Cage 2D", position=[50, 50, 0]))["entity_id"]
+    S["lattice"] = lattice
+    await ed.call("add_component", scene=S["scene"], entity=lattice, component="lattice")
+    await ed.call("set_transform", scene=S["scene"], entity=lattice, scale=[160, 160, 20])
+    await ed.call("set_scene_camera", scene=S["scene"], center=[50, 50], zoom=0.5)
+    await ed.call("select_entities", scene=S["scene"], entities=[lattice])
+    focus_editor(ed)
+    await settle(ed, 10)
+
+    await key(ed, "ctrl+a")
+    spots = [(round(x), round(y)) for x, y, _ in await orange_points(ed)]
+    ed.check(len(spots) >= 8, f"the 27 points show on 9 spots (the centre one under the gizmo): {spots}")
+    await key(ed, "Escape")
+
+    x, y = max(spots, key=lambda p: p[0] - p[1])  # the corner right and up
+    await click(ed, x, y)
+    await drag(ed, (x, y), (x + 60, y - 40))
+    after = await offsets(ed)
+    changed = moved(after)
+    ed.check_eq(len(changed), 3, f"the click took the three stacked points: {changed}")
+    ed.check(all(after[i] == after[changed[0]] for i in changed), f"and they moved together: {[after[i] for i in changed]}")
+    ed.check(abs(after[changed[0]][2]) < 1e-6, "a 2D move keeps z")
+    await ed.call("undo", scene=S["scene"])
+    ed.check_eq(moved(await offsets(ed)), [], "one undo step")

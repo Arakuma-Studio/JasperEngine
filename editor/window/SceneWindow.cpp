@@ -1058,32 +1058,45 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
             // Lattice point picking within the selected lattice, with any tool: a click on a
             // point selects it (Shift/Ctrl toggle it); the gizmo then sits on it, so the same
-            // press can drag it. A gizmo handle under the cursor keeps the click.
+            // press can drag it. A handle of the points' gizmo under the cursor keeps the click;
+            // the lattice's own gizmo (no point selected) gives way to the points under it.
             bool latticePointHit = false;
             {
                 Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
-                bool blockPointHit;
-                if (gizmoSelected == GizmoSelected::OBJECT2D) {
-                    Gizmo2DSideSelected side = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
-                    blockPointHit = !(side == Gizmo2DSideSelected::NONE || side == Gizmo2DSideSelected::CENTER);
-                } else {
-                    blockPointHit = gizmoSideActive;
+                bool blockPointHit = false;
+                if (!LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity).empty()) {
+                    if (gizmoSelected == GizmoSelected::OBJECT2D) {
+                        Gizmo2DSideSelected side = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
+                        blockPointHit = !(side == Gizmo2DSideSelected::NONE || side == Gizmo2DSideSelected::CENTER);
+                    } else {
+                        blockPointHit = gizmoSideActive;
+                    }
                 }
                 if (latticeEntity != NULL_ENTITY && !blockPointHit && !altHeld && !handPanEnabled &&
                         !sceneProject->sceneRender->hasEditLayer() && !sceneProject->sceneRender->isTerrainEditing()) {
                     int pointHit = sceneProject->sceneRender->hitTestLatticePoint(latticeEntity, x, y);
                     if (pointHit >= 0) {
                         latticePointHit = true;
+                        // with the points drawn on the same spot (a flat cage seen face on)
+                        std::vector<int> hit = sceneProject->sceneRender->getLatticeCoincidentPoints(latticeEntity, pointHit);
                         std::vector<int> points = LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity);
                         if (io.KeyShift || io.KeyCtrl) {
-                            auto it = std::find(points.begin(), points.end(), pointHit);
-                            if (it != points.end()) {
-                                points.erase(it);
-                            } else {
-                                points.push_back(pointHit);
+                            const bool wasSelected = std::find(points.begin(), points.end(), pointHit) != points.end();
+                            for (int index : hit) {
+                                auto it = std::find(points.begin(), points.end(), index);
+                                if (wasSelected && it != points.end()) {
+                                    points.erase(it);
+                                } else if (!wasSelected && it == points.end()) {
+                                    points.push_back(index);
+                                }
                             }
                         } else {
-                            points = {pointHit};
+                            points = hit;
+                        }
+                        // the point clicked is the last selected (pivot mode)
+                        if (!(io.KeyShift || io.KeyCtrl) || std::find(points.begin(), points.end(), pointHit) != points.end()) {
+                            points.erase(std::remove(points.begin(), points.end(), pointHit), points.end());
+                            points.push_back(pointHit);
                         }
                         LatticeEditorOps::setSelectedPoints(sceneId, latticeEntity, points);
                         subSelectionClickConsumesRelease[sceneId] = true;

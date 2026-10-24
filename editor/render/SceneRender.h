@@ -441,6 +441,9 @@ namespace jasperengine::editor{
         // Lattice point sub-selection (the selection itself is LatticeEditorOps')
         // point of the lattice under the mouse (-1 when none)
         int hitTestLatticePoint(Entity entity, float x, float y);
+        // the points drawn on the same spot as `index` (itself included): the stacked layers
+        // of a flat cage seen face on, which one click takes together
+        std::vector<int> getLatticeCoincidentPoints(Entity entity, int index);
         // points of the lattice inside a Scene-view rectangle (NDC corners, as selectObjectsByRect)
         std::vector<int> getLatticePointsInRect(Entity entity, Vector2 start, Vector2 end);
         // world bounds of points of a lattice (all of them when points is empty)

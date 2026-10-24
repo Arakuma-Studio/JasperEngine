@@ -690,125 +690,6 @@ or inside the editor build (the binary lands in the build root):
 (also from the standalone engine build `cmake -S engine ... -DJASPERENGINE_LATTICE_TESTS=ON`;
 `ctest` runs it where testing is enabled).
 
-
-GPU deformation as §5, with these decisions and deviations:
-
-- **Variant bits.** MESH bit 5 `Ltc` (`HAS_LATTICE`, the retired `Pcf` slot), DEPTH bit 14
-  `Ltc`, GBUFFER bit 10 `Ltc` plus bits 11/12 `Vc3`/`Vc4` (the vertex colour a mask channel
-  reads; set only with `Ltc`). `getMeshProperties`, `getDepthMeshProperties` and
-  `getGBufferMeshProperties` take a trailing `lattice` argument (default false), so every
-  mesh without a lattice keeps its exact key. Counts: DEPTH 15, GBUFFER 13. A key with the
-  terrain bit compiles `Ltc` inert (the compiler leaves `HAS_LATTICE` out). Consequence of
-  reusing bit 5: a persisted key from an editor older than the PCF retirement that still has
-  bit 5 set now normalizes to a lattice variant instead of dropping the bit (one extra
-  exported variant at worst).
-- **Vertex colour in every pass of a lattice variant.** `SubmeshShaderInputs::lattice`
-  (added) forces the mesh's vertex colour bits into the colour, depth and G-buffer variants of
-  a lattice mesh, whatever the shader's `@require`, so changing a binding's mask never
-  reloads anything and shadows/depth follow the mask. The built-in depth and G-buffer loads
-  bind `COLOR` (a no-op for shaders that do not declare `a_color`). `water_depth`,
-  `spin_bob_depth` and `dissolve_depth` keep the colour defines under `HAS_LATTICE`. A mesh
-  without vertex colours is not masked (mask 1 for every channel, inverted ones too), as the
-  CPU solver does with a null colour.
-- **Variant switch.** `LatticeRender::prepare` sets `MeshComponent::needVariantReload` when
-  `count > 0` differs from `variantActive` (set by `loadMesh`): the loaded variant keeps
-  drawing (with count 0 in its block when the bindings went) until the new one is built, no
-  invisible frames while the editor compiles it. A mesh whose lattice variant is missing
-  from a build without runtime compilation behaves as any other missing variant (it does not
-  draw); the variant collector adds the lattice variants of authored targets (below), so
-  only bindings made by scripts at runtime rely on runtime compilation.
-- **GLSL** (`includes/lattice.glsl`): `latticeDeform(stage, pos, normal, tangent, stretch)`
-  as specified, plus `latticeDeformSmooth` (also moves the smoothed normal of
-  `includes/surface_vs.glsl`, so outlines follow) and `latticeWriteStretch`. One Jacobian per
-  lattice and vertex, taken to object space (`A^-1 J A`): position `p + A^-1 delta`
-  (`= Minv (M p + delta)`), normal by the cofactor of that Jacobian (`= A^T cof(J) A^-T`, the
-  spec's), tangent by it, stretch its determinant. A binding whose field is zero at the
-  vertex leaves it bit-identical (as the solver's `deformVertex`), and bindings at rest or
-  with weight 0 are left out of the draw by the CPU (`LatticeMeshState::movingBindings`), so
-  a lattice at rest draws exactly what no lattice draws (tested pixel for pixel). Loops
-  have constant bounds with `break`; data through `texelFetch` on an unfilterable RGBA32F
-  texture with a non-filtering sampler (the bones texture's annotations) on every backend,
-  the block is floats only. The record constants come from `LatticeTypes.h` as compiler
-  defines (`LATTICE_MAX_PER_MESH`, `LATTICE_TEXTURE_WIDTH`, `LATTICE_RECORD_HEADER`, in
-  the library hash). `u_vs_lattice.z` is 1 in the colour passes (stretch computed), 0 in
-  depth and G-buffer.
-- **Pipeline order** in every vertex path: morph targets, stage 0 bindings (only under
-  `HAS_SKINNING`; without skinning every binding is stage 1), skinning, instance matrix,
-  instance fade, stage 1 bindings, then (surface shaders) the `SURFACE_DISPLACE` hooks,
-  which see the deformed position and normals, then the model matrix.
-- **Stretch** (deviation): the `v_latticeStretch` varying exists only when both stages
-  define `LATTICE_STRETCH` (an output the fragment stage does not read fails the
-  cross-compile, so it cannot be written by every `mesh.vert`/`surface_vs.glsl` variant).
-  The fragment side defines `LATTICE_FS` (and `LATTICE_STRETCH`) and includes
-  `includes/lattice.glsl` for `latticeStretch()` (1.0 without a lattice or without the
-  define). `library/lattice_stretch` (.vert + .frag, category Effects): log-scale heat map,
-  `squashColor`, `stretchColor`, `range` (volume ratio of the full colour, 1.05..16, default
-  2), `baseColor` and `u_baseTexture` tint; folded cells show the squash colour.
-- **Vertex paths audited** (all call `latticeDeform`/`latticeDeformSmooth`): `mesh.vert`,
-  `depth.vert`, `gbuffer.vert`, `includes/surface_vs.glsl` (every library mesh shader's
-  colour pass: `surface`, `unlit`, `simple_lit`, `vertex_lit`, `toon`, `matcap`,
-  `triplanar`, `panner`, `decal`, `projected_decal`, `foliage`, `flipbook`, `dissolve`,
-  `spin_bob`, `water`, `fake_lit`, `sprite`, `outline` and `outline_stencil` through
-  `library/outline_vs.glsl`, `lattice_stretch`), `includes/surface_depth_vs.glsl` (every
-  depth program: `surface_depth`, `unlit_depth`, `foliage_depth`, `flipbook_depth`,
-  `dissolve_depth`, `spin_bob_depth`, `water_depth`). Not mesh paths (no lattice):
-  `sky_vs`, `ui_vs`, `points_vs` (`particle`), `htmlui*`, `lines`, `shadow2d`, `fullscreen`,
-  `bloom`, `uber`, `effects/*`. Forks made before this keep compiling and draw undeformed
-  (their block and texture slots are -1); `mesh.vert`'s header and
-  `docs/mcp/guide/shaders.md` (Forking) show the call.
-- **Packing** (`LatticeRender::prepare`): one walk down the Transform array from the first
-  modifier (skipping the parts no `includeChildren` branch covers), the path of ancestors
-  giving the inherited bindings nearest first after the own ones. A lattice is validated and
-  padded once a frame; skipped when deleted, without `LatticeComponent`, disabled, inactive
-  in the hierarchy, with a singular or non-finite transform, or when the mesh's transform is
-  singular. Resolutions are clamped and short offset lists read as zero, as the solver does
-  (texel 8 holds the clamped resolution); a NaN fade distance is packed as 0. More than
-  `LATTICE_MAX_PER_MESH` valid bindings: the rest are ignored, `Log::warn` once per modifier
-  (`warnedOverflow`, cleared when it fits again). Texels are built in a scratch vector,
-  compared with the mesh's (`memcmp`) and swapped in only when they differ (`needUpload`).
-  Terrains are never targets. `wantsTessellation` is true for every target with `count > 0`
-  (MeshSystem only reads it for sprites), `tessellation` the first binding's modifier's
-  `subdivisions` clamped to 1..64. Meshes filled last frame and not this one are reset.
-  With no `LatticeModifierComponent` and nothing filled last frame it returns at once; in a
-  steady frame it allocates nothing (scratch kept in `LatticeRenderState`).
-- **Bounds**: `worldPadding = sum |weight| * maxPaddedOffset * s`, `s` the lattice model's
-  longest column (or the root sum of squares of the columns for a skewed matrix, a bound of
-  the spectral norm); a before-skinning binding of a skinned mesh is also scaled by its
-  largest bone scale. Added to `worldAABB`, to tilemap chunk bounds and to the per-instance
-  culling radius (`buildInstanceView`). A padding change marks the AABB dirty, which for an
-  instanced mesh also rebuilds its instance list (a jiggling lattice on a large instanced
-  mesh does that every frame).
-- **Texture**: `TextureRender::createDynamicTexture` (RGBA32F stream), `LATTICE_TEXTURE_WIDTH`
-  wide, as many rows as the texels need (made again when that changes), uploaded by
-  `updateMeshBuffers` once a frame at most and bound at each draw (so a remade texture needs
-  no reload). Destroyed by `destroyMesh` and by a load without the lattice variant.
-
-Contract additions: `LatticeMeshState::movingBindings`; `LatticeRenderState` and
-`LatticeRender::prepare(Scene*, LatticeRenderState&)`, `getUniformBlock`,
-`isLatticeTarget` (LatticeRender.h); `RenderSystem::getLatticeState()` (RenderSystem owns
-the state); `SubmeshShaderInputs::lattice`; `UniformBlockType::VS_LATTICE`,
-`DEPTH_VS_LATTICE`, `GBUFFER_VS_LATTICE`, `TextureShaderType::LATTICE`; `Submesh`
-`slotVSLattice`/`slotVSLatticeTexture`, `slotVSDepthLattice`/`...Texture`,
-`slotVSGBufferLattice`/`...Texture`, the same pair on `SubmeshExtraPass`.
-
-Variant collection: `ShaderVariantCollector` adds, for every mesh that
-`LatticeRender::isLatticeTarget` (own or inherited binding to a lattice entity, enabled or
-not), the lattice variants next to the unbound ones; `Project.cpp`'s loaded-mesh list derives
-the depth key with the lattice bit; `ShaderLibraryMatrix` gains four lattice cases (plain;
-skinning + morph + vertex colour; instancing + fade + vec3 colour + shadows; no normals/UV
-with a sprite rect).
-
-Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (one field),
-`component/MeshComponent.h` (slots), `render/Render.h`, `shader/ShaderData.cpp`,
-`shader/ShaderVariantCompiler.cpp`, `pool/ShaderPool.{h,cpp}`,
-`subsystem/RenderSystem.{h,cpp}`, `registry/EntityCloner.cpp` (one line: a clone's
-`LatticeMeshState` is reset, the texture handle is the original's; WP-ECS owns the file),
-`engine/shaderlib/{mesh,depth,gbuffer}.vert`, `includes/{lattice,surface_vs,surface_depth_vs}.glsl`,
-`library/lattice_stretch.{vert,frag}`, `library/{water,spin_bob,dissolve}_depth.vert`,
-`editor/shader/{ShaderVariantCollector.{h,cpp},ShaderLibraryMatrix.cpp}`, `editor/Project.cpp`,
-`docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
-`engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
-
 ### 12.x WP-EDITOR-DATA
 
 §9.1 and the generic MCP surface of §10.1, as specified, with these decisions:
@@ -1188,6 +1069,13 @@ with no dynamic offsets left, an acceleration that wakes it, back at rest; edit 
 (applyPose immediate, tween waits, follower follows); `GameObject.instantiate` remaps. The
 offline stub check (every Lua symbol of `engine_api_suggestions.h` has a stub) passes; the
 editor-side `test_stubs.py`/`test_docs.py` failures on this host match the baseline.
+Timing note (test_lattice_lua mid-tween check): a script's `onUpdate` (Engine event) runs
+before the scene's systems in the same frame, and the first frame after Play starts has its
+delta clamped to 0.25 s. The first version of the test (06be36e9e, still in `lat/anim`)
+sampled the offset on the first `onUpdate` with 0.2 s elapsed and saw 0, since the tween had
+not run that frame. Fixed in ecc5bc286: it records the first value strictly between the rest
+and the pose while tweening (a 1 s tween spans at least four updates). LatticeSystem was not
+at fault: a frame trace shows the offset advancing every update (0, 0.109, 0.181, ... 0.25).
 Branch `lat/ecs` merged `lattice` (WP-SOLVER) and `lat/render` (for the `lateUpdate` call
 and the tessellation request); with them the three tests pass and a 2D sprite bound to a
 lattice renders as a smoothly warped 8 x 8 grid.
@@ -1295,3 +1183,170 @@ WP-EDITOR-SCENE's implementation filters by lattice and works with the calls mad
 
 Not done here: `create_entity` type `lattice_tracks` (EntityTools, WP-MCP), `docs/mcp/TOOLS.md`
 regeneration (WP-MCP), the Xcode project entry for `editor/util/LatticeTrackKeys.cpp` (integration).
+
+### 12.x WP-EDITOR-SCENE (Scene-view editing, LatticeEditorOps)
+
+Files: `editor/lattice/LatticeEditorOps.cpp` (stubs replaced), `editor/lattice/LatticeSceneRender.cpp`
+(new: `SceneRender`'s lattice members, cages, picking, point gizmo drag),
+`editor/lattice/LatticeSceneTools.{h,cpp}` (new: right-click menu, shortcuts),
+`editor/command/type/LatticePointsCmd.{h,cpp}` and `LatticeBindingsCmd.{h,cpp}` (new),
+`editor/render/SceneRender.{h,cpp}` (hooks in `update`, `mouseClickEvent`, `mouseDragEvent`,
+`mouseReleaseEvent`, `hideAllGizmos`, destructor; `SceneDisplaySettings::showAllLattices`),
+`editor/window/SceneWindow.{h,cpp}` (picking, rectangle, empty click, Esc/O/... shortcuts, F,
+right-click menu, wheel, Gizmos toggle, `focusOnBounds`), `editor/AppSettings.{h,cpp}`
+(`LatticeViewSettings`, YAML `lattice:`), `editor/window/dialog/EditorSettingsWindow.{h,cpp}`
+(Preferences > Lattice page, `open(project, category)`), `editor/App.{h,cpp}` (`openPreferences`,
+Ctrl+A in the Scene view selects points), `editor/Stream.cpp` (`showAllLattices` in the
+workspace's per-scene view settings, written only when on), `CMakeLists.txt`,
+`tools/mcp/tests/test_lattice_scene.py` (new).
+
+Contract additions (all in `LatticeEditorOps.h`, under "additions to the contract"):
+- `getEditedLattice(project, sceneId)`: the lattice the Scene view edits (the only selected
+  entity, with LatticeComponent and Transform), else `NULL_ENTITY`.
+- `validateSelection(sceneId, lattice, pointCount)`: SceneRender calls it every update; the
+  stored point selection is dropped when another entity is edited (another selection, a
+  deleted lattice) and indices past the point count are dropped (undo of a resolution change).
+- `setOffsetsContinuous(...)` + `endContinuousEdit(sceneId)`: an edit made of many steps (the
+  Scene-view drag; an inspector widget held, if WP-EDITOR-DATA wants live feedback) merges
+  into the previous continuous edit of the same lattice until `endContinuousEdit` marks the
+  history (`CommandHistory::mark`). Every other op is a discrete step that never merges
+  (`setNoMerge` before `addCommand`), so two MCP/inspector edits in a row are two undo steps.
+- `transformedOffsets(...)` (pure; what `transformPoints` and the drag both use) and
+  `falloffWeight(falloff, distance)`.
+- `getPointLocalPosition(lattice, index, position)`, `getSelectedOrAllPoints(...)`.
+WP-RENDER (not me) added `bake`/`canBake` to the same header for WP-BAKE.
+
+Commands:
+- `LatticePointsCmd`: the only writer of lattice offsets in the editor. Offsets-only form
+  (size must match the resolution when it runs) or whole-state form (resolution, offsets,
+  poses: resample, pose save/rename/delete, creation's flat-axis resolution). It bumps
+  `revision`, marks the scene modified, embeds `PrefabEditUndo`, and records prefab instance
+  overrides: per changed point `offsets[i]` for offsets edits; for whole-state edits also
+  `recordPrefabComponentEdit` with the component as it was. A whole-state apply clears
+  `dynamicOffsets`, `jiggleVelocities` and `tweening` (laid out for the old points).
+  `affectsStructure()` is false (no Hierarchy rebuild per drag frame).
+- `LatticeBindingsCmd`: sets a target's `bindings` + `includeChildren`, adding the
+  LatticeModifierComponent when missing (`ProjectUtils::addEntityComponent`,
+  `recordPrefabComponentAdded`; undo removes it), else `recordPrefabComponentEdit`.
+
+Ops behaviour (one undo step each; nothing changes on failure; an edit that changes nothing
+pushes no step and returns true):
+- Validation errors name the fix: point index range, offsets/points count, non-finite values,
+  resolution 2..16, squash amount 0..0.95, bend/shear `toward` != `axis`, binding weight 0..2,
+  submesh >= -1, enum ranges, "not a lattice (it has no Lattice component)", a broken layout
+  (offsets size != rx*ry*rz) is refused with "set its resolution again".
+- `transformPoints`/drag: `p' = pivot + T (p - pivot)` in lattice local space; falloff weight from
+  the distance (local units, current positions) to the nearest moved point; weighted points
+  get translation * w, slerp(identity, rotation, w), scale lerp(1, s, w) when `T` decomposes
+  into TRS (checked by recomposing), else their moved position blended by w (a world rotation
+  of a non-uniformly scaled lattice is a shear in local space). Curves: smooth
+  `t*t*(3-2t)`, linear `t`, sharp `t*t`, constant 1, with `t = 1 - d/r`, 0 at and past r.
+- `setResolution` resamples through `LatticeSystem::setResolution` on a copy (offsets and
+  every pose, the runtime's rule for poses of another size), so the editor and
+  `Lattice:setResolution` give identical results; it clears the point selection.
+- `applyPose` uses `LatticeSystem::getPoseOffsets` (a pose of another size is resampled as at
+  runtime), times the weight. `savePose` overwrites a pose of the same name; rename refuses
+  an existing name.
+- `computeFit`: meshes = targets and their descendants with a non-null local AABB
+  (`SceneRender::getMeshLocalAABB`: skinnedAABB when set, the rest shape, never the
+  lattice-grown worldAABB). One target: measured in its frame (world position/rotation,
+  |world scale|; a zero scale falls back to world axes). Padding: size + max(size * padding,
+  0.01) per axis. Flat axis (<= max(1e-3 * largest, 1e-6)): max(10% of largest, 0.01) and
+  resolution 2.
+- `fitTo` moves/rotates/scales the lattice (ObjectTransformCmd, parent space) and keeps its
+  resolution and offsets (an edited cage keeps its points; only creation picks resolution 2
+  for flat axes).
+- `bind` replaces the settings of a binding already listing the lattice (no duplicates),
+  `includeChildren` is set to the argument; refuses the lattice itself and entities without
+  Transform. `unbind` removes the lattice's entries and keeps the (possibly empty) component.
+- `createLattice`: `CreateEntityCmd(GAMEOBJECT)` with the fitted Transform +
+  `AddComponentCmd(LatticeComponent)` + (flat axes) the resolution + one `LatticeBindingsCmd`
+  per target with a mesh (own or below; `includeChildren` when the target has no mesh of its
+  own, or already had it), grouped by `mark`/`groupSince`; the lattice becomes the selection.
+  Targets without any mesh are not bound; when none has one the result is the no-selection
+  cage at `fallbackPosition`. **Deviation**: that cage is 1 unit in 3D scenes and 100 units in
+  2D/UI scenes (which measure in pixels: a 1-unit cage would be invisible).
+
+Scene view (§9.2):
+- Cages: each lattice drawn with two LineRenderers, one in the tools scene (always on top,
+  `behindOpacity` in perspective views, full colour in 2D/orthographic views) and one
+  depth-tested in the scene (`overlay`, full colour, perspective views only): parts behind
+  geometry show faded. Edges stop at the point squares; squares are filled camera-facing
+  squares (`pointSize` px, outlines only for unselected points of lattices above 512 points),
+  nudged towards the camera so their own edges never cut them. Thickness = parallel 1-px
+  copies across the edge on screen (engine lines are 1 px). Stretch colour: log2(length /
+  rest length) clamped to [-1, 1] blends the line colour (rest) to the squash colour (half) or
+  the stretch colour (double). Rest cage at 22% alpha when any offset is non-zero. Unselected
+  lattices (Gizmos > "Show all lattices") at 35% alpha without points; the selected one shows
+  whatever the other toggles say. Hidden with the other gizmos (camera preview).
+- Gizmo on selected points: centroid (the editor has no pivot/center toggle, so the last
+  selected point is stored but unused), lattice world rotation in Local mode, identity in
+  Global (MainToolbar's X toggle); W/E/R and the 2D gizmo's move; same snapping as objects
+  (grid on translation deltas, rotation step, Ctrl inverts rotation snap). The point gizmo is
+  disabled while an edit layer (inline child scene / game layer) holds the tools, while
+  terrain editing, and for a lattice with a non-invertible Transform.
+- Picking: a click on a point selects it (Shift or Ctrl toggles); the points drawn on the same
+  spot (a flat 2D cage seen face on has two layers) are taken together. The gizmo then sits
+  on it, so the next press on its centre drags. With no point selected a point under the
+  cursor wins over the lattice entity's own gizmo (its arrows cross the cage); with points
+  selected their gizmo's handles win, as for the other sub-selections. Verified by hand: the
+  wheel during a falloff drag shrinks the ring and the moved neighbours without zooming, F
+  frames the selected point, E on all points rotates them about the centroid (y offsets stay
+  0, radii kept, the axis column stays), R scales them. The uniform scale handle inherits the
+  object tool's ratio (distance from the gizmo centre now / at the press), so a press right on
+  the centre gives a very large factor, as it does for objects. A rectangle while a lattice is edited selects
+  points (Shift adds) and keeps the lattice selected; a click on empty space with points
+  selected clears the points and keeps the lattice (the next one deselects as usual);
+  clicking another entity selects it (points dropped by `validateSelection`).
+- Shortcuts (Scene view focused, a lattice edited; none collides): Ctrl+A select all (in
+  `App::selectAll`, else the entities as before), Alt+A none, Ctrl+I invert, Ctrl+= /
+  Ctrl+keypad+ expand, Ctrl+- / Ctrl+keypad- shrink, O proportional falloff, Esc clears the
+  points (the editor has no Esc deselect for entities, so a second Esc does nothing, as
+  before), F frames the selected points (else the cage: `focusOnEntities` frames a lattice by
+  its cage bounds, also from the Hierarchy and MCP `frame_entity`).
+- Mouse wheel during a point drag with the falloff on scales the radius by 1.1 per notch
+  (0.01..10 local units) instead of zooming; the ring (a local-space circle facing the
+  camera, so an ellipse for a non-uniform cage) is drawn around the selection's centroid.
+- Right-click menu: a right click that turns the camera less than 4 px opens it where the
+  click was (3D right-drag still flies). For the edited lattice, or the only lattice of a
+  multi-selection (then point items are disabled): Select All/None/Invert/Exterior/Face
+  (+X..-Z)/Expand/Shrink, Mirror (X/Y/Z, "+ to -" / "- to +"), Reset Selected, Reset All,
+  Presets... (submenu: preset, axis, toward, amount, seed, replace, Apply to the selected
+  points or all), Fit to Targets, Fit to Selection... (submenu: fits to the *other* selected
+  entities, padding in %), Copy as Lua (`lattice:setOffset(...)` lines of the selected or all
+  points to the clipboard), Proportional Falloff (O), Falloff (curve, radius), Lattice
+  Preferences... (opens Preferences on the Lattice page).
+- Preferences > Lattice (`settings.yaml` `lattice:`): line colour, thickness 1..4 px,
+  behind-geometry opacity, point size 3..20 px, point colour, selected point colour, stretch
+  colouring + squash/stretch colours, falloff curve, default radius (1.0 local units: with
+  0.5 a 3x3x3 cage's neighbours, 0.5 apart, would not move). Applying new falloff defaults
+  sets the live falloff.
+- Play mode: the same rules as other component edits (commands go to the play session's
+  history; the tools skip what the running scene created).
+
+Verification: `tools/mcp/tests/test_lattice_scene.py` (8 tests, new empty project,
+`xvfb="harness"`, real X input with xdotool, points found by their on-screen colour): Ctrl+A /
+Alt+A / Esc, click + gizmo drag moves exactly one point, undo/redo restore it exactly, a
+rectangle and Shift+rectangle, the falloff drag (neighbours move less, one undo step), the
+right-click menu opens, a prefab instance's dragged point is the `offsets[i]` override and undo
+drops it, a 2D view's click takes the three points stacked on one spot. Run with
+`JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_scene.py`.
+Also driven by hand on Xvfb (screenshots): GameObject > 3D Object > Lattice around a box (fit
+1.02 x 2.04 x 0.51, bound, one undo step, redo), corner drag bending the mesh (WP-RENDER
+merged), falloff drag with the ring, every menu (Mirror, Presets, Reset All), the preferences
+page, a 2D scene (sprite: 3x3x2 cage, the corner drag moves both layers). `test_lattice_data.py`
+passes on the merge; `test_regressions`, `test_post_processing_views`/`_two_views`,
+`test_scene_color_scale`, `test_scene`, `test_ui_anchors`, `test_project` show no new failure
+against the baseline run on the empty fixture. Build: no warnings in the files above.
+
+Integrator notes:
+- WP-MCP's `edit_lattice` should call the ops and group a call with
+  `CommandHistory::mark()`/`groupSince()`; `move` maps to `transformPoints` (its `pivot` in
+  lattice local space); selection helpers + `setSelectedPoints` for nothing (MCP selectors are
+  per call). `create` = `createLattice`; `fit` = `fitTo` (keeps the resolution).
+- The inspector's Offset field could use `setOffsetsContinuous` while held and
+  `endContinuousEdit` on release for live feedback; today it commits once on release, which is
+  also correct.
+- `LatticeEditorOps::falloff()` is initialised from the preferences on first use.
+- SceneRender finds its project scene id by searching the project's scenes and prefab stages
+  for itself (cached), so no Project.cpp change was needed.
