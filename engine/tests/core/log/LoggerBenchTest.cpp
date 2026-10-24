@@ -23,6 +23,11 @@
     #include <sys/resource.h>
     #include <time.h>
 #endif
+#if defined(__linux__)
+    #include <dirent.h>
+    #include <fstream>
+    #include <string>
+#endif
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -110,6 +115,29 @@ TEST(LoggerBench, BacktraceCapture) {
 }
 
 #if defined(__linux__)
+namespace {
+    // CPU time (ns) of this process's thread named `name` (/proc/self/task/<tid>/comm), from its
+    // schedstat; -1 when there is no such thread
+    long long threadCpuNs(const char* name) {
+        DIR* tasks = opendir("/proc/self/task");
+        if (!tasks) return -1;
+        long long result = -1;
+        while (dirent* entry = readdir(tasks)) {
+            if (entry->d_name[0] == '.') continue;
+            const std::string dir = std::string("/proc/self/task/") + entry->d_name;
+            std::string comm;
+            std::getline(std::ifstream(dir + "/comm"), comm);
+            if (comm != name) continue;
+            long long ns = -1;
+            std::ifstream(dir + "/schedstat") >> ns;
+            result = ns;
+            break;
+        }
+        closedir(tasks);
+        return result;
+    }
+}
+
 TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     FreshLogger logger(4 * 1024 * 1024);
     TempDir dir;
@@ -119,6 +147,15 @@ TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     auto file = ScopedSink<RotatingFileSink>(std::make_unique<RotatingFileSink>(options));
     static char keys[10000];
     const std::string text(100, 'c');
+    // the drain thread alone: the process also runs other suites' threads (the job system's
+    // workers stay up between tests)
+    long long drainBefore = threadCpuNs("je-log");
+    // the drain thread names itself once it runs
+    for (int i = 0; i < 100 && drainBefore < 0; i++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        drainBefore = threadCpuNs("je-log");
+    }
+    ASSERT_GE(drainBefore, 0) << "no je-log thread";
     rusage before{};
     getrusage(RUSAGE_SELF, &before);
     timespec threadBefore{};
@@ -131,6 +168,7 @@ TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     }
     Logger::flush();
     const double wall = std::chrono::duration<double>(Clock::now() - start).count();
+    const long long drainAfter = threadCpuNs("je-log");
     rusage after{};
     getrusage(RUSAGE_SELF, &after);
     timespec threadAfter{};
@@ -138,7 +176,8 @@ TEST(LoggerBench, DrainCpuAt10kPerSecond) {
     auto seconds = [](const timeval& t) { return static_cast<double>(t.tv_sec) + t.tv_usec / 1e6; };
     const double process = seconds(after.ru_utime) + seconds(after.ru_stime) - seconds(before.ru_utime) - seconds(before.ru_stime);
     const double producer = (threadAfter.tv_sec - threadBefore.tv_sec) + (threadAfter.tv_nsec - threadBefore.tv_nsec) / 1e9;
-    // everything but this thread: the drain thread (and the idle engine threads)
-    expectWithin(100.0 * (process - producer) / wall, 2.0, "drain thread CPU at 10k records/s, %");
+    const double drain = (drainAfter - drainBefore) / 1e9;
+    std::printf("[bench] the other threads of the process, %%: %.3f\n", 100.0 * (process - producer - drain) / wall);
+    expectWithin(100.0 * drain / wall, 2.0, "drain thread CPU at 10k records/s, %");
 }
 #endif
