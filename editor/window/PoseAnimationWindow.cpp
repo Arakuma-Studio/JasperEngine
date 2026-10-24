@@ -140,6 +140,11 @@ editor::PoseAnimationWindow::PoseAnimationWindow(Project* project): project(proj
     poseInspectorHooks().open = [this](Project*, uint32_t sceneId, Entity model, const std::string& animation){
         openFromAsset(animation, sceneId, model);
     };
+    // the Templates tab (phase 6, PoseAnimationWindowTemplates.cpp) through the tab extension point
+    const auto& tabs = extraTabs();
+    if (std::none_of(tabs.begin(), tabs.end(), [](const Tab& tab){ return tab.name == TEMPLATES_TAB; })){
+        addTab({TEMPLATES_TAB, [](PoseAnimationWindow& window){ window.drawTemplatesTab(); }, 0});
+    }
 }
 
 editor::PoseAnimationWindow::~PoseAnimationWindow(){
@@ -558,6 +563,10 @@ editor::PoseAnimationWindow::State editor::PoseAnimationWindow::getState(){
     state.editable = session.editable();
     state.layout = compactLayout ? "columns" : "stacked";
     state.thumbnailHeight = thumbHeight;
+    // the Templates tab (or an empty state's template grid) as drawn in the last frame
+    if (windowOpen && templatesDrawnFrame >= ImGui::GetFrameCount() - 1){
+        state.templates = templatesShown;
+    }
     return state;
 }
 
@@ -903,6 +912,7 @@ void editor::PoseAnimationWindow::show(){
         drawMappingPopup();
         drawOpenPopup();
         drawRenamePopup();
+        drawTemplatePopups();
         if (windowFocused) handleShortcuts(false);
     }else{
         processPendingOpen();
@@ -1108,8 +1118,10 @@ bool editor::PoseAnimationWindow::drawEmptyState(){
         return false;
     }
 
+    // no character, no animation or no poses: the templates are a way to start (phase 6)
+    const bool withTemplates = emptyState != "not_humanoid";
     const ImVec2 avail = ImGui::GetContentRegionAvail();
-    ImGui::Dummy(ImVec2(0, std::max(0.0f, avail.y * 0.3f - Theme::dpi(30.0f))));
+    ImGui::Dummy(ImVec2(0, withTemplates ? Theme::dpi(6.0f) : std::max(0.0f, avail.y * 0.3f - Theme::dpi(30.0f))));
     const float wrap = std::min(avail.x - Theme::dpi(20.0f), Theme::dpi(420.0f));
     const ImVec2 textSize = ImGui::CalcTextSize(message.c_str(), nullptr, false, wrap);
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (avail.x - textSize.x) * 0.5f));
@@ -1148,6 +1160,13 @@ bool editor::PoseAnimationWindow::drawEmptyState(){
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + wrap);
         ImGui::TextColored(statusError ? Theme::Colors::ErrorText : Theme::Colors::SubtleText, "%s", statusLine.c_str());
         ImGui::PopTextWrapPos();
+    }
+    if (withTemplates){
+        ImGui::Spacing();
+        ImGui::SeparatorText(emptyState == "no_character" ? "Templates" : "Start from a template");
+        ImGui::BeginChild("##EmptyTemplates");
+        drawTemplatesTab();
+        ImGui::EndChild();
     }
     return true;
 }

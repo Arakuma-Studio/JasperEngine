@@ -14,11 +14,13 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 
 using namespace jasperengine;
 using namespace jasperengine::pose;
 namespace poseui = jasperengine::editor::poseui;
+namespace editor = jasperengine::editor;
 
 namespace {
 
@@ -582,4 +584,76 @@ TEST(PoseUiLogic, GlobalEditSurvivesEditsOfThePoses){
     EXPECT_TRUE(poseui::keepsGlobalEdit(data.poses.size(), mirrored.data.poses.size(), false, 2, mirrored.primary));
     const poseui::Edit deleted = poseui::deletePoses(data, {1}, 2);
     EXPECT_FALSE(poseui::keepsGlobalEdit(data.poses.size(), deleted.data.poses.size(), false, 2, deleted.primary));
+}
+
+// ---- Templates tab (phase 6, section 4) ----
+
+TEST(PoseUiLogic, TemplateSummaryAndCategories){
+    EXPECT_EQ(poseui::templateSummary(4, true), "4 poses \xC2\xB7 loop");
+    EXPECT_EQ(poseui::templateSummary(1, false), "1 pose \xC2\xB7 once");
+    std::vector<editor::PoseTemplateInfo> list(5);
+    list[0].category = "Basics";
+    list[1].category = "Locomotion";
+    list[2].category = "locomotion";   // the same category in another case
+    list[3].category = "";
+    list[4].category = "User";
+    EXPECT_EQ(poseui::templateCategories(list), (std::vector<std::string>{"Basics", "Locomotion", "User"}));
+}
+
+TEST(PoseUiLogic, TemplateFilter){
+    editor::PoseTemplateInfo walk;
+    walk.name = "Cartoon Walk";
+    walk.category = "Locomotion";
+    walk.description = "A bouncy walk with big up and down moves.";
+    EXPECT_TRUE(poseui::templateMatches(walk, "", ""));
+    EXPECT_TRUE(poseui::templateMatches(walk, "locomotion", ""));
+    EXPECT_FALSE(poseui::templateMatches(walk, "Actions", ""));
+    EXPECT_TRUE(poseui::templateMatches(walk, "", "WALK"));
+    EXPECT_TRUE(poseui::templateMatches(walk, "", "  bouncy   cartoon "));   // every word, anywhere
+    EXPECT_TRUE(poseui::templateMatches(walk, "", "locom"));                 // the category too
+    EXPECT_FALSE(poseui::templateMatches(walk, "", "walk jump"));
+    EXPECT_FALSE(poseui::templateMatches(walk, "Locomotion", "run"));
+}
+
+TEST(PoseUiLogic, TemplateAnimationPath){
+    std::vector<std::string> taken;
+    auto exists = [&taken](const std::string& path){ return std::find(taken.begin(), taken.end(), path) != taken.end(); };
+    EXPECT_EQ(poseui::templateAnimationPath("assets/models", "Walk", exists), "assets/models/Walk.poseanim");
+    EXPECT_EQ(poseui::templateAnimationPath("assets/models/", "Walk", exists), "assets/models/Walk.poseanim");
+    EXPECT_EQ(poseui::templateAnimationPath("", "Walk", exists), "Walk.poseanim");
+    EXPECT_EQ(poseui::templateAnimationPath(".", "Walk", exists), "Walk.poseanim");
+    // characters unsafe in file names (a user template may have any name)
+    EXPECT_EQ(poseui::templateAnimationPath("assets", "Kick: L/R?", exists), "assets/Kick_ L_R_.poseanim");
+    taken = {"assets/models/Walk.poseanim", "assets/models/Walk 1.poseanim"};
+    EXPECT_EQ(poseui::templateAnimationPath("assets/models", "Walk", exists), "assets/models/Walk 2.poseanim");
+}
+
+TEST(PoseUiLogic, ApplyTemplateReplacesOrAppends){
+    PoseAnimationData current = animationOf(3);
+    current.previewModel = "models/hero.gltf";
+    current.settings.frameRate = 24;
+    PoseAnimationData walk = animationOf(4);
+    for (PoseKey& key : walk.poses) key.name = "W" + key.name;
+    walk.settings.frameRate = 60;
+    walk.settings.loop = true;
+
+    const poseui::Edit replaced = poseui::applyTemplate(current, walk, editor::PoseTemplateApply::Replace, {1, 2}, 2);
+    EXPECT_TRUE(replaced.changed);
+    EXPECT_EQ(names(replaced.data), (std::vector<std::string>{"WP0", "WP1", "WP2", "WP3"}));
+    EXPECT_EQ(replaced.data.settings.frameRate, 60);                 // the template's settings
+    EXPECT_TRUE(replaced.data.settings.loop);
+    EXPECT_EQ(replaced.data.previewModel, "models/hero.gltf");      // the asset keeps its preview model
+    EXPECT_EQ(replaced.selection, std::vector<int>{0});
+    EXPECT_EQ(replaced.primary, 0);
+
+    const poseui::Edit appended = poseui::applyTemplate(current, walk, editor::PoseTemplateApply::Append, {1}, 1);
+    EXPECT_TRUE(appended.changed);
+    EXPECT_EQ(names(appended.data), (std::vector<std::string>{"P0", "P1", "P2", "WP0", "WP1", "WP2", "WP3"}));
+    EXPECT_EQ(appended.data.settings.frameRate, 24);                 // the animation's settings stay
+    EXPECT_EQ(appended.selection, (std::vector<int>{3, 4, 5, 6}));
+    EXPECT_EQ(appended.primary, 3);
+
+    const poseui::Edit nothing = poseui::applyTemplate(current, PoseAnimationData(), editor::PoseTemplateApply::Append, {1}, 1);
+    EXPECT_FALSE(nothing.changed);
+    EXPECT_EQ(nothing.primary, 1);
 }

@@ -91,6 +91,9 @@ namespace jasperengine::editor{
         // The file a user template of that name is saved to: the existing user file with that
         // name, else <project>/pose-templates/<name with unsafe characters replaced>.poseanim
         static std::filesystem::path userFile(const std::filesystem::path& projectPath, const std::string& name);
+        // A file name stem for `name`: trimmed, characters unsafe in file names replaced by '_'
+        // (userFile's rule; the Templates tab names new animations with it)
+        static std::string fileStem(const std::string& name);
 
         // The template file text of `data` (value ranges clamped, preview_model emptied)
         static std::string fileText(const pose::PoseAnimationData& data, const pose::PoseAnimationTemplateInfo& info);

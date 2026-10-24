@@ -661,3 +661,77 @@ int poseui::applyGlobalEditDelta(const BodyPose& base, const BodyPose& current, 
     }
     return changed;
 }
+
+// ---- Templates tab ----
+
+std::string poseui::templateSummary(size_t poseCount, bool loop){
+    return std::to_string(poseCount) + (poseCount == 1 ? " pose" : " poses") + " \xC2\xB7 " + (loop ? "loop" : "once");
+}
+
+std::vector<std::string> poseui::templateCategories(const std::vector<editor::PoseTemplateInfo>& templates){
+    std::vector<std::string> categories;
+    for (const editor::PoseTemplateInfo& info : templates){
+        if (info.category.empty()) continue;
+        const std::string key = lower(info.category);
+        if (std::none_of(categories.begin(), categories.end(), [&key](const std::string& c){ return lower(c) == key; })){
+            categories.push_back(info.category);
+        }
+    }
+    return categories;
+}
+
+bool poseui::templateMatches(const editor::PoseTemplateInfo& info, const std::string& category, const std::string& search){
+    if (!category.empty() && lower(info.category) != lower(category)) return false;
+    const std::string haystack = lower(info.name + "\n" + info.category + "\n" + info.description);
+    const std::string needle = lower(search);
+    size_t at = 0;
+    while (at < needle.size()){
+        const size_t start = needle.find_first_not_of(" \t", at);
+        if (start == std::string::npos) break;
+        size_t end = needle.find_first_of(" \t", start);
+        if (end == std::string::npos) end = needle.size();
+        if (haystack.find(needle.substr(start, end - start)) == std::string::npos) return false;
+        at = end;
+    }
+    return true;
+}
+
+std::string poseui::templateAnimationPath(const std::string& directory, const std::string& templateName,
+                                          const std::function<bool(const std::string&)>& exists){
+    std::string folder = directory;
+    while (!folder.empty() && (folder.back() == '/' || folder.back() == '\\')) folder.pop_back();
+    if (folder == ".") folder.clear();
+    const std::string stem = editor::PoseTemplates::fileStem(templateName);
+    std::string path;
+    for (int n = 0; n < 1000; n++){
+        const std::string name = n == 0 ? stem : stem + " " + std::to_string(n);
+        path = (folder.empty() ? std::string() : folder + "/") + name + ".poseanim";
+        if (!exists || !exists(path)) break;
+    }
+    return path;
+}
+
+poseui::Edit poseui::applyTemplate(const PoseAnimationData& data, const PoseAnimationData& templateData,
+                                   editor::PoseTemplateApply mode, const std::vector<int>& selected, int primary){
+    Edit edit;
+    edit.data = data;
+    editor::PoseTemplates::apply(templateData, edit.data, mode);
+    if (mode == editor::PoseTemplateApply::Append && templateData.poses.empty()){
+        // nothing to add
+        edit.selection = selected;
+        edit.primary = primary;
+        return edit;
+    }
+    edit.changed = true;
+    if (mode == editor::PoseTemplateApply::Replace){
+        if (!edit.data.poses.empty()){
+            edit.selection = {0};
+            edit.primary = 0;
+        }
+    }else{
+        const int first = static_cast<int>(data.poses.size());
+        for (int i = first; i < static_cast<int>(edit.data.poses.size()); i++) edit.selection.push_back(i);
+        edit.primary = first;
+    }
+    return edit;
+}

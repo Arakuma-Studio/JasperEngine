@@ -1139,6 +1139,69 @@ bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Js
     return true;
 }
 
+// pose.templates (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): the
+// Templates tab's actions through the window's own functions (the ones its cards, menu and dialogs
+// call). {category, search (the filter), create: {name, path ("" = the save dialog's default)},
+// apply: {name, mode: replace | append}, save: {name, description, category}, show: name,
+// delete: name}; the result has the default path of create's template.
+bool poseTemplatesHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
+    if (!mcpTestHooks()) {
+        call->fail("pose.templates: unknown key (valid: entity, path, index, play, tab).");
+        return false;
+    }
+    if (!hook.is_object()) {
+        call->fail("pose.templates must be an object.");
+        return false;
+    }
+    auto text = [&hook](const Json& object, const char* key) {
+        return object.contains(key) && object[key].is_string() ? object[key].get<std::string>() : std::string();
+    };
+    if (hook.contains("category") || hook.contains("search")) {
+        window->setTemplateFilter(text(hook, "category"), text(hook, "search"));
+    }
+    std::string error;
+    Json result = Json::object();
+    if (hook.contains("create")) {
+        const Json& create = hook["create"];
+        const std::string name = text(create, "name");
+        result["default_path"] = window->templateAnimationPath(name);
+        if (!window->createFromTemplate(name, text(create, "path"), &error)) {
+            call->fail("pose.templates.create: " + error);
+            return false;
+        }
+    }
+    if (hook.contains("apply")) {
+        const Json& apply = hook["apply"];
+        const std::string mode = text(apply, "mode");
+        if (mode != "replace" && mode != "append") {
+            call->fail("pose.templates.apply.mode: replace or append.");
+            return false;
+        }
+        if (!window->applyTemplate(text(apply, "name"), mode == "append" ? PoseTemplateApply::Append : PoseTemplateApply::Replace,
+                                   &error)) {
+            call->fail("pose.templates.apply: " + error);
+            return false;
+        }
+    }
+    if (hook.contains("save")) {
+        const Json& save = hook["save"];
+        if (!window->saveAsTemplate(text(save, "name"), text(save, "description"), text(save, "category"), &error)) {
+            call->fail("pose.templates.save: " + error);
+            return false;
+        }
+    }
+    if (hook.contains("show") && !window->showTemplateInProject(text(hook, "show"), &error)) {
+        call->fail("pose.templates.show: " + error);
+        return false;
+    }
+    if (hook.contains("delete") && !window->deleteTemplate(text(hook, "delete"), &error)) {
+        call->fail("pose.templates.delete: " + error);
+        return false;
+    }
+    out["templates"] = result;
+    return true;
+}
+
 // focus_window pose_animation's `pose` object: {entity, path, index, play}, applied in that order
 bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& hookResult) {
     const Json& args = call->args();
@@ -1149,7 +1212,8 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
     }
     for (auto it = pose.begin(); it != pose.end(); ++it) {
         const std::string& key = it.key();
-        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab" && key != "viewport") {
+        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab" && key != "viewport" &&
+                key != "templates") {
             call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
             return false;
         }
@@ -1201,7 +1265,7 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
     }
     if (pose.contains("tab")) {
         if (!pose["tab"].is_string()) {
-            call->fail("pose.tab: Pose, Feel, Humanize or map_bones (the bone mapping popup).");
+            call->fail("pose.tab: Pose, Feel, Humanize, Templates or map_bones (the bone mapping popup).");
             return false;
         }
         const std::string tab = pose["tab"].get<std::string>();
@@ -1215,6 +1279,9 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
         }
     }
     if (pose.contains("viewport") && !poseViewportHook(call, window, pose["viewport"], hookResult)) {
+        return false;
+    }
+    if (pose.contains("templates") && !poseTemplatesHook(call, window, pose["templates"], hookResult)) {
         return false;
     }
     return true;
@@ -1236,6 +1303,12 @@ Json poseWindowState(const CallPtr& call) {
     }
     if (!state.emptyState.empty()) data["empty_state"] = state.emptyState;
     if (!state.status.empty()) data["status"] = state.status;
+    // the Templates tab (phase 6) while it shows: the cards after the filter
+    if (state.templates.shown) {
+        data["templates"] = {{"cards", state.templates.cards}, {"user", state.templates.user},
+                             {"visible", state.templates.visible}, {"thumbnails", state.templates.thumbnails}, {"hint", state.templates.hint},
+                             {"category", state.templates.category}, {"search", state.templates.search}};
+    }
     // the Scene view posing the character (phase 5): handles in Scene view pixels, ghosts, floor
     PoseEditSession& session = call->ctx().app().getPoseAnimationWindow()->getSession();
     if (PoseViewport* viewport = posedViewport(call->ctx().project(), session)) {
