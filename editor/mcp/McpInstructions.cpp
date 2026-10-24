@@ -18,7 +18,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
-prefabs, HTML/CSS UI, data safety, Unity glossary).
+prefabs, HTML/CSS UI, data safety, undo, Unity glossary).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -29,15 +29,14 @@ SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbod
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
 Most other components keep Unity's name plus "Component" (AudioSourceComponent,
 ParticleSystemComponent, Light2DComponent...).
-Build Settings = export; Scenes in Build = the scene list in project.yaml.
+Build Settings = export.
 
 ## Addressing
 - scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
   scene. While playing, runtime-state tools resolve to the playing scene.
-- entity: numeric id, or a path of names from the scene root joined by "/" with "#N" for the
-  Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
-  scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
-  and list the matching paths. Results return both id and path; prefer ids within a session.
+- entity: numeric id, a path of names from the scene root ("Player/Gun"; "Enemy#2": the 2nd
+  earlier sibling of that name) or a name unique in the scene; {"id"|"name"|"path"} objects
+  work too. Ambiguous names fail with the matching paths. Prefer ids within a session.
   `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
   omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
@@ -67,22 +66,14 @@ past it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
 ## Undo
-Every edit result carries `undo` {id, name}: your step, named "<your client name>: Set
-Intensity (Sun)" (one step per call and history; a `batch` with undo_group is one linked step,
-named by undo_name). undo/redo with scope "timeline" are exactly the human's Ctrl+Z/Ctrl+Y (the
-scene's steps and the asset steps in one order; the default scope "scene" will switch to it).
-To undo only your own last call, pass expect_top_id = that undo.id: it refuses, changing
-nothing, when someone edited since. get_undo_history lists the steps (to_id jumps). An edit
-that changes nothing makes no step. Edits made while playing are rolled back by play stop
-and then offered: get_play_changes, then apply_play_changes (one step) or discard_play_changes;
-play stop with keep_changes all|none decides at once.
+Results carry `undo` {id, name}, one step per call. undo/redo scope "timeline" = the human's
+Ctrl+Z order; expect_top_id = your undo.id undoes only your call (jasper://docs/undo).
 
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
 in it and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
-folder (Lua API stubs). Your edits are picked up before your next tool call (script
-properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
+folder (Lua API stubs). Your edits are picked up before your next tool call; that
 call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
 fix those problems first. During play they wait until play stops.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
@@ -103,8 +94,8 @@ A Lua script returns a module table; attach it to a GameObject through its Scrip
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new
-GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name): lua-language-server
-then types self and its properties and catches typos.
+GameObject. Declare the module `---@class Name : ScriptInstance` (Name = the file name): typed self and
+properties, typos caught.
 
 ```lua
 ---@class Player : ScriptInstance
@@ -258,13 +249,11 @@ brings remote resources; effect(<name>, ...) draws GPU effects and simulations (
 set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui.
 
-## Data safety
-Save after each step (Auto Save keeps backups only). degraded_document, recovery,
-project_locked: jasper://docs/data-safety.
-
 ## Pitfalls
-- Edits made while playing are discarded when play stops (as in Unity): stop before editing
-  the scene for real.
+- Edits made while playing are rolled back when play stops (as in Unity), then offered back
+  (get_play_changes): stop before editing the scene for real.
+- Save after each step: Auto Save keeps backups only (degraded_document, recovery,
+  project_locked: jasper://docs/data-safety).
 - Use only engine APIs you have confirmed in jasper://docs or the engine API snapshot
   (.jasperengine/engine-api); never carry over names from Unity C#, Godot or Unreal.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).

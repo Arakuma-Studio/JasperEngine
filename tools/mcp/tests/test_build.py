@@ -11,6 +11,7 @@ this host) and running the real player are slow: set JASPER_SLOW_BUILD=1 to run 
 
 import asyncio
 import os
+import re
 import stat
 import time
 from pathlib import Path
@@ -77,7 +78,9 @@ async def check_xcode_workspace(ed: Editor, out: Path) -> None:
             ed.check_in("$(SRCROOT)/../../project/scripts", settings["HEADER_SEARCH_PATHS"], f"{name} include directories")
     for name in ("jasperengine-ios", "jasperengine-macos", "JasperEngine iOS", "JasperEngine macOS"):
         for settings in pbxproj.target_settings(root, name):
-            ed.check(settings["CLANG_CXX_LANGUAGE_STANDARD"].startswith("c++"), f"{name}: {settings['CLANG_CXX_LANGUAGE_STANDARD']}")
+            # the project's standard, GNU dialect (S01 R16: Exporter::applyXcodeCxxStandard)
+            ed.check(re.fullmatch(r'"?gnu\+\+\d+"?', settings["CLANG_CXX_LANGUAGE_STANDARD"]) is not None,
+                     f"{name}: {settings['CLANG_CXX_LANGUAGE_STANDARD']}")
     for settings in pbxproj.project_settings(root):
         definitions = settings["GCC_PREPROCESSOR_DEFINITIONS"]
         ed.check(any(d.startswith("MAX_SUBMESHES=") for d in definitions), f"scene capacities: {definitions}")
