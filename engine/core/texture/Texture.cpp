@@ -45,10 +45,16 @@ Texture::Texture(const std::string& id, TextureData data): Texture(){
 }
 
 namespace {
+    TextureRender* destroyedFramebufferFallback = nullptr;
+
     // a framebuffer owned by a std::shared_ptr is shared with the textures showing it
     std::shared_ptr<Framebuffer> ownerOf(Framebuffer* framebuffer){
         return framebuffer ? framebuffer->weak_from_this().lock() : nullptr;
     }
+}
+
+void Texture::setDestroyedFramebufferFallback(TextureRender* texture){
+    destroyedFramebufferFallback = texture;
 }
 
 Texture::Texture(Framebuffer* framebuffer): Texture(){
@@ -440,10 +446,14 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     if (framebuffer){
         lastFramebufferVersion = framebuffer->getVersion();
         // a framebuffer that was made and is gone (its owner freed it: a removed fluid, a
-        // view loss) shows the fallback until it is made again (a new version); one never
-        // made yet is not ready (its texture, not created)
-        if (fallBackTexture && framebuffer->getVersion() > 0 && !framebuffer->isCreated())
+        // view loss) shows a transparent placeholder until it is made again (a new version):
+        // what drew nothing before draws nothing still. One never made yet is not ready (its
+        // texture, not created)
+        if (fallBackTexture && framebuffer->getVersion() > 0 && !framebuffer->isCreated()){
+            if (destroyedFramebufferFallback && destroyedFramebufferFallback->isCreated())
+                return destroyedFramebufferFallback;
             return fallBackTexture;
+        }
         return &framebuffer->getRender().getColorTexture();
     }
 

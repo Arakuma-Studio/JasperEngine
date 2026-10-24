@@ -32,7 +32,7 @@ namespace jasperengine{
             // a depth-stencil attachment (default), depth only, or none
             FramebufferDepth depth;
 
-            unsigned long version; // incremented by every creation and destruction
+            unsigned long version; // incremented when its image is made, replaced or freed
 
             // set by create(const FramebufferDesc&): create() builds from it
             FramebufferDesc desc;

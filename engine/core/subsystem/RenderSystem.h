@@ -544,6 +544,8 @@ namespace jasperengine{
 		static TextureRender emptyWhite;
 		static TextureRender emptyArrayWhite;
 		static TextureRender emptyBlack;
+		static TextureRender emptyTransparent;
+		static uint32_t pixelsTransparent[64];
 		static TextureRender emptyCubeBlack;
 		static TextureRender emptyCubeWhite;
 		static TextureRender emptyNormal;
