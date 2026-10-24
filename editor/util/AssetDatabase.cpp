@@ -733,10 +733,11 @@ void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::s
     std::sort(metas.begin(), metas.end());
 }
 
-void editor::AssetDatabase::collectOrphans(const std::vector<std::string>& metas, const std::map<std::string, Entry>& cached) {
+void editor::AssetDatabase::collectOrphans(const std::vector<std::string>& metas, const std::map<std::string, Entry>& cached,
+                                           const std::unordered_set<std::string>* presentKeys) {
     for (const std::string& metaRelative : metas) {
         const std::string assetRelative = AssetTypes::assetPathForMeta(metaRelative).generic_string();
-        if (fileExists(assetRelative)) {
+        if ((presentKeys && presentKeys->count(relativeKeyOf(assetRelative))) || fileExists(assetRelative)) {
             continue; // its asset is here (or the meta belongs to a file that is not an asset)
         }
         const AssetTypeInfo* info = AssetTypes::find(assetRelative, assetsDir);
@@ -1125,7 +1126,10 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
 
     // Files without identity: an orphan meta that matches one is its meta moved (R5), the
     // rest get a new identity (R3)
-    collectOrphans(metas, cached);
+    std::unordered_set<std::string> presentKeys;
+    presentKeys.reserve(assets.size());
+    for (const std::string& relative : assets) presentKeys.insert(relativeKeyOf(relative));
+    collectOrphans(metas, cached, &presentKeys);
     std::vector<std::string> withoutIdentity;
     std::set<std::string> legacyFiles;
     for (const Found& file : found) {
@@ -1373,7 +1377,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
 
     // orphan metas: those of assets moved or deleted without them
     orphans.clear();
-    collectOrphans(metas, std::map<std::string, Entry>());
+    collectOrphans(metas, std::map<std::string, Entry>(), &present);
     std::vector<Change> adopted = adoptOrphans(withoutIdentity);
     for (const Change& change : adopted) {
         gone.erase(Guid::parse(change.guid));

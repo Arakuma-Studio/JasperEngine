@@ -292,7 +292,9 @@ namespace jasperengine::editor {
                      std::vector<std::filesystem::path>* temporaries = nullptr) const;
         // Files without identity adopt orphan metas that match them (R5); returns the adopted
         std::vector<Change> adoptOrphans(std::vector<std::string>& withoutIdentity);
-        void collectOrphans(const std::vector<std::string>& metas, const std::map<std::string, Entry>& cached);
+        // presentKeys: the keys of the assets the walk found (a meta beside one is no orphan, no stat)
+        void collectOrphans(const std::vector<std::string>& metas, const std::map<std::string, Entry>& cached,
+                            const std::unordered_set<std::string>* presentKeys = nullptr);
         // A new identity for a file that has none (R3), written to disk
         Entry identify(const std::string& relative, AssetType type, const std::string& preferredGuid);
 
