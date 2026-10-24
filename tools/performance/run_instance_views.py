@@ -38,9 +38,9 @@ def main():
     generated = generated.replace('// BEFORE_METHODS', methods(args.baseline_ref, 'Before')).replace('// AFTER_METHODS', methods(None, 'After'))
     cpp = out / 'instance_views.cpp'; cpp.write_text(generated)
     binary = out / ('instance-views-sanitize' if args.sanitize else 'instance-views')
-    flags = ['-std=c++17', '-O3', '-ffunction-sections', '-fdata-sections']
+    flags = ['-std=c++20', '-O3', '-ffunction-sections', '-fdata-sections']
     if args.sanitize:
-        flags = ['-std=c++17', '-O1', '-g', '-DCHECK_ONLY', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-ffunction-sections', '-fdata-sections']
+        flags = ['-std=c++20', '-O1', '-g', '-DCHECK_ONLY', '-fsanitize=address,undefined', '-fno-omit-frame-pointer', '-ffunction-sections', '-fdata-sections']
     includes = ['engine/core', 'engine/core/script', 'engine/libs/lua', 'engine/libs/luabridge3', 'engine/renders', 'engine/libs/sokol']
     math_sources = ['Matrix4', 'Vector3', 'Vector4', 'Rect', 'Plane']
     subprocess.run([os.environ.get('CXX', 'c++'), *flags, *(f'-I{ROOT / path}' for path in includes), str(cpp),

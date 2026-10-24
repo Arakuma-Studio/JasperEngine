@@ -26,6 +26,7 @@ from harness import Editor
 sys.path.insert(0, str(Path(__file__).parent))
 from test_runtime_regressions import decode_png  # noqa: E402
 
+CI = True
 EDITOR = {"create": True, "name": "Post Processing Review Fixes"}
 TIMEOUT = 600
 

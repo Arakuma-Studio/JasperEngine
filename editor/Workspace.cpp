@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Workspace.h"
+#include "DocumentFile.h"
 
 #include "Out.h"
 #include "Stream.h"
@@ -300,19 +301,11 @@ bool Workspace::save(const Project* project) {
     root["scenes"] = scenesNode;
 
     try {
-        std::ofstream fout(file.string());
-        if (!fout) {
-            Out::error("Failed to open editor workspace for writing: %s", file.string().c_str());
-            return false;
-        }
-
-        fout << "# Editor state for this checkout only. Not committed; deleting it\n"
-                "# costs nothing but the layout it holds.\n";
-        fout << YAML::Dump(root) << "\n";
-        fout.close();
-
-        if (!fout) {
-            Out::error("Failed to write editor workspace: %s", file.string().c_str());
+        const std::string text = "# Editor state for this checkout only. Not committed; deleting it\n"
+                "# costs nothing but the layout it holds.\n" + YAML::Dump(root) + "\n";
+        const io::WriteResult written = DocumentFiles::write(file, text);
+        if (!written.ok()) {
+            Out::error(DocumentFiles::saveFailureMessage(file, written));
             return false;
         }
     } catch (const std::exception& e) {

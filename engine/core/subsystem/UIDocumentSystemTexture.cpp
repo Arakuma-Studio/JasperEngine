@@ -96,7 +96,7 @@ namespace {
     constexpr int maxTextureSize = 8192;
 
     // engine mouse buttons to RmlUi's (0 left, 1 right, 2 middle); -1 for the others
-    int toRmlButton(int button){
+    int textureToRmlButton(int button){
         switch (button){
             case D_MOUSE_BUTTON_LEFT: return 0;
             case D_MOUSE_BUTTON_RIGHT: return 1;
@@ -485,7 +485,7 @@ bool UIDocumentSystem::dispatchWorldPointer(int pointer, int button, float canva
     HtmlUITextureState& state = *textureState;
 
     const int rmlMods = RmlKeyMap::toRmlModifiers(mods);
-    const int rmlButton = touch ? 0 : toRmlButton(button);
+    const int rmlButton = touch ? 0 : textureToRmlButton(button);
     if (!touch && (phase == PointerPhase::DOWN || phase == PointerPhase::UP) && rmlButton < 0)
         return false;
 

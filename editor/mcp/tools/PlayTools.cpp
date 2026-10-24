@@ -29,6 +29,8 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/ScriptComponent.h"
 #include "script/LuaBinding.h"
@@ -684,6 +686,10 @@ Json playStateJson(McpContext& ctx) {
     }
     out["time"] = timeJson(playId != NULL_PROJECT_SCENE && s.current.active);
     if (s.last.serial != 0) out["last_session"] = sessionJson(s.last);
+    // Play Mode Changes waiting after a Stop (get_play_changes)
+    size_t pending = 0;
+    for (uint32_t sceneId : PlayChangeReview::get().pendingScenes()) pending += PlayChangeReview::get().pendingCount(sceneId);
+    out["pending_play_changes"] = pending;
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     return out;
 }
@@ -1472,6 +1478,8 @@ void playStop(const CallPtr& call, std::function<void()> after) {
     SceneProject* sp = project->getScene(playId);
     s.current.stopRequested = true;
     releaseHeldInput(ctx);
+    // an agent's Stop: the Play Mode Changes window stays shut (keep_changes, get_play_changes)
+    PlayChangeReview::get().setQuietStop(true);
     if (sp && sp->playState != ScenePlayState::CANCELLING) project->stop(playId);
     ensureMonitor(ctx);
 
@@ -1481,9 +1489,10 @@ void playStop(const CallPtr& call, std::function<void()> after) {
         Project* p = c.project();
         SceneProject* scene = p->getScene(playId);
         return p->getPlaySessionSceneId() == NULL_PROJECT_SCENE && (!scene || scene->playState == ScenePlayState::STOPPED);
-    }, static_cast<int>(timeout * 1000.0), [call, after](bool timedOut) {
+    }, static_cast<int>(timeout * 1000.0), [call, after, playId](bool timedOut) {
         McpContext& c = call->ctx();
         observeSession(c);
+        PlayChangeReview::get().setQuietStop(false);
         if (timedOut) {
             call->fail("Play mode is still stopping (waiting for a C++ build to cancel?). Check get_play_state.",
                        w3::playStateJson(c));
@@ -1493,11 +1502,31 @@ void playStop(const CallPtr& call, std::function<void()> after) {
             after();
             return;
         }
+        // keep_changes: what to do with the edits made while playing (absent: they wait, get_play_changes)
+        std::string keepNote;
+        const std::string keep = call->args().value("keep_changes", std::string());
+        Json kept = nullptr;
+        if (PlayChangeReview::get().pending(playId)) {
+            if (keep == "all") {
+                PlayChangeReview::ApplyResult applied = PlayChangeReview::get().apply(c.project(), playId, nullptr);
+                kept = {{"kept", applied.kept.size()}, {"skipped", applied.skipped.size()}};
+                if (applied.entryId != 0) kept["undo"] = {{"id", applied.entryId}, {"name", applied.entryName}};
+                keepNote = " Kept " + std::to_string(applied.kept.size()) + " play-mode change(s)" +
+                           (applied.skipped.empty() ? std::string(".") : ", " + std::to_string(applied.skipped.size()) + " could not be kept.");
+            } else if (keep == "none") {
+                PlayChangeReview::get().discard(playId);
+                keepNote = " Play-mode changes discarded.";
+            } else {
+                keepNote = " " + std::to_string(PlayChangeReview::get().pendingCount(playId)) +
+                           " play-mode change(s) can be kept: get_play_changes, then apply_play_changes.";
+            }
+        }
         const SessionRecord& last = state().last;
         Json data = w3::playStateJson(c);
         data["problems"] = problemsSince(last.startLogId, 30);
         data["next_cursor"] = Out::lastLogId();
-        std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state.";
+        if (!kept.is_null()) data["kept_changes"] = kept;
+        std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state." + keepNote;
         if (!data["problems"].empty()) text += "\nProblems during the session:\n" + w3::formatConsoleText(data["problems"], 4000);
         call->ok(text, data);
     });
@@ -3338,6 +3367,121 @@ void waitTool(const CallPtr& call) {
 
 // ================================================================== registration
 
+// ================================================================== Play Mode Changes
+
+// The scene a review is pending for: the one asked, else the only one, else the selected
+const PlayChangeReview::Pending* pendingReview(const CallPtr& call, std::string& error) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    PlayChangeReview& review = PlayChangeReview::get();
+    if (args.contains("scene") && !args["scene"].is_null()) {
+        SceneProject* scene = McpRefs::resolveScene(project, args["scene"], error);
+        if (!scene) return nullptr;
+        if (const PlayChangeReview::Pending* pending = review.pending(scene->id)) return pending;
+        error = "No play-mode changes are waiting for scene \"" + scene->name + "\".";
+        return nullptr;
+    }
+    const std::vector<uint32_t> scenes = review.pendingScenes();
+    if (scenes.size() == 1) return review.pending(scenes.front());
+    if (const PlayChangeReview::Pending* pending = review.pending(project->getSelectedSceneId())) return pending;
+    error = scenes.empty() ? std::string("No play-mode changes are waiting: they are listed after a Stop (play stop).")
+                           : std::string("Several scenes have play-mode changes waiting: pass scene.");
+    return nullptr;
+}
+
+Json playChangeJson(const KeepRow& row) {
+    Json item = {
+        {"id", row.id},
+        {"kind", [&]() -> std::string {
+            switch (row.kind) {
+                case KeepRow::Kind::Property: return "property";
+                case KeepRow::Kind::Transform: return "transform";
+                case KeepRow::Kind::Component: return "component";
+                case KeepRow::Kind::AddComponent: return "add_component";
+                case KeepRow::Kind::RemoveComponent: return "remove_component";
+                case KeepRow::Kind::Name: return "name";
+                case KeepRow::Kind::State: return "state";
+                case KeepRow::Kind::Created: return "created";
+                case KeepRow::Kind::Deleted: return "deleted";
+                case KeepRow::Kind::Unsupported: return "unsupported";
+            }
+            return "property";
+        }()},
+        {"game_object", row.entity == NULL_ENTITY ? Json(nullptr) : Json{{"id", row.entity}, {"name", row.gameObject}}},
+        {"component", row.hasComponent ? Json(McpRefs::componentName(row.component)) : Json(nullptr)},
+        {"property", row.property},
+        {"edit_value", row.editValue},
+        {"play_value", row.playValue},
+        {"source", row.source},
+        {"keepable", row.keepable}
+    };
+    if (!row.reason.empty()) item["reason"] = row.reason;
+    return item;
+}
+
+void getPlayChangesTool(const CallPtr& call) {
+    std::string error;
+    const PlayChangeReview::Pending* pending = pendingReview(call, error);
+    if (!pending) {
+        call->fail(error, Json{{"rows", Json::array()}});
+        return;
+    }
+    Json rows = Json::array();
+    std::string text;
+    for (const KeepRow& row : pending->rows) {
+        rows.push_back(playChangeJson(row));
+        text += "\n" + std::to_string(row.id) + ". " + (row.entity == NULL_ENTITY ? std::string() : row.gameObject + " ") +
+                (row.hasComponent ? CommandNames::component(row.component) + " " : std::string()) + row.property +
+                ": " + row.editValue + " -> " + row.playValue + (row.keepable ? "" : " (can't keep: " + row.reason + ")");
+    }
+    call->ok(std::to_string(rows.size()) + " play-mode change(s) for scene \"" + pending->sceneName + "\":" + text,
+             Json{{"scene_id", pending->sceneId}, {"rows", rows}});
+}
+
+void applyPlayChangesTool(const CallPtr& call) {
+    std::string error;
+    const PlayChangeReview::Pending* pending = pendingReview(call, error);
+    if (!pending) {
+        call->fail(error);
+        return;
+    }
+    const Json& args = call->args();
+    const bool all = args.value("all", false);
+    std::vector<uint64_t> ids;
+    if (args.contains("ids") && args["ids"].is_array()) {
+        for (const Json& id : args["ids"]) ids.push_back(id.get<uint64_t>());
+    }
+    if (!all && ids.empty()) {
+        call->fail("Pass ids (row ids from get_play_changes) or all: true. Rows not listed are discarded.");
+        return;
+    }
+    const uint32_t sceneId = pending->sceneId;
+    PlayChangeReview::ApplyResult result = PlayChangeReview::get().apply(call->ctx().project(), sceneId, all ? nullptr : &ids);
+    Json skipped = Json::array();
+    for (const auto& [id, why] : result.skipped) skipped.push_back({{"id", id}, {"reason", why}});
+    Json data = {{"scene_id", sceneId}, {"kept", result.kept}, {"skipped", skipped}};
+    if (result.entryId != 0) data["undo"] = {{"id", result.entryId}, {"name", result.entryName}};
+    if (result.kept.empty()) {
+        call->fail("No play-mode change was kept." + std::string(skipped.empty() ? "" : " Skipped: " + skipped.dump()), data);
+        return;
+    }
+    call->ok("Kept " + std::to_string(result.kept.size()) + " play-mode change(s) as one undo step" +
+             (result.entryName.empty() ? std::string(".") : " \"" + result.entryName + "\".") +
+             (skipped.empty() ? std::string() : " " + std::to_string(skipped.size()) + " skipped."), data);
+}
+
+void discardPlayChangesTool(const CallPtr& call) {
+    std::string error;
+    const PlayChangeReview::Pending* pending = pendingReview(call, error);
+    if (!pending) {
+        call->fail(error);
+        return;
+    }
+    const size_t count = pending->rows.size();
+    PlayChangeReview::get().discard(pending->sceneId);
+    call->ok("Discarded " + std::to_string(count) + " play-mode change(s).");
+}
+
 void registerPlayTools(McpRegistry& registry) {
     using namespace schema;
 
@@ -3367,7 +3511,9 @@ void registerPlayTools(McpRegistry& registry) {
             {"fixed_fps", withDefault(integer("Frames advance exactly 1/fixed_fps s; 0 = real time.", 0, 1000), 0)},
             {"auto_pause", withDefault(boolean(""), false)},
             {"screenshot", screenshotOption},
-            {"max_width", maxWidth}
+            {"max_width", maxWidth},
+            {"keep_changes", stringEnum("stop: keep all or none of the edits made while playing (absent: get_play_changes).",
+                                        {"none", "all"})}
         }, {"action"});
         tool.handler = playTool;
         registry.addTool(std::move(tool));
@@ -3385,6 +3531,47 @@ void registerPlayTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getPlayStateTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "get_play_changes";
+        tool.title = "Get Play Mode Changes";
+        tool.description =
+            "After play stop: the edits made while playing that can be kept, rows {id, kind, game_object, component, "
+            "property, edit_value, play_value, source step, keepable, reason}. Script-made GameObjects can't be kept.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getPlayChangesTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "apply_play_changes";
+        tool.title = "Apply Play Mode Changes";
+        tool.description =
+            "Keep chosen play-mode changes (ids from get_play_changes, or all) as one undo step on the restored scene; "
+            "the other rows are discarded. Returns undo {id, name} and the skipped rows.";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"ids", Json{{"type", "array"}, {"items", Json{{"type", "integer"}}}}},
+            {"all", withDefault(boolean(""), false)}
+        });
+        tool.handler = applyPlayChangesTool;
+        registry.addTool(std::move(tool));
+    }
+
+    {
+        ToolDef tool;
+        tool.name = "discard_play_changes";
+        tool.title = "Discard Play Mode Changes";
+        tool.description = "Drop the play-mode changes waiting after a Stop.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.idempotent = true;
+        tool.handler = discardPlayChangesTool;
         registry.addTool(std::move(tool));
     }
 

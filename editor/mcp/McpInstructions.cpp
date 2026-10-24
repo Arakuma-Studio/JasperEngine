@@ -14,11 +14,11 @@ R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 (Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every edit you make through tools is an undoable editor command, visible live to a human
-watching. Build scenes with tools, write code with your own file tools, verify by playing,
-screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
-tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
-C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
+scripts. Each tool edit is an undoable command, live to a human watching. Build scenes
+with tools, write code with your own file tools, verify by playing, screenshots and the Console.
+tools/list is authoritative for tool names and arguments; read a tool's description before
+first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
+prefabs, HTML/CSS UI, data safety, Unity glossary).
 
 ## Unity names -> engine names
 Use Unity terms in prose; tools, component names and script APIs use the engine names.
@@ -53,7 +53,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
    touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
    project.yaml (the editor would overwrite you). Group many edits in one `batch` call
-   (undo_group: one undo step). Edit code with your own tools (see Code).
+   (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
 5. Look: screenshot the Game view (Scene view for layout). Drive the game with
@@ -65,9 +65,20 @@ Long operations (play with a C++ build, export, build players) take wait/timeout
 if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
+## Undo
+Every edit result carries `undo` {id, name}: your step, named "<your client name>: Set
+Intensity (Sun)" (one step per call and history; a `batch` with undo_group is one linked step,
+named by undo_name). undo/redo with scope "timeline" are exactly the human's Ctrl+Z/Ctrl+Y (the
+scene's steps and the asset steps in one order; the default scope "scene" will switch to it).
+To undo only your own last call, pass expect_top_id = that undo.id: it refuses, changing
+nothing, when someone edited since. get_undo_history lists the steps (to_id jumps). An edit
+that changes nothing makes no step. Edits made while playing are rolled back by play stop
+and then offered: get_play_changes, then apply_play_changes (one step) or discard_play_changes;
+play stop with keep_changes all|none decides at once.
+
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder: `editor_status` gives its absolute path (project.path). Work
-in it (cd there) and read, edit, grep and git its scripts, shaders and .material files with
+in it and read, edit, grep and git its scripts, shaders and .material files with
 your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
 folder (Lua API stubs). Your edits are picked up before your next tool call (script
 properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
@@ -245,8 +256,11 @@ brings remote resources; effect(<name>, ...) draws GPU effects and simulations (
 set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
 
+## Data safety
+Save after each step (Auto Save keeps backups only). degraded_document, recovery,
+project_locked: jasper://docs/data-safety.
+
 ## Pitfalls
-- Unsaved scenes are lost when the editor closes; save after each working step.
 - Edits made while playing are discarded when play stops (as in Unity): stop before editing
   the scene for real.
 - Use only engine APIs you have confirmed in jasper://docs or the engine API snapshot

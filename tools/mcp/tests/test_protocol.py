@@ -8,6 +8,9 @@ import uuid
 
 from harness import Editor, ProtocolError, RawEditor, find_key
 
+CI = True
+EDITOR = {"create": True, "name": "Protocol CI"}
+
 PROTOCOL_VERSIONS = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
 
 async def scene_entity_ids(ed: Editor) -> set[int]:
@@ -153,7 +156,7 @@ async def test_batch_stop_on_error(ed: Editor):
 async def test_stdio_raw():
     """Every stdout line is a JSON-RPC 2.0 message (the editor's own prints go to stderr), the
     client's protocol version is echoed, ping works, and closing stdin shuts the editor down."""
-    async with RawEditor() as raw:
+    async with RawEditor(create=True, name="Protocol CI") as raw:
         init = await raw.initialize(version="2025-06-18")
         if "error" in init:
             raw.fail(f"initialize failed: {init['error']}")
@@ -186,7 +189,7 @@ async def test_stdio_raw():
 
 async def test_version_fallback():
     """An unknown client version gets the newest supported one."""
-    async with RawEditor() as raw:
+    async with RawEditor(create=True, name="Protocol CI") as raw:
         init = await raw.initialize(version="1999-01-01")
         v = init.get("result", {}).get("protocolVersion")
         if v not in PROTOCOL_VERSIONS:

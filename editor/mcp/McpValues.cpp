@@ -3,6 +3,9 @@
 
 #include "McpValues.h"
 
+#include "command/PlayChangeReview.h"
+#include "DocumentFile.h"
+
 #include "McpRefs.h"
 
 #include "Out.h"
@@ -2179,7 +2182,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 Material material;
                 try {
-                    material = Stream::decodeMaterial(YAML::LoadFile(absolute.string()));
+                    material = Stream::decodeMaterial(DocumentFiles::read(absolute, DocumentKind::Material).root);
                 } catch (const std::exception& e) {
                     error = std::string("Failed to read the material: ") + e.what();
                     return nullptr;
@@ -2641,6 +2644,30 @@ bool McpStepsCmd::execute() {
     }
     built = true;
     return true;
+}
+
+std::string McpStepsCmd::describe() const {
+    if (done.empty()) return "Edit";
+    std::string name = done.front()->describe();
+    if (done.size() > 1) name += " (+" + std::to_string(done.size() - 1) + " more)";
+    return name;
+}
+
+bool McpStepsCmd::isNoOp() const {
+    for (const std::unique_ptr<Command>& cmd : done) {
+        if (!cmd->isNoOp()) return false;
+    }
+    return true;
+}
+
+void McpStepsCmd::collectKeepCommands(KeepContext& context) const {
+    for (const std::unique_ptr<Command>& cmd : done) context.collect(*cmd, context.source);
+}
+
+size_t McpStepsCmd::memoryBytes() const {
+    size_t bytes = sizeof(*this) + steps.capacity() * sizeof(Step);
+    for (const std::unique_ptr<Command>& cmd : done) bytes += cmd->memoryBytes();
+    return bytes;
 }
 
 void McpStepsCmd::undo() {

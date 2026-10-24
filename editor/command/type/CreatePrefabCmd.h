@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "util/YamlFootprint.h"
 #include "Project.h"
 #include <cstdint>
 #include <filesystem>
@@ -58,6 +60,25 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        // "Create Prefab Player.prefab", "Create Prefab Variant Door Variant.prefab", "Create 2 Prefabs"
+        std::string describe() const override {
+            if (items.size() == 1) {
+                return std::string(items.front().variant ? "Create Prefab Variant " : "Create Prefab ") + CommandNames::file(items.front().filepath);
+            }
+            return "Create " + std::to_string(items.size()) + " Prefabs";
+        }
+        const char* typeName() const override { return "CreatePrefabCmd"; }
+        size_t memoryBytes() const override {
+            size_t bytes = sizeof(*this) + lastSelected.capacity() * sizeof(Entity);
+            for (const Item& item : items) {
+                bytes += sizeof(item) + yamlFootprint(item.prefabNode) + yamlFootprint(item.variantRootNode);
+                for (const auto& [root, node] : item.nestedRoots) {
+                    bytes += yamlFootprint(node);
+                }
+            }
+            return bytes;
+        }
 
     };
 

@@ -1,13 +1,22 @@
-# Mirrored by cxxStandards in editor/util/CxxStandards.h. Covers the engine, the editor
-# and the exported game; Play plugins read the project setting (editor/Generator.cpp).
-set(JASPERENGINE_CXX_STANDARDS 17 20 23)
+# The C++ standard of the engine, the editor and the exported game, and the source of
+# cxxStandards in the editor (JASPERENGINE_CXX_STANDARD_LIST); Play plugins read the project
+# setting (editor/Generator.cpp). The first entry is the default.
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperEngineToolchain.cmake)
+set(JASPERENGINE_CXX_STANDARDS 20 23)
 if(NOT DEFINED JASPERENGINE_CXX_STANDARD)
-    set(JASPERENGINE_CXX_STANDARD 17 CACHE STRING "C++ standard for the engine, editor and project")
+    set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project")
+    set_property(CACHE JASPERENGINE_CXX_STANDARD PROPERTY STRINGS ${JASPERENGINE_CXX_STANDARDS})
+elseif("$CACHE{JASPERENGINE_CXX_STANDARD}" STREQUAL "17")
+    # a build tree configured before C++17 was dropped
+    message(WARNING "JASPERENGINE_CXX_STANDARD 17 is no longer supported; using 20")
+    set(JASPERENGINE_CXX_STANDARD 20 CACHE STRING "C++ standard for the engine, editor and project" FORCE)
     set_property(CACHE JASPERENGINE_CXX_STANDARD PROPERTY STRINGS ${JASPERENGINE_CXX_STANDARDS})
 endif()
 
 option(JASPERENGINE_PHYSICS_2D "Enable Box2D-based 2D physics" ON)
 option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
+# Fallback for one release: Jolt's own JobSystemThreadPool instead of the engine's job system
+option(JE_JOLT_OWN_POOL "Run Jolt physics jobs on Jolt's own thread pool" OFF)
 # Compiles at runtime the shader variants a build does not ship precompiled (scripted
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
@@ -15,6 +24,10 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
+# The unit tests (docs/testing.md): jasperengine-core-tests in a standalone engine build
+# (engine/tests/core, against the static engine, with the job system and allocator benchmarks
+# je-bench-jobs and je-bench-memory), jasperengine-editor-tests in the editor build
+option(JASPERENGINE_TESTS "Build the unit-test target of this build tree" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -29,6 +42,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     project(${APP_NAME})
+
+    # before any target: sanitizers apply to the whole tree (empty by default, as in every export)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperSanitizers.cmake)
 
     set(JASPERENGINE_SHARED OFF)
 
@@ -57,6 +73,25 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         set(JASPERENGINE_VSYNC_ENABLED_VALUE 0)
     endif()
     add_definitions("-DJASPERENGINE_VSYNC_ENABLED=${JASPERENGINE_VSYNC_ENABLED_VALUE}")
+
+    # Player > Logging (the Exporter sets them): the game's log level, player.log, backtraces
+    if(DEFINED JASPERENGINE_LOG_LEVEL)
+        add_definitions("-DJASPERENGINE_LOG_LEVEL=\"${JASPERENGINE_LOG_LEVEL}\"")
+    endif()
+    if(DEFINED JASPERENGINE_LOG_FILE)
+        if(JASPERENGINE_LOG_FILE)
+            add_definitions("-DJASPERENGINE_LOG_FILE=1")
+        else()
+            add_definitions("-DJASPERENGINE_LOG_FILE=0")
+        endif()
+    endif()
+    if(DEFINED JASPERENGINE_LOG_BACKTRACE)
+        if(JASPERENGINE_LOG_BACKTRACE)
+            add_definitions("-DJASPERENGINE_LOG_BACKTRACE=1")
+        else()
+            add_definitions("-DJASPERENGINE_LOG_BACKTRACE=0")
+        endif()
+    endif()
 
     if(NOT DEFINED JASPERENGINE_WINDOW_WIDTH)
         set(JASPERENGINE_WINDOW_WIDTH 960)
@@ -208,8 +243,21 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         option(EMSCRIPTEN_THREAD_SUPPORT "Enable pthreads for Emscripten builds" OFF)
 
         if(EMSCRIPTEN_THREAD_SUPPORT)
-            set(USE_PTHREADS "-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4")
+            # The pool is created at startup and never grows, and the engine sizes its threads
+            # to it (JE_PTHREAD_POOL_SIZE, thread::webThreadPoolSize): the job system's workers
+            # (at most 4, and pool - 3), one blocking thread, a video decoder, and a spare an
+            # asset reader may take. STRICT=2 aborts loudly instead of deadlocking when a thread
+            # is asked beyond it.
+            set(JASPERENGINE_WEB_PTHREAD_POOL_SIZE 8 CACHE STRING "Emscripten pthread pool of the threaded web build")
+            set(USE_PTHREADS "-s PTHREAD_POOL_SIZE=${JASPERENGINE_WEB_PTHREAD_POOL_SIZE} -s PTHREAD_POOL_SIZE_STRICT=2")
+            add_compile_definitions(JE_PTHREAD_POOL_SIZE=${JASPERENGINE_WEB_PTHREAD_POOL_SIZE})
             list(APPEND PLATFORM_OPTIONS -pthread)
+            # shared memory links only objects built with atomics: every library of the tree,
+            # not only the engine (wasm-ld refuses glslang's PoolAlloc.cpp otherwise)
+            add_compile_options(-pthread)
+            # and the link: without it Emscripten links its pthread stubs, and the first thread
+            # the engine starts fails with EOPNOTSUPP
+            add_link_options(-pthread)
         endif()
 
         # GROWABLE_ARRAYBUFFERS only exists on recent Emscripten, and emcc errors
@@ -629,7 +677,30 @@ endif() # End standalone project setup
 # Always runs (both standalone and when included by the editor).
 # =============================================================
 
+jasperengine_check_cxx_toolchain()
+# Checked after the project settings marker, so the value the Exporter injects is validated too
+if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
+    string(REPLACE ";" ", " JASPERENGINE_CXX_STANDARDS_TEXT "${JASPERENGINE_CXX_STANDARDS}")
+    message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
+endif()
+message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
+# The default of every target created from here on, the vendored libraries included;
+# jasperengine_apply_cxx_standard below overrides the ones that set their own
+set(CMAKE_CXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+# MSVC reports __cplusplus as 199711L without it, and header-only libraries (nlohmann json,
+# LuaBridge3) would pick their pre-C++20 code paths
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
+endif()
+
 option(JASPERENGINE_SHARED "Build jasperengine as a shared library" OFF)
+
+# Warnings (off here by default, so exports stay quiet) and unity builds of our own targets
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperWarnings.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperUnityBuild.cmake)
 
 if(JASPERENGINE_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -641,7 +712,8 @@ endif()
 if(WIN32)
     if(MSVC)
         add_compile_options(/bigobj)
-        if(JASPERENGINE_SHARED)
+        # (MSVC's AddressSanitizer needs the DLL runtime too, JasperSanitizers.cmake)
+        if(JASPERENGINE_SHARED OR JASPERENGINE_SANITIZE_ADDRESS)
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
         else()
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -777,11 +849,24 @@ foreach(lib IN ITEMS
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
 
+# One C++ standard for every object of the binary: libc++ template definitions instantiated
+# at two standards across a library boundary (tinygltf and RmlUi pass std containers into
+# engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
+jasperengine_apply_cxx_standard(
+    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
+    lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS})
+if(JASPERENGINE_RUNTIME_SHADERS)
+    # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
+    jasperengine_apply_cxx_standard_in_directories(${CMAKE_CURRENT_SOURCE_DIR}/libs/shadercompiler)
+endif()
+
 if(JASPERENGINE_HTMLUI_TESTS)
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         message(FATAL_ERROR "JASPERENGINE_HTMLUI_TESTS needs the standalone engine build (cmake -S engine): the editor's shared engine hides the RmlUi symbols the tests use")
     endif()
-    # the tests read render targets back (engine/tests/htmlui/harness/Readback.cpp)
+endif()
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    # the tests read render targets back (engine/tests/support/Readback.cpp)
     add_definitions(-DJASPERENGINE_TEXTURE_READBACK)
 endif()
 
@@ -798,6 +883,19 @@ set(JASPERENGINE_SRCS
     core/Engine.cpp
     core/Input.cpp
     core/Log.cpp
+    core/log/Logger.cpp
+    core/log/LogFormat.cpp
+    core/log/Backtrace.cpp
+    core/log/sinks/ConsoleSink.cpp
+    core/log/sinks/RotatingFileSink.cpp
+    core/log/sinks/MemorySink.cpp
+    core/log/sinks/CallbackSink.cpp
+    core/log/sinks/PlatformSink.cpp
+    core/log/sinks/PlatformSinks.cpp
+    core/log/sinks/AndroidLogSink.cpp
+    core/log/sinks/EmscriptenConsoleSink.cpp
+    core/log/sinks/DebuggerSink.cpp
+    core/log/sinks/AppleLogSink.cpp
     core/Scene.cpp
     core/SceneSettings.cpp
     core/System.cpp
@@ -876,6 +974,7 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectSimulator.cpp
     core/htmlui/effects/EffectSyntax.cpp
     core/htmlui/effects/EffectValue.cpp
+    core/io/AssetIOService.cpp
     core/io/Data.cpp
     core/io/File.cpp
     core/io/FileData.cpp
@@ -885,6 +984,8 @@ set(JASPERENGINE_SRCS
     core/manager/PrefabManager.cpp
     core/manager/SceneManager.cpp
     core/io/UserSettings.cpp
+    core/io/AtomicFile.cpp
+    core/io/ScopedFileLock.cpp
     core/math/AABB.cpp
     core/math/Matrix3.cpp
     core/math/Matrix4.cpp
@@ -995,18 +1096,34 @@ set(JASPERENGINE_SRCS
     core/texture/MaterialPbr.cpp
     core/texture/Texture.cpp
     core/texture/TextureData.cpp
+    core/jobs/BackgroundGate.cpp
+    core/jobs/JobCounter.cpp
+    core/jobs/JobSystem.cpp
+    core/jobs/ParallelFor.cpp
+    core/jobs/Primitives.cpp
+    core/jobs/SerialQueue.cpp
+    core/jobs/SlabPool.cpp
+    core/memory/Arena.cpp
+    core/memory/MemoryStats.cpp
+    core/memory/ObjectPool.cpp
+    core/memory/RangeAllocator.cpp
+    core/memory/ScratchScope.cpp
     core/thread/ResourceProgress.cpp
-    core/thread/ThreadPoolManager.cpp
+    core/thread/ThreadUtil.cpp
     core/util/Angle.cpp
     core/util/Base64.cpp
     core/util/Color.cpp
+    core/util/CrashHook.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
+    core/util/JoltJobAdapter.cpp
     core/util/LunaSVGRuntime.cpp
     core/util/PostColorLut.cpp
+    core/util/Scheduler.cpp
     core/util/STBText.cpp
     core/util/StringUtils.cpp
+    core/util/SubscriptionOwnerIndex.cpp
     core/util/TextShaper.cpp
     core/util/ThorVGRuntime.cpp
     core/util/UniqueToken.cpp
@@ -1059,15 +1176,35 @@ add_library(
 
 jasperengine_htmlui_compat_embed(jasperengine)
 jasperengine_htmlui_lucide_embed(jasperengine)
+jasperengine_target_warnings(jasperengine)
+# Unity build: the HTML UI sources keep generic file-local helpers (lower, trim, startsWith, PI,
+# Registry, Cache, ...) in anonymous namespaces at global scope, one helper set per file
+get_target_property(JASPERENGINE_UNITY_SKIP jasperengine SOURCES)
+list(FILTER JASPERENGINE_UNITY_SKIP INCLUDE REGEX "core/htmlui/")
+jasperengine_skip_unity_build(
+    REASON "the HTML UI subsystem: per-file helper sets with the same names"
+    SOURCES ${JASPERENGINE_UNITY_SKIP})
+jasperengine_target_unity_build(jasperengine)
 
 target_compile_definitions(jasperengine
     PUBLIC
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
+    PRIVATE
+        $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
+
+# the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
+if(WIN32)
+    target_link_libraries(jasperengine PRIVATE dbghelp)
+elseif(ANDROID)
+    target_link_libraries(jasperengine PRIVATE log)
+elseif(NOT APPLE AND NOT EMSCRIPTEN)
+    target_link_libraries(jasperengine PRIVATE ${CMAKE_DL_LIBS})
+endif()
 
 if(EMSCRIPTEN AND EMSCRIPTEN_THREAD_SUPPORT)
 	target_compile_options(jasperengine PRIVATE -pthread)
@@ -1129,25 +1266,6 @@ if(JASPERENGINE_RUNTIME_SHADERS)
     target_compile_definitions(jasperengine PRIVATE JASPERENGINE_RUNTIME_SHADERS)
     target_link_libraries(jasperengine PRIVATE shadercompiler)
 endif()
-
-# Checked after the marker above, so the value the Exporter injects is validated too
-if(NOT JASPERENGINE_CXX_STANDARD IN_LIST JASPERENGINE_CXX_STANDARDS)
-    string(REPLACE ";" ", " JASPERENGINE_CXX_STANDARDS_TEXT "${JASPERENGINE_CXX_STANDARDS}")
-    message(FATAL_ERROR "JASPERENGINE_CXX_STANDARD must be one of: ${JASPERENGINE_CXX_STANDARDS_TEXT} (got '${JASPERENGINE_CXX_STANDARD}')")
-endif()
-message(STATUS "C++ standard is set to ${JASPERENGINE_CXX_STANDARD}")
-
-# tinygltf shares STL containers with the engine; libc++ template definitions
-# must use the same C++ standard on both sides of that boundary.
-set_target_properties(tinygltf PROPERTIES
-    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
-    CXX_STANDARD_REQUIRED ON
-)
-# Same for RmlUi: Rml::String and Rml::Vector are std types crossing into engine code
-set_target_properties(rmlui PROPERTIES
-    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
-    CXX_STANDARD_REQUIRED ON
-)
 
 set_target_properties(
     jasperengine
@@ -1224,10 +1342,35 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         )
     endif()
 
+    # emcc packs project/assets and project/lua into the .data file at link time
+    # (--preload-file), which ninja does not see: list them as link inputs so an
+    # edited script or asset relinks instead of shipping the previous bundle.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        set(EM_PRELOAD_DEPENDS)
+        foreach(preloadDir assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${preloadDir}")
+                file(GLOB_RECURSE preloadFiles CONFIGURE_DEPENDS "${PROJECT_ROOT}/${preloadDir}/*")
+                list(APPEND EM_PRELOAD_DEPENDS ${preloadFiles})
+            endif()
+        endforeach()
+        if(EM_PRELOAD_DEPENDS)
+            set_property(TARGET ${APP_NAME} APPEND PROPERTY LINK_DEPENDS ${EM_PRELOAD_DEPENDS})
+        endif()
+    endif()
+
     if(WIN32)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})
     endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        jasperengine_skip_unity_build(
+            REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+            SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
+    endif()
+    jasperengine_target_warnings(${APP_NAME})
+    jasperengine_target_unity_build(${APP_NAME})
+    jasperengine_stage_asan_runtime(${APP_NAME})
 
     # Project script roots are injected here by the editor Exporter. They are
     # scoped to this target: include_directories() would reach the jasperengine
@@ -1297,6 +1440,17 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
 endif() # End standalone executable build
 
+# googletest targets of the standalone engine tree (engine/cmake/JasperTesting.cmake)
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperTesting.cmake)
+endif()
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
+endif()
+if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    add_subdirectory(tests/core)
+endif()
+
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    jasperengine_check_cxx_standards()
 endif()

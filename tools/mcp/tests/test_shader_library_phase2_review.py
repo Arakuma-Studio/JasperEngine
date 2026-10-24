@@ -19,6 +19,9 @@ import yaml
 
 from harness import Editor, find_key
 
+CI = True
+EDITOR = {"create": True, "name": "Shader Library Phase2 Review CI"}
+
 TIMEOUT = 900
 
 SCENE = "scenes/Phase2Review.scene"

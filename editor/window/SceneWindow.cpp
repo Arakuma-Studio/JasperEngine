@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "DocumentFile.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -358,7 +359,10 @@ std::string editor::SceneWindow::getWindowTitle(const SceneProject& sceneProject
         icon = ICON_FA_WINDOW_RESTORE + std::string("  ");
     }
     // everything before "###" is drawn, the id after it keeps docking state stable
-    return icon + BidiText::toVisual(sceneProject.name) + ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
+    // a scene whose load dropped values (docs/data-safety.md): its saves ask first
+    const bool partial = sceneProject.loadReport.dropped() > 0;
+    return icon + BidiText::toVisual(sceneProject.name) + (partial ? " (Partial Load)" : "") +
+        ((project->hasSceneUnsavedChanges(sceneProject.id)) ? " *" : "") + "###Scene" + std::to_string(sceneProject.id);
 }
 
 Vector3 editor::SceneWindow::getModelDropPosition(SceneProject* sceneProject, float x, float y, Entity hitEntity) {
@@ -603,7 +607,7 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                                         // Cache the decoded material — only reload when the path changes
                                         if (cachedDragPath != droppedRelativePath) {
                                             fs::path materialPath = project->getProjectPath() / droppedRelativePath;
-                                            YAML::Node materialNode = YAML::LoadFile(materialPath.string());
+                                            YAML::Node materialNode = DocumentFiles::read(materialPath, DocumentKind::Material).root;
                                             cachedDragMaterial = Stream::decodeMaterial(materialNode);
                                             cachedDragMaterial.name = fs::path(droppedRelativePath).lexically_normal().generic_string();
                                             cachedDragPath = droppedRelativePath;
@@ -967,6 +971,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
     ImGuiIO& io = ImGui::GetIO();
+    {
+        // relative to the main window (ImGui positions are screen positions with viewports on)
+        const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+        viewRect[sceneProject->id] = ImVec4(windowPos.x - origin.x, windowPos.y - origin.y, windowSize.x, windowSize.y);
+    }
     float mouseWheel = io.MouseWheel;
     ImVec2 mousePos = io.MousePos;
     ImVec2 mouseDelta = io.MouseDelta;
@@ -1030,7 +1039,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
         gizmoSideActive ||
-        sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
+        (sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space));
 
     if (isMouseInWindow){
 
@@ -2419,6 +2428,18 @@ void editor::SceneWindow::toEngineCanvas(uint32_t sceneId, float& x, float& y) c
     ImVec2 scale = canvasEngineScale(sceneId);
     x *= scale.x;
     y *= scale.y;
+}
+
+bool editor::SceneWindow::getViewRect(uint32_t sceneId, float& x, float& y, float& w, float& h) const {
+    auto it = viewRect.find(sceneId);
+    if (it == viewRect.end()) {
+        return false;
+    }
+    x = it->second.x;
+    y = it->second.y;
+    w = it->second.z;
+    h = it->second.w;
+    return true;
 }
 
 int editor::SceneWindow::getWidth(uint32_t sceneId) const{

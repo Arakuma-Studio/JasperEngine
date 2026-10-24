@@ -6,6 +6,8 @@
 // deletion leaves (Missing Prefab instances, see ProjectPrefabMissing.cpp).
 
 #include "Project.h"
+#include "DocumentFile.h"
+#include "StreamPreserved.h"
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
@@ -452,24 +454,64 @@ std::vector<std::filesystem::path> editor::Project::findPrefabFiles() const {
 
 // ---- Prefab files ----
 
-void editor::Project::savePrefabToDisk(const std::filesystem::path& filepath) {
+editor::SaveResult editor::Project::savePrefabToDisk(const std::filesystem::path& filepath, DegradedSavePolicy policy) {
     Prefab* prefab = getPrefab(filepath);
-    YAML::Node encodedNode = encodePrefabNode(filepath);
-    if (encodedNode && !encodedNode.IsNull()) {
-        std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
-        std::ofstream fout(fullPrefabPath.string());
-        if (fout.is_open()) {  // Check if file opened successfully
-            fout << YAML::Dump(encodedNode);
-            fout.close();
-            prefab->isModified = false;
-            prefab->needsUpgrade = false;
-            markReferencedSceneIdsPersisted(prefab->registry.get());
-            // the database keeps the GUID and learns the file's new time and size
-            assetDatabase.registerAsset(filepath, encodedNode["guid"].as<std::string>());
-        } else {
-            Out::error("Failed to open file for writing: %s", fullPrefabPath.string().c_str());
-        }
+    if (!prefab) {
+        return SaveResult::Failed;
     }
+    // a prefab file that did not load completely is not written over unless the loss was accepted
+    if (prefabSaveScopeDepth > 0 && prefabSaveScopePolicy == DegradedSavePolicy::SaveAnyway) {
+        policy = DegradedSavePolicy::SaveAnyway;
+    }
+    if (prefab->loadReport.dropped() > 0 && policy == DegradedSavePolicy::Refuse) {
+        if (prefabSaveScopeDepth > 0 &&
+                std::find(refusedPrefabSaves.begin(), refusedPrefabSaves.end(), filepath) == refusedPrefabSaves.end()) {
+            refusedPrefabSaves.push_back(filepath);
+        }
+        Out::warning("Prefab \"%s\" not saved: it did not load completely and saving it would remove %zu value(s) "
+                     "this editor could not read.", filepath.generic_string().c_str(), prefab->loadReport.dropped());
+        return SaveResult::RefusedDegraded;
+    }
+    YAML::Node encodedNode = encodePrefabNode(filepath);
+    if (!encodedNode || encodedNode.IsNull()) {
+        return SaveResult::Failed;
+    }
+    std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
+    const std::string text = YAML::Dump(encodedNode);
+    const io::WriteResult written = DocumentFiles::write(fullPrefabPath, text);
+    if (!written.ok()) {
+        const std::string message = DocumentFiles::saveFailureMessage(filepath, written);
+        Out::error(message);
+        alertUser("Error", message);
+        return SaveResult::Failed;
+    }
+    prefab->diskSha1 = DocumentFiles::sha1(text);
+    if (prefab->loadReport.dropped() > 0) {
+        Out::warning("Saved prefab \"%s\" without %zu value(s) this editor could not read.",
+                     filepath.generic_string().c_str(), prefab->loadReport.dropped());
+        prefab->loadReport.clearDropped();
+    }
+    prefab->isModified = false;
+    prefab->needsUpgrade = false;
+    markReferencedSceneIdsPersisted(prefab->registry.get());
+    // the database keeps the GUID and learns the file's new time and size
+    assetDatabase.registerAsset(filepath, encodedNode["guid"].as<std::string>());
+    return SaveResult::Saved;
+}
+
+void editor::Project::beginPrefabSaveScope(DegradedSavePolicy policy) {
+    if (prefabSaveScopeDepth++ == 0) {
+        refusedPrefabSaves.clear();
+    }
+    prefabSaveScopePolicy = policy;
+}
+
+std::vector<std::filesystem::path> editor::Project::endPrefabSaveScope() {
+    if (prefabSaveScopeDepth > 0 && --prefabSaveScopeDepth == 0) {
+        prefabSaveScopePolicy = DegradedSavePolicy::Refuse;
+        return std::move(refusedPrefabSaves);
+    }
+    return {};
 }
 
 YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepath) const {
@@ -564,29 +606,37 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
             prefabNode["stripped"] = strippedNode;
         }
     }
+    StreamSave::applyRootKeys(prefab->registry.get(), NULL_ENTITY, prefabNode);
     return prefabNode;
 }
 
-YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath) {
-    // What YAML::LoadFile gives, parsed again only when the file changed
+YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath, std::string* sha1) {
+    // What reading the file gives, parsed again only when the file changed
     std::error_code timeError;
     std::error_code sizeError;
     const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(fullPath, timeError);
     const std::uintmax_t size = std::filesystem::file_size(fullPath, sizeError);
     if (timeError || sizeError) {
         prefabFileCache.erase(fullPath);
-        return YAML::LoadFile(fullPath.string()); // throws as before for a missing file
+        DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Prefab); // throws as before for a missing file
+        if (sha1) *sha1 = document.sha1;
+        return document.root;
     }
     auto cached = prefabFileCache.find(fullPath);
     if (cached != prefabFileCache.end() && cached->second.writeTime == writeTime && cached->second.size == size) {
+        DocumentFiles::recordVersionIssues(DocumentKind::Prefab, cached->second.migration);
+        if (sha1) *sha1 = cached->second.sha1;
         return cached->second.node;
     }
-    YAML::Node node = YAML::LoadFile(fullPath.string());
+    DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Prefab);
     PrefabFileCache& entry = prefabFileCache[fullPath];
     entry.writeTime = writeTime;
     entry.size = size;
-    entry.node.reset(node);
-    return node;
+    entry.node.reset(document.root);
+    entry.sha1 = document.sha1;
+    entry.migration = document.migration;
+    if (sha1) *sha1 = document.sha1;
+    return document.root;
 }
 
 void editor::Project::cleanupPrefabsForScene(uint32_t sceneId){

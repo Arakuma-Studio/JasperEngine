@@ -7,6 +7,7 @@
 #include "McpJobs.h"
 #include "McpJson.h"
 #include "McpRegistry.h"
+#include "log/Logger.h"
 
 #include <chrono>
 #include <deque>
@@ -38,6 +39,7 @@ namespace jasperengine::editor::mcp {
         std::filesystem::path createDir;  // --create: make a new project here
         std::string createName;           // --name for --create
         bool headless = false;
+        bool ignoreLock = false;          // --ignore-lock: open a project another editor holds
     };
 
     McpLaunchOptions& mcpLaunchOptions();
@@ -52,6 +54,8 @@ namespace jasperengine::editor::mcp {
         std::string clientName;
         std::string clientVersion;
         std::string protocolVersion;
+        // logging/setLevel: the lowest level sent as notifications/message (-1: none asked)
+        int logLevel = -1;
     };
     using SessionPtr = std::shared_ptr<McpSession>;
 
@@ -164,6 +168,16 @@ namespace jasperengine::editor::mcp {
         // The activity the busy policy applies to a tool (resolves ToolActivity::Auto)
         static ToolActivity effectiveActivity(const ToolDef& def);
 
+        // --- log notifications (logging/setLevel, set_log_level sink "mcp") ---
+        // A session's level for notifications/message (LogLevel::Off: none); the "mcp" sink
+        // takes the lowest level any session asked for
+        void setSessionLogLevel(const SessionPtr& session, LogLevel level);
+        // every session (set_log_level sink "mcp"): main thread
+        void setAllSessionsLogLevel(LogLevel level);
+        // "debug" ... "emergency" (MCP's syslog names) for a level, and back
+        static const char* mcpLogLevelName(LogLevel level);
+        static bool parseMcpLogLevel(const std::string& name, LogLevel& out);
+
         static Json makeError(const Json& id, int code, const std::string& message, Json data = nullptr);
         static Json makeResult(const Json& id, Json result);
 
@@ -201,6 +215,13 @@ namespace jasperengine::editor::mcp {
         // In-flight requests by session id + JSON-RPC id, for notifications/cancelled
         mutable std::mutex inflightMutex;
         std::map<std::string, std::weak_ptr<McpCall>> inflight;
+        // the replies of in-flight requests, by key: an HTTP session's log notifications ride
+        // their SSE streams
+        std::map<std::string, std::weak_ptr<McpReply>> inflightReplies;
+
+        Logger::SinkId logSink = 0;
+        void sendLogNotification(const LogRecord& record);
+        void updateLogSinkLevel();
 
         std::vector<Deferred> deferred;   // main thread only
 

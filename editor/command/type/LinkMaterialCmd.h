@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include "Catalog.h"
@@ -37,6 +38,9 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override { return "Link Material (" + CommandNames::entity(project, sceneId, entity) + ")"; }
+        const char* typeName() const override { return "LinkMaterialCmd"; }
 
     };
 

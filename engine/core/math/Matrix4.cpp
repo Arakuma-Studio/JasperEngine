@@ -55,7 +55,11 @@ Matrix4::Matrix4(const float **matrix){
 
 
 Matrix4& Matrix4::operator=(const Matrix4 &m){
-    memcpy(this->matrix,m.matrix,sizeof(matrix));
+    // element by element: GCC's -Wstringop-overflow takes a memcpy of the 2D array for one row
+    // (seen in the unity build, where the call is inlined)
+    for (int col = 0; col < 4; col++)
+        for (int row = 0; row < 4; row++)
+            matrix[col][row] = m.matrix[col][row];
 
     return *this;
 }

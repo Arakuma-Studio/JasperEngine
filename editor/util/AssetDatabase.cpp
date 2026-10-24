@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AssetDatabase.h"
+#include "io/AtomicFile.h"
 
 #include "Out.h"
 #include "util/SHA1.h"
@@ -32,13 +33,13 @@ namespace {
         return true;
     }
 
+    // the GUID line goes into scenes, prefabs and materials: a Document write
     bool writeText(const fs::path& path, const std::string& text) {
-        std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        if (!file) {
-            return false;
+        const io::WriteResult written = io::writeFileAtomic(path, text);
+        if (!written.ok()) {
+            editor::Out::warning("Could not add the GUID to \"%s\": %s", path.string().c_str(), io::describeWriteError(written).c_str());
         }
-        file << text;
-        return static_cast<bool>(file);
+        return written.ok();
     }
 
     // A top-level `guid:` line: a key at column 0, which in block style YAML is a key of
@@ -281,7 +282,7 @@ std::string editor::AssetDatabase::assignNewGuid(const std::string& relative, co
     return guid;
 }
 
-std::vector<std::string> editor::AssetDatabase::collectFiles(const fs::path& fullPath) const {
+std::vector<std::string> editor::AssetDatabase::collectFiles(const fs::path& fullPath, std::vector<fs::path>* temporaries) const {
     std::vector<std::string> files;
     std::error_code ec;
     if (fs::is_regular_file(fullPath, ec)) {
@@ -301,6 +302,10 @@ std::vector<std::string> editor::AssetDatabase::collectFiles(const fs::path& ful
             if (skippedDirectory(entry.path().filename().string())) {
                 it.disable_recursion_pending();
             }
+            continue;
+        }
+        if (temporaries && io::isTemporarySiblingName(entry.path().filename().string())) {
+            temporaries->push_back(entry.path());
             continue;
         }
         if (entry.is_regular_file(entryError) && isTrackedFile(entry.path())) {
@@ -353,6 +358,11 @@ void editor::AssetDatabase::saveCache() const {
     writeText(cacheFile(), std::string(out.c_str()) + "\n");
 }
 
+std::vector<fs::path> editor::AssetDatabase::takeTemporaryFiles() {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return std::move(temporaryFiles);
+}
+
 void editor::AssetDatabase::open(const fs::path& path) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     close();
@@ -368,7 +378,8 @@ void editor::AssetDatabase::open(const fs::path& path) {
         Entry stat;
     };
     std::vector<Found> found;
-    for (const std::string& relative : collectFiles(projectPath)) {
+    temporaryFiles.clear();
+    for (const std::string& relative : collectFiles(projectPath, &temporaryFiles)) {
         Found file;
         file.relative = relative;
         file.guid = readGuid(projectPath / relative);

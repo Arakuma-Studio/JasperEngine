@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "command/CommandHistory.h"
 #include "Project.h"
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
@@ -53,6 +54,11 @@ namespace jasperengine::editor{
         int resizeSide; // -1 = left edge, 1 = right edge
         float resizeStartTime;
         float resizeStartDuration;
+        // A key, block or block-edge drag as one undo step: Esc (or Ctrl+Z) while the mouse is
+        // held puts the timing back (S24 R12)
+        InteractiveEdit timelineEdit;
+        bool timelineEditStarted = false;
+        bool timelineDragWasModified = false;
 
         // Snap
         bool snapToGrid;
@@ -107,6 +113,9 @@ namespace jasperengine::editor{
         // Commit any active key/frame drag and clear its transient state. Playback
         // and preview transitions call this before changing authoring permissions.
         void finishTimelineDrag(Scene* scene, SceneProject* sceneProject, bool refreshPreview);
+        void beginTimelineDrag(SceneProject* sceneProject);
+        // The drag's edit was cancelled: the live timing goes back, the drag ends (true)
+        bool cancelledTimelineDrag(Scene* scene, SceneProject* sceneProject);
 
         // Helpers
         void drawToolbar(float width, AnimationComponent& anim, Scene* scene, SceneProject* sceneProject);

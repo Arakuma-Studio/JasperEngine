@@ -28,7 +28,7 @@ using namespace jasperengine;
 namespace {
 
     const char* hashListPath(){
-        return JASPER_CORE_TEST_SOURCE_DIR "/shader/fixtures/zero_cost_mesh_variants.txt";
+        return JASPER_TEST_SOURCE_DIR "/fixtures/shader/zero_cost_mesh_variants.txt";
     }
 
     struct Case{

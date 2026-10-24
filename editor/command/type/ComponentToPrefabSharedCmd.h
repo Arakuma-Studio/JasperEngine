@@ -4,8 +4,10 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "Catalog.h"
+#include "command/PrefabEditUndo.h"
 
 namespace jasperengine::editor {
 
@@ -25,6 +27,8 @@ namespace jasperengine::editor {
         std::vector<ComponentToPrefabSharedData> entities;
 
         bool wasModified;
+        // the override records as they were: undo gives them back exactly (S24 R31)
+        PrefabEditUndo prefabUndo;
 
     public:
         ComponentToPrefabSharedCmd(Project* project, uint32_t sceneId, Entity entity, ComponentType componentType);
@@ -33,6 +37,11 @@ namespace jasperengine::editor {
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // "Revert Component Overrides Light (Player)"
+        std::string describe() const override;
+        const char* typeName() const override { return "ComponentToPrefabSharedCmd"; }
+        size_t memoryBytes() const override;
     };
 
 }

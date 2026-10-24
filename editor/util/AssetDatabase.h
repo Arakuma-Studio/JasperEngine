@@ -52,6 +52,9 @@ namespace jasperengine::editor {
         // last session, else the older file) and the other file gets a new one
         void open(const std::filesystem::path& projectPath);
         void close();
+        // The temporary siblings of atomic writes the last open() walked past (the project's
+        // orphan sweep uses this walk instead of one of its own)
+        std::vector<std::filesystem::path> takeTemporaryFiles();
         bool isOpen() const;
 
         // What changed on disk since the last look (files moved, copied, deleted or edited
@@ -89,6 +92,7 @@ namespace jasperengine::editor {
         // The editor saves scenes (and their prefabs) on a background thread too
         mutable std::recursive_mutex mutex;
         std::filesystem::path projectPath;
+        std::vector<std::filesystem::path> temporaryFiles;
         std::map<std::string, Entry> byPath;               // generic relative path -> entry
         std::unordered_map<std::string, std::string> byGuid; // guid -> generic relative path
 
@@ -104,7 +108,8 @@ namespace jasperengine::editor {
         // A GUID no other registered file has, written into the file
         std::string assignNewGuid(const std::string& relative, const std::string& preferred = std::string());
         // Tracked files below a path (the path itself when it is a file), generic relative
-        std::vector<std::string> collectFiles(const std::filesystem::path& fullPath) const;
+        // temporaries, when given, receives the atomic-write temps the walk passes (io::isTemporarySiblingName)
+        std::vector<std::string> collectFiles(const std::filesystem::path& fullPath, std::vector<std::filesystem::path>* temporaries = nullptr) const;
     };
 
 }
