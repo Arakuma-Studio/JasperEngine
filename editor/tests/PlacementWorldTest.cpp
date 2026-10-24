@@ -734,6 +734,79 @@ TEST(PlacementWorldColliders, RingOverPeg) {
     }
 }
 
+// The Bake buttons: requestDecompositions asks for what addMover would use, by the same keys
+TEST(PlacementWorldColliders, BakeThenMoveIsDecomposedAtOnce) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    TestScene t;
+    const Entity group = t.entity(Vector3(0, 0, 0));
+    const Entity ring = t.torus(0.5f, 0.15f, Vector3(0, 0, 0), group);
+    const Entity cube = t.box(Vector3(1, 1, 1), Vector3(3, 0, 0), group);
+    t.scene.setEntityName(ring, "Ring");
+    t.scene.setEntityName(cube, "Cube");
+    t.resolve();
+
+    ConvexDecompositionCache cache("");
+    PlacementWorldSettings settings;
+    settings.decompositionCache = &cache;
+    std::vector<std::string> notes;
+    EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, group, settings, &notes), 1u);
+    EXPECT_EQ(notes, std::vector<std::string>{"Cube: fits a box, nothing to decompose"});
+    EXPECT_EQ(cache.pendingCount(), 1u);
+    EXPECT_FALSE(PlacementWorld::decompositionReady(&t.scene, group, settings));
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(300);
+    while (!PlacementWorld::decompositionReady(&t.scene, group, settings) && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    ASSERT_TRUE(PlacementWorld::decompositionReady(&t.scene, group, settings));
+    EXPECT_TRUE(PlacementWorld::decompositionReady(&t.scene, ring, settings));
+    // baking again finds it cached and queues nothing
+    EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, group, settings), 1u);
+    EXPECT_EQ(cache.pendingCount(), 0u);
+
+    // a new world (default CACHED: the concavity test passes the torus) takes the baked hulls
+    PlacementWorld world(&t.scene, settings);
+    ASSERT_TRUE(world.addMover(group));
+    const PlacementBodyState state = world.getState(group);
+    EXPECT_EQ(state.shape, PlacementShapeKind::DECOMPOSED);
+    EXPECT_GT(state.hullCount, 1);
+    EXPECT_FALSE(state.decompositionPending);
+    EXPECT_FALSE(world.hasPendingDecompositions());
+}
+
+TEST(PlacementWorldColliders, BakeSkipsPrimitivesAndRefusals) {
+    TestScene t;
+    const Entity cube = t.box(Vector3(1, 1, 1), Vector3(0, 0, 0));
+    t.scene.setEntityName(cube, "Cube");
+    const Entity hidden = t.torus(0.5f, 0.15f, Vector3(3, 0, 0));
+    t.scene.setEntityName(hidden, "Hidden");
+    t.scene.setEntityActive(hidden, false);
+    t.resolve();
+
+    ConvexDecompositionCache cache("");
+    PlacementWorldSettings settings;
+    settings.decompositionCache = &cache;
+    std::vector<std::string> notes;
+    // a primitive fit asks for nothing, and has nothing missing
+    EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, cube, settings, &notes), 0u);
+    EXPECT_EQ(notes, std::vector<std::string>{"Cube: fits a box, nothing to decompose"});
+    EXPECT_EQ(cache.pendingCount(), 0u);
+    EXPECT_TRUE(PlacementWorld::decompositionReady(&t.scene, cube, settings));
+
+    // what addMover refuses is not baked
+    notes.clear();
+    EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, hidden, settings, &notes), 0u);
+    EXPECT_EQ(notes, std::vector<std::string>{"Hidden: inactive"});
+    EXPECT_FALSE(PlacementWorld::decompositionReady(&t.scene, hidden, settings));
+    EXPECT_EQ(cache.pendingCount(), 0u);
+
+    // nor anything without a cache
+    notes.clear();
+    EXPECT_EQ(PlacementWorld::requestDecompositions(&t.scene, cube, PlacementWorldSettings(), &notes), 0u);
+    EXPECT_EQ(notes, std::vector<std::string>{"no decomposition cache"});
+    EXPECT_FALSE(PlacementWorld::decompositionReady(&t.scene, cube, PlacementWorldSettings()));
+}
+
 TEST(PlacementWorldColliders, RefreshShapesKeepsPoseAndVelocity) {
     TestScene t;
     const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 3, 0));
@@ -782,6 +855,33 @@ TEST(PlacementWorldContext, IncrementalByRegion) {
     PlacementWorld explicitContext(&t.scene, PlacementWorldSettings());
     explicitContext.addContextEntity(far);
     EXPECT_EQ(explicitContext.getContextBodyCount(), 1u);
+}
+
+// Editor overlays (selection outlines, the terrain brush, the Physics Placement lines) live in
+// the edited scene but are never something to land on, push or move
+TEST(PlacementWorldContext, EditorOverlaysAreNeverContext) {
+    TestScene t;
+    const Entity floor = floorBox(t);
+    const Entity outline = t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(0, 0.25f, 0));
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(3, 0.5f, 0));
+    t.scene.getSystem<RenderSystem>()->setEditorOverlay(floor, true);
+    t.scene.getSystem<RenderSystem>()->setEditorOverlay(outline, true);
+    t.resolve();
+
+    PlacementWorldSettings settings;
+    settings.pushNeighbours = true;
+    PlacementWorld world(&t.scene, settings);
+    std::string why;
+    EXPECT_FALSE(world.addMover(outline, &why));
+    EXPECT_EQ(why, "no mesh or collider");
+    ASSERT_TRUE(world.addMover(crate));
+    world.ensureContext(everywhere);
+    world.addContextEntity(floor);
+    world.addContextEntity(outline);
+    EXPECT_EQ(world.getContextBodyCount(), 0u);
+    EXPECT_TRUE(world.getNeighbours().empty());
+    PlacementRayHit hit;
+    EXPECT_FALSE(world.raycast(Ray(Vector3(0, 5, 0), Vector3(0, -10, 0)), hit));
 }
 
 TEST(PlacementWorldContext, PushNeighboursMovesWhatItHits) {
