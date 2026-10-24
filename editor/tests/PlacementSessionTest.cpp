@@ -1252,3 +1252,77 @@ TEST(PhysicsPlacementSim, OverlayShowsTheTeleportRingAndDistances) {
     EXPECT_TRUE(overlay.distances.empty());   // idle selection only
     session.cancel();
 }
+
+TEST(PhysicsPlacementSim, ASecondGestureLandsOnTheFirstOnesResult) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity a = create(sceneId, "A", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+    const Entity b = create(sceneId, "B", EntityCreationType::BOX, Vector3(0.0f, 6.0f, 0.0f));
+    PlacementSession session(project(), sceneId);
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {a}));
+    ticks(session, 300);
+    session.end();
+    EXPECT_NEAR(transformOf(sceneId, a).position.y, 0.5f, 0.002f);
+    // the world is kept between gestures: A is context again where it landed
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {b}));
+    ticks(session, 360);
+    session.end();
+    EXPECT_NEAR(transformOf(sceneId, b).position.y, 1.5f, 0.004f);
+
+    // an ordinary edit between gestures (A moved away by hand) is seen
+    transformOf(sceneId, a).position = Vector3(5.0f, 0.5f, 0.0f);
+    transformOf(sceneId, a).needUpdate = true;
+    ASSERT_TRUE(session.begin(PlacementGesture::Drop, {b}));
+    ticks(session, 360);
+    session.end();
+    EXPECT_NEAR(transformOf(sceneId, b).position.y, 0.5f, 0.004f);
+}
+
+TEST(PhysicsPlacementSim, ContextEntitiesOrNone) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    const Entity floor = makeFloor(sceneId);
+    const Entity shelf = create(sceneId, "Shelf", EntityCreationType::BOX, Vector3(0.0f, 1.0f, 0.0f), NULL_ENTITY, Vector3(2.0f, 0.2f, 2.0f));
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+    PlacementSpec onlyFloor = specFor(sceneId, {crate});
+    onlyFloor.context = PlacementSpec::Context::Entities;
+    onlyFloor.contextEntities = {floor};
+    const PlacementResult throughShelf = runToEnd(onlyFloor);
+    EXPECT_NEAR(entityResult(throughShelf, crate)->after.position.y, 0.5f, 0.002f);
+    PlacementSpec automatic = specFor(sceneId, {crate});
+    EXPECT_NEAR(entityResult(runToEnd(automatic), crate)->after.position.y, 1.6f, 0.003f);
+    EXPECT_EQ(entityResult(runToEnd(automatic), crate)->restingOn, std::vector<Entity>{shelf});
+    PlacementSpec none = specFor(sceneId, {crate});
+    none.context = PlacementSpec::Context::None;
+    const PlacementResult fell = runToEnd(none);
+    EXPECT_EQ(fell.contextBodies, 0u);
+    EXPECT_TRUE(entityResult(fell, crate)->fellOut);
+}
+
+TEST(PhysicsPlacementSim, PushedNeighboursAreReportedAndCommitted) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 0.5f, 0.0f));
+    const Entity pebble = create(sceneId, "Pebble", EntityCreationType::BOX, Vector3(1.5f, 0.25f, 0.0f), NULL_ENTITY, Vector3(0.5f, 0.5f, 0.5f));
+    PlacementSpec push = specFor(sceneId, {crate}, PlacementMode::Move);
+    push.hasTargetDelta = true;
+    push.targetDelta = Vector3(3.0f, 0.0f, 0.0f);
+    push.settings.pushNeighbours = true;
+    const PlacementResult result = runToEnd(push);
+    ASSERT_TRUE(result.ok) << result.error;
+    const PlacementEntityResult* pushed = entityResult(result, pebble);
+    ASSERT_NE(pushed, nullptr);
+    EXPECT_FALSE(pushed->mover);
+    EXPECT_GT(pushed->movedMeters, 0.5f);
+    EXPECT_NE(result.hint.find("pushed neighbour"), std::string::npos) << result.hint;
+    std::string error;
+    const size_t position = CommandHandle::get(sceneId)->position();
+    ASSERT_TRUE(commitPlacement(project(), result, error)) << error;
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), position + 1);
+    EXPECT_GT(transformOf(sceneId, pebble).position.x, 2.0f);
+    CommandHandle::get(sceneId)->undo();
+    expectNear(transformOf(sceneId, pebble).position, Vector3(1.5f, 0.25f, 0.0f), 0.0f);
+    expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 0.5f, 0.0f), 0.0f);
+}
