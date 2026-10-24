@@ -237,6 +237,11 @@ namespace jasperengine::editor{
 
         // a selection outside the model leaves posing (`act`: posing, else only followed)
         void watchSelection(Project* project, bool act);
+        // tells the session whether a handle is hovered or dragged (its Scene view key routing)
+        void publishEngaged();
+        bool engagedPublished = false;
+        // the scene is stopped (not saving or playing): handles may edit
+        bool sceneEditable() const;
         void endDrag(bool commit);
     };
 

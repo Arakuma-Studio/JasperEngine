@@ -413,6 +413,9 @@ void editor::PoseViewport::update(Camera* camera, int viewWidth, int viewHeight,
     previewing = mode == PoseEditSession::Mode::Previewing;
     if (!session || mode == PoseEditSession::Mode::Idle){
         if (isDragging()) endDrag(false);
+        hoverKind = HandleKind::None;
+        hoverRing = -1;
+        publishEngaged();
         hideHandles();
         hideFloor();
         dropGhosts();
@@ -457,7 +460,10 @@ void editor::PoseViewport::update(Camera* camera, int viewWidth, int viewHeight,
         hideHandles();
         handles.clear();
         rings.clear();
+        hoverKind = HandleKind::None;
+        hoverRing = -1;
     }
+    publishEngaged();
     drawFloor(rig, shown, session->view().showBalance);
 
     // ghosts
@@ -896,6 +902,24 @@ void editor::PoseViewport::updateGhosts(PoseEditSession& session, const std::vec
 
 // ---- mouse ----
 
+void editor::PoseViewport::publishEngaged(){
+    PoseEditSession* session = PoseEditSession::active();
+    if (!session || session->scene() != scene) return;
+    const bool engaged = isPosing() && (isDragging() || hoverKind != HandleKind::None);
+    if (engaged != engagedPublished || session->viewportHandleEngaged() != engaged){
+        session->setViewportHandleEngaged(engaged);
+        engagedPublished = engaged;
+    }
+}
+
+bool editor::PoseViewport::sceneEditable() const{
+    // no pose edits while the scene saves or plays (the session does not apply poses then)
+    PoseEditSession* session = posedSession();
+    if (!session || !session->project()) return false;
+    const SceneProject* sceneProject = session->project()->getScene(session->sceneId());
+    return sceneProject && sceneProject->playState == ScenePlayState::STOPPED;
+}
+
 void editor::PoseViewport::hover(const Ray& ray){
     hoverRay = ray;
     hasHoverRay = true;
@@ -917,6 +941,7 @@ void editor::PoseViewport::hover(const Ray& ray){
         hoverRing = poseview::pickRing(origin, direction, rings, cameraPosition, orthographic, viewDirection, tolerance);
         if (hoverRing >= 0) hoverKind = HandleKind::Ring;
     }
+    publishEngaged();
     if (hoverKind != oldKind || hoverBone != oldBone || hoverRing != oldRing){
         if (PoseEditSession* session = posedSession()){
             if (SceneProject* sceneProject = session->project()->getScene(session->sceneId())){
@@ -930,7 +955,7 @@ bool editor::PoseViewport::mouseDown(const Ray& ray, bool shift, bool ctrl){
     (void)shift;
     (void)ctrl;
     PoseEditSession* session = posedSession();
-    if (!session || session->mode() != PoseEditSession::Mode::Posing || !updated) return false;
+    if (!session || session->mode() != PoseEditSession::Mode::Posing || !updated || !sceneEditable()) return false;
     const pose::PoseRig& rig = *session->rig();
     // what is shown now (the pose may have changed since the last draw)
     buildHandles(rig, session->working());
@@ -954,6 +979,7 @@ bool editor::PoseViewport::mouseDown(const Ray& ray, bool shift, bool ctrl){
         drag.offset = poseview::grabOffset(origin, direction, handle.center, viewDirection);
         drag.undoName = handle.kind == HandleKind::Hips ? "Move Hips" : "Move " + titleOf(handle.bone);
         drag.mergeKey = "pose-viewport-" + std::to_string(++dragSerial);
+        publishEngaged();
         if (SceneProject* sceneProject = session->project()->getScene(session->sceneId())) sceneProject->needUpdateRender = true;
         return true;
     }
@@ -980,6 +1006,7 @@ bool editor::PoseViewport::mouseDown(const Ray& ray, bool shift, bool ctrl){
             drag.reference = (rotation * poseview::ringReference(rig, drag.start, activeJoint, drag.axisModel)).normalized();
             drag.undoName = "Rotate " + titleOf(activeJoint);
             drag.mergeKey = "pose-viewport-" + std::to_string(++dragSerial);
+            publishEngaged();
             if (SceneProject* sceneProject = session->project()->getScene(session->sceneId())) sceneProject->needUpdateRender = true;
             return true;
         }
@@ -990,7 +1017,7 @@ bool editor::PoseViewport::mouseDown(const Ray& ray, bool shift, bool ctrl){
 void editor::PoseViewport::mouseDrag(const Ray& ray, bool shift, bool ctrl){
     PoseEditSession* session = posedSession();
     if (!isDragging()) return;
-    if (!session || session->mode() != PoseEditSession::Mode::Posing){
+    if (!session || session->mode() != PoseEditSession::Mode::Posing || !sceneEditable()){
         endDrag(false);
         return;
     }
@@ -1036,9 +1063,10 @@ void editor::PoseViewport::mouseUp(){
 void editor::PoseViewport::endDrag(bool commit){
     const Drag finished = drag;
     drag = Drag();
+    publishEngaged();
     PoseEditSession* session = posedSession();
     if (!session) return;
-    if (commit && finished.changed && session->mode() == PoseEditSession::Mode::Posing){
+    if (commit && finished.changed && session->mode() == PoseEditSession::Mode::Posing && sceneEditable()){
         // the whole drag is one undo step
         session->commitWorking(finished.undoName, finished.mergeKey);
     }else if (!commit && finished.changed && session->mode() == PoseEditSession::Mode::Posing){
@@ -1049,6 +1077,14 @@ void editor::PoseViewport::endDrag(bool commit){
 
 void editor::PoseViewport::clear(){
     if (isDragging()) endDrag(false);
+    hoverKind = HandleKind::None;
+    hoverRing = -1;
+    if (engagedPublished){
+        if (PoseEditSession* session = PoseEditSession::active()){
+            if (session->scene() == scene || !session->bound()) session->setViewportHandleEngaged(false);
+        }
+        engagedPublished = false;
+    }
     hideHandles();
     hideFloor();
     dropGhosts();

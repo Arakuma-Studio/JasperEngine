@@ -75,6 +75,8 @@ Additions (implementation; the members above are unchanged, these are extra):
   (window close), `suspend()` (before a save / play: bones restored, applied again by `update(dt)` once the
   scene is stopped), `clearSceneState(sceneId)`, `update(dt)` (advances a playing preview, follows play
   mode, scene switch and deleted models), `closeDocument()`, `setActive()`.
+- `setViewportHandleEngaged(bool)` / `viewportHandleEngaged()` (added by phase 5): a Scene view pose handle
+  or ring is hovered or being dragged (PoseViewport sets it), for the Scene view key routing.
 - Global Edit computes `E` from a slot's three DOF values alone (4.5), so it needs no rig and also carries
   slots the bound rig does not map (`poseui::applyGlobalEditDelta`). Cancelling after an edit commits the
   baseline back as its own undo step ("Cancel global edit").

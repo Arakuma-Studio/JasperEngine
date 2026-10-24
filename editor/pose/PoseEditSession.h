@@ -132,6 +132,11 @@ namespace jasperengine::editor{
         // the delta Global Edit would apply: the slots changed since beginGlobalEdit
         int globalEditChangedSlots();
 
+        // Phase 5: a Scene view pose handle (or ring) is hovered or being dragged; set by the
+        // viewport (PoseViewport) every time it updates, false when nothing of it is engaged
+        void setViewportHandleEngaged(bool engaged) { viewportEngaged = engaged; }
+        bool viewportHandleEngaged() const { return viewportEngaged; }
+
     private:
         // a bone's Transform as the scene had it, with its derived matrices: a scene saved right
         // after restoreBones() writes exactly these values (the next update recomputes them)
@@ -175,6 +180,7 @@ namespace jasperengine::editor{
 
         OnionSettings onionSettings;
         ViewSettings viewSettings;
+        bool viewportEngaged = false;
 
         bool globalEdit = false;
         int globalEditPose = -1;
