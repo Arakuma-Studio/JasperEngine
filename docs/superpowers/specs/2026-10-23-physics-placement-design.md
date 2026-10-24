@@ -1,7 +1,7 @@
 # Physics Placement: Grabbit-style edit-time physics for the Scene view and for agents
 
-Status: proposal for review. Not approved, nothing implemented.
-Branch (proposed): `physics-placement`.
+Status: implemented (branch `physics-placement`, merged into `main`). Section 12 records the
+owner's decisions; section 13 lists where the implementation refined this design.
 
 ## 1. Goal
 
@@ -642,13 +642,37 @@ binding namespace for one feature is not worth it.
    - distance indicators and the collider preview.
 4. **Optional:** a 2D variant on Box2D, and a CoACD "High quality" backend.
 
-## 12. Open questions for the owner
+## 12. Decisions
 
-1. Do you want the G toggle (physics as a modifier on W/E/R), or a separate sixth toolbar tool
-   with its own sub-mode bar, as in Grabbit?
-2. Should Settle on release default to on? It changes what "release" means compared with
-   ordinary gizmo drags.
-3. Is V-HACD's footprint acceptable for phase 3 (one header, BSD-3), or should we stay
-   hull-plus-primitives only?
-4. Is phase 1 (agent and CLI first, no mouse UI) the right order, or do you want the
-   interactive tool first?
+1. Physics is a modifier toggled with G on top of W/E/R (no separate tool with sub-modes).
+2. Settle on release defaults to on: in a physics tool, people expect released objects to fall
+   and rest, not to hang in mid-air. It can be turned off in the panel.
+3. V-HACD 4 is accepted, in the desktop editor only (never compiled into exported games).
+4. All phases were built together; the interactive tool came first in priority, then the agent
+   API.
+
+## 13. Implementation notes (where the build refined the design)
+
+- MCP tool `place_with_physics`; an `apply:true` call with the same arguments on an unchanged
+  scene commits the stored preview (`from_preview: true`), so apply always equals the preview.
+  Any edit to the scene during a run (`placementSceneEditStamp`) fails it; nothing is committed.
+  Runs wait while a Scene-view gesture is busy (`placementSceneBusy`).
+- Batch `move` never teleports (it stops at walls); `snap` places the movers on the surface the
+  ray hits, then settles (nothing in between stops it); interactive Shift-drag snap hops onto the
+  target when blocked or far.
+- Settled means asleep and touching something under gravity; nothing sleeps in mid-air. Every
+  dynamic body is capped at the feel's max speed; a driven mover passes through what it starts
+  inside until they part; sunk bodies are lifted out; rolling resistance stops balls on slopes
+  under about 11 degrees.
+- Shapes follow the full model matrix (non-uniform parent scale, mirroring); thin bodies get a
+  relative hull tolerance and more solver iterations.
+- Hull cache files are `<key>.hulls` under `.jasperengine/cache/colliders`; movers' decompositions
+  are urgent (ahead of bakes). V-HACD runs multithreaded (deterministic, bounded thread count).
+- One finalise path for save, prefab save, auto save, Play and project switch: a released gesture
+  settles and commits first, a held one is cancelled. Every undo, redo and command passes through
+  `CommandHistory::beforeChange`, so a busy gesture is finalised or cancelled first.
+- CLI `place-physics` builds exactly the run the MCP tool builds; `--decompose cached` fills the
+  project cache for later runs (bounded by `--decompose-timeout`).
+- Fixed along the way in shared code: heightfield colliders now match the rendered terrain, thin
+  box/cylinder colliders build, mirrored mesh colliders collide in play mode, and Play/Stop keeps
+  editor overlay entities created during Play.
