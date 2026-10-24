@@ -26,6 +26,16 @@
 #define JE_ECS_INLINE inline
 #endif
 
+// The rare branch of an inlined accessor (a first-use lookup, a settle): out of line and cold,
+// so a caller's loop keeps its values in registers instead of spilling them around the call
+#if defined(__GNUC__) || defined(__clang__)
+#define JE_ECS_COLD __attribute__((noinline, cold))
+#elif defined(_MSC_VER)
+#define JE_ECS_COLD __declspec(noinline)
+#else
+#define JE_ECS_COLD
+#endif
+
 // A hint to start loading the cache line at p (no fault on any address): a structural change
 // starts the loads of the metadata record and of every touched array's slot at once, so their
 // cache misses overlap instead of following one another

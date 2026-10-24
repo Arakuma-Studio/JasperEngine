@@ -5,6 +5,8 @@
 #define COMPONENTMANAGER_H
 
 #include <array>
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -29,10 +31,27 @@ namespace jasperengine {
 		static size_t indexOf(const char* mangledName);
 	};
 
+	namespace ecs {
+		// componentTypeIndex<T>()'s cache: constant-initialized (no guard on the lookup path);
+		// set on first use, to the same value by any thread that races to it
+		template<typename T>
+		inline std::atomic<size_t> componentTypeIndexCache{SIZE_MAX};
+
+		template<typename T>
+		JE_ECS_COLD size_t componentTypeIndexFirstUse(){
+			const size_t index = ComponentTypeRegistry::indexOf(typeid(T).name());
+			componentTypeIndexCache<T>.store(index, std::memory_order_relaxed);
+			return index;
+		}
+	}
+
 	template<typename T>
 	JE_ECS_INLINE size_t componentTypeIndex(){
 		// Cached per module; the shared registry keeps the value equal across them.
-		static const size_t index = ComponentTypeRegistry::indexOf(typeid(T).name());
+		const size_t index = ecs::componentTypeIndexCache<T>.load(std::memory_order_relaxed);
+		if (index == SIZE_MAX) [[unlikely]] {
+			return ecs::componentTypeIndexFirstUse<T>();
+		}
 		return index;
 	}
 

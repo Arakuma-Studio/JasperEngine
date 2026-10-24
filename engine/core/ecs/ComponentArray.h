@@ -282,8 +282,12 @@ namespace jasperengine {
         // Compacts and re-sorts when needed (the first index observation does it)
         JE_ECS_INLINE void settle(){
             if (unsettled) [[unlikely]] {
-                settleSlow();
+                settleCold();
             }
+        }
+
+        JE_ECS_COLD void settleCold(){
+            settleSlow();
         }
 
         bool isSettled() const {
