@@ -164,7 +164,8 @@ namespace jasperengine {
         virtual void entityDestroyed(Entity entity) = 0;
         // Several at once (kept for compatibility; removal is O(1) per entity anyway)
         virtual void entitiesDestroyed(const std::unordered_set<Entity>& entities) = 0;
-        virtual void entitiesDestroyed(const std::vector<Entity>& entities) = 0;
+        // ...in the list's order (the Removed<T> log follows it)
+        virtual void entitiesDestroyedInOrder(const std::vector<Entity>& entities) = 0;
 
         // sizeof the component type, and the bytes of its pages
         virtual size_t componentSize() const = 0;
@@ -694,7 +695,7 @@ namespace jasperengine {
             }
         }
 
-        void entitiesDestroyed(const std::vector<Entity>& entities) override {
+        void entitiesDestroyedInOrder(const std::vector<Entity>& entities) override {
             const Tick tick = stampTick();
             for (Entity entity : entities) {
                 const uint32_t slot = entityToSlot.find(entity);

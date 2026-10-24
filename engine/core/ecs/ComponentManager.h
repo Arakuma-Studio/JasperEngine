@@ -235,7 +235,7 @@ namespace jasperengine {
 		void entitiesDestroyed(const std::vector<Entity>& entities, const Signature& types) {
 			types.forEachSet([&](size_t id){
 				if (ComponentArrayBase* array = arraysById[id]){
-					array->entitiesDestroyed(entities);
+					array->entitiesDestroyedInOrder(entities);
 				}
 			});
 		}
