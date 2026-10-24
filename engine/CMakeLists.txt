@@ -443,7 +443,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15")
+        # Xcode 27 starts at macOS 12
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0")
 
         # Only the Xcode generator assembles the real .app that the storyboard
         # entry point in platform/apple needs, shared with iOS. Every other
@@ -611,7 +612,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
         set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fobjc-arc")
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fobjc-arc")
-        set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0")
+        # Xcode 27 starts at iOS 15
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
 
         list(APPEND PLATFORM_PROPERTIES
             XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER ${APP_BUNDLE_IDENTIFIER}
