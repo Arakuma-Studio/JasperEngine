@@ -11,6 +11,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - A Unity-style editor: Hierarchy, Inspector, Project, Console, and separate Scene and Game views, with Unity's menus, toolbar, and shortcuts
 - Build 2D and 3D scenes from GameObjects with sprites, tilemaps, models, cameras, lights, and reusable Prefabs
 - Edit components, assets, animations, bones, and terrain without leaving the editor
+- Animate humanoid characters pose to pose: drag hands and feet in the Scene view (IK, automatic grounding, onion skin), pick a feel (snappy, cartoon, rubbery, heavy, stop-motion), humanize it, or start from 10 built-in templates (walk, run, jump, wave...): see [docs/pose-animation.md](docs/pose-animation.md)
 - Write Lua and C++ in the integrated code editor with engine API completion
 - Fork the built-in shaders or write custom post-process passes, with live viewport recompilation
 - Play the game in the Game view, then build it from Build Settings as a standalone CMake project, a desktop binary, or a web build
@@ -23,6 +24,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
 - A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
 - Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation
+- Pose animations that play live on any humanoid model (the Pose Animator component and Lua `PoseAnimator`: play, go to a pose with a spring, blend by weight) or bake to keyframes; poses are rig-independent joint angles, so one animation fits every humanoid rig
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints

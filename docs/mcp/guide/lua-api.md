@@ -788,6 +788,10 @@ anim.onFinish = function() anim:goToPose("Idle", 0.2) end
 anim:play()
 ```
 
+Crossfade over the Model's clip by moving the weight each frame, e.g. in `onUpdate`:
+`anim:setWeight(anim:getWeight() + (target - anim:getWeight()) * math.min(1, Engine.deltatime * 8))`.
+Ready-made animations: `get_pose_animation {templates: true}` (`jasper://docs/pose-animation`).
+
 ### 4.9 Camera (GameObject) - partial
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,

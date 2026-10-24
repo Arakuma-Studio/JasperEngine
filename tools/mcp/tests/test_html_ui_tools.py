@@ -58,6 +58,7 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 LIMITS.update({"get_pose_animation": 1100, "edit_pose_animation": 3000})
 # pose animation phase 3 (spec 4): render_pose_animation measured 1492, within the ~2.5K reserved for it
 LIMITS.update({"render_pose_animation": 1700})
+# pose animation phase 6 (spec 5): the template ops and list measured get 873 + edit 2735, within the limits above
 # pose animation tools (phase 2-3) use the room freed in 1d0ac4d13, 789902d0d and the review fixes after them (140 tools: 100,579 -> 92,267 chars)
 TOTAL_LIMIT = 99800 + 837
 
