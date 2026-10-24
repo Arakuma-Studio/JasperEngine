@@ -5,6 +5,7 @@
 // the one-editor-per-project lock, the orphan sweep, scene Auto Save and crash recovery.
 
 #include "Project.h"
+#include "log/LogFormatCheck.h"
 
 #include "AppSettings.h"
 #include "DocumentFile.h"
@@ -53,7 +54,7 @@ namespace {
 #endif
     }
 
-    std::string localClock(std::time_t time, const char* format) {
+    JE_STRFTIME_FORMAT(2) std::string localClock(std::time_t time, const char* format) {
         std::tm local{};
 #if defined(_WIN32)
         localtime_s(&local, &time);

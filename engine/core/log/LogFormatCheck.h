@@ -7,8 +7,11 @@
 // -Wformat, MSVC with its SAL annotation (/analyze)
 #if defined(__GNUC__) || defined(__clang__)
     #define JE_PRINTF_FORMAT(formatIndex, firstArg) __attribute__((format(printf, formatIndex, firstArg)))
+    // a function passing its format parameter on to strftime
+    #define JE_STRFTIME_FORMAT(formatIndex) __attribute__((format(strftime, formatIndex, 0)))
 #else
     #define JE_PRINTF_FORMAT(formatIndex, firstArg)
+    #define JE_STRFTIME_FORMAT(formatIndex)
 #endif
 #if defined(_MSC_VER)
     #include <sal.h>

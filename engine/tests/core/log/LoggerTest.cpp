@@ -66,6 +66,9 @@ TEST(LoggerTest, MacroRecordsCarryTheirSource) {
 }
 
 TEST(LoggerTest, LegacyCallsMapToLevels) {
+    // a game's default: Info (the test binary records everything)
+    const LogLevel previous = Logger::categoryLevel(logCategoryEngine());
+    Logger::setCategoryLevel(logCategoryEngine(), LogLevel::Info);
     auto sink = recordingSink();
     Log::print("legacy print");
     Log::verbose("legacy verbose");
@@ -79,6 +82,7 @@ TEST(LoggerTest, LegacyCallsMapToLevels) {
     EXPECT_EQ(sink->containing("legacy warn")[0].level, LogLevel::Warn);
     EXPECT_EQ(sink->containing("legacy error")[0].level, LogLevel::Error);
     EXPECT_TRUE(sink->containing("legacy error")[0].file.empty()) << "legacy calls carry no source";
+    Logger::setCategoryLevel(logCategoryEngine(), previous);
 }
 
 TEST(LoggerTest, LongTextIsTruncated) {

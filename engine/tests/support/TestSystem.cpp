@@ -93,6 +93,8 @@ bool TestSystem::isUserDataLoaded(){
 }
 
 void TestSystem::installLogSinks(){
+    // every line is recorded, Log::verbose (Trace) included, as before the logger had levels
+    Logger::setDefaultLevel(LogLevel::Trace);
     Logger::addSink(std::make_unique<PlatformSink>(*this));
 }
 

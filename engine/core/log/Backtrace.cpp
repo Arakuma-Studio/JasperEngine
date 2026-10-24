@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Backtrace.h"
+#include "LogFormatCheck.h"
 
 #include <algorithm>
 #include <chrono>
@@ -60,7 +61,7 @@ namespace je_backtrace {
 #endif
 
 #if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
-    void appendFormatted(std::string& out, const char* format, const char* a, unsigned long long b) {
+    JE_PRINTF_FORMAT(2, 0) void appendFormatted(std::string& out, const char* format, const char* a, unsigned long long b) {
         char buffer[64];
         std::snprintf(buffer, sizeof(buffer), format, a, b);
         out += buffer;
