@@ -102,7 +102,18 @@ class Ui:
 
     async def key(self, *keys: str):
         for key in keys:
-            self.xdo("key", key)
+            # a chord's modifiers go down first and up last, frames apart: `xdotool key ctrl+z`
+            # can land Z's press and Ctrl's release in one editor frame, where Ctrl reads up
+            *mods, main = key.split("+")
+            for mod in mods:
+                self.xdo("keydown", mod)
+            if mods:
+                await asyncio.sleep(0.1)
+            self.xdo("key", main)
+            if mods:
+                await asyncio.sleep(0.1)
+            for mod in reversed(mods):
+                self.xdo("keyup", mod)
             await asyncio.sleep(0.3)
 
     async def type(self, text: str):
