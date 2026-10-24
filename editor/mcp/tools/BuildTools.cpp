@@ -690,6 +690,7 @@ void buildProjectTool(const CallPtr& call) {
     config.assetsDir = project->getAssetsPath();
     config.luaDir = project->getLuaPath();
     config.packNativeResources = project->shouldPackNativeResources();
+    config.allowMissingAssets = args.value("allow_missing_assets", false);
     std::string error;
 
     uint32_t startScene = project->getStartSceneId();
@@ -1869,6 +1870,7 @@ void registerBuildTools(McpRegistry& registry) {
             {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
             {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
             {"start_scene", sceneRef("Also becomes the project's start scene. Default: project's.")},
+            {"allow_missing_assets", withDefault(boolean("Build even when it references missing assets (list_missing_assets)."), false)},
             {"graphics_api", string("desktop: opengl/vulkan/d3d11/metal-macos (per OS); web: opengles. Remembered.")},
             {"platform", stringEnum("source: shader target platform.", {"windows", "macos", "linux", "android", "ios", "web"})},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},

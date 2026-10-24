@@ -18,17 +18,16 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
-prefabs, HTML/CSS UI, data safety, ECS, Unity terms).
+prefabs, assets, HTML/CSS UI, data safety, ECS, Unity glossary).
 
 ## Unity names -> engine names
-Use Unity terms in prose; tools, component names and script APIs use the engine names.
+Tools, component names and script APIs use the engine names.
 GameObject = entity (Entity id; script class GameObject). Create Empty = type empty.
 Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scripts).
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-ParticleSystemComponent, Light2DComponent...).
+Most others are Unity's name + "Component" (AudioSourceComponent...).
 Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
@@ -46,7 +45,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
   another scene (cross-scene references); Prefab script properties by .prefab path.
-- assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
+- assets: project-relative paths ("assets/sprites/ship.png") or GUIDs. A move rewrites no
+  referrer; see find_references, list_missing_assets, retarget_asset_references.
 
 ## The loop
 1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
@@ -63,7 +63,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
 if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
-A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
+A tool error says what was wrong and lists valid choices: fix the arguments.
 
 ## Undo
 Every edit result carries `undo` {id, name}: your step, named "<your client name>: Set

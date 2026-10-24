@@ -27,8 +27,6 @@ namespace jasperengine::editor{
         std::vector<DeleteFilesData> files;
         fs::path trash;
 
-        fs::path generateUniqueTrashPath(const fs::path& trashDir, const fs::path& originalFile);
-
     public:
         DeleteFileCmd(Project* project, std::vector<fs::path> filePaths, fs::path rootPath);
 

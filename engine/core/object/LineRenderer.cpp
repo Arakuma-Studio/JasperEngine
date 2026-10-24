@@ -277,7 +277,7 @@ bool LineRenderer::removeShaderUniform(const std::string& name){
 Vector4 LineRenderer::getShaderParam(const std::string& name) const{
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
-    return ShaderLibraryValues::getParam(lines.shaderUniforms, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader, name);
+    return ShaderLibraryValues::getParam(lines.shaderUniforms, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader.path, name);
 }
 
 void LineRenderer::setShaderTexture(const std::string& name, const std::string& path){
@@ -298,14 +298,14 @@ void LineRenderer::setShaderFeature(const std::string& define, bool enabled){
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(lines.shaderFeatures, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(lines.shaderFeatures, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader.path, define, enabled))
         lines.needReload = true;
 }
 
 bool LineRenderer::isShaderFeatureEnabled(const std::string& define) const{
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(lines.shaderFeatures, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(lines.shaderFeatures, lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader.path, define);
 }
 
 void LineRenderer::setBlendMode(MaterialBlendMode blendMode){

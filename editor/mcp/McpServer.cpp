@@ -109,6 +109,7 @@ void McpServer::registerAllTools() {
     registerConsoleTools(reg);
     registerScriptTools(reg);
     registerAssetTools(reg);
+    registerAssetIdentityTools(reg);
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);

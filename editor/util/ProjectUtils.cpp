@@ -1819,6 +1819,11 @@ ScriptPropertyValue editor::ProjectUtils::luaValueToScriptPropertyValue(lua_Stat
         // None: a prefab is dragged onto the property in the Inspector
         return ScriptPropertyValue(PrefabAsset());
     }
+
+    case ScriptPropertyType::Asset: {
+        // a default path ("textures/hero.png"), else None
+        return ScriptPropertyValue(AssetRef(lua_isstring(L, idx) ? std::string(lua_tostring(L, idx)) : std::string()));
+    }
     }
 
     return ScriptPropertyValue{};
@@ -1959,6 +1964,8 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
                         prop.type = ScriptPropertyType::Color4;
                     }else if (typeLower == "prefab" || typeLower == "prefabasset"){
                         prop.type = ScriptPropertyType::Prefab;
+                    }else if (typeLower == "asset" || typeLower == "assetref"){
+                        prop.type = ScriptPropertyType::Asset;
                     }else if (typeLower == "entity" || typeLower == "entitypointer" || typeLower == "pointer"){
                         prop.type = ScriptPropertyType::EntityReference;
                     }else{
@@ -1967,6 +1974,13 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
                     }
                 } else {
                     prop.type = ScriptPropertyType::Float;
+                }
+                lua_pop(L, 1);
+
+                // Asset properties: the asset type they take (assetType = "texture", ...)
+                lua_getfield(L, -1, "assetType");
+                if (prop.type == ScriptPropertyType::Asset && lua_isstring(L, -1)) {
+                    prop.assetType = lua_tostring(L, -1);
                 }
                 lua_pop(L, 1);
 

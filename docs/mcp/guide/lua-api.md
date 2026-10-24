@@ -106,6 +106,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color3"` | `Vector3` | `{r, g, b}` |
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
+| `"asset"`, `"assetref"` (with `assetType = "texture"`, `"model"`, `"audio"`, ...) | `AssetRef`, or `nil` when left None | a path (`"textures/hero.png"`), or none |
 | `"entity"`, `"entitypointer"`, `"pointer"` | the first enabled Lua script instance on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
@@ -486,6 +487,24 @@ if b then GameObject.destroy(b, 2.0) end
 | `PrefabManager.findPrefab(...)`, `getPrefabId(...)`, `getPrefabName(...)`, `getPrefabGuid(...)`, `getPrefabNames()`, `PrefabManager.prefabCount` | static |
 
 A `"Prefab"` script property left at None is `nil`: check before instantiating.
+
+### 2.7.1 Asset / AssetRef (asset identity)
+
+Every asset has a GUID that survives renames and moves (`jasper://docs/assets`). `Asset` answers
+from the editor's asset database in Play and from the build's `assetmap.bin` in exported games.
+Paths are relative to the assets directory for textures, models, audio, fonts, UI documents and
+data files, and to the project for scenes, prefabs, materials, shaders and scripts.
+
+| Name | Kind |
+|---|---|
+| `Asset.path(guid)` | static fn: the current path, or `nil` (a former GUID or a sub-asset's resolves too) |
+| `Asset.guid(path)` | static fn: the GUID, or `nil` |
+| `Asset.exists(guidOrPath)` | static fn: boolean |
+| `Asset.ref(guidOrPath)` | static fn: an `AssetRef` |
+| `guid`, `path`, `type` (`"texture"`, `"model"`, ...), `valid` | `AssetRef` ro properties |
+| `isValid()`, `==`, `tostring()` | `AssetRef` method, metamethods |
+
+Component path fields (`AudioSource.filename`, `Model.filename`...) stay plain strings in Lua.
 
 ### 2.8 SceneManager (static)
 

@@ -470,7 +470,8 @@ TEST(StreamEnum, ScriptPropertyTypeRoundTrips){
         ScriptPropertyType::Color3,
         ScriptPropertyType::Color4,
         ScriptPropertyType::EntityReference,
-        ScriptPropertyType::Prefab
+        ScriptPropertyType::Prefab,
+        ScriptPropertyType::Asset
     }, ScriptPropertyType::Bool);
 }
 
