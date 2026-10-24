@@ -26,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine{
@@ -141,6 +142,8 @@ namespace jasperengine{
         int slotVSSprite = -1;
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
+        int slotVSLattice = -1;
+        std::pair<int, int> slotVSLatticeTexture = {-1, -1};
 
         bool loaded = false;
         // its shader failed to build: the submesh draws without it
@@ -206,6 +209,9 @@ namespace jasperengine{
         int slotFSPointShadows = -1;
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
+        // u_vs_lattice and u_latticeTexture (includes/lattice.glsl), loaded with a lattice variant
+        int slotVSLattice = -1;
+        std::pair<int, int> slotVSLatticeTexture = {-1, -1};
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
 
@@ -215,6 +221,8 @@ namespace jasperengine{
         int slotVSDepthFade = -1;
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
+        int slotVSDepthLattice = -1;
+        std::pair<int, int> slotVSDepthLatticeTexture = {-1, -1};
         int slotVSDepthTerrain = -1;
         int slotVSDepthSprite = -1;
 
@@ -222,6 +230,8 @@ namespace jasperengine{
         int slotFSGBufferMaterial = -1;
         int slotVSGBufferSkinning = -1;
         int slotVSGBufferMorphTarget = -1;
+        int slotVSGBufferLattice = -1;
+        std::pair<int, int> slotVSGBufferLatticeTexture = {-1, -1};
         int slotVSGBufferTerrain = -1;
         int slotFSGBufferTerrainLayers = -1;
 

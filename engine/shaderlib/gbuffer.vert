@@ -42,11 +42,21 @@ out vec3 v_normal;          // view space
     out vec2 v_uv1;
 #endif
 
+// a lattice's vertex colour mask (includes/lattice.glsl)
+#ifdef HAS_LATTICE
+    #if defined(HAS_VERTEX_COLOR_VEC3)
+        in vec3 a_color;
+    #elif defined(HAS_VERTEX_COLOR_VEC4)
+        in vec4 a_color;
+    #endif
+#endif
+
 #include "includes/skinning.glsl"
 #include "includes/morphtarget.glsl"
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
 #endif
+#include "includes/lattice.glsl"
 
 vec4 getPosition(mat4 boneTransform){
     vec3 pos = a_position;
@@ -78,6 +88,31 @@ void main() {
 
     mat4 boneTransform = getBoneTransform();
 
+    #ifdef HAS_LATTICE
+        // as mesh.vert: the same position as the colour and depth passes, and the normal
+        // through the same Jacobian
+        vec3 latticePosition = getMorphPosition(a_position);
+        vec3 latticeNormal = vec3(0.0, 0.0, 1.0);
+        #ifdef HAS_NORMALS
+            latticeNormal = a_normal;
+        #endif
+        vec3 latticeTangent = vec3(1.0, 0.0, 0.0);
+        float latticeStretchValue = 1.0;
+        #ifdef HAS_SKINNING
+            latticeDeform(0, latticePosition, latticeNormal, latticeTangent, latticeStretchValue);
+        #endif
+        vec4 objPos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
+        latticeNormal = normalize(getSkinNormal(latticeNormal, boneTransform));
+        #ifdef HAS_INSTANCING
+            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            vec4 pos = instanceMatrix * objPos;
+            latticeNormal = instanceNormal(mat3(instanceMatrix), latticeNormal);
+        #else
+            vec4 pos = objPos;
+        #endif
+        latticeDeform(1, pos.xyz, latticeNormal, latticeTangent, latticeStretchValue);
+        v_normal = normalize(mat3(gbufferParams.normalMatrix) * latticeNormal);
+    #else
     vec4 objPos = getPosition(boneTransform);
     vec3 objNormal = getNormalObj(boneTransform, objPos);
 
@@ -90,6 +125,7 @@ void main() {
     #else
         vec4 pos = objPos;
         v_normal = normalize(mat3(gbufferParams.normalMatrix) * objNormal);
+    #endif
     #endif
 
     #if defined(HAS_TERRAIN_PBR) && defined(HAS_NORMALS)

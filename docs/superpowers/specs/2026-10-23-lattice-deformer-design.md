@@ -836,3 +836,239 @@ Integrator notes:
   solver): `test_lattice_data.py` passes, the inspector shows the folded-cell warning and the
   Deforming list. That build's Console showed `includes/lattice.glsl:135: 'active' : Reserved
   word` for the mesh and depth `Ltc` variants (glsl410): WP-RENDER must rename it.
+
+### 12.x WP-RENDER
+
+GPU deformation as §5, with these decisions and deviations:
+
+- **Variant bits.** MESH bit 5 `Ltc` (`HAS_LATTICE`, the retired `Pcf` slot), DEPTH bit 14
+  `Ltc`, GBUFFER bit 10 `Ltc` plus bits 11/12 `Vc3`/`Vc4` (the vertex colour a mask channel
+  reads; set only with `Ltc`). `getMeshProperties`, `getDepthMeshProperties` and
+  `getGBufferMeshProperties` take a trailing `lattice` argument (default false), so every
+  mesh without a lattice keeps its exact key. Counts: DEPTH 15, GBUFFER 13. A key with the
+  terrain bit compiles `Ltc` inert (the compiler leaves `HAS_LATTICE` out). Consequence of
+  reusing bit 5: a persisted key from an editor older than the PCF retirement that still has
+  bit 5 set now normalizes to a lattice variant instead of dropping the bit (one extra
+  exported variant at worst).
+- **Vertex colour in every pass of a lattice variant.** `SubmeshShaderInputs::lattice`
+  (added) forces the mesh's vertex colour bits into the colour, depth and G-buffer variants of
+  a lattice mesh, whatever the shader's `@require`, so changing a binding's mask never
+  reloads anything and shadows/depth follow the mask. The built-in depth and G-buffer loads
+  bind `COLOR` (a no-op for shaders that do not declare `a_color`). `water_depth`,
+  `spin_bob_depth` and `dissolve_depth` keep the colour defines under `HAS_LATTICE`. A mesh
+  without vertex colours is not masked (mask 1 for every channel, inverted ones too), as the
+  CPU solver does with a null colour.
+- **Variant switch.** `LatticeRender::prepare` sets `MeshComponent::needVariantReload` when
+  `count > 0` differs from `variantActive` (set by `loadMesh`): the loaded variant keeps
+  drawing (with count 0 in its block when the bindings went) until the new one is built, no
+  invisible frames while the editor compiles it. A mesh whose lattice variant is missing
+  from a build without runtime compilation behaves as any other missing variant (it does not
+  draw); the variant collector adds the lattice variants of authored targets (below), so
+  only bindings made by scripts at runtime rely on runtime compilation.
+- **GLSL** (`includes/lattice.glsl`): `latticeDeform(stage, pos, normal, tangent, stretch)`
+  as specified, plus `latticeDeformSmooth` (also moves the smoothed normal of
+  `includes/surface_vs.glsl`, so outlines follow) and `latticeWriteStretch`. One Jacobian per
+  lattice and vertex, taken to object space (`A^-1 J A`): position `p + A^-1 delta`
+  (`= Minv (M p + delta)`), normal by the cofactor of that Jacobian (`= A^T cof(J) A^-T`, the
+  spec's), tangent by it, stretch its determinant. A binding whose field is zero at the
+  vertex leaves it bit-identical (as the solver's `deformVertex`), and bindings at rest or
+  with weight 0 are left out of the draw by the CPU (`LatticeMeshState::movingBindings`), so
+  a lattice at rest draws exactly what no lattice draws (tested pixel for pixel). Loops
+  have constant bounds with `break`; data through `texelFetch` on an unfilterable RGBA32F
+  texture with a non-filtering sampler (the bones texture's annotations) on every backend,
+  the block is floats only. The record constants come from `LatticeTypes.h` as compiler
+  defines (`LATTICE_MAX_PER_MESH`, `LATTICE_TEXTURE_WIDTH`, `LATTICE_RECORD_HEADER`, in
+  the library hash). `u_vs_lattice.z` is 1 in the colour passes (stretch computed), 0 in
+  depth and G-buffer.
+- **Pipeline order** in every vertex path: morph targets, stage 0 bindings (only under
+  `HAS_SKINNING`; without skinning every binding is stage 1), skinning, instance matrix,
+  instance fade, stage 1 bindings, then (surface shaders) the `SURFACE_DISPLACE` hooks,
+  which see the deformed position and normals, then the model matrix.
+- **Stretch** (deviation): the `v_latticeStretch` varying exists only when both stages
+  define `LATTICE_STRETCH` (an output the fragment stage does not read fails the
+  cross-compile, so it cannot be written by every `mesh.vert`/`surface_vs.glsl` variant).
+  The fragment side defines `LATTICE_FS` (and `LATTICE_STRETCH`) and includes
+  `includes/lattice.glsl` for `latticeStretch()` (1.0 without a lattice or without the
+  define). `library/lattice_stretch` (.vert + .frag, category Effects): log-scale heat map,
+  `squashColor`, `stretchColor`, `range` (volume ratio of the full colour, 1.05..16, default
+  2), `baseColor` and `u_baseTexture` tint; folded cells show the squash colour.
+- **Vertex paths audited** (all call `latticeDeform`/`latticeDeformSmooth`): `mesh.vert`,
+  `depth.vert`, `gbuffer.vert`, `includes/surface_vs.glsl` (every library mesh shader's
+  colour pass: `surface`, `unlit`, `simple_lit`, `vertex_lit`, `toon`, `matcap`,
+  `triplanar`, `panner`, `decal`, `projected_decal`, `foliage`, `flipbook`, `dissolve`,
+  `spin_bob`, `water`, `fake_lit`, `sprite`, `outline` and `outline_stencil` through
+  `library/outline_vs.glsl`, `lattice_stretch`), `includes/surface_depth_vs.glsl` (every
+  depth program: `surface_depth`, `unlit_depth`, `foliage_depth`, `flipbook_depth`,
+  `dissolve_depth`, `spin_bob_depth`, `water_depth`). Not mesh paths (no lattice):
+  `sky_vs`, `ui_vs`, `points_vs` (`particle`), `htmlui*`, `lines`, `shadow2d`, `fullscreen`,
+  `bloom`, `uber`, `effects/*`. Forks made before this keep compiling and draw undeformed
+  (their block and texture slots are -1); `mesh.vert`'s header and
+  `docs/mcp/guide/shaders.md` (Forking) show the call.
+- **Packing** (`LatticeRender::prepare`): one walk down the Transform array from the first
+  modifier (skipping the parts no `includeChildren` branch covers), the path of ancestors
+  giving the inherited bindings nearest first after the own ones. A lattice is validated and
+  padded once a frame; skipped when deleted, without `LatticeComponent`, disabled, inactive
+  in the hierarchy, with a singular or non-finite transform, or when the mesh's transform is
+  singular. Resolutions are clamped and short offset lists read as zero, as the solver does
+  (texel 8 holds the clamped resolution); a NaN fade distance is packed as 0. More than
+  `LATTICE_MAX_PER_MESH` valid bindings: the rest are ignored, `Log::warn` once per modifier
+  (`warnedOverflow`, cleared when it fits again). Texels are built in a scratch vector,
+  compared with the mesh's (`memcmp`) and swapped in only when they differ (`needUpload`).
+  Terrains are never targets. `wantsTessellation` is true for every target with `count > 0`
+  (MeshSystem only reads it for sprites), `tessellation` the first binding's modifier's
+  `subdivisions` clamped to 1..64. Meshes filled last frame and not this one are reset.
+  With no `LatticeModifierComponent` and nothing filled last frame it returns at once; in a
+  steady frame it allocates nothing (scratch kept in `LatticeRenderState`).
+- **Bounds**: `worldPadding = sum |weight| * maxPaddedOffset * s`, `s` the lattice model's
+  longest column (or the root sum of squares of the columns for a skewed matrix, a bound of
+  the spectral norm); a before-skinning binding of a skinned mesh is also scaled by its
+  largest bone scale. Added to `worldAABB`, to tilemap chunk bounds and to the per-instance
+  culling radius (`buildInstanceView`). A padding change marks the AABB dirty, which for an
+  instanced mesh also rebuilds its instance list (a jiggling lattice on a large instanced
+  mesh does that every frame).
+- **Texture**: `TextureRender::createDynamicTexture` (RGBA32F stream), `LATTICE_TEXTURE_WIDTH`
+  wide, as many rows as the texels need (made again when that changes), uploaded by
+  `updateMeshBuffers` once a frame at most and bound at each draw (so a remade texture needs
+  no reload). Destroyed by `destroyMesh` and by a load without the lattice variant.
+
+Contract additions: `LatticeMeshState::movingBindings`; `LatticeRenderState` and
+`LatticeRender::prepare(Scene*, LatticeRenderState&)`, `getUniformBlock`,
+`isLatticeTarget` (LatticeRender.h); `RenderSystem::getLatticeState()` (RenderSystem owns
+the state); `SubmeshShaderInputs::lattice`; `UniformBlockType::VS_LATTICE`,
+`DEPTH_VS_LATTICE`, `GBUFFER_VS_LATTICE`, `TextureShaderType::LATTICE`; `Submesh`
+`slotVSLattice`/`slotVSLatticeTexture`, `slotVSDepthLattice`/`...Texture`,
+`slotVSGBufferLattice`/`...Texture`, the same pair on `SubmeshExtraPass`.
+
+Variant collection: `ShaderVariantCollector` adds, for every mesh that
+`LatticeRender::isLatticeTarget` (own or inherited binding to a lattice entity, enabled or
+not), the lattice variants next to the unbound ones; `Project.cpp`'s loaded-mesh list derives
+the depth key with the lattice bit; `ShaderLibraryMatrix` gains four lattice cases (plain;
+skinning + morph + vertex colour; instancing + fade + vec3 colour + shadows; no normals/UV
+with a sprite rect).
+
+Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (one field),
+`component/MeshComponent.h` (slots), `render/Render.h`, `shader/ShaderData.cpp`,
+`shader/ShaderVariantCompiler.cpp`, `pool/ShaderPool.{h,cpp}`,
+`subsystem/RenderSystem.{h,cpp}`, `registry/EntityCloner.cpp` (one line: a clone's
+`LatticeMeshState` is reset, the texture handle is the original's; WP-ECS owns the file),
+`engine/shaderlib/{mesh,depth,gbuffer}.vert`, `includes/{lattice,surface_vs,surface_depth_vs}.glsl`,
+`library/lattice_stretch.{vert,frag}`, `library/{water,spin_bob,dissolve}_depth.vert`,
+`editor/shader/{ShaderVariantCollector.{h,cpp},ShaderLibraryMatrix.cpp}`, `editor/Project.cpp`,
+`docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
+`engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
+
+### 12.x WP-ECS (LatticeSystem, Lattice object, EntityCloner, sprite grid, Lua)
+
+Files: `engine/core/subsystem/LatticeSystem.{h,cpp}`, `engine/core/object/Lattice.{h,cpp}`,
+`engine/core/registry/EntityCloner.cpp` (lattice parts), `engine/core/subsystem/MeshSystem.{h,cpp}`
+(sprite grid), `engine/core/script/binding/{GameObjectClassesLua,ECSClassesLua}.cpp`,
+`generate_api_suggestions.py` (MANUAL_SYMBOLS for the lambda/overload bindings),
+`docs/mcp/guide/lua-api.md` (§4.19 Lattice, the enums table, the class tree),
+`editor/Project.cpp` (one line, below), `tools/mcp/tests/test_lattice_lua.py`. No stub fragment
+was needed: `generate_lua_stubs.py` resolves every new binding (0 unresolved).
+
+Frame flow and play mode:
+- `update(dt)` advances pose tweens and accumulates the play time; `lateUpdate()` (called by
+  RenderSystem::update, WP-RENDER) steps the jiggle with that time, then runs followers. The
+  jiggle is in `lateUpdate` (not `update`) so it reads the lattice's world position of this
+  frame (no lag, no stale identity matrix on the first frame) and followers ride on the
+  jiggle in the same frame. Without WP-RENDER's call neither jiggle nor followers run.
+- Edit mode: `editor::Project::pauseEngineScene` now also pauses `LatticeSystem` (one line,
+  next to Physics/Action/Audio). Paused = no tweens, no jiggle; followers still run (they
+  only place transforms) and offsets/poses written by the API show at once. The game's Pause
+  freezes tweens and jiggle where they are.
+- Disabled (`enabled = false`) or inactive lattices: tweens and the jiggle state are kept
+  but not advanced; a disabled jiggle (or lattice) clears `dynamicOffsets`.
+
+Tweens: any direct write of offsets (setOffset..., setPointPosition..., resetOffsets,
+applyPose, applyPreset) stops a running tween. `EaseType::CUSTOM` tweens linearly (the
+component cannot hold a function). A tween whose from/to size no longer matches the
+resolution (changed without `LatticeSystem::setResolution`) is stopped.
+
+Poses and resolution: `LatticeSystem::setResolution(component, rx, ry, rz)` resamples the
+offsets, every pose and a running tween with `lattice::resample`, and resets the jiggle.
+**WP-EDITOR-SCENE/WP-MCP: `LatticeEditorOps::setResolution` should apply this helper to a copy
+of the component (then commit it as the command's new value), so poses stay in step.** A
+pose whose size does not match the resolution (data from a path that did not resample it)
+is resampled on use from the resolution its size factors into, the factorization closest to
+the current resolution (ties: x before y before z); a size no resolution has reads as zeros.
+
+Jiggle (spec §6.2) details: acceleration from finite differences of the lattice's world
+position in `lateUpdate`; frames 1 and 2 after enabling, `resetJiggle()`, a frame longer
+than 0.25 s or a jump of more than 2 lattice sizes (largest world axis length) in one frame
+only rebuild the history (teleport). Substeps of at most `min(1/120 s, 1/sqrt(k))`, at most
+64 per frame; a frame longer than 0.25 s is integrated as 0.25 s. Clamp keeps
+`|x| <= max(0, jiggleMaxOffset)` and removes the outward velocity at the limit. While asleep
+it wakes when `inertia * |a_local| > 1e-4 * max(k, 1)` or on a poke; `poke`/`pokeAt` do
+nothing while `jiggle` is off. Anchor weight is linear across the lattice (0 at the anchored
+face, 1 at the opposite). `revision` is bumped every simulated frame and when it sleeps.
+
+Followers (spec §6.3) details: processed in Transform array order (a follower inside another
+follower's subtree sees it moved). Rotation: the rest's world axes pushed through the world
+Jacobian, Gram-Schmidt x then y, z = x cross y (a degenerate basis keeps the rest rotation).
+Scale: rest world scale times the lengths of the deformed rest axes. Channels whose apply
+flag is off are not written (the follower keeps its own value). The follower and its subtree
+get `needUpdate` and `RenderSystem::updateTransform` (already public) in the same frame; when
+nothing changed nothing is written. Left alone: follower disabled/inactive, missing lattice
+or rest, a zero-scale lattice transform, the follower being its rest or an ancestor of it,
+and (addition) the lattice inside the follower's subtree, which would feed back every frame.
+A disabled or inactive lattice puts the follower at its (undeformed) rest. Followers write
+Transform values in edit mode too: a saved scene stores the placed values, recomputed
+identically on load; moving the follower by hand is undone the next frame (move the rest).
+Integrator: check that prefab override detection does not record these writes as overrides
+(they bypass the command system the same way a script would).
+
+Sprite grid (spec §6.4): `MeshSystem::createSprite` builds `n x n` cells
+(`n = clamp(lattice.tessellation, 1, 64)` while `lattice.wantsTessellation`), vertices
+row-major from the bottom row, corners computed as `(1 - t) * a + t * b` so they equal the
+quad's values exactly (same AABB), same UV cut ratios, flipY, pivot, normals, tangents,
+colours, winding. Without the flag the quad code path is unchanged (verified byte-identical
+vertex and index data, and pixel-identical rendering of an undeformed 8x8 grid vs the quad).
+`createOrUpdateSprite` compares the grid the mesh was built with (from its vertex count:
+4 = quad, `(n+1)^2` = grid) with the request and rebuilds; a loaded mesh whose grid size
+changes (quad <-> grid, n -> m) gets `needReload` (its GPU buffers keep their size), the same
+size only `needUpdateBuffer`. Indices stay 16-bit (65 x 65 vertices at most).
+
+EntityCloner: copies the four components. `LatticeModifierComponent::bindings[].lattice` and
+`LatticeFollowerComponent::lattice/rest` are remapped (a copied lattice -> its copy; one not
+copied stays in the same registry and becomes `NULL_ENTITY` in another; the binding is kept,
+skipped at runtime like a deleted lattice). The copy's jiggle state is cleared (asleep,
+warm-up again where it is placed); a running tween goes on. `prepare<MeshComponent>` resets
+`MeshComponent::lattice` (the copy packs and uploads its own texture; sharing the original's
+`TextureRender` would double-destroy it) but keeps `wantsTessellation`/`tessellation`, which
+the copied vertices were built for.
+
+Contract additions (all in WP-ECS files):
+- `LatticeSystem`: static component helpers `getResolution`, `setResolution`, `findPose`,
+  `getPoseOffsets`, `savePose`, `applyPose`, `startTween`, `stopTween`, `resetJiggle`, `poke`,
+  `pokeAt`; members `deformWorldPoint(Entity, point, weight)`, `isValidFollower(follower,
+  lattice, rest)` (the inspector/MCP refusal rule, shared).
+- `Lattice`: the §8 API plus `getLatticeComponent`, `setEnabled/isEnabled`,
+  `getResolutionX/Y/Z`, `getPointIndex`, `getRestPosition`, getters for every setter,
+  `hasPose`, `removePose`, `stopTween`, `isJiggleSleeping`, `getJiggleOffset`, `resetJiggle`,
+  `addFollower(follower, rest[, applyPosition, applyRotation, applyScale, weight])`,
+  `removeFollower`, `getModifierComponent(entity)`, `getFollowerComponent(entity)`;
+  `bind`/`unbind`/`addFollower`/`removeFollower` take an entity or any GameObject wrapper.
+  `getResolution()` returns a Vector3 of whole numbers. Indices are 0-based (as
+  `lattice::copyAsLua`). `bind` adds the component with `includeChildren = true` when the
+  target has no MeshComponent of its own, clamps the weight to 0..2, updates the weight of
+  an existing binding to the same lattice, and refuses the lattice itself.
+- `MeshSystem::createSpriteGrid` (private).
+- Lua: enums `LatticeInterpolation`, `LatticeOutside`, `LatticeJiggleAnchor`, `LatticeStage`,
+  `LatticeMaskChannel`; classes `LatticePose`, `LatticeComponent` (resolution and the vectors
+  read-only, setting enabled/interpolation/outside/fadeDistance bumps `revision`),
+  `LatticeBinding`, `LatticeModifierComponent` (bindings: read a copy, assign it back),
+  `LatticeFollowerComponent`, `LatticeTracksComponent` (WP-ANIM may add its action class).
+
+Verification: `jasperengine-editor` builds with no new warnings in these files (also checked
+with `-Wall -Wextra`). `tools/mcp/tests/test_lattice_lua.py` (3 tests, real editor, needs
+WP-RENDER's `lateUpdate` call): a script creates and binds a lattice, offsets by index/flat
+index, local/world point positions, poses, resampling, follower placement equal to
+`deformPoint`, a tween ending exactly on the pose, a poked jiggle that settles and sleeps
+with no dynamic offsets left, an acceleration that wakes it, back at rest; edit mode
+(applyPose immediate, tween waits, follower follows); `GameObject.instantiate` remaps. The
+offline stub check (every Lua symbol of `engine_api_suggestions.h` has a stub) passes; the
+editor-side `test_stubs.py`/`test_docs.py` failures on this host match the baseline.
+Branch `lat/ecs` merged `lattice` (WP-SOLVER) and `lat/render` (for the `lateUpdate` call
+and the tessellation request); with them the three tests pass and a 2D sprite bound to a
+lattice renders as a smoothly warped 8 x 8 grid.

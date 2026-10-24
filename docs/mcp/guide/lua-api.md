@@ -593,7 +593,7 @@ Class hierarchy (methods/properties are inherited):
 ```
 EntityHandle
  |- GameObject
- |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, Bone, Points, LineRenderer
+ |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, Bone, Points, LineRenderer, Lattice
  |   |- Mesh
  |   |   |- Primitive -> Mirror
  |   |   |- Sprite, Tilemap, Model, MeshPolygon, Terrain
@@ -1023,6 +1023,47 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 
 ---
 
+### 4.19 Lattice (GameObject) - free-form deformation
+
+A box cage of control points that bends, squashes or wobbles the meshes bound to it
+(meshes, models, sprites, polygons, tilemaps). Local space is the unit cube -0.5..0.5,
+sized and placed by the Transform (`scale` = size). Point `(i, j, k)` counts from 0 per axis,
+flat index `i + rx * (j + ry * k)`; offsets are local units from the rest positions, 0 at
+rest. Concepts, selectors, presets and recipes: `jasper://docs/lattice`.
+
+```lua
+local cage = Lattice(self.scene)           -- entity + Transform + LatticeComponent
+cage.entityOwned = false                   -- or keep the wrapper alive in self
+cage.position = Vector3(0, 1, 0); cage.scale = Vector3(2, 2, 2)
+cage:bind(self.entity)                     -- this mesh follows the cage (weight 1)
+cage:setOffset(1, 2, 1, Vector3(0, 0.3, 0)) -- pull the top centre up
+cage:savePose("tall"); cage:resetOffsets()
+cage:tweenToPose("tall", 0.4, EaseType.BACK_OUT)
+```
+
+| Member | Notes |
+|---|---|
+| `enabled`, `interpolation` (`LatticeInterpolation`), `outside` (`LatticeOutside`), `fadeDistance` | rw; `setInterpolation`, `setOutside`, `setFadeDistance` too |
+| `setResolution(x, y, z)` | each 2..16 (default 3); resamples offsets, poses and a running tween |
+| `getResolution()` (Vector3), `getResolutionX/Y/Z()`, `getPointCount()`, `getPointIndex(i, j, k)` | |
+| `getOffset(i, j, k)`, `setOffset(i, j, k, v)`, `getOffsetAt(index)`, `setOffsetAt(index, v)` | local units; out of range: logged, ignored |
+| `getRestPosition(i, j, k)`, `getPointPosition` / `setPointPosition(i, j, k, v)` | local space (rest + offset) |
+| `getPointWorldPosition` / `setPointWorldPosition(i, j, k, v)` | world space (last frame's Transform) |
+| `resetOffsets()` | all zero |
+| `applyPreset(name, axis, amount [, toward])` | `"squash"`, `"stretch"`, `"taper"`, `"twist"`, `"bend"`, `"bulge"`, `"shear"`, `"noise"`; axis `"x"`/`"y"`/`"z"`; added to the offsets |
+| `savePose(name)`, `hasPose(name)`, `removePose(name)`, `applyPose(name [, weight])` | `applyPose`: offsets = pose * weight |
+| `tweenToPose(name, seconds [, EaseType])`, `tweenToRest(seconds [, EaseType])`, `isTweening()`, `stopTween()` | runs while playing; ends exactly on the target |
+| `jiggle` (`setJiggle(b)`), `jiggleStiffness`, `jiggleDamping`, `jiggleInertia`, `jiggleAnchor` (`LatticeJiggleAnchor`), `jiggleMaxOffset` | rw; springs driven by the cage's acceleration, while playing |
+| `poke(i, j, k, impulseV3)` (local units/s), `pokeAt(worldPoint, worldImpulse, radius)` | wake the jiggle; `isJiggleSleeping()`, `getJiggleOffset(i, j, k)`, `resetJiggle()` (after a teleport) |
+| `deformPoint(worldPoint)` | world in, world out |
+| `bind(goOrEntity [, weight])`, `unbind(goOrEntity)` | binding in the target's `LatticeModifierComponent` (added when missing, with `includeChildren` when the target has no mesh); weight 0..2 |
+| `addFollower(follower, rest [, applyPosition, applyRotation, applyScale, weight])`, `removeFollower(follower)` | the follower is placed where `rest` ends up through the cage each frame (a prop on a squashed surface); refused when the follower is the rest or an ancestor of it |
+| `getLatticeComponent()`, `getModifierComponent(entity)`, `getFollowerComponent(entity)` | raw components (nil when missing); their `std::vector` fields read as copies |
+
+Writing offsets stops a running tween. Tweens and jiggle do not run in the editor's edit mode;
+offsets, poses and followers show there too. Scripts must not edit `comp.offsets[i]` (a copy):
+use the methods. Physics colliders keep the rest shape.
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |
@@ -1079,6 +1120,11 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `GraphicBackend` | `GLCORE`, `GLES3`, `D3D11`, `METAL`, `WGPU` |
 | `AdMobRating` | `General`, `ParentalGuidance`, `Teen`, `MatureAudience` |
 | `ResourceLoadState` | `NotStarted`, `Loading`, `Finished`, `Failed` |
+| `LatticeInterpolation` | `SHARP`, `SMOOTH`, `CUBIC` |
+| `LatticeOutside` | `EXTEND`, `FADE` |
+| `LatticeJiggleAnchor` | `NONE`, `NEGATIVE_X`, `POSITIVE_X`, `NEGATIVE_Y`, `POSITIVE_Y`, `NEGATIVE_Z`, `POSITIVE_Z` |
+| `LatticeStage` | `BEFORE_SKINNING`, `AFTER_SKINNING` |
+| `LatticeMaskChannel` | `NONE`, `RED`, `GREEN`, `BLUE`, `ALPHA`, `INVERTED_RED`, `INVERTED_GREEN`, `INVERTED_BLUE`, `INVERTED_ALPHA` |
 
 There is no separate Rigidbody2D type enum: both Rigidbody2D and Rigidbody use `BodyType`.
 There is no `Collider2D`/`Collider3D` class: colliders are created/queried through the
