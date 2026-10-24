@@ -292,6 +292,60 @@ TEST(ClipIO, QuaternionsNormalizeOnlyWhenOffByMoreThan1e5){
     EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[0].value", "normalized"));
     std::string text = anim::writeClip(data);
     EXPECT_NE(text.find("[0, [0, 0, 0, 0.999995]]"), std::string::npos) << text;
+
+    // the threshold itself: 8e-6 off stays, 2e-5 off is normalized, and that key's tangents
+    // scale with it
+    warnings.clear();
+    data = parseOk(wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"rotation\", \"keys\": ["
+                            "{\"time\": 0, \"value\": [0, 0, 0, 1.000008], \"in\": [0, 0, 0, 0], \"out\": [0, 0, 0, 0]},"
+                            "{\"time\": 1, \"value\": [0, 0, 0, 1.00002], \"in\": [0, 0, 0, 1.00002], \"out\": [0, 2.00004, 0, 0]}]}]"),
+                   &warnings);
+    ASSERT_EQ(data.tracks.size(), 1u);
+    EXPECT_FLOAT_EQ(data.tracks[0].keys[0].value[3], 1.000008f);
+    EXPECT_FLOAT_EQ(data.tracks[0].keys[1].value[3], 1.0f);
+    EXPECT_FLOAT_EQ(data.tracks[0].keys[1].inTangent[3], 1.0f);
+    EXPECT_FLOAT_EQ(data.tracks[0].keys[1].outTangent[1], 2.0f);
+    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[0].value", "normalized")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[1].value", "normalized")) << listWarnings(warnings);
+}
+
+// The writer decides normalization on the value it writes: quaternions whose norm sits in the
+// 1e-5 band (where rounding to %.6g can cross the threshold) still give a fixed point
+TEST(ClipIO, QuaternionsNearTheToleranceAreAFixedPoint){
+    std::mt19937 random(4242);
+    std::uniform_real_distribution<float> unit(-1.0f, 1.0f);
+    std::uniform_real_distribution<float> band(-1.2e-5f, 1.2e-5f);
+    for (int round = 0; round < 3000; round++){
+        float q[4];
+        float length = 0;
+        do{
+            length = 0;
+            for (float& v : q){ v = unit(random); length += v * v; }
+            length = std::sqrt(length);
+        }while (length < 0.1f);
+        float scale = (1.0f + band(random)) / length;
+        ClipData data;
+        ClipTrackData track;
+        track.channel = ClipChannel::Rotation;
+        ClipKey a;
+        a.value = {0, 0, 0, 1};
+        ClipKey b;
+        b.time = 1;
+        b.value = {q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale};
+        if (round % 2){
+            a.inTangent = {0, 0, 0, 0};
+            a.outTangent = {unit(random), 0, 0, 0};
+            b.inTangent = {0, unit(random), 0, 0};
+            b.outTangent = {0, 0, unit(random), 0};
+        }
+        track.keys = {a, b};
+        data.tracks = {track};
+        std::string first = anim::writeClip(data);
+        anim::ClipParseResult parsed = anim::parseClip(first);
+        ASSERT_TRUE(parsed.ok());
+        EXPECT_TRUE(parsed.warnings.empty()) << listWarnings(parsed.warnings) << first;
+        ASSERT_EQ(anim::writeClip(*parsed.data), first) << "round " << round;
+    }
 }
 
 TEST(ClipIO, HemisphereContinuityFlipsKeysAndTheirTangents){
@@ -310,21 +364,53 @@ TEST(ClipIO, HemisphereContinuityFlipsKeysAndTheirTangents){
 }
 
 TEST(ClipIO, EulerIsReadInEditAnimationsOrderAndWrittenAsQuaternions){
+    // (30, 90, 0) degrees, ZYX (qz * qy * qx) by hand: qy * qx = (cos45 cos15, cos45 sin15,
+    // sin45 cos15, -sin45 sin15) = (w 0.683013, x 0.183013, y 0.683013, z -0.183013)
+    const float expected[4] = {0.183013f, 0.683013f, -0.183013f, 0.683013f};   // x y z w
+    const std::string text = wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"rotation\", \"keys\": ["
+                                      "[0, {\"euler\": [0, 0, 0]}], [1, {\"euler\": [30, 90, 0]}], [2, {\"euler\": [30, 300, 0]}]]}]");
+    // degrees whatever the engine's angle unit (a game may switch it to radians)
+    bool degrees = Engine::isUseDegrees();
+    for (bool useDegrees : {true, false}){
+        Engine::setUseDegrees(useDegrees);
+        std::vector<ClipWarning> warnings;
+        ClipData data = parseOk(text, &warnings);
+        ASSERT_EQ(data.tracks.size(), 1u);
+        ASSERT_EQ(data.tracks[0].keys.size(), 3u);
+        const std::vector<float>& value = data.tracks[0].keys[1].value;
+        for (int i = 0; i < 4; i++) EXPECT_NEAR(value[i], expected[i], 2e-6f) << "component " << i << " useDegrees " << useDegrees;
+        Quaternion helper = anim::eulerDegreesToQuaternion(30, 90, 0);
+        EXPECT_NEAR(helper.w, expected[3], 2e-6f);
+        EXPECT_NEAR(helper.z, expected[2], 2e-6f);
+        EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[2].value", "more than 180 degrees on y")) << listWarnings(warnings);
+        EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[1].value", "180 degrees")) << listWarnings(warnings);
+    }
+    Engine::setUseDegrees(degrees);
+    // in degrees mode the helper is edit_animation's Quaternion(x, y, z) (McpValues::parseQuaternion)
+    Quaternion mcp(30.0f, 90.0f, 0.0f);
+    Quaternion helper = anim::eulerDegreesToQuaternion(30, 90, 0);
+    EXPECT_NEAR(helper.w, mcp.w, 1e-6f);
+    EXPECT_NEAR(helper.x, mcp.x, 1e-6f);
+    EXPECT_NEAR(helper.y, mcp.y, 1e-6f);
+    EXPECT_NEAR(helper.z, mcp.z, 1e-6f);
+
+    std::string written = anim::writeClip(parseOk(text));
+    EXPECT_EQ(written.find("euler"), std::string::npos) << written;
+    EXPECT_EQ(anim::writeClip(parseOk(written)), written);
+}
+
+TEST(ClipIO, EulerTurnsAreCheckedInTimeOrder){
+    // written out of time order: sorted, the 170 -> -170 segment turns 340 degrees
     std::vector<ClipWarning> warnings;
-    ClipData data = parseOk(wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"rotation\", \"keys\": ["
-                                     "[0, {\"euler\": [0, 0, 0]}], [1, {\"euler\": [30, 90, 0]}], [2, {\"euler\": [30, 300, 0]}]]}]"), &warnings);
-    ASSERT_EQ(data.tracks.size(), 1u);
-    ASSERT_EQ(data.tracks[0].keys.size(), 3u);
-    // edit_animation: Quaternion(x, y, z) degrees (McpValues::parseQuaternion)
-    Quaternion expected(30.0f, 90.0f, 0.0f);
-    const std::vector<float>& value = data.tracks[0].keys[1].value;
-    float dot = value[0] * expected.x + value[1] * expected.y + value[2] * expected.z + value[3] * expected.w;
-    EXPECT_NEAR(std::fabs(dot), 1.0f, 1e-5f);
+    parseOk(wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"rotation\", \"keys\": ["
+                     "[1, {\"euler\": [0, 170, 0]}], [0, {\"euler\": [0, 0, 0]}], [2, {\"euler\": [0, -170, 0]}]]}]"), &warnings);
     EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[2].value", "more than 180 degrees on y")) << listWarnings(warnings);
-    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[1].value", "180 degrees")) << listWarnings(warnings);
-    std::string text = anim::writeClip(data);
-    EXPECT_EQ(text.find("euler"), std::string::npos) << text;
-    EXPECT_EQ(anim::writeClip(parseOk(text)), text);
+    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[0].value", "180 degrees")) << listWarnings(warnings);
+    // a quaternion key between two Euler keys breaks the pair
+    warnings.clear();
+    parseOk(wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"rotation\", \"keys\": ["
+                     "[0, {\"euler\": [0, 0, 0]}], [1, [0, 0, 0, 1]], [2, {\"euler\": [0, 270, 0]}]]}]"), &warnings);
+    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[2].value", "180 degrees")) << listWarnings(warnings);
 }
 
 // ---- leniency (warnings with JSON paths, bad parts dropped)
@@ -393,6 +479,98 @@ TEST(ClipIO, KeysAreSortedAndCloseKeysCollapse){
     EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys", "not sorted")) << listWarnings(warnings);
     EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[3].time", "negative")) << listWarnings(warnings);
     EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[0]", "merged")) << listWarnings(warnings);
+}
+
+TEST(ClipIO, KeysTwoMicrosecondsApartStaySeparate){
+    std::vector<ClipWarning> warnings;
+    ClipData data = parseOk(wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"position\", \"keys\": ["
+                                     "[1, [1, 0, 0]], [1.000002, [2, 0, 0]], [1.0000004, [3, 0, 0]]]}]"), &warnings);
+    ASSERT_EQ(data.tracks.size(), 1u);
+    const std::vector<ClipKey>& keys = data.tracks[0].keys;
+    ASSERT_EQ(keys.size(), 2u) << listWarnings(warnings);
+    EXPECT_EQ(keys[0].value[0], 3.0f) << "0.4 us after 1 s collapses into it (the later key wins)";
+    EXPECT_FLOAT_EQ(keys[1].time, 1.000002f);
+    EXPECT_EQ(keys[1].value[0], 2.0f) << "2 us apart stays a key of its own";
+}
+
+TEST(ClipIO, OverflowingAndNonFiniteNumbers){
+    // numbers outside the double range are a JSON error with the number's position (they used
+    // to escape as nlohmann::out_of_range and terminate the process)
+    std::string text = "{\"format\": \"jasperengine.anim\", \"version\": 1,\n"
+                       "  \"tracks\": [{\"path\": \"\", \"channel\": \"position\", \"keys\": [[0, [1e999, 0, 0]]]}]}";
+    anim::ClipParseResult result = anim::parseClip(text);
+    ASSERT_FALSE(result.ok());
+    size_t at = text.find("1e999");
+    size_t lineStart = text.rfind('\n', at) + 1;
+    EXPECT_EQ(result.error.line, 2);
+    EXPECT_EQ(result.error.column, (int)(at - lineStart) + 1) << result.error.toString();
+    EXPECT_NE(result.error.message.find("1e999"), std::string::npos) << result.error.message;
+
+    std::string version = "{\"format\": \"jasperengine.anim\", \"version\": 1e400}";
+    result = anim::parseClip(version);
+    ASSERT_FALSE(result.ok());
+    EXPECT_EQ(result.error.line, 1);
+    EXPECT_EQ(result.error.column, (int)version.find("1e400") + 1) << result.error.toString();
+    EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 1, \"frame_rate\": -1e999}").ok());
+    // NaN and Infinity are not JSON
+    EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 1, \"length\": NaN}").ok());
+    EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 1, \"length\": Infinity}").ok());
+    // a huge version is just newer
+    EXPECT_FALSE(anim::parseClip("{\"format\": \"jasperengine.anim\", \"version\": 1e300}").ok());
+
+    // doubles that don't fit a float are lenient: the key / setting goes with a warning
+    std::vector<ClipWarning> warnings;
+    ClipData data = parseOk(wrapClip("\"frame_rate\": 1e300, \"length\": 1e300, \"tracks\": [{\"path\": \"\", \"channel\": \"position\", "
+                                     "\"keys\": [[0, [0, 0, 0]], [1, [1e300, 0, 0]], [1e300, [1, 1, 1]]]}],"
+                                     "\"events\": [{\"time\": 1, \"function\": \"f\", \"args\": [1e300]}]"), &warnings);
+    ASSERT_EQ(data.tracks.size(), 1u);
+    EXPECT_EQ(data.tracks[0].keys.size(), 1u) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[1].value", "expected [x, y, z]")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[2].time", "key dropped")) << listWarnings(warnings);
+    EXPECT_EQ(data.frameRate, 30.0f);
+    EXPECT_TRUE(hasWarning(warnings, "frame_rate", "using 30")) << listWarnings(warnings);
+    EXPECT_FALSE(data.hasExplicitLength());
+    ASSERT_EQ(data.events.size(), 1u);
+    EXPECT_EQ(std::get<double>(data.events[0].args[0]), 1e300) << "a double arg keeps its value";
+    std::string written = anim::writeClip(data);
+    EXPECT_EQ(anim::writeClip(parseOk(written)), written);
+}
+
+TEST(ClipIO, SyntaxColumnsCountCodePointsAfterTheBom){
+    // the BOM is not a column; "é" (2 bytes) is one
+    anim::ClipParseResult bom = anim::parseClip("\xEF\xBB\xBF{\"format\": oops}");
+    ASSERT_FALSE(bom.ok());
+    EXPECT_EQ(bom.error.line, 1);
+    EXPECT_EQ(bom.error.column, 12) << bom.error.toString();
+    anim::ClipParseResult wide = anim::parseClip("{\"né\": 1, oops}");
+    ASSERT_FALSE(wide.ok());
+    EXPECT_EQ(wide.error.column, 11) << wide.error.toString();   // {"né": 1, o
+    // a BOM before a valid clip is fine
+    EXPECT_TRUE(anim::parseClip("\xEF\xBB\xBF" + wrapClip("")).ok());
+}
+
+TEST(ClipIO, MixedTangentTracksReportEachDroppedEase){
+    std::vector<ClipWarning> warnings;
+    ClipData data = parseOk(wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"position\", \"keys\": ["
+                                     "{\"time\": 0, \"value\": [0, 0, 0], \"in\": [0, 0, 0], \"out\": [1, 0, 0]},"
+                                     "[1, [1, 0, 0], \"step\"], [2, [2, 0, 0]], [3, [3, 0, 0], \"quad_in\"]]}]"), &warnings);
+    ASSERT_EQ(data.tracks.size(), 1u);
+    for (const ClipKey& key : data.tracks[0].keys){
+        EXPECT_TRUE(key.hasTangents());
+        EXPECT_EQ(key.ease, EaseType::LINEAR);
+    }
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[1].ease", "the track uses tangents")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[0].keys[3].ease", "the track uses tangents")) << listWarnings(warnings);
+    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys[2].ease", "")) << "a linear key loses nothing";
+}
+
+TEST(ClipIO, UnsortedSourceTracksAreReportedThroughAMerge){
+    std::vector<ClipWarning> warnings;
+    parseOk(wrapClip("\"tracks\": [{\"path\": \"A\", \"channel\": \"position\", \"keys\": [[0, [0, 0, 0]], [2, [2, 0, 0]]]},"
+                     "{\"path\": \"A\", \"channel\": \"position\", \"keys\": [[3, [3, 0, 0]], [1, [1, 0, 0]]]}]"), &warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[1].keys", "not sorted")) << listWarnings(warnings);
+    EXPECT_FALSE(hasWarning(warnings, "tracks[0].keys", "not sorted")) << listWarnings(warnings);
+    EXPECT_TRUE(hasWarning(warnings, "tracks[1]", "merged")) << listWarnings(warnings);
 }
 
 TEST(ClipIO, DuplicateTracksMergeWithTheLaterKeysWinning){

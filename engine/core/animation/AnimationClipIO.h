@@ -81,6 +81,11 @@ namespace jasperengine::anim{
     // what it changed is appended to `warnings` (JSON paths of the input)
     JASPERENGINE_API void normalize(ClipData& data, std::vector<ClipWarning>* warnings = nullptr);
 
+    // {"euler": [x, y, z]} degrees as a quaternion, in the order edit_animation uses
+    // (Quaternion(x, y, z): qz * qy * qx), always in degrees: unlike Quaternion's Euler
+    // constructor it does not read Engine::isUseDegrees(), so it is pure (any thread)
+    JASPERENGINE_API Quaternion eulerDegreesToQuaternion(float x, float y, float z);
+
     // Unity's YAML .anim (%YAML header or an "AnimationClip:" document)
     JASPERENGINE_API bool isUnityYamlClip(const std::string& text);
     // "This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}:

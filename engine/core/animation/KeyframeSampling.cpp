@@ -6,6 +6,7 @@
 #include "math/Interpolation.h"
 
 #include <cfloat>
+#include <algorithm>
 #include <cmath>
 
 using namespace jasperengine;
@@ -58,10 +59,22 @@ anim::KeyLocation anim::locateKey(const float* times, size_t keyCount, const Eas
     // the first key whose time is >= `time`, the last one past the end
     size_t index = 0;
     if (cursor){
-        // sorted times (clips): walk from the hint, which only changes the cost
-        index = cursor->index < keyCount ? cursor->index : keyCount - 1;
-        while (index > 0 && times[index - 1] >= time) index--;
-        while (index < keyCount - 1 && times[index] < time) index++;
+        // sorted times (clips): walk a few keys from the hint (playback moves little per
+        // frame), else binary search; either way the hint only changes the cost
+        if (std::isnan(time)){
+            // what the linear scan gives (no time compares as later)
+            index = 0;
+        }else{
+            const size_t walk = 4;
+            index = cursor->index < keyCount ? cursor->index : keyCount - 1;
+            size_t steps = 0;
+            while (steps < walk && index > 0 && times[index - 1] >= time){ index--; steps++; }
+            while (steps < walk && index < keyCount - 1 && times[index] < time){ index++; steps++; }
+            bool settled = (index == 0 || times[index - 1] < time) && (index == keyCount - 1 || times[index] >= time);
+            if (!settled){
+                index = std::lower_bound(times, times + keyCount - 1, time) - times;
+            }
+        }
         cursor->index = index;
     }else{
         // ActionSystem's linear scan (entity tracks' times are not guaranteed sorted)
@@ -182,11 +195,14 @@ bool anim::sampleTrack(const AnimationClip::Track& track, float clipTime, TrackS
     // `base` shifts the arrays so that a location at index 0 reads it
     size_t base = 0;
     KeyLocation at;
-    if (time <= track.times[0]){
-        if (cursor) cursor->index = 0;
+    // without a hint the search is binary (clip times are sorted), never a scan from key 0
+    KeyCursor local;
+    if (!cursor) cursor = &local;
+    if (std::isnan(time) || time <= track.times[0]){
+        cursor->index = 0;
     }else if (time >= track.times[last]){
         base = last;
-        if (cursor) cursor->index = last;
+        cursor->index = last;
     }else{
         at = locateKey(track.times, track.keyCount, track.easings, track.keyCount, time, cursor);
     }

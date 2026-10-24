@@ -537,10 +537,14 @@ void SceneManager::updatePreloads() {
         // clips are small and parse on this thread; a sub-clip waits for its model's preload
         for (auto it = pending.clips.begin(); it != pending.clips.end();) {
             anim::SubClipReference reference;
-            if (anim::parseSubClipReference(*it, reference) &&
-                std::find(pending.models.begin(), pending.models.end(), reference.model) != pending.models.end()) {
-                ++it;
-                continue;
+            if (anim::parseSubClipReference(*it, reference)) {
+                // the same file however its path is spelled
+                const std::string modelKey = AnimationClipPool::getKey(reference.model);
+                auto sameModel = [&modelKey](const std::string& model) { return AnimationClipPool::getKey(model) == modelKey; };
+                if (std::any_of(pending.models.begin(), pending.models.end(), sameModel)) {
+                    ++it;
+                    continue;
+                }
             }
             const std::string clip = *it;
             std::string error;
