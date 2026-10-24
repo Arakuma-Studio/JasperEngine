@@ -8,6 +8,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "asset/AssetRefEditor.h"
 #include "asset/Guid.h"
 
@@ -33,6 +34,11 @@ namespace jasperengine::editor {
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return false; }
+        // "Retarget References to hero.png" (Missing Assets: Retarget All, Keep)
+        std::string describe() const override {
+            return CommandNames::clip("Retarget References to " + CommandNames::file(assetPath));
+        }
+        const char* typeName() const override { return "AddFormerGuidCmd"; }
 
     private:
         Project* project;
@@ -49,6 +55,14 @@ namespace jasperengine::editor {
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return false; }
+        // "Retarget 3 References to rock.png" / "Clear 2 References"
+        std::string describe() const override {
+            const std::string count = targets.size() == 1 ? std::string("Reference")
+                                                          : std::to_string(targets.size()) + " References";
+            if (newRef.path.empty()) return "Clear " + count;
+            return CommandNames::clip("Retarget " + count + " to " + CommandNames::file(newRef.path));
+        }
+        const char* typeName() const override { return "RetargetAssetRefsCmd"; }
 
     private:
         Project* project;

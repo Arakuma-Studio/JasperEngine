@@ -1216,6 +1216,13 @@ public:
         const AssetOps::Result back = AssetOps::move(*project, to, from);
         if (!back.ok) Out::error("Couldn't undo the move of %s: %s", from.filename().string().c_str(), back.error.c_str());
     }
+    std::string describe() const override {
+        if (from.parent_path() == to.parent_path()) {
+            return CommandNames::clip("Rename File " + CommandNames::file(from) + CommandNames::ARROW + CommandNames::file(to));
+        }
+        return CommandNames::clip("Move " + CommandNames::file(from));
+    }
+    const char* typeName() const override { return "MoveAsCmd"; }
 
 private:
     Project* project;

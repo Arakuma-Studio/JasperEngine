@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "command/CommandNames.h"
 #include "AssetPanels.h"
 
 #include "Backend.h"
@@ -135,6 +136,10 @@ namespace {
             }
         }
         bool affectsStructure() const override { return false; }
+        std::string describe() const override {
+            return CommandNames::clip("Delete Orphan Meta " + CommandNames::file(metaPath));
+        }
+        const char* typeName() const override { return "DeleteOrphanMetaCmd"; }
 
     private:
         Project* project;
