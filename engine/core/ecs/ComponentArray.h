@@ -156,6 +156,8 @@ namespace jasperengine {
         bool orderDirty = false;
         // holes or orderDirty: the next index observation settles (one test on the hot path)
         bool unsettled = false;
+        // removing a component runs no destructor (a trivially destructible type)
+        bool trivialRemoval = false;
         const ComponentArrayBase* orderSource = nullptr; // the Transforms, for Hierarchy
 
         ChangeClock* clock = nullptr; // the owning registry's (none for a standalone array)
@@ -256,6 +258,8 @@ namespace jasperengine {
     public:
         // Starts loading what removing the entity's component touches: its slot's owner and
         // component (one index lookup; nothing is read but the index)
+        bool hasTrivialRemoval() const { return trivialRemoval; }
+
         JE_ECS_INLINE void prefetchEntity(Entity entity) const {
             const uint32_t slot = entityToSlot.find(entity);
             if (slot != ecs::SparseIndex::kNone){
@@ -520,7 +524,11 @@ namespace jasperengine {
         }
 
         void prefetchComponent(size_t slot) const override {
-            JE_ECS_PREFETCH(slotPtr(slot));
+            // a trivially destructible component is not read when it is removed (a Transform:
+            // its line would only crowd the cache)
+            if constexpr (!std::is_trivially_destructible_v<T>){
+                JE_ECS_PREFETCH(slotPtr(slot));
+            }
         }
 
         void settleSlow() override {
@@ -663,7 +671,9 @@ namespace jasperengine {
         }
 
     public:
-        ComponentArray() = default;
+        ComponentArray(){
+            trivialRemoval = std::is_trivially_destructible_v<T>;
+        }
 
         ~ComponentArray() override {
             for (size_t slot = 0; slot < slotCount; slot++){

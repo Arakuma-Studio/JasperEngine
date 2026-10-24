@@ -245,10 +245,19 @@ namespace jasperengine {
 			});
 		}
 
-		// Only the arrays of the signature's types
+		// Only the arrays of the signature's types. The components with a destructor go first
+		// (in id order, as before): the cache misses of the resources they free overlap with
+		// the bookkeeping of the trivially destructible ones (a Transform)
 		void entityDestroyed(Entity entity, const Signature& signature) {
 			signature.forEachSet([&](size_t id){
-				if (ComponentArrayBase* array = arraysById[id]){
+				ComponentArrayBase* array = arraysById[id];
+				if (array && !array->hasTrivialRemoval()){
+					array->entityDestroyed(entity);
+				}
+			});
+			signature.forEachSet([&](size_t id){
+				ComponentArrayBase* array = arraysById[id];
+				if (array && array->hasTrivialRemoval()){
 					array->entityDestroyed(entity);
 				}
 			});
