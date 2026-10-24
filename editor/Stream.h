@@ -11,6 +11,7 @@
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
+#include "component/FluidSimulationComponent.h"
 
 #include <filesystem>
 #include <set>
@@ -65,6 +66,9 @@ namespace jasperengine::editor {
 
         static std::string uiDocumentRenderModeToString(UIDocumentRenderMode mode);
         static UIDocumentRenderMode stringToUIDocumentRenderMode(const std::string& str);
+
+        static std::string fluidOutputToString(FluidOutput output);
+        static FluidOutput stringToFluidOutput(const std::string& str);
 
         static std::string audioSourceAttenuationToString(AudioSourceAttenuation attenuation);
         static AudioSourceAttenuation stringToAudioSourceAttenuation(const std::string& str);
@@ -432,6 +436,12 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeUIDocumentComponent(const UIDocumentComponent& document);
         static UIDocumentComponent decodeUIDocumentComponent(const YAML::Node& node, const UIDocumentComponent* oldDocument = nullptr);
+
+        // only what differs from the defaults is written; a missing key is the default. Over an
+        // old component its runtime state (the simulator) stays; a new seed or start burst
+        // restarts it (needReset)
+        static YAML::Node encodeFluidSimulationComponent(const FluidSimulationComponent& fluid);
+        static FluidSimulationComponent decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid = nullptr);
 
         static YAML::Node encodeCameraComponent(const CameraComponent& camera);
         static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);

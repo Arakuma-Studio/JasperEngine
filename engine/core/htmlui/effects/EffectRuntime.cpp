@@ -644,12 +644,30 @@ void EffectRuntime::forgetSimulation(EffectSimulation* simulation){
         simulationObjects--;
 }
 
-int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, const std::string& effectName){
+int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& input, const std::string& effectName, std::optional<double> time){
     auto it = elements.find(element);
     if (it == elements.end())
         return 0;
+    // a non-finite value is refused, extreme ones clamped: a half-float state would keep an
+    // overflow (inf, then NaN) for good, and every replay with it
+    auto finite = [](float v){ return std::isfinite(v); };
+    if (!finite(input.position.x) || !finite(input.position.y) || !finite(input.velocity.x) || !finite(input.velocity.y) ||
+        !finite(input.radius) || !finite(input.strength) || !finite(input.color[0]) || !finite(input.color[1]) || !finite(input.color[2]) ||
+        !finite(input.color[3]) || (time && !std::isfinite(*time)))
+        return 0;
+    EffectSplatData splat = input;
+    splat.position.x = std::clamp(splat.position.x, -1.0e6f, 1.0e6f);
+    splat.position.y = std::clamp(splat.position.y, -1.0e6f, 1.0e6f);
+    splat.velocity.x = std::clamp(splat.velocity.x, -kMaxSplatVelocity, kMaxSplatVelocity);
+    splat.velocity.y = std::clamp(splat.velocity.y, -kMaxSplatVelocity, kMaxSplatVelocity);
+    splat.radius = std::clamp(splat.radius, 0.f, kMaxSplatRadius);
+    splat.strength = std::clamp(splat.strength, -kMaxSplatStrength, kMaxSplatStrength);
+    for (float& c : splat.color)
+        c = std::clamp(c, 0.f, 1.f);
     int taken = 0;
-    const bool pinnedClock = EffectClock::isFixed();
+    // a splat given a time is scripted input for the pinned clock's replays (logged whatever the
+    // clock is now); else the pinned clock logs it at the pinned time, the live one queues it
+    const bool pinnedClock = EffectClock::isFixed() || time.has_value();
     for (auto& entry : it->second.states){
         EffectElementState& state = *entry.second;
         const std::string name = entry.first.substr(0, entry.first.rfind('#'));
@@ -660,7 +678,7 @@ int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, co
             continue;
         if (pinnedClock){
             // logged with the pinned time: the replay applies it at its last step
-            simulation->log.push_back({*EffectClock::getFixedTime(), splat});
+            simulation->log.push_back({time ? *time : *EffectClock::getFixedTime(), splat});
             while (simulation->log.size() > 64)
                 simulation->log.erase(simulation->log.begin());
         }else{
@@ -674,6 +692,49 @@ int EffectRuntime::splat(Rml::Element* element, const EffectSplatData& splat, co
     if (taken > 0)
         element->GetContext() ? element->GetContext()->RequestNextUpdate(0) : (void)0;
     return taken;
+}
+
+int EffectRuntime::clearSplats(Rml::Element* element, const std::string& effectName){
+    auto it = elements.find(element);
+    if (it == elements.end())
+        return 0;
+    int count = 0;
+    for (auto& entry : it->second.states){
+        const std::string name = entry.first.substr(0, entry.first.rfind('#'));
+        if (!effectName.empty() && name != effectName)
+            continue;
+        EffectSimulation* simulation = entry.second->simulation.get();
+        if (!simulation)
+            continue;
+        if (!simulation->log.empty() || !simulation->pending.empty())
+            simulation->inputGeneration++;
+        simulation->log.clear();
+        simulation->pending.clear();
+        count++;
+    }
+    return count;
+}
+
+int EffectRuntime::setPointerPath(Rml::Element* element, std::vector<Rml::Vector3f> path, const std::string& effectName){
+    auto it = elements.find(element);
+    if (it == elements.end())
+        return 0;
+    std::stable_sort(path.begin(), path.end(), [](const Rml::Vector3f& a, const Rml::Vector3f& b){ return a.z < b.z; });
+    int count = 0;
+    for (auto& entry : it->second.states){
+        const std::string name = entry.first.substr(0, entry.first.rfind('#'));
+        if (!effectName.empty() && name != effectName)
+            continue;
+        EffectElementState& state = *entry.second;
+        if (!state.simulation || state.liveInstances <= 0)
+            continue;
+        state.scriptedPath = path;
+        state.simulation->inputGeneration++;
+        count++;
+    }
+    if (count > 0 && element->GetContext())
+        element->GetContext()->RequestNextUpdate(0);
+    return count;
 }
 
 int EffectRuntime::resetSimulations(Rml::Element* element, const std::string& effectName){
@@ -711,6 +772,12 @@ EffectSimulationInfo EffectRuntime::simulationInfo(Rml::Element* element, const 
         info.steps = sim.steps;
         info.time = sim.simTime;
         info.paused = sim.paused || (sim.allocated && sim.lastAdvanceFrame + 1 < frame);
+        for (const EffectSimulation::Images& images : sim.states)
+            info.images += (images.image[0] ? 1 : 0) + (images.image[1] ? 1 : 0);
+        info.replays = sim.replays;
+        info.replaying = sim.replaying;
+        info.splats = (int)(sim.log.size() + sim.pending.size());
+        info.pathSamples = (int)entry.second->scriptedPath.size();
         break;
     }
     return info;

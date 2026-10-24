@@ -65,6 +65,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PrefabComponent>();
     registerComponent<ReflectionProbeComponent>();
     registerComponent<UIDocumentComponent>();
+    registerComponent<FluidSimulationComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

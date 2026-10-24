@@ -9,6 +9,7 @@
 #include "Stream.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "object/environment/Water.h"
+#include "component/FluidSimulationComponent.h"
 
 #include <algorithm>
 #include <utility>
@@ -441,6 +442,24 @@ bool editor::CreateEntityCmd::execute(){
         // the document file is chosen in the Inspector (Source)
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<UIDocumentComponent>(entity, {});
+
+    }else if (type == EntityCreationType::FLUID_SIMULATION){
+
+        // A Sprite showing the fluid (output MATERIAL, the component's default): seen and
+        // dragged in the Scene view, placed, sized and sorted like any sprite, in 2D and 3D
+        // scenes alike (aspectRatio 0 follows the sprite's size). SCREEN (an overlay over the
+        // whole main camera) and TEXTURE ("fluid|<entity>" links) are one Output change away.
+        // 512 px in a 2D scene; 4 units, a quad standing in the world, in a 3D one.
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<MeshComponent>(entity, {});
+        scene->addComponent<SpriteComponent>(entity, {});
+        scene->addComponent<FluidSimulationComponent>(entity, {});
+
+        const unsigned int size = sceneProject->sceneType == SceneType::SCENE_3D ? 4 : 512;
+        SpriteComponent& sprite = scene->getComponent<SpriteComponent>(entity);
+        sprite.width = size;
+        sprite.height = size;
+        sprite.pivotPreset = PivotPreset::CENTER;
 
     }else if (type == EntityCreationType::ANIMATION){
 

@@ -7,6 +7,7 @@
 #include "util/EntityClipboard.h"
 #include "util/CameraTextureLink.h"
 #include "subsystem/RenderSystem.h"
+#include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
 
 #include <algorithm>
@@ -617,6 +618,49 @@ namespace {
         makeFastProperty<UIDocumentComponent, int, &UIDocumentComponent::textureHeight>("textureHeight", PropertyType::Int, UpdateFlags_UIDocument_Reload),
         makeFastProperty<UIDocumentComponent, Entity, &UIDocumentComponent::inputSurface>("inputSurface", PropertyType::Entity, UpdateFlags_None),
         makeFastProperty<UIDocumentComponent, float, &UIDocumentComponent::pixelRatio>("pixelRatio", PropertyType::Float, UpdateFlags_UIDocument_Reload),
+    };
+
+    // enabled is the shared component checkbox (findEnabledGetter). The runtime fields (the
+    // simulator, the queued splats, bursts and steps, needReset, revision) are not properties.
+    // Sizes and the look need no flag: FluidSimulator recreates its targets and reads every
+    // value each frame; what the start depends on (the seed, the start burst) restarts the
+    // fluid (UpdateFlags_Fluid_Reset).
+    static const FastPropertyDescriptor kFluidSimulationProperties[] = {
+        makeFastProperty<FluidSimulationComponent, FluidOutput, &FluidSimulationComponent::output>("output", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::interactive>("interactive", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::aspectRatio>("aspectRatio", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::simResolution>("simResolution", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::dyeResolution>("dyeResolution", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::densityDissipation>("densityDissipation", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::velocityDissipation>("velocityDissipation", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::pressure>("pressure", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::pressureIterations>("pressureIterations", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::curl>("curl", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::gradientScale>("gradientScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::simulationRate>("simulationRate", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::maxSubsteps>("maxSubsteps", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::timeScale>("timeScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::paused>("paused", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::splatRadius>("splatRadius", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::splatForce>("splatForce", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::colorful>("colorful", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::colorUpdateSpeed>("colorUpdateSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::splatsOnStart>("splatsOnStart", PropertyType::Bool, UpdateFlags_Fluid_Reset),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::randomSplatCount>("randomSplatCount", PropertyType::UInt, UpdateFlags_Fluid_Reset),
+        makeFastProperty<FluidSimulationComponent, uint32_t, &FluidSimulationComponent::seed>("seed", PropertyType::UInt, UpdateFlags_Fluid_Reset),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::shading>("shading", PropertyType::Bool, UpdateFlags_None),
+        // display-space values like the dye (no linear conversion: a Vector3, not a Color3L row)
+        makeFastProperty<FluidSimulationComponent, Vector3, &FluidSimulationComponent::backColor>("backColor", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::transparent>("transparent", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::bloom>("bloom", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::bloomIterations>("bloomIterations", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::bloomResolution>("bloomResolution", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::bloomIntensity>("bloomIntensity", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::bloomThreshold>("bloomThreshold", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::bloomSoftKnee>("bloomSoftKnee", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, bool, &FluidSimulationComponent::sunrays>("sunrays", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, unsigned int, &FluidSimulationComponent::sunraysResolution>("sunraysResolution", PropertyType::UInt, UpdateFlags_None),
+        makeFastProperty<FluidSimulationComponent, float, &FluidSimulationComponent::sunraysWeight>("sunraysWeight", PropertyType::Float, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kCameraProperties[] = {
@@ -1625,6 +1669,10 @@ namespace {
         return resolveDirectProperties(static_cast<UIDocumentComponent*>(comp), propertyName, kUIDocumentProperties);
     }
 
+    PropertyData resolveFluidSimulationPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<FluidSimulationComponent*>(comp), propertyName, kFluidSimulationProperties);
+    }
+
     PropertyData resolveLight2DPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<Light2DComponent*>(comp), propertyName, kLight2DProperties);
     }
@@ -2616,6 +2664,10 @@ namespace {
         enumerateFromDescriptors(comp, ps, kUIDocumentProperties);
     }
 
+    void enumerateFluidSimulationProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kFluidSimulationProperties);
+    }
+
     void enumerateLight2DProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kLight2DProperties);
     }
@@ -3338,6 +3390,7 @@ namespace {
         {ComponentType::MirrorComponent, &findComponentPtr<MirrorComponent>, &resolveMirrorPropertyFast, &enumerateMirrorProperties},
         {ComponentType::ReflectionProbeComponent, &findComponentPtr<ReflectionProbeComponent>, &resolveReflectionProbePropertyFast, &enumerateReflectionProbeProperties},
         {ComponentType::UIDocumentComponent, &findComponentPtr<UIDocumentComponent>, &resolveUIDocumentPropertyFast, &enumerateUIDocumentProperties},
+        {ComponentType::FluidSimulationComponent, &findComponentPtr<FluidSimulationComponent>, &resolveFluidSimulationPropertyFast, &enumerateFluidSimulationProperties},
         {ComponentType::Light2DComponent, &findComponentPtr<Light2DComponent>, &resolveLight2DPropertyFast, &enumerateLight2DProperties},
         {ComponentType::ShadowCaster2DComponent, &findComponentPtr<ShadowCaster2DComponent>, &resolveShadowCaster2DPropertyFast, &enumerateShadowCaster2DProperties},
         {ComponentType::CameraComponent, &findComponentPtr<CameraComponent>, &resolveCameraPropertyFast, &enumerateCameraProperties},
@@ -3402,6 +3455,7 @@ namespace {
             case ComponentType::Joint3DComponent: return &getEnabledRef<Joint3DComponent>;
             case ComponentType::UIComponent: return &getEnabledRef<UIComponent>;
             case ComponentType::UIDocumentComponent: return &getEnabledRef<UIDocumentComponent>;
+            case ComponentType::FluidSimulationComponent: return &getEnabledRef<FluidSimulationComponent>;
             default: return nullptr;
         }
     }
@@ -3537,6 +3591,8 @@ std::string computeComponentName(editor::ComponentType component){
         name = "ReflectionProbeComponent";
     }else if(component == ComponentType::UIDocumentComponent){
         name = "UIDocumentComponent";
+    }else if(component == ComponentType::FluidSimulationComponent){
+        name = "FluidSimulationComponent";
     }else if(component == ComponentType::Light2DComponent){
         name = "Light2DComponent";
     }else if(component == ComponentType::ShadowCaster2DComponent){
@@ -3677,6 +3733,7 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::ShadowCaster2DComponent: return "Shadow Caster 2D";
         case ComponentType::ReflectionProbeComponent: return "Reflection Probe";
         case ComponentType::UIDocumentComponent: return "UI Document";
+        case ComponentType::FluidSimulationComponent: return "Fluid Simulation";
     }
     return getComponentName(component);
 }
@@ -3736,6 +3793,7 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::ShadowCaster2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
         case ComponentType::ReflectionProbeComponent: return ICON_FA_CIRCLE_DOT;
         case ComponentType::UIDocumentComponent: return ICON_FA_FILE_CODE;
+        case ComponentType::FluidSimulationComponent: return ICON_FA_DROPLET;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -3785,6 +3843,8 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<ReflectionProbeComponent>();
         case ComponentType::UIDocumentComponent:
             return registry->getComponentId<UIDocumentComponent>();
+        case ComponentType::FluidSimulationComponent:
+            return registry->getComponentId<FluidSimulationComponent>();
         case ComponentType::Light2DComponent:
             return registry->getComponentId<Light2DComponent>();
         case ComponentType::ShadowCaster2DComponent:
@@ -3891,6 +3951,8 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::ReflectionProbeComponent;
     }else if(normalizedName == "uidocument"){
         return ComponentType::UIDocumentComponent;
+    }else if(normalizedName == "fluidsimulation"){
+        return ComponentType::FluidSimulationComponent;
     }else if(normalizedName == "light2d"){
         return ComponentType::Light2DComponent;
     }else if(normalizedName == "shadowcaster2d"){
@@ -4048,6 +4110,9 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<UIDocumentComponent>(entity)){
         ret.push_back(ComponentType::UIDocumentComponent);
+    }
+    if (registry->findComponent<FluidSimulationComponent>(entity)){
+        ret.push_back(ComponentType::FluidSimulationComponent);
     }
     if (registry->findComponent<Light2DComponent>(entity)){
         ret.push_back(ComponentType::Light2DComponent);
@@ -4209,8 +4274,8 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
                 const Material& material = mesh->submeshes[s].material;
                 for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
                         &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {
-                    // Most are empty: no id to parse
-                    if (!texture->getId().empty() && CameraTextureLink::isCameraTexture(*texture)) {
+                    // Most are empty: no id to parse ("camera|<e>" or "fluid|<e>")
+                    if (!texture->getId().empty() && CameraTextureLink::isLinkTexture(*texture)) {
                         return true;
                     }
                 }
@@ -4937,6 +5002,11 @@ void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint
             audio->needUpdate = true;
         }
     }
+    if (updateFlags & UpdateFlags_Fluid_Reset){
+        if (FluidSimulationComponent* fluid = registry->findComponent<FluidSimulationComponent>(entity)){
+            fluid->needReset = true;
+        }
+    }
     if (updateFlags & UpdateFlags_UIDocument_Reload){
         if (UIDocumentComponent* document = registry->findComponent<UIDocumentComponent>(entity)){
             // filename, render mode, texture size, pixel ratio (sortOrder is re-applied each update)
@@ -5098,6 +5168,15 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
             YAML::Node encoded = Stream::encodeUIDocumentComponent(sourceRegistry->getComponent<UIDocumentComponent>(sourceEntity));
             UIDocumentComponent& target = targetRegistry->getComponent<UIDocumentComponent>(targetEntity);
             target = Stream::decodeUIDocumentComponent(encoded, &target);
+            break;
+        }
+
+        case ComponentType::FluidSimulationComponent: {
+            // decoded over the target's own: its simulator (and every texture showing its
+            // output) stays; a new seed or start burst restarts it
+            YAML::Node encoded = Stream::encodeFluidSimulationComponent(sourceRegistry->getComponent<FluidSimulationComponent>(sourceEntity));
+            FluidSimulationComponent& target = targetRegistry->getComponent<FluidSimulationComponent>(targetEntity);
+            target = Stream::decodeFluidSimulationComponent(encoded, &target);
             break;
         }
 

@@ -14,9 +14,9 @@ R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 (Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every edit you make through tools is an undoable editor command, visible live to a human
-watching. Build scenes with tools, write code with your own file tools, verify by playing,
-screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
+scripts. Every tool edit is an undoable editor command, visible live to a human watching.
+Build scenes with tools, write code with your own file tools, verify by playing, screenshots
+and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
 C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
 
@@ -62,7 +62,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
+past it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
 ## Code (Lua, C++, shaders, materials)
@@ -132,8 +132,7 @@ return Player
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
-  value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
+  Engine.deltatime. Calling a non-existent method fails with "attempt to call a nil value". Check jasper://docs/lua-api (an index: read only the sections you need), the Lua
   stubs or search_engine_api before using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
@@ -227,13 +226,15 @@ Post-processing (main camera only): apply_post_processing_preset, then set_scene
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
 Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
-(jasper://docs/texture-synthesis).
+(jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
+(jasper://docs/fluid).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings) produces a standalone CMake project or builds players per platform; it is a
-long job (wait/timeout_seconds, get_job). The 2D/3D physics switches strip backends from the
-export (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the start scene correct.
+(Build Settings) produces a standalone CMake project or builds players per platform (a long
+job, see The loop). The 2D/3D physics switches strip backends from the export
+(jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the
+start scene correct.
 )JE"
 R"JE(
 ## HTML/CSS UI

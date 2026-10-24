@@ -47,6 +47,7 @@
 #include "component/ButtonComponent.h"
 #include "component/CameraComponent.h"
 #include "component/ColorTweenComponent.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
 #include "component/ImageComponent.h"
 #include "component/InstancedMeshComponent.h"
@@ -97,6 +98,9 @@
 #include "ecs/Signature.h"
 #include "ecs/SubSystem.h"
 
+#include "fluid/FluidPresets.h"
+#include "fluid/FluidSimulator.h"
+
 #include "io/Data.h"
 #include "io/FileData.h"
 #include "io/File.h"
@@ -120,6 +124,7 @@
 #include "object/Camera.h"
 #include "object/EntityHandle.h"
 #include "object/environment/Fog.h"
+#include "object/FluidSimulation.h"
 #include "object/environment/ReflectionProbe.h"
 #include "object/environment/Water.h"
 #include "object/environment/Skybox.h"
@@ -193,6 +198,7 @@
 
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/FluidSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"

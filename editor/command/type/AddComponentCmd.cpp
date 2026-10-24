@@ -38,6 +38,11 @@ bool editor::AddComponentCmd::execute() {
             project->recordPrefabComponentAdded(sceneId, entity, componentType);
         }
 
+        // textures that name this fluid ("fluid|<entity>") show its output now
+        if (componentType == ComponentType::FluidSimulationComponent){
+            CameraTextureLink::resolve(scene);
+        }
+
         sceneProject->isModified = true;
     }
 
@@ -58,7 +63,7 @@ void editor::AddComponentCmd::undo() {
 
         ProjectUtils::reconcileTrackedEntities(scene, sceneProject->entities, project, sceneId);
 
-        if (componentType == ComponentType::CameraComponent){
+        if (componentType == ComponentType::CameraComponent || componentType == ComponentType::FluidSimulationComponent){
             CameraTextureLink::resolve(scene);
         }
 

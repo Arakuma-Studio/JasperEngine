@@ -68,7 +68,8 @@ namespace jasperengine::editor{
         TERRAIN,
         REFLECTION_PROBE,
         UI_DOCUMENT,
-        WATER
+        WATER,
+        FLUID_SIMULATION
     };
 
     class CreateEntityCmd: public Command{

@@ -33,6 +33,7 @@
 #include "object/Camera.h"
 #include "object/Bone.h"
 #include "object/environment/Fog.h"
+#include "object/FluidSimulation.h"
 #include "object/environment/ReflectionProbe.h"
 #include "object/environment/Skybox.h"
 #include "object/sound/AudioSource.h"
@@ -764,6 +765,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Fog, "fog");
     DISPATCH_TYPE(Skybox, "skybox");
     DISPATCH_TYPE(ReflectionProbe, "reflectionprobe");
+    DISPATCH_TYPE(FluidSimulation, "fluidsimulation");
     DISPATCH_TYPE(GameObject, "gameobject");
     DISPATCH_TYPE(Camera, "camera");
     DISPATCH_TYPE(Light, "light");

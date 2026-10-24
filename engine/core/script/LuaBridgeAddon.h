@@ -10,6 +10,7 @@
 #include "thread/ResourceProgress.h"
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FluidSimulationComponent.h"
 
 using namespace jasperengine;
 
@@ -96,6 +97,16 @@ namespace luabridge
     template<> struct Stack<BodyType> : EnumWrapper<BodyType>{};
     template<> struct Stack<Joint2DType> : EnumWrapper<Joint2DType>{};
     template<> struct Stack<UIDocumentRenderMode> : EnumWrapper<UIDocumentRenderMode>{};
+    template<> struct Stack<FluidOutput> : EnumWrapper<FluidOutput>{};
+    // bound enums that had none: LuaBridge pushed them as unregistered userdata (an error
+    // reading probe.mode) and took no integer for them
+    template<> struct Stack<ReflectionProbeMode> : EnumWrapper<ReflectionProbeMode>{};
+    template<> struct Stack<ReflectionProbeUpdateMode> : EnumWrapper<ReflectionProbeUpdateMode>{};
+    template<> struct Stack<ParticleEmitterShape> : EnumWrapper<ParticleEmitterShape>{};
+    template<> struct Stack<RigidbodyMotionQuality> : EnumWrapper<RigidbodyMotionQuality>{};
+    template<> struct Stack<Joint3DType> : EnumWrapper<Joint3DType>{};
+    template<> struct Stack<ShaderType> : EnumWrapper<ShaderType>{};
+    template<> struct Stack<TextureAlphaBorder> : EnumWrapper<TextureAlphaBorder>{};
 
     // shader library render state (Material, UI/points/lines)
     template<> struct Stack<MaterialBlendMode> : EnumWrapper<MaterialBlendMode>{};
