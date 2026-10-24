@@ -1,5 +1,5 @@
 {
-  "description": "tools/web/gates/core-utilities (WEB_PROJECT=core-utilities tools/build.sh web): the logger's browser console sink (levels, order) and a Lua Timer in a build without pthreads. No pixel check: the scene is empty. lua/main.lua runs before the C++ init.",
+  "description": "tools/test-projects/core-utilities (WEB_PROJECT=core-utilities tools/build.sh web): the logger's browser console sink (levels, order) and a Lua Timer in a build without pthreads. No pixel check: the scene is empty. lua/main.lua runs before the C++ init.",
   "isolated": true,
   "console": [
     {

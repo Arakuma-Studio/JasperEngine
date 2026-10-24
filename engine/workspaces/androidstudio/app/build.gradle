@@ -1,6 +1,8 @@
 apply plugin: 'com.android.application'
 
-def projectSourceRoot = "../../../project"
+// JASPERENGINE_PROJECT_ROOT (an absolute path) builds another project: tools/build.sh android's
+// ANDROID_PROJECT, the test projects of tools/test-projects
+def projectSourceRoot = System.getenv("JASPERENGINE_PROJECT_ROOT") ?: "../../../project"
 def jasperengineRoot = "../../.."
 
 def projectSourceRootAbs = file(projectSourceRoot).toString()

@@ -5,7 +5,7 @@
 #
 #   tools/build.sh linux [--clean]     editor + engine sample project (Release)
 #   tools/build.sh web [--clean]       engine sample project for Emscripten (WEB_THREADS=1: pthreads, build/web-threads)
-#   tools/build.sh android [--clean]   engine sample project APK (debug)
+#   tools/build.sh android [--clean]   engine sample project APK (debug; every ABI, x86_64 for emulators)
 #   tools/build.sh unit-tests [--clean]    builds and runs jasperengine-core-tests and jasperengine-editor-tests
 #   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
@@ -41,10 +41,12 @@
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs JASPER_FIXTURE, the
 # fixture project, mounted read-only); arguments after the target and MCP_TEST_ARGS go to
 # tools/mcp/run-tests.sh (e.g. -j 2, -k undo). Results: build/test-results/mcp.json.
-# web: WEB_PROJECT=<name> builds the gate project tools/web/gates/<name>/ instead of
-# engine/project, into build/web-<name> (core-utilities: the logger and Lua Timer, S09).
+# web, android: WEB_PROJECT=<name> / ANDROID_PROJECT=<name> build the test project
+# tools/test-projects/<name>/ instead of engine/project, into build/web-<name> or
+# build/android-<name> (core-utilities: the logger and Lua Timer, S09).
 # web-gate: GATE=sample-project (default, build/web), sample-project-threads (build/web-threads)
-# or a gate project's name (build/web-<name>, WEB_PROJECT=<name> tools/build.sh web first);
+# or a test project with a gate (tools/web/gates/<name>.json; build/web-<name>, WEB_PROJECT=<name>
+# tools/build.sh web first);
 # GATE_ARGS goes to browser_gate.py. Screenshot and transcript in build/test-results/web/.
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
@@ -297,10 +299,10 @@ web)
     fi
     PROJECT_FLAGS=""
     if [[ -n "${WEB_PROJECT:-}" ]]; then
-        [[ "$WEB_PROJECT" =~ ^[A-Za-z0-9_-]+$ && -d "$ROOT/tools/web/gates/$WEB_PROJECT" ]] \
-            || { echo "WEB_PROJECT must name a directory of tools/web/gates (got $WEB_PROJECT)" >&2; exit 1; }
+        [[ "$WEB_PROJECT" =~ ^[A-Za-z0-9_-]+$ && -d "$ROOT/tools/test-projects/$WEB_PROJECT" ]] \
+            || { echo "WEB_PROJECT must name a directory of tools/test-projects (got $WEB_PROJECT)" >&2; exit 1; }
         WEB_DIR="$OUT-$WEB_PROJECT"
-        PROJECT_FLAGS="-DPROJECT_ROOT=/src/tools/web/gates/$WEB_PROJECT"
+        PROJECT_FLAGS="-DPROJECT_ROOT=/src/tools/test-projects/$WEB_PROJECT"
     fi
     [[ -n "$CXX_SUFFIX" ]] && WEB_DIR="$WEB_DIR/cxx$CXX_STANDARD"
     run bash -euo pipefail -c "
@@ -441,11 +443,21 @@ web-gate)
 android)
     # Gradle writes its intermediates next to the project, so the output
     # directory is only used for the copied APK.
+    APK_DIR="$OUT"
+    PROJECT_ENV=""
+    if [[ -n "${ANDROID_PROJECT:-}" ]]; then
+        [[ "$ANDROID_PROJECT" =~ ^[A-Za-z0-9_-]+$ && -d "$ROOT/tools/test-projects/$ANDROID_PROJECT" ]] \
+            || { echo "ANDROID_PROJECT must name a directory of tools/test-projects (got $ANDROID_PROJECT)" >&2; exit 1; }
+        APK_DIR="$OUT-$ANDROID_PROJECT"
+        # app/build.gradle builds this project instead of engine/project
+        PROJECT_ENV="JASPERENGINE_PROJECT_ROOT=/src/tools/test-projects/$ANDROID_PROJECT"
+    fi
+    mkdir -p "$ROOT/$APK_DIR"
     run bash -euo pipefail -c "
         cd engine/workspaces/androidstudio
-        CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug
-        cp app/build/outputs/apk/debug/*.apk /src/$OUT/
+        env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug
+        cp app/build/outputs/apk/debug/*.apk /src/$APK_DIR/
     "
-    ls -l "$ROOT/$OUT"/*.apk
+    ls -l "$ROOT/$APK_DIR"/*.apk
     ;;
 esac

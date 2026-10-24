@@ -13,6 +13,7 @@
 //                          (replaces add_project_scene / set_start_scene)
 //   edit_project_build_file  read / write ProjectBuild.cmake (replaces update_project_build_file)
 #include "McpTools.h"
+#include "log/Logger.h"
 #include "DocumentFile.h"
 
 #include "mcp/McpDataSafety.h"
@@ -1539,6 +1540,90 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         };
+        // Preferences > Logging (saved to settings.yaml at once, like the dialog's OK)
+        auto loggingPreference = [&add](Setting s, std::function<bool(LoggingSettings&, const Json&, std::string&)> apply,
+                                        std::function<Json(const LoggingSettings&)> read) {
+            s.preference = true;
+            s.get = [read](McpContext&) { return read(AppSettings::getLoggingSettings()); };
+            s.set = [apply](McpContext&, const Json& value, bool commit, std::string& error) {
+                LoggingSettings settings = AppSettings::getLoggingSettings();
+                if (!apply(settings, value, error)) return false;
+                if (commit) {
+                    AppSettings::setLoggingSettings(settings);
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(std::move(s));
+        };
+        auto levelName = [](const Json& value, std::string& level, std::string& error) {
+            LogLevel parsed;
+            if (!value.is_string() || !parseLogLevel(value.get<std::string>().c_str(), parsed)) {
+                error = "must be a level: trace, debug, info, warn, error, fatal or off";
+                return false;
+            }
+            level = logLevelName(parsed);
+            return true;
+        };
+        {
+            Setting s;
+            s.key = "preferences.logging.levels";
+            s.type = "object";
+            s.description = "Preferences > Logging: category levels, {\"render\": \"debug\"}. Setting merges (\"info\" resets a category, {} "
+                            "resets all); categories not listed log at Info.";
+            loggingPreference(s, [levelName](LoggingSettings& settings, const Json& value, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {\"category\": \"level\"}";
+                    return false;
+                }
+                if (value.empty()) {
+                    settings.categoryLevels.clear();
+                    return true;
+                }
+                for (const auto& [category, level] : value.items()) {
+                    std::string name;
+                    if (!levelName(level, name, error)) {
+                        error = category + ": " + error;
+                        return false;
+                    }
+                    if (name == "info") settings.categoryLevels.erase(category);
+                    else settings.categoryLevels[category] = name;
+                }
+                return true;
+            }, [](const LoggingSettings& settings) {
+                Json map = Json::object();
+                for (const auto& [category, level] : settings.categoryLevels) map[category] = level;
+                return map;
+            });
+        }
+        {
+            Setting s;
+            s.key = "preferences.logging.file_level";
+            s.type = "enum";
+            s.values = {"trace", "debug", "info", "warn", "error", "fatal", "off"};
+            s.description = "Preferences > Logging: the lowest level written to editor.log.";
+            loggingPreference(s, [levelName](LoggingSettings& settings, const Json& value, std::string& error) {
+                return levelName(value, settings.fileLevel, error);
+            }, [](const LoggingSettings& settings) { return Json(settings.fileLevel); });
+        }
+        {
+            Setting s;
+            s.key = "preferences.logging.backtrace_on_error";
+            s.type = "bool";
+            s.description = "Preferences > Logging: errors record their call stack (editor.log).";
+            loggingPreference(s, [](LoggingSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.backtraceOnError, error);
+            }, [](const LoggingSettings& settings) { return Json(settings.backtraceOnError); });
+        }
+        {
+            Setting s;
+            s.key = "preferences.logging.show_source";
+            s.type = "bool";
+            s.description = "Preferences > Logging: file:line in the Console's details and editor.log.";
+            loggingPreference(s, [](LoggingSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.showSource, error);
+            }, [](const LoggingSettings& settings) { return Json(settings.showSource); });
+        }
         stringPreference("preferences.cmake_path", "External Tools: cmake executable (\"\" = from PATH).",
                          [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
         stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",

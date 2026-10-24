@@ -1,4 +1,4 @@
--- The web gate's S09 project: Lua's log and a Timer on the game clock (no pthreads in this build)
+-- S09's test project: Lua's log, a Timer on the game clock and a coroutine (main.cpp says where it runs)
 Log.warn("[gate] lua warning 1")
 local started = Engine.gameTime
 Timer.after(0.1, function()
