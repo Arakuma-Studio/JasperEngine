@@ -351,6 +351,7 @@ class Editor:
     create    start with a new empty project (`mcp --create <scratch>/project --name <name>`)
     url       attach to a running editor over Streamable HTTP instead of launching one
     token     bearer token for url mode
+    scratch_prefix  name prefix of the scratch directory (e.g. non-ASCII, to test such paths)
     xvfb      "editor"  (default) pass --headless with DISPLAY unset: the editor spawns its Xvfb
               "harness" the harness spawns `Xvfb -displayfd` and sets DISPLAY
               "none"    inherit the caller's DISPLAY (a visible editor on a desktop)
@@ -365,7 +366,8 @@ class Editor:
                  url: str | None = None, token: str | None = None, xvfb: str | None = None,
                  command: list[str] | None = None, fake: bool | None = None,
                  extra_args: list[str] | None = None, startup_timeout: float = 180.0,
-                 call_timeout: float = 300.0, keep: bool | None = None, label: str = ""):
+                 call_timeout: float = 300.0, keep: bool | None = None, label: str = "",
+                 scratch_prefix: str | None = None):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
             url = os.environ["JASPER_MCP_URL"]
         if fake is None:
@@ -384,6 +386,7 @@ class Editor:
         self.call_timeout = call_timeout
         self.keep = _env_flag("JASPER_KEEP_SCRATCH") if keep is None else keep
         self.label = label
+        self.scratch_prefix = scratch_prefix
 
         self.scratch: Scratch | None = None
         self.session: ClientSession | None = None
@@ -428,7 +431,8 @@ class Editor:
             http = await self._stack.enter_async_context(create_mcp_http_client(headers=headers))
             streams = await self._stack.enter_async_context(streamable_http_client(self.url, http_client=http))
         else:
-            self.scratch = Scratch.make(self.project_src, create=self.create)
+            extra = {"prefix": self.scratch_prefix} if self.scratch_prefix else {}
+            self.scratch = Scratch.make(self.project_src, create=self.create, **extra)
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":

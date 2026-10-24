@@ -36,6 +36,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "texture/Material.h"
 #include "texture/Texture.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/ScriptParser.h"
@@ -79,8 +80,12 @@ bool writeFile(const fs::path& path, const std::string& content) {
 }
 
 std::string projectRelative(Project* project, const fs::path& absolute) {
-    if (!project) return absolute.generic_string();
-    return ProjectChecks::projectRelative(project->getProjectPath(), absolute);
+    // UTF-8 for the agent (generic_string() is the ANSI code page on Windows)
+    if (!project) return FileUtils::pathToGenericUtf8(absolute);
+    const fs::path rel = absolute.lexically_normal().lexically_relative(project->getProjectPath().lexically_normal());
+    if (rel.empty() || *rel.begin() == "..") return FileUtils::pathToGenericUtf8(absolute);
+    if (rel == ".") return "";
+    return FileUtils::pathToGenericUtf8(rel);
 }
 
 std::string extensionOf(const fs::path& path) {
@@ -181,7 +186,7 @@ bool WriteFilesCmd::execute() {
             std::error_code ec;
             prev.existed = fs::is_regular_file(item.path, ec);
             if (prev.existed && !ProjectChecks::readFile(item.path, prev.content)) {
-                fail("can't read " + item.path.generic_string() + " (its content is kept for undo); nothing was written");
+                fail("can't read " + FileUtils::pathToGenericUtf8(item.path) + " (its content is kept for undo); nothing was written");
                 return false;
             }
             previous.push_back(std::move(prev));
@@ -194,7 +199,7 @@ bool WriteFilesCmd::execute() {
     auto rollback = [&](size_t touched, const std::string& why) {
         std::string unrestored;
         for (size_t j = touched; j-- > 0;) {
-            if (!restore(j)) unrestored += (unrestored.empty() ? "" : ", ") + items[j].path.generic_string();
+            if (!restore(j)) unrestored += (unrestored.empty() ? "" : ", ") + FileUtils::pathToGenericUtf8(items[j].path);
         }
         removeCreatedDirs();
         fail(why + (unrestored.empty() ? "; nothing was changed (the files written before it were put back)"
@@ -217,7 +222,8 @@ bool WriteFilesCmd::execute() {
                 std::error_code exists;
                 if (fs::is_directory(dir, exists)) createdDirs.push_back(dir);
             }
-            if (ec) return rollback(i, "can't create the directory " + parent.generic_string() + " for " + item.path.generic_string() + ": " + ec.message());
+            if (ec) return rollback(i, "can't create the directory " + FileUtils::pathToGenericUtf8(parent) + " for " +
+                                       FileUtils::pathToGenericUtf8(item.path) + ": " + ec.message());
         }
         errno = 0;
         if (!writeFile(item.path, item.content)) {
@@ -225,7 +231,7 @@ bool WriteFilesCmd::execute() {
             std::string reason = code ? std::strerror(code) : std::string("write failed");
             if (fs::is_directory(item.path, ec)) reason = "it is a directory";
             // the file itself may be half written: restored too
-            return rollback(i + 1, "can't write " + item.path.generic_string() + ": " + reason);
+            return rollback(i + 1, "can't write " + FileUtils::pathToGenericUtf8(item.path) + ": " + reason);
         }
     }
     if (afterChange) afterChange(paths());
@@ -242,7 +248,7 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
     for (const WriteFilesCmd::Item& item : items) {
         std::error_code ec;
         if (fs::is_directory(item.path, ec)) {
-            error = item.path.generic_string() + " is a directory.";
+            error = FileUtils::pathToGenericUtf8(item.path) + " is a directory.";
             return false;
         }
     }
@@ -307,7 +313,7 @@ void updateSnapshotEntries(Project* project, const std::vector<fs::path>& paths,
     for (const fs::path& path : paths) {
         const std::string rel = projectRelative(project, path);
         if (!seen.insert(rel).second) continue;
-        const bool inside = !rel.empty() && rel != path.generic_string();
+        const bool inside = !rel.empty() && rel != FileUtils::pathToGenericUtf8(path);
         std::error_code ec;
         if (fs::is_regular_file(path, ec)) {
             FileStamp stamp;
@@ -1011,7 +1017,7 @@ bool makeEntry(Project* project, const fs::path& file, const std::string& classN
             }
         }
         if (source.empty()) {
-            error = "No source file next to " + projectRelative(project, file) + " (expected " + file.stem().string() + ".cpp).";
+            error = "No source file next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".cpp).";
             return false;
         }
     } else if (Util::isSourceFile(file.string())) {
@@ -1025,7 +1031,7 @@ bool makeEntry(Project* project, const fs::path& file, const std::string& classN
             }
         }
         if (header.empty()) {
-            error = "No header next to " + projectRelative(project, file) + " (expected " + file.stem().string() + ".h).";
+            error = "No header next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".h).";
             return false;
         }
     } else {
@@ -1033,8 +1039,9 @@ bool makeEntry(Project* project, const fs::path& file, const std::string& classN
         return false;
     }
     entry.type = ScriptType::CPP;
-    entry.headerPath = projectRelative(project, header);
-    entry.path = projectRelative(project, source);
+    // Stored as the editor stores them (projectRelative is the agent's UTF-8)
+    entry.headerPath = ProjectChecks::projectRelative(project->getProjectPath(), header);
+    entry.path = ProjectChecks::projectRelative(project->getProjectPath(), source);
     std::string className = classNameArg;
     if (className.empty()) {
         if (auto found = ScriptParser::findScriptClassName(header)) className = *found;
@@ -1493,7 +1500,7 @@ void listScriptsTool(const CallPtr& call) {
         data["files"] = files;
         data["lua_dir"] = luaRootRelative(project);
         Json dirs = Json::array();
-        for (const fs::path& dir : project->getScriptDirs()) dirs.push_back(dir.generic_string());
+        for (const fs::path& dir : project->getScriptDirs()) dirs.push_back(FileUtils::pathToGenericUtf8(dir));
         data["script_dirs"] = dirs;
         text += " " + std::to_string(files.size()) + " script file(s) in the project.";
     }
@@ -1663,8 +1670,8 @@ void compileScriptsTool(const CallPtr& call) {
 
     Json scriptList = Json::array();
     for (const SceneScriptSource& script : plan.scripts) {
-        scriptList.push_back({{"class_name", script.className}, {"path", script.path.generic_string()},
-                              {"header_path", script.headerPath.generic_string()}});
+        scriptList.push_back({{"class_name", script.className}, {"path", FileUtils::pathToGenericUtf8(script.path)},
+                              {"header_path", FileUtils::pathToGenericUtf8(script.headerPath)}});
     }
 
     JobPtr job = ctx.jobs().create("compile_scripts", "Compile C++ scripts", JobBusy::ScriptCompile);
@@ -1739,7 +1746,7 @@ void codeEditorTool(const CallPtr& call) {
     auto status = [&]() {
         Json buffers = Json::array();
         for (const CodeEditor::BufferState& state : editor->getBufferStates()) {
-            buffers.push_back({{"path", state.path}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}});
+            buffers.push_back({{"path", FileUtils::pathToUtf8(fs::path(state.path))}, {"unsaved", state.modified}, {"cursor_line", state.cursorLine}});
         }
         return buffers;
     };

@@ -24,6 +24,7 @@
 #include "subsystem/UISystem.h"
 #include "object/ui/UIDocument.h"
 #include "util/Base64.h"
+#include "util/FileUtils.h"
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
@@ -281,10 +282,10 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
         std::ofstream file(target, std::ios::binary | std::ios::trunc);
         if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
-            job->fail("Could not write the PNG to " + target.generic_string() + ".");
+            job->fail("Could not write the PNG to " + FileUtils::pathToGenericUtf8(target) + ".");
             return;
         }
-        info["saved_to"] = target.generic_string();
+        info["saved_to"] = FileUtils::pathToGenericUtf8(target);
     }
 
     result.image.data = Base64::encode(png.data(), png.size());

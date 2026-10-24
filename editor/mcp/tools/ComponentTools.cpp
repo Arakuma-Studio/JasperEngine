@@ -25,6 +25,7 @@
 #include "registry/TagManager.h"
 #include "subsystem/MeshSystem.h"
 #include "util/EntityClipboard.h"
+#include "util/FileUtils.h"
 #include "util/Prefab.h"
 #include "window/dialog/ComponentAddDialog.h"
 
@@ -187,7 +188,7 @@ void getEntityTool(const CallPtr& call) {
         PrefabObjectRef ref;
         if (project->findPrefabObject(scene->id, entity, ref) && ref.instance) {
             Json prefab = {
-                {"path", project->normalizeToProjectRelative(ref.path).generic_string()},
+                {"path", FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(ref.path))},
                 {"instance_root", McpRefs::entityJson(scene, ref.instance->rootEntity)},
                 {"is_root", ref.isRoot}
             };

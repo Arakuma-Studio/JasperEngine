@@ -18,6 +18,7 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "util/FileUtils.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
 
@@ -305,7 +306,7 @@ void editorStatusTool(const CallPtr& call) {
         {"editor", {{"version", JASPERENGINE_EDITOR_VERSION}}},
         {"project", {
             {"name", project->getName()},
-            {"path", project->getProjectPath().generic_string()},
+            {"path", FileUtils::pathToGenericUtf8(project->getProjectPath())},
             {"temporary", project->isTempProject()},
             {"selected_scene_id", project->getSelectedSceneId()},
             {"start_scene_id", project->getStartSceneId()}
@@ -329,7 +330,7 @@ void editorStatusTool(const CallPtr& call) {
         }}
     };
 
-    std::string text = "Project \"" + project->getName() + "\" at " + project->getProjectPath().generic_string() +
+    std::string text = "Project \"" + project->getName() + "\" at " + FileUtils::pathToGenericUtf8(project->getProjectPath()) +
                        (project->isTempProject() ? " (temporary, never saved)" : "") + ". " +
                        std::to_string(scenes.size()) + " scene(s)";
     if (selected) text += ", selected: " + std::to_string(selected->id) + " \"" + selected->name + "\"";

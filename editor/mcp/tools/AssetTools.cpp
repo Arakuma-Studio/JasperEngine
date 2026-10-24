@@ -42,6 +42,7 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -651,7 +652,7 @@ Json materialUsers(Project* project, const std::string& rel) {
             MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
             if (!mesh) continue;
             for (unsigned int i = 0; i < mesh->numSubmeshes; i++) {
-                if (fs::path(mesh->submeshes[i].material.name).lexically_normal().generic_string() == rel) {
+                if (FileUtils::pathToGenericUtf8(fs::path(mesh->submeshes[i].material.name).lexically_normal()) == rel) {
                     users.push_back({{"scene", sceneProject->id}, {"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", i}});
                     if (users.size() >= 50) return users;
                 }
@@ -693,10 +694,10 @@ void listAssetsTool(const CallPtr& call) {
         const std::string rel = projectRelative(project, path);
         const std::string kind = isDir ? "folder" : assetType(path);
         if (!type.empty() && type != "any" && kind != type) return;
-        if (!query.empty() && lowerCase(path.filename().string()).find(query) == std::string::npos) return;
+        if (!query.empty() && lowerCase(FileUtils::pathToUtf8(path.filename())).find(query) == std::string::npos) return;
         if (!pattern.empty()) {
             const bool full = pattern.find('/') != std::string::npos;
-            if (!globMatch(pattern, full ? rel : path.filename().string())) return;
+            if (!globMatch(pattern, full ? rel : FileUtils::pathToUtf8(path.filename()))) return;
         }
         total++;
         if (entries.size() >= limit) return;
@@ -1917,7 +1918,7 @@ void forkShaderTool(const CallPtr& call) {
         call->ok(text + " Read the files and change only the shading math; your edits are compiled before your next "
                         "call (errors in external_changes), or check them now with check_shader.", data);
     };
-    const fs::path directory = fs::path(args.value("directory", ProjectUtils::defaultShaderForkDir().generic_string())).lexically_normal();
+    const fs::path directory = FileUtils::pathFromUtf8(args.value("directory", FileUtils::pathToGenericUtf8(ProjectUtils::defaultShaderForkDir()))).lexically_normal();
     if (directory != "." && !Util::isSafeRelativePath(directory)) {
         call->fail("directory must be project-relative.");
         return;
@@ -2618,7 +2619,7 @@ void placeholderArtTool(const CallPtr& call) {
         const std::string assets = projectRelative(project, project->getAssetsPath());
         call->fail("path is project-relative, like the texture paths the other tools take: \"" + rel +
                    "\" is outside the assets directory (\"" + assets + "\"), so no component could use it. Use \"" +
-                   projectRelative(project, project->getAssetsPath() / fs::path(rel)) + "\".");
+                   projectRelative(project, project->getAssetsPath() / FileUtils::pathFromUtf8(rel)) + "\".");
         return;
     }
     std::error_code ec;
@@ -2777,7 +2778,7 @@ void searchFilesTool(const CallPtr& call) {
     fs::path scope = root;
     std::string fileGlob = glob;
     if (!glob.empty()) {
-        const fs::path g(glob);
+        const fs::path g = FileUtils::pathFromUtf8(glob);
         if (g.is_absolute() || g.has_root_name() || g.has_root_directory()) {
             call->fail("glob must be relative to the project (no absolute paths).");
             return;
@@ -2794,7 +2795,7 @@ void searchFilesTool(const CallPtr& call) {
                 scope = target;
                 fileGlob.clear();
             } else {
-                fileGlob = g.lexically_normal().generic_string();
+                fileGlob = FileUtils::pathToGenericUtf8(g.lexically_normal());
             }
         }
     }
@@ -2821,13 +2822,13 @@ void searchFilesTool(const CallPtr& call) {
     auto clip = [&](const std::string& text) { return text.size() > maxText ? text.substr(0, maxText) + "..." : text; };
 
     std::vector<fs::path> files;
-    const fs::path scopeRel = fs::path(projectRelative(project, scope));
+    const fs::path scopeRel = FileUtils::pathFromUtf8(projectRelative(project, scope));
     const bool scopeSkipped = scope != root && (ProjectChecks::isSkippedDir(scope) || ProjectChecks::isInSkippedDir(scopeRel));
     if (!scopeSkipped && insideProject(scope) && fs::is_directory(scope, ec)) {
         for (fs::recursive_directory_iterator it(scope, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
              it.increment(ec)) {
             const fs::path& path = it->path();
-            const std::string name = path.filename().string();
+            const std::string name = FileUtils::pathToUtf8(path.filename());
             if (it->is_directory(ec)) {
                 if (ProjectChecks::isSkippedDir(path)) it.disable_recursion_pending();
                 continue;
