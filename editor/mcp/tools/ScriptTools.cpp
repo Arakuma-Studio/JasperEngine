@@ -29,6 +29,7 @@
 #include "component/ScriptComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "htmlui/HtmlUIDependencies.h"
+#include "animation/AnimationClipDocument.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pool/TextureDataPool.h"
 #include "pool/TexturePool.h"
@@ -113,7 +114,7 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
@@ -494,6 +495,76 @@ Json syncHtmlUi(McpContext& ctx, const std::vector<fs::path>& changed) {
     return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
 }
 
+namespace {
+
+// At most this many load warnings of one file become problems (then a count)
+constexpr size_t ANIMATION_WARNINGS_MAX = 8;
+
+// 1-based line of a JSON syntax error in `text`, 0 when it parses
+int jsonErrorLine(const std::string& text) {
+    try {
+        const Json parsed = Json::parse(text);
+        (void)parsed;
+    } catch (const Json::parse_error& e) {
+        int line = 1;
+        for (size_t i = 0; i < e.byte && i < text.size(); i++) {
+            if (text[i] == '\n') line++;
+        }
+        return line;
+    } catch (...) {
+    }
+    return 0;
+}
+
+// The load problems of a changed .anim or .poseanim (spec 4.1: {path, line, message}): what
+// fails to load, then its warnings, the same reading the documents and the players do
+void addAnimationFileProblems(Project* project, const fs::path& path, Json& problems) {
+    const std::string pathText = path.string();
+    const bool clip = Util::isAnimationClipFile(pathText);
+    if (!clip && !Util::isPoseAnimationFile(pathText)) return;
+    std::error_code ec;
+    std::string text;
+    if (!fs::is_regular_file(path, ec) || !ProjectChecks::readFile(path, text)) return;
+    const std::string rel = projectRelative(project, path);
+
+    std::vector<std::string> warnings;
+    if (clip) {
+        const anim::ClipParseResult parsed = anim::parseClip(text);
+        if (!parsed.ok()) {
+            Json problem = {{"path", rel}, {"message", "Not a valid animation clip: " + parsed.error.message +
+                                                       " (an open clip keeps its last valid content)."}};
+            if (parsed.error.line > 0) {
+                problem["line"] = parsed.error.line;
+                problem["col"] = parsed.error.column;
+            }
+            problems.push_back(problem);
+            return;
+        }
+        for (const ClipWarning& warning : parsed.warnings) {
+            warnings.push_back(warning.path.empty() ? warning.message : warning.path + ": " + warning.message);
+        }
+    } else {
+        pose::PoseAnimationData data;
+        std::string error;
+        if (!pose::parsePoseAnimation(text, data, warnings, &error)) {
+            Json problem = {{"path", rel}, {"message", "Not a valid pose animation: " + error +
+                                                       " (an open pose animation keeps its last valid content)."}};
+            if (const int line = jsonErrorLine(text)) problem["line"] = line;
+            problems.push_back(problem);
+            return;
+        }
+    }
+    for (size_t i = 0; i < warnings.size() && i < ANIMATION_WARNINGS_MAX; i++) {
+        problems.push_back({{"path", rel}, {"severity", "warning"}, {"message", warnings[i]}});
+    }
+    if (warnings.size() > ANIMATION_WARNINGS_MAX) {
+        problems.push_back({{"path", rel}, {"severity", "warning"},
+                            {"message", "(+" + std::to_string(warnings.size() - ANIMATION_WARNINGS_MAX) + " more warnings)"}});
+    }
+}
+
+}
+
 Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool full) {
     Project* project = ctx.project();
     Json problems = Json::array();
@@ -550,9 +621,15 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     }
     bool firstFull = full && !notes.empty();
 
-    // Pose animation documents (editor/pose) of changed .poseanim files reload
-    PoseAnimationDocument::filesChanged(std::vector<fs::path>(changed.begin(), changed.end()));
+    // Pose animation documents (editor/pose) of changed .poseanim files reload; so do clip
+    // documents (a changed model: its sub-clips), and AnimationClipPool drops the clips so the
+    // Animation Players using them reload (edit preview and play alike)
+    const std::vector<fs::path> changedPaths(changed.begin(), changed.end());
+    PoseAnimationDocument::filesChanged(changedPaths);
     if (full) PoseAnimationDocument::checkDiskChanges();
+    AnimationClipDocument::filesChanged(changedPaths, project);
+    if (full) AnimationClipDocument::checkDiskChanges();
+    for (const fs::path& path : changed) addAnimationFileProblems(project, path, problems);
 
     // Code editor buffers
     Json codeEditor = {{"reloaded", Json::array()}, {"conflicts", Json::array()}};

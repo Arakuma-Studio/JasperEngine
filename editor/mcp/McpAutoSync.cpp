@@ -8,6 +8,7 @@
 #include "tools/W4Shared.h"
 
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
@@ -155,8 +156,9 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
-    // pose animations and humanoid sidecars: their open documents reload (editor/pose)
-    return ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid";
+    // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
+    // their documents reload, AnimationClipPool drops them and their players reload
+    return ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path);
 }
 
 bool McpAutoSync::isUiCodeFile(const std::string& path) {
@@ -310,6 +312,17 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
 }
 
 void McpAutoSync::prepare(McpContext& ctx) {
+    // clip documents' own writes (edits, their undo and redo) go through the same sync as the
+    // tools' writes, so they are not reported as outside changes (installPoseSyncHook does this
+    // for pose documents)
+    static McpContext* clipHookContext = nullptr;
+    if (clipHookContext != &ctx) {
+        clipHookContext = &ctx;
+        McpContext* target = &ctx;
+        AnimationClipDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
+            w4::syncFiles(*target, changed, false);
+        });
+    }
     ensureRoot(ctx);
 }
 
@@ -619,8 +632,10 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         for (const auto& [rel, pending] : merged) {
             const fs::path path = (root / fs::u8path(rel)).lexically_normal();
             // a project UI effect's .frag (or one that is gone) and the includes effects may read
-            // reload their documents now too (phase 5)
+            // reload their documents now too (phase 5); so do clip and pose animation documents
+            // (players see a clip's new pool generation; their problems are reported now)
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
+                Util::isAnimationClipFile(rel) || Util::isPoseAnimationFile(rel) ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
                 continue;
