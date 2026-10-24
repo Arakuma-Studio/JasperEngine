@@ -117,7 +117,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
-`MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
+`KeyframeTracks`, `MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
 An unknown name falls back to `EntityHandle` (with a warning in the log).
 
 The wrapper only wraps the entity; it does not check the entity really has that component.
@@ -607,8 +607,8 @@ EntityHandle
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
  |- AudioSource, Rigidbody2D, Rigidbody, Fog, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
-             ParticleSystem, SpriteAnimation, Animation, MorphTracks, RotateTracks,
-             ScaleTracks, TranslateTracks
+             ParticleSystem, SpriteAnimation, Animation,
+             KeyframeTracks (MorphTracks, RotateTracks, ScaleTracks, TranslateTracks)
 Joint2D, Joint3D (standalone classes)
 ```
 
@@ -903,17 +903,21 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 
 ### 4.15 Actions and Tweens
 
-Action (EntityHandle): `start()`, `pause()`, `stop()`, `isRunning()`, `isPaused()`,
+Action (EntityHandle): `start()`, `pause()`, `stop()`, `restart()` (stops a running or paused
+action and starts it from the beginning, in the same update), `isRunning()`, `isPaused()`,
 `isStopped()`, `getTimeCount()`, `getActionComponent()`; rw `target` (Entity),
-`ownedTarget`, `speed`, `weight`; `setTarget(gameObjectOrEntity)`.
+`ownedTarget`, `speed` (scales the action's own time: 2 plays twice as fast, a negative speed
+plays back to the start and holds there), `weight`; `setTarget(gameObjectOrEntity)`.
+`stop()` also cancels a `start()` asked for earlier in the same frame.
 
-Tween (Action): rw `duration`, `loop`; `setFunctionType(EaseType.*)`, `getTime()`,
-`getValue()`, `getTweenComponent()`.
+Tween (Action): rw `duration`, `loop`, `pingPong` (forward and then back, in twice the
+duration); `setFunctionType(EaseType.*)`, `getTime()`, `getValue()`, `getTweenComponent()`.
+A non-looping tween stops on the update it reaches its end, after applying the end value.
 
 | Tween | `setAction(...)` (pass every argument; C++ defaults do not apply) |
 |---|---|
 | `PositionTween` | `(startV3, endV3, duration, loop)` |
-| `RotationTween` | `(startQuat, endQuat, duration, loop)` |
+| `RotationTween` | `(startQuat, endQuat, duration, loop)`; `setSpinAction(startQuat, axisV3, angle, duration, loop)` turns by `angle` (any size, so full turns) around `axis` |
 | `ScaleTween` | `(startV3, endV3, duration, loop)` |
 | `ColorTween` | `(startV3, endV3, duration, loop)` or `(startV4, endV4, duration, loop)` |
 | `AlphaTween` | `(startAlpha, endAlpha, duration, loop)` |
@@ -929,7 +933,11 @@ tw:start()
 Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,
 `getActionFrame(i)` (partial). Keyframe tracks: `TranslateTracks`, `RotateTracks`,
-`ScaleTracks`, `MorphTracks` with `setTimes`, `setValues`, `setEasings`, `setEasing`.
+`ScaleTracks`, `MorphTracks` (all `KeyframeTracks`) with `setTimes`, `setValues`, `setEasings`,
+`setEasing`; rw `loop` (starts over after the last key) and `relative` (position, rotation
+and scale tracks: values are offsets from the target's pose when the track starts: position
+plus value, rotation times value, scale times value; an anchored UI element moves by its
+RectTransform position offset).
 
 `Ease(EaseType.X)` / `Ease.linear(t)`, `Ease.easeInQuad(t)`, `Ease.easeOutQuad(t)`,
 `Ease.easeInOutQuad(t)`, ... `Ease.easeOutBounce(t)` (static helpers, t in 0..1).

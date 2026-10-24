@@ -1092,6 +1092,9 @@
 		71E54506284D5BB700C68FAB /* MorphTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544F9284D5BB700C68FAB /* MorphTracks.cpp */; };
 		71E54507284D5BB700C68FAB /* MorphTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544F9284D5BB700C68FAB /* MorphTracks.cpp */; };
 		71E54508284D5BB700C68FAB /* MorphTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E544FA284D5BB700C68FAB /* MorphTracks.h */; };
+		17C4A1C2310A0001008C19EC /* KeyframeTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 17C4A1C0310A0001008C19EC /* KeyframeTracks.h */; };
+		17C4A1C3310A0001008C19EC /* KeyframeTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */; };
+		17C4A1C4310A0001008C19EC /* KeyframeTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */; };
 		71E54509284D5BB700C68FAB /* RotateTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544FB284D5BB700C68FAB /* RotateTracks.cpp */; };
 		71E5450A284D5BB700C68FAB /* RotateTracks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71E544FB284D5BB700C68FAB /* RotateTracks.cpp */; };
 		71E5450B284D5BB700C68FAB /* RotateTracks.h in Headers */ = {isa = PBXBuildFile; fileRef = 71E544FC284D5BB700C68FAB /* RotateTracks.h */; };
@@ -5002,6 +5005,8 @@
 		71E544F8284D5BB700C68FAB /* TranslateTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TranslateTracks.h; sourceTree = "<group>"; };
 		71E544F9284D5BB700C68FAB /* MorphTracks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MorphTracks.cpp; sourceTree = "<group>"; };
 		71E544FA284D5BB700C68FAB /* MorphTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MorphTracks.h; sourceTree = "<group>"; };
+		17C4A1C0310A0001008C19EC /* KeyframeTracks.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyframeTracks.h; sourceTree = "<group>"; };
+		17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = KeyframeTracks.cpp; sourceTree = "<group>"; };
 		71E544FB284D5BB700C68FAB /* RotateTracks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RotateTracks.cpp; sourceTree = "<group>"; };
 		71E544FC284D5BB700C68FAB /* RotateTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RotateTracks.h; sourceTree = "<group>"; };
 		71E544FD284D5BB700C68FAB /* ScaleTracks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ScaleTracks.h; sourceTree = "<group>"; };
@@ -9073,6 +9078,8 @@
 				71E544FB284D5BB700C68FAB /* RotateTracks.cpp */,
 				71E544FC284D5BB700C68FAB /* RotateTracks.h */,
 				71E544FD284D5BB700C68FAB /* ScaleTracks.h */,
+				17C4A1C0310A0001008C19EC /* KeyframeTracks.h */,
+				17C4A1C1310A0001008C19EC /* KeyframeTracks.cpp */,
 			);
 			path = keyframe;
 			sourceTree = "<group>";
@@ -11133,6 +11140,7 @@
 				175DCE6C30255343008C19EC /* DefaultFontArabic.h in Headers */,
 				175DCCBC300FA22F008C19EC /* SceneSettings.h in Headers */,
 				71E54508284D5BB700C68FAB /* MorphTracks.h in Headers */,
+				17C4A1C2310A0001008C19EC /* KeyframeTracks.h in Headers */,
 				7105CAA82AD61BD5007C91BA /* JoltPhysicsAux.h in Headers */,
 				71ABBD10277A313C001CE3AF /* AlphaTween.h in Headers */,
 				71651FF12AA804B4008D9BF5 /* Contact2D.h in Headers */,
@@ -13178,6 +13186,7 @@
 				71ED64C628B45E0B005D2D96 /* Angle.cpp in Sources */,
 				71CC83AC26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54507284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
+				17C4A1C4310A0001008C19EC /* KeyframeTracks.cpp in Sources */,
 				1789660E2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,
 				7DC000B02E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */,
 				7DC000B32E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */,
@@ -13547,6 +13556,7 @@
 				71ED64C528B45E0B005D2D96 /* Angle.cpp in Sources */,
 				71CC83AB26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54506284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
+				17C4A1C3310A0001008C19EC /* KeyframeTracks.cpp in Sources */,
 				1789660C2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,
 				7DC000B12E7A0100C91BA0C0 /* RuntimeShaderCompiler.cpp in Sources */,
 				7DC000B42E7A0100C91BA0C0 /* ShaderVariantCollection.cpp in Sources */,

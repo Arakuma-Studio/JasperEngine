@@ -51,7 +51,8 @@ void SpriteAnimation::setAnimation(int startFrame, int endFrame, int interval, b
     std::vector<int> frames;
     std::vector<int> framesTime;
 
-    if (startFrame > 0 || endFrame > 0) {
+    // a range of only frame 0 is a valid single frame animation
+    if (startFrame >= 0 && endFrame >= startFrame) {
         for (int i=startFrame; i<=endFrame; i++){
             frames.push_back(i);
             framesTime.push_back(interval);

@@ -406,6 +406,49 @@ async def test_keyframe_animation(ed: Editor):
     ed.check_in("[x, y, z]", err)
 
 
+async def test_relative_looping_tracks_and_spin(ed: Editor):
+    ed.require_tools("edit_animation", "get_animation", "preview_animation", "create_entity")
+    sid = await new_scene(ed, "3d", "World")
+    made = await ed.call("create_entity", name="Bobber", type="cube", position=[4, 1, 0])
+    box = made["entity_id"]
+    anim = await ed.call("edit_animation", scene=sid, target=box, name="Bob", tracks=[
+        {"channel": "position", "relative": True, "loop": True,
+         "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 2, 0]}]},
+    ], tweens=[{"type": "rotation", "spin": True, "axis": [0, 1, 0], "angle": 360, "duration": 1, "ping_pong": True}])
+    track, spin = anim["actions"][0], anim["actions"][1]
+    ed.check(track["relative"] and track["loop"], f"track flags: {track}")
+    ed.check_eq(spin["kind"], "rotation_tween")
+    ed.check(spin["tween"]["spin"] and spin["tween"]["ping_pong"], f"tween flags: {spin}")
+    ed.check(approx(spin["tween"]["angle"], 360) and spin["tween"]["axis"] == [0, 1, 0], f"spin: {spin}")
+    ed.check(approx(spin["effective_duration"], 2.0), f"ping-pong takes twice the duration: {spin}")
+    bob = anim["animation"]
+
+    # relative: offsets from where the box is, so it keeps x 4 and rises from y 1
+    seek = await ed.call("preview_animation", scene=sid, animation=bob["id"], action="seek", time=1.0)
+    pos = seek["target_transform"]["position"]
+    ed.check(approx(pos[0], 4.0) and approx(pos[1], 3.0, 0.05), f"relative track at 1s: {seek}")
+    # a full turn of spin is turned about 264 degrees at 0.75 s (a tween to the same end rotation would not turn)
+    seek = await ed.call("preview_animation", scene=sid, animation=bob["id"], action="seek", time=0.75)
+    quat = seek["target_transform"]["rotation"]["quat"]
+    ed.check(abs(quat[1]) > 0.5, f"spinning around y at 0.75s: {seek}")
+    stop = await ed.call("preview_animation", scene=sid, animation=bob["id"], action="stop")
+    ed.check(approx(stop["target_transform"]["position"][1], 1.0, 0.01), f"stop restores the authored pose: {stop}")
+
+    # flags on an existing track; morph tracks cannot be relative; a spin needs no `to`
+    edited = await ed.call("edit_animation", scene=sid, animation=bob["id"], tracks=[
+        {"channel": "position", "mode": "merge", "relative": False, "keys": [{"time": 0.5, "value": [0, 1, 0]}]}])
+    ed.check(not edited["actions"][0]["relative"] and edited["actions"][0]["loop"], f"relative off, loop kept: {edited['actions'][0]}")
+    err = await ed.call("edit_animation", scene=sid, animation=bob["id"], tracks=[
+        {"channel": "morph", "relative": True, "keys": [{"time": 0, "value": [0]}]}], expect_error=True)
+    ed.check_in("relative", err)
+    err = await ed.call("edit_animation", scene=sid, animation=bob["id"], tweens=[{"type": "scale", "spin": True, "to": [1, 1, 1]}],
+                        expect_error=True)
+    ed.check_in("spin", err)
+    await ed.call("undo", scene=sid, steps=2)
+    ed.check(not await exists(ed, sid, bob["id"]), "undo removes the animation")
+    await ed.call("delete_entities", scene=sid, entity=box)
+
+
 async def test_particles(ed: Editor):
     ed.require_tools("create_particles")
     sid = await new_scene(ed, "3d", "World")

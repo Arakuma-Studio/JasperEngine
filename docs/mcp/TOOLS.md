@@ -1982,7 +1982,7 @@ Build a UI tree from one root node {type, name, layout, text, font_size, font, t
 
 *Edit Animation*
 
-Author an Animation timeline (seconds); without animation, creates one as a child of target. tracks: keys {time, value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys) or morph weights; ease to the next key: linear, step, <quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges. tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: indices from before the call.
+Author an Animation timeline (seconds); without animation, creates one as a child of target. tracks: keys {time, value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys, or a spin tween) or morph weights; ease to the next key: linear, step, <quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges; relative: offsets from the target's pose when the track starts (anchored UI moves by its offset). tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: indices from before the call.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -1999,8 +1999,8 @@ Author an Animation timeline (seconds); without animation, creates one as a chil
 | `set_frames` | array of object {duration, index, lane, start_time} |  |  |
 | `speed` | number |  |  |
 | `target` | integer or string |  | Required to create. |
-| `tracks` | array of object {channel, keys, mode, name, start_time, target} |  |  |
-| `tweens` | array of object {duration, ease, from, loop, name, start_time, target, to, type} |  |  |
+| `tracks` | array of object {channel, keys, loop, mode, name, relative, start_time, target} |  |  |
+| `tweens` | array of object {angle, axis, duration, ease, from, loop, name, ping_pong, spin, start_time, target, to, type} |  |  |
 
 
 ### `edit_colliders`

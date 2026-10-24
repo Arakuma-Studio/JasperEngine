@@ -2372,6 +2372,7 @@ std::string editor::Factory::createTweenComponent(int indentSpaces, EntityRegist
     code << ind << "TweenComponent timedcomp;\n";
     code << ind << "timedcomp.duration = " << formatFloat(timed.duration) << ";\n";
     code << ind << "timedcomp.loop = " << formatBool(timed.loop) << ";\n";
+    code << ind << "timedcomp.pingPong = " << formatBool(timed.pingPong) << ";\n";
     code << ind << "timedcomp.function = " << formatEase(timed.function) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "TweenComponent", "timedcomp", assignExisting);
     return code.str();
@@ -2398,6 +2399,9 @@ std::string editor::Factory::createRotationTweenComponent(int indentSpaces, Enti
     code << ind << "rotcomp.endRotation = " << formatQuaternion(rotAction.endRotation) << ";\n";
     code << ind << "rotcomp.startRotation = " << formatQuaternion(rotAction.startRotation) << ";\n";
     code << ind << "rotcomp.shortestPath = " << formatBool(rotAction.shortestPath) << ";\n";
+    code << ind << "rotcomp.spin = " << formatBool(rotAction.spin) << ";\n";
+    code << ind << "rotcomp.axis = " << formatVector3(rotAction.axis) << ";\n";
+    code << ind << "rotcomp.angle = " << formatFloat(rotAction.angle) << ";\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "RotationTweenComponent", "rotcomp", assignExisting);
     return code.str();
 }
@@ -2571,6 +2575,8 @@ std::string editor::Factory::createKeyframeTracksComponent(int indentSpaces, Ent
     code << ind << "KeyframeTracksComponent kfcomp;\n";
     code << ind << "kfcomp.index = " << formatInt(kf.index) << ";\n";
     code << ind << "kfcomp.interpolation = " << formatFloat(kf.interpolation) << ";\n";
+    code << ind << "kfcomp.loop = " << formatBool(kf.loop) << ";\n";
+    code << ind << "kfcomp.relative = " << formatBool(kf.relative) << ";\n";
     if (!kf.times.empty()) {
         code << ind << "kfcomp.times = {";
         for (size_t i = 0; i < kf.times.size(); i++) {
