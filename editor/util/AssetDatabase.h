@@ -29,6 +29,8 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <memory>
+#include "jobs/SerialQueue.h"
 #include <unordered_map>
 #include <vector>
 
@@ -249,16 +251,18 @@ namespace jasperengine::editor {
         std::vector<RedirectConflict> conflicts;
 
         // background content hashing
-        std::thread hashThread;
-        std::mutex hashMutex;
-        std::condition_variable hashWake;
-        std::condition_variable hashIdle;
-        std::vector<std::string> hashQueue;  // keys
-        bool hashStop = false;
-        bool hashBusy = false;
-        bool hashingEnabled = true;
-        // a cache save asked for: the background thread writes it when idle (close() too)
-        bool cacheDirty = false;
+        // background content hashes and cache writes: one S06 strand (Background lane, FIFO,
+        // one job at a time on the pool's workers); a save asked for runs after the hashes
+        // queued before it
+        std::unique_ptr<jobs::SerialQueue> hashStrand;
+        std::mutex strandMutex;                  // creating / dropping the strand
+        std::atomic<bool> hashStop{false};
+        std::atomic<bool> hashingEnabled{true};
+        std::atomic<bool> savePending{false};
+        std::atomic<bool> cacheDirty{false};
+        jobs::SerialQueue& strand();
+        void hashOne(const std::string& relative);
+        void saveCacheInBackground();
 
         std::filesystem::path cacheDir() const;
         std::filesystem::path cacheFile() const;
@@ -309,7 +313,6 @@ namespace jasperengine::editor {
         Entry identify(const std::string& relative, AssetType type, const std::string& preferredGuid);
 
         void queueHash(const std::string& relative);
-        void hashWorker();
         void stopHashing();
     };
 

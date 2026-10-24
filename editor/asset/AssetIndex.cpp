@@ -285,14 +285,21 @@ void AssetIndex::open(AssetDatabase* db, const fs::path& path, const Roots& proj
         stopBuild = false;
     }
     loadCache();
-    builder = std::thread([this] { build(); });
+    buildCancel = jobs::CancelToken();
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.name = "asset-index-build";
+    options.cancel = &buildCancel;
+    buildTask = jobs::submit([this] { build(); }, options);
 }
 
 void AssetIndex::close() {
     stopBuild = true;
-    if (builder.joinable()) {
-        builder.join();
-    }
+    buildCancel.cancel();
+    // a build not started never runs; a running one sees stopBuild (no lock held: it takes ours)
+    buildTask.cancel();
+    buildTask.wait();
+    buildTask = jobs::Task<void>();
     std::lock_guard<std::mutex> lock(mutex);
     database = nullptr;
     projectPath.clear();
@@ -314,8 +321,9 @@ bool AssetIndex::isReady() const {
 }
 
 void AssetIndex::waitUntilReady() {
-    std::unique_lock<std::mutex> lock(mutex);
-    readyChanged.wait(lock, [this] { return ready.load() || database == nullptr; });
+    // the build job (a wait runs it here when no worker has started it: no lock is held)
+    jobs::Task<void> task = buildTask;
+    task.wait();
 }
 
 void AssetIndex::setOverlayProvider(OverlayProvider provider) {
@@ -398,10 +406,15 @@ void AssetIndex::build() {
         if (isReferrerType(info.type, info.path)) candidates.push_back(info);
     });
 
-    std::unordered_map<Guid, Referrer> fresh;
-    for (const AssetDatabase::AssetInfo& info : candidates) {
-        if (stopBuild) return;
-        Referrer referrer;
+    // the referrers parsed in parallel (R22): each unit reads one file; the cache answers for
+    // the unchanged ones
+    std::vector<Referrer> parsed(candidates.size());
+    const std::function<bool()> stop = [this] { return stopBuild.load() || jobs::cancelRequested(); };
+    jobs::ParallelForOptions parallel;
+    parallel.lane = jobs::Lane::Background;
+    parallel.stop = &stop;
+    const bool complete = jobs::parallelFor(candidates.size(), [&](size_t i) {
+        const AssetDatabase::AssetInfo& info = candidates[i];
         uint64_t size = 0;
         int64_t time = 0;
         statFile(projectPath / info.path, size, time);
@@ -409,12 +422,18 @@ void AssetIndex::build() {
             std::lock_guard<std::mutex> lock(mutex);
             auto cached = referrers.find(info.guid);
             if (cached != referrers.end() && cached->second.path == info.path && cached->second.size == size && cached->second.writeTime == time) {
-                fresh[info.guid] = cached->second;
-                continue;
+                parsed[i] = cached->second;
+                return true;
             }
         }
-        readReferrer(info, referrer);
-        fresh[info.guid] = std::move(referrer);
+        readReferrer(info, parsed[i]);
+        return true;
+    }, parallel);
+    if (!complete || stopBuild) return;
+    std::unordered_map<Guid, Referrer> fresh;
+    fresh.reserve(candidates.size() + 1);
+    for (size_t i = 0; i < candidates.size(); i++) {
+        fresh[candidates[i].guid] = std::move(parsed[i]);
     }
     // project.yaml
     {

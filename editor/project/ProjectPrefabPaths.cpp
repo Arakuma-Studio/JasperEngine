@@ -139,9 +139,9 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
 }
 
 void editor::Project::waitForAssetScan() {
-    if (assetScan.valid()) {
+    if (assetScan.isValid()) {
         assetScan.wait();
-        assetScan = std::future<AssetDatabase::DiskScan>();
+        assetScan = jobs::Task<AssetDatabase::DiskScan>();
     }
 }
 
@@ -157,13 +157,17 @@ void editor::Project::refreshAssetDatabase(bool force) {
         waitForAssetScan();
         lastAssetRefreshTime = now;
         found = assetDatabase.refresh();
-    } else if (assetScan.valid()) {
-        // the poll (R23): the walk runs on a background thread, its result is applied here
-        if (assetScan.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+    } else if (assetScan.isValid()) {
+        // the poll (R23): the walk runs as a Background job, its result is applied here
+        if (!assetScan.isReady()) {
             return;
         }
-        const AssetDatabase::DiskScan scan = assetScan.get();
-        found = assetDatabase.refresh(scan);
+        jobs::Task<AssetDatabase::DiskScan> done = std::move(assetScan);
+        assetScan = jobs::Task<AssetDatabase::DiskScan>();
+        if (done.status() != jobs::TaskStatus::Completed) {
+            return;   // cancelled (shutdown): the next poll looks again
+        }
+        found = assetDatabase.refresh(done.get());
     } else {
         // every 2 s, and never busier than a fifth of the time (a large project's walk is long)
         const auto interval = std::max<std::chrono::steady_clock::duration>(std::chrono::seconds(2), lastAssetScanDuration * 5);
@@ -171,12 +175,15 @@ void editor::Project::refreshAssetDatabase(bool force) {
             lastAssetRefreshTime = now;
             const AssetDatabase* database = &assetDatabase;
             std::chrono::steady_clock::duration* duration = &lastAssetScanDuration;
-            assetScan = std::async(std::launch::async, [database, duration] {
+            jobs::SubmitOptions options;
+            options.lane = jobs::Lane::Background;
+            options.name = "asset-poll-walk";
+            assetScan = jobs::submit([database, duration] {
                 const auto start = std::chrono::steady_clock::now();
                 AssetDatabase::DiskScan scan = database->scanDisk();
-                *duration = std::chrono::steady_clock::now() - start;   // read after get()
+                *duration = std::chrono::steady_clock::now() - start;   // read after the task is ready
                 return scan;
-            });
+            }, options);
         }
         if (pendingAssetChanges.empty()) {
             return;

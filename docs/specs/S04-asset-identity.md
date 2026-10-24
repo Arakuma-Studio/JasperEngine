@@ -652,18 +652,16 @@ Recorded by the implementer; each is the closest correct alternative to the text
     `ProjectBuild.cmake` and `compile_commands.json` are not assets, and neither are hidden
     files (S03's temporaries).
 18. **The poll (R23).** Until S05's watcher feeds `refresh()`, the editor polls every 2 s (and
-    never more than a fifth of the time): `AssetDatabase::scanDisk()` walks and stats on a
-    background thread, `refresh(scan)` applies it on the main thread and drops a scan older
+    never more than a fifth of the time): `AssetDatabase::scanDisk()` walks and stats in an
+    S06 Background job, `refresh(scan)` applies it on the main thread and drops a scan older
     than the database's last change. Tools that answer from the database
     (`resolve_asset`, `find_references`...) refresh first, so files an agent changed with its
     own tools count at once. A save updates its entry and its edges in place; the index cache
-    is written by the background thread (and on close), not by each save.
+    is written by the database's Background strand (`jobs::SerialQueue`, after the content
+    hashes queued before it, and on close), not by each save. The index build is a Background
+    job whose referrer parse is a `jobs::parallelFor` (R22).
 19. **First open of a project written before GUIDs** writes one meta per asset. Metas that hold
     only what their path derives (legacy GUID, derived sub-assets) skip the sync, since a crash
     rewrites them identically; it is still a write per asset (about 5 s for 25,000 assets on
     the build server, 1 s to open it again), which R22's 1 s identity budget (measured with
     metas present) does not cover.
-20. **Background work without S06.** The index build, the poll's walk, the content hashes and
-    the cache writes run on threads of their own (`std::thread`, `std::async`): S06's job
-    system landed on `oe-port` at the end of this work. Moving them onto its background lane
-    (and the YAML parse of the index build onto its parallel jobs, R22) is a follow-up.

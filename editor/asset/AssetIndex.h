@@ -14,6 +14,7 @@
 #include "asset/AssetTypes.h"
 #include "asset/DepEdge.h"
 #include "util/AssetDatabase.h"
+#include "jobs/JobSystem.h"
 
 #include <atomic>
 #include <condition_variable>
@@ -101,7 +102,9 @@ namespace jasperengine::editor {
         std::atomic<bool> ready{false};
         std::atomic<uint64_t> version{0};
 
-        std::thread builder;
+        // the full build: an S06 Background job (its parse a parallelFor), cancelled by close()
+        jobs::Task<void> buildTask;
+        jobs::CancelToken buildCancel;
         std::atomic<bool> stopBuild{false};
         std::condition_variable readyChanged;
 

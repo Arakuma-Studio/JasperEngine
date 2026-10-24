@@ -1219,12 +1219,7 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
 void editor::AssetDatabase::close() {
     stopHashing();
     std::lock_guard<std::recursive_mutex> lock(mutex);
-    bool dirty = false;
-    {
-        std::lock_guard<std::mutex> hashLock(hashMutex);
-        dirty = cacheDirty;
-        cacheDirty = false;
-    }
+    const bool dirty = cacheDirty.exchange(false);
     if (dirty && !projectPath.empty()) {
         saveCache();
     }
@@ -1950,120 +1945,103 @@ void editor::AssetDatabase::registerAsset(const fs::path& path, const std::strin
 // ==================================================================== content hashes
 
 void editor::AssetDatabase::setBackgroundHashing(bool enabled) {
-    std::lock_guard<std::mutex> lock(hashMutex);
     hashingEnabled = enabled;
 }
 
-void editor::AssetDatabase::requestCacheSave() {
-    {
-        std::lock_guard<std::mutex> lock(hashMutex);
-        if (hashingEnabled) {
-            cacheDirty = true;
-            if (!hashThread.joinable()) {
-                hashStop = false;
-                hashThread = std::thread([this] { hashWorker(); });
-            }
-            hashWake.notify_one();
-            return;
-        }
+jobs::SerialQueue& editor::AssetDatabase::strand() {
+    std::lock_guard<std::mutex> lock(strandMutex);
+    if (!hashStrand) {
+        hashStrand = std::make_unique<jobs::SerialQueue>("asset-hash", jobs::Lane::Background);
     }
-    saveCache();
+    return *hashStrand;
+}
+
+void editor::AssetDatabase::requestCacheSave() {
+    if (!hashingEnabled) {
+        saveCache();
+        return;
+    }
+    cacheDirty = true;
+    // one save pending at a time: it runs after the hashes queued before it
+    if (!savePending.exchange(true)) {
+        strand().push([this] { saveCacheInBackground(); }, "asset-cache-save");
+    }
+}
+
+void editor::AssetDatabase::saveCacheInBackground() {
+    savePending = false;
+    if (hashStop || !cacheDirty.exchange(false)) {
+        return;
+    }
+    // copied under the lock, serialized and written without it: the main thread is not kept
+    // waiting for the file
+    CacheSnapshot snapshot;
+    {
+        std::lock_guard<std::recursive_mutex> dbLock(mutex);
+        if (!projectPath.empty()) snapshot = snapshotCache();
+    }
+    writeCache(snapshot);
 }
 
 void editor::AssetDatabase::queueHash(const std::string& relative) {
-    std::lock_guard<std::mutex> lock(hashMutex);
     if (!hashingEnabled) {
         return;
     }
-    hashQueue.push_back(relative);
-    if (!hashThread.joinable()) {
-        hashStop = false;
-        hashThread = std::thread([this] { hashWorker(); });
-    }
-    hashWake.notify_one();
+    strand().push([this, relative] { hashOne(relative); }, "asset-hash");
 }
 
-void editor::AssetDatabase::hashWorker() {
-    bool computed = false;
-    for (;;) {
-        std::string relative;
-        {
-            std::unique_lock<std::mutex> lock(hashMutex);
-            if (hashQueue.empty()) {
-                hashBusy = false;
-                hashIdle.notify_all();
-                if (computed || cacheDirty) {
-                    cacheDirty = false;
-                    lock.unlock();
-                    {
-                        // copied under the lock, serialized and written without it: the main
-                        // thread is not kept waiting for the file
-                        CacheSnapshot snapshot;
-                        {
-                            std::lock_guard<std::recursive_mutex> dbLock(mutex);
-                            if (!projectPath.empty()) snapshot = snapshotCache();
-                        }
-                        writeCache(snapshot);
-                    }
-                    lock.lock();
-                    computed = false;
-                    if (!hashQueue.empty() || hashStop || cacheDirty) continue;
-                }
-                hashWake.wait(lock, [this] { return hashStop || !hashQueue.empty() || cacheDirty; });
-            }
-            if (hashStop) {
-                hashBusy = false;
-                hashIdle.notify_all();
-                return;
-            }
-            if (hashQueue.empty()) {
-                continue;   // woken for a cache save: the idle branch writes it
-            }
-            relative = hashQueue.back();
-            hashQueue.pop_back();
-            hashBusy = true;
-        }
-        fs::path full;
-        fs::file_time_type time{};
-        uint64_t size = 0;
-        {
-            std::lock_guard<std::recursive_mutex> dbLock(mutex);
-            auto it = byPath.find(relativeKeyOf(relative));
-            if (it == byPath.end() || it->second.hasContentHash) continue;
-            full = projectPath / it->second.path;
-            time = it->second.writeTime;
-            size = it->second.size;
-        }
-        uint64_t hash = 0;
-        if (!ContentHash::ofFile(full, hash)) {
-            continue;
-        }
+void editor::AssetDatabase::hashOne(const std::string& relative) {
+    if (hashStop || jobs::cancelRequested()) {
+        return;
+    }
+    fs::path full;
+    fs::file_time_type time{};
+    uint64_t size = 0;
+    {
         std::lock_guard<std::recursive_mutex> dbLock(mutex);
         auto it = byPath.find(relativeKeyOf(relative));
-        if (it != byPath.end() && it->second.writeTime == time && it->second.size == size) {
-            it->second.hasContentHash = true;
-            it->second.contentHash = hash;
-            computed = true;
-        }
+        if (it == byPath.end() || it->second.hasContentHash) return;
+        full = projectPath / it->second.path;
+        time = it->second.writeTime;
+        size = it->second.size;
     }
+    uint64_t hash = 0;
+    if (!ContentHash::ofFile(full, hash)) {
+        return;
+    }
+    {
+        std::lock_guard<std::recursive_mutex> dbLock(mutex);
+        auto it = byPath.find(relativeKeyOf(relative));
+        if (it == byPath.end() || it->second.writeTime != time || it->second.size != size) return;
+        it->second.hasContentHash = true;
+        it->second.contentHash = hash;
+    }
+    // the hashes reach the cache with one write after the batch
+    requestCacheSave();
 }
 
 void editor::AssetDatabase::waitForBackgroundWork() {
-    std::unique_lock<std::mutex> lock(hashMutex);
-    hashIdle.wait(lock, [this] { return hashQueue.empty() && !hashBusy; });
+    jobs::SerialQueue* queue = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(strandMutex);
+        queue = hashStrand.get();
+    }
+    if (queue) queue->waitIdle();
 }
 
 void editor::AssetDatabase::stopHashing() {
+    hashStop = true;
+    std::unique_ptr<jobs::SerialQueue> queue;
     {
-        std::lock_guard<std::mutex> lock(hashMutex);
-        hashStop = true;
-        hashQueue.clear();
+        std::lock_guard<std::mutex> lock(strandMutex);
+        queue = std::move(hashStrand);
     }
-    hashWake.notify_all();
-    if (hashThread.joinable() && hashThread.get_id() != std::this_thread::get_id()) {
-        hashThread.join();
+    if (queue) {
+        // jobs not started are dropped, the running one sees hashStop; the destructor waits
+        queue->cancelPending();
+        queue->waitIdle();
+        queue.reset();
     }
-    std::lock_guard<std::mutex> lock(hashMutex);
+    savePending = false;
     hashStop = false;
-    hashBusy = false;
 }
