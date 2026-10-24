@@ -59,6 +59,10 @@ void editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path&
             if (isDir || Util::isAssetFile(extension)) {
                 project->remapAssetFilePath(sourceFs, destFs);
             }
+            // clips: their GUIDs follow, documents and players learn the new path
+            if (isDir || Util::isAnimationClipFile(extension) || Util::isAnimationClipFile(destFs.extension().string())) {
+                project->remapClipFilePath(sourceFs, destFs);
+            }
             if (isDir || Util::isShaderFile(extension)) {
                 project->remapShaderFilePath(sourceFs, destFs);
                 project->invalidateCustomShaders();
@@ -76,6 +80,8 @@ bool editor::RenameFileCmd::execute(){
         printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), e.what());
         return false;
     }
+    // clips previewing the renamed model (or taken from it) name it again, in this step
+    clipHintEdits = remapClipHints(project, sourceFs, destFs);
 
     return true;
 }
@@ -83,6 +89,8 @@ bool editor::RenameFileCmd::execute(){
 void editor::RenameFileCmd::undo(){
     fs::path sourceFs = directory / newFilename;
     fs::path destFs = directory / oldFilename;
+    restoreClipHints(project, clipHintEdits);
+    clipHintEdits.clear();
     try {
         renameFile(sourceFs, destFs);
     } catch (const fs::filesystem_error& e) {
