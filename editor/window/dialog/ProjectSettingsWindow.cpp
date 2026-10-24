@@ -37,6 +37,9 @@ static int findHtmlUiMsaaIndex(int samples) {
 }
 static const TextureStrategy textureStrategyValues[] = { TextureStrategy::FIT, TextureStrategy::RESIZE, TextureStrategy::NONE };
 static const int textureStrategyCount = sizeof(textureStrategyValues) / sizeof(textureStrategyValues[0]);
+static const char* mobilePbrTierNames[] = { "Full", "Reduced" };
+static const PbrTier mobilePbrTierValues[] = { PbrTier::FULL, PbrTier::REDUCED };
+static int findMobilePbrTierIndex(PbrTier tier) { return tier == PbrTier::FULL ? 0 : 1; }
 
 static const char* windowModeNames[] = { "Windowed", "Maximized", "Fullscreen" };
 static const WindowMode windowModeValues[] = { WindowMode::WINDOWED, WindowMode::MAXIMIZED, WindowMode::FULLSCREEN };
@@ -152,7 +155,7 @@ static const settingsui::Category projectCategories[] = {
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
                    "threading worker threads reserved frame workers asset io threads web pump budget multithreaded "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
-    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
+    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants mobile pbr tier clear coat iridescence anisotropy "
                      "html ui msaa anti-aliasing antialiasing"},
     {"Quality", "", "vsync"},
     {"Physics", "", "3d physics jolt rigidbody"},
@@ -900,6 +903,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_physics2DEnabled = project->isPhysics2DEnabled();
     m_physics3DEnabled = project->isPhysics3DEnabled();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
+    m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
 
     const ApplicationSettings& application = project->getApplicationSettings();
     snprintf(m_applicationNameBuffer, sizeof(m_applicationNameBuffer), "%s", application.name.c_str());
@@ -1403,6 +1407,10 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
             "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
             "Devices without MSAA draw them without it.");
+
+        drawComboSetting("Mobile PBR Tier", "##MobilePbrTier", mobilePbrTierNames, 2, m_mobilePbrTierIndex, findMobilePbrTierIndex(Project::defaultMobilePbrTier),
+            "Android, iOS and HTML5 exports with Reduced leave out iridescence, anisotropy direction maps and clear coat normal maps "
+            "of the built-in Lit's extended lobes (fewer and lighter shader variants). Desktop exports and the editor draw everything.");
 
         if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
             m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
@@ -2113,6 +2121,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics2DEnabled(m_physics2DEnabled);
     m_project->setPhysics3DEnabled(m_physics3DEnabled);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
+    m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
 
     // The project already carries the values applied above
     const std::string inheritedName = m_project->getApplicationName();

@@ -37,6 +37,7 @@ MODULES: list[tuple[str, str]] = [
     ("ConsoleTools", "Console"),
     ("ScriptTools", "Scripts"),
     ("AssetTools", "Assets, materials and shaders"),
+    ("MaterialsLightingTools", "Assets, materials and shaders"),
     ("DocsTools", "Docs"),
     ("BuildTools", "Build and export"),
     ("WorldTools", "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models"),

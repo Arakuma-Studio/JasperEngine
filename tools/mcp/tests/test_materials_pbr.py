@@ -32,7 +32,7 @@ TIMEOUT = 2400
 REPO = harness.REPO
 KHRONOS = REPO / "engine" / "tests" / "render" / "assets" / "khronos"
 GOLDEN_DIR = REPO / "engine" / "tests" / "render" / "golden" / "s11"
-UPDATE_GOLDEN = os.environ.get("JASPER_TEST_UPDATE_GOLDEN") == "1"
+UPDATE_GOLDEN = "1" in (os.environ.get("JASPER_TEST_UPDATE_GOLDEN"), os.environ.get("JASPER_RENDER_UPDATE_GOLDEN"))
 GOLDEN_SIZE = (480, 270)
 
 M = "submeshes[0].material."
@@ -272,7 +272,7 @@ async def test_light_units_preserve(ed: Editor):
     await ed.call("delete_entities", entity=point)
 
 
-async def test_lit_quality_energy(ed: Editor):
+async def test_furnace(ed: Editor):
     """The direct lights' multiscatter compensation of High: a rough white metal lit by the sun
     is brighter at High than at Standard (single scattering loses energy there), a smooth one
     hardly changes. The environment's split sum already compensates (Standard and High alike),

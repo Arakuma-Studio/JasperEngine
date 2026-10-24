@@ -640,3 +640,37 @@ The unit tests use S02's gtest framework, in `engine/tests/core/`. The MCP tests
    assumes it.
 9. **CC-BY asset attribution** must ship in `NOTICE.md`. The assets are test-only and never
    packaged into exports; the `.gitattributes` / export filter excludes `engine/tests/`.
+
+## Deviations (implementation record)
+
+Decisions taken while implementing, where the spec was silent, wrong in a detail or in conflict
+with other streams:
+
+1. **Lit Quality is a define, not mesh property bit 5.** S10 (`USE_SHADOWS_HQ`) and S12
+   (`HAS_HEIGHT_FOG`) both claim bit 5, and S12 asks S11 not to. High adds `USE_LIT_QUALITY` to the
+   `builtin:lit#<defines>` reference instead (basename code `Lq`), so a Standard scene, and every
+   variant without it, keeps its key and its preprocessed source (`ShaderZeroCost` hash list
+   unchanged).
+2. **16 textures with transmission.** The scene-colour copy needs a slot: transmission variants
+   drop SSAO (they draw in the transparent queue, which has none), and a variant in a scene with 2D
+   light shadows reserves one of the 3 map slots (`getPbrVariant(..., reservedMaps)`). Both are
+   shown in the Inspector footer and `get_material_variant`.
+3. **13 Khronos models** (§6.7 as verified), goldens written by the MCP test's own scenes
+   (`test_khronos_models`), not by a `tools/fixtures/pbr-extended` scene per model: the fixture
+   keeps the benchmark scenes and the export check. `JASPER_TEST_UPDATE_GOLDEN=1` (S02's name) and
+   `JASPER_RENDER_UPDATE_GOLDEN=1` both write them.
+4. **AC8 furnace on direct light.** The environment split sum is already multiscatter
+   compensated (Standard and High alike), so a uniform-ambient furnace cannot separate them.
+   `test_furnace` lights a rough white metal with the sun only: High is >= 1.15x Standard at
+   roughness 1, within 8% at roughness 0.2.
+5. **`KHR_materials_unlit`** loads as `library:unlit` (Lighting None) rather than a lobe.
+6. **Packed glTF maps** are keyed by model file and image indices (`pack|<layout>|a|b`); S04
+   asset identity was not landed. They are regenerated on load (exports repack at runtime).
+7. **Transmission thickness** is in world units (the glTF value times the node scale is not
+   applied); refraction reads the LDR opaque copy (Risk 4).
+8. **Variant collection** collects the mobile tier's variants too (Android, iOS, HTML5 exports),
+   and both Lit Qualities when a script mentions `litQuality`.
+9. **Lua** exposes flat Material properties (S23's JSON material API had not landed).
+10. **`KHR_xmp`, `KHR_xmp_json_ld`** are read as known (metadata only) and give no warning.
+11. **MCP** `set_terrain_maps` layers take `hexTiling`/`hexRotation`; project setting
+    `graphics.mobile_pbr_tier`.
