@@ -182,7 +182,7 @@ namespace jasperengine::editor{
 
         void drawSetupRow();
         void drawCharacterField();
-        void drawAnimationField();
+        void drawAnimationField(bool inlineRow);
         void drawRigChip();
         bool drawEmptyState();
         void drawTransport();
@@ -233,8 +233,13 @@ namespace jasperengine::editor{
         void applyMapping();
         void refreshCandidate();
         void updateThumbnails();
-        std::vector<int> selection() const;
+        const std::vector<int>& selection() const;
         const pose::PoseAnimationData* data() const;
+        // the document's data as an immutable snapshot (kept alive by its holders across commits)
+        std::shared_ptr<const pose::PoseAnimationData> view();
+        std::shared_ptr<const pose::PoseAnimationData> viewData;
+        const PoseAnimationDocument* viewDocument = nullptr;
+        uint64_t viewRevision = 0;
         std::string characterName() const;
         void collectOpenCandidates();
         void processPendingOpen();

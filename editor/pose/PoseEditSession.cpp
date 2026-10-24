@@ -666,7 +666,9 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
         for (Entity entity : entities){
             if (entity == NULL_ENTITY) continue;
             const Transform& transform = scenePtr->getComponent<Transform>(entity);
-            savedBones.push_back({entity, transform.position, transform.rotation, transform.scale});
+            savedBones.push_back({entity, transform.position, transform.rotation, transform.scale, transform.worldPosition,
+                                  transform.worldRotation, transform.worldScale, transform.localMatrix, transform.modelMatrix,
+                                  transform.normalMatrix});
         }
         applied = true;
     }
@@ -709,6 +711,12 @@ void editor::PoseEditSession::restoreBones(){
             transform->position = saved.position;
             transform->rotation = saved.rotation;
             transform->scale = saved.scale;
+            transform->worldPosition = saved.worldPosition;
+            transform->worldRotation = saved.worldRotation;
+            transform->worldScale = saved.worldScale;
+            transform->localMatrix = saved.localMatrix;
+            transform->modelMatrix = saved.modelMatrix;
+            transform->normalMatrix = saved.normalMatrix;
             transform->needUpdate = true;
         }
         if (SceneProject* sceneProject = projectPtr ? projectPtr->getScene(sceneIdValue) : nullptr){

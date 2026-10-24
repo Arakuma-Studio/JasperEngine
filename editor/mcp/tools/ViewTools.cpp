@@ -1131,7 +1131,10 @@ void focusWindowTool(const CallPtr& call) {
             const bool shown = w && w->WasActive && !w->Hidden;
             Json data = {{"window", window}, {"shown", shown}};
             if (w) data["size"] = {w->Size.x, w->Size.y};
-            if (window == "pose_animation") data["state"] = poseWindowState(call);
+            if (window == "pose_animation") {
+                data["state"] = poseWindowState(call);
+                if (w) data["pos"] = {w->Pos.x - ImGui::GetMainViewport()->Pos.x, w->Pos.y - ImGui::GetMainViewport()->Pos.y};
+            }
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
                 return;
