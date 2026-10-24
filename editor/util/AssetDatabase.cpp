@@ -1157,23 +1157,57 @@ uint64_t editor::AssetDatabase::getVersion() const {
 
 // ==================================================================== refresh
 
+editor::AssetDatabase::DiskScan editor::AssetDatabase::scanDisk() const {
+    DiskScan scan;
+    {
+        std::lock_guard<std::recursive_mutex> lock(mutex);
+        if (!isOpen()) {
+            return scan;
+        }
+        scan.version = version.load();
+    }
+    // projectPath and assetsDir change only in open(), which the editor never runs during a scan
+    std::vector<std::string> assets;
+    collect(projectPath, assets, scan.metas);
+    scan.assets.reserve(assets.size());
+    for (const std::string& relative : assets) {
+        DiskScan::File file;
+        file.relative = relative;
+        statFile(relative, file.time, file.size);
+        const AssetTypeInfo* info = AssetTypes::find(relative, assetsDir);
+        if (info && info->identity == AssetIdentity::Sidecar) {
+            const std::string metaRelative = AssetTypes::metaPathFor(relative).generic_string();
+            std::error_code ec;
+            file.metaPresent = fs::is_regular_file(projectPath / metaRelative, ec);
+            if (file.metaPresent) statFile(metaRelative, file.metaTime, file.metaSize);
+        }
+        scan.assets.push_back(std::move(file));
+    }
+    scan.valid = true;
+    return scan;
+}
+
 std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh() {
+    return refresh(scanDisk());
+}
+
+std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const DiskScan& scan) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
     std::vector<Change> changes;
-    if (!isOpen()) {
+    if (!isOpen() || !scan.valid || scan.version != version.load()) {
         return changes;
     }
     bool dirty = false;
 
-    std::vector<std::string> assets, metas;
-    collect(projectPath, assets, metas);
+    const std::vector<std::string>& metas = scan.metas;
     std::unordered_set<std::string> present;
-    for (const std::string& relative : assets) {
-        present.insert(relativeKeyOf(relative));
+    for (const DiskScan::File& file : scan.assets) {
+        present.insert(relativeKeyOf(file.relative));
     }
 
     std::vector<std::string> fresh;
-    for (const std::string& relative : assets) {
+    for (const DiskScan::File& file : scan.assets) {
+        const std::string& relative = file.relative;
         const std::string k = relativeKeyOf(relative);
         auto it = byPath.find(k);
         const AssetType type = AssetTypes::find(relative, assetsDir)->type;
@@ -1186,17 +1220,10 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh() {
             continue;
         }
         Entry& known = it->second;
-        fs::file_time_type time, metaTime{};
-        uint64_t size = 0, metaSize = 0;
-        statFile(relative, time, size);
+        const fs::file_time_type time = file.time, metaTime = file.metaTime;
+        const uint64_t size = file.size, metaSize = file.metaSize;
         const bool sidecar = AssetTypes::info(type).identity == AssetIdentity::Sidecar;
-        bool metaPresent = false;
-        if (sidecar) {
-            std::error_code ec;
-            const std::string metaRelative = AssetTypes::metaPathFor(relative).generic_string();
-            metaPresent = fs::is_regular_file(projectPath / metaRelative, ec);
-            if (metaPresent) statFile(metaRelative, metaTime, metaSize);
-        }
+        const bool metaPresent = file.metaPresent;
         const bool fileSame = time == known.writeTime && size == known.size;
         const bool metaSame = !sidecar || (metaPresent == known.hasMeta && metaTime == known.metaWriteTime && metaSize == known.metaSize);
         if (fileSame && metaSame) {

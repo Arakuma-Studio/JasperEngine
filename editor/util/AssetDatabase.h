@@ -129,6 +129,27 @@ namespace jasperengine::editor {
         // outside the editor), applied to the database and returned
         std::vector<Change> refresh();
 
+        // The walk refresh() compares: every tracked file and meta with its time and size.
+        // scanDisk() changes nothing and takes the lock only to start, so a background thread
+        // runs it (the editor's poll, R23); refresh(scan) applies it, and does nothing for a
+        // scan older than the database's last change (the next poll looks again).
+        struct DiskScan {
+            struct File {
+                std::string relative;
+                std::filesystem::file_time_type time{};
+                uint64_t size = 0;
+                bool metaPresent = false;
+                std::filesystem::file_time_type metaTime{};
+                uint64_t metaSize = 0;
+            };
+            std::vector<File> assets;
+            std::vector<std::string> metas;
+            uint64_t version = 0;
+            bool valid = false;
+        };
+        DiskScan scanDisk() const;
+        std::vector<Change> refresh(const DiskScan& scan);
+
         // Bumped by every change; listeners (Missing Assets, the dependency index) compare it
         uint64_t getVersion() const;
 

@@ -1269,6 +1269,7 @@ static std::filesystem::path normalizeAgainstRoot(const std::filesystem::path& r
 }
 
 void editor::Project::openAssetDatabase() {
+    waitForAssetScan();
     assetIndex.close();
     fs::path relativeAssets = normalizeToProjectRelative(getAssetsPath());
     if (relativeAssets == ".") {
@@ -3909,6 +3910,7 @@ void editor::Project::resetConfigs() {
     simulateTouch = false;
     projectPath.clear();
     AssetMap::setResolver(nullptr);
+    waitForAssetScan();
     assetIndex.close();
     assetDatabase.close();
     pendingAssetChanges.clear();

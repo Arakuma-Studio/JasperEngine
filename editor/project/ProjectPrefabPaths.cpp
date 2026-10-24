@@ -138,19 +138,44 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
     }
 }
 
-void editor::Project::refreshAssetDatabase(bool force) {
-    const auto now = std::chrono::steady_clock::now();
-    if (!force && now - lastAssetRefreshTime < std::chrono::seconds(2)) {
-        return;
+void editor::Project::waitForAssetScan() {
+    if (assetScan.valid()) {
+        assetScan.wait();
+        assetScan = std::future<AssetDatabase::DiskScan>();
     }
+}
+
+void editor::Project::refreshAssetDatabase(bool force) {
     // Not while a scene plays or saves (a background save writes prefab files)
     if (!assetDatabase.isOpen() || isAnyScenePlaying()) {
         return;
     }
-    lastAssetRefreshTime = now;
+    const auto now = std::chrono::steady_clock::now();
+    std::vector<AssetDatabase::Change> found;
+    if (force) {
+        // a tool about to answer from the database: the disk as it is now
+        waitForAssetScan();
+        lastAssetRefreshTime = now;
+        found = assetDatabase.refresh();
+    } else if (assetScan.valid()) {
+        // the poll (R23): the walk runs on a background thread, its result is applied here
+        if (assetScan.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            return;
+        }
+        const AssetDatabase::DiskScan scan = assetScan.get();
+        found = assetDatabase.refresh(scan);
+    } else {
+        if (now - lastAssetRefreshTime >= std::chrono::seconds(2)) {
+            lastAssetRefreshTime = now;
+            const AssetDatabase* database = &assetDatabase;
+            assetScan = std::async(std::launch::async, [database] { return database->scanDisk(); });
+        }
+        if (pendingAssetChanges.empty()) {
+            return;
+        }
+    }
     std::vector<AssetDatabase::Change> changes = std::move(pendingAssetChanges);
     pendingAssetChanges.clear();
-    std::vector<AssetDatabase::Change> found = assetDatabase.refresh();
     changes.insert(changes.end(), found.begin(), found.end());
     onAssetFilesChanged(changes);
 }

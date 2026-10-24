@@ -32,6 +32,7 @@
 
 #include <filesystem>
 #include <chrono>
+#include <future>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -815,6 +816,9 @@ namespace jasperengine::editor{
         // GUID <-> path of the prefab files (and later other asset types)
         AssetDatabase assetDatabase;
         std::chrono::steady_clock::time_point lastAssetRefreshTime;
+        // the poll's disk walk, on a background thread (R23); applied on the main thread
+        std::future<AssetDatabase::DiskScan> assetScan;
+        void waitForAssetScan();
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;
         // Who references what (S04): closed files from disk, documents with unsaved edits from memory
