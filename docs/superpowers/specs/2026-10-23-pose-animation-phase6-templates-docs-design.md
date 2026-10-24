@@ -24,6 +24,11 @@ phase proves it with tests on both fixture rigs.
   alphabetical within category), load by name (user templates shadow built-ins with the same
   name), save the current animation as a user template (name, description, category),
   delete a user template (undoable file delete through the project history).
+- (Implemented: `editor/pose/PoseTemplates.{h,cpp}`, the embedded files in
+  `PoseTemplatesBuiltin.cpp` from the generated `pose_templates.h`. Names are case-insensitive; the
+  list leaves shadowed built-ins out; save is a `WriteFilesCmd`, delete a new `RemoveFilesCmd`;
+  `apply` Replace takes the template's settings and poses and keeps the preview model, Append adds
+  the poses and keeps the settings.)
 
 ## 3. Built-in templates (authored for this engine, not copied from anywhere)
 
@@ -66,6 +71,10 @@ an appropriate feel preset/humanize. Mirrored halves use `mirror_pose`.
 - `get_pose_animation`: with `templates: true` (and `path` omitted) returns the template list
   `[{name, category, description, poses, loop, user}]`.
 - Stay within the tool-definition budget (trim descriptions if needed).
+- (Implemented: `mode` defaults to `replace`; `save_template` saves the animation as the earlier
+  ops of the call left it (joint limits applied to the poses they set), `category` defaults to
+  "User", and the template file is an extra file of the document commit, so the call stays one undo
+  step. Budget: get 873 + edit 2735 chars, total 97,367.)
 
 ## 6. Documentation
 

@@ -25,6 +25,8 @@ set(POSE_TEST_EDITOR_SOURCES
     ${POSE_TEST_REPO_ROOT}/editor/pose/PoseImage.cpp
     ${POSE_TEST_REPO_ROOT}/editor/command/CommandHistory.cpp
     ${POSE_TEST_REPO_ROOT}/editor/command/type/WriteFilesCmd.cpp
+    ${POSE_TEST_REPO_ROOT}/editor/command/type/RemoveFilesCmd.cpp
+    ${POSE_TEST_REPO_ROOT}/editor/pose/PoseTemplates.cpp
 )
 
 add_executable(jasperengine-pose-tests ${POSE_TEST_SOURCES} ${POSE_TEST_EDITOR_SOURCES})
@@ -43,3 +45,10 @@ set_target_properties(jasperengine-pose-tests PROPERTIES
     CXX_STANDARD_REQUIRED ON
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+
+# PoseTemplatesTest: the built-in template files and the fixture models' skeletons, read from the
+# source tree (the editor embeds the same template files)
+target_compile_definitions(jasperengine-pose-tests PRIVATE
+    POSE_TEMPLATES_DIR="${POSE_TEST_REPO_ROOT}/editor/resources/pose-templates"
+    POSE_FIXTURE_MODELS_DIR="${POSE_TEST_REPO_ROOT}/tools/fixtures/pose-animation/assets/models")
+target_include_directories(jasperengine-pose-tests PRIVATE ${POSE_TEST_REPO_ROOT}/engine/libs/json)

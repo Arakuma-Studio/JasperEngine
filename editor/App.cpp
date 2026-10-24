@@ -43,6 +43,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
+#include "pose/PoseTemplates.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -119,6 +120,12 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    // pose templates saved or deleted (and their undo/redo): the asset database and the Project
+    // window see the files (MCP writes templates through the pose document, which syncs itself)
+    PoseTemplates::setFilesChangedHook([this](const std::vector<std::filesystem::path>&){
+        project.refreshAssetDatabase(true);
+        projectWindow->refreshCurrentDirectory();
+    });
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;

@@ -35,6 +35,8 @@ Projects made before the rename are migrated once with
 | Project Settings > Physics / Physics 2D > Layer Collision Matrix | none (new) |
 | Window menu | View menu |
 | GameObject, Component, Assets menus | Scene and Project menus, the Structure "+" menu |
+| none: Unity has no pose-to-pose animation (the closest is keyframing a humanoid clip in the Animation window) | none (new): Pose Animation (Window > Animation > Pose Animation; `.poseanim` assets and templates), played by the Pose Animator or baked to an Animation; see [pose-animation.md](pose-animation.md) |
+| Avatar (Rig > Animation Type Humanoid, Configure Avatar) | none (new): the humanoid map, bones mapped to body parts from their names; fixes in the Pose Animation window's Map Bones... popup, stored in a `<model>.humanoid` file next to the model |
 
 ## Scripting API (Lua and C++)
 
@@ -65,7 +67,7 @@ Projects made before the rename are migrated once with
 | `Collider2DType`, `Collider3DType`, `RigidbodyMotionQuality` | `Shape2DType`, `Shape3DType`, `Body3DMotionQuality` |
 | `AudioSourceState`, `AudioSourceAttenuation` | `SoundState`, `SoundAttenuation` |
 | `LayoutGroupType`, `ShadowCaster2DShape` | `ContainerType`, `Occluder2DShape` |
-| `PoseAnimator` / `PoseAnimatorComponent` (Add Component > Animation > Pose Animator; `model:getPoseAnimator()`): plays a `.poseanim` pose animation live on a humanoid Model. Unity has no equivalent; the closest are an Animator with a humanoid Avatar and its `Animator.speed` / layer weight | none (new) |
+| none: Unity has no live pose-to-pose player (the closest is an Animator with a humanoid Avatar, its `Animator.speed` and layer weight) | none (new): `PoseAnimator` / `PoseAnimatorComponent` (Add Component > Animation > Pose Animator; `model:getPoseAnimator()`) plays a `.poseanim` pose animation live on a humanoid Model |
 | `Physics` / `Physics2D` (`ignoreLayerCollision`, `getIgnoreLayerCollision`, `getLayerCollisionMask`, `setLayerCollisionMask`, `raycast`, `raycastAll`, `ALL_LAYERS`, `DEFAULT_RAYCAST_LAYERS`, `IGNORE_RAYCAST_LAYER`) | none (new) |
 
 Unchanged: `Entity`, `Scene`, `Transform`, `Camera`, `Light`, `Light2D`, `Mesh`,
