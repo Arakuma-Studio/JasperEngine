@@ -3,31 +3,54 @@
 
 #include "ModelSubClips.h"
 
+#include <algorithm>
+#include <cctype>
+#include <cstring>
+
 using namespace jasperengine;
 
+namespace{
+
+    std::string lower(std::string text){
+        for (char& c : text) c = (char)std::tolower((unsigned char)c);
+        return text;
+    }
+
+    const char* const modelExtensions[] = {".gltf", ".glb", ".fbx"};
+
+}
+
 bool anim::isModelFilePath(const std::string& path){
-    // TODO(T1c)
-    (void)path;
+    std::string text = lower(path);
+    for (const char* extension : modelExtensions){
+        size_t length = std::strlen(extension);
+        if (text.size() >= length && text.compare(text.size() - length, length, extension) == 0) return true;
+    }
     return false;
 }
 
 bool anim::isSubClipReference(const std::string& reference){
-    // TODO(T1c)
-    (void)reference;
-    return false;
+    SubClipReference parsed;
+    return parseSubClipReference(reference, parsed);
 }
 
 bool anim::parseSubClipReference(const std::string& reference, SubClipReference& out){
-    // TODO(T1c)
-    (void)reference;
     out = SubClipReference();
-    return false;
+    std::string text = lower(reference);
+    size_t split = std::string::npos;
+    for (const char* extension : modelExtensions){
+        std::string marker = std::string(extension) + "#";
+        size_t at = text.find(marker);
+        if (at != std::string::npos) split = std::min(split, at + marker.size() - 1);
+    }
+    if (split == std::string::npos || split + 1 >= reference.size()) return false;
+    out.model = reference.substr(0, split);
+    out.clip = reference.substr(split + 1);
+    return true;
 }
 
 std::string anim::formatSubClipReference(const std::string& model, const std::string& clip){
-    // TODO(T1c)
-    (void)clip;
-    return model;
+    return model + "#" + clip;
 }
 
 std::vector<anim::ModelClipInfo> anim::listModelClips(const tinygltf::Model& model){

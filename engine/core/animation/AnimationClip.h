@@ -13,8 +13,10 @@
 // - Thread-safety: ClipData is a plain value. An AnimationClip never changes after build, so any
 //   thread may read it (the pool hands out shared_ptr<const AnimationClip>).
 // - Invariants of a ClipData that came out of the loader (parseClip / buildSubClip):
-//   * tracks sorted by (path, channel), unique per (path, channel) (property tracks: per
-//     (path, component, property)); keys sorted by time, no two closer than 1e-6 s;
+//   * tracks sorted by path (byte order), then channel in ClipChannel enum order, unique per
+//     (path, channel) (property tracks: per (path, component, property), after the others);
+//     keys sorted by time, no two closer than 1e-6 s (merging only ever happens at load /
+//     normalize, never inside an editor drag: see AnimationClipController's drag API);
 //   * every key of a track has the value width of its channel (valueWidth): position/scale 3,
 //     rotation 4 (x, y, z, w; normalized, hemisphere continuous along the track), morph the
 //     track's widest key (padded with 0, at most MAX_MORPHTARGETS), lattice 3 per entry of
@@ -26,6 +28,9 @@
 //   Editors that build ClipData by hand keep these (AnimationClipIO::normalize restores them).
 // - Paths are relative to the animated root (ClipBinding grammar); asset paths (previewModel,
 //   source.path) are asset-relative like ModelComponent::filename.
+// - Quaternions: ClipKey values are x y z w, engine Quaternion is (w, x, y, z) and its
+//   three-float constructor means Euler angles: convert only with quaternionFromXYZW /
+//   quaternionToXYZW.
 
 #ifndef ANIMATION_CLIP_H
 #define ANIMATION_CLIP_H
@@ -33,6 +38,7 @@
 #include "Export.h"
 #include "action/Ease.h"
 #include "animation/AnimationEvent.h"
+#include "animation/ClipTypes.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
 
@@ -45,31 +51,9 @@
 
 namespace jasperengine{
 
-    // What a track animates on its bound entity (v1 = today's keyframe kinds)
-    enum class ClipChannel : uint8_t {
-        Position,   // Transform.position, [x, y, z]
-        Rotation,   // Transform.rotation, quaternion [x, y, z, w]
-        Scale,      // Transform.scale, [x, y, z]
-        Morph,      // MeshComponent morph weights, one per morph target
-        Lattice,    // LatticeComponent offsets of `points` (flat indices), [x, y, z] each
-        Property    // reserved (spec 2.3): kept and written back, never sampled
-    };
-
-    // Unity's WrapMode. Default only in Animation Player clip entries: the clip's own.
-    enum class ClipWrapMode : uint8_t {
-        Default,
-        Once,           // plays to the end and stops; the player resets the state's time to 0
-        Loop,
-        PingPong,
-        ClampForever    // holds the last frame and keeps the state playing
-    };
-
-    // A load or validation problem of one part of a clip: `path` is a JSON path into the file
-    // ("tracks[3].keys[2].value"), empty for the file as a whole
-    struct JASPERENGINE_API ClipWarning{
-        std::string path;
-        std::string message;
-    };
+    // ClipKey rotation layout (x y z w) <-> engine Quaternion (w, x, y, z)
+    JASPERENGINE_API Quaternion quaternionFromXYZW(const float* xyzw);
+    JASPERENGINE_API void quaternionToXYZW(const Quaternion& q, float* xyzw);
 
     struct JASPERENGINE_API ClipKey{
         float time = 0.0f;

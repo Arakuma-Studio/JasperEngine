@@ -5,6 +5,8 @@
 
 #include "animation/AnimationPlayerRuntime.h"
 
+#include <algorithm>
+
 using namespace jasperengine;
 
 // AnimationState (TODO(T1b): every accessor)
@@ -166,74 +168,89 @@ AnimationState AnimationPlayer::getState(const std::string& name) const{
     return AnimationState(scene, entity, name);
 }
 
-anim::AnimationStateInfo AnimationPlayer::getStateInfo(const std::string& name) const{
+AnimationStateInfo AnimationPlayer::getStateInfo(const std::string& name) const{
     (void)name;
-    return anim::AnimationStateInfo();
+    return AnimationStateInfo();
 }
 
+// authored fields (complete): a clip list change sets needsLoad
+
 bool AnimationPlayer::addClip(const std::string& path){
-    (void)path;
-    return false;
+    return addClip(path, "");
 }
 
 bool AnimationPlayer::addClip(const std::string& path, const std::string& name){
-    (void)path;
-    (void)name;
-    return false;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    AnimationPlayerClip entry;
+    entry.clip = path;
+    entry.name = name;
+    std::vector<std::string> names = anim::playerStateNames(player.clips);
+    if (std::find(names.begin(), names.end(), anim::defaultStateName(entry)) != names.end()) return false;
+    player.clips.push_back(entry);
+    player.needsLoad = true;
+    return true;
 }
 
 bool AnimationPlayer::removeClip(const std::string& name){
-    (void)name;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    std::vector<std::string> names = anim::playerStateNames(player.clips);
+    for (size_t i = 0; i < names.size(); i++){
+        if (names[i] == name){
+            player.clips.erase(player.clips.begin() + (long)i);
+            player.needsLoad = true;
+            return true;
+        }
+    }
     return false;
 }
 
 int AnimationPlayer::getClipCount() const{
-    return 0;
+    return (int)getComponent<AnimationPlayerComponent>().clips.size();
 }
 
 std::string AnimationPlayer::getClipName(int index) const{
-    (void)index;
-    return "";
+    std::vector<std::string> names = anim::playerStateNames(getComponent<AnimationPlayerComponent>().clips);
+    return index >= 0 && (size_t)index < names.size() ? names[(size_t)index] : std::string();
 }
 
 void AnimationPlayer::setSpeed(float speed){
-    (void)speed;
+    getComponent<AnimationPlayerComponent>().speed = speed;
 }
 
 float AnimationPlayer::getSpeed() const{
-    return 1.0f;
+    return getComponent<AnimationPlayerComponent>().speed;
 }
 
 void AnimationPlayer::setDefaultClip(const std::string& name){
-    (void)name;
+    getComponent<AnimationPlayerComponent>().defaultClip = name;
 }
 
 std::string AnimationPlayer::getDefaultClip() const{
-    return "";
+    return getComponent<AnimationPlayerComponent>().defaultClip;
 }
 
 void AnimationPlayer::setDefaultFadeTime(float fade){
-    (void)fade;
+    getComponent<AnimationPlayerComponent>().defaultFadeTime = fade;
 }
 
 float AnimationPlayer::getDefaultFadeTime() const{
-    return 0.25f;
+    return getComponent<AnimationPlayerComponent>().defaultFadeTime;
 }
 
 void AnimationPlayer::setPlayAutomatically(bool playAutomatically){
-    (void)playAutomatically;
+    getComponent<AnimationPlayerComponent>().playAutomatically = playAutomatically;
 }
 
 bool AnimationPlayer::isPlayAutomatically() const{
-    return true;
+    return getComponent<AnimationPlayerComponent>().playAutomatically;
 }
 
 void AnimationPlayer::setEnabled(bool enabled){
-    (void)enabled;
+    getComponent<AnimationPlayerComponent>().enabled = enabled;
 }
 
 bool AnimationPlayer::isEnabled() const{
-    return true;
+    return getComponent<AnimationPlayerComponent>().enabled;
 }
 
 bool AnimationPlayer::isLoaded() const{

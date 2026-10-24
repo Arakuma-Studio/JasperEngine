@@ -6,7 +6,8 @@
 //   grammar with editor/util/EntityPath (which gains relative()/findRelative() over these):
 //   names from the root joined by '/', a segment "Name#N" selecting the N-th later sibling of
 //   that name (Transform child order; "#0" is never written), "" = the root itself.
-// - Owner: T0 (API); T1b implements it (with EntityRegistry::hierarchyRevision bumps).
+// - Owner: T0 (API; readChannelValue / writeChannelValue implemented); T1b implements the path
+//   functions (with EntityRegistry::hierarchyRevision bumps).
 // - Thread-safety: reads the registry: the thread that owns the scene (main thread for scenes in
 //   the editor and the game).
 // - Invariants:
@@ -21,6 +22,7 @@
 #define CLIP_BINDING_H
 
 #include "Export.h"
+#include "animation/ClipTypes.h"
 #include "ecs/Entity.h"
 
 #include <cstddef>
@@ -75,6 +77,23 @@ namespace jasperengine::anim{
     // Every addressable descendant of `root` (root included, as "") with its path, depth first in
     // child order: nearest-name suggestions, the Add Property tree, binding reports
     JASPERENGINE_API std::vector<std::pair<std::string, Entity>> descendantPaths(EntityRegistry* registry, Entity root);
+
+    // ---- a bound channel's current value, in ClipKey::value layout ----
+    // The one reader/writer of channel values for Record, keying ("current value"), MCP
+    // "current" lattice keys and euler-from-current, Bake, preview snapshots and restores.
+    // Layout: position/scale x y z; rotation x y z w; morph one weight per morph target of the
+    // MeshComponent (MAX_MORPHTARGETS); lattice 3 per entry of `points` (flat cage indices; empty
+    // `points` = every point of the cage, in index order).
+
+    // false when the entity lacks the component (Transform / MeshComponent / LatticeComponent)
+    // or a lattice point is outside the cage
+    JASPERENGINE_API bool readChannelValue(EntityRegistry* registry, Entity entity, ClipChannel channel,
+                                           const std::vector<int>& points, std::vector<float>& out);
+    // writes it with the same update flags the ActionSystem flush sets (Transform needUpdate,
+    // LatticeComponent revision when an offset changed); no command, no scene modified flag. The
+    // flush's anchored-UI layout offset correction is not applied (clips animate 3D/2D objects).
+    JASPERENGINE_API bool writeChannelValue(EntityRegistry* registry, Entity entity, ClipChannel channel,
+                                            const std::vector<int>& points, const std::vector<float>& value);
 
 }
 

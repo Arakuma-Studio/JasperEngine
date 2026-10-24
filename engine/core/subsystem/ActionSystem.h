@@ -34,9 +34,15 @@
 #include "component/LatticeTracksComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/AnimationPlayerComponent.h"
-#include "animation/AnimationPlayerRuntime.h"
+#include "animation/ClipTypes.h"
 
 namespace jasperengine{
+
+	class AnimationClip;
+	namespace anim{
+		class ClipPreviewSession;
+		struct TrackSample;
+	}
 
 	class JASPERENGINE_API ActionSystem : public SubSystem {
 
@@ -188,37 +194,53 @@ namespace jasperengine{
 		void particleActionReset(Entity entity);
 
 		// Edit-mode preview of clips on a root (animation clips spec 9.R21): what the Animation
-		// window's clip mode and MCP preview_animation drive. Each state samples `clip` (or, when
-		// null, the root's Animation Player state named `state`) at `time` with `weight`.
+		// window's clip mode and MCP preview_animation drive (through AnimationClipController).
 		struct PlayerPreviewState {
+			// with `clip` null: the name of an entry of the root's AnimationPlayerComponent::clips
+			// (the authored list, state names by anim::playerStateNames), loaded through
+			// AnimationClipPool; the component's runtime is neither needed nor created in edit mode
 			std::string state;
+			// an explicit clip (a document revision, a clip not in the list, a preview model)
 			std::shared_ptr<const AnimationClip> clip;
+			// a state time in seconds (unwrapped values allowed: a playing preview just adds dt),
+			// mapped into the clip by `wrap`; Default = the entry's wrap (R14) for a named state,
+			// else the clip's own
 			float time = 0.0f;
+			ClipWrapMode wrap = ClipWrapMode::Default;
 			float weight = 1.0f;
 		};
 		struct PlayerPreview {
 			std::vector<PlayerPreviewState> states;
-			// events crossed since the session's previous call reach the player's onEvent
-			// (off by default: edit-mode previews never run game code)
+			// events crossed since the session's previous call (session.previousTimes) reach the
+			// root's player onEvent; off by default: edit-mode previews never run game code
 			bool fireEvents = false;
 		};
 		struct PlayerPreviewResult {
-			// every clip was available (false: a state name unknown or its clip not loaded)
+			// every state's clip was available (false: a state name unknown, its clip not loaded
+			// or failed: nothing of that state is written)
 			bool ready = false;
 			// the entities written this call, in clip track order, each once
 			std::vector<Entity> written;
+			// the (entity, channel) entries written this call (also accumulated in session.written)
+			std::vector<std::pair<Entity, ClipChannel>> channels;
 			// paths of tracks that did not resolve (unique)
 			std::vector<std::string> unresolved;
 		};
 		// Its own clear/flush scope (like updateAnimationPreview), runs while the system is paused.
-		// Rest values come from `session` (the caller's preview snapshot, taken there on the
-		// first write of each entity); entries no state animates are not written. Main thread.
+		// Rest values come from `session.rest`: on the first write of an entity's channel the
+		// current scene value is taken there (the editor may set it before with setRest); blending
+		// as in play (R1: (1 - W) * rest where the states' total weight W < 1). Entries no state
+		// animates are not written. Drops the session's bindings of clips this call does not name.
+		// Main thread.
 		PlayerPreviewResult previewPlayer(Entity root, const PlayerPreview& preview, anim::ClipPreviewSession& session);
+		// Ends a preview: writes session.rest back to every entry in session.written (the same
+		// update flags as the flush: anim::writeChannelValue), then session.reset(). Main thread.
+		void restorePlayerPreview(anim::ClipPreviewSession& session);
 		// Headless sampling (MCP get_animation `times`, curves view): every track of `clip` at
 		// `time` (a clip time: wrap is the caller's), raw values (relative tracks not combined)
 		static void sampleClip(const AnimationClip& clip, float time, std::vector<anim::TrackSample>& out);
 		// Back to the starting state (playAutomatically decided again, clips loaded again, rest
-		// forgotten): the editor calls it when Play starts and stops, like resetAnimators
+		// forgotten): the editor calls it when Play stops (Project.cpp, next to resetAnimators)
 		void resetPlayers();
 
 		void updateAnimationPreview(double dt, Entity entity);

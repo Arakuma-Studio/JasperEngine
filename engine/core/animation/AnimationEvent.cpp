@@ -5,6 +5,18 @@
 
 using namespace jasperengine;
 
+AnimationEventArg AnimationEvent::numberArg(double value){
+    return AnimationEventArg(std::in_place_type<double>, value);
+}
+
+AnimationEventArg AnimationEvent::stringArg(std::string value){
+    return AnimationEventArg(std::in_place_type<std::string>, std::move(value));
+}
+
+AnimationEventArg AnimationEvent::boolArg(bool value){
+    return AnimationEventArg(std::in_place_type<bool>, value);
+}
+
 size_t AnimationEvent::getArgCount() const{
     return args.size();
 }

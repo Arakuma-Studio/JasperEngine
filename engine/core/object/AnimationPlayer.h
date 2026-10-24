@@ -6,8 +6,13 @@
 //   Unity's legacy Animation API over an AnimationPlayerComponent, and AnimationState, the
 //   handle getState() returns. The C++ side of the editor (MCP, Inspector live rows, Model
 //   integration) uses the same calls.
-// - Owner: T0 (API, the constructor); T1b implements it, binds it to Lua and adds
-//   Model:playAnimation / GameObject getAnimationPlayer integration.
+// - Owner: T0 (API, the constructor and the authored-field accessors: clip list, speed,
+//   defaultClip, defaultFadeTime, playAutomatically, enabled, callbacks); T1b implements the
+//   playback calls and the state views, binds it to Lua and adds Model:playAnimation /
+//   GameObject getAnimationPlayer integration.
+// - The constructor ADDS the component when the entity has none (PoseAnimator precedent). The
+//   Lua `object:getAnimationPlayer()` (T1b) must not construct one blindly: it returns nil when
+//   the GameObject has no Animation Player (Unity), and `hasAnimationPlayer()` tells.
 // - Thread-safety: main thread (ECS).
 // - Semantics (T1b implements, tests cover):
 //   * play(name): instant, stops the other states (rewinding them) and plays name from 0 at
@@ -26,12 +31,31 @@
 #define ANIMATIONPLAYER_H
 
 #include "EntityHandle.h"
-#include "animation/AnimationPlayerRuntime.h"
 #include "component/AnimationPlayerComponent.h"
 
 #include <string>
 
 namespace jasperengine{
+
+    // What a state looks like from outside (Inspector live rows, MCP, Lua getState)
+    struct JASPERENGINE_API AnimationStateInfo{
+        std::string name;
+        std::string clip;               // the entry's clip reference
+        bool loaded = false;            // the clip is loaded (false while loading or after a failure)
+        std::string error;              // the load error, when it failed
+        float time = 0.0f;              // seconds in the clip (wrapped for loop / ping_pong)
+        float normalizedTime = 0.0f;    // time / length
+        float length = 0.0f;
+        float speed = 1.0f;             // the state's own (the component speed multiplies it)
+        float weight = 0.0f;
+        float targetWeight = 0.0f;
+        ClipWrapMode wrap = ClipWrapMode::Once;     // effective (state override, entry, clip)
+        bool enabled = false;           // Unity AnimationState.enabled: advancing and sampled
+        bool playing = false;
+        bool queued = false;
+        size_t boundTracks = 0;         // tracks whose path resolved
+        size_t trackCount = 0;
+    };
 
     // One state of an Animation Player, by (entity, state name): re-resolved on every access,
     // so it stays usable across clip list changes (an invalid handle reads defaults, writes
@@ -96,7 +120,7 @@ namespace jasperengine{
 
         AnimationState getState(const std::string& name) const;
         // the runtime view of a state (default-constructed when unknown)
-        anim::AnimationStateInfo getStateInfo(const std::string& name) const;
+        AnimationStateInfo getStateInfo(const std::string& name) const;
 
         // clip list (an authored change: the next update reloads)
         // path: asset-relative .anim or "<model>#<clip>"; name empty = default name. False when

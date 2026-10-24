@@ -104,11 +104,12 @@ namespace jasperengine::anim{
     // every track of the clip at `clipTime` (out[i] is getTracks()[i])
     JASPERENGINE_API void sampleClipTracks(const AnimationClip& clip, float clipTime, std::vector<TrackSample>& out);
 
-    // Events a state crossed when its (unwrapped) time went from `fromTime` to `toTime` this
-    // update, in firing order (spec 9.R16): forward fires fromTime < t <= toTime (plus t == 0
-    // when `includeStart`: a state started at 0), backward toTime <= t < fromTime; a loop or
-    // ping-pong boundary splits the interval; each event at most once per update. Appends
-    // indices into clip.getEvents().
+    // Events a state crossed when its time went from `fromTime` to `toTime` this update (from =
+    // the stored state time, to = from + delta: no wrap applied by the caller), in firing order
+    // (spec 9.R16): forward fires fromTime < t <= toTime, backward toTime <= t < fromTime;
+    // `includeStart` also fires events exactly at fromTime (a state that just started: at 0, or
+    // at its length when played backwards, R18); a loop or ping-pong boundary splits the
+    // interval; each event at most once per update. Appends indices into clip.getEvents().
     JASPERENGINE_API void collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
                                                bool includeStart, std::vector<size_t>& out);
 

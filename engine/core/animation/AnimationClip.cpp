@@ -7,6 +7,17 @@
 
 using namespace jasperengine;
 
+Quaternion jasperengine::quaternionFromXYZW(const float* xyzw){
+    return Quaternion(xyzw[3], xyzw[0], xyzw[1], xyzw[2]);
+}
+
+void jasperengine::quaternionToXYZW(const Quaternion& q, float* xyzw){
+    xyzw[0] = q.x;
+    xyzw[1] = q.y;
+    xyzw[2] = q.z;
+    xyzw[3] = q.w;
+}
+
 // ClipData helpers (complete: pure functions of the value form)
 
 float ClipData::effectiveLength() const{

@@ -9,14 +9,34 @@
 //   ModelPool::invalidate lock), T1c the sub-clip branch of getOrLoad.
 // - Thread-safety: every function takes the pool mutex; loads of different keys may run
 //   concurrently (play startup and the shader-variant probe run off the main thread). A clip a
-//   caller holds stays valid after invalidate/clear (shared ownership).
+//   caller holds stays valid after invalidate/clear (shared ownership). Details:
+//   * concurrent getOrLoad of the same key: one load is cached and every caller gets that clip;
+//     the generation is bumped once;
+//   * invalidate during an in-flight load: the load's result is returned to its caller but not
+//     cached (the next getOrLoad reads the file again);
+//   * lock order: the pool mutex is never held while loading or building (a sub-clip build takes
+//     the pooled-glTF mutex): look up, unlock, load, lock, insert.
+// - Keys (one form for the editor document, the players, MCP and the CLI):
+//   * a .anim path, asset-relative (the component form, "anim/walk.anim") or absolute, normalizes
+//     to one key: FileData::getSystemPath, lexically normal, generic separators. The engine has no
+//     project root, so project-relative "assets/..." paths are NOT accepted: editor callers pass
+//     AnimationClipDocument::absolutePath() (or the component's asset-relative form).
+//   * a sub-clip reference "<model>#<clip>" normalizes its model part the same way and keeps the
+//     clip part as given: "<model key>#<name or index>". The entry itself is stored under
+//     "<model key>#<animation index>" (R11: never the name). Per model the pool keeps an alias
+//     table (every sub-clip name, and every index as a number, -> animation index) filled the
+//     first time any sub-clip of that model is loaded (anim::listModelFileClips), so
+//     "hero.gltf#Walk" and "hero.gltf#0" share one entry and one generation. get()/getGeneration()
+//     of an alias the table does not know yet (model never loaded) return null / 0; getOrLoad
+//     fills the table first. invalidateModel drops the entries and the alias table.
 // - Invariants:
 //   * a key's generation increases on every invalidate or reload of it and never decreases, so
 //     a player that remembers the generation it bound to re-fetches (keeping its rest) when it
 //     changes; revision() increases on any change of any key (a cheap per-frame "anything?").
-//   * invalidateModel(model) drops every "<model key>#*" entry.
 //   * failures are not cached: getOrLoad tries again on the next call (callers throttle, the
 //     players every 1 s, PoseAnimator style).
+// - Test (T1a): invalidate through AnimationClipDocument::absolutePath() reaches a clip a player
+//   loaded through the asset-relative component path.
 
 #ifndef ANIMATION_CLIP_POOL_H
 #define ANIMATION_CLIP_POOL_H
@@ -36,8 +56,8 @@ namespace jasperengine{
 
     class JASPERENGINE_API AnimationClipPool{
     public:
-        // The cache key of a clip reference (asset-relative or absolute .anim path, or a
-        // sub-clip reference): what get/invalidate compare
+        // The normalized form of a clip reference (see Keys above); sub-clip references keep
+        // their clip part as given (the alias table resolves it)
         static std::string getKey(const std::string& path);
 
         // the cached clip, null when not loaded (never loads)

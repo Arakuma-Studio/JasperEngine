@@ -3,8 +3,10 @@
 
 // Contract (animation clips spec 3.2-3.3, 9.R1/R2/R9/R10/R16-R19, R43)
 // - Purpose: the runtime state of one Animation Player (AnimationPlayerComponent::runtime) and
-//   of one edit-mode clip preview (ClipPreviewSession), plus AnimationStateInfo, the read-only
-//   view of a state that the Inspector's live rows, MCP and Lua getState() show.
+//   of one edit-mode clip preview (ClipPreviewSession), and the state-name rule. Internal to the
+//   engine's player code and the editor, not game-facing API (anim:: is internal; public
+//   signatures use jasperengine types: the read-only state view AnimationStateInfo is in
+//   object/AnimationPlayer.h).
 // - Owner: T0 (shape); T1b fills and drives it (ActionSystem players, ActionSystemPlayers.cpp)
 //   and may add fields. Nothing outside the engine's player code writes these structs: the
 //   editor and scripts go through AnimationPlayer (object/AnimationPlayer.h) and
@@ -13,6 +15,9 @@
 // - Invariants:
 //   * one state per clip entry (states[i] is AnimationPlayerComponent::clips[i] while the list
 //     is unchanged; needsLoad rebuilds it, keeping time/weight of states whose name survives).
+//   * time: once / clamp_forever states keep the plain time; loop and ping_pong states keep
+//     time in [0, 2 * length) plus `cycles` (whole 2*length periods), so a long-running loop
+//     never loses float precision (Lua `time` stays a float = the time in the clip).
 //   * rest values are per (entity, channel), taken the first time the entity is bound and
 //     before the player writes it, and kept for the whole run across rebinding, clip reloads
 //     and state changes (R2). In a preview session rest is the preview snapshot (the editor
@@ -27,6 +32,7 @@
 #include "animation/AnimationClip.h"
 #include "animation/AnimationEvent.h"
 #include "animation/KeyframeSampling.h"
+#include "component/AnimationPlayerComponent.h"
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -36,31 +42,24 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::anim{
 
-    // What a state looks like from outside (Inspector live rows, MCP, Lua getState)
-    struct JASPERENGINE_API AnimationStateInfo{
-        std::string name;
-        std::string clip;               // the entry's clip reference
-        bool loaded = false;            // the clip is loaded (false while loading or after a failure)
-        std::string error;              // the load error, when it failed
-        float time = 0.0f;              // seconds, unwrapped
-        float normalizedTime = 0.0f;    // time / length
-        float length = 0.0f;
-        float speed = 1.0f;             // the state's own (the component speed multiplies it)
-        float weight = 0.0f;
-        float targetWeight = 0.0f;
-        ClipWrapMode wrap = ClipWrapMode::Once;     // effective (state override, entry, clip)
-        bool enabled = false;           // Unity AnimationState.enabled: advancing and sampled
-        bool playing = false;
-        bool queued = false;
-        size_t boundTracks = 0;         // tracks whose path resolved
-        size_t trackCount = 0;
-    };
+    // ---- state names (implemented; the one rule for runtime, Inspector, controller, MCP) ----
 
-    // The rest values of one entity's channels (R2): what (1 - W) blends toward
+    // the entry's state name: `name`, else the sub-clip name ("hero.gltf#Walk" -> "Walk"), else the
+    // .anim file stem ("anim/walk.anim" -> "walk")
+    JASPERENGINE_API std::string defaultStateName(const AnimationPlayerClip& entry);
+    // every entry's state name in list order; a name already taken gets " 2", " 3"... (the first
+    // free one; runtime alias only, never written back)
+    JASPERENGINE_API std::vector<std::string> playerStateNames(const std::vector<AnimationPlayerClip>& clips);
+
+    // The rest values of one entity's channels (R2): what (1 - W) blends toward. morphWeights:
+    // one per morph target of the MeshComponent (MAX_MORPHTARGETS); latticeOffsets: the full cage
+    // by flat index. Keyed by Entity (ids are recycled): an entry is dropped when its entity fails
+    // the bind validation (ClipBindings::boundNames / boundParents) or is destroyed.
     struct JASPERENGINE_API ChannelRest{
         bool hasTransform = false;
         Vector3 position = Vector3(0, 0, 0);
@@ -97,6 +96,7 @@ namespace jasperengine::anim{
         std::string error;
 
         float time = 0.0f;
+        uint64_t cycles = 0;                // loop / ping_pong: whole 2*length periods (see time)
         float speed = 1.0f;
         float weight = 0.0f;
         float targetWeight = 0.0f;
@@ -138,13 +138,20 @@ namespace jasperengine::anim{
     };
 
     // One edit-mode clip preview on a root (ActionSystem::previewPlayer): bindings and rest kept
-    // between calls; the Animation window / MCP preview own it for the preview's lifetime
+    // between calls; the Animation window / MCP preview own it for the preview's lifetime and end
+    // it with ActionSystem::restorePlayerPreview
     class JASPERENGINE_API ClipPreviewSession{
     public:
         Entity root = NULL_ENTITY;
         RestMap rest;
-        // per previewed clip (by pointer identity of the AnimationClip)
+        // per previewed clip (by pointer identity of the AnimationClip); previewPlayer drops the
+        // bindings of clips the current call does not name (a drag commits a new clip per frame)
         std::vector<ClipBindings> bindings;
+        // the (entity, channel) entries this session wrote: what restorePlayerPreview puts back
+        std::vector<std::pair<Entity, ClipChannel>> written;
+        // fireEvents: the previous call's time per state (key: the state name, or the clip's
+        // address for explicit clips)
+        std::unordered_map<std::string, float> previousTimes;
 
         // a scene edit changed a previewed channel: the new value is its rest (R6)
         void setRest(Entity entity, const ChannelRest& value);

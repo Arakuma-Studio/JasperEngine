@@ -120,9 +120,121 @@ TEST(AnimContract, AnimationClipIO){
     EXPECT_FALSE(anim::channelFromName("no_such_channel", channel));
     EXPECT_FALSE(anim::wrapFromName("no_such_wrap", wrap));
     EXPECT_FALSE(anim::easeFromName("no_such_ease", ease));
-    (void)anim::channelName(ClipChannel::Lattice);
-    (void)anim::wrapName(ClipWrapMode::PingPong);
-    (void)anim::easeName(EaseType::BOUNCE_IN_OUT);
+}
+
+// the pure helpers T0 implemented: enum names, GUIDs, Unity YAML detection
+TEST(AnimContract, AnimationClipIONamesAndGuids){
+    const ClipChannel channels[] = {ClipChannel::Position, ClipChannel::Rotation, ClipChannel::Scale,
+                                    ClipChannel::Morph, ClipChannel::Lattice, ClipChannel::Property};
+    const char* channelNames[] = {"position", "rotation", "scale", "morph", "lattice", "property"};
+    for (size_t i = 0; i < 6; i++){
+        EXPECT_STREQ(anim::channelName(channels[i]), channelNames[i]);
+        ClipChannel back;
+        ASSERT_TRUE(anim::channelFromName(channelNames[i], back));
+        EXPECT_EQ(back, channels[i]);
+    }
+    const ClipWrapMode wraps[] = {ClipWrapMode::Default, ClipWrapMode::Once, ClipWrapMode::Loop,
+                                  ClipWrapMode::PingPong, ClipWrapMode::ClampForever};
+    const char* wrapNames[] = {"default", "once", "loop", "ping_pong", "clamp_forever"};
+    for (size_t i = 0; i < 5; i++){
+        EXPECT_STREQ(anim::wrapName(wraps[i]), wrapNames[i]);
+        ClipWrapMode back;
+        ASSERT_TRUE(anim::wrapFromName(wrapNames[i], back));
+        EXPECT_EQ(back, wraps[i]);
+    }
+    for (int e = (int)EaseType::LINEAR; e <= (int)EaseType::STEP; e++){
+        EaseType back;
+        ASSERT_TRUE(anim::easeFromName(anim::easeName((EaseType)e), back)) << e;
+        EXPECT_EQ(back, (EaseType)e);
+    }
+    EXPECT_STREQ(anim::easeName(EaseType::QUAD_IN_OUT), "quad_in_out");
+    EXPECT_STREQ(anim::easeName(EaseType::CUSTOM), "linear");
+
+    std::string guid = anim::generateClipGuid();
+    EXPECT_TRUE(anim::isClipGuid(guid));
+    EXPECT_NE(guid, anim::generateClipGuid());
+    EXPECT_FALSE(anim::isClipGuid("0123456789ABCDEF0123456789abcdef"));
+
+    std::string text = "{\n  \"format\": \"jasperengine.anim\",\n  \"version\": 1,\n  \"frame_rate\": 30\n}\n";
+    EXPECT_TRUE(anim::readClipGuid(text).empty());
+    ASSERT_TRUE(anim::replaceClipGuid(text, guid));
+    EXPECT_EQ(text, "{\n  \"format\": \"jasperengine.anim\",\n  \"version\": 1,\n  \"guid\": \"" + guid +
+                    "\",\n  \"frame_rate\": 30\n}\n");
+    EXPECT_EQ(anim::readClipGuid(text), guid);
+    std::string other = anim::generateClipGuid();
+    ASSERT_TRUE(anim::replaceClipGuid(text, other));
+    EXPECT_EQ(anim::readClipGuid(text), other);
+    // a nested "guid" is not the clip's
+    EXPECT_TRUE(anim::readClipGuid("{\"version\": 1, \"source\": {\"guid\": \"" + guid + "\"}}").empty());
+    std::string bad = text;
+    EXPECT_FALSE(anim::replaceClipGuid(bad, "nope"));
+    EXPECT_EQ(bad, text);
+
+    EXPECT_TRUE(anim::isUnityYamlClip("%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!74 &7400000\nAnimationClip:\n"));
+    EXPECT_TRUE(anim::isUnityYamlClip("--- !u!74 &7400000\nAnimationClip:\n  m_Name: Walk\n"));
+    EXPECT_FALSE(anim::isUnityYamlClip(text));
+}
+
+TEST(AnimContract, QuaternionLayout){
+    const float xyzw[] = {0.1f, 0.2f, 0.3f, 0.9f};
+    Quaternion q = quaternionFromXYZW(xyzw);
+    EXPECT_FLOAT_EQ(q.x, 0.1f);
+    EXPECT_FLOAT_EQ(q.y, 0.2f);
+    EXPECT_FLOAT_EQ(q.z, 0.3f);
+    EXPECT_FLOAT_EQ(q.w, 0.9f);
+    float back[4];
+    quaternionToXYZW(q, back);
+    for (int i = 0; i < 4; i++) EXPECT_FLOAT_EQ(back[i], xyzw[i]);
+}
+
+TEST(AnimContract, StateNames){
+    AnimationPlayerClip walk;
+    walk.clip = "anim/walk.anim";
+    AnimationPlayerClip sub;
+    sub.clip = "models/hero.gltf#Run";
+    AnimationPlayerClip named;
+    named.clip = "anim/other.anim";
+    named.name = "Idle";
+    AnimationPlayerClip walkAgain;
+    walkAgain.clip = "other/walk.anim";
+    EXPECT_EQ(anim::defaultStateName(walk), "walk");
+    EXPECT_EQ(anim::defaultStateName(sub), "Run");
+    EXPECT_EQ(anim::defaultStateName(named), "Idle");
+    std::vector<std::string> names = anim::playerStateNames({walk, sub, named, walkAgain, walk});
+    ASSERT_EQ(names.size(), 5u);
+    EXPECT_EQ(names[0], "walk");
+    EXPECT_EQ(names[1], "Run");
+    EXPECT_EQ(names[2], "Idle");
+    EXPECT_EQ(names[3], "walk 2");
+    EXPECT_EQ(names[4], "walk 3");
+}
+
+TEST(AnimContract, ChannelValues){
+    Scene scene;
+    Entity entity = scene.createEntity();
+    scene.addComponent<Transform>(entity, {});
+    std::vector<float> value;
+    ASSERT_TRUE(anim::writeChannelValue(&scene, entity, ClipChannel::Position, {}, {1, 2, 3}));
+    ASSERT_TRUE(anim::readChannelValue(&scene, entity, ClipChannel::Position, {}, value));
+    EXPECT_EQ(value, (std::vector<float>{1, 2, 3}));
+    ASSERT_TRUE(anim::writeChannelValue(&scene, entity, ClipChannel::Rotation, {}, {0, 0.6f, 0, 0.8f}));
+    ASSERT_TRUE(anim::readChannelValue(&scene, entity, ClipChannel::Rotation, {}, value));
+    EXPECT_EQ(value, (std::vector<float>{0, 0.6f, 0, 0.8f}));
+    EXPECT_TRUE(scene.getComponent<Transform>(entity).needUpdate);
+    EXPECT_FALSE(anim::readChannelValue(&scene, entity, ClipChannel::Morph, {}, value));
+    EXPECT_FALSE(anim::readChannelValue(&scene, entity, ClipChannel::Lattice, {}, value));
+
+    Entity cage = scene.createEntity();
+    scene.addComponent<LatticeComponent>(cage, {});
+    uint32_t revision = scene.getComponent<LatticeComponent>(cage).revision;
+    ASSERT_TRUE(anim::writeChannelValue(&scene, cage, ClipChannel::Lattice, {13}, {0, 0.2f, 0}));
+    EXPECT_EQ(scene.getComponent<LatticeComponent>(cage).revision, revision + 1);
+    ASSERT_TRUE(anim::readChannelValue(&scene, cage, ClipChannel::Lattice, {13}, value));
+    EXPECT_EQ(value, (std::vector<float>{0, 0.2f, 0}));
+    ASSERT_TRUE(anim::readChannelValue(&scene, cage, ClipChannel::Lattice, {}, value));
+    EXPECT_EQ(value.size(), 27u * 3u);
+    EXPECT_FALSE(anim::readChannelValue(&scene, cage, ClipChannel::Lattice, {27}, value));
+    EXPECT_FALSE(anim::writeChannelValue(&scene, cage, ClipChannel::Lattice, {27}, {0, 0, 0}));
 }
 
 TEST(AnimContract, KeyframeSampling){
@@ -177,7 +289,7 @@ TEST(AnimContract, ClipBinding){
 TEST(AnimContract, AnimationEvent){
     AnimationEvent event;
     event.functionName = "onFootstep";
-    event.args = {AnimationEventArg(std::string("left")), AnimationEventArg(2.5), AnimationEventArg(true)};
+    event.args = {AnimationEvent::stringArg("left"), AnimationEvent::numberArg(2.5), AnimationEvent::boolArg(true)};
     EXPECT_EQ(event.getArgCount(), 3u);
     EXPECT_EQ(event.getArgType(0), "string");
     EXPECT_EQ(event.getArgType(1), "number");
@@ -193,10 +305,19 @@ TEST(AnimContract, AnimationEvent){
 
 TEST(AnimContract, ModelSubClips){
     EXPECT_FALSE(anim::isSubClipReference("assets/anim/walk.anim"));
+    EXPECT_FALSE(anim::isSubClipReference("models/hero.gltf#"));
     anim::SubClipReference reference;
-    (void)anim::parseSubClipReference("assets/models/hero.gltf#Walk", reference);
-    (void)anim::formatSubClipReference("assets/models/hero.gltf", "Walk");
-    (void)anim::isModelFilePath("hero.GLB");
+    ASSERT_TRUE(anim::parseSubClipReference("models/hero.gltf#Walk", reference));
+    EXPECT_EQ(reference.model, "models/hero.gltf");
+    EXPECT_EQ(reference.clip, "Walk");
+    // split at the first '#' after a model extension: file names may contain '#'
+    ASSERT_TRUE(anim::parseSubClipReference("models/take#2/hero.GLB#Run #2", reference));
+    EXPECT_EQ(reference.model, "models/take#2/hero.GLB");
+    EXPECT_EQ(reference.clip, "Run #2");
+    EXPECT_EQ(anim::formatSubClipReference("models/hero.gltf", "Walk"), "models/hero.gltf#Walk");
+    EXPECT_TRUE(anim::isModelFilePath("hero.GLB"));
+    EXPECT_TRUE(anim::isModelFilePath("hero.fbx"));
+    EXPECT_FALSE(anim::isModelFilePath("hero.anim"));
     ClipData data;
     std::vector<ClipWarning> warnings;
     std::string error;
@@ -266,7 +387,7 @@ TEST(AnimContract, AnimationPlayerRuntime){
     EXPECT_EQ(session.root, NULL_ENTITY);
     EXPECT_TRUE(session.rest.empty());
 
-    anim::AnimationStateInfo info;
+    AnimationStateInfo info;
     EXPECT_FALSE(info.loaded);
 }
 
@@ -287,7 +408,30 @@ TEST(AnimContract, AnimationPlayerObjectAndPreview){
     AnimationState state = player.getState("NoSuchState");
     EXPECT_FALSE(state.isValid());
     (void)player.getStateInfo("NoSuchState");
-    (void)player.getClipCount();
+
+    // the authored-field accessors (implemented in T0)
+    EXPECT_EQ(player.getClipCount(), 0);
+    EXPECT_TRUE(player.addClip("anim/walk.anim"));
+    EXPECT_FALSE(player.addClip("other/walk.anim"));         // "walk" is taken
+    EXPECT_TRUE(player.addClip("other/walk.anim", "Walk Fast"));
+    EXPECT_EQ(player.getClipCount(), 2);
+    EXPECT_EQ(player.getClipName(0), "walk");
+    EXPECT_EQ(player.getClipName(1), "Walk Fast");
+    EXPECT_EQ(player.getClipName(2), "");
+    EXPECT_TRUE(player.removeClip("walk"));
+    EXPECT_FALSE(player.removeClip("walk"));
+    EXPECT_EQ(player.getClipCount(), 1);
+    player.setSpeed(2.0f);
+    EXPECT_FLOAT_EQ(player.getSpeed(), 2.0f);
+    player.setDefaultClip("Walk Fast");
+    EXPECT_EQ(player.getDefaultClip(), "Walk Fast");
+    player.setDefaultFadeTime(0.5f);
+    EXPECT_FLOAT_EQ(player.getDefaultFadeTime(), 0.5f);
+    player.setPlayAutomatically(false);
+    EXPECT_FALSE(player.isPlayAutomatically());
+    player.setEnabled(false);
+    EXPECT_FALSE(player.isEnabled());
+    EXPECT_TRUE(scene.getComponent<AnimationPlayerComponent>(root).needsLoad);
     (void)player.getOnEvent();
     (void)player.getOnFinish();
 
@@ -301,6 +445,20 @@ TEST(AnimContract, AnimationPlayerObjectAndPreview){
     preview.states.push_back(previewState);
     ActionSystem::PlayerPreviewResult result = actions->previewPlayer(root, preview, session);
     for (Entity written : result.written) EXPECT_NE(written, NULL_ENTITY);
+    for (const auto& written : result.channels) EXPECT_NE(written.first, NULL_ENTITY);
+
+    // restorePlayerPreview writes the rest back to what the session wrote, then resets it
+    scene.getComponent<Transform>(root).position = Vector3(5, 5, 5);
+    anim::ChannelRest rest;
+    rest.hasTransform = true;
+    rest.position = Vector3(1, 2, 3);
+    session.root = root;
+    session.setRest(root, rest);
+    session.written.push_back({root, ClipChannel::Position});
+    actions->restorePlayerPreview(session);
+    EXPECT_EQ(scene.getComponent<Transform>(root).position, Vector3(1, 2, 3));
+    EXPECT_TRUE(session.written.empty());
+    EXPECT_EQ(session.root, NULL_ENTITY);
     std::vector<anim::TrackSample> samples;
     ActionSystem::sampleClip(*previewState.clip, 0.5f, samples);
     EXPECT_EQ(samples.size(), previewState.clip->getTracks().size());

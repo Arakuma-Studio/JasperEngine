@@ -5,7 +5,8 @@
 // - Purpose: glTF/FBX animations as read-only sub-asset clips: references "<model>#<name>" (or
 //   "#<index>" when unnamed), their names, and the builder that turns one animation of a model
 //   into ClipData with paths relative to the model root.
-// - Owner: T0 (API); T1c implements it. AnimationClipPool calls the builder on request (never
+// - Owner: T0 (API; the reference functions isModelFilePath / isSubClipReference /
+//   parseSubClipReference / formatSubClipReference are implemented); T1c implements the rest. AnimationClipPool calls the builder on request (never
 //   loadGLTF); the editor's Extract (ClipConverters) and get_asset_info use the same functions.
 // - Thread-safety: the reference/name functions are pure. buildModelSubClip / listModelClips
 //   may run on any thread (the shader-variant probe loads models off the UI thread): they read
@@ -15,7 +16,10 @@
 //   * a reference splits at the first '#' that follows a ".gltf", ".glb" or ".fbx" extension
 //     (case-insensitive): model file names may contain '#'.
 //   * names are exactly loadGLTF's animation entity names: the glTF name, "Animation <i>" when
-//     empty; the k-th later duplicate of a name is "<name> <k>" (k from 2).
+//     empty (i 0-based); the k-th later duplicate of a name is "<name> <k>" (k from 2).
+//   * canonical reference form: formatSubClipReference writes the name (never the index); when
+//     reading, a clip part that equals a name means that animation, and a number is an index only
+//     when no animation has that name.
 //   * the pool key of a sub-clip is "<normalized model path>#<animation index>", never the name.
 //   * track paths mirror buildGLTFNodeHierarchy: node.name or "Node <i>", parent = the node that
 //     lists it as a child, parentless nodes directly under the model root, "#k" = the count of

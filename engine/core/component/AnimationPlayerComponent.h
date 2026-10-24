@@ -15,15 +15,15 @@
 //     cleared (EntityCloner, Engine script reset, Scene::removeSubscriptionsByTag).
 //   * clip paths are asset-relative like ModelComponent::filename (".anim" or "<model>#<clip>");
 //     `guid` is editor-only (AssetDatabase: resolved first, repairs `clip`), empty for sub-clips.
-//   * state names: `name`, else the file stem / sub-clip name; duplicates get a runtime-only
-//     " 2", " 3" alias (never written back).
+//   * state names: anim::defaultStateName / anim::playerStateNames (AnimationPlayerRuntime.h):
+//     `name`, else the file stem / sub-clip name; duplicates get a runtime-only " 2", " 3" alias
+//     (never written back). Everyone (runtime, Inspector, controller, MCP) uses those two.
 
 #ifndef ANIMATION_PLAYER_COMPONENT_H
 #define ANIMATION_PLAYER_COMPONENT_H
 
 #include "Export.h"
-#include "animation/AnimationClip.h"
-#include "animation/AnimationEvent.h"
+#include "animation/ClipTypes.h"
 #include "util/FunctionSubscribe.h"
 
 #include <memory>
@@ -35,6 +35,8 @@ namespace jasperengine{
     namespace anim{
         class AnimationPlayerRuntime;
     }
+    // animation/AnimationEvent.h (callers of onEvent include it)
+    struct AnimationEvent;
 
     // One entry of the player's clip list (spec 9.R14)
     struct JASPERENGINE_API AnimationPlayerClip{
