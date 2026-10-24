@@ -10,6 +10,7 @@ MIT license below:
   engine/shaderlib/effects/lib/fam_fluid_look.glsl     his display, bloom, sunrays and colour
                                                        helpers
   engine/shaderlib/fluid.vert, fluid.frag              the native passes on those kernels
+  engine/shaderlib/effects/fluid.frag                  the HTML UI effect effect(fluid) on them
   engine/core/fluid/                                   his step(), render(), splats, pointers,
                                                        defaults and the presets built on them
                                                        (FluidSimulator, FluidPresets)

@@ -68,6 +68,10 @@ SOFTWARE.
 """
 
 
+# the effects/lib includes that are not shaders.com ports (Pavel Dobryakov's WebGL-Fluid-Simulation)
+NOT_SHADERS_COM = {"fam_fluid_solver.glsl", "fam_fluid_look.glsl"}
+
+
 def fail(message):
     raise SystemExit("gen_effects_docs.py: " + message)
 
@@ -84,6 +88,7 @@ def parse_manifest(path):
     i += 1
     m = {"backdrop": False, "pointer": "none", "time": [], "suggest": [], "params": [], "source": "", "prepass": "",
          "margin": "", "geometry": "", "states": [], "passes": [], "warmup": "", "rate": "", "replay": "", "reseed": "",
+         "presets": [],
          # an original effect whose file carries the kit's MIT notice follows parts of the kit
          "kit_notice": any("Shader Effects Inc." in line for line in lines)}
     while i < len(lines):
@@ -108,11 +113,17 @@ def parse_manifest(path):
         elif directive == "state":
             # phase 6: <name> <format> <size> [options]
             words = rest.split()
-            m["states"].append({"name": words[0], "format": words[1], "size": words[2] if len(words) > 2 else ""})
-        elif directive in ("init", "step"):
+            size = words[2] if len(words) > 2 else ""
+            if size == "aspect" and len(words) > 3:
+                size += " " + words[3]
+            m["states"].append({"name": words[0], "format": words[1], "size": size})
+        elif directive in ("init", "step", "frame"):
             words = rest.split()
-            m["passes"].append({"name": words[0], "init": directive == "init", "state": words[1] if len(words) > 1 else "",
-                                "options": words[2:]})
+            m["passes"].append({"name": words[0], "init": directive == "init", "frame": directive == "frame",
+                                "state": words[1] if len(words) > 1 else "", "options": words[2:]})
+        elif directive == "preset":
+            option, _, values = rest.partition(" ")
+            m["presets"].append((option, values.strip()))
         elif directive in ("warmup", "rate", "replay", "reseed"):
             m[directive] = rest
         else:
@@ -193,10 +204,13 @@ def stateful_text(m):
             fixed_bytes += int(w) * int(h) * FORMAT_BYTES.get(st["format"], 8) * count
         else:
             box = True
-    steps = [p for p in m["passes"] if not p["init"]]
+    steps = [p for p in m["passes"] if not p["init"] and not p["frame"]]
+    frames = [p for p in m["passes"] if p["frame"]]
     memory = "%.1f MB" % (fixed_bytes / (1024.0 * 1024.0)) + (" plus the area-sized images" if box else "")
     text = "Stateful (a simulation per element, phase 6): state %s (%s); %d pass%s a step" % (
         ", ".join(images), memory, len(steps), "" if len(steps) == 1 else "es")
+    if frames:
+        text += " and %d a drawn frame" % len(frames)
     if m["rate"]:
         text += " at %s Hz" % m["rate"].split()[0]
     else:
@@ -261,6 +275,10 @@ def catalogue_text(all_effects):
             lines.append("; ".join(facts) + ".")
             if m["states"]:
                 lines += ["", stateful_text(m)]
+            if m["presets"]:
+                lines += ["", "Presets (`preset <name>`: the parameters left at their defaults take its values):", ""]
+                for option, values in m["presets"]:
+                    lines.append("- `%s`: %s" % (option, ", ".join("`%s`" % v.strip() for v in values.split(","))))
             if m["suggest"]:
                 lines += ["", "Also found as: %s." % ", ".join("`%s`" % s for s in m["suggest"])]
             lines += ["", "| Param | Type | Default | Range or options | Description |", "|---|---|---|---|---|"]
@@ -293,12 +311,29 @@ def license_text(all_effects):
         width = max(len(m["effect"]) for m in adapted)
         for m in sorted(adapted, key=lambda e: e["effect"]):
             lines.append("  %s  %s" % (m["effect"].ljust(width), m["source"]))
+    others = [m for m in all_effects if not m["source"].startswith("shaders.com") and m["source"].startswith("port ")]
+    families = sorted(name for name in os.listdir(os.path.join(EFFECTS, "lib"))
+                      if name.startswith("fam_") and name.endswith(".glsl") and name not in NOT_SHADERS_COM)
     lines += [
         "",
         "The include library engine/shaderlib/effects/lib (jfx_color, jfx_hash, jfx_noise, jfx_sdf,",
-        "jfx_blend, jfx_tone and the other jfx_*.glsl files) and the effect families' includes there",
-        "(fam_*.glsl) port functions of the shaders.com kit (packages/core/src/gpu/kit) under the same",
-        "license.",
+        "jfx_blend, jfx_tone and the other jfx_*.glsl files) and these effect families' includes",
+        "there port functions of the shaders.com kit (packages/core/src/gpu/kit) under the same",
+        "license:",
+        "",
+    ]
+    lines += ["  " + name for name in families]
+    lines += [
+        "",
+        "Not from shaders.com: " + " and ".join(sorted(NOT_SHADERS_COM)) + " of the include",
+        "library are Pavel Dobryakov's WebGL-Fluid-Simulation (MIT, LICENSE.webgl-fluid-simulation.txt).",
+    ]
+    if others:
+        lines += ["", "These effects are ports of other projects, under their own licenses:", ""]
+        width = max(len(m["effect"]) for m in others)
+        for m in sorted(others, key=lambda e: e["effect"]):
+            lines.append("  %s  %s" % (m["effect"].ljust(width), m["source"]))
+    lines += [
         "",
         "Generated by tools/htmlui/gen_effects_docs.py from the effects' @source lines.",
         "",

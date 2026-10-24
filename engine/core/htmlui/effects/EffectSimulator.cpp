@@ -93,12 +93,45 @@ namespace {
     int stateSide(const EffectStateDef& st, Rml::Vector2f area, bool width){
         if (st.fixedSize)
             return width ? st.width : st.height;
+        if (st.aspectShort > 0){
+            // aspect <short>: the shorter side `short` texels, the longer one by the area's aspect
+            // (Pavel Dobryakov's getResolution), both scaled down together past `max`
+            const float w = std::max(area.x, 1.f), h = std::max(area.y, 1.f);
+            const bool landscape = w > h;
+            const float aspect = landscape ? w / h : h / w;
+            float shortSide = (float)st.aspectShort;
+            float longSide = std::round(shortSide * aspect);
+            if (longSide > (float)st.boxMax){
+                shortSide = std::round(shortSide * (float)st.boxMax / longSide);
+                longSide = (float)st.boxMax;
+            }
+            const int side = (int)(width == landscape ? longSide : shortSide);
+            return std::clamp(side, 1, st.boxMax);
+        }
         float scale = st.boxScale;
         const float largest = std::max(area.x, area.y) * scale;
         if (largest > (float)st.boxMax)
             scale *= (float)st.boxMax / largest;
         const int side = (int)std::lround((width ? area.x : area.y) * scale);
         return std::clamp(side, 1, st.boxMax);
+    }
+
+    // how many times a pass runs: x<count> or x<param> (rounded, 1 to 64); 0 when its `if`
+    // parameter is 0
+    int passRepeats(const EffectInstance& instance, const EffectPassDef& pass){
+        const EffectManifest& m = *instance.manifest;
+        auto valueOf = [&](const std::string& param, float fallback){
+            const int index = m.paramIndex(param);
+            if (instance.snapshot && index >= 0 && index < (int)instance.snapshot->values.size())
+                return instance.snapshot->values[(size_t)index].f;
+            return fallback;
+        };
+        if (!pass.ifParam.empty() && valueOf(pass.ifParam, 1.f) == 0.f)
+            return 0;
+        int repeat = pass.repeat;
+        if (!pass.repeatParam.empty())
+            repeat = (int)std::lround(valueOf(pass.repeatParam, (float)pass.repeat));
+        return std::clamp(repeat, 1, 64);
     }
 
 }
@@ -382,6 +415,7 @@ bool EffectRenderer::allocateStates(EffectInstance& instance, EffectSimulation& 
     simulation.states = std::move(next);
     simulation.bytes = bytes;
     simulation.allocated = true;
+    simulation.frameDirty = true;
     simulation.poolGeneration = pool.generation();
     simulation.areaSize = instance.areaSize;
     return true;
@@ -503,15 +537,9 @@ void EffectRenderer::runStep(EffectInstance& instance, EffectSimulation& simulat
     const EffectManifest& m = *instance.manifest;
     for (size_t p = 0; p < m.passes.size(); p++){
         const EffectPassDef& pass = m.passes[p];
-        if (pass.init != initPasses)
+        if (pass.init != initPasses || pass.frame)
             continue;
-        int repeat = pass.repeat;
-        if (!pass.repeatParam.empty() && instance.snapshot){
-            const int index = m.paramIndex(pass.repeatParam);
-            if (index >= 0 && index < (int)instance.snapshot->values.size())
-                repeat = (int)std::lround(instance.snapshot->values[(size_t)index].f);
-        }
-        repeat = std::clamp(repeat, 1, 64);
+        const int repeat = passRepeats(instance, pass);
         for (int it = 0; it < repeat; it++){
             if (!runPass(instance, simulation, drawProgram, filter, pass, (int)p, it, input))
                 return;
@@ -522,6 +550,38 @@ void EffectRenderer::runStep(EffectInstance& instance, EffectSimulation& simulat
         EffectRuntime::get().mutableStats().stepsRun++;
         EffectRuntime::get().mutableFrameStats().stepsRun++;
     }
+    simulation.frameDirty = true;
+}
+
+void EffectRenderer::runFramePasses(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter){
+    const EffectManifest& m = *instance.manifest;
+    simulation.frameDirty = false;
+    if (!m.hasFramePasses())
+        return;
+    // the state as the last step left it: its time, the pointer it saw, no splats
+    StepInput input;
+    input.time = simulation.simTime;
+    input.dt = (float)(1.0 / std::max(1.f, m.rateHz));
+    input.stepNumber = simulation.steps;
+    input.stepInFrame = 0;
+    input.stepsInFrame = 0;
+    input.known = simulation.pointerKnown;
+    input.pointer = simulation.pointer;
+    input.pointerPrev = simulation.pointer;
+    input.inside = simulation.pointerKnown && simulation.pointer.x >= 0.f && simulation.pointer.y >= 0.f &&
+                   simulation.pointer.x <= instance.areaSize.x && simulation.pointer.y <= instance.areaSize.y;
+    input.down = simulation.pointerDown;
+    for (size_t p = 0; p < m.passes.size(); p++){
+        const EffectPassDef& pass = m.passes[p];
+        if (!pass.frame)
+            continue;
+        const int repeat = passRepeats(instance, pass);
+        for (int it = 0; it < repeat; it++){
+            if (!runPass(instance, simulation, drawProgram, filter, pass, (int)p, it, input))
+                return;
+        }
+    }
+    simulation.framePassRuns++;
 }
 
 void EffectRenderer::runInit(EffectInstance& instance, EffectSimulation& simulation, Program& drawProgram, RmlFilterContext* filter,
@@ -688,6 +748,14 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
             key = fnvValue(key, local.y);
             key = fnvValue(key, sample.z);
         }
+        const std::vector<Rml::Vector3f> path = instance.state ? instance.state->scriptedPath : std::vector<Rml::Vector3f>();
+        for (const Rml::Vector3f& sample : path){
+            key = fnvValue(key, sample.x);
+            key = fnvValue(key, sample.y);
+            key = fnvValue(key, sample.z);
+        }
+        key = fnvValue(key, instance.areaOffset.x);
+        key = fnvValue(key, instance.areaOffset.y);
         key = fnvValue(key, pointerValid);
         key = fnvValue(key, pointerLocal.x);
         key = fnvValue(key, pointerLocal.y);
@@ -719,6 +787,7 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
             simulation.replayT = T;
             simulation.replayStart = T - (double)simulation.replayCount * h;
             simulation.replayHistory = history;
+            simulation.replayPath = path;
             simulation.replayLog = simulation.log;
             simulation.replayPointer = pointerLocal;
             simulation.replayPointerValid = pointerValid;
@@ -732,8 +801,29 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
             const double start = simulation.replayStart;
             const double TR = simulation.replayT;
             const std::vector<Rml::Vector4f>& hist = simulation.replayHistory;
-            // the pointer along the replay: the history at age T - t (newest first)
+            const std::vector<Rml::Vector3f>& path = simulation.replayPath;
+            // the pointer along the replay: a scripted path (element px at effect times: a drag,
+            // known from its first sample's time to its last's), else the history at age T - t
+            // (newest first)
             auto pointerAt = [&](double t, Rml::Vector2f& p) -> bool {
+                if (!path.empty()){
+                    if (t < (double)path.front().z - 1e-6 || t > (double)path.back().z + 1e-6)
+                        return false;
+                    Rml::Vector2f q(path.back().x, path.back().y);
+                    for (size_t i = 0; i + 1 < path.size(); i++){
+                        const Rml::Vector3f& a = path[i];
+                        const Rml::Vector3f& b = path[i + 1];
+                        if (t <= (double)b.z + 1e-6){
+                            const float k = b.z > a.z ? std::clamp((float)((t - (double)a.z) / (double)(b.z - a.z)), 0.f, 1.f) : 1.f;
+                            q = Rml::Vector2f(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k);
+                            break;
+                        }
+                    }
+                    if (path.size() == 1)
+                        q = Rml::Vector2f(path.front().x, path.front().y);
+                    p = q - instance.areaOffset;
+                    return true;
+                }
                 if (hist.empty()){
                     p = simulation.replayPointer;
                     return simulation.replayPointerValid;
@@ -780,6 +870,12 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
                                                                                       : Rml::Vector2f(0.f, 0.f);
                     input.inside = input.known && insideArea(input.pointer);
                     input.down = simulation.replayPointerDown;
+                    if (!path.empty()){
+                        // a scripted path is a drag: down while it lasts, pressed on its first step
+                        input.down = input.known;
+                        input.pressed = input.known && !simulation.replayPreviousKnown;
+                        input.released = !input.known && simulation.replayPreviousKnown;
+                    }
                     // the splats logged inside this step's interval (one at T lands on the last step)
                     const double from = input.time - h;
                     for (const auto& logged : simulation.replayLog){
@@ -812,6 +908,10 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
             if (simulation.pinnedKey != key)
                 runtime.requestRedraw(context);   // the inputs moved on meanwhile: another replay next frame
         }
+        // @frame passes: once for the state the replay defined (two frames at one pinned time
+        // are the same images)
+        if (simulation.frameDirty)
+            runFramePasses(instance, simulation, drawProgram, filter);
         simulation.lastAdvanceFrame = frame;
         simulation.lastTime = T;
         simulation.paused = false;
@@ -931,6 +1031,9 @@ bool EffectRenderer::advanceSimulation(EffectInstance& instance, Program& drawPr
         simulation.pointerDown = pointerDown;
         simulation.pressSeen = pressCount;
     }
+    // @frame passes: after the frame's steps, when they (or a reset) changed the state
+    if (simulation.frameDirty)
+        runFramePasses(instance, simulation, drawProgram, filter);
     simulation.lastAdvanceFrame = frame;
     simulation.lastTime = T;
     simulation.paused = false;
