@@ -1069,6 +1069,13 @@ with no dynamic offsets left, an acceleration that wakes it, back at rest; edit 
 (applyPose immediate, tween waits, follower follows); `GameObject.instantiate` remaps. The
 offline stub check (every Lua symbol of `engine_api_suggestions.h` has a stub) passes; the
 editor-side `test_stubs.py`/`test_docs.py` failures on this host match the baseline.
+Timing note (test_lattice_lua mid-tween check): a script's `onUpdate` (Engine event) runs
+before the scene's systems in the same frame, and the first frame after Play starts has its
+delta clamped to 0.25 s. The first version of the test (06be36e9e, still in `lat/anim`)
+sampled the offset on the first `onUpdate` with 0.2 s elapsed and saw 0, since the tween had
+not run that frame. Fixed in ecc5bc286: it records the first value strictly between the rest
+and the pose while tweening (a 1 s tween spans at least four updates). LatticeSystem was not
+at fault: a frame trace shows the offset advancing every update (0, 0.109, 0.181, ... 0.25).
 Branch `lat/ecs` merged `lattice` (WP-SOLVER) and `lat/render` (for the `lateUpdate` call
 and the tessellation request); with them the three tests pass and a 2D sprite bound to a
 lattice renders as a smoothly warped 8 x 8 grid.
