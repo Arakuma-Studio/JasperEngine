@@ -1,0 +1,9 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the core-utilities project logs on
+# Android, as `logcat -v tag` shows it (priority/tag: text). lua/main.lua runs before main.cpp's init.
+W/JasperEngine: [gate] lua warning 1
+I/JasperEngine: [gate] cpp info 2
+W/JasperEngine: [gate] cpp warning 3
+E/JasperEngine: [gate] cpp error 4
+W/JasperEngine: [render] [gate] category warning 5
+I/JasperEngine: [gate] coroutine resumed
+W/JasperEngine: [gate] timer fired after 0.1
