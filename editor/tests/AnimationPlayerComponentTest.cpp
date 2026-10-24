@@ -4,9 +4,8 @@
 // The Animation Player component's editor plumbing (animation clips spec 3.2, 3.6, 9.R8/R14/R22/
 // R25/R26/R41): Catalog properties, Stream encode/decode (path hint + GUID per clip entry), prefab
 // overrides of the clip list, copy/paste, ProjectUtils add/remove, and the C++ the exporter emits
-// (compiled here as written). What needs a project on disk runs in the editor (MCP tests): the
-// set_properties / add_component validation of clip paths (McpValues), the asset path visitor
-// (moves of a clip or model) and the scene resources (Project's private helpers).
+// (compiled here as written). What needs a project on disk (McpValues' clip validation, the asset
+// path visitor, the scene resources) is in AnimationPlayerProjectTest.cpp.
 
 #include <gtest/gtest.h>
 
@@ -124,6 +123,24 @@ TEST(AnimationPlayerComponent, StreamDefaultsAndLenientEntries) {
     const AnimationPlayerComponent negative = Stream::decodeAnimationPlayerComponent(YAML::Load("defaultFadeTime: -1\n"));
     EXPECT_FLOAT_EQ(negative.defaultFadeTime, 0.0f);
 
+    // values of the wrong shape are the defaults (one bad key never fails a scene's load); a map
+    // entry whose clip is not a path is left out
+    AnimationPlayerComponent shapes;
+    ASSERT_NO_THROW(shapes = Stream::decodeAnimationPlayerComponent(YAML::Load(
+        "enabled: maybe\n"
+        "playAutomatically: [1, 2]\n"
+        "defaultClip: {a: b}\n"
+        "clips:\n"
+        "  - {clip: [anim/x.anim]}\n"
+        "  - {clip: anim/y.anim, wrap: [loop]}\n")));
+    EXPECT_EQ(shapes.enabled, defaults.enabled);
+    EXPECT_EQ(shapes.playAutomatically, defaults.playAutomatically);
+    EXPECT_EQ(shapes.defaultClip, "");
+    ASSERT_EQ(shapes.clips.size(), 1u);
+    EXPECT_EQ(shapes.clips[0], clipEntry("anim/y.anim"));
+    // yaml-cpp's other spellings of a bool still read
+    EXPECT_FALSE(Stream::decodeAnimationPlayerComponent(YAML::Load("enabled: no\n")).enabled);
+
     // an empty player writes an empty list: decoding it over a player with clips clears them
     const YAML::Node empty = Stream::encodeAnimationPlayerComponent(AnimationPlayerComponent());
     ASSERT_TRUE(empty["clips"].IsSequence());
@@ -200,6 +217,10 @@ TEST(AnimationPlayerComponent, CatalogProperties) {
     EXPECT_EQ(wrap.ref, &player.clips[2].wrap);
     EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "clips[3].clip").ref);
     EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "clips[x].clip").ref);
+    // one spelling per index, and no index that wraps around to an entry
+    EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "clips[00].clip").ref);
+    EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "clips[18446744073709551616].clip").ref);
+    EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "clips[4294967296].clip").ref);
     EXPECT_FALSE(Catalog::findProperty(&scene, entity, type, "clips[0].other").ref);
 
     for (const char* name : {"defaultClip", "playAutomatically", "speed", "defaultFadeTime"}) {
@@ -227,12 +248,17 @@ TEST(AnimationPlayerComponent, CatalogCopiesTheCustomProperties) {
     const Entity target = playerEntity(scene, AnimationPlayerComponent());
     const ComponentType type = ComponentType::AnimationPlayerComponent;
 
+    // (a prefab revert copies values this way: the player reloads, through the property's flag)
+    scene.getComponent<AnimationPlayerComponent>(target).needsLoad = false;
     Catalog::copyPropertyValue(&scene, source, &scene, target, type, "clips");
     EXPECT_EQ(scene.getComponent<AnimationPlayerComponent>(target).clips, authoredPlayer().clips);
+    EXPECT_TRUE(scene.getComponent<AnimationPlayerComponent>(target).needsLoad);
 
     scene.getComponent<AnimationPlayerComponent>(source).clips[0].wrap = ClipWrapMode::PingPong;
+    scene.getComponent<AnimationPlayerComponent>(target).needsLoad = false;
     Catalog::copyPropertyValue(&scene, source, &scene, target, type, "clips[0].wrap");
     EXPECT_EQ(scene.getComponent<AnimationPlayerComponent>(target).clips[0].wrap, ClipWrapMode::PingPong);
+    EXPECT_TRUE(scene.getComponent<AnimationPlayerComponent>(target).needsLoad);
 
     // the whole component (Paste Component Values): decoded over the target
     const Entity third = playerEntity(scene, AnimationPlayerComponent());
@@ -261,15 +287,16 @@ TEST(AnimationPlayerComponent, PrefabOverrideOfTheClipList) {
     AnimationPlayerComponent more = assetPlayer;
     more.clips.push_back(clipEntry("models/hero.gltf#Run", "", "Run", ClipWrapMode::Loop));
     const Entity moreRoot = playerEntity(instance, more);
-    std::vector<std::string> changed = prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, moreRoot, type);
-    EXPECT_NE(std::find(changed.begin(), changed.end(), "clips"), changed.end());
+    // (and the new entry's own fields, which the prefab does not have)
+    EXPECT_EQ(prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, moreRoot, type),
+              (std::vector<std::string>{"clips", "clips[1].clip", "clips[1].guid", "clips[1].name", "clips[1].wrap"}));
 
-    // one entry's wrap
+    // one entry's wrap: the list and that field (the Overrides list shows both, as for other lists)
     AnimationPlayerComponent looping = assetPlayer;
     looping.clips[0].wrap = ClipWrapMode::Loop;
     const Entity loopingRoot = playerEntity(instance, looping);
-    changed = prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, loopingRoot, type);
-    EXPECT_NE(std::find(changed.begin(), changed.end(), "clips[0].wrap"), changed.end());
+    EXPECT_EQ(prefabinternal::diffComponentProperties(&asset, assetRoot, &instance, loopingRoot, type),
+              (std::vector<std::string>{"clips", "clips[0].wrap"}));
 
     // applied as the instance loads: the prefab's player with the instance's overridden list
     prefabinternal::ScratchEntity values;
@@ -344,7 +371,9 @@ TEST(AnimationPlayerComponent, ClipReferencesNeedAProjectToResolve) {
 namespace {
 
     // the code below is Factory's output for authoredPlayer(), pasted: it must keep compiling
-    // against the engine headers and build the same component
+    // against the engine headers and build the same component. It and EMITTED_ANIMATION_PLAYER
+    // are one text: change them together (FactoryEmitsTheAuthoredFields compares the emitted code
+    // with the string; a real export compile runs in the MCP build_project checks)
     void emittedAnimationPlayer(Scene* scene, Entity entity) {
         AnimationPlayerComponent animationplayer;
         animationplayer.enabled = false;
