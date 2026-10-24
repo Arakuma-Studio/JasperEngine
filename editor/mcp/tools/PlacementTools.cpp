@@ -20,7 +20,6 @@
 #include "App.h"
 #include "EditorHost.h"
 #include "Project.h"
-#include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "component/Transform.h"
 #include "physics/ConvexDecomposition.h"
@@ -28,7 +27,6 @@
 #include "registry/TagManager.h"
 #include "render/SceneRender.h"
 #include "texsynth/SynthesisSession.h"
-#include "window/PhysicsPlacementWindow.h"
 #include "window/SceneWindow.h"
 
 #include <algorithm>
@@ -528,20 +526,19 @@ std::shared_ptr<ShownPreview> showPreview(SceneProject* sp, const PlacementResul
 
 // ---- previews an apply commits as they are
 
-// What a scene looked like to a run: its structure, its history (every edit, undo and redo bumps
-// the counter; the position and the latest command catch them too) and every Transform. Two
-// equal states read the same scene, so a result computed in one is valid in the other.
+// What a scene looked like to a run: placementSceneEditStamp (its structure, history position and
+// every GameObject's Transform, parent, components, layer and active flag), plus what the stamp
+// can't see: the project and Scene object it belongs to, and a count of every command applied,
+// undone or redone there (an undo then another edit of a component value lands on the same
+// history position with the same stamp). Two equal states read the same scene.
 struct SceneState {
     uint64_t generation = 0;
     Scene* scene = nullptr;
-    uint64_t structureVersion = 0;
+    uint64_t stamp = 0;
     uint64_t edits = 0;
-    size_t historyPosition = 0;
-    uint64_t transforms = 0;
 
     bool operator==(const SceneState& o) const {
-        return generation == o.generation && scene == o.scene && structureVersion == o.structureVersion && edits == o.edits &&
-               historyPosition == o.historyPosition && transforms == o.transforms;
+        return generation == o.generation && scene == o.scene && stamp == o.stamp && edits == o.edits;
     }
 };
 
@@ -563,36 +560,13 @@ void watchSceneEdits() {
     };
 }
 
-uint64_t hashBytes(uint64_t h, const void* data, size_t size) {
-    const unsigned char* bytes = static_cast<const unsigned char*>(data);
-    for (size_t i = 0; i < size; i++) {
-        h ^= bytes[i];
-        h *= 1099511628211ULL;
-    }
-    return h;
-}
-
-SceneState sceneState(SceneProject* sp) {
+SceneState sceneState(Project* project, SceneProject* sp) {
     SceneState state;
     state.generation = texsynth::projectGeneration();
     state.scene = sp->scene;
-    state.structureVersion = sp->structureVersion;
+    state.stamp = placementSceneEditStamp(project, sp->id);
     auto edits = sceneEdits().find(sp->id);
     state.edits = edits != sceneEdits().end() ? edits->second : 0;
-    state.historyPosition = CommandHandle::get(sp->id)->position();
-    uint64_t h = 14695981039346656037ULL;
-    const size_t count = sp->entities.size();
-    h = hashBytes(h, &count, sizeof(count));
-    for (Entity entity : sp->entities) {
-        h = hashBytes(h, &entity, sizeof(entity));
-        if (const Transform* t = sp->scene->findComponent<Transform>(entity)) {
-            const float values[] = {t->position.x, t->position.y, t->position.z, t->rotation.x, t->rotation.y, t->rotation.z,
-                                    t->rotation.w, t->scale.x, t->scale.y, t->scale.z};
-            h = hashBytes(h, values, sizeof(values));
-            h = hashBytes(h, &t->parent, sizeof(t->parent));
-        }
-    }
-    state.transforms = h;
     return state;
 }
 
@@ -620,7 +594,7 @@ void pruneStoredPreviews(Project* project) {
     list.erase(std::remove_if(list.begin(), list.end(), [&](const StoredPreview& p) {
         if (!project || p.state.generation != texsynth::projectGeneration()) return true;
         SceneProject* sp = project->getScene(p.sceneId);
-        return !sp || sp->scene != p.state.scene || sp->structureVersion != p.state.structureVersion;
+        return !sp || sp->scene != p.state.scene || sp->structureVersion != p.result.sceneStructureVersion;
     }), list.end());
 }
 
@@ -644,7 +618,7 @@ std::optional<PlacementResult> takeStoredPreview(Project* project, SceneProject*
     auto& list = storedPreviews();
     for (auto it = list.begin(); it != list.end(); ++it) {
         if (it->sceneId != sp->id || it->fingerprint != fingerprint) continue;
-        const bool unchanged = it->state == sceneState(sp) && it->result.sceneStructureVersion == sp->structureVersion;
+        const bool unchanged = it->state == sceneState(project, sp);
         std::optional<PlacementResult> out;
         if (unchanged) out = it->result;
         list.erase(it);
@@ -715,21 +689,19 @@ bool sceneStillValid(PlacementCall& state, bool& busy, std::string& why) {
     }
     busy = sp->playState != ScenePlayState::STOPPED;
     if (sp->structureVersion != state.structureVersion) {
-        why = "The scene changed during the simulation (GameObjects or components added, removed or re-parented): nothing was "
-              "changed. Call place_with_physics again.";
+        why = "Nothing was changed: the scene changed during the simulation (GameObjects or components added, removed or "
+              "re-parented): run it again.";
         return false;
     }
     // the Scene view's Physics tool is in a gesture or settle there: its Transforms hold its
     // preview poses until it commits or cancels
-    if (PhysicsPlacementWindow* window = state.ctx->app().getPhysicsPlacementWindow()) {
-        if (window->isBusy(state.sceneId)) {
-            busy = true;
-            return true;
-        }
+    if (placementSceneBusy(project, state.sceneId)) {
+        busy = true;
+        return true;
     }
     // any other edit (a moved floor, an undo): what the run read is not the scene any more
-    if (state.phase != PlacementCall::Phase::Start && !busy && !previewShownIn(state.sceneId) && !(sceneState(sp) == state.startState)) {
-        why = "The scene changed during the simulation (a GameObject moved, an edit, undo or redo): nothing was changed. Run it again.";
+    if (state.phase != PlacementCall::Phase::Start && !busy && !previewShownIn(state.sceneId) && !(sceneState(project, sp) == state.startState)) {
+        why = "Nothing was changed: the scene changed during the simulation (a GameObject moved, an edit, undo or redo): run it again.";
         return false;
     }
     return true;
@@ -891,23 +863,14 @@ void finishPlacement(const PlacementCallPtr& state) {
     }
     Project* project = state->ctx->project();
     if (state->apply) {
-        // checked again right before writing (sceneStillValid ran this frame, with the scene read
-        // as it was when the run started); commitPlacement refuses a structure change or a
-        // missing GameObject itself too
-        SceneProject* sp = project->getScene(state->sceneId);
-        if (!sp || !(sceneState(sp) == state->startState)) {
-            data["error"] = "scene changed";
-            state->phase = PlacementCall::Phase::Done;
-            state->run.reset();
-            job->fail("The scene changed during the simulation: nothing was changed. Run it again.", data);
-            return;
-        }
+        // sceneStillValid compared the scene with the run's start this frame; commitPlacement
+        // checks its edit stamp, the committed Transforms and a busy Physics gesture itself
         std::string error;
         if (!commitPlacement(project, r, error)) {
             data["error"] = error;
             state->phase = PlacementCall::Phase::Done;
             state->run.reset();
-            job->fail("The simulation finished but committing it failed: " + error + " Nothing was changed.", data);
+            job->fail("Nothing was changed: " + error + ".", data);
             return;
         }
         state->committed = true;
@@ -925,7 +888,7 @@ void finishPlacement(const PlacementCallPtr& state) {
     if (!state->apply) {
         // kept for an apply with the same arguments, if the scene still reads the same then
         SceneProject* sp = project->getScene(state->sceneId);
-        if (sp && sceneState(sp) == state->startState) storePreview(project, state->sceneId, state->fingerprint, state->startState, r);
+        if (sp && sceneState(project, sp) == state->startState) storePreview(project, state->sceneId, state->fingerprint, state->startState, r);
     }
     // decompose: cached asks for missing decompositions and uses hulls meanwhile: once they are
     // in, a new simulation of the same arguments builds other shapes
@@ -989,8 +952,7 @@ void tick(const PlacementCallPtr& state) {
     // the scene is being saved, the Scene view's Physics tool or another call's screenshot has
     // preview poses in it: the run reads the scene (context is gathered as it goes), so it waits
     if (busy || previewShownIn(state->sceneId)) {
-        PhysicsPlacementWindow* window = state->ctx->app().getPhysicsPlacementWindow();
-        if (window && window->isBusy(state->sceneId)) {
+        if (placementSceneBusy(state->ctx->project(), state->sceneId)) {
             job->setProgress(0.0, "waiting for the Scene view's Physics gesture to end (its preview poses are in the scene)");
         }
         scheduleTick(state);
@@ -1004,7 +966,7 @@ void tick(const PlacementCallPtr& state) {
             SceneProject* sp = project->getScene(state->sceneId);
             McpValues::refreshTransforms(sp);
             state->structureVersion = sp->structureVersion;
-            state->startState = sceneState(sp);
+            state->startState = sceneState(project, sp);
             if (state->apply) state->fromPreview = takeStoredPreview(project, sp, state->fingerprint);
             if (state->fromPreview) {
                 finishPlacement(state);

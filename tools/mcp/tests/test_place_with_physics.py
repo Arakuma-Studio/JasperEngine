@@ -74,7 +74,7 @@ SCENE = [
     # snap: a table top at y = 1
     {"name": "Table", "type": "cube", "position": [-10, 0.5, -10], "scale": [2, 1, 2]},
     # snap places it on the surface the ray hits (then it settles), whatever lies between
-    {"name": "Snapper", "type": "cube", "position": [-6, 4, -10]},
+    {"name": "Snapper", "type": "cube", "position": [-6, 0.5, -10]},
     # separate: two cubes overlapping by half a metre
     {"name": "OverA", "type": "cube", "position": [10, 0.5, -10]},
     {"name": "OverB", "type": "cube", "position": [10.5, 0.5, -10]},
@@ -299,6 +299,14 @@ async def test_apply_matches_preview(ed: Editor):
         check(near(pos, a["after"]["position"], 1e-4) and near(quat, a["after"]["rotation"], 1e-4), f"{name} is there now: {pos} {quat}")
     check("one undo step" in r.text, f"text: {r.text}")
     check(await scene_modified(ed), "the scene is modified")
+    # the stored preview was used up: the same apply again simulates the scene as it is now
+    # (never a second commit of the same result)
+    again = (await place(ed, entities=["Crate", "Crate2"], apply=True)).structured
+    check(again["applied"] is True and again["from_preview"] is False, f"simulated again: {again['from_preview']}")
+    for name in ("Crate", "Crate2"):
+        check(near(by_path(again, name)["after"]["position"], by_path(v, name)["after"]["position"], 0.002), f"{name} stays at rest")
+    await ed.call("undo")
+    check(near((await world(ed, "Crate"))[0], by_path(v, "Crate")["after"]["position"], 1e-4), "one undo takes back only the second apply")
 
 
 async def test_one_undo_restores(ed: Editor):
@@ -383,6 +391,13 @@ async def test_job_progress_and_cancel(ed: Editor):
         progress.append((state["progress"], state["message"]))
         await asyncio.sleep(0.05)
     check(state["status"] == "succeeded" and state["result"]["state_hash"], f"the job finishes with the result: {state}")
+    # allowed to finish, every cube comes to rest on the floor or on another cube
+    rained = state["result"]
+    check(rained["all_settled"] is True, f"all settled: {rained['warnings']}")
+    for e in rained["entities"]:
+        check(e["settled"] and e["resting_on"] and e["after"]["position"][1] > 0.45,
+              f"{e['path']} rests on something: {e['after']['position']} on {e['resting_on']}")
+    check(any(any(x["path"] == "Floor" for x in e["resting_on"]) for e in rained["entities"]), "the bottom ones on the floor")
     stepping = [(p, m) for p, m in progress if m.startswith("step ")]
     check(len(stepping) >= 3, f"progress while it ran (\"step k/n, a of b asleep\"): {progress[:5]}")
     check(all(0.0 <= p <= 1.0 for p, _ in stepping) and stepping[-1][0] >= stepping[0][0], f"progress grows: {stepping}")
@@ -649,7 +664,7 @@ async def test_stale_apply_refused(ed: Editor):
     check(state["status"] == "running", f"running: {state}")
     await ed.call("set_transform", entity="StaleFloor", position=[-15, -2.5, 21])
     state = await wait_job(ed, job, 120)
-    check(state["status"] == "failed" and "scene changed during the simulation" in state["message"] and "Run it again" in state["message"],
+    check(state["status"] == "failed" and "scene changed during the simulation" in state["message"] and "run it again" in state["message"],
           f"a moved floor stops the apply: {state['status']} {state['message'][:300]}")
     check(await poses(ed, names[:5]) == before, "nothing committed")
     await ed.call("delete_entities", entities=names + ["StaleFloor"])
