@@ -169,6 +169,12 @@ JASPER_TEST_UPDATE_GOLDEN=1 UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=Rende
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.*' tools/build.sh unit-tests
 ```
 
+The post FX goldens (`tools/mcp/tests/test_post_fx_golden.py`, S13) live in
+`tools/mcp/tests/golden/post_fx/` and are rewritten with `JASPER_POST_FX_UPDATE_GOLDEN=1`, except
+`defaults.png`: the post-processing fixture with every field at its default, captured by that test
+on the editor before S13 (oe-port `cf75a9d69`), which the S13 editor must match exactly. Re-capture
+it only from an editor without S13's changes.
+
 ## No silent green
 
 - `tools/ci/gtest-gate.py` reads the googletest XML of every run and fails when the file is

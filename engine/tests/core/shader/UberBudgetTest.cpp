@@ -1,10 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The S13 uber variants' static budgets (AC11, AC12): every new bit alone and all bits on
-// compile for every backend, and the SPIR-V of each variant samples no more than the spec's
-// Performance table allows beyond the base variant, within 8 samplers and 24 vec4 of
-// parameters. Samples are counted per fragment invocation along the call graph (glslang runs
+// The S13 uber variants' static budgets (AC12): the SPIR-V of each variant samples no more than
+// the spec's Performance table allows beyond the base variant, within 8 samplers and 24 vec4 of
+// parameters (every backend's compile, AC11, is editor/tests/shader/UberVariantsTest.cpp: a
+// game's runtime compiler has only its own platform's languages). Samples are counted per fragment invocation along the call graph (glslang runs
 // without an optimizer, so helpers stay functions: a helper's samples count once per call).
 
 #include "pool/ShaderPool.h"
@@ -153,21 +153,4 @@ TEST(UberBudget, SampleCounts){
     EXPECT_LE(all.samplers, 8u);
     EXPECT_EQ(all.textures, 6u);
     EXPECT_LE(all.paramBytes, 24u * 16u);
-}
-
-TEST(UberBudget, CompilesForEveryBackend){
-    ASSERT_TRUE(ShaderVariantCompiler::isAvailable()) << "this build has no shader compiler";
-    std::vector<uint32_t> variants;
-    for (const S13Variant& variant : S13_VARIANTS)
-        variants.push_back(variant.features);
-    variants.push_back(allBits());
-    for (ShaderBackend backend : ShaderPool::getShaderBackends()){
-        for (uint32_t features : variants){
-            ShaderData data;
-            std::string error, log;
-            EXPECT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::BLIT, features), backend, nullptr, data, &error, &log))
-                << ShaderPool::getShaderStr(ShaderType::BLIT, features, 0) << " (" << ShaderPool::getShaderLangStr(backend) << "): " << error << "\n" << log;
-            EXPECT_EQ(ShaderVariantCompiler::checkResourceBudget(data), "") << ShaderPool::getShaderStr(ShaderType::BLIT, features, 0);
-        }
-    }
 }

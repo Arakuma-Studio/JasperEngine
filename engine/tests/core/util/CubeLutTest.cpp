@@ -142,11 +142,17 @@ namespace {
         return s;
     }
 
-    int maxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+    int maxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, size_t* where = nullptr){
         EXPECT_EQ(a.size(), b.size());
         int worst = 0;
-        for (size_t i = 0; i < std::min(a.size(), b.size()); i++)
-            worst = std::max(worst, std::abs((int)a[i] - (int)b[i]));
+        for (size_t i = 0; i < std::min(a.size(), b.size()); i++){
+            const int d = std::abs((int)a[i] - (int)b[i]);
+            if (d > worst){
+                worst = d;
+                if (where)
+                    *where = i;
+            }
+        }
         return worst;
     }
 
@@ -505,7 +511,11 @@ TEST(CubeLut, JlutRoundTrip){
             std::vector<uint8_t> fromCube, fromJlut;
             PostColorLut::bake(settings, &cube, stage, 32, fromCube);
             PostColorLut::bake(settings, &cooked, stage, 32, fromJlut);
-            EXPECT_LE(maxDifference(fromCube, fromJlut), 2) << title << " stage " << (int)stage;
+            size_t at = 0;
+            const int difference = maxDifference(fromCube, fromJlut, &at);
+            // (the texel: index / 4 = g * 32 * 32 + b * 32 + r, channel index % 4)
+            EXPECT_LE(difference, 2) << title << " stage " << (int)stage << " at byte " << at << ": " << (int)fromCube[at]
+                                     << " vs " << (int)fromJlut[at];
         }
     }
 

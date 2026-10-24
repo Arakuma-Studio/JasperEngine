@@ -410,6 +410,23 @@ namespace{
     }
 
     // linear Rec. 709 through the LUT read in an encoding, linear Rec. 709 out (not negative)
+    // the linear value at the top of a LUT's input range in an encoding (its shaper's range when
+    // it has one); the gamut matrices into the encodings keep a colour's largest channel at most
+    // its largest Rec. 709 channel, so a colour whose channels stay below it stays in range
+    float inputPeak(const CubeLut& lut, LutInputEncoding encoding){
+        const float top = lut.size1D >= 2 ? lut.in1D[1] : lut.in3D[1];
+        switch (encoding){
+            case LutInputEncoding::SRGB: return srgbToLinear(top);
+            case LutInputEncoding::LOGC3: return logC3ToLinear(top);
+            case LutInputEncoding::ACESCCT: return acesCctToLinear(top);
+            case LutInputEncoding::CINEON: return cineonToLinear(top);
+            case LutInputEncoding::DAVINCI_INTERMEDIATE: return daVinciToLinear(top);
+            case LutInputEncoding::LINEAR:
+            case LutInputEncoding::AUTO:
+            default: return top;
+        }
+    }
+
     Vector3 applyEncoded(const CubeLut& lut, LutInputEncoding encoding, const Vector3& linear){
         return maxZero(decodeOutput(encoding, lut.sample(encodeInput(encoding, maxZero(linear)))));
     }
@@ -779,6 +796,15 @@ Vector3 jasperengine::applyDisplayStage(const CubeLut& lut, LutInputEncoding enc
 Vector3 jasperengine::applySceneStage(const CubeLut& lut, LutInputEncoding encoding, const Vector3& sceneLinear){
     if (encoding == LutInputEncoding::AUTO)
         encoding = resolveEncoding(encoding, lut);
+    // A colour brighter than the LUT's input range (ACEScct ends near linear 222, LogC3 near 55)
+    // goes through it scaled down into the range and back up, so its hue survives: clamping each
+    // channel alone would turn a very bright red into white
+    const float peak = std::max(std::max(sceneLinear.x, sceneLinear.y), sceneLinear.z);
+    const float limit = inputPeak(lut, encoding);
+    if (peak > limit && limit > 0.0f){
+        const float k = limit / peak;
+        return applyEncoded(lut, encoding, sceneLinear * k) * (1.0f / k);
+    }
     return applyEncoded(lut, encoding, sceneLinear);
 }
 

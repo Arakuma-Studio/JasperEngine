@@ -914,9 +914,15 @@ TEST(DynamicResolutionController, PeriodLawCostChangeResetsProbe){
     for (int i = 0; i < 90; i++)
         c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 4.0f), DT);
     ASSERT_GT(c.getStats().probeIntervalSeconds, 2.0f);
-    for (int i = 0; i < 60; i++)
+    // (the reset interval may be spent at once: the frames since the last miss already exceed it,
+    // so a probe follows, fails again on this content and doubles from 2 to 4, not from 8 to 16)
+    float shortest = c.getStats().probeIntervalSeconds;
+    for (int i = 0; i < 60; i++){
         c.update(periodSample(vsyncPeriod(model.cost(c.getScale())), 9.0f), DT);
-    EXPECT_FLOAT_EQ(c.getStats().probeIntervalSeconds, 2.0f);
+        shortest = std::min(shortest, c.getStats().probeIntervalSeconds);
+    }
+    EXPECT_FLOAT_EQ(shortest, 2.0f);
+    EXPECT_LE(c.getStats().probeIntervalSeconds, 4.0f);
 }
 
 TEST(DynamicResolutionController, GpuTimeSelectsTheGpuLaw){
