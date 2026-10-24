@@ -42,3 +42,51 @@ with those variables; on Linux `tools/smoke-test.sh tools/fixtures/shadows` does
 timers of the profiling stream (S15) once it lands: `get_shadow_stats` reports `gpu_ms` from them
 (null until then), and the frame stats list the shadow passes by name (`shadow`, `point shadow`,
 `shadow static`, `point shadow static`). Memory is `get_shadow_stats.memory_bytes`.
+
+## Measured
+
+Build server D (16 vCPU, shared with other builds; Docker, Mesa llvmpipe for OpenGL), October
+2026. GPU times on the reference devices have not been measured yet: the build servers have no
+GPU, and the GPU pass timers (S15) are not on `oe-port`. Until they are, the tiers' GPU budget rows
+are unverified, and the numbers below are what CI can check.
+
+**Zero cost (AC15).** `tools/fixtures/shadows-off` (a lit scene: a sun without shadows, a ground and
+five boxes) through `tools/smoke-test.sh` with `JASPERENGINE_FRAME_STATS=1`, on `oe-port` before
+the shadows (cf75a9d69) and on this branch:
+
+| Build | Passes | Draws | Pipelines applied | Uniform uploads | Images alive | Views alive |
+|---|---|---|---|---|---|---|
+| `oe-port` | 1 (camera) | 6 | 6 | 24 (5,088 B) | 10 | 10 |
+| S10 | 1 (camera) | 6 | 6 | 24 (5,088 B) | 10 | 11 |
+
+The one more view is the 1×1 raw-depth stand-in (`emptyShadowDepthRaw`), made once at startup.
+
+**CPU (R26)**, `jasperengine-core-tests` (`ShadowBench`, RelWithDebInfo):
+
+| | Measured | Budget |
+|---|---|---|
+| Cascade fit (4 cascades) + 9 slot keys, per camera | 1.7 µs median | ≤ 30 µs |
+| Caster registry, 10,000 casters, 1 % moving | 0.13 ms median | ≤ 0.2 ms |
+
+**The bench scene's passes** (`tools/smoke-test.sh tools/fixtures/shadows`, OpenGL on llvmpipe,
+`JASPERENGINE_FRAME_STATS=1`, `SMOKE_READY_SETTLE=60`; the camera pass alone draws 948 times):
+
+| Case | Shadow passes | Draws in the frame |
+|---|---|---|
+| Static scene and camera, cached (`SHADOWS_DYNAMIC=0`) | none | 948 (the camera pass only) |
+| Still camera, 20 dynamic casters (High) | `shadow`, `point shadow` | 5,122 |
+| Walking camera, 20 dynamic casters (High) | `shadow`, `point shadow` | 4,549 |
+| Still camera, 20 dynamic casters, Low | `shadow`, `point shadow` | 3,323 |
+| Still camera, 20 dynamic casters, Ultra | `shadow`, `point shadow` | 5,493 |
+
+With every caster still, a frame issues no shadow draw at all (R26, AC15). With the 20 animated
+casters the slots they cross are redrawn every frame in full: the bench's atlases alone nearly
+fill each tier's memory row (High: four 2048² cascades, four 1024² spot maps and twelve 512² cube
+faces in D32 are 92 MB of the 96 MB), so the planner, which fits the atlases first and the static
+layers in what remains, gives this scene none. The static layer pays in scenes whose atlases leave
+room for it (the MCP cache tests' scenes); the memory rows and the default resolutions are the
+numbers to revisit once the reference-device measurements exist.
+
+**Memory (AC16)**: `ShadowSlotPlanner.MemoryBudgetDropsStaticLayersThenHalves` plans the bench
+scene's lights at every tier within the tier's row; `test_shadows.py::test_shadow_goldens` checks
+`memory_bytes ≤ memory_budget_bytes` at every tier through `get_shadow_stats`.

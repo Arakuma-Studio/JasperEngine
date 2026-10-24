@@ -671,6 +671,10 @@ llvmpipe and Vulkan on lavapipe.
   default) it compiles the variants it lacks. Scenes of Quality Auto, and scenes whose scripts
   set `shadowQuality`, collect both states. The old `Pcf` bit (bit 5) is cleared from scenes'
   cached variant keys by the scene 1 → 2 migration.
+- **The copy and clear pass compares NOT_EQUAL**, not ALWAYS (§6 "Restore"): Vulkan writes depth
+  only with the depth test enabled, and sokol's Vulkan backend disables the test for ALWAYS, so
+  the static layer was never copied and slots were never cleared there. NOT_EQUAL keeps the test
+  on and lets every changed value through (an equal one needs no write).
 - **Caster changes are a log.** `RenderSystem::update` can run more than once per draw (the
   editor updates the scene before its frame does), so the shadow cache reads the caster changes
   of every update since an atlas last evaluated its slots (`casterChangeLog`), not only the last
@@ -696,3 +700,11 @@ llvmpipe and Vulkan on lavapipe.
 - **S15 is not on `oe-port`:** `get_shadow_stats` reports CPU-side counts, passes and draws;
   `gpu_ms` is null until the GPU pass timers land.
 - **R14** (the min/max pyramid) is not implemented: it is optional and only for an AC14 miss.
+- **AC14 not measured on the reference devices**: the build servers have no GPU and S15's GPU
+  timers are not on `oe-port`. `docs/rendering/shadow-budgets.md` records what CI can check (zero
+  cost against `oe-port`, the CPU budgets, pass and draw counts of the bench). It also records a
+  finding: with this spec's tier table the bench scene's D32 atlases alone nearly fill every
+  tier's memory row (High: 92 of 96 MB), so the planner (atlases first, static layers in what
+  remains) gives the bench no static layer and its 20 animated casters redraw the slots they
+  cross in full. The memory rows or the default resolutions need revisiting with the device
+  numbers.

@@ -1497,7 +1497,8 @@ bool RenderSystem::loadShadowRestore(){
 }
 
 // One fullscreen triangle in the depth-only pass being drawn: the slot's viewport, the scissor
-// of what is written, depth ALWAYS: the source's depths copied, or the far plane (clear)
+// of what is written, every texel overwritten: the source's depths copied, or the far plane
+// (clear)
 void RenderSystem::drawShadowRestore(CameraRender& pass, TextureRender* source, const ShadowRect& sourceRect, unsigned int sourceWidth, unsigned int sourceHeight,
                                      const ShadowRect& slotRect, const ShadowRect& scissor, bool clear){
     PipelineState state;
@@ -1506,7 +1507,9 @@ void RenderSystem::drawShadowRestore(CameraRender& pass, TextureRender* source, 
     state.target.sampleCount = 1;
     state.blend = BlendMode::NONE;
     state.writeMask = ColorWriteMask::NONE;
-    state.depthCompare = CompareFunc::ALWAYS;
+    // NOT_EQUAL, not ALWAYS: Vulkan writes depth only with the depth test on, and sokol turns
+    // the test off for ALWAYS; a texel already holding the value needs no write anyway
+    state.depthCompare = CompareFunc::NOT_EQUAL;
     state.depthWrite = true;
     if (!shadowRestoreRender.beginDraw(state))
         return;

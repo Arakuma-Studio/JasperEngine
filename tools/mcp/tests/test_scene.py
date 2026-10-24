@@ -222,7 +222,8 @@ async def test_scene_settings(ed: Editor):
     for name in ("background_color", "shadows_quality", "light_state", "physics_gravity_3d", "ssao_enabled",
                  "fixed_resolution_filter", "post_process", "default_mesh_shader", "ssr_max_steps"):
         ed.check_in(name, settings)
-    ed.check_eq(schema["shadows_quality"]["options"], ["none", "low", "medium", "high"])
+    # S10: Auto (the platform's tier) and Ultra (PCSS) next to the stored ints of before
+    ed.check_eq(schema["shadows_quality"]["options"], ["auto", "none", "low", "medium", "high", "ultra"])
     before = settings
     out = await ed.call("set_scene_settings", settings={
         "background_color": "#336699", "shadows_quality": "High", "light_state": "on",

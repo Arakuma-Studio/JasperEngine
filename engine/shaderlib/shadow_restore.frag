@@ -3,7 +3,8 @@
 // The static shadow cache's copy into the shadow atlas, and the clear of one atlas slot
 // (RenderSystem::renderShadowMaps, docs/rendering/shadows.md): drawn as a fullscreen triangle
 // into a depth-only pass, the viewport on the destination slot and the scissor on the rect to
-// write, depth test ALWAYS and depth write on. No colour output.
+// write, depth write on and a depth test that lets every new value through (NOT_EQUAL: Vulkan
+// writes no depth with the test off). No colour output.
 
 in vec2 v_texcoord;
 
