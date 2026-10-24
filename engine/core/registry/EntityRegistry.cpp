@@ -71,6 +71,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<LatticeFollowerComponent>();
     registerComponent<LatticeTracksComponent>();
     registerComponent<PoseAnimatorComponent>();
+    registerComponent<AnimationPlayerComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
@@ -465,6 +466,10 @@ void EntityRegistry::setDefaultEntityPool(EntityPool pool) {
 
 EntityPool EntityRegistry::getDefaultEntityPool() const {
     return defaultPool;
+}
+
+uint64_t EntityRegistry::hierarchyRevision() const {
+    return hierarchyRev;
 }
 
 void EntityRegistry::clear() {

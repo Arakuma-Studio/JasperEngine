@@ -3239,6 +3239,36 @@
 		4A534E47FD5A5834D770DCE2 /* ConvexDecomposition.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479BD98871AB1E19BF /* ConvexDecomposition.h */; };
 		4A534E47525EFB8A61951A97 /* JoltShapeBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4755BA1970032D0AD7 /* JoltShapeBuilder.h */; };
 		4A534E47FD63A9EE84FC1B50 /* PlacementWorld.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F4315372D4C86A17 /* PlacementWorld.h */; };
+		4A534E4784A9974679D40F73 /* AnimationClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E4941640E48FF861 /* AnimationClip.cpp */; };
+		4A534E4744C75BB3E541E9F3 /* AnimationClip.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E4941640E48FF861 /* AnimationClip.cpp */; };
+		4A534E47199A2589C46CFB23 /* AnimationClipIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477087C241F65F8775 /* AnimationClipIO.cpp */; };
+		4A534E471AD353F1A4AB15A0 /* AnimationClipIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E477087C241F65F8775 /* AnimationClipIO.cpp */; };
+		4A534E47470FC7B5A7D22FCD /* AnimationEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A871C12C65B43ABD /* AnimationEvent.cpp */; };
+		4A534E47C2EAAACA1385DA4B /* AnimationEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A871C12C65B43ABD /* AnimationEvent.cpp */; };
+		4A534E47B09170B7258607B9 /* AnimationPlayerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A584CCBBAFF21847 /* AnimationPlayerRuntime.cpp */; };
+		4A534E47F9FAFD880082FA4F /* AnimationPlayerRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A584CCBBAFF21847 /* AnimationPlayerRuntime.cpp */; };
+		4A534E4708DDE6AA76862D94 /* ClipBinding.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47465904B6D70C7A25 /* ClipBinding.cpp */; };
+		4A534E471326C6DC65B085FC /* ClipBinding.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47465904B6D70C7A25 /* ClipBinding.cpp */; };
+		4A534E47DF6D4828D3464952 /* KeyframeSampling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471AC1A1411922F46E /* KeyframeSampling.cpp */; };
+		4A534E473ED46870C47AEB95 /* KeyframeSampling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E471AC1A1411922F46E /* KeyframeSampling.cpp */; };
+		4A534E47572F2F09EAE871DA /* ModelSubClips.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CB5EDEACE7F2EB /* ModelSubClips.cpp */; };
+		4A534E4750678AA7FCA3807A /* ModelSubClips.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CB5EDEACE7F2EB /* ModelSubClips.cpp */; };
+		4A534E47C483368DEBAAFF66 /* AnimationPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DFCDF1B297C0DA2F /* AnimationPlayer.cpp */; };
+		4A534E4783B9FA2F22FE6B57 /* AnimationPlayer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47DFCDF1B297C0DA2F /* AnimationPlayer.cpp */; };
+		4A534E47432EC41600E2F5B1 /* AnimationClipPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47454541377D81967E /* AnimationClipPool.cpp */; };
+		4A534E4720A5E7BECF56A42E /* AnimationClipPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47454541377D81967E /* AnimationClipPool.cpp */; };
+		4A534E47086278F8BB02588C /* ActionSystemPlayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */; };
+		4A534E473A1CBC7D5467E451 /* ActionSystemPlayers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */; };
+		4A534E47302FAE3FF1A2FC87 /* AnimationClip.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BC217E828D0BB47C /* AnimationClip.h */; };
+		4A534E47DA1F8CA2AD21D5BA /* AnimationClipIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47372618AA4A22AE94 /* AnimationClipIO.h */; };
+		4A534E47A084C64D1EF0F037 /* AnimationEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D8DCD3FD5749C330 /* AnimationEvent.h */; };
+		4A534E4706482A0F94B3478D /* AnimationPlayerRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479F1C0B81299ECC97 /* AnimationPlayerRuntime.h */; };
+		4A534E47EAE1CDF924B30107 /* ClipBinding.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E49C8CE5B47A661F /* ClipBinding.h */; };
+		4A534E4756EF10AFE9C91561 /* KeyframeSampling.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47BCB011C3E31AFD7C /* KeyframeSampling.h */; };
+		4A534E471DFCBF8793D57B85 /* ModelSubClips.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D4B21584C2974167 /* ModelSubClips.h */; };
+		4A534E472CFABA0194F8E21A /* AnimationPlayerComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */; };
+		4A534E4710BBAA5A751ECBE7 /* AnimationPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474E482C208244479A /* AnimationPlayer.h */; };
+		4A534E475BC653E2B289D2B2 /* AnimationClipPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E477A468AF36BAE7CED /* AnimationClipPool.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6565,6 +6595,26 @@
 		4A534E479BD98871AB1E19BF /* ConvexDecomposition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ConvexDecomposition.h; sourceTree = "<group>"; };
 		4A534E4755BA1970032D0AD7 /* JoltShapeBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JoltShapeBuilder.h; sourceTree = "<group>"; };
 		4A534E47F4315372D4C86A17 /* PlacementWorld.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlacementWorld.h; sourceTree = "<group>"; };
+		4A534E47E4941640E48FF861 /* AnimationClip.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationClip.cpp; sourceTree = "<group>"; };
+		4A534E477087C241F65F8775 /* AnimationClipIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationClipIO.cpp; sourceTree = "<group>"; };
+		4A534E47A871C12C65B43ABD /* AnimationEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationEvent.cpp; sourceTree = "<group>"; };
+		4A534E47A584CCBBAFF21847 /* AnimationPlayerRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationPlayerRuntime.cpp; sourceTree = "<group>"; };
+		4A534E47465904B6D70C7A25 /* ClipBinding.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClipBinding.cpp; sourceTree = "<group>"; };
+		4A534E471AC1A1411922F46E /* KeyframeSampling.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = KeyframeSampling.cpp; sourceTree = "<group>"; };
+		4A534E47C5CB5EDEACE7F2EB /* ModelSubClips.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ModelSubClips.cpp; sourceTree = "<group>"; };
+		4A534E47DFCDF1B297C0DA2F /* AnimationPlayer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationPlayer.cpp; sourceTree = "<group>"; };
+		4A534E47454541377D81967E /* AnimationClipPool.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AnimationClipPool.cpp; sourceTree = "<group>"; };
+		4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ActionSystemPlayers.cpp; sourceTree = "<group>"; };
+		4A534E47BC217E828D0BB47C /* AnimationClip.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationClip.h; sourceTree = "<group>"; };
+		4A534E47372618AA4A22AE94 /* AnimationClipIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationClipIO.h; sourceTree = "<group>"; };
+		4A534E47D8DCD3FD5749C330 /* AnimationEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationEvent.h; sourceTree = "<group>"; };
+		4A534E479F1C0B81299ECC97 /* AnimationPlayerRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationPlayerRuntime.h; sourceTree = "<group>"; };
+		4A534E47E49C8CE5B47A661F /* ClipBinding.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ClipBinding.h; sourceTree = "<group>"; };
+		4A534E47BCB011C3E31AFD7C /* KeyframeSampling.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = KeyframeSampling.h; sourceTree = "<group>"; };
+		4A534E47D4B21584C2974167 /* ModelSubClips.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ModelSubClips.h; sourceTree = "<group>"; };
+		4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationPlayerComponent.h; sourceTree = "<group>"; };
+		4A534E474E482C208244479A /* AnimationPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationPlayer.h; sourceTree = "<group>"; };
+		4A534E477A468AF36BAE7CED /* AnimationClipPool.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AnimationClipPool.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7820,6 +7870,27 @@
 			path = physics;
 			sourceTree = "<group>";
 		};
+		4A534E477E49C8CF16ED0963 /* animation */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47E4941640E48FF861 /* AnimationClip.cpp */,
+				4A534E477087C241F65F8775 /* AnimationClipIO.cpp */,
+				4A534E47A871C12C65B43ABD /* AnimationEvent.cpp */,
+				4A534E47A584CCBBAFF21847 /* AnimationPlayerRuntime.cpp */,
+				4A534E47465904B6D70C7A25 /* ClipBinding.cpp */,
+				4A534E471AC1A1411922F46E /* KeyframeSampling.cpp */,
+				4A534E47C5CB5EDEACE7F2EB /* ModelSubClips.cpp */,
+				4A534E47BC217E828D0BB47C /* AnimationClip.h */,
+				4A534E47372618AA4A22AE94 /* AnimationClipIO.h */,
+				4A534E47D8DCD3FD5749C330 /* AnimationEvent.h */,
+				4A534E479F1C0B81299ECC97 /* AnimationPlayerRuntime.h */,
+				4A534E47E49C8CE5B47A661F /* ClipBinding.h */,
+				4A534E47BCB011C3E31AFD7C /* KeyframeSampling.h */,
+				4A534E47D4B21584C2974167 /* ModelSubClips.h */,
+			);
+			path = animation;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -7859,6 +7930,7 @@
 				4A534E47405DB6D11FA4F0E1 /* SceneSettings.cpp */,
 				4A534E476D14045E1B1B86B5 /* pose */,
 				4A534E472AD0C1A658CC6825 /* physics */,
+				4A534E477E49C8CF16ED0963 /* animation */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -8023,6 +8095,7 @@
 				71451BB6270C9D0F00712643 /* RectTransformComponent.h */,
 				48544D4C0000000000000045 /* UIDocumentComponent.h */,
 				4A534E47C6821B885199BD43 /* PoseAnimatorComponent.h */,
+				4A534E47625F8F2E8CA675B3 /* AnimationPlayerComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -8106,6 +8179,8 @@
 				71ABBD16277A31BA001CE3AF /* ui */,
 				4A534E4727CA5891CD7459B0 /* PoseAnimator.cpp */,
 				4A534E4730B30EBAC88D841B /* PoseAnimator.h */,
+				4A534E47DFCDF1B297C0DA2F /* AnimationPlayer.cpp */,
+				4A534E474E482C208244479A /* AnimationPlayer.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -8156,6 +8231,7 @@
 				4A534E477CC0B9DD3FD92F03 /* PoseAnimatorSystem.cpp */,
 				4A534E47463DE0CF0861026A /* InstanceSort.h */,
 				4A534E470DA1EC3E5E63F3DD /* PoseAnimatorSystem.h */,
+				4A534E47452204C1B7C473FF /* ActionSystemPlayers.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -9309,6 +9385,8 @@
 				714741FA2B029F7D00C891FF /* TextureDataPool.cpp */,
 				71BE623625B1DB9E006D6E02 /* TexturePool.h */,
 				71BE623425B1DB9E006D6E02 /* TexturePool.cpp */,
+				4A534E47454541377D81967E /* AnimationClipPool.cpp */,
+				4A534E477A468AF36BAE7CED /* AnimationClipPool.h */,
 			);
 			path = pool;
 			sourceTree = "<group>";
@@ -11734,6 +11812,16 @@
 				4A534E47FD5A5834D770DCE2 /* ConvexDecomposition.h in Headers */,
 				4A534E47525EFB8A61951A97 /* JoltShapeBuilder.h in Headers */,
 				4A534E47FD63A9EE84FC1B50 /* PlacementWorld.h in Headers */,
+				4A534E47302FAE3FF1A2FC87 /* AnimationClip.h in Headers */,
+				4A534E47DA1F8CA2AD21D5BA /* AnimationClipIO.h in Headers */,
+				4A534E47A084C64D1EF0F037 /* AnimationEvent.h in Headers */,
+				4A534E4706482A0F94B3478D /* AnimationPlayerRuntime.h in Headers */,
+				4A534E47EAE1CDF924B30107 /* ClipBinding.h in Headers */,
+				4A534E4756EF10AFE9C91561 /* KeyframeSampling.h in Headers */,
+				4A534E471DFCBF8793D57B85 /* ModelSubClips.h in Headers */,
+				4A534E472CFABA0194F8E21A /* AnimationPlayerComponent.h in Headers */,
+				4A534E4710BBAA5A751ECBE7 /* AnimationPlayer.h in Headers */,
+				4A534E475BC653E2B289D2B2 /* AnimationClipPool.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13760,6 +13848,16 @@
 				4A534E4745A765E384590F28 /* ConvexDecomposition.cpp in Sources */,
 				4A534E47E0DF68AB3F402355 /* JoltShapeBuilder.cpp in Sources */,
 				4A534E472397D7682998198F /* PlacementWorld.cpp in Sources */,
+				4A534E4784A9974679D40F73 /* AnimationClip.cpp in Sources */,
+				4A534E47199A2589C46CFB23 /* AnimationClipIO.cpp in Sources */,
+				4A534E47470FC7B5A7D22FCD /* AnimationEvent.cpp in Sources */,
+				4A534E47B09170B7258607B9 /* AnimationPlayerRuntime.cpp in Sources */,
+				4A534E4708DDE6AA76862D94 /* ClipBinding.cpp in Sources */,
+				4A534E47DF6D4828D3464952 /* KeyframeSampling.cpp in Sources */,
+				4A534E47572F2F09EAE871DA /* ModelSubClips.cpp in Sources */,
+				4A534E47C483368DEBAAFF66 /* AnimationPlayer.cpp in Sources */,
+				4A534E47432EC41600E2F5B1 /* AnimationClipPool.cpp in Sources */,
+				4A534E47086278F8BB02588C /* ActionSystemPlayers.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14165,6 +14263,16 @@
 				4A534E4718301FEAB94DBDC8 /* ConvexDecomposition.cpp in Sources */,
 				4A534E4797D7DDCAB6E5A8BE /* JoltShapeBuilder.cpp in Sources */,
 				4A534E473566903A2A2E0F2A /* PlacementWorld.cpp in Sources */,
+				4A534E4744C75BB3E541E9F3 /* AnimationClip.cpp in Sources */,
+				4A534E471AD353F1A4AB15A0 /* AnimationClipIO.cpp in Sources */,
+				4A534E47C2EAAACA1385DA4B /* AnimationEvent.cpp in Sources */,
+				4A534E47F9FAFD880082FA4F /* AnimationPlayerRuntime.cpp in Sources */,
+				4A534E471326C6DC65B085FC /* ClipBinding.cpp in Sources */,
+				4A534E473ED46870C47AEB95 /* KeyframeSampling.cpp in Sources */,
+				4A534E4750678AA7FCA3807A /* ModelSubClips.cpp in Sources */,
+				4A534E4783B9FA2F22FE6B57 /* AnimationPlayer.cpp in Sources */,
+				4A534E4720A5E7BECF56A42E /* AnimationClipPool.cpp in Sources */,
+				4A534E473A1CBC7D5467E451 /* ActionSystemPlayers.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

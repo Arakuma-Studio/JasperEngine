@@ -27,6 +27,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/PoseAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
 #include "component/ImageComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/LayoutGroupComponent.h"
@@ -81,6 +82,8 @@ namespace jasperengine {
         EntityManager entityManager;
         ComponentManager componentManager;
         EntityPool defaultPool = EntityPool::User;
+        // see hierarchyRevision()
+        uint64_t hierarchyRev = 0;
 
         void moveChildAux(Entity entity, bool increase, bool stopIfFound);
         void changeTransformChildren(Entity entity);
@@ -173,6 +176,14 @@ namespace jasperengine {
 
         void setDefaultEntityPool(EntityPool pool);
         EntityPool getDefaultEntityPool() const;
+
+        // Increases when the Transform hierarchy or a name changes in a way that can move a
+        // path-bound target (animation clips spec 2.2, 9.R9): setEntityName, addEntityChild,
+        // child moves and sorts, a Transform with a parent added or removed, destroying or
+        // recreating an entity that has a parent or children, clear(). Creating a parentless
+        // entity leaves it unchanged. Animation Players compare it each frame and rebind.
+        // TODO(T1b): the bumps (always 0 until then).
+        uint64_t hierarchyRevision() const;
 
         void clear();
 

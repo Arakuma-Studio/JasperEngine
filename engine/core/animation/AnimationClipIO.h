@@ -1,0 +1,98 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Contract (animation clips spec 2.1, 9.R8/R20/R35-R38)
+// - Purpose: the one .anim parser and canonical writer, shared by the engine (AnimationClipPool),
+//   the editor document, MCP, the CLI checks and the tests.
+// - Owner: T0 (API); T1a implements it.
+// - Thread-safety: pure functions of their arguments (no engine state): any thread.
+// - Format: UTF-8 JSON {"format": "jasperengine.anim", "version": 1, "guid", "frame_rate", "wrap",
+//   "length", "tracks", "events", "preview", "source", unknown keys...}.
+// - Invariants:
+//   * parseClip fails (data empty, error set) only for: text that is not JSON (error.line/column
+//     of the syntax error), a non-object root, a missing or different `format`, a missing or
+//     newer `version`, and Unity YAML clips (error.message = unityYamlRefusal()). Everything
+//     else is lenient: the bad key/track/event is dropped (or the value repaired) with a
+//     warning carrying its JSON path, the rest loads.
+//   * a parsed ClipData satisfies the AnimationClip.h invariants (normalize() is applied).
+//   * writeClip is deterministic and canonical: 2-space indent, fixed key order, one key per
+//     line, values with %.6g of the float, times with at most 6 decimals, tracks sorted by
+//     (path, channel), events by (time, function), quaternions renormalized only when
+//     |‖q‖ - 1| > 1e-5, tangent objects only for keys with tangents, every lattice point in
+//     every key, unknown keys written back. writeClip(parseClip(writeClip(d))) == writeClip(d)
+//     byte for byte, and parse + write of a canonical file is a no-op.
+
+#ifndef ANIMATION_CLIP_IO_H
+#define ANIMATION_CLIP_IO_H
+
+#include "Export.h"
+#include "animation/AnimationClip.h"
+
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace jasperengine::anim{
+
+    constexpr const char* ANIM_FORMAT = "jasperengine.anim";
+    constexpr int ANIM_VERSION = 1;
+    constexpr const char* ANIM_EXTENSION = ".anim";
+    // frame_rate bounds and key time resolution (seconds)
+    constexpr float ANIM_MIN_FRAME_RATE = 1.0f;
+    constexpr float ANIM_MAX_FRAME_RATE = 240.0f;
+    constexpr float ANIM_TIME_EPSILON = 1e-6f;
+
+    struct JASPERENGINE_API ClipParseError{
+        int line = 0;           // 1-based; 0 when the error is not at a text position
+        int column = 0;         // 1-based
+        std::string message;
+
+        bool empty() const { return message.empty(); }
+        // "line:col: message" (or just the message)
+        std::string toString() const;
+    };
+
+    struct JASPERENGINE_API ClipParseResult{
+        std::optional<ClipData> data;           // empty when the file can't be read as a clip
+        std::vector<ClipWarning> warnings;
+        ClipParseError error;
+
+        bool ok() const { return data.has_value(); }
+    };
+
+    JASPERENGINE_API ClipParseResult parseClip(const std::string& text);
+    // the canonical text of `data` (normalized first; the input is not changed)
+    JASPERENGINE_API std::string writeClip(const ClipData& data);
+    // Restores the AnimationClip.h invariants on hand-built data (sort and merge tracks and keys,
+    // pad widths, renormalize quaternions with hemisphere continuity, clamp frame rate...);
+    // what it changed is appended to `warnings` (JSON paths of the input)
+    JASPERENGINE_API void normalize(ClipData& data, std::vector<ClipWarning>* warnings = nullptr);
+
+    // Unity's YAML .anim (%YAML header or an "AnimationClip:" document)
+    JASPERENGINE_API bool isUnityYamlClip(const std::string& text);
+    // "This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}:
+    // create one with Create > Animation Clip or edit_animation {clip, create}."
+    JASPERENGINE_API const char* unityYamlRefusal();
+
+    // GUIDs (32 lowercase hex digits, AssetDatabase's form)
+    JASPERENGINE_API std::string generateClipGuid();
+    JASPERENGINE_API bool isClipGuid(const std::string& text);
+    // The top-level "guid" of a clip text without a full parse (AssetDatabase), empty without one
+    JASPERENGINE_API std::string readClipGuid(const std::string& text);
+    // The text with its top-level "guid" set (inserted right after "version" when missing), the
+    // rest byte-identical; false when the text is not a clip (it is left unchanged)
+    JASPERENGINE_API bool replaceClipGuid(std::string& text, const std::string& guid);
+
+    // File names of the enums ("position", "ping_pong", "quad_out"...); false for unknown names
+    JASPERENGINE_API const char* channelName(ClipChannel channel);
+    JASPERENGINE_API bool channelFromName(const std::string& name, ClipChannel& out);
+    // "default", "once", "loop", "ping_pong", "clamp_forever"
+    JASPERENGINE_API const char* wrapName(ClipWrapMode wrap);
+    JASPERENGINE_API bool wrapFromName(const std::string& name, ClipWrapMode& out);
+    // "linear", "step", "<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>"
+    JASPERENGINE_API const char* easeName(EaseType ease);
+    JASPERENGINE_API bool easeFromName(const std::string& name, EaseType& out);
+
+}
+
+#endif //ANIMATION_CLIP_IO_H

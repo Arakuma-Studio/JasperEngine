@@ -1,0 +1,78 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// Contract (animation clips spec 2.4, 9.R3/R11/R12)
+// - Purpose: glTF/FBX animations as read-only sub-asset clips: references "<model>#<name>" (or
+//   "#<index>" when unnamed), their names, and the builder that turns one animation of a model
+//   into ClipData with paths relative to the model root.
+// - Owner: T0 (API); T1c implements it. AnimationClipPool calls the builder on request (never
+//   loadGLTF); the editor's Extract (ClipConverters) and get_asset_info use the same functions.
+// - Thread-safety: the reference/name functions are pure. buildModelSubClip / listModelClips
+//   may run on any thread (the shader-variant probe loads models off the UI thread): they read
+//   the model through the ModelPool / MeshSystem::loadGLTFFile, hold the pooled-glTF mutex
+//   while reading the shared tinygltf::Model, and keep no reference to it afterwards.
+// - Invariants:
+//   * a reference splits at the first '#' that follows a ".gltf", ".glb" or ".fbx" extension
+//     (case-insensitive): model file names may contain '#'.
+//   * names are exactly loadGLTF's animation entity names: the glTF name, "Animation <i>" when
+//     empty; the k-th later duplicate of a name is "<name> <k>" (k from 2).
+//   * the pool key of a sub-clip is "<normalized model path>#<animation index>", never the name.
+//   * track paths mirror buildGLTFNodeHierarchy: node.name or "Node <i>", parent = the node that
+//     lists it as a child, parentless nodes directly under the model root, "#k" = the count of
+//     lower-index siblings with the same name. Frame rate 30, wrap Once, source {kind "model"}.
+//   * accessor reads are bounds-checked and strided (byteStride); sparse accessors are rejected
+//     with a warning.
+
+#ifndef MODEL_SUB_CLIPS_H
+#define MODEL_SUB_CLIPS_H
+
+#include "Export.h"
+#include "animation/AnimationClip.h"
+
+#include <string>
+#include <vector>
+
+namespace tinygltf{
+    class Model;
+}
+
+namespace jasperengine::anim{
+
+    struct SubClipReference{
+        std::string model;      // the model path part (as given: asset-relative or project-relative)
+        std::string clip;       // the part after '#': an animation name or "<index>"
+    };
+
+    // ".gltf", ".glb", ".fbx" (case-insensitive)
+    JASPERENGINE_API bool isModelFilePath(const std::string& path);
+    // true for "<model>#<clip>" with a non-empty clip part
+    JASPERENGINE_API bool isSubClipReference(const std::string& reference);
+    JASPERENGINE_API bool parseSubClipReference(const std::string& reference, SubClipReference& out);
+    JASPERENGINE_API std::string formatSubClipReference(const std::string& model, const std::string& clip);
+
+    struct ModelClipInfo{
+        int index = -1;             // glTF animation index
+        std::string name;           // the sub-clip name (see the naming invariant)
+        float duration = 0.0f;      // seconds (last input time)
+        size_t channels = 0;
+    };
+
+    // from a parsed model (no file access)
+    JASPERENGINE_API std::vector<ModelClipInfo> listModelClips(const tinygltf::Model& model);
+    // the animation index a reference's clip part names (a name, or a number), -1 when none
+    JASPERENGINE_API int findModelClip(const tinygltf::Model& model, const std::string& clip);
+    // each node's path relative to the model root, index = glTF node index
+    JASPERENGINE_API std::vector<std::string> modelNodePaths(const tinygltf::Model& model);
+    // one animation as clip data; false (with `error`) when the index is out of range or nothing
+    // could be read; dropped channels are warnings
+    JASPERENGINE_API bool buildSubClip(const tinygltf::Model& model, int animationIndex, ClipData& out,
+                                       std::vector<ClipWarning>& warnings, std::string* error);
+
+    // the same from a model file (asset-relative path; loads it through the ModelPool)
+    JASPERENGINE_API bool listModelFileClips(const std::string& modelPath, std::vector<ModelClipInfo>& out, std::string* error);
+    JASPERENGINE_API bool buildModelSubClip(const std::string& reference, ClipData& out,
+                                            std::vector<ClipWarning>& warnings, std::string* error);
+
+}
+
+#endif //MODEL_SUB_CLIPS_H

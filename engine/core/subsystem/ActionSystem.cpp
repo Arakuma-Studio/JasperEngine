@@ -2287,8 +2287,14 @@ void ActionSystem::update(double dt){
 
 	}
 
+    // Animation Players add their states to the same blend
+    updatePlayers(dt);
+
     // Write the blended (weighted-average) pose to each animated target.
     flushPoseBlend();
+
+    // clip events and onFinish, after the pose is written
+    dispatchPlayerCallbacks();
 }
 
 void ActionSystem::onComponentAdded(Entity entity, ComponentId componentId) {

@@ -33,6 +33,8 @@
 #include "component/MorphTracksComponent.h"
 #include "component/LatticeTracksComponent.h"
 #include "component/LatticeComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "animation/AnimationPlayerRuntime.h"
 
 namespace jasperengine{
 
@@ -168,6 +170,14 @@ namespace jasperengine{
 		float getDuration(Entity entity, int depth);
 		bool isAnimationReachable(Entity from, Entity target, std::unordered_set<Entity>& visited);
 
+		// Animation Players (animation clips spec 3.3; ActionSystemPlayers.cpp, TODO(T1b)): they
+		// live in this system so they share the pose blend with entity animations. update()
+		// calls updatePlayers after the entity animations and before flushPoseBlend, and
+		// dispatchPlayerCallbacks after it (events and onFinish, in time order: callbacks may
+		// add components and move arrays, so nothing is held across them).
+		void updatePlayers(double dt);
+		void dispatchPlayerCallbacks();
+
 	public:
 		ActionSystem(Scene* scene);
 
@@ -176,6 +186,40 @@ namespace jasperengine{
 		void actionStop(Entity entity);
 		void actionPause(Entity entity);
 		void particleActionReset(Entity entity);
+
+		// Edit-mode preview of clips on a root (animation clips spec 9.R21): what the Animation
+		// window's clip mode and MCP preview_animation drive. Each state samples `clip` (or, when
+		// null, the root's Animation Player state named `state`) at `time` with `weight`.
+		struct PlayerPreviewState {
+			std::string state;
+			std::shared_ptr<const AnimationClip> clip;
+			float time = 0.0f;
+			float weight = 1.0f;
+		};
+		struct PlayerPreview {
+			std::vector<PlayerPreviewState> states;
+			// events crossed since the session's previous call reach the player's onEvent
+			// (off by default: edit-mode previews never run game code)
+			bool fireEvents = false;
+		};
+		struct PlayerPreviewResult {
+			// every clip was available (false: a state name unknown or its clip not loaded)
+			bool ready = false;
+			// the entities written this call, in clip track order, each once
+			std::vector<Entity> written;
+			// paths of tracks that did not resolve (unique)
+			std::vector<std::string> unresolved;
+		};
+		// Its own clear/flush scope (like updateAnimationPreview), runs while the system is paused.
+		// Rest values come from `session` (the caller's preview snapshot, taken there on the
+		// first write of each entity); entries no state animates are not written. Main thread.
+		PlayerPreviewResult previewPlayer(Entity root, const PlayerPreview& preview, anim::ClipPreviewSession& session);
+		// Headless sampling (MCP get_animation `times`, curves view): every track of `clip` at
+		// `time` (a clip time: wrap is the caller's), raw values (relative tracks not combined)
+		static void sampleClip(const AnimationClip& clip, float time, std::vector<anim::TrackSample>& out);
+		// Back to the starting state (playAutomatically decided again, clips loaded again, rest
+		// forgotten): the editor calls it when Play starts and stops, like resetAnimators
+		void resetPlayers();
 
 		void updateAnimationPreview(double dt, Entity entity);
 		void updateAnimationPreview(double dt, const std::vector<Entity>& entities);

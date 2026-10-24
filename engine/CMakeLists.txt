@@ -25,6 +25,9 @@ option(JASPERENGINE_POSE_TESTS "Build jasperengine-pose-tests" OFF)
 # GPU or display; works from the editor build, the standalone engine build or on its own
 # (cmake -S engine/tests/lattice)
 option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
+# googletest suite of the animation clips core (engine/tests/anim): clip IO, sampling, binding,
+# pool and players against the engine library; no GPU or window
+option(JASPERENGINE_ANIM_TESTS "Build jasperengine-anim-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -867,6 +870,13 @@ set(JASPERENGINE_SRCS
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp
     core/action/keyframe/TranslateTracks.cpp
+    core/animation/AnimationClip.cpp
+    core/animation/AnimationClipIO.cpp
+    core/animation/AnimationEvent.cpp
+    core/animation/AnimationPlayerRuntime.cpp
+    core/animation/ClipBinding.cpp
+    core/animation/KeyframeSampling.cpp
+    core/animation/ModelSubClips.cpp
     core/pose/HumanBones.cpp
     core/pose/HumanoidMap.cpp
     core/pose/HumanoidMapIO.cpp
@@ -979,6 +989,7 @@ set(JASPERENGINE_SRCS
     core/object/Lattice.cpp
     core/object/Model.cpp
     core/object/PoseAnimator.cpp
+    core/object/AnimationPlayer.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
     core/object/Points.cpp
@@ -1015,6 +1026,7 @@ set(JASPERENGINE_SRCS
     core/pool/TexturePool.cpp
     core/pool/ModelPool.cpp
     core/pool/MeshLodPool.cpp
+    core/pool/AnimationClipPool.cpp
     core/registry/EntityCloner.cpp
     core/registry/EntityRegistry.cpp
     core/registry/TagManager.cpp
@@ -1054,6 +1066,7 @@ set(JASPERENGINE_SRCS
     core/shader/ShaderVariantCollection.cpp
     core/shader/ShaderVariantCompiler.cpp
     core/subsystem/ActionSystem.cpp
+    core/subsystem/ActionSystemPlayers.cpp
     core/subsystem/PoseAnimatorSystem.cpp
     core/subsystem/FluidSystem.cpp
     core/fluid/FluidSimulator.cpp
@@ -1412,4 +1425,8 @@ endif()
 
 if(JASPERENGINE_LATTICE_TESTS)
     add_subdirectory(tests/lattice)
+endif()
+
+if(JASPERENGINE_ANIM_TESTS)
+    add_subdirectory(tests/anim)
 endif()
