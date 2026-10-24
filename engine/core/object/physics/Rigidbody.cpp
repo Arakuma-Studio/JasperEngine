@@ -381,6 +381,9 @@ float Rigidbody::getColliderDensity(size_t index) const{
 void Rigidbody::setType(BodyType type){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
+    // the script takes over a body that was following its Transform
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, true);
+
     body.type = type;
 
     if (!body.body.IsInvalid()){
@@ -674,6 +677,8 @@ void Rigidbody::setPosition(Vector3 position){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
+    // the script takes the position over from the Transform a kinematic body was following
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, false);
     getBodyInterface().SetPosition(body.body, JPH::Vec3(position.x, position.y, position.z), JPH::EActivation::Activate);
     // jumps, not interpolated
     body.previousPosition = getPosition();
@@ -695,6 +700,7 @@ void Rigidbody::setRotation(Quaternion rotation){
     std::shared_ptr<PhysicsSystem> physicsSystem = scene->getSystem<PhysicsSystem>();
 
     checkBody(body);
+    physicsSystem->stopFollowing3D(body, false, true);
     getBodyInterface().SetRotation(body.body, physicsSystem->toValidatedJoltRotation(rotation, entity, -1), JPH::EActivation::Activate);
     body.previousRotation = getRotation();
 
@@ -714,10 +720,12 @@ void Rigidbody::setLinearVelocity(Vector3 linearVelocity){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, true, false);
     getBodyInterface().SetLinearVelocity(body.body, JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
 
 void Rigidbody::setLinearVelocityClamped(Vector3 linearVelocity){
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(getComponent<RigidbodyComponent>(), true, false);
     getJoltBodyWrite().SetLinearVelocityClamped(JPH::Vec3(linearVelocity.x, linearVelocity.y, linearVelocity.z));
 }
 
@@ -734,10 +742,12 @@ void Rigidbody::setAngularVelocity(Vector3 angularVelocity){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     checkBody(body);
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(body, false, true);
     getBodyInterface().SetAngularVelocity(body.body, JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }
 
 void Rigidbody::setAngularVelocityClamped(Vector3 angularVelocity){
+    scene->getSystem<PhysicsSystem>()->stopFollowing3D(getComponent<RigidbodyComponent>(), false, true);
     getJoltBodyWrite().SetAngularVelocityClamped(JPH::Vec3(angularVelocity.x, angularVelocity.y, angularVelocity.z));
 }
 

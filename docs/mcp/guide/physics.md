@@ -74,9 +74,11 @@ default arguments): a missing `wake` reads as false.
   its own: setting only the rotation leaves the body's motion alone. A dynamic or static body
   jumps; a **kinematic** body is moved with a velocity spread over the fixed steps of the
   frame, so it pushes and carries the bodies it touches (a platform carries what stands on
-  it), and a part not animated keeps the velocity a script gave it. A kinematic body moved
-  further than its own size in one frame, or turned more than a quarter turn, is teleported
-  instead (a respawn, a reset).
+  it), and a part not animated keeps the velocity a script gave it. A kinematic body that a
+  fixed step would move further than its own size, or turn more than a quarter turn, is
+  teleported instead (a respawn, a reset); one without colliders (a joint anchor) is always
+  moved with a velocity. Setting the body's position, rotation, velocity or type from a
+  script takes that part over from the transform.
 - Never describe transform-only movement as physics.
 
 ## Interpolation

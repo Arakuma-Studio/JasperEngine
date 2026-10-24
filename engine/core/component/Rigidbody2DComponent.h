@@ -81,7 +81,12 @@ namespace jasperengine{
         // part on its own: a part not followed keeps its own velocity)
         bool followingPosition = false;
         bool followingRotation = false;
+        // the last step of a frame put the followed parts at the Transform
+        bool followReached = false;
 #ifdef JASPERENGINE_PHYSICS_2D
+        // the velocities the following set: a part stops with them unless a script changed them
+        b2Vec2 followedLinearVelocity = b2Vec2_zero;
+        float followedAngularVelocity = 0.0f;
         // pose before the last step, drawn towards the current one
         b2Transform previousTransform = b2Transform_identity;
 #endif

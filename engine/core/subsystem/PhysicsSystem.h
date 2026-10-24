@@ -112,7 +112,8 @@ namespace jasperengine{
 		// Moves the body by what something other than physics moved its Transform, position
 		// and rotation each on its own. Inside a step (stepTime > 0) a kinematic body is moved
 		// there with a velocity instead, spread over the fixed steps left in the frame, so it
-		// carries and pushes other bodies (teleported past its own size or a quarter turn).
+		// carries and pushes other bodies (teleported when a step would take it further than
+		// its own size or more than a quarter turn).
 		void updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body, float stepTime = 0.0f);
 		// Puts the parts a following kinematic body is on its way to where its Transform has
 		// them, after the last step of the frame
@@ -168,6 +169,15 @@ namespace jasperengine{
 
 		// Removes every event callback, as before the code behind them goes away
 		void clearSubscriptions();
+
+		// Ends the following of a kinematic body's position and/or rotation (the script took
+		// over that part): the velocity the following set stops, one a script set since stays
+#ifdef JASPERENGINE_PHYSICS_2D
+		void stopFollowing2D(Rigidbody2DComponent& body, bool position, bool rotation);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+		void stopFollowing3D(RigidbodyComponent& body, bool position, bool rotation);
+#endif
 
 		// Draws bodies between their last two fixed steps, so they move smoothly at any frame
 		// rate (on by default; the scene setting physics_interpolation)
