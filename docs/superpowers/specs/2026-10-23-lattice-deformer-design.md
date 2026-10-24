@@ -955,7 +955,46 @@ Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (on
 `library/lattice_stretch.{vert,frag}`, `library/{water,spin_bob,dissolve}_depth.vert`,
 `editor/shader/{ShaderVariantCollector.{h,cpp},ShaderLibraryMatrix.cpp}`, `editor/Project.cpp`,
 `docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
-`engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
+`engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens `golden/lattice_*.png`,
+`fixtures/lattice/skinned_column.gltf`, a copy of the shader-library fixture's).
+
+Limits: a lattice variant of a manifest shader that did not read the vertex colour now
+declares it, so a mesh already at the 16 vertex attributes (skinning + 8 morph attributes +
+instancing + colour) can exceed the limit in its lattice variant only; the non-lattice
+variant of such a mesh already fails today with morph normals. Physics colliders and
+triangle picking keep the rest shape (§1.1).
+
+Verification (all on this host, GL 4.1 core through Mesa llvmpipe under Xvfb):
+- `jasperengine-editor shaders --out ... --backend all` with 14 built-in lattice specs
+  (`mesh`, `depth`, `gbuffer` with skinning, morphs, instancing and fade, vertex colours,
+  shadows, vertex lights, sprite rect, 2D lights, terrain): 84 compiles, 0 failed (GLSL 4.10,
+  GLSL ES 3.00, HLSL 5, MSL macOS/iOS, SPIR-V). This caught `active` (a GLSL reserved word)
+  and a dynamic index into the block GL flattens (`latticeStarts[b]`): both fixed.
+- `shaders --library all --backend all`: 41 library shaders, 16230 compiles, OK (the matrix
+  includes the four lattice cases). `docs/shaders/library.md` regenerated.
+- `jasperengine-htmlui-tests --gtest_filter=LatticeRender*` (standalone engine build,
+  `cmake -S engine -B build/htmlui-tests -DJASPERENGINE_HTMLUI_TESTS=ON`): 6 tests: a lattice
+  at rest draws pixel-identical to no lattice and unbinding restores the variant and image;
+  sheared silhouettes match `lattice::deformWorldPoint` (sharp, smooth, cubic) within 1.5 px;
+  the tilted front face's shading equals a box rotated to the cofactor normal; the shadow on
+  a wall shifts by the deformation, a RED mask (white vertices) equals no mask and
+  INVERTED_RED equals no lattice in colour and shadow, and the depth pre-pass image is
+  identical to the one without it; a skinned column deformed before skinning (lattice at
+  the bind pose) and after (at the posed column), and not when the after-skinning lattice
+  stands at the bind pose; two instances, only the one inside the lattice deformed. A
+  mutation (no lattice call in `depth.vert`) fails the shadow and pre-pass checks. The whole
+  htmlui suite without the perf tests: 3232 passed.
+- MCP (merged with lat/editor-data): `test_lattice_data.py` 7/7; shader library tests as in
+  the baseline; a throwaway script binding a cube and a sphere (with `library:lattice_stretch`)
+  through `add_component`/`set_properties` showed the deformation and the heat map, and
+  `get_build_info include_shaders` listed `Mesh (..., Ltc, ...)` and `Depth (Vc4, Ltc)` for a
+  cube inheriting a binding from its parent.
+
+Integration notes: `RenderSystem::update` calls `scene->getSystem<LatticeSystem>()->lateUpdate()`
+then `LatticeRender::prepare(scene, latticeState)` right after the skin-binding bone loop.
+WP-ECS's MeshSystem reads `LatticeMeshState::wantsTessellation`/`tessellation` (set for every
+target, read for sprites). `EntityCloner.cpp` gets one line from this package. Followers,
+bake and sampling use the solver directly; nothing else needs to call LatticeRender.
 
 ### 12.x WP-ECS (LatticeSystem, Lattice object, EntityCloner, sprite grid, Lua)
 
