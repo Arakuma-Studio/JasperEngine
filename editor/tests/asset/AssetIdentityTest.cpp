@@ -732,3 +732,48 @@ entities:
         "settings/postProcessing.lutTexture#0 luts/warm.png  ",
     }));
 }
+
+// A save registers its file: the index cache is written by the background thread, not by the
+// save, and close() writes what is still pending (R23; the worker once took a hash job from
+// an empty queue when woken only for the save)
+TEST(AssetDatabase, CacheSaveIsDeferredAndFlushedOnClose) {
+    AssetTestDir dir;
+    write(dir.path / "assets/a.png", "a");
+    write(dir.path / "scenes/Main.scene", "id: 1\nname: Main\nentities: []\n");
+    AssetDatabase database;
+    database.open(dir.path, "assets");
+    database.waitForBackgroundWork();
+    const Guid scene = database.getAssetGuid("scenes/Main.scene");
+    ASSERT_FALSE(scene.isNull());
+    for (int i = 0; i < 20; i++) {
+        write(dir.path / "scenes/Main.scene", "id: 1\nname: Main\nentities: []\n# save " + std::to_string(i) + "\n");
+        database.registerAsset(dir.path / "scenes/Main.scene", scene.str());
+    }
+    database.waitForBackgroundWork();
+    database.close();
+    const std::string cache = read(dir.path / ".jasperengine/assetdb/index.json");
+    EXPECT_NE(cache.find(scene.str()), std::string::npos);
+
+    // the cache written on close describes the file as it is: a warm open finds nothing changed
+    AssetDatabase again;
+    again.open(dir.path, "assets");
+    EXPECT_EQ(again.getAssetGuid("scenes/Main.scene"), scene);
+    EXPECT_TRUE(again.refresh().empty());
+}
+
+// The poll's walk runs on another thread: a scan taken before the database changed is dropped
+TEST(AssetDatabase, StaleScanIsDropped) {
+    AssetTestDir dir;
+    write(dir.path / "assets/a.png", "a");
+    AssetDatabase database;
+    database.setBackgroundHashing(false);
+    database.open(dir.path, "assets");
+    const AssetDatabase::DiskScan before = database.scanDisk();
+    ASSERT_TRUE(before.valid);
+    write(dir.path / "assets/b.png", "b");
+    database.importAssets(dir.path / "assets/b.png");      // the editor imported it meanwhile
+    EXPECT_TRUE(database.refresh(before).empty());          // b.png must not come back as removed
+    EXPECT_FALSE(database.getAssetGuid("assets/b.png").isNull());
+    const AssetDatabase::DiskScan now = database.scanDisk();
+    EXPECT_TRUE(database.refresh(now).empty());
+}
