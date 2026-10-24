@@ -67,8 +67,10 @@ namespace jasperengine {
     //
     // Disk entries are <directory>/<key as 16 hex digits>.hulls: little-endian, a magic number and
     // a format version, the key, the hull count, then per hull its point count and float3 points.
-    // Written aside and renamed into place; a file that does not read back whole is a miss and
-    // is deleted.
+    // Written aside (a name unique to the process and write) and renamed into place, tried twice,
+    // then reported by lastDiskError() (the hulls stay in memory); a file that does not read back
+    // whole is a miss and is deleted. Several caches and processes (the editor, a CLI run) may
+    // share a directory.
     //
     // Builds without JASPERENGINE_CONVEX_DECOMPOSITION (exported games, Web, Android, iOS) keep
     // find(), store() and clear(); request() marks the key FAILED and decompose() fails, both with
@@ -85,7 +87,9 @@ namespace jasperengine {
 
         const std::string& getDirectory() const;
 
-        // Memory first, then disk. False when not cached.
+        // Memory first, then disk. False when not cached. A key missed on disk is not looked for
+        // there again until request(), store() or clear() (so polling status() stays cheap): an
+        // entry another process writes meanwhile is found by the next request().
         bool find(uint64_t key, std::vector<ConvexHullPoints>& out) const;
         void store(uint64_t key, const std::vector<ConvexHullPoints>& hulls);
 
@@ -110,8 +114,13 @@ namespace jasperengine {
         // Why the key is FAILED ("cancelled", "mesh has no volume", ...); "" when it is not.
         std::string failureReason(uint64_t key) const;
 
-        // Removes memory and disk entries and forgets failures.
-        // Jobs still pending are not cancelled: they store their result when they finish.
+        // Why the last entry could not be saved to disk, after two tries ("could not rename
+        // ..."); "" once a save succeeds, after clear(), and for a memory-only cache.
+        std::string lastDiskError() const;
+
+        // Removes memory and disk entries and forgets failures. Jobs still pending are not
+        // cancelled: they store their result when they finish. Temporary files of other writers
+        // are left alone unless they are over an hour old.
         void clear();
         size_t entryCount() const;   // memory + disk entries, each key once
         size_t bytesOnDisk() const;
