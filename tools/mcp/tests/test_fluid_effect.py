@@ -123,6 +123,7 @@ async def test_setup(ed: Editor):
     r = await ed.call("create_ui_document", scene=S["scene"], html="assets/ui/fluid.html", name="Fluid")
     S["entity"] = r["entity"]["id"]
     ed.check_eq(r["diagnostics"], [], "the document loads clean")
+    await ed.call("save_scene", scene=S["scene"], path="scenes/FluidEffect")
 
 
 async def test_list_ui_effects(ed: Editor):

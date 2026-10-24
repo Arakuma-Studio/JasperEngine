@@ -315,9 +315,9 @@ void registerUiEffectTools(McpRegistry& registry) {
         tool.title = "Set UI Effect Time";
         tool.description =
             "Pin the HTML/CSS UI effect clock (edit/play) for identical screenshots; null: live. pointer_path (a drag), "
-            "splats: replayed exactly on selector's stateful effects.";
+            "splats: exact input for selector's stateful effects (s, element px).";
         tool.inputSchema = object({
-            {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds."}}},
+            {"time", Json{{"type", Json::array({"number", "null"})}}},
             {"entity", entityRef("")},
             {"selector", string("")},
             {"pointer_path", Json{{"type", "array"}, {"description", "[[x,y,t]] element px, s; [] clears"}}},
