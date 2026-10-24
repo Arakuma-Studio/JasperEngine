@@ -153,6 +153,13 @@ namespace {
             blend.src_factor_alpha = SG_BLENDFACTOR_DST_COLOR;
             blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             break;
+        case BlendMode::SUBTRACT_PREMULTIPLIED:
+            blend.op_rgb = SG_BLENDOP_REVERSE_SUBTRACT;
+            blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            break;
         }
         blend.enabled = true;
     }

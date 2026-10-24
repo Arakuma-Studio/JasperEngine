@@ -27,9 +27,9 @@ uniform u_fs_heightFog {
     vec4 screenToNdc;                 // camera ndc.xy = gl_FragCoord.xy * xy + zw (y up)
     vec4 color_colorMode;             // rgb linear fog colour, w 0 Color / 1 Sky
     vec4 extinction_base_H_maxOpacity; // x sigma, y base height, z scale height H, w max opacity
-    vec4 start_handoff_maxDist_inscatter; // x start distance, y where this pass's analytic fog starts
-                                      // (the volumetric distance for opaque surfaces under volumetric
-                                      // fog, else 0), z max fog distance, w directional inscattering
+    vec4 start_volumetric_maxDist_inscatter; // x start distance, y the distance the volumetric fog of
+                                      // this pass marches (0: none), z max fog distance, w directional
+                                      // inscattering
     vec4 sunDir_anisotropy;           // xyz towards the main light, w anisotropy
     vec4 sunColor_skyFillSin;         // rgb main light colour * intensity (linear), w sin(sky fill angle), 0 = no fill
     vec4 horizonRing[4];              // rgb the sky's horizon at azimuths +Z, +X, -Z, -X (Sky colour mode);
@@ -96,8 +96,8 @@ float heightFogOpticalDepthUnclipped(vec3 origin, vec3 dir, float t0, float t1){
 
 // the same over the part of [t0, t1] between the start and max fog distances
 float heightFogOpticalDepth(vec3 origin, vec3 dir, float t0, float t1){
-    float a = max(t0, heightFog.start_handoff_maxDist_inscatter.x);
-    float b = min(t1, heightFog.start_handoff_maxDist_inscatter.z);
+    float a = max(t0, heightFog.start_volumetric_maxDist_inscatter.x);
+    float b = min(t1, heightFog.start_volumetric_maxDist_inscatter.z);
     return heightFogOpticalDepthUnclipped(origin, dir, a, b);
 }
 
@@ -127,7 +127,7 @@ vec3 heightFogColor(vec3 dir){
 // the sun's share of the light scattered towards the camera along dir, per unit of visibility
 vec3 heightFogSunInscatter(vec3 dir){
     float phase = heightFogPhase(heightFog.sunDir_anisotropy.w, dot(dir, heightFog.sunDir_anisotropy.xyz));
-    return heightFog.sunColor_skyFillSin.rgb * (heightFog.start_handoff_maxDist_inscatter.w * phase);
+    return heightFog.sunColor_skyFillSin.rgb * (heightFog.start_volumetric_maxDist_inscatter.w * phase);
 }
 
 // L along dir with the sun's visibility
@@ -142,8 +142,8 @@ void heightFogSegment(vec3 origin, vec3 dir, float t0, float t1, out vec3 scatte
     scattering = heightFogInscatter(dir, 1.0) * (1.0 - transmittance);
 }
 
-// the fog over a surface at worldPosition seen through this pixel: its part of the ray from
-// the pass's handoff distance on (the volumetric fog draws the part before it)
+// the fog over a surface at worldPosition seen through this pixel (the whole ray: the
+// volumetric fog's composite replaces its near part, volumetric_composite.frag)
 vec3 heightFogApply(vec3 color, vec2 fragCoord, vec3 worldPosition){
     vec3 origin = heightFogRayOrigin(fragCoord);
     vec3 toSurface = worldPosition - origin;
@@ -153,7 +153,7 @@ vec3 heightFogApply(vec3 color, vec2 fragCoord, vec3 worldPosition){
     vec3 dir = toSurface / d;
     vec3 scattering;
     float transmittance;
-    heightFogSegment(origin, dir, heightFog.start_handoff_maxDist_inscatter.y, d, scattering, transmittance);
+    heightFogSegment(origin, dir, 0.0, d, scattering, transmittance);
     return color * transmittance + scattering;
 }
 

@@ -74,9 +74,9 @@ TEST(AtmosphereNoise, IsDeterministic){
 #if defined(__linux__) && defined(__x86_64__)
     // the bytes of this build's bake (GCC/Clang x86-64; other toolchains may round a libm
     // call differently, the two bakes above still match)
-    EXPECT_EQ(htmlui::compat::sha256Hex(view(first.getShape())), "0000000000000000000000000000000000000000000000000000000000000000");
-    EXPECT_EQ(htmlui::compat::sha256Hex(view(first.getDetail())), "0000000000000000000000000000000000000000000000000000000000000000");
-    EXPECT_EQ(htmlui::compat::sha256Hex(view(first.getWeather())), "0000000000000000000000000000000000000000000000000000000000000000");
+    EXPECT_EQ(htmlui::compat::sha256Hex(view(first.getShape())), "c9c9692b530e96de12ad969fe4e443aba8966c885a450056f100224655f7be32");
+    EXPECT_EQ(htmlui::compat::sha256Hex(view(first.getDetail())), "7f669e915af58d59437290dc133fb6a577aaab7be9780290f7254cb37a30b787");
+    EXPECT_EQ(htmlui::compat::sha256Hex(view(first.getWeather())), "b3e2981fb59d834c659c09e87f3d9ae878fde684209dcd3aaf43b4763f5961f2");
 #endif
 }
 
@@ -150,10 +150,16 @@ TEST(AtmosphereNoise, BakesOnTheJobsWithoutBlockingTheMainThread){
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     const double wall = nowMs() - start;
-    std::printf("[bench] AtmosphereNoise bake: %.1f ms wall, longest main-thread call %.2f ms\n", wall, longestCall);
+    // R20's 250 ms is the reference desktop's (8 hardware threads: 4 workers run Background
+    // jobs beside the 2 kept for the frame); a host granting fewer gets a proportionally longer
+    // budget
+    const int background = std::max(1, jobs::system().getWorkerCount() - 2);
+    const double budget = 250.0 * std::max(1.0, 4.0 / (double)background);
+    std::printf("[bench] AtmosphereNoise bake: %.1f ms wall (budget %.0f ms, %d Background workers), longest main-thread call %.2f ms\n",
+                wall, budget, background, longestCall);
     const double slack = testsupport::perfSlack();
     if (slack > 0.0){
-        EXPECT_LE(wall, 250.0 * slack);
+        EXPECT_LE(wall, budget * slack);
         EXPECT_LE(longestCall, 2.0 * slack);
     }
     EXPECT_TRUE(noise.getShape() == baked().getShape());
@@ -176,7 +182,8 @@ TEST(AtmosphereNoise, TimeSlicedBakeKeepsItsBudget){
     }
     std::printf("[bench] AtmosphereNoise time-sliced: %d calls, longest %.2f ms\n", calls, longestCall);
     const double slack = testsupport::perfSlack();
-    if (slack > 0.0)
+    if (slack > 0.0){
         EXPECT_LE(longestCall, 2.0 + 4.0 * slack); // the budget plus one work item
+    }
     EXPECT_TRUE(noise.getDetail() == baked().getDetail());
 }

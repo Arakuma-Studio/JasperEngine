@@ -52,7 +52,10 @@ namespace jasperengine{
         MULTIPLY,
         ADDITIVE_PREMULTIPLIED,
         SCREEN_PREMULTIPLIED,
-        MULTIPLY_PREMULTIPLIED
+        MULTIPLY_PREMULTIPLIED,
+        // dst - src (premultiplied colour taken away; alpha kept): the atmosphere's
+        // volumetric composite removes the analytic fog it replaces with it
+        SUBTRACT_PREMULTIPLIED
     };
 
     enum class DepthCompare{

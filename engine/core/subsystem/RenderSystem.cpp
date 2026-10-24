@@ -11003,6 +11003,9 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
         count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)));
     }
+
+    // the atmosphere's passes (their shaders, the clouds' noise bake)
+    count(!atmosphere.isLoading());
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){
@@ -14035,7 +14038,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // Map's refresh). The volumetric passes read the packed depth of the pass: an effect's
     // above, else a depth pre-pass of their own the scene inputs then share.
     AtmosphereRenderer::PassPlan atmospherePlan = atmosphere.planPass(camera, isMainCamera, sortsByDistance(camera));
-    float atmosphereHandoff = 0.0f;
+    float atmosphereMarched = 0.0f;
     if (atmospherePlan.any()){
         bool forcedDepth = false;
         if (atmospherePlan.needsDepth() && !sharedSceneDepth && atmosphereDepthPrograms){
@@ -14048,7 +14051,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 forcedDepth = true;
             }
         }
-        atmosphereHandoff = atmosphere.renderPassTargets(atmospherePlan, camera, cameraTransform, sharedSceneDepth, forcedDepth,
+        atmosphereMarched = atmosphere.renderPassTargets(atmospherePlan, camera, cameraTransform, sharedSceneDepth, forcedDepth,
                                                          (unsigned int)sceneInputViewport.getWidth(), (unsigned int)sceneInputViewport.getHeight());
     }
     // the scene colour is copied out of an offscreen colour target (the swapchain cannot be read)
@@ -14196,11 +14199,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                                    passResolution.x > 0.0f ? 1.0f / passResolution.x : 0.0f,
                                    passResolution.y > 0.0f ? 1.0f / passResolution.y : 0.0f);
 
-    // the height fog of this colour pass (u_fs_heightFog of the 'Hfg' variants): its opaque
-    // surfaces take the analytic fog from the volumetric fog's handoff on
+    // the height fog of this colour pass (u_fs_heightFog of the 'Hfg' variants), with the
+    // distance its volumetric fog marched (the composite replaces that part of the analytic fog)
     const bool passFlipped = isRenderingFlipped(camera);
     if (heightFogVariants || atmospherePlan.any())
-        atmosphere.fillHeightFog(passHeightFog, camera, cameraTransform, colorPassViewport, sceneInputTargetHeight, passFlipped, atmosphereHandoff);
+        atmosphere.fillHeightFog(passHeightFog, camera, cameraTransform, colorPassViewport, sceneInputTargetHeight, passFlipped, atmosphereMarched);
 
     // the post-processing colour of this colour pass: the scene's for the post-processed camera
     // (the main camera of the base layer, as the post-process chain; not mirrors, probes or other
@@ -14328,12 +14331,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
         passSubmeshQueue = SubmeshQueue::ALL;
         // the atmosphere over the opaque scene: the sky composite (Sky Map clouds and the sky
-        // fill on the sky's pixels), then the volumetric fog and the Screen clouds; what is
-        // drawn after (transparents) takes the analytic fog over the whole ray
-        if (atmospherePlan.any()){
+        // fill on the sky's pixels), then the Screen clouds and the volumetric fog; what is
+        // drawn after (transparents) takes the analytic fog alone
+        if (atmospherePlan.any())
             atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
-            passHeightFog.start_handoff_maxDist_inscatter.y = 0.0f;
-        }
         // the opaque queue and the sky are drawn
         if (sceneColorPending){
             takeSceneColor();

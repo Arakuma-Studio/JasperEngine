@@ -42,7 +42,7 @@ namespace jasperengine{
         Vector4 screenToNdc;                  // camera ndc.xy = gl_FragCoord.xy * xy + zw
         Vector4 color_colorMode;              // rgb linear colour, w 0 Color / 1 Sky
         Vector4 extinction_base_H_maxOpacity;
-        Vector4 start_handoff_maxDist_inscatter;
+        Vector4 start_volumetric_maxDist_inscatter;
         Vector4 sunDir_anisotropy;            // xyz towards the main light
         Vector4 sunColor_skyFillSin;          // rgb linear colour * intensity, w sin(sky fill angle) (0 = none)
         Vector4 horizonRing[4];               // rgb azimuths +Z, +X, -Z, -X; [0].w the sky fill's most
@@ -122,6 +122,7 @@ namespace jasperengine{
         Vector4 params;
         Vector4 inverseProjectionZ;
         Vector4 inverseProjectionW;
+        Vector4 depthInfo;
     } volumetric_composite_t;
 
     // What a view's last frame ran (get_atmosphere_info)
@@ -217,9 +218,10 @@ namespace jasperengine{
 
         // the per-pass block of the height fog (also the sky fill's and the passes'): the
         // camera's matrices, its viewport in a target targetHeight high and whether it draws
-        // flipped (RenderSystem::fillSceneInputs' rule), the analytic fog's handoff distance
+        // flipped (RenderSystem::fillSceneInputs' rule), the distance its volumetric fog marches
+        // (0: none)
         void fillHeightFog(height_fog_t& block, const CameraComponent& camera, const Transform& cameraTransform,
-                           const Rect& viewport, unsigned int targetHeight, bool flipped, float handoff) const;
+                           const Rect& viewport, unsigned int targetHeight, bool flipped, float volumetricDistance) const;
         // the block of a pass without fog (the editor's Fog toggle): T 1, S 0 everywhere
         static void clearHeightFog(height_fog_t& block);
 
@@ -228,7 +230,7 @@ namespace jasperengine{
         PassPlan planPass(const CameraComponent& camera, bool mainCamera, bool skyComposite) const;
         // before its colour pass of width x height pixels: the reduced-resolution passes of the
         // plan from the pass's packed depth (null: a plan without depth is drawn without them);
-        // returns the volumetric handoff distance its opaque surfaces take
+        // returns the distance the volumetric fog marched (0: it did not run)
         float renderPassTargets(PassPlan& plan, const CameraComponent& camera, const Transform& cameraTransform,
                                 TextureRender* sceneDepth, bool forcedDepth, unsigned int width, unsigned int height);
         // inside the colour pass, after the opaque queue: the sky composite, then the
@@ -247,6 +249,10 @@ namespace jasperengine{
         void destroy();
         // the view's frame ended: what it ran (get_atmosphere_info), the targets it did not use freed
         void endFrame();
+
+        // a pass the last frame planned waited for its shader or the clouds' noise bake (the
+        // scene is still loading: RenderSystem::isAllLoaded)
+        bool isLoading() const { return loading; }
 
         // the RGBA8 path even where float targets exist (tests; JASPERENGINE_ATMOSPHERE_RGBA8=1)
         static void setForceLowPrecisionTargets(bool force);
@@ -306,6 +312,9 @@ namespace jasperengine{
         clouds_t cloudsBlock;
         // what this frame's passes of the view being drawn ran
         AtmosphereInfo building;
+        // a planned pass waited this frame (building) and the last one (loading)
+        bool waiting = false;
+        bool loading = false;
 
         bool loadProgram(ProgramKind kind);
         bool ensureTarget(Framebuffer& target, unsigned int width, unsigned int height, bool floatFormat, bool linear);

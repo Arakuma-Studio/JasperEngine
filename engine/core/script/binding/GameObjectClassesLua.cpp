@@ -426,23 +426,6 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
-        .deriveClass<LocalVolumetricFog, GameObject>("LocalVolumetricFog")
-        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
-        .addProperty("shape", &LocalVolumetricFog::getShape, &LocalVolumetricFog::setShape)
-        .addProperty("size", &LocalVolumetricFog::getSize, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setSize)
-        .addFunction("setSize", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setSize)
-        .addProperty("attenuationDistance", &LocalVolumetricFog::getAttenuationDistance, &LocalVolumetricFog::setAttenuationDistance)
-        .addProperty("albedo", &LocalVolumetricFog::getAlbedo, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setAlbedo)
-        .addFunction("setAlbedo", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setAlbedo)
-        .addProperty("blendDistance", &LocalVolumetricFog::getBlendDistance, &LocalVolumetricFog::setBlendDistance)
-        .addProperty("falloff", &LocalVolumetricFog::getFalloff, &LocalVolumetricFog::setFalloff)
-        .addProperty("noiseIntensity", &LocalVolumetricFog::getNoiseIntensity, &LocalVolumetricFog::setNoiseIntensity)
-        .addProperty("noiseScale", &LocalVolumetricFog::getNoiseScale, &LocalVolumetricFog::setNoiseScale)
-        .addProperty("scrollSpeed", &LocalVolumetricFog::getScrollSpeed, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setScrollSpeed)
-        .addFunction("setScrollSpeed", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setScrollSpeed)
-        .endClass();
-
-    luabridge::getGlobalNamespace(L)
         .deriveClass<VolumetricClouds, EntityHandle>("VolumetricClouds")
         .addConstructor <void (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("preset", &VolumetricClouds::getPreset, &VolumetricClouds::setPreset)
@@ -731,6 +714,23 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setTextures", &ReflectionProbe::setTextures)
         .addFunction("setTexture", &ReflectionProbe::setTexture)
         .addFunction("refresh", &ReflectionProbe::refresh)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<LocalVolumetricFog, GameObject>("LocalVolumetricFog")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("shape", &LocalVolumetricFog::getShape, &LocalVolumetricFog::setShape)
+        .addProperty("size", &LocalVolumetricFog::getSize, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setSize)
+        .addFunction("setSize", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setSize)
+        .addProperty("attenuationDistance", &LocalVolumetricFog::getAttenuationDistance, &LocalVolumetricFog::setAttenuationDistance)
+        .addProperty("albedo", &LocalVolumetricFog::getAlbedo, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setAlbedo)
+        .addFunction("setAlbedo", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setAlbedo)
+        .addProperty("blendDistance", &LocalVolumetricFog::getBlendDistance, &LocalVolumetricFog::setBlendDistance)
+        .addProperty("falloff", &LocalVolumetricFog::getFalloff, &LocalVolumetricFog::setFalloff)
+        .addProperty("noiseIntensity", &LocalVolumetricFog::getNoiseIntensity, &LocalVolumetricFog::setNoiseIntensity)
+        .addProperty("noiseScale", &LocalVolumetricFog::getNoiseScale, &LocalVolumetricFog::setNoiseScale)
+        .addProperty("scrollSpeed", &LocalVolumetricFog::getScrollSpeed, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setScrollSpeed)
+        .addFunction("setScrollSpeed", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setScrollSpeed)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

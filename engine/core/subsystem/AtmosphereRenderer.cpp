@@ -232,7 +232,7 @@ void AtmosphereRenderer::clearHeightFog(height_fog_t& block){
     block.screenToNdc = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     block.color_colorMode = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     block.extinction_base_H_maxOpacity = Vector4(0.0f, 0.0f, 1.0f, 1.0f);
-    block.start_handoff_maxDist_inscatter = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    block.start_volumetric_maxDist_inscatter = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     block.sunDir_anisotropy = Vector4(0.0f, 1.0f, 0.0f, 0.0f);
     block.sunColor_skyFillSin = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
     for (Vector4& ring : block.horizonRing)
@@ -360,7 +360,7 @@ void AtmosphereRenderer::updateHorizon(){
 }
 
 void AtmosphereRenderer::fillHeightFog(height_fog_t& block, const CameraComponent& camera, const Transform& cameraTransform,
-                                       const Rect& viewport, unsigned int targetHeight, bool flipped, float handoff) const{
+                                       const Rect& viewport, unsigned int targetHeight, bool flipped, float volumetricDistance) const{
     clearHeightFog(block);
 
     // the camera's own clip space (no target flip) and the fragment -> camera ndc mapping of
@@ -391,7 +391,8 @@ void AtmosphereRenderer::fillHeightFog(height_fog_t& block, const CameraComponen
     const HeightFogMedium medium = AtmosphereMath::makeMedium(*fog);
     block.color_colorMode = Vector4(fog->color, fog->colorMode == FogColorMode::SKY ? 1.0f : 0.0f);
     block.extinction_base_H_maxOpacity = Vector4(medium.extinction, medium.baseHeight, medium.scaleHeight, medium.maxOpacity);
-    block.start_handoff_maxDist_inscatter = Vector4(medium.startDistance, handoff, medium.maxDistance, std::max(fog->directionalInscattering, 0.0f));
+    block.start_volumetric_maxDist_inscatter = Vector4(medium.startDistance, volumetricDistance, medium.maxDistance,
+                                                       std::max(fog->directionalInscattering, 0.0f));
     block.sunDir_anisotropy.w = fog->anisotropy;
     for (int i = 0; i < 4; i++)
         block.horizonRing[i] = Vector4(horizon[i], 0.0f);
@@ -443,10 +444,14 @@ bool AtmosphereRenderer::loadProgram(ProgramKind kind){
     Program& program = programs[kind];
     if (program.loaded)
         return true;
-    if (!program.shader)
-        program.shader = ShaderPool::get(types[kind], 0);
-    if (!program.shader || !program.shader->isCreated())
+    // asked again until it is created: a background build finishes in a later get()
+    program.shader = ShaderPool::get(types[kind], 0);
+    if (!program.shader || !program.shader->isCreated()){
+        // still building (a failed build is not waited for)
+        if (!ShaderPool::isShaderBuildFailed(types[kind], 0, 0))
+            waiting = true;
         return false;
+    }
 
     if (!blueNoise.isCreated()){
         void* data[1] = {(void*)blueNoise64};
@@ -917,7 +922,10 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
         plan.volumetricFog = false;
         plan.screenClouds = false;
     }
-    if ((plan.skyMapClouds || plan.screenClouds) && (!cloudsReady() || !loadProgram(PROGRAM_CLOUDS))){
+    const bool cloudsPlanned = plan.skyMapClouds || plan.screenClouds;
+    if (cloudsPlanned && !cloudsReady())
+        waiting = true;
+    if (cloudsPlanned && (!cloudsReady() || !loadProgram(PROGRAM_CLOUDS))){
         plan.skyMapClouds = false;
         plan.screenClouds = false;
     }
@@ -946,7 +954,7 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
         }
     }
 
-    float handoff = 0.0f;
+    float marched = 0.0f;
     bool depthReady[2] = {false, false};
     if (plan.volumetricFog){
         const AtmosphereTier tier = AtmosphereTiers::get(AtmosphereTiers::apply(quality, fog->qualityOverride));
@@ -961,7 +969,7 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
             fillSunShadow(camera, cameraTransform);
             renderFog(camera, cameraTransform, tier);
             renderDenoise(targets.fog[0], targets.fog[1], targets.depth[level], PASS_LABELS[2]);
-            handoff = std::max(fog->volumetricDistance, 0.0f);
+            marched = std::max(fog->volumetricDistance, 0.0f);
             fogDepthLevel = level;
         }else{
             plan.volumetricFog = false;
@@ -998,7 +1006,7 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
             plan.skyMapClouds = false;
         plan.skyComposite = plan.skyFill || plan.skyMapClouds;
     }
-    return handoff;
+    return marched;
 }
 
 void AtmosphereRenderer::bindPostColor(ObjectRender& render, ShaderData& data){
@@ -1065,11 +1073,16 @@ void AtmosphereRenderer::drawComposites(const PassPlan& plan, PipelineType pipel
         };
         block.fogSize = plan.volumetricFog ? size(fogTarget) : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
         block.cloudsSize = plan.screenClouds ? size(cloudsTarget) : Vector4(1.0f, 1.0f, 1.0f, 1.0f);
-        block.params = Vector4(plan.volumetricFog ? 1.0f : 0.0f, plan.screenClouds ? 1.0f : 0.0f, targets.compressed ? 1.0f : 0.0f,
-                               1.0f / std::max(camera.farClip, 1e-3f));
+        block.params = Vector4(plan.volumetricFog ? 1.0f : 0.0f, plan.screenClouds ? 1.0f : 0.0f, targets.compressed ? 1.0f : 0.0f, 0.0f);
+        block.depthInfo = Vector4(1.0f / std::max(camera.farClip, 1e-3f), 0.0f, 0.0f, 0.0f);
         inverseProjectionRows(camera, block.inverseProjectionZ, block.inverseProjectionW);
         state.depthCompare = CompareFunc::ALWAYS;
-        if (program.render.beginDraw(state)){
+        // the subtract pass, then the blend pass (volumetric_composite.frag)
+        for (int composite = 0; composite < 2; composite++){
+            block.params.w = (float)composite;
+            state.blend = composite == 0 ? BlendMode::SUBTRACT_PREMULTIPLIED : BlendMode::PREMULTIPLIED;
+            if (!program.render.beginDraw(state))
+                break;
             ShaderData& data = program.shader->shaderData;
             bindTexture(program.render, data, "u_depthTexture", passSceneDepth);
             if (plan.volumetricFog){
@@ -1087,6 +1100,7 @@ void AtmosphereRenderer::drawComposites(const PassPlan& plan, PipelineType pipel
                 bindTexture(program.render, data, "u_cloudsDepth", &RenderSystem::emptyWhite);
             }
             applyBlock(program.render, data, "u_fs_volumetricComposite", sizeof(block), &block);
+            applyBlock(program.render, data, "u_fs_heightFog", sizeof(height_fog_t), &rs->passHeightFog);
             bindPostColor(program.render, data);
             program.render.draw(0, 3, 1);
         }
@@ -1115,6 +1129,8 @@ void AtmosphereRenderer::endFrame(){
                             + (size_t)AtmosphereNoise::WEATHER_SIZE * AtmosphereNoise::WEATHER_SIZE * 4;
     targets.info = building;
     building = AtmosphereInfo();
+    loading = waiting;
+    waiting = false;
     passSceneDepth = nullptr;
 }
 

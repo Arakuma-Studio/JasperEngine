@@ -34,7 +34,7 @@ namespace jasperengine{
         static constexpr int SHAPE_SIZE = 64;
         static constexpr int DETAIL_SIZE = 32;
         static constexpr int WEATHER_SIZE = 256;
-        static constexpr int WEATHER_BAND_ROWS = 16;
+        static constexpr int WEATHER_BAND_ROWS = 4;
 
         AtmosphereNoise();
         ~AtmosphereNoise();

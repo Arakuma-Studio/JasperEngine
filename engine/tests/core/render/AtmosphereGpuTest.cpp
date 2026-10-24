@@ -255,7 +255,7 @@ TEST_F(AtmosphereGpu, HeightFogOrthographic){
     // red, its foot takes the fog's white
     const std::vector<uint8_t> image = readTarget();
     int topX = 0, topY = 0, footX = 0, footY = 0;
-    ASSERT_TRUE(project(camera, Vector3(1.9f, 38.0f, 1.9f), topX, topY));
+    ASSERT_TRUE(project(camera, Vector3(1.9f, 22.0f, 1.9f), topX, topY));
     ASSERT_TRUE(project(camera, Vector3(1.9f, 1.0f, 1.9f), footX, footY));
     const int width = (int)GpuEnvironment::target().getWidth();
     const uint8_t* top = &image[((size_t)topY * width + topX) * 4];
@@ -276,18 +276,16 @@ TEST_F(AtmosphereGpu, HeightFogSkyColorModeFromACubemap){
         for (int y = 0; y < size; y++){
             for (int x = 0; x < size; x++){
                 uint8_t* p = &faces[f][((size_t)y * size + x) * 4];
-                float r = 0.25f, g = 0.45f, b = 0.85f;           // the zenith's blue
-                if (f == 3){
-                    r = 0.3f; g = 0.22f; b = 0.15f;              // the ground below
-                }else if (f != 2){
-                    // the side faces: rows top first, the horizon at the middle
-                    const float t = std::clamp(((float)y - size * 0.5f) / (size * 0.5f), -1.0f, 1.0f);
+                float r = 0.25f, g = 0.45f, b = 0.85f;           // the zenith's blue (and the nadir's)
+                if (f != 2 && f != 3){
+                    // the side faces: a band of colour at the horizon (the middle rows, so the
+                    // faces' row order does not matter)
+                    const float t = std::clamp(((float)y + 0.5f - size * 0.5f) / (size * 0.5f), -1.0f, 1.0f);
                     const float warm = 1.0f - std::min(std::fabs(t) * 3.0f, 1.0f);
                     const Vector3 horizon = f == 0 ? Vector3(0.95f, 0.55f, 0.35f) : (f == 1 ? Vector3(0.55f, 0.85f, 0.45f) : Vector3(0.9f, 0.75f, 0.5f));
                     r = r + (horizon.x - r) * warm;
                     g = g + (horizon.y - g) * warm;
                     b = b + (horizon.z - b) * warm;
-                    if (t > 0.34f){ r = 0.3f; g = 0.22f; b = 0.15f; }
                 }
                 p[0] = (uint8_t)std::lround(r * 255.0f);
                 p[1] = (uint8_t)std::lround(g * 255.0f);
@@ -329,13 +327,18 @@ TEST_F(AtmosphereGpu, VolumetricFogHandsOffToTheAnalyticFog){
     camera.setFarClip(3000.0f);
     ASSERT_TRUE(render());
     const std::vector<uint8_t> analytic = readTarget();
+    const int width = (int)GpuEnvironment::target().getWidth();
+    const int height = (int)GpuEnvironment::target().getHeight();
+    writePng(getOutputDirectory() + "/atmosphere_handoff_analytic.png", analytic, width, height);
 
     fog.setVolumetric(true);
     for (AtmosphereQuality quality : {AtmosphereQuality::LOW, AtmosphereQuality::MEDIUM, AtmosphereQuality::HIGH}){
         Engine::setAtmosphereQuality(quality);
         ASSERT_TRUE(render());
         EXPECT_TRUE(info().volumetricActive) << AtmosphereTiers::getName(quality);
-        const double difference = meanDifference(analytic, readTarget());
+        const std::vector<uint8_t> volumetric = readTarget();
+        writePng(getOutputDirectory() + "/atmosphere_handoff_" + AtmosphereTiers::getName(quality) + ".png", volumetric, width, height);
+        const double difference = meanDifference(analytic, volumetric);
         std::printf("[atmosphere] handoff %s: mean difference %.3f\n", AtmosphereTiers::getName(quality), difference);
         EXPECT_LE(difference, 2.0) << AtmosphereTiers::getName(quality);
     }
@@ -378,34 +381,35 @@ TEST_F(AtmosphereGpu, LightShafts){
     JASPER_REQUIRE_GPU();
     ShaftsScene shafts(&scene);
     ground(400.0f, Vector3(0.2f, 0.2f, 0.2f));
-    box(Vector3(0.0f, 0.0f, -60.0f), Vector3(120.0f, 30.0f, 2.0f), Vector3(0.08f, 0.08f, 0.1f));
-    // the roof at 12 m in two halves, the gap at x -4..0
-    box(Vector3(-32.0f, 12.0f, -20.0f), Vector3(56.0f, 1.0f, 100.0f), Vector3(0.1f, 0.1f, 0.1f));
-    box(Vector3(30.0f, 12.0f, -20.0f), Vector3(60.0f, 1.0f, 100.0f), Vector3(0.1f, 0.1f, 0.1f));
+    box(Vector3(0.0f, 0.0f, -60.0f), Vector3(160.0f, 30.0f, 2.0f), Vector3(0.08f, 0.08f, 0.1f));
+    // a roof at 12 m over the camera and the view, in two parts with a gap at x 9..17
+    box(Vector3(-35.5f, 12.0f, -24.0f), Vector3(89.0f, 1.0f, 72.0f), Vector3(0.1f, 0.1f, 0.1f));
+    box(Vector3(49.0f, 12.0f, -24.0f), Vector3(64.0f, 1.0f, 72.0f), Vector3(0.1f, 0.1f, 0.1f));
     shafts.sun.setType(LightType::DIRECTIONAL);
-    // falling to -X: the beam under the gap reaches x -6..-2 at the camera's height
-    shafts.sun.setDirection(-0.35f, -1.0f, 0.0f);
-    shafts.sun.setIntensity(3.0f);
+    // falling to +X: the beam through the gap reaches x 6..14 at the camera's height
+    shafts.sun.setDirection(0.35f, -1.0f, 0.0f);
+    shafts.sun.setIntensity(1.0f);
     shafts.sun.setShadows(true);
     shafts.fog.setType(FogType::HEIGHT);
     shafts.fog.setColor(0.02f, 0.02f, 0.03f);
-    shafts.fog.setAttenuationDistance(60.0f);
+    shafts.fog.setAttenuationDistance(40.0f);
     shafts.fog.setBaseHeight(20.0f);
     shafts.fog.setMaximumHeight(60.0f);
-    shafts.fog.setDirectionalInscattering(1.0f);
-    shafts.fog.setAnisotropy(0.2f);
+    shafts.fog.setDirectionalInscattering(0.5f);
+    // isotropic: without shadows two columns mirrored about the view see the same fog
+    shafts.fog.setAnisotropy(0.0f);
     shafts.fog.setVolumetric(true);
     shafts.fog.setVolumetricDistance(80.0f);
     shafts.fog.setSkyFill(false);
-    camera.setPosition(-4.0f, 3.0f, 10.0f);
-    camera.setTarget(-4.0f, 3.0f, -60.0f);
+    camera.setPosition(0.0f, 3.0f, 10.0f);
+    camera.setTarget(0.0f, 3.0f, -60.0f);
     camera.setFarClip(150.0f);
 
-    // a column inside the beam and one in the shadow, at the horizon
+    // two columns mirrored about the view, at the horizon: the right one crosses the beam
     const int height = (int)GpuEnvironment::target().getHeight();
     int litX = 0, litY = 0, shadowX = 0, shadowY = 0;
-    ASSERT_TRUE(project(camera, Vector3(-4.0f, 3.0f, -59.0f), litX, litY));
-    ASSERT_TRUE(project(camera, Vector3(26.0f, 3.0f, -59.0f), shadowX, shadowY));
+    ASSERT_TRUE(project(camera, Vector3(25.0f, 3.0f, -59.0f), litX, litY));
+    ASSERT_TRUE(project(camera, Vector3(-25.0f, 3.0f, -59.0f), shadowX, shadowY));
     const int band = height / 8;
 
     const char* goldens[] = {"atmosphere_shafts_low", "atmosphere_shafts_medium", "atmosphere_shafts_high"};
@@ -427,6 +431,7 @@ TEST_F(AtmosphereGpu, LightShafts){
         const std::vector<uint8_t> flat = readTarget();
         const double litFlat = luminance(flat, litX - 4, litY - band / 2, 8, band);
         const double shadowedFlat = luminance(flat, shadowX - 4, shadowY - band / 2, 8, band);
+        std::printf("[atmosphere] shafts off %s: lit %.1f shadowed %.1f\n", AtmosphereTiers::getName(quality), litFlat, shadowedFlat);
         EXPECT_NEAR(shadowedFlat, litFlat, std::max(litFlat, shadowedFlat) * 0.02) << AtmosphereTiers::getName(quality);
     }
     EXPECT_NO_ENGINE_ERRORS();

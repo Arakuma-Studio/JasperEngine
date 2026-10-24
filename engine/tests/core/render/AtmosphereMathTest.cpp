@@ -9,6 +9,7 @@
 
 #include "render/AtmosphereMath.h"
 #include "component/CameraComponent.h"
+#include "math/Quaternion.h"
 
 #include <gtest/gtest.h>
 

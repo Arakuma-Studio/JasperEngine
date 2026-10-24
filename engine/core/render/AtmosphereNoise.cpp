@@ -37,6 +37,13 @@ namespace {
     }
 
     int wrapCell(int cell, int cells){
+        // the bake's lattice indices are at most a period outside [0, cells): no division
+        if (cell < 0)
+            cell += cells;
+        else if (cell >= cells)
+            cell -= cells;
+        if (cell >= 0 && cell < cells)
+            return cell;
         const int m = cell % cells;
         return m < 0 ? m + cells : m;
     }
@@ -73,25 +80,46 @@ namespace {
             const float fx = sx - (float)cx;
             const float fy = sy - (float)cy;
             const float fz = sz - (float)cz;
-            float best = 1e10f;
+            // the wrapped cell indices of the 3x3(x3) neighbourhood, once per axis
+            int wx[3], wy[3], wz[3] = {0, 0, 0};
+            for (int d = 0; d < 3; d++){
+                wx[d] = wrapCell(cx + d - 1, cells);
+                wy[d] = wrapCell(cy + d - 1, cells);
+                if (dims == 3)
+                    wz[d] = wrapCell(cz + d - 1, cells);
+            }
+            // the sample's own cell first: its point bounds the search, so most neighbours are
+            // skipped by their box distance
+            float best;
+            {
+                const float* point = &points[(((size_t)wz[1] * cells + (size_t)wy[1]) * cells + (size_t)wx[1]) * 3];
+                const float ox = point[0] - fx;
+                const float oy = point[1] - fy;
+                const float oz = (dims == 3) ? point[2] - fz : 0.0f;
+                best = ox * ox + oy * oy + oz * oz;
+            }
             const int zRange = (dims == 3) ? 1 : 0;
             for (int dz = -zRange; dz <= zRange; dz++){
                 // the squared distance from the sample to the neighbour cell's box: a cell whose
                 // box is farther than the best point so far cannot hold a nearer one
                 const float bz = (dz < 0) ? fz : ((dz > 0) ? 1.0f - fz : 0.0f);
+                const size_t zBase = (size_t)wz[dz + 1] * cells;
                 for (int dy = -1; dy <= 1; dy++){
                     const float by = (dy < 0) ? fy : ((dy > 0) ? 1.0f - fy : 0.0f);
+                    const float byz = by * by + bz * bz;
+                    if (byz >= best)
+                        continue;
+                    const size_t yBase = (zBase + (size_t)wy[dy + 1]) * cells;
                     for (int dx = -1; dx <= 1; dx++){
-                        const float bx = (dx < 0) ? fx : ((dx > 0) ? 1.0f - fx : 0.0f);
-                        if (bx * bx + by * by + bz * bz >= best)
+                        if (dx == 0 && dy == 0 && dz == 0)
                             continue;
-                        const int wx = wrapCell(cx + dx, cells);
-                        const int wy = wrapCell(cy + dy, cells);
-                        const int wz = (dims == 3) ? wrapCell(cz + dz, cells) : 0;
-                        const size_t index = (size_t)((wz * cells + wy) * cells + wx) * 3;
-                        const float ox = (float)dx + points[index + 0] - fx;
-                        const float oy = (float)dy + points[index + 1] - fy;
-                        const float oz = (dims == 3) ? (float)dz + points[index + 2] - fz : 0.0f;
+                        const float bx = (dx < 0) ? fx : ((dx > 0) ? 1.0f - fx : 0.0f);
+                        if (bx * bx + byz >= best)
+                            continue;
+                        const float* point = &points[(yBase + (size_t)wx[dx + 1]) * 3];
+                        const float ox = (float)dx + point[0] - fx;
+                        const float oy = (float)dy + point[1] - fy;
+                        const float oz = (dims == 3) ? (float)dz + point[2] - fz : 0.0f;
                         best = std::min(best, ox * ox + oy * oy + oz * oz);
                     }
                 }
@@ -210,9 +238,12 @@ namespace {
         return instance;
     }
 
-    constexpr int SHAPE_ROWS_PER_ITEM = 16;
+    // rows of a slice (3D) or of the map (2D) per work item: each item is about a millisecond of
+    // work, the granularity of the time-sliced bake
+    constexpr int SHAPE_ROWS_PER_ITEM = 4;
+    constexpr int DETAIL_ROWS_PER_ITEM = 8;
     constexpr int SHAPE_ITEMS = AtmosphereNoise::SHAPE_SIZE * (AtmosphereNoise::SHAPE_SIZE / SHAPE_ROWS_PER_ITEM);
-    constexpr int DETAIL_ITEMS = AtmosphereNoise::DETAIL_SIZE;
+    constexpr int DETAIL_ITEMS = AtmosphereNoise::DETAIL_SIZE * (AtmosphereNoise::DETAIL_SIZE / DETAIL_ROWS_PER_ITEM);
     constexpr int WEATHER_ITEMS = AtmosphereNoise::WEATHER_SIZE / AtmosphereNoise::WEATHER_BAND_ROWS;
     constexpr int ITEMS = SHAPE_ITEMS + DETAIL_ITEMS + WEATHER_ITEMS;
 
@@ -232,8 +263,8 @@ namespace {
         }
         item -= SHAPE_ITEMS;
         if (item < DETAIL_ITEMS){
-            const size_t slice = (size_t)AtmosphereNoise::DETAIL_SIZE * AtmosphereNoise::DETAIL_SIZE;
-            return {VOLUME_DETAIL, (size_t)item * slice, slice};
+            const size_t rows = (size_t)DETAIL_ROWS_PER_ITEM * AtmosphereNoise::DETAIL_SIZE;
+            return {VOLUME_DETAIL, (size_t)item * rows, rows};
         }
         item -= DETAIL_ITEMS;
         const size_t band = (size_t)AtmosphereNoise::WEATHER_BAND_ROWS * AtmosphereNoise::WEATHER_SIZE;

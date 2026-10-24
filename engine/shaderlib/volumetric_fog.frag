@@ -4,8 +4,8 @@
 // the scene's surface and the volumetric distance, at a reduced resolution, with what the
 // analytic fog cannot have: the sun's shadow (light shafts, one shadow tap per step), a
 // density noise, Local Volumetric Fog volumes and (High quality) point and spot lights.
-// Output (S, T) of that part of the ray; the opaque surfaces take the analytic fog of the rest
-// (includes/height_fog.glsl, from the handoff distance), so the two compose without overlap.
+// Output (S, T) of that part of the ray; the composite puts it in place of the analytic fog the
+// opaque surfaces took over the same part (volumetric_composite.frag), so the two never overlap.
 //
 // Steps are spread quadratically (denser near the camera) and offset by the static blue-noise
 // jitter; each step's optical depth is the medium's closed form over the step plus the

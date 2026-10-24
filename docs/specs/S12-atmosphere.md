@@ -523,3 +523,39 @@ The `gpuMs` value is present when S15 timings exist.
   through the shared medium (R10).
 - **Sky colour mode for procedural skies** without `horizonColor`. **Default:** use the fog colour
   and show an inspector warning.
+
+## Deviations
+
+- **No scene format version bump (R26, AC15).** S03 landed with the rule that adding an optional
+  component or field needs no version bump: every new key is registered in
+  `editor/StreamSchema.cpp` (`knownFieldKeys`, the `FogType` table's `height`, the new enum
+  tables), so an older editor keeps a height fog's fields and the two new components as unknown
+  data and writes them back (S03 preservation), and a newer one reads old scenes with the
+  defaults. A bump would only make older editors refuse to save. The new Fog and Light fields are
+  written only when they differ from their defaults, so distance-fog scenes save byte-identically.
+  Tests: `editor/tests/stream/StreamAtmosphereTest.cpp`, `StreamSchemaTest` (every component's
+  keys known).
+- **Golden images live with the engine's GPU tests.** S02 put rendering goldens in
+  `engine/tests/core/golden/` (`*Gpu` suites on the headless device, glcore and Vulkan), so the
+  AC4/AC5/AC6/AC8 images are `atmosphere_*.png` there, checked by
+  `engine/tests/core/render/AtmosphereGpuTest.cpp`, not under `tools/mcp/tests/golden/`. AC1's
+  legacy goldens (`atmosphere_legacy_*.png`, `AtmosphereLegacyFogGpuTest.cpp`) were rendered by
+  the engine before S12 and must match exactly. The MCP tests (`test_atmosphere.py`,
+  `test_atmosphere_editor.py`) cover the agent and editor features.
+- **Sky pixels under volumetric fog (R6).** The marched fog in front of the sky is drawn over the
+  sky fill (the physically right result, and where light shafts show against the sky), so the
+  handoff invariant holds for surfaces; AC5 is measured on a view of geometry.
+- **Composite blend.** The composites blend premultiplied (`src ONE, dst ONE_MINUS_SRC_ALPHA`,
+  colour `encode(S / (1 - T)) (1 - T)`, alpha `1 - T`) rather than `ONE / SRC_ALPHA` with alpha
+  `T`: the same display-space approximation, without a second blend state.
+- **Sun shadow block (§6.4).** S10 has not landed: `shaderlib/includes/sun_shadow.glsl` declares
+  `u_fs_sunShadow` (cascade matrices, atlas rects, split distances, bias), filled from the camera's
+  current shadow uniforms, with S10's `sampleDirectionalShadow1` signature, for S10 to adopt.
+- **Pass timings (AC10).** S15 has not landed: passes are labelled, `get_atmosphere_info` lists
+  them, and `tools/performance/atmosphere_bench.py` measures frame time with each feature on and
+  off (it reads `gpuMs` once S15 provides it). The perf-lab run on the reference hardware is
+  still to be made; `docs/mcp/guide/atmosphere.md` states the budgets.
+- **Preset field.** The clouds' `preset` shows the last look applied; editing a field does not
+  switch it to Custom.
+- **Determinism hash (AC9).** The bake's SHA-256 is pinned for x86-64 Linux builds; on other
+  toolchains the test checks that two bakes are identical (libm may round differently).
