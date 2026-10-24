@@ -1889,8 +1889,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "list_post_processing_presets";
         tool.title = "List Post-processing Presets";
         tool.description =
-            "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
-            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
+            "Post-processing presets (none, mobile, mobile_adaptive, console, stylised, crt_retro, film, vhs): id, name, "
+            "description, the post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
             "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;

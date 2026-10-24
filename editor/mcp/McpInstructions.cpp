@@ -235,9 +235,10 @@ when nothing fits: fork_shader copies the built-in shader and sets customShader.
 before editing: keep its declarations, includes, varyings and output, change the math near the
 end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
 forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
-Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
-post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
-(jasper://docs/post-processing).
+Post-processing (main camera only): apply_post_processing_preset (film, vhs, mobile_adaptive...),
+then set_scene_settings post_processing.<field>; get_post_processing_status reads what applies,
+inspect_color_lut a .cube. Mobile: in-shader colour, low render scale or dynamic resolution, few
+passes (jasper://docs/post-processing).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

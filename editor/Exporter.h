@@ -198,10 +198,13 @@ namespace jasperengine::editor {
         bool buildAndSaveShaders();
         // licenses/shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5 spec
         // 3.16); removed when they do not. copyLicenses: the build's to the destination.
+        // licenses/post-fx-LICENSE.txt likewise when they contain an uber pass with the VHS tape,
+        // film damage or the Lens / Filmic grain (S13: adapted MIT shader code)
         bool writeEffectLicense();
         bool copyLicenses();
         // the path the export writes the shaders.com notice to, relative to its root
         static const char* effectLicensePath();
+        static const char* postFxLicensePath();
 
         // Aggregates SceneMaxValues across all project scenes and builds the
         // add_definitions() block that sizes the engine's fixed-capacity

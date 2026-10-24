@@ -46,6 +46,12 @@
 --     multiply quad stays a plain factor), white16 and white32 (a grade with tone mapping NONE
 --     at both LUT sides: the white cube is 255), fixed_nearest (FXAA and sharpen at a NEAREST
 --     fixed resolution: per fixed-resolution pixel, upscaled nearest)
+--   S13 post FX: vhs (the VHS tape), film (Lens grain, film damage, the Academy gate mask),
+--     filmic (the Filmic grain), halation (its own two passes), halation_bloom (on bloom's
+--     levels), cube_display (luts/look_display.cube, a display-referred .cube), cube_log
+--     (luts/look_acescct.cube, an ACEScct .cube applied before the tone mapping, with ACES),
+--     adaptive (dynamic resolution on: the uber pass at any scale), s13_script (from frame 30
+--     the script turns VHS and the Lens grain on and logs scene:getDynamicResolution())
 --   PP_SCENE=saved  Saved.scene: the same objects (this script) with post-processing saved in
 --                   the scene file (the "mobile" set without grain): YAML, export code, runtime
 --   PP_CYCLE=1      every case in turn, one per PP_CYCLE_SECONDS (4): the variant bit and the
@@ -328,6 +334,49 @@ case("lib_blur", function(p) end, function() return { libraryPass("blur", 1.0, {
 case("user_pass", function(p) end, userPasses)
 case("user_pass_bloom", function(p) CASES.bloom(p) end, userPasses)
 
+-- S13: VHS, film simulation, halation, .cube LUTs, dynamic resolution
+case("vhs", function(p) p.vhsEnabled = true end)
+case("film", function(p)
+    p.filmGrainEnabled = true
+    p.filmGrainType = FilmGrainType.LENS
+    p.filmGrainIntensity = 0.35
+    p.filmDamageEnabled = true
+    p.filmDustAmount = 6.0
+    p.filmScratchAmount = 2.0
+    p.filmHairAmount = 1.0
+    p.filmGateMask = FilmGateMask.ACADEMY_137
+end)
+case("filmic", function(p)
+    p.filmGrainEnabled = true
+    p.filmGrainType = FilmGrainType.FILMIC
+    p.filmGrainIntensity = 0.5
+    p.filmGrainColored = true
+end)
+case("halation", function(p)
+    p.halationEnabled = true
+    p.halationIntensity = 1.5
+end)
+case("halation_bloom", function(p)
+    CASES.bloom(p)
+    p.halationEnabled = true
+    p.halationIntensity = 1.5
+end)
+case("cube_display", function(p)
+    p.colorGradingEnabled = true
+    p.lutTexture = "luts/look_display.cube"
+end)
+case("cube_log", function(p)
+    p.tonemap = TonemapMode.ACES
+    p.colorGradingEnabled = true
+    p.lutTexture = "luts/look_acescct.cube"
+    p.lutInputEncoding = LutInputEncoding.AUTO
+end)
+case("adaptive", function(p)
+    p.dynamicResolutionEnabled = true
+    p.dynamicResolutionMinScale = 0.6
+end)
+case("s13_script", function(p) p.dynamicResolutionEnabled = true end)
+
 local function buildScene(self, scene, keep)
     -- the sky: a smooth gradient (8-bit banding shows in it without dither)
     local sky = keep(Skybox(scene))
@@ -602,6 +651,22 @@ end
 
 function PostProcessing:onUpdate()
     self.frames = self.frames + 1
+    -- S13: a script switching the new effects at runtime, and reading dynamic resolution
+    if self.current == "s13_script" and self.frames == 30 then
+        local p = self.scene.postProcessing
+        p.vhsEnabled = true
+        p.filmGrainEnabled = true
+        p.filmGrainType = FilmGrainType.LENS
+        self.scene.postProcessing = p
+        local applied = self.scene.postProcessing
+        local dynamic = self.scene:getDynamicResolution()
+        log("s13 script: vhs %s, grain type %d, dynamic resolution enabled %s running %s scale %.2f source %s",
+            tostring(applied.vhsEnabled), applied.filmGrainType, tostring(dynamic.enabled), tostring(dynamic.running),
+            dynamic.scale, dynamic.source)
+        if not applied.vhsEnabled or applied.filmGrainType ~= FilmGrainType.LENS or not dynamic.enabled or dynamic.scale <= 0 then
+            fail("s13 script: the settings did not apply")
+        end
+    end
     if self.cycle then
         self.time = self.time + Engine.deltatime
         if self.time >= self.period then
