@@ -84,7 +84,7 @@ namespace {
     }
 
     fs::path fixture(const std::string& name) {
-        return fs::path(JASPER_TEST_SOURCE_DIR) / "tools" / "fixtures" / name;
+        return fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / name;
     }
 
     fs::path copyFixture(const std::string& name, const fs::path& into) {
