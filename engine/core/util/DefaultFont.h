@@ -12,7 +12,7 @@
 //Downloaded from https://fonts.googleapis.com/css2?family=Roboto:wght@400
 //  &subset=latin,latin-ext,cyrillic,cyrillic-ext,greek,vietnamese
 //Hinting is dropped, both text paths rasterize with stb_truetype and ignore it:
-//  pyftsubset Roboto-Regular.ttf --unicodes="*" --layout-features="*" --notdef-outline \
+//  pyftsubset Roboto-Regular.ttf --unicodes="*" --layout-features="*" --notdef-outline
 //    --recommended-glyphs --no-hinting --drop-tables+=post,hdmx,LTSH,VDMX,STAT
 
 inline unsigned char roboto_regular_ttf[] = {

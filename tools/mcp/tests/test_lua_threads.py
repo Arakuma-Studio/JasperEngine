@@ -16,6 +16,9 @@ import asyncio
 
 from harness import Editor
 
+CI = True
+EDITOR = {"create": True, "name": "Lua Threads CI"}
+
 TIMEOUT = 900
 
 WORKERS = 16

@@ -24,6 +24,9 @@ import time
 from harness import Editor, REPO
 from htmlui_pixels import Shot, near, check_color
 
+CI = True
+EDITOR = {"create": True, "name": "Html Ui Integration CI"}
+
 TIMEOUT = 900
 
 S: dict = {}

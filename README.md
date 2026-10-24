@@ -51,10 +51,13 @@ The only host requirement is Docker. `tools/build.sh` builds inside the images u
 tools/build.sh linux      # editor + engine sample project
 tools/build.sh web        # engine sample project, Emscripten
 tools/build.sh android    # engine sample project APK
+tools/build.sh unit-tests # the engine and editor unit tests
 tools/build.sh shell linux  # a shell inside the Linux build image
 ```
 
-The editor ends up in `build/linux/editor-install/bin/jasperengine-editor`.
+The editor ends up in `build/linux/editor-install/bin/jasperengine-editor`. `docs/testing.md` lists
+every test suite, how to run it and where a new test goes; `CMakePresets.json` and
+`engine/CMakePresets.json` hold the standard configurations for IDEs and native builds.
 
 ### Natively
 

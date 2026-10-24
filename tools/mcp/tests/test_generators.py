@@ -15,6 +15,8 @@ import sys
 import harness
 from harness import TestFailure
 
+CI = True
+
 # (script, extra arguments), each run as `python3 <script> [args] --check` from the repository root
 GENERATORS = [
     ("tools/gen_rcss_properties.py", []),

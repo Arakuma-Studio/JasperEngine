@@ -35,7 +35,11 @@
 # more than its variant caches hold (~1000 pipelines: the whole shader-library fixture
 # takes minutes per frame there), so run such a project a few groups at a time.
 # SMOKE_DIR=build/<name> writes there instead of build/smoke, so several smoke tests
-# can run at once from one checkout.
+# can run at once from one checkout. JASPER_DOCKER_IMAGE=<id|tag> runs that image (built from
+# docker/linux.Dockerfile, or linux-backends for SMOKE_BACKEND=vulkan|gles3) instead of building
+# it (CI's prebuilt images).
+# The exported project must configure as a user's game does: without the repository's presets,
+# warnings as errors or sanitizers (docs/testing.md); the test fails otherwise.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -54,14 +58,18 @@ esac
 # The main checkout's compiler cache, even when running from a git worktree.
 MAIN="$(cd "$(git -C "$ROOT" rev-parse --path-format=absolute --git-common-dir)/.." && pwd)"
 
-[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
+[[ $# -eq 1 && -f "$1/project.yaml" ]] || { sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; exit 1; }
 PROJECT="$(cd "$1" && pwd)"
 [[ -x "$ROOT/$EDITOR" ]] || { echo "No editor at $EDITOR; run tools/build.sh linux" >&2; exit 1; }
 
-docker build -q -t "$IMAGE" -f "$ROOT/docker/linux.Dockerfile" "$ROOT/docker" >/dev/null
-if [[ "$BACKEND" != opengl ]]; then
-    IMAGE=jasperengine/linux-backends
-    docker build -q -t "$IMAGE" -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker" >/dev/null
+if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
+    IMAGE="$JASPER_DOCKER_IMAGE"
+else
+    docker build -q -t "$IMAGE" -f "$ROOT/docker/linux.Dockerfile" "$ROOT/docker" >/dev/null
+    if [[ "$BACKEND" != opengl ]]; then
+        IMAGE=jasperengine/linux-backends
+        docker build -q -t "$IMAGE" -f "$ROOT/docker/linux-backends.Dockerfile" "$ROOT/docker" >/dev/null
+    fi
 fi
 docker run --rm -v "$ROOT:/src" "$IMAGE" rm -rf "/src/$OUT"
 mkdir -p "$ROOT/$OUT" "$MAIN/build/.cache/ccache"
@@ -126,6 +134,11 @@ docker run --rm ${CPU_FLAGS[@]+"${CPU_FLAGS[@]}"} \
             || { echo "FAIL: build of the exported project"; tail -30 game-build.log; exit 1; }
         GAME="$(find export-build -maxdepth 1 -type f -executable | head -1)"
         [[ -n "$GAME" ]] || { echo "FAIL: no executable in export-build"; exit 1; }
+        # an exported game builds as a user would: no presets, no Werror, no sanitizer, no warnings
+        [[ ! -e export/CMakePresets.json ]] || { echo "FAIL: the export carries CMakePresets.json"; exit 1; }
+        if grep -E "^JASPERENGINE_(WERROR|WARNINGS|UNITY_BUILD)(:BOOL)?=(ON|TRUE|1)$|^JASPERENGINE_SANITIZE(:STRING)?=.+$" export-build/CMakeCache.txt; then
+            echo "FAIL: the exported project configured with the repository build options above"; exit 1
+        fi
 
         Xvfb :99 -screen 0 1600x900x24 > /dev/null 2>&1 &
         export DISPLAY=:99

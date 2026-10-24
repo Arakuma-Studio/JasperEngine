@@ -14,6 +14,7 @@ import zlib
 
 from harness import Editor
 
+CI = True
 EDITOR = {"create": True, "name": "Post Process Passes"}
 TIMEOUT = 600
 

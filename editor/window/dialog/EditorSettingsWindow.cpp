@@ -37,9 +37,9 @@ namespace jasperengine::editor {
 namespace {
     namespace fs = std::filesystem;
 
-    static constexpr float dialogWidth = 860.0f;
-    static constexpr float dialogHeight = 520.0f;
-    static constexpr float categoryListWidth = 190.0f;
+    static constexpr float prefsDialogWidth = 860.0f;
+    static constexpr float prefsDialogHeight = 520.0f;
+    static constexpr float prefsCategoryListWidth = 190.0f;
 
     enum class PreferencesCategory {
         General,
@@ -67,20 +67,20 @@ namespace {
         settingsui::boldText(title);
         ImGui::TableNextColumn();
     }
-    static constexpr float settingsLabelWidth = 190.0f;
-    static constexpr float settingsPanelPadding = 12.0f;
-    static constexpr float settingsButtonWidth = 120.0f;
-    static constexpr ImGuiWindowFlags noScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    static constexpr float prefsSettingsLabelWidth = 190.0f;
+    static constexpr float prefsSettingsPanelPadding = 12.0f;
+    static constexpr float prefsSettingsButtonWidth = 120.0f;
+    static constexpr ImGuiWindowFlags prefsNoScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
     template <typename DrawContents>
-    void drawSettingsPanel(const char* panelId, DrawContents drawContents) {
+    void prefsDrawSettingsPanel(const char* panelId, DrawContents drawContents) {
         const ImGuiStyle& style = ImGui::GetStyle();
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(settingsPanelPadding, settingsPanelPadding)));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(prefsSettingsPanelPadding, prefsSettingsPanelPadding)));
         ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x, Theme::dpi(6.0f)));
 
         bool panelVisible = ImGui::BeginChild(panelId, ImVec2(0, 0), ImGuiChildFlags_Borders);
-        float labelWidth = std::min(Theme::dpi(settingsLabelWidth), ImGui::GetContentRegionAvail().x * 0.4f);
+        float labelWidth = std::min(Theme::dpi(prefsSettingsLabelWidth), ImGui::GetContentRegionAvail().x * 0.4f);
         if (panelVisible && ImGui::BeginTable("##EditorSettingsTable", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthFixed, labelWidth);
             ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
@@ -91,7 +91,7 @@ namespace {
         ImGui::PopStyleVar(3);
     }
 
-    bool beginSettingsRow(const char* label, const char* tooltip = nullptr, bool defChanged = false) {
+    bool prefsBeginSettingsRow(const char* label, const char* tooltip = nullptr, bool defChanged = false) {
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
         ImGui::AlignTextToFramePadding();
@@ -247,15 +247,15 @@ void EditorSettingsWindow::show() {
     ImVec2 center = viewport->GetWorkCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImVec2 size(
-        std::min(Theme::dpi(dialogWidth), viewport->WorkSize.x * 0.9f),
-        std::min(Theme::dpi(dialogHeight), viewport->WorkSize.y * 0.9f)
+        std::min(Theme::dpi(prefsDialogWidth), viewport->WorkSize.x * 0.9f),
+        std::min(Theme::dpi(prefsDialogHeight), viewport->WorkSize.y * 0.9f)
     );
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal |
                              ImGuiWindowFlags_NoResize |
-                             noScrollFlags;
+                             prefsNoScrollFlags;
 
     bool popupOpen = ImGui::BeginPopupModal("Preferences##EditorSettingsModal", &m_isOpen, flags);
 
@@ -274,9 +274,9 @@ void EditorSettingsWindow::drawSettings() {
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
 
-    ImGui::BeginChild("##PreferencesRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, noScrollFlags);
+    ImGui::BeginChild("##PreferencesRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, prefsNoScrollFlags);
 
-    const float listWidth = std::min(Theme::dpi(categoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
+    const float listWidth = std::min(Theme::dpi(prefsCategoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
     settingsui::categoryList("##PreferencesCategories", preferencesCategories, preferencesCategoryCount, m_category,
                              m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
     ImGui::SameLine();
@@ -298,7 +298,7 @@ void EditorSettingsWindow::drawSettings() {
     ImGui::Separator();
 
     // Unity-style footer: buttons on the right, primary first.
-    const float buttonWidth = Theme::dpi(settingsButtonWidth);
+    const float buttonWidth = Theme::dpi(prefsSettingsButtonWidth);
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
 
@@ -340,8 +340,8 @@ void EditorSettingsWindow::openInFileManager(const fs::path& folder) {
 }
 
 void EditorSettingsWindow::drawGeneralSettings() {
-    drawSettingsPanel("##EditorGeneralSettingsPanel", [this]() {
-        if (beginSettingsRow("Default Build Directory",
+    prefsDrawSettingsPanel("##EditorGeneralSettingsPanel", [this]() {
+        if (prefsBeginSettingsRow("Default Build Directory",
                              "Used by Build Settings when the current project has no saved output directory.",
                              !m_defaultExportDirectory.empty())) {
             m_defaultExportDirectory.clear();
@@ -360,7 +360,7 @@ void EditorSettingsWindow::drawGeneralSettings() {
             }
         );
 
-        if (beginSettingsRow("Editor VSync",
+        if (prefsBeginSettingsRow("Editor VSync",
                              "VSync for the editor UI. Play mode and exported builds use the project VSync setting.",
                              m_editorVSyncEnabled != true)) {
             m_editorVSyncEnabled = true;
@@ -368,14 +368,14 @@ void EditorSettingsWindow::drawGeneralSettings() {
         ImGui::Checkbox("##EditorVSync", &m_editorVSyncEnabled);
 
         sectionRow("Auto Save");
-        if (beginSettingsRow("Auto Save Scenes",
+        if (prefsBeginSettingsRow("Auto Save Scenes",
                              "Keep a backup of each modified scene in .jasperengine/backup (the scene file itself is only written "
                              "by Save). After a crash, opening the scene offers to restore it.",
                              m_autosaveEnabled != true)) {
             m_autosaveEnabled = true;
         }
         ImGui::Checkbox("##AutosaveEnabled", &m_autosaveEnabled);
-        if (beginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
+        if (prefsBeginSettingsRow("Auto Save Interval (s)", "Seconds between the backups of a modified scene (30 to 300).",
                              m_autosaveInterval != AppSettings::defaultAutosaveInterval)) {
             m_autosaveInterval = AppSettings::defaultAutosaveInterval;
         }
@@ -384,7 +384,7 @@ void EditorSettingsWindow::drawGeneralSettings() {
         ImGui::DragInt("##AutosaveInterval", &m_autosaveInterval, 1.0f, AppSettings::minAutosaveInterval,
                        AppSettings::maxAutosaveInterval, "%d", ImGuiSliderFlags_AlwaysClamp);
         ImGui::EndDisabled();
-        beginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
+        prefsBeginSettingsRow("Backups", "The project's auto-saved backups, and what a crash left half-written (orphans).");
         ImGui::BeginDisabled(!m_project || m_project->getProjectPath().empty());
         if (ImGui::Button("Open Backup Folder")) {
             const fs::path folder = SceneBackups::root(m_project->getProjectPath());
@@ -395,14 +395,14 @@ void EditorSettingsWindow::drawGeneralSettings() {
         ImGui::EndDisabled();
 
         sectionRow("HTML UI");
-        if (beginSettingsRow("Import Remote Resources",
+        if (prefsBeginSettingsRow("Import Remote Resources",
                              "When a document loads, download the Google Fonts, stylesheets, images and Lottie animations it "
                              "references by URL into assets/htmlui-imports (the game never uses the network).",
                              m_htmlUiAutoImport != true)) {
             m_htmlUiAutoImport = true;
         }
         ImGui::Checkbox("##HtmlUiAutoImport", &m_htmlUiAutoImport);
-        if (beginSettingsRow("Verbose Diagnostics",
+        if (prefsBeginSettingsRow("Verbose Diagnostics",
                              "Log every note of the HTML/CSS compatibility layer (rewrites, approximations) to the Console, "
                              "not only errors, warnings and the per-document summary.",
                              m_htmlUiVerboseDiagnostics != false)) {
@@ -413,9 +413,9 @@ void EditorSettingsWindow::drawGeneralSettings() {
 }
 
 void EditorSettingsWindow::drawCodeEditorSettings() {
-    drawSettingsPanel("##EditorCodeEditorSettingsPanel", [this]() {
+    prefsDrawSettingsPanel("##EditorCodeEditorSettingsPanel", [this]() {
         const bool fontChanged = std::fabs(m_codeEditorFontSize - AppSettings::defaultCodeEditorFontSize) > 1e-4f;
-        if (beginSettingsRow("Font Size", "Font size of the code editor. Ctrl + mouse wheel zooms it too.", fontChanged)) {
+        if (prefsBeginSettingsRow("Font Size", "Font size of the code editor. Ctrl + mouse wheel zooms it too.", fontChanged)) {
             m_codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
         }
         ImGui::SetNextItemWidth(Theme::dpi(120.0f));
@@ -425,7 +425,7 @@ void EditorSettingsWindow::drawCodeEditorSettings() {
 }
 
 void EditorSettingsWindow::drawExternalToolsSettings() {
-    drawSettingsPanel("##EditorExternalToolsPanel", [this]() {
+    prefsDrawSettingsPanel("##EditorExternalToolsPanel", [this]() {
         sectionRow("Desktop Build");
         drawCMakeSettings();
         sectionRow("Web Build");
@@ -437,7 +437,7 @@ void EditorSettingsWindow::drawExternalToolsSettings() {
 
 void EditorSettingsWindow::drawCMakeSettings() {
     {
-        beginSettingsRow("CMake", "Path to cmake executable. Empty means auto-detect from PATH.", !m_cmakeOverride.empty());
+        prefsBeginSettingsRow("CMake", "Path to cmake executable. Empty means auto-detect from PATH.", !m_cmakeOverride.empty());
         fs::path cmakeDisplay = m_cmakeOverride.empty()
             ? fs::path(m_cmakeInfo.found ? m_cmakeInfo.path : "<Not found on PATH>")
             : fs::path(m_cmakeOverride);
@@ -474,7 +474,7 @@ void EditorSettingsWindow::drawCMakeSettings() {
             ImGui::PopStyleColor();
         }
 
-        if (beginSettingsRow("Compiler", "Compiler kit used to build C++ scripts, both when playing a scene and when exporting. "
+        if (prefsBeginSettingsRow("Compiler", "Compiler kit used to build C++ scripts, both when playing a scene and when exporting. "
                 "Set the language standard in Project Settings > Scripting > C++ Standard.", m_cmakeKitIndex != 0)) {
             m_cmakeKitIndex = 0;
         }
@@ -533,7 +533,7 @@ void EditorSettingsWindow::drawCMakeSettings() {
 
 void EditorSettingsWindow::drawWebSettings() {
     {
-        beginSettingsRow("Emscripten SDK", "Path to emsdk root. Empty means EMSDK/PATH auto-detect.", !m_emsdkOverride.empty());
+        prefsBeginSettingsRow("Emscripten SDK", "Path to emsdk root. Empty means EMSDK/PATH auto-detect.", !m_emsdkOverride.empty());
 
         fs::path emsdkDisplay = m_emsdkOverride.empty()
             ? fs::path("<Auto-detect>")
@@ -565,7 +565,7 @@ void EditorSettingsWindow::drawWebSettings() {
 }
 
 void EditorSettingsWindow::drawVideoImportSettings() {
-    beginSettingsRow("FFmpeg", "ffmpeg executable that converts imported videos to AV1 + Opus WebM (the format <video> plays). "
+    prefsBeginSettingsRow("FFmpeg", "ffmpeg executable that converts imported videos to AV1 + Opus WebM (the format <video> plays). "
         "Empty means JASPER_FFMPEG, then PATH. It runs as a separate program; it is never shipped.", !m_ffmpegOverride.empty());
     const fs::path display = m_ffmpegOverride.empty() ? fs::path("<Auto-detect>") : fs::path(m_ffmpegOverride);
     drawPathPicker(
@@ -596,8 +596,8 @@ void EditorSettingsWindow::drawVideoImportSettings() {
 }
 
 void EditorSettingsWindow::drawAdvancedSettings() {
-    drawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
-        beginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
+    prefsDrawSettingsPanel("##EditorAdvancedSettingsPanel", [this]() {
+        prefsBeginSettingsRow("Shader Cache", "Shared by projects for this editor version. Shaders are rebuilt when needed.");
         ImGui::BeginDisabled(m_project && m_project->isAnyScenePlaying());
         if (ImGui::Button("Clear Shader Cache")) {
             std::error_code ec;

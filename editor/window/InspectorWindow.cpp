@@ -10037,7 +10037,6 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
     if (allDefault) ImGui::BeginDisabled();
     if (ImGui::Button("Apply")){
         for (auto& entity : entities){
-            PropertyData prop = Catalog::getProperty(sceneProject->scene, entity, cpType, "texture");
             Texture newTex;
 
             ProjectUtils::setDefaultSkyTexture(newTex);
@@ -14104,7 +14103,6 @@ void editor::InspectorWindow::drawMorphTracksComponent(ComponentType cpType, Sce
 
     if (trackValuesExpanded["morph"]){
         float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
-        float clearButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x;
 
         for (size_t i = 0; i < comp.values.size(); i++){
             ImGui::TableNextRow();

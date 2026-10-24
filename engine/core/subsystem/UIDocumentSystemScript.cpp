@@ -54,7 +54,7 @@ namespace {
         return map;
     }
 
-    Rml::Element* rootOf(Rml::Element* element){
+    Rml::Element* scriptRootOf(Rml::Element* element){
         while (element->GetParentNode())
             element = element->GetParentNode();
         return element;
@@ -126,13 +126,13 @@ Rml::ElementPtr HtmlUIElementRegistry::release(Rml::Element* root){
 }
 
 bool HtmlUIElementRegistry::isDetachedAlive(Rml::Element* element){
-    return element && pool().count(rootOf(element)) > 0;
+    return element && pool().count(scriptRootOf(element)) > 0;
 }
 
 Rml::ElementDocument* HtmlUIElementRegistry::poolDocument(Rml::Element* element){
     if (!element)
         return nullptr;
-    auto it = pool().find(rootOf(element));
+    auto it = pool().find(scriptRootOf(element));
     return (it != pool().end()) ? it->second.document : nullptr;
 }
 

@@ -1479,7 +1479,6 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     bool nodeHovered = ImGui::IsItemHovered();
-    bool nodeActive = ImGui::IsItemActive();
     bool nodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     const ImGuiID nodeItemId = ImGui::GetItemID();
     if (!renamingNode) {
