@@ -291,7 +291,7 @@ namespace{
     };
 }
 
-bool detail::runParallelFor(Scheduler* scheduler, ParallelForInvoke invoke, void* body, size_t count,
+bool jobs::detail::runParallelFor(Scheduler* scheduler, ParallelForInvoke invoke, void* body, size_t count,
                             const ParallelForOptions& options){
     if (count == 0)
         return true;

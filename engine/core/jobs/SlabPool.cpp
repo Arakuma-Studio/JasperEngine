@@ -167,14 +167,14 @@ namespace{
     }
 }
 
-void* detail::acquireSlab(SlabClass slabClass){
+void* jobs::detail::acquireSlab(SlabClass slabClass){
     const size_t c = (size_t)slabClass;
     if (cacheGone)
         return acquireFromDepot(c);
     return threadCache.acquire(c);
 }
 
-void detail::releaseSlab(SlabClass slabClass, void* block) noexcept{
+void jobs::detail::releaseSlab(SlabClass slabClass, void* block) noexcept{
     if (!block)
         return;
     const size_t c = (size_t)slabClass;
@@ -192,7 +192,7 @@ namespace{
     constexpr size_t kHeapHeader = kChunkAlignment;
 }
 
-void* detail::acquireHeapEnvelope(size_t bytes){
+void* jobs::detail::acquireHeapEnvelope(size_t bytes){
     auto* memory = static_cast<unsigned char*>(::operator new(bytes + kHeapHeader, std::align_val_t(kChunkAlignment)));
     *reinterpret_cast<size_t*>(memory) = bytes;
     heapEnvelopeCount.fetch_add(1, std::memory_order_relaxed);
@@ -200,7 +200,7 @@ void* detail::acquireHeapEnvelope(size_t bytes){
     return memory + kHeapHeader;
 }
 
-void detail::releaseHeapEnvelope(void* block) noexcept{
+void jobs::detail::releaseHeapEnvelope(void* block) noexcept{
     if (!block)
         return;
     unsigned char* memory = static_cast<unsigned char*>(block) - kHeapHeader;

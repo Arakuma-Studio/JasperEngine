@@ -52,7 +52,7 @@ namespace{
 RangeAllocator::RangeAllocator(std::string_view statsName, Residency residency, uint64_t unitBytesValue,
                                uint64_t capacityUnits, uint32_t initialRangeCapacity):
     capacity(capacityUnits), unitBytes(unitBytesValue),
-    record(detail::registerRecord(statsName.empty() ? std::string_view("RangeAllocator") : statsName, StatsKind::Range, residency)){
+    record(memory::detail::registerRecord(statsName.empty() ? std::string_view("RangeAllocator") : statsName, StatsKind::Range, residency)){
     assert(!statsName.empty() && "a RangeAllocator needs a stats name");
     assert(unitBytesValue != 0 && "a RangeAllocator's unit is at least one byte");
     freeHeads.fill(kNoNode);
@@ -70,7 +70,7 @@ RangeAllocator::RangeAllocator(std::string_view statsName, Residency residency, 
 }
 
 RangeAllocator::~RangeAllocator(){
-    detail::unregisterRecord(record);
+    memory::detail::unregisterRecord(record);
 }
 
 RangeAllocator::Bin RangeAllocator::binOf(uint64_t units){
@@ -327,5 +327,5 @@ RangeAllocator::Stats RangeAllocator::getStats() const{
 }
 
 void RangeAllocator::publishStats() noexcept{
-    detail::publish(record, used * unitBytes, peak * unitBytes, capacity * unitBytes, outstanding);
+    memory::detail::publish(record, used * unitBytes, peak * unitBytes, capacity * unitBytes, outstanding);
 }

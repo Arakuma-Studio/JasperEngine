@@ -27,7 +27,7 @@ using namespace jasperengine;
 using namespace jasperengine::memory;
 
 namespace{
-    bool findEntry(const std::string& name, StatsEntry& out){
+    bool findStatsEntry(const std::string& name, StatsEntry& out){
         for (StatsEntry& entry : snapshot()){
             if (entry.name == name){
                 out = entry;
@@ -176,7 +176,7 @@ TEST(ObjectPoolTests, TheSnapshotReportsThePoolUnderItsName){
     for (int i = 0; i < 200; i++)
         objects.push_back(pool.create(i));
     StatsEntry entry;
-    ASSERT_TRUE(findEntry("Tests.Pool.Snapshot", entry));
+    ASSERT_TRUE(findStatsEntry("Tests.Pool.Snapshot", entry));
     EXPECT_EQ(entry.kind, StatsKind::Pool);
     EXPECT_GT(entry.capacity, 0u);
     EXPECT_GT(entry.peak, 0u);
@@ -354,7 +354,7 @@ TEST(RangeAllocatorTests, TheSnapshotReportsTheAllocatorInBytes){
     RangeAllocator ranges("Tests.Range.Snapshot", Residency::Gpu, 16, 1000, 16);
     RangeAllocator::Allocation a = ranges.allocate(100);
     StatsEntry entry;
-    ASSERT_TRUE(findEntry("Tests.Range.Snapshot", entry));
+    ASSERT_TRUE(findStatsEntry("Tests.Range.Snapshot", entry));
     EXPECT_EQ(entry.kind, StatsKind::Range);
     EXPECT_EQ(entry.residency, Residency::Gpu);
     EXPECT_EQ(entry.current, 1600u);
@@ -371,7 +371,7 @@ TEST(TrackedBytesTests, ASnapshotReportsTheNameResidencyAndBytes){
     tracked.add(24, 2);
     tracked.setCapacity(4096);
     StatsEntry entry;
-    ASSERT_TRUE(findEntry("Tests.Tracked.Basic", entry));
+    ASSERT_TRUE(findStatsEntry("Tests.Tracked.Basic", entry));
     EXPECT_EQ(entry.kind, StatsKind::Tracked);
     EXPECT_EQ(entry.residency, Residency::Mapped);
     EXPECT_EQ(entry.current, 1024u);
@@ -391,10 +391,10 @@ TEST(StatsRegistryTests, ADestroyedTrackedBytesLeavesTheSnapshot){
     {
         TrackedBytes tracked("Tests.Tracked.Gone", Residency::Cpu);
         StatsEntry entry;
-        EXPECT_TRUE(findEntry("Tests.Tracked.Gone", entry));
+        EXPECT_TRUE(findStatsEntry("Tests.Tracked.Gone", entry));
     }
     StatsEntry entry;
-    EXPECT_FALSE(findEntry("Tests.Tracked.Gone", entry));
+    EXPECT_FALSE(findStatsEntry("Tests.Tracked.Gone", entry));
 }
 
 TEST(StatsRegistryTests, ANameFromATemporaryStringSurvivesInTheSnapshot){
@@ -405,7 +405,7 @@ TEST(StatsRegistryTests, ANameFromATemporaryStringSurvivesInTheSnapshot){
         tracked = std::make_unique<TrackedBytes>(name, Residency::Cpu);
     }
     StatsEntry entry;
-    EXPECT_TRUE(findEntry("Tests.Tracked.Temporary", entry));
+    EXPECT_TRUE(findStatsEntry("Tests.Tracked.Temporary", entry));
 }
 
 TEST(StatsRegistryTests, ConcurrentRegistrationNeverHidesALiveRecord){
@@ -422,7 +422,7 @@ TEST(StatsRegistryTests, ConcurrentRegistrationNeverHidesALiveRecord){
     }
     for (int i = 0; i < testsupport::scaled(500, 50); i++){
         StatsEntry entry;
-        ASSERT_TRUE(findEntry("Tests.Tracked.Keeper", entry));
+        ASSERT_TRUE(findStatsEntry("Tests.Tracked.Keeper", entry));
     }
     stop = true;
     for (auto& thread : churn)

@@ -49,13 +49,13 @@ namespace{
 
 Arena::Arena(std::string_view statsName, size_t firstBlock):
     firstBlockBytes(roundUpToBlockAlignment(firstBlock != 0 ? firstBlock : kArenaFirstBlockBytes)),
-    record(detail::registerRecord(statsName.empty() ? std::string_view("Arena") : statsName, StatsKind::Arena, Residency::Cpu)){
+    record(memory::detail::registerRecord(statsName.empty() ? std::string_view("Arena") : statsName, StatsKind::Arena, Residency::Cpu)){
     assert(!statsName.empty() && "an Arena needs a stats name; name it after its owner, as 'Area.What'");
 }
 
 Arena::~Arena(){
     runDestructorsAbove(0);
-    detail::unregisterRecord(record);
+    memory::detail::unregisterRecord(record);
     for (const Block& block : blocks)
         releaseBlockMemory(block.data, block.capacity);
 }
@@ -114,7 +114,7 @@ void* Arena::allocateArrayBytes(size_t count, size_t elementBytes, size_t alignm
 }
 
 void Arena::reserveDestructorRecord(){
-    detail::SerialUseScope use(serialUse, "Arena");
+    memory::detail::SerialUseScope use(serialUse, "Arena");
     if (destructors.size() == destructors.capacity())
         destructors.reserve(std::max<size_t>(64, destructors.capacity() * 2));
 }
@@ -122,7 +122,7 @@ void Arena::reserveDestructorRecord(){
 void Arena::recordDestructor(void* object, void (*destroy)(void*)){
     bool recorded = false;
     {
-        detail::SerialUseScope use(serialUse, "Arena");
+        memory::detail::SerialUseScope use(serialUse, "Arena");
         // the slot reserved before construction may have been taken by an allocate<U>
         // inside the constructor, so this push can still grow the vector
         try{
@@ -143,7 +143,7 @@ void Arena::runDestructorsAbove(uint32_t count){
     for (;;){
         DestructorRecord entry;
         {
-            detail::SerialUseScope use(serialUse, "Arena");
+            memory::detail::SerialUseScope use(serialUse, "Arena");
             if (destructors.size() <= count)
                 return;
             entry = destructors.back();
@@ -165,7 +165,7 @@ void Arena::rewind(Marker target){
     assert(target.destructorCount <= destructors.size() && "rewind to a marker taken before a later rewind or reset");
     runDestructorsAbove(target.destructorCount);
 
-    detail::SerialUseScope use(serialUse, "Arena");
+    memory::detail::SerialUseScope use(serialUse, "Arena");
     if (!blocks.empty()){
         assert(target.block <= current && "rewind to a marker taken before a later rewind or reset");
         Block& currentBlock = blocks[current];
@@ -192,7 +192,7 @@ void Arena::rewind(Marker target){
 void Arena::reset(){
     runDestructorsAbove(0);
 
-    detail::SerialUseScope use(serialUse, "Arena");
+    memory::detail::SerialUseScope use(serialUse, "Arena");
     if (!blocks.empty()){
         Block& currentBlock = blocks[current];
         currentBlock.used = cursor - reinterpret_cast<uintptr_t>(currentBlock.data);
@@ -236,7 +236,7 @@ size_t Arena::bytesReserved() const{
 void Arena::publishStats(){
     const size_t used = bytesUsed();
     highWater = std::max(highWater, std::max(used, peakSinceReset));
-    detail::publish(record, used, highWater, bytesReserved(), blocks.size());
+    memory::detail::publish(record, used, highWater, bytesReserved(), blocks.size());
 }
 
 // ---- FrameArena

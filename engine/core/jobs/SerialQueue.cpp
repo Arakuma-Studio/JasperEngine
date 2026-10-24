@@ -10,7 +10,7 @@ using namespace jasperengine::jobs::detail;
 
 // ---- strands
 
-StrandState* detail::createStrand(JobSystem* system, const char* name, Lane lane, GateClass gate){
+StrandState* jobs::detail::createStrand(JobSystem* system, const char* name, Lane lane, GateClass gate){
     auto* strand = new StrandState();
     strand->scheduler = schedulerOf(system);
     strand->name = name ? name : "serial";
@@ -19,35 +19,35 @@ StrandState* detail::createStrand(JobSystem* system, const char* name, Lane lane
     return strand;
 }
 
-void detail::destroyStrand(StrandState* strand){
+void jobs::detail::destroyStrand(StrandState* strand){
     strand->scheduler->strandWaitIdle(strand);
     // a drain job still queued holds a reference; the last one deletes the state
     if (strand->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
         delete strand;
 }
 
-void detail::strandPush(StrandState* strand, TaskState* task){
+void jobs::detail::strandPush(StrandState* strand, TaskState* task){
     strand->scheduler->strandPush(strand, task);
 }
 
-void detail::strandCancelPending(StrandState* strand){
+void jobs::detail::strandCancelPending(StrandState* strand){
     strand->scheduler->strandCancelPending(strand);
 }
 
-void detail::strandWaitIdle(StrandState* strand){
+void jobs::detail::strandWaitIdle(StrandState* strand){
     strand->scheduler->strandWaitIdle(strand);
 }
 
-size_t detail::strandPending(const StrandState* strand){
+size_t jobs::detail::strandPending(const StrandState* strand){
     std::lock_guard<std::mutex> lock(const_cast<StrandState*>(strand)->mutex);
     return strand->pending;
 }
 
-Lane detail::strandLane(const StrandState* strand){
+Lane jobs::detail::strandLane(const StrandState* strand){
     return strand->lane;
 }
 
-GateClass detail::strandGate(const StrandState* strand){
+GateClass jobs::detail::strandGate(const StrandState* strand){
     return strand->gate;
 }
 
@@ -73,7 +73,7 @@ size_t SerialQueue::pendingCount() const{
 
 // ---- channels
 
-ChannelState* detail::createChannel(JobSystem* system, const char* name, uint32_t maxRunning){
+ChannelState* jobs::detail::createChannel(JobSystem* system, const char* name, uint32_t maxRunning){
     auto* channel = new ChannelState();
     channel->scheduler = schedulerOf(system);
     channel->name = name ? name : "channel";
@@ -82,29 +82,29 @@ ChannelState* detail::createChannel(JobSystem* system, const char* name, uint32_
     return channel;
 }
 
-void detail::destroyChannel(ChannelState* channel){
+void jobs::detail::destroyChannel(ChannelState* channel){
     channel->scheduler->channelUnregister(channel);
     delete channel;
 }
 
-void detail::channelSubmit(ChannelState* channel, TaskState* task){
+void jobs::detail::channelSubmit(ChannelState* channel, TaskState* task){
     channel->scheduler->channelSubmit(channel, task);
 }
 
-const char* detail::channelName(const ChannelState* channel){
+const char* jobs::detail::channelName(const ChannelState* channel){
     return channel->name;
 }
 
-uint32_t detail::channelCap(const ChannelState* channel){
+uint32_t jobs::detail::channelCap(const ChannelState* channel){
     return channel->cap;
 }
 
-uint32_t detail::channelQueued(const ChannelState* channel){
+uint32_t jobs::detail::channelQueued(const ChannelState* channel){
     std::lock_guard<std::mutex> lock(channel->scheduler->blockingMutex);
     return channel->queued;
 }
 
-uint32_t detail::channelRunning(const ChannelState* channel){
+uint32_t jobs::detail::channelRunning(const ChannelState* channel){
     std::lock_guard<std::mutex> lock(channel->scheduler->blockingMutex);
     return channel->running;
 }

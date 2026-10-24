@@ -39,7 +39,7 @@ namespace jasperengine { namespace memory { namespace detail {
 
 }}}
 
-using detail::StatsRecord;
+using memory::detail::StatsRecord;
 
 namespace{
     constexpr size_t kMaxRecords = 1024;
@@ -103,7 +103,7 @@ const char* memory::kindName(StatsKind kind){
     return "Tracked";
 }
 
-StatsRecord* detail::registerRecord(std::string_view name, StatsKind kind, Residency residency){
+StatsRecord* memory::detail::registerRecord(std::string_view name, StatsKind kind, Residency residency){
     StatsRecord* all = records();
     const size_t start = searchStart.load(std::memory_order_relaxed);
     for (size_t k = 0; k < kMaxRecords; k++){
@@ -137,7 +137,7 @@ StatsRecord* detail::registerRecord(std::string_view name, StatsKind kind, Resid
     return overflowRecord();
 }
 
-void detail::unregisterRecord(StatsRecord* record){
+void memory::detail::unregisterRecord(StatsRecord* record){
     if (!record || record == overflowRecord())
         return;
     record->state.store(1, std::memory_order_relaxed);
@@ -150,7 +150,7 @@ void detail::unregisterRecord(StatsRecord* record){
     record->state.store(0, std::memory_order_release);
 }
 
-void detail::publish(StatsRecord* record, uint64_t current, uint64_t peak, uint64_t capacity, uint64_t count){
+void memory::detail::publish(StatsRecord* record, uint64_t current, uint64_t peak, uint64_t capacity, uint64_t count){
     beginWrite(record);
     record->current.store(current, std::memory_order_relaxed);
     record->peak.store(peak, std::memory_order_relaxed);
@@ -172,8 +172,8 @@ std::vector<StatsEntry> memory::snapshot(){
                 continue;
             if (record->state.load(std::memory_order_acquire) != 2)
                 break;
-            char buffer[detail::kNameWords * 8];
-            for (size_t w = 0; w < detail::kNameWords; w++){
+            char buffer[memory::detail::kNameWords * 8];
+            for (size_t w = 0; w < memory::detail::kNameWords; w++){
                 const uint64_t word = record->name[w].load(std::memory_order_relaxed);
                 std::memcpy(buffer + w * 8, &word, 8);
             }
@@ -201,11 +201,11 @@ std::vector<StatsEntry> memory::snapshot(){
 // ---- TrackedBytes
 
 TrackedBytes::TrackedBytes(std::string_view name, Residency residency):
-    record(detail::registerRecord(name, StatsKind::Tracked, residency)){
+    record(memory::detail::registerRecord(name, StatsKind::Tracked, residency)){
 }
 
 TrackedBytes::~TrackedBytes(){
-    detail::unregisterRecord(record);
+    memory::detail::unregisterRecord(record);
 }
 
 void TrackedBytes::add(uint64_t bytes, uint64_t items){

@@ -71,21 +71,21 @@ bool Semaphore::tryAcquireFor(double milliseconds){
     return true;
 }
 
-void detail::retainCancel(CancelState* state){
+void jobs::detail::retainCancel(CancelState* state){
     if (state)
         state->refs.fetch_add(1, std::memory_order_relaxed);
 }
 
-void detail::releaseCancel(CancelState* state){
+void jobs::detail::releaseCancel(CancelState* state){
     if (state && state->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
         delete state;
 }
 
-CancelToken::CancelToken(): state(new detail::CancelState()){
+CancelToken::CancelToken(): state(new jobs::detail::CancelState()){
 }
 
 CancelToken::CancelToken(const CancelToken& other): state(other.state){
-    detail::retainCancel(state);
+    jobs::detail::retainCancel(state);
 }
 
 CancelToken::CancelToken(CancelToken&& other) noexcept: state(other.state){
@@ -94,8 +94,8 @@ CancelToken::CancelToken(CancelToken&& other) noexcept: state(other.state){
 
 CancelToken& CancelToken::operator=(const CancelToken& other){
     if (this != &other){
-        detail::retainCancel(other.state);
-        detail::releaseCancel(state);
+        jobs::detail::retainCancel(other.state);
+        jobs::detail::releaseCancel(state);
         state = other.state;
     }
     return *this;
@@ -103,7 +103,7 @@ CancelToken& CancelToken::operator=(const CancelToken& other){
 
 CancelToken& CancelToken::operator=(CancelToken&& other) noexcept{
     if (this != &other){
-        detail::releaseCancel(state);
+        jobs::detail::releaseCancel(state);
         state = other.state;
         other.state = nullptr;
     }
@@ -111,7 +111,7 @@ CancelToken& CancelToken::operator=(CancelToken&& other) noexcept{
 }
 
 CancelToken::~CancelToken(){
-    detail::releaseCancel(state);
+    jobs::detail::releaseCancel(state);
 }
 
 void CancelToken::cancel(){

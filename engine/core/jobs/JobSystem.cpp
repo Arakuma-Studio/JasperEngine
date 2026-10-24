@@ -166,20 +166,20 @@ namespace{
 
 // ---- detail functions
 
-uint64_t detail::nowNs(){
+uint64_t jobs::detail::nowNs(){
     return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 
-ThreadSlot* detail::slotAt(int index){
+ThreadSlot* jobs::detail::slotAt(int index){
     return (index >= 0 && index < (int)kMaxThreadSlots) ? &threadSlots()[index] : nullptr;
 }
 
-BodyContext& detail::currentBody(){
+BodyContext& jobs::detail::currentBody(){
     return threadState.body;
 }
 
-int detail::currentSlotIndex(ThreadKind kind, const char* name){
+int jobs::detail::currentSlotIndex(ThreadKind kind, const char* name){
     ThreadState& state = threadState;
     if (state.slot >= 0)
         return state.slot;
@@ -211,19 +211,19 @@ int detail::currentSlotIndex(ThreadKind kind, const char* name){
     return -1;
 }
 
-int detail::currentWorkerIndex(const Scheduler* scheduler){
+int jobs::detail::currentWorkerIndex(const Scheduler* scheduler){
     return threadState.workerOf == scheduler ? threadState.workerIndex : -1;
 }
 
-std::mutex& detail::bucketMutex(const void* key){
+std::mutex& jobs::detail::bucketMutex(const void* key){
     return bucketOf(key).mutex;
 }
 
-std::condition_variable& detail::bucketCv(const void* key){
+std::condition_variable& jobs::detail::bucketCv(const void* key){
     return bucketOf(key).cv;
 }
 
-void detail::spinWait(){
+void jobs::detail::spinWait(){
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
     // the browser main thread services the proxied calls a worker may wait on
     emscripten_main_thread_process_queued_calls();
@@ -231,20 +231,20 @@ void detail::spinWait(){
     std::this_thread::yield();
 }
 
-const ProfilerHooks* detail::hooks(){
+const ProfilerHooks* jobs::detail::hooks(){
     // acquire: the reader dereferences the copy setProfilerHooks published
     return installedHooks.load(std::memory_order_acquire);
 }
 
-uint32_t detail::hooksEpoch(){
+uint32_t jobs::detail::hooksEpoch(){
     return installedEpoch.load(std::memory_order_relaxed);
 }
 
-void detail::retainGate(ExternalGate* gate){
+void jobs::detail::retainGate(ExternalGate* gate){
     gate->refs.fetch_add(1, std::memory_order_relaxed);
 }
 
-void detail::releaseGate(ExternalGate* gate){
+void jobs::detail::releaseGate(ExternalGate* gate){
     if (gate && gate->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
         gate->destroy(gate);
 }
@@ -560,7 +560,7 @@ uint32_t FastLane::count() const{
 
 // ---- releasing
 
-void detail::discardJob(Job* job) noexcept{
+void jobs::detail::discardJob(Job* job) noexcept{
     job->ops->destroy(job);
     if (job->flags & kFlagHeap)
         releaseHeapEnvelope(job);
@@ -568,7 +568,7 @@ void detail::discardJob(Job* job) noexcept{
         releaseSlab(SlabClass::Job, job);
 }
 
-void detail::releaseTask(TaskState* task) noexcept{
+void jobs::detail::releaseTask(TaskState* task) noexcept{
     if (task->refs.fetch_sub(1, std::memory_order_acq_rel) != 1)
         return;
     // the links to its dependencies: each holds a reference to the dependency
@@ -591,7 +591,7 @@ void detail::releaseTask(TaskState* task) noexcept{
         releaseSlab(SlabClass::Task, task);
 }
 
-void detail::waitTask(TaskState* task){
+void jobs::detail::waitTask(TaskState* task){
     Scheduler* scheduler = task->scheduler;
     if (scheduler){
         scheduler->waitTask(task);
@@ -602,7 +602,7 @@ void detail::waitTask(TaskState* task){
         std::this_thread::yield();
 }
 
-bool detail::cancelTask(TaskState* task){
+bool jobs::detail::cancelTask(TaskState* task){
     if (!task->scheduler){
         // not published yet: nothing can claim it concurrently
         uint8_t expected = (uint8_t)TaskStatus::Pending;
@@ -615,7 +615,7 @@ bool detail::cancelTask(TaskState* task){
     return task->scheduler->cancelPending(task);
 }
 
-void detail::throwTaskOutcome(TaskState* task){
+void jobs::detail::throwTaskOutcome(TaskState* task){
     if (statusOf(task) == TaskStatus::Failed && task->error)
         std::rethrow_exception(task->error);
     throw TaskCancelled();
@@ -1747,11 +1747,11 @@ void Scheduler::publishCounterJob(CounterQueue* queue, Job* job, Lane lane){
     publishJob(visit);
 }
 
-CounterQueue* detail::createCounterQueue(){
+CounterQueue* jobs::detail::createCounterQueue(){
     return ::new (acquireSlab(SlabClass::Job)) CounterQueue();
 }
 
-void detail::releaseCounterQueue(CounterQueue* queue) noexcept{
+void jobs::detail::releaseCounterQueue(CounterQueue* queue) noexcept{
     if (queue && queue->refs.fetch_sub(1, std::memory_order_acq_rel) == 1){
         queue->~CounterQueue();
         releaseSlab(SlabClass::Job, queue);
@@ -1885,24 +1885,24 @@ std::vector<float> Scheduler::workerHistory(int worker) const{
 
 // ---- exported detail entry points
 
-void detail::publishTask(Scheduler* scheduler, TaskState* task, const TaskRef* deps, size_t depCount){
+void jobs::detail::publishTask(Scheduler* scheduler, TaskState* task, const TaskRef* deps, size_t depCount){
     scheduler->publishTask(task, deps, depCount);
 }
 
-void detail::publishJob(Scheduler* scheduler, Job* job){
+void jobs::detail::publishJob(Scheduler* scheduler, Job* job){
     job->lane = scheduler->clampLane(job->lane);
     scheduler->publishJob(job);
 }
 
-Scheduler* detail::schedulerOf(JobSystem* system){
+Scheduler* jobs::detail::schedulerOf(JobSystem* system){
     return (system ? system : &jobs::system())->getScheduler();
 }
 
-JobSystem* detail::systemOf(TaskState* task){
+JobSystem* jobs::detail::systemOf(TaskState* task){
     return task->scheduler ? task->scheduler->owner : &jobs::system();
 }
 
-void detail::publishCounterJob(JobSystem* system, CounterQueue* queue, Job* job, Lane lane){
+void jobs::detail::publishCounterJob(JobSystem* system, CounterQueue* queue, Job* job, Lane lane){
     schedulerOf(system)->publishCounterJob(queue, job, lane);
 }
 
