@@ -36,6 +36,11 @@ namespace jasperengine{
         Plane frustumPlanes[6];
         // for point light all cameras are same calculated value that is used by distanceToDepthValue in shader
         Vector2 nearFar = Vector2(0.0, 0.0);
+        // a directional cascade: the slice of the camera it was fitted to, the surfaces that
+        // read it (casters that cannot shadow them are not drawn into it, see
+        // RenderSystem::getShadowReceiverPlanes); none for spot and point cameras
+        Matrix4 receiverViewProjection;
+        bool hasReceiver = false;
     };
 
     struct JASPERENGINE_API LightComponent{

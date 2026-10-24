@@ -656,6 +656,9 @@ namespace jasperengine{
 			int slots = 0;
 			Matrix4 viewProjection[SHADOW_KEY_SLOTS];
 			uint32_t casterMask[SHADOW_KEY_SLOTS] = {};
+			// a directional slot drawn only with the casters that can shadow its receiver slice
+			// (LightCamera::receiverViewProjection): that slice, else identity
+			Matrix4 receiver[SHADOW_KEY_SLOTS];
 			// the camera whose terrain cut, billboards and instance lists the casters were
 			// drawn with, when such camera-dependent casters are in the masks
 			const void* cameraCasters = nullptr;
@@ -1832,7 +1835,7 @@ namespace jasperengine{
 		void computeLightCameras(const LightComponent& light, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& shadowCameraNearFar, LightCamera* cameras, unsigned int& numCascades);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
-		void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
+		static void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
 		void updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform);
 
 		void sortPoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
@@ -1860,6 +1863,14 @@ namespace jasperengine{
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place
 		static bool usesAlphaMask(const Material& material, bool textureShadow);
+
+		// Planes around the casters that can shadow the surfaces reading a directional cascade:
+		// its receiver slice (LightCamera::receiverViewProjection) extruded toward the light
+		// (lightDirection, the way the light travels), widened by the normal offset and the PCF
+		// reach of a shadow atlas slot of slotResolution texels through lightProjection. At most
+		// 18 planes, a box wholly behind one casts nothing there; 0 culls nothing.
+		static int getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
+		                                   unsigned int slotResolution, float normalBias, const Vector3& lightDirection, Plane* planes);
 
 		// Shader variants, derived the same way by loadMesh and by the editor collecting the
 		// variants a build needs (from content, without loading anything on the GPU).
