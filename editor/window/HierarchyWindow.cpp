@@ -1109,9 +1109,32 @@ void editor::HierarchyWindow::moveDraggedEntitiesToRootLevel(const std::vector<E
     moveDraggedEntitiesToTarget(draggedEntities, lastRootEntity, InsertionType::AFTER);
 }
 
+bool editor::HierarchyWindow::acceptsModelDrop(const std::string& filePath) const {
+    // As in the Scene window: a model file of the assets makes a Model GameObject of a 3D scene
+    const SceneProject* sceneProject = project->getSelectedScene();
+    return Util::isModelFile(filePath) && sceneProject && sceneProject->sceneType == SceneType::SCENE_3D &&
+        sceneProject->playState == ScenePlayState::STOPPED;
+}
+
 void editor::HierarchyWindow::handleEntityFilesDrop(const std::vector<std::string>& filePaths, Entity parent) {
     for (const std::string& filePath : filePaths) {
         std::filesystem::path path(filePath);
+
+        if (acceptsModelDrop(filePath)) {
+            if (!project->isInsideAssetsPath(path)) {
+                Backend::getApp().registerOutsideAssetsAlert(filePath);
+                continue;
+            }
+            const std::string modelPath = project->normalizeToAssetsRelative(path).generic_string();
+            std::string entityName = path.stem().string();
+            if (entityName.empty()) {
+                entityName = "Model";
+            }
+            const uint32_t sceneId = project->getSelectedSceneId();
+            CommandHandle::get(sceneId)->addCommandNoMerge(
+                new ModelLoadCmd(project, sceneId, entityName, parent, Vector3(0, 0, 0), Quaternion(), Vector3(1, 1, 1), modelPath));
+            continue;
+        }
 
         if (path.extension() == ".prefab") {
             // Import the prefab into the current scene using command
@@ -1733,12 +1756,13 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     std::string path(data + offset);
                     if (!path.empty()) {
                         if (node.isScene) {
-                            if (Util::isSceneFile(path) || Util::isPrefabFile(path)) {
+                            if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path)) {
                                 allowResourceDragDrop = true;
                                 break;
                             }
                         } else {
-                            if (Util::isPrefabFile(path)) {
+                            // a model goes under a GameObject of the selected scene, not of a child scene
+                            if (Util::isPrefabFile(path) || (acceptsModelDrop(path) && getNodeSceneId(node) == project->getSelectedSceneId())) {
                                 allowResourceDragDrop = true;
                                 break;
                             }
@@ -2907,7 +2931,7 @@ void editor::HierarchyWindow::show(){
                 while (offset < dataSize) {
                     std::string path(data + offset);
                     if (!path.empty()) {
-                        if (Util::isSceneFile(path) || Util::isPrefabFile(path)) {
+                        if (Util::isSceneFile(path) || Util::isPrefabFile(path) || acceptsModelDrop(path)) {
                             allowResourceDragDrop = true;
                             break;
                         }
