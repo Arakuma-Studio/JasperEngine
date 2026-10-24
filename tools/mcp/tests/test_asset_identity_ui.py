@@ -99,7 +99,9 @@ async def shot(ed: Editor, name: str) -> None:
 async def open_textures(ed: Editor) -> dict:
     """Double-clicks assets, then textures, in the listing"""
     await ed.call("focus_window", window="project")
-    state = await wait_ui(ed, lambda s: s["project_window"]["drawn"] and entry(s, "assets"), "the root listing shows assets")
+    state = await wait_ui(ed, lambda s: s["project_window"]["drawn"] and
+                          (s["project_window"]["directory"] == "assets/textures" or entry(s, "assets")),
+                          "the root listing shows assets")
     if state["project_window"]["directory"] != "assets/textures":
         await click(ed, entry(state, "assets"), repeat=2)
         state = await wait_ui(ed, lambda s: s["project_window"]["directory"] == "assets" and entry(s, "textures"),
