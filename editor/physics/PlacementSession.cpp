@@ -94,13 +94,19 @@ namespace {
         return q;
     }
 
-    // The angle of the rotation taking a onto b
+    // The angle of the rotation taking a onto b (atan2 of the relative rotation: exact for the
+    // small angles acos loses)
     float angleDegrees(const Quaternion& a, const Quaternion& b) {
-        const float na = std::sqrt(a.dot(a));
-        const float nb = std::sqrt(b.dot(b));
-        if (na < 1e-12f || nb < 1e-12f) return 0.0f;
-        const float d = std::min(1.0f, std::fabs(a.dot(b)) / (na * nb));
-        return 2.0f * std::acos(d) * kRadToDeg;
+        const double aw = a.w, ax = a.x, ay = a.y, az = a.z;
+        const double bw = b.w, bx = b.x, by = b.y, bz = b.z;
+        // conj(a) * b
+        const double w = aw * bw + ax * bx + ay * by + az * bz;
+        const double x = aw * bx - ax * bw - ay * bz + az * by;
+        const double y = aw * by + ax * bz - ay * bw - az * bx;
+        const double z = aw * bz - ax * by + ay * bx - az * bw;
+        const double v = std::sqrt(x * x + y * y + z * z);
+        if (v == 0.0 && w == 0.0) return 0.0f;
+        return static_cast<float>(2.0 * std::atan2(v, std::fabs(w)) * 180.0 / kPi);
     }
 
     std::string fixed(double v, int digits) {
@@ -340,8 +346,14 @@ namespace {
         LocalPose after;
     };
 
+    // Unmoved, up to float noise: a body the simulation left where it was reads back a hair off
+    // (world to local and back), which must not become an undo step or a prefab override
     bool samePose(const LocalPose& a, const LocalPose& b) {
-        return a.position == b.position && a.rotation == b.rotation && a.scale == b.scale;
+        for (int i = 0; i < 3; i++) {
+            const float tolerance = 1e-6f + 1e-6f * std::max(std::fabs(a.position[i]), std::fabs(b.position[i]));
+            if (std::fabs(a.position[i] - b.position[i]) > tolerance) return false;
+        }
+        return angleDegrees(a.rotation, b.rotation) < 1e-3f && a.scale == b.scale;
     }
 
     size_t applyCommit(Project* project, uint32_t sceneId, const std::vector<CommitEntry>& entries) {
@@ -2207,7 +2219,6 @@ bool editor::commitPlacement(Project* project, const PlacementResult& result, st
 }
 
 json editor::placementResultJson(Project* project, const PlacementResult& result, bool applied) {
-    (void)project;
     json out = json::object();
     out["applied"] = applied;
     out["mode"] = placementModeName(result.mode);
