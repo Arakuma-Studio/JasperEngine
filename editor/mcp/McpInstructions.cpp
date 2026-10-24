@@ -14,8 +14,7 @@ R"JE(# JasperEngine editor (MCP)
 
 You are driving a running JasperEngine editor: a C++ game engine with a Unity-style editor
 (Hierarchy, Inspector, Project window, Console, Scene and Game views) and Lua or C++ gameplay
-scripts. Every edit you make through tools is an undoable editor command, visible live to a human
-watching. Build scenes with tools, write code with your own file tools, verify by playing,
+scripts. Every tool edit is an undoable editor command, shown live to a human. Build scenes with tools, write code with your own file tools, verify by playing,
 screenshots and the Console. tools/list is authoritative for tool names and arguments; read a
 tool's description before first use. Deeper reference: resources jasper://docs/... (Lua API,
 C++ scripting, physics, shaders, prefabs, HTML/CSS UI, Unity glossary).
@@ -61,7 +60,7 @@ Build Settings = export; Scenes in Build = project.yaml scenes.
 7. Stop, fix, repeat until the Console is clean and the screenshot shows what you intended.
    Never claim a script works without playing it and reading the Console.
 Long operations (play with a C++ build, export, build players) take wait/timeout_seconds;
-if they outlive the timeout you get a job id: poll get_job, cancel with cancel_job.
+if they outlive it you get a job id: poll get_job, cancel with cancel_job.
 A tool error says what was wrong and lists valid choices: fix the arguments, don't repeat.
 
 ## Code (Lua, C++, shaders, materials)
@@ -130,7 +129,7 @@ return Player
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
   "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
-  Engine.deltatime. Calling a non-existent method fails at runtime with "attempt to call a nil
+  Engine.deltatime. A non-existent method fails at runtime with "attempt to call a nil
   value". Check jasper://docs/lua-api, the Lua stubs or search_engine_api before
   using a name you have not seen there.
 - Input.isKeyPressed is the held state; detect a press by remembering last frame's value or
@@ -244,13 +243,13 @@ set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
 
 ## Pose animation
-Humanoid key poses (.poseanim): get_pose_animation (+ metrics), edit_pose_animation (one undo
-step). Angles: degrees from standing, arms down (not a T-pose); use mirror_pose.
-Guide: jasper://docs/pose-animation.
+Humanoid key poses (.poseanim): get_pose_animation -> edit_pose_animation (one undo step) ->
+render_pose_animation -> check the metrics both report. Angles: degrees from standing, arms
+down (not a T-pose); use mirror_pose. Guide: jasper://docs/pose-animation.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.
-- Edits made while playing are discarded when play stops (as in Unity): stop before editing
+- Edits made while playing are lost when play stops (as in Unity): stop before editing
   the scene for real.
 - Use only engine APIs you have confirmed in jasper://docs or the engine API snapshot
   (.jasperengine/engine-api); never carry over names from Unity C#, Godot or Unreal.
