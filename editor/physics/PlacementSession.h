@@ -49,6 +49,14 @@ namespace jasperengine::editor {
     ConvexDecompositionCache* placementDecompositionCache(Project* project);
     void placementProjectSwitching();   // cancels pending decompositions, drops the cache
 
+    // A cheap stamp of the scene's edit state: its structureVersion, its command history position
+    // and a hash of every GameObject's Transform, hierarchy, components, layer and active flag.
+    // Equal stamps: nothing a placement reads was edited in between. 0 for an unknown scene.
+    uint64_t placementSceneEditStamp(Project* project, size_t sceneId);
+    // An interactive PlacementSession is running a gesture or settle on the scene: its Transforms
+    // hold preview poses (wait, or refuse, before reading or editing them).
+    bool placementSceneBusy(Project* project, size_t sceneId);
+
     // ---- Interactive -------------------------------------------------------------------------
 
     enum class PlacementGesture {
@@ -186,7 +194,8 @@ namespace jasperengine::editor {
         // Move
         bool hasTargetPosition = false;
         Vector3 targetPosition;                // the group centre's target (world, or local to the
-        bool hasTargetRotation = false;        //   first entity's parent when targetLocal)
+        bool hasTargetRotation = false;        //   parent of the first mover in EntityPath order,
+                                               //   the run's own order, when targetLocal)
         Quaternion targetRotation;             // rotation applied to the group about its centre
         bool hasTargetDelta = false;
         Vector3 targetDelta;
@@ -222,6 +231,10 @@ namespace jasperengine::editor {
         std::string path;                      // EntityPath
         bool mover = true;                     // false: a pushed neighbour
         PlacementPose before;                  // world
+        Vector3 beforeLocalPosition;           // the Transform when the run started (commitPlacement
+        Quaternion beforeLocalRotation;        //   refuses when it is not what the scene holds now)
+        Vector3 beforeLocalScale = Vector3(1.0f, 1.0f, 1.0f);
+        Entity beforeParent = NULL_ENTITY;
         PlacementPose after;                   // world
         Vector3 afterLocalPosition;            // parent space, what is committed
         Quaternion afterLocalRotation;
@@ -244,6 +257,7 @@ namespace jasperengine::editor {
         PlacementMode mode = PlacementMode::Drop;
         size_t sceneId = 0;
         uint64_t sceneStructureVersion = 0;    // the scene's structure when the run started
+        uint64_t sceneEditStamp = 0;           // placementSceneEditStamp when the run started
         std::string specFingerprint;
         uint32_t seed = 1;
         std::string stateHash;                 // hex
@@ -275,7 +289,10 @@ namespace jasperengine::editor {
 
         // Builds the world. False and result().error on a bad spec.
         bool start(Project* project, const PlacementSpec& spec);
-        // Steps for at most budgetMs of wall time (0 = until done). True when done.
+        // Steps for at most budgetMs of wall time (0 = until done). True when done. The scene is
+        // only read on the calling (main) thread, so it can only be edited between two calls:
+        // each call first checks placementSceneEditStamp against the start's and fails the run
+        // ("the scene changed during the simulation: run it again") when it moved.
         bool advance(double budgetMs);
         bool isDone() const;
         void cancel();                          // done with cancelled = true
@@ -289,8 +306,11 @@ namespace jasperengine::editor {
     };
 
     // Applies a finished result as one undo step in the scene's history (ObjectTransformCmd for
-    // every entity, prefab overrides recorded). Fails when the scene's structure changed since the
-    // run started or an entity is gone.
+    // every entity, prefab overrides recorded only for what moved: position, rotation and scale
+    // compared one by one). Fails with "the scene changed during the simulation: run it again"
+    // when the scene's edit stamp or structure changed since the run started, or an entity's
+    // Transform or parent is no longer what the run started from; fails when an entity is gone
+    // or a physics gesture is running in the scene.
     bool commitPlacement(Project* project, const PlacementResult& result, std::string& error);
 
     // The structured result shared by MCP and the CLI (spec section 8.1). Values rounded to 1e-5.
