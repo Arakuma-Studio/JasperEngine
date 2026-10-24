@@ -76,6 +76,9 @@ namespace jasperengine::editor {
         size_t pendingDecompositions = 0;
         std::string status;              // "Ready", "Simulating", "Settling…", "Resting", "Refining colliders 2/5"
         std::vector<PlacementRefusal> refused;   // for the current selection
+        // Movers accepted with a caveat ("simulated in its bind pose", "simulated free: joints are
+        // not recreated"), for the current selection or gesture
+        std::vector<PlacementRefusal> caveats;
     };
 
     // World-space data the Scene view draws (SceneRender overlay lines and labels).
