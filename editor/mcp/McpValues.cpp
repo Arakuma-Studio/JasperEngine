@@ -2460,10 +2460,11 @@ Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {
     std::string reason;
     out["supported"] = FluidSimulator::isSupported(&reason);
     if (!reason.empty()) out["unsupported_reason"] = reason;
-    // drawn now: enabled, its GameObject active, a frame drew it (a view drawing the scene, the
-    // shaders built) and no error; the stats below stay those of its last frame
+    // drawn now: enabled, its GameObject active and its last frame drew it (a view drawing the
+    // scene, the shaders built; `error` may still name a feature the device turned off); the
+    // stats below stay those of its last frame
     out["running"] = fluid->simulator != nullptr && fluid->enabled && scene->isEntityActiveInHierarchy(entity) &&
-                     fluid->simulator->getStats().outputWidth > 0 && fluid->simulator->getError().empty();
+                     fluid->simulator->getStats().drawn;
     if (!fluid->simulator) return out;
     const FluidStats& stats = fluid->simulator->getStats();
     out["steps"] = stats.steps;
@@ -2480,6 +2481,7 @@ Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {
     out["sunrays_active"] = stats.sunraysActive;
     out["manual_filtering"] = stats.manualFiltering;
     out["compact_formats"] = stats.compactFormats;
+    out["target_failures"] = stats.targetFailures;
     const std::string& error = fluid->simulator->getError();
     if (!error.empty()) out["error"] = error;
     return out;

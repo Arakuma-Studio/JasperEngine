@@ -42,6 +42,8 @@ namespace jasperengine{
         // failed size is not tried again every frame: optional ones, bloom and sunrays, stay
         // off until their size changes; required ones are retried every few seconds)
         int targetFailures = 0;
+        // the last update or step drew the output (getError() may still name a feature turned off)
+        bool drawn = false;
     };
 
     // FluidSimulator::setDisabledFeaturesForTesting: device features reported missing

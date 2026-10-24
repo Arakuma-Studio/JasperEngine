@@ -1154,7 +1154,8 @@ bool FluidSimulator::isSupported(std::string* reason){
 }
 
 bool FluidSimulator::update(FluidSimulationComponent& component, float aspectRatio, double dt){
-    return impl->frame(component, aspectRatio, dt, 0, true);
+    impl->stats.drawn = impl->frame(component, aspectRatio, dt, 0, true);
+    return impl->stats.drawn;
 }
 
 void FluidSimulator::reset(const FluidSimulationComponent& component){
@@ -1213,7 +1214,8 @@ void FluidSimulator::step(FluidSimulationComponent& component, float aspectRatio
     if (steps <= 0)
         return;
     // not ready yet (shaders building): they run at the next update
-    if (!impl->frame(component, aspectRatio, 0.0, steps, false))
+    impl->stats.drawn = impl->frame(component, aspectRatio, 0.0, steps, false);
+    if (!impl->stats.drawn)
         component.pendingSteps += (unsigned int)steps;
 }
 

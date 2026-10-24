@@ -24,7 +24,7 @@ top-right. Velocities are Pavel's force units (a pointer delta in fluid coordina
 | Output | What it draws | Pointer (`interactive`) | Use it for |
 |---|---|---|---|
 | `material` (default) | the GameObject's own Sprite, UI Image or Mesh (submesh 0's base colour) shows the fluid instead of its texture, lent at draw time (nothing saved, no prefab override) | drags over the Sprite or Image (a Mesh takes splats from scripts) | a fluid panel, a puddle, a magic surface in the world or in the UI |
-| `screen` | over the main camera's whole view, after post-processing, at the view's aspect | drags anywhere on the view | backgrounds, title screens, cursor trails; set `transparent` for an overlay (opaque covers the game with `backColor`) |
+| `screen` | over the main camera's whole view at the view's aspect: over the scene, under the game UI (HTML documents and UI components), post-processed with them | drags anywhere on the view | backgrounds, title screens, cursor trails; set `transparent` for an overlay (opaque covers the game with `backColor`) |
 | `texture` | nothing by itself: the output is a texture other components show through a `fluid\|<entity>` link | none (scripts splat) | one fluid shown in several places, on a mesh material, a UI Image elsewhere |
 
 The image is RGBA8 at the dye's size. Opaque: the dye over `backColor`. `transparent`: no
@@ -130,11 +130,12 @@ fluid start from an empty GameObject (no sprite to draw):
 - On a UI Image: add the component to the Image's GameObject (output `material`).
 - A Lua script attached to it can wrap it: `FluidSimulation(self.scene, self.entity)`.
 - Runtime state: get_entity and get_runtime_entity return `fluid_stats` (read only): `preset`,
-  `supported` (+ `unsupported_reason`), `running` (drawn now: enabled, active, built, no
-  `error`; the other stats are its last frame's), `steps`, `time`, `splats`, `seed`,
+  `supported` (+ `unsupported_reason`), `running` (drawn now: enabled, active, its last frame
+  drew it; the other stats are its last frame's), `steps`, `time`, `splats`, `seed`,
   `sim_size`, `dye_size`, `output_size` ([w, h]), `gpu_bytes`, `passes_last_frame`,
   `shading_active`, `bloom_active`, `sunrays_active` (after fallbacks), `manual_filtering`,
-  `compact_formats`, `error`.
+  `compact_formats`, `target_failures`, `error` (why it did not draw, or which feature the device
+  turned off while it still draws).
 - In edit mode the fluid is drawn still (its start burst); the Inspector's preview bar runs it
   and its Paint Dye button lets a human stir it in the Scene view. eval_lua with
   `allow_edit_mode` can call `step(n)` on it to look at a later state (transient, not undoable).
