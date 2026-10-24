@@ -90,6 +90,89 @@ TEST(PlacementWorldSettle, BoxRestsOnBoxFloor) {
     EXPECT_NEAR(state.averageContactNormal.y, 1.0f, 1e-3f);
 }
 
+// Jolt drops a body's contacts when it falls asleep; the world keeps them, so what rests where
+// is still reported at the end of a settle
+TEST(PlacementWorldSettle, AsleepBodiesKeepTheirContacts) {
+    TestScene t;
+    floorBox(t);
+    const Entity crate = t.entity(Vector3(0, 0.5f, 0));
+    const Entity bottom = t.box(Vector3(3, 0.2f, 3), Vector3(0, 0.1f, 0), crate);
+    t.box(Vector3(0.2f, 1, 3), Vector3(-1.6f, 0.5f, 0), crate);
+    t.box(Vector3(0.2f, 1, 3), Vector3(1.6f, 0.5f, 0), crate);
+    t.box(Vector3(3.4f, 1, 0.2f), Vector3(0, 0.5f, -1.6f), crate);
+    t.box(Vector3(3.4f, 1, 0.2f), Vector3(0, 0.5f, 1.6f), crate);
+    std::vector<Entity> boxes;
+    boxes.push_back(t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(-0.8f, 1.3f, 0.5f)));
+    boxes.push_back(t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(0.0f, 2.3f, -0.6f)));
+    boxes.push_back(t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(0.8f, 3.6f, 0.4f)));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    for (Entity e : boxes) ASSERT_TRUE(world.addMover(e));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 1500), 0);
+    // a while longer, every body asleep in Jolt too
+    for (int i = 0; i < 120; i++) world.step();
+    ASSERT_TRUE(world.allAsleep());
+
+    for (Entity e : boxes) {
+        const PlacementBodyState state = world.getState(e);
+        EXPECT_TRUE(state.asleep) << e;
+        EXPECT_NEAR(state.pose.position.y, 0.95f, 1e-3f) << e;
+        EXPECT_EQ(state.restingOn, std::vector<Entity>{bottom}) << e;
+        EXPECT_GE(state.contacts, 1u) << e;
+        EXPECT_TRUE(state.touchingContext) << e;
+        EXPECT_NEAR(state.averageContactNormal.y, 1.0f, 1e-3f) << e;
+        EXPECT_LT(state.maxPenetration, 1e-3f) << e;
+    }
+
+    // woken, they still rest on it; lifted off and asleep again in the air, on nothing
+    world.wakeAll();
+    world.step();
+    EXPECT_EQ(world.getState(boxes[0]).restingOn, std::vector<Entity>{bottom});
+    world.setGravity(Vector3(0, 0, 0));
+    world.teleport(boxes[0], {Vector3(-0.8f, 3.0f, 0.5f), Quaternion()});
+    world.step();
+    EXPECT_TRUE(world.getState(boxes[0]).restingOn.empty());
+    ASSERT_GT(stepUntilAsleep(world, 1500), 0);
+    for (int i = 0; i < 120; i++) world.step();
+    const PlacementBodyState lifted = world.getState(boxes[0]);
+    EXPECT_TRUE(lifted.asleep);
+    EXPECT_NEAR(lifted.pose.position.y, 3.0f, 1e-4f);
+    EXPECT_TRUE(lifted.restingOn.empty());
+    EXPECT_EQ(lifted.contacts, 0u);
+    EXPECT_FALSE(lifted.touchingContext);
+    // the others still rest where they were
+    EXPECT_EQ(world.getState(boxes[1]).restingOn, std::vector<Entity>{bottom});
+}
+
+// A body driven up off the floor (not teleported) and left to sleep in the air rests on nothing
+TEST(PlacementWorldSettle, LiftedBodiesForgetTheFloor) {
+    TestScene t;
+    floorBox(t);
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 0.5f, 0));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    ASSERT_TRUE(world.addMover(crate));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 600), 0);
+    for (int i = 0; i < 120; i++) world.step();
+    ASSERT_FALSE(world.getState(crate).restingOn.empty());
+
+    world.setGravity(Vector3(0, 0, 0));
+    world.setTarget(crate, {Vector3(0, 2.5f, 0), Quaternion()});
+    for (int i = 0; i < 120; i++) world.step();
+    world.clearTargets();
+    world.stopAll();
+    ASSERT_GT(stepUntilAsleep(world, 600), 0);
+    for (int i = 0; i < 120; i++) world.step();
+    const PlacementBodyState state = world.getState(crate);
+    EXPECT_NEAR(state.pose.position.y, 2.5f, 1e-3f);
+    EXPECT_TRUE(state.restingOn.empty());
+    EXPECT_EQ(state.contacts, 0u);
+}
+
 TEST(PlacementWorldSettle, SphereRollsOffRamp) {
     TestScene t;
     const Entity ramp = t.box(Vector3(6, 0.2f, 2), Vector3(0, 1, 0));

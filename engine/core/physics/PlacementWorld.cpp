@@ -363,6 +363,12 @@ namespace {
     // job threads during PhysicsSystem::Update, hence the lock; the main thread reads the map
     // between updates. A std::map keeps the iteration order (and so the sums made from it)
     // the same however the threads interleaved.
+    //
+    // Jolt also removes every contact of a body that falls asleep, though nothing moved apart.
+    // Removals are only recorded during the update; settle() then keeps a removed contact whose
+    // bodies are all asleep (a dormant contact, what the body rests on) and drops the others.
+    // A dormant contact goes once a body of it wakes: Jolt reports the contacts it still has
+    // afresh in that update, and a pair that came apart is not reported again.
     class ContactTracker final : public JPH::ContactListener {
     public:
         struct Contact {
@@ -370,6 +376,7 @@ namespace {
             uint32_t body2 = 0;
             JPH::Float3 normal;   // from body 1 toward body 2
             float depth = 0.0f;   // negative: speculative, not touching yet
+            bool dormant = false; // removed by Jolt as its bodies fell asleep
         };
         typedef std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> Key;
 
@@ -383,10 +390,29 @@ namespace {
             record(body1, body2, manifold);
         }
 
+        // The bodies can't be read here (Jolt has them locked, some mid-update): decided in settle()
         void OnContactRemoved(const JPH::SubShapeIDPair& pair) override {
             std::lock_guard<std::mutex> lock(mutex);
-            contacts.erase(Key(bodyKey(pair.GetBody1ID()), pair.GetSubShapeID1().GetValue(),
-                               bodyKey(pair.GetBody2ID()), pair.GetSubShapeID2().GetValue()));
+            removed.push_back(Key(bodyKey(pair.GetBody1ID()), pair.GetSubShapeID1().GetValue(),
+                                  bodyKey(pair.GetBody2ID()), pair.GetSubShapeID2().GetValue()));
+        }
+
+        // After each update, on the main thread. active(body key) is whether the body is awake
+        // (false for static bodies and bodies no longer in the world).
+        template<typename F>
+        void settle(F active) {
+            std::lock_guard<std::mutex> lock(mutex);
+            for (const Key& key : removed) {
+                auto found = contacts.find(key);
+                if (found == contacts.end()) continue;
+                if (!active(found->second.body1) && !active(found->second.body2)) found->second.dormant = true;
+                else contacts.erase(found);
+            }
+            removed.clear();
+            for (auto it = contacts.begin(); it != contacts.end();) {
+                if (it->second.dormant && (active(it->second.body1) || active(it->second.body2))) it = contacts.erase(it);
+                else ++it;
+            }
         }
 
         // A body left the world or changed shape: its sub-shape ids are gone with it
@@ -397,6 +423,9 @@ namespace {
                 if (it->second.body1 == key || it->second.body2 == key) it = contacts.erase(it);
                 else ++it;
             }
+            removed.erase(std::remove_if(removed.begin(), removed.end(), [key](const Key& k) {
+                return std::get<0>(k) == key || std::get<2>(k) == key;
+            }), removed.end());
         }
 
         template<typename F>
@@ -419,6 +448,7 @@ namespace {
 
         std::mutex mutex;
         std::map<Key, Contact> contacts;
+        std::vector<Key> removed;   // during the update in flight
     };
 
     // One convex piece of a body, placed in the body's space
@@ -1453,6 +1483,11 @@ struct PlacementWorld::Impl {
         return g.LengthSq() > 1e-12f ? -g.Normalized() : JPH::Vec3::sAxisY();
     }
 
+    void settleContacts() {
+        const JPH::BodyInterface& bi = bodyInterface();
+        contactTracker.settle([&](uint32_t key) { return bi.IsActive(JPH::BodyID(key)); });
+    }
+
     void summariseContacts() {
         for (DynamicBody* body : dynamicBodies()) {
             body->contacts = 0;
@@ -2054,6 +2089,7 @@ void PlacementWorld::step() {
     for (int i = 0; i < substeps; i++) {
         impl->driveTargets(dt);
         impl->physics.Update(dt, 1, &JoltShapeBuilder::sharedPhysicsTempAllocator(), &JoltShapeBuilder::sharedPhysicsJobSystem());
+        impl->settleContacts();
         impl->summariseContacts();
     }
     impl->afterStep();
