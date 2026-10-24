@@ -194,6 +194,8 @@ TEST(ObjectPoolTests, SteadyCreateDestroyAllocatesNothingAfterWarmup){
     for (Counted* object : objects)
         pool.destroy(object);
     objects.clear();
+    if (!testsupport::countsAllocations())
+        GTEST_SKIP() << "this platform's test binary cannot count allocations";
     const testsupport::AllocationCountScope counting;
     for (int round = 0; round < 100; round++){
         for (int i = 0; i < 1000; i++)
@@ -293,6 +295,8 @@ TEST(RangeAllocatorTests, FreeAfterReclaim){
     RangeAllocator::Allocation b = ranges.allocate(100);
     EXPECT_TRUE(b.isValid());
     // release is allocation-free
+    if (!testsupport::countsAllocations())
+        GTEST_SKIP() << "this platform's test binary cannot count allocations";
     const testsupport::AllocationCountScope counting;
     ranges.freeAfter(b, 9);
     ranges.reclaimThrough(9);

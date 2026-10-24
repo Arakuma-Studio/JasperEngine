@@ -16,6 +16,7 @@ from pathlib import Path
 
 from harness import Editor, skip
 
+CI = True
 EDITOR = {"create": True, "name": "Build Test"}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = 3   # the host is shared: never more

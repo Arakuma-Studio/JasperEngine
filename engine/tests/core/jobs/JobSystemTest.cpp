@@ -217,6 +217,8 @@ TEST_P(JobsWaitHelp, FilteredHelpOnlyCounterJobs){
 }
 
 TEST(JobsWait, CycleAsserts){
+    // the scheduler's threads exist when the death test forks: re-execute instead
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
     EXPECT_DEATH({
         JobSystem system(configFor(1));
         struct Shared {
@@ -668,6 +670,8 @@ TEST_P(JobsAlloc, SteadyStateZero){
     for (int i = 0; i < 2000; i++)
         steadyCycle(system, sink);
 
+    if (!testsupport::countsAllocations())
+        GTEST_SKIP() << "this platform's test binary cannot count allocations";
     const testsupport::AllocationCountScope scope;
     for (int i = 0; i < kWindow; i++)
         steadyCycle(system, sink);
@@ -688,10 +692,30 @@ TEST(JobsWorkerPolicy, DefaultWorkerCountTable){
     EXPECT_EQ(workerCountFor(PlatformClass::Android, 1), 1);
     EXPECT_EQ(workerCountFor(PlatformClass::IOS, 6), 4);
     EXPECT_EQ(workerCountFor(PlatformClass::IOS, 2), 1);
-    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 8), 4);
-    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 4), 2);
-    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 2), 1);
+    // the threaded web build's pool of 8 (engine/CMakeLists.txt)
+    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 8, 8), 4);
+    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 4, 8), 2);
+    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 2, 8), 1);
     EXPECT_EQ(workerCountFor(PlatformClass::WebSingle, 16), 0);
+}
+
+TEST(JobsWorkerPolicy, ThreadedWebWorkersFitThePthreadPool){
+    using thread::PlatformClass;
+    using thread::workerCountFor;
+    // a pool of 4 (S02's gate found hardware_concurrency() - 1 threads asked of it): one worker,
+    // the rest for the blocking thread, a video decoder and a spare
+    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 16, 4), 1);
+    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 16, 6), 3);
+    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 16, 8), 4);
+    EXPECT_EQ(workerCountFor(PlatformClass::WebThreads, 16, 32), 4);
+    for (int pool = 1; pool <= 16; pool++){
+        const int workers = workerCountFor(PlatformClass::WebThreads, 64, pool);
+        EXPECT_GE(workers, 1);
+        if (pool > thread::kWebPoolThreadsBesideWorkers)
+            EXPECT_LE(workers + thread::kWebPoolThreadsBesideWorkers, pool) << "pool " << pool;
+    }
+    // not a threaded web build: no pool
+    EXPECT_EQ(thread::webThreadPoolSize(), 0);
 }
 
 TEST(JobsWorkerPolicy, ConfiguredCountWins){

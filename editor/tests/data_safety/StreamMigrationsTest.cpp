@@ -21,14 +21,16 @@ TEST(StreamMigrations, TablesAreOrderedAndReachCurrent){
         int previous = -1;
         for (const Migration& migration : table){
             EXPECT_EQ(migration.to, migration.from + 1) << migration.name;
-            if (previous >= 0)
+            if (previous >= 0){
                 EXPECT_EQ(migration.from, previous) << migration.name;
+            }
             EXPECT_NE(migration.apply, nullptr);
             EXPECT_NE(std::string(migration.name), "");
             previous = migration.to;
         }
-        if (!table.empty())
+        if (!table.empty()){
             EXPECT_EQ(table.back().to, StreamMigrations::currentVersion(kind));
+        }
     }
 }
 

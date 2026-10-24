@@ -39,19 +39,31 @@ namespace jasperengine { namespace thread {
     // configured (not just online) cores on Android, navigator.hardwareConcurrency on web.
     JASPERENGINE_API int detectCoreCount();
 
+    // The Emscripten pthread pool of a threaded web build: JE_PTHREAD_POOL_SIZE, which CMake
+    // defines from the same value it passes as -sPTHREAD_POOL_SIZE. 0 elsewhere. The pool never
+    // grows, so every thread the engine starts comes out of it.
+    JASPERENGINE_API int webThreadPoolSize();
+
+    // The pool threads that are not workers: one blocking thread, a video decoder, and a spare
+    // an asset reader may take.
+    constexpr int kWebPoolThreadsBesideWorkers = 3;
+
+    // The most workers a pool of `poolSize` threads leaves room for: poolSize - 3, at least 1.
+    JASPERENGINE_API int webWorkerBudget(int poolSize);
+
     // The worker policy for `cores` on `platform`:
     //   Desktop       clamp(cores - 1, 1, 15)
     //   Android, iOS  clamp(cores - 1, 1, 4)
-    //   WebThreads    clamp(cores - 2, 1, 4)
+    //   WebThreads    clamp(cores - 2, 1, min(4, webWorkerBudget(webPoolSize)))
     //   WebSingle     0 (single-thread mode)
-    JASPERENGINE_API int workerCountFor(PlatformClass platform, int cores);
+    JASPERENGINE_API int workerCountFor(PlatformClass platform, int cores, int webPoolSize = webThreadPoolSize());
 
     // workerCountFor(currentPlatform(), detectCoreCount()).
     JASPERENGINE_API int defaultWorkerCount();
 
     // The workers to start: `configured` when >= 0, else the env JE_JOB_WORKERS when set
     // (0 forces single-thread mode on any platform), else defaultWorkerCount(). A build
-    // without threads always gets 0.
+    // without threads always gets 0; a threaded web build at most webWorkerBudget(pool).
     JASPERENGINE_API int resolveWorkerCount(int configured);
 
     // Names the calling thread for debuggers and profilers ("je-worker-3"). Linux and

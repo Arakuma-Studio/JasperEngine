@@ -12,6 +12,9 @@ from harness import Editor, find_key
 sys.path.insert(0, str(Path(__file__).parent))
 from test_runtime_regressions import image_difference  # noqa: E402
 
+CI = True
+EDITOR = {"create": True, "name": "Engine Fixes P2 CI"}
+
 TIMEOUT = 600
 
 SCENE = "scenes/SkyOrder.scene"

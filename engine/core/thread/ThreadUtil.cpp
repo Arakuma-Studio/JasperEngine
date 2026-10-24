@@ -74,7 +74,22 @@ int detectCoreCount(){
     return cores > 0 ? cores : 1;
 }
 
-int workerCountFor(PlatformClass platform, int cores){
+int webThreadPoolSize(){
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+    #if !defined(JE_PTHREAD_POOL_SIZE)
+        #error "a threaded web build defines JE_PTHREAD_POOL_SIZE, the -sPTHREAD_POOL_SIZE it links with (engine/CMakeLists.txt)"
+    #endif
+    return JE_PTHREAD_POOL_SIZE;
+#else
+    return 0;
+#endif
+}
+
+int webWorkerBudget(int poolSize){
+    return std::max(1, poolSize - kWebPoolThreadsBesideWorkers);
+}
+
+int workerCountFor(PlatformClass platform, int cores, int webPoolSize){
     switch (platform){
         case PlatformClass::Desktop:
             return std::clamp(cores - 1, 1, 15);
@@ -82,7 +97,8 @@ int workerCountFor(PlatformClass platform, int cores){
         case PlatformClass::IOS:
             return std::clamp(cores - 1, 1, 4);
         case PlatformClass::WebThreads:
-            return std::clamp(cores - 2, 1, 4);
+            // the pool of the build bounds them: a thread asked beyond it aborts (STRICT=2)
+            return std::clamp(cores - 2, 1, std::min(4, webWorkerBudget(webPoolSize)));
         case PlatformClass::WebSingle:
             return 0;
     }
@@ -94,16 +110,19 @@ int defaultWorkerCount(){
 }
 
 int resolveWorkerCount(int configured){
-    if (currentPlatform() == PlatformClass::WebSingle)
+    const PlatformClass platform = currentPlatform();
+    if (platform == PlatformClass::WebSingle)
         return 0;
+    // a setting or JE_JOB_WORKERS asks; the platform caps
+    const int cap = platform == PlatformClass::WebThreads ? webWorkerBudget(webThreadPoolSize()) : 15;
     if (configured >= 0)
-        return std::min(configured, 15);
+        return std::min(configured, cap);
     if (const char* env = std::getenv("JE_JOB_WORKERS")){
         if (env[0] != '\0'){
             char* end = nullptr;
             const long value = std::strtol(env, &end, 10);
             if (end != env && value >= 0)
-                return (int)std::min<long>(value, 15);
+                return (int)std::min<long>(value, cap);
         }
     }
     return defaultWorkerCount();

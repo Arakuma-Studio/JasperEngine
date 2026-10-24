@@ -11,10 +11,16 @@ service (`engine/core/io/AssetIOService`), and a small set of allocators
 
 | Thread | Count | Names | Runs |
 |---|---|---|---|
-| Workers | Project Settings > Player > Threading > Worker Threads (Auto: logical cores - 1, at most 15; 4 on mobile; cores - 2, at most 4, on threaded web; 0 on web without threads) | `je-worker-N` | jobs (compute) |
+| Workers | Project Settings > Player > Threading > Worker Threads (Auto: logical cores - 1, at most 15; 4 on mobile; cores - 2, at most 4 and at most the pthread pool - 3, on threaded web; 0 on web without threads) | `je-worker-N` | jobs (compute) |
 | Blocking threads | created on demand, up to the channels' caps (budget 8 on desktop, 1 on threaded web) | `je-block-N` | `JobChannel` jobs: processes, network, long writes |
 | Asset readers | Asset I/O Threads (Auto: 2 desktop, 1 mobile, 0 web) | `je-io-N` | file reads |
 | Main | 1 | `je-main` | the frame; pumps the queues in single-thread mode |
+
+On threaded web every thread comes out of the Emscripten pthread pool, which never grows:
+`JASPERENGINE_WEB_PTHREAD_POOL_SIZE` (CMake, default 8) sets `-sPTHREAD_POOL_SIZE` and the
+engine's `JE_PTHREAD_POOL_SIZE` together. The engine keeps 3 of it beside the workers (the
+blocking thread, a video decoder, a spare an asset reader may take), so a worker setting or
+`JE_JOB_WORKERS` above pool - 3 is capped.
 
 `JE_JOB_WORKERS=n` overrides the worker count (`0` forces single-thread mode on any platform),
 `JE_ASSET_IO_THREADS=n` the readers. Workers run at normal priority, readers and blocking

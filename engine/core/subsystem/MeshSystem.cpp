@@ -5495,7 +5495,6 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
 
     MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
     ModelComponent& model = scene->getComponent<ModelComponent>(entity);
-    Transform& transform = scene->getComponent<Transform>(entity);
 
     // Taken before the submeshes are rewritten, put back once they are filled.
     const SubmeshOverrides submeshOverrides = collectSubmeshOverrides(entity, model);

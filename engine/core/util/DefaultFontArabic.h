@@ -11,9 +11,9 @@
 //Noto Sans Arabic font from https://github.com/notofonts/notofonts.github.io
 //Licensed under the SIL Open Font License 1.1
 //Subset to the Arabic blocks, keeping the GSUB features that join letters:
-//  pyftsubset NotoSansArabic-Regular.ttf \
-//    --unicodes="U+0020,U+0600-06FF,U+0750-077F,U+08A0-08FF,U+200C-200D,U+FD3E-FD3F,U+FDF2,U+FDFD,U+FB50-FBFF,U+FE70-FEFF" \
-//    --layout-features+="init,medi,fina,isol,rlig,liga,dlig,calt,ccmp,mark,mkmk,curs,locl,rtlm" \
+//  pyftsubset NotoSansArabic-Regular.ttf
+//    --unicodes="U+0020,U+0600-06FF,U+0750-077F,U+08A0-08FF,U+200C-200D,U+FD3E-FD3F,U+FDF2,U+FDFD,U+FB50-FBFF,U+FE70-FEFF"
+//    --layout-features+="init,medi,fina,isol,rlig,liga,dlig,calt,ccmp,mark,mkmk,curs,locl,rtlm"
 //    --layout-scripts="*" --notdef-outline --no-hinting
 //Presentation Forms A and B are kept for the editor, which draws through ImGui and has
 //no shaper. Forms-A carries the Persian and Urdu letters, Forms-B the Arabic ones

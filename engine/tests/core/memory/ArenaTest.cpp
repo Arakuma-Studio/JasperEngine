@@ -190,6 +190,8 @@ TEST(ArenaTests, ResetCoalescesThenAllocatesNothingPerFrame){
     ASSERT_GT(blockCount("Tests.Arena.Coalesce"), 1u);
     arena.reset();
     EXPECT_EQ(blockCount("Tests.Arena.Coalesce"), 1u);
+    if (!testsupport::countsAllocations())
+        GTEST_SKIP() << "this platform's test binary cannot count allocations";
     const testsupport::AllocationCountScope frames;
     for (int frame = 0; frame < 8; frame++){
         fillOneFrame(arena);
@@ -201,6 +203,8 @@ TEST(ArenaTests, ResetCoalescesThenAllocatesNothingPerFrame){
 TEST(ArenaTests, ArenaAllocatorOnAWarmArenaMakesNoHeapAllocation){
     Arena arena("Tests.Arena.Allocator");
     arena.allocate(1);
+    if (!testsupport::countsAllocations())
+        GTEST_SKIP() << "this platform's test binary cannot count allocations";
     const testsupport::AllocationCountScope scope;
     {
         std::vector<int, ArenaAllocator<int>> values{ArenaAllocator<int>(arena)};
@@ -323,6 +327,8 @@ TEST(ScratchScopeTests, SteadyUseAllocatesNothing){
         ScratchScope scope;
         scope.allocateArray<char>(32 * 1024);
     }
+    if (!testsupport::countsAllocations())
+        GTEST_SKIP() << "this platform's test binary cannot count allocations";
     const testsupport::AllocationCountScope counting;
     for (int i = 0; i < 1000; i++){
         ScratchScope scope;

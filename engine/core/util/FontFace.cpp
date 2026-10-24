@@ -15,15 +15,15 @@ using namespace jasperengine;
 
 namespace {
 
-    uint16_t readU16(const unsigned char* p){
+    uint16_t fontReadU16(const unsigned char* p){
         return (uint16_t)((p[0] << 8) | p[1]);
     }
 
     int16_t readS16(const unsigned char* p){
-        return (int16_t)readU16(p);
+        return (int16_t)fontReadU16(p);
     }
 
-    uint32_t readU32(const unsigned char* p){
+    uint32_t fontReadU32(const unsigned char* p){
         return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
     }
 
@@ -42,13 +42,13 @@ namespace {
 
         offset = 0;
         if (std::memcmp(data, "ttcf", 4) == 0){
-            uint32_t version = readU32(data + 4);
+            uint32_t version = fontReadU32(data + 4);
             if (version != 0x00010000 && version != 0x00020000)
                 return false;
-            uint32_t numFonts = readU32(data + 8);
+            uint32_t numFonts = fontReadU32(data + 8);
             if ((uint32_t)faceIndex >= numFonts || 12 + 4 * (size_t)numFonts > length)
                 return false;
-            offset = readU32(data + 12 + 4 * (size_t)faceIndex);
+            offset = fontReadU32(data + 12 + 4 * (size_t)faceIndex);
         }else if (faceIndex != 0){
             return false;
         }
@@ -56,14 +56,14 @@ namespace {
         if (offset + 12 > length || !isSfntVersion(data + offset))
             return false;
 
-        size_t numTables = readU16(data + offset + 4);
+        size_t numTables = fontReadU16(data + offset + 4);
         if (numTables == 0 || offset + 12 + 16 * numTables > length)
             return false;
 
         for (size_t i = 0; i < numTables; i++){
             const unsigned char* record = data + offset + 12 + 16 * i;
-            uint64_t tableOffset = readU32(record + 8);
-            uint64_t tableLength = readU32(record + 12);
+            uint64_t tableOffset = fontReadU32(record + 8);
+            uint64_t tableLength = fontReadU32(record + 12);
             if (tableOffset + tableLength > length)
                 return false;
 
@@ -201,9 +201,9 @@ void FontFace::readTables(){
     const unsigned char* os2Data = (const unsigned char*)hb_blob_get_data(os2, &os2Length);
     if (os2Data && os2Length >= 64){
         hasOS2 = true;
-        os2Weight = readU16(os2Data + 4);
-        fsSelection = readU16(os2Data + 62);
-        if (readU16(os2Data) >= 2 && os2Length >= 88){
+        os2Weight = fontReadU16(os2Data + 4);
+        fsSelection = fontReadU16(os2Data + 62);
+        if (fontReadU16(os2Data) >= 2 && os2Length >= 88){
             os2XHeight = readS16(os2Data + 86);
         }
     }
@@ -214,7 +214,7 @@ void FontFace::readTables(){
     unsigned int headLength = 0;
     const unsigned char* headData = (const unsigned char*)hb_blob_get_data(head, &headLength);
     if (headData && headLength >= 46){
-        macStyle = readU16(headData + 44);
+        macStyle = fontReadU16(headData + 44);
     }
     hb_blob_destroy(head);
 

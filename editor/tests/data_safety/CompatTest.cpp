@@ -28,7 +28,7 @@ namespace {
 
     std::vector<fs::path> corpus(const std::vector<std::string>& extensions) {
         std::vector<fs::path> files;
-        const fs::path root = fs::path(JASPER_TEST_SOURCE_DIR) / "tools" / "fixtures";
+        const fs::path root = fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures";
         for (const auto& entry : fs::recursive_directory_iterator(root)) {
             if (!entry.is_regular_file()) continue;
             const std::string name = entry.path().filename().string();
@@ -104,7 +104,7 @@ TEST(Compat, CorpusRoundTrip) {
     ASSERT_FALSE(scenes.empty());
     for (const fs::path& file : scenes) {
         SCOPED_TRACE(file.string());
-        std::printf("[ corpus   ] %s\n", file.lexically_relative(JASPER_TEST_SOURCE_DIR).generic_string().c_str());
+        std::printf("[ corpus   ] %s\n", file.lexically_relative(JASPER_TEST_REPO_DIR).generic_string().c_str());
         std::fflush(stdout);
         const std::string original = readText(file);
         DecodedScene decoded = decodeSceneFile(file);
@@ -139,7 +139,7 @@ TEST(Compat, CorpusRoundTrip) {
 
     for (const fs::path& file : corpus({".prefab"})) {
         SCOPED_TRACE(file.string());
-        std::printf("[ corpus   ] %s\n", file.lexically_relative(JASPER_TEST_SOURCE_DIR).generic_string().c_str());
+        std::printf("[ corpus   ] %s\n", file.lexically_relative(JASPER_TEST_REPO_DIR).generic_string().c_str());
         std::fflush(stdout);
         ensureEngine();
         LoadReport report;

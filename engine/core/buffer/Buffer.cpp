@@ -222,7 +222,7 @@ Vector4 Buffer::getVector4(AttributeType attribute, unsigned int index){
 }
 
 uint16_t Buffer::getUInt16(Attribute* attribute, unsigned int index, int elementIndex){
-    uint16_t ret;
+    uint16_t ret = 0;
 
     if (elementIndex >= 0 && elementIndex < attribute->elements) {
         unsigned pos = (index * stride) + attribute->offset + (elementIndex * sizeof(uint16_t));
@@ -239,7 +239,7 @@ uint16_t Buffer::getUInt16(Attribute* attribute, unsigned int index, int element
 }
 
 uint32_t Buffer::getUInt32(Attribute* attribute, unsigned int index, int elementIndex){
-    uint32_t ret;
+    uint32_t ret = 0;
 
     if (elementIndex >= 0 && elementIndex < attribute->elements) {
         unsigned pos = (index * stride) + attribute->offset + (elementIndex * sizeof(uint32_t));
@@ -256,7 +256,7 @@ uint32_t Buffer::getUInt32(Attribute* attribute, unsigned int index, int element
 }
 
 float Buffer::getFloat(Attribute* attribute, unsigned int index, int elementIndex){
-    float ret;
+    float ret = 0.0f;
 
     if (elementIndex >= 0 && elementIndex < attribute->elements) {
         unsigned pos = (index * stride) + attribute->offset + (elementIndex * sizeof(float));

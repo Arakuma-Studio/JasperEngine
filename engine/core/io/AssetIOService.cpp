@@ -275,6 +275,12 @@ void AssetIOService::start(int readerThreads){
     int count = readerThreads >= 0 ? std::min(readerThreads, kMaxReaderThreads) : defaultReaderCount();
     if (system->isSingleThreaded())
         count = 0;
+    if (thread::currentPlatform() == thread::PlatformClass::WebThreads){
+        // out of the pthread pool: what the workers, the blocking thread and a video decoder
+        // leave (thread::kWebPoolThreadsBesideWorkers)
+        const int left = thread::webThreadPoolSize() - system->getWorkerCount() - (thread::kWebPoolThreadsBesideWorkers - 1);
+        count = std::min(count, std::max(0, left));
+    }
     {
         std::lock_guard<std::mutex> lock(mutex);
         if (running)

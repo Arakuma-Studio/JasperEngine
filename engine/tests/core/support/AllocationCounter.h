@@ -30,6 +30,9 @@ namespace testsupport {
     // every allocation of the process so far
     uint64_t totalAllocations();
 
+    // false where the test binary cannot count (no GNU ld --wrap): the zero-allocation tests skip
+    bool countsAllocations();
+
 }
 
 #endif // TESTS_ALLOCATIONCOUNTER_H

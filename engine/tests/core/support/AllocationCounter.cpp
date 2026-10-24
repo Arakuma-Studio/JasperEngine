@@ -5,9 +5,12 @@
 // global operator new/delete (engine/libs/thorvg/src/renderer/tvgInitializer.cpp) with
 // malloc/free, so the plain forms are counted at malloc, wrapped by the linker
 // (--wrap=malloc, calloc, realloc: tests/core/CMakeLists.txt); the aligned forms, which the
-// job system's slabs and the arenas use, are replaced here. Linux only, like the test binary.
+// job system's slabs and the arenas use, are replaced here. GNU ld only
+// (JE_TEST_COUNTS_ALLOCATIONS): elsewhere countsAllocations() is false and the tests skip.
 
 #include "AllocationCounter.h"
+
+#if defined(JE_TEST_COUNTS_ALLOCATIONS)
 
 #include <atomic>
 #include <cstddef>
@@ -122,4 +125,22 @@ namespace testsupport {
         return allocations.load(std::memory_order_relaxed);
     }
 
+    bool countsAllocations(){
+        return true;
+    }
+
 }
+
+#else
+
+namespace testsupport {
+
+    AllocationCountScope::AllocationCountScope(): start(0){}
+    AllocationCountScope::~AllocationCountScope() = default;
+    uint64_t AllocationCountScope::count() const{ return 0; }
+    uint64_t totalAllocations(){ return 0; }
+    bool countsAllocations(){ return false; }
+
+}
+
+#endif

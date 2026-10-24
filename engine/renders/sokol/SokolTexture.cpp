@@ -334,7 +334,7 @@ bool SokolTexture::createTexture(
             ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[], 
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
 
-    sg_pixel_format pixelFormat;
+    sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     if (colorFormat == ColorFormat::RGBA){
         pixelFormat = SG_PIXELFORMAT_RGBA8;
     }else if (colorFormat == ColorFormat::RED){
@@ -437,7 +437,7 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
 
 bool SokolTexture::createDynamicTexture(const std::string& label, int width, int height,
             ColorFormat colorFormat, TextureFilter filter){
-    sg_pixel_format pixelFormat;
+    sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     size_t bytesPerPixel;
     if (colorFormat == ColorFormat::RGBA){
         pixelFormat = SG_PIXELFORMAT_RGBA8;
@@ -537,7 +537,7 @@ bool SokolTexture::createTextureCubeWithMips(
             ColorFormat colorFormat, int numMipmaps, void* data[], size_t size[],
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
 
-    sg_pixel_format pixelFormat;
+    sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     if (colorFormat == ColorFormat::RGBA){
         pixelFormat = SG_PIXELFORMAT_RGBA8;
     }else if (colorFormat == ColorFormat::RED){

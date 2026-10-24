@@ -120,6 +120,7 @@ std::string joinNames(const std::vector<std::string>& names) {
 template<typename T>
 bool pickName(const std::vector<std::pair<const char*, T>>& table, const std::string& name, T& out,
               const std::string& what, std::string& error) {
+    out = T{};   // written on every path, so a caller's variable is never read uninitialized
     const std::string key = lowerText(name);
     for (const auto& item : table) {
         if (key == item.first) {

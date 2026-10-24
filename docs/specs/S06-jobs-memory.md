@@ -575,15 +575,15 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   entirely (`tools/check-cxx-subset.py`), so D9's gated `Arena::resource()` and
   `ScratchScope::resource()` are dropped: `ArenaAllocator<T>` serves std containers
   everywhere.
-- **Test target.** S03 added `jasperengine-core-tests` (S02 has not landed). The S06 suites
-  build into it from `engine/tests/core/{jobs,memory,io,thread}`, so they run under
-  `tools/build.sh unit-tests`. Its main is `support/TestMain.cpp`, not `gtest_main`: it starts
-  the engine without a window, which the scheduler and asset I/O suites need, and the S03
-  suites run under it unchanged. The binary links the allocation counter (`--wrap=malloc`).
-  The benchmarks `je-bench-jobs` and `je-bench-memory` build in the same directory. The spec's
-  suite names map onto parameterised suites: `Workers/JobsSteal.*`, `Workers/JobsWait*.*` and
-  so on, run at {0, 1, 2, 8} workers (cases that need workers skip at 0). TSan runs come from a
-  separate `-fsanitize=thread` build directory (docs/jobs-memory.md), not an S02 preset.
+- **Test target.** The S06 suites are part of S02's `jasperengine-core-tests`
+  (`engine/tests/core/{jobs,memory,io,thread}`, `tools/build.sh unit-tests`, S02's TestMain).
+  The resource pack the asset I/O suite reads is written at static initialisation, before the
+  engine starts. The death test sets `death_test_style=threadsafe` itself. The binary links
+  the allocation counter: `--wrap=malloc` on Linux. Elsewhere, the zero-allocation tests skip.
+  The benchmarks `je-bench-jobs` and `je-bench-memory` build in the same tree. The spec's suite
+  names map onto parameterised suites: `Workers/JobsSteal.*`, `Workers/JobsWait*.*` and so on,
+  run at {0, 1, 2, 8} workers (cases that need workers skip at 0). TSan runs are
+  `SANITIZE=thread tools/build.sh unit-tests`.
 - **Zero-allocation counter (AC10).** The vendored ThorVG replaces the global plain
   `operator new/delete`, so the test binary cannot define its own. It counts through
   `-Wl,--wrap=malloc,calloc,realloc` and replaces only the aligned forms. The steady-state test
@@ -601,6 +601,15 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
 - **R27: worker and I/O thread counts apply on the next launch.** Editor Play runs in-process,
   so the editor keeps the counts it started with. Reserved Frame Workers and the web pump budget
   apply live.
+- **R19: threads sized to the pthread pool.** S02's browser gate found a threaded web build
+  asking more threads of its Emscripten pool than it held. That pool was 4, and the old pool
+  started hardware_concurrency() - 1 threads. The pool is now a CMake value,
+  `JASPERENGINE_WEB_PTHREAD_POOL_SIZE` (default 8), passed both as `-sPTHREAD_POOL_SIZE` and as
+  `JE_PTHREAD_POOL_SIZE`. The worker policy caps threaded web at pool - 3 workers (and 4).
+  Settings and `JE_JOB_WORKERS` are capped the same way, and asset readers only take what the
+  workers, the blocking thread and a video decoder leave
+  (`JobsWorkerPolicy.ThreadedWebWorkersFitThePthreadPool`). `GATE=sample-project-threads
+  tools/build.sh web-gate` passes.
 - **R19: Multithreaded web export** is a Project Settings checkbox (Player > Threading > Web:
   Multithreaded, `player.threading.web_multithreaded`), not a field of the export dialog, so
   the CLI and MCP exports pick it up too. COOP/COEP are emitted as a `_headers` file (Netlify

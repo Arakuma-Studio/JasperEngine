@@ -28,6 +28,13 @@ namespace fs = std::filesystem;
 
 namespace{
 
+    // ResourcePack opens resources.pak (working directory first) once, at the first packed
+    // lookup, which may come from the engine's start in main(): write it before main runs
+    [[maybe_unused]] const bool testPackWritten = [](){
+        testsupport::writeTestPack("resources.pak");
+        return true;
+    }();
+
     class TempDir {
     public:
         TempDir(){
