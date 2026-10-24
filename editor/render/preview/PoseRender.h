@@ -117,6 +117,9 @@ namespace jasperengine::editor{
         // perpendicular to it), centred on frame and fitting the box with margin (a fraction
         // of its half extents) at every image aspect.
         void setView(const Vector3& viewDirection, const Vector3& screenUp, const AABB& frame, float margin = DEFAULT_MARGIN);
+        // The same camera fitted tightly to a point set (their extents along the view's right, up
+        // and direction axes, so an oblique view is not framed by a world box's corners)
+        void setView(const Vector3& viewDirection, const Vector3& screenUp, const std::vector<Vector3>& points, float margin = DEFAULT_MARGIN);
         // the image size project() maps to (requestRender and renderNow set it too)
         void setViewSize(int width, int height);
         int getViewWidth() const { return viewWidth; }
