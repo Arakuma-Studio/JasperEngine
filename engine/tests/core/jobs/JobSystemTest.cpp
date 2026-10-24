@@ -711,8 +711,9 @@ TEST(JobsWorkerPolicy, ThreadedWebWorkersFitThePthreadPool){
     for (int pool = 1; pool <= 16; pool++){
         const int workers = workerCountFor(PlatformClass::WebThreads, 64, pool);
         EXPECT_GE(workers, 1);
-        if (pool > thread::kWebPoolThreadsBesideWorkers)
+        if (pool > thread::kWebPoolThreadsBesideWorkers){
             EXPECT_LE(workers + thread::kWebPoolThreadsBesideWorkers, pool) << "pool " << pool;
+        }
     }
     // not a threaded web build: no pool
     EXPECT_EQ(thread::webThreadPoolSize(), 0);
