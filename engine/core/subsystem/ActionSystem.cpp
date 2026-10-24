@@ -425,6 +425,10 @@ void ActionSystem::actionComponentPause(ActionComponent& action){
 
 void ActionSystem::actionUpdate(double dt, ActionComponent& action){
     action.timecount += dt * action.speed;
+    if (action.timecount < 0){
+        // a negative speed plays it back to the start
+        action.timecount = 0;
+    }
 
     action.onStep.call();
 }
@@ -485,13 +489,14 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
     }
 
     bool actionsPassed = totalActionsPassed == animcomp.actions.size();
-    bool durationPassed = animcomp.duration >= 0 && action.timecount >= (animcomp.duration / action.speed);
+    // timecount already runs at the action's speed
+    bool durationPassed = animcomp.duration >= 0 && action.timecount >= animcomp.duration;
 
     if (actionsPassed || durationPassed) {
         if (!animcomp.loop) {
             actionStop(entity);
         }else{
-            float loopDuration = durationPassed ? (animcomp.duration / action.speed) : actionsEnd;
+            float loopDuration = durationPassed ? animcomp.duration : actionsEnd;
 
             // keep the overshoot, or the cycle gets longer at lower frame rates
             if (loopDuration > 0 && action.timecount >= loopDuration){
@@ -581,31 +586,54 @@ void ActionSystem::spriteActionStop(MeshComponent& mesh, SpriteComponent& sprite
 }
 
 void ActionSystem::spriteActionUpdate(double dt, Entity entity, ActionComponent& action, MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim){
-    spriteanim.spriteFrameCount += dt * 1000;
-    while (spriteanim.spriteFrameCount >= spriteanim.framesTime[spriteanim.frameTimeIndex]) {
+    if (spriteanim.framesSize == 0 || spriteanim.framesTimeSize == 0){
+        return;
+    }
+    // the frame lists can shrink while it runs
+    if (spriteanim.frameTimeIndex < 0 || spriteanim.frameTimeIndex >= (int)spriteanim.framesTimeSize){
+        spriteanim.frameTimeIndex = 0;
+    }
 
-        spriteanim.spriteFrameCount -= spriteanim.framesTime[spriteanim.frameTimeIndex];
+    // frames run at the action's speed, as its timecount does (a negative speed holds the frame)
+    double step = dt * 1000 * action.speed;
+    if (step > 0){
+        spriteanim.spriteFrameCount += (unsigned int)step;
+    }
+
+    while (true) {
+        // a negative time counts as zero
+        int frameTime = std::max(0, (int)spriteanim.framesTime[spriteanim.frameTimeIndex]);
+        if (spriteanim.spriteFrameCount < (unsigned int)frameTime){
+            break;
+        }
+
+        // a non-looping animation ends once its last frame had its time, and keeps showing it
+        // (checked before the advance, so a single frame animation also stops)
+        if (!spriteanim.loop && spriteanim.frameIndex >= (int)spriteanim.framesSize - 1) {
+            actionStop(entity);
+            return;
+        }
+
+        spriteanim.spriteFrameCount -= frameTime;
 
         spriteanim.frameIndex++;
         spriteanim.frameTimeIndex++;
 
-        if (spriteanim.frameIndex == spriteanim.framesSize - 1) {
-            if (!spriteanim.loop) {
-                actionStop(entity);
-            }
-        }
-
-        if (spriteanim.frameIndex >= spriteanim.framesSize){
+        if (spriteanim.frameIndex >= (int)spriteanim.framesSize){
             spriteanim.frameIndex = 0;
             if (spriteanim.loop){
                 action.timecount = 0;
             }
         }
-        
-        if (spriteanim.frameTimeIndex >= spriteanim.framesTimeSize)
+
+        if (spriteanim.frameTimeIndex >= (int)spriteanim.framesTimeSize)
             spriteanim.frameTimeIndex = 0;
 
         setSpriteTextureRect(mesh, sprite, spriteanim);
+
+        // zero time frames advance once per update
+        if (frameTime == 0)
+            break;
     }
 }
 
@@ -618,7 +646,8 @@ void ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action
     if ((tween.time == 1) && !tween.loop){
         actionStop(entity);
     } else {
-        float duration = tween.duration / action.speed;
+        // timecount already runs at the action's speed
+        float duration = tween.duration;
 
         if (duration > 0) {
 
@@ -628,6 +657,9 @@ void ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action
                 }else{
                     action.timecount -= duration;
                 }
+            }else if (action.timecount < 0){
+                // a negative speed plays it back to the start
+                action.timecount = 0;
             }
 
             tween.time = action.timecount / duration;
@@ -861,7 +893,9 @@ Quaternion ActionSystem::getQuaternionModifierValue(float& value, Quaternion& fr
 
 Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames, SpriteComponent& sprite){
     if (frames.size() > 0){
-        int id = frames[(int)(frames.size() * value)];
+        // value 1 is the modifier's end: the last frame, not one past it
+        size_t frameIndex = std::min(static_cast<size_t>(frames.size() * value), frames.size() - 1);
+        int id = frames[frameIndex];
 
         if (sprite.framesRect.validIndex(id) && (unsigned int)id < sprite.numFramesRect){
             return sprite.framesRect[id].rect;
@@ -873,7 +907,9 @@ Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames
 
 Rect ActionSystem::getSpriteModifierValue(float& value, std::vector<int>& frames, PointsComponent& points){
     if (frames.size() > 0){
-        int id = frames[(int)(frames.size() * value)];
+        // value 1 is the modifier's end: the last frame, not one past it
+        size_t frameIndex = std::min(static_cast<size_t>(frames.size() * value), frames.size() - 1);
+        int id = frames[frameIndex];
 
         if (points.framesRect.validIndex(id) && (unsigned int)id < points.numFramesRect){
             return points.framesRect[id].rect;
