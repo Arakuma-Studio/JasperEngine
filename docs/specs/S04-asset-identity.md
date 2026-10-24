@@ -663,3 +663,7 @@ Recorded by the implementer; each is the closest correct alternative to the text
     rewrites them identically; it is still a write per asset (about 5 s for 25,000 assets on
     the build server, 1 s to open it again), which R22's 1 s identity budget (measured with
     metas present) does not cover.
+20. **Background work without S06.** The index build, the poll's walk, the content hashes and
+    the cache writes run on threads of their own (`std::thread`, `std::async`): S06's job
+    system landed on `oe-port` at the end of this work. Moving them onto its background lane
+    (and the YAML parse of the index build onto its parallel jobs, R22) is a follow-up.
