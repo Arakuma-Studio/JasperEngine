@@ -85,8 +85,9 @@ rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.tx
 if [[ -n "${JASPER_DOCKER_IMAGE:-}" ]]; then
     IMAGE_ID="$JASPER_DOCKER_IMAGE"
 else
-    BASE_ID="$(docker build -q -t jasperengine/android-build -f "$ROOT/docker/android.Dockerfile" "$ROOT/docker")"
-    IMAGE_ID="$(docker build -q --build-arg BASE="$BASE_ID" -t jasperengine/android-emulator \
+    # (by tag: BuildKit resolves FROM by name; the emulator image is built right after)
+    docker build -q -t jasperengine/android-build -f "$ROOT/docker/android.Dockerfile" "$ROOT/docker" >/dev/null
+    IMAGE_ID="$(docker build -q -t jasperengine/android-emulator \
         -f "$ROOT/docker/android-emulator.Dockerfile" "$ROOT/docker")"
 fi
 

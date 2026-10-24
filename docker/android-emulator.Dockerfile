@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN yes | sdkmanager --licenses >/dev/null \
     && sdkmanager "emulator" "system-images;android-${EMULATOR_API};${EMULATOR_TAG};x86_64" >/dev/null \
-    && chmod -R a+rwX $ANDROID_HOME
+    # only what this layer adds: a chmod of the base's files would copy them into it
+    && chmod -R a+rwX $ANDROID_HOME/emulator $ANDROID_HOME/system-images
 
 ENV EMULATOR_API=${EMULATOR_API}
 ENV EMULATOR_TAG=${EMULATOR_TAG}
