@@ -605,7 +605,7 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     Framebuffer& depth = targets.depth[tier.fogDivisor == 2 ? 0 : 1];
     Program& program = programs[PROGRAM_FOG];
     volumetric_fog_t& block = fogBlock;
-    std::memset(&block, 0, sizeof(block));
+    block = volumetric_fog_t();
 
     const bool floatFormat = useFloatTargets();
     Framebuffer& target = targets.fog[0];
@@ -738,7 +738,7 @@ TextureRender* AtmosphereRenderer::weatherTexture(){
 
 void AtmosphereRenderer::fillClouds(clouds_t& block, const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier,
                                     bool skyMap, float altitudeFade){
-    std::memset(&block, 0, sizeof(block));
+    block = clouds_t();
     block.invViewProjection = camera.viewProjectionMatrix.inverse();
     const bool orthographic = camera.type != CameraType::CAMERA_PERSPECTIVE;
     block.cameraPosition = Vector4(cameraTransform.worldPosition, camera.farClip);
