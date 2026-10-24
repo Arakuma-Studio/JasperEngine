@@ -191,6 +191,8 @@ double r1(double value) {
 }
 
 std::string fmt(double value, int decimals = 2) {
+    // what rounds to zero prints as 0 (not "-0.00")
+    if (std::fabs(value) < 0.5 * std::pow(10.0, -decimals)) value = 0.0;
     std::ostringstream out;
     out.setf(std::ios::fixed);
     out.precision(decimals);
@@ -1308,30 +1310,46 @@ struct RenderColumn {
 struct RenderJob {
     std::shared_ptr<PoseSheetRenderer> renderer;   // alive until every cell came back
     std::vector<PoseImage> cells;                  // per sheet slot (row * columns + column)
+    std::vector<PoseSheetRenderer::PoseJoints> joints;   // per sheet slot, when asked
     size_t remaining = 0;
     bool failed = false;
 };
 
-// Sheet renderers kept warm between calls, per model file. Deliberately never destroyed (the
-// editor frees their GPU objects when the view goes away): a PoseRender owns a scene that must
-// not outlive the engine.
-std::map<std::string, std::shared_ptr<PoseSheetRenderer>>& sheetRenderers() {
-    static auto* renderers = new std::map<std::string, std::shared_ptr<PoseSheetRenderer>>();
+// Sheet renderers kept warm between calls, per model file, least recently used first.
+// Deliberately never destroyed (the editor frees their GPU objects when the view goes away): a
+// PoseRender owns a scene that must not outlive the engine.
+std::vector<std::pair<std::string, std::shared_ptr<PoseSheetRenderer>>>& sheetRenderers() {
+    static auto* renderers = new std::vector<std::pair<std::string, std::shared_ptr<PoseSheetRenderer>>>();
     return *renderers;
 }
 
 std::shared_ptr<PoseSheetRenderer> sheetRendererFor(const std::string& modelFile, const std::shared_ptr<PoseRig>& rig,
                                                     std::string& error) {
     auto& renderers = sheetRenderers();
-    auto it = renderers.find(modelFile);
-    if (it != renderers.end() && it->second->rig() == rig) return it->second;
-    // a new one (a call still drawing with the old rig keeps the old renderer alive)
-    auto renderer = std::make_shared<PoseSheetRenderer>();
-    if (!renderer->setModel(modelFile, rig, &error)) return nullptr;
-    renderers.erase(modelFile);
+    auto it = std::find_if(renderers.begin(), renderers.end(), [&](const auto& entry) { return entry.first == modelFile; });
+    std::shared_ptr<PoseSheetRenderer> renderer;
+    // the same rig, or a scene model's rig of the same skeleton and map: the loaded model serves
+    if (it != renderers.end() && it->second->sameRig(rig) && it->second->setModel(modelFile, rig, &error)) {
+        renderer = it->second;
+    } else {
+        // a new one (a call still drawing with the old rig keeps the old renderer alive)
+        renderer = std::make_shared<PoseSheetRenderer>();
+        if (!renderer->setModel(modelFile, rig, &error)) return nullptr;
+    }
+    if (it != renderers.end()) renderers.erase(it);
     while (renderers.size() >= RENDER_KEPT_RENDERERS) renderers.erase(renderers.begin());
-    renderers[modelFile] = renderer;
+    renderers.emplace_back(modelFile, renderer);
     return renderer;
+}
+
+// One caption hint per view: where the character's sides are
+std::string viewHint(const std::string& view) {
+    if (view == "front") return "front (faces you: its left is on image right)";
+    if (view == "side") return "side (faces image right, near side = right, cyan)";
+    if (view == "three_quarter") return "three_quarter (from its front-right: faces image right-ish, near side = right)";
+    if (view == "back") return "back (its left is on image left)";
+    if (view == "top") return "top (from above: forward is up, its left is on image left)";
+    return view;
 }
 
 std::string rigFailure(const PoseRigInfo& info) {
@@ -1483,6 +1501,13 @@ void renderPoseAnimationTool(const CallPtr& call) {
         call->fail("mode must be poses (key poses), motion (evenly spaced frames) or times (frames at times).");
         return;
     }
+    for (const char* key : {"poses", "frames", "times"}) {
+        const std::string owner = std::string(key) == "poses" ? "poses" : (std::string(key) == "frames" ? "motion" : "times");
+        if (args.contains(key) && mode != owner) {
+            call->fail(std::string(key) + " is only for mode \"" + owner + "\" (mode is \"" + mode + "\"): leave it out or set mode.");
+            return;
+        }
+    }
     std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, relative, &error);
     if (!document) {
         call->fail(error + ". Create one with edit_pose_animation {path, create: {preview_model}}.");
@@ -1556,6 +1581,11 @@ void renderPoseAnimationTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    bool wantJoints = false;
+    if (args.contains("joints") && !readBool(args["joints"], "joints", wantJoints, error)) {
+        call->fail(error);
+        return;
+    }
     fs::path saveTarget;
     if (args.contains("save_path")) {
         const std::string savePath = args["save_path"].is_string() ? args["save_path"].get<std::string>() : std::string();
@@ -1600,6 +1630,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
     auto job = std::make_shared<RenderJob>();
     job->renderer = renderer;
     job->cells.resize(static_cast<size_t>(layout.columns * layout.rows));
+    job->joints.resize(job->cells.size());
     std::vector<HumanPose> framing;
     for (const RenderColumn& column : columns) framing.push_back(column.pose);
     for (size_t v = 0; v < views.size(); v++) {
@@ -1613,7 +1644,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
                 if (ok) job->cells[slot] = std::move(image);
                 else job->failed = true;
                 job->remaining--;
-            });
+            }, wantJoints ? &job->joints[slot] : nullptr);
         }
     }
     renderer->endBatches();
@@ -1630,7 +1661,7 @@ void renderPoseAnimationTool(const CallPtr& call) {
     const std::string modelName = info->model;
     call->waitUntil([job] { return job->remaining == 0; }, RENDER_TIMEOUT_MS,
                     [call, job, layout, columns, viewNames, titleText, saveTarget, project, path, mode, note, loop, length,
-                     modelJson, modelName, blocks](bool timedOut) {
+                     modelJson, modelName, blocks, wantJoints](bool timedOut) {
         if (timedOut || job->failed) {
             call->fail(timedOut ? "The pose render timed out (the editor drew no frames?)." : "The pose render failed (no graphics view?).");
             return;
@@ -1661,6 +1692,23 @@ void renderPoseAnimationTool(const CallPtr& call) {
         Json out = {{"path", path}, {"model", modelJson}, {"mode", mode}, {"columns", columnList}, {"rows", viewNames},
                     {"cell", {layout.cellWidth, layout.cellHeight}}, {"size", {width, height}},
                     {"columns_per_row", layout.columns}, {"metrics", metrics}};
+        if (wantJoints) {
+            // per cell: its top-left corner and the slot joints, in sheet pixels
+            Json cells = Json::array();
+            for (int row = 0; row < layout.rows; row++) {
+                for (int c = 0; c < layout.columns; c++) {
+                    const int column = (row / views) * RENDER_ROW_COLUMNS + c;
+                    if (column >= static_cast<int>(columns.size())) continue;
+                    const int x0 = layout.cellX(c), y0 = layout.cellY(row);
+                    Json joints = Json::object();
+                    for (const auto& [bone, at] : job->joints[static_cast<size_t>(row * layout.columns + c)]) {
+                        joints[humanBoneName(bone)] = {r1(x0 + at.x), r1(y0 + at.y)};
+                    }
+                    cells.push_back({{"column", column}, {"view", viewNames[row % views]}, {"x", x0}, {"y", y0}, {"joints", joints}});
+                }
+            }
+            out["cells"] = cells;
+        }
 
         // the caption: what is where, so the picture needs no guessing
         std::string what;
@@ -1673,12 +1721,12 @@ void renderPoseAnimationTool(const CallPtr& call) {
                    " s of the " + fmt(length) + " s " + (loop ? "loop" : "one-shot") + ", as baked and played)";
         }
         std::string rows;
-        for (const std::string& name : viewNames) rows += (rows.empty() ? "" : ", ") + name;
+        for (const std::string& name : viewNames) rows += (rows.empty() ? "" : ", ") + viewHint(name);
         std::string text = path + " on " + modelName + ", " + std::to_string(width) + "x" + std::to_string(height) + " sheet. Columns: " +
-                           what + ". Rows: " + rows + " (one view each, one scale per view" +
-                           (blocks > 1 ? "; columns wrap after " + std::to_string(RENDER_ROW_COLUMNS) + ", the rows repeat" : std::string("")) +
-                           "). " + (layout.labelHeight > 0 ? "Labels under the cells; coral = the character's left limbs, cyan = right, "
-                                                             "white = centre (front view: its left is on image right); " : "") +
+                           what + ". Rows, one view each with one scale per view" +
+                           (blocks > 1 ? " (columns wrap after " + std::to_string(RENDER_ROW_COLUMNS) + ", the rows repeat)" : std::string("")) +
+                           ": " + rows + ". " + (layout.labelHeight > 0 ? "Labels under the cells; coral = the character's left limbs, cyan = right, "
+                                                             "white = centre; " : "") +
                            "orange line = floor.";
         if (!note.empty()) text += " Note: " + note + ".";
         for (const RenderColumn& column : columns) text += "\n" + column.line;
@@ -1722,6 +1770,7 @@ void registerRenderPoseAnimation(McpRegistry& registry) {
         {"scene", sceneRef()},
         {"cell", array(integer("", 64, 512), "[width, height], default [160, 200]; sheet max 2048 px.")},
         {"overlay", withDefault(boolean(""), true)},
+        {"joints", boolean("Also return each cell's joint pixels.")},
         {"save_path", string("Also write the PNG (project-relative).")}
     }, {"path"});
     tool.annotations.readOnly = true;

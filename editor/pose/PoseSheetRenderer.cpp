@@ -90,6 +90,15 @@ bool editor::PoseSheetRenderer::setModel(const std::string& modelFile, const std
     if (poseRig == rig && modelPath == modelFile && render.hasModel()){
         return true;
     }
+    if (modelPath == modelFile && render.hasModel() && sameRig(rig)){
+        // the same skeleton and map (a scene model of this file): the bone binding still holds
+        poseRig = rig;
+        batches.clear();
+        headTip = restDirection(*poseRig, poseRig->effectiveParent(pose::HumanBone::Head), pose::HumanBone::Head);
+        leftHandTip = restDirection(*poseRig, pose::HumanBone::LeftLowerArm, pose::HumanBone::LeftHand);
+        rightHandTip = restDirection(*poseRig, pose::HumanBone::RightLowerArm, pose::HumanBone::RightHand);
+        return true;
+    }
     poseRig.reset();
     modelPath.clear();
     batches.clear();
@@ -110,13 +119,34 @@ bool editor::PoseSheetRenderer::setModel(const std::string& modelFile, const std
     return true;
 }
 
+bool editor::PoseSheetRenderer::sameRig(const std::shared_ptr<pose::PoseRig>& rig) const{
+    if (!poseRig || !rig){
+        return false;
+    }
+    if (poseRig == rig){
+        return true;
+    }
+    const std::vector<pose::SkeletonBone>& a = poseRig->skeleton().bones;
+    const std::vector<pose::SkeletonBone>& b = rig->skeleton().bones;
+    if (a.size() != b.size() || poseRig->humanoid().bones != rig->humanoid().bones){
+        return false;
+    }
+    for (size_t i = 0; i < a.size(); i++){
+        if (a[i].name != b[i].name || a[i].parent != b[i].parent || a[i].position != b[i].position ||
+                a[i].rotation != b[i].rotation || a[i].scale != b[i].scale){
+            return false;
+        }
+    }
+    return true;
+}
+
 bool editor::PoseSheetRenderer::bindSkeleton(std::string* error){
     // the renderer's own skeleton of the model, with the non-bone ancestors ModelRig folds in
     pose::Skeleton skeleton;
     std::vector<Entity> entities;
     std::vector<Matrix4> folded;
     if (!pose::buildSkeleton(render.getScene(), render.getModelEntity(), skeleton, entities, &folded)){
-        if (error) *error = modelPath + " has no skeleton (bones)";
+        if (error) *error = render.getModelPath() + " has no skeleton (bones)";
         return false;
     }
 
@@ -422,16 +452,32 @@ void editor::PoseSheetRenderer::drawOverlay(const Overlay& overlay, PoseImage& i
     }
 }
 
+void editor::PoseSheetRenderer::projectJoints(const pose::HumanPose& pose, PoseJoints& out) const{
+    out.clear();
+    std::vector<Quaternion> rot;
+    std::vector<Vector3> pos;
+    poseRig->computeWorld(pose, rot, pos);
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+        const pose::HumanBone bone = pose::boneAt(b);
+        if (poseRig->has(bone)){
+            out.emplace_back(bone, render.project(pos[poseRig->boneIndex(bone)]));
+        }
+    }
+}
+
 // ---- rendering ----
 
 bool editor::PoseSheetRenderer::renderCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
-                                           const PoseRenderStyle& style, PoseImage& out){
+                                           const PoseRenderStyle& style, PoseImage& out, PoseJoints* joints){
     out.clear();
     if (!poseRig){
         return false;
     }
     prepare(pose, view, width, height, style);
     const Overlay overlay = makeOverlay(pose, style);
+    if (joints){
+        projectJoints(pose, *joints);
+    }
     if (!render.renderNow(width, height, out)){
         return false;
     }
@@ -440,13 +486,16 @@ bool editor::PoseSheetRenderer::renderCell(const pose::HumanPose& pose, const Po
 }
 
 void editor::PoseSheetRenderer::requestCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
-                                            const PoseRenderStyle& style, CellCallback done){
+                                            const PoseRenderStyle& style, CellCallback done, PoseJoints* joints){
     if (!poseRig){
         if (done) done(false, PoseImage());
         return;
     }
     prepare(pose, view, width, height, style);
     Overlay overlay = makeOverlay(pose, style);
+    if (joints){
+        projectJoints(pose, *joints);
+    }
     render.requestRender(width, height, [overlay = std::move(overlay), done = std::move(done)](bool ok, PoseImage&& image){
         if (ok){
             drawOverlay(overlay, image);

@@ -84,19 +84,23 @@ async def render(ed: Editor, **args):
     return r, data
 
 
-async def make_animation(ed: Editor):
-    """Stand, Raise L (left arm straight up), Crouch, and an airborne Jump."""
-    if (ed.project / ANIM).exists():
+# Stand, Raise L (left arm straight up), Crouch, and an airborne Jump (add_pose copies the pose
+# before it, so Crouch keeps the raised left arm and Jump the crouched legs)
+POSES = [
+    {"op": "add_pose", "name": "Stand", "hold": 0.2, "angles": {"left_upper_arm.raise": 10, "right_upper_arm.raise": 10}},
+    {"op": "add_pose", "name": "Raise L", "hold": 0.2, "angles": {"left_upper_arm.raise": 170, "right_upper_arm.raise": 10}},
+    {"op": "add_pose", "name": "Crouch", "hold": 0.1, "angles": {
+        "left_upper_leg.forward": 95, "right_upper_leg.forward": 95, "left_lower_leg.bend": 110,
+        "right_lower_leg.bend": 110, "left_foot.point": -25, "right_foot.point": -25}},
+    {"op": "add_pose", "name": "Jump", "hold": 0.15, "grounded": False, "lift": 0.4, "angles": {
+        "left_upper_arm.raise": 150, "right_upper_arm.raise": 150}},
+]
+
+
+async def make_animation(ed: Editor, path: str = ANIM, model: str = HERO):
+    if (ed.project / path).exists():
         return
-    await ed.call("edit_pose_animation", path=ANIM, create={"preview_model": HERO}, ops=[
-        {"op": "add_pose", "name": "Stand", "hold": 0.2, "angles": {"left_upper_arm.raise": 10, "right_upper_arm.raise": 10}},
-        {"op": "add_pose", "name": "Raise L", "hold": 0.2, "angles": {"left_upper_arm.raise": 170, "right_upper_arm.raise": 10}},
-        {"op": "add_pose", "name": "Crouch", "hold": 0.1, "angles": {
-            "left_upper_leg.forward": 95, "right_upper_leg.forward": 95, "left_lower_leg.bend": 110,
-            "right_lower_leg.bend": 110, "left_foot.point": -25, "right_foot.point": -25}},
-        {"op": "add_pose", "name": "Jump", "hold": 0.15, "grounded": False, "lift": 0.4, "angles": {
-            "left_upper_arm.raise": 150, "right_upper_arm.raise": 150}},
-    ])
+    await ed.call("edit_pose_animation", path=path, create={"preview_model": model}, ops=POSES)
 
 
 # -- registry ------------------------------------------------------------------
@@ -303,3 +307,74 @@ async def test_rig_failure_names_slots_and_fix(ed: Editor):
     ed.check(not (ed.project / (robot + ".humanoid")).exists(), "the sidecar is gone again")
     _, png = await render(ed, path=path, views=["front"])
     ed.check(len(png) > 0, "renders again once the map is fixed")
+
+
+# -- orientation (fix round 1) ---------------------------------------------------
+
+def cell_of(result: dict, column: int, view: str) -> dict:
+    for cell in result["cells"]:
+        if cell["column"] == column and cell["view"] == view:
+            return cell
+    raise AssertionError(f"no cell {column} {view}")
+
+
+async def test_orientation_from_joints(ed: Editor):
+    """Projected joints (joints: true) put the character's sides and front where each view promises."""
+    await make_animation(ed)
+    views = ["front", "side", "three_quarter", "back", "top"]
+    r, png = await render(ed, path=ANIM, poses=[0, 2], views=views, joints=True)
+    s = r.structured
+    ed.check_eq(len(s["cells"]), 10, "one entry per cell")
+    j = lambda col, view: cell_of(s, col, view)["joints"]
+    x = lambda p: p[0]
+    y = lambda p: p[1]
+    stand, crouch = 0, 1   # columns (indices into result["columns"])
+    for view in ("front", "side", "three_quarter", "back"):
+        ed.check(y(j(stand, view)["head"]) < y(j(stand, view)["hips"]) - 20, f"{view}: up is up")
+    # front: its left on image right; back: on image left; three_quarter: on image right
+    ed.check(x(j(stand, "front")["left_hand"]) > x(j(stand, "front")["right_hand"]) + 10, "front: left hand on image right")
+    ed.check(x(j(stand, "back")["left_hand"]) < x(j(stand, "back")["right_hand"]) - 10, "back: left hand on image left")
+    ed.check(x(j(stand, "three_quarter")["left_hand"]) > x(j(stand, "three_quarter")["right_hand"]), "three_quarter: left on image right")
+    # side and three_quarter: it faces image right (the crouch's knees are ahead of the hips)
+    for view in ("side", "three_quarter"):
+        hips = x(j(crouch, view)["hips"])
+        for knee in ("left_lower_leg", "right_lower_leg"):
+            ed.check(x(j(crouch, view)[knee]) > hips + 8, f"{view}: the {knee} is ahead (image right) of the hips")
+    # top: forward is up, its left on image left
+    ed.check(y(j(crouch, "top")["left_lower_leg"]) < y(j(crouch, "top")["hips"]) - 8, "top: forward (the knees) is up")
+    ed.check(x(j(stand, "top")["left_hand"]) < x(j(stand, "top")["right_hand"]), "top: left on image left")
+    # the overlay is drawn where the joints are: the hand dots carry the side colours
+    sheet = Sheet(png, (160, 200))
+    lh, rh = j(stand, "front")["left_hand"], j(stand, "front")["right_hand"]
+    ed.check(near(sheet.pixel(int(lh[0]), int(lh[1])), CORAL, 24), "the left hand dot is coral")
+    ed.check(near(sheet.pixel(int(rh[0]), int(rh[1])), CYAN, 24), "the right hand dot is cyan")
+    # one orientation hint per rendered row in the caption, and no negative zeros
+    for hint in ("its left is on image right", "faces image right", "its left is on image left", "forward is up"):
+        ed.check_in(hint, r.text, "caption hints")
+    ed.check("-0.00" not in r.text, "no -0.00 in the caption")
+    r, _ = await render(ed, path=ANIM, poses=[0], views=["side"])
+    ed.check("image right, near side = right" in r.text and "its left is on image left" not in r.text, "only the rendered rows' hints")
+    ed.check("cells" not in r.structured, "joints only when asked")
+
+
+async def test_mode_arguments_refused(ed: Editor):
+    await make_animation(ed)
+    cases = [({"mode": "motion", "poses": [0]}, "poses is only for mode \"poses\""),
+             ({"mode": "times", "times": [0], "frames": 6}, "frames is only for mode \"motion\""),
+             ({"poses": [0], "times": [0.1]}, "times is only for mode \"times\""),
+             ({"frames": 6}, "frames is only for mode \"motion\"")]
+    for args, needle in cases:
+        err = await ed.call("render_pose_animation", path=ANIM, expect_error=True, **args)
+        ed.check_in(needle, err, f"{args}")
+
+
+async def test_scene_model_same_as_file(ed: Editor):
+    """model: Robot (the scene model's rig) draws the same cells as the robot file as preview model."""
+    await make_animation(ed)
+    robot_anim = "assets/anim/render_robot.poseanim"
+    await make_animation(ed, robot_anim, "assets/models/robot_apose.gltf")
+    _, by_file = await render(ed, path=robot_anim, poses=[1, 2], views=["front", "side"], overlay=False)
+    _, by_scene = await render(ed, path=ANIM, poses=[1, 2], views=["front", "side"], overlay=False, model="Robot")
+    _, again = await render(ed, path=ANIM, poses=[1, 2], views=["front", "side"], overlay=False, model="Robot")
+    ed.check(by_scene == again, "the scene model renders deterministically (the cached renderer is reused)")
+    ed.check(by_file == by_scene, "the scene model's rig draws what the file's rig draws")

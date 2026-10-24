@@ -37,6 +37,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor{
@@ -74,6 +75,8 @@ namespace jasperengine::editor{
         static constexpr float MARGIN = 0.08f;
 
         using CellCallback = std::function<void(bool ok, PoseImage&& cell)>;
+        // the image position (pixels, cell origin top-left) of every slot the rig has
+        using PoseJoints = std::vector<std::pair<pose::HumanBone, Vector2>>;
 
         PoseSheetRenderer() = default;
         PoseSheetRenderer(const PoseSheetRenderer&) = delete;
@@ -83,8 +86,12 @@ namespace jasperengine::editor{
         // model file and .humanoid sidecar). False + error when the model does not load or is
         // not a usable humanoid (the error names the missing slots).
         bool setModel(Project* project, const std::filesystem::path& modelFile, std::string* error);
-        // The same with a given rig (a scene model's): its skeleton must be the model file's
+        // The same with a given rig (a scene model's): its skeleton must be the model file's. With
+        // the model already loaded and a rig of the same skeleton and humanoid map (sameRig), the
+        // rig is swapped in without reloading the model.
         bool setModel(const std::string& modelFile, const std::shared_ptr<pose::PoseRig>& rig, std::string* error);
+        // true when `rig` has the loaded rig's skeleton (names, parents, rest TRS) and humanoid map
+        bool sameRig(const std::shared_ptr<pose::PoseRig>& rig) const;
         const std::shared_ptr<pose::PoseRig>& rig() const { return poseRig; }
         const std::string& modelFile() const { return modelPath; }
         bool hasModel() const { return poseRig != nullptr; }
@@ -96,11 +103,12 @@ namespace jasperengine::editor{
 
         // Renders now (false, `out` empty, when the renderer is not ready yet: requestCell waits)
         bool renderCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
-                        const PoseRenderStyle& style, PoseImage& out);
+                        const PoseRenderStyle& style, PoseImage& out, PoseJoints* joints = nullptr);
         // Queues a cell (pose, view and style captured now); done runs on the main thread from a
-        // later editor frame, the overlay already drawn (without a model: at once, ok false)
+        // later editor frame, the overlay already drawn (without a model: at once, ok false).
+        // `joints`, when given, gets the projected slot joints now.
         void requestCell(const pose::HumanPose& pose, const PoseView& view, int width, int height,
-                         const PoseRenderStyle& style, CellCallback done);
+                         const PoseRenderStyle& style, CellCallback done, PoseJoints* joints = nullptr);
         size_t getPendingCount() const { return render.getPendingRenderCount(); }
         void cancel() { render.cancelRenders(); }
 
@@ -149,6 +157,7 @@ namespace jasperengine::editor{
         void setCamera(const pose::HumanPose& pose, const PoseView& view);
         void prepare(const pose::HumanPose& pose, const PoseView& view, int width, int height, const PoseRenderStyle& style);
         Overlay makeOverlay(const pose::HumanPose& pose, const PoseRenderStyle& style) const;
+        void projectJoints(const pose::HumanPose& pose, PoseJoints& out) const;
         static void drawOverlay(const Overlay& overlay, PoseImage& image);
         Vector3 canonicalToModel(const Vector3& canonical) const;
     };

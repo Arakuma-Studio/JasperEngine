@@ -25,6 +25,7 @@ the tool: it validates, clamps, echoes what it clamped and keeps the undo histor
    right (the front view faces you: its left is on image right); the orange line is the floor; every
    view row has one scale, so a jump shows its height. The result also has per-column `metrics`. Each
    image costs tokens: render the poses you changed (`poses`), few `frames`, one or two `views`.
+   For detail keep it to 8 columns or fewer per row (clients downscale images wider than about 1568 px).
 
 Start a new file with `create`: `{path: "assets/anim/walk.poseanim", create: {preview_model:
 "assets/models/hero.gltf"}, ops: [{op: "add_pose", name: "Contact R", angles: {...}}, ...]}`.
