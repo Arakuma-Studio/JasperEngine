@@ -6,6 +6,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
+#include "physics/PlacementSettingsLimits.h"
 #include "physics/PlacementWorld.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/Angle.h"
@@ -21,12 +22,15 @@
 #include <string>
 
 using namespace jasperengine;
+namespace Limits = jasperengine::editor::PlacementSettingLimits;
 
 namespace {
 
     // A settle run to its end at once (Physics turned off, Hand or Rect picked) steps at the
     // world's own rate
     constexpr double SETTLE_STEP_SECONDS = 1.0 / 120.0;
+    // ...for at most this long, then what is there commits
+    constexpr double SETTLE_WALL_SECONDS = 2.0;
 
     const ImU32 HUD_BACKGROUND = IM_COL32(20, 20, 20, 210);
     const ImU32 HUD_TEXT = IM_COL32(230, 230, 230, 255);
@@ -232,18 +236,48 @@ editor::PlacementSession* editor::PhysicsPlacementWindow::sessionFor(uint32_t sc
     return sessions.emplace(sceneId, std::move(sceneSession)).first->second.session.get();
 }
 
-void editor::PhysicsPlacementWindow::finish(SceneSession& sceneSession){
+void editor::PhysicsPlacementWindow::commitNow(PlacementSession& session){
+    // a settle stops at maxSettleSeconds and commits the poses it has: with no time left, the
+    // next steps end the approach (Gather, Distribute) and then the settle
+    const PhysicsPlacementSettings kept = session.getSettings();
+    PhysicsPlacementSettings now = kept;
+    now.maxSettleSeconds = 0.0f;
+    session.setSettings(now);
+    for (int i = 0; i < 4 && session.isBusy(); i++){
+        session.tick(SETTLE_STEP_SECONDS);
+    }
+    session.setSettings(kept);
+}
+
+void editor::PhysicsPlacementWindow::finalise(SceneSession& sceneSession, bool cancelHeld){
+    const SessionCall call(sessionCalls);
     PlacementSession& session = *sceneSession.session;
     if (session.isGestureActive()){
-        session.end();
+        // its input is still down: an outside event cancels it, leaving the tool keeps it
+        if (cancelHeld){
+            session.cancel();
+        }else{
+            session.end();
+        }
     }
     sceneSession.input = GestureInput::None;
-    // the session gives up at maxSettleSeconds of simulated time; one more second is the margin
-    const double limit = std::max(0.0, (double)settings().maxSettleSeconds) + 1.0;
+
+    // the settle runs to its end now: up to the session's own limit in simulated time, and
+    // SETTLE_WALL_SECONDS of wall time; whatever is left then commits as it is
+    const double limit = std::max(0.0, (double)session.getSettings().maxSettleSeconds) + 1.0;
+    const auto begin = std::chrono::steady_clock::now();
     for (double simulated = 0.0; simulated < limit && session.isBusy(); simulated += SETTLE_STEP_SECONDS){
+        if (std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count() >= SETTLE_WALL_SECONDS){
+            break;
+        }
         session.tick(SETTLE_STEP_SECONDS);
     }
     if (session.isBusy()){
+        commitNow(session);
+    }
+    if (session.isBusy()){
+        // no step could run (colliders still decomposing with Decomposition: Always): nothing
+        // physical to commit, the poses go back
         session.cancel();
     }
     if (SceneProject* sceneProject = sceneFor(session.getSceneId())){
@@ -251,13 +285,47 @@ void editor::PhysicsPlacementWindow::finish(SceneSession& sceneSession){
     }
 }
 
-void editor::PhysicsPlacementWindow::finishAll(){
+void editor::PhysicsPlacementWindow::finaliseGestures(){
     for (auto& entry : sessions){
-        finish(entry.second);
+        finalise(entry.second, true);
     }
 }
 
+bool editor::PhysicsPlacementWindow::isAnyBusy() const{
+    for (const auto& entry : sessions){
+        if (entry.second.session->isBusy()){
+            return true;
+        }
+    }
+    return false;
+}
+
+bool editor::PhysicsPlacementWindow::beforeHistoryChange(uint32_t sceneId, CommandHistory::Change change){
+    // the session's own commit, or its cancel
+    if (sessionCalls > 0){
+        return true;
+    }
+    SceneSession* sceneSession = findSession(sceneId);
+    if (!sceneSession || !sceneSession->session->isBusy()){
+        return true;
+    }
+    switch (change){
+        case CommandHistory::Change::Undo:
+            // undo of a gesture still running: it is cancelled instead, the history untouched
+            cancelGesture(sceneId);
+            return false;
+        case CommandHistory::Change::Redo:
+            return false;
+        case CommandHistory::Change::Add:
+            // another edit: it records the true poses, the gesture's are committed (or gone) first
+            finalise(*sceneSession, true);
+            return true;
+    }
+    return true;
+}
+
 void editor::PhysicsPlacementWindow::dropSessions(bool cancel){
+    const SessionCall call(sessionCalls);
     for (auto& entry : sessions){
         if (cancel && entry.second.session->isBusy()){
             entry.second.session->cancel();
@@ -271,8 +339,11 @@ void editor::PhysicsPlacementWindow::dropSessions(bool cancel){
 
 void editor::PhysicsPlacementWindow::physicsModeChanged(bool on){
     if (!on){
-        // leaving physics keeps what was done: a settle runs to its end, then commits
-        finishAll();
+        // leaving physics keeps what was done: a held gesture ends, a settle runs to its end,
+        // then each commits
+        for (auto& entry : sessions){
+            finalise(entry.second, false);
+        }
         dropSessions(false);
     }
     Backend::getApp().requestRedraw();
@@ -280,27 +351,19 @@ void editor::PhysicsPlacementWindow::physicsModeChanged(bool on){
 
 void editor::PhysicsPlacementWindow::toolChanged(bool physicsTool){
     if (!physicsTool){
-        finishAll();
-    }
-}
-
-void editor::PhysicsPlacementWindow::cancelGestures(){
-    for (auto& entry : sessions){
-        if (entry.second.session->isBusy()){
-            entry.second.session->cancel();
-            if (SceneProject* sceneProject = sceneFor(entry.first)){
-                sceneProject->needUpdateRender = true;
-            }
+        for (auto& entry : sessions){
+            finalise(entry.second, false);
         }
-        entry.second.input = GestureInput::None;
     }
 }
 
 void editor::PhysicsPlacementWindow::sceneDeleting(uint32_t sceneId){
+    anchorCaches.erase(sceneId);
     auto it = sessions.find(sceneId);
     if (it == sessions.end()){
         return;
     }
+    const SessionCall call(sessionCalls);
     if (it->second.session->isBusy()){
         it->second.session->cancel();
     }
@@ -308,9 +371,12 @@ void editor::PhysicsPlacementWindow::sceneDeleting(uint32_t sceneId){
 }
 
 void editor::PhysicsPlacementWindow::resetForProjectSwitch(){
-    dropSessions(true);
+    // the project's scenes are still there: a settle commits into them, a held gesture goes back
+    finaliseGestures();
+    dropSessions(false);
     placementProjectSwitching();
     settingsDirty = false;
+    anchorCaches.clear();
     hasLastTick = false;
     lastSelectedSceneId = NULL_PROJECT_SCENE;
 }
@@ -365,6 +431,7 @@ bool editor::PhysicsPlacementWindow::beginGesture(uint32_t sceneId, PlacementGes
     }
     const std::vector<Entity> selection = project->getSelectedEntities(sceneId);
     sceneSession->selection = selection;
+    const SessionCall call(sessionCalls);
     const bool started = !selection.empty() && session->begin(gesture, selection);
     sceneSession->input = started ? input : GestureInput::None;
     if (SceneProject* sceneProject = sceneFor(sceneId)){
@@ -384,6 +451,7 @@ editor::PlacementSession* editor::PhysicsPlacementWindow::heldGesture(uint32_t s
 
 void editor::PhysicsPlacementWindow::endGesture(uint32_t sceneId, GestureInput input){
     if (PlacementSession* session = heldGesture(sceneId, input)){
+        const SessionCall call(sessionCalls);
         session->end();
         findSession(sceneId)->input = GestureInput::None;
         if (SceneProject* sceneProject = sceneFor(sceneId)){
@@ -398,7 +466,10 @@ bool editor::PhysicsPlacementWindow::cancelGesture(uint32_t sceneId){
     if (!sceneSession || !sceneSession->session->isBusy()){
         return false;
     }
-    sceneSession->session->cancel();
+    {
+        const SessionCall call(sessionCalls);
+        sceneSession->session->cancel();
+    }
     sceneSession->input = GestureInput::None;
     if (SceneProject* sceneProject = sceneFor(sceneId)){
         sceneProject->needUpdateRender = true;
@@ -446,6 +517,7 @@ void editor::PhysicsPlacementWindow::tick(){
     if (selectedSceneId != lastSelectedSceneId){
         for (auto& entry : sessions){
             if (entry.first != selectedSceneId && entry.second.session->isGestureActive()){
+                const SessionCall call(sessionCalls);
                 entry.second.session->end();
                 entry.second.input = GestureInput::None;
             }
@@ -466,6 +538,7 @@ void editor::PhysicsPlacementWindow::tick(){
                 ? ImGui::IsKeyDown(ImGuiKey_Space)
                 : ImGui::IsMouseDown(ImGuiMouseButton_Left);
             if (!held){
+                const SessionCall call(sessionCalls);
                 session.end();
             }
         }
@@ -487,7 +560,10 @@ void editor::PhysicsPlacementWindow::tick(){
             }
         }
 
-        session.tick(deltaSeconds);
+        {
+            const SessionCall call(sessionCalls);
+            session.tick(deltaSeconds);
+        }
 
         if (session.isBusy()){
             // rendering is on demand: a simulation needs every frame, held button or not
@@ -608,27 +684,43 @@ void editor::PhysicsPlacementWindow::drawSceneHud(uint32_t sceneId, ImDrawList* 
         drawList->AddRectFilled(min, ImVec2(min.x + size.x + labelPad.x * 2.0f, min.y + size.y + labelPad.y * 2.0f), HUD_BACKGROUND, Theme::dpi(2.0f));
         drawList->AddText(ImVec2(min.x + labelPad.x, min.y + labelPad.y), color, text.c_str());
     };
-    // above the object: its bounds' top, or its origin
+    // above the object: the top of its meshes' bounds (its children's included: a group root has
+    // none of its own), or its origin. Which meshes those are is kept until the scene's structure
+    // changes; their bounds are read each frame, as they move.
+    AnchorCache& anchors = anchorCaches[sceneId];
+    if (anchors.structureVersion != sceneProject->structureVersion){
+        anchors.structureVersion = sceneProject->structureVersion;
+        anchors.meshes.clear();
+    }
     auto labelAnchor = [&](Entity entity, Vector3& anchor){
         const Transform* transform = sceneProject->scene->findComponent<Transform>(entity);
         if (!transform){
             return false;
         }
-        anchor = transform->worldPosition;
-        // the bounds of its meshes, its children's included (a group root has none of its own)
-        AABB bounds;
-        for (Entity candidate : sceneProject->entities){
-            const MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(candidate);
-            if (!mesh || mesh->worldAABB.isNull() || mesh->worldAABB.isInfinite()){
-                continue;
-            }
-            for (Entity current = candidate; current != NULL_ENTITY; ){
-                if (current == entity){
-                    bounds.merge(mesh->worldAABB);
-                    break;
+        auto cached = anchors.meshes.find(entity);
+        if (cached == anchors.meshes.end()){
+            std::vector<Entity> meshes;
+            for (Entity candidate : sceneProject->entities){
+                if (!sceneProject->scene->findComponent<MeshComponent>(candidate)){
+                    continue;
                 }
-                const Transform* currentTransform = sceneProject->scene->findComponent<Transform>(current);
-                current = currentTransform ? currentTransform->parent : NULL_ENTITY;
+                for (Entity current = candidate; current != NULL_ENTITY; ){
+                    if (current == entity){
+                        meshes.push_back(candidate);
+                        break;
+                    }
+                    const Transform* currentTransform = sceneProject->scene->findComponent<Transform>(current);
+                    current = currentTransform ? currentTransform->parent : NULL_ENTITY;
+                }
+            }
+            cached = anchors.meshes.emplace(entity, std::move(meshes)).first;
+        }
+        anchor = transform->worldPosition;
+        AABB bounds;
+        for (Entity meshEntity : cached->second){
+            const MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(meshEntity);
+            if (mesh && !mesh->worldAABB.isNull() && !mesh->worldAABB.isInfinite()){
+                bounds.merge(mesh->worldAABB);
             }
         }
         if (!bounds.isNull() && !bounds.isInfinite()){
@@ -813,7 +905,7 @@ void editor::PhysicsPlacementWindow::drawPanel(){
             const float downWidth = ImGui::CalcTextSize("Down").x + ImGui::GetStyle().FramePadding.x * 2.0f;
             ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - downWidth - ImGui::GetStyle().ItemSpacing.x));
             float gravity[3] = {s.gravity.x, s.gravity.y, s.gravity.z};
-            if (ImGui::DragFloat3("##gravity", gravity, 0.05f, -100.0f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp)){
+            if (ImGui::DragFloat3("##gravity", gravity, 0.05f, Limits::gravityComponent.min, Limits::gravityComponent.max, "%.2f", ImGuiSliderFlags_AlwaysClamp)){
                 s.gravity = Vector3(gravity[0], gravity[1], gravity[2]);
                 changed = true;
             }
@@ -830,7 +922,7 @@ void editor::PhysicsPlacementWindow::drawPanel(){
         propertyRow("Strength", "Gravity's length, its direction kept.");
         {
             float strength = s.gravity.length();
-            if (UIUtils::sliderFloatInput("##gravity_strength", &strength, 0.0f, 50.0f, "%.2f")){
+            if (UIUtils::sliderFloatInput("##gravity_strength", &strength, Limits::gravityStrength.min, Limits::gravityStrength.max, "%.2f")){
                 const Vector3 direction = s.gravity.length() > 1e-6f ? s.gravity.normalized() : Vector3(0.0f, -1.0f, 0.0f);
                 s.gravity = direction * std::max(strength, 0.0f);
                 changed = true;
@@ -914,7 +1006,7 @@ void editor::PhysicsPlacementWindow::drawPanel(){
         propertyRow("Align to surface", "Snap (Shift-drag a selected object): its up axis follows the surface under the cursor.");
         changed |= ImGui::Checkbox("##align_to_surface", &s.alignToSurface);
         propertyRow("Snap offset", "Snap: extra gap above the surface, in metres.");
-        changed |= ImGui::DragFloat("##snap_offset", &s.snapOffset, 0.005f, -1.0f, 1.0f, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("##snap_offset", &s.snapOffset, 0.005f, Limits::snapOffset.min, Limits::snapOffset.max, "%.3f m", ImGuiSliderFlags_AlwaysClamp);
 
         // Gather / Distribute: one gesture each, then a settle
         propertyRow("Gather/Spread", "Pull the selection to its centre, or space it evenly along an axis (keeping its order); each is one undo step.");
@@ -927,6 +1019,7 @@ void editor::PhysicsPlacementWindow::drawPanel(){
             const char* disabledTip = !shown ? "Turn Physics (G) on in a 3D scene" : "Select two or more objects";
             ImGui::BeginDisabled(!canRun);
             if (ImGui::Button("Gather##gather", ImVec2(width, 0.0f))){
+                const SessionCall call(sessionCalls);
                 session->gather(selection);
                 findSession(sceneId)->input = GestureInput::None;
             }
@@ -935,6 +1028,7 @@ void editor::PhysicsPlacementWindow::drawPanel(){
             for (int axis = 0; axis < 3; axis++){
                 ImGui::SameLine();
                 if (ImGui::Button(axes[axis], ImVec2(width, 0.0f))){
+                    const SessionCall call(sessionCalls);
                     session->distribute(selection, axis);
                     findSession(sceneId)->input = GestureInput::None;
                 }
@@ -945,7 +1039,7 @@ void editor::PhysicsPlacementWindow::drawPanel(){
         }
 
         propertyRow("Region margin", "How far around the moving objects the scene is gathered as surroundings (at least the objects' own size).");
-        changed |= ImGui::DragFloat("##region_margin", &s.regionMargin, 0.05f, 0.0f, 100.0f, "%.2f m", ImGuiSliderFlags_AlwaysClamp);
+        changed |= ImGui::DragFloat("##region_margin", &s.regionMargin, 0.05f, Limits::regionMargin.min, Limits::regionMargin.max, "%.2f m", ImGuiSliderFlags_AlwaysClamp);
 
         propertyRow("Ignore layers", "Objects on these layers are neither moved nor collided with.");
         {
@@ -1047,23 +1141,23 @@ void editor::PhysicsPlacementWindow::drawPanel(){
                 changed |= ImGui::DragFloat((std::string("##") + id).c_str(), &value, speed, minValue, maxValue, format, ImGuiSliderFlags_AlwaysClamp);
             };
 
-            presetFloat("Max speed", "max_speed", "Fastest an object follows the handle.", s.maxSpeed, preset.maxSpeed, 1.0f, 0.1f, 0.1f, 100.0f, "%.2f m/s");
+            presetFloat("Max speed", "max_speed", "Fastest an object follows the handle.", s.maxSpeed, preset.maxSpeed, 1.0f, 0.1f, Limits::maxSpeed.min, Limits::maxSpeed.max, "%.2f m/s");
             presetFloat("Contact speed", "contact_speed", "Fastest an object moves into something it touches (sliding along is not slowed).",
-                        s.contactSpeed, preset.contactSpeed, 1.0f, 0.02f, 0.01f, 50.0f, "%.2f m/s");
+                        s.contactSpeed, preset.contactSpeed, 1.0f, 0.02f, Limits::contactSpeed.min, Limits::contactSpeed.max, "%.2f m/s");
             presetFloat("Max angular speed", "max_angular_speed", "Fastest an object turns.", s.maxAngularSpeed, preset.maxAngularSpeed,
-                        Angle::radToDeg(1.0f), 1.0f, 1.0f, 5000.0f, "%.0f deg/s");
-            presetInt("Substeps", "substeps", "Collision steps per simulation step: more catch thin objects better.", s.substeps, preset.substeps, 1, 16);
-            presetInt("Velocity iterations", "velocity_iterations", "Solver velocity passes per step.", s.velocityIterations, preset.velocityIterations, 1, 50);
-            presetInt("Position iterations", "position_iterations", "Solver position passes per step.", s.positionIterations, preset.positionIterations, 1, 50);
+                        Angle::radToDeg(1.0f), 1.0f, Limits::maxAngularSpeedDeg.min, Limits::maxAngularSpeedDeg.max, "%.0f deg/s");
+            presetInt("Substeps", "substeps", "Collision steps per simulation step: more catch thin objects better.", s.substeps, preset.substeps, (int)Limits::substeps.min, (int)Limits::substeps.max);
+            presetInt("Velocity iterations", "velocity_iterations", "Solver velocity passes per step.", s.velocityIterations, preset.velocityIterations, (int)Limits::iterations.min, (int)Limits::iterations.max);
+            presetInt("Position iterations", "position_iterations", "Solver position passes per step.", s.positionIterations, preset.positionIterations, (int)Limits::iterations.min, (int)Limits::iterations.max);
             plainFloat("Teleport distance", "teleport_distance", "A handle farther than this from the objects moves them there at once (the dashed ring).",
-                       s.teleportDistance, 0.05f, 0.1f, 1000.0f, "%.2f m");
-            plainFloat("Sleep speed", "sleep_linear", "Below this speed (and the turn rate below) an object is at rest.", s.sleepLinear, 0.001f, 0.0f, 1.0f, "%.3f m/s");
-            plainFloat("Sleep turn rate", "sleep_angular", "Below this turn rate (and the speed above) an object is at rest.", s.sleepAngularDeg, 0.05f, 0.0f, 90.0f, "%.2f deg/s");
-            plainFloat("Sleep time", "sleep_seconds", "How long an object stays below both before it counts as resting.", s.sleepSeconds, 0.01f, 0.0f, 5.0f, "%.2f s");
-            plainFloat("Max settle time", "max_settle_seconds", "Settling stops (and commits) after this much simulated time.", s.maxSettleSeconds, 0.05f, 0.1f, 60.0f, "%.2f s");
+                       s.teleportDistance, 0.05f, Limits::teleportDistance.min, Limits::teleportDistance.max, "%.2f m");
+            plainFloat("Sleep speed", "sleep_linear", "Below this speed (and the turn rate below) an object is at rest.", s.sleepLinear, 0.001f, Limits::sleepLinear.min, Limits::sleepLinear.max, "%.3f m/s");
+            plainFloat("Sleep turn rate", "sleep_angular", "Below this turn rate (and the speed above) an object is at rest.", s.sleepAngularDeg, 0.05f, Limits::sleepAngularDeg.min, Limits::sleepAngularDeg.max, "%.2f deg/s");
+            plainFloat("Sleep time", "sleep_seconds", "How long an object stays below both before it counts as resting.", s.sleepSeconds, 0.01f, Limits::sleepSeconds.min, Limits::sleepSeconds.max, "%.2f s");
+            plainFloat("Max settle time", "max_settle_seconds", "Settling stops (and commits) after this much simulated time.", s.maxSettleSeconds, 0.05f, Limits::maxSettleSeconds.min, Limits::maxSettleSeconds.max, "%.2f s");
             plainFloat("Kill depth", "kill_y_depth", "Objects that fall this far below the surroundings are frozen and reported as fallen out.",
-                       s.killYDepth, 0.5f, 0.0f, 10000.0f, "%.1f m");
-            plainFloat("Max object size", "max_mover_size", "Objects longer than this are surroundings, never moved.", s.maxMoverSize, 0.1f, 0.1f, 10000.0f, "%.1f m");
+                       s.killYDepth, 0.5f, Limits::killYDepth.min, Limits::killYDepth.max, "%.1f m");
+            plainFloat("Max object size", "max_mover_size", "Objects longer than this are surroundings, never moved.", s.maxMoverSize, 0.1f, Limits::maxMoverSize.min, Limits::maxMoverSize.max, "%.1f m");
             propertyRow("Decomposition", "Never: hulls and primitives only. Cached: a decomposition when one is cached (and one is baked meanwhile). "
                                          "Always: wait for decompositions before simulating.");
             {

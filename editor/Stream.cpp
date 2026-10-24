@@ -20,6 +20,7 @@
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
 #include "window/TerrainEditWindow.h"
+#include "physics/PlacementSettingsLimits.h"
 
 #include <algorithm>
 #include <cctype>
@@ -2289,6 +2290,8 @@ editor::PhysicsPlacementSettings editor::Stream::decodePhysicsPlacementSettings(
     readFloat("killYDepth", ps.killYDepth);
     readBool("showDistanceIndicators", ps.showDistanceIndicators);
     readBool("showProxies", ps.showProxies);
+    // a hand-edited value outside what the panel allows is brought into range
+    clampPhysicsPlacementSettings(ps);
     return ps;
 }
 

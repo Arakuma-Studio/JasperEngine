@@ -9,6 +9,7 @@
 
 #include "Stream.h"
 #include "Workspace.h"
+#include "physics/PlacementSettingsLimits.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -204,4 +205,48 @@ TEST(PhysicsPlacementWorkspace, WorkspaceFileLoadsTheSettings) {
     expectSame(workspace.getPhysicsPlacementSettings(), PhysicsPlacementSettings());
 
     fs::remove_all(project);
+}
+
+TEST(PhysicsPlacementWorkspace, HandEditedValuesAreClampedToThePanelRanges) {
+    const YAML::Node node = YAML::Load(
+        "substeps: 1000\n"
+        "velocityIterations: 0\n"
+        "positionIterations: -3\n"           // negative: from the Feel preset
+        "maxSettleSeconds: 1000000\n"
+        "maxMoverSize: 0\n"
+        "regionMargin: -5\n"
+        "teleportDistance: 0\n"
+        "maxSpeed: 5000\n"
+        "contactSpeed: -7\n"
+        "maxAngularSpeed: 1000\n"            // rad/s
+        "sleepLinear: 3\n"
+        "sleepAngularDeg: -1\n"
+        "sleepSeconds: 60\n"
+        "killYDepth: -10\n"
+        "snapOffset: 9\n"
+        "gravity: [0, -500, 1000]\n");
+    const PhysicsPlacementSettings s = Stream::decodePhysicsPlacementSettings(node);
+    EXPECT_EQ(s.substeps, 16);
+    EXPECT_EQ(s.velocityIterations, 1);
+    EXPECT_EQ(s.positionIterations, -1);
+    EXPECT_EQ(s.maxSettleSeconds, 60.0f);
+    EXPECT_EQ(s.maxMoverSize, 0.1f);
+    EXPECT_EQ(s.regionMargin, 0.0f);
+    EXPECT_EQ(s.teleportDistance, 0.1f);
+    EXPECT_EQ(s.maxSpeed, 100.0f);
+    EXPECT_EQ(s.contactSpeed, -1.0f);
+    EXPECT_NEAR(s.maxAngularSpeed, 5000.0f * 3.14159265f / 180.0f, 1e-3f);
+    EXPECT_EQ(s.sleepLinear, 1.0f);
+    EXPECT_EQ(s.sleepAngularDeg, 0.0f);
+    EXPECT_EQ(s.sleepSeconds, 5.0f);
+    EXPECT_EQ(s.killYDepth, 0.0f);
+    EXPECT_EQ(s.snapOffset, 1.0f);
+    EXPECT_EQ(s.gravity.x, 0.0f);
+    EXPECT_EQ(s.gravity.y, -100.0f);
+    EXPECT_EQ(s.gravity.z, 100.0f);
+
+    // every default is inside its range, so clamping changes nothing
+    PhysicsPlacementSettings defaults;
+    clampPhysicsPlacementSettings(defaults);
+    expectSame(defaults, PhysicsPlacementSettings());
 }

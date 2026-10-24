@@ -5963,6 +5963,9 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 }
 
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
+    // first: a physics gesture that settles now commits, and its scene counts as changed below
+    editor::getEditorHost().stopTransientPreviews();
+
     std::vector<uint32_t> sceneIds;
     // the prefab stages first: the scenes saved after them hold their assets' new state
     for (const auto& stage : prefabStages) {

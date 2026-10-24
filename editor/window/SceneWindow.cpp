@@ -1056,13 +1056,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             subSelectionClickConsumesRelease[sceneId] = false;
 
-            // Shift + press on a selected object may become a Snap drag. An axis or plane handle
-            // keeps its drag; the free-move centre gives way, its catch area covers small objects.
+            // Shift + press on a selected object may become a Snap drag. A handle keeps its drag,
+            // except the Move tool's free-move centre, whose catch area covers small objects.
             physicsSnapArmed[sceneId] = false;
             physicsSnapBegun[sceneId] = false;
             const GizmoSideSelected pressedSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmoSideSelected();
-            const bool onAxisHandle = gizmoSideActive && pressedSide != GizmoSideSelected::XYZ;
-            if (physicsActive && io.KeyShift && !altHeld && !onAxisHandle) {
+            const bool onFreeMoveCentre = gizmoSelected == GizmoSelected::TRANSLATE && pressedSide == GizmoSideSelected::XYZ;
+            const bool onHandle = gizmoSideActive && !onFreeMoveCentre;
+            if (physicsActive && io.KeyShift && !altHeld && !onHandle) {
                 uint32_t hitSceneId = sceneId;
                 const Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
                 physicsSnapArmed[sceneId] = hitEntity != NULL_ENTITY && hitSceneId == sceneId && project->isSelectedEntity(sceneId, hitEntity);
@@ -1677,9 +1678,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     }
 
+    // The Scene view has the keyboard: hovered, or focused (it or its canvas)
+    const bool sceneViewInput = isMouseInWindow || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
     // Esc cancels a physics gesture or its settle, also in the middle of a drag (the press on
-    // the canvas keeps an item active, which the shortcuts below wait out)
-    if (physics && project->getSelectedSceneId() == sceneId && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    // the canvas keeps an item active, which the shortcuts below wait out). Not an Esc that
+    // closes a menu or a popup: one open now or when the last frame ended took it.
+    const bool popupOpen = popupOpenLastFrame || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+    if (physics && sceneViewInput && !popupOpen && project->getSelectedSceneId() == sceneId && !io.WantTextInput &&
+            ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         physics->cancelGesture((uint32_t)sceneId);
     }
 
@@ -1713,7 +1720,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
                 // Physics: hold Space to drop (its release is seen anywhere, see
                 // PhysicsPlacementWindow)
-                if (physicsActive) {
+                if (physicsActive && sceneViewInput) {
                     if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {
                         physics->beginGesture((uint32_t)sceneId, PlacementGesture::Drop, PhysicsInput::Space);
                     }
@@ -2504,6 +2511,9 @@ void editor::SceneWindow::show() {
         }
     }
 
+
+    // an Esc next frame may be closing a menu or popup that is open now
+    popupOpenLastFrame = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 }
 
 ImVec2 editor::SceneWindow::canvasFramebufferScale(uint32_t sceneId) const {

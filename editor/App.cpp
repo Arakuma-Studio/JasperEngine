@@ -1996,12 +1996,12 @@ void editor::App::show(){
     if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
-        // Update the Undo and Redo button logic. Ctrl+Z during a physics gesture or its
-        // settle cancels it instead (back to the poses from before it); redo waits for it.
-        if (isUndo && !physicsPlacementWindow->cancelGesture(sceneId)) {
+        // Update the Undo and Redo button logic (during a physics gesture or its settle, undo
+        // cancels it and redo waits: CommandHistory::beforeChange)
+        if (isUndo) {
             CommandHandle::get(sceneId)->undo();
         }
-        if (isRedo && !physicsPlacementWindow->isBusy(sceneId)) {
+        if (isRedo) {
             CommandHandle::get(sceneId)->redo();
         }
 
@@ -2276,6 +2276,11 @@ void editor::App::engineInit(int argc, char** argv) {
         }
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
+    };
+    // A physics gesture previews poses in the scene: before any other edit, undo or redo of that
+    // scene it settles and commits (or, still held, is cancelled), so nothing records its preview
+    CommandHistory::beforeChange = [this](size_t sceneId, CommandHistory::Change change){
+        return physicsPlacementWindow->beforeHistoryChange((uint32_t)sceneId, change);
     };
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
@@ -2555,7 +2560,7 @@ void editor::App::engineRender(){
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
-        || ImGui::GetIO().WantTextInput);
+        || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());
     renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
 
@@ -3423,10 +3428,11 @@ void editor::App::stopTransientPreviews() {
     if (inspectorWindow) {
         inspectorWindow->stopTransientPreviews();
     }
-    // a scene is never saved or played with physics preview poses in it (the Physics tool's
-    // gestures, place_with_physics screenshots)
+    // a scene is never saved or played with physics preview poses in it: a released gesture
+    // settles and commits first, a held one is cancelled (and place_with_physics screenshots
+    // put their poses back)
     if (physicsPlacementWindow) {
-        physicsPlacementWindow->cancelGestures();
+        physicsPlacementWindow->finaliseGestures();
     }
     mcp::stopPlacementPreviews(&project);
 }

@@ -42,6 +42,7 @@ public:
 }
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
+std::function<bool(size_t, editor::CommandHistory::Change)> editor::CommandHistory::beforeChange = nullptr;
 
 editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
 }
@@ -51,6 +52,10 @@ editor::CommandHistory::~CommandHistory(){
 }
 
 bool editor::CommandHistory::addCommand(editor::Command* cmd){
+    // before execute(), which reads the values the command replaces
+    if (beforeChange){
+        beforeChange(sceneId, Change::Add);
+    }
     if (cmd->execute()){
         if (index < list.size()){
             for (auto it = list.begin() + index; it != list.end(); ++it) {
@@ -86,6 +91,9 @@ void editor::CommandHistory::addCommandNoMerge(Command* cmd){
 }
 
 void editor::CommandHistory::undo(){
+    if (beforeChange && !beforeChange(sceneId, Change::Undo)){
+        return;
+    }
     if (index > undoFloor()){
         const bool structural = list[index-1]->affectsStructure();
         list[index-1]->undo();
@@ -102,6 +110,9 @@ void editor::CommandHistory::undo(){
 }
 
 void editor::CommandHistory::redo(){
+    if (beforeChange && !beforeChange(sceneId, Change::Redo)){
+        return;
+    }
     if (index < list.size()){
         index++;
         list[index-1]->execute();

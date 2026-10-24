@@ -266,7 +266,8 @@ void editor::MainToolbar::handleShortcuts(bool toolShortcuts) {
     if (ImGui::IsKeyPressed(ImGuiKey_R, false)) setTool(Tool::Scale);
     if (ImGui::IsKeyPressed(ImGuiKey_T, false)) setTool(Tool::Rect);
     if (ImGui::IsKeyPressed(ImGuiKey_X, false)) toggleGlobalTransform();
-    if (ImGui::IsKeyPressed(ImGuiKey_G, false)) togglePhysicsMode();
+    // G alone: Shift+G and the like are left to whoever binds them
+    if (!io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_G, false)) togglePhysicsMode();
 }
 
 //=== Drawing ===
@@ -304,7 +305,8 @@ void editor::MainToolbar::drawTools(float rowHeight) {
     // Physics (G), a modifier on the transform tools, and its panel
     ImGui::SameLine(0, Theme::dpi(6.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(Theme::dpi(1.0f), 0.0f));
-    ImGui::BeginDisabled(!canUsePhysics());
+    // where physics can't work (2D, camera preview, Play) it can still be turned off
+    ImGui::BeginDisabled(!physicsMode && !canUsePhysics());
     if (toolbarButton(ICON_FA_MAGNET "##ToolPhysics", physicsMode, buttonSize, &Theme::Colors::PhysicsAccent, &Theme::Colors::PhysicsAccentHovered)) {
         togglePhysicsMode();
     }
