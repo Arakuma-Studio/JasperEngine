@@ -43,6 +43,31 @@ void editor::PoseEditSession::suspendActive(){
     }
 }
 
+void editor::PoseEditSession::suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots){
+    if (activeSession && activeSession->copiesPosedEntities(sceneId, roots)){
+        activeSession->suspend();
+    }
+}
+
+bool editor::PoseEditSession::copiesPosedEntities(uint32_t sceneId, const std::vector<Entity>& roots) const{
+    if (!bound() || sceneId != sceneIdValue || !scenePtr || roots.empty()) return false;
+    // the model or a bone is one of the roots or under one of them
+    auto under = [this, &roots](Entity entity){
+        for (int guard = 0; entity != NULL_ENTITY && guard < 4096; guard++){
+            if (std::find(roots.begin(), roots.end(), entity) != roots.end()) return true;
+            const Transform* transform = scenePtr->findComponent<Transform>(entity);
+            if (!transform) return false;
+            entity = transform->parent;
+        }
+        return false;
+    };
+    if (under(modelEntity)) return true;
+    for (Entity bone : rigInfoPtr->boneEntities){
+        if (bone != NULL_ENTITY && under(bone)) return true;
+    }
+    return false;
+}
+
 editor::PoseEditSession::PoseEditSession(Project* project): projectPtr(project){
 }
 
@@ -168,7 +193,9 @@ bool editor::PoseEditSession::bind(Scene* scene, uint32_t sceneId, Entity model,
         return fail(info && !info->error.empty() ? info->error : "this model's bones could not be mapped to a humanoid");
     }
     if (bound() && scene == scenePtr && model == modelEntity){
-        // the same model again (a new mapping): keep the pose shown, on the new rig
+        // the same model again (a new mapping): keep the pose shown, on the new rig. Global Edit
+        // ends (cancelled: its baseline was realised on the old rig)
+        cancelGlobalEdit();
         restoreBones();
     }else{
         unbind();
@@ -769,9 +796,10 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
         for (Entity entity : entities){
             if (entity == NULL_ENTITY) continue;
             const Transform& transform = scenePtr->getComponent<Transform>(entity);
+            const Transform* parent = transform.parent != NULL_ENTITY ? scenePtr->findComponent<Transform>(transform.parent) : nullptr;
             savedBones.push_back({entity, transform.position, transform.rotation, transform.scale, transform.worldPosition,
                                   transform.worldRotation, transform.worldScale, transform.localMatrix, transform.modelMatrix,
-                                  transform.normalMatrix});
+                                  transform.normalMatrix, parent ? parent->modelMatrix : Matrix4()});
         }
         // and the skinned meshes' matrices and bounds the bones drive, so a scene saved right
         // after restoreBones() is byte for byte the scene without posing
@@ -786,7 +814,9 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
             if (entity == NULL_ENTITY || !scenePtr->isEntityCreated(entity)) continue;
             if (std::any_of(savedMeshes.begin(), savedMeshes.end(), [entity](const SavedMesh& m){ return m.entity == entity; })) continue;
             if (const MeshComponent* mesh = scenePtr->findComponent<MeshComponent>(entity)){
-                savedMeshes.push_back({entity, mesh->bonesMatrix, mesh->skinnedAABB, mesh->worldAABB, mesh->needUpdateAABB});
+                const Transform* transform = scenePtr->findComponent<Transform>(entity);
+                savedMeshes.push_back({entity, mesh->bonesMatrix, mesh->skinnedAABB, mesh->worldAABB, mesh->needUpdateAABB,
+                                       transform ? transform->modelMatrix : Matrix4()});
             }
         }
         applied = true;
@@ -828,21 +858,49 @@ void editor::PoseEditSession::restoreBones(){
     }
     applied = false;
     if (scenePtr){
-        for (const SavedBone& saved : savedBones){
-            if (!scenePtr->isEntityCreated(saved.entity)) continue;
+        // The local TRS as saved. The world matrices too, unless the model (or a parent) moved
+        // while posing: then they follow from the parents as they are now (parents first), the
+        // way the next transform update computes them, so a save right after this writes them
+        std::vector<int> done(savedBones.size(), 0);   // 0: to do, 1: saved values, 2: recomputed
+        std::function<void(size_t)> restore = [&](size_t i){
+            if (done[i] != 0) return;
+            done[i] = 1;
+            const SavedBone& saved = savedBones[i];
+            if (!scenePtr->isEntityCreated(saved.entity)) return;
             Transform* transform = scenePtr->findComponent<Transform>(saved.entity);
-            if (!transform) continue;
+            if (!transform) return;
+            const Transform* parent = transform->parent != NULL_ENTITY ? scenePtr->findComponent<Transform>(transform->parent) : nullptr;
+            bool moved = false;
+            const auto parentBone = std::find_if(savedBones.begin(), savedBones.end(),
+                                                 [transform](const SavedBone& b){ return b.entity == transform->parent; });
+            if (parent && parentBone != savedBones.end()){
+                const size_t p = static_cast<size_t>(parentBone - savedBones.begin());
+                restore(p);
+                moved = done[p] == 2;
+            }else if (parent){
+                moved = !(parent->modelMatrix == saved.parentMatrix);
+            }
             transform->position = saved.position;
             transform->rotation = saved.rotation;
             transform->scale = saved.scale;
-            transform->worldPosition = saved.worldPosition;
-            transform->worldRotation = saved.worldRotation;
-            transform->worldScale = saved.worldScale;
             transform->localMatrix = saved.localMatrix;
-            transform->modelMatrix = saved.modelMatrix;
-            transform->normalMatrix = saved.normalMatrix;
+            if (moved){
+                transform->modelMatrix = parent->modelMatrix * saved.localMatrix;
+                transform->worldPosition = parent->modelMatrix * saved.position;
+                transform->worldRotation = parent->worldRotation * saved.rotation;
+                transform->worldScale = parent->worldScale * saved.scale;
+                transform->normalMatrix = transform->modelMatrix.inverse().transpose();
+                done[i] = 2;
+            }else{
+                transform->worldPosition = saved.worldPosition;
+                transform->worldRotation = saved.worldRotation;
+                transform->worldScale = saved.worldScale;
+                transform->modelMatrix = saved.modelMatrix;
+                transform->normalMatrix = saved.normalMatrix;
+            }
             transform->needUpdate = true;
-        }
+        };
+        for (size_t i = 0; i < savedBones.size(); i++) restore(i);
         for (const SavedMesh& saved : savedMeshes){
             if (!scenePtr->isEntityCreated(saved.entity)) continue;
             MeshComponent* mesh = scenePtr->findComponent<MeshComponent>(saved.entity);
@@ -851,6 +909,12 @@ void editor::PoseEditSession::restoreBones(){
             mesh->skinnedAABB = saved.skinnedAABB;
             mesh->worldAABB = saved.worldAABB;
             mesh->needUpdateAABB = saved.needUpdateAABB;
+            // moved while posing: the bounds where the mesh is now (the render system's formula)
+            const Transform* transform = scenePtr->findComponent<Transform>(saved.entity);
+            if (transform && !(transform->modelMatrix == saved.modelMatrix)){
+                mesh->worldAABB = saved.skinnedAABB.isNull() ? (transform->modelMatrix * mesh->aabb)
+                                                             : (transform->modelMatrix * saved.skinnedAABB);
+            }
         }
         if (SceneProject* sceneProject = projectPtr ? projectPtr->getScene(sceneIdValue) : nullptr){
             sceneProject->needUpdateRender = true;

@@ -46,7 +46,8 @@ public:
     // global edit (phase 5 drives it; the window shows its bar)
     bool globalEditActive() const;  void beginGlobalEdit();  bool applyGlobalEdit(const std::vector<int>& targets /* empty = all others */);  void cancelGlobalEdit();
     const pose::HumanPose& globalEditBaseline() const;
-    void addListener(std::function<void()>);         // any change: document, selection, mode, time
+    int addListener(std::function<void()>);          // any change: document, selection, mode, time (returns an id)
+    void removeListener(int id);
 };
 ```
 

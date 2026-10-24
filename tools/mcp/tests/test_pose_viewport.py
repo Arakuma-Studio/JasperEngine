@@ -17,7 +17,6 @@ Screenshots go to $POSE_SHOTS (default /tmp/pose-research/reports/D3-shots) when
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 import harness
@@ -121,15 +120,10 @@ async def pose_data(ed: Editor, index: int) -> dict:
     return data["poses"][index]
 
 
-# The session puts the bones' derived matrices back with them; the skinned mesh bounds it does not
-# yet (the window task's fix): only those are left out of the comparison
-DERIVED = re.compile(r"^\s*(min|max):")
-
-
 def authored(scene_text: str) -> list:
-    """The scene file without the mesh bounds (min/max), which a save right after the bones are
-    put back may write before they are recomputed"""
-    return [line for line in scene_text.splitlines() if not DERIVED.match(line)]
+    """The scene file's lines. The session puts the bones' derived matrices and the skinned mesh
+    bounds back with the bones, so the whole file compares (no line is left out any more)."""
+    return scene_text.splitlines()
 
 
 def scene_modified(scenes: dict) -> bool:
@@ -476,4 +470,69 @@ async def test_exit_paths_restore_bones_and_drop_ghosts(ed: Editor):
     ed.check(not vp.get("ghosts"), f"the ghosts are gone: {vp}")
     ed.check_eq(await bone_transform(ed, "mixamorig:LeftArm"), rest, "the bones are back at rest")
     ed.check("mixamorig:LeftArm" in saved, "the saved scene has the bones")
+
+
+async def test_click_on_the_character_under_a_collapsed_parent(ed: Editor):
+    """The hero under a collapsed Hierarchy parent: selection resolves a click on its body to that
+    parent, the raw hit is still the hero's, so posing goes on; empty space still leaves."""
+    await ed.call("create_entity", scene=SCENE, name="Characters", type="empty")
+    await ed.call("move_entity", scene=SCENE, entity="Hero", parent="Characters")
+    try:
+        # (the hook tells the Scene view what the Hierarchy does for a collapsed Characters row:
+        # move_entity reveals the moved GameObject, expanding its new parent)
+        await setup_posing(ed)
+        vp = await viewport(ed)
+        spine, hips = vp["handles"]["spine"], vp["handles"]["hips"]
+        body = [(spine[0] + hips[0]) / 2 + 10, (spine[1] + hips[1]) / 2]
+        r = await hook(ed, click=body, collapsed_parent="Characters")
+        vi = r["viewport_input"]
+        ed.check_eq(vi.get("click_picked"), "Characters", f"selection resolves the hit to the collapsed parent: {vi}")
+        ed.check(vi.get("click_hit") not in (None, "Characters"), f"the raw hit is the hero's: {vi}")
+        ed.check(not vi["left_posing"], f"a click on the hero keeps posing: {vi}")
+        ed.check_eq(r["state"]["mode"], "posing", "posing")
+        r = await hook(ed, click=[12, 12])
+        ed.check(r["viewport_input"]["left_posing"], f"empty space still leaves posing: {r['viewport_input']}")
+    finally:
+        await ed.call("undo", scene=SCENE, steps=2)
+
+
+async def test_ghosts_copy_bones_that_carry_components(ed: Editor):
+    """A bone with another component (a sound on the left forearm): each ghost still has its own copy
+    of every skeleton bone, no reference to the model's GameObjects, and its bones differ from the
+    model's exactly where its pose differs."""
+    await ed.call("add_component", scene=SCENE, entity="mixamorig:LeftForeArm", component="AudioSourceComponent")
+    try:
+        await setup_posing(ed, index=1)
+        await hook(ed, onion={"previous": True, "next": True})
+        await viewport(ed)
+        await viewport(ed)
+        checks = (await hook(ed, ghost_check=True))["viewport_input"]["ghost_check"]
+        ed.check_eq(sorted(c["kind"] for c in checks), ["next", "previous"], f"two onion ghosts: {checks}")
+        for c in checks:
+            ed.check(c["bones"] >= 40, f"{c['kind']}: the hero's skeleton: {c}")
+            ed.check_eq(c["own_bones"], c["bones"], f"{c['kind']}: its own copy of every skeleton bone: {c}")
+            ed.check_eq(c["foreign_references"], 0, f"{c['kind']}: no reference to the model's GameObjects: {c}")
+            ed.check(c["differing"] > 0, f"{c['kind']}: its pose differs from the model's somewhere: {c}")
+            ed.check_eq(c["mismatched"], 0, f"{c['kind']}: its bones differ from the model's exactly where the poses do: {c}")
+    finally:
+        await hook(ed, onion={"previous": True, "next": False})
+        await ed.call("undo", scene=SCENE)
+
+
+async def test_global_edit_ends_when_the_mapping_changes(ed: Editor):
+    """Global Edit's baseline was realised on the old rig: a humanoid remap cancels it."""
+    await setup_posing(ed)
+    r = await hook(ed, global_edit="begin")
+    ed.check(r["viewport_input"]["global_edit"], "Global Edit began")
+    await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "set_humanoid", "model": HERO, "bones": {"left_toes": ""}}])
+    try:
+        await ed.call("wait", seconds=0.6)
+        st = (await window_state(ed))["state"]
+        ed.check_eq(st["rig"], "Humanoid 21/22", f"the rig follows the sidecar: {st}")
+        vp = await viewport(ed)
+        ed.check(not vp["global_edit"], f"Global Edit was cancelled by the remap: {vp}")
+        ed.check(vp["posing"], "still posing")
+    finally:
+        await ed.call("undo", scope="project")
+        await ed.call("wait", seconds=0.6)
 

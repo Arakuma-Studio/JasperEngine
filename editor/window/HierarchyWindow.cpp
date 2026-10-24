@@ -1279,16 +1279,16 @@ std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& no
     std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(sceneProject->scene, draggedEntities);
     exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
 
+    // a posed character (Pose Animation window) in the copy is encoded with its rest bones
+    PoseEditSession::suspendActiveFor(sceneProject->id, exportEntities);
     YAML::Node entityData;
     if (exportEntities.size() == 1) {
-        PoseEditSession::suspendActive();   // a posed character is dragged out with its rest bones
         entityData = Stream::encodeEntity(draggedEntities[0], sceneProject->scene, project, sceneProject);
     } else {
         // Embed the full export data (including virtual action children) in the entity payload.
         // Hierarchy uses the EntityPayload header for reparenting; Resources uses the YAML tail.
         // With the project: prefab instances in it stay instances (their members are not
         // copied as plain GameObjects).
-        PoseEditSession::suspendActive();
         entityData = Stream::encodeEntitySelection(exportEntities, sceneProject->scene, project, sceneProject);
     }
 
@@ -1557,11 +1557,17 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
     if (!node.isChildScene && !isChildSceneEntity && !node.isPlayCreated) {
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
-            // Add entity drag drop payload for dragging to resources
+            // Add entity drag drop payload for dragging to resources: encoded on the drag's first
+            // frame only (ImGui keeps the data), so a posed character is suspended once per drag
             if (!node.isScene) {
-                std::vector<char> payloadData = buildEntityPayload(node);
-                if (!payloadData.empty()) {
-                    ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size());
+                const ImGuiPayload* current = ImGui::GetDragDropPayload();
+                if (current && current->IsDataType("entity")) {
+                    ImGui::SetDragDropPayload("entity", nullptr, 0, ImGuiCond_Once);
+                } else {
+                    std::vector<char> payloadData = buildEntityPayload(node);
+                    if (!payloadData.empty()) {
+                        ImGui::SetDragDropPayload("entity", payloadData.data(), payloadData.size(), ImGuiCond_Once);
+                    }
                 }
             }
 

@@ -1694,7 +1694,8 @@ void editor::PoseAnimationWindow::drawTimingBar(){
         const bool selected = std::find(selection().begin(), selection().end(), hold.pose) != selection().end();
         float x0 = xOf(hold.start);
         float x1 = xOf(hold.end);
-        if (x1 - x0 < Theme::dpi(3.0f)){
+        const bool marker = x1 - x0 < Theme::dpi(3.0f);
+        if (marker){
             // a zero hold still shows (and stays draggable)
             const float mid = (x0 + x1) * 0.5f;
             x0 = mid - Theme::dpi(1.5f);
@@ -1705,11 +1706,19 @@ void editor::PoseAnimationWindow::drawTimingBar(){
         if (hold.pose == session.primary()){
             draw->AddRect(ImVec2(x0, top + Theme::dpi(8.0f)), ImVec2(x1, bottom), color(Theme::Colors::PrefabText), 2.0f);
         }
-        // the pose number at the bottom of its hold, under the settle of the curve that arrives
+        // the pose number at the bottom of its hold, under the settle of the curve that arrives;
+        // a hold too narrow for it (a zero hold's marker): on a small tag above the hold
         const std::string number = std::to_string(hold.pose);
-        if (x1 - x0 > ImGui::CalcTextSize(number.c_str()).x + Theme::dpi(4.0f)){
+        const ImVec2 numberSize = ImGui::CalcTextSize(number.c_str());
+        if (x1 - x0 > numberSize.x + Theme::dpi(4.0f)){
             draw->AddText(ImVec2(x0 + Theme::dpi(3.0f), bottom - ImGui::GetTextLineHeight() - Theme::dpi(1.0f)),
                           color(ImGui::GetStyle().Colors[ImGuiCol_Text], 0.8f), number.c_str());
+        }else{
+            const float mid = (x0 + x1) * 0.5f;
+            const ImVec2 tagMin(mid - numberSize.x * 0.5f - Theme::dpi(2.0f), origin.y);
+            const ImVec2 tagMax(mid + numberSize.x * 0.5f + Theme::dpi(2.0f), origin.y + numberSize.y);
+            draw->AddRectFilled(tagMin, tagMax, color(marker ? fill : Theme::Colors::ToolbarBackground, 0.9f), 2.0f);
+            draw->AddText(ImVec2(mid - numberSize.x * 0.5f, origin.y), color(ImGui::GetStyle().Colors[ImGuiCol_Text], 0.9f), number.c_str());
         }
     }
     // transitions as their ease curve, continued over the next hold so overshoot shows

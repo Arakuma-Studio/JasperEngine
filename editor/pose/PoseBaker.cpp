@@ -21,10 +21,7 @@
 #include "component/RotateTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 
-#if __has_include("pose/PoseInspectorHooks.h")
 #include "pose/PoseInspectorHooks.h"
-#define POSE_BAKER_HAS_INSPECTOR_HOOKS 1
-#endif
 
 #include <algorithm>
 #include <filesystem>
@@ -311,7 +308,6 @@ std::string editor::PoseBaker::bakeStatusLine(const std::string& animation, cons
            std::to_string(result.frames) + " keys each): Model:playAnimation(\"" + result.name + "\")";
 }
 
-#ifdef POSE_BAKER_HAS_INSPECTOR_HOOKS
 namespace {
 
     // The Pose Animator Inspector section's Bake button
@@ -330,4 +326,3 @@ namespace {
     } installBakeHook;
 
 }
-#endif

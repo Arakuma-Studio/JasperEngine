@@ -150,6 +150,11 @@ namespace jasperengine::editor{
         // keys and undo then go to the pose window
         void setViewportHandleEngaged(bool engaged) { handleActive = engaged; }
         bool viewportHandleEngaged() const { return handleActive; }
+        // A copy of `roots` with their descendants (a Hierarchy drag, a prefab) would contain the
+        // bound model or one of its bones
+        bool copiesPosedEntities(uint32_t sceneId, const std::vector<Entity>& roots) const;
+        // suspend() on the active session when copiesPosedEntities(sceneId, roots)
+        static void suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots);
         // the first name of the same flag (kept for source compatibility)
         void setViewportHandleActive(bool active) { setViewportHandleEngaged(active); }
         bool viewportHandleActive() const { return viewportHandleEngaged(); }
@@ -172,6 +177,7 @@ namespace jasperengine::editor{
             Matrix4 localMatrix;
             Matrix4 modelMatrix;
             Matrix4 normalMatrix;
+            Matrix4 parentMatrix;                // the parent's modelMatrix then: a change means it moved
         };
 
         // a skinned mesh of the model as the scene had it: the skinning matrices and the posed
@@ -182,6 +188,7 @@ namespace jasperengine::editor{
             AABB skinnedAABB;
             AABB worldAABB;
             bool needUpdateAABB = false;
+            Matrix4 modelMatrix;                 // the mesh's then (worldAABB = modelMatrix * skinnedAABB)
         };
 
         Project* projectPtr = nullptr;

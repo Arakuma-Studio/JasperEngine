@@ -1000,8 +1000,11 @@ bool mcpTestHooks() {
 // posing Scene view through the same calls as the mouse in SceneWindow. {onion: {previous, next,
 // opacity}, ghost_during_preview, joint: slot or "" (the rings shown), handle: slot or
 // ring_l/u/f/free | press: [x, y] (view px), drag: [[x, y], ...], shift, ctrl, release (true),
-// click: [x, y] (a click the handles do not take: what SceneWindow does on release), global_edit:
-// begin | apply_all | apply_selected | cancel (after the drag), close_window: true (last)}
+// click: [x, y] (a click the handles do not take: what SceneWindow does on release; the result
+// names the selection pick and the raw hit; collapsed_parent: a GameObject whose collapsed Hierarchy
+// row holds the model, for this click), global_edit: begin | apply_all | apply_selected |
+// cancel (after the drag), ghost_check: true (each ghost's independence of the model),
+// close_window: true (last)}
 bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
     if (!mcpTestHooks()) {
         call->fail("pose.viewport: unknown key (valid: entity, path, index, play, tab).");
@@ -1104,13 +1107,31 @@ bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Js
         }
         const float cx = p[0].get<float>();
         const float cy = p[1].get<float>();
-        // as SceneWindow: the handles first, then what the click picks
+        // as SceneWindow: the handles first, then what the click picks (the same rule: the
+        // selection pick and the raw hit)
         const bool took = render->poseMouseDown(cx, cy, false, false);
         if (took) render->mouseReleaseEvent(cx, cy);
-        uint32_t pickedScene = session.sceneId();
-        const Entity picked = took ? NULL_ENTITY : project->findObjectByRay(session.sceneId(), cx, cy, &pickedScene);
+        SceneWindow* sceneWindow = call->ctx().sceneWindow();
+        if (hook.contains("collapsed_parent") && sceneWindow) {
+            // the Hierarchy row of this GameObject collapsed over the posed model (what the
+            // Hierarchy tells the Scene view each frame for its collapsed rows)
+            std::string error;
+            SceneProject* sp = project->getScene(session.sceneId());
+            const Entity parent = sp ? w3::resolveLiveEntity(project, sp, hook["collapsed_parent"], error) : NULL_ENTITY;
+            if (parent == NULL_ENTITY) {
+                call->fail("pose.viewport.collapsed_parent: " + error);
+                return false;
+            }
+            sceneWindow->setStructureSelectionParent(session.sceneId(), session.model(), parent);
+        }
+        Entity picked = NULL_ENTITY, raw = NULL_ENTITY;
         out["click_took_handle"] = took;
-        out["left_posing"] = !took && viewport->clicked(pickedScene == session.sceneId() ? picked : NULL_ENTITY);
+        out["left_posing"] = !took && sceneWindow && sceneWindow->poseClick(session.sceneId(), cx, cy, &picked, &raw);
+        // the GameObjects the click picked: as selection resolves it, and the raw hit
+        Scene* scene = session.scene();
+        auto nameOf = [scene](Entity e) { return e != NULL_ENTITY && scene && scene->isEntityCreated(e) ? Json(scene->getEntityName(e)) : Json(); };
+        out["click_picked"] = nameOf(picked);
+        out["click_hit"] = nameOf(raw);
     }
     if (hook.contains("global_edit")) {
         const std::string action = hook["global_edit"].is_string() ? hook["global_edit"].get<std::string>() : std::string();
@@ -1131,6 +1152,16 @@ bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Js
             return false;
         }
         out["global_edit"] = ok;
+    }
+    if (hook.value("ghost_check", false)) {
+        // each ghost's independence of the model (PoseViewport::checkGhosts)
+        Json checks = Json::array();
+        for (const PoseViewport::GhostCheck& check : viewport->checkGhosts()) {
+            checks.push_back({{"kind", check.kind}, {"bones", check.bones}, {"own_bones", check.ownBones},
+                              {"foreign_references", check.foreignReferences}, {"differing", check.differing},
+                              {"mismatched", check.mismatched}});
+        }
+        out["ghost_check"] = checks;
     }
     if (hook.value("close_window", false)) {
         window->setOpen(false);

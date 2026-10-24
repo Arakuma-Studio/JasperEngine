@@ -107,6 +107,31 @@ namespace {
         if (scene->findComponent<T>(entity)) scene->removeComponent<T>(entity);
     }
 
+    template<typename... T>
+    void stripEach(Scene* scene, Entity entity){
+        (strip<T>(scene, entity), ...);
+    }
+
+    // A ghost copy keeps what draws a posed model (Transform, Mesh, Model, Bone): every other
+    // component type of the registry goes (EntityCloner's list)
+    void stripToRender(Scene* scene, Entity entity){
+        stripEach<RectTransformComponent, SkyboxComponent, FogComponent, MirrorComponent, LayoutGroupComponent, SpriteComponent,
+                  SpriteAnimationComponent, CameraComponent, LightComponent, Light2DComponent, ShadowCaster2DComponent,
+                  ActionComponent, TweenComponent, PositionTweenComponent, RotationTweenComponent, ScaleTweenComponent,
+                  ColorTweenComponent, AlphaTweenComponent, ParticleSystemComponent, PointsComponent, LineRendererComponent,
+                  TextComponent, UIComponent, ImageComponent, ButtonComponent, PanelComponent, ScrollbarComponent,
+                  ProgressbarComponent, InputFieldComponent, MeshPolygonComponent, PolygonComponent, AnimationComponent,
+                  KeyframeTracksComponent, MorphTracksComponent, RotateTracksComponent, TranslateTracksComponent,
+                  ScaleTracksComponent, TerrainComponent, AudioSourceComponent, TilemapComponent, InstancedMeshComponent,
+                  PrefabComponent, ReflectionProbeComponent, UIDocumentComponent, PoseAnimatorComponent, ScriptComponent>(scene, entity);
+#ifdef JASPERENGINE_PHYSICS_2D
+        stripEach<Rigidbody2DComponent, Joint2DComponent>(scene, entity);
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+        stripEach<RigidbodyComponent, Joint3DComponent>(scene, entity);
+#endif
+    }
+
     void setGhostMaterial(MeshComponent& mesh, const Vector4& tint){
         for (unsigned int i = 0; i < mesh.numSubmeshes && i < mesh.submeshes.size(); i++){
             Material& material = mesh.submeshes[i].material;
@@ -408,8 +433,9 @@ void editor::PoseViewport::update(Camera* camera, int viewWidth, int viewHeight,
         return;
     }
     const pose::PoseRig& rig = *session->rig();
-    if (activeRig != &rig){
-        activeRig = &rig;
+    // (a weak pointer: a new rig at the address of a freed one is still a new rig)
+    if (activeRig.lock() != session->rig()){
+        activeRig = session->rig();
         activeJoint = HumanBone::Count;
         metricsValid = false;
     }
@@ -636,9 +662,13 @@ void editor::PoseViewport::drawRings(const pose::PoseRig& rig, const pose::Human
         }else{
             const Vector3 axisModel = (inverse * ring.axis).normalized();
             RingLimitCache& cache = ringLimits[r];
-            if (!cache.valid || cache.bone != activeJoint || !(cache.axisModel == axisModel) || !samePose(cache.pose, pose)){
+            // keyed by the rig too: after a remap the same pose and axis measure on another skeleton
+            const std::shared_ptr<const pose::PoseRig> currentRig = activeRig.lock();
+            if (!cache.valid || cache.rig.lock() != currentRig || !currentRig || cache.bone != activeJoint ||
+                !(cache.axisModel == axisModel) || !samePose(cache.pose, pose)){
                 cache.range = poseview::ringLimitRange(rig, pose, activeJoint, axisModel);
                 cache.reference = poseview::ringReference(rig, pose, activeJoint, axisModel);
+                cache.rig = currentRig;
                 cache.bone = activeJoint;
                 cache.axisModel = axisModel;
                 cache.pose = pose;
@@ -757,15 +787,30 @@ bool editor::PoseViewport::createGhost(PoseEditSession& session, Ghost& ghost){
     const std::shared_ptr<const PoseRigInfo>& info = session.rigInfo();
     const Entity model = session.model();
     if (!info || !scene->isEntityCreated(model)) return false;
-    // the model and the GameObjects under it that only draw (meshes, bones, glTF nodes): no
-    // scripts, sounds, animations or physics in the ghost
+    // the model and the GameObjects under it that only draw (meshes, bones, glTF nodes), and
+    // the whole skeleton: every bone and skinned mesh with the GameObjects above it, whatever
+    // else they carry (a script or a collider on a hand bone), so the ghost's skin and mappings
+    // point at its own copies. The copies keep only what draws (stripped below)
+    std::unordered_set<Entity> skeleton;
+    auto needs = [this, model, &skeleton](Entity entity){
+        for (int guard = 0; entity != NULL_ENTITY && entity != model && guard < 4096; guard++){
+            if (!skeleton.insert(entity).second) break;   // its parents are in already
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            entity = transform ? transform->parent : NULL_ENTITY;
+        }
+    };
+    for (Entity bone : info->boneEntities) needs(bone);
+    if (const ModelComponent* modelComponent = scene->findComponent<ModelComponent>(model)){
+        for (const ModelSkinBinding& binding : modelComponent->skinBindings) needs(binding.mesh);
+    }
     std::vector<Entity> all = EntityCloner::collectHierarchy(scene, model);
     std::vector<Entity> sources;
     std::unordered_set<Entity> kept;
     for (Entity entity : all){
         if (entity != model){
             const Transform* transform = scene->findComponent<Transform>(entity);
-            if (!transform || !kept.count(transform->parent) || !renderOnly(scene, entity)) continue;
+            if (!transform || !kept.count(transform->parent)) continue;
+            if (!skeleton.count(entity) && !renderOnly(scene, entity)) continue;
         }
         sources.push_back(entity);
         kept.insert(entity);
@@ -781,15 +826,7 @@ bool editor::PoseViewport::createGhost(PoseEditSession& session, Ghost& ghost){
     if (copies.empty()) return false;
     ghost.root = copies.front();
     ghost.entities = copies;
-    strip<ScriptComponent>(scene, ghost.root);
-    strip<PoseAnimatorComponent>(scene, ghost.root);
-    strip<AudioSourceComponent>(scene, ghost.root);
-    strip<LightComponent>(scene, ghost.root);
-    strip<CameraComponent>(scene, ghost.root);
-    strip<ParticleSystemComponent>(scene, ghost.root);
-    strip<ActionComponent>(scene, ghost.root);
-    strip<AnimationComponent>(scene, ghost.root);
-    strip<PrefabComponent>(scene, ghost.root);
+    for (Entity copy : copies) stripToRender(scene, copy);
     if (ModelComponent* copy = scene->findComponent<ModelComponent>(ghost.root)){
         copy->animations.clear();   // within one registry they would still name the model's
     }
@@ -843,6 +880,7 @@ void editor::PoseViewport::colorGhost(Ghost& ghost, const Vector4& color){
 void editor::PoseViewport::poseGhost(PoseEditSession& session, Ghost& ghost, const pose::HumanPose& pose){
     const std::shared_ptr<const PoseRigInfo>& info = session.rigInfo();
     const pose::PoseRig& rig = *session.rig();
+    ghost.pose = pose;
     // the ghost stands where the model stands
     if (Transform* root = scene->findComponent<Transform>(ghost.root)){
         Vector3 position, scale;
@@ -932,10 +970,13 @@ void editor::PoseViewport::hoverEnd(){
     }
 }
 
-bool editor::PoseViewport::clicked(Entity picked){
+bool editor::PoseViewport::clicked(Entity picked, Entity rawHit){
     PoseEditSession* session = posedSession();
     if (!session || session->mode() != PoseEditSession::Mode::Posing) return false;
-    if (!poseview::clickLeavesPosing(false, false, picked != NULL_ENTITY, covers(picked))) return false;
+    // the character under a collapsed Hierarchy parent: selection resolves the hit to the
+    // parent, the raw hit is still the model
+    const bool onModel = covers(picked) || covers(rawHit);
+    if (!poseview::clickLeavesPosing(false, false, picked != NULL_ENTITY || rawHit != NULL_ENTITY, onModel)) return false;
     // empty space or another object: posing ends (the bones go back), even when the
     // selection does not change
     if (isDragging()) endDrag(false);
@@ -1117,6 +1158,58 @@ void editor::PoseViewport::clear(){
 }
 
 // ---- state ----
+
+std::vector<editor::PoseViewport::GhostCheck> editor::PoseViewport::checkGhosts() const{
+    std::vector<GhostCheck> checks;
+    PoseEditSession* session = posedSession();
+    if (!session || !session->rig() || !session->rigInfo()) return checks;
+    const pose::PoseRig& rig = *session->rig();
+    const std::vector<Entity>& modelBones = session->rigInfo()->boneEntities;
+    const pose::HumanPose& shown = session->displayed();
+    auto degreesBetween = [](const Quaternion& a, const Quaternion& b){
+        const float dot = std::min(1.0f, std::fabs(a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z));
+        return static_cast<float>(pose::radToDeg(2.0 * std::acos(static_cast<double>(dot))));
+    };
+    for (const Ghost& ghost : ghosts){
+        GhostCheck check;
+        check.kind = ghost.kind;
+        const std::unordered_set<Entity> own(ghost.entities.begin(), ghost.entities.end());
+        auto reference = [&](Entity entity){
+            if (entity != NULL_ENTITY && !own.count(entity)) check.foreignReferences++;
+        };
+        if (const ModelComponent* model = scene->findComponent<ModelComponent>(ghost.root)){
+            reference(model->skeleton);
+            for (const auto& entry : model->bonesNameMapping) reference(entry.second);
+            for (const auto& entry : model->bonesIdMapping) reference(entry.second);
+            for (const auto& entry : model->meshNodesMapping) reference(entry.second);
+            for (const auto& entry : model->nodesIdMapping) reference(entry.second);
+            for (const ModelSkinBinding& binding : model->skinBindings){
+                reference(binding.mesh);
+                for (Entity joint : binding.joints) reference(joint);
+            }
+        }
+        for (size_t i = 0; i < modelBones.size(); i++){
+            if (modelBones[i] == NULL_ENTITY) continue;
+            check.bones++;
+            const Entity copy = i < ghost.bones.size() ? ghost.bones[i] : NULL_ENTITY;
+            if (copy == NULL_ENTITY || copy == modelBones[i] || !own.count(copy) || !scene->isEntityCreated(copy)) continue;
+            check.ownBones++;
+            if (const BoneComponent* bone = scene->findComponent<BoneComponent>(copy)) reference(bone->model);
+            const int slot = rig.slotOfBone(static_cast<int>(i));
+            if (slot < 0) continue;
+            const Transform* ghostTransform = scene->findComponent<Transform>(copy);
+            const Transform* modelTransform = scene->findComponent<Transform>(modelBones[i]);
+            if (!ghostTransform || !modelTransform) continue;
+            // (a dead zone between "same" and "different")
+            const float poses = degreesBetween(ghost.pose.rotations[static_cast<size_t>(slot)], shown.rotations[static_cast<size_t>(slot)]);
+            const float bones = degreesBetween(ghostTransform->rotation, modelTransform->rotation);
+            if (poses > 0.5f && bones > 0.25f) check.differing++;
+            if ((poses > 0.5f && bones <= 0.25f) || (poses < 0.05f && bones > 0.25f)) check.mismatched++;
+        }
+        checks.push_back(check);
+    }
+    return checks;
+}
 
 editor::PoseViewport::State editor::PoseViewport::getState() const{
     State state;
