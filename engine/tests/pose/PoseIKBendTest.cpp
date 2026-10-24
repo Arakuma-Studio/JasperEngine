@@ -54,6 +54,25 @@ namespace {
         return wrong;
     }
 
+    // the T-pose rig turned `degrees` about up (the root bone turned): the character's left is no
+    // longer the model's x axis
+    const TestRig& turnedRig(double degrees){
+        static std::map<double, TestRig> rigs;
+        auto it = rigs.find(degrees);
+        if (it == rigs.end()){
+            Skeleton skeleton = tposeRig().skeleton;
+            const Quatd turn = axisAngleRad(Vec3d(0, 1, 0), degToRad(degrees));
+            for (SkeletonBone& bone : skeleton.bones){
+                if (bone.parent < 0){
+                    bone.position = (turn * Vec3d(bone.position)).toVector3();
+                    bone.rotation = (turn * Quatd(bone.rotation)).normalized().toQuaternion();
+                }
+            }
+            it = rigs.emplace(degrees, finish("tpose-turned-" + std::to_string(static_cast<int>(degrees)), skeleton, tposeRig().expected)).first;
+        }
+        return it->second;
+    }
+
 }
 
 TEST(PoseIKBend, KneesForwardElbowsBackFromNeutralOnEveryRig){
@@ -151,6 +170,67 @@ TEST(PoseIKBend, BlendedPlaneStillReachesTheTarget){
         EXPECT_LT((worldPositions(rig, pose)[rig.boneIndex(H::RightFoot)] - target).length(), 1e-4 * hs) << degrees;
         EXPECT_GT(jointOffset(rig, pose, Limb::RightLeg).z, 0.0) << degrees;
     }
+}
+
+TEST(PoseIKBend, TargetOppositeTheLimbTakesThePoleSide){
+    // spec 4.10 singular case: the target (nearly) exactly opposite the current C - A direction
+    // (a hanging leg's foot pulled overhead, an arm folded back through its shoulder). The
+    // shortest rotation from C - A to T - A is then a half turn about an axis that the approach
+    // direction, or fromToRotation's fixed model-space axis, picks; that used to decide the bend
+    // side, so it depended on how the model is turned. Within 1 degree of the half turn the pole
+    // plane decides: knees forward, elbows back, on every rig (also turned about up), from
+    // straight, slightly and clearly bent limbs, for every approach direction
+    std::vector<const TestRig*> rigs = allRigs();
+    rigs.push_back(&turnedRig(90.0));
+    rigs.push_back(&turnedRig(-37.0));
+    int cases = 0;
+    for (const TestRig* t : rigs){
+        const PoseRig& rig = *t->rig;
+        const double hs = rig.humanScale();
+        for (Limb limb : {Limb::LeftLeg, Limb::RightLeg, Limb::LeftArm, Limb::RightArm}){
+            const bool leg = limb == Limb::LeftLeg || limb == Limb::RightLeg;
+            H upper, lower, end;
+            limbBones(limb, upper, lower, end);
+            for (float degrees : {0.0f, 3.0f, 30.0f}){
+                HumanPose start = rig.neutralPose();
+                const float angles[3] = {degrees, 0, 0};   // <lower>.bend
+                start.rotations[boneIndex(lower)] = rig.localFromAngles(lower, angles);
+                const std::vector<Vec3d> p = worldPositions(rig, start);
+                const Vec3d a = p[rig.boneIndex(upper)], c = p[rig.boneIndex(end)];
+                const double reach = ((p[rig.boneIndex(lower)] - a).length() + (c - p[rig.boneIndex(lower)]).length()) * 0.8;
+                const Vec3d opposite = -(c - a).normalized();
+                Vec3d tilt = opposite.cross(Vec3d(rig.characterLeft()));
+                if (tilt.length() < 0.1){
+                    tilt = opposite.cross(Vec3d(rig.characterUp()));
+                }
+                tilt = tilt.normalized();
+                for (double offAxis : {0.0, 0.5, 0.9}){   // degrees away from exactly opposite
+                    for (int azimuth = 0; azimuth < 360; azimuth += 45){
+                        const Vec3d axis = axisAngleRad(opposite, degToRad(azimuth)) * tilt;
+                        const Vec3d aim = (axisAngleRad(axis, degToRad(offAxis)) * opposite).normalized();
+                        const Vec3d target = a + aim * reach;
+                        HumanPose pose = start;
+                        ASSERT_TRUE(solveLimbIK(rig, pose, limb, target.toVector3(), false));
+                        const std::vector<Vec3d> q = worldPositions(rig, pose);
+                        const std::string where = t->label + " " + humanBoneName(lower) + " bend " + std::to_string(degrees) +
+                            " off " + std::to_string(offAxis) + " azimuth " + std::to_string(azimuth);
+                        EXPECT_LT((q[rig.boneIndex(end)] - target).length(), 1e-4 * hs) << where;
+                        // the joint's side: its offset off the A - T line, canonical forward component
+                        Vec3d d = q[rig.boneIndex(lower)] - a;
+                        d = d - aim * d.dot(aim);
+                        const double forward = toCanonical(rig, d).z;
+                        if (leg){
+                            EXPECT_GT(forward, 0.05 * hs) << where << " " << forward / hs;
+                        }else{
+                            EXPECT_LT(forward, -0.05 * hs) << where << " " << forward / hs;
+                        }
+                        cases++;
+                    }
+                }
+            }
+        }
+    }
+    EXPECT_EQ(cases, 7 * 4 * 3 * 3 * 8);
 }
 
 TEST(PoseGrounding, LowestVertexOutsideTheHipsSubtree){

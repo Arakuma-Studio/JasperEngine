@@ -435,10 +435,18 @@ Two-bone IK (A = upper, B = lower, C = end, T = target; revised in review rounds
    the weight of the current plane is `w = smoothstep(0.02, 0.1, sinA) * smoothstep(-1, 0, c)` for
    `sinA < 0.1` and `w = 1` above; `n = normalize(w * n_current + (1 - w) * n_pole)`. So a straight
    (or float-noise-bent) limb takes the pole's side, a clearly bent one keeps its plane, the
-   current plane's weight fades as it turns past 90 degrees from the pole plane, and the only
-   discontinuity is at `sinA = 0.1` for a limb bent backwards (it then keeps its own plane).
+   current plane's weight fades as it turns past 90 degrees from the pole plane, and the one
+   discontinuity of this blend is at `sinA = 0.1` for a limb bent backwards (it then keeps its own
+   plane).
 3. The plane follows the limb: `n' = fromTo(C - A, T - A) * n` (the shortest rotation, like the
    original "rotate B, then A by fromTo(C - A, T - A)" order; it never spins when T crosses n).
+   Singular configuration: when `T - A` is within 1 degree of exactly opposite `C - A`, the
+   shortest rotation is a half turn about an axis picked by the approach direction (or, exactly
+   opposite, by `fromToRotation`'s fixed model-space axis), which would make the bend side depend
+   on the model's orientation; there `n'` is the pole normal at the target direction
+   `cross(T - A, pole)` (with the up / down blend of step 2) instead: knees forward, elbows back,
+   on every rig; the switch at 1 degree is a discontinuity (as is the singularity itself).
+   (Added in the polish round.)
 4. Solved triangle in that plane: `C* = A + reach * t`, `B* = A + lab * (cos(a) t + sin(a) cross(n', t))`
    with `t = (T - A) / |T - A|` and `cos(a)` from the law of cosines.
 5. A turns by the rotation taking the pair (`B - A`, `n` projected off `B - A`) to (`B* - A`, `n'`);
