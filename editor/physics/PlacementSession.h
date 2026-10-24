@@ -143,7 +143,16 @@ namespace jasperengine::editor {
         // right away. Commit = one undo step (ObjectTransformCmd for every moved entity).
         void end();
         // Esc / Ctrl+Z during a gesture or settle: restores the pre-gesture poses, no undo step.
+        // Also what an outside event (save, Play, a command) does to a gesture whose input is
+        // still held.
         void cancel();
+        // An outside event finalises a released gesture now: an Active one is released first
+        // (end()), then the settle (or Gather/Distribute approach) is stepped synchronously until
+        // it rests or its own limit (maxSettleSeconds) or wallBudgetSeconds of wall time runs out,
+        // and the poses it has then are committed (one undo step). When not one step could run
+        // (colliders still decomposing with Decomposition: Always) it cancels instead. True when
+        // it committed; false when idle, cancelled, or the scene went away.
+        bool finishNow(double wallBudgetSeconds);
 
         // Panel buttons: run as a gesture that begins and ends at once (then settles).
         bool distribute(const std::vector<Entity>& selection, int axis);   // 0 x, 1 y, 2 z
