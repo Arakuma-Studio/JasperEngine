@@ -1140,6 +1140,53 @@ bool ShaderManifest::hasManifestLines(const std::string& source){
     return manifest.present;
 }
 
+bool ShaderManifest::definesLitStochasticParams(const std::string& source){
+    static const std::string name = "LIT_STOCHASTIC_PARAMS";
+    bool inBlockComment = false;
+    size_t lineStart = 0;
+    while (lineStart <= source.size()){
+        size_t lineEnd = source.find('\n', lineStart);
+        if (lineEnd == std::string::npos)
+            lineEnd = source.size();
+        // the line without its comments
+        std::string code;
+        for (size_t i = lineStart; i < lineEnd; i++){
+            if (inBlockComment){
+                if (source.compare(i, 2, "*/") == 0){
+                    inBlockComment = false;
+                    i++;
+                }
+                continue;
+            }
+            if (source.compare(i, 2, "//") == 0)
+                break;
+            if (source.compare(i, 2, "/*") == 0){
+                inBlockComment = true;
+                i++;
+                code += ' ';
+                continue;
+            }
+            code += source[i];
+        }
+        // "#", "define", the name and then nothing of a longer name
+        size_t at = code.find_first_not_of(" \t\r");
+        if (at != std::string::npos && code[at] == '#'){
+            at = code.find_first_not_of(" \t", at + 1);
+            if (at != std::string::npos && code.compare(at, 6, "define") == 0){
+                const size_t afterDefine = at + 6;
+                at = code.find_first_not_of(" \t", afterDefine);
+                if (at != std::string::npos && at > afterDefine && code.compare(at, name.size(), name) == 0){
+                    const size_t after = at + name.size();
+                    if (after == code.size() || !(std::isalnum((unsigned char)code[after]) || code[after] == '_'))
+                        return true;
+                }
+            }
+        }
+        lineStart = lineEnd + 1;
+    }
+    return false;
+}
+
 std::string ShaderManifest::getLightingModeName(ShaderLightingMode mode){
     switch (mode){
         case ShaderLightingMode::PIXEL:  return "pixel";
@@ -1510,6 +1557,7 @@ std::shared_ptr<const ShaderManifest> ShaderManifests::get(const std::string& re
         if (c.forkReader && c.forkReader(fragFile, content)){
             found = true;
             manifest->parse(content, fragFile);
+            manifest->litStochasticParams = ShaderManifest::definesLitStochasticParams(content);
             if (c.forkReader(vertFile, content))
                 manifest->parse(content, vertFile);
             if (manifest->present)

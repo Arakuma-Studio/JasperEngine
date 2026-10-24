@@ -434,11 +434,11 @@ namespace {
         }
 
         // A custom shader that fails to build falls back to the built-in variant at runtime
-        void insertKeys(ShaderType type, uint32_t properties, uint16_t customId){
+        void insertKeys(ShaderType type, uint64_t properties, uint16_t customId){
             // a mesh's post colour bit comes with its environment; the others take it here
-            const uint32_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
+            const uint64_t postColorBit = type == ShaderType::MESH ? 0 : ShaderPool::getPostColorProperty(type);
             for (bool postColorOn : postColor){
-                const uint32_t variant = properties | (postColorOn ? postColorBit : 0u);
+                const uint64_t variant = properties | (postColorOn ? postColorBit : uint64_t(0));
                 keys.insert(ShaderPool::getShaderKey(type, variant, customId));
                 if (customId != 0){
                     keys.insert(ShaderPool::getShaderKey(type, variant, 0));
@@ -776,7 +776,7 @@ void editor::ShaderVariantCollector::addUiEffectKeys(const UiEffectUses& uses, s
             if (!m->stateful())
                 return;
             const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
-            const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
+            const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
             const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
             keys.insert(ShaderPool::normalizeKey(ShaderPool::getShaderKey(type, properties | 2u, customId)));
             if (m->hasScatter())

@@ -67,6 +67,8 @@ namespace jasperengine{
         SubmeshOverride_Stencil                  = 1 << 27,
         SubmeshOverride_ColorWrite               = 1 << 28,
         SubmeshOverride_ExtraPass                = 1 << 29,
+        // Stochastic Tiling: material.stochasticTiling and its four values under one bit
+        SubmeshOverride_StochasticTiling         = 1 << 30,
 
         SubmeshOverride_ShaderLibrary = SubmeshOverride_Shader | SubmeshOverride_ShaderParams |
                                         SubmeshOverride_ShaderTextures | SubmeshOverride_ShaderFeatures |
@@ -82,7 +84,8 @@ namespace jasperengine{
                                    SubmeshOverride_MaterialName | SubmeshOverride_BaseColorTexture |
                                    SubmeshOverride_EmissiveTexture | SubmeshOverride_MetallicRoughnessTexture |
                                    SubmeshOverride_OcclusionTexture | SubmeshOverride_NormalTexture |
-                                   SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary
+                                   SubmeshOverride_FoliageTransmission | SubmeshOverride_ShaderLibrary |
+                                   SubmeshOverride_StochasticTiling
     };
 
     // The lights reaching a mesh (an instanced batch counts as one mesh), picked by
@@ -112,7 +115,7 @@ namespace jasperengine{
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
-        uint32_t shaderProperties = 0; // ShaderType::MESH
+        uint64_t shaderProperties = 0; // ShaderType::MESH
         uint16_t customShaderId = 0;   // the pass's shader reference, registered
         MaterialPassOrder order = MaterialPassOrder::AFTER;
 
@@ -128,6 +131,7 @@ namespace jasperengine{
 
         int slotVSParams = -1;
         int slotFSParams = -1;
+        unsigned int sizeFSParams = 0; // reflected, read by the Stochastic Tiling ('Sto') variants
         int slotFSTexCoordSets = -1;
         int slotVSFade = -1;
         int slotFSFog = -1;
@@ -179,9 +183,9 @@ namespace jasperengine{
         std::shared_ptr<ShaderRender> depthShader;
         std::shared_ptr<ShaderRender> gbufferShader;
 
-        uint32_t shaderProperties = 0;
-        uint32_t depthShaderProperties = 0;
-        uint32_t gbufferShaderProperties = 0;
+        uint64_t shaderProperties = 0;
+        uint64_t depthShaderProperties = 0;
+        uint64_t gbufferShaderProperties = 0;
 
         // resolved ids of MeshComponent::customShader/customDepthShader (0 = built-in);
         // cached here so the matching ShaderPool::remove uses the same key
@@ -190,6 +194,9 @@ namespace jasperengine{
 
         int slotVSParams = -1;
         int slotFSParams = -1;
+        // reflected, read by the Stochastic Tiling ('Sto') variants: the material prefix with
+        // its stochastic vec4 (16 floats), or less from a fork made before it
+        unsigned int sizeFSParams = 0;
         int slotFSTexCoordSets = -1;
         int slotVSFade = -1;
         int slotFSLighting = -1;        // legacy u_fs_lighting of an older fork
@@ -218,6 +225,7 @@ namespace jasperengine{
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
         int slotFSDepthMaterial = -1;
+        unsigned int sizeFSDepthMaterial = 0; // reflected: 2 vec4 with Stochastic Tiling, else 1
         int slotVSDepthFade = -1;
         int slotVSDepthSkinning = -1;
         int slotVSDepthMorphTarget = -1;
@@ -228,6 +236,7 @@ namespace jasperengine{
 
         int slotVSGBufferParams = -1;
         int slotFSGBufferMaterial = -1;
+        unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2
         int slotVSGBufferSkinning = -1;
         int slotVSGBufferMorphTarget = -1;
         int slotVSGBufferLattice = -1;

@@ -32,63 +32,106 @@
 
 using namespace jasperengine;
 
+// The meaning of a key's property bits changed once since keys were written to files: MESH bit
+// 5 was 'Pcf' (USE_SHADOWS_PCF) until July 2026, then unnamed (stripped as keys were read), and
+// is Stochastic Tiling ('Sto') since October 2026. An editor of the time between could still
+// leave it set in what it wrote, so a key without a version (1) that has it holds a stale 'Pcf':
+// it is cleared as the key is read, or it would turn into a Stochastic Tiling variant. A key
+// written with the bit on carries `keyVersion: 2`; every other key is written as before, so
+// files without such variants keep their bytes.
 namespace {
-    // The customShaderId in a key is a session-local registry index, so a fork is
-    // named by its project-relative path instead, the way scenes name theirs.
-    // Both directions normalize, keeping a since-retired property bit out of the file.
-    YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
-        YAML::Node node(YAML::NodeType::Sequence);
-        for (ShaderKey rawKey : shaderKeys) {
-            const ShaderKey key = ShaderPool::normalizeKey(rawKey);
-            const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
-            std::string customShader;
-            if (customId != 0) {
-                // Without a name there is nothing stable to write, and dropping only
-                // the id would turn the override into one for the built-in shader
-                customShader = ShaderPool::getCustomShaderName(customId);
-                if (customShader.empty()) continue;
-            }
+    constexpr int SHADER_KEY_VERSION_STOCHASTIC = 2;
 
-            const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
-            YAML::Node entry(YAML::NodeType::Map);
-            entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
-            if (properties) entry["properties"] = properties;
-            if (!customShader.empty()) entry["customShader"] = customShader;
-            node.push_back(entry);
-        }
-        return node;
+    bool hasVersionedBits(ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (key.properties & shaderPropertyBit(5));
     }
 
-    std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node) {
-        std::vector<ShaderKey> shaderKeys;
-        if (!node || !node.IsSequence()) {
-            return shaderKeys;
-        }
+    ShaderKey stripStaleBits(ShaderKey key, int version) {
+        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && version < SHADER_KEY_VERSION_STOCHASTIC)
+            key.properties &= ~shaderPropertyBit(5);
+        return key;
+    }
+}
 
-        for (const auto& keyNode : node) {
-            if (!keyNode.IsMap()) {
-                // Backward compatibility: scenes saved before forks were named by path
-                // stored the packed key, so only its stable half survives and the fork
-                // is re-paired on the next save. Remove this branch with support for them.
-                shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getStorageKey(editor::YamlNumbers::as<uint64_t>(keyNode))));
-                continue;
-            }
-            ShaderType shaderType;
-            if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
-                continue;
-            }
+// The customShaderId in a key is a session-local registry index, so a fork is
+// named by its project-relative path instead, the way scenes name theirs.
+YAML::Node editor::Stream::encodeShaderKey(ShaderKey key) {
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+    std::string customShader;
+    if (customId != 0) {
+        // Without a name there is nothing stable to write, and dropping only
+        // the id would turn the override into one for the built-in shader
+        customShader = ShaderPool::getCustomShaderName(customId);
+        if (customShader.empty()) return YAML::Node();
+    }
 
-            // Keyed by name, so this returns the id the scenes resolve for it too
-            uint16_t customId = 0;
-            if (keyNode["customShader"]) {
-                customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
-            }
-            const uint32_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint32_t>(keyNode["properties"]) : 0;
-            shaderKeys.push_back(ShaderPool::normalizeKey(ShaderPool::getShaderKey(shaderType, properties, customId)));
+    // a plain integer: the 32-bit values files hold read and write as before
+    const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
+    YAML::Node entry(YAML::NodeType::Map);
+    entry["type"] = ShaderPool::getShaderTypeName(ShaderPool::getShaderTypeFromKey(key), true);
+    if (properties) entry["properties"] = properties;
+    if (!customShader.empty()) entry["customShader"] = customShader;
+    if (hasVersionedBits(key)) entry["keyVersion"] = SHADER_KEY_VERSION_STOCHASTIC;
+    return entry;
+}
+
+bool editor::Stream::decodeShaderKey(const YAML::Node& keyNode, ShaderKey& key) {
+    if (!keyNode) {
+        return false;
+    }
+    if (!keyNode.IsMap()) {
+        // Backward compatibility: scenes saved before forks were named by path
+        // stored the packed key (32 property bits), so only its stable half survives and
+        // the fork is re-paired on the next save. Remove this branch with support for them.
+        if (!keyNode.IsScalar()) {
+            return false;
         }
+        key = stripStaleBits(ShaderPool::getStorageKey(ShaderPool::unpackLegacyKey(editor::YamlNumbers::as<uint64_t>(keyNode))), 1);
+        return true;
+    }
+    ShaderType shaderType;
+    if (!keyNode["type"] || !ShaderPool::parseShaderTypeToken(keyNode["type"].as<std::string>(), shaderType)) {
+        return false;
+    }
+
+    // Keyed by name, so this returns the id the scenes resolve for it too
+    uint16_t customId = 0;
+    if (keyNode["customShader"]) {
+        customId = ShaderPool::registerCustomShader(keyNode["customShader"].as<std::string>());
+    }
+    // 64 bits; a file written before they were widened holds a 32-bit value
+    const uint64_t properties = keyNode["properties"] ? editor::YamlNumbers::as<uint64_t>(keyNode["properties"]) : 0;
+    const int version = keyNode["keyVersion"] ? editor::YamlNumbers::as<int>(keyNode["keyVersion"]) : 1;
+    key = stripStaleBits(ShaderPool::getShaderKey(shaderType, properties, customId), version);
+    return true;
+}
+
+// Both directions normalize, keeping a since-retired property bit out of the file.
+YAML::Node editor::Stream::encodeShaderKeys(const std::set<ShaderKey>& shaderKeys) {
+    YAML::Node node(YAML::NodeType::Sequence);
+    for (ShaderKey rawKey : shaderKeys) {
+        YAML::Node entry = encodeShaderKey(ShaderPool::normalizeKey(rawKey));
+        if (entry.IsMap()) node.push_back(entry);
+    }
+    return node;
+}
+
+std::vector<ShaderKey> editor::Stream::decodeShaderKeys(const YAML::Node& node) {
+    std::vector<ShaderKey> shaderKeys;
+    if (!node || !node.IsSequence()) {
         return shaderKeys;
     }
 
+    for (const auto& keyNode : node) {
+        ShaderKey key;
+        if (decodeShaderKey(keyNode, key)) {
+            shaderKeys.push_back(ShaderPool::normalizeKey(key));
+        }
+    }
+    return shaderKeys;
+}
+
+namespace {
     YAML::Node encodeExportBackendSet(const std::set<ShaderBackend>& backends) {
         YAML::Node node(YAML::NodeType::Sequence);
         for (ShaderBackend backend : backends) {
@@ -2399,8 +2442,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         YAML::Node exportNode;
 
         const ShaderOverrides& shaders = project->getShaderOverrides();
-        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = encodeShaderKeys(shaders.additions);
-        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = encodeShaderKeys(shaders.exclusions);
+        if (!shaders.additions.empty()) exportNode["shaderAdditions"] = Stream::encodeShaderKeys(shaders.additions);
+        if (!shaders.exclusions.empty()) exportNode["shaderExclusions"] = Stream::encodeShaderKeys(shaders.exclusions);
 
         const SourceCodeExportSettings& sourceCode = project->getSourceCodeExportSettings();
         if (sourceCode.graphicBackendsConfigured) {
@@ -2795,8 +2838,8 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         const YAML::Node& exportNode = node["export"];
 
         ShaderOverrides& shaders = project->getShaderOverrides();
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
-        for (ShaderKey key : decodeShaderKeys(exportNode["shaderExclusions"])) {
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderAdditions"])) shaders.additions.insert(key);
+        for (ShaderKey key : Stream::decodeShaderKeys(exportNode["shaderExclusions"])) {
             shaders.exclusions.insert(key);
             shaders.additions.erase(key);
         }
@@ -3069,7 +3112,7 @@ YAML::Node editor::Stream::encodeSceneProject(const Project* project, const Scen
     maxValuesNode["maxColliderIndices3D"] = sceneProject->maxValues.maxColliderIndices3D;
     root["maxValues"] = maxValuesNode;
 
-    YAML::Node shaderKeysNode = encodeShaderKeys(sceneProject->shaderKeys);
+    YAML::Node shaderKeysNode = Stream::encodeShaderKeys(sceneProject->shaderKeys);
     if (shaderKeysNode.size()) {
         root["shaderKeys"] = shaderKeysNode;
     }
@@ -3183,7 +3226,7 @@ void editor::Stream::decodeSceneProject(SceneProject* sceneProject, const YAML::
     }
 
     sceneProject->shaderKeys.clear();
-    for (ShaderKey key : decodeShaderKeys(node["shaderKeys"])) {
+    for (ShaderKey key : Stream::decodeShaderKeys(node["shaderKeys"])) {
         sceneProject->shaderKeys.insert(key);
     }
 
@@ -4171,6 +4214,14 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     if (material.sortPriority != 0) node["sortPriority"] = YamlNumbers::integerText(material.sortPriority);
     if (material.lighting != MaterialLighting::AUTO) node["lighting"] = materialLightingToString(material.lighting);
 
+    // Stochastic Tiling the same way: each value only away from its default
+    static const Material defaults = Material();
+    if (material.stochasticTiling) node["stochasticTiling"] = true;
+    if (material.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = YamlNumbers::text(finiteOr(material.stochasticCellSize));
+    if (material.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = YamlNumbers::text(finiteOr(material.stochasticBlendSharpness));
+    if (material.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = YamlNumbers::text(finiteOr(material.stochasticContrast));
+    if (material.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = YamlNumbers::text(finiteOr(material.stochasticRotation));
+
     // Phase 2, the same way: stencil, colour write and the extra pass when set
     encodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     if (material.extraPass != MaterialPass()) node["extraPass"] = encodeMaterialPass(material.extraPass, embedTextureData);
@@ -4226,6 +4277,12 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     material.depthOffsetUnits = decodeFinite(node["depthOffsetUnits"], 0.0f);
     material.sortPriority = node["sortPriority"] ? YamlNumbers::as<int>(node["sortPriority"]) : 0;
     material.lighting = node["lighting"] ? stringToMaterialLighting(node["lighting"].as<std::string>()) : MaterialLighting::AUTO;
+    static const Material defaults = Material();
+    material.stochasticTiling = node["stochasticTiling"] ? YamlNumbers::as<bool>(node["stochasticTiling"]) : false;
+    material.stochasticCellSize = decodeFinite(node["stochasticCellSize"], defaults.stochasticCellSize);
+    material.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], defaults.stochasticBlendSharpness);
+    material.stochasticContrast = decodeFinite(node["stochasticContrast"], defaults.stochasticContrast);
+    material.stochasticRotation = decodeFinite(node["stochasticRotation"], defaults.stochasticRotation);
     decodeStencilAndColorWrite(node, material.stencil, material.colorWrite);
     material.extraPass = decodeMaterialPass(node["extraPass"]);
 
@@ -6128,6 +6185,14 @@ YAML::Node editor::Stream::encodeTerrainSurfaceLayer(const TerrainSurfaceLayer& 
     node["occlusionStrength"] = layer.occlusionStrength;
     node["uvScale"] = encodeVector2(layer.uvScale);
     node["uvOffset"] = encodeVector2(layer.uvOffset);
+    // Stochastic Tiling writes only what differs from the defaults, so a layer without it
+    // saves as it always did
+    static const TerrainSurfaceLayer defaults;
+    if (layer.stochasticTiling != defaults.stochasticTiling) node["stochasticTiling"] = layer.stochasticTiling;
+    if (layer.stochasticCellSize != defaults.stochasticCellSize) node["stochasticCellSize"] = layer.stochasticCellSize;
+    if (layer.stochasticBlendSharpness != defaults.stochasticBlendSharpness) node["stochasticBlendSharpness"] = layer.stochasticBlendSharpness;
+    if (layer.stochasticContrast != defaults.stochasticContrast) node["stochasticContrast"] = layer.stochasticContrast;
+    if (layer.stochasticRotation != defaults.stochasticRotation) node["stochasticRotation"] = layer.stochasticRotation;
     return node;
 }
 
@@ -6147,6 +6212,11 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
     layer.roughnessFactor = decodeFinite(node["roughnessFactor"], layer.roughnessFactor);
     layer.metallicFactor = decodeFinite(node["metallicFactor"], layer.metallicFactor);
     layer.occlusionStrength = decodeFinite(node["occlusionStrength"], layer.occlusionStrength);
+    if (node["stochasticTiling"]) layer.stochasticTiling = YamlNumbers::as<bool>(node["stochasticTiling"]);
+    layer.stochasticCellSize = decodeFinite(node["stochasticCellSize"], layer.stochasticCellSize);
+    layer.stochasticBlendSharpness = decodeFinite(node["stochasticBlendSharpness"], layer.stochasticBlendSharpness);
+    layer.stochasticContrast = decodeFinite(node["stochasticContrast"], layer.stochasticContrast);
+    layer.stochasticRotation = decodeFinite(node["stochasticRotation"], layer.stochasticRotation);
     return layer;
 }
 

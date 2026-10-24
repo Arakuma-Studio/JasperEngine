@@ -81,6 +81,8 @@ editor/mcp/
     ConsoleTools.cpp      console logs
     ScriptTools.cpp       Lua/C++ scripts and compilation
     AssetTools.cpp        assets, imports, materials and shaders
+    SynthesisTools.cpp    texture synthesis (synthesize_texture; the recipe summary get_asset_info shows),
+                          sharing texsynth/SynthesisSession with Window > Texture Synthesis
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio

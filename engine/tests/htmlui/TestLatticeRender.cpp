@@ -182,8 +182,8 @@ TEST_F(LatticeRenderTest, AtRestDrawsExactlyWhatNoLatticeDraws){
     ASSERT_TRUE(s.settle());
     Screen plain;
     ASSERT_TRUE(plain.read());
-    const uint32_t plainProperties = box.getComponent<MeshComponent>().submeshes[0].shaderProperties;
-    EXPECT_EQ(plainProperties & (1u << 5), 0u) << "no lattice: no 'Ltc' bit";
+    const uint64_t plainProperties = box.getComponent<MeshComponent>().submeshes[0].shaderProperties;
+    EXPECT_EQ(plainProperties & shaderPropertyBit(32), 0u) << "no lattice: no 'Ltc' bit";
 
     Lattice& lattice = s.addLattice(0.0f, 0.0f, 0.0f, 2.5f);
     s.bind(box.getEntity(), lattice.getEntity());
@@ -191,7 +191,7 @@ TEST_F(LatticeRenderTest, AtRestDrawsExactlyWhatNoLatticeDraws){
     const MeshComponent& mesh = box.getComponent<MeshComponent>();
     ASSERT_EQ(mesh.lattice.count, 1);
     EXPECT_TRUE(mesh.lattice.variantActive);
-    EXPECT_EQ(mesh.submeshes[0].shaderProperties, plainProperties | (1u << 5)) << "the same variant plus 'Ltc'";
+    EXPECT_EQ(mesh.submeshes[0].shaderProperties, plainProperties | shaderPropertyBit(32)) << "the same variant plus 'Ltc'";
     EXPECT_EQ(mesh.lattice.movingBindings, 0u);
     EXPECT_EQ(mesh.lattice.worldPadding, 0.0f);
     // record: 12 header texels and the 4x4x4 padded grid, in whole rows of 64

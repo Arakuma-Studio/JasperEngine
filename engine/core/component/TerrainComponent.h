@@ -92,6 +92,16 @@ namespace jasperengine{
         Vector2 uvScale = Vector2(1, 1); //multiplies the shared detail tiling
         Vector2 uvOffset;
 
+        // Stochastic Tiling (shaderlib/includes/stochastic.glsl, Mikkelsen's hex-tiling):
+        // every map of the layer is read on a lattice of hexagonal cells, each with its own
+        // random offset, blended at their borders, so the tiling does not repeat. Three
+        // fetches per map instead of one where cells meet.
+        bool stochasticTiling = false;
+        float stochasticCellSize = 1.0f;        //cell width in texture repeats (0.25-4)
+        float stochasticBlendSharpness = 0.4f;  //0-1: how narrow the blend between cells is
+        float stochasticContrast = 0.45f;       //0-1: keeps the texture's contrast where cells blend
+        float stochasticRotation = 0.0f;        //0-1: random turn per cell, share of +-180 degrees
+
         bool operator == (const TerrainSurfaceLayer& other) const{
             return pbr == other.pbr &&
                    colorTexture == other.colorTexture &&
@@ -106,7 +116,12 @@ namespace jasperengine{
                    metallicFactor == other.metallicFactor &&
                    occlusionStrength == other.occlusionStrength &&
                    uvScale == other.uvScale &&
-                   uvOffset == other.uvOffset;
+                   uvOffset == other.uvOffset &&
+                   stochasticTiling == other.stochasticTiling &&
+                   stochasticCellSize == other.stochasticCellSize &&
+                   stochasticBlendSharpness == other.stochasticBlendSharpness &&
+                   stochasticContrast == other.stochasticContrast &&
+                   stochasticRotation == other.stochasticRotation;
         }
 
         bool operator != (const TerrainSurfaceLayer& other) const{
@@ -193,9 +208,14 @@ namespace jasperengine{
         layer.occlusionTexture = material.occlusionTexture;
         layer.roughnessFactor = material.roughnessFactor;
         layer.metallicFactor = material.metallicFactor;
-        // Tiling is the layer's own, and no material carries it
+        // Tiling is the layer's own, and no material carries it; so is how it is sampled
         layer.uvScale = previous.uvScale;
         layer.uvOffset = previous.uvOffset;
+        layer.stochasticTiling = previous.stochasticTiling;
+        layer.stochasticCellSize = previous.stochasticCellSize;
+        layer.stochasticBlendSharpness = previous.stochasticBlendSharpness;
+        layer.stochasticContrast = previous.stochasticContrast;
+        layer.stochasticRotation = previous.stochasticRotation;
         return layer;
     }
 
@@ -210,10 +230,11 @@ namespace jasperengine{
         fn(layer.heightTexture);
     }
 
-    // A layer with its own surface, or its own tiling, needs the wider terrain shader
+    // A layer with its own surface, its own tiling or Stochastic Tiling needs the wider
+    // terrain shader (its per-layer block)
     inline bool hasTerrainSurfaceLayers(const TerrainComponent& terrain){
         for (const TerrainSurfaceLayer& layer : terrain.surfaceLayers){
-            if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0)){
+            if (layer.pbr || layer.uvScale != Vector2(1, 1) || layer.uvOffset != Vector2(0, 0) || layer.stochasticTiling){
                 return true;
             }
         }

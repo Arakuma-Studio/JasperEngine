@@ -7,6 +7,9 @@
 #   tools/build.sh android [--clean]   engine sample project APK (debug)
 #   tools/build.sh htmlui-tests [--clean]  builds and runs jasperengine-htmlui-tests headless
 #   tools/build.sh htmlui-editor-tests      builds the linux editor with jasperengine-htmlui-editor-tests, runs them
+#   tools/build.sh texsynth-tests      builds and runs jasperengine-texsynth-tests (texture synthesis, editor/texsynth)
+#   tools/build.sh editor-tests        builds the linux editor with jasperengine-editor-tests (unit tests of
+#                                      the editor and engine core: shader keys, .sdat, scene encoding), runs them
 #   tools/build.sh shell <target>      interactive shell in that target's image
 #
 # BUILD_TYPE overrides the CMake build type (default Release, Debug for web).
@@ -22,6 +25,12 @@
 # JASPER_HTMLUI_WRITE_ACTUAL=1 keeps every compared image in the test output directory (both backends).
 # htmlui-editor-tests: HTMLUI_TEST_ARGS goes to the test binary, RUN=0 builds only,
 # HTMLUI_LIVE_NETWORK=1 adds the live Google Fonts test.
+# texsynth-tests: TEXSYNTH_TEST_ARGS goes to the test binary, RUN=0 builds only. Without Docker:
+#   cmake -S . -B build/linux/editor -DJASPERENGINE_TEXSYNTH_TESTS=ON && cmake --build build/linux/editor
+#   --target jasperengine-texsynth-tests && build/linux/editor/jasperengine-texsynth-tests
+# editor-tests: EDITOR_TEST_ARGS goes to the test binary (e.g. --gtest_filter=ShaderKey*),
+# RUN=0 builds only. Without Docker: configure the editor with -DJASPERENGINE_EDITOR_TESTS=ON,
+# build the target jasperengine-editor-tests, run <build dir>/jasperengine-editor-tests.
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
 
@@ -30,7 +39,7 @@ EDITOR_TARGET=jasperengine-editor
 ENGINE_TARGET=jasperengine-project
 
 usage() {
-    sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 1
 }
 
@@ -51,13 +60,13 @@ for arg in "$@"; do
 done
 
 case "$TARGET" in
-    linux|web|android|htmlui-tests|htmlui-editor-tests) ;;
+    linux|web|android|htmlui-tests|htmlui-editor-tests|texsynth-tests|editor-tests) ;;
     *) usage ;;
 esac
 
 # The tests run in the linux image, next to the linux build output
 IMAGE_TARGET="$TARGET"
-[[ "$TARGET" == htmlui-tests || "$TARGET" == htmlui-editor-tests ]] && IMAGE_TARGET=linux
+[[ "$TARGET" == htmlui-tests || "$TARGET" == htmlui-editor-tests || "$TARGET" == texsynth-tests || "$TARGET" == editor-tests ]] && IMAGE_TARGET=linux
 IMAGE="jasperengine/${IMAGE_TARGET}-build"
 OUT="build/$IMAGE_TARGET"
 CACHE="build/.cache"
@@ -195,6 +204,28 @@ htmlui-editor-tests)
         [[ '${RUN:-1}' == 0 ]] && exit 0
         set -f  # a --gtest_filter pattern is not a glob
         xvfb-run -a -s '-screen 0 1600x900x24' $OUT/editor/jasperengine-htmlui-editor-tests ${HTMLUI_TEST_ARGS:-}
+    "
+    ;;
+texsynth-tests)
+    BT="${BUILD_TYPE:-Release}"
+    run bash -euo pipefail -c "
+        cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_TEXSYNTH_TESTS=ON \
+            -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+        cmake --build $OUT/editor --target jasperengine-texsynth-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        $OUT/editor/jasperengine-texsynth-tests ${TEXSYNTH_TEST_ARGS:-}
+    "
+    ;;
+editor-tests)
+    BT="${BUILD_TYPE:-Release}"
+    run bash -euo pipefail -c "
+        cmake -S . -B $OUT/editor -G Ninja -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_EDITOR_TESTS=ON \
+            -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+        cmake --build $OUT/editor --target jasperengine-editor-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        $OUT/editor/jasperengine-editor-tests ${EDITOR_TEST_ARGS:-}
     "
     ;;
 android)

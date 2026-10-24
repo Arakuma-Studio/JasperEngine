@@ -738,7 +738,37 @@ void setTerrainMapsTool(const CallPtr& call) {
             }
             if (layers.size() <= static_cast<size_t>(index)) layers.resize(index + 1);
             TerrainSurfaceLayer& layer = layers[index];
+            const std::string where = "layers[" + std::to_string(index) + "].";
             if (has(item, "pbr")) layer.pbr = boolOr(item, "pbr", layer.pbr);
+            if (has(item, "stochastic_tiling")) {
+                if (!item["stochastic_tiling"].is_boolean()) {
+                    call->fail(where + "stochastic_tiling must be true or false.");
+                    return;
+                }
+                layer.stochasticTiling = item["stochastic_tiling"].get<bool>();
+            }
+            // Stochastic Tiling's parameters, in the inspector's ranges
+            struct StochasticParam { const char* name; float TerrainSurfaceLayer::*field; float lo, hi; const char* meaning; };
+            static const StochasticParam stochasticParams[] = {
+                {"cell_size", &TerrainSurfaceLayer::stochasticCellSize, 0.25f, 4.0f, "the cell width in texture repeats, default 1"},
+                {"blend_sharpness", &TerrainSurfaceLayer::stochasticBlendSharpness, 0.0f, 1.0f, "default 0.4"},
+                {"contrast", &TerrainSurfaceLayer::stochasticContrast, 0.0f, 1.0f, "default 0.45, 0 blends linearly"},
+                {"rotation", &TerrainSurfaceLayer::stochasticRotation, 0.0f, 1.0f, "share of +-180 degrees per cell, default 0"}};
+            for (const StochasticParam& param : stochasticParams) {
+                if (!has(item, param.name)) continue;
+                const Json& value = item[param.name];
+                const double number = value.is_number() ? value.get<double>() : -1.0;
+                if (!value.is_number() || !std::isfinite(number) || number < param.lo || number > param.hi) {
+                    std::ostringstream range;
+                    range << where << param.name << " must be a number from " << param.lo << " to " << param.hi << " (" << param.meaning << ").";
+                    call->fail(range.str());
+                    return;
+                }
+                layer.*param.field = static_cast<float>(number);
+                if (!layer.stochasticTiling) {
+                    result["notes"].push_back(where + std::string(param.name) + " is stored but has no effect until stochastic_tiling is true.");
+                }
+            }
             for (const auto& map : maps) {
                 if (!has(item, map.first)) continue;
                 if (!texturePath(item[map.first], "layers[" + std::to_string(index) + "]." + map.first, layer.*map.second)) {
@@ -749,6 +779,14 @@ void setTerrainMapsTool(const CallPtr& call) {
             layersChanged = true;
         }
         result["layers"] = layers.size();
+        Json stochastic = Json::array();
+        for (size_t i = 0; i < layers.size(); i++) {
+            const TerrainSurfaceLayer& layer = layers[i];
+            if (!layer.stochasticTiling) continue;
+            stochastic.push_back({{"index", i}, {"cell_size", layer.stochasticCellSize}, {"blend_sharpness", layer.stochasticBlendSharpness},
+                                  {"contrast", layer.stochasticContrast}, {"rotation", layer.stochasticRotation}});
+        }
+        if (!stochastic.empty()) result["stochastic_tiling"] = stochastic;
     }
     if (blendChanged) {
         multi->addPropertyCmd<std::vector<Texture>>(project, sceneId, entity, ComponentType::TerrainComponent, "blendMaps",
@@ -4432,7 +4470,8 @@ void registerWorldTools(McpRegistry& registry) {
         "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map "
         "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
         "{color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its "
-        "normal/roughness/metallic/occlusion). Images under the assets dir.",
+        "normal/roughness/metallic/occlusion), stochastic_tiling (hides tiling repetition, up to 3x the reads) "
+        "and its cell_size/blend_sharpness/contrast/rotation. Images under the assets dir.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -4451,7 +4490,12 @@ void registerWorldTools(McpRegistry& registry) {
                 {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
                 {"pbr", boolean("")},
                 {"color", string("")}, {"normal", string("")}, {"roughness", string("")},
-                {"metallic", string("")}, {"occlusion", string("")}, {"height", string("Blend height only.")}
+                {"metallic", string("")}, {"occlusion", string("")}, {"height", string("Blend height only.")},
+                {"stochastic_tiling", boolean("")},
+                {"cell_size", withDefault(number("Texture repeats.", 0.25, 4), 1)},
+                {"blend_sharpness", withDefault(number("", 0, 1), 0.4)},
+                {"contrast", withDefault(number("", 0, 1), 0.45)},
+                {"rotation", withDefault(number("Of +-180 deg.", 0, 1), 0)}
             }, {"index"}), "")}
         }),
         setTerrainMapsTool, false, false);

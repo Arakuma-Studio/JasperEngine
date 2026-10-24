@@ -18,6 +18,7 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
 #include "window/PlayInput.h"
@@ -164,6 +165,7 @@ namespace jasperengine::editor{
         ImageViewerWindow* imageViewerWindow;
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
+        TextureSynthesisWindow* textureSynthesisWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
@@ -382,6 +384,8 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        TextureSynthesisWindow* getTextureSynthesisWindow() const;
+        void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;

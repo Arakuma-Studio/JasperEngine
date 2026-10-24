@@ -235,6 +235,17 @@ namespace jasperengine{
         uint8_t _pad_28[4];
         Vector3 emissiveFactor = Vector3(0.0f, 0.0f, 0.0f);  // linear color
         float foliageTransmission = 0.0f; // thin-leaf backlighting, 0 disables
+        // Stochastic Tiling's values (stochasticTiling below; includes/stochastic.glsl): floats
+        // 12-15 of the shader part, uploaded (16 floats) only to the variants that have it ('Sto')
+
+        // Stochastic Tiling: the width of a hex cell in texture repeats (0.25-4)
+        float stochasticCellSize = 1.0f;
+        // Stochastic Tiling: how narrow the blend between neighbouring cells is (0-1)
+        float stochasticBlendSharpness = 0.4f;
+        // Stochastic Tiling: keeps the texture's contrast where cells blend (0-1, 0 blends linearly)
+        float stochasticContrast = 0.45f;
+        // Stochastic Tiling: a random turn per cell, the share of +-180 degrees (0-1)
+        float stochasticRotation = 0.0f;
         // --- end shader part
 
         Texture baseColorTexture;
@@ -245,6 +256,14 @@ namespace jasperengine{
 
         MaterialAlphaMode alphaMode = MaterialAlphaMode::AUTO;
         MaterialLighting lighting = MaterialLighting::AUTO;
+
+        // Stochastic Tiling of the built-in Lit material: its texture maps sampled with a random
+        // offset (and turn) per hex cell, blended, so a tiled texture shows no repetition. Off by
+        // default; the four values above shape it. The colour, depth (alpha clip) and G-buffer
+        // passes all sample the same way. Not for terrains (their layers have their own), sprite
+        // atlases (Texture Rect: the offsets would read neighbouring frames) or shaders with a
+        // manifest (the library shaders' STOCHASTIC feature).
+        bool stochasticTiling = false;
 
         // glTF texCoord index (UV set) each texture samples: 0 = primary (a_texcoord1),
         // 1 = secondary (a_texcoord2). Only two sets are supported; higher indices are
@@ -291,6 +310,11 @@ namespace jasperengine{
                    alphaCutoff == other.alphaCutoff &&
                    emissiveFactor == other.emissiveFactor &&
                    foliageTransmission == other.foliageTransmission &&
+                   stochasticCellSize == other.stochasticCellSize &&
+                   stochasticBlendSharpness == other.stochasticBlendSharpness &&
+                   stochasticContrast == other.stochasticContrast &&
+                   stochasticRotation == other.stochasticRotation &&
+                   stochasticTiling == other.stochasticTiling &&
                    baseColorTexture == other.baseColorTexture &&
                    emissiveTexture == other.emissiveTexture &&
                    metallicRoughnessTexture == other.metallicRoughnessTexture &&

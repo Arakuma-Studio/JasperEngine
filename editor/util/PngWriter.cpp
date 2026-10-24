@@ -56,9 +56,10 @@ unsigned char pngPaeth(int a, int b, int c) {
 
 } // namespace
 
-bool writeGray16Png(const fs::path& path, int width, int height,
-                    const unsigned char* pixels, std::size_t pixelByteCount) {
-    const int bpp = 2; // bytes per 16-bit sample
+bool encodePng16(int width, int height, int channels, const unsigned char* pixels,
+                 std::size_t pixelByteCount, std::vector<unsigned char>& out) {
+    if (channels < 1 || channels > 4) return false;
+    const int bpp = 2 * channels; // bytes per pixel
     const size_t rowBytes = static_cast<size_t>(width) * bpp;
     if (width <= 0 || height <= 0 || !pixels ||
         pixelByteCount < rowBytes * static_cast<size_t>(height)) {
@@ -67,13 +68,9 @@ bool writeGray16Png(const fs::path& path, int width, int height,
 
     // PNG stores 16-bit samples big-endian; the source is native little-endian.
     std::vector<unsigned char> rows(static_cast<size_t>(height) * rowBytes);
-    for (int y = 0; y < height; ++y) {
-        const unsigned char* src = pixels + static_cast<size_t>(y) * rowBytes;
-        unsigned char* dst = rows.data() + static_cast<size_t>(y) * rowBytes;
-        for (int x = 0; x < width; ++x) {
-            dst[x * 2] = src[x * 2 + 1]; // high byte first
-            dst[x * 2 + 1] = src[x * 2];
-        }
+    for (size_t i = 0; i + 1 < rows.size(); i += 2) {
+        rows[i] = pixels[i + 1]; // high byte first
+        rows[i + 1] = pixels[i];
     }
 
     // Adaptive per-row filtering: pick the filter minimizing the sum of absolute
@@ -121,15 +118,16 @@ bool writeGray16Png(const fs::path& path, int width, int height,
     unsigned char* zdata = stbi_zlib_compress(filtered.data(), static_cast<int>(filtered.size()), &zlen, 8);
     if (!zdata) return false;
 
-    std::vector<unsigned char> out;
+    out.clear();
     const unsigned char sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
     out.insert(out.end(), sig, sig + 8);
 
+    static const unsigned char colorTypes[5] = {0, 0, 4, 2, 6}; // by channel count
     std::vector<unsigned char> ihdr;
     pngPutU32(ihdr, static_cast<uint32_t>(width));
     pngPutU32(ihdr, static_cast<uint32_t>(height));
     ihdr.push_back(16); // bit depth
-    ihdr.push_back(0);  // color type: grayscale
+    ihdr.push_back(colorTypes[channels]);
     ihdr.push_back(0);  // compression
     ihdr.push_back(0);  // filter
     ihdr.push_back(0);  // interlace
@@ -139,6 +137,13 @@ bool writeGray16Png(const fs::path& path, int width, int height,
 
     // stbi_zlib_compress allocates with stb's default allocator (malloc).
     std::free(zdata);
+    return true;
+}
+
+bool writeGray16Png(const fs::path& path, int width, int height,
+                    const unsigned char* pixels, std::size_t pixelByteCount) {
+    std::vector<unsigned char> out;
+    if (!encodePng16(width, height, 1, pixels, pixelByteCount, out)) return false;
 
     FILE* f = std::fopen(path.string().c_str(), "wb");
     if (!f) return false;

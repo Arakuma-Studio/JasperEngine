@@ -118,6 +118,7 @@ editor::App::App(){
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
+    textureSynthesisWindow = new TextureSynthesisWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
 
     isInitialized = false;
@@ -247,6 +248,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleConsole,
     ToggleAnimation,
     ToggleTerrain,
+    ToggleTextureSynthesis,
     ToggleMcpActivity,
     FocusScene,
     FocusGame,
@@ -570,6 +572,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuCommand(AppMenuCommand::ToggleTextureSynthesis, windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -736,6 +739,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
+        case AppMenuCommand::ToggleTextureSynthesis:
+            textureSynthesisWindow->open();
+            break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
             break;
@@ -775,6 +781,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             consoleWindow->setOpen(true);
             animationWindow->setOpen(true);
             terrainEditWindow->setOpen(false);
+            textureSynthesisWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
             buildDockspace(true);
@@ -1336,6 +1343,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_middle_top, ImVec2(viewport.x - rightWidth - leftWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(HierarchyWindow::WINDOW_NAME, dock_id_left_top);
     ImGui::DockBuilderDockWindow("Game", dock_id_middle_top);
+    // Texture Synthesis is mostly a preview: a tab next to the Scene and Game views
+    ImGui::DockBuilderDockWindow(TextureSynthesisWindow::WINDOW_NAME, dock_id_middle_top);
 
     // Tab order inside the shared nodes (first one is the visible tab).
     auto stampPanelDockOrder = [](const char* windowName, short order) {
@@ -2063,6 +2072,7 @@ void editor::App::show(){
     consoleWindow->show();
     animationWindow->show();
     terrainEditWindow->show();
+    textureSynthesisWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
     codeEditor->show();
@@ -3228,6 +3238,9 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    if (!editor::texsynth::SynthesisRun::cancelAll()) {
+        Out::warning("A texture synthesis did not stop in time; it is left to finish without effect.");
+    }
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
 }
@@ -3275,6 +3288,9 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 
 void editor::App::prepareForProjectSwitch() {
     imageViewerWindow->closeAll();
+    // a synthesis started in this project is cancelled and never written into the next one
+    textureSynthesisWindow->resetForProjectSwitch();
+    editor::texsynth::projectSwitching();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
     // now quiesce any remaining scene/model jobs before pool cleanup.
@@ -3600,13 +3616,24 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    // v34: lattice deformer (includes/lattice.glsl): HAS_LATTICE paths in mesh/depth/gbuffer.vert
-    //      and the surface includes (MESH bit 5 'Ltc', DEPTH bit 14, GBUFFER bits 10-12), the
-    //      tangent of includes/surface_vs.glsl transformed before the hooks; a cache filled by a
-    //      build of the lattice branch before its GLSL fixes held lattice variants by these names.
-    // v35: lattice vertex colour mask clamped to [0, 1] (a v34 cache from the lattice branch holds
-    //      unclamped lattice variants by the same names).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
+    // v34: Stochastic Tiling (includes/stochastic.glsl) — u_fs_terrainLayers gains
+    //      stochastic[MAX_TERRAIN_LAYERS], read by the PBR terrain path of the color pass and
+    //      the G-buffer; library shaders gain the STOCHASTIC feature.
+    //      Also .sdat format version 2 (the key holds 64 property bits). Version 1 files would be
+    //      rejected and rebuilt anyway; the new directory keeps an older editor's cache apart.
+    // v35: Stochastic Tiling of the built-in Lit material — MESH bit 5 'Sto' (USE_STOCHASTIC_TILING:
+    //      includes/pbr.glsl, u_fs_pbrParams gains a vec4), DEPTH bit 14 and GBUFFER bit 10 'Sto'
+    //      (u_fs_depthMaterial / u_fs_gbufferMaterial gain one); lighting2d.glsl's normal map.
+    //      Also supersedes v34, which two branches each bumped to (the terrain/library Stochastic
+    //      Tiling and the 64-bit shader keys): a v34 cache from either could be trusted by the other.
+    // v36: terrain triplanar: the vertex normal from central differences, the three projections
+    //      weighted by abs(normal)^8 (the slope smoothstep and the two-way side split are gone),
+    //      projections under 2% skipped.
+    // v37: lattice deformer (includes/lattice.glsl): HAS_LATTICE paths in mesh/depth/gbuffer.vert
+    //      and the surface includes (MESH bit 32 'Ltc', DEPTH bit 15, GBUFFER bits 11-13), the
+    //      tangent of includes/surface_vs.glsl transformed before the hooks. (Builds of the lattice
+    //      branch before it joined Stochastic Tiling used v34/v35 with 'Ltc' at MESH bit 5.)
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v37";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -3660,6 +3687,21 @@ editor::AnimationWindow* editor::App::getAnimationWindow() const{
 
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
+}
+
+editor::TextureSynthesisWindow* editor::App::getTextureSynthesisWindow() const{
+    return textureSynthesisWindow;
+}
+
+void editor::App::openTextureSynthesis(const std::filesystem::path& image, bool editRecipe){
+    if (!editRecipe) {
+        textureSynthesisWindow->openWithExample(image);
+        return;
+    }
+    std::string error;
+    if (!textureSynthesisWindow->openRecipe(image, error)) {
+        registerAlert("Edit Synthesis", "Can't restore the synthesis of " + image.filename().string() + ": " + error);
+    }
 }
 
 editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
@@ -3871,6 +3913,7 @@ void editor::App::applyPanelVisibilitySettings() {
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
     terrainEditWindow->setOpen(visibility.terrain);
+    textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
 }
@@ -3883,6 +3926,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
+    visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
 

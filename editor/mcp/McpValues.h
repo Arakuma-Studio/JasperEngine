@@ -239,6 +239,13 @@ namespace jasperengine::editor::mcp {
         // manifest). False with `error`.
         static bool materialShaderLibraryFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error);
         static bool isMaterialShaderLibraryKey(const std::string& key);
+        // Stochastic Tiling of a material: stochasticTiling, and stochasticCellSize (0.25-4),
+        // stochasticBlendSharpness, stochasticContrast, stochasticRotation (0-1). The values are
+        // written while it is on or away from their defaults; out of range is an error naming
+        // the field, what it does and its default.
+        static void materialStochasticToJson(const Material& material, Json& out);
+        static bool materialStochasticFromJson(const Json& value, Material& out, std::string& error);
+        static bool isMaterialStochasticKey(const std::string& key);
 
         // ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
         //   stencil     {compare, ref, readMask, writeMask, pass, fail, depthFail}: compare

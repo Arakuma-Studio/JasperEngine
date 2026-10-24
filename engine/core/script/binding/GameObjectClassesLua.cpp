@@ -958,6 +958,11 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("occlusionStrength", &TerrainSurfaceLayer::occlusionStrength, &TerrainSurfaceLayer::occlusionStrength)
         .addProperty("uvScale", &TerrainSurfaceLayer::uvScale, &TerrainSurfaceLayer::uvScale)
         .addProperty("uvOffset", &TerrainSurfaceLayer::uvOffset, &TerrainSurfaceLayer::uvOffset)
+        .addProperty("stochasticTiling", &TerrainSurfaceLayer::stochasticTiling, &TerrainSurfaceLayer::stochasticTiling)
+        .addProperty("stochasticCellSize", &TerrainSurfaceLayer::stochasticCellSize, &TerrainSurfaceLayer::stochasticCellSize)
+        .addProperty("stochasticBlendSharpness", &TerrainSurfaceLayer::stochasticBlendSharpness, &TerrainSurfaceLayer::stochasticBlendSharpness)
+        .addProperty("stochasticContrast", &TerrainSurfaceLayer::stochasticContrast, &TerrainSurfaceLayer::stochasticContrast)
+        .addProperty("stochasticRotation", &TerrainSurfaceLayer::stochasticRotation, &TerrainSurfaceLayer::stochasticRotation)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

@@ -120,8 +120,9 @@ Field names, enum names and enum values in the contract headers are the serializ
 ### 2.2 Engine runtime
 
 - GPU deformation in the vertex shader (§5) for every pass that draws meshes. Variant bit:
-  MESH property bit 5 (retired `Pcf`) becomes `LATTICE` ("Ltc"/"Lattice"); DEPTH and GBUFFER
-  get their own free bit. Meshes without an active lattice keep their existing keys and
+  MESH property bit 32 `Ltc` ("Lattice", the first bit of the 64-bit keys past the 32 older keys
+  use), DEPTH bit 15, GBUFFER bit 11 (plus 12/13 `Vc3`/`Vc4` for masks). (Planned as the
+  retired MESH bit 5; Stochastic Tiling took that slot on main first, see §12.13.) Meshes without an active lattice keep their existing keys and
   pipelines unchanged.
 - The deformation data is a per-mesh RGBA32F vertex texture plus a small uniform block, so
   WebGL2/GLES3 work (no storage buffers, no compute) and resolution up to 16^3 fits.
@@ -1890,6 +1891,11 @@ prop at the squashed top, refusals); rest/pose keys and their errors; the play h
   `xdotool key ctrl+a` releases Ctrl before A; when both land in one frame ImGui applies the
   release before shortcut code reads `io.KeyCtrl` (an editor-wide ImGui trait, not lattice
   specific), which made the test fail under load. Verified with logged X events.
+- Joining main after Stochastic Tiling and the 64-bit shader keys: Stochastic Tiling had taken
+  MESH bit 5, DEPTH bit 14 and GBUFFER bit 10, the slots the lattice used on its branch. The
+  lattice moved to MESH bit 32, DEPTH bit 15 and GBUFFER bits 11-13 (`Ltc`, `Vc3`, `Vc4`);
+  the bit numbers in §12.3 and the reviews above are the branch's. The property functions take
+  `stochasticTiling` then `lattice`. Editor shader cache v37.
 - Unit test `BendAndTwistUseTheCageProportions` for the agent-UX pass's preset change.
 - Xcode project (`engine/workspaces/xcode/JasperEngine.xcodeproj`): the new engine sources,
   in a `lattice` group and next to their siblings (the editor has no Xcode project).

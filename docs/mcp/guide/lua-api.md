@@ -684,7 +684,9 @@ sprites) sorted by their distance to the camera position, not by Z.
 `alphaCutoff`, `emissiveFactor`, `baseColorTexture`, `emissiveTexture`,
 `metallicRoughnessTexture`, `occlusionTexture`, `normalTexture`, `lighting`
 (`MaterialLighting.*`: the stages evaluating the object's lights; set it on the copy
-`getMaterial(i)` returns, then `setMaterial(i, m)`). Shader library (same copy-then-set rule):
+`getMaterial(i)` returns, then `setMaterial(i, m)`), `stochasticTiling` (Stochastic Tiling of
+the built-in Lit's maps) with `stochasticCellSize`, `stochasticBlendSharpness`, `stochasticContrast`
+and `stochasticRotation` (see the shaders guide). Shader library (same copy-then-set rule):
 `shader` (`""` built-in Lit, `"library:<name>"`, or a fork), `blendMode`
 (`MaterialBlendMode.*`), `cullMode`, `depthWrite`, `depthTest`, `depthOffsetFactor`,
 `depthOffsetUnits`, `sortPriority` (draw order within its queue, opaque or transparent, lower

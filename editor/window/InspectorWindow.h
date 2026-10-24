@@ -76,7 +76,15 @@ namespace jasperengine::editor{
         // 0/0 (min >= max) the field stays unbounded, preserving existing rows.
         int intMin = 0;
         int intMax = 0;
+        // A clamped slider for the float rows (Float, FloatPositive, Float_0_1) instead of the
+        // drag field: used when floatMin < floatMax (drag and typed entry stay in range);
+        // logarithmic for a range across magnitudes (e.g. Stochastic Tiling's Cell Size 0.25-4)
+        float floatMin = 0.0f;
+        float floatMax = 0.0f;
+        bool logarithmic = false;
         bool child = false;
+        // the label indented one step: a setting that belongs to the row above it
+        bool indent = false;
         std::string help = "";
         const char *format = "%.2f";
         bool showColors = true;
@@ -369,7 +377,7 @@ namespace jasperengine::editor{
 
         void beginTable(ComponentType cpType, float firstColSize, std::string nameAddon = "");
         void endTable();
-        bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false);
+        bool propertyHeader(std::string label, float secondColSize = -1, bool defChanged = false, bool child = false, bool indent = false);
         bool propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         bool propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings = RowSettings());
         void setParticleFrames(ComponentType cpType, const std::string& propertyId, SceneProject* sceneProject, Entity entity, const std::vector<int>& frames);
@@ -396,6 +404,12 @@ namespace jasperengine::editor{
         // one member row: a label for engine-written and non-editable members, else a
         // drag field; true with newValue when it changed
         bool drawShaderUniformRow(const ShaderUniform& uniform, const ShaderUniformValues& values, const std::string& idPrefix, Vector4& newValue);
+        // Under a Stochastic Tiling Rotation row (a material's, a terrain layer's): when the rotation is
+        // on and the normal map's average normal leans (util/NormalMapTilt), a warning and a button that
+        // sets rotationProperty to 0 on every entity in one undo step
+        void drawStochasticRotationWarning(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                           const std::string& rotationProperty, float rotation, const Texture& normalTexture,
+                                           const std::function<void()>& onValueChanged);
         void drawShaderUniformWarnings(const std::vector<std::string>& warnings);
         // ---- shader library (InspectorShaderLibrary.cpp) ----
         // The Shader picker: the built-in shader, the library shaders of `type` grouped by

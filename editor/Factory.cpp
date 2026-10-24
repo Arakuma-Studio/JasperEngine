@@ -1177,6 +1177,18 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].material.occlusionTexCoord = " << formatInt(submeshMaterial.occlusionTexCoord) << ";\n";
         if (submeshMaterial.normalTexCoord != 0)
             code << ind << "mesh.submeshes[" << idx << "].material.normalTexCoord = " << formatInt(submeshMaterial.normalTexCoord) << ";\n";
+        // Stochastic Tiling, away from its defaults
+        static const Material defaultMaterial = Material();
+        if (submeshMaterial.stochasticTiling)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticTiling = true;\n";
+        if (submeshMaterial.stochasticCellSize != defaultMaterial.stochasticCellSize)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticCellSize = " << formatFloat(submeshMaterial.stochasticCellSize) << ";\n";
+        if (submeshMaterial.stochasticBlendSharpness != defaultMaterial.stochasticBlendSharpness)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticBlendSharpness = " << formatFloat(submeshMaterial.stochasticBlendSharpness) << ";\n";
+        if (submeshMaterial.stochasticContrast != defaultMaterial.stochasticContrast)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticContrast = " << formatFloat(submeshMaterial.stochasticContrast) << ";\n";
+        if (submeshMaterial.stochasticRotation != defaultMaterial.stochasticRotation)
+            code << ind << "mesh.submeshes[" << idx << "].material.stochasticRotation = " << formatFloat(submeshMaterial.stochasticRotation) << ";\n";
         // shader library: the shader, its values and the render state, when set
         code << formatMaterialShaderLibrary(indentSpaces, submeshMaterial, "mesh.submeshes[" + idx + "].material", projectPath);
 
@@ -1705,6 +1717,22 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".occlusionStrength = " << formatFloat(layer.occlusionStrength) << ";\n";
         code << ind << var << ".uvScale = " << formatVector2(layer.uvScale) << ";\n";
         code << ind << var << ".uvOffset = " << formatVector2(layer.uvOffset) << ";\n";
+        if (layer.stochasticTiling){
+            code << ind << var << ".stochasticTiling = true;\n";
+        }
+        static const TerrainSurfaceLayer defaults;
+        if (layer.stochasticCellSize != defaults.stochasticCellSize){
+            code << ind << var << ".stochasticCellSize = " << formatFloat(layer.stochasticCellSize) << ";\n";
+        }
+        if (layer.stochasticBlendSharpness != defaults.stochasticBlendSharpness){
+            code << ind << var << ".stochasticBlendSharpness = " << formatFloat(layer.stochasticBlendSharpness) << ";\n";
+        }
+        if (layer.stochasticContrast != defaults.stochasticContrast){
+            code << ind << var << ".stochasticContrast = " << formatFloat(layer.stochasticContrast) << ";\n";
+        }
+        if (layer.stochasticRotation != defaults.stochasticRotation){
+            code << ind << var << ".stochasticRotation = " << formatFloat(layer.stochasticRotation) << ";\n";
+        }
     }
     code << ind << "terrain.autoSetRanges = " << formatBool(terrain.autoSetRanges) << ";\n";
     code << ind << "terrain.offset = " << formatVector2(terrain.offset) << ";\n";

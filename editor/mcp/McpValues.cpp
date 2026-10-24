@@ -116,6 +116,33 @@ bool endsWith(const std::string& text, const std::string& suffix) {
     return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
+// Stochastic Tiling's values of a material, in the Inspector's ranges: false (and error) out of
+// them, naming the field, what it does and its default
+struct StochasticMaterialValue { const char* name; float Material::*field; float lo, hi; const char* meaning; };
+const StochasticMaterialValue stochasticMaterialValues[] = {
+    {"stochasticCellSize", &Material::stochasticCellSize, 0.25f, 4.0f, "the hex cell width in texture repeats, default 1"},
+    {"stochasticBlendSharpness", &Material::stochasticBlendSharpness, 0.0f, 1.0f, "how narrow the blend between cells is, default 0.4"},
+    {"stochasticContrast", &Material::stochasticContrast, 0.0f, 1.0f, "default 0.45, 0 blends linearly"},
+    {"stochasticRotation", &Material::stochasticRotation, 0.0f, 1.0f, "a random turn per cell, the share of +-180 degrees, default 0"}};
+
+const StochasticMaterialValue* findStochasticMaterialValue(const std::string& name) {
+    for (const StochasticMaterialValue& value : stochasticMaterialValues) {
+        if (name == value.name) return &value;
+    }
+    return nullptr;
+}
+
+bool checkStochasticMaterialValue(const StochasticMaterialValue& param, const std::string& where, const Json& value, std::string& error) {
+    const double number = value.is_number() ? value.get<double>() : -1.0;
+    if (!value.is_number() || !std::isfinite(number) || number < param.lo || number > param.hi) {
+        char range[64];
+        std::snprintf(range, sizeof(range), "%g to %g", param.lo, param.hi);
+        error = where + " must be a number from " + range + " (" + param.meaning + ").";
+        return false;
+    }
+    return true;
+}
+
 bool isShaderPathProperty(const std::string& propertyName) {
     return propertyName == "customShader" || propertyName == "customDepthShader" ||
            (propertyName.compare(0, 10, "submeshes[") == 0 &&
@@ -1482,6 +1509,7 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
         {"alphaMode", enumToJson((int)material.alphaMode, alphaModeOptions())},
         {"emissiveFactor", toJson(material.emissiveFactor)}
     };
+    materialStochasticToJson(material, out);
     for (const MaterialTextureField& field : MATERIAL_TEXTURES) {
         const Texture& texture = material.*field.texture;
         Json json = textureToJson(project, scene, texture);
@@ -1496,6 +1524,36 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
                               : linkedFile;
     }
     return out;
+}
+
+void McpValues::materialStochasticToJson(const Material& material, Json& out) {
+    out["stochasticTiling"] = material.stochasticTiling;
+    // its values while it is on, or when set away from their defaults
+    static const Material defaults = Material();
+    for (const StochasticMaterialValue& param : stochasticMaterialValues) {
+        if (material.stochasticTiling || material.*param.field != defaults.*param.field)
+            out[param.name] = number(material.*param.field);
+    }
+}
+
+bool McpValues::isMaterialStochasticKey(const std::string& key) {
+    return key == "stochasticTiling" || findStochasticMaterialValue(key) != nullptr;
+}
+
+bool McpValues::materialStochasticFromJson(const Json& value, Material& out, std::string& error) {
+    if (value.contains("stochasticTiling")) {
+        if (!value["stochasticTiling"].is_boolean()) {
+            error = "stochasticTiling must be true or false.";
+            return false;
+        }
+        out.stochasticTiling = value["stochasticTiling"].get<bool>();
+    }
+    for (const StochasticMaterialValue& param : stochasticMaterialValues) {
+        if (!value.contains(param.name)) continue;
+        if (!checkStochasticMaterialValue(param, param.name, value[param.name], error)) return false;
+        out.*param.field = value[param.name].get<float>();
+    }
+    return true;
 }
 
 bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error) {
@@ -1516,7 +1574,7 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
         const std::string& key = it.key();
         bool known = key == "name" || key == "baseColorFactor" || key == "metallicFactor" || key == "roughnessFactor" ||
                      key == "alphaCutoff" || key == "foliageTransmission" || key == "alphaMode" ||
-                     key == "emissiveFactor" || key == "file";
+                     key == "emissiveFactor" || key == "file" || isMaterialStochasticKey(key);
         for (const MaterialTextureField& field : MATERIAL_TEXTURES) {
             if (key == field.name || key == field.texCoordName) known = true;
         }
@@ -1524,7 +1582,8 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
         if (!known) {
             error = "unknown material key \"" + key + "\"; valid: name, baseColorFactor, metallicFactor, roughnessFactor, "
                     "alphaCutoff, foliageTransmission, alphaMode, emissiveFactor, baseColorTexture, emissiveTexture, "
-                    "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, shader, shaderParams, "
+                    "metallicRoughnessTexture, occlusionTexture, normalTexture, <texture>TexCoord, stochasticTiling, "
+                    "stochasticCellSize, stochasticBlendSharpness, stochasticContrast, stochasticRotation, shader, shaderParams, "
                     "shaderTextures, shaderFeatures, blendMode, cullMode, depthWrite, depthTest, depthOffsetFactor, "
                     "depthOffsetUnits, sortPriority, lighting, stencil, colorWrite, extraPass, file.";
             return false;
@@ -1547,6 +1606,9 @@ bool McpValues::materialFromJson(Project* project, SceneProject* scene, const Js
     }
     if (!number("metallicFactor", out.metallicFactor) || !number("roughnessFactor", out.roughnessFactor) ||
         !number("alphaCutoff", out.alphaCutoff) || !number("foliageTransmission", out.foliageTransmission)) {
+        return false;
+    }
+    if (!materialStochasticFromJson(value, out, error)) {
         return false;
     }
     if (value.contains("alphaMode")) {
@@ -2060,9 +2122,17 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
             }
             return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, text, onChanged);
         }
-        case PropertyType::Float:
+        case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");
+            // a material's Stochastic Tiling values, in their ranges
+            const size_t field = propertyName.rfind(".material.");
+            if (field != std::string::npos) {
+                if (const StochasticMaterialValue* param = findStochasticMaterialValue(propertyName.substr(field + 10))) {
+                    if (!checkStochasticMaterialValue(*param, propertyName, value, error)) return nullptr;
+                }
+            }
             return new PropertyCmd<float>(project, sceneId, entity, component, propertyName, value.get<float>(), onChanged);
+        }
         case PropertyType::Double:
             if (!value.is_number()) return expect("a number");
             return new PropertyCmd<double>(project, sceneId, entity, component, propertyName, value.get<double>(), onChanged);

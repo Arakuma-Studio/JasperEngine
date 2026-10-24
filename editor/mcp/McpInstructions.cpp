@@ -170,8 +170,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
   canvasHeight, y up). Box2D converts with pointsToMeterScale (64 points per meter). Light 2D
-  adds to the scene's 2D ambient (lower ambient_light_2d_intensity to see lights); Shadow Caster 2D casts
-  when the light's shadows are on.
+  adds to the 2D ambient (lower ambient_light_2d_intensity to see it); Shadow Caster 2D needs the
+  light's shadows on.
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
@@ -185,11 +185,10 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic for
   actors, static for floors and level geometry, kinematic for scripted movers.
-- Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-divide
-  or pre-multiply by scale. Do not guess sizes: omit them to fit the mesh bounds, or read the
-  measured mesh bounds.
-- Mass comes from collider volume/area x density (3D default 1000, water; 2D 1 per square
-  meter), never set directly. Size forces as mass x acceleration; if movement needs huge
+- Collider sizes are local to the mesh and scaled by the GameObject's scale: never pre-scale
+  them. Omit sizes to fit the mesh bounds (never guess).
+- Mass comes from collider volume/area x density (default 1000 in 3D, 1 in 2D), never set
+  directly. Size forces as mass x acceleration; if movement needs huge
   forces, lower the density instead.
 - Continuous forces and torques go in onFixedUpdate, never onUpdate, and are NOT multiplied by
   deltatime. Rigidbody (3D): applyForce(f), applyForce(f, point), applyTorque(t), applyImpulse;
@@ -228,6 +227,8 @@ forks: jasper://docs/shaders. A failing shader draws as the built-in one (error 
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
+Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
+(jasper://docs/texture-synthesis).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

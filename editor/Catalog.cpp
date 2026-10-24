@@ -163,6 +163,11 @@ namespace {
         {"material.stencil", SubmeshOverride_Stencil},
         {"material.colorWrite", SubmeshOverride_ColorWrite},
         {"material.extraPass", SubmeshOverride_ExtraPass},
+        {"material.stochasticTiling", SubmeshOverride_StochasticTiling},
+        {"material.stochasticCellSize", SubmeshOverride_StochasticTiling},
+        {"material.stochasticBlendSharpness", SubmeshOverride_StochasticTiling},
+        {"material.stochasticContrast", SubmeshOverride_StochasticTiling},
+        {"material.stochasticRotation", SubmeshOverride_StochasticTiling},
         {"faceCulling", SubmeshOverride_FaceCulling},
         {"textureShadow", SubmeshOverride_TextureShadow},
         {"primitiveType", SubmeshOverride_PrimitiveType}
@@ -862,6 +867,16 @@ namespace {
             if (propertyName.compare(matFieldPos, 9, "alphaMode") == 0 && matFieldPos + 9 == propertyName.size()) {
                 return {PropertyType::Enum, UpdateFlags_Mesh_Reload, (void*)&defSub.material.alphaMode, (void*)&sub.material.alphaMode};
             }
+            // Stochastic Tiling: the switch picks the variants, the values ride in the uniforms
+            if (propertyName.compare(matFieldPos, 10, "stochastic") == 0) {
+                const std::string field = propertyName.substr(matFieldPos);
+                if (field == "stochasticTiling") return {PropertyType::Bool, UpdateFlags_Mesh_Reload, (void*)&defSub.material.stochasticTiling, (void*)&sub.material.stochasticTiling};
+                if (field == "stochasticCellSize") return {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticCellSize, (void*)&sub.material.stochasticCellSize};
+                if (field == "stochasticBlendSharpness") return {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticBlendSharpness, (void*)&sub.material.stochasticBlendSharpness};
+                if (field == "stochasticContrast") return {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticContrast, (void*)&sub.material.stochasticContrast};
+                if (field == "stochasticRotation") return {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticRotation, (void*)&sub.material.stochasticRotation};
+                return PropertyData();
+            }
             if (propertyName.compare(matFieldPos, 14, "emissiveFactor") == 0 && matFieldPos + 14 == propertyName.size()) {
                 return {PropertyType::Vector3, UpdateFlags_None, (void*)&defSub.material.emissiveFactor, (void*)&sub.material.emissiveFactor};
             }
@@ -1532,6 +1547,11 @@ namespace {
         if (fieldName == ".occlusionStrength") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.occlusionStrength, &layer.occlusionStrength};
         if (fieldName == ".uvScale") return {PropertyType::Vector2, UpdateFlags_Terrain_Texture, &def.uvScale, &layer.uvScale};
         if (fieldName == ".uvOffset") return {PropertyType::Vector2, UpdateFlags_Terrain_Texture, &def.uvOffset, &layer.uvOffset};
+        if (fieldName == ".stochasticTiling") return {PropertyType::Bool, UpdateFlags_Terrain_Texture, &def.stochasticTiling, &layer.stochasticTiling};
+        if (fieldName == ".stochasticCellSize") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticCellSize, &layer.stochasticCellSize};
+        if (fieldName == ".stochasticBlendSharpness") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticBlendSharpness, &layer.stochasticBlendSharpness};
+        if (fieldName == ".stochasticContrast") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticContrast, &layer.stochasticContrast};
+        if (fieldName == ".stochasticRotation") return {PropertyType::Float, UpdateFlags_Terrain_Texture, &def.stochasticRotation, &layer.stochasticRotation};
         return PropertyData();
     }
 
@@ -2669,6 +2689,11 @@ namespace {
             field(".occlusionStrength", PropertyType::Float, (void*)&defSurfaceLayer.occlusionStrength, layer ? (void*)&layer->occlusionStrength : nullptr);
             field(".uvScale", PropertyType::Vector2, (void*)&defSurfaceLayer.uvScale, layer ? (void*)&layer->uvScale : nullptr);
             field(".uvOffset", PropertyType::Vector2, (void*)&defSurfaceLayer.uvOffset, layer ? (void*)&layer->uvOffset : nullptr);
+            field(".stochasticTiling", PropertyType::Bool, (void*)&defSurfaceLayer.stochasticTiling, layer ? (void*)&layer->stochasticTiling : nullptr);
+            field(".stochasticCellSize", PropertyType::Float, (void*)&defSurfaceLayer.stochasticCellSize, layer ? (void*)&layer->stochasticCellSize : nullptr);
+            field(".stochasticBlendSharpness", PropertyType::Float, (void*)&defSurfaceLayer.stochasticBlendSharpness, layer ? (void*)&layer->stochasticBlendSharpness : nullptr);
+            field(".stochasticContrast", PropertyType::Float, (void*)&defSurfaceLayer.stochasticContrast, layer ? (void*)&layer->stochasticContrast : nullptr);
+            field(".stochasticRotation", PropertyType::Float, (void*)&defSurfaceLayer.stochasticRotation, layer ? (void*)&layer->stochasticRotation : nullptr);
         }
 
         ps["foliageLayers"] = {PropertyType::Custom, UpdateFlags_Terrain_Foliage, (void*)&def.foliageLayers, compRef ? (void*)&comp->foliageLayers : nullptr};
@@ -2913,6 +2938,11 @@ namespace {
             ps["submeshes[" + idx + "].material.alphaCutoff"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.alphaCutoff, compRef ? (void*)&sub.material.alphaCutoff : nullptr};
             ps["submeshes[" + idx + "].material.foliageTransmission"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.foliageTransmission, compRef ? (void*)&sub.material.foliageTransmission : nullptr};
             ps["submeshes[" + idx + "].material.alphaMode"] = {PropertyType::Enum, UpdateFlags_Mesh_Reload, (void*)&defSub.material.alphaMode, compRef ? (void*)&sub.material.alphaMode : nullptr};
+            ps["submeshes[" + idx + "].material.stochasticTiling"] = {PropertyType::Bool, UpdateFlags_Mesh_Reload, (void*)&defSub.material.stochasticTiling, compRef ? (void*)&sub.material.stochasticTiling : nullptr};
+            ps["submeshes[" + idx + "].material.stochasticCellSize"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticCellSize, compRef ? (void*)&sub.material.stochasticCellSize : nullptr};
+            ps["submeshes[" + idx + "].material.stochasticBlendSharpness"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticBlendSharpness, compRef ? (void*)&sub.material.stochasticBlendSharpness : nullptr};
+            ps["submeshes[" + idx + "].material.stochasticContrast"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticContrast, compRef ? (void*)&sub.material.stochasticContrast : nullptr};
+            ps["submeshes[" + idx + "].material.stochasticRotation"] = {PropertyType::Float, UpdateFlags_None, (void*)&defSub.material.stochasticRotation, compRef ? (void*)&sub.material.stochasticRotation : nullptr};
             ps["submeshes[" + idx + "].material.emissiveFactor"] = {PropertyType::Vector3, UpdateFlags_None, (void*)&defSub.material.emissiveFactor, compRef ? (void*)&sub.material.emissiveFactor : nullptr};
             ps["submeshes[" + idx + "].material.baseColorTexture"] = {PropertyType::Texture, UpdateFlags_Mesh_Texture, (void*)&defSub.material.baseColorTexture, compRef ? (void*)&sub.material.baseColorTexture : nullptr};
             ps["submeshes[" + idx + "].material.emissiveTexture"] = {PropertyType::Texture, UpdateFlags_Mesh_Texture, (void*)&defSub.material.emissiveTexture, compRef ? (void*)&sub.material.emissiveTexture : nullptr};
@@ -4898,7 +4928,7 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
             from.blendMode != to.blendMode || from.cullMode != to.cullMode || from.depthWrite != to.depthWrite ||
             from.depthTest != to.depthTest || from.depthOffsetFactor != to.depthOffsetFactor ||
             from.depthOffsetUnits != to.depthOffsetUnits || from.sortPriority != to.sortPriority ||
-            from.lighting != to.lighting || from.alphaMode != to.alphaMode) {
+            from.lighting != to.lighting || from.alphaMode != to.alphaMode || from.stochasticTiling != to.stochasticTiling) {
         flags |= UpdateFlags_Mesh_Reload;
     }
     // stencil and colour write are pipeline state too

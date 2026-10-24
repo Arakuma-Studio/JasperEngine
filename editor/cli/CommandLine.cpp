@@ -40,6 +40,7 @@
 #include "util/EntityPath.h"
 #include "util/ProjectChecks.h"
 #include "htmlui/HtmlUiImportCli.h"
+#include "texsynth/SynthesisCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
@@ -250,6 +251,7 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " scene-dump [options]     Dump every scene's GameObjects (developer check).\n"
         << "  " << commandName << " check [options]          Check Lua scripts, shader forks, C++ scripts and HTML/CSS UI (compiler-style).\n"
         << "  " << commandName << " import-ui [options]      Import the remote resources of HTML UI documents.\n"
+        << "  " << commandName << " synthesize-texture [options]  Synthesize a texture (tileable, inpainted, ...) from examples.\n"
         << "  " << commandName << " ui-support               Print the HTML/CSS support tables as JSON (developer: docs generation).\n"
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
@@ -1659,6 +1661,7 @@ struct CheckOptions {
     bool shaders = false;
     bool cpp = false;
     bool ui = false;
+    bool textures = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -1681,7 +1684,10 @@ void printCheckUsage(const std::string& commandName) {
         << "      --cpp                C++ scripts: configured and built like Play does (slow the first time).\n"
         << "      --ui                 HTML/CSS UI documents: the compatibility diagnostics (dropped or rewritten\n"
         << "                           constructs, missing or remote files) with file:line:col, code and fix.\n"
-        << "      --all                Lua, shaders, C++ and UI. Default: --lua --shaders --ui.\n"
+        << "      --textures           Synthesized textures (PNGs with a jasper.synthesis recipe): warns when a\n"
+        << "                           source changed or went missing since (regenerate them).\n"
+        << "      --all                Lua, shaders, C++, UI and textures.\n"
+        << "                           Default: --lua --shaders --ui --textures.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "      --format <format>    text (default) or json.\n"
@@ -1716,6 +1722,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.cpp = true;
         } else if (arg == "--ui") {
             options.ui = true;
+        } else if (arg == "--textures") {
+            options.textures = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -2067,7 +2075,7 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         std::vector<ProjectChecks::ShaderUse> forks = (shadersAll || include) ? ProjectChecks::shaderForksInProject(&project)
                                                                               : ProjectChecks::shaderForksUsingFiles(&project, shaderFiles);
         for (ProjectChecks::ShaderUse& use : forks) {
-            const uint64_t key = ProjectChecks::prepareShaderCheck(&project, use);
+            const ShaderKey key = ProjectChecks::prepareShaderCheck(&project, use);
             const ProjectChecks::ShaderCheck check = ProjectChecks::runShaderCheck(&project, use, key);
             // a UI effect's forms (phase 5) share their source: an error is reported once
             for (const ProjectChecks::Finding& finding : check.findings) {
@@ -2081,6 +2089,12 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         // with files those drawing with the forks checked
         const std::vector<ProjectChecks::Finding> sceneInputs = ProjectChecks::sceneInputFindings(&project, shadersAll ? nullptr : &forks);
         run.findings.insert(run.findings.end(), sceneInputs.begin(), sceneInputs.end());
+        // Stochastic Tiling's warnings (tilted normal maps under Rotation, no effect): the
+        // scenes' materials and terrain layers, when every shader is checked
+        if (shadersAll) {
+            const std::vector<ProjectChecks::Finding> stochastic = ProjectChecks::stochasticTilingFindings(&project);
+            run.findings.insert(run.findings.end(), stochastic.begin(), stochastic.end());
+        }
         run.checked.push_back({"shaders", forks.size()});
     }
 
@@ -2131,7 +2145,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool shaders = options.shaders || options.all;
     const bool cpp = options.cpp || options.all;
     bool ui = options.ui || options.all;
-    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.all) lua = shaders = ui = true;
+    bool textures = options.textures || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.all) lua = shaders = ui = textures = true;
 
     fs::path base = CommandLine::invocationDirectory();
     std::vector<std::string> files = options.files;
@@ -2159,6 +2174,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> luaFiles;
     std::vector<std::string> shaderFiles;
     std::vector<fs::path> uiFiles;
+    std::vector<fs::path> textureFiles;
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2189,6 +2205,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             } else if (ProjectChecks::isUiFile(name)) {
                 if (ui) uiFiles.push_back(path);
             }
+            // a synthesized PNG, or an image a synthesized texture was made from
+            if (textures && Util::isImageFile(name)) textureFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -2197,6 +2215,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool shadersWanted = fileMode ? !shaderFiles.empty() : shaders;
     const bool cppWanted = cpp && (!fileMode || cppFiles);
     const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
+    const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -2217,6 +2236,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (uiWanted) {
         run.findings.insert(run.findings.end(), uiCheck.findings.begin(), uiCheck.findings.end());
         run.checked.push_back({"ui", uiCheck.documents + uiCheck.stylesheets});
+    }
+    if (texturesWanted) {
+        // reads PNG headers and hashes the sources of synthesized ones: no engine
+        const ProjectChecks::SynthesisCheck synthesis = ProjectChecks::checkSynthesisRecipes(root, fileMode ? textureFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), synthesis.findings.begin(), synthesis.findings.end());
+        run.checked.push_back({"textures", synthesis.recipes});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
@@ -2263,7 +2288,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const nlohmann::json out = {{"ok", errors == 0}, {"errors", errors}, {"warnings", warnings}, {"checked", checked},
                                     {"findings", ProjectChecks::toJson(run.findings)},
                                     {"seconds", std::round(seconds * 100.0) / 100.0}};
-        std::cout << out.dump(1) << std::endl;
+        // a finding's path may not be UTF-8 (a Latin-1 file name): shown with U+FFFD, never an abort
+        std::cout << out.dump(1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
     } else {
         for (const ProjectChecks::Finding& finding : run.findings) std::cout << ProjectChecks::toText(finding) << "\n";
         std::cout.flush();
@@ -2273,7 +2299,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     }
     if (!options.quiet) {
         std::string what;
-        const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"}};
+        const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
+                                                          {"textures", "recipe"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }
@@ -2516,6 +2543,11 @@ int CommandLine::runImportUiCommand(int argc, char** argv, const char* executabl
     EditorHostOverrideGuard hostOverride(nullptr);
     Out::setConsoleWindow(nullptr);
     return htmlui::runImportUi(argc, argv, getCommandName(executableName), std::cout, std::cerr);
+}
+
+int CommandLine::runSynthesizeTextureCommand(int argc, char** argv, const char* executableName) {
+    attachHostConsoleIfNeeded();
+    return texsynth::runSynthesizeTexture(argc, argv, getCommandName(executableName), std::cout, std::cerr);
 }
 
 int CommandLine::runHelpCommand(int argc, char** argv, const char* executableName) {
