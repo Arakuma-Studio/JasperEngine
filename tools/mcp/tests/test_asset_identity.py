@@ -280,3 +280,18 @@ async def test_lua_asset_api_in_play(ed: Editor):
     ref = await ed.call("eval_lua", code='local r = Asset.ref("textures/brick.png") return r.type .. " " .. tostring(r.valid)')
     ed.check("texture true" in json.dumps(ref), f"{ref}")
     await ed.call("play", action="stop")
+
+
+async def test_asset_script_property_survives_rename(ed: Editor):
+    """AC19: Main.scene's Speaker has an Asset script property (portrait = textures/rock.png, by
+    GUID). The file is renamed; in Play the property resolves to the new path."""
+    rock = meta_guid(ed, "assets/textures/rock.png")
+    await ed.call("move_asset", path="assets/textures/rock.png", to="assets/textures/rock-renamed.png")
+    try:
+        await ed.call("play", action="start", scene="Main.scene")
+        ref = await ed.call("eval_lua", code='local s = script("Speaker") return s.portrait.guid .. " " .. s.portrait.path .. " " .. tostring(s.portrait.valid)')
+        ed.check(f"{rock} textures/rock-renamed.png true" in json.dumps(ref), f"{ref}")
+        await ed.call("play", action="stop")
+    finally:
+        await ed.call("undo", scope="project")
+    ed.check((ed.project / "assets/textures/rock.png.meta").exists(), "the rename was not undone")
