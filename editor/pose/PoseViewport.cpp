@@ -158,7 +158,7 @@ namespace {
 
 // ---- lifetime ----
 
-editor::PoseViewport::PoseViewport(Scene* scene, Scene* toolsScene): scene(scene), toolsScene(toolsScene){
+editor::PoseViewport::PoseViewport(Scene* editedScene, Scene* toolsLayerScene): scene(editedScene), toolsScene(toolsLayerScene){
     ghostScene = new Scene(EntityPool::System);
     ghostCamera = new Camera(ghostScene);
     ghostScene->setCamera(ghostCamera);

@@ -20,6 +20,7 @@
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
+#include "pose/PoseRealisation.h"
 #include "pose/PoseRig.h"
 #include "pose/PoseTypes.h"
 
@@ -38,7 +39,7 @@ namespace jasperengine::editor{
 
     class Project;
     class PoseAnimationDocument;
-    struct PoseRealisation;
+    using PoseRealisation = pose::PoseRealisation;   // pose/PoseRealisation.h (phase 2 moved it to the engine)
     struct PoseRigInfo;
 
     class PoseEditSession{

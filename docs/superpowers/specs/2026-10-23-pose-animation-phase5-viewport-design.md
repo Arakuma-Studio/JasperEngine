@@ -92,3 +92,35 @@ cancels.
   (or via the UI path exposed to MCP through `edit_pose_animation` equivalents); undo after a
   committed drag restores the previous pose.
 - Full MCP suite and pose tests pass.
+
+## 8. Implementation notes
+
+(Implemented: `editor/pose/PoseViewportLogic.{h,cpp}` (maths, tested), `editor/pose/PoseViewport.{h,cpp}`
+(one per 3D `SceneRender`), hooks in `SceneRender`, `SceneRender3D`, `SceneWindow`, `App`.)
+
+- Handles live in the tools layer scene; the floor disc, grid, contact rings and centre-of-mass
+  diamond are System-pool overlays of the edited scene; ghosts are `EntityCloner` clones (meshes,
+  bones and glTF nodes only: scripts, sounds, animations, physics and the Pose Animator are left
+  out) in a ghost layer scene of the Scene view drawn between the scene and the tools layer, so
+  they read on top of the model and under the handles and are never in the scene's Hierarchy or
+  file. Ghost material: library `hologram` (alpha blend keyword, no scanlines/flicker, tint alpha
+  = 2 x onion opacity, fill 0.5: surfaces facing the view at the opacity, the rim up to twice it)
+  with a `stencil_mask` extra pass (order Before, depth write on, no colour) as the depth pre-pass.
+- Ring axes: the joint's canonical L/U/F in its effective parent's frame as seen in the neutral
+  pose (`W_p * N_p^-1`; the character frame for the hips), so a ring turn changes the DOFs about
+  that axis. The outer ring turns about the view direction. With joint limits on, a ring drag is
+  clamped to the contiguous angle range around the start in which the joint gets no further
+  outside its limits than it starts (the ring stops there); the range ends are the red ticks.
+- Foot snap: "floor + sole" is the foot bone height of the foot standing on the floor as it is
+  turned at the drag start (feet keep their world rotation), not the rest-pose sole offset
+  (which differs once the neutral pose turns the foot).
+- Contact rings use the section 4 threshold (height <= 0.01 humanScale), stricter than the
+  metrics' `contact` (0.02).
+- Clicking a hand, foot or the hips also makes it the active joint (its rings show). A selection
+  change to anything outside the model and its bones (or to nothing) leaves posing; the scene's
+  transform gizmo is not placed on the model or its bones while posing. In a posing Scene view the
+  toolbar's Q/W/E/R keys are off (E is Global Edit there).
+- MCP: `focus_window` pose_animation's state has `viewport` {posing, previewing, handles (Scene view
+  px), active_joint, ghosts, floor, contacts, balanced, global_edit, view}; `pose.viewport` is an
+  undocumented test hook driving the same SceneRender mouse calls as SceneWindow (send_input only
+  reaches a running game).
