@@ -635,42 +635,103 @@ TEST(PlacementWorldColliders, ChildMeshesMergeIntoOneScaledBody) {
     EXPECT_LT(angleBetween(state.pose.rotation, axisAngle(Vector3(0, 1, 0), 0.5f)), 0.5f * DEG);
 }
 
+namespace {
+
+    // Waits for the world's decomposition requests: the cache's completionVersion moves as each
+    // finishes
+    bool waitForDecompositions(PlacementWorld& world, ConvexDecompositionCache& cache, uint64_t version) {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(300);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (!world.hasPendingDecompositions() && cache.completionVersion() > version) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        return false;
+    }
+
+}
+
 TEST(PlacementWorldColliders, DecompositionWithTheCache) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
     TestScene t;
     const Entity ring = t.torus(0.5f, 0.15f, Vector3(0, 0, 0));
+    const Entity cube = t.box(Vector3(1, 1, 1), Vector3(3, 0, 0));
     t.resolve();
 
     ConvexDecompositionCache cache("");
     PlacementWorldSettings settings;
     settings.decompositionCache = &cache;
-    settings.decompositionMaxHulls = 8;
-    settings.decompositionResolution = 100000;
     PlacementWorld world(&t.scene, settings);
+    const uint64_t version = cache.completionVersion();
     ASSERT_TRUE(world.addMover(ring));
-    // the hull meanwhile
-    EXPECT_EQ(world.getState(ring).shape, PlacementShapeKind::CONVEX_HULL);
-    EXPECT_EQ(world.getState(ring).decompositionPending, world.hasPendingDecompositions());
+    ASSERT_TRUE(world.addMover(cube));
+    // the hull meanwhile, a request queued; the cube fits a box and asks for nothing
+    PlacementBodyState state = world.getState(ring);
+    EXPECT_EQ(state.shape, PlacementShapeKind::CONVEX_HULL);
+    EXPECT_TRUE(state.decompositionPending);
+    EXPECT_TRUE(world.hasPendingDecompositions());
+    EXPECT_EQ(cache.pendingCount(), 1u);
+    EXPECT_FALSE(world.getState(cube).decompositionPending);
 
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
-    while (world.hasPendingDecompositions() && std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
-    }
-    ASSERT_FALSE(world.hasPendingDecompositions());
+    ASSERT_TRUE(waitForDecompositions(world, cache, version));
+    EXPECT_EQ(world.getState(ring).shape, PlacementShapeKind::CONVEX_HULL);   // until refreshed
     world.refreshShapes();
-    if (cache.entryCount() == 0) {
-        GTEST_SKIP() << "this build's ConvexDecompositionCache stores nothing (contract stub)";
-    }
-    const PlacementBodyState state = world.getState(ring);
+    state = world.getState(ring);
     EXPECT_EQ(state.shape, PlacementShapeKind::DECOMPOSED);
     EXPECT_GT(state.hullCount, 1);
+    EXPECT_LE(state.hullCount, (int)settings.decompositionMaxHulls);
     EXPECT_FALSE(state.decompositionPending);
+    EXPECT_EQ(world.getState(cube).shape, PlacementShapeKind::BOX);
 
-    // NEVER asks for nothing
+    // cached now: a new world takes it at once, and NEVER still asks for nothing
+    PlacementWorld cached(&t.scene, settings);
+    ASSERT_TRUE(cached.addMover(ring));
+    EXPECT_EQ(cached.getState(ring).shape, PlacementShapeKind::DECOMPOSED);
+    EXPECT_FALSE(cached.hasPendingDecompositions());
     PlacementWorldSettings never = settings;
     never.decomposition = PlacementDecomposition::NEVER;
     PlacementWorld hullOnly(&t.scene, never);
     ASSERT_TRUE(hullOnly.addMover(ring));
     EXPECT_EQ(hullOnly.getState(ring).shape, PlacementShapeKind::CONVEX_HULL);
+    EXPECT_FALSE(hullOnly.hasPendingDecompositions());
+}
+
+// Spec section 10: a torus dropped over a cylinder peg encircles it when decomposed, and rests
+// on top with its hull alone
+TEST(PlacementWorldColliders, RingOverPeg) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    ConvexDecompositionCache cache("");
+    for (const bool decomposed : {true, false}) {
+        TestScene t;
+        floorBox(t);
+        t.cylinder(0.15f, 1.0f, Vector3(0, 0.5f, 0));
+        const Entity ring = t.torus(0.5f, 0.12f, Vector3(0.04f, 1.6f, -0.03f));
+        t.resolve();
+
+        PlacementWorldSettings settings;
+        settings.decompositionCache = &cache;
+        settings.decomposition = decomposed ? PlacementDecomposition::ALWAYS : PlacementDecomposition::NEVER;
+        PlacementWorld world(&t.scene, settings);
+        const uint64_t version = cache.completionVersion();
+        ASSERT_TRUE(world.addMover(ring));
+        if (decomposed && world.hasPendingDecompositions()) {
+            ASSERT_TRUE(waitForDecompositions(world, cache, version));
+            world.refreshShapes();
+        }
+        ASSERT_EQ(world.getState(ring).shape, decomposed ? PlacementShapeKind::DECOMPOSED : PlacementShapeKind::CONVEX_HULL);
+        world.ensureContext(everywhere);
+        ASSERT_GT(stepUntilAsleep(world, 1200), 0) << decomposed;
+
+        const PlacementBodyState state = world.getState(ring);
+        const float offAxis = std::sqrt(state.pose.position.x * state.pose.position.x + state.pose.position.z * state.pose.position.z);
+        if (decomposed) {
+            // down around the peg, on the floor
+            EXPECT_LT(state.pose.position.y, 0.5f);
+            EXPECT_LT(offAxis, 0.38f - 0.15f);
+        } else {
+            // on the peg's top
+            EXPECT_NEAR(state.pose.position.y, 1.0f + 0.12f, 0.02f);
+        }
+    }
 }
 
 TEST(PlacementWorldColliders, RefreshShapesKeepsPoseAndVelocity) {
