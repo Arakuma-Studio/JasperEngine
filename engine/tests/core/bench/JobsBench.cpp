@@ -224,8 +224,11 @@ namespace{
     // a run moves that run's p99, not the scheduler's: the undisturbed run is the measure.
     double frameProtectionP99Ms(){
         double best = 1e9;
-        for (int run = 0; run < 5; run++)
-            best = std::min(best, frameProtectionRunP99Ms());
+        for (int run = 0; run < 5; run++){
+            const double p99 = frameProtectionRunP99Ms();
+            std::fprintf(stderr, "frame protection run %d: p99 %.3f ms\n", run + 1, p99);
+            best = std::min(best, p99);
+        }
         return best;
     }
 
