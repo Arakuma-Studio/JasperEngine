@@ -147,9 +147,8 @@ void setCurrentName(const char* name){
         setDescription(GetCurrentThread(), wide);
     }
 #elif defined(__EMSCRIPTEN__)
-    #if defined(__EMSCRIPTEN_PTHREADS__)
-        emscripten_set_thread_name(pthread_self(), name);
-    #endif
+    // emscripten_set_thread_name links only with -sPTHREADS_PROFILING: web threads keep no name
+    (void)name;
 #elif defined(__APPLE__)
     pthread_setname_np(name);
 #else

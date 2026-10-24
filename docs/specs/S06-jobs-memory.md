@@ -610,6 +610,9 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   workers, the blocking thread and a video decoder leave
   (`JobsWorkerPolicy.ThreadedWebWorkersFitThePthreadPool`). `GATE=sample-project-threads
   tools/build.sh web-gate` passes.
+- **R20: web threads keep no name.** `emscripten_set_thread_name` links only with
+  `-sPTHREADS_PROFILING`, and a Debug threaded build failed to link with it. The other
+  platforms name every thread as specified.
 - **R19: Multithreaded web export** is a Project Settings checkbox (Player > Threading > Web:
   Multithreaded, `player.threading.web_multithreaded`), not a field of the export dialog, so
   the CLI and MCP exports pick it up too. COOP/COEP are emitted as a `_headers` file (Netlify
