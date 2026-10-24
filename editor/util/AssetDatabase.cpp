@@ -89,7 +89,7 @@ namespace {
     // file is not such a document.
     bool flowIdentity(const fs::path& path, std::string& guid, std::vector<std::string>& formerGuids) {
         std::string text;
-        if (!assetio::readFile(path, text)) {
+        if (!editor::assetio::readFile(path, text)) {
             return false;
         }
         bool flow = false;
