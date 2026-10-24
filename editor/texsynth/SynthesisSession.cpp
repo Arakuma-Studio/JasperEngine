@@ -312,8 +312,8 @@ namespace jasperengine::editor::texsynth {
             if (!c.enabled) continue;
             std::string path = c.output;
             if (path.empty() && !spec.examples.empty() && !c.paths.empty()) {
-                path = companionOutputPath(fs::u8path(spec.output), fs::u8path(spec.examples.front().path), fs::u8path(c.paths.front()))
-                           FileUtils::pathToGenericUtf8();
+                path = FileUtils::pathToGenericUtf8(
+                    companionOutputPath(fs::u8path(spec.output), fs::u8path(spec.examples.front().path), fs::u8path(c.paths.front())));
                 if (path.empty()) {
                     const fs::path out = fs::u8path(spec.output);
                     path = FileUtils::pathToGenericUtf8((out.parent_path() / fs::u8path(FileUtils::pathToUtf8(out.stem()) + "_" + c.name + ".png")));
