@@ -552,3 +552,113 @@ async def test_baked_animation_plays(ed: Editor):
     finally:
         await ed.call("play", action="stop")
     await ed.call("undo", scope="scene")
+
+
+# -- fix round 1 ---------------------------------------------------------------
+
+async def anim_ids(ed: Editor, animation) -> list:
+    return sorted(a["action"]["id"] for a in (await bake_info(ed, animation))["actions"])
+
+
+async def test_default_named_bakes_on_two_models(ed: Editor):
+    """Animation names are per model: the default "walk" on the Robot after the Hero is "walk" too."""
+    hero = (await ed.call("edit_pose_animation", path=WALK, bake={"model": "Hero"}))["bake"]
+    robot = (await ed.call("edit_pose_animation", path=WALK, bake={"model": "Robot"}))["bake"]
+    ed.check(hero["name"] == "walk" and robot["name"] == "walk", f"names: {hero['name']} {robot['name']}")
+    ed.check(hero["animation"]["id"] != robot["animation"]["id"], "one Animation per model")
+    ids = await anim_ids(ed, robot["animation"]["id"])
+    again = (await ed.call("edit_pose_animation", path=WALK, bake={"model": "Robot"}))["bake"]
+    ed.check(not again["created"] and again["name"] == "walk", f"re-bake: {again}")
+    ed.check_eq(again["animation"]["id"], robot["animation"]["id"], "the same Animation")
+    ed.check_eq(await anim_ids(ed, robot["animation"]["id"]), ids, "the same track entities")
+    rest = harness.find_key(await ed.call("get_entity", entity="thigh.R", detail="full"), "rotation")
+    await ed.call("play", action="start")
+    try:
+        await ed.call("eval_lua", code='object("Robot", "Model"):playAnimation("' + again["name"] + '"); return true')
+        await ed.call("wait", game_seconds=0.15)
+        playing = harness.find_key(await ed.call("get_runtime_entity", entity="thigh.R"), "rotation")
+        ed.check(rest is not None and playing is not None and playing != rest, f"the robot's thigh moves: {rest} -> {playing}")
+        console = await ed.console_since("last")
+        ed.check(not any("non-existent animation" in str(line) for line in console), f"playAnimation found it: {console}")
+    finally:
+        await ed.call("play", action="stop")
+    await ed.call("undo", scope="scene", steps=3)
+    for bake in (hero, robot):
+        ed.check((await ed.call_raw("get_animation", {"entity": bake["animation"]["id"]})).is_error, "undone")
+
+
+async def test_bake_the_pose_animator_asset(ed: Editor):
+    """bake without path does what the Inspector's Bake button does: the Pose Animator's animation,
+    stored relative to the assets folder (anim/walk.poseanim, not assets/anim/...)."""
+    await ed.call("add_component", entity="Hero", component="poseanimator", values={"poseanimator": {"animation": "anim/walk.poseanim"}})
+    r = await ed.call_raw("edit_pose_animation", {"bake": {"model": "Hero"}})
+    ed.check(not r.is_error, r.text)
+    bake = r.structured["bake"]
+    ed.check(bake["created"] and bake["name"] == "walk" and bake["source"] == "anim/walk.poseanim", f"bake: {bake}")
+    ed.check("Baked 'anim/walk.poseanim' to the Animation 'walk'" in r.text and 'playAnimation("walk")' in r.text, r.text)
+    await ed.check_error("edit_pose_animation", {"bake": {"model": "Robot"}}, contains="no Pose Animator")
+    await ed.check_error("edit_pose_animation", {"bake": {"model": "Hero", "name": "x"}}, contains="pass path")
+    await ed.call("undo", scope="scene", steps=2)
+
+
+async def test_own_transitions_are_not_hidden(ed: Editor):
+    path = "assets/anim/timing.poseanim"
+    ed.check(all(p["transition"] is not None for p in (await ed.call("get_pose_animation", path=path, detail="summary"))["poses"]),
+             "auto_timing gave every pose its own transition")
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "apply_preset", "name": "Heavy"}])
+    ed.check(any("poses 0-2 have their own transition" in w for w in r["warnings"]), f"warned: {r['warnings']}")
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "set_settings", "transition": {"duration": 0.3}}])
+    ed.check(any("have their own transition" in w for w in r["warnings"]), f"warned: {r['warnings']}")
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "apply_preset", "name": "Snappy", "clear_custom": True}])
+    ed.check(not any("own transition" in w for w in r["warnings"]), f"no warning once cleared: {r['warnings']}")
+    got = await ed.call("get_pose_animation", path=path, detail="summary")
+    ed.check(all(p["transition"] is None for p in got["poses"]), "clear_custom: every pose follows the animation again")
+    ed.check_eq(got["preset"], "Snappy", "preset")
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "update_pose", "index": 0, "transition": {"duration": 0.2}},
+                                                             {"op": "set_settings", "overlap": 0.07, "clear_custom": True}])
+    ed.check(all(p["transition"] is None for p in (await ed.call("get_pose_animation", path=path, detail="summary"))["poses"]),
+             "set_settings clear_custom")
+
+
+async def test_metadata_updates_are_not_limit_clamped(ed: Editor):
+    path = "assets/anim/metrics.poseanim"
+    await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "set_settings", "humanize": {"joint_limits": False}},
+        {"op": "update_pose", "index": 0, "angles": {"left_lower_arm.bend": -20}},
+    ])
+    r = await ed.call("edit_pose_animation", path=path, ops=[
+        {"op": "set_settings", "humanize": {"joint_limits": True}},
+        {"op": "update_pose", "index": 0, "hold": 0.25, "name": "Stand still"},
+        {"op": "move_pose", "index": 1, "to": 2},
+    ])
+    ed.check_eq(r["clamped"], [], "metadata edits and moves clamp nothing")
+    ed.check(approx(file_json(ed, path)["poses"][0]["angles"]["left_lower_arm.bend"], -20), "the angle is kept")
+    ed.check_eq(r["poses"][0]["metrics"]["limit_hits"], ["left_lower_arm.bend"], "and reported as a limit hit")
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "update_pose", "index": 0, "add_angles": {"head.bend": 1}}])
+    ed.check(any(c["field"] == "poses[0].angles.left_lower_arm.bend" for c in r["clamped"]), f"an angle edit clamps: {r['clamped']}")
+
+
+async def test_humanoid_and_ops_are_one_undo_step(ed: Editor):
+    before = file_text(ed, WALK)
+    sidecar = ed.project / (HERO + ".humanoid")
+    ed.check(not sidecar.exists(), "no sidecar")
+    await ed.call("edit_pose_animation", path=WALK, ops=[
+        {"op": "set_humanoid", "model": HERO, "bones": {"right_toes": ""}},
+        {"op": "update_pose", "index": 0, "hold": 0.33},
+    ])
+    ed.check(sidecar.exists() and file_text(ed, WALK) != before, "both written")
+    await undo_project(ed)
+    ed.check(not sidecar.exists() and file_text(ed, WALK) == before, "one undo takes both back")
+
+
+async def test_warnings_outside_assets_and_from_the_file(ed: Editor):
+    path = "loose/outside.poseanim"
+    r = await ed.call("edit_pose_animation", path=path, create={}, ops=[{"op": "add_pose"}])
+    ed.check(any("outside the assets folder" in w for w in r["warnings"]), f"warned: {r['warnings']}")
+    got = await ed.call("get_pose_animation", path=path, detail="summary")
+    ed.check(any("outside the assets folder" in w for w in got.get("warnings", [])), f"get warns: {got.get('warnings')}")
+    data = file_json(ed, path)
+    data["mystery"] = 1
+    (ed.project / path).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    r = await ed.call("edit_pose_animation", path=path, ops=[{"op": "update_pose", "index": 0, "hold": 0.2}])
+    ed.check(any("mystery" in w for w in r["warnings"]), f"the file's load warnings: {r['warnings']}")

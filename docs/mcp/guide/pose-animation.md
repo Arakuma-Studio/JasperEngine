@@ -103,7 +103,9 @@ their values. Out-of-range values are clamped and listed in `clamped: [{field, r
 Animation of a model GameObject (one RotateTracks per mapped bone and a TranslateTracks for the
 hips, one key per frame at the frame times, step keys when `step_rate` > 0; its own scene undo step,
 `undo {scope: "scene"}`; baking again rewrites the keys of the same tracks). Play it with
-`Model:playAnimation(name)`. `bake` alone (no ops) re-bakes after edits.
+`Model:playAnimation(name)`; names are per model (the Hero and the Robot can both have "walk"). `bake`
+alone (no ops) re-bakes after edits; `bake` without `path` bakes what the model's Pose Animator plays
+(the Inspector's Bake button).
 
 ## Feel (`feel`) and humanize (`humanize`)
 
@@ -159,4 +161,6 @@ slots. When a mapping is wrong, `set_humanoid` stores the fix next to the model
   `joint_limits` on, the combined swing is capped at 179.5 (both DOFs scaled, listed in `clamped`).
   Keep each slot's combined swing under 180, or twist instead.
 - Even timing everywhere: vary holds, or run `auto_timing`, then adjust.
+- Changing the feel after `auto_timing`: it gives every pose its own transition, which then ignores
+  `apply_preset` / `set_settings` `transition` (the result warns); add `clear_custom: true` to clear them.
 - Editing the `.poseanim` file by hand: no clamping, no echo, no undo step.

@@ -3,9 +3,8 @@
 
 #include "WriteFilesCmd.h"
 
-#include "util/ProjectChecks.h"
-
 #include <fstream>
+#include <iterator>
 
 using namespace jasperengine;
 
@@ -19,6 +18,13 @@ bool writeWhole(const fs::path& path, const std::string& content) {
     out << content;
     out.close();
     return static_cast<bool>(out);
+}
+
+bool readWhole(const fs::path& path, std::string& content) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    return !in.bad();
 }
 
 }
@@ -41,29 +47,34 @@ bool editor::WriteFilesCmd::execute() {
             Previous prev;
             std::error_code ec;
             prev.existed = fs::is_regular_file(item.path, ec);
-            if (prev.existed && !ProjectChecks::readFile(item.path, prev.content)) {
+            if (prev.existed && !readWhole(item.path, prev.content)) {
                 return false;
             }
             previous.push_back(std::move(prev));
         }
         captured = true;
     }
-    for (const Item& item : items) {
+    for (size_t i = 0; i < items.size(); i++) {
+        const Item& item = items[i];
         std::error_code ec;
         const fs::path parent = item.path.parent_path();
         if (!fs::exists(parent, ec)) {
-            // remember the outermost directory created, for undo
-            fs::path missing = parent;
-            while (!missing.parent_path().empty() && !fs::exists(missing.parent_path(), ec) && missing.parent_path() != missing) {
-                missing = missing.parent_path();
+            // remember every directory created (outermost first), for undo
+            std::vector<fs::path> missing;
+            for (fs::path dir = parent; !dir.empty() && !fs::exists(dir, ec); dir = dir.parent_path()) {
+                missing.insert(missing.begin(), dir);
+                if (dir.parent_path() == dir) break;
             }
             fs::create_directories(parent, ec);
             if (ec) {
+                restore(i);
                 return false;
             }
-            createdDirs.push_back(missing);
+            createdDirs.insert(createdDirs.end(), missing.begin(), missing.end());
         }
         if (!writeWhole(item.path, item.content)) {
+            // all or nothing: what this command already wrote (this file included) goes back
+            restore(i + 1);
             return false;
         }
     }
@@ -71,8 +82,8 @@ bool editor::WriteFilesCmd::execute() {
     return true;
 }
 
-void editor::WriteFilesCmd::undo() {
-    for (size_t i = 0; i < items.size() && i < previous.size(); i++) {
+void editor::WriteFilesCmd::restore(size_t count) {
+    for (size_t i = 0; i < count && i < items.size() && i < previous.size(); i++) {
         std::error_code ec;
         if (previous[i].existed) writeWhole(items[i].path, previous[i].content);
         else fs::remove(items[i].path, ec);
@@ -82,6 +93,10 @@ void editor::WriteFilesCmd::undo() {
         if (fs::is_directory(*it, ec) && fs::is_empty(*it, ec)) fs::remove(*it, ec);
     }
     createdDirs.clear();
+}
+
+void editor::WriteFilesCmd::undo() {
+    restore(items.size());
     if (afterChange) afterChange(paths());
 }
 

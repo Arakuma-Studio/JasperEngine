@@ -38,6 +38,13 @@ namespace jasperengine::editor{
         // nothing changed, when the model is no usable humanoid or the animation has no poses.
         static bool bake(Project* project, uint32_t sceneId, Entity model, PoseAnimationDocument& document,
                          const std::string& name, PoseBakeResult& result, std::string& error);
+        // What the Pose Animator Inspector section's Bake button does: bakes the animation the
+        // model's Pose Animator plays (`animation` as the component stores it, relative to the
+        // assets folder) under the default name
+        static bool bakeAnimatorAsset(Project* project, uint32_t sceneId, Entity model, const std::string& animation,
+                                      PoseBakeResult& result, std::string& error);
+        // "Baked 'anim/walk.poseanim' to the Animation 'walk' (23 tracks, 31 keys each): ..."
+        static std::string bakeStatusLine(const std::string& animation, const PoseBakeResult& result);
     };
 
 }

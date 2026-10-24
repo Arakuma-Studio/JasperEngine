@@ -17,6 +17,7 @@
 
 #include "Project.h"
 #include "component/ModelComponent.h"
+#include "component/PoseAnimatorComponent.h"
 #include "pose/HumanBones.h"
 #include "pose/HumanoidMapIO.h"
 #include "pose/PoseAnimationDocument.h"
@@ -467,10 +468,13 @@ struct SidecarEdit {
     HumanoidOverrides overrides;
 };
 
+constexpr uint8_t TOUCHED = 1;      // returned in the result
+constexpr uint8_t ANGLES_SET = 2;   // this call set its angles: joint limits apply to it
+
 struct EditState {
     Project* project = nullptr;
     PoseAnimationData data;
-    std::vector<bool> touched;      // per pose: added, updated, moved or mirrored by this call
+    std::vector<uint8_t> touched;   // per pose: TOUCHED (added, updated, moved, mirrored, retimed), ANGLES_SET
     std::vector<std::string> changes;
     std::vector<std::string> warnings;
     std::map<std::string, SidecarEdit> sidecars;   // by sidecar path
@@ -484,8 +488,9 @@ const std::map<std::string, std::vector<std::string>>& opArguments() {
         {"delete_pose", {"op", "index"}},
         {"move_pose", {"op", "index", "to"}},
         {"mirror_pose", {"op", "index", "as_new", "name"}},
-        {"set_settings", {"op", "loop", "frame_rate", "transition", "step_rate", "overlap", "looseness", "weights", "humanize"}},
-        {"apply_preset", {"op", "name"}},
+        {"set_settings", {"op", "loop", "frame_rate", "transition", "step_rate", "overlap", "looseness", "weights", "humanize",
+                          "clear_custom"}},
+        {"apply_preset", {"op", "name", "clear_custom"}},
         {"auto_timing", {"op"}},
         {"set_preview_model", {"op", "model"}},
         {"set_humanoid", {"op", "model", "bones"}},
@@ -594,7 +599,7 @@ bool addPose(EditState& state, const Json& op, const std::string& path, std::str
     const size_t at = static_cast<size_t>(after + 1);
     key.name = "Pose " + std::to_string(count + 1);
     poses.insert(poses.begin() + at, key);
-    state.touched.insert(state.touched.begin() + at, true);
+    state.touched.insert(state.touched.begin() + at, static_cast<uint8_t>(TOUCHED | ANGLES_SET));
     std::vector<std::string> fields;
     if (!applyKeyFields(state, at, op, path, fields, error)) return false;
     state.changes.push_back("add_pose: \"" + poses[at].name + "\" at " + std::to_string(at) + " (" + how + ")");
@@ -610,7 +615,8 @@ bool updatePose(EditState& state, const Json& op, const std::string& path, std::
     if (!readIndex(op["index"], path + ".index", state.data.poses.size(), index, error)) return false;
     std::vector<std::string> fields;
     if (!applyKeyFields(state, static_cast<size_t>(index), op, path, fields, error)) return false;
-    state.touched[index] = true;
+    state.touched[index] |= TOUCHED;
+    if (op.contains("angles") || op.contains("add_angles")) state.touched[index] |= ANGLES_SET;
     std::string list;
     for (const std::string& field : fields) list += (list.empty() ? "" : ", ") + field;
     state.changes.push_back("update_pose " + std::to_string(index) + " \"" + state.data.poses[index].name + "\": " +
@@ -647,11 +653,30 @@ bool movePose(EditState& state, const Json& op, const std::string& path, std::st
     if (!readIndex(op["index"], path + ".index", poses.size(), index, error)) return false;
     if (!readIndex(op["to"], path + ".to", poses.size(), to, error)) return false;
     PoseKey key = poses[index];
+    const uint8_t mark = state.touched[index];
     poses.erase(poses.begin() + index);
     state.touched.erase(state.touched.begin() + index);
     poses.insert(poses.begin() + to, key);
-    state.touched.insert(state.touched.begin() + to, true);
+    state.touched.insert(state.touched.begin() + to, static_cast<uint8_t>(mark | TOUCHED));
     state.changes.push_back("move_pose \"" + key.name + "\": " + std::to_string(index) + " -> " + std::to_string(to));
+    return true;
+}
+
+// clear_custom: true -> every pose uses the animation's transition again
+bool clearCustomTransitions(EditState& state, const Json& op, const std::string& path, std::string& error) {
+    bool clear = false;
+    if (op.contains("clear_custom") && !readBool(op["clear_custom"], path + ".clear_custom", clear, error)) return false;
+    if (!clear) return true;
+    int cleared = 0;
+    for (size_t i = 0; i < state.data.poses.size(); i++) {
+        PoseKey& key = state.data.poses[i];
+        if (!key.customTransition) continue;
+        key.customTransition = false;
+        key.transition = Transition();
+        state.touched[i] |= TOUCHED;
+        cleared++;
+    }
+    state.changes.push_back("clear_custom: " + std::to_string(cleared) + " pose(s) use the animation's transition again");
     return true;
 }
 
@@ -722,7 +747,7 @@ bool setSettings(EditState& state, const Json& op, const std::string& path, std:
     std::string list;
     for (const std::string& field : fields) list += (list.empty() ? "" : ", ") + field;
     state.changes.push_back("set_settings: " + (list.empty() ? std::string("nothing") : list));
-    return true;
+    return clearCustomTransitions(state, op, path, error);
 }
 
 // A model asset argument: project-relative, an existing model file inside the assets folder
@@ -880,12 +905,12 @@ bool mirrorPose(EditState& state, const Json& op, const std::string& path, std::
         key.name = op.contains("name") ? op["name"].get<std::string>() : key.name + " (mirrored)";
         at = static_cast<size_t>(index + 1);
         poses.insert(poses.begin() + at, key);
-        state.touched.insert(state.touched.begin() + at, true);
+        state.touched.insert(state.touched.begin() + at, static_cast<uint8_t>(TOUCHED | ANGLES_SET));
         state.changes.push_back("mirror_pose " + std::to_string(index) + ": mirrored copy \"" + key.name + "\" at " + std::to_string(at));
     } else {
         if (op.contains("name")) key.name = op["name"].get<std::string>();
         poses[at] = key;
-        state.touched[at] = true;
+        state.touched[at] |= TOUCHED | ANGLES_SET;
         state.changes.push_back("mirror_pose " + std::to_string(index) + " \"" + key.name + "\": mirrored in place");
     }
     return true;
@@ -905,7 +930,7 @@ bool applyPreset(EditState& state, const Json& op, const std::string& path, std:
     }
     applyFeelPreset(*preset, state.data.settings);
     state.changes.push_back(std::string("apply_preset: ") + preset->name);
-    return true;
+    return clearCustomTransitions(state, op, path, error);
 }
 
 bool autoTimingOp(EditState& state, const std::string& path, std::string& error) {
@@ -922,7 +947,7 @@ bool autoTimingOp(EditState& state, const std::string& path, std::string& error)
     const std::shared_ptr<PoseRealisation> realised = PoseAnimationDocument::realiseData(state.data, rig.info->rig);
     const double before = buildTimeline(state.data).length;
     autoTiming(state.data, realised->keys, *rig.info->rig);
-    state.touched.assign(state.data.poses.size(), true);
+    for (uint8_t& mark : state.touched) mark |= TOUCHED;
     state.changes.push_back("auto_timing: holds and transitions from the motion (length " + fmt(before) + " -> " +
                             fmt(buildTimeline(state.data).length) + " s)");
     return true;
@@ -960,11 +985,48 @@ bool applyOp(EditState& state, const Json& op, size_t opIndex, std::string& erro
     return setHumanoid(state, op, path, error);
 }
 
-// humanize.joint_limits: the added and updated poses are clamped to the joint limits (reported)
+// "0, 2-4" from sorted indices
+std::string indexRanges(const std::vector<size_t>& indices) {
+    std::string text;
+    for (size_t i = 0; i < indices.size();) {
+        size_t j = i;
+        while (j + 1 < indices.size() && indices[j + 1] == indices[j] + 1) j++;
+        text += (text.empty() ? "" : ", ") + std::to_string(indices[i]) + (j > i ? "-" + std::to_string(indices[j]) : "");
+        i = j + 1;
+    }
+    return text;
+}
+
+// The animation's transition changed while some poses keep their own (auto_timing gives every pose
+// one): those poses do not follow it
+void warnOwnTransitions(EditState& state, const Transition& before) {
+    const Transition& now = state.data.settings.transition;
+    if (now.curve == before.curve && now.duration == before.duration && now.overshoot == before.overshoot &&
+        now.anticipation == before.anticipation) return;
+    std::vector<size_t> own;
+    for (size_t i = 0; i < state.data.poses.size(); i++) {
+        if (state.data.poses[i].customTransition) own.push_back(i);
+    }
+    if (own.empty()) return;
+    state.warnings.push_back("poses " + indexRanges(own) + " have their own transition (auto_timing or a pose transition) and "
+                             "keep it; clear with update_pose transition: null, or clear_custom: true on apply_preset / set_settings");
+}
+
+bool insideAssets(Project* project, const fs::path& absolute) {
+    return project->isInsideAssetsPath(project->normalizeToAssetsRelative(absolute));
+}
+
+std::string outsideAssetsWarning(Project* project, const std::string& relative) {
+    return relative + " is outside the assets folder (" + projectRel(project, project->getAssetsPath()) +
+           "): a Pose Animator in a game cannot load it";
+}
+
+// humanize.joint_limits: the poses whose angles this call set (add_pose, mirror_pose, angles,
+// add_angles) are clamped to the joint limits (reported); metadata-only edits are left alone
 void clampTouchedToLimits(EditState& state, std::vector<ClampReport>& reports) {
     if (!state.data.settings.humanize.jointLimits) return;
     for (size_t i = 0; i < state.data.poses.size() && i < state.touched.size(); i++) {
-        if (!state.touched[i]) continue;
+        if (!(state.touched[i] & ANGLES_SET)) continue;
         BodyPose& body = state.data.poses[i].body;
         const BodyPose before = body;
         for (int dof : clampToLimits(body)) {
@@ -1082,21 +1144,72 @@ void getPoseAnimationTool(const CallPtr& call) {
         for (size_t i = 0; i < count; i++) indices.push_back(i);
     }
     Json out = animationJson(project, *document, rig, indices, detail == "full");
+    if (!insideAssets(project, absolute)) {
+        if (!out.contains("warnings")) out["warnings"] = Json::array();
+        out["warnings"].push_back(outsideAssetsWarning(project, document->path()));
+    }
     std::string text = document->path() + ": " + std::to_string(count) + " pose(s), " + fmt(out["length"].get<double>()) + " s, " +
                        (out["loop"].get<bool>() ? "loop" : "one-shot") + ", " + std::to_string(out["frame_rate"].get<int>()) + " fps, preview " +
                        (out["preview_model"].get<std::string>().empty() ? std::string("none") : out["preview_model"].get<std::string>());
     if (out["preset"].is_string()) text += ", feel " + out["preset"].get<std::string>();
     if (rig.info && !rig.info->rig) text += "\nno metrics: " + rig.info->error;
+    if (out.contains("warnings")) {
+        for (const Json& warning : out["warnings"]) text += "\nwarning: " + warning.get<std::string>();
+    }
     for (const Json& pose : out["poses"]) text += "\n" + poseLine(pose);
     call->ok(text, out);
 }
 
 // ------------------------------------------------------------------ edit_pose_animation
 
+// bake without path: the animation the model's Pose Animator plays, as its Inspector Bake button does
+void bakeAnimatorTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    std::string error;
+    const Json& bake = args["bake"];
+    if (args.contains("ops") || args.contains("create")) {
+        call->fail("ops and create need path: the .poseanim file to edit.");
+        return;
+    }
+    if (!readObject(bake, "bake", error) || !checkKeys(bake, "bake", {"model"}, error)) {
+        call->fail(error + " (without path the bake uses the Pose Animator's animation and its file name; pass path to choose a name)");
+        return;
+    }
+    if (!bake.contains("model")) {
+        call->fail("bake.model is required: the model GameObject to bake on.");
+        return;
+    }
+    SceneProject* scene = nullptr;
+    Entity model = NULL_ENTITY;
+    if (!resolveModelEntity(project, args, bake["model"], "bake.model", scene, model, error)) {
+        call->fail(error);
+        return;
+    }
+    const PoseAnimatorComponent* animator = scene->scene->findComponent<PoseAnimatorComponent>(model);
+    if (!animator || animator->animation.empty()) {
+        call->fail("bake.model: \"" + scene->scene->getEntityName(model) + "\" has no Pose Animator with an animation; pass path.");
+        return;
+    }
+    PoseBakeResult result;
+    if (!PoseBaker::bakeAnimatorAsset(project, scene->id, model, animator->animation, result, error)) {
+        call->fail("bake: " + error);
+        return;
+    }
+    Json out = {{"bake", {{"animation", McpRefs::entityJson(scene, result.animation)}, {"name", result.name},
+                          {"created", result.created}, {"frames", result.frames}, {"tracks", result.tracks},
+                          {"length", r4(result.length)}, {"source", animator->animation}}}};
+    call->ok(PoseBaker::bakeStatusLine(animator->animation, result) + " (scene undo step)", out);
+}
+
 void editPoseAnimationTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     installSyncHook(call->ctx());
+    if (!args.contains("path") && args.contains("bake")) {
+        bakeAnimatorTool(call);
+        return;
+    }
     std::string relative, error;
     fs::path absolute;
     if (!resolveAnimationPath(project, args, relative, absolute, error)) {
@@ -1194,7 +1307,8 @@ void editPoseAnimationTool(const CallPtr& call) {
         }
         state.data = document->data();
     }
-    state.touched.assign(state.data.poses.size(), false);
+    state.touched.assign(state.data.poses.size(), 0);
+    const Transition initialTransition = state.data.settings.transition;
 
     // all ops on the copy; the first failing one fails the call with nothing written
     for (size_t i = 0; i < ops.size(); i++) {
@@ -1209,6 +1323,11 @@ void editPoseAnimationTool(const CallPtr& call) {
     }
     std::vector<ClampReport> clamped;
     clampTouchedToLimits(state, clamped);
+    warnOwnTransitions(state, initialTransition);
+    if (document) {
+        for (const std::string& warning : document->loadWarnings()) state.warnings.push_back(relative + ": " + warning);
+    }
+    if (!insideAssets(project, absolute)) state.warnings.push_back(outsideAssetsWarning(project, relative));
 
     std::vector<PoseAnimationDocument::ExtraFile> extras;
     bool extrasChanged = false;
@@ -1236,7 +1355,7 @@ void editPoseAnimationTool(const CallPtr& call) {
 
     std::vector<size_t> touched;
     for (size_t i = 0; i < state.touched.size() && i < document->data().poses.size(); i++) {
-        if (state.touched[i]) touched.push_back(i);
+        if (state.touched[i] & TOUCHED) touched.push_back(i);
     }
     const Json full = animationJson(project, *document, previewRig(project, document->data()), touched, true);
     Json out = {{"path", document->path()}, {"pose_count", document->data().poses.size()}, {"length", full["length"]},
@@ -1318,7 +1437,8 @@ void registerPoseTools(McpRegistry& registry) {
             "changes angles); delete_pose; move_pose; mirror_pose; set_settings (partial); apply_preset; auto_timing; "
             "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto). "
             "angles: absolute degrees per DOF, add_angles: added. Clamped values are echoed in clamped. create makes the "
-            "file; bake writes an Animation on a scene model (scene undo). Returns changes and the touched poses with metrics.";
+            "file; bake writes an Animation on a scene model (scene undo; without path: its Pose Animator's). Returns changes "
+            "and the touched poses with metrics.";
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"create", obj({{"preview_model", assetPath("")}, {"preset", string("")}})},
@@ -1347,11 +1467,12 @@ void registerPoseTools(McpRegistry& registry) {
                 {"weights", obj({{"spine", number("")}, {"head", number("")}, {"arms", number("")}, {"legs", number("")}})},
                 {"humanize", anyObject("")},
                 {"model", assetPath("")},
-                {"bones", anyObject("")}
+                {"bones", anyObject("")},
+                {"clear_custom", boolean("")}
             }, {"op"}), "")},
             {"bake", obj({{"model", entityRef()}, {"name", string("Default: the file name.")}}, {"model"})},
             {"scene", sceneRef()}
-        }, {"path"});
+        });
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = false;
         tool.allowedWhilePlaying = false;
