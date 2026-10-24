@@ -309,8 +309,8 @@ namespace {
         return true;
     }
 
-    std::vector<Vector3> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
-                                       const std::unordered_set<Entity>& ignore, size_t maxCount) {
+    std::vector<std::pair<float, Vector3>> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
+                                                         const std::unordered_set<Entity>& ignore, size_t maxCount) {
         std::vector<std::pair<float, Vector3>> entries;
         auto transforms = scene->getComponentArray<Transform>();
         for (size_t i = 0; i < transforms->size(); i++) {
@@ -330,9 +330,10 @@ namespace {
             if (segmentEnters(worldFrameOf(scene, e).matrix * local, origin, d, t)) entries.push_back({t, origin + d * t});
         }
         std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
-        std::vector<Vector3> points;
-        for (size_t i = 0; i < entries.size() && i < maxCount; i++) points.push_back(entries[i].second);
-        return points;
+        if (entries.size() > maxCount) entries.resize(maxCount);
+        const float length = d.length();
+        for (auto& entry : entries) entry.first *= length;   // a fraction of the segment, to metres
+        return entries;
     }
 
     float longestAxis(const AABB& box) {
@@ -402,14 +403,19 @@ namespace {
         LocalPose after;
     };
 
-    // Unmoved, up to float noise: a body the simulation left where it was reads back a hair off
-    // (world to local and back), which must not become an undo step or a prefab override
-    bool samePose(const LocalPose& a, const LocalPose& b) {
+    // Unmoved, up to float noise, compared component by component: a body the simulation left
+    // where it was reads back a hair off (world to local and back), which must not become an
+    // undo step or a prefab override (a slide must not record a rotation override)
+    bool samePosition(const Vector3& a, const Vector3& b) {
         for (int i = 0; i < 3; i++) {
-            const float tolerance = 1e-6f + 1e-6f * std::max(std::fabs(a.position[i]), std::fabs(b.position[i]));
-            if (std::fabs(a.position[i] - b.position[i]) > tolerance) return false;
+            const float tolerance = 1e-6f + 1e-6f * std::max(std::fabs(a[i]), std::fabs(b[i]));
+            if (std::fabs(a[i] - b[i]) > tolerance) return false;
         }
-        return angleDegrees(a.rotation, b.rotation) < 1e-3f && a.scale == b.scale;
+        return true;
+    }
+
+    bool sameRotation(const Quaternion& a, const Quaternion& b) {
+        return angleDegrees(a, b) * kDegToRad < 1e-6f;
     }
 
     size_t applyCommit(Project* project, uint32_t sceneId, const std::vector<CommitEntry>& entries) {
@@ -417,8 +423,13 @@ namespace {
         if (!sceneProject || !sceneProject->scene) return 0;
         ObjectTransformCmd* cmd = new ObjectTransformCmd(project, sceneId);
         for (const CommitEntry& entry : entries) {
-            if (samePose(entry.before, entry.after)) continue;
-            cmd->addEntity(entry.entity, entry.after.position, entry.after.rotation, entry.after.scale,
+            // an unchanged component keeps its old value exactly, so it records no override
+            const bool moved = !samePosition(entry.before.position, entry.after.position);
+            const bool turned = !sameRotation(entry.before.rotation, entry.after.rotation);
+            const bool scaled = entry.before.scale != entry.after.scale;
+            if (!moved && !turned && !scaled) continue;
+            cmd->addEntity(entry.entity, moved ? entry.after.position : entry.before.position,
+                           turned ? entry.after.rotation : entry.before.rotation, entry.after.scale,
                            entry.before.position, entry.before.rotation, entry.before.scale);
         }
         const size_t count = cmd->getEntityCount();
@@ -438,6 +449,35 @@ namespace {
         }
     }
 
+    // At rest for a placement: asleep and, under gravity, touching something (a body the solver
+    // lets sleep in mid-air under a weak pull is still falling)
+    bool restingState(const PlacementBodyState& state, const Vector3& gravity) {
+        if (!state.asleep) return false;
+        if (gravity.squaredLength() < 1e-12f) return true;
+        return !state.restingOn.empty() || state.contacts > 0;
+    }
+
+    // Every dynamic body at rest (or fallen out); *hovering: one is asleep in mid-air under
+    // gravity (the solver's own sleep caught it at the top of a tiny bounce)
+    bool allResting(const PlacementWorld& world, bool* hovering = nullptr) {
+        const Vector3 gravity = world.getGravity();
+        bool resting = true;
+        for (const PlacementBodyState& state : world.getStates()) {
+            if (state.fellOut || restingState(state, gravity)) continue;
+            resting = false;
+            if (state.asleep && hovering) *hovering = true;
+        }
+        return resting;
+    }
+
+    // allResting for a settle: a body asleep in mid-air is woken to come down
+    bool settled(PlacementWorld& world) {
+        bool hovering = false;
+        const bool resting = allResting(world, &hovering);
+        if (hovering) world.wakeAll();
+        return resting;
+    }
+
     std::string colliderName(const PlacementBodyState& state) {
         if (state.shape == PlacementShapeKind::DECOMPOSED) return "decomposed(" + std::to_string(state.hullCount) + ")";
         return placementShapeKindName(state.shape);
@@ -454,6 +494,18 @@ namespace {
         return slot;
     }
 
+    // The interactive sessions alive (placementSceneBusy); main thread only
+    struct SessionEntry {
+        const PlacementSession* session = nullptr;
+        Project* project = nullptr;
+        size_t sceneId = 0;
+        bool busy() const { return session->isBusy(); }
+    };
+    std::vector<SessionEntry>& liveSessions() {
+        static std::vector<SessionEntry> sessions;
+        return sessions;
+    }
+
     // What a world built with `cache` may still use: the cache, unless it was dropped since
     // (placementProjectSwitching, another project)
     struct CacheUse {
@@ -463,23 +515,25 @@ namespace {
     };
 
     // The points where a segment enters the bounds of the scene's meshes and terrains, nearest
-    // first, from the local transforms (Ray's BOUNDS query reads MeshComponent::worldAABB, which
-    // only the render pass refreshes)
-    std::vector<Vector3> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
-                                       const std::unordered_set<Entity>& ignore, size_t maxCount);
+    // first (with their distance along it), from the local transforms (Ray's BOUNDS query reads
+    // MeshComponent::worldAABB, which only the render pass refreshes)
+    std::vector<std::pair<float, Vector3>> boundsEntries(Scene* scene, const Vector3& origin, const Vector3& d,
+                                                         const std::unordered_set<Entity>& ignore, size_t maxCount);
 
-    // A world raycast that first loads what the ray reaches: when nothing loaded is hit, the
-    // context around each bounds the ray enters (nearest first) is loaded and the ray cast again
+    // A world raycast that hits the nearest surface in the scene, loaded or not: the context
+    // around each bounds the ray enters is loaded, nearest first, while that bounds is nearer
+    // than what the world hits (a floor loaded under a table not loaded yet must not take it)
     bool raycastLoading(PlacementWorld& world, Scene* scene, const Ray& ray, const std::vector<Entity>& ignoreBodies,
                         const std::unordered_set<Entity>& ignoreBounds, const std::function<void(const AABB&)>& load,
                         PlacementRayHit& hit) {
-        if (world.raycast(ray, hit, ignoreBodies)) return true;
-        if (!load || !scene) return false;
-        for (const Vector3& entry : boundsEntries(scene, ray.getOrigin(), ray.getDirection(), ignoreBounds, 8)) {
-            load(AABB(entry, entry));
-            if (world.raycast(ray, hit, ignoreBodies)) return true;
+        bool found = world.raycast(ray, hit, ignoreBodies);
+        if (!load || !scene) return found;
+        for (const auto& entry : boundsEntries(scene, ray.getOrigin(), ray.getDirection(), ignoreBounds, 8)) {
+            if (found && entry.first >= hit.distance) break;
+            load(AABB(entry.second, entry.second));
+            found = world.raycast(ray, hit, ignoreBodies);
         }
-        return false;
+        return found;
     }
 
     // assess()-style: what happened, then what to do next
@@ -586,6 +640,23 @@ void editor::placementProjectSwitching() {
     }
     slot.cache.reset();
     slot.projectPath.clear();
+}
+
+uint64_t editor::placementSceneEditStamp(Project* project, size_t sceneId) {
+    if (!project) return 0;
+    const SceneProject* sceneProject = project->getScene(static_cast<uint32_t>(sceneId));
+    if (!sceneProject || !sceneProject->scene) return 0;
+    Hasher h;
+    h.value(sceneFingerprint(sceneProject));   // structureVersion, every GameObject's Transform, ...
+    h.value(static_cast<uint64_t>(CommandHandle::get(sceneId)->position()));
+    return h.h == 0 ? 1 : h.h;
+}
+
+bool editor::placementSceneBusy(Project* project, size_t sceneId) {
+    for (const SessionEntry& entry : liveSessions()) {
+        if (entry.project == project && entry.sceneId == sceneId && entry.busy()) return true;
+    }
+    return false;
 }
 
 const char* editor::placementModeName(PlacementMode mode) {
@@ -808,6 +879,7 @@ struct PlacementSession::Impl {
         Entity entity = NULL_ENTITY;
         bool mover = true;
         LocalPose local;
+        Entity parent = NULL_ENTITY;   // when the snapshot was taken
         PlacementPose start;
         Vector3 targetPosition;    // !keepFormation: the running per-mover target
         bool hasSnapTarget = false;
@@ -842,6 +914,7 @@ struct PlacementSession::Impl {
     // per-step targets of Distribute/Gather (fixed at begin)
     std::vector<PlacementPose> fixedTargets;
 
+    uint64_t beginStructureVersion = 0;   // the scene's structure when the gesture began
     double accumulator = 0.0;
     double snapClock = 0.0;        // simulated seconds of the Snap gesture
     double settleSeconds = 0.0;
@@ -938,6 +1011,7 @@ struct PlacementSession::Impl {
             body.entity = neighbour;
             body.mover = false;
             body.local = localOf(sc, neighbour, nullptr);
+            body.parent = parentOf(sc, neighbour);
             body.start = world->getState(neighbour).pose;
             bodyIndex[neighbour] = bodies.size();
             bodies.push_back(body);
@@ -1178,15 +1252,27 @@ struct PlacementSession::Impl {
         if (SceneProject* sp = sceneProject()) sp->needUpdateRender = true;
     }
 
+    // What still exists back where it was: its old local values, or (re-parented since) its old
+    // world pose in the new parent's space; parents first
     void restoreSnapshot() {
         Scene* sc = scene();
         if (!sc) return;
-        for (const Body& body : bodies) {
+        std::vector<std::pair<size_t, size_t>> ordered;
+        for (size_t i = 0; i < bodies.size(); i++) {
+            if (sc->isEntityCreated(bodies[i].entity)) ordered.push_back({ancestry(sc, bodies[i].entity).size(), i});
+        }
+        std::sort(ordered.begin(), ordered.end());
+        for (const auto& item : ordered) {
+            const Body& body = bodies[item.second];
             Transform* transform = sc->findComponent<Transform>(body.entity);
-            if (!transform || !sc->isEntityCreated(body.entity)) continue;
-            transform->position = body.local.position;
-            transform->rotation = body.local.rotation;
-            transform->scale = body.local.scale;
+            if (!transform) continue;
+            if (transform->parent == body.parent) {
+                transform->position = body.local.position;
+                transform->rotation = body.local.rotation;
+                transform->scale = body.local.scale;
+            } else {
+                worldToLocal(sc, body.entity, body.start, nullptr, transform->position, transform->rotation);
+            }
             transform->needUpdate = true;
         }
         if (SceneProject* sp = sceneProject()) sp->needUpdateRender = true;
@@ -1277,13 +1363,19 @@ struct PlacementSession::Impl {
             cancelGesture(true);
             return false;
         }
+        if (sp->structureVersion != beginStructureVersion) {
+            // something else restructured the scene (a delete, a re-parent): the gesture is off
+            cancelGesture(true);
+            worldDirty = true;
+            return false;
+        }
         if (sp->playState != ScenePlayState::STOPPED) {
             cancelGesture(true);
             return false;
         }
         for (const Body& body : bodies) {
-            if (!entityAlive(sp->scene, body.entity)) {
-                // deleted mid-gesture: put the others back, rebuild the world
+            if (!entityAlive(sp->scene, body.entity) || parentOf(sp->scene, body.entity) != body.parent) {
+                // deleted or re-parented mid-gesture: put the others back, rebuild the world
                 cancelGesture(true);
                 worldDirty = true;
                 return false;
@@ -1387,7 +1479,7 @@ struct PlacementSession::Impl {
                 }
             } else {
                 settleSeconds += simulated;
-                if (world->allAsleep() || settleSeconds >= settings.maxSettleSeconds) {
+                if (settled(*world) || settleSeconds >= settings.maxSettleSeconds) {
                     commit();
                     requestEditorRedraw();
                     return;
@@ -1478,12 +1570,14 @@ struct PlacementSession::Impl {
 
         gesture = newGesture;
         phase = PlacementPhase::Active;
+        beginStructureVersion = sceneProject()->structureVersion;
         Vector3 sum;
         for (Entity m : movers) {
             Body body;
             body.entity = m;
             body.mover = true;
             body.local = localOf(sc, m, nullptr);
+            body.parent = parentOf(sc, m);
             body.start = world->getState(m).pose;
             body.targetPosition = body.start.position;
             sum += body.start.position;
@@ -1538,10 +1632,14 @@ struct PlacementSession::Impl {
 PlacementSession::PlacementSession(Project* project, size_t sceneId): impl(new Impl) {
     impl->project = project;
     impl->sceneId = static_cast<uint32_t>(sceneId);
+    liveSessions().push_back({this, project, sceneId});
 }
 
 PlacementSession::~PlacementSession() {
     cancel();
+    std::vector<SessionEntry>& sessions = liveSessions();
+    sessions.erase(std::remove_if(sessions.begin(), sessions.end(), [this](const SessionEntry& e) { return e.session == this; }),
+                   sessions.end());
 }
 
 size_t PlacementSession::getSceneId() const { return impl->sceneId; }
@@ -1664,7 +1762,7 @@ PlacementHud PlacementSession::getHud() const {
         hud.status = "Refining colliders " + std::to_string(total - hud.pendingDecompositions) + "/" + std::to_string(total);
     } else if (impl->phase == PlacementPhase::Settling) {
         hud.status = "Settling\xE2\x80\xA6";
-    } else if (impl->world->allAsleep()) {
+    } else if (allResting(*impl->world)) {
         hud.status = "Resting";
     } else {
         hud.status = "Simulating";
@@ -1748,6 +1846,11 @@ struct PlacementRun::Impl {
     std::vector<Entity> movers;                 // sorted by path
     std::map<Entity, std::string> paths;
     std::map<Entity, PlacementPose> before;     // movers and neighbours, before anything moved
+    struct StartTransform {
+        LocalPose local;
+        Entity parent = NULL_ENTITY;
+    };
+    std::map<Entity, StartTransform> startTransforms;   // their Transforms then (commitPlacement checks them)
     std::vector<Entity> neighbourOrder;
     std::vector<PlacementPose> targets;         // parallel to movers (target modes)
     Vector3 startCenter;
@@ -1831,10 +1934,17 @@ struct PlacementRun::Impl {
         return ::raycastLoading(*world, scene, ray, movers, ignore, load, hit);
     }
 
+    void noteStartTransform(Entity entity) {
+        StartTransform& start = startTransforms[entity];
+        start.local = localOf(scene, entity, nullptr);
+        start.parent = parentOf(scene, entity);
+    }
+
     void noteNeighbours() {
         for (Entity neighbour : world->getNeighbours()) {
             if (before.count(neighbour)) continue;
             before[neighbour] = world->getState(neighbour).pose;
+            noteStartTransform(neighbour);
             neighbourOrder.push_back(neighbour);
             // the kill plane under where it starts (its scene pose: it was never stepped)
             lowerKillY(expanded(subtreeBounds(scene, neighbour), margin));
@@ -1865,10 +1975,11 @@ struct PlacementRun::Impl {
         targets.clear();
         switch (spec.mode) {
             case PlacementMode::Move: {
-                // target.space local: in the space of the first entity's parent
+                // target.space local: in the space of the first mover's parent, in path order (the
+                // run's own order: the fingerprint ignores the order entities are given in)
                 Vector3 center = startCenter;
                 Quaternion rotation;
-                const Entity parent = parentOf(scene, spec.entities[0]);
+                const Entity parent = parentOf(scene, movers[0]);
                 const bool local = spec.targetLocal && parent != NULL_ENTITY;
                 const WorldFrame frame = local ? worldFrameOf(scene, parent) : WorldFrame();
                 if (spec.hasTargetPosition) center = local ? frame.matrix * spec.targetPosition : spec.targetPosition;
@@ -2011,8 +2122,8 @@ struct PlacementRun::Impl {
     // too); without, when it is below the sleep thresholds
     bool bodySettled(const PlacementBodyState& state) const {
         if (state.fellOut) return false;
+        if (stage == Stage::Settle) return restingState(state, world->getGravity());
         if (state.asleep) return true;
-        if (stage == Stage::Settle) return false;
         return state.linearVelocity.length() <= spec.settings.sleepLinear &&
                state.angularVelocity.length() <= spec.settings.sleepAngularDeg * kDegToRad;
     }
@@ -2048,14 +2159,14 @@ struct PlacementRun::Impl {
         }
         if (step == 1) initialPenetration = std::max(initialPenetration, world->getMaxPenetration());
 
-        if (step >= maxSteps) return true;
+        // the stage's own end first: one reached on the last step counts
         switch (stage) {
             case Stage::Separate:
                 if (world->getMaxPenetration() <= kSeparatedPenetration) {
                     separated = true;
                     return true;
                 }
-                return false;
+                break;
             case Stage::Approach: {
                 stalledSeconds = allStill ? stalledSeconds + fixedStep : 0.0;
                 if (reached() || stalledSeconds >= kStalledSeconds) {
@@ -2075,16 +2186,17 @@ struct PlacementRun::Impl {
                     settleStep.clear();
                     stage = Stage::Settle;
                 }
-                return false;
+                break;
             }
             case Stage::Settle:
-                return world->allAsleep();
+                if (settled(*world)) return true;
+                break;
             case Stage::WaitColliders:
             case Stage::Placed:
             case Stage::Finished:
-                break;
+                return true;
         }
-        return true;
+        return step >= maxSteps;
     }
 
     // The scene or the decomposition cache went away mid-run: done, without touching either
@@ -2135,6 +2247,11 @@ struct PlacementRun::Impl {
             e.path = pathOf(entity);
             e.mover = state.mover;
             e.before = before[entity];
+            const StartTransform& start = startTransforms[entity];
+            e.beforeLocalPosition = start.local.position;
+            e.beforeLocalRotation = start.local.rotation;
+            e.beforeLocalScale = start.local.scale;
+            e.beforeParent = start.parent;
             e.after = state.pose;
             worldToLocal(scene, entity, e.after, &overrides, e.afterLocalPosition, e.afterLocalRotation);
             Transform* transform = scene->findComponent<Transform>(entity);
@@ -2246,6 +2363,7 @@ bool PlacementRun::start(Project* project, const PlacementSpec& spec) {
     SceneProject* sp = project->getScene(static_cast<uint32_t>(spec.sceneId));
     r.scene = sp->scene;
     r.result.sceneStructureVersion = sp->structureVersion;
+    r.result.sceneEditStamp = placementSceneEditStamp(project, spec.sceneId);
 
     // movers in path order: the same scene gives the same insertion order every run
     std::vector<Entity> roots = placementRoots(project, spec.sceneId, spec.entities);
@@ -2265,6 +2383,7 @@ bool PlacementRun::start(Project* project, const PlacementSpec& spec) {
         if (r.world->addMover(root, &why)) {
             r.movers.push_back(root);
             r.before[root] = r.world->getState(root).pose;
+            r.noteStartTransform(root);
             if (!why.empty()) r.caveats[root] = why;   // accepted with a caveat: a warning, not a refusal
         } else {
             if (why.empty()) why = "cannot be moved";
@@ -2363,6 +2482,13 @@ bool PlacementRun::advance(double budgetMs) {
         r.abandon();
         return true;
     }
+    // the scene is read on this thread only, so an edit can only have come between two slices:
+    // anything changed since the start fails the run (deterministic: an unedited scene always
+    // gives the same run, sliced or not)
+    if (placementSceneEditStamp(r.project, r.spec.sceneId) != r.result.sceneEditStamp) {
+        r.fail("the scene changed during the simulation: run it again");
+        return true;
+    }
     const auto begin = std::chrono::steady_clock::now();
     for (;;) {
         const bool waiting = r.stage == Impl::Stage::WaitColliders;
@@ -2439,8 +2565,13 @@ bool editor::commitPlacement(Project* project, const PlacementResult& result, st
         error = "the scene is in Play mode: stop it first";
         return false;
     }
+    if (placementSceneBusy(project, result.sceneId)) {
+        error = "a physics gesture is running in the scene: wait for it to finish, then run it again";
+        return false;
+    }
+    const std::string changed = "the scene changed during the simulation: run it again";
     if (sceneProject->structureVersion != result.sceneStructureVersion) {
-        error = "scene changed during simulation: run it again";
+        error = changed;
         return false;
     }
     Scene* scene = sceneProject->scene;
@@ -2451,11 +2582,22 @@ bool editor::commitPlacement(Project* project, const PlacementResult& result, st
             error = (e.path.empty() ? e.name : e.path) + " is gone (deleted since the run): run it again";
             return false;
         }
+        // the result is about the pose the run started from
+        if (transform->parent != e.beforeParent || transform->position != e.beforeLocalPosition ||
+            transform->rotation != e.beforeLocalRotation || transform->scale != e.beforeLocalScale) {
+            error = changed;
+            return false;
+        }
         CommitEntry entry;
         entry.entity = e.entity;
         entry.before = LocalPose{transform->position, transform->rotation, transform->scale};
         entry.after = LocalPose{e.afterLocalPosition, e.afterLocalRotation, transform->scale};
         entries.push_back(entry);
+    }
+    // anything else the run read (the floor it landed on, ...)
+    if (placementSceneEditStamp(project, result.sceneId) != result.sceneEditStamp) {
+        error = changed;
+        return false;
     }
     applyCommit(project, static_cast<uint32_t>(result.sceneId), entries);
     return true;

@@ -15,6 +15,7 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
+#include "command/type/CreatePrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "component/Joint3DComponent.h"
@@ -23,6 +24,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
 #include "util/EntityPath.h"
+#include "Stream.h"
 
 #include "json.hpp"
 
@@ -521,6 +523,16 @@ namespace {
         result.contextBodies = 41;
         result.contextRegion = AABB(Vector3(-2.0f, -1.0f, -2.0f), Vector3(2.0f, 4.123456789f, 2.0f));
         result.warnings = {"Pebble#3 never came to rest within 10 s"};
+        // what a run records at its start
+        for (PlacementEntityResult& e : result.entities) {
+            if (Transform* t = sceneOf(sceneId)->findComponent<Transform>(e.entity)) {
+                e.beforeLocalPosition = t->position;
+                e.beforeLocalRotation = t->rotation;
+                e.beforeLocalScale = t->scale;
+                e.beforeParent = t->parent;
+            }
+        }
+        result.sceneEditStamp = placementSceneEditStamp(project(), sceneId);
         return result;
     }
 
@@ -553,8 +565,11 @@ TEST(PhysicsPlacement, CommitIsOneUndoStepInParentSpace) {
     history->redo();
     expectNear(transformOf(sceneId, crate).position, Vector3(5.0f, 1.0f, 0.0f), 1e-6f);
 
+    // the same result again: the scene is not what it started from any more
+    EXPECT_FALSE(commitPlacement(project(), result, error));
+    EXPECT_EQ(error, "the scene changed during the simulation: run it again");
     // committing what is already there adds no step
-    ASSERT_TRUE(commitPlacement(project(), result, error)) << error;
+    ASSERT_TRUE(commitPlacement(project(), handMadeResult(sceneId, crate, board), error)) << error;
     EXPECT_EQ(history->position(), position + 1);
 }
 
@@ -574,12 +589,12 @@ TEST(PhysicsPlacement, CommitRefusesAChangedSceneAGoneEntityAndAFailedRun) {
     PlacementResult stale = handMadeResult(sceneId, crate, board);
     project()->getScene(sceneId)->structureVersion++;
     EXPECT_FALSE(commitPlacement(project(), stale, error));
-    EXPECT_EQ(error, "scene changed during simulation: run it again");
+    EXPECT_EQ(error, "the scene changed during the simulation: run it again");
+    project()->getScene(sceneId)->structureVersion--;
 
-    PlacementResult gone = handMadeResult(sceneId, crate, board);
     CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project(), sceneId, board));
     const size_t afterDelete = CommandHandle::get(sceneId)->position();
-    gone.sceneStructureVersion = project()->getScene(sceneId)->structureVersion;
+    PlacementResult gone = handMadeResult(sceneId, crate, board);
     EXPECT_FALSE(commitPlacement(project(), gone, error));
     EXPECT_NE(error.find("Shelf/Board is gone"), std::string::npos);
     EXPECT_EQ(CommandHandle::get(sceneId)->position(), afterDelete);
@@ -597,6 +612,39 @@ TEST(PhysicsPlacement, CommitRefusesAChangedSceneAGoneEntityAndAFailedRun) {
     noScene.sceneId = 4242424242u;
     EXPECT_FALSE(commitPlacement(project(), noScene, error));
     EXPECT_FALSE(commitPlacement(nullptr, playing, error));
+}
+
+TEST(PhysicsPlacement, CommitRefusesAnyEditSinceTheRunStarted) {
+    const uint32_t sceneId = newScene();
+    const Entity board = create(sceneId, "Board", EntityCreationType::BOX, Vector3(0.0f, 1.0f, 0.0f));
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+    std::string error;
+    // a Transform edited since the run started (no structure change): refused, nothing applied
+    PlacementResult moved = handMadeResult(sceneId, crate, board);
+    transformOf(sceneId, crate).position = Vector3(0.0f, 3.5f, 0.0f);
+    EXPECT_FALSE(commitPlacement(project(), moved, error));
+    EXPECT_EQ(error, "the scene changed during the simulation: run it again");
+    transformOf(sceneId, crate).position = Vector3(0.0f, 3.0f, 0.0f);
+    EXPECT_TRUE(commitPlacement(project(), moved, error)) << error;   // as it was: fine again
+    CommandHandle::get(sceneId)->undo();
+
+    // another GameObject moved (the floor the result rests on): the stamp catches it
+    const Entity floor = create(sceneId, "Floor", EntityCreationType::BOX, Vector3(0.0f, -0.5f, 0.0f));
+    PlacementResult floorMoved = handMadeResult(sceneId, crate, board);
+    const uint64_t stamp = placementSceneEditStamp(project(), sceneId);
+    EXPECT_NE(stamp, 0u);
+    EXPECT_EQ(placementSceneEditStamp(project(), sceneId), stamp);
+    CommandHandle::get(sceneId)->addCommandNoMerge(new ObjectTransformCmd(project(), sceneId, floor, Vector3(0.0f, -0.4f, 0.0f), Quaternion(), Vector3(1.0f, 1.0f, 1.0f)));
+    EXPECT_NE(placementSceneEditStamp(project(), sceneId), stamp);
+    EXPECT_FALSE(commitPlacement(project(), floorMoved, error));
+    EXPECT_EQ(error, "the scene changed during the simulation: run it again");
+    EXPECT_EQ(placementSceneEditStamp(project(), 4242424242u), 0u);
+
+    // a parent changed: refused
+    PlacementResult reparented = handMadeResult(sceneId, crate, board);
+    reparented.entities[0].beforeParent = floor;
+    EXPECT_FALSE(commitPlacement(project(), reparented, error));
+    EXPECT_EQ(error, "the scene changed during the simulation: run it again");
 }
 
 TEST(PhysicsPlacement, ResultJsonHasTheSpecShapeRoundedTo1e5) {
@@ -1374,26 +1422,44 @@ TEST(PhysicsPlacementSim, InteractiveSnapRestsOnABoxTop) {
     expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 3.0f, 0.0f), 0.0f);
 }
 
-TEST(PhysicsPlacementSim, InteractiveStructureChangeMidGesture) {
+TEST(PhysicsPlacementSim, InteractiveStructureChangeMidGestureCancelsIt) {
     REQUIRE_PHYSICS();
     const uint32_t sceneId = newScene();
     makeFloor(sceneId);
     const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
     const size_t position = CommandHandle::get(sceneId)->position();
     PlacementSession session(project(), sceneId);
+    EXPECT_FALSE(placementSceneBusy(project(), sceneId));
     ASSERT_TRUE(session.begin(PlacementGesture::Drop, {crate}));
+    EXPECT_TRUE(placementSceneBusy(project(), sceneId));
+    EXPECT_FALSE(placementSceneBusy(project(), 4242424242u));
+    EXPECT_FALSE(placementSceneBusy(nullptr, sceneId));
     ticks(session, 10);
-    // a GameObject added while the gesture runs: the gesture goes on (the world is rebuilt for
-    // the next one)
+    EXPECT_LT(transformOf(sceneId, crate).position.y, 2.95f);
+    // a GameObject added while the gesture runs (another tool, an agent): the gesture is
+    // cancelled, the preview put back
     const Entity step = create(sceneId, "Step", EntityCreationType::BOX, Vector3(5.0f, 0.5f, 0.0f));
     project()->getScene(sceneId)->structureVersion++;
-    session.notifySceneChanged();
-    EXPECT_TRUE(session.isGestureActive());
-    ticks(session, 240);
-    session.end();
+    session.tick(1.0 / 60.0);
     EXPECT_FALSE(session.isBusy());
-    EXPECT_NEAR(transformOf(sceneId, crate).position.y, 0.5f, 0.002f);
-    EXPECT_EQ(CommandHandle::get(sceneId)->position(), position + 2);   // the create, then the drop
+    EXPECT_FALSE(placementSceneBusy(project(), sceneId));
+    expectNear(transformOf(sceneId, crate).position, Vector3(0.0f, 3.0f, 0.0f), 0.0f);
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), position + 1);   // the create only
+
+    // re-parented mid-gesture: back where it started in the world, in its new parent's space
+    const Entity holder = create(sceneId, "Holder", EntityCreationType::GAMEOBJECT, Vector3(5.0f, 1.0f, 0.0f), NULL_ENTITY,
+                                 Vector3(1.0f, 1.0f, 1.0f), yaw(90.0f));
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, {crate}));
+    session.setMoveTarget(session.getMoversCenter() + Vector3(1.0f, 0.0f, 0.0f));
+    ticks(session, 20);
+    sceneOf(sceneId)->addEntityChild(holder, crate, true);
+    project()->getScene(sceneId)->structureVersion++;
+    session.tick(1.0 / 60.0);
+    EXPECT_FALSE(session.isBusy());
+    ASSERT_EQ(transformOf(sceneId, crate).parent, holder);
+    const Transform& local = transformOf(sceneId, crate);
+    expectNear(yaw(90.0f) * local.position + Vector3(5.0f, 1.0f, 0.0f), Vector3(0.0f, 3.0f, 0.0f), 1e-4f);
+    expectSameRotation(yaw(90.0f) * local.rotation, Quaternion(), 1e-5f);
 
     // the next gesture sees the new box
     const Entity other = create(sceneId, "Other", EntityCreationType::BOX, Vector3(5.0f, 4.0f, 0.0f));
@@ -1676,7 +1742,9 @@ TEST(PhysicsPlacementSim, TableCrateDropPushingNeighboursWithATightMargin) {
     Vector3 crate(0.0f, 1.0f, 0.0f);
     for (const PlacementEntityResult& e : result.entities) {
         EXPECT_FALSE(e.fellOut) << e.path;
-        if (e.entity == t.table) EXPECT_LT(e.movedMeters, 0.02f);
+        if (e.entity == t.table) {
+            EXPECT_LT(e.movedMeters, 0.02f);
+        }
         if (e.entity == t.crate) {
             crate = e.after.position;
             EXPECT_FALSE(e.mover);   // nudged by the boxes landing in it: a pushed neighbour
@@ -1741,4 +1809,186 @@ TEST(PhysicsPlacementSim, EveryBoxOfADroppedStackReportsWhatItRestsOn) {
     }
     EXPECT_TRUE(result.warnings.empty()) << result.warnings[0];
     EXPECT_NE(result.hint.find("All 5 settled"), std::string::npos) << result.hint;
+}
+
+TEST(PhysicsPlacementSim, ABatchRunFailsWhenTheSceneIsEditedBetweenSlices) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    const Entity floor = makeFloor(sceneId);
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+    PlacementRun run;
+    ASSERT_TRUE(run.start(project(), specFor(sceneId, {crate})));
+    EXPECT_EQ(run.result().sceneEditStamp, placementSceneEditStamp(project(), sceneId));
+    EXPECT_FALSE(run.advance(0.01));
+    // the floor moved by an agent while the run is between two slices
+    CommandHandle::get(sceneId)->addCommandNoMerge(new ObjectTransformCmd(project(), sceneId, floor, Vector3(0.0f, -1.5f, 0.0f), Quaternion(),
+                                                                           Vector3(20.0f, 1.0f, 20.0f)));
+    EXPECT_TRUE(run.advance(0.0));
+    EXPECT_FALSE(run.result().ok);
+    EXPECT_EQ(run.result().error, "the scene changed during the simulation: run it again");
+
+    // a finished run records where every entity started, and commits only onto that
+    const PlacementResult result = runToEnd(specFor(sceneId, {crate}));
+    ASSERT_TRUE(result.ok);
+    const PlacementEntityResult* e = entityResult(result, crate);
+    expectNear(e->beforeLocalPosition, Vector3(0.0f, 3.0f, 0.0f), 0.0f);
+    EXPECT_EQ(e->beforeParent, NULL_ENTITY);
+    std::string error;
+    transformOf(sceneId, crate).position.x += 0.5f;
+    EXPECT_FALSE(commitPlacement(project(), result, error));
+    EXPECT_EQ(error, "the scene changed during the simulation: run it again");
+}
+
+TEST(PhysicsPlacementSim, UnderGravityOnlyATouchingBodyHasSettled) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 5.0f, 0.0f));
+    PlacementSpec slow = specFor(sceneId, {crate});
+    slow.gravity = Vector3(0.0f, -0.3f, 0.0f);
+    slow.maxSeconds = 1.0f;
+    const PlacementResult result = runToEnd(slow);
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_FALSE(result.allSettled);
+    EXPECT_EQ(result.steps, 120u);
+    EXPECT_FALSE(entityResult(result, crate)->settled);
+    EXPECT_TRUE(contains(result.warnings, "Crate never came to rest within 1 s"));
+
+    // the interactive settle does not commit it in mid-air either
+    PlacementSession session(project(), sceneId);
+    PhysicsPlacementSettings settings;
+    settings.gravity = Vector3(0.0f, -0.3f, 0.0f);
+    session.setSettings(settings);
+    ASSERT_TRUE(session.begin(PlacementGesture::Move, {crate}));
+    session.setMoveTarget(session.getMoversCenter() + Vector3(0.5f, 0.0f, 0.0f));
+    ticks(session, 30);
+    session.end();
+    ticks(session, 60);
+    EXPECT_EQ(session.getPhase(), PlacementPhase::Settling);
+    EXPECT_GT(transformOf(sceneId, crate).position.y, 1.0f);
+    session.cancel();
+}
+
+TEST(PhysicsPlacementSim, LocalTargetsAreInTheFirstMoversParentInPathOrder) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    const Entity turned = create(sceneId, "P1", EntityCreationType::GAMEOBJECT, Vector3(0.0f, 0.0f, 0.0f), NULL_ENTITY,
+                                 Vector3(1.0f, 1.0f, 1.0f), yaw(90.0f));
+    const Entity plain = create(sceneId, "P2", EntityCreationType::GAMEOBJECT, Vector3(0.0f, 0.0f, 0.0f));
+    const Entity a = create(sceneId, "A", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f), turned);
+    const Entity z = create(sceneId, "Z", EntityCreationType::BOX, Vector3(3.0f, 3.0f, 0.0f), plain);
+    PlacementSpec spec = specFor(sceneId, {z, a}, PlacementMode::Move);
+    spec.hasTargetDelta = true;
+    spec.targetDelta = Vector3(1.0f, 0.0f, 0.0f);
+    spec.targetLocal = true;
+    spec.settle = false;
+    spec.context = PlacementSpec::Context::None;
+    PlacementSpec reversed = spec;
+    reversed.entities = {a, z};
+    EXPECT_EQ(spec.fingerprint(), reversed.fingerprint());
+    const PlacementResult first = runToEnd(spec);
+    const PlacementResult second = runToEnd(reversed);
+    ASSERT_TRUE(first.ok && second.ok);
+    EXPECT_EQ(first.stateHash, second.stateHash);
+    // P1/A comes first by path: its parent's +x is the world's -z
+    const PlacementEntityResult* moved = entityResult(first, z);
+    expectNear(moved->after.position - moved->before.position, Vector3(0.0f, 0.0f, -1.0f), 0.01f);
+}
+
+TEST(PhysicsPlacementSim, AnArrivalOnTheLastStepCounts) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    const Entity crate = create(sceneId, "Crate", EntityCreationType::BOX, Vector3(0.0f, 3.0f, 0.0f));
+    PlacementSpec spec = specFor(sceneId, {crate}, PlacementMode::Move);
+    spec.hasTargetDelta = true;
+    spec.targetDelta = Vector3(1.0f, 0.0f, 0.0f);
+    spec.settle = false;
+    spec.context = PlacementSpec::Context::None;
+    const PlacementResult free = runToEnd(spec);
+    ASSERT_TRUE(free.ok && free.allSettled);
+    ASSERT_GT(free.steps, 1u);
+    // exactly as long as the arrival takes
+    spec.maxSeconds = static_cast<float>(free.steps) / 120.0f;
+    const PlacementResult tight = runToEnd(spec);
+    EXPECT_EQ(tight.steps, free.steps);
+    EXPECT_TRUE(tight.allSettled);
+    EXPECT_TRUE(tight.warnings.empty()) << tight.warnings[0];
+    // one step short: not there
+    spec.maxSeconds = static_cast<float>(free.steps - 1) / 120.0f;
+    const PlacementResult shorter = runToEnd(spec);
+    EXPECT_FALSE(shorter.allSettled);
+    EXPECT_TRUE(contains(shorter.warnings, "did not reach the target"));
+}
+
+TEST(PhysicsPlacement, CommitRecordsOnlyRealOverridesOnAPrefabInstance) {
+    const uint32_t sceneId = newScene();
+    SceneProject* sp = project()->getScene(sceneId);
+    const Entity root = create(sceneId, "Shelf", EntityCreationType::GAMEOBJECT, Vector3(0.0f, 0.0f, 0.0f));
+    const Entity board = create(sceneId, "Board", EntityCreationType::BOX, Vector3(0.0f, 1.0f, 0.0f), root, Vector3(1.0f, 1.0f, 1.0f), yaw(30.0f));
+    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project(), sceneId, "Shelf.prefab",
+                                                                       Stream::encodeEntity(root, sp->scene, project(), sp)));
+    ASSERT_TRUE(project()->isPrefabInstanceRoot(sceneId, root));
+    auto boardOverrides = [&]() {
+        std::set<std::string> properties;
+        for (const PrefabOverrideEntry& entry : project()->getPrefabOverrideEntries(sceneId, root)) {
+            if (entry.kind == PrefabOverrideEntry::Kind::Property && entry.entity == board && entry.type == ComponentType::Transform) {
+                properties.insert(entry.properties.begin(), entry.properties.end());
+            }
+        }
+        return properties;
+    };
+    ASSERT_TRUE(boardOverrides().empty());
+
+    // the board slid, its rotation read back a hair off (world to local and back)
+    PlacementResult result;
+    result.ok = true;
+    result.sceneId = sceneId;
+    result.sceneStructureVersion = sp->structureVersion;
+    result.sceneEditStamp = placementSceneEditStamp(project(), sceneId);
+    PlacementEntityResult e;
+    e.entity = board;
+    e.path = "Shelf/Board";
+    const Transform& t = transformOf(sceneId, board);
+    e.beforeLocalPosition = t.position;
+    e.beforeLocalRotation = t.rotation;
+    e.beforeLocalScale = t.scale;
+    e.beforeParent = t.parent;
+    e.afterLocalPosition = t.position + Vector3(0.25f, 0.0f, 0.0f);
+    e.afterLocalRotation = Quaternion(t.rotation.w + 2e-8f, t.rotation.x, t.rotation.y - 3e-8f, t.rotation.z);
+    result.entities = {e};
+    std::string error;
+    ASSERT_TRUE(commitPlacement(project(), result, error)) << error;
+    EXPECT_EQ(boardOverrides(), std::set<std::string>{"position"});
+    EXPECT_EQ(transformOf(sceneId, board).rotation, e.beforeLocalRotation);   // the old rotation kept exactly
+    CommandHandle::get(sceneId)->undo();
+    EXPECT_TRUE(boardOverrides().empty());
+}
+
+// The surface a ray hits is the nearest one in the scene, loaded or not: a floor already in the
+// context under a table that is not yet must not take the hit
+TEST(PhysicsPlacementSim, SnapHitsTheNearestSurfaceNotTheNearestLoadedOne) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    create(sceneId, "Floor", EntityCreationType::BOX, Vector3(0.0f, -0.5f, 0.0f), NULL_ENTITY, Vector3(60.0f, 1.0f, 60.0f));
+    const Entity table = create(sceneId, "Table", EntityCreationType::BOX, Vector3(-10.0f, 0.5f, -10.0f), NULL_ENTITY, Vector3(2.0f, 1.0f, 2.0f));
+    const Entity cube = create(sceneId, "Snapper", EntityCreationType::BOX, Vector3(-6.0f, 0.5f, -10.0f));
+    const Ray ray(Vector3(-10.0f, 10.0f, -10.0f), Vector3(0.0f, -1.0f, 0.0f));
+
+    PlacementSpec snap = specFor(sceneId, {cube}, PlacementMode::Snap);
+    snap.hasSnapRay = true;
+    snap.snapRay = ray;
+    const PlacementResult result = runToEnd(snap);
+    ASSERT_TRUE(result.ok) << result.error;
+    const PlacementEntityResult* e = entityResult(result, cube);
+    expectNear(e->after.position, Vector3(-10.0f, 1.5f, -10.0f), 0.005f);
+    EXPECT_EQ(e->restingOn, std::vector<Entity>{table});
+
+    PlacementSession session(project(), sceneId);
+    ASSERT_TRUE(session.begin(PlacementGesture::Snap, {cube}));
+    session.setSnapRay(ray);
+    ticks(session, 60);
+    expectNear(transformOf(sceneId, cube).position, Vector3(-10.0f, 1.5f, -10.0f), 0.01f);   // on top while held
+    session.end();
+    ASSERT_TRUE(tickUntilIdle(session));
+    expectNear(transformOf(sceneId, cube).position, Vector3(-10.0f, 1.5f, -10.0f), 0.005f);
 }
