@@ -189,7 +189,7 @@ namespace{
     double r23WorkerNsPerJob(int& workers){
         const int hardware = (int)std::thread::hardware_concurrency();
         jobs::Config config;
-        config.workers = hardware > 0 ? std::max(1, std::min(8, hardware - 1)) : 8;
+        config.workers = hardware > 0 ? std::max(1, std::min(8, hardware - 2)) : 8;
         workers = config.workers;
         jobs::JobSystem system(config);
         std::vector<double> samples;

@@ -1,5 +1,5 @@
 {
-  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), measured with min(8, hardware threads - 1) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss.",
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss.",
   "je-bench-jobs": {
     "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
     "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},

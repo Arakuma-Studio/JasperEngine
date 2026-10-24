@@ -626,10 +626,11 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
 - **Occupancy `sinceNs`** (for S28) is the time when the sampler first saw the current job, not
   when the job began. This keeps a clock read off the job path.
 - **Benchmarks: worker count follows the machine.** `je-bench-jobs` and `je-bench-memory` run
-  `min(8, hardware threads - 1)` workers (`--workers n` overrides it). With 8 workers on an
-  8-thread machine, the producer competes with the pool for cores, so the run measures
-  preemption, not the scheduler. On build server C (8 vCPUs), R25 frame protection is
-  2.3-2.4 ms p99 with 7 workers (budget 3.5) and 4.4 ms with 8.
+  `min(8, hardware threads - 2)` workers (`--workers n` overrides it). The budgets assume that
+  the pool and the producing thread each have a core. With 8 workers on an 8-thread machine,
+  the run measures preemption, not the scheduler: R25 is 4.4 ms. One core is also left to the
+  rest of a shared build server. With 7 workers on server C (8 vCPUs), one busy neighbour
+  moved R25 from 2.2 ms to 4.5-12 ms in some runs. With 6 it holds.
 - **D2: a lock-free ring in front of the High and Normal lanes.** D2's mutex-guarded rings
   reached 1.0-1.2 M jobs/s from one producer (R23 asks for 3 M). The limit was cache-line
   traffic between the producer and its consumers on the shared lock. Publishing alone ran at
@@ -654,8 +655,7 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
 - **R26 measurement methods.**
   - The range p99 comes from batches of 256 timed allocate+free pairs, with the median of 5
     runs' p99.
-  - R25 frame protection is the median of three 500-frame runs' p99. A neighbour compiling on
-    the shared server during one run moved its p99 to 4-9 ms.
+  - R25 frame protection is the median of three 500-frame runs' p99.
   - "The stats add ≤ 2 % to R23" is measured where it is stable: a multi-threaded throughput
     run varies by about 10 % between runs, more than the budget. The bench first takes the
     stats' cost per job on one thread: 0 workers and the pump, as the median relative

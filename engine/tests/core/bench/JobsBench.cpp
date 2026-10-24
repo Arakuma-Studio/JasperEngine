@@ -5,9 +5,10 @@
 //
 //   je-bench-jobs [--json <file>] [--workers <n>]      default file: je-bench-jobs.json
 //
-// 8 workers by default, fewer on a machine with 8 hardware threads or less: the budgets
-// assume the workers and the producing thread each have a core (8 workers + 1 on 8 cores
-// measures preemption, not the scheduler).
+// 8 workers by default, hardware threads - 2 on a smaller machine: the budgets assume the
+// workers and the producing thread each have a core, and one more is left to the rest of the
+// machine. 8 workers + 1 on 8 cores measures preemption, not the scheduler. On a shared build
+// server, one busy neighbour then still leaves R25's frame its cores.
 //
 // The thresholds are in tools/perf/bench-thresholds.json; tools/perf/check_bench.py compares.
 
@@ -297,7 +298,7 @@ namespace{
 int main(int argc, char** argv){
     const int hardware = (int)std::thread::hardware_concurrency();
     if (hardware > 0)
-        kWorkers = std::max(1, std::min(8, hardware - 1));
+        kWorkers = std::max(1, std::min(8, hardware - 2));
     for (int i = 1; i + 1 < argc; i++){
         if (std::string(argv[i]) == "--workers")
             kWorkers = std::max(1, std::atoi(argv[i + 1]));
