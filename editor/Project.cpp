@@ -50,6 +50,7 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
+#include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -663,6 +664,36 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
+    // Animation Player clips: the .anim path (its GUID stays), or the model part of
+    // "<model>#<clip>" (R26). A reference the transform empties (its file deleted) is kept: the
+    // Inspector shows it missing, and undoing the delete relinks it (R8).
+    visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
+        bool playerChanged = false;
+        for (AnimationPlayerClip& entry : player.clips) {
+            if (entry.clip.empty()) {
+                continue;
+            }
+            anim::SubClipReference reference;
+            if (anim::parseSubClipReference(entry.clip, reference)) {
+                std::string model = reference.model;
+                if (transform(model) && !model.empty() && model != reference.model) {
+                    entry.clip = anim::formatSubClipReference(model, reference.clip);
+                    playerChanged = true;
+                }
+                continue;
+            }
+            std::string path = entry.clip;
+            if (transform(path) && !path.empty() && path != entry.clip) {
+                entry.clip = path;
+                playerChanged = true;
+            }
+        }
+        if (playerChanged) {
+            player.needsLoad = true;
+            changed = true;
+        }
+    });
+
     // the document itself; references inside its HTML/CSS are not rewritten (phase 4)
     visitComponents(registry->getComponentArray<UIDocumentComponent>(), [&](UIDocumentComponent& document) {
         if (!document.filename.empty() && transform(document.filename)) {
@@ -797,6 +828,18 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
         addFile(resources.sounds, sound.filename);
+    });
+
+    // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
+    // loaded, so the model is preloaded too
+    visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
+        for (const AnimationPlayerClip& entry : player.clips) {
+            anim::SubClipReference reference;
+            if (anim::parseSubClipReference(entry.clip, reference)) {
+                addFile(resources.models, reference.model);
+            }
+            addFile(resources.clips, entry.clip);
+        }
     });
 
     // UIDocumentComponent: nothing to preload. RmlUi reads a document and its stylesheets when
