@@ -5528,11 +5528,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 }
             }
 
+            // The bones and mesh nodes added Transforms since `transform` was taken: the array may
+            // have grown (moved), so the root's is read again
+            Transform& rootTransform = scene->getComponent<Transform>(entity);
             if (Engine::isAsyncThread()) {
                 // Off-thread skinned previews are baked into static geometry above (skinning attributes
                 // dropped), so there is no skeleton to pose and bonesMatrix stays at the identity it was
                 // reset to at load start. Just refresh the transform so the preview gets framed.
-                transform.needUpdate = true;
+                rootTransform.needUpdate = true;
             } else if (model.skeleton != NULL_ENTITY) {
                 // Repopulate bonesMatrix before the first render frame. loadGLTF reset every bonesMatrix
                 // to identity above, so RenderSystem must recompute the skinning matrices: flag the
@@ -5540,7 +5543,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 // for update. This also covers reopening a saved project (skipEntities), where the
                 // skeleton already exists from the deserialized scene; without it the skinning is left
                 // stale and the mesh renders invisible until it is moved or the game is played and stopped.
-                transform.needUpdate = true;
+                rootTransform.needUpdate = true;
                 for (const auto& boneEntry : model.bonesIdMapping) {
                     Transform* boneTransform = scene->findComponent<Transform>(boneEntry.second);
                     if (boneTransform) {
