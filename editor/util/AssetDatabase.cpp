@@ -1596,9 +1596,16 @@ editor::AssetDatabase::Resolution editor::AssetDatabase::resolve(const Guid& gui
     // a reference written before GUIDs: the asset that had the path when the project was upgraded
     std::string container = hint, subKey;
     const bool isSub = splitSubAssetPath(hint, container, subKey);
-    auto legacy = byGuid.find(Guid::parse(legacyGuid(container)));
-    if (legacy != byGuid.end()) {
-        const Entry& entry = byPath.at(legacy->second);
+    // (or the asset a redirect gave that GUID to: Retarget All of a reference by path)
+    const Guid legacyId = Guid::parse(legacyGuid(container));
+    const std::string* legacyKey = nullptr;
+    if (auto live = byGuid.find(legacyId); live != byGuid.end()) {
+        legacyKey = &live->second;
+    } else if (auto former = byFormer.find(legacyId); former != byFormer.end()) {
+        legacyKey = &former->second;
+    }
+    if (legacyKey) {
+        const Entry& entry = byPath.at(*legacyKey);
         if (!isSub) {
             return {ResolvedBy::LegacyPath, entry.guid, entry.path, entry.type};
         }

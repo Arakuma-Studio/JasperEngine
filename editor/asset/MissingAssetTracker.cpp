@@ -64,8 +64,13 @@ void MissingAssetTracker::update(const AssetDatabase& database, const AssetIndex
         if (resolution.found()) {
             return;
         }
-        Group& group = missing[{edge.target, edge.target.isNull() ? edge.targetPath : std::string()}];
-        group.guid = edge.target;
+        // a reference written before GUIDs names its asset by path: the GUID that asset got when
+        // the project was upgraded is its legacy GUID (R10 step 4), so it joins the references
+        // that hold that GUID (and a redirect of it resolves it too)
+        const Guid key = !edge.target.isNull() || edge.targetPath.empty()
+            ? edge.target : Guid::parse(AssetDatabase::legacyGuid(edge.targetPath));
+        Group& group = missing[{key, key.isNull() ? edge.targetPath : std::string()}];
+        group.guid = key;
         if (group.lastPath.empty()) group.lastPath = edge.targetPath;
         if (group.expected == AssetType::Unknown) group.expected = edge.expected;
         group.referrers.push_back(referrer);
