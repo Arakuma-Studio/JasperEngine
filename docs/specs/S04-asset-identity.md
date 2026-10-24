@@ -641,10 +641,11 @@ Recorded by the implementer; each is the closest correct alternative to the text
     S31's tool groups do not exist yet; the six tools join `assets_pipeline` when S31 lands.
 14. **Benchmark.** `tools/performance/assetdb_bench.py` drives a developer subcommand,
     `jasperengine-editor assets bench --project P`, which times the database and the index
-    without the engine. Measured on build server C (load ~3 on 8 cores, 11,000 assets, 1,000
-    referrers; median of 3): warm open 167 ms, GUID resolution 147 ns, one saved referrer
-    4.2 ms, cold identity pass 348 ms, full index 831 ms, worst Find References 1.3 ms, the
-    poll's main-thread part 25 ms every 2 s.
+    without the engine. Measured on the benchmark-only server E (4 dedicated vCPU, nothing
+    else running, load ~1; 11,000 assets, 1,000 referrers; median of 3): warm open 121 ms
+    (budget 250), GUID resolution 59 ns (budget 200), one saved referrer 6.0 ms, cold
+    identity pass 255 ms, full index 657 ms, worst Find References 1.3 ms, the poll's walk
+    150 ms (Background job) and its main-thread part 11 ms every 2 s.
 15. **Tests location.** The unit tests are where S02 puts them (`engine/tests/core/asset/`,
     `editor/tests/asset/`), built into `jasperengine-core-tests` and
     `jasperengine-editor-tests` (`tools/build.sh unit-tests`).
