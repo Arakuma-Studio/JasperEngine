@@ -1059,7 +1059,11 @@ Scene view (§9.2):
   terrain editing, and for a lattice with a non-invertible Transform.
 - Picking: a click on a point selects it (Shift or Ctrl toggles); the points drawn on the same
   spot (a flat 2D cage seen face on has two layers) are taken together. The gizmo then sits
-  on it, so the next press on its centre drags. A rectangle while a lattice is edited selects
+  on it, so the next press on its centre drags. With no point selected a point under the
+  cursor wins over the lattice entity's own gizmo (its arrows cross the cage); with points
+  selected their gizmo's handles win, as for the other sub-selections. Verified by hand: the
+  wheel during a falloff drag shrinks the ring and the moved neighbours without zooming, F
+  frames the selected point. A rectangle while a lattice is edited selects
   points (Shift adds) and keeps the lattice selected; a click on empty space with points
   selected clears the points and keeps the lattice (the next one deselects as usual);
   clicking another entity selects it (points dropped by `validateSelection`).

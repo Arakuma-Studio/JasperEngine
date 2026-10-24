@@ -1058,16 +1058,19 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
             // Lattice point picking within the selected lattice, with any tool: a click on a
             // point selects it (Shift/Ctrl toggle it); the gizmo then sits on it, so the same
-            // press can drag it. A gizmo handle under the cursor keeps the click.
+            // press can drag it. A handle of the points' gizmo under the cursor keeps the click;
+            // the lattice's own gizmo (no point selected) gives way to the points under it.
             bool latticePointHit = false;
             {
                 Entity latticeEntity = LatticeEditorOps::getEditedLattice(project, sceneId);
-                bool blockPointHit;
-                if (gizmoSelected == GizmoSelected::OBJECT2D) {
-                    Gizmo2DSideSelected side = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
-                    blockPointHit = !(side == Gizmo2DSideSelected::NONE || side == Gizmo2DSideSelected::CENTER);
-                } else {
-                    blockPointHit = gizmoSideActive;
+                bool blockPointHit = false;
+                if (!LatticeEditorOps::getSelectedPoints(sceneId, latticeEntity).empty()) {
+                    if (gizmoSelected == GizmoSelected::OBJECT2D) {
+                        Gizmo2DSideSelected side = sceneProject->sceneRender->getActiveToolsLayer()->getGizmo2DSideSelected();
+                        blockPointHit = !(side == Gizmo2DSideSelected::NONE || side == Gizmo2DSideSelected::CENTER);
+                    } else {
+                        blockPointHit = gizmoSideActive;
+                    }
                 }
                 if (latticeEntity != NULL_ENTITY && !blockPointHit && !altHeld && !handPanEnabled &&
                         !sceneProject->sceneRender->hasEditLayer() && !sceneProject->sceneRender->isTerrainEditing()) {
