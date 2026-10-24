@@ -600,3 +600,19 @@ void editor::ModelLoadCmd::undo(){
         entity = NULL_ENTITY;
     }
 }
+
+std::string editor::ModelLoadCmd::describe() const{
+    const std::string file = CommandNames::file(modelPath);
+    if (createEntityCmd){
+        return "Create Model " + file;
+    }
+    return "Load Model " + file + " (" + CommandNames::entity(project, sceneId, entity) + ")";
+}
+
+size_t editor::ModelLoadCmd::memoryBytes() const{
+    return sizeof(*this) + yamlFootprint(oldTransform) + yamlFootprint(oldMesh) + yamlFootprint(oldModel) +
+        (oldSubEntitiesDeleteCmd ? oldSubEntitiesDeleteCmd->memoryBytes() : 0) +
+        (createEntityCmd ? createEntityCmd->memoryBytes() : 0) +
+        reusedEntities.capacity() * sizeof(Entity) + parkedEntities.capacity() * sizeof(ParkedEntity) +
+        movedParts.capacity() * sizeof(MovedPart);
+}

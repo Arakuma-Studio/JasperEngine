@@ -687,8 +687,49 @@ TrackLookup findTrackEntity(Scene* scene, AnimationComponent& anim, Entity targe
 
 }
 
+void editor::AnimationWindow::beginTimelineDrag(SceneProject* sceneProject) {
+    timelineEdit.commit();
+    timelineDragWasModified = sceneProject->isModified;
+    timelineEdit = CommandHandle::get(sceneProject->id)->beginInteractive(std::string());
+    timelineEditStarted = true;
+}
+
+bool editor::AnimationWindow::cancelledTimelineDrag(Scene* scene, SceneProject* sceneProject) {
+    if (!timelineEditStarted || timelineEdit.isOpen()) {
+        return false;
+    }
+    AnimationComponent* anim = scene && sceneProject && selectedEntity != NULL_ENTITY
+        && scene->isEntityCreated(selectedEntity)
+        ? scene->findComponent<AnimationComponent>(selectedEntity) : nullptr;
+    // a key drag only previews; a block drag and a resize write the frame live
+    if (anim && isResizingFrame && resizingFrameIndex >= 0 && resizingFrameIndex < (int)anim->actions.size()) {
+        anim->actions[resizingFrameIndex].startTime = resizeStartTime;
+        anim->actions[resizingFrameIndex].duration = resizeStartDuration;
+    }
+    if (anim && isDraggingFrame && draggingFrameIndex >= 0 && draggingFrameIndex < (int)anim->actions.size()) {
+        anim->actions[draggingFrameIndex].startTime = dragStartTime;
+        anim->actions[draggingFrameIndex].track = dragStartTrack;
+    }
+    if (sceneProject) {
+        sceneProject->isModified = timelineDragWasModified;
+        sceneProject->needUpdateRender = true;
+    }
+    isDraggingKey = false;
+    keyDragTime = keyDragStartTime;
+    isResizingFrame = false;
+    resizingFrameIndex = -1;
+    resizeSide = 0;
+    isDraggingFrame = false;
+    draggingFrameIndex = -1;
+    timelineEditStarted = false;
+    return true;
+}
+
 void editor::AnimationWindow::finishTimelineDrag(Scene* scene, SceneProject* sceneProject,
                                                  bool refreshPreview) {
+    if (cancelledTimelineDrag(scene, sceneProject)) {
+        return;
+    }
     bool timingChanged = false;
     AnimationComponent* anim = scene && sceneProject && selectedEntity != NULL_ENTITY
         && scene->isEntityCreated(selectedEntity)
@@ -815,6 +856,9 @@ void editor::AnimationWindow::finishTimelineDrag(Scene* scene, SceneProject* sce
         isDraggingFrame = false;
         draggingFrameIndex = -1;
     }
+
+    timelineEdit.commit();
+    timelineEditStarted = false;
 
     if (refreshPreview && timingChanged && isPreviewing) {
         seekPreview(scene, sceneProject, currentTime, selectedEntity);
@@ -1274,6 +1318,8 @@ void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProje
     previewAnimations.clear();
     previewPrimary = NULL_ENTITY;
     isPreviewing = false;
+    timelineEdit.commit();
+    timelineEditStarted = false;
     isDraggingFrame = false;
     draggingFrameIndex = -1;
     isDraggingKey = false;
@@ -1297,6 +1343,8 @@ void editor::AnimationWindow::clearSceneState(uint32_t sceneId) {
     transitionTarget = NULL_ENTITY;
     isPreviewing = false;
     isPlaying = false;
+    timelineEdit.commit();
+    timelineEditStarted = false;
     isDraggingFrame = false;
     draggingFrameIndex = -1;
     isDraggingKey = false;
@@ -1917,6 +1965,9 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
         && (!allowSelection || !allowEditing)) {
         finishTimelineDrag(scene, sceneProject, false);
     }
+    if (isDraggingKey || isDraggingFrame || isResizingFrame) {
+        cancelledTimelineDrag(scene, sceneProject);
+    }
 
     // Preview a key move without mutating the component. The PropertyCmd created
     // on release can then capture the real old value for undo.
@@ -2172,6 +2223,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                             keyDragStartTime = kfComp->times[hoveredKeyIndex];
                             keyDragTime = keyDragStartTime;
                             isDraggingKey = true;
+                            beginTimelineDrag(sceneProject);
                             isDraggingPlayhead = false;
                         }
                     }
@@ -2267,6 +2319,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                         dragStartTime = frame.startTime;
                         dragStartTrack = frame.track;
                     }
+                    beginTimelineDrag(sceneProject);
                 }
             }
 

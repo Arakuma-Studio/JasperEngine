@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "util/YamlFootprint.h"
 #include "command/PrefabEditUndo.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "Project.h"
@@ -75,6 +77,13 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override { return "Clear Model (" + CommandNames::entity(project, sceneId, entity) + ")"; }
+        const char* typeName() const override { return "ModelClearCmd"; }
+        size_t memoryBytes() const override {
+            return sizeof(*this) + yamlFootprint(oldModel) + yamlFootprint(oldMesh) +
+                parkedEntities.capacity() * sizeof(ParkedEntity) + (deleteCmd ? deleteCmd->memoryBytes() : 0);
+        }
 
 
         // A Model whose file is loaded, or still holds what a load made

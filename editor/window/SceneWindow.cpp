@@ -971,6 +971,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     ImVec2 windowPos = ImGui::GetWindowPos();
     ImVec2 windowSize = ImGui::GetWindowSize();
     ImGuiIO& io = ImGui::GetIO();
+    {
+        // relative to the main window (ImGui positions are screen positions with viewports on)
+        const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+        viewRect[sceneProject->id] = ImVec4(windowPos.x - origin.x, windowPos.y - origin.y, windowSize.x, windowSize.y);
+    }
     float mouseWheel = io.MouseWheel;
     ImVec2 mousePos = io.MousePos;
     ImVec2 mouseDelta = io.MouseDelta;
@@ -2423,6 +2428,18 @@ void editor::SceneWindow::toEngineCanvas(uint32_t sceneId, float& x, float& y) c
     ImVec2 scale = canvasEngineScale(sceneId);
     x *= scale.x;
     y *= scale.y;
+}
+
+bool editor::SceneWindow::getViewRect(uint32_t sceneId, float& x, float& y, float& w, float& h) const {
+    auto it = viewRect.find(sceneId);
+    if (it == viewRect.end()) {
+        return false;
+    }
+    x = it->second.x;
+    y = it->second.y;
+    w = it->second.z;
+    h = it->second.w;
+    return true;
 }
 
 int editor::SceneWindow::getWidth(uint32_t sceneId) const{

@@ -42,6 +42,10 @@ namespace jasperengine::editor {
         bool m_htmlUiAutoImport = true;
         bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;
+        int m_undoMaxSteps = AppSettings::defaultUndoMaxSteps;
+        int m_undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
+        bool m_undoRecordSelection = true;
+        bool m_undoReviewPlayChanges = true;
         LoggingSettings m_logging;
         // Unity-style category list; indexes PreferencesCategory in the .cpp.
         int m_category = 0;
@@ -56,6 +60,7 @@ namespace jasperengine::editor {
         void drawSettings();
         void drawGeneralSettings();
         void drawCodeEditorSettings();
+        void drawUndoSettings();
         void drawExternalToolsSettings();
         // Row drawers for the External Tools table.
         void drawCMakeSettings();

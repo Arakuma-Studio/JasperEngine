@@ -136,7 +136,9 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::revertAll(Project* proje
             default: break;
         }
     }
-    return new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    auto* cmd = new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    cmd->label = "Revert All Overrides (" + CommandNames::entity(project, sceneId, root) + ")";
+    return cmd;
 }
 
 editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* project, uint32_t sceneId, Entity root){
@@ -190,5 +192,27 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
                 rootPath));
         }
     }
-    return new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    auto* cmd = new PrefabOverridesCmd(project, sceneId, std::move(steps));
+    cmd->label = "Apply All Overrides (" + CommandNames::entity(project, sceneId, root) + ")";
+    return cmd;
+}
+
+std::string editor::PrefabOverridesCmd::describe() const{
+    if (!label.empty()) {
+        return label;
+    }
+    for (size_t i = 0; i < steps.size(); i++) {
+        if (i < stepDone.size() && stepDone[i]) {
+            return steps[i]->describe();
+        }
+    }
+    return "Prefab Overrides";
+}
+
+size_t editor::PrefabOverridesCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this);
+    for (const std::unique_ptr<Command>& step : steps) {
+        bytes += step->memoryBytes();
+    }
+    return bytes;
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorWindow.h"
+#include "command/PlayChangeReview.h"
 #include "command/type/RemovePreservedComponentCmd.h"
 #include "StreamPreserved.h"
 #include "DocumentFile.h"
@@ -1782,6 +1783,18 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
         const bool canCopy = cpType != ComponentType::PrefabComponent && !entities.empty();
         if (ImGui::MenuItem("Copy Component", nullptr, false, canCopy)) {
             EntityClipboard::copyComponent(project, sceneProject->id, entities.front(), cpType);
+        }
+
+        // Play Mode Changes: the values a script gives the component are offered at Stop
+        const bool playing = sceneProject->playState == ScenePlayState::PLAYING || sceneProject->playState == ScenePlayState::PAUSED;
+        if (playing && !project->isPlayRuntimeScene(sceneProject->id) && !entities.empty()) {
+            const bool marked = PlayChangeReview::get().isMarked(sceneProject->id, entities.front(), cpType);
+            if (ImGui::MenuItem("Keep Component Values After Play", nullptr, marked, !marked)) {
+                for (Entity entity : entities) {
+                    PlayChangeReview::get().markComponent(sceneProject->id, entity, cpType);
+                }
+            }
+            ImGui::SetItemTooltip("At Stop, Play Mode Changes offers to keep this component's values as they are then");
         }
 
         ImGui::BeginDisabled(readOnly);
