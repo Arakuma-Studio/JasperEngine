@@ -851,6 +851,10 @@ std::string editor::Factory::formatPostProcessing(int indentSpaces, const PostPr
             case FieldType::String:
                 if (*(const std::string*)value != *(const std::string*)def) text = formatString(*(const std::string*)value);
                 break;
+            case FieldType::Asset:
+                // the game loads by path (an AssetRef assigned a path)
+                if (((const AssetRef*)value)->path != ((const AssetRef*)def)->path) text = formatString(((const AssetRef*)value)->path);
+                break;
             case FieldType::Enum:
                 if (*(const int*)value != *(const int*)def)
                     text = std::string(field.enumType) + "::" + field.enumValues[*(const int*)value];

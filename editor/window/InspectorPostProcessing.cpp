@@ -189,6 +189,7 @@ namespace {
             case FT::Float: return std::fabs(fieldValue<float>(settings, f) - fieldValue<float>(defaults, f)) <= 1e-5f;
             case FT::Vector3: return fieldValue<Vector3>(settings, f) == fieldValue<Vector3>(defaults, f);
             case FT::String: return fieldValue<std::string>(settings, f) == fieldValue<std::string>(defaults, f);
+            case FT::Asset: return fieldValue<AssetRef>(settings, f).path == fieldValue<AssetRef>(defaults, f).path;
         }
         return true;
     }
@@ -202,6 +203,7 @@ namespace {
             case FT::Float: fieldValue<float>(settings, f) = fieldValue<float>(defaults, f); break;
             case FT::Vector3: fieldValue<Vector3>(settings, f) = fieldValue<Vector3>(defaults, f); break;
             case FT::String: fieldValue<std::string>(settings, f) = fieldValue<std::string>(defaults, f); break;
+            case FT::Asset: fieldValue<AssetRef>(settings, f) = fieldValue<AssetRef>(defaults, f); break;
         }
     }
 
@@ -396,9 +398,12 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
             }
             break;
         }
-        case FT::String: {
-            // a project image (the LUT strip): drop one, pick one, or clear
-            const std::string current = fieldValue<std::string>(settings, f);
+        case FT::String:
+        case FT::Asset: {
+            // a project image (the LUT strip): drop one, pick one, or clear. An Asset field is set
+            // by its path (ScenePropertyCmd<std::string>), which drops a GUID it no longer names
+            const std::string current = f.type == FT::Asset ? fieldValue<AssetRef>(settings, f).path
+                                                            : fieldValue<std::string>(settings, f);
             auto assign = [&](const std::string& absolutePath) {
                 if (!project->isInsideAssetsPath(absolutePath)) {
                     Backend::getApp().registerOutsideAssetsAlert(absolutePath);
