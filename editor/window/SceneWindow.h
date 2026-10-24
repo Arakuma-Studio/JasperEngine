@@ -99,6 +99,8 @@ namespace jasperengine::editor {
 
         void show();
         bool isFocused() const;
+        // a camera drag (look, orbit, pan) is running in a Scene view
+        bool isNavigatingCamera() const;
         void resetProjectState();
         void clearSceneState(uint32_t sceneId);
         void requestPlayFocus(uint32_t sceneId);

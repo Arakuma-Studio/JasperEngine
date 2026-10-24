@@ -285,6 +285,8 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
+    # the editor's test-only MCP hooks (focus_window pose.viewport, Scene view handle pixels)
+    env.setdefault("JASPER_MCP_TEST_HOOKS", "1")
     return cmd + args, env, scratch.root
 
 

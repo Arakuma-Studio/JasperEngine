@@ -58,8 +58,15 @@ rotations to 5 degree steps. Shortcuts are documented in the window's tooltip an
 - Ghost meshes are clones of the model's skinned meshes (`registry/EntityCloner.h`) flagged as
   editor overlays (`SceneRender::overlay`, `RenderSystem::setEditorOverlay`), with a dedicated
   ghost material: unlit-ish rim shading, alpha-blended, depth prepass so only the front surface
-  shows, drawn after the model so they read on top. Bones of each ghost are driven directly
-  (their own pose), never the scene's bones.
+  shows. Bones of each ghost are driven directly (their own pose), never the scene's bones.
+- Readability (ruling, fix round 1; replaces "drawn after the model so they read on top"): ghosts
+  are depth-tested against the scene's depth **including the model**, strictly (LESS) and with a
+  small depth bias pushing the ghost back, so the current model wins where the poses coincide and
+  a ghost shows only where its pose differs; objects in front of the character occlude it. The
+  front-surface prepass stays. Interior fill about 0.25 x opacity, the rim carries the shape. (An
+  optional faint rim-only outline where hidden, alpha about 0.15, is not implemented: the
+  material's one extra pass is the prepass.) The Global Edit baseline therefore appears exactly
+  where something changed.
 - Onion skin: previous pose in blue `#6FB3FF` at `onion().opacity`, next pose in green
   `#7CE38B` when `onion().next`; the loop wraps (pose 0's previous is the last pose when looping).
   Toggles live in the window's Pose tab.
@@ -92,3 +99,42 @@ cancels.
   (or via the UI path exposed to MCP through `edit_pose_animation` equivalents); undo after a
   committed drag restores the previous pose.
 - Full MCP suite and pose tests pass.
+
+## 8. Implementation notes
+
+(Implemented: `editor/pose/PoseViewportLogic.{h,cpp}` (maths, tested), `editor/pose/PoseViewport.{h,cpp}`
+(one per 3D `SceneRender`), hooks in `SceneRender`, `SceneRender3D`, `SceneWindow`, `App`.)
+
+- Handles live in the tools layer scene; the floor disc, grid, contact rings and centre-of-mass
+  diamond are System-pool overlays of the edited scene; ghosts are `EntityCloner` clones (meshes,
+  bones and glTF nodes only: scripts, sounds, animations, physics and the Pose Animator are left
+  out) in the edited scene as System-pool editor overlays (never in its Hierarchy, GameObject list,
+  picking or file). Everything is created on first posing (nothing for projects that never pose).
+  Ghost material: library `hologram` (alpha blend keyword, no scanlines/flicker, tint alpha = 2 x
+  onion opacity, fill 0.125: surfaces facing the view at a quarter of the opacity, the rim up to
+  twice it) with a `stencil_mask` extra pass (order Before, depth write on, no colour, depth test
+  LESS) as the depth pre-pass; both passes have a polygon offset (factor 1, units 4) pushing the
+  ghost back; the main pass tests LESS_EQUAL against the pre-pass's own depth.
+- Ring axes: the joint's canonical L/U/F in its effective parent's frame as seen in the neutral
+  pose (`W_p * N_p^-1`; the character frame for the hips), so a ring turn changes the DOFs about
+  that axis. The outer ring turns about the view direction. With joint limits on, a ring drag is
+  clamped to the contiguous angle range around the start in which the joint gets no further
+  outside its limits than it starts (the ring stops there); the range ends are the red ticks.
+- Foot snap: "floor + sole" is the foot bone height of the foot standing on the floor as it is
+  turned at the drag start (feet keep their world rotation), not the rest-pose sole offset
+  (which differs once the neutral pose turns the foot).
+- Contact rings use the section 4 threshold (height <= 0.01 humanScale), stricter than the
+  metrics' `contact` (0.02).
+- Clicking a hand, foot or the hips also makes it the active joint (its rings show); the hips cube
+  turns with the model. A left click (no drag) that the handles do not take and that picks empty
+  space or anything but the model and its bones leaves posing, also when the selection does not
+  change; so does a selection change to anything outside the model and its bones. The scene's
+  transform gizmo is not placed on the model or its bones while posing. In a posing Scene view the
+  toolbar's Q/W/E/R keys are off (E is Global Edit there), and no pose key runs while the camera
+  flies or orbits (right or middle mouse held, a camera drag running: W A S D Q E move it).
+- Handles make no edits while the session is not `editable()` (a sync or async save, play mode).
+- MCP: `focus_window` pose_animation's state has `viewport` {posing, previewing, handle_count,
+  active_joint, ghosts, floor, contacts, balanced, global_edit, view}. With `JASPER_MCP_TEST_HOOKS=1`
+  (set by `tools/mcp/harness.py` only) it also has `handles` (Scene view pixels) and `pose.viewport`
+  is a test hook driving the same SceneRender mouse calls as SceneWindow (send_input only reaches a
+  running game), plus onion/ghost-during-preview switches, a click and closing the window.
