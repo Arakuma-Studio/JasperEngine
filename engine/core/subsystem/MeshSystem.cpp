@@ -1088,7 +1088,7 @@ bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model
 
 bool MeshSystem::parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err){
     tinygltf::TinyGLTF loader;
-    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
+    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes, nullptr});
     loader.SetImagesAsIs(true); // never decoded: the caller reads nodes and animations only
 
     std::string error;

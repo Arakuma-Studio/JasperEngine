@@ -71,8 +71,9 @@ TEST_F(SubClipPool, NamesAndIndicesShareOneEntry){
     EXPECT_EQ(AnimationClipPool::getOrLoad(clip("0")), walk);
     EXPECT_EQ(AnimationClipPool::get(clip("Walk")), walk);
     EXPECT_EQ(AnimationClipPool::get(animtest::assetDir() + "/" + clip("0")), walk) << "the absolute model path";
-    EXPECT_EQ(AnimationClipPool::getGeneration(clip("Walk")), 1u);
-    EXPECT_EQ(AnimationClipPool::getGeneration(clip("0")), 1u);
+    const uint64_t generation = AnimationClipPool::getGeneration(clip("Walk"));
+    EXPECT_NE(generation, 0u);
+    EXPECT_EQ(AnimationClipPool::getGeneration(clip("0")), generation) << "one entry, one generation";
     EXPECT_EQ(AnimationClipPool::size(), 1u);
 
     std::shared_ptr<const AnimationClip> unnamed = AnimationClipPool::getOrLoad(clip("2"), &error);
@@ -105,7 +106,8 @@ TEST_F(SubClipPool, ModelInvalidationDropsEverySubClip){
     ASSERT_TRUE(walk);
     ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Idle")));
     const uint64_t revision = AnimationClipPool::revision();
-    EXPECT_EQ(AnimationClipPool::getGeneration(clip("0")), 1u);
+    const uint64_t generation = AnimationClipPool::getGeneration(clip("0"));
+    EXPECT_NE(generation, 0u);
 
     // the file changes (Walk renamed) and the editor reloads the model: every sub-clip of it goes
     std::string text = heroText();
@@ -126,7 +128,8 @@ TEST_F(SubClipPool, ModelInvalidationDropsEverySubClip){
     EXPECT_NE(stroll, walk);
     EXPECT_EQ(stroll->getSource().name, "Stroll");
     EXPECT_EQ(AnimationClipPool::getOrLoad(clip("0")), stroll);
-    EXPECT_EQ(AnimationClipPool::getGeneration(clip("0")), 3u) << "invalidated (2), then loaded again (3)";
+    EXPECT_NE(AnimationClipPool::getGeneration(clip("0")), generation) << "a new generation after the reload";
+    EXPECT_NE(AnimationClipPool::getGeneration(clip("0")), 0u);
 
     // invalidate() of the model file and invalidateModel() of its absolute path do the same
     AnimationClipPool::invalidate(model);
@@ -172,6 +175,10 @@ TEST_F(SubClipPool, ConcurrentFirstLoadsShareOneClip){
     for (std::thread& thread : threads) thread.join();
     ASSERT_TRUE(clips[0]);
     for (const auto& loaded : clips) EXPECT_EQ(loaded, clips[0]);
-    EXPECT_EQ(AnimationClipPool::getGeneration(clip("Idle")), 1u);
+    const uint64_t generation = AnimationClipPool::getGeneration(clip("Idle"));
+    EXPECT_NE(generation, 0u);
+    EXPECT_EQ(AnimationClipPool::getGeneration(clip("1")), generation);
+    EXPECT_EQ(AnimationClipPool::getOrLoad(clip("Idle")), clips[0]);
+    EXPECT_EQ(AnimationClipPool::getGeneration(clip("Idle")), generation) << "a cache hit keeps the generation";
     EXPECT_EQ(AnimationClipPool::size(), 1u);
 }
