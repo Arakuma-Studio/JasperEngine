@@ -952,7 +952,9 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
 - `ShadowCaster2D`: rw `shape` (`ShadowCaster2DShape.AUTO_QUAD` / `POLYGON`), `closed`,
   `enabled`; `addVertex(x, y)`, `clearVertices()`, `getVertexCount()`.
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`.
-- `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
+- `Skybox`: `setTextures(positiveX, negativeX, positiveY, negativeY, positiveZ, negativeZ)` (six
+  images; `+Z` is the front), `setTexture(path)` (one image holding the six faces),
+  `setTexturePositiveX(path)` ... `setTextureNegativeZ(path)` (one face), rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings.
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
   made and did not destroy yet (a leak check: the count before creating objects and after

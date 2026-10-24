@@ -43,7 +43,8 @@ namespace jasperengine::editor::mcp {
     //   Enum, Ease      name string (snake_case, e.g. "dynamic", "quad_in_out"); writes also
     //                   take the Inspector label ("Quad In Out"), the scene-file name or the int
     //   Texture         null (none) | "path.png" (project-relative; "x.svg?svgScale=2") |
-    //                   {"path"|"cube":[6 paths]|"cube":"one.png", "min_filter", "mag_filter",
+    //                   {"path"|"cube":[6 paths: front (+Z), back (-Z), left (-X), right (+X),
+    //                   up (+Y), down (-Y)]|"cube":"one.png", "min_filter", "mag_filter",
     //                   "wrap_u", "wrap_v", "alpha_border", "svg_scale"} when the sampler is not
     //                   the default | {"camera": <entity>} (render texture of that camera)
     //   Font            [main font path, fallback paths...]; writes also take one path

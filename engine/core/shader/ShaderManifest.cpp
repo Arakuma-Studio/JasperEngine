@@ -1468,7 +1468,8 @@ bool ShaderLibraryValues::setCubeTexture(std::vector<std::pair<std::string, Text
 bool ShaderLibraryValues::setCubeTextureFaces(std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform,
                                               const std::string& front, const std::string& back, const std::string& left,
                                               const std::string& right, const std::string& up, const std::string& down){
-    const std::string faces[6] = {front, back, left, right, up, down};
+    // in face index order (+X, -X, +Y, -Y, +Z, -Z), as setCubePaths stores them
+    const std::string faces[6] = {right, left, up, down, front, back};
     for (auto& texture : textures){
         if (texture.first != uniform)
             continue;
@@ -1488,8 +1489,12 @@ bool ShaderLibraryValues::setCubeTextureFaces(std::vector<std::pair<std::string,
 
 std::string ShaderLibraryValues::getTexture(const std::vector<std::pair<std::string, Texture>>& textures, const std::string& uniform){
     for (const auto& texture : textures){
-        if (texture.first == uniform)
-            return texture.second.getPath();
+        if (texture.first != uniform)
+            continue;
+        // six face images: the front one (+Z, face 4); a single cube map image is face 0
+        if (texture.second.isCubeMap() && !texture.second.getPath(1).empty())
+            return texture.second.getPath(4);
+        return texture.second.getPath();
     }
     return "";
 }
