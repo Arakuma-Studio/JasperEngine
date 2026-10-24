@@ -245,6 +245,9 @@ namespace jasperengine::editor {
 
         std::map<std::string, Entry> byPath;                 // key(relative path) -> entry
         std::unordered_map<Guid, std::string> byGuid;        // live guid -> key
+        // live guid -> its entry (a std::map node: stable), kept with byGuid: resolve() reads
+        // it without a path lookup (R24)
+        std::unordered_map<Guid, const Entry*> liveEntries;
         std::unordered_map<Guid, std::string> byFormer;      // former guid -> key
         std::unordered_map<Guid, std::pair<std::string, std::string>> bySubAsset; // sub-asset guid -> key, sub key
         std::map<std::string, OrphanMeta> orphans;           // key(meta path) -> orphan

@@ -426,11 +426,15 @@ void editor::AssetDatabase::insert(Entry entry) {
     if (old != byPath.end()) {
         auto guidIt = byGuid.find(old->second.guid);
         if (guidIt != byGuid.end() && guidIt->second == k) {
+            liveEntries.erase(guidIt->first);
             byGuid.erase(guidIt);
         }
     }
-    byGuid[entry.guid] = k;
-    byPath[k] = std::move(entry);
+    const Guid guid = entry.guid;
+    byGuid[guid] = k;
+    Entry& stored = byPath[k];
+    stored = std::move(entry);
+    liveEntries[guid] = &stored;
     version++;
 }
 
@@ -442,6 +446,7 @@ void editor::AssetDatabase::erase(const std::string& relative) {
     }
     auto guidIt = byGuid.find(it->second.guid);
     if (guidIt != byGuid.end() && guidIt->second == k) {
+        liveEntries.erase(guidIt->first);
         byGuid.erase(guidIt);
     }
     byPath.erase(it);
@@ -1087,10 +1092,14 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
         bool legacy = false;   // no identity at all (as opposed to an invalid one)
         bool needsWrite = false;
     };
-    std::vector<Found> found;
-    found.reserve(assets.size());
-    for (const std::string& relative : assets) {
-        Found file;
+    // read in parallel (S06): each file's identity is its own stat, meta and cache entry; the
+    // helpers take no lock (the cache, the walk's metas and the entries are only read)
+    std::vector<Found> found(assets.size());
+    jobs::ParallelForOptions parallel;
+    parallel.grain = 64;
+    jobs::parallelFor(assets.size(), [&](size_t index) {
+        const std::string& relative = assets[index];
+        Found& file = found[index];
         const AssetType type = AssetTypes::find(relative, assetsDir)->type;
         auto cachedIt = cached.find(relativeKeyOf(relative));
         const Entry* cachedEntry = cachedIt != cached.end() && cachedIt->second.type == type ? &cachedIt->second : nullptr;
@@ -1109,8 +1118,7 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
                 file.needsWrite = refreshSubAssets(file.entry, nullptr);
             }
         }
-        found.push_back(std::move(file));
-    }
+    }, parallel);
 
     // A GUID found twice stays with the file that had it last session, else the older one
     std::unordered_map<Guid, std::vector<size_t>> byFoundGuid;
@@ -1227,6 +1235,7 @@ void editor::AssetDatabase::close() {
     assetsDir.clear();
     byPath.clear();
     byGuid.clear();
+    liveEntries.clear();
     byFormer.clear();
     bySubAsset.clear();
     orphans.clear();
@@ -1377,6 +1386,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         orphanLast[it->first] = it->second;
         auto guidIt = byGuid.find(it->second.guid);
         if (guidIt != byGuid.end() && guidIt->second == it->first) {
+            liveEntries.erase(guidIt->first);
             byGuid.erase(guidIt);
         }
         it = byPath.erase(it);
@@ -1554,9 +1564,9 @@ editor::AssetDatabase::Resolution editor::AssetDatabase::resolve(const Guid& gui
     std::lock_guard<std::recursive_mutex> lock(mutex);
     Resolution result;
     if (!guid.isNull()) {
-        auto live = byGuid.find(guid);
-        if (live != byGuid.end()) {
-            const Entry& entry = byPath.at(live->second);
+        auto live = liveEntries.find(guid);
+        if (live != liveEntries.end()) {
+            const Entry& entry = *live->second;
             return {ResolvedBy::Live, entry.guid, entry.path, entry.type};
         }
         auto former = byFormer.find(guid);
