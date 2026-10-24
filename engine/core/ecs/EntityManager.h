@@ -49,7 +49,10 @@ namespace jasperengine{
         ecs::SparseIndex idToSlot;
         ecs::PagedArray<EntityMetadata> records;
         size_t recordCount = 0; // constructed records, free ones included
-        std::vector<uint32_t> freeSlots;
+        // free records form a LIFO list through their serial field (a free record has no
+        // entity, so nothing reads its serial): destroying allocates nothing
+        static constexpr uint32_t kNoFreeSlot = UINT32_MAX;
+        uint32_t freeHead = kNoFreeSlot;
         size_t liveCount = 0;
         size_t systemCount = 0;
 
@@ -91,9 +94,9 @@ namespace jasperengine{
 
         EntityMetadata& add(Entity entity){
             uint32_t slot;
-            if (!freeSlots.empty()){
-                slot = freeSlots.back();
-                freeSlots.pop_back();
+            if (freeHead != kNoFreeSlot){
+                slot = freeHead;
+                freeHead = records[slot].serial;
             }else{
                 records.reserve(recordCount + 1);
                 ::new (static_cast<void*>(records.slot(recordCount))) EntityMetadata();
@@ -119,8 +122,7 @@ namespace jasperengine{
                 std::destroy_at(records.slot(i));
             }
             recordCount = 0;
-            freeSlots.clear();
-            freeSlots.shrink_to_fit();
+            freeHead = kNoFreeSlot;
             records.shrinkTo(0);
         }
 
@@ -245,15 +247,11 @@ namespace jasperengine{
             }
             std::string().swap(data.name);
             data.signature.reset();
-            data.serial = 0;
             data.tag = 0;
             data.layer = 0;
             data.active = true;
-            if (freeSlots.size() == freeSlots.capacity()){
-                // a mass destroy grows it in two or three steps, not a dozen doublings
-                freeSlots.reserve(std::max<size_t>(std::max<size_t>(freeSlots.capacity() * 2, 64), (liveCount + freeSlots.size()) / 4));
-            }
-            freeSlots.push_back(slot);
+            data.serial = freeHead;
+            freeHead = slot;
         }
 
         // live entities, and the system ones among them
@@ -455,7 +453,7 @@ namespace jasperengine{
 
         // Memory of the metadata, the strings' heap buffers left out
         size_t bytes() const {
-            return idToSlot.bytes() + records.bytes() + freeSlots.capacity() * sizeof(uint32_t);
+            return idToSlot.bytes() + records.bytes();
         }
     };
 

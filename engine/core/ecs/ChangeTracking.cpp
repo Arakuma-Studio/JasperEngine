@@ -143,6 +143,9 @@ void* ecs::allocateArenaPage(size_t bytes){
             }
             arena.chunks[(uintptr_t)chunk->base] = chunk;
         }
+        // its free list allocated now: freeing pages (compaction during a mass destroy) then
+        // allocates nothing (a malloc there consolidates the allocator's freed small blocks)
+        chunk->freePages.reserve(chunk->capacity);
         open.push_back(chunk);
     }
 
@@ -190,7 +193,6 @@ bool ecs::freeArenaPage(void* page, size_t bytes){
         }
         chunk->carved = 0;
         chunk->freePages.clear();
-        chunk->freePages.shrink_to_fit();
         if (arena.idle.size() < kMaxIdleChunks){
 #ifdef MADV_FREE
             madvise(chunk->base, kChunkBytes, MADV_FREE);
