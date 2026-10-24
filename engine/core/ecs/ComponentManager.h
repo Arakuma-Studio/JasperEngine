@@ -30,7 +30,7 @@ namespace jasperengine {
 	};
 
 	template<typename T>
-	inline size_t componentTypeIndex(){
+	JE_ECS_INLINE size_t componentTypeIndex(){
 		// Cached per module; the shared registry keeps the value equal across them.
 		static const size_t index = ComponentTypeRegistry::indexOf(typeid(T).name());
 		return index;
@@ -206,7 +206,7 @@ namespace jasperengine {
 	    }
 
 		template<typename T>
-	    T& getComponentFromIndex(size_t index) const {
+	    JE_ECS_INLINE T& getComponentFromIndex(size_t index) const {
 		    return getComponentArray<T>()->getComponentFromIndex(index);
 	    }
 

@@ -408,7 +408,7 @@ namespace jasperengine {
         }
 
         template<typename T>
-        T& getComponentFromIndex(size_t index) {
+        JE_ECS_INLINE T& getComponentFromIndex(size_t index) {
             return componentManager.getComponentFromIndex<T>(index);
         }
 

@@ -280,7 +280,7 @@ namespace jasperengine {
         virtual size_t componentBytes() const = 0;
 
         // Compacts and re-sorts when needed (the first index observation does it)
-        void settle(){
+        JE_ECS_INLINE void settle(){
             if (unsettled) [[unlikely]] {
                 settleSlow();
             }
@@ -298,7 +298,7 @@ namespace jasperengine {
             return entityToSlot.contains(entity);
         }
 
-        Entity getEntity(size_t index){
+        JE_ECS_INLINE Entity getEntity(size_t index){
             settle();
             if (index >= slotCount) [[unlikely]] {
                 Log::error("Entity not found");
@@ -776,7 +776,7 @@ namespace jasperengine {
             return *slotPtr(slot);
         }
 
-        T* findComponentFromIndex(size_t index) {
+        JE_ECS_INLINE T* findComponentFromIndex(size_t index) {
             settle();
             if (index >= slotCount){
                 return nullptr;
@@ -785,7 +785,7 @@ namespace jasperengine {
             return slotPtr(index);
         }
 
-        T& getComponentFromIndex(size_t index) {
+        JE_ECS_INLINE T& getComponentFromIndex(size_t index) {
             settle();
             if (index >= slotCount) [[unlikely]] {
                 Log::error("Retrieving non-existent component: index %zu", index);
