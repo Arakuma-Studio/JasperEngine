@@ -15,6 +15,7 @@
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
+#include "lattice/LatticeSceneTools.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "mcp/McpServer.h"
@@ -1838,6 +1839,8 @@ bool editor::App::canPasteSelection(bool asChild) {
 void editor::App::selectAll() {
     if (!canSelectAll()) return;
     SceneProject* scene = project.getSelectedScene();
+    // in the Scene view, a selected lattice's points (its own Select All)
+    if (sceneWindow->isFocused() && LatticeSceneTools::selectAllPoints(&project, scene->id)) return;
     // A child is selected through its parent, as in the Hierarchy
     project.replaceSelectedEntities(scene->id, Project::getTopLevelEntities(scene->scene, scene->entities));
 }
@@ -3659,6 +3662,10 @@ editor::HierarchyWindow* editor::App::getHierarchyWindow() const{
 
 editor::SceneWindow* editor::App::getSceneWindow() const{
     return sceneWindow;
+}
+
+void editor::App::openPreferences(const std::string& category){
+    editorSettingsWindow.open(&project, category);
 }
 
 editor::ConsoleWindow* editor::App::getConsoleWindow() const{
