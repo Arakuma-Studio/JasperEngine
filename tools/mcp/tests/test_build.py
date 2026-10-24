@@ -99,6 +99,9 @@ async def test_source_export(ed: Editor):
     ed.check("how_to_build" in result, "how_to_build")
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
+    # web saves are prefixed per game: the default identifier is shared, so the project name
+    # (bytes other than letters, digits, . and - escaped for the define)
+    ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())
 
     # a non-empty directory needs overwrite
     msg = await ed.call("build_project", mode="source", output_dir=str(out), expect_error=True)
