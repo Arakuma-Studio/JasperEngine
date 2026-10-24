@@ -755,7 +755,10 @@ with the code base:
     `focus_window` returns the panel's `rect` (and fronts the two new panels, `undo_history` and
     `play_mode_changes`), and a `screenshot` of the Scene view returns `view_rect_in_window`; the
     offsets inside the panels are measured in the default layout. It runs outside the CI suite
-    (it needs the harness's Xvfb and xdotool), as S06's does.
+    (it needs the harness's Xvfb and xdotool), as S06's does. Chords hold the modifier across
+    frames (`keydown ctrl`, `key z`, `keyup ctrl`): with `xdotool key ctrl+z` Z's press and Ctrl's
+    release can land in one editor frame, where ImGui reads Ctrl up and the chord is lost (about
+    1 run in 10 of S06's AC23 test lost its Ctrl+Z that way; its key press is changed the same way).
 15. **Stop now removes GameObjects that edits made while playing.** `restorePlaySnapshot` removed
     only script-made GameObjects; ones made by a command (Create, Duplicate, Paste, an agent's
     `create_entity`) are tracked and survived Stop, although their steps went with the play
