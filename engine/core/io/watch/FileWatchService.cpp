@@ -7,6 +7,7 @@
 #include "FileChangeCoalescer.h"
 #include "Log.h"
 #include "ProjectFileIndex.h"
+#include "jobs/detail/TimedWait.h"
 
 #include <algorithm>
 #include <deque>
@@ -471,7 +472,7 @@ void FileWatchService::dispatcherLoop() {
             auto ready = [&]() { return s.stopRequested || !s.raw.empty() || s.fallbackRequested || (probing && s.probeSeen); };
             // idle: no timeout, no wakeup (S05 R21)
             if (deadline == Clock::time_point::max()) s.rawCv.wait(lock, ready);
-            else s.rawCv.wait_until(lock, deadline, ready);
+            else jobs::detail::timedWait(s.rawCv, lock, deadline - Clock::now(), ready);
             if (s.stopRequested) break;
         }
 
@@ -799,7 +800,7 @@ void FileWatchService::deliverWorkers() {
         }
         // another thread is delivering it: the barrier waits for that to end
         std::unique_lock<std::mutex> lock(shared->subscribersMutex);
-        shared->subscribersCv.wait_for(lock, std::chrono::seconds(5), [&]() { return subscriber->inFlight == 0 || !subscriber->active; });
+        jobs::detail::timedWait(shared->subscribersCv, lock, std::chrono::seconds(5), [&]() { return subscriber->inFlight == 0 || !subscriber->active; });
         const bool more = subscriber->active && !subscriber->queue.empty();
         lock.unlock();
         if (more) {
@@ -858,7 +859,7 @@ bool FileWatchService::flush(std::chrono::milliseconds timeout) {
         std::unique_lock<std::mutex> lock(s.stateMutex);
         if (!s.attached || s.requested == WatchBackendKind::Off) return false;
         // a watch just started: its index first
-        if (!s.stateCv.wait_until(lock, deadline, [&]() { return s.indexReady || !s.attached; }) || !s.attached) return false;
+        if (!jobs::detail::timedWait(s.stateCv, lock, deadline - Clock::now(), [&]() { return s.indexReady || !s.attached; }) || !s.attached) return false;
         backend = s.backend;
     }
     if (!backend) return false;

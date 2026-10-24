@@ -8,6 +8,7 @@
 // polling diff).
 
 #include "Backends.h"
+#include "jobs/detail/TimedWait.h"
 #include "ProjectFileIndex.h"
 
 #include <algorithm>
@@ -158,7 +159,8 @@ void PollingBackend::run() {
     while (true) {
         {
             std::unique_lock<std::mutex> lock(wakeMutex);
-            wakeCv.wait_for(lock, interval, [this]() { return stopRequested; });
+            // (TimedWait: GCC 11's TSan does not see libstdc++'s steady-clock wait)
+            jobs::detail::timedWait(wakeCv, lock, interval, [this]() { return stopRequested; });
             if (stopRequested) break;
         }
         std::lock_guard<std::mutex> lock(scanMutex);
