@@ -60,7 +60,10 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # S06 (jobs and memory) adds the threading settings and jobs_memory window text without a budget
 # of its own; measured on the S06+S07 merge, with focus_window's "systems": +808. S09 (logging,
 # preferences window, focus_window's console options) likewise, measured on the merge: +2633
-TOTAL_LIMIT = 99800 + 837 + 1479 + 1540 + 808 + 2633
+# S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
+# undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
+# focus_window's undo_history / play_mode_changes panels (35)
+TOTAL_LIMIT = 99800 + 837 + 1479 + 1540 + 808 + 2633 + 2164
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

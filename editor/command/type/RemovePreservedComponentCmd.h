@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "util/YamlFootprint.h"
 #include "Project.h"
 
 #include "yaml-cpp/yaml.h"
@@ -21,6 +23,11 @@ namespace jasperengine::editor {
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return false; }
+
+        // "Remove Component Foo (Player)": a component this editor does not know
+        std::string describe() const override { return "Remove Component " + component + " (" + CommandNames::entity(project, sceneId, entity) + ")"; }
+        const char* typeName() const override { return "RemovePreservedComponentCmd"; }
+        size_t memoryBytes() const override { return sizeof(*this) + component.size() + yamlFootprint(authored); }
 
     private:
         Project* project;

@@ -63,6 +63,12 @@ namespace {
         bool affectsStructure() const override{
             return structural;
         }
+        std::string describe() const override{
+            return name;
+        }
+        const char* typeName() const override{
+            return "FakeCommand";
+        }
 
     private:
         Journal& journal;

@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "util/YamlFootprint.h"
 #include "Project.h"
 
 #include <filesystem>
@@ -47,6 +49,19 @@ namespace jasperengine::editor{
         bool execute() override;
         void undo() override;
 
+        // "Replace Prefab Asset Door.prefab (2 Objects)"
+        std::string describe() const override {
+            return "Replace Prefab Asset " + CommandNames::file(newPath) + " (" + CommandNames::entities(project, sceneId, roots) + ")";
+        }
+        const char* typeName() const override { return "ReplacePrefabCmd"; }
+        size_t memoryBytes() const override {
+            size_t bytes = sizeof(*this);
+            for (const Entry& entry : entries) {
+                bytes += sizeof(entry) + yamlFootprint(entry.oldNode) + yamlFootprint(entry.newNode);
+            }
+            return bytes;
+        }
+
     };
 
     // Unity's Unpack on a Missing Prefab instance: the root becomes a plain GameObject (its
@@ -72,6 +87,16 @@ namespace jasperengine::editor{
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override { return "Unpack Missing Prefab " + CommandNames::entities(project, sceneId, roots); }
+        const char* typeName() const override { return "UnpackMissingPrefabCmd"; }
+        size_t memoryBytes() const override {
+            size_t bytes = sizeof(*this);
+            for (const Entry& entry : entries) {
+                bytes += sizeof(entry) + yamlFootprint(entry.data);
+            }
+            return bytes;
+        }
 
     };
 
