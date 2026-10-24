@@ -7576,6 +7576,7 @@ YAML::Node editor::Stream::encodeTweenComponent(const TweenComponent& timed) {
 
     node["duration"] = timed.duration;
     node["loop"] = timed.loop;
+    node["pingPong"] = timed.pingPong;
     node["function"] = encodeEase(timed.function);
 
     return node;
@@ -7593,6 +7594,7 @@ TweenComponent editor::Stream::decodeTweenComponent(const YAML::Node& node, cons
 
     if (node["duration"]) timed.duration = YamlNumbers::as<float>(node["duration"]);
     if (node["loop"]) timed.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["pingPong"]) timed.pingPong = YamlNumbers::as<bool>(node["pingPong"]);
     if (node["function"]) timed.function = decodeEase(node["function"], oldTimed ? &oldTimed->function : nullptr);
 
     return timed;
@@ -7630,6 +7632,9 @@ YAML::Node editor::Stream::encodeRotationTweenComponent(const RotationTweenCompo
     node["endRotation"] = encodeQuaternion(rotAction.endRotation);
     node["startRotation"] = encodeQuaternion(rotAction.startRotation);
     node["shortestPath"] = rotAction.shortestPath;
+    node["spin"] = rotAction.spin;
+    node["axis"] = encodeVector3(rotAction.axis);
+    node["angle"] = rotAction.angle;
 
     return node;
 }
@@ -7644,6 +7649,9 @@ RotationTweenComponent editor::Stream::decodeRotationTweenComponent(const YAML::
     if (node["endRotation"]) rotAction.endRotation = decodeQuaternion(node["endRotation"]);
     if (node["startRotation"]) rotAction.startRotation = decodeQuaternion(node["startRotation"]);
     if (node["shortestPath"]) rotAction.shortestPath = YamlNumbers::as<bool>(node["shortestPath"]);
+    if (node["spin"]) rotAction.spin = YamlNumbers::as<bool>(node["spin"]);
+    if (node["axis"]) rotAction.axis = decodeVector3(node["axis"]);
+    if (node["angle"]) rotAction.angle = YamlNumbers::as<float>(node["angle"]);
 
     return rotAction;
 }
@@ -7864,6 +7872,8 @@ YAML::Node editor::Stream::encodeKeyframeTracksComponent(const KeyframeTracksCom
 
     node["index"] = tracks.index;
     node["interpolation"] = tracks.interpolation;
+    node["loop"] = tracks.loop;
+    node["relative"] = tracks.relative;
 
     YAML::Node timesNode;
     for (float t : tracks.times) {
@@ -7891,8 +7901,13 @@ KeyframeTracksComponent editor::Stream::decodeKeyframeTracksComponent(const YAML
         tracks = *oldTracks;
     }
 
+    // a decoded track takes its base again when it starts
+    tracks.hasBase = false;
+
     if (node["index"]) tracks.index = YamlNumbers::as<int>(node["index"]);
     if (node["interpolation"]) tracks.interpolation = YamlNumbers::as<float>(node["interpolation"]);
+    if (node["loop"]) tracks.loop = YamlNumbers::as<bool>(node["loop"]);
+    if (node["relative"]) tracks.relative = YamlNumbers::as<bool>(node["relative"]);
 
     if (node["times"]) {
         tracks.times.clear();

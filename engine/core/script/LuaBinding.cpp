@@ -66,6 +66,7 @@
 #include "action/Animation.h"
 #include "action/ParticleSystem.h"
 #include "action/SpriteAnimation.h"
+#include "action/keyframe/KeyframeTracks.h"
 #include "action/keyframe/MorphTracks.h"
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
@@ -809,6 +810,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Animation, "animation");
     DISPATCH_TYPE(ParticleSystem, "particlesystem");
     DISPATCH_TYPE(SpriteAnimation, "spriteanimation");
+    DISPATCH_TYPE(KeyframeTracks, "keyframetracks");
     DISPATCH_TYPE(MorphTracks, "morphtracks");
     DISPATCH_TYPE(RotateTracks, "rotatetracks");
     DISPATCH_TYPE(ScaleTracks, "scaletracks");

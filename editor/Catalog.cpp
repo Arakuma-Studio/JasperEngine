@@ -465,6 +465,7 @@ namespace {
     static const FastPropertyDescriptor kTweenProperties[] = {
         makeFastProperty<TweenComponent, float, &TweenComponent::duration>("duration", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<TweenComponent, bool, &TweenComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<TweenComponent, bool, &TweenComponent::pingPong>("pingPong", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<TweenComponent, Ease, &TweenComponent::function>("function", PropertyType::Ease, UpdateFlags_None),
     };
 
@@ -477,6 +478,9 @@ namespace {
         makeFastPropertyNoDefault<RotationTweenComponent, Quaternion, &RotationTweenComponent::endRotation>("endRotation", PropertyType::Quat, UpdateFlags_None),
         makeFastPropertyNoDefault<RotationTweenComponent, Quaternion, &RotationTweenComponent::startRotation>("startRotation", PropertyType::Quat, UpdateFlags_None),
         makeFastProperty<RotationTweenComponent, bool, &RotationTweenComponent::shortestPath>("shortestPath", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<RotationTweenComponent, bool, &RotationTweenComponent::spin>("spin", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<RotationTweenComponent, Vector3, &RotationTweenComponent::axis>("axis", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<RotationTweenComponent, float, &RotationTweenComponent::angle>("angle", PropertyType::Float, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kScaleTweenProperties[] = {
@@ -512,6 +516,8 @@ namespace {
     static const FastPropertyDescriptor kKeyframeTracksProperties[] = {
         makeFastPropertyNoDefault<KeyframeTracksComponent, int, &KeyframeTracksComponent::index>("index", PropertyType::Int, UpdateFlags_None),
         makeFastProperty<KeyframeTracksComponent, float, &KeyframeTracksComponent::interpolation>("interpolation", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<KeyframeTracksComponent, bool, &KeyframeTracksComponent::loop>("loop", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<KeyframeTracksComponent, bool, &KeyframeTracksComponent::relative>("relative", PropertyType::Bool, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kSpriteAnimationProperties[] = {

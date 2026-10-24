@@ -8,12 +8,11 @@
 
 using namespace jasperengine;
 
-ScaleTracks::ScaleTracks(Scene* scene): Action(scene){
-    addComponent<KeyframeTracksComponent>();
+ScaleTracks::ScaleTracks(Scene* scene): KeyframeTracks(scene){
     addComponent<ScaleTracksComponent>();
 }
 
-ScaleTracks::ScaleTracks(Scene* scene, Entity entity): Action(scene, entity){
+ScaleTracks::ScaleTracks(Scene* scene, Entity entity): KeyframeTracks(scene, entity){
 
 }
 
@@ -25,10 +24,6 @@ ScaleTracks::ScaleTracks(Scene* scene, std::vector<float> times, std::vector<Vec
     ScaleTracksComponent& scaletracks = getComponent<ScaleTracksComponent>();
 
     scaletracks.values = values;
-}
-
-void ScaleTracks::setTimes(std::vector<float> times){
-    getComponent<KeyframeTracksComponent>().setTimes(times);
 }
 
 void ScaleTracks::setValues(std::vector<Vector3> values){
@@ -43,12 +38,4 @@ void ScaleTracks::setValues(std::vector<Vector3> values){
     if (!scaletracks.outTangents.empty()){
         scaletracks.outTangents.resize(values.size(), Vector3::ZERO);
     }
-}
-
-void ScaleTracks::setEasings(std::vector<EaseType> easings){
-    getComponent<KeyframeTracksComponent>().setEasings(easings);
-}
-
-void ScaleTracks::setEasing(unsigned int segment, EaseType ease){
-    getComponent<KeyframeTracksComponent>().setEasing(segment, ease);
 }

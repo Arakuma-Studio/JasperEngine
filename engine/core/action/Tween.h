@@ -27,6 +27,10 @@ namespace jasperengine{
 
         void setLoop(bool loop);
         bool isLoop() const;
+
+        // plays forward and then back, in twice the duration
+        void setPingPong(bool pingPong);
+        bool isPingPong() const;
     };
 }
 

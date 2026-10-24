@@ -8,6 +8,7 @@
 #include "util/Angle.h"
 #include "math/Interpolation.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/UISystem.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -273,9 +274,23 @@ ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<ActionComponent>());
 }
 
-void ActionSystem::actionStart(Entity entity){
+void ActionSystem::actionStart(Entity entity, bool newRun){
     ActionComponent& action = scene->getComponent<ActionComponent>(entity);
     Signature signature = scene->getSignature(entity);
+
+    // a paused action resumes where it was, a new run starts from the target's current pose
+    if (action.state == ActionState::Stopped && newRun){
+        if (AnimationComponent* animcomp = scene->findComponent<AnimationComponent>(entity)){
+            for (ActionFrame& frame : animcomp->actions){
+                frame.started = false;
+            }
+        }
+
+        KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(entity);
+        if (keyframe && keyframe->relative){
+            keyframe->hasBase = getRelativeTrackPose(action.target, keyframe->basePosition, keyframe->baseRotation, keyframe->baseScale);
+        }
+    }
 
     actionComponentStart(action);
 
@@ -469,8 +484,13 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
             if (timeDiff >= 0) {
                 //TODO: Support loop actions
                 ActionComponent& iaction = scene->getComponent<ActionComponent>(animcomp.actions[i].action);
+                // an action that ended starts again every frame to hold its last value, and
+                // again on each loop: only its first start in this run of the animation is a
+                // new run (a relative track keeps the pose it started from)
+                bool newRun = !animcomp.actions[i].started;
+                animcomp.actions[i].started = true;
                 if (iaction.state != ActionState::Running) {
-                    actionStart(animcomp.actions[i].action);
+                    actionStart(animcomp.actions[i].action, newRun);
                 }
 
                 iaction.timecount = timeDiff * iaction.speed;
@@ -642,33 +662,40 @@ void ActionSystem::tweenStop(TweenComponent& tween){
     tween.value = 0;
 }
 
-void ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween){
-    if ((tween.time == 1) && !tween.loop){
-        actionStop(entity);
-    } else {
-        // timecount already runs at the action's speed
-        float duration = tween.duration;
+bool ActionSystem::tweenUpdate(double dt, Entity entity, ActionComponent& action, TweenComponent& tween){
+    // timecount already runs at the action's speed
+    float duration = tween.duration;
+    // ping-pong comes back to time 0 in twice the duration
+    float period = tween.pingPong ? duration * 2 : duration;
+    bool finished = false;
 
-        if (duration > 0) {
+    if (duration > 0) {
 
-            if (action.timecount >= duration){
-                if (!tween.loop){
-                    action.timecount = duration;
-                }else{
-                    action.timecount -= duration;
-                }
-            }else if (action.timecount < 0){
-                // a negative speed plays it back to the start
-                action.timecount = 0;
+        if (action.timecount >= period){
+            if (!tween.loop){
+                action.timecount = period;
+                finished = true;
+            }else{
+                // a step can be longer than a period
+                action.timecount = std::fmod(action.timecount, period);
             }
-
-            tween.time = action.timecount / duration;
-        } else {
-            tween.time = 1;
+        }else if (action.timecount < 0){
+            // a negative speed plays it back to the start
+            action.timecount = 0;
         }
 
-        tween.value = tween.function.call(tween.time);
+        tween.time = action.timecount / duration;
+        if (tween.pingPong && tween.time > 1){
+            tween.time = 2 - tween.time;
+        }
+    } else {
+        tween.time = tween.pingPong ? 0 : 1;
+        finished = !tween.loop;
     }
+
+    tween.value = tween.function.call(tween.time);
+
+    return finished;
 }
 
 void ActionSystem::positionTweenUpdate(TweenComponent& tween, PositionTweenComponent& posaction, Transform& transform){
@@ -678,7 +705,16 @@ void ActionSystem::positionTweenUpdate(TweenComponent& tween, PositionTweenCompo
 }
 
 void ActionSystem::rotationTweenUpdate(TweenComponent& tween, RotationTweenComponent& rotaction, Transform& transform){
-    transform.rotation = Quaternion::slerp(tween.value, rotaction.startRotation, rotaction.endRotation, rotaction.shortestPath);
+    if (rotaction.spin){
+        // a slerp between two rotations never turns more than half a turn
+        Vector3 axis = rotaction.axis;
+        if (axis.length() > 0){
+            axis.normalize();
+            transform.rotation = rotaction.startRotation * Quaternion(Angle::degToDefault(rotaction.angle * tween.value), axis);
+        }
+    }else{
+        transform.rotation = Quaternion::slerp(tween.value, rotaction.startRotation, rotaction.endRotation, rotaction.shortestPath);
+    }
     transform.needUpdate = true;
 }
 
@@ -1416,6 +1452,9 @@ void ActionSystem::translateTracksUpdate(KeyframeTracksComponent& keyframe, Tran
         return;
 
     Vector3 value = sampleVectorTrack(keyframe, translatetracks);
+    if (keyframe.relative){
+        value = getRelativeTrackMatrix(target, keyframe.basePosition) * value;
+    }
 
     TransformBlendAccum& accum = transformBlend[target];
     accum.positionSum = accum.positionSum + value * weight;
@@ -1427,6 +1466,9 @@ void ActionSystem::scaleTracksUpdate(KeyframeTracksComponent& keyframe, ScaleTra
         return;
 
     Vector3 value = sampleVectorTrack(keyframe, scaletracks);
+    if (keyframe.relative){
+        value = keyframe.baseScale * value;
+    }
 
     TransformBlendAccum& accum = transformBlend[target];
     accum.scaleSum = accum.scaleSum + value * weight;
@@ -1455,6 +1497,9 @@ void ActionSystem::rotateTracksUpdate(KeyframeTracksComponent& keyframe, RotateT
         }
     }else{
         value = Quaternion::slerp(keyframe.interpolation, previousRotation, rotatetracks.values[keyframe.index]);
+    }
+    if (keyframe.relative){
+        value = keyframe.baseRotation * value;
     }
 
     TransformBlendAccum& accum = transformBlend[target];
@@ -1518,7 +1563,16 @@ void ActionSystem::flushPoseBlend(){
 
         bool changed = false;
         if (accum.positionWeight > 0.0f){
-            transform->position = accum.positionSum * (1.0f / accum.positionWeight);
+            Vector3 position = accum.positionSum * (1.0f / accum.positionWeight);
+            // the layout places an anchored element from its offset every frame, so the
+            // move goes to the offset too or the next layout snaps it back
+            RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(target);
+            if (layout && layout->usingAnchors){
+                UISystem* uisystem = scene->getSystem<UISystem>().get();
+                layout->positionOffset += uisystem->parentToLayoutSpace(target, Vector2(position.x, position.y)) -
+                                          uisystem->parentToLayoutSpace(target, Vector2(transform->position.x, transform->position.y));
+            }
+            transform->position = position;
             changed = true;
         }
         if (accum.scaleWeight > 0.0f){
@@ -1557,6 +1611,46 @@ void ActionSystem::flushPoseBlend(){
 
 float ActionSystem::getDuration(Entity entity) {
     return getDuration(entity, 0);
+}
+
+Matrix4 ActionSystem::getRelativeTrackMatrix(Entity target, const Vector3& base){
+    Transform* transform = scene->findComponent<Transform>(target);
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(target);
+    if (!transform || !layout || !layout->usingAnchors){
+        return Matrix4::translateMatrix(base);
+    }
+
+    // an anchored element moves by its layout offset, mapped to its parent's space
+    UISystem* uisystem = scene->getSystem<UISystem>().get();
+    Vector2 anchor = uisystem->parentToLayoutSpace(target, Vector2(transform->position.x, transform->position.y)) - layout->positionOffset;
+    Vector2 origin = uisystem->layoutToParentSpace(target, anchor + Vector2(base.x, base.y));
+    Vector2 axisX = uisystem->layoutToParentSpace(target, anchor + Vector2(base.x + 1, base.y)) - origin;
+    Vector2 axisY = uisystem->layoutToParentSpace(target, anchor + Vector2(base.x, base.y + 1)) - origin;
+
+    Matrix4 matrix;
+    matrix.setColumn(0, Vector4(axisX.x, axisX.y, 0, 0));
+    matrix.setColumn(1, Vector4(axisY.x, axisY.y, 0, 0));
+    matrix.setColumn(3, Vector4(origin.x, origin.y, base.z, 1));
+    return matrix;
+}
+
+bool ActionSystem::getRelativeTrackPose(Entity target, Vector3& position, Quaternion& rotation, Vector3& scale){
+    Transform* transform = (target != NULL_ENTITY && scene->isEntityCreated(target)) ? scene->findComponent<Transform>(target) : nullptr;
+    if (!transform){
+        return false;
+    }
+
+    position = transform->position;
+    rotation = transform->rotation;
+    scale = transform->scale;
+
+    // the layout places an anchored element from its offset every frame
+    RectTransformComponent* layout = scene->findComponent<RectTransformComponent>(target);
+    if (layout && layout->usingAnchors){
+        position = Vector3(layout->positionOffset.x, layout->positionOffset.y, transform->position.z);
+    }
+
+    return true;
 }
 
 float ActionSystem::getFrameDuration(const ActionFrame& frame) {
@@ -1603,7 +1697,7 @@ float ActionSystem::getDuration(Entity entity, int depth) {
 
     float duration = 0;
     if (TweenComponent* timed = scene->findComponent<TweenComponent>(entity)) {
-        duration = timed->duration;
+        duration = timed->pingPong ? timed->duration * 2 : timed->duration;
     } else if (AnimationComponent* anim = scene->findComponent<AnimationComponent>(entity)) {
         if (anim->duration > 0) {
             duration = anim->duration;
@@ -1683,21 +1777,39 @@ void ActionSystem::draw(){
 
 }
 
-void ActionSystem::actionStateChange(Entity entity, ActionComponent& action){
-    // Action start
-    if (action.startTrigger == true && (action.state == ActionState::Stopped || action.state == ActionState::Paused)){
-        actionStart(entity);
+ActionComponent* ActionSystem::actionStateChange(Entity entity, ActionComponent& action){
+    ActionComponent* current = &action;
+
+    // Action stop, before the start so both together restart it
+    if (current->stopTrigger == true && (current->state == ActionState::Running || current->state == ActionState::Paused)){
+        actionStop(entity);
+
+        // onStop may destroy the entity or move its components
+        current = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
+        if (!current){
+            return nullptr;
+        }
     }
 
-    // Action stop
-    if (action.stopTrigger == true && (action.state == ActionState::Running || action.state == ActionState::Paused)){
-        actionStop(entity);
+    // Action start
+    if (current->startTrigger == true && (current->state == ActionState::Stopped || current->state == ActionState::Paused)){
+        actionStart(entity);
+
+        // onStart may also
+        current = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
+        if (!current){
+            return nullptr;
+        }
     }
 
     // Action pause
-    if (action.pauseTrigger == true && action.state == ActionState::Running){
+    if (current->pauseTrigger == true && current->state == ActionState::Running){
         actionPause(entity);
+
+        current = scene->isEntityCreated(entity) ? scene->findComponent<ActionComponent>(entity) : nullptr;
     }
+
+    return current;
 }
 
 void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponent& action){
@@ -1741,6 +1853,16 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
     //keyframe animation
     if (signature.test(scene->getComponentId<KeyframeTracksComponent>())){
         KeyframeTracksComponent& keyframe = scene->getComponent<KeyframeTracksComponent>(entity);
+
+        // a looping track starts over, keeping the overshoot
+        if (keyframe.loop && !keyframe.times.empty() && keyframe.times.back() > 0 && action.timecount >= keyframe.times.back()){
+            action.timecount = std::fmod(action.timecount, keyframe.times.back());
+        }
+
+        // a relative track that did not start through actionStart (a decoded running one) takes its base now
+        if (keyframe.relative && !keyframe.hasBase){
+            keyframe.hasBase = getRelativeTrackPose(action.target, keyframe.basePosition, keyframe.baseRotation, keyframe.baseScale);
+        }
 
         keyframeUpdate(dt, action, keyframe);
         if (action.state != ActionState::Running) return;
@@ -1794,7 +1916,7 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
     if (signature.test(scene->getComponentId<TweenComponent>())){
         TweenComponent& tween = scene->getComponent<TweenComponent>(entity);
 
-        tweenUpdate(dt, entity, action, tween);
+        bool finished = tweenUpdate(dt, entity, action, tween);
         if (action.state != ActionState::Running) return;
 
         //Transform animation
@@ -1852,6 +1974,11 @@ void ActionSystem::processRunningAction(double dt, Entity entity, ActionComponen
             }
         }
 
+        // Stop after applying the final values
+        if (finished){
+            actionStop(entity);
+            return;
+        }
     }
 
     actionUpdate(dt, action);
@@ -1878,16 +2005,23 @@ void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& 
             return;
         }
 
-        AnimationComponent& animcomp = scene->getComponent<AnimationComponent>(animationEntity);
         ActionComponent& action = scene->getComponent<ActionComponent>(animationEntity);
 
-        actionStateChange(animationEntity, action);
-        if (action.state == ActionState::Running){
-            animationUpdate(dt, animationEntity, action, animcomp);
+        // the callbacks may remove or move the components
+        ActionComponent* current = actionStateChange(animationEntity, action);
+        AnimationComponent* animcomp = current ? scene->findComponent<AnimationComponent>(animationEntity) : nullptr;
+        if (!animcomp){
+            return;
+        }
+        if (current->state == ActionState::Running){
+            animationUpdate(dt, animationEntity, *current, *animcomp);
+            animcomp = scene->isEntityCreated(animationEntity) ? scene->findComponent<AnimationComponent>(animationEntity) : nullptr;
+            if (!animcomp){
+                return;
+            }
         }
 
-        for (int i = 0; i < (int)animcomp.actions.size(); i++){
-            Entity childEntity = animcomp.actions[i].action;
+        for (Entity childEntity : animationChildEntities(*animcomp)){
             if (childEntity == NULL_ENTITY || !scene->isEntityCreated(childEntity)) {
                 continue;
             }
@@ -1897,22 +2031,22 @@ void ActionSystem::updateAnimationPreview(double dt, const std::vector<Entity>& 
                 continue;
             }
 
-            ActionComponent& childAction = scene->getComponent<ActionComponent>(childEntity);
-            actionStateChange(childEntity, childAction);
+            ActionComponent* childAction = actionStateChange(childEntity, scene->getComponent<ActionComponent>(childEntity));
 
-            if (childAction.state != ActionState::Running) {
+            if (!childAction || childAction->state != ActionState::Running) {
                 continue;
             }
 
             if (childSig.test(scene->getComponentId<AnimationComponent>())) {
                 previewAnimation(childEntity);
             } else {
-                processRunningAction(dt, childEntity, childAction);
+                processRunningAction(dt, childEntity, *childAction);
             }
         }
 
-        if (action.state == ActionState::Running){
-            actionUpdate(dt, action);
+        current = scene->isEntityCreated(animationEntity) ? scene->findComponent<ActionComponent>(animationEntity) : nullptr;
+        if (current && current->state == ActionState::Running){
+            actionUpdate(dt, *current);
         }
     };
 
@@ -1937,13 +2071,11 @@ void ActionSystem::updateActionPreview(double dt, Entity entity){
         return;
     }
 
-    ActionComponent& action = scene->getComponent<ActionComponent>(entity);
+    ActionComponent* action = actionStateChange(entity, scene->getComponent<ActionComponent>(entity));
 
-    actionStateChange(entity, action);
-
-    if (action.state == ActionState::Running){
+    if (action && action->state == ActionState::Running){
         clearPoseBlend();
-        processRunningAction(dt, entity, action);
+        processRunningAction(dt, entity, *action);
         flushPoseBlend();
     }
 }
@@ -1958,8 +2090,6 @@ void ActionSystem::update(double dt){
     //Animations actions
     auto animations = scene->getComponentArray<AnimationComponent>();
     for (int i = 0; i < animations->size(); i++){
-        AnimationComponent& animcomp = animations->getComponentFromIndex(i);
-
         Entity entity = animations->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -1969,12 +2099,12 @@ void ActionSystem::update(double dt){
         }
 
         if (signature.test(scene->getComponentId<ActionComponent>())){
-            ActionComponent& action = scene->getComponent<ActionComponent>(entity);
+            ActionComponent* action = actionStateChange(entity, scene->getComponent<ActionComponent>(entity));
 
-            actionStateChange(entity, action);
-
-            if (action.state == ActionState::Running){
-                animationUpdate(dt, entity, action, animcomp);
+            // the callbacks may have removed or moved the components
+            AnimationComponent* current = action ? scene->findComponent<AnimationComponent>(entity) : nullptr;
+            if (current && action->state == ActionState::Running){
+                animationUpdate(dt, entity, *action, *current);
             }
         }
     }
@@ -1982,18 +2112,17 @@ void ActionSystem::update(double dt){
     //All actions
     auto actions = scene->getComponentArray<ActionComponent>();
     for (int i = 0; i < actions->size(); i++){
-		ActionComponent& action = actions->getComponentFromIndex(i);
+		Entity entity = actions->getEntity(i);
 
-        if (!scene->isEntityActiveInHierarchy(actions->getEntity(i))){
+        if (!scene->isEntityActiveInHierarchy(entity)){
             continue;
         }
 
-        actionStateChange(actions->getEntity(i), action);
+        ActionComponent* action = actionStateChange(entity, actions->getComponentFromIndex(i));
 
         // Action update
-        if (action.state == ActionState::Running){
-            Entity entity = actions->getEntity(i);
-            processRunningAction(dt, entity, action);
+        if (action && action->state == ActionState::Running){
+            processRunningAction(dt, entity, *action);
         }
 
 	}

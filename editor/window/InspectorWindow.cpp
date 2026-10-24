@@ -12628,6 +12628,21 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
         if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
             updateParticlePreviewSnapshot(state.components, *comp);
         }
+        if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
+            // the keys and their settings (loop, relative) edited during the preview are kept,
+            // the playhead the preview moved (index, interpolation) goes back
+            const std::string componentName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
+            YAML::Node encoded = Stream::encodeKeyframeTracksComponent(*comp);
+            const YAML::Node originalNode = state.components[componentName];
+            if (originalNode && !originalNode.IsNull()) {
+                for (const char* key : {"index", "interpolation"}) {
+                    if (originalNode[key]) {
+                        encoded[key] = originalNode[key];
+                    }
+                }
+            }
+            state.components[componentName] = encoded;
+        }
     }
 
     for (const ActionPreviewState& state : actionPreviewStates) {
@@ -12863,9 +12878,13 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
 }
 
 void editor::InspectorWindow::drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("Duration"));
+    RowSettings settingsPingPong;
+    settingsPingPong.help = "Plays forward and then back, in twice the duration";
+
+    beginTable(cpType, getLabelSize("Ping-pong"));
     propertyRow(RowPropertyType::FloatPositive, cpType, "duration", "Duration", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
+    propertyRow(RowPropertyType::Bool, cpType, "pingPong", "Ping-pong", sceneProject, entities, settingsPingPong);
     propertyRow(RowPropertyType::Ease, cpType, "function", "Ease", sceneProject, entities);
     endTable();
 }
@@ -12941,6 +12960,21 @@ void editor::InspectorWindow::drawPositionTweenComponent(ComponentType cpType, S
 void editor::InspectorWindow::drawRotationTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     Scene* scene = sceneProject->scene;
 
+    // a spin turns by an angle around an axis instead of reaching an end rotation
+    bool spin = true;
+    for (Entity entity : entities){
+        RotationTweenComponent* rotation = scene->findComponent<RotationTweenComponent>(entity);
+        spin = spin && rotation && rotation->spin;
+    }
+
+    RowSettings settingsSpin;
+    settingsSpin.help = "Turns the start rotation by an angle around an axis, past half a turn too (a tween to an end rotation never turns more than 180°)";
+
+    RowSettings settingsAngle;
+    settingsAngle.secondColSize = 6 * ImGui::GetFontSize();
+    settingsAngle.format = "%.1f°";
+    settingsAngle.help = "More than 360° turns more than once";
+
     beginTable(cpType, getLabelSize("Start rotation"));
 
     float buttonSize = ImGui::GetFrameHeight();
@@ -12972,6 +13006,15 @@ void editor::InspectorWindow::drawRotationTweenComponent(ComponentType cpType, S
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
             ImGui::SetTooltip("Get current rotation from target");
         }
+    }
+
+    propertyRow(RowPropertyType::Bool, cpType, "spin", "Spin", sceneProject, entities, settingsSpin);
+
+    if (spin) {
+        propertyRow(RowPropertyType::Vector3, cpType, "axis", "Axis", sceneProject, entities);
+        propertyRow(RowPropertyType::Float, cpType, "angle", "Angle", sceneProject, entities, settingsAngle);
+        endTable();
+        return;
     }
 
     propertyRow(RowPropertyType::Quat, cpType, "endRotation", "End rotation", sceneProject, entities, quatSettings);
@@ -13740,7 +13783,25 @@ void editor::InspectorWindow::drawBoneComponent(ComponentType cpType, SceneProje
 void editor::InspectorWindow::drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     KeyframeTracksComponent& comp = sceneProject->scene->getComponent<KeyframeTracksComponent>(entities[0]);
 
+    // relative only applies to the transform tracks
+    bool transformTracks = true;
+    for (Entity entity : entities){
+        Signature signature = sceneProject->scene->getSignature(entity);
+        transformTracks = transformTracks && (signature.test(sceneProject->scene->getComponentId<TranslateTracksComponent>()) ||
+            signature.test(sceneProject->scene->getComponentId<RotateTracksComponent>()) ||
+            signature.test(sceneProject->scene->getComponentId<ScaleTracksComponent>()));
+    }
+
+    RowSettings settingsLoop;
+    settingsLoop.help = "Starts over after the last key";
+    RowSettings settingsRelative;
+    settingsRelative.help = "Keys are offsets from the pose the target has when the track starts";
+
     beginTable(cpType, getLabelSize("Interpolation"));
+    propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities, settingsLoop);
+    if (transformTracks){
+        propertyRow(RowPropertyType::Bool, cpType, "relative", "Relative", sceneProject, entities, settingsRelative);
+    }
     propertyRow(RowPropertyType::Int, cpType, "index", "Index", sceneProject, entities);
     propertyRow(RowPropertyType::Float, cpType, "interpolation", "Interpolation", sceneProject, entities);
     endTable();

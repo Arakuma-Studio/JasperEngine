@@ -8,12 +8,11 @@
 
 using namespace jasperengine;
 
-RotateTracks::RotateTracks(Scene* scene): Action(scene){
-    addComponent<KeyframeTracksComponent>();
+RotateTracks::RotateTracks(Scene* scene): KeyframeTracks(scene){
     addComponent<RotateTracksComponent>();
 }
 
-RotateTracks::RotateTracks(Scene* scene, Entity entity): Action(scene, entity){
+RotateTracks::RotateTracks(Scene* scene, Entity entity): KeyframeTracks(scene, entity){
 
 }
 
@@ -25,10 +24,6 @@ RotateTracks::RotateTracks(Scene* scene, std::vector<float> times, std::vector<Q
     RotateTracksComponent& rotatetracks = getComponent<RotateTracksComponent>();
 
     rotatetracks.values = values;
-}
-
-void RotateTracks::setTimes(std::vector<float> times){
-    getComponent<KeyframeTracksComponent>().setTimes(times);
 }
 
 void RotateTracks::setValues(std::vector<Quaternion> values){
@@ -43,12 +38,4 @@ void RotateTracks::setValues(std::vector<Quaternion> values){
     if (!rotatetracks.outTangents.empty()){
         rotatetracks.outTangents.resize(values.size(), Quaternion(0.0f, 0.0f, 0.0f, 0.0f));
     }
-}
-
-void RotateTracks::setEasings(std::vector<EaseType> easings){
-    getComponent<KeyframeTracksComponent>().setEasings(easings);
-}
-
-void RotateTracks::setEasing(unsigned int segment, EaseType ease){
-    getComponent<KeyframeTracksComponent>().setEasing(segment, ease);
 }

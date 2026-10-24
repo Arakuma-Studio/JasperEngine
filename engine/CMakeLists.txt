@@ -811,6 +811,7 @@ set(JASPERENGINE_SRCS
     core/action/ScaleTween.cpp
     core/action/SpriteAnimation.cpp
     core/action/Tween.cpp
+    core/action/keyframe/KeyframeTracks.cpp
     core/action/keyframe/MorphTracks.cpp
     core/action/keyframe/RotateTracks.cpp
     core/action/keyframe/ScaleTracks.cpp

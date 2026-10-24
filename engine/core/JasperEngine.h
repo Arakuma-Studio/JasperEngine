@@ -19,6 +19,7 @@
 #include "action/Animation.h"
 #include "action/ColorTween.h"
 #include "action/Ease.h"
+#include "action/keyframe/KeyframeTracks.h"
 #include "action/keyframe/MorphTracks.h"
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
