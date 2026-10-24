@@ -100,6 +100,9 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   missing, then PASS/FAIL), `logcat.txt` (`-v tag`), `logcat-full.txt` (`-v threadtime`),
   `screen.png` and `emulator.log`. Exit 0 pass, 1 fail, 2 could not run (no KVM, no boot, the
   install failed).
+- The AVD lives on a tmpfs inside the container (`EMULATOR_TMPFS_GB`, default 10; only the pages
+  the run writes use memory), so a run leaves nothing on the host disk but `--out`. A boot takes
+  about 40 s on servers A and C; a whole run about 70 s.
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
   prebuilt emulator image) tune it.
 
