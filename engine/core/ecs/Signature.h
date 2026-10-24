@@ -86,10 +86,8 @@ namespace jasperengine {
 
         bool none() const { return !any(); }
 
-        size_t count() const {
-            size_t total = 0;
-            for (uint64_t word : words) total += ecs::popCount(word);
-            return total;
+        JE_ECS_INLINE size_t count() const {
+            return ecs::popCountWords(words, kWords);
         }
 
         bool intersects(const ComponentMask& other) const {

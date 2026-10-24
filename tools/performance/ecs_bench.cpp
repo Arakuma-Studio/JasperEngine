@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <numeric>
 #include <random>
 #include <string>
 #include <vector>
@@ -66,7 +67,8 @@ namespace {
     using Clock = std::chrono::steady_clock;
 
     // --ops: the benchmark groups to run (all when empty): create, destroy, remove, add,
-    // index_loop (index loops and the view), lookup (lookup and metadata), move_branch
+    // index_loop (index loops and the view), lookup (lookup and metadata), move_branch, floor
+    // (the machine's floor: the same work on plain vectors)
     std::vector<std::string> selectedOps;
 
     bool wanted(const char* op){
@@ -170,6 +172,129 @@ namespace {
             }
         }
         return sum;
+    }
+
+    // The machine's floor for the R25 workloads: the same work on plain std::vectors indexed
+    // by position (no entity lookup, no holes, no hooks, no ticks), which no ECS can beat.
+    // Reported as floor_<op> rows next to the budgets: where a floor alone takes most of a
+    // budget, the budget is out of reach on this machine.
+    struct FloorRecord {
+        Signature signature;
+        uint32_t serial = 0;
+        uint16_t tag = 0;
+        int8_t layer = 0;
+        bool active = true;
+        std::string name;
+    };
+
+    __attribute__((noipa)) double floorIndexLoop(const std::vector<Transform>& transforms, const std::vector<uint32_t>& indexOf){
+        double sum = 0.0;
+        for (size_t i = 0; i < transforms.size(); i++){
+            const Transform& transform = transforms[i];
+            sum += (double)i;
+            if (transform.parent != NULL_ENTITY){
+                sum += transforms[indexOf[transform.parent]].position.x;
+            }
+            sum += transform.position.y;
+        }
+        return sum;
+    }
+
+    __attribute__((noipa)) size_t floorView(const std::vector<Transform>& transforms, std::vector<Payload>& payloads){
+        size_t sum = 0;
+        for (size_t i = 0; i < transforms.size(); i++){
+            Payload& payload = payloads[i];
+            payload.values[0] += 1;
+            sum += payload.values.size() + (size_t)transforms[i].visible;
+        }
+        return sum;
+    }
+
+    void runFloor(size_t n, int runs){
+        if (!wanted("floor")) return;
+        std::mt19937 random((unsigned)n);
+        double sink = 0.0;
+        size_t sinkCount = 0;
+
+        for (int run = 0; run < runs; run++){
+            {
+                const auto start = Clock::now();
+                std::vector<FloorRecord> records;
+                std::vector<Transform> transforms;
+                std::vector<Payload> payloads;
+                records.reserve(n);
+                transforms.reserve(n);
+                payloads.reserve(n);
+                for (size_t i = 0; i < n; i++){
+                    records.emplace_back();
+                    transforms.emplace_back();
+                    payloads.push_back(makePayload(i));
+                }
+                row("floor_create", n, run, msSince(start));
+                sinkCount += payloads.size() + records.size() + transforms.size();
+            }
+            {
+                // the Payload destructors R1 runs at removal, in the same random order
+                std::vector<Payload> payloads;
+                payloads.reserve(n);
+                for (size_t i = 0; i < n; i++) payloads.push_back(makePayload(i));
+                std::vector<size_t> order(n);
+                std::iota(order.begin(), order.end(), size_t(0));
+                std::shuffle(order.begin(), order.end(), random);
+                const auto start = Clock::now();
+                for (size_t i = 0; i < n / 2; i++){
+                    // destroyed in place, the slot left as an empty Payload for the vector
+                    std::destroy_at(&payloads[order[i]]);
+                    ::new (static_cast<void*>(&payloads[order[i]])) Payload();
+                }
+                row("floor_destroy", n, run, msSince(start));
+            }
+        }
+
+        // one world for the loops and lookups: chains of depth 4 in the first half, as buildWorld
+        std::vector<Transform> transforms(n);
+        std::vector<Payload> payloads;
+        std::vector<FloorRecord> records(n);
+        std::vector<uint32_t> indexOf(n + 1);
+        payloads.reserve(n);
+        for (size_t i = 0; i < n; i++){
+            payloads.push_back(makePayload(i));
+            indexOf[i + 1] = (uint32_t)i; // entity i + 1
+            records[i].signature.set(0);
+            records[i].signature.set(1);
+            if (i < n / 2 && i % 4 != 0) transforms[i].parent = (Entity)i; // the previous one
+        }
+        sink += floorIndexLoop(transforms, indexOf);
+        for (int run = 0; run < runs; run++){
+            const int repeats = 20;
+            auto start = Clock::now();
+            for (int r = 0; r < repeats; r++) sink += floorIndexLoop(transforms, indexOf);
+            row("floor_index_loop", n, run, msSince(start) / repeats);
+            start = Clock::now();
+            for (int r = 0; r < repeats; r++) sinkCount += floorView(transforms, payloads);
+            row("floor_view", n, run, msSince(start) / repeats);
+        }
+
+        std::vector<uint32_t> lookups(1000000);
+        for (uint32_t& index : lookups) index = (uint32_t)(random() % n);
+        for (int run = 0; run < runs; run++){
+            size_t sum = 0;
+            auto start = Clock::now();
+            for (uint32_t index : lookups){
+                sum += payloads[index].values.size();
+                sum += (size_t)records[index].layer;
+                sum += records[index].signature.count();
+            }
+            row("floor_lookup", n, run, msSince(start), lookups.size() * 3);
+            start = Clock::now();
+            for (uint32_t index : lookups){
+                sum += (size_t)records[index].layer;
+                sum += records[index].signature.count();
+            }
+            row("floor_metadata", n, run, msSince(start), lookups.size() * 2);
+            sinkCount += sum;
+        }
+        if (sink == 0.125 && sinkCount == 3) std::printf("#\n"); // keeps the loops
     }
 
     void runSize(size_t n, int runs){
@@ -434,6 +559,7 @@ int main(int argc, char** argv){
     std::printf("op,n,run,ms,ops\n");
     for (size_t n : sizes){
         runSize(n, runs);
+        runFloor(n, runs);
     }
     return 0;
 }

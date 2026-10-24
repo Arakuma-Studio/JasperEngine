@@ -18,6 +18,8 @@ float AudioSystem::globalVolume = 1.0;
 
 AudioSystem::AudioSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<AudioSourceComponent>());
+    // the type onComponentRemoved handles
+    declareHookType(scene->getComponentId<AudioSourceComponent>());
 
     cameraLastPosition = Vector3(0, 0, 0);
 }

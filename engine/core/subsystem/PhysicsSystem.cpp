@@ -292,6 +292,16 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_2D
 	signature.set(scene->getComponentId<Rigidbody2DComponent>());
 #endif
+	// the types onComponentRemoved handles
+	declareNoHookTypes();
+#ifdef JASPERENGINE_PHYSICS_2D
+	declareHookType(scene->getComponentId<Rigidbody2DComponent>());
+	declareHookType(scene->getComponentId<Joint2DComponent>());
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+	declareHookType(scene->getComponentId<RigidbodyComponent>());
+	declareHookType(scene->getComponentId<Joint3DComponent>());
+#endif
 
 	this->scene = scene;
 

@@ -20,8 +20,9 @@ namespace jasperengine{
     // Unity's built-in tag, the one every GameObject starts with
     inline constexpr const char* DEFAULT_ENTITY_TAG = "Untagged";
 
+    // The fields the getters read on hot paths (signature, layer, active) come first, in the
+    // record's first 40 bytes; the name is read rarely
     struct EntityMetadata{
-        std::string name;
         Signature signature;
         // creation counter of the registry when the entity was made (EntityRef)
         uint32_t serial = 0;
@@ -29,6 +30,7 @@ namespace jasperengine{
         uint16_t tag = 0;
         int8_t layer = 0;
         bool active = true;
+        std::string name;
     };
 
     // Entity ids and their metadata. Ids are kept in a paged id -> slot table (ascending
@@ -76,12 +78,12 @@ namespace jasperengine{
             return entity >= FIRST_SYSTEM_ENTITY && entity <= LAST_SYSTEM_ENTITY;
         }
 
-        const EntityMetadata* find(Entity entity) const {
+        JE_ECS_INLINE const EntityMetadata* find(Entity entity) const {
             const uint32_t slot = idToSlot.find(entity);
             return slot == ecs::SparseIndex::kNone ? nullptr : records.slot(slot);
         }
 
-        EntityMetadata* find(Entity entity){
+        JE_ECS_INLINE EntityMetadata* find(Entity entity){
             const uint32_t slot = idToSlot.find(entity);
             return slot == ecs::SparseIndex::kNone ? nullptr : records.slot(slot);
         }
@@ -291,9 +293,9 @@ namespace jasperengine{
             data->signature = signature;
         }
 
-        Signature getSignature(Entity entity) const{
+        JE_ECS_INLINE Signature getSignature(Entity entity) const{
             const EntityMetadata* data = find(entity);
-            if (!data){
+            if (!data) [[unlikely]] {
                 Log::error("Entity does not exist to get signature");
                 return Signature();
             }
@@ -438,7 +440,7 @@ namespace jasperengine{
             data->layer = (int8_t)layer;
         }
 
-        int getLayer(Entity entity) const {
+        JE_ECS_INLINE int getLayer(Entity entity) const {
             const EntityMetadata* data = find(entity);
             if (!data){
                 return 0;

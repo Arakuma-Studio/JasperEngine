@@ -11,9 +11,20 @@
 #include <new>
 #include <utility>
 #include <vector>
+#include "Export.h"
+#include "BitOps.h"
 #include "Entity.h"
 
 namespace jasperengine::ecs {
+
+    // The page arena (defined in ChangeTracking.cpp): on desktop Linux, 2 MiB-aligned chunks
+    // the kernel may back with transparent huge pages (madvise). A scene of 100k entities
+    // touches tens of MiB of component pages at random; with 4 KiB pages nearly every such
+    // access also misses the TLB, which costs a page walk (two levels of them in a VM).
+    // allocateArenaPage returns nullptr where there is no arena or for pages over 512 KiB;
+    // freeArenaPage returns false for a page the arena did not allocate.
+    JASPERENGINE_API void* allocateArenaPage(size_t bytes);
+    JASPERENGINE_API bool freeArenaPage(void* page, size_t bytes);
 
     // Elements per page: about 16 KiB, at least 64, a power of two so that an index splits
     // into page and offset with a shift and a mask
@@ -43,18 +54,31 @@ namespace jasperengine::ecs {
         static constexpr unsigned kPageShift = log2Of(kPageCapacity);
         static constexpr size_t kPageMask = kPageCapacity - 1;
 
+        static constexpr size_t kPageBytes = sizeof(U) * kPageCapacity;
+        // The pages past the first 512 KiB of an array come from the page arena (4 KiB-aligned
+        // there); the first ones, and every page of a small array, from operator new
+        static constexpr size_t kArenaFirstPage = (size_t(512) * 1024 + kPageBytes - 1) / kPageBytes;
+
     private:
         std::vector<U*> pages;
 
-        static U* allocatePage(){
+        static U* allocatePage(size_t pageIndex){
+            if (pageIndex >= kArenaFirstPage && alignof(U) <= 4096){
+                if (void* page = allocateArenaPage(kPageBytes)){
+                    return static_cast<U*>(page);
+                }
+            }
             if constexpr (alignof(U) > __STDCPP_DEFAULT_NEW_ALIGNMENT__){
-                return static_cast<U*>(::operator new(sizeof(U) * kPageCapacity, std::align_val_t(alignof(U))));
+                return static_cast<U*>(::operator new(kPageBytes, std::align_val_t(alignof(U))));
             }else{
-                return static_cast<U*>(::operator new(sizeof(U) * kPageCapacity));
+                return static_cast<U*>(::operator new(kPageBytes));
             }
         }
 
-        static void freePage(U* page){
+        static void freePage(U* page, size_t pageIndex){
+            if (pageIndex >= kArenaFirstPage && freeArenaPage(page, kPageBytes)){
+                return;
+            }
             if constexpr (alignof(U) > __STDCPP_DEFAULT_NEW_ALIGNMENT__){
                 ::operator delete(page, std::align_val_t(alignof(U)));
             }else{
@@ -68,16 +92,16 @@ namespace jasperengine::ecs {
         PagedArray& operator=(const PagedArray&) = delete;
 
         ~PagedArray(){
-            for (U* page : pages){
-                freePage(page);
+            for (size_t p = 0; p < pages.size(); p++){
+                freePage(pages[p], p);
             }
         }
 
-        U* slot(size_t index) const {
+        JE_ECS_INLINE U* slot(size_t index) const {
             return pages[index >> kPageShift] + (index & kPageMask);
         }
 
-        U& operator[](size_t index) const {
+        JE_ECS_INLINE U& operator[](size_t index) const {
             return *slot(index);
         }
 
@@ -95,7 +119,7 @@ namespace jasperengine::ecs {
 
         void reserve(size_t count){
             while (capacity() < count){
-                pages.push_back(allocatePage());
+                pages.push_back(allocatePage(pages.size()));
             }
         }
 
@@ -104,7 +128,7 @@ namespace jasperengine::ecs {
         void shrinkTo(size_t count){
             const size_t needed = (count + kPageCapacity - 1) / kPageCapacity + 1;
             while (pages.size() > needed){
-                freePage(pages.back());
+                freePage(pages.back(), pages.size() - 1);
                 pages.pop_back();
             }
         }
@@ -208,7 +232,7 @@ namespace jasperengine::ecs {
             clear();
         }
 
-        uint32_t find(Entity entity) const {
+        JE_ECS_INLINE uint32_t find(Entity entity) const {
             const size_t p = entity >> kPageBits;
             if (p >= pages.size() || !pages[p]){
                 return kNone;
@@ -216,7 +240,7 @@ namespace jasperengine::ecs {
             return pages[p][entity & kPageMask];
         }
 
-        bool contains(Entity entity) const {
+        JE_ECS_INLINE bool contains(Entity entity) const {
             return find(entity) != kNone;
         }
 

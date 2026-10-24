@@ -59,15 +59,20 @@ namespace jasperengine{
 
     protected:
 
+        // The add/remove hooks go only to the systems that handle the type (declareHookType)
         void onComponentAdded(Entity entity, ComponentId componentId) override {
             for (auto const& pair : systems) {
-                pair.second->onComponentAdded(entity, componentId);
+                if (pair.second->handlesHookType(componentId)) {
+                    pair.second->onComponentAdded(entity, componentId);
+                }
             }
         }
 
         void onComponentRemoved(Entity entity, ComponentId componentId) override {
             for (auto const& pair : systems) {
-                pair.second->onComponentRemoved(entity, componentId);
+                if (pair.second->handlesHookType(componentId)) {
+                    pair.second->onComponentRemoved(entity, componentId);
+                }
             }
         }
 
@@ -80,8 +85,9 @@ namespace jasperengine{
 
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
-                signature.forEachSet([&](size_t componentId) {
-                    pair.second->onComponentRemoved(entity, (ComponentId)componentId);
+                SubSystem* system = pair.second.get();
+                system->hookTypesOf(signature).forEachSet([&](size_t componentId) {
+                    system->onComponentRemoved(entity, (ComponentId)componentId);
                 });
             }
         }

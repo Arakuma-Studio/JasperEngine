@@ -479,10 +479,6 @@ size_t EntityRegistry::getSystemEntityCount() const {
     return entityManager.countSystem();
 }
 
-Signature EntityRegistry::getSignature(Entity entity) const {
-    return entityManager.getSignature(entity);
-}
-
 void EntityRegistry::setEntityName(Entity entity, const std::string& name) {
     entityManager.setName(entity, name);
 }
@@ -503,10 +499,6 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
 
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
     entityManager.setActive(entity, active);
-}
-
-bool EntityRegistry::isEntityActive(Entity entity) const {
-    return entityManager.isActive(entity);
 }
 
 bool EntityRegistry::isEntityActiveInHierarchy(Entity entity) const {
@@ -544,10 +536,6 @@ void EntityRegistry::setEntityLayer(Entity entity, int layer) {
     if (entityManager.getLayer(entity) != previous) {
         onEntityLayerChanged(entity);
     }
-}
-
-int EntityRegistry::getEntityLayer(Entity entity) const {
-    return entityManager.getLayer(entity);
 }
 
 Entity EntityRegistry::findEntityByTag(const std::string& tag) const {
@@ -629,33 +617,17 @@ size_t EntityRegistry::findBranchLastIndex(Entity entity){
     // will throw error if entity has not Transform
     size_t index = transforms->getIndex(entity);
 
+    // The branch is contiguous and parents come before children, so an element after it is
+    // in the branch exactly when its parent lies in [index, currentIndex). The array is settled
+    // (getIndex), so a component's slot is its index.
     size_t currentIndex = index + 1;
-    // The branch so far: a list while short (the common case), then a set, as a long
-    // branch made the list scan quadratic
-    std::vector<Entity> branchList{entity};
-    std::unordered_set<Entity> branchSet;
-    auto inBranch = [&](Entity candidate) {
-        return branchSet.empty() ?
-            std::find(branchList.begin(), branchList.end(), candidate) != branchList.end() :
-            branchSet.count(candidate) != 0;
-    };
-    auto addToBranch = [&](Entity member) {
-        if (branchSet.empty() && branchList.size() < 32) {
-            branchList.push_back(member);
-            return;
-        }
-        if (branchSet.empty()) {
-            branchSet.insert(branchList.begin(), branchList.end());
-        }
-        branchSet.insert(member);
-    };
-
-    while (currentIndex < transforms->size()){
+    const size_t size = transforms->size();
+    while (currentIndex < size){
         const Transform& transform = transforms->getComponentFromIndex(currentIndex);
-        if (!inBranch(transform.parent)) {
+        const size_t parentIndex = transforms->orderKey(transform.parent);
+        if (parentIndex < index || parentIndex >= currentIndex) {
             break;
         }
-        addToBranch(transforms->getEntity(currentIndex));
         currentIndex++;
     }
 

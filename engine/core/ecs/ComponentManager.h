@@ -65,7 +65,10 @@ namespace jasperengine {
 		std::array<std::string, kMaxComponentTypes> namesById{};
 		size_t registeredCount = 0;
 
-		const ComponentEntry* findEntry(size_t index) const {
+		// logs and throws std::out_of_range (the cold path of the getters)
+		[[noreturn]] static void notRegistered();
+
+		JE_ECS_INLINE const ComponentEntry* findEntry(size_t index) const {
 			if (index >= entries.size() || !entries[index].array){
 				return nullptr;
 			}
@@ -131,16 +134,14 @@ namespace jasperengine {
 		// Raw pointer: copying the shared_ptr cost an atomic pair per access. Never
 		// null, since every caller dereferences it right away.
 		template<typename T>
-		ComponentArray<T>* getComponentArray() const {
-			if (const ComponentEntry* entry = findEntry(componentTypeIndex<T>())){
+		JE_ECS_INLINE ComponentArray<T>* getComponentArray() const {
+			if (const ComponentEntry* entry = findEntry(componentTypeIndex<T>())) [[likely]] {
 #if JASPERENGINE_ECS_ACCESS_CHECKS
 				ecs::checkComponentAccess(entry->id);
 #endif
 				return static_cast<ComponentArray<T>*>(entry->array.get());
 			}
-
-			Log::error("Component not registered before use");
-			throw std::out_of_range("Component not registered before use");
+			notRegistered();
 		}
 
 		// By signature bit; null for an unused id
@@ -190,7 +191,7 @@ namespace jasperengine {
 		}
 
 		template<typename T>
-		T* findComponent(Entity entity) const {
+		JE_ECS_INLINE T* findComponent(Entity entity) const {
 			return getComponentArray<T>()->findComponent(entity);
 		}
 

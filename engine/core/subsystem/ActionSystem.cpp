@@ -271,6 +271,9 @@ void ActionSystem::syncParticlePoint(size_t idx, ParticleSystemComponent& partic
 
 ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<ActionComponent>());
+    // the types onComponentRemoved handles
+    declareHookType(scene->getComponentId<ActionComponent>());
+    declareHookType(scene->getComponentId<AnimationComponent>());
 }
 
 void ActionSystem::actionStart(Entity entity){

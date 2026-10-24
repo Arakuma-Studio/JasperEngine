@@ -55,3 +55,8 @@ std::string jasperengine::ecs::readableTypeName(const char* typeName){
     }
     return name;
 }
+
+void ComponentManager::notRegistered(){
+    Log::error("Component not registered before use");
+    throw std::out_of_range("Component not registered before use");
+}

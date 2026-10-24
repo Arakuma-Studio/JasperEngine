@@ -157,6 +157,10 @@ static std::string gltfTextureDedupKey(const std::string& modelKey, const tinygl
 
 MeshSystem::MeshSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<MeshComponent>());
+    // the types onComponentAdded/onComponentRemoved handle
+    declareHookType(scene->getComponentId<ModelComponent>());
+    declareHookType(scene->getComponentId<TerrainComponent>());
+    declareHookType(scene->getComponentId<InstancedMeshComponent>());
 }
 
 MeshSystem::~MeshSystem(){

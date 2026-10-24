@@ -37,6 +37,76 @@ namespace jasperengine {
         Tick tick;
     };
 
+    // The Removed<T> log, oldest first: blocks of 1024 entries, so that a burst of removals
+    // neither copies the log as it grows nor maps fresh memory for each doubling; trimming
+    // drops whole blocks from the front (one spare kept)
+    class RemovedLog {
+    private:
+        static constexpr size_t kBlock = 1024;
+        std::vector<std::unique_ptr<RemovedComponent[]>> blocks;
+        std::unique_ptr<RemovedComponent[]> spare;
+        size_t head = 0; // index of the oldest entry in blocks[0]
+        size_t count = 0;
+
+        void recycle(std::unique_ptr<RemovedComponent[]> block){
+            if (!spare){
+                spare = std::move(block);
+            }
+        }
+
+    public:
+        size_t size() const { return count; }
+        bool empty() const { return count == 0; }
+
+        const RemovedComponent& operator[](size_t index) const {
+            const size_t position = head + index;
+            return blocks[position / kBlock][position % kBlock];
+        }
+
+        const RemovedComponent& front() const { return (*this)[0]; }
+        const RemovedComponent& back() const { return (*this)[count - 1]; }
+
+        void push_back(const RemovedComponent& entry){
+            const size_t position = head + count;
+            if (position / kBlock >= blocks.size()){
+                blocks.push_back(spare ? std::move(spare) : std::make_unique<RemovedComponent[]>(kBlock));
+            }
+            blocks[position / kBlock][position % kBlock] = entry;
+            count++;
+        }
+
+        // drops the oldest `n` entries
+        void dropFront(size_t n){
+            if (n >= count){
+                clear();
+                return;
+            }
+            head += n;
+            count -= n;
+            const size_t whole = head / kBlock;
+            if (whole > 0){
+                for (size_t b = 0; b < whole; b++){
+                    recycle(std::move(blocks[b]));
+                }
+                blocks.erase(blocks.begin(), blocks.begin() + (ptrdiff_t)whole);
+                head -= whole * kBlock;
+            }
+        }
+
+        void clear(){
+            if (!blocks.empty()){
+                recycle(std::move(blocks.front()));
+            }
+            blocks.clear();
+            head = 0;
+            count = 0;
+        }
+
+        size_t bytes() const {
+            return (blocks.size() + (spare ? 1 : 0)) * kBlock * sizeof(RemovedComponent) + blocks.capacity() * sizeof(void*);
+        }
+    };
+
     // The type-independent part of a component array: the entity -> slot index, the slot
     // owners, the change ticks and the lazy compaction and ordering state.
     //
@@ -67,7 +137,7 @@ namespace jasperengine {
         Tick lastChanged = 0;
         Tick lastAdded = 0;
         Tick lastRemoved = 0;
-        std::vector<RemovedComponent> removedLog;
+        RemovedLog removedLog;
 
         size_t compactions = 0;
         size_t sorts = 0;
@@ -126,7 +196,7 @@ namespace jasperengine {
 
         void logRemoval(Entity entity, Tick tick){
             if (removedLog.size() >= kRemovedLogCap){
-                removedLog.erase(removedLog.begin(), removedLog.begin() + (ptrdiff_t)(kRemovedLogCap / 2));
+                removedLog.dropFront(kRemovedLogCap / 2);
             }
             removedLog.push_back({entity, tick});
             if (tick > lastRemoved) lastRemoved = tick;
@@ -297,19 +367,23 @@ namespace jasperengine {
         Tick getLastRemovedTick() const { return lastRemoved; }
 
         // Removed<T>: (entity, tick) of each removal, oldest first
-        const std::vector<RemovedComponent>& getRemoved() const { return removedLog; }
+        const RemovedLog& getRemoved() const { return removedLog; }
 
         // drops the removals stamped at or before `tick`
         void trimRemoved(Tick tick){
-            auto keep = std::find_if(removedLog.begin(), removedLog.end(), [tick](const RemovedComponent& r){ return r.tick > tick; });
-            removedLog.erase(removedLog.begin(), keep);
+            // oldest first, so the ticks ascend
+            size_t keep = 0;
+            while (keep < removedLog.size() && removedLog[keep].tick <= tick){
+                keep++;
+            }
+            removedLog.dropFront(keep);
         }
 
         // Memory of everything but the components themselves: index pages, slot owners, ticks
         // and the removal log
         size_t overheadBytes() const {
             return entityToSlot.bytes() + slotEntities.bytes() + changedTicks.bytes() + addedTicks.bytes()
-                + removedLog.capacity() * sizeof(RemovedComponent);
+                + removedLog.bytes();
         }
 
         size_t indexPageCount() const { return entityToSlot.pageCount(); }
@@ -323,7 +397,7 @@ namespace jasperengine {
     private:
         ecs::PagedArray<T> components;
 
-        T* slotPtr(size_t slot) const {
+        JE_ECS_INLINE T* slotPtr(size_t slot) const {
             return components.slot(slot);
         }
 
@@ -646,7 +720,7 @@ namespace jasperengine {
             sortByKeys(keys);
         }
 
-        T* findComponent(Entity entity) {
+        JE_ECS_INLINE T* findComponent(Entity entity) {
             const uint32_t slot = entityToSlot.find(entity);
             return slot == ecs::SparseIndex::kNone ? nullptr : slotPtr(slot);
         }

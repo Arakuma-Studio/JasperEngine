@@ -180,7 +180,8 @@ namespace jasperengine {
         void moveChildDown(Entity entity);
         void moveChildToBottom(Entity entity);
 
-        Signature getSignature(Entity entity) const;
+        // inline: the metadata getters are on the hot lookup paths
+        JE_ECS_INLINE Signature getSignature(Entity entity) const { return entityManager.getSignature(entity); }
 
         void setEntityName(Entity entity, const std::string& name);
         std::string getEntityName(Entity entity) const;
@@ -196,7 +197,7 @@ namespace jasperengine {
         // inactive entity and all its Transform descendants are not rendered, simulated,
         // heard or updated by scripts; their own flags are kept for reactivation.
         void setEntityActive(Entity entity, bool active);
-        bool isEntityActive(Entity entity) const; // own flag (activeSelf)
+        bool isEntityActive(Entity entity) const { return entityManager.isActive(entity); } // own flag (activeSelf)
         bool isEntityActiveInHierarchy(Entity entity) const; // own flag and every parent's
         bool hasInactiveEntities() const; // false: every entity is active in hierarchy
 
@@ -204,7 +205,7 @@ namespace jasperengine {
         void setEntityTag(Entity entity, const std::string& tag);
         std::string getEntityTag(Entity entity) const;
         void setEntityLayer(Entity entity, int layer);
-        int getEntityLayer(Entity entity) const;
+        JE_ECS_INLINE int getEntityLayer(Entity entity) const { return entityManager.getLayer(entity); }
         // First entity with the tag, NULL_ENTITY when none. Like Unity's FindWithTag, a tag
         // the project does not define (TagManager) logs "Tag: X is not defined." and finds nothing.
         Entity findEntityByTag(const std::string& tag) const;
@@ -389,7 +390,7 @@ namespace jasperengine {
         }
 
         template<typename T>
-        T* findComponent(Entity entity) {
+        JE_ECS_INLINE T* findComponent(Entity entity) {
             return componentManager.findComponent<T>(entity);
         }
 

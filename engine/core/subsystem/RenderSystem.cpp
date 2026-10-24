@@ -438,6 +438,22 @@ blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
+    // the types onComponentAdded/onComponentRemoved handle (forgetEntityInViews included)
+    declareHookType(scene->getComponentId<CameraComponent>());
+    declareHookType(scene->getComponentId<LightComponent>());
+    declareHookType(scene->getComponentId<Light2DComponent>());
+    declareHookType(scene->getComponentId<LineRendererComponent>());
+    declareHookType(scene->getComponentId<MeshComponent>());
+    declareHookType(scene->getComponentId<MirrorComponent>());
+    declareHookType(scene->getComponentId<PointsComponent>());
+    declareHookType(scene->getComponentId<ReflectionProbeComponent>());
+    declareHookType(scene->getComponentId<SkyboxComponent>());
+    declareHookType(scene->getComponentId<UIComponent>());
+#ifdef JASPERENGINE_EDITOR
+    declareHookType(scene->getComponentId<Transform>());
+    declareHookType(scene->getComponentId<InstancedMeshComponent>());
+    declareHookType(scene->getComponentId<TerrainComponent>());
+#endif
 
     this->scene = scene;
 

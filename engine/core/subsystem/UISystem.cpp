@@ -22,6 +22,17 @@ static constexpr double UI_DOUBLE_CLICK_TIME = 0.3;
 
 UISystem::UISystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<RectTransformComponent>());
+    // the types onComponentRemoved handles
+    declareHookType(scene->getComponentId<UIComponent>());
+    declareHookType(scene->getComponentId<RectTransformComponent>());
+    declareHookType(scene->getComponentId<ImageComponent>());
+    declareHookType(scene->getComponentId<Transform>());
+    declareHookType(scene->getComponentId<ButtonComponent>());
+    declareHookType(scene->getComponentId<PanelComponent>());
+    declareHookType(scene->getComponentId<ScrollbarComponent>());
+    declareHookType(scene->getComponentId<ProgressbarComponent>());
+    declareHookType(scene->getComponentId<InputFieldComponent>());
+    declareHookType(scene->getComponentId<TextComponent>());
 
     lastUIFromPointer = NULL_ENTITY;
     lastUIFromPointerHover = NULL_ENTITY;
