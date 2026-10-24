@@ -19,9 +19,12 @@ Runs in a new empty project (EDITOR create).
 import asyncio
 import math
 import shutil
+import subprocess
+import tempfile
 import time
 from pathlib import Path
 
+import harness
 from harness import Editor
 from htmlui_pixels import Shot
 
@@ -51,6 +54,25 @@ CSS = """body { margin: 0; width: 1280px; height: 720px; background-color: #0000
 """
 
 REGIONS = {"burst": (44, 64, 556, 416), "canvas": (684, 64, 1196, 416)}
+
+
+def copy_project(source: Path) -> Path:
+    tmp = Path(tempfile.mkdtemp(prefix="jasper-fluid-effect-export-"))
+
+    def ignore(directory: str, names: list[str]) -> set[str]:
+        out = {".git"} & set(names)
+        if Path(directory).name == ".jasperengine":
+            out |= {"build", "export"} & set(names)
+        return out
+
+    shutil.copytree(source, tmp / "project", ignore=ignore, symlinks=True)
+    return tmp / "project"
+
+
+def cli_export(ed: Editor, project: Path, out: Path, *args: str) -> None:
+    cmd = harness.editor_command() + ["export", "--project", str(project), "--out", str(out), "--backend", "opengl", *args]
+    r = subprocess.run(cmd, cwd=str(project), capture_output=True, text=True, timeout=1800)
+    ed.check(r.returncode == 0, f"export failed ({r.returncode}):\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
 
 
 def write(ed: Editor, rel: str, text: str) -> None:
@@ -222,8 +244,6 @@ async def test_mistakes(ed: Editor):
 async def test_export_ships_the_notice(ed: Editor):
     """A CLI export with the effect's variants ships Pavel Dobryakov's notice (and the shaders.com
     one: every UI effect uses the include library); one with another UI effect only, just the latter."""
-    from test_fluid_agent import cli_export, copy_project  # the native fluid's export helpers
-
     notice = Path("licenses") / "webgl-fluid-simulation-LICENSE.txt"
     await ed.call("save_scene", scene=S["scene"])
     await ed.call("save_project")
