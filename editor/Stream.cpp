@@ -140,6 +140,17 @@ ColorFormat editor::Stream::stringToColorFormat(const std::string& value, int ch
     return channels == 1 ? ColorFormat::RED : ColorFormat::RGBA;
 }
 
+namespace {
+    // A texture whose file is missing (its load failed) is empty() but keeps its path: a save,
+    // a copy or an undo snapshot must keep the reference (S04 R15)
+    bool hasTexturePath(const Texture& texture) {
+        for (size_t face = 0; face < 6; face++) {
+            if (!texture.getPath(face).empty()) return true;
+        }
+        return false;
+    }
+}
+
 bool editor::Stream::getEmbeddedTextureData(const Texture& texture, TextureData*& data){
     if (texture.empty() || texture.isFramebuffer()){
         return false;
@@ -636,7 +647,7 @@ void editor::Stream::decodeStencilAndColorWrite(const YAML::Node& node, Material
 
 YAML::Node editor::Stream::encodeMaterialPass(const MaterialPass& pass, bool embedTextureData) {
     YAML::Node node(YAML::NodeType::Map);
-    if (!pass.shader.empty()) node["shader"] = pass.shader;
+    if (!pass.shader.empty()) encodeShaderRef(node, "shader", pass.shader);
     if (!pass.shaderParams.empty()) node["shaderParams"] = encodeShaderUniforms(pass.shaderParams);
     if (!pass.shaderTextures.empty()) {
         YAML::Node textures = encodeShaderTextures(pass.shaderTextures, embedTextureData);
@@ -659,7 +670,7 @@ MaterialPass editor::Stream::decodeMaterialPass(const YAML::Node& node) {
     // not merged: encodeMaterialPass omits the defaults
     MaterialPass pass;
     if (!node || !node.IsMap()) return pass;
-    pass.shader = node["shader"] ? node["shader"].as<std::string>() : std::string();
+    pass.shader = decodeShaderRef(node, "shader");
     pass.shaderParams = decodeShaderUniforms(node["shaderParams"]);
     pass.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     pass.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
@@ -678,7 +689,7 @@ YAML::Node editor::Stream::encodeShaderTextures(const std::vector<std::pair<std:
     YAML::Node node(YAML::NodeType::Map);
     for (const auto& [uniform, texture] : textures) {
         // an empty one binds the manifest default, like no entry
-        if (texture.empty() && !CameraTextureLink::isCameraTexture(texture)) continue;
+        if (texture.empty() && !hasTexturePath(texture) && !CameraTextureLink::isCameraTexture(texture)) continue;
         node[uniform] = encodeTexture(texture, embedData);
     }
     return node;
@@ -1021,6 +1032,60 @@ Matrix4 editor::Stream::decodeMatrix4(const YAML::Node& node) {
     return mat;
 }
 
+void editor::Stream::encodeAssetRef(YAML::Node& node, const std::string& key, const AssetRef& ref) {
+    node[key] = ref.path;
+    if (!ref.guid.isNull()) {
+        node[key + "Guid"] = ref.guid.str();
+    }
+}
+
+AssetRef editor::Stream::decodeAssetRef(const YAML::Node& node, const std::string& key) {
+    AssetRef ref;
+    const YAML::Node value = node[key];
+    if (value && !value.IsNull()) {
+        ref.path = value.as<std::string>();
+    }
+    const YAML::Node guid = node[key + "Guid"];
+    if (guid && guid.IsScalar()) {
+        ref.guid = Guid::parse(guid.as<std::string>());
+    }
+    return ref;
+}
+
+std::string editor::Stream::shaderRefGuids(const ShaderRef& ref) {
+    if (ref.vertGuid.isNull() && ref.fragGuid.isNull()) {
+        return std::string();
+    }
+    return ref.vertGuid.str() + "|" + ref.fragGuid.str();
+}
+
+void editor::Stream::parseShaderRefGuids(const std::string& text, ShaderRef& ref) {
+    const size_t bar = text.find('|');
+    ref.vertGuid = Guid::parse(bar == std::string::npos ? text : text.substr(0, bar));
+    ref.fragGuid = bar == std::string::npos ? Guid() : Guid::parse(text.substr(bar + 1));
+}
+
+void editor::Stream::encodeShaderRef(YAML::Node& node, const std::string& key, const ShaderRef& ref) {
+    node[key] = ref.path;
+    const std::string guids = shaderRefGuids(ref);
+    if (!guids.empty()) {
+        node[key + "Guid"] = guids;
+    }
+}
+
+ShaderRef editor::Stream::decodeShaderRef(const YAML::Node& node, const std::string& key) {
+    ShaderRef ref;
+    const YAML::Node value = node[key];
+    if (value && !value.IsNull()) {
+        ref.path = value.as<std::string>();
+    }
+    const YAML::Node guids = node[key + "Guid"];
+    if (guids && guids.IsScalar()) {
+        parseShaderRefGuids(guids.as<std::string>(), ref);
+    }
+    return ref;
+}
+
 YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData) {
     YAML::Node node;
 
@@ -1034,7 +1099,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         return node;
     }
 
-    if (texture.empty() || texture.isFramebuffer())
+    if ((texture.empty() && !hasTexturePath(texture)) || texture.isFramebuffer())
         return node;
 
     const bool isCube = texture.isCubeMap() || (texture.getNumFaces() == 6);
@@ -1046,6 +1111,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         if (!path.empty()) {
             node["source"] = "path";
             node["path"] = path;
+            if (!texture.getPathGuid(0).isNull()) node["guid"] = texture.getPathGuid(0).str();
         } else {
             TextureData* embeddedData = nullptr;
             if (embedData && getEmbeddedTextureData(texture, embeddedData)) {
@@ -1075,6 +1141,7 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
             node["cubeMode"] = "single";
             node["source"] = "path";
             node["path"] = texture.getPath(0);
+            if (!texture.getPathGuid(0).isNull()) node["guid"] = texture.getPathGuid(0).str();
         } else {
             node["cubeMode"] = "faces";
             node["source"] = "paths";
@@ -1084,6 +1151,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
                 pathsNode.push_back(texture.getPath((size_t)f));
             }
             node["paths"] = pathsNode;
+            bool hasGuids = false;
+            for (int f = 0; f < 6; f++) hasGuids |= !texture.getPathGuid((size_t)f).isNull();
+            if (hasGuids) {
+                YAML::Node guidsNode;
+                guidsNode.SetStyle(YAML::EmitterStyle::Flow);
+                for (int f = 0; f < 6; f++) guidsNode.push_back(texture.getPathGuid((size_t)f).str());
+                node["guids"] = guidsNode;
+            }
             node["hasEmptyFaces"] = hasAnyEmptyFace;
         }
     }
@@ -1110,6 +1185,7 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
             if (cubeMode == "single") {
                 if (node["path"]) {
                     texture.setCubeMap(node["path"].as<std::string>());
+                    if (node["guid"]) texture.setPathGuid(0, Guid::parse(node["guid"].as<std::string>()));
                 }
             } else {
                 if (node["paths"] && node["paths"].IsSequence() && node["paths"].size() == 6) {
@@ -1122,12 +1198,19 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                     for (size_t f = 0; f < 6; f++) {
                         texture.setCubePath(f, paths[f]);
                     }
+                    const YAML::Node guids = node["guids"];
+                    if (guids && guids.IsSequence() && guids.size() == 6) {
+                        for (size_t f = 0; f < 6; f++) {
+                            texture.setPathGuid(f, Guid::parse(guids[f].as<std::string>()));
+                        }
+                    }
                 }
             }
         } else if (textureType == "2D") {
             if (source == "path") {
                 if (node["path"]) {
                     texture.setPath(node["path"].as<std::string>());
+                    if (node["guid"]) texture.setPathGuid(0, Guid::parse(node["guid"].as<std::string>()));
                 }
             } else if (source == "data") {
                 if (node["data"] && node["width"] && node["height"] && node["channels"]) {
@@ -1883,9 +1966,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         size_t next = 0;
         size_t position = 0;
 
-        auto appendScene = [&scenesNode, &position](const std::string& filepath) {
+        auto appendScene = [&scenesNode, &position, project](const std::string& filepath) {
             YAML::Node sceneNode;
             sceneNode["filepath"] = filepath;
+            // S04: the scene file by GUID too, so the list follows it when it moves
+            const Guid guid = project->getAssetDatabase().getAssetGuid(filepath);
+            if (!guid.isNull()) sceneNode["filepathGuid"] = guid.str();
             scenesNode.push_back(sceneNode);
             position++;
         };
@@ -2336,8 +2422,16 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 continue;
             }
 
-            const std::string relStr = sceneNode["filepath"].as<std::string>();
+            std::string relStr = sceneNode["filepath"].as<std::string>();
             const size_t position = listPosition++;
+            // S04: a scene file moved since is found by its GUID
+            if (sceneNode["filepathGuid"] && !fs::exists(project->getProjectPath() / relStr)) {
+                const fs::path moved = project->getAssetDatabase().getPath(Guid::parse(sceneNode["filepathGuid"].as<std::string>()));
+                if (!moved.empty()) {
+                    Out::info("Scene \"%s\" moved to \"%s\" (found by its GUID)", relStr.c_str(), moved.generic_string().c_str());
+                    relStr = moved.generic_string();
+                }
+            }
             fs::path scenePath = relStr;
             if (scenePath.is_relative()) {
                 scenePath = project->getProjectPath() / scenePath;
@@ -2835,19 +2929,19 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
     sceneNode["enableUIEvents"] = uiEventStateToString(scene->getEnableUIEvents());
 
     if (!scene->getDefaultMeshShader().empty())
-        sceneNode["defaultMeshShader"] = scene->getDefaultMeshShader();
+        encodeShaderRef(sceneNode, "defaultMeshShader", scene->getDefaultShaderRef(ShaderType::MESH));
     if (!scene->getDefaultUIShader().empty())
-        sceneNode["defaultUIShader"] = scene->getDefaultUIShader();
+        encodeShaderRef(sceneNode, "defaultUIShader", scene->getDefaultShaderRef(ShaderType::UI));
     if (!scene->getDefaultSkyShader().empty())
-        sceneNode["defaultSkyShader"] = scene->getDefaultSkyShader();
+        encodeShaderRef(sceneNode, "defaultSkyShader", scene->getDefaultShaderRef(ShaderType::SKYBOX));
     if (!scene->getDefaultPointsShader().empty())
-        sceneNode["defaultPointsShader"] = scene->getDefaultPointsShader();
+        encodeShaderRef(sceneNode, "defaultPointsShader", scene->getDefaultShaderRef(ShaderType::POINTS));
     if (!scene->getDefaultLinesShader().empty())
-        sceneNode["defaultLinesShader"] = scene->getDefaultLinesShader();
+        encodeShaderRef(sceneNode, "defaultLinesShader", scene->getDefaultShaderRef(ShaderType::LINES));
 
     for (const PostProcessPass& pass : scene->getPostProcessPasses()) {
         YAML::Node passNode;
-        passNode["shader"] = pass.shader;
+        encodeShaderRef(passNode, "shader", pass.shader);
         passNode["enabled"] = pass.enabled;
         if (!pass.uniforms.empty())
             passNode["uniforms"] = encodeShaderUniforms(pass.uniforms);
@@ -2893,6 +2987,9 @@ YAML::Node editor::Stream::encodePostProcessing(const PostProcessingSettings& se
             case FieldType::String:
                 if (*(const std::string*)value != *(const std::string*)def) node[field.name] = *(const std::string*)value;
                 break;
+            case FieldType::Asset:
+                if (*(const AssetRef*)value != *(const AssetRef*)def) encodeAssetRef(node, field.name, *(const AssetRef*)value);
+                break;
             case FieldType::Enum: {
                 const int v = *(const int*)value;
                 if (v != *(const int*)def) node[field.name] = std::string(field.enumNames[v]);
@@ -2917,6 +3014,7 @@ PostProcessingSettings editor::Stream::decodePostProcessing(const YAML::Node& no
             case FieldType::Float: *(float*)ref = decodeFinite(value, *(float*)ref); break;
             case FieldType::Vector3: *(Vector3*)ref = decodeVector3(value); break;
             case FieldType::String: *(std::string*)ref = value.as<std::string>(); break;
+            case FieldType::Asset: *(AssetRef*)ref = decodeAssetRef(node, field.name); break;
             case FieldType::Enum: {
                 const std::string name = value.as<std::string>();
                 for (int i = 0; field.enumNames[i]; i++) {
@@ -3043,18 +3141,18 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     }
 
     // absent key clears the default so decoding into a reused scene (play restore) is exact
-    scene->setDefaultMeshShader(node["defaultMeshShader"] ? node["defaultMeshShader"].as<std::string>() : "");
-    scene->setDefaultUIShader(node["defaultUIShader"] ? node["defaultUIShader"].as<std::string>() : "");
-    scene->setDefaultSkyShader(node["defaultSkyShader"] ? node["defaultSkyShader"].as<std::string>() : "");
-    scene->setDefaultPointsShader(node["defaultPointsShader"] ? node["defaultPointsShader"].as<std::string>() : "");
-    scene->setDefaultLinesShader(node["defaultLinesShader"] ? node["defaultLinesShader"].as<std::string>() : "");
+    scene->setDefaultShaderRef(ShaderType::MESH, decodeShaderRef(node, "defaultMeshShader"));
+    scene->setDefaultShaderRef(ShaderType::UI, decodeShaderRef(node, "defaultUIShader"));
+    scene->setDefaultShaderRef(ShaderType::SKYBOX, decodeShaderRef(node, "defaultSkyShader"));
+    scene->setDefaultShaderRef(ShaderType::POINTS, decodeShaderRef(node, "defaultPointsShader"));
+    scene->setDefaultShaderRef(ShaderType::LINES, decodeShaderRef(node, "defaultLinesShader"));
 
     // absent key clears the chain so decoding into a reused scene (play restore) is exact
     std::vector<PostProcessPass> postProcess;
     if (node["postProcess"]) {
         for (const auto& passNode : node["postProcess"]) {
             PostProcessPass pass;
-            pass.shader = passNode["shader"] ? passNode["shader"].as<std::string>() : "";
+            pass.shader = decodeShaderRef(passNode, "shader");
             pass.enabled = passNode["enabled"] ? YamlNumbers::as<bool>(passNode["enabled"]) : true;
             pass.uniforms = decodeShaderUniforms(passNode["uniforms"]);
             pass.textures = decodeShaderTextures(passNode["textures"]);
@@ -3339,6 +3437,19 @@ YAML::Node editor::Stream::encodeScriptProperty(const ScriptProperty& prop) {
             node["defaultValue"] = encodePrefab(prop.getDefaultValue<PrefabAsset>());
             break;
         }
+        case ScriptPropertyType::Asset: {
+            // S04: {guid, path} like a prefab, empty for None; assetType filters what fits
+            auto encodeAsset = [](const AssetRef& ref) {
+                YAML::Node value(YAML::NodeType::Map);
+                if (!ref.guid.isNull()) value["guid"] = ref.guid.str();
+                if (!ref.path.empty()) value["path"] = ref.path;
+                return value;
+            };
+            if (!prop.assetType.empty()) node["assetType"] = prop.assetType;
+            node["value"] = encodeAsset(prop.getValue<AssetRef>());
+            node["defaultValue"] = encodeAsset(prop.getDefaultValue<AssetRef>());
+            break;
+        }
     }
 
     return node;
@@ -3354,6 +3465,9 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
     // Restore ptrTypeName if it exists
     if (node["ptrTypeName"]) {
         prop.ptrTypeName = node["ptrTypeName"].as<std::string>();
+    }
+    if (node["assetType"]) {
+        prop.assetType = node["assetType"].as<std::string>();
     }
 
     if (node["value"]) {
@@ -3406,6 +3520,18 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
                 prop.defaultValue = decodePrefab(node["defaultValue"]);
                 break;
             }
+            case ScriptPropertyType::Asset: {
+                auto decodeAsset = [](const YAML::Node& value) {
+                    if (!value || !value.IsMap()) {
+                        return AssetRef();
+                    }
+                    return AssetRef(value["path"] ? value["path"].as<std::string>() : std::string(),
+                                    value["guid"] ? Guid::parse(value["guid"].as<std::string>()) : Guid());
+                };
+                prop.value = decodeAsset(node["value"]);
+                prop.defaultValue = decodeAsset(node["defaultValue"]);
+                break;
+            }
         }
     } else {
         // Initialize with default values if no value is provided
@@ -3421,6 +3547,7 @@ ScriptProperty editor::Stream::decodeScriptProperty(const YAML::Node& node) {
             case ScriptPropertyType::Color4: prop.value = Vector4(); prop.defaultValue = Vector4(); break;
             case ScriptPropertyType::EntityReference: prop.value = EntityReference{NULL_ENTITY, 0}; prop.defaultValue = EntityReference{NULL_ENTITY, 0}; break;
             case ScriptPropertyType::Prefab: prop.value = PrefabAsset(); prop.defaultValue = PrefabAsset(); break;
+            case ScriptPropertyType::Asset: prop.value = AssetRef(); prop.defaultValue = AssetRef(); break;
         }
     }
 
@@ -3528,7 +3655,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     // Encode textures using the helper method. A camera link is one even unbound (a prefab
     // registry, its camera a stripped object or not resolved yet)
     auto present = [](const Texture& texture) {
-        return !texture.empty() || CameraTextureLink::isCameraTexture(texture);
+        return !texture.empty() || hasTexturePath(texture) || CameraTextureLink::isCameraTexture(texture);
     };
     if (present(material.baseColorTexture)) {
         node["baseColorTexture"] = encodeTexture(material.baseColorTexture, embedTextureData);
@@ -3558,11 +3685,11 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     node["normalTexCoord"] = YamlNumbers::integerText(material.normalTexCoord);
 
     // Encode material name
-    node["name"] = material.name;
+    encodeAssetRef(node, "name", material.name);
 
     // Shader library: written only away from their defaults, so a material without them is
     // stored exactly as before they existed
-    if (!material.shader.empty()) node["shader"] = material.shader;
+    if (!material.shader.empty()) encodeShaderRef(node, "shader", material.shader);
     if (!material.shaderParams.empty()) node["shaderParams"] = encodeShaderUniforms(material.shaderParams);
     if (!material.shaderTextures.empty()) {
         YAML::Node textures = encodeShaderTextures(material.shaderTextures, embedTextureData);
@@ -3619,10 +3746,10 @@ Material editor::Stream::decodeMaterial(const YAML::Node& node, const Material* 
     if (node["emissiveTexCoord"]) material.emissiveTexCoord = YamlNumbers::as<int>(node["emissiveTexCoord"]);
     if (node["normalTexCoord"]) material.normalTexCoord = YamlNumbers::as<int>(node["normalTexCoord"]);
 
-    if (node["name"]) material.name = node["name"].as<std::string>();
+    if (node["name"]) material.name = decodeAssetRef(node, "name");
 
     // Not merged: encodeMaterial omits these at their defaults, so an absent key is the default
-    material.shader = node["shader"] ? node["shader"].as<std::string>() : std::string();
+    material.shader = decodeShaderRef(node, "shader");
     material.shaderParams = decodeShaderUniforms(node["shaderParams"]);
     material.shaderTextures = decodeShaderTextures(node["shaderTextures"]);
     material.shaderFeatures = decodeShaderFeatures(node["shaderFeatures"]);
@@ -4735,9 +4862,9 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["windingOrder"] = windingOrderToString(mesh.windingOrder);
 
     if (!mesh.customShader.empty())
-        node["customShader"] = mesh.customShader;
+        encodeShaderRef(node, "customShader", mesh.customShader);
     if (!mesh.customDepthShader.empty())
-        node["customDepthShader"] = mesh.customDepthShader;
+        encodeShaderRef(node, "customDepthShader", mesh.customDepthShader);
     if (!mesh.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(mesh.shaderUniforms);
 
@@ -4821,8 +4948,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["cullingMode"]) mesh.cullingMode = decodeEnum(node, "cullingMode", StreamSchema::cullingMode());
     if (node["windingOrder"]) mesh.windingOrder = decodeEnum(node, "windingOrder", StreamSchema::windingOrder());
 
-    if (node["customShader"]) mesh.customShader = node["customShader"].as<std::string>();
-    if (node["customDepthShader"]) mesh.customDepthShader = node["customDepthShader"].as<std::string>();
+    if (node["customShader"]) mesh.customShader = decodeShaderRef(node, "customShader");
+    if (node["customDepthShader"]) mesh.customDepthShader = decodeShaderRef(node, "customDepthShader");
     mesh.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     mesh.needUpdateShaderUniforms = true;
 
@@ -4858,7 +4985,7 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
     node["focused"] = ui.focused;
 
     if (!ui.customShader.empty())
-        node["customShader"] = ui.customShader;
+        encodeShaderRef(node, "customShader", ui.customShader);
     if (!ui.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(ui.shaderUniforms);
     encodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite, embedTextureData);
@@ -4895,7 +5022,7 @@ UIComponent editor::Stream::decodeUIComponent(const YAML::Node& node, const UICo
     if (node["pointerMoved"]) ui.pointerMoved = YamlNumbers::as<bool>(node["pointerMoved"]);
     if (node["focused"]) ui.focused = YamlNumbers::as<bool>(node["focused"]);
 
-    if (node["customShader"]) ui.customShader = node["customShader"].as<std::string>();
+    if (node["customShader"]) ui.customShader = decodeShaderRef(node, "customShader");
     ui.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     ui.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, ui.shaderTextures, ui.shaderFeatures, &ui.blendMode, &ui.depthWrite);
@@ -5196,8 +5323,17 @@ YAML::Node editor::Stream::encodeTextComponent(const TextComponent& text) {
     }
     node["font"] = YAML::Node(YAML::NodeType::Sequence);
     node["font"].SetStyle(YAML::EmitterStyle::Flow);
+    bool hasGuids = false;
     for (size_t i = 0; i < numFonts; i++){
-        node["font"].push_back(text.font[i]);
+        node["font"].push_back(text.font[i].path);
+        hasGuids |= !text.font[i].guid.isNull();
+    }
+    if (hasGuids){
+        node["fontGuid"] = YAML::Node(YAML::NodeType::Sequence);
+        node["fontGuid"].SetStyle(YAML::EmitterStyle::Flow);
+        for (size_t i = 0; i < numFonts; i++){
+            node["fontGuid"].push_back(text.font[i].guid.str());
+        }
     }
     node["text"] = text.text;
     node["fontSize"] = text.fontSize;
@@ -5221,8 +5357,11 @@ TextComponent editor::Stream::decodeTextComponent(const YAML::Node& node, const 
     if (node["font"]){
         text.font = FontArray();
         if (node["font"].IsSequence()){
+            const YAML::Node guids = node["fontGuid"];
             for (size_t i = 0; i < node["font"].size() && i < text.font.size(); i++){
                 text.font[i] = node["font"][i].as<std::string>();
+                if (guids && guids.IsSequence() && i < guids.size())
+                    text.font[i].guid = Guid::parse(guids[i].as<std::string>());
             }
         }else{
             // before the array: a single font plus a ";" separated fontFallbacks
@@ -5451,7 +5590,7 @@ TerrainSurfaceLayer editor::Stream::decodeTerrainSurfaceLayer(const YAML::Node& 
 
 YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& layer) {
     YAML::Node node;
-    node["meshPath"] = layer.meshPath;
+    encodeAssetRef(node, "meshPath", layer.meshPath);
     node["densityMap"] = encodeTexture(layer.densityMap);
     node["density"] = layer.density;
     node["minScale"] = layer.minScale;
@@ -5470,7 +5609,7 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
 
 TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node) {
     TerrainFoliageLayer layer;
-    if (node["meshPath"]) layer.meshPath = node["meshPath"].as<std::string>();
+    if (node["meshPath"]) layer.meshPath = decodeAssetRef(node, "meshPath");
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
     if (node["seed"]) layer.seed = YamlNumbers::as<unsigned int>(node["seed"]);
     if (node["castShadows"]) layer.castShadows = YamlNumbers::as<bool>(node["castShadows"]);
@@ -5643,7 +5782,7 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     // Every field is written, the empty ones too: decoding onto an existing Model (a Prefab
     // override, a pasted value) keeps the fields a node leaves out, so an emptied Model would
     // come back with the file and nodes it had.
-    node["filename"] = model.filename;
+    encodeAssetRef(node, "filename", model.filename);
     node["mergeStaticMeshes"] = model.mergeStaticMeshes;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
@@ -5701,7 +5840,7 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     }
 
     // Also check for the old modelPath for exact backward compatibility with old save files
-    if (node["filename"]) model.filename = node["filename"].as<std::string>();
+    if (node["filename"]) model.filename = decodeAssetRef(node, "filename");
     if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = YamlNumbers::as<bool>(node["mergeStaticMeshes"]);
     if (node["skeleton"]) model.skeleton = static_cast<Entity>(YamlNumbers::as<uint32_t>(node["skeleton"]));
 
@@ -6004,7 +6143,7 @@ YAML::Node editor::Stream::encodeUIDocumentComponent(const UIDocumentComponent& 
     node["enabled"] = document.enabled;
 
     // written when empty too: decoding over a component with a file must clear it
-    node["filename"] = document.filename;
+    encodeAssetRef(node, "filename", document.filename);
     node["sortOrder"] = document.sortOrder;
 
     // phase 1: only what differs from the defaults (decode restores the defaults)
@@ -6028,7 +6167,7 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
         document = *oldDocument;
     }
 
-    if (node["filename"]) document.filename = node["filename"].IsNull() ? std::string() : node["filename"].as<std::string>();
+    if (node["filename"]) document.filename = decodeAssetRef(node, "filename");
     if (node["sortOrder"]) document.sortOrder = YamlNumbers::as<int>(node["sortOrder"]);
     if (node["enabled"]) document.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -6154,7 +6293,7 @@ YAML::Node editor::Stream::encodeAudioSourceComponent(const AudioSourceComponent
     node["enabled"] = audio.enabled;
 
     node["state"] = audioSourceStateToString(audio.state);
-    if (!audio.filename.empty()) node["filename"] = audio.filename;
+    if (!audio.filename.empty()) encodeAssetRef(node, "filename", audio.filename);
     node["enableClocked"] = audio.enableClocked;
     encodeFinite(node, "volume", audio.volume);
     encodeFinite(node, "speed", audio.speed);
@@ -6183,7 +6322,7 @@ AudioSourceComponent editor::Stream::decodeAudioSourceComponent(const YAML::Node
     }
 
     if (node["state"]) audio.state = decodeEnum(node, "state", StreamSchema::audioSourceState());
-    if (node["filename"]) audio.filename = node["filename"].as<std::string>();
+    if (node["filename"]) audio.filename = decodeAssetRef(node, "filename");
     if (node["enableClocked"]) audio.enableClocked = YamlNumbers::as<bool>(node["enableClocked"]);
     if (node["volume"]) audio.volume = decodeFiniteDouble(node["volume"], audio.volume);
     if (node["speed"]) audio.speed = decodeFinite(node["speed"], audio.speed);
@@ -6231,10 +6370,10 @@ YAML::Node editor::Stream::encodeScriptComponent(const ScriptComponent& script) 
             scriptNode["type"] = scriptTypeToString(scriptEntry.type);
 
             if (!scriptEntry.path.empty())
-                scriptNode["path"] = scriptEntry.path;
+                encodeAssetRef(scriptNode, "path", scriptEntry.path);
 
             if (!scriptEntry.headerPath.empty())
-                scriptNode["headerPath"] = scriptEntry.headerPath;
+                encodeAssetRef(scriptNode, "headerPath", scriptEntry.headerPath);
 
             if (!scriptEntry.className.empty())
                 scriptNode["className"] = scriptEntry.className;
@@ -6278,10 +6417,10 @@ ScriptComponent editor::Stream::decodeScriptComponent(const YAML::Node& node, co
         }
 
         if (scriptNode["path"])
-            entry.path = scriptNode["path"].as<std::string>();
+            entry.path = decodeAssetRef(scriptNode, "path");
 
         if (scriptNode["headerPath"])
-            entry.headerPath = scriptNode["headerPath"].as<std::string>();
+            entry.headerPath = decodeAssetRef(scriptNode, "headerPath");
 
         if (scriptNode["className"])
             entry.className = scriptNode["className"].as<std::string>();
@@ -6312,7 +6451,7 @@ YAML::Node editor::Stream::encodeSkyboxComponent(const SkyboxComponent& sky) {
     node["visible"] = sky.visible;
 
     if (!sky.customShader.empty())
-        node["customShader"] = sky.customShader;
+        encodeShaderRef(node, "customShader", sky.customShader);
     if (!sky.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(sky.shaderUniforms);
     encodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr, true);
@@ -6348,7 +6487,7 @@ SkyboxComponent editor::Stream::decodeSkyboxComponent(const YAML::Node& node, co
     if (node["rotation"]) sky.rotation = YamlNumbers::as<float>(node["rotation"]);
     if (node["visible"]) sky.visible = YamlNumbers::as<bool>(node["visible"]);
 
-    if (node["customShader"]) sky.customShader = node["customShader"].as<std::string>();
+    if (node["customShader"]) sky.customShader = decodeShaderRef(node, "customShader");
     sky.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     sky.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, sky.shaderTextures, sky.shaderFeatures, nullptr, nullptr);
@@ -7814,7 +7953,7 @@ YAML::Node editor::Stream::encodePointsComponent(const PointsComponent& points) 
     node["points"] = pointsNode;
 
     if (!points.customShader.empty())
-        node["customShader"] = points.customShader;
+        encodeShaderRef(node, "customShader", points.customShader);
     if (!points.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(points.shaderUniforms);
     encodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite, true);
@@ -7856,7 +7995,7 @@ PointsComponent editor::Stream::decodePointsComponent(const YAML::Node& node, co
         }
     }
 
-    if (node["customShader"]) points.customShader = node["customShader"].as<std::string>();
+    if (node["customShader"]) points.customShader = decodeShaderRef(node, "customShader");
     points.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     points.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, points.shaderTextures, points.shaderFeatures, &points.blendMode, &points.depthWrite);
@@ -7895,7 +8034,7 @@ YAML::Node editor::Stream::encodeLineRendererComponent(const LineRendererCompone
     node["lines"] = linesNode;
 
     if (!lines.customShader.empty())
-        node["customShader"] = lines.customShader;
+        encodeShaderRef(node, "customShader", lines.customShader);
     if (!lines.shaderUniforms.empty())
         node["shaderUniforms"] = encodeShaderUniforms(lines.shaderUniforms);
     encodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite, true);
@@ -7926,7 +8065,7 @@ LineRendererComponent editor::Stream::decodeLineRendererComponent(const YAML::No
         lines.maxLines = static_cast<unsigned int>(lines.lines.size());
     }
 
-    if (node["customShader"]) lines.customShader = node["customShader"].as<std::string>();
+    if (node["customShader"]) lines.customShader = decodeShaderRef(node, "customShader");
     lines.shaderUniforms = decodeShaderUniforms(node["shaderUniforms"]);
     lines.needUpdateShaderUniforms = true;
     decodeComponentShaderLibrary(node, lines.shaderTextures, lines.shaderFeatures, &lines.blendMode, &lines.depthWrite);

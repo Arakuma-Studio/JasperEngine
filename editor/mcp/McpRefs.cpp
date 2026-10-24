@@ -415,11 +415,22 @@ bool McpRefs::resolveComponent(const Json& ref, ComponentType& out, std::string&
     return false;
 }
 
-bool McpRefs::resolveProjectPath(Project* project, const std::string& relative, fs::path& absolute,
+bool McpRefs::resolveProjectPath(Project* project, const std::string& requested, fs::path& absolute,
                                  std::string& error, bool mustExist) {
     if (!project) {
         error = "No project is open.";
         return false;
+    }
+    // an asset's GUID names it wherever a path does (S04): its current path, or a sub-asset's model
+    std::string relative = requested;
+    if (Guid::isValidText(requested)) {
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(Guid::parse(requested), std::string(), AssetType::Unknown, false);
+        if (!found.found()) {
+            error = "No asset has the GUID " + requested + ".";
+            return false;
+        }
+        std::string container, key;
+        relative = splitSubAssetPath(found.path, container, key) ? container : found.path;
     }
     const fs::path rel = fs::path(relative).lexically_normal();
     if (relative.empty() || rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) {

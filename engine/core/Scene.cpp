@@ -593,6 +593,30 @@ const std::string& Scene::getDefaultCustomShader(ShaderType type) const{
     }
 }
 
+const ShaderRef& Scene::getDefaultShaderRef(ShaderType type) const{
+    static const ShaderRef empty;
+    switch (type){
+        case ShaderType::MESH:   return settings.defaultMeshShader;
+        case ShaderType::UI:     return settings.defaultUIShader;
+        case ShaderType::SKYBOX: return settings.defaultSkyShader;
+        case ShaderType::POINTS: return settings.defaultPointsShader;
+        case ShaderType::LINES:  return settings.defaultLinesShader;
+        default: return empty;
+    }
+}
+
+void Scene::setDefaultShaderRef(ShaderType type, const ShaderRef& ref){
+    setDefaultCustomShader(type, ref.path);
+    switch (type){
+        case ShaderType::MESH:   settings.defaultMeshShader = ref;   break;
+        case ShaderType::UI:     settings.defaultUIShader = ref;     break;
+        case ShaderType::SKYBOX: settings.defaultSkyShader = ref;    break;
+        case ShaderType::POINTS: settings.defaultPointsShader = ref; break;
+        case ShaderType::LINES:  settings.defaultLinesShader = ref;  break;
+        default: break;
+    }
+}
+
 const std::vector<PostProcessPass>& Scene::getPostProcessPasses() const{
     return settings.postProcess;
 }

@@ -251,6 +251,9 @@ namespace jasperengine{
 
         void setDefaultCustomShader(ShaderType type, const std::string& path);
         const std::string& getDefaultCustomShader(ShaderType type) const;
+        // The default shader of a type with the asset GUIDs of its files (editor references)
+        const ShaderRef& getDefaultShaderRef(ShaderType type) const;
+        void setDefaultShaderRef(ShaderType type, const ShaderRef& ref);
 
         // ordered user post-process chain; setting it rebuilds the RenderSystem passes
         // unless only uniform values changed

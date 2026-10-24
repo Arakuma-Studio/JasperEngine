@@ -839,6 +839,7 @@ Json postProcessingFieldToJson(const PostProcessingSettings& settings, const Pos
         case FT::Float: return McpValues::number(*(const float*)ref);
         case FT::Vector3: return McpValues::toJson(*(const Vector3*)ref);
         case FT::String: return McpValues::assetPathToJson(project, *(const std::string*)ref);
+        case FT::Asset: return McpValues::assetPathToJson(project, ((const AssetRef*)ref)->path);
         case FT::Enum: return std::string(field.enumNames[*(const int*)ref]);
     }
     return nullptr;
@@ -903,10 +904,12 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
             *(Vector3*)ref = v;
             return true;
         }
-        case FT::String: {
+        case FT::String:
+        case FT::Asset: {
             if (!value.is_string()) { error = name + " must be a project image path (\"\" none)."; return false; }
             const std::string path = value.get<std::string>();
-            if (!path.empty() && !fs::exists(project->getProjectPath() / path)) {
+            // a GUID names the file too (assetPathFromJson resolves it)
+            if (!path.empty() && !Guid::isValidText(path) && !fs::exists(project->getProjectPath() / path)) {
                 error = name + ": no file \"" + path + "\" in the project.";
                 return false;
             }
@@ -916,7 +919,12 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
                 error = name + ": " + error;
                 return false;
             }
-            *(std::string*)ref = stored;
+            if (field.type == FT::Asset) {
+                // a new path drops the GUID the old one had (it gets the file's on save)
+                *(AssetRef*)ref = stored;
+            } else {
+                *(std::string*)ref = stored;
+            }
             return true;
         }
         case FT::Enum: {

@@ -59,6 +59,7 @@ namespace jasperengine::editor{
         LocalEntity,
         ExternalEntity,
         Font,
+        Asset,      // an asset file reference (AssetRef): path, drop target, missing state
         LayerMask  // unsigned int culling mask: Unity's Nothing / Everything / per-layer dropdown
     };
 

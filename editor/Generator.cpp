@@ -1302,6 +1302,7 @@ std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::stri
         case ScriptPropertyType::Vector4:
         case ScriptPropertyType::Color4: return "Vector4";
         case ScriptPropertyType::Prefab: return "PrefabAsset";
+        case ScriptPropertyType::Asset: return "AssetRef";
         case ScriptPropertyType::EntityReference: break;
     }
     // "entity": the GameObject's first Lua script instance, else an EntityHandle

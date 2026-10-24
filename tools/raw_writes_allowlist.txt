@@ -2,7 +2,6 @@
 # <path> :: <code fragment found on the line> :: <reason>
 
 # append-only logs: a crash loses at most the last lines, never earlier ones
-editor/Out.cpp :: std::ofstream logFileStream; :: the editor log, append-only
 editor/mcp/tools/BuildTools.cpp :: std::ofstream logFile; :: build log, append-only while the build runs
 editor/mcp/tools/BuildTools.cpp :: std::ofstream out(run->logPath :: build run log, streamed while the process runs
 editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log, append-only
@@ -24,6 +23,7 @@ editor/Exporter.cpp :: fs::copy_file(source, targetPath :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(exePath, config.destinationDir :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(src, config.destinationDir :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(favicon, config.destinationDir :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(src, threadsDir :: export staging (S30): the pthreads web build (S06)
 editor/Exporter.cpp :: fs::copy_file(dataSrc, config.destinationDir :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec); :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(entry.path(), destination, :: export staging (S30)
