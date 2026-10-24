@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <deque>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -55,6 +56,11 @@ namespace {
     constexpr float kStalledSeconds = 0.25f;
     // Without Keep formation a mover whose target runs this far ahead of it (blocked) re-anchors
     constexpr float kFormationSlack = 0.1f;
+    // Shift-drag snap: a mover more than kSnapBlockedDistance from its target whose distance did
+    // not shrink by kSnapHeadway over the last kSnapBlockedSeconds is blocked, and hops there
+    constexpr float kSnapBlockedDistance = 0.02f;
+    constexpr float kSnapHeadway = 0.01f;
+    constexpr double kSnapBlockedSeconds = 0.15;
     // Separate: extra damping and penetration recovery
     constexpr float kSeparateDamping = 5.0f;
     constexpr float kSeparateBoost = 4.0f;
@@ -804,6 +810,9 @@ struct PlacementSession::Impl {
         LocalPose local;
         PlacementPose start;
         Vector3 targetPosition;    // !keepFormation: the running per-mover target
+        bool hasSnapTarget = false;
+        PlacementPose snapTarget;
+        std::deque<std::pair<double, float>> snapProgress;   // (snap clock, distance to the target)
     };
     std::vector<Body> bodies;
     std::unordered_map<Entity, size_t> bodyIndex;
@@ -834,6 +843,7 @@ struct PlacementSession::Impl {
     std::vector<PlacementPose> fixedTargets;
 
     double accumulator = 0.0;
+    double snapClock = 0.0;        // simulated seconds of the Snap gesture
     double settleSeconds = 0.0;
     bool approaching = false;      // Distribute/Gather: targets on until reached, then gravity
     double approachSeconds = 0.0;
@@ -1046,6 +1056,29 @@ struct PlacementSession::Impl {
             target.rotation = snapRotation * body.start.rotation;
             target.rotation.normalize();
             setTargetFor(m, target);
+            Body& snapped = bodies[bodyIndex[m]];
+            snapped.snapTarget = target;
+            snapped.hasSnapTarget = true;
+        }
+    }
+
+    // Snap slides the movers over the surfaces under the cursor; one that makes no headway
+    // toward its target (the side of the table it should be on top of) hops onto it
+    void hopBlockedSnapMovers(double simulated) {
+        snapClock += simulated;
+        for (Entity m : movers) {
+            Body& body = bodies[bodyIndex[m]];
+            if (!body.hasSnapTarget) continue;
+            const float distance = (world->getState(m).pose.position - body.snapTarget.position).length();
+            std::deque<std::pair<double, float>>& progress = body.snapProgress;
+            progress.push_back({snapClock, distance});
+            // the reference: the newest sample at least the window old
+            while (progress.size() >= 2 && progress[1].first <= snapClock - kSnapBlockedSeconds + 1e-9) progress.pop_front();
+            const bool windowCovered = progress.front().first <= snapClock - kSnapBlockedSeconds + 1e-9;
+            if (distance > kSnapBlockedDistance && windowCovered && distance > progress.front().second - kSnapHeadway) {
+                world->teleport(m, body.snapTarget);
+                progress.clear();
+            }
         }
     }
 
@@ -1181,6 +1214,7 @@ struct PlacementSession::Impl {
         snapRotation = Quaternion();
         gatherScale = Vector3(1.0f, 1.0f, 1.0f);
         accumulator = 0.0;
+        snapClock = 0.0;
         settleSeconds = 0.0;
         approaching = false;
         approachSeconds = 0.0;
@@ -1332,6 +1366,10 @@ struct PlacementSession::Impl {
                 accumulator -= fixedStep;
                 steps++;
             }
+        }
+
+        if (gesture == PlacementGesture::Snap && phase == PlacementPhase::Active && steps > 0) {
+            hopBlockedSnapMovers(steps * fixedStep);
         }
 
         writePreview();
@@ -1719,7 +1757,8 @@ struct PlacementRun::Impl {
     CacheUse cacheUse;                          // the decomposition cache the world was built with
     std::map<Entity, std::string> caveats;      // movers accepted with a caveat
 
-    enum class Stage { WaitColliders, Approach, Settle, Separate, Finished } stage = Stage::Settle;
+    // Placed: Snap without settle, put on the surface and not stepped
+    enum class Stage { WaitColliders, Approach, Settle, Separate, Placed, Finished } stage = Stage::Settle;
     uint32_t maxSteps = 0;
     double stalledSeconds = 0.0;
     float initialPenetration = 0.0f;
@@ -1932,6 +1971,18 @@ struct PlacementRun::Impl {
                 world->setDamping(kSeparateDamping, kSeparateDamping);
                 world->setSeparationBoost(kSeparateBoost);
                 break;
+            case PlacementMode::Snap:
+                // placed on the surface the ray hit (not driven there: the path may be blocked),
+                // then settled, which also resolves a small overlap at the spot
+                for (size_t i = 0; i < movers.size(); i++) world->teleport(movers[i], targets[i]);
+                reachedOrStalled = true;
+                if (spec.settle) {
+                    stage = Stage::Settle;
+                    world->setGravity(spec.gravity);
+                } else {
+                    stage = Stage::Placed;
+                }
+                break;
             default:
                 stage = Stage::Approach;
                 world->setGravity(Vector3(0.0f, 0.0f, 0.0f));
@@ -1963,6 +2014,7 @@ struct PlacementRun::Impl {
 
     // one fixed step and the bookkeeping after it; true when the run is over
     bool stepOnce() {
+        if (stage == Stage::Placed) return true;
         if (stage == Stage::WaitColliders) {
             if (world->hasPendingDecompositions()) return false;
             world->refreshShapes();
@@ -2023,6 +2075,7 @@ struct PlacementRun::Impl {
             case Stage::Settle:
                 return world->allAsleep();
             case Stage::WaitColliders:
+            case Stage::Placed:
             case Stage::Finished:
                 break;
         }
@@ -2040,6 +2093,7 @@ struct PlacementRun::Impl {
     }
 
     void finish(bool cancelled) {
+        const bool placed = stage == Stage::Placed;   // Snap without settle: put there, not stepped
         stage = Stage::Finished;
         done = true;
         result.cancelled = cancelled;
@@ -2083,8 +2137,8 @@ struct PlacementRun::Impl {
             e.movedMeters = (e.after.position - e.before.position).length();
             e.rotatedDegrees = angleDegrees(e.before.rotation, e.after.rotation);
             const auto settledAt = settleStep.find(entity);
-            e.settled = !state.fellOut && settledAt != settleStep.end() && settledAt->second != 0;
-            e.settleStep = e.settled ? settledAt->second : 0;
+            e.settled = !state.fellOut && ((settledAt != settleStep.end() && settledAt->second != 0) || (placed && state.mover));
+            e.settleStep = e.settled && settledAt != settleStep.end() ? settledAt->second : 0;
             if (spec.mode == PlacementMode::Separate) e.settled = e.settled && separated;
             e.restingOn = state.restingOn;
             for (Entity below : state.restingOn) e.restingOnPaths.push_back(pathOf(below));
@@ -2106,7 +2160,8 @@ struct PlacementRun::Impl {
                 e.warnings.push_back("still on its way to the target after " + seconds(maxSecondsShown));
                 unreached.push_back(e.name);
             }
-            if (e.teleported) {
+            // Snap teleports on purpose
+            if (e.teleported && spec.mode != PlacementMode::Snap) {
                 e.warnings.push_back("teleported: its target was more than " + meters(world->getSettings().tuning.teleportDistance) + " away");
                 teleported.push_back(e.name);
             }
@@ -2128,7 +2183,10 @@ struct PlacementRun::Impl {
         else if (!usesGravityAtEnd()) allSettled = allSettled && reachedOrStalled;
         result.allSettled = allSettled && !cancelled;
 
-        if (initialPenetration > kInitialOverlapWarning && spec.mode != PlacementMode::Separate) {
+        if (initialPenetration > kInitialOverlapWarning && spec.mode == PlacementMode::Snap) {
+            result.warnings.push_back("the snap pose overlapped something by " + meters(initialPenetration) +
+                                      ": aim the ray at a clearer spot, or raise the snap offset");
+        } else if (initialPenetration > kInitialOverlapWarning && spec.mode != PlacementMode::Separate) {
             result.warnings.push_back("objects overlapped by " + meters(initialPenetration) + " at the start: use mode:separate first");
         }
         if (spec.mode == PlacementMode::Separate && !separated && !cancelled) {

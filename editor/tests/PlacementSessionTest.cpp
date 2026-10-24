@@ -1525,3 +1525,81 @@ TEST(PhysicsPlacementSim, RunsAndSessionsOutliveTheirSceneAndCache) {
         session.reset();
     }
 }
+
+TEST(PhysicsPlacementSim, BatchSnapPlacesOnTheSurfaceTheRayHits) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    const Entity table = create(sceneId, "Table", EntityCreationType::BOX, Vector3(2.0f, 0.5f, 0.0f), NULL_ENTITY, Vector3(2.0f, 1.0f, 2.0f));
+    // on the floor beside the table: a path toward the top would jam against its side
+    const Entity cube = create(sceneId, "Cube", EntityCreationType::BOX, Vector3(0.0f, 0.25f, 0.0f), NULL_ENTITY, Vector3(0.5f, 0.5f, 0.5f));
+    PlacementSpec snap = specFor(sceneId, {cube}, PlacementMode::Snap);
+    snap.hasSnapRay = true;
+    snap.snapRay = Ray(Vector3(2.2f, 5.0f, 0.3f), Vector3(0.0f, -1.0f, 0.0f));
+    const PlacementResult result = runToEnd(snap);
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_TRUE(result.allSettled);
+    const PlacementEntityResult* e = entityResult(result, cube);
+    EXPECT_NEAR(e->after.position.x, 2.2f, 0.01f);
+    EXPECT_NEAR(e->after.position.z, 0.3f, 0.01f);
+    EXPECT_NEAR(e->after.position.y, 1.25f, 0.003f);
+    EXPECT_EQ(e->restingOn, std::vector<Entity>{table});
+    EXPECT_FALSE(contains(result.warnings, "teleport"));
+    EXPECT_TRUE(e->warnings.empty());
+
+    // without settle it is put there and not stepped
+    PlacementSpec placed = snap;
+    placed.settle = false;
+    const PlacementResult put = runToEnd(placed);
+    ASSERT_TRUE(put.ok) << put.error;
+    EXPECT_EQ(put.steps, 0u);
+    EXPECT_TRUE(put.allSettled);
+    EXPECT_NEAR(entityResult(put, cube)->after.position.y, 1.25f, 0.003f);
+
+    // far away (past the teleport distance): on the floor where the ray hits
+    PlacementSpec far = snap;
+    far.snapRay = Ray(Vector3(9.0f, 5.0f, -3.0f), Vector3(0.0f, -1.0f, 0.0f));
+    const PlacementResult landed = runToEnd(far);
+    ASSERT_TRUE(landed.ok) << landed.error;
+    EXPECT_NEAR(entityResult(landed, cube)->after.position.x, 9.0f, 0.01f);
+    EXPECT_NEAR(entityResult(landed, cube)->after.position.z, -3.0f, 0.01f);
+    EXPECT_NEAR(entityResult(landed, cube)->after.position.y, 0.25f, 0.003f);
+    EXPECT_FALSE(contains(landed.warnings, "teleport"));
+}
+
+TEST(PhysicsPlacementSim, InteractiveSnapHopsOntoTheTableInsteadOfJamming) {
+    REQUIRE_PHYSICS();
+    const uint32_t sceneId = newScene();
+    makeFloor(sceneId);
+    create(sceneId, "Table", EntityCreationType::BOX, Vector3(2.0f, 0.5f, 0.0f), NULL_ENTITY, Vector3(2.0f, 1.0f, 2.0f));
+    const Entity cube = create(sceneId, "Cube", EntityCreationType::BOX, Vector3(0.0f, 0.25f, 0.0f), NULL_ENTITY, Vector3(0.5f, 0.5f, 0.5f));
+    const size_t position = CommandHandle::get(sceneId)->position();
+    PlacementSession session(project(), sceneId);
+    ASSERT_TRUE(session.begin(PlacementGesture::Snap, {cube}));
+    const Vector3 eye(-2.0f, 4.0f, 0.0f);
+    // the cursor on the floor next to the cube: it slides there
+    session.setSnapRay(Ray(eye, (Vector3(0.5f, 0.0f, 0.0f) - eye).normalized()));
+    ticks(session, 30);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.x, 0.5f, 0.02f);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.y, 0.25f, 0.01f);
+    // then onto the table top: blocked by the table's side, it hops on top
+    session.setSnapRay(Ray(eye, (Vector3(2.0f, 1.0f, 0.2f) - eye).normalized()));
+    ticks(session, 60);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.x, 2.0f, 0.02f);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.y, 1.25f, 0.01f);
+    session.end();
+    ASSERT_TRUE(tickUntilIdle(session));
+    EXPECT_EQ(CommandHandle::get(sceneId)->position(), position + 1);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.y, 1.25f, 0.003f);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.z, 0.2f, 0.02f);
+
+    // a far ray (past the 5 m teleport distance) lands on the surface it hits
+    ASSERT_TRUE(session.begin(PlacementGesture::Snap, {cube}));
+    session.setSnapRay(Ray(Vector3(8.0f, 6.0f, 3.0f), Vector3(0.0f, -1.0f, 0.0f)));
+    ticks(session, 30);
+    session.end();
+    ASSERT_TRUE(tickUntilIdle(session));
+    EXPECT_NEAR(transformOf(sceneId, cube).position.x, 8.0f, 0.02f);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.z, 3.0f, 0.02f);
+    EXPECT_NEAR(transformOf(sceneId, cube).position.y, 0.25f, 0.003f);
+}
