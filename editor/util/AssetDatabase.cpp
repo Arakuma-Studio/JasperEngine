@@ -1943,6 +1943,9 @@ void editor::AssetDatabase::hashWorker() {
                 hashIdle.notify_all();
                 return;
             }
+            if (hashQueue.empty()) {
+                continue;   // woken for a cache save: the idle branch writes it
+            }
             relative = hashQueue.back();
             hashQueue.pop_back();
             hashBusy = true;
