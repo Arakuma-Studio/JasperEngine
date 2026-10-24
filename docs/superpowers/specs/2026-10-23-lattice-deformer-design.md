@@ -972,7 +972,7 @@ Verification (all on this host, GL 4.1 core through Mesa llvmpipe under Xvfb):
 - `shaders --library all --backend all`: every library shader, OK. `ShaderLibraryMatrix`
   pairs every non-terrain mesh case (skinning, morph targets, instancing and fade, vertex
   colours, texture rect, UV2, no normals or UV, fog, shadows, 2D lights, post colour) with a
-  lattice twin on a mesh with vertex colours (3595 compiles on GL, x6 backends).
+  lattice twin on a mesh with vertex colours (3595 compiles on GL, 21570 on the six backends).
   `docs/shaders/library.md` regenerated.
 - `tools/mcp/tests/test_lattice_shaders.py` (new): every combination of `Ltc` with the
   vertex-stage bits of MESH (lighting outputs Ult / Puc+Shw / Vtl, skinning, 5 morph forms,
