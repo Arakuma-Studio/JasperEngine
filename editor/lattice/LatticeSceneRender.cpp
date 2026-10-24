@@ -323,7 +323,20 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
         float restLength = rest[(size_t)a].distance(rest[(size_t)b]);
         float length = world[(size_t)a].distance(world[(size_t)b]);
         float ratio = restLength > 1e-12f ? length / restLength : 1.0f;
-        addLine(world[(size_t)a], world[(size_t)b], stretchColor(view, lineColor, ratio));
+        Vector3 from = world[(size_t)a];
+        Vector3 to = world[(size_t)b];
+        if (selected && length > 0.0f){
+            // the edges stop at the point squares, which then show whole over geometry too
+            float cutFrom = billboardScreenScale(from, view.pointSize * 0.5f);
+            float cutTo = billboardScreenScale(to, view.pointSize * 0.5f);
+            if (cutFrom + cutTo >= length){
+                return;
+            }
+            Vector3 direction = (to - from) / length;
+            from = from + direction * cutFrom;
+            to = to - direction * cutTo;
+        }
+        addLine(from, to, stretchColor(view, lineColor, ratio));
     });
 
     // points: screen-constant squares facing the camera
@@ -332,9 +345,14 @@ void SceneRender::drawLatticeCage(LatticeCageLines& lines, Entity entity, bool s
         const std::vector<int>& selectedPoints = editable ? LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), entity) : none;
         const Vector4 pointColor = toVector4(view.pointColor);
         const Vector4 selectedColor = toVector4(view.selectedPointColor);
-        const int rows = std::max(2, (int)std::lround(view.pointSize * overlayScale));
+        // two fill lines per pixel row: rounding never leaves a gap
+        const int rows = std::max(4, (int)std::lround(2.0f * view.pointSize * overlayScale));
+        const Vector3 cameraPosition = camera->getWorldPosition();
         for (int index = 0; index < count; index++){
-            const Vector3& p = world[(size_t)index];
+            // a little towards the camera, so the edges through the point do not cut its square
+            Vector3 toCamera = depthTested ? cameraPosition - world[(size_t)index] : camBack;
+            toCamera = toCamera.length() > 1e-12f ? toCamera.normalized() : camBack;
+            const Vector3 p = world[(size_t)index] + toCamera * billboardScreenScale(world[(size_t)index], view.pointSize * 0.5f);
             const bool isSelected = std::binary_search(selectedPoints.begin(), selectedPoints.end(), index);
             const Vector4& color = isSelected ? selectedColor : pointColor;
             const float half = billboardScreenScale(p, view.pointSize * 0.5f) * (isSelected ? 1.15f : 1.0f);
