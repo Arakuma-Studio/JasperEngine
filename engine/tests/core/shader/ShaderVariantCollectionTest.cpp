@@ -50,7 +50,7 @@ TEST(ShaderKey, NormalizeDropsRetiredPropertyBits){
 TEST(ShaderKey, SpecsNameTypeAndProperties){
     const std::string first = ShaderPool::getShaderPropertyName(ShaderType::MESH, 0, true);
     const std::string second = ShaderPool::getShaderPropertyName(ShaderType::MESH, 1, true);
-    ShaderKey key = 0;
+    ShaderKey key;
     ASSERT_TRUE(ShaderPool::parseShaderSpec("mesh:" + first + "," + second, key));
     EXPECT_EQ(key, ShaderPool::getShaderKey(ShaderType::MESH, 0x3));
     ASSERT_TRUE(ShaderPool::parseShaderSpec("mesh:0x41", key));
@@ -60,7 +60,7 @@ TEST(ShaderKey, SpecsNameTypeAndProperties){
 }
 
 TEST(ShaderKey, BadSpecsAreRefusedWithAReason){
-    ShaderKey key = 0;
+    ShaderKey key;
     std::string error;
     EXPECT_FALSE(ShaderPool::parseShaderSpec("wobbly:Ult", key, &error));
     EXPECT_NE(error.find("Unknown shader type"), std::string::npos);
@@ -72,7 +72,7 @@ TEST(ShaderKey, BadSpecsAreRefusedWithAReason){
 TEST(ShaderKey, ShaderStringsRoundTrip){
     const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, 0x3);
     const std::string str = ShaderPool::getShaderStr(ShaderType::MESH, 0x3);
-    ShaderKey back = 0;
+    ShaderKey back;
     ASSERT_TRUE(ShaderPool::parseShaderStr(str, back)) << str;
     EXPECT_EQ(back, key);
 }
