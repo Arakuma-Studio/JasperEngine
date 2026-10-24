@@ -19,7 +19,8 @@ a new project whose scene is built here from engine primitives (cubes, a cylinde
 - decompose: always waits for the convex decomposition of a concave mover ("Decomposing k/n"),
   only its movers' (not another decomposition queued in the project);
 - an apply whose scene changes while it runs (a floor moved under it) stops and commits nothing;
-- a Scene view Physics gesture (driven with xdotool) holds preview poses: a run waits for it;
+- a Scene view Physics gesture (driven with xdotool) holds preview poses: a run waits for it; the
+  MCP undo cancels it instead of undoing (and says so), redo is refused meanwhile;
 - cancel_job after an apply committed (during its screenshot): succeeded, "use undo to revert";
 - large results: the text lists ten refusals and counts the rest; hundreds of movers keep the
   structured result valid and under the cap (the first entities, entities_total, truncated).
@@ -789,3 +790,46 @@ async def test_large_results_stay_valid(ed: Editor):
     check("only the first" in v.get("truncated", "") and v["state_hash"] and size < 300 * 1024, f"said so, {size} bytes")
     check(len(r.text) < 4000, f"the text stays small: {len(r.text)}")
     await ed.call("delete_entities", entities=many)
+
+
+async def test_undo_redo_during_a_gesture(ed: Editor):
+    """MCP undo while a Scene view Physics gesture runs cancels the gesture (nothing is undone);
+    redo is refused until it ends."""
+    await ed.call("create_entity", name="Gest", type="cube", position=[0, 5, -35])
+    await ed.call("create_entity", name="Marker", type="cube", position=[6, 0.5, -35])
+    await ed.call("set_transform", entity="Marker", position=[7, 0.5, -35])   # the step an undo would take back
+    await ed.call("frame_entity", entity="Gest")
+    await ed.call("select_entities", entities=["Gest"])
+    await ed.call("focus_window", window="scene")
+    start = await world(ed, "Gest")
+    xdo(ed, "mousemove", "800", "300")
+    await asyncio.sleep(0.3)
+    xdo(ed, "key", "g")
+    await asyncio.sleep(0.3)
+    xdo(ed, "keydown", "space")
+    try:
+        held = False
+        for _ in range(100):
+            if (await world(ed, "Gest"))[0] != start[0]:
+                held = True
+                break
+            await asyncio.sleep(0.05)
+        check(held, "holding Space drops the selection in the Scene view")
+        msg = await ed.call("redo", expect_error=True)
+        check("Redo refused" in msg and "Physics Placement gesture is running" in msg, f"redo while busy: {msg}")
+        r = await ed.call_raw("undo", {})
+        check(not r.is_error, r.text)
+        check("Cancelled the running Physics Placement gesture instead of undoing (nothing was undone)" in r.text, f"undo: {r.text}")
+        check(r.structured["steps"] == 0 and r.structured["cancelled_gesture"] is True, f"{r.structured}")
+        check((await world(ed, "Gest"))[0] == start[0], "the gesture's object is back where it was")
+        check((await world(ed, "Marker"))[0] == [7.0, 0.5, -35.0], "the last edit was not undone")
+    finally:
+        xdo(ed, "keyup", "space")
+    await asyncio.sleep(0.3)
+    check((await world(ed, "Gest"))[0] == start[0], "the cancelled gesture commits nothing on release")
+    undone = await ed.call("undo")
+    check(undone["steps"] == 1 and (await world(ed, "Marker"))[0] == [6.0, 0.5, -35.0], f"then undo works as before: {undone}")
+    redone = await ed.call("redo")
+    check(redone["steps"] == 1 and (await world(ed, "Marker"))[0] == [7.0, 0.5, -35.0], "and redo")
+    xdo(ed, "key", "g")
+    await ed.call("delete_entities", entities=["Gest", "Marker"])
