@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TextureSynthesisWindow.h"
+#include "util/FileUtils.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -699,7 +700,7 @@ void TextureSynthesisWindow::drawCompanionsSection() {
         ImGui::Text("%s", companion.name.c_str());
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubtleText);
-        ImGui::TextUnformatted(companion.paths.empty() ? "" : fs::u8path(companion.paths[0]).filename().u8string().c_str());
+        ImGui::TextUnformatted(companion.paths.empty() ? "" : FileUtils::pathToUtf8(fs::u8path(companion.paths[0]).filename()).c_str());
         ImGui::PopStyleColor();
         if (!companion.paths.empty()) tooltip(companion.paths[0].c_str());
         ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight() + ImGui::GetCursorPosX() - ImGui::GetStyle().ItemSpacing.x);
@@ -743,7 +744,7 @@ void TextureSynthesisWindow::drawCompanionsSection() {
     if (added && !adding.empty() && !spec.examples.empty()) {
         ts::CompanionSpec companion;
         char separator = '_';
-        companion.name = ts::companionSuffix(fs::u8path(spec.examples[0].path).stem().u8string(), fs::u8path(adding).stem().u8string(), separator);
+        companion.name = ts::companionSuffix(FileUtils::pathToUtf8(fs::u8path(spec.examples[0].path).stem()), FileUtils::pathToUtf8(fs::u8path(adding).stem()), separator);
         if (companion.name.empty()) companion.name = "map" + std::to_string(spec.companions.size() + 1);
         companion.paths.push_back(adding);
         for (size_t e = 1; e < spec.examples.size(); e++) {
@@ -945,7 +946,7 @@ void TextureSynthesisWindow::drawOutputSection() {
             const fs::path dropped = fs::u8path(std::string(data, strnlen(data, static_cast<size_t>(payload->DataSize))));
             std::error_code ec;
             const fs::path dir = fs::is_directory(dropped, ec) ? dropped : dropped.parent_path();
-            const std::string name = spec.output.empty() ? "synthesized.png" : fs::u8path(spec.output).filename().u8string();
+            const std::string name = spec.output.empty() ? "synthesized.png" : FileUtils::pathToUtf8(fs::u8path(spec.output).filename());
             spec.output = ts::projectRelative(project->getProjectPath(), dir / fs::u8path(name));
         }
         ImGui::EndDragDropTarget();

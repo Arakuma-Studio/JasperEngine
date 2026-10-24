@@ -4,6 +4,7 @@
 // Texture synthesis: synthesize_texture (texsynth, the same code as Window > Texture Synthesis
 // through texsynth/SynthesisSession), and the recipe summary get_asset_info / view_asset show
 #include "McpTools.h"
+#include "util/FileUtils.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -127,7 +128,7 @@ bool outputArg(Project* project, const Json& value, const std::string& field, st
         return false;
     }
     for (const fs::path& part : fs::u8path(out)) {
-        const std::string name = part.u8string();
+        const std::string name = FileUtils::pathToUtf8(part);
         if (name.size() > 1 && name[0] == '.' && name != "..") {
             error = field + " \"" + out + "\" is in a hidden directory (" + name + "): write it to a visible folder of the assets.";
             return false;
@@ -244,8 +245,8 @@ bool specFromArgs(Project* project, const Json& args, ts::SynthesisSpec& spec, b
             }
             if (companion.name.empty()) {
                 char separator = '_';
-                companion.name = ts::companionSuffix(fs::u8path(spec.examples[0].path).stem().u8string(),
-                                                     fs::u8path(companion.paths[0]).stem().u8string(), separator);
+                companion.name = ts::companionSuffix(FileUtils::pathToUtf8(fs::u8path(spec.examples[0].path).stem()),
+                                                     FileUtils::pathToUtf8(fs::u8path(companion.paths[0]).stem()), separator);
                 if (companion.name.empty()) companion.name = "companion" + std::to_string(c + 1);
             }
             spec.companions.push_back(companion);
@@ -528,7 +529,7 @@ void finishSynthesis(McpContext& ctx, const std::shared_ptr<SynthesisCall>& stat
     // another project was opened meanwhile (the run was cancelled then): nothing goes into it
     Project* project = ctx.project();
     if (state->generation != ts::projectGeneration() || !project || project->getProjectPath() != state->root) {
-        job->fail("The project changed while the synthesis ran (it was started in " + state->root.u8string() +
+        job->fail("The project changed while the synthesis ran (it was started in " + FileUtils::pathToUtf8(state->root) +
                       "): nothing was written. Call synthesize_texture again in the open project.",
                   data);
         return;

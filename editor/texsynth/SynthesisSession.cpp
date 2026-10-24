@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SynthesisSession.h"
+#include "util/FileUtils.h"
 #include "thread/ThreadUtil.h"
 
 #include "mcp/McpServer.h"
@@ -67,7 +68,7 @@ namespace jasperengine::editor::texsynth {
         }
 
         bool isPng(const std::string& path) {
-            return lower(fs::u8path(path).extension().u8string()) == ".png";
+            return lower(FileUtils::pathToUtf8(fs::u8path(path).extension())) == ".png";
         }
 
         void add(std::vector<Problem>& problems, const std::string& field, const std::string& message) {
@@ -200,8 +201,8 @@ namespace jasperengine::editor::texsynth {
 
     std::string projectRelative(const fs::path& projectDir, const fs::path& absolute) {
         const fs::path rel = absolute.lexically_normal().lexically_relative(projectDir.lexically_normal());
-        if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return absolute.generic_u8string();
-        return rel.generic_u8string();
+        if (rel.empty() || *rel.begin() == ".." || rel.is_absolute()) return FileUtils::pathToGenericUtf8(absolute);
+        return FileUtils::pathToGenericUtf8(rel);
     }
 
     std::string defaultOutputPath(const std::string& examplePath, Mode mode) {
@@ -209,14 +210,14 @@ namespace jasperengine::editor::texsynth {
         const std::string suffix = isTileableMode(mode) ? "_tile.png" : "_synth.png";
         // rock_albedo.png -> rock_tile.png, so the companions follow as rock_tile_normal.png
         // (the naming rule appends their suffix to the output's stem); rock.png -> rock_tile.png
-        std::string stem = baseOf(example.stem().u8string());
-        if (stem.empty()) stem = example.stem().u8string();
-        return (example.parent_path() / fs::u8path(stem + suffix)).generic_u8string();
+        std::string stem = baseOf(FileUtils::pathToUtf8(example.stem()));
+        if (stem.empty()) stem = FileUtils::pathToUtf8(example.stem());
+        return FileUtils::pathToGenericUtf8((example.parent_path() / fs::u8path(stem + suffix)));
     }
 
     std::string paintedMaskPath(const std::string& output) {
         const fs::path out = fs::u8path(output);
-        return (out.parent_path() / fs::u8path(out.stem().u8string() + "_inpaint_mask.png")).generic_u8string();
+        return FileUtils::pathToGenericUtf8((out.parent_path() / fs::u8path(FileUtils::pathToUtf8(out.stem()) + "_inpaint_mask.png")));
     }
 
     std::vector<CompanionCandidate> findCompanions(const fs::path& projectDir, const std::string& examplePath) {
@@ -224,20 +225,20 @@ namespace jasperengine::editor::texsynth {
         fs::path example;
         std::string error;
         if (!resolveProjectFile(projectDir, examplePath, example, error)) return found;
-        const std::string stem = example.stem().u8string();
+        const std::string stem = FileUtils::pathToUtf8(example.stem());
         const std::string base = baseOf(stem);
         std::error_code ec;
         std::vector<fs::path> siblings;
         for (const auto& entry : fs::directory_iterator(example.parent_path(), ec)) {
             if (!entry.is_regular_file(ec)) continue;
             const fs::path path = entry.path();
-            if (path.filename() == example.filename() || !Util::isImageFile(path.filename().u8string())) continue;
-            if (lower(path.extension().u8string()) == ".svg") continue;
+            if (path.filename() == example.filename() || !Util::isImageFile(FileUtils::pathToUtf8(path.filename()))) continue;
+            if (lower(FileUtils::pathToUtf8(path.extension())) == ".svg") continue;
             siblings.push_back(path);
         }
         std::sort(siblings.begin(), siblings.end());
         for (const fs::path& path : siblings) {
-            const std::string other = path.stem().u8string();
+            const std::string other = FileUtils::pathToUtf8(path.stem());
             if (!base.empty()) {
                 if (other.size() <= base.size() || other.compare(0, base.size(), base) != 0 || !isSeparator(other[base.size()])) continue;
             }
@@ -312,10 +313,10 @@ namespace jasperengine::editor::texsynth {
             std::string path = c.output;
             if (path.empty() && !spec.examples.empty() && !c.paths.empty()) {
                 path = companionOutputPath(fs::u8path(spec.output), fs::u8path(spec.examples.front().path), fs::u8path(c.paths.front()))
-                           .generic_u8string();
+                           FileUtils::pathToGenericUtf8();
                 if (path.empty()) {
                     const fs::path out = fs::u8path(spec.output);
-                    path = (out.parent_path() / fs::u8path(out.stem().u8string() + "_" + c.name + ".png")).generic_u8string();
+                    path = FileUtils::pathToGenericUtf8((out.parent_path() / fs::u8path(FileUtils::pathToUtf8(out.stem()) + "_" + c.name + ".png")));
                 }
             }
             outputs.push_back({c.name, path});
@@ -346,7 +347,7 @@ namespace jasperengine::editor::texsynth {
                 add(problems, field, rel + " does not exist");
                 return;
             }
-            inputs.insert(abs.lexically_normal().generic_u8string());
+            inputs.insert(FileUtils::pathToGenericUtf8(abs.lexically_normal()));
             int c = 0, iw = 0, ih = 0;
             if (!stbi_info(abs.string().c_str(), &iw, &ih, &c)) {
                 add(problems, field, rel + " is not an image the synthesis can read (PNG, JPEG, TGA, BMP, PSD, GIF)");
@@ -448,7 +449,7 @@ namespace jasperengine::editor::texsynth {
                 add(problems, field, error);
                 continue;
             }
-            const std::string key = abs.lexically_normal().generic_u8string();
+            const std::string key = FileUtils::pathToGenericUtf8(abs.lexically_normal());
             if (!written.insert(key).second) add(problems, field, "two outputs would be written to " + out.path);
             if (inputs.count(key)) add(problems, field, "the " + out.role + " output would replace an input: " + out.path + " (write it elsewhere)");
         }

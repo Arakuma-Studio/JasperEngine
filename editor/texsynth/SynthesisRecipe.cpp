@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SynthesisRecipe.h"
+#include "util/FileUtils.h"
 
 #include "EditorVersion.h"
 #include "io/AtomicFile.h"
@@ -281,14 +282,14 @@ namespace jasperengine::editor::texsynth {
         if (path.empty()) return std::string();
         if (!paths.projectDir.empty()) {
             const fs::path rel = path.lexically_relative(paths.projectDir);
-            if (!rel.empty() && *rel.begin() != ".." && !rel.is_absolute()) return rel.generic_u8string();
-            return path.generic_u8string();
+            if (!rel.empty() && *rel.begin() != ".." && !rel.is_absolute()) return FileUtils::pathToGenericUtf8(rel);
+            return FileUtils::pathToGenericUtf8(path);
         }
         if (!paths.outputDir.empty()) {
             const fs::path rel = path.lexically_relative(paths.outputDir);
-            if (!rel.empty()) return rel.generic_u8string();
+            if (!rel.empty()) return FileUtils::pathToGenericUtf8(rel);
         }
-        return path.generic_u8string();
+        return FileUtils::pathToGenericUtf8(path);
     }
 
     json paramsToJson(const Params& p) {
@@ -431,7 +432,7 @@ namespace jasperengine::editor::texsynth {
             }
         };
         auto failWith = [&](size_t i, const std::string& why) {
-            failedPath = files[i].path.u8string();
+            failedPath = FileUtils::pathToUtf8(files[i].path);
             error = why + "; nothing was written";
             cleanup();
             return false;
@@ -447,7 +448,7 @@ namespace jasperengine::editor::texsynth {
                     if (dir.parent_path() == dir) break;
                 }
                 fs::create_directories(parent, ec);
-                if (ec) return failWith(i, "can't create the directory " + parent.u8string() + ": " + ec.message());
+                if (ec) return failWith(i, "can't create the directory " + FileUtils::pathToUtf8(parent) + ": " + ec.message());
             }
             if (fs::is_directory(target, ec)) return failWith(i, "it is a directory");
             // staged under a temporary sibling name (hidden, and swept as an orphan after a
