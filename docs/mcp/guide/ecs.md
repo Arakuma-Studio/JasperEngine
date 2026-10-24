@@ -87,9 +87,11 @@ read or write of the same type, a shared resource, a dependency), so conflicting
 their registration order. A wave's arrays are compacted and sorted before it starts; inside a
 wave of declared systems structural changes go to each system's command buffer, played back
 after the wave in registration order. Each system's change gate tells it what changed since
-it last ran. A wave's systems run one after the other on the main thread for now (there are no
-job-system workers yet; `JE_ECS_SERIAL=1` will keep it so): a wave never depends on the order
-of its systems, so running them concurrently gives the same result.
+it last ran. A wave of two or more declared systems runs them concurrently on the job system's
+workers (the main thread takes part, and `MainThread` systems run on it); every SubSystem is
+`Exclusive`, so it runs alone. Without workers (the web build without threads) or with
+`JE_ECS_SERIAL=1` the waves run one after the other on the main thread with the same result:
+a wave never depends on the order of its systems.
 
 `get_system_schedule {runtime?}` lists the phases, waves, declarations and timings (last,
 average and max ms over 120 runs, call count) and the last frame's wave trace.

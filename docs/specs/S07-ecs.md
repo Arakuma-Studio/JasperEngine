@@ -546,12 +546,18 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   refused during a wave of declared systems. A `dependsOn` naming a later-registered system
   moves the dependent after it; a dependency cycle is logged and the cycle runs in
   registration order.
-- **Waves run serially until S06 lands.** `SystemScheduler::workerCount()` is 0 (no job
-  system on `oe-port`), so `isSerial()` is always true and
-  `SchedulerTest.ParallelEqualsSerial` compares `setSerial(true)` with `setSerial(false)`,
-  both serial today; switching the waves to S06 jobs is the follow-up once S06 is on
-  `oe-port` (the per-system ticks, access sets and command buffers are already per thread /
-  per system).
+- **Waves run on S06's job system.** A wave of two or more declared systems runs through
+  `jobs::parallelFor` (the calling thread takes systems too); when the wave has `MainThread`
+  systems, the others are submitted as High-lane tasks and the `MainThread` ones run on the
+  calling thread meanwhile. `SystemScheduler::workerCount()` is the process job system's
+  worker count (0 before the engine starts it and in single-thread mode, where waves run
+  serially as with `JE_ECS_SERIAL=1`). Timings and trace entries are recorded per system on
+  the thread that ran it; the trace keeps the wave's order. A system that throws: every
+  started system of the wave finishes, then the first exception reaches the caller (a system
+  not yet started may be skipped, as in a serial run). The S15 profiler hooks are called on
+  the thread that runs the system. `SchedulerTest.WaveRunsOnWorkers` checks that a wave uses
+  more than one thread and that `MainThread` systems stay on the caller;
+  `SchedulerTestSlow.ParallelEqualsSerial` compares a parallel run with a serial one.
 - **Removed<T> logs are capped** at 65536 entries (the older half dropped) for registries that
   never end a frame (prefab and scratch registries); scenes trim them at each frame end.
 - **Lua component-field setters** (`addProperty(&T::m, &T::m)` on component classes) stamp
