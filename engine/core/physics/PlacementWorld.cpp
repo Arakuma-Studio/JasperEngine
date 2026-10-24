@@ -35,6 +35,7 @@
 #include "Jolt/Physics/Body/BodyFilter.h"
 #include "Jolt/Physics/Body/BodyLock.h"
 #include "Jolt/Physics/Collision/CastResult.h"
+#include "Jolt/Physics/Collision/CollideShape.h"
 #include "Jolt/Physics/Collision/CollisionCollectorImpl.h"
 #include "Jolt/Physics/Collision/ContactListener.h"
 #include "Jolt/Physics/Collision/NarrowPhaseQuery.h"
@@ -340,6 +341,8 @@ namespace {
     constexpr float DEFAULT_MAX_PENETRATION_DISTANCE = 0.2f;
     constexpr float DEFAULT_DAMPING = 0.05f;
     constexpr float FRICTION = 0.5f;
+    // a driven mover that starts this deep in a body passes through it until they are apart
+    constexpr float GHOST_DEPTH = 0.005f;
     // a manifold this close (negative depth: speculative) counts as touching
     constexpr float TOUCH_DISTANCE = 0.002f;
     // the contact normal (into the body) within ~45 degrees of up: resting on the other body
@@ -383,6 +386,20 @@ namespace {
             bool dormant = false; // removed by Jolt as its bodies fell asleep
         };
         typedef std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> Key;
+
+        // Pairs that don't collide: a driven mover and a body it started inside (or was teleported
+        // into), until they come apart. Changed only between updates; Jolt's threads only read it.
+        typedef std::pair<uint32_t, uint32_t> Pair;
+        static Pair pairOf(uint32_t a, uint32_t b) { return a < b ? Pair(a, b) : Pair(b, a); }
+        std::set<Pair> ghosts;
+
+        JPH::ValidateResult OnContactValidate(const JPH::Body& body1, const JPH::Body& body2, JPH::RVec3Arg,
+                                              const JPH::CollideShapeResult&) override {
+            if (!ghosts.empty() && ghosts.count(pairOf(bodyKey(body1.GetID()), bodyKey(body2.GetID())))) {
+                return JPH::ValidateResult::RejectAllContactsForThisBodyPair;
+            }
+            return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
+        }
 
         void OnContactAdded(const JPH::Body& body1, const JPH::Body& body2, const JPH::ContactManifold& manifold,
                             JPH::ContactSettings&) override {
@@ -430,6 +447,10 @@ namespace {
             removed.erase(std::remove_if(removed.begin(), removed.end(), [key](const Key& k) {
                 return std::get<0>(k) == key || std::get<2>(k) == key;
             }), removed.end());
+            for (auto it = ghosts.begin(); it != ghosts.end();) {
+                if (it->first == key || it->second == key) it = ghosts.erase(it);
+                else ++it;
+            }
         }
 
         template<typename F>
@@ -1054,6 +1075,7 @@ struct PlacementWorld::Impl {
 
         bool hasTarget = false;
         PlacementPose target;
+        std::vector<uint32_t> ghosts;        // bodies it passes through while driven (keys)
 
         bool fellOut = false;
         PlacementPose frozenPose;
@@ -1063,6 +1085,7 @@ struct PlacementWorld::Impl {
 
         // from the contacts after the last update
         std::vector<Entity> touching;        // bodies touched, by entity
+        bool sunk = false;                   // deep in context that pushes it down (raiseSunkBodies)
         uint32_t contacts = 0;
         float maxPenetration = 0.0f;
         JPH::Vec3 contextNormalSum = JPH::Vec3::sZero();
@@ -1183,6 +1206,7 @@ struct PlacementWorld::Impl {
         creation.mRestitution = 0.0f;
         creation.mLinearDamping = linearDamping > 0.0f ? linearDamping : DEFAULT_DAMPING;
         creation.mAngularDamping = angularDamping > 0.0f ? angularDamping : DEFAULT_DAMPING;
+        creation.mMaxLinearVelocity = speedLimit();
         creation.mUserData = root;
 
         JPH::BodyInterface& bi = bodyInterface();
@@ -1532,6 +1556,7 @@ struct PlacementWorld::Impl {
             body->touchingContext = false;
             body->restingOn.clear();
             body->touching.clear();
+            body->sunk = false;
         }
         const JPH::Vec3 up = upDirection();
         contactTracker.forEach([&](const ContactTracker::Contact& contact) {
@@ -1546,6 +1571,7 @@ struct PlacementWorld::Impl {
                     body->contextNormalSum += intoSelf;
                     body->touchingContext = true;
                 }
+                if (!other.dynamic && contact.depth > GHOST_DEPTH && intoSelf.Dot(up) < -0.5f) body->sunk = true;
                 if (contact.depth < -TOUCH_DISTANCE) return;
                 body->touching.push_back(other.entity);
                 body->maxPenetration = std::max(body->maxPenetration, contact.depth);
@@ -1580,16 +1606,137 @@ struct PlacementWorld::Impl {
     // with it
     class SweepFilter final : public JPH::BodyFilter {
     public:
-        SweepFilter(const Impl& world, const JPH::BodyID& self): world(world), self(self) {}
+        SweepFilter(const Impl& world, const DynamicBody& self): world(world), self(self) {}
         bool ShouldCollide(const JPH::BodyID& id) const override {
-            if (id == self) return false;
+            if (id == self.id) return false;
+            if (std::find(self.ghosts.begin(), self.ghosts.end(), bodyKey(id)) != self.ghosts.end()) return false;
             auto found = world.bodies.find(bodyKey(id));
             return found == world.bodies.end() || !found->second.dynamic || !found->second.dynamic->mover;
         }
     private:
         const Impl& world;
-        JPH::BodyID self;
+        const DynamicBody& self;
     };
+
+    // Context only
+    class StaticOnlyFilter final : public JPH::BodyFilter {
+    public:
+        explicit StaticOnlyFilter(const Impl& world): world(world) {}
+        bool ShouldCollide(const JPH::BodyID& id) const override {
+            auto found = world.bodies.find(bodyKey(id));
+            return found != world.bodies.end() && !found->second.dynamic;
+        }
+    private:
+        const Impl& world;
+    };
+
+    // The bodies a dynamic body's shape is deeper than minDepth in, by key
+    std::vector<uint32_t> overlapping(const DynamicBody& body, float minDepth) const {
+        std::vector<uint32_t> out;
+        JPH::ShapeRefC shape;
+        JPH::RMat44 transform;
+        {
+            JPH::BodyLockRead lock(physics.GetBodyLockInterfaceNoLock(), body.id);
+            if (!lock.Succeeded()) return out;
+            shape = lock.GetBody().GetShape();
+            transform = lock.GetBody().GetCenterOfMassTransform();
+        }
+        JPH::CollideShapeSettings collideSettings;
+        collideSettings.mBackFaceMode = JPH::EBackFaceMode::CollideWithBackFaces;
+        JPH::AllHitCollisionCollector<JPH::CollideShapeCollector> hits;
+        const JPH::IgnoreSingleBodyFilter self(body.id);
+        physics.GetNarrowPhaseQueryNoLock().CollideShape(shape, JPH::Vec3::sReplicate(1.0f), transform, collideSettings,
+                                                         JPH::RVec3::sZero(), hits, {}, {}, self);
+        for (const JPH::CollideShapeResult& hit : hits.mHits) {
+            if (hit.mPenetrationDepth > minDepth) out.push_back(bodyKey(hit.mBodyID2));
+        }
+        std::sort(out.begin(), out.end());
+        out.erase(std::unique(out.begin(), out.end()), out.end());
+        return out;
+    }
+
+    // A driven mover passes through what it starts deep inside (or was teleported into): pulled
+    // out by its target it would otherwise ram the other body, or be held in it, every step,
+    // and launch it (or itself, when released) out of the world
+    void beginGhosts(DynamicBody& body) {
+        endGhosts(body);
+        body.ghosts = overlapping(body, GHOST_DEPTH);
+        for (uint32_t other : body.ghosts) contactTracker.ghosts.insert(ContactTracker::pairOf(bodyKey(body.id), other));
+    }
+
+    void endGhosts(DynamicBody& body) {
+        for (uint32_t other : body.ghosts) contactTracker.ghosts.erase(ContactTracker::pairOf(bodyKey(body.id), other));
+        body.ghosts.clear();
+    }
+
+    // A free body sunk deep in static context (half into a floor slab, say) is pushed out the
+    // way the solver sees, which can be down through the slab, and falls out of the world: one
+    // whose deep contacts with context push it down (summariseContacts) is lifted out against
+    // gravity instead, onto the first surface above it
+    void raiseSunkBodies() {
+        const JPH::Vec3 up = upDirection();
+        JPH::BodyInterface& bi = bodyInterface();
+        for (DynamicBody* body : dynamicBodies()) {
+            if (body->fellOut || body->hasTarget || !body->sunk) continue;
+
+            JPH::ShapeRefC shape;
+            JPH::RMat44 transform;
+            JPH::AABox bounds;
+            {
+                JPH::BodyLockRead lock(physics.GetBodyLockInterfaceNoLock(), body->id);
+                if (!lock.Succeeded()) continue;
+                shape = lock.GetBody().GetShape();
+                transform = lock.GetBody().GetCenterOfMassTransform();
+                bounds = lock.GetBody().GetWorldSpaceBounds();
+            }
+            const StaticOnlyFilter staticOnly(*this);
+
+            // down onto the first surface met, from a body height above (higher while that start
+            // is inside something too)
+            float rise = std::fabs(JPH::Vec3(bounds.GetSize()).Dot(up.Abs())) + 2.0f * body->maxPenetration;
+            float lift = -1.0f;
+            for (int attempt = 0; attempt < 4 && lift < 0.0f; attempt++, rise *= 2.0f) {
+                const JPH::RShapeCast cast(shape, JPH::Vec3::sReplicate(1.0f), JPH::RMat44::sTranslation(JPH::RVec3(up * rise)) * transform, -up * rise);
+                JPH::ShapeCastSettings castSettings;
+                castSettings.mBackFaceModeTriangles = JPH::EBackFaceMode::IgnoreBackFaces;
+                castSettings.mBackFaceModeConvex = JPH::EBackFaceMode::IgnoreBackFaces;
+                JPH::ClosestHitCollisionCollector<JPH::CastShapeCollector> landing;
+                physics.GetNarrowPhaseQueryNoLock().CastShape(cast, castSettings, JPH::RVec3::sZero(), landing, {}, {}, staticOnly);
+                if (!landing.HadHit()) break;   // nothing to land on: left to the solver
+                if (landing.mHit.mFraction > 1e-4f) lift = rise * (1.0f - landing.mHit.mFraction) + PENETRATION_SLOP;
+            }
+            if (lift < 0.0f) continue;
+            bi.SetPosition(body->id, bi.GetPosition(body->id) + JPH::RVec3(up * lift), JPH::EActivation::Activate);
+            bi.SetLinearAndAngularVelocity(body->id, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+            forgetContacts(*body);
+            body->maxPenetration = 0.0f;
+            body->sunk = false;
+            body->stillSeconds = 0.0f;
+            body->asleep = false;
+        }
+    }
+
+    // The body moved or changed shape outside a step: its contacts start over, and so do its ghosts
+    void forgetContacts(DynamicBody& body) {
+        contactTracker.forgetBody(body.id);
+        body.ghosts.clear();
+        if (body.hasTarget && !body.fellOut) beginGhosts(body);
+    }
+
+    // Once apart they collide again
+    void releaseGhosts() {
+        for (const auto& owned : moverBodies) {
+            DynamicBody& body = *owned;
+            if (body.ghosts.empty()) continue;
+            const std::vector<uint32_t> still = overlapping(body, 0.0f);
+            std::vector<uint32_t> kept;
+            for (uint32_t other : body.ghosts) {
+                if (std::binary_search(still.begin(), still.end(), other) && bodies.count(other)) kept.push_back(other);
+                else contactTracker.ghosts.erase(ContactTracker::pairOf(bodyKey(body.id), other));
+            }
+            body.ghosts.swap(kept);
+        }
+    }
 
     // A contact the step would only reach part way through: the gap at full speed, the rest
     // at the contact cap, so the body arrives at contact speed instead of ramming in and being
@@ -1612,7 +1759,7 @@ struct PlacementWorld::Impl {
         castSettings.mBackFaceModeTriangles = JPH::EBackFaceMode::IgnoreBackFaces;
         castSettings.mBackFaceModeConvex = JPH::EBackFaceMode::IgnoreBackFaces;
         JPH::AllHitCollisionCollector<JPH::CastShapeCollector> hits;
-        const SweepFilter filter(*this, body.id);
+        const SweepFilter filter(*this, body);
         physics.GetNarrowPhaseQueryNoLock().CastShape(cast, castSettings, JPH::RVec3::sZero(), hits, {}, {}, filter);
 
         float first = 1.0f;
@@ -1648,7 +1795,7 @@ struct PlacementWorld::Impl {
             if (error.Length() > tuning.teleportDistance) {
                 bi.SetPositionAndRotation(body->id, JPH::RVec3(targetPosition), targetRotation, JPH::EActivation::Activate);
                 bi.SetLinearAndAngularVelocity(body->id, JPH::Vec3::sZero(), JPH::Vec3::sZero());
-                contactTracker.forgetBody(body->id);
+                forgetContacts(*body);
                 body->teleported = true;
                 body->stillSeconds = 0.0f;
                 body->asleep = false;
@@ -1702,7 +1849,7 @@ struct PlacementWorld::Impl {
                 body->fellOut = true;
                 body->asleep = false;
                 bi.RemoveBody(body->id);
-                contactTracker.forgetBody(body->id);
+                forgetContacts(*body);
                 continue;
             }
 
@@ -1722,6 +1869,21 @@ struct PlacementWorld::Impl {
 
     void setGravityFactor(DynamicBody* body) {
         bodyInterface().SetGravityFactor(body->id, body->hasTarget ? 0.0f : 1.0f);
+    }
+
+    // No dynamic body outruns maxSpeed: not a driven mover, a pushed neighbour, a body pushed out
+    // of an overlap, nor a fall
+    float speedLimit() const { return std::max(0.01f, settings.tuning.maxSpeed); }
+
+    void applySpeedLimit() {
+        const JPH::BodyLockInterfaceNoLock& locks = physics.GetBodyLockInterfaceNoLock();
+        for (DynamicBody* body : dynamicBodies()) {
+            JPH::BodyLockWrite lock(locks, body->id);
+            if (!lock.Succeeded()) continue;
+            JPH::Body& jbody = lock.GetBody();
+            jbody.GetMotionProperties()->SetMaxLinearVelocity(speedLimit());
+            jbody.SetLinearVelocityClamped(jbody.GetLinearVelocity());
+        }
     }
 
     void applyDamping() {
@@ -1805,6 +1967,7 @@ void PlacementWorld::setSettings(const PlacementWorldSettings& settings) {
     impl->settings = settings;
 #ifdef JASPERENGINE_PHYSICS_3D
     impl->applyPhysicsSettings();
+    impl->applySpeedLimit();
 #endif
 }
 
@@ -1936,7 +2099,7 @@ void PlacementWorld::refreshShapes() {
             bi.ActivateBody(body->id);
             bi.SetLinearAndAngularVelocity(body->id, linear, angular);
         }
-        impl->contactTracker.forgetBody(body->id);
+        impl->forgetContacts(*body);
         body->size = built.shape->GetLocalBounds().GetSize().ReduceMax();
         body->shape = built.kind;
         body->hullCount = built.hullCount;
@@ -2016,9 +2179,11 @@ void PlacementWorld::setTarget(Entity mover, const PlacementPose& target) {
 #ifdef JASPERENGINE_PHYSICS_3D
     Impl::DynamicBody* body = impl->findDynamic(mover);
     if (!body || !body->mover) return;
+    const bool starting = !body->hasTarget;
     body->hasTarget = true;
     body->target = target;
     impl->setGravityFactor(body);
+    if (starting && !body->fellOut) impl->beginGhosts(*body);
 #else
     (void)mover;
     (void)target;
@@ -2030,6 +2195,7 @@ void PlacementWorld::clearTarget(Entity mover) {
     Impl::DynamicBody* body = impl->findDynamic(mover);
     if (!body || !body->mover || !body->hasTarget) return;
     body->hasTarget = false;
+    impl->endGhosts(*body);
     impl->setGravityFactor(body);
 #else
     (void)mover;
@@ -2061,7 +2227,7 @@ void PlacementWorld::teleport(Entity entity, const PlacementPose& pose) {
     }
     bi.SetPositionAndRotation(body->id, JPH::RVec3(toJolt(pose.position)), toJolt(pose.rotation), JPH::EActivation::Activate);
     bi.SetLinearAndAngularVelocity(body->id, JPH::Vec3::sZero(), JPH::Vec3::sZero());
-    impl->contactTracker.forgetBody(body->id);
+    impl->forgetContacts(*body);
     body->stillSeconds = 0.0f;
     body->asleep = false;
 #else
@@ -2125,9 +2291,11 @@ void PlacementWorld::step() {
     for (int i = 0; i < substeps; i++) {
         impl->driveTargets(dt);
         impl->physics.Update(dt, 1, &JoltShapeBuilder::sharedPhysicsTempAllocator(), &JoltShapeBuilder::sharedPhysicsJobSystem());
+        impl->releaseGhosts();
         impl->settleContacts();
         impl->summariseContacts();
     }
+    impl->raiseSunkBodies();
     impl->afterStep();
 #endif
     impl->stepCount++;

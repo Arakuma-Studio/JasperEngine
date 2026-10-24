@@ -74,7 +74,7 @@ namespace jasperengine {
 
     // Feel of the target-tracking control law and solver (spec section 6).
     struct PlacementTuning {
-        float maxSpeed = 10.0f;           // m/s, any mover
+        float maxSpeed = 10.0f;           // m/s, any dynamic body (driven, pushed, pushed out, falling)
         float contactSpeed = 1.0f;        // m/s, moving into a contact
         float maxAngularSpeed = 10.0f;    // rad/s
         float teleportDistance = 5.0f;    // m; a target farther than this teleports the mover
@@ -196,6 +196,8 @@ namespace jasperengine {
 
         // Target tracking (spec section 6): each step the mover is driven toward the pose,
         // speed-capped, slowed only when moving into a contact, teleported past teleportDistance.
+        // While driven it passes through the bodies it was more than 5 mm inside when the target
+        // was first set (or when teleported), until they are apart.
         void setTarget(Entity mover, const PlacementPose& target);
         void clearTarget(Entity mover);
         void clearTargets();
@@ -212,7 +214,8 @@ namespace jasperengine {
         void wakeAll();
         void clearFlags();   // resets teleported
 
-        // One fixed step of settings.fixedStep seconds.
+        // One fixed step of settings.fixedStep seconds. A free dynamic body sunk deep in context
+        // that would push it down (half into a floor slab) is lifted onto the surface above it.
         void step();
         uint32_t getStepCount() const;
         double getSimulatedSeconds() const;
