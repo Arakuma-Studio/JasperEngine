@@ -1185,12 +1185,30 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
     for (const std::string& relative : withoutIdentity) {
         const AssetType type = AssetTypes::find(relative, assetsDir)->type;
         const std::string preferred = legacyFiles.count(relative) ? legacyGuid(relative) : std::string();
-        insert(identify(relative, type, preferred));
-        reindexRedirects();
+        Entry entry = identify(relative, type, preferred);
+        // the redirect maps change only with sub-assets (the next identity's collision check
+        // reads them); rebuilding them per file made a first open quadratic
+        const bool redirects = !entry.subAssets.empty() || !entry.formerGuids.empty();
+        insert(std::move(entry));
+        if (redirects) reindexRedirects();
     }
     reindexRedirects();
 
-    saveCache();
+    // a warm open that found everything as the cache describes it writes nothing
+    bool cacheCurrent = withoutIdentity.empty() && orphans.empty() && cached.size() == byPath.size();
+    for (auto it = byPath.begin(); cacheCurrent && it != byPath.end(); ++it) {
+        auto old = cached.find(it->first);
+        const Entry& now = it->second;
+        cacheCurrent = old != cached.end() && old->second.guid == now.guid && old->second.path == now.path &&
+                       old->second.type == now.type && old->second.writeTime == now.writeTime && old->second.size == now.size &&
+                       old->second.hasMeta == now.hasMeta && old->second.metaWriteTime == now.metaWriteTime &&
+                       old->second.metaSize == now.metaSize && old->second.formerGuids == now.formerGuids &&
+                       old->second.subAssets.size() == now.subAssets.size() && old->second.hasContentHash == now.hasContentHash &&
+                       old->second.contentHash == now.contentHash;
+    }
+    if (!cacheCurrent) {
+        saveCache();
+    }
     for (const auto& [k, entry] : byPath) {
         if (!entry.hasContentHash) {
             queueHash(entry.path);
