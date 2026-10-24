@@ -579,7 +579,16 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   S03's `UserSettingsTest` also uses for its user data directory). `SchedulerTest.AccessCheckFires`
   is compiled only where `JASPERENGINE_ECS_ACCESS_CHECKS` is on (builds without `NDEBUG`), so a
   Release run has no skipped test; the Debug ASan/UBSan run covers it.
-- **The Systems window** is not part of the saved panel visibility (it opens closed).
+- **The Systems window** is not part of the saved panel visibility (it opens closed). It docks
+  in the bottom panel with Project and Console: in the Inspector's column its eight-column table
+  cut off the system names and the Enabled checkboxes.
+- **AC17 is scripted** (`tools/mcp/tests/test_ecs.py::test_systems_window`, the default fixture
+  in the harness's Xvfb): Play, `focus_window("systems")` (which returns each row's Enabled
+  checkbox rect), the seven systems' Update rows and non-zero averages, the footer's type count
+  against `list_component_types`, a real xdotool click on AudioSystem's checkbox (the system
+  stops; the others keep running), and AudioSystem enabled again in the next Play. The
+  screenshots are `docs/specs/evidence/S07/systems-window*.png`. Audio silence itself is not
+  observable from the harness (no audio device); disabling pauses AudioSystem's voices.
 - **`move_branch` benchmark**: the 100-entity branch moves under a top-level GameObject about a
   thousand entities before it (a typical reparent); a move across the whole array is bounded by
   the Transform rotation itself, the same before and after S07.
