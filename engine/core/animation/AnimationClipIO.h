@@ -23,6 +23,17 @@
 //     |‖q‖ - 1| > 1e-5, tangent objects only for keys with tangents, every lattice point in
 //     every key, unknown keys written back. writeClip(parseClip(writeClip(d))) == writeClip(d)
 //     byte for byte, and parse + write of a canonical file is a no-op.
+// - Canonical details (T1a): members in the order of the Format line; "guid", "length"
+//   (explicit only), "preview" and "source" only when set, "tracks" and "events" always (empty:
+//   []); a track is {"path", "channel", "relative"?, "loop"?, "keys"} with one key per line,
+//   [time, value] / [time, value, ease] (ease only when not linear) or the object form for keys
+//   with tangents; lattice values {"points": [[flat, [x, y, z]], ...]} in ascending point order;
+//   events {"time", "function", "args"?}, number args with %.15g; property tracks and unknown
+//   keys as compact JSON (nlohmann dump), property tracks with their path/component/property
+//   rewritten from the data. Times live on the 1e-6 s grid (normalize rounds them), keys on the
+//   same grid point collapse (the later one wins). The writer decides quaternion hemispheres on
+//   the written (%.6g) values, so a reader sees the same signs.
+// - Euler keys ({"euler": [x, y, z]} degrees) use edit_animation's order: Quaternion(x, y, z).
 
 #ifndef ANIMATION_CLIP_IO_H
 #define ANIMATION_CLIP_IO_H

@@ -163,6 +163,7 @@ namespace jasperengine{
             // property tracks (never sampled)
             std::string component;
             std::string property;
+            std::string preserved;              // the track as read (ClipTrackData::preserved)
 
             bool hasTangents() const { return inVectors || inRotations || inWeights; }
             bool isSampled() const { return channel != ClipChannel::Property && keyCount > 0; }
@@ -175,6 +176,9 @@ namespace jasperengine{
         // The runtime form of `data` (normalized first, problems appended to `warnings`).
         // Never null.
         static std::shared_ptr<const AnimationClip> build(const ClipData& data, std::vector<ClipWarning>* warnings = nullptr);
+        // build() of a parsed clip: getWarnings() lists `loadWarnings` (the parser's) first
+        static std::shared_ptr<const AnimationClip> build(const ClipData& data, const std::vector<ClipWarning>& loadWarnings,
+                                                          std::vector<ClipWarning>* warnings);
         // back to the value form (round trip: build(toData()) samples identically)
         ClipData toData() const;
 
