@@ -1468,10 +1468,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "get_scene_settings";
         tool.title = "Get Scene Settings";
         tool.description =
-            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process, post_processing): the fields away from their defaults; detail adds type, "
-            "default, options, help. Without names also scene_inputs_in_use (what the last frame made for "
-            "scene-reading shaders).";
+            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, default shaders, "
+            "post_process, post_processing...): the fields away from their defaults; detail adds type, default, "
+            "options, help. Without names also scene_inputs_in_use (made by the last frame for scene-reading "
+            "shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"names", array(string(""), "Default: all.")},
@@ -1502,8 +1502,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "List Post-processing Presets";
         tool.description =
             "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
-            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
-            "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
+            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens; vs Unity "
+            "URP). current: the scene's preset (null = custom), settings, cost; in play also applied.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

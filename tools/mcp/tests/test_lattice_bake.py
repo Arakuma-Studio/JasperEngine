@@ -863,3 +863,58 @@ async def test_generated_mesh_disabled(ed: Editor):
     ed.check_eq(await bindings_of(ed, box), [(cage, "after_skinning", -1)], "a disabled button bakes nothing")
     ed.check_eq(sorted(p.name for p in (ed.project / MODELS).iterdir()), before, "no file written")
     await ed.check_alive()
+
+
+async def test_mcp_bake(ed: Editor):
+    """The same bake through MCP (edit_lattice op bake), no inspector click: the file, the switch,
+    the positions against edit_lattice's own sample (the CPU solver), undo, and a refused target."""
+    if not (ed.project / MODELS / "ball.gltf").is_file():
+        await setup_scene(ed)
+    sid = await scene(ed)
+    at = (0.6, 0.4, -0.5)
+    ball = await create(ed, "model", name="McpBall", model=f"{MODELS}/ball.gltf", position=list(at))
+    made = await ed.call("edit_lattice", scene=sid, create={"targets": [ball], "name": "McpCage"},
+                         ops=[{"op": "preset", "name": "twist", "axis": "y", "amount": 50},
+                              {"op": "move", "select": "top", "offset": [0.1, 0.1, 0.0]}])
+    cage = made["lattice"]["id"]
+    ed.check_eq([t["entity"]["id"] for t in made["targets"]], [ball], "bound by create")
+    verts = [v[0] for v in ball_vertices()]
+    probes = [0, 30, 120, 200, len(verts) - 1]
+    world = [[p + o for p, o in zip(verts[v], at)] for v in probes]
+    sampled = (await ed.call("edit_lattice", scene=sid, lattice=cage, sample=world))["samples"]
+    await frames(ed, 10)
+
+    before = sorted(p.name for p in (ed.project / MODELS).iterdir())
+    got = await ed.call("edit_lattice", scene=sid, lattice=cage, ops=[{"op": "bake"}])
+    baked = got["ops"][0]
+    ed.check_eq(baked["target"]["id"], ball, "the only target is baked by default")
+    filename = await model_file(ed, ball)
+    ed.check(filename.endswith(".glb") and filename != f"{MODELS}/ball.gltf", f"the model switched: {filename}")
+    ed.check(baked["path"].endswith(Path(filename).name), f"the op returns the file: {baked}")
+    added = sorted(set(p.name for p in (ed.project / MODELS).iterdir()) - set(before))
+    ed.check_eq(added, [Path(filename).name], "one new file, nothing overwritten")
+    ed.check_eq(await bindings_of(ed, ball), [], "the baked binding is removed")
+    ed.check_eq(got["targets"], [], "the lattice deforms nothing now")
+
+    doc, bufs = read_glb(ed.project / filename)
+    positions = accessor(doc, bufs, doc["meshes"][0]["primitives"][0]["attributes"]["POSITION"])
+    for v, s in zip(probes, sampled):
+        expected = [d - o for d, o in zip(s["deformed"], at)]
+        ed.check(near(positions[v], expected, 2e-4), f"baked vertex {v}: {positions[v]} vs sampled {expected}")
+
+    await ed.call("undo", scene=sid)
+    await frames(ed, 10)
+    ed.check_eq(await model_file(ed, ball), f"{MODELS}/ball.gltf", "undo restores the model")
+    ed.check_eq(await bindings_of(ed, ball), [(cage, "after_skinning", -1)], "undo restores the binding")
+    ed.check((ed.project / filename).is_file(), "the file stays after undo")
+
+    # a generated mesh: the canBake reason, nothing written, nothing changed
+    box = await create(ed, "cube", name="McpBox", position=[0.6, 0.4, -0.5])
+    await ed.call("edit_lattice", scene=sid, lattice=cage, ops=[{"op": "bind", "target": box}])
+    raw = await ed.call_raw("edit_lattice", {"scene": sid, "lattice": cage, "ops": [{"op": "bake", "target": box}]})
+    ed.check(raw.is_error and "ops[0].target" in raw.text and "cannot be baked" in raw.text, raw.text)
+    ed.check_eq(sorted(p.name for p in (ed.project / MODELS).iterdir()), sorted(before + added), "no file for the box")
+    raw = await ed.call_raw("edit_lattice", {"scene": sid, "lattice": cage, "ops": [{"op": "bake"}]})
+    ed.check(raw.is_error and "McpBall" in raw.text and "McpBox" in raw.text, f"two targets: name one ({raw.text})")
+    await ed.call("delete_entities", scene=sid, entities=[ball, box, cage])
+    await ed.check_alive()

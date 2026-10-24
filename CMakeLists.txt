@@ -593,6 +593,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
+    ${EDITOR_DIR}/mcp/tools/LatticeTools.cpp
     ${EDITOR_DIR}/mcp/tools/HtmlUiTools.cpp
     ${EDITOR_DIR}/mcp/tools/UIEffectTools.cpp
 

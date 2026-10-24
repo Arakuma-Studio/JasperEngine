@@ -38,7 +38,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
   Nth earlier sibling of the same name ("Player/Gun", "Enemy#2"), or a bare name unique in the
   scene; {"id"|"name"|"path"} objects (as results return them) work too. Ambiguous names fail
   and list the matching paths. Results return both id and path; prefer ids within a session.
-  `entities` (array) instead of `entity` applies a tool to several GameObjects.
+  `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
+  omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
   names fail with the valid list. property: catalog paths ("position",
   "submeshes[0].material.baseColorFactor", "scripts[0].speed").
@@ -158,14 +159,13 @@ attached); build settings go in ProjectBuild.cmake, never the generated CMakeLis
 compile_scripts reports errors without playing. More: jasper://docs/cpp-scripting.
 
 ## Play and time
-- play: start, stop, pause, resume, step (frames), restart. Clock options with any action, or
-  alone with action "set": time_scale (slow motion / fast forward), fixed_fps (every frame
-  advances exactly 1/fixed_fps s: reproducible runs), auto_pause (the game is frozen between
-  your calls and runs only inside wait, send_input or step).
+- play: start, stop, pause, resume, step (frames), restart; clock options with any action (or
+  action "set"): time_scale, fixed_fps (each frame exactly 1/fixed_fps s: reproducible runs),
+  auto_pause (frozen between your calls; runs only inside wait, send_input or step).
 - wait: run for seconds, game_seconds or frames, or until a Lua condition is truthy; input
   sends send_input events while it waits (hold a key for 2 game seconds, then check).
-- run_build runs an exported desktop player: input events, screenshots_at (seconds since
-  launch); returns its errors (Lua ones too) and the log tail.
+- run_build runs an exported desktop player with input events and screenshots_at (seconds
+  since launch); returns its errors (Lua too) and the log tail.
 
 ## 2D and 3D
 - 2D: sprites, tilemaps, UI; units are points (pixels of the canvas, project canvasWidth x
@@ -175,6 +175,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
+- Lattice cages bend/squash/wobble meshes and sprites: edit_lattice, jasper://docs/lattice.
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
@@ -230,8 +231,8 @@ post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
-(Build Settings) produces a standalone CMake project or builds players per platform; it is a
-long job (wait/timeout_seconds, get_job). The 2D/3D physics switches strip backends from the
+(Build Settings) produces a standalone CMake project or builds players per platform (a long
+job). The 2D/3D physics switches strip backends from the
 export (jasper://docs/cpp-scripting). Before exporting: every scene saved, Console clean in play, the start scene correct.
 )JE"
 R"JE(
@@ -243,7 +244,7 @@ inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert
 no_overlap, within_viewport...) check layouts; import_files (fonts, icons, videos, from_document)
 brings remote resources; effect(<name>, ...) draws GPU effects and simulations (list_ui_effects,
 set_ui_effect_time).
-Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
+Edit mode runs no Lua. First read jasper://docs/html-ui.
 
 ## Pitfalls
 - Unsaved scenes are lost when the editor closes; save after each working step.

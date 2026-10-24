@@ -263,8 +263,8 @@ Main ideas:
 
 Tool definitions (name, description, input schema) are sent to the agent in every session,
 so keep them lean: `tools/mcp/tool_budget.py` prints each tool's size and the total (target:
-under ~100K characters, about 25K tokens; the HTML UI tools brought it to ~99K and the UI effects
-tools of phase 5 to ~99.8K: new tools must pay for themselves by trimming). Shared conventions (scene/entity references, value
+under ~100K characters, about 25K tokens; the HTML UI tools brought it to ~99K, the UI effects
+tools of phase 5 to ~99.8K and the lattice tools to ~100.5K, paid by trimming: new tools must pay for themselves). Shared conventions (scene/entity references, value
 shapes, undo) belong in the server instructions (`McpInstructions.cpp`), not in every tool.
 
 ```sh

@@ -2959,10 +2959,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "write_file";
         tool.title = "Write File";
         tool.description =
-            "Create or change a project text file (undo scope project; for clients without file access) and validate "
-            "it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = whole file, "
-            "or edits [{old_text, new_text}] (old_text matches once unless replace_all). Refuses project.yaml, "
-            ".scene, .prefab and files with unsaved code editor edits.";
+            "Create or change a project text file (undo scope project; for clients without file access) and "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = "
+            "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
+            "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
             {"path", assetPath("Parent folders are created.")},
             {"content", string("")},
@@ -3026,10 +3026,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "import_files";
         tool.title = "Import Files";
         tool.description =
-            "Copy files/folders from absolute local paths into a project folder (created if missing), like dropping "
-            "them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts "
-            "[\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
-            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
+            "Copy files/folders from absolute local paths into a project folder (made if missing), as a drop on "
+            "the Project window (assets under the assets dir). Remote: URLs in sources, fonts [\"Inter:400,700\"] "
+            "(Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), from_document (import every "
+            "remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
             {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},
@@ -3047,9 +3047,8 @@ void registerAssetTools(McpRegistry& registry) {
     const Json materialValues = anyObject(
         "baseColorFactor [r,g,b,a], metallicFactor, roughnessFactor, alphaMode, alphaCutoff, emissiveFactor, "
         "foliageTransmission, *Texture (path|null), *TexCoord; shader (\"library:<name>\"), shaderParams {member: value}, "
-        "shaderTextures {uniform: path}, shaderFeatures [defines]|{define: bool}, blendMode, cullMode, depthWrite, depthTest, "
-        "depthOffsetFactor/Units, sortPriority, lighting, stencil {compare, ref, readMask, writeMask, pass, fail, depthFail}, "
-        "colorWrite, extraPass {shader, its params, state, stencil, order}; null removes (jasper://docs/shaders).");
+        "shaderTextures {uniform: path}, shaderFeatures [defines]|{define: bool}, render state (blendMode, cullMode, "
+        "depth*, sortPriority, lighting, stencil {...}, colorWrite), extraPass; null removes. Fields: jasper://docs/shaders.");
 
     {
         ToolDef tool;
@@ -3213,9 +3212,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "List Shaders";
         tool.description =
             "The engine's library shaders (\"library:<name>\"), to pick before forking: type (mesh: a material's "
-            "shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass) and "
-            "lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, default "
-            "state and their rules; scene_inputs/cost_note: reads the scene (an extra pass per camera). Using them: "
+            "shader; ui, points, lines, sky: a component's customShader; postprocess: a post_process pass), "
+            "lighting modes; detail (or name) adds parameters, textures, features/keywords, required inputs, "
+            "default state, rules; scene_inputs/cost_note: reads the scene (an extra pass per camera). Usage: "
             "jasper://docs/shaders.";
         tool.inputSchema = object({
             {"type", stringEnum("", {"mesh", "ui", "points", "lines", "sky", "postprocess"})},
@@ -3281,7 +3280,7 @@ void registerAssetTools(McpRegistry& registry) {
             "and background (default transparent); gradient: color -> color2, checker alternates them. Colors "
             "[r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
         tool.inputSchema = object({
-            {"path", assetPath("A .png inside the assets dir, e.g. \"assets/sprites/coin.png\" (then a texture path).")},
+            {"path", assetPath("A .png in the assets dir (\"assets/sprites/coin.png\"), then a texture path.")},
             {"width", withDefault(integer("", 1, 2048), 64)},
             {"height", withDefault(integer("", 1, 2048), 64)},
             {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},
