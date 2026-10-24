@@ -3,6 +3,8 @@
 
 #include "Logger.h"
 #include "Backtrace.h"
+// timed waits TSan can see (GCC 11 misses libstdc++'s steady-clock wait)
+#include "jobs/detail/TimedWait.h"
 
 #include <algorithm>
 #include <array>
@@ -557,7 +559,11 @@ namespace je_logger {
                 if (s.drainSleeping) s.drainCv.notify_one();
                 thread.holdsQueueLock = false;
                 while (offset == SIZE_MAX && !s.stopping) {
-                    const bool timedOut = s.spaceCv.wait_until(*lock, deadline) == std::cv_status::timeout;
+                    const auto remaining = deadline - std::chrono::steady_clock::now();
+                    if (remaining > std::chrono::steady_clock::duration::zero()) {
+                        jasperengine::jobs::detail::timedWait(s.spaceCv, *lock, remaining);
+                    }
+                    const bool timedOut = std::chrono::steady_clock::now() >= deadline;
                     offset = reserveLocked(s, size);
                     if (timedOut) break;
                 }
@@ -703,7 +709,7 @@ namespace je_logger {
         while (true) {
             while (s.used == 0 && !s.stopping) {
                 s.drainSleeping = true;
-                s.drainCv.wait_for(lock, kDrainInterval);
+                jasperengine::jobs::detail::timedWait(s.drainCv, lock, kDrainInterval);
                 s.drainSleeping = false;
                 if (s.used == 0) {
                     lock.unlock();
@@ -1408,7 +1414,7 @@ void Logger::flush() {
     const uint64_t target = s.pushedSeq.load(std::memory_order_acquire);
     s.drainCv.notify_one();
     // bounded, so a sink stuck in a write cannot hang the caller forever
-    s.drainedCv.wait_for(lock, std::chrono::seconds(5), [&s, target]() {
+    jasperengine::jobs::detail::timedWait(s.drainedCv, lock, std::chrono::seconds(5), [&s, target]() {
         return s.drainedSeq.load(std::memory_order_acquire) >= target || s.stopping;
     });
 }
