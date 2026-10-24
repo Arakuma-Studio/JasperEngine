@@ -292,6 +292,8 @@ namespace jasperengine{
         Vector2 cloudShapeOffset = Vector2(0.0f, 0.0f);
         Vector2 cloudWeatherOffset = Vector2(0.0f, 0.0f);
         double noiseReadyTime = -1.0;
+        // the main-thread bake: when its last slice ended (steady clock, ms)
+        double bakeSliceEnd = -1.0;
         double time = 0.0;
         std::array<Vector3, 4> horizon;
         std::string horizonSource = "fog_color";
