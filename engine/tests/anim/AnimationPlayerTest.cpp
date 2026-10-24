@@ -507,6 +507,42 @@ TEST_F(Player, RestIsKeptAcrossRenamesAndReloads){
     EXPECT_NEAR(x(arm), 5.0f, 0.05f);
 }
 
+// a decode (or paste) over a playing player changes the authored list and sets needsLoad, keeping
+// the runtime: the states rebuild and rebind, the rest taken at the start of the run stays (R2)
+TEST_F(Player, ClipListChangeRebindsAndKeepsTheRest){
+    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}});
+    object.play("walk");
+    step(0.0);
+    step(0.5);
+    EXPECT_NEAR(x(arm), 5.0f, 1e-5f);
+    std::shared_ptr<anim::AnimationPlayerRuntime> runtime = scene.getComponent<AnimationPlayerComponent>(root).runtime;
+
+    // the entry now names another file and a second entry appears (what Stream decode writes)
+    AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
+    component.clips[0].clip = clip("walk2", slide("Arm", 20, ClipWrapMode::Loop));
+    AnimationPlayerClip extra;
+    extra.clip = clip("wave", slide("Arm/Hand", 4));
+    extra.name = "wave";
+    component.clips.push_back(extra);
+    component.needsLoad = true;
+    step(0.25);
+    EXPECT_EQ(scene.getComponent<AnimationPlayerComponent>(root).runtime, runtime) << "the runtime is kept";
+    EXPECT_TRUE(object.isPlaying("walk")) << "the state survives by name";
+    EXPECT_NEAR(object.getState("walk").getTime(), 0.75f, 1e-5f);
+    EXPECT_NEAR(x(arm), 15.0f, 1e-4f);
+    EXPECT_EQ(object.getClipCount(), 2);
+
+    // fading out ends at the rest of the run's start (5), not at a pose written since
+    object.blend("walk", 0.5f, 0.0f);
+    step(0.0);
+    EXPECT_NEAR(x(arm), 0.5f * 15.0f + 0.5f * 5.0f, 1e-4f);
+    object.blend("wave", 1.0f, 0.0f);
+    object.getState("wave").setTime(0.5f);
+    object.getState("wave").setSpeed(0.0f);
+    step(0.1);
+    EXPECT_NEAR(x(hand), 2.0f, 1e-4f) << "the new entry binds";
+}
+
 TEST_F(Player, RebindsAfterRenameAndReparent){
     AnimationPlayer object = player({{"walk", slide("Arm/Hand", 10, ClipWrapMode::Loop)}});
     object.play("walk");
