@@ -13,8 +13,10 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
+#include <cctype>
 #include <cstdlib>
 #include <set>
+#include <tuple>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -215,6 +217,79 @@ namespace {
                 player.needsLoad = true;
             }
         });
+    }
+
+    // The .gltf files next to a changed (or gone) .bin that name it as a buffer: their sub-clips
+    // changed with it
+    std::vector<fs::path> gltfFilesUsing(const fs::path& buffer){
+        std::vector<fs::path> models;
+        std::error_code ec;
+        const std::string name = buffer.filename().string();
+        for (fs::directory_iterator it(buffer.parent_path(), ec), end; !ec && it != end; it.increment(ec)){
+            const fs::path candidate = it->path();
+            std::string ext = candidate.extension().string();
+            for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            if (ext != ".gltf") continue;
+            std::string text;
+            if (ProjectChecks::readFile(candidate, text) && text.find(name) != std::string::npos){
+                models.push_back(candidate.lexically_normal());
+            }
+        }
+        return models;
+    }
+
+    bool isBufferFile(const fs::path& path){
+        std::string ext = path.extension().string();
+        for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        return ext == ".bin";
+    }
+
+    // The editor's poll of the models whose sub-clips players use (no other part of the editor
+    // watches .gltf/.glb files): each model's time and size, with the .bin buffers next to a
+    // .gltf it names
+    struct ModelStamp {
+        int64_t time = 0;
+        uint64_t size = 0;
+        std::vector<fs::path> buffers;
+        std::vector<std::pair<int64_t, uint64_t>> bufferStamps;
+    };
+    std::map<std::string, ModelStamp>& watchedModels(){
+        static std::map<std::string, ModelStamp> models;
+        return models;
+    }
+
+    std::pair<int64_t, uint64_t> statFile(const fs::path& path){
+        std::error_code ec;
+        const auto time = fs::last_write_time(path, ec);
+        const int64_t t = ec ? 0 : static_cast<int64_t>(time.time_since_epoch().count());
+        const auto size = fs::file_size(path, ec);
+        return {t, ec ? 0 : static_cast<uint64_t>(size)};
+    }
+
+    ModelStamp stampModel(const fs::path& model, const ModelStamp* previous){
+        ModelStamp stamp;
+        std::tie(stamp.time, stamp.size) = statFile(model);
+        std::string ext = model.extension().string();
+        for (char& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        if (ext == ".gltf"){
+            if (previous && previous->time == stamp.time && previous->size == stamp.size){
+                stamp.buffers = previous->buffers;   // the .gltf text did not change: nor its buffers
+            }else{
+                std::string text;
+                std::error_code ec;
+                if (ProjectChecks::readFile(model, text)){
+                    for (fs::directory_iterator it(model.parent_path(), ec), end; !ec && it != end; it.increment(ec)){
+                        if (isBufferFile(it->path()) && text.find(it->path().filename().string()) != std::string::npos){
+                            stamp.buffers.push_back(it->path());
+                        }
+                    }
+                }
+            }
+            for (const fs::path& buffer : stamp.buffers){
+                stamp.bufferStamps.push_back(statFile(buffer));
+            }
+        }
+        return stamp;
     }
 
     // After a document's WriteFilesCmd ran, was undone or redone: the asset database learns the
@@ -704,9 +779,18 @@ bool AnimationClipDocument::commit(const ClipData& newData, const std::string& u
     return writeUndoable(anim::writeClip(copy), mergeKey, error);
 }
 
-void AnimationClipDocument::filesChanged(const std::vector<fs::path>& paths, Project* project){
+void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths, Project* project){
     Registry& reg = registry();
     if (!project) project = reg.project;
+
+    // a .gltf's buffer changed: the .gltf did
+    std::vector<fs::path> paths = givenPaths;
+    for (const fs::path& path : givenPaths){
+        if (isBufferFile(path)){
+            const std::vector<fs::path> models = gltfFilesUsing(path.lexically_normal());
+            paths.insert(paths.end(), models.begin(), models.end());
+        }
+    }
 
     std::vector<std::shared_ptr<AnimationClipDocument>> changed;
     for (const auto& entry : reg.documents){
@@ -742,16 +826,15 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& paths, Pro
         if ((!clipFile && !modelFile && !directory) || covered.count(keyOf(normal))){
             continue;
         }
-        if (clipFile){
+        // (a model path drops its "<model>#*" sub-clips)
+        if (clipFile || modelFile){
             AnimationClipPool::invalidate(normal.generic_string());
-        }else if (modelFile){
-            AnimationClipPool::invalidateModel(normal.generic_string());
         }
         markPlayers(project, normal);
     }
 }
 
-void AnimationClipDocument::checkDiskChanges(){
+void AnimationClipDocument::checkDiskChanges(Project* project){
     std::vector<std::shared_ptr<AnimationClipDocument>> documents;
     for (const auto& entry : registry().documents){
         if (entry.second->stampChanged()){
@@ -761,6 +844,41 @@ void AnimationClipDocument::checkDiskChanges(){
     for (const std::shared_ptr<AnimationClipDocument>& document : documents){
         document->reloadFromDisk();
     }
+
+    // the models the players' sub-clips come from (edited or reimported outside the editor)
+    if (!project || project->getProjectPath().empty()) return;
+    std::set<std::string> used;
+    forEachPlayer(project, [&](const PlayerSite&, AnimationPlayerComponent& player){
+        for (const AnimationPlayerClip& entry : player.clips){
+            std::string part;
+            if (anim::isSubClipReference(entry.clip)){
+                used.insert(keyOf(entryFile(project, entry.clip, &part)));
+            }
+        }
+    });
+    std::map<std::string, ModelStamp>& watched = watchedModels();
+    std::vector<fs::path> changed;
+    for (auto it = watched.begin(); it != watched.end();){
+        if (!used.count(it->first)){
+            it = watched.erase(it);
+            continue;
+        }
+        const ModelStamp now = stampModel(FileUtils::pathFromUtf8(it->first), &it->second);
+        if (now.time != it->second.time || now.size != it->second.size || now.buffers != it->second.buffers ||
+            now.bufferStamps != it->second.bufferStamps){
+            changed.push_back(FileUtils::pathFromUtf8(it->first));
+            it->second = now;
+        }
+        ++it;
+    }
+    for (const std::string& model : used){
+        if (!watched.count(model)){
+            watched[model] = stampModel(FileUtils::pathFromUtf8(model), nullptr);
+        }
+    }
+    if (!changed.empty()){
+        filesChanged(changed, project);
+    }
 }
 
 void AnimationClipDocument::closeAll(){
@@ -768,6 +886,7 @@ void AnimationClipDocument::closeAll(){
     reg.documents.clear();
     reg.project = nullptr;
     reg.projectPath.clear();
+    watchedModels().clear();
 }
 
 std::shared_ptr<const AnimationClip> AnimationClipDocument::clip(){

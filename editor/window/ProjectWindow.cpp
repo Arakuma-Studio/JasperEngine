@@ -3413,7 +3413,7 @@ void editor::ProjectWindow::show() {
     if (timeSinceLastCheck >= 1.0f) {
         // open pose animation and clip documents follow their files (edited outside, copied over)
         editor::PoseAnimationDocument::checkDiskChanges();
-        editor::AnimationClipDocument::checkDiskChanges();
+        editor::AnimationClipDocument::checkDiskChanges(project);
         try {
             auto currentWriteTime = fs::last_write_time(currentPath);
             if (currentWriteTime != lastWriteTime) {

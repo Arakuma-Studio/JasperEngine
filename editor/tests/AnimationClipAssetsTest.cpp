@@ -25,6 +25,7 @@
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AnimationClipPoolTesting.h"
 #include "util/AssetDatabase.h"
 #include "util/Util.h"
 
@@ -676,4 +677,68 @@ TEST_F(AnimationClipAssets, AModelRenameRemapsSubClipsAndClipHints) {
     ASSERT_TRUE(history()->addCommand(new DeleteFileCmd(project(), {root() / dir / "hero.gltf"}, project()->getProjectPath())));
     EXPECT_EQ(scene.player().clips[0].clip, dir + "/hero.gltf#Walk");
     ASSERT_TRUE(history()->undo());
+}
+
+// A model edited or reimported outside the editor (its .gltf, or the .bin buffer next to it):
+// the pool drops its sub-clips and the players using them reload, through the editor's poll
+// and through filesChanged (auto-sync, sync_files, an FBX reimport in Project::reloadModelFile)
+TEST_F(AnimationClipAssets, AChangedModelDropsItsSubClips) {
+    const std::string dir = folder("modelchange");
+    const fs::path gltf = root() / dir / "hero.gltf";
+    const fs::path bin = root() / dir / "hero.bin";
+    writeAll(gltf, "{\"asset\": {\"version\": \"2.0\"}, \"buffers\": [{\"uri\": \"hero.bin\", \"byteLength\": 4}]}\n");
+    writeAll(bin, "abcd");
+
+    // sub-clips without the model task's builder: the pool's test seam
+    AnimationClipPoolTestHooks hooks;
+    hooks.listModelClips = [](const std::string&, std::vector<anim::ModelClipInfo>& out, std::string*) {
+        anim::ModelClipInfo walk;
+        walk.index = 0;
+        walk.name = "Walk";
+        out = {walk};
+        return true;
+    };
+    hooks.buildSubClip = [](const std::string&, ClipData& out, std::vector<ClipWarning>&, std::string*) {
+        out = positionClip();
+        return true;
+    };
+    setAnimationClipPoolTestHooks(hooks);
+    const std::string reference = gltf.generic_string() + "#Walk";
+    auto loadSubClip = [&]() {
+        std::string error;
+        EXPECT_TRUE(AnimationClipPool::getOrLoad(reference, &error)) << error;
+    };
+
+    PlayerScene scene = playerScene({entry(dir + "/hero.gltf#Walk")});
+    loadSubClip();
+    AnimationClipDocument::checkDiskChanges(project());   // the poll starts watching the model
+    scene.player().needsLoad = false;
+    AnimationClipDocument::checkDiskChanges(project());
+    EXPECT_FALSE(scene.player().needsLoad) << "nothing changed";
+    EXPECT_TRUE(AnimationClipPool::get(reference));
+
+    // the buffer changes: the poll sees it
+    writeAll(bin, "abcdefgh");
+    AnimationClipDocument::checkDiskChanges(project());
+    EXPECT_TRUE(scene.player().needsLoad);
+    EXPECT_FALSE(AnimationClipPool::get(reference)) << "the sub-clip was dropped";
+
+    // the paths auto-sync and sync_files report: the .bin, the .gltf itself
+    for (const fs::path& changed : {bin, gltf}) {
+        loadSubClip();
+        scene.player().needsLoad = false;
+        AnimationClipDocument::filesChanged({changed}, project());
+        EXPECT_TRUE(scene.player().needsLoad) << changed;
+        EXPECT_FALSE(AnimationClipPool::get(reference)) << changed;
+    }
+    // another model's buffer: nothing
+    writeAll(root() / dir / "other.bin", "x");
+    loadSubClip();
+    scene.player().needsLoad = false;
+    AnimationClipDocument::filesChanged({root() / dir / "other.bin"}, project());
+    EXPECT_FALSE(scene.player().needsLoad);
+    EXPECT_TRUE(AnimationClipPool::get(reference));
+
+    setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
+    AnimationClipPool::invalidate(gltf.generic_string());
 }

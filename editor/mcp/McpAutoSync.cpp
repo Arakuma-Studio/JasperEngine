@@ -145,6 +145,11 @@ std::string shortMessage(std::string text, size_t max) {
     return text;
 }
 
+// .gltf/.glb/.obj/.fbx and glTF .bin buffers: AnimationClipPool's model sub-clips come from them
+bool isModelSourceFile(const std::string& path) {
+    return Util::isModelFile(path) || lowerExtension(path) == ".bin";
+}
+
 } // namespace
 
 McpAutoSync& McpAutoSync::get() {
@@ -158,7 +163,9 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     const std::string ext = lowerExtension(path);
     // pose animations and humanoid sidecars: their open documents reload (editor/pose); clips:
     // their documents reload, AnimationClipPool drops them and their players reload
-    return ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path);
+    if (ext == ".c" || ext == ".inl" || ext == ".poseanim" || ext == ".humanoid" || Util::isAnimationClipFile(path)) return true;
+    // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
+    return isModelSourceFile(path);
 }
 
 bool McpAutoSync::isUiCodeFile(const std::string& path) {
@@ -617,7 +624,8 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     std::map<std::string, Pending> merged;
     for (auto& [rel, pending] : pendingExternal) merge(merged, rel, pending.kind, pending.report);
     pendingExternal.clear();
-    for (const Change& change : found) merge(merged, change.rel, change.kind, true);
+    // a changed model is picked up (its sub-clips reload) but is not news to report
+    for (const Change& change : found) merge(merged, change.rel, change.kind, !isModelSourceFile(change.rel));
 
     const bool playing = ctx.isPlaying();
     if (playing) {

@@ -628,7 +628,7 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     PoseAnimationDocument::filesChanged(changedPaths);
     if (full) PoseAnimationDocument::checkDiskChanges();
     AnimationClipDocument::filesChanged(changedPaths, project);
-    if (full) AnimationClipDocument::checkDiskChanges();
+    if (full) AnimationClipDocument::checkDiskChanges(project);
     for (const fs::path& path : changed) addAnimationFileProblems(project, path, problems);
 
     // Code editor buffers

@@ -93,13 +93,16 @@ namespace jasperengine::editor{
 
         // Files changed on disk (absolute paths; written by a command, its undo/redo, a tool or
         // another program): the documents of those files reload; a changed model reloads its
-        // sub-clip documents. A path may be a directory (moved or deleted): the documents under
+        // sub-clip documents (a changed .bin: the .gltf files next to it naming it). A path may be a directory (moved or deleted): the documents under
         // it. Every .anim, model or directory path also invalidates AnimationClipPool and marks
         // the Animation Players using it for reload (needsLoad) in `project` (null: the project
         // of the open documents), whether a document has it open or not.
         static void filesChanged(const std::vector<std::filesystem::path>& paths, Project* project = nullptr);
-        // Stats every open document's file and reloads the changed ones (the editor's poll)
-        static void checkDiskChanges();
+        // Stats every open document's file and reloads the changed ones (the editor's poll); with
+        // `project`, also the model files (and a .gltf's .bin buffers) the Animation Players'
+        // sub-clips come from: a changed one goes through filesChanged (pool, sub-clip documents,
+        // players)
+        static void checkDiskChanges(Project* project = nullptr);
         // Forgets every open document (the project closed)
         static void closeAll();
         // Called after a WriteFilesCmd of a document ran, was undone or redone (the MCP server

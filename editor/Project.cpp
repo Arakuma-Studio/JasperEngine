@@ -1837,6 +1837,8 @@ bool editor::Project::reloadModelFile(const fs::path& fbxPath, bool synchronous)
     }
 
     MeshSystem::invalidateModelFile(filename);
+    // its sub-clips (AnimationClipPool "<model>#*"), their documents and the players using them
+    AnimationClipDocument::filesChanged({fbxPath.lexically_normal()}, this);
     const bool wasAsync = Engine::isAsyncLoading();
     if (synchronous) {
         Engine::setAsyncLoading(false);
