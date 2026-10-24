@@ -245,7 +245,7 @@ Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rule
 
 ## Pose animation
 Humanoid key poses (.poseanim): get_pose_animation (+ metrics), edit_pose_animation (one undo
-step). Angles: degrees from standing, arms down (0 is not a T-pose); use mirror_pose.
+step). Angles: degrees from standing, arms down (not a T-pose); use mirror_pose.
 Guide: jasper://docs/pose-animation.
 
 ## Pitfalls
