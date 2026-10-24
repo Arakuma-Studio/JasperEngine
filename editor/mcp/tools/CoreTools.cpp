@@ -416,9 +416,14 @@ void editorStatusTool(const CallPtr& call) {
         for (const auto& [name, rect] : state.entries) entries.push_back({{"name", name}, {"rect", rectJson(rect)}});
         Json menu = Json::array();
         for (const auto& [label, rect] : state.contextMenu) menu.push_back({{"label", label}, {"rect", rectJson(rect)}});
+        Json tree = Json::array();
+        for (const ProjectWindow::UiTreeNode& node : state.tree) {
+            tree.push_back({{"path", node.path}, {"rect", rectJson(node.rect)}, {"arrow", Json::array({node.arrowX, node.arrowY})},
+                            {"open", node.open}});
+        }
         ui["project_window"] = {{"drawn", state.drawn}, {"directory", state.directory}, {"search", state.search},
                                 {"selected", state.selected}, {"search_box", rectJson(state.searchBox)},
-                                {"entries", entries}, {"context_menu", menu}};
+                                {"tree", tree}, {"entries", entries}, {"context_menu", menu}};
     }
     if (AssetReferencesWindow* references = app.getAssetReferencesWindow()) {
         Json referrers = Json::array();

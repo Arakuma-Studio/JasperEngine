@@ -1995,6 +1995,15 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
     const ImVec2 nodePos = ImGui::GetCursorScreenPos();
     bool nodeOpen = ImGui::TreeNodeEx("##node", rootFlags, "%s%s", iconGap.c_str(), rootDisplayName.c_str());
     const bool toggledOpen = ImGui::IsItemToggledOpen();
+    if (uiBuilding.tree.size() < 200) {
+        UiTreeNode node;
+        node.path = project->normalizeToProjectRelative(rootPath).generic_string();
+        node.rect = lastItemRect();
+        node.arrowX = nodePos.x + ImGui::GetStyle().FramePadding.x + ImGui::GetFontSize() * 0.5f;
+        node.arrowY = node.rect.y + node.rect.h * 0.5f;
+        node.open = nodeOpen;
+        uiBuilding.tree.push_back(node);
+    }
 
     ImTextureID folderTex = Backend::getImGuiTexture(folderIcon.getRender());
     if (folderTex != ImTextureID{}) {

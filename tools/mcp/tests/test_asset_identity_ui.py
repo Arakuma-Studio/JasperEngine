@@ -51,13 +51,25 @@ def centre(rect: list) -> tuple[str, str]:
     return str(int(x + w / 2)), str(int(y + h / 2))
 
 
-async def click(ed: Editor, rect: list, button: str = "1", repeat: int = 1) -> None:
+async def frames(ed: Editor, count: int = 2) -> None:
+    """At least `count` editor frames: each call is answered between two frames (a loaded
+    machine draws slowly, and ImGui takes one input event per frame)"""
+    for _ in range(count):
+        await ed.call("editor_status")
+
+
+async def click_at(ed: Editor, x: str, y: str, button: str = "1") -> None:
+    xdo(ed, "mousemove", "--window", window(ed), x, y)
+    await frames(ed)            # the hover is seen before the press
+    xdo(ed, "mousedown", button)
+    await frames(ed)
+    xdo(ed, "mouseup", button)
+    await frames(ed)
+
+
+async def click(ed: Editor, rect: list, button: str = "1") -> None:
     x, y = centre(rect)
-    win = window(ed)
-    xdo(ed, "mousemove", "--window", win, x, y)
-    await asyncio.sleep(0.2)   # a frame sees the hover before the press
-    xdo(ed, "click", "--repeat", str(repeat), "--delay", "80", button)
-    await asyncio.sleep(0.3)
+    await click_at(ed, x, y, button)
 
 
 async def ui(ed: Editor) -> dict:
@@ -100,19 +112,25 @@ async def shot(ed: Editor, name: str) -> None:
     await ed.screenshot("editor", SHOTS / f"{name}.png", focus=False, max_width=0)
 
 
+def tree_node(state: dict, path: str) -> dict | None:
+    for node in state["project_window"]["tree"]:
+        if node["path"] == path:
+            return node
+    return None
+
+
 async def open_textures(ed: Editor) -> dict:
-    """Double-clicks assets, then textures, in the listing"""
+    """Shows assets/textures from the folder tree: opens assets with its arrow, clicks textures"""
     await ed.call("focus_window", window="project")
-    state = await wait_ui(ed, lambda s: s["project_window"]["drawn"] and
-                          (s["project_window"]["directory"] == "assets/textures" or entry(s, "assets")),
-                          "the root listing shows assets")
+    state = await wait_ui(ed, lambda s: s["project_window"]["drawn"] and tree_node(s, "assets"), "the tree shows assets")
     if state["project_window"]["directory"] != "assets/textures":
-        await click(ed, entry(state, "assets"), repeat=2)
-        state = await wait_ui(ed, lambda s: s["project_window"]["directory"] == "assets" and entry(s, "textures"),
-                              "assets opened")
-        await click(ed, entry(state, "textures"), repeat=2)
+        if not tree_node(state, "assets/textures"):
+            x, y = tree_node(state, "assets")["arrow"]
+            await click_at(ed, str(int(x)), str(int(y)))
+            state = await wait_ui(ed, lambda s: tree_node(s, "assets/textures"), "assets opened in the tree")
+        await click(ed, tree_node(state, "assets/textures")["rect"])
         state = await wait_ui(ed, lambda s: s["project_window"]["directory"] == "assets/textures" and entry(s, "mask.png"),
-                              "assets/textures opened")
+                              "assets/textures shown")
     return state
 
 

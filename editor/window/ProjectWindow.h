@@ -79,8 +79,15 @@ namespace jasperengine::editor {
         struct UiRect {
             float x = 0, y = 0, w = 0, h = 0;
         };
+        struct UiTreeNode {
+            std::string path;          // project-relative ("." the project)
+            UiRect rect;               // a click shows the folder in the listing
+            float arrowX = 0, arrowY = 0;  // a click there opens or closes the node
+            bool open = false;
+        };
         struct UiState {
             bool drawn = false;
+            std::vector<UiTreeNode> tree;
             std::string directory;     // project-relative
             std::string search;
             std::string selected;
