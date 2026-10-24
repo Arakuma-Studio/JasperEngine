@@ -210,6 +210,20 @@ void EditorSettingsWindow::open(Project* project) {
     refreshEmsdkStatus();
 }
 
+bool EditorSettingsWindow::showPage(const std::string& name) {
+    for (int i = 0; i < preferencesCategoryCount; i++) {
+        if (name == preferencesCategories[i].name) {
+            m_category = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+const char* EditorSettingsWindow::pageName() const {
+    return preferencesCategories[m_category].name;
+}
+
 LocalBuildSettings EditorSettingsWindow::projectBuildSettings() const {
     if (!m_project) return LocalBuildSettings();
     return AppSettings::getBuildSettings(m_project->getProjectPath() / "project.yaml");

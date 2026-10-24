@@ -41,7 +41,10 @@
 # mcp-tests: MCP_SUITE=ci (default; the CI = True files) or all (needs JASPER_FIXTURE, the
 # fixture project, mounted read-only); arguments after the target and MCP_TEST_ARGS go to
 # tools/mcp/run-tests.sh (e.g. -j 2, -k undo). Results: build/test-results/mcp.json.
-# web-gate: GATE=sample-project (default, build/web) or sample-project-threads (build/web-threads);
+# web: WEB_PROJECT=<name> builds the gate project tools/web/gates/<name>/ instead of
+# engine/project, into build/web-<name> (core-utilities: the logger and Lua Timer, S09).
+# web-gate: GATE=sample-project (default, build/web), sample-project-threads (build/web-threads)
+# or a gate project's name (build/web-<name>, WEB_PROJECT=<name> tools/build.sh web first);
 # GATE_ARGS goes to browser_gate.py. Screenshot and transcript in build/test-results/web/.
 # From a git worktree, the main checkout's ccache and .git are shared.
 set -euo pipefail
@@ -292,9 +295,16 @@ web)
         PRESET=engine-web-threads
         WEB_DIR="$OUT-threads"
     fi
+    PROJECT_FLAGS=""
+    if [[ -n "${WEB_PROJECT:-}" ]]; then
+        [[ "$WEB_PROJECT" =~ ^[A-Za-z0-9_-]+$ && -d "$ROOT/tools/web/gates/$WEB_PROJECT" ]] \
+            || { echo "WEB_PROJECT must name a directory of tools/web/gates (got $WEB_PROJECT)" >&2; exit 1; }
+        WEB_DIR="$OUT-$WEB_PROJECT"
+        PROJECT_FLAGS="-DPROJECT_ROOT=/src/tools/web/gates/$WEB_PROJECT"
+    fi
     [[ -n "$CXX_SUFFIX" ]] && WEB_DIR="$WEB_DIR/cxx$CXX_STANDARD"
     run bash -euo pipefail -c "
-        cmake --preset $PRESET -S engine -B $WEB_DIR -DCMAKE_BUILD_TYPE=$BT $OPTION_FLAGS $CCACHE_FLAGS
+        cmake --preset $PRESET -S engine -B $WEB_DIR -DCMAKE_BUILD_TYPE=$BT $PROJECT_FLAGS $OPTION_FLAGS $CCACHE_FLAGS
         cmake --build $WEB_DIR --target $ENGINE_TARGET $JOBS_FLAG
     "
     ;;
@@ -415,7 +425,10 @@ web-gate)
     case "$NAME" in
         sample-project) WEB_DIR="$OUT" ;;
         sample-project-threads) WEB_DIR="$OUT-threads" ;;
-        *) echo "GATE must be sample-project or sample-project-threads" >&2; exit 1 ;;
+        *)
+            [[ "$NAME" =~ ^[A-Za-z0-9_-]+$ && -f "$ROOT/tools/web/gates/$NAME.json" ]] \
+                || { echo "GATE must be sample-project, sample-project-threads or a tools/web/gates/<name>.json" >&2; exit 1; }
+            WEB_DIR="$OUT-$NAME" ;;
     esac
     [[ -f "$ROOT/$WEB_DIR/$ENGINE_TARGET.html" ]] || { echo "No web build at $WEB_DIR; run tools/build.sh web" >&2; exit 1; }
     run bash -euo pipefail -c "

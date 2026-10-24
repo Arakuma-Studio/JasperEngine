@@ -263,6 +263,59 @@ void ConsoleWindow::addEntry(LogEntry&& entry) {
     }
 }
 
+std::string ConsoleWindow::originText(const LogData& log) const {
+    std::string origin = log.category;
+    if (!log.file.empty() && AppSettings::getLoggingSettings().showSource) {
+        origin += "  " + log.file + ":" + std::to_string(log.line);
+    }
+    origin += "  frame " + std::to_string(log.frame);
+    if (!log.threadName.empty()) origin += "  thread " + log.threadName;
+    return origin;
+}
+
+ConsoleWindow::ViewState ConsoleWindow::viewState(size_t maxRows) {
+    pullLogs();
+    if (needsRebuild) rebuildRows();
+    ViewState state;
+    state.open = windowOpen;
+    state.rowCount = rows.size();
+    const size_t first = rows.size() > maxRows ? rows.size() - maxRows : 0;
+    for (size_t i = first; i < rows.size(); i++) {
+        const LogData& log = logs[rows[i].logIndex];
+        state.rows.push_back(ViewRow{log.id, log.type, log.category, log.detail, firstLine(log.message), rows[i].count});
+    }
+    state.categories.assign(seenCategories.begin(), seenCategories.end());
+    state.hiddenCategories.assign(hiddenCategories.begin(), hiddenCategories.end());
+    if (const LogData* log = selectedLog()) {
+        state.hasSelection = true;
+        state.selectedId = log->id;
+        state.selectedOrigin = originText(*log);
+    }
+    state.collapse = collapse;
+    state.clearOnPlay = clearOnPlay;
+    state.errorPause = errorPause;
+    return state;
+}
+
+void ConsoleWindow::setHiddenCategories(const std::vector<std::string>& categories) {
+    hiddenCategories = std::set<std::string>(categories.begin(), categories.end());
+    needsRebuild = true;
+}
+
+bool ConsoleWindow::selectLog(uint64_t id) {
+    pullLogs();
+    if (needsRebuild) rebuildRows();
+    for (const Row& row : rows) {
+        if (logs[row.logIndex].id != id) continue;
+        selectedLogId = id;
+        hasSelection = true;
+        scrollToSelection = true;
+        autoScroll = false;
+        return true;
+    }
+    return false;
+}
+
 bool ConsoleWindow::getLatestLog(LogType& type, std::string& message) const {
     if (logs.empty()) {
         return false;
@@ -706,12 +759,7 @@ void ConsoleWindow::showDetails() {
     if (log) {
         ImGui::PushID(static_cast<int>(log->id));
         // where it comes from: category, the call site (file:line), frame and thread
-        std::string origin = log->category;
-        if (!log->file.empty() && AppSettings::getLoggingSettings().showSource) {
-            origin += "  " + log->file + ":" + std::to_string(log->line);
-        }
-        origin += "  frame " + std::to_string(log->frame);
-        if (!log->threadName.empty()) origin += "  thread " + log->threadName;
+        const std::string origin = originText(*log);
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Theme::dpi(8.0f));
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         ImGui::TextUnformatted(origin.c_str());

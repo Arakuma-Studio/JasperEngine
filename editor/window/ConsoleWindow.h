@@ -98,6 +98,7 @@ namespace jasperengine::editor {
         const LogData* selectedLog() const;
 
         void pullLogs();
+        std::string originText(const LogData& log) const;
         void addEntry(LogEntry&& entry);
         void updatePlayState();
         void showToolbar();
@@ -127,6 +128,37 @@ namespace jasperengine::editor {
 
         // Newest message, for the status bar. False when the Console is empty.
         bool getLatestLog(LogType& type, std::string& message) const;
+
+        // What the Console shows, for the MCP focus_window tool: its rows after the filters
+        // (the newest maxRows of them), the categories of the Category filter and the details
+        // pane's origin line (category, file:line, frame, thread) of the selected message
+        struct ViewRow {
+            uint64_t id;
+            LogType type;
+            std::string category;
+            bool grey;                       // Debug and Trace rows
+            std::string text;                // first line
+            int count;                       // merged by Collapse
+        };
+        struct ViewState {
+            bool open = false;
+            size_t rowCount = 0;
+            std::vector<ViewRow> rows;
+            std::vector<std::string> categories;
+            std::vector<std::string> hiddenCategories;
+            bool hasSelection = false;
+            uint64_t selectedId = 0;
+            std::string selectedOrigin;
+            bool collapse = false;
+            bool clearOnPlay = false;
+            bool errorPause = false;
+        };
+        ViewState viewState(size_t maxRows);
+        // The Category filter as the menu sets it (unknown names are kept for later messages)
+        void setHiddenCategories(const std::vector<std::string>& categories);
+        void setCollapse(bool enabled) { collapse = enabled; needsRebuild = true; }
+        // Selects a message by id, as a click does; false when it is not shown
+        bool selectLog(uint64_t id);
 
     };
 }

@@ -67,6 +67,10 @@ namespace jasperengine::editor {
 
     public:
         void open(Project* project);
+        // Shows a page by its name ("General", "Logging" ...); false for an unknown one
+        bool showPage(const std::string& name);
+        const char* pageName() const;
+        void close() { m_isOpen = false; }
         void show();
         bool isOpen() const { return m_isOpen; }
     };

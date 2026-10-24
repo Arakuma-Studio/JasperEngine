@@ -1,0 +1,10 @@
+-- The web gate's S09 project: Lua's log and a Timer on the game clock (no pthreads in this build)
+Log.warn("[gate] lua warning 1")
+local started = Engine.gameTime
+Timer.after(0.1, function()
+    Log.warn(string.format("[gate] timer fired after %.2f s", Engine.gameTime - started))
+end)
+Timer.run(function()
+    Timer.waitFrames(2)
+    Log.print("[gate] coroutine resumed")
+end)

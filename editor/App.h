@@ -401,6 +401,8 @@ namespace jasperengine::editor{
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        // Preferences (Edit > Preferences), for the MCP focus_window tool
+        EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
         PlayInput* getPlayInput() const;
         void resetLayout();
 
