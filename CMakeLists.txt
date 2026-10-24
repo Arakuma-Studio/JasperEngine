@@ -560,9 +560,9 @@ include_directories (${EDITOR_DIR})
 
 add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER})
 
-# The texture synthesis core (editor/texsynth: Embark's texture-synthesis ported, NOTICE.md), also
-# built alone into jasperengine-texsynth-tests (-DJASPERENGINE_TEXSYNTH_TESTS=ON); its CLI is
-# SynthesisCli.cpp (CommandLine)
+# The texture synthesis core (editor/texsynth: Embark's texture-synthesis ported, NOTICE.md),
+# tested by jasperengine-editor-tests (editor/tests/texsynth); its CLI is SynthesisCli.cpp
+# (CommandLine)
 set(JASPERENGINE_TEXSYNTH_SOURCES
     ${EDITOR_DIR}/texsynth/SynthImage.cpp
     ${EDITOR_DIR}/texsynth/Synthesizer.cpp
@@ -1060,14 +1060,6 @@ if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
 endif()
 if(JASPERENGINE_TESTS)
     include(${EDITOR_DIR}/tests/EditorTests.cmake)
-endif()
-
-# jasperengine-texsynth-tests: the texture synthesis core (editor/texsynth) on generated images:
-# determinism across thread counts, the modes, companions, the recipe chunk (tools/build.sh
-# texsynth-tests, or -DJASPERENGINE_TEXSYNTH_TESTS=ON and the target)
-option(JASPERENGINE_TEXSYNTH_TESTS "Build jasperengine-texsynth-tests (texture synthesis tests)" OFF)
-if(JASPERENGINE_TEXSYNTH_TESTS)
-    include(${EDITOR_DIR}/texsynth/tests/TexSynthTests.cmake)
 endif()
 
 # Windows GUI-subsystem executables do not behave like normal CLI programs

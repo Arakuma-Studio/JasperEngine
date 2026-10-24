@@ -1,5 +1,7 @@
 # jasperengine-editor-tests: unit tests of editor logic (editor/tests/<area>/ mirrors editor/<area>/,
-# fixtures in editor/tests/fixtures, shared helpers in editor/tests/support; docs/testing.md).
+# fixtures in editor/tests/fixtures, shared helpers in editor/tests/support; docs/testing.md), and
+# in editor/tests/engine/<area>/ (mirroring engine/core/<area>/) the tests of engine code that
+# drive it through the editor's shared engine (scenes with physics, models, shader keys).
 # Included by the root CMakeLists.txt with -DJASPERENGINE_TESTS=ON (include(), not
 # add_subdirectory(): the editor's relative source and include paths must keep resolving against
 # the root). The editor's sources without its main() are compiled with jasperengine-editor's
@@ -35,8 +37,6 @@ jasperengine_add_test_target(jasperengine-editor-tests
         # the repository root (the data-safety corpus reads tools/fixtures)
         JASPER_TEST_REPO_DIR="${CMAKE_SOURCE_DIR}"
         JASPER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_LIST_DIR}/fixtures"
-        # test models and other inputs read from the source tree (fixtures/rigged_cube.fbx ...)
-        JASPER_EDITOR_TEST_FIXTURES="${CMAKE_CURRENT_LIST_DIR}/fixtures"
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
         JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
@@ -45,7 +45,7 @@ add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_help
 
 # A process with nothing but the engine (the editor's static App builds a Scene before main, so
 # the test binary can't make a PlacementWorld before Jolt is set up); run by PlacementWorldTest
-add_executable(jasperengine-placement-fresh-process ${CMAKE_CURRENT_LIST_DIR}/standalone/PlacementWorldBeforeAnyScene.cpp)
+add_executable(jasperengine-placement-fresh-process ${CMAKE_CURRENT_LIST_DIR}/engine/physics/standalone/PlacementWorldBeforeAnyScene.cpp)
 target_link_libraries(jasperengine-placement-fresh-process PRIVATE jasperengine)
 set_target_properties(jasperengine-placement-fresh-process PROPERTIES
     CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}

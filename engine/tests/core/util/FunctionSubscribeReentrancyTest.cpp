@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 // util/FunctionSubscribe, the event lists of the engine (Engine::onUpdate, component events,
-// physics callbacks): a callback may unsubscribe itself or another subscriber, subscribe,
-// call the same event again or destroy the event's owner while the event runs, and every
-// subscriber still runs exactly as subscribed when the call started. Copies (a component
-// array relocates its components by copying them) share the subscriptions, the crash guard
-// drops a crashing subscriber without touching the possibly destroyed event.
+// physics callbacks), on S09's SlotList: a callback may unsubscribe itself or another
+// subscriber, subscribe, call the same event again or destroy the event's owner while the
+// event runs, and every subscriber still runs exactly as subscribed when the call started (a
+// call in progress finishes on the list it started with, also when the event goes away, so a
+// component array relocating its components mid-call loses no callback). A copy has the same
+// subscribers, changed apart from the original's; the crash guard (CrashHook) drops a crashing
+// subscriber without touching the possibly destroyed event. The cases come from upstream's
+// FunctionSubscribe rewrite; FunctionSubscribeCompatTest and SignalTest hold S09's own.
 
 #include <gtest/gtest.h>
 
+#include "util/CrashHook.h"
 #include "util/FunctionSubscribe.h"
 
 #include <csignal>
@@ -209,7 +213,7 @@ TEST(FunctionSubscribe, NestedCalls) {
     EXPECT_EQ(log, (std::vector<std::string>{"a0", "a1", "b1", "b0"}));
 }
 
-TEST(FunctionSubscribe, DestroyingTheEventDuringCall) {
+TEST(FunctionSubscribe, DestroyingTheEventDuringCallFinishesTheCall) {
     std::vector<std::string> log;
     auto event = std::make_unique<Event>();
     // captured by value: the closure must outlive the event that owns it
@@ -224,8 +228,8 @@ TEST(FunctionSubscribe, DestroyingTheEventDuringCall) {
 
     event->call();
     EXPECT_EQ(event, nullptr);
-    // the subscribers of the destroyed event are not called any more
-    EXPECT_EQ(log, (std::vector<std::string>{"a", "destroyer", "after reset"}));
+    // the call in progress ends on the list it started with (SlotList::orphan keeps it alive)
+    EXPECT_EQ(log, (std::vector<std::string>{"a", "destroyer", "after reset", "c"}));
 }
 
 TEST(FunctionSubscribe, ReturnValues) {
@@ -257,7 +261,7 @@ TEST(FunctionSubscribe, ReturnValues) {
     EXPECT_FLOAT_EQ(ease(1.0f), 0.5f);
 }
 
-TEST(FunctionSubscribe, CopiesShareTheSubscriptions) {
+TEST(FunctionSubscribe, CopiesKeepTheSubscriptions) {
     std::vector<std::string> log;
     auto original = std::make_unique<Event>();
     original->add("a", [&](){ log.push_back("a"); });
@@ -317,16 +321,18 @@ TEST(FunctionSubscribe, CopyMadeDuringCallKeepsTheSubscription) {
     EXPECT_TRUE(moved->hasSubscribers());
 }
 
-#ifdef JASPERENGINE_CRASH_GUARD
-#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+// The guard catches a signal raised in the callback (POSIX); a sanitizer's own handlers would
+// see it first
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__) && !defined(JASPERENGINE_SANITIZE_ADDRESS) && \
+    !defined(JASPERENGINE_SANITIZE_UNDEFINED) && !defined(JASPERENGINE_SANITIZE_THREAD)
 namespace {
 
     struct CrashHandlerScope {
         explicit CrashHandlerScope(CrashHandler handler) {
-            FunctionSubscribeGlobal::getCrashHandler() = std::move(handler);
+            CrashHook::set(std::move(handler));
         }
         ~CrashHandlerScope() {
-            FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+            CrashHook::set(nullptr);
         }
     };
 
@@ -400,8 +406,8 @@ TEST(FunctionSubscribe, CrashGuardAfterTheEventWasDestroyed) {
 
     event->call();
     EXPECT_EQ(event, nullptr);
-    EXPECT_EQ(log, (std::vector<std::string>{"destroyer"}));
+    // the crashing subscriber is dropped from the list the call holds, which goes on
+    EXPECT_EQ(log, (std::vector<std::string>{"destroyer", "b"}));
     EXPECT_EQ(crashes, (std::vector<std::string>{"destroyer"}));
 }
-#endif
 #endif

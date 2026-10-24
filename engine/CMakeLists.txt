@@ -31,10 +31,6 @@ option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
 # (engine/tests/core, against the static engine, with the job system and allocator benchmarks
 # je-bench-jobs and je-bench-memory), jasperengine-editor-tests in the editor build
 option(JASPERENGINE_TESTS "Build the unit-test target of this build tree" OFF)
-# googletest suite of the lattice math (engine/tests/lattice): math and lattice sources only, no
-# GPU or display; works from the editor build, the standalone engine build or on its own
-# (cmake -S engine/tests/lattice)
-option(JASPERENGINE_LATTICE_TESTS "Build jasperengine-lattice-tests" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -1532,9 +1528,6 @@ if(JASPERENGINE_HTMLUI_TESTS)
 endif()
 if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(tests/core)
-endif()
-if(JASPERENGINE_LATTICE_TESTS)
-    add_subdirectory(tests/lattice)
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

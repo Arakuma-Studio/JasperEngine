@@ -29,7 +29,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES) / "rigged_cube.fbx";
+    const fs::path fixture = fs::path(JASPER_TEST_FIXTURES_DIR) / "rigged_cube.fbx";
 
     std::string readText(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);

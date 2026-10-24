@@ -4,6 +4,7 @@
 // jasperengine-texsynth-tests: the texture synthesis core (editor/texsynth) on generated images.
 
 #include "texsynth/SynthesisRecipe.h"
+#include "util/FileUtils.h"
 #include "texsynth/Synthesizer.h"
 #include "texsynth/TextureSynthesis.h"
 
@@ -858,7 +859,7 @@ TEST(TexSynthRecipe, WriteFilesAllOrNothing) {
     EXPECT_FALSE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "new" / "deep" / "normal.png", bytes("n")},
                                          {dir / "blocker" / "uncertainty.png", bytes("u")}},
                                         failed, error));
-    EXPECT_EQ(failed, (dir / "blocker" / "uncertainty.png").u8string());
+    EXPECT_EQ(failed, jasperengine::editor::FileUtils::pathToUtf8((dir / "blocker" / "uncertainty.png")));
     EXPECT_NE(error.find("nothing was written"), std::string::npos) << error;
     EXPECT_EQ(text(dir / "primary.png"), "old primary");
     EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png"}));
@@ -866,7 +867,7 @@ TEST(TexSynthRecipe, WriteFilesAllOrNothing) {
     // committing fails (the target is a directory that is not empty): the replaced primary comes back
     fs::create_directories(dir / "taken" / "inside");
     EXPECT_FALSE(writeFilesAllOrNothing({{dir / "primary.png", bytes("new primary")}, {dir / "taken", bytes("t")}}, failed, error));
-    EXPECT_EQ(failed, (dir / "taken").u8string());
+    EXPECT_EQ(failed, jasperengine::editor::FileUtils::pathToUtf8((dir / "taken")));
     EXPECT_EQ(text(dir / "primary.png"), "old primary");
     EXPECT_EQ(listing(), (std::vector<std::string>{"blocker", "primary.png", "taken", "taken/inside"}));
 
