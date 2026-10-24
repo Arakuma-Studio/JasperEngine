@@ -195,7 +195,14 @@ namespace {
     }
 
     bool editorOverlay(Scene* scene, Entity entity) {
+#ifdef JASPERENGINE_EDITOR
         return scene->getSystem<RenderSystem>()->isEditorOverlay(entity);
+#else
+        // a game build has no editor overlays (RenderSystem keeps them in the editor only)
+        (void)scene;
+        (void)entity;
+        return false;
+#endif
     }
 
     bool isSkinned(MeshComponent* mesh) {
