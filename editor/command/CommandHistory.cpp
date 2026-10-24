@@ -24,6 +24,15 @@ namespace {
     bool budgetWarned = false;
     std::string refusedWhy;
 
+    struct Released{
+        std::unique_ptr<editor::Command> cmd;
+        size_t bytes = 0;
+    };
+    std::vector<Released>& releasedCommands(){
+        static auto* released = new std::vector<Released>();
+        return *released;
+    }
+
     std::vector<editor::CommandHistory*>& liveHistories(){
         // Never destroyed: histories may be freed during static destruction
         static auto* histories = new std::vector<editor::CommandHistory*>();
@@ -48,6 +57,8 @@ std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = null
 std::function<bool(std::string&)> editor::CommandHistory::beforeMutation = nullptr;
 editor::CommandHistory::SelectionHooks editor::CommandHistory::selectionHooks;
 std::function<void(std::unique_ptr<editor::Command>)> editor::CommandHistory::offThreadRelease = nullptr;
+std::function<void(editor::CommandHistory&)> editor::CommandHistory::beforeRecord = nullptr;
+bool editor::CommandHistory::deferReleases = false;
 size_t editor::CommandHistory::maxEntries = editor::CommandHistory::DEFAULT_MAX_ENTRIES;
 size_t editor::CommandHistory::memoryLimit = editor::CommandHistory::DEFAULT_MEMORY_LIMIT;
 
@@ -220,6 +231,22 @@ void editor::CommandHistory::releaseCommand(std::unique_ptr<Command> cmd, size_t
     if (!cmd){
         return;
     }
+    if (deferReleases){
+        releasedCommands().push_back({std::move(cmd), bytes});
+        return;
+    }
+    releaseNow(std::move(cmd), bytes);
+}
+
+void editor::CommandHistory::flushReleased(){
+    std::vector<Released> released;
+    released.swap(releasedCommands());
+    for (Released& item : released){
+        releaseNow(std::move(item.cmd), item.bytes);
+    }
+}
+
+void editor::CommandHistory::releaseNow(std::unique_ptr<Command> cmd, size_t bytes){
     if (bytes >= OFF_THREAD_RELEASE_BYTES && cmd->releaseOffThread()){
         if (offThreadRelease){
             offThreadRelease(std::move(cmd));
@@ -293,6 +320,10 @@ bool editor::CommandHistory::addCommand(Command* raw){
     if (!beforeMutating()){
         releaseCommand(std::move(cmd), 0);
         return false;
+    }
+
+    if (beforeRecord && !interactive.open){
+        beforeRecord(*this);
     }
 
     SelectionState before;

@@ -262,6 +262,10 @@ namespace jasperengine::editor{
         void undoRedo(bool undo);
         // Esc and Ctrl+Z in a drag, popups and focus loss (S24 R12)
         void handleInteractiveEdits(bool popupOpen);
+        // The ImGui widget being dragged (an Inspector slider, a colour picker, an Animation
+        // window key): its edits are one InteractiveEdit, opened by its first command
+        InteractiveEdit widgetEdit;
+        ImGuiID widgetEditItem = 0;
         void executeMenuCommand(const PlatformMenuCommand& command);
         void showImGuiMenuItems(const std::vector<PlatformMenuItem>& items);
         void showImGuiMenu(const PlatformMenuModel& menu);

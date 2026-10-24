@@ -2203,7 +2203,34 @@ bool editor::TerrainEditWindow::applyObjectErase(SceneProject* sceneProject, Ent
 }
 
 void editor::TerrainEditWindow::clearStroke(){
+    stroke.edit.commit();
     stroke = ActiveStroke();
+}
+
+void editor::TerrainEditWindow::openStrokeEdit(SceneProject* sceneProject){
+    stroke.wasModified = sceneProject->isModified;
+    stroke.edit = CommandHandle::get(sceneProject->id)->beginInteractive(std::string());
+    stroke.editStarted = true;
+}
+
+bool editor::TerrainEditWindow::strokeCancelled(){
+    if (!stroke.editStarted || stroke.edit.isOpen()){
+        return false;
+    }
+    // Placement commands were undone by the cancel; a map stroke only wrote pixels
+    SceneProject* sceneProject = project->getScene(stroke.sceneId);
+    if (!stroke.placement && sceneProject && sceneProject->scene->isEntityCreated(stroke.entity)){
+        if (TerrainComponent* terrain = sceneProject->scene->findComponent<TerrainComponent>(stroke.entity)){
+            if (Texture* texture = TerrainMapUtils::findTexture(*terrain, stroke.ref)){
+                applySnapshotToTexture(project, *texture, stroke.beforeSnapshot);
+                TerrainMapUtils::refresh(sceneProject, stroke.entity, stroke.ref);
+                TerrainMapUtils::refreshSharing(project, stroke.sceneId, stroke.entity, stroke.ref);
+            }
+        }
+        sceneProject->isModified = stroke.wasModified;
+    }
+    stroke = ActiveStroke();
+    return true;
 }
 
 bool editor::TerrainEditWindow::createMapForTarget(const TerrainMapRef& ref, int width, int height){
@@ -3598,6 +3625,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
         stroke.placementStrokeId = ++placementStrokeCounter;
         stroke.instanced = useInstancedPlacement();
         stroke.placedPoints = collectPlacedPoints(sceneProject, entity);
+        openStrokeEdit(sceneProject);
 
         // Ctrl swaps place and erase for the stroke, matching the paint brushes.
         stroke.effectiveMode = brushMode;
@@ -3627,6 +3655,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
     stroke.sceneId = sceneProject->id;
     stroke.entity = entity;
     stroke.ref = ref;
+    openStrokeEdit(sceneProject);
 
     // Modifiers picked up at stroke start and held for the whole stroke:
     // Shift turns any sculpt brush into Smooth, Ctrl inverts Raise/Lower and paint/erase.
@@ -3667,7 +3696,7 @@ bool editor::TerrainEditWindow::beginStroke(Scene* scene, const Ray& ray){
 }
 
 bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
-    if (!stroke.active || !isEditingScene(scene)){
+    if (!stroke.active || !isEditingScene(scene) || strokeCancelled()){
         return false;
     }
 
@@ -3697,7 +3726,7 @@ bool editor::TerrainEditWindow::paintStroke(Scene* scene, const Ray& ray){
 }
 
 void editor::TerrainEditWindow::endStroke(){
-    if (!stroke.active){
+    if (!stroke.active || strokeCancelled()){
         return;
     }
 

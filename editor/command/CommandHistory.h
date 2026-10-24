@@ -153,6 +153,7 @@ namespace jasperengine::editor{
         void notifyModified(bool structural) const;
 
         static void releaseCommand(std::unique_ptr<Command> cmd, size_t bytes);
+        static void releaseNow(std::unique_ptr<Command> cmd, size_t bytes);
         static void releaseEntries(std::vector<UndoEntry>& entries);
 
     public:
@@ -172,6 +173,16 @@ namespace jasperengine::editor{
             std::function<void(size_t sceneId, const SelectionState& state)> restore;
         };
         static SelectionHooks selectionHooks;
+
+        // The editor sets this: commands the history drops (a no-op, a cancelled drag) are freed
+        // at flushReleased(), once no widget is active, since the widget that pushed one may
+        // still hold its pointer (to end its merge chain). Unset, they are freed at once.
+        static bool deferReleases;
+        static void flushReleased();
+
+        // Runs before a command executes in a history (the editor opens the active widget's
+        // InteractiveEdit there: the first value a slider pushes is part of its drag)
+        static std::function<void(CommandHistory& history)> beforeRecord;
 
         // Frees a large off-thread command (BackgroundRelease when unset; tests inject a sink)
         static std::function<void(std::unique_ptr<Command>)> offThreadRelease;

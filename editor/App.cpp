@@ -1015,6 +1015,15 @@ void editor::App::undoRedo(bool undo){
 }
 
 void editor::App::handleInteractiveEdits(bool popupOpen){
+    // the widget let go last frame: its drag is one step
+    const ImGuiID active = ImGui::GetActiveID();
+    if (widgetEdit.isOpen() && active != widgetEditItem) {
+        widgetEdit.commit();
+    }
+    if (active == 0) {
+        // no widget can hold a command the history dropped
+        CommandHistory::flushReleased();
+    }
     if (!CommandHistory::anyInteractiveOpen()) {
         return;
     }
@@ -2304,6 +2313,21 @@ void editor::App::engineInit(int argc, char** argv) {
         }
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
+    };
+    // A drag on a widget is one undo step (S24 R11): its first command opens the edit; a
+    // command the history drops waits until no widget may still point at it
+    CommandHistory::deferReleases = true;
+    CommandHistory::beforeRecord = [this](CommandHistory& history){
+        if (UndoOriginScope::current().kind != UndoOriginKind::User || !ImGui::GetCurrentContext()) {
+            return;
+        }
+        const ImGuiID active = ImGui::GetActiveID();
+        if (active == 0 || (widgetEdit.isOpen() && widgetEditItem == active)) {
+            return;
+        }
+        widgetEdit.commit();
+        widgetEdit = history.beginInteractive(std::string());
+        widgetEditItem = active;
     };
     // The Edit menu labels and the Undo History panel follow every history change; the loop
     // idles otherwise. An undo or redo of an asset step refreshes the Project window.
