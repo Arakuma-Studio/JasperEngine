@@ -4,6 +4,7 @@
 #ifndef ECS_PAGEDSTORAGE_H
 #define ECS_PAGEDSTORAGE_H
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -180,6 +181,37 @@ namespace jasperengine::ecs {
         friend bool operator<=(const PagedIterator& a, const PagedIterator& b){ return a.index <= b.index; }
         friend bool operator>=(const PagedIterator& a, const PagedIterator& b){ return a.index >= b.index; }
     };
+
+    // std::rotate of [first, last) around middle for constructed elements of a PagedArray. The
+    // shorter side goes through a temporary buffer: one move per element of the longer side
+    // and two per element of the shorter one, where std::rotate swaps (three moves) nearly
+    // every element (a 100-entity branch moved across a thousand Transforms of ~360 bytes).
+    template<typename U>
+    void rotateElements(PagedArray<U>& array, size_t first, size_t middle, size_t last){
+        if (first == middle || middle == last){
+            return;
+        }
+        const size_t left = middle - first;
+        const size_t right = last - middle;
+        const size_t shorter = left < right ? left : right;
+        PagedIterator<U> begin(&array, first), mid(&array, middle), end(&array, last);
+        // past 1 MiB of buffer, the in-place rotation
+        if (shorter * sizeof(U) > (size_t(1) << 20)){
+            std::rotate(begin, mid, end);
+            return;
+        }
+        std::vector<U> buffer;
+        buffer.reserve(shorter);
+        if (left <= right){
+            std::move(begin, mid, std::back_inserter(buffer));
+            std::move(mid, end, begin);
+            std::move(buffer.begin(), buffer.end(), PagedIterator<U>(&array, last - left));
+        }else{
+            std::move(mid, end, std::back_inserter(buffer));
+            std::move_backward(begin, mid, end);
+            std::move(buffer.begin(), buffer.end(), begin);
+        }
+    }
 
     // Entity -> uint32 table in pages of 4096 entries: a page is allocated when its first
     // entity is added and freed when its last one goes. Iteration is in ascending entity order.

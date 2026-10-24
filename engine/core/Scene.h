@@ -86,7 +86,7 @@ namespace jasperengine{
         void onEntityDestroyed(Entity entity, Signature signature) override {
             for (auto const& pair : systems) {
                 SubSystem* system = pair.second.get();
-                system->hookTypesOf(signature).forEachSet([&](size_t componentId) {
+                system->forEachHookType(signature, [&](size_t componentId) {
                     system->onComponentRemoved(entity, (ComponentId)componentId);
                 });
             }

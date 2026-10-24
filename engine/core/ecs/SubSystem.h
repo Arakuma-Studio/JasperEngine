@@ -71,9 +71,14 @@ namespace jasperengine{
             return !hookTypesDeclared || hookTypes.test(componentId);
         }
 
-        // the types of `types` the add/remove hooks handle
-        Signature hookTypesOf(const Signature& types) const {
-            return hookTypesDeclared ? (types & hookTypes) : types;
+        // fn(componentId) for each type of `types` the add/remove hooks handle, ascending
+        template<typename F>
+        void forEachHookType(const Signature& types, F&& fn) const {
+            if (hookTypesDeclared){
+                types.forEachSetIn(hookTypes, fn);
+            }else{
+                types.forEachSet(fn);
+            }
         }
 
         virtual void onComponentAdded(Entity entity, ComponentId componentId) { (void)entity; (void)componentId; }

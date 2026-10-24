@@ -118,6 +118,19 @@ namespace jasperengine {
             }
         }
 
+        // fn(bit) for each bit set in both masks, ascending (no temporary mask)
+        template<typename F>
+        void forEachSetIn(const ComponentMask& other, F&& fn) const {
+            for (size_t i = 0; i < kWords; i++){
+                uint64_t word = words[i] & other.words[i];
+                while (word){
+                    const unsigned bit = ecs::countTrailingZeros(word);
+                    fn(i * 64 + bit);
+                    word &= word - 1;
+                }
+            }
+        }
+
         std::string to_string() const {
             std::string text(kMaxComponentTypes, '0');
             forEachSet([&text](size_t bit){ text[kMaxComponentTypes - 1 - bit] = '1'; });

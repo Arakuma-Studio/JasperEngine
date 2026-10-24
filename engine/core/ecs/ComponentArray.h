@@ -12,6 +12,7 @@
 #include <new>
 #include <numeric>
 #include <stdexcept>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -43,12 +44,36 @@ namespace jasperengine {
     class RemovedLog {
     private:
         static constexpr size_t kBlock = 1024;
-        std::vector<std::unique_ptr<RemovedComponent[]>> blocks;
-        std::unique_ptr<RemovedComponent[]> spare;
+        static constexpr size_t kBlockBytes = kBlock * sizeof(RemovedComponent);
+
+        // Blocks come from the page arena where there is one (reused across arrays and
+        // scenes, so a burst of removals does not fault in fresh memory)
+        struct BlockDelete {
+            void operator()(RemovedComponent* block) const {
+                if (!ecs::freeArenaPage(block, kBlockBytes)){
+                    ::operator delete(block);
+                }
+            }
+        };
+        using Block = std::unique_ptr<RemovedComponent[], BlockDelete>;
+
+        static_assert(std::is_trivially_copyable_v<RemovedComponent> && std::is_trivially_destructible_v<RemovedComponent>);
+
+        static Block newBlock(){
+            void* memory = ecs::allocateArenaPage(kBlockBytes);
+            if (!memory){
+                memory = ::operator new(kBlockBytes);
+            }
+            // RemovedComponent is trivial: the storage is its array
+            return Block(static_cast<RemovedComponent*>(memory));
+        }
+
+        std::vector<Block> blocks;
+        Block spare;
         size_t head = 0; // index of the oldest entry in blocks[0]
         size_t count = 0;
 
-        void recycle(std::unique_ptr<RemovedComponent[]> block){
+        void recycle(Block block){
             if (!spare){
                 spare = std::move(block);
             }
@@ -69,7 +94,7 @@ namespace jasperengine {
         void push_back(const RemovedComponent& entry){
             const size_t position = head + count;
             if (position / kBlock >= blocks.size()){
-                blocks.push_back(spare ? std::move(spare) : std::make_unique<RemovedComponent[]>(kBlock));
+                blocks.push_back(spare ? std::move(spare) : newBlock());
             }
             blocks[position / kBlock][position % kBlock] = entry;
             count++;
@@ -527,10 +552,10 @@ namespace jasperengine {
                 middle = start;
                 last   = start + length;
             }
-            std::rotate(ecs::PagedIterator<T>(&components, first), ecs::PagedIterator<T>(&components, middle), ecs::PagedIterator<T>(&components, last));
-            std::rotate(ecs::PagedIterator<Entity>(&slotEntities, first), ecs::PagedIterator<Entity>(&slotEntities, middle), ecs::PagedIterator<Entity>(&slotEntities, last));
-            std::rotate(ecs::PagedIterator<uint32_t>(&changedTicks.storage(), first), ecs::PagedIterator<uint32_t>(&changedTicks.storage(), middle), ecs::PagedIterator<uint32_t>(&changedTicks.storage(), last));
-            std::rotate(ecs::PagedIterator<uint32_t>(&addedTicks.storage(), first), ecs::PagedIterator<uint32_t>(&addedTicks.storage(), middle), ecs::PagedIterator<uint32_t>(&addedTicks.storage(), last));
+            ecs::rotateElements(components, first, middle, last);
+            ecs::rotateElements(slotEntities, first, middle, last);
+            ecs::rotateElements(changedTicks.storage(), first, middle, last);
+            ecs::rotateElements(addedTicks.storage(), first, middle, last);
             reindex(first, last);
         }
 
