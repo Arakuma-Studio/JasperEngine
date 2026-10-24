@@ -6,11 +6,50 @@
 #include "lua.hpp"
 
 #include "LuaBridge.h"
+#include "LuaBridgeAddon.h"
 
+#include "Log.h"
+#include "jobs/JobSystem.h"
 #include "thread/ResourceProgress.h"
-#include "thread/ThreadPoolManager.h"
+#include "thread/ThreadPoolManagerLua.h"
+
+#include <algorithm>
+#include <atomic>
 
 using namespace jasperengine;
+// unqualified in the JobLane values: the Lua stub generator resolves `Lane::High`
+using jobs::Lane;
+
+namespace{
+    void warnDeprecatedPool(){
+        static std::atomic<bool> warned{false};
+        if (!warned.exchange(true))
+            Log::warn("ThreadPoolManager is deprecated: the engine's job system replaces it (Jobs.getWorkerCount, Engine.setMaxResourceLoadingThreads)");
+    }
+
+    // a number from Lua outside JobLane reads as Background
+    size_t laneIndex(jobs::Lane lane){
+        return std::min((size_t)lane, jobs::kLaneCount - 1);
+    }
+}
+
+ThreadPoolManagerLua* ThreadPoolManagerLua::getInstance(){
+    warnDeprecatedPool();
+    static ThreadPoolManagerLua instance;
+    return &instance;
+}
+
+void ThreadPoolManagerLua::initialize(size_t){
+    warnDeprecatedPool();
+}
+
+void ThreadPoolManagerLua::shutdown(){
+    warnDeprecatedPool();
+}
+
+size_t ThreadPoolManagerLua::getQueueSize() const{
+    return jobs::system().stats(1).lanes[(size_t)jobs::Lane::Background].queued;
+}
 
 void LuaBinding::registerThreadClasses(lua_State *L){
 #ifndef DISABLE_LUA_BINDINGS
@@ -58,12 +97,28 @@ void LuaBinding::registerThreadClasses(lua_State *L){
         .addStaticFunction("getResourceTypeName", &ResourceProgress::getResourceTypeName)
         .endClass();
 
+    // read-only: Lua states are single-threaded, so scripts never submit jobs
     luabridge::getGlobalNamespace(L)
-        .beginClass<ThreadPoolManager>("ThreadPoolManager")
-        .addStaticFunction("getInstance", &ThreadPoolManager::getInstance)
-        .addStaticFunction("initialize", &ThreadPoolManager::initialize)
-        .addStaticFunction("shutdown", &ThreadPoolManager::shutdown)
-        .addFunction("getQueueSize", &ThreadPoolManager::getQueueSize)
+        .beginNamespace("JobLane")
+        .addVariable("High", Lane::High)
+        .addVariable("Normal", Lane::Normal)
+        .addVariable("Background", Lane::Background)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("Jobs")
+        .addFunction("getWorkerCount", []() -> int { return jobs::system().getWorkerCount(); })
+        .addFunction("isSingleThreaded", []() -> bool { return jobs::system().isSingleThreaded(); })
+        .addFunction("getQueuedCount", [](Lane lane) -> int { return (int)jobs::system().stats(1).lanes[laneIndex(lane)].queued; })
+        .addFunction("getRunningCount", [](Lane lane) -> int { return (int)jobs::system().stats(1).lanes[laneIndex(lane)].running; })
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ThreadPoolManagerLua>("ThreadPoolManager")
+        .addStaticFunction("getInstance", &ThreadPoolManagerLua::getInstance)
+        .addStaticFunction("initialize", &ThreadPoolManagerLua::initialize)
+        .addStaticFunction("shutdown", &ThreadPoolManagerLua::shutdown)
+        .addFunction("getQueueSize", &ThreadPoolManagerLua::getQueueSize)
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS

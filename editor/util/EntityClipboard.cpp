@@ -14,11 +14,11 @@
 #include "util/BackgroundRelease.h"
 
 #include "imgui.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <cstring>
 #include <chrono>
-#include <future>
 #include <optional>
 #include <unordered_set>
 
@@ -58,11 +58,11 @@ namespace {
     // Bumped by every clipboard write that is not ours
     uint64_t foreignWrites = 0;
 
-    // The text of the last copy, emitted on a worker: YAML text of a thousand GameObjects
+    // The text of the last copy, emitted by a Background job: YAML text of a thousand GameObjects
     // takes as long to write as they take to encode. Until it lands, the copy is kept in
     // ownEntry and is the clipboard for this editor.
     struct PendingText {
-        std::future<std::string> text;
+        jobs::Task<std::string> text;
         uint64_t foreignWrites = 0;
     };
     std::optional<PendingText> pendingText;
@@ -204,7 +204,7 @@ namespace {
         if (!pendingText) {
             return;
         }
-        if (!wait && pendingText->text.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        if (!wait && !pendingText->text.isReady()) {
             return;
         }
         std::string text = pendingText->text.get();
@@ -253,7 +253,10 @@ namespace {
 
         PendingText pending;
         pending.foreignWrites = foreignWrites;
-        pending.text = std::async(std::launch::async, [doc]() {
+        jobs::SubmitOptions options;
+        options.lane = jobs::Lane::Background;
+        options.name = "clipboard-emit";
+        pending.text = jobs::submit([doc]() {
             YAML::Emitter out;
             out << doc;
             std::string text;
@@ -263,7 +266,7 @@ namespace {
             text.append(out.c_str(), out.size());
             text += '\n';
             return text;
-        });
+        }, options);
         pendingText = std::move(pending);
 
         replaceEntry(ownEntry, std::move(entry));

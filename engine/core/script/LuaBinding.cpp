@@ -8,6 +8,7 @@
 #include "math/Vector4.h"
 
 #include "Log.h"
+#include "memory/MemoryStats.h"
 #include "System.h"
 #include "Engine.h"
 #include "Scene.h"
@@ -155,12 +156,27 @@ namespace {
         }
     }
 
+    // the Lua heap in the memory stats (get_memory_stats, Jobs & Memory)
+    memory::TrackedBytes& luaHeapBytes(){
+        static auto* tracked = new memory::TrackedBytes("Lua.Heap", memory::Residency::Cpu);
+        return *tracked;
+    }
+
     void* threadCheckedLuaAlloc(void* ud, void* ptr, size_t osize, size_t nsize){
 #ifndef NO_THREAD_SUPPORT
         if (std::this_thread::get_id() != luaThread.load(std::memory_order_relaxed))
             reportOffThreadLuaUse();
 #endif
-        return baseLuaAlloc(ud, ptr, osize, nsize);
+        void* result = baseLuaAlloc(ud, ptr, osize, nsize);
+        // a new block's osize is its type tag, not a size
+        const size_t oldSize = ptr ? osize : 0;
+        if (nsize == 0 || result){
+            if (nsize > oldSize)
+                luaHeapBytes().add(nsize - oldSize, ptr ? 0 : 1);
+            else if (oldSize > nsize)
+                luaHeapBytes().subtract(oldSize - nsize, nsize == 0 ? 1 : 0);
+        }
+        return result;
     }
 
     std::vector<std::string> collectGlobalNames(lua_State* L){
