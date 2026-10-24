@@ -905,8 +905,8 @@ namespace jasperengine::editor{
         std::map<std::filesystem::path, FbxImportFailure> failedFbxImports;
         std::chrono::steady_clock::time_point lastFbxImportCheck;
         static constexpr double fbxImportCheckIntervalSec = 1.0;
-        // Declared after the members it uses, so it waits for the scan before they go
-        std::future<std::map<std::filesystem::path, FbxImportFailure>> fbxImportScan;
+        // A Background job (S06); ~Project waits for it before the members it uses go
+        jobs::Task<std::map<std::filesystem::path, FbxImportFailure>> fbxImportScan;
 
         void queueModelReload(const std::filesystem::path& fbxPath);
         // Reloads the models loaded from an older import; false while one of them is still loading

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "NormalMapTilt.h"
+#include "jobs/JobSystem.h"
 
 #include "stb_image.h"
 
@@ -187,13 +188,10 @@ editor::NormalMapTiltResult editor::NormalMapTilt::request(const fs::path& file)
     MeasureFunction function;
     std::shared_ptr<Job> job = findJob(file, version, created, function);
     if (created) {
-        try {
-            // detached: it owns what it uses (the job, the function, the path)
-            std::thread([job, function, file]() { job->finish(measured(function, file)); }).detach();
-        } catch (const std::system_error&) {
-            // no thread to measure it with: no warning rather than a wait
-            job->finish(NormalMapTiltResult{true, false, 0.0f});
-        }
+        // a Background job of the engine's job system (S06), detached: it owns what it uses
+        // (the job, the function, the path)
+        jobs::enqueueDetached([job, function, file]() { job->finish(measured(function, file)); },
+                              jobs::Lane::Background, "normal-map-tilt");
     }
     NormalMapTiltResult result;
     if (job->poll(result))

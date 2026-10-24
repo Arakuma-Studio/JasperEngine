@@ -246,6 +246,7 @@ editor::Project::Project(){
 
 editor::Project::~Project(){
     // the jobs capture the project
+    fbxImportScan.wait();
     playStartupTask.wait();
     playStopTask.wait();
     sceneSaveTask.wait();
@@ -1933,10 +1934,11 @@ void editor::Project::setFbxImportsPaused(bool paused) {
 }
 
 bool editor::Project::flushFbxReloads(std::string& error) {
-    if (fbxImportScan.valid()) {
+    if (fbxImportScan.isValid()) {
         for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
             failedFbxImports[fbxPath] = failure;
         }
+        fbxImportScan.reset();
     }
     // An import started before the pause queues its reload when it returns
     {
@@ -2080,10 +2082,11 @@ bool editor::Project::prepareFbxModelsForExport(std::string& error) {
 }
 
 void editor::Project::refreshFbxImports() {
-    if (fbxImportScan.valid() && fbxImportScan.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+    if (fbxImportScan.isReady()) {
         for (const auto& [fbxPath, failure] : fbxImportScan.get()) {
             failedFbxImports[fbxPath] = failure;
         }
+        fbxImportScan.reset();
     }
 
     // A playing scene would restore its snapshot over the reload on Stop
@@ -2094,7 +2097,7 @@ void editor::Project::refreshFbxImports() {
     applyModelReloads(false);
 
     const auto now = std::chrono::steady_clock::now();
-    if (fbxImportScan.valid() || projectPath.empty() ||
+    if (fbxImportScan.isValid() || projectPath.empty() ||
         std::chrono::duration<double>(now - lastFbxImportCheck).count() < fbxImportCheckIntervalSec) {
         return;
     }
@@ -2109,8 +2112,13 @@ void editor::Project::refreshFbxImports() {
         return;
     }
 
-    // Hashing and converting can take seconds, so the check runs off the main thread
-    fbxImportScan = std::async(std::launch::async,
+    // Hashing and converting can take seconds, so the check runs off the main thread: a
+    // Background job (S06), Heavy (a conversion parses the whole model)
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.gate = jobs::GateClass::Heavy;
+    options.name = "fbx-import-scan";
+    fbxImportScan = jobs::submit(
         [this, files, assetsRoot = getAssetsPath(), known = failedFbxImports]() {
             std::map<fs::path, FbxImportFailure> failures;
             for (const auto& [fbxPath, glbPath] : files) {
@@ -2144,7 +2152,7 @@ void editor::Project::refreshFbxImports() {
                 }
             }
             return failures;
-        });
+        }, options);
 }
 
 editor::SceneRender* editor::Project::createSceneRender(SceneType type, Scene* scene) const {

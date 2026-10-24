@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SynthesisSession.h"
+#include "thread/ThreadUtil.h"
 
 #include "mcp/McpServer.h"
 #include "mcp/tools/W4Shared.h"
@@ -799,7 +800,9 @@ namespace jasperengine::editor::texsynth {
             shared->done.notify_all();
         };
         try {
-            std::thread([run, options, shared, finish]() {
+            // a long-lived thread outside the job system (S06: through spawnNamed): a run takes
+            // seconds to minutes and drives a worker pool of its own (Synthesizer)
+            thread::spawnNamed("je-texsynth", [run, options, shared, finish]() {
                 Result result;
                 try {
                     Control control;
@@ -826,7 +829,7 @@ namespace jasperengine::editor::texsynth {
                     result = failedResult(run->req, "the synthesis failed");
                 }
                 finish(std::move(result));
-            }).detach();
+            }, thread::Priority::BelowNormal).detach();
         } catch (const std::system_error& e) {
             // no thread: the run ends at once, failed (its callback on this thread)
             finish(failedResult(run->req, std::string("could not start a worker thread: ") + e.what()));

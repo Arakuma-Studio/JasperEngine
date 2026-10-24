@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Synthesizer.h"
+#include "thread/ThreadUtil.h"
 
 #include <algorithm>
 #include <chrono>
@@ -65,7 +66,12 @@ namespace jasperengine::editor::texsynth::detail {
             explicit WorkerPool(int threads) {
                 // a thread that can't be created: fewer workers (the output never depends on them)
                 try {
-                    for (int i = 1; i < threads; i++) workers.emplace_back([this, i] { loop(i); });
+                    // named threads below normal priority (S06: threads outside the job system
+                    // start through spawnNamed); the job system's workers keep the frame
+                    for (int i = 1; i < threads; i++) {
+                        workers.push_back(jasperengine::thread::spawnNamed("je-texsynth-worker", [this, i] { loop(i); },
+                                                                         jasperengine::thread::Priority::BelowNormal));
+                    }
                 } catch (const std::system_error&) {
                 }
             }

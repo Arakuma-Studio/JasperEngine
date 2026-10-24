@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConvexDecomposition.h"
+#include "thread/ThreadUtil.h"
 #include "io/AtomicFile.h"
 
 #include <algorithm>
@@ -1044,7 +1045,9 @@ uint64_t ConvexDecompositionCache::request(const std::vector<Vector3>& positions
     impl->enqueueLocked(Impl::Job{key, std::move(mesh), params, urgent});
     if (!impl->worker.joinable()){
         Impl* state = impl.get();
-        impl->worker = std::thread([state](){ state->workerLoop(); });
+        // a long-lived service thread outside the job system (S06: through spawnNamed), below
+        // normal priority: decompositions are background work that may take seconds
+        impl->worker = thread::spawnNamed("je-hulls", [state](){ state->workerLoop(); }, thread::Priority::BelowNormal);
     }
     impl->wake.notify_one();
 #endif
