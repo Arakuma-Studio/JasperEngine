@@ -24,6 +24,9 @@ namespace jasperengine::editor {
 
         virtual void addNewSceneToDock(uint32_t sceneId);
         virtual void clearSceneWindowState(uint32_t sceneId);
+        // The scene's Scene and SceneRender are about to be deleted (closed, reloaded, its
+        // Prefab Mode stage exited): tools holding on to them let go while they still exist
+        virtual void sceneDeleting(uint32_t sceneId);
         virtual void prepareForProjectSwitch();
         // Runs a project switch (Project::openProjectNow, createProjectAt, loadProject) where
         // the editor can tear its windows down: between frames, with the loading screen.

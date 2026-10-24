@@ -59,6 +59,8 @@ namespace jasperengine::editor{
         void setShowObject2DCross(bool show);
 
         void setGizmoVisible(bool visible);
+        // Move/Rotate/Scale in the Physics orange while Physics (G) is on
+        void setPhysicsTint(bool tint);
 
         Scene* getScene();
 

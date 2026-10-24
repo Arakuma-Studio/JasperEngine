@@ -682,6 +682,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
+    ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp

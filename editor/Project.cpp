@@ -4498,6 +4498,10 @@ std::vector<uint32_t> editor::Project::getChildScenes(uint32_t sceneId) const {
 }
 
 void editor::Project::deleteSceneProject(SceneProject* sceneProject){
+    if (sceneProject->scene) {
+        editor::getEditorHost().sceneDeleting(sceneProject->id);
+    }
+
     if (sceneProject->sceneRender) {
         Camera* editorCam = sceneProject->sceneRender->getCamera();
         if (editorCam) {
