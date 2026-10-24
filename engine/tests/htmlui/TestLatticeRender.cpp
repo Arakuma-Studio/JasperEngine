@@ -498,6 +498,7 @@ TEST_F(LatticeRenderTest, GpuMatchesTheSolverAtManyPoints){
         LatticeOutside outside;
         float fadeDistance;
         bool stacked;
+        bool mirrored = false; // negative scales on the lattice and the markers' parent
     };
     const Config configs[] = {
         {"sharp extend", LatticeInterpolation::SHARP, LatticeOutside::EXTEND, 0.25f, false},
@@ -508,6 +509,7 @@ TEST_F(LatticeRenderTest, GpuMatchesTheSolverAtManyPoints){
         {"cubic fade", LatticeInterpolation::CUBIC, LatticeOutside::FADE, 0.5f, false},
         {"cubic fade 0", LatticeInterpolation::CUBIC, LatticeOutside::FADE, 0.0f, false},
         {"cubic fade, stacked", LatticeInterpolation::CUBIC, LatticeOutside::FADE, 0.5f, true},
+        {"smooth fade, mirrored", LatticeInterpolation::SMOOTH, LatticeOutside::FADE, 0.5f, false, true},
     };
 
     for (const Config& config : configs){
@@ -518,7 +520,7 @@ TEST_F(LatticeRenderTest, GpuMatchesTheSolverAtManyPoints){
         Lattice& lattice = s.fixture.add<Lattice>();
         lattice.setPosition(0.1f, -0.05f, 0.0f);
         lattice.setRotation(12.0f, -18.0f, 9.0f);
-        lattice.setScale(Vector3(3.4f, 2.2f, 2.6f));
+        lattice.setScale(Vector3(config.mirrored ? -3.4f : 3.4f, 2.2f, 2.6f));
         LatticeComponent& component = lattice.getComponent<LatticeComponent>();
         component.resolutionX = 4;
         component.resolutionY = 3;
@@ -555,7 +557,7 @@ TEST_F(LatticeRenderTest, GpuMatchesTheSolverAtManyPoints){
         GameObject& rig = s.fixture.add<GameObject>();
         rig.setPosition(0.05f, 0.0f, 0.0f);
         rig.setRotation(0.0f, 0.0f, 8.0f);
-        rig.setScale(1.1f);
+        rig.setScale(config.mirrored ? Vector3(1.1f, -1.1f, 1.1f) : Vector3(1.1f, 1.1f, 1.1f));
         std::vector<Primitive*> markers;
         std::vector<Vector3> localCentres;
         for (int row = 0; row < 4; row++){
@@ -1137,4 +1139,43 @@ TEST_F(LatticeRenderTest, BoundsHoldBeforeSkinningOffsetsOfAScaledMesh){
     }
     EXPECT_GT(largest, 0.5f) << "the lattice moves the column";
     EXPECT_GE(mesh.lattice.worldPadding, largest * 0.999f);
+}
+
+// A lattice whose transform is singular (a zero scale) deforms nothing and the mesh draws as
+// without it; scaled back it deforms again. A target with a zero scale is skipped too.
+TEST_F(LatticeRenderTest, SingularTransformsAreSkipped){
+    LatticeScene s;
+    Primitive& box = s.addBox(2.0f);
+    ASSERT_TRUE(s.settle());
+    Screen plain;
+    ASSERT_TRUE(plain.read());
+
+    Lattice& lattice = s.addLattice(0.0f, 0.0f, 0.0f, 2.5f);
+    s.shearTop(lattice, 0.4f);
+    s.bind(box.getEntity(), lattice.getEntity());
+    lattice.setScale(Vector3(2.5f, 0.0f, 2.5f));
+    ASSERT_TRUE(s.settle());
+    const MeshComponent& mesh = box.getComponent<MeshComponent>();
+    EXPECT_EQ(mesh.lattice.count, 0);
+    Screen flat;
+    ASSERT_TRUE(flat.read());
+    int differing = 0;
+    EXPECT_TRUE(sameImage(plain, flat, differing)) << differing << " pixels differ";
+
+    lattice.setScale(2.5f);
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(mesh.lattice.count, 1);
+    Screen sheared;
+    ASSERT_TRUE(sheared.read());
+    EXPECT_FALSE(sameImage(plain, sheared, differing));
+
+    box.setScale(Vector3(1.0f, 0.0f, 1.0f));
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(mesh.lattice.count, 0);
+    box.setScale(1.0f);
+    ASSERT_TRUE(s.settle());
+    EXPECT_EQ(mesh.lattice.count, 1);
+    Screen again;
+    ASSERT_TRUE(again.read());
+    EXPECT_TRUE(sameImage(sheared, again, differing)) << differing << " pixels differ";
 }

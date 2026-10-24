@@ -11925,7 +11925,14 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
                 seen = true;
             }else{
                 const AABB& local = mesh->skinnedAABB.isNull() ? mesh->aabb : mesh->skinnedAABB;
-                seen = isInsideCamera(mainCamera.farClip, mainCamera.frustumPlanes, transform->modelMatrix * local);
+                AABB bounds = transform->modelMatrix * local;
+                // grown as the update grows worldAABB (spec 5.5)
+                const float latticePadding = (mesh->lattice.count > 0) ? mesh->lattice.worldPadding : 0.0f;
+                if (latticePadding > 0.0f && !bounds.isNull() && bounds.isFinite()){
+                    const Vector3 grow(latticePadding, latticePadding, latticePadding);
+                    bounds.setExtents(bounds.getMinimum() - grow, bounds.getMaximum() + grow);
+                }
+                seen = isInsideCamera(mainCamera.farClip, mainCamera.frustumPlanes, bounds);
             }
         }else{
             seen = isBatchVisible(entity, *mesh, *transform, instmesh, 0, mainCamera.farClip, mainCamera.frustumPlanes);
@@ -15167,6 +15174,12 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         source.worldAABB.setNull();
     }else{
         source.worldAABB = transform.modelMatrix * localAABB;
+        // as far as the mesh's lattices can move a vertex (spec 5.5), as the frame's worldAABB
+        const float latticePadding = (mesh.lattice.count > 0) ? mesh.lattice.worldPadding : 0.0f;
+        if (latticePadding > 0.0f && source.worldAABB.isFinite()){
+            const Vector3 grow(latticePadding, latticePadding, latticePadding);
+            source.worldAABB.setExtents(source.worldAABB.getMinimum() - grow, source.worldAABB.getMaximum() + grow);
+        }
     }
 }
 
