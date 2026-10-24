@@ -150,7 +150,7 @@ namespace jasperengine::editor{
         void commitInteractive(uint64_t serial, bool warnForgotten = false);
         void cancelInteractive(uint64_t serial);
         void fold(size_t localStart, const std::string& label, bool keepSingle);
-        void notifyModified(bool structural) const;
+        void notifyModified(bool structural, bool selectionOnly = false) const;
 
         static void releaseCommand(std::unique_ptr<Command> cmd, size_t bytes);
         static void releaseNow(std::unique_ptr<Command> cmd, size_t bytes);

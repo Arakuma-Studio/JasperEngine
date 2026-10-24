@@ -696,3 +696,59 @@ merge behaviour.
 - **The InteractiveEdit destructor commits**, while theirs cancels. Default: commit, because
   losing a drag is worse than an extra step. A debug warning finds the call sites that forget
   to close.
+
+## Deviations (implementation record)
+
+Decisions taken while implementing, where the spec was silent, wrong in a detail or in conflict
+with the code base:
+
+1. **Entry type name.** `struct Entry` clashed with an `Entry` already in `jasperengine::editor`
+   (`EntityClipboard.cpp`). The step type is `UndoEntry`, with `CommandHistory::Entry` as an alias.
+2. **Widget drags (R11).** Instead of an `IsItemActivated`/`IsItemDeactivatedAfterEdit` pair at each
+   of the Inspector's several hundred widget call sites, `App` installs
+   `CommandHistory::beforeRecord`: the first user command pushed while an ImGui item is active opens
+   an `InteractiveEdit` for that item, and the edit commits when the item lets go. This covers every
+   drag, slider and colour picker of every window (Inspector, Animation window, Scene settings).
+   Scene view handles, terrain strokes and Animation timeline drags (which write live, not through
+   widgets) open their own edits and put the live values back on cancel.
+3. **Dropped commands are freed late.** Widgets keep the pointer of the command they last pushed (to
+   end its merge chain), and a no-op or cancelled command is now freed by the history. With
+   `CommandHistory::deferReleases` (set by the editor) such commands are freed at
+   `flushReleased()`, called when no ImGui item is active. Headless tools free at once.
+4. **Selection writes.** The four setters, `deselectDestroyedEntities` (Forced), `PrefabStage.cpp`
+   (Forced) and the prefab replace/override bookkeeping (Forced) go through `setSelection`. The raw
+   `selectedEntities` resets of scene teardown, scene decoding and Play's runtime-copy carry stay:
+   they reset state of a scene whose history is cleared with it, not selection changes.
+5. **`TerrainMapPatchCmd` and `PrefabEditUndo` (R31).** Painting writes the map file, an asset shared
+   by every terrain using it, and records no override (see the comment in `TerrainMapPatchCmd.cpp`),
+   so there is no override record to restore; `TerrainTextureEditCmd` (a map rebound on an instance)
+   already restores its overrides. `ComponentToPrefabSharedCmd` got `PrefabEditUndo`.
+6. **Closing a scene frees its history (R23).** A closed (not removed) scene kept its history before;
+   `closeScene` now calls `CommandHandle::remove`, which also drops a pending Play Mode Changes review.
+7. **Play-time MCP edits (R39, AC13).** `set_properties`, `set_transform`, `create_entity` and
+   `delete_entities` are allowed while playing (they were refused): their steps are what the review
+   offers after Stop.
+8. **Attribution of continuations (R24).** The origin scope is set around the handler and around the
+   call's `waitUntil` / `afterFrames` continuations (`McpServer::tick`). A detached call completing
+   from another main-thread task is not attributed; no edit tool does that today.
+9. **Origins and merging.** Steps of different sources (user, an agent call, another call) never merge
+   into each other, so an agent's step can't absorb the user's drag and vice versa.
+10. **Group naming in folds.** The subject of a folded agent call comes from the GameObjects its
+    commands report through a small `EntityEdit` interface (property, transform, component values,
+    state commands); a call that edits none is named by the tool title alone.
+11. **`UndoTimeline::onChanged`** is a `std::function` (S09 has not landed), plus `onProjectChanged`,
+    which refreshes the Project window after an undo/redo of an asset step (R21). The native menu model
+    is rebuilt every frame and diffed by the backend, so `onChanged` only requests a redraw.
+12. **Busy refusals (R13).** `beforeMutation` refuses while a scene is `SAVING`, `LOADING` or
+    `CANCELLING`; Stop is synchronous (`finalizeStop`), so there is no separate stopping state.
+13. **Tests.** S02 landed while this stream ran: the suites are in `jasperengine-editor-tests`
+    (`editor/tests/command/`), named as the spec names them (`CommandHistoryTests`,
+    `UndoTimelineTests`, `PrefabUndoTests`, `PlayChangeReviewTests`, `CommandHistoryBench`) in files
+    following S02's `*Test.cpp` rule. There is no editor benchmark target, so the AC17 budgets are a
+    gtest suite (budgets not asserted under sanitizers). The Project-level suites load
+    `tools/fixtures/prefab-runtime` headless, as `scene-dump` does, and emulate Play's snapshot and
+    Stop as `scene-dump --ops playStart/playStop` do. S02's characterization tests needed only the
+    fake command's names (the history still frees in list order).
+14. **Manual checks (AC5, AC15, AC16)** need a person at the editor; their behaviour is covered by the
+    gtest suites (interactive cancel/commit, jumps, the review) and the MCP tests, and is left for the
+    integrator's manual pass.

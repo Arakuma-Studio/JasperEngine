@@ -10,7 +10,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Suite | What it covers | Run it | Results |
 |---|---|---|---|
 | `jasperengine-core-tests` | engine code (`engine/core`, `engine/renders`) against the static engine: ECS, math, registry, shaders, render state, utilities, the job system, allocators and asset I/O; `*Gpu` suites render into a headless device | `tools/build.sh unit-tests` | `build/test-results/core.xml` |
-| `jasperengine-editor-tests` | editor logic (`editor/`): scene serialization (`Stream`), undo (`CommandHistory`), the asset database | `tools/build.sh unit-tests` | `build/test-results/editor.xml` |
+| `jasperengine-editor-tests` | editor logic (`editor/`): scene serialization (`Stream`), undo (`CommandHistory`, the S24 suites `CommandHistoryTests`, `UndoTimelineTests`, `PrefabUndoTests`, `PlayChangeReviewTests`, `CommandHistoryBench`), the asset database | `tools/build.sh unit-tests` | `build/test-results/editor.xml` |
 | `jasperengine-htmlui-tests` | the HTML/CSS UI, with its golden images | `tools/build.sh htmlui-tests` (`HTMLUI_BACKEND=vulkan`) | `build/test-results/htmlui-<backend>.xml` |
 | `jasperengine-htmlui-editor-tests` | the HTML UI importers against a local HTTP fixture server | `tools/build.sh htmlui-editor-tests` | `build/test-results/htmlui-editor.xml` |
 | MCP tests | the editor's MCP server, driven like an agent (`tools/mcp/tests/test_*.py`) | `tools/build.sh linux`, then `tools/build.sh mcp-tests -j 2` | `build/test-results/mcp.json` |

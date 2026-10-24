@@ -292,8 +292,9 @@ void editor::CommandHistory::captureName(UndoEntry& entry) const{
     entry.cmd->label = CommandNames::clip(name);
 }
 
-void editor::CommandHistory::notifyModified(bool structural) const{
-    if (onSceneModified){
+void editor::CommandHistory::notifyModified(bool structural, bool selectionOnly) const{
+    // a selection change modifies no scene (and starts no prefab stage Auto Save)
+    if (onSceneModified && !selectionOnly){
         onSceneModified(sceneId, structural);
     }
 }
@@ -410,7 +411,7 @@ void editor::CommandHistory::recordEntry(std::unique_ptr<Command> cmd, const Sel
         releaseCommand(std::move(entry.cmd), bytes);
         index = list.size();
         recount();
-        notifyModified(structural);
+        notifyModified(structural, entry.info.selectionOnly);
         notifyChanged();
         return;
     }
@@ -422,12 +423,13 @@ void editor::CommandHistory::recordEntry(std::unique_ptr<Command> cmd, const Sel
     }
     captureName(entry);
     const uint64_t id = entry.info.id;
+    const bool selectionOnly = entry.info.selectionOnly;
 
     list.push_back(std::move(entry));
     index = list.size();
     recount();
 
-    notifyModified(structural);
+    notifyModified(structural, selectionOnly);
     trim(id);
     notifyChanged();
 }
@@ -453,7 +455,7 @@ bool editor::CommandHistory::undo(){
     }
     index--;
     restoreSelection(entry, false);
-    notifyModified(structural);
+    notifyModified(structural, entry.info.selectionOnly);
 
     #ifdef _DEBUG
     printf("DEBUG: undo (%zu from %zu)\n", index, list.size());
@@ -476,7 +478,7 @@ bool editor::CommandHistory::redo(){
     }
     index++;
     restoreSelection(entry, true);
-    notifyModified(entry.cmd->affectsStructure());
+    notifyModified(entry.cmd->affectsStructure(), entry.info.selectionOnly);
 
     #ifdef _DEBUG
     printf("DEBUG: redo (%zu from %zu)\n", index, list.size());
