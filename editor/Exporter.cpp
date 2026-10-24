@@ -210,6 +210,22 @@ namespace {
         return out;
     }
 
+    // Bytes other than ASCII letters, digits, . and - become _XX: safe in a define, still unique
+    std::string toStorageId(const std::string& value) {
+        static const char hex[] = "0123456789ABCDEF";
+        std::string out;
+        for (unsigned char c : value) {
+            if (c < 0x80 && (std::isalnum(c) || c == '.' || c == '-')) {
+                out += static_cast<char>(c);
+            } else {
+                out += '_';
+                out += hex[c >> 4];
+                out += hex[c & 0xF];
+            }
+        }
+        return out;
+    }
+
     std::string escapeXmlAttribute(const std::string& value) {
         std::string out;
         out.reserve(value.size());
@@ -366,6 +382,43 @@ namespace {
         if (stringStart == std::string::npos || stringEnd == std::string::npos) return;
         stringStart += std::string("<string>").size();
         plist.replace(stringStart, stringEnd - stringStart, escapeXmlAttribute(value));
+    }
+
+    // Removes a top-level key holding a string, if present
+    void removePlistStringValue(std::string& plist, const std::string& key) {
+        const std::string keyTag = "\t<key>" + key + "</key>";
+        const size_t keyPos = plist.find(keyTag);
+        if (keyPos == std::string::npos) return;
+
+        const size_t valueStart = plist.find_first_not_of(" \t\r\n", keyPos + keyTag.size());
+        if (valueStart == std::string::npos || plist.compare(valueStart, 8, "<string>") != 0) return;
+        const size_t valueEnd = plist.find("</string>", valueStart);
+        if (valueEnd == std::string::npos) return;
+
+        size_t eraseEnd = valueEnd + std::string("</string>").size();
+        if (eraseEnd < plist.size() && plist[eraseEnd] == '\n') eraseEnd++;
+        plist.erase(keyPos, eraseEnd - keyPos);
+    }
+
+    // Whether an export compiles in Google Mobile Ads for a platform. Without an App ID
+    // the SDK stops the app at launch, and Google's sample app would ship test ads, so
+    // AdMob is left out until the project has its own.
+    bool isAdMobIncluded(bool enabled, const std::string& appId, const char* platform,
+                         const char* sampleAppId, bool warn) {
+        if (!enabled) return false;
+        if (appId.empty()) {
+            if (warn) {
+                editor::Out::warning("%s AdMob is enabled but has no App ID, so the export leaves AdMob out. "
+                             "Set the App ID from the AdMob console in Project Settings (Google's test App ID %s serves test ads only)",
+                             platform, sampleAppId);
+            }
+            return false;
+        }
+        if (warn && !editor::isAdMobAppIdValid(appId)) {
+            editor::Out::warning("%s AdMob App ID \"%s\" is not an app ID like ca-app-pub-0000000000000000~0000000000 (ad unit IDs have a / instead)",
+                         platform, appId.c_str());
+        }
+        return true;
     }
 
     void replacePlistBoolValue(std::string& plist, const std::string& key, bool value) {
@@ -2459,6 +2512,10 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + "set(JASPERENGINE_WINDOW_MODE " + std::to_string(static_cast<int>(window.mode)) + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_WINDOW_RESIZABLE ") + (window.resizable ? "ON" : "OFF") + ")";
         projectSettings += indent + "set(JASPERENGINE_WINDOW_TITLE \"" + cmakeTitle + "\")";
+        // Web saves use the identifier, unless it is the default every project shares
+        const std::string identifier = project->getApplicationIdentifier();
+        const std::string storageId = (identifier != ApplicationSettings{}.identifier) ? identifier : project->getName();
+        projectSettings += indent + "set(JASPERENGINE_STORAGE_ID \"" + toStorageId(storageId) + "\")";
         if (iconGenerated) {
             projectSettings += indent + "set(JASPERENGINE_WINDOW_ICON ON)";
         }
@@ -2466,6 +2523,10 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
+        // iOS only: the Android Gradle build is switched in writeAndroidProjectSettings()
+        const IOSProjectSettings& ios = project->getIOSProjectSettings();
+        const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, false);
+        projectSettings += indent + std::string("set(JASPERENGINE_ADMOB ") + (iosAdMob ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");
@@ -2769,6 +2830,31 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         "                abiFilters \"armeabi-v7a\"\n"
         "                abiFilters \"x86_64\"",
         abiLine);
+
+    // Matched without versions, so SDK updates in the template keep working
+    auto removeGradleLine = [&](const std::string& needle) -> bool {
+        const size_t match = gradle.find(needle);
+        if (match == std::string::npos) {
+            setError("Incompatible Android Gradle export template: missing " + needle);
+            return false;
+        }
+        const size_t lineStart = gradle.rfind('\n', match);
+        const size_t eraseStart = (lineStart == std::string::npos) ? 0 : lineStart + 1;
+        const size_t lineEnd = gradle.find('\n', match);
+        const size_t eraseEnd = (lineEnd == std::string::npos) ? gradle.size() : lineEnd + 1;
+        gradle.erase(eraseStart, eraseEnd - eraseStart);
+        return true;
+    };
+
+    // MainActivity creates the AdMob wrapper by name, so its source goes with the SDK
+    const bool admob = isAdMobIncluded(android.admobEnabled, android.admobAppId, "Android", androidSampleAdMobAppId, true);
+    if (!admob) {
+        if (!removeGradleLine("// the editor export drops this and the ads SDK below")
+                || !removeGradleLine("/platform/android/java-admob'")
+                || !removeGradleLine("\"com.google.android.gms:play-services-ads:")) {
+            return false;
+        }
+    }
     FileUtils::writeIfChanged(buildGradlePath, gradle);
 
     const bool hasLauncherIcon = !android.launcherIcon.empty();
@@ -2822,9 +2908,11 @@ bool editor::Exporter::writeAndroidProjectSettings() {
     manifest += std::string("        android:allowBackup=\"") + (android.allowBackup ? "true" : "false") + "\"\n";
     manifest += "        android:icon=\"" + iconReference + "\"\n";
     manifest += "        android:label=\"@string/app_name\">\n\n";
-    manifest += "        <meta-data\n";
-    manifest += "            android:name=\"com.google.android.gms.ads.APPLICATION_ID\"\n";
-    manifest += "            android:value=\"ca-app-pub-3940256099942544~3347511713\"/>\n\n";
+    if (admob) {
+        manifest += "        <meta-data\n";
+        manifest += "            android:name=\"com.google.android.gms.ads.APPLICATION_ID\"\n";
+        manifest += "            android:value=\"" + escapeXmlAttribute(android.admobAppId) + "\"/>\n\n";
+    }
     manifest += "        <activity android:name=\".MainActivity\"\n";
     manifest += "            android:label=\"@string/app_name\"\n";
     manifest += "            android:configChanges=\"orientation|keyboardHidden|keyboard|screenSize\"\n";
@@ -3102,6 +3190,25 @@ bool editor::Exporter::writeAppleProjectSettings() {
         if (!unlinkBackend("shadercompiler")) return false;
     }
 
+    // Without AdMob the iOS app neither links Google Mobile Ads nor compiles its adapter
+    const bool iosAdMob = isAdMobIncluded(ios.admobEnabled, ios.admobAppId, "iOS", iosSampleAdMobAppId, true);
+    if (!iosAdMob) {
+        removeProjectLinesContaining("JASPERENGINE_ADMOB,");
+        for (const char* buildFile : {"AdMobAdapter.m in Sources",
+                "GoogleMobileAds.xcframework in Frameworks", "UserMessagingPlatform.xcframework in Frameworks",
+                "GoogleAppMeasurement.xcframework in Frameworks", "GoogleAppMeasurementIdentitySupport.xcframework in Frameworks",
+                "GoogleUtilities.xcframework in Frameworks", "FBLPromises.xcframework in Frameworks",
+                "nanopb.xcframework in Frameworks"}) {
+            const size_t match = xcodeProject.find(std::string("/* ") + buildFile + " */ = {isa = PBXBuildFile;");
+            if (match == std::string::npos) {
+                setError(std::string("Apple export template has no ") + buildFile + " entry to remove");
+                return false;
+            }
+            const size_t lineStart = xcodeProject.rfind('\n', match) + 1;
+            if (!removeProjectEntriesWithId(leadingObjectId(xcodeProject.substr(lineStart, match - lineStart)))) return false;
+        }
+    }
+
     std::string excludedSources;
     for (const std::string& source : excludedPhysicsSources) {
         if (!excludedSources.empty()) excludedSources += " ";
@@ -3150,6 +3257,11 @@ bool editor::Exporter::writeAppleProjectSettings() {
             Project::toAppleVersion(project->getApplicationBuild(ios.buildNumber)));
         replacePlistBoolValue(iosPlist, "UIStatusBarHidden", ios.hideStatusBar);
         replacePlistBoolValue(iosPlist, "CADisableMinimumFrameDurationOnPhone", ios.supportsHighRefreshRate);
+        if (iosAdMob) {
+            replacePlistStringValue(iosPlist, "GADApplicationIdentifier", ios.admobAppId);
+        } else {
+            removePlistStringValue(iosPlist, "GADApplicationIdentifier");
+        }
         FileUtils::writeIfChanged(iosPlistPath, iosPlist);
     }
 

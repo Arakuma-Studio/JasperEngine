@@ -1217,6 +1217,14 @@ void Engine::signalReadyOnce(){
 }
 
 void Engine::systemDraw(){
+    runFrame(true);
+}
+
+void Engine::systemUpdate(){
+    runFrame(false);
+}
+
+void Engine::runFrame(bool draw){
     const int MAX_UPDATES_PER_FRAME = 100;
 
     //Deltatime in seconds
@@ -1261,7 +1269,8 @@ void Engine::systemDraw(){
     SceneManager::applyPendingLoad();
 
     // before the update, which bakes the PIP_RTT pipelines from the target in use
-    beginCompositeFramebuffer();
+    if (draw)
+        beginCompositeFramebuffer();
 
     // avoid increment updateTimeCount after resume; a held simulation only draws
     if (!paused && !simulationHeld) {
@@ -1303,21 +1312,24 @@ void Engine::systemDraw(){
         ObjectManager::update(frameDelta);
     }
 
-    Engine::onDraw.call();
+    if (draw){
+        Engine::onDraw.call();
 
-    // again for a scene stack loaded during the update
-    beginCompositeFramebuffer();
+        // again for a scene stack loaded during the update
+        beginCompositeFramebuffer();
 
-    beginFrameStats();
-    for (int i = 0; i < scenes.size(); i++){
-        scenes[i]->draw();
+        beginFrameStats();
+        for (int i = 0; i < scenes.size(); i++){
+            scenes[i]->draw();
+        }
+
+        endCompositeFramebuffer();
     }
-
-    endCompositeFramebuffer();
 
     SystemRender::commit();
 
-    {
+    // a one-shot stays until a frame draws it
+    if (draw){
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
         // Retire one-shots that finished loading: they got the frame they asked for.
@@ -1344,7 +1356,9 @@ void Engine::systemDraw(){
     // after the draw, so the new scenes are drawn loaded before the loading scene goes
     SceneManager::updateLoading();
 
-    signalReadyOnce();
+    // it counts drawn frames
+    if (draw)
+        signalReadyOnce();
 
     frameRunning = false;
 

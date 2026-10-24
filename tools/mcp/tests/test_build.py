@@ -144,6 +144,9 @@ async def test_source_export(ed: Editor):
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
     await check_xcode_workspace(ed, out)
+    # web saves are prefixed per game: the default identifier is shared, so the project name
+    # (bytes other than letters, digits, . and - escaped for the define)
+    ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())
 
     # a non-empty directory needs overwrite
     msg = await ed.call("build_project", mode="source", output_dir=str(out), expect_error=True)
@@ -159,6 +162,85 @@ async def test_source_export(ed: Editor):
     ed.check_eq(Path(info["source"]["output_dir"]).resolve(), out.resolve())
     ed.check_eq(sorted(info["source"]["backends"]), ["opengl", "opengles"])
     ed.check_eq(info["last_build"]["status"], "succeeded")
+
+
+async def test_admob_export(ed: Editor):
+    """AdMob is opt-in: the Android and iOS projects of a source export carry Google Mobile Ads,
+    and the project's App ID (never Google's sample one), only when the project enables it."""
+    out = ed.scratch.root / "export-admob"
+    android_app = out / "workspaces" / "androidstudio" / "app"
+    gradle = android_app / "build.gradle"
+    manifest = android_app / "src" / "main" / "AndroidManifest.xml"
+    plist = out / "workspaces" / "xcode" / "ios" / "Info.plist"
+    pbxproj = out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj"
+    android_id = "ca-app-pub-1234567890123456~1111111111"
+    ios_id = "ca-app-pub-1234567890123456~2222222222"
+
+    async def export() -> dict:
+        r = await ed.call("build_project", mode="source", output_dir=str(out), overwrite=True, timeout_seconds=600)
+        ed.check_eq(r["status"], "succeeded", f"{r}")
+        return r["result"]
+
+    def check_left_out(what: str):
+        g, m, pl, px = gradle.read_text(), manifest.read_text(), plist.read_text(), pbxproj.read_text()
+        ed.check("play-services-ads" not in g, f"{what}: no ads SDK in build.gradle")
+        ed.check("java-admob" not in g, f"{what}: no AdMob wrapper source in build.gradle")
+        ed.check("com.google.android.gms.ads.APPLICATION_ID" not in m, f"{what}: no App ID meta-data in the manifest")
+        ed.check("GADApplicationIdentifier" not in pl, f"{what}: no GADApplicationIdentifier in Info.plist")
+        ed.check("JASPERENGINE_ADMOB" not in px, f"{what}: the iOS target does not define JASPERENGINE_ADMOB")
+        ed.check("AdMobAdapter.m in Sources" not in px, f"{what}: AdMobAdapter.m not compiled")
+        ed.check("GoogleMobileAds.xcframework in Frameworks" not in px, f"{what}: GoogleMobileAds not linked")
+        ed.check("GoogleMobileAds.xcframework" in px, f"{what}: the file reference itself stays")
+        ed.check_in("set(JASPERENGINE_ADMOB OFF)", (out / "CMakeLists.txt").read_text())
+
+    # the default: no AdMob anywhere, and never the sample ids
+    await export()
+    check_left_out("default")
+    for f in (manifest, plist):
+        ed.check("3940256099942544" not in f.read_text(), f"{f.name}: no Google sample App ID")
+    activity = (out / "platform" / "android" / "java" / "com" / "jaspergameengine" / "jasperengine" / "MainActivity.java").read_text()
+    ed.check("new AdMobWrapper" not in activity, "MainActivity does not reference the AdMob wrapper class")
+
+    # an ad unit ID is not an App ID
+    msg = await ed.call("set_project_settings", values={"android.admob_app_id": "ca-app-pub-1234567890123456/1111111111"},
+                        expect_error=True)
+    ed.check_in("app ID", msg)
+
+    # enabled without an App ID: left out, with a warning
+    await ed.call("set_project_settings", values={"android.admob_enabled": True, "ios.admob_enabled": True})
+    result = await export()
+    check_left_out("no App ID")
+    log = Path(result["log_file"]).read_text()
+    ed.check_in("Android AdMob is enabled but has no App ID", log)
+    ed.check_in("iOS AdMob is enabled but has no App ID", log)
+
+    # enabled with App IDs: the SDKs, the wrapper/adapter and the project's ids
+    await ed.call("set_project_settings", values={"android.admob_app_id": android_id, "ios.admob_app_id": ios_id})
+    back = (await ed.call("get_project_settings", keys=["android.admob_enabled", "android.admob_app_id",
+                                                         "ios.admob_enabled", "ios.admob_app_id"]))["settings"]
+    ed.check_eq(back, {"android.admob_enabled": True, "android.admob_app_id": android_id,
+                       "ios.admob_enabled": True, "ios.admob_app_id": ios_id})
+    await export()
+    g, m, pl, px = gradle.read_text(), manifest.read_text(), plist.read_text(), pbxproj.read_text()
+    ed.check_in('"com.google.android.gms:play-services-ads:', g)
+    ed.check_in("/platform/android/java-admob'", g)
+    ed.check_in(f'android:value="{android_id}"', m)
+    ed.check_in(f"<key>GADApplicationIdentifier</key>\n\t<string>{ios_id}</string>", pl)
+    ed.check_eq(px.count("JASPERENGINE_ADMOB,"), 2, "Debug and Release of the iOS target")
+    ed.check_in("AdMobAdapter.m in Sources", px)
+    ed.check_in("GoogleMobileAds.xcframework in Frameworks", px)
+    ed.check_in("set(JASPERENGINE_ADMOB ON)", (out / "CMakeLists.txt").read_text())
+    ed.check((out / "platform" / "android" / "java-admob" / "com" / "jaspergameengine" / "jasperengine" /
+              "AdMobWrapper.java").exists(), "the wrapper source is exported")
+
+    # saved in project.yaml and back off for the tests that follow
+    await ed.call("save_project")
+    yaml = (ed.project / "project.yaml").read_text()
+    ed.check_in(android_id, yaml)
+    ed.check_in(ios_id, yaml)
+    await ed.call("set_project_settings", values={"android.admob_enabled": False, "ios.admob_enabled": False})
+    await export()
+    check_left_out("disabled again")
 
 
 async def test_cancel_desktop_build(ed: Editor):

@@ -12,6 +12,9 @@ option(JASPERENGINE_PHYSICS_3D "Enable Jolt-based 3D physics" ON)
 # meshes and materials, properties changed while playing) instead of leaving out what
 # draws with them. Adds the shader compiler and the engine shader library to the build.
 option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime" ON)
+# The editor export turns it off unless the project enables AdMob for iOS (Android's
+# Gradle build gets the same switch from the export)
+option(JASPERENGINE_ADMOB "Link Google Mobile Ads into iOS builds" ON)
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
@@ -74,6 +77,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     if(NOT DEFINED JASPERENGINE_WINDOW_TITLE)
         set(JASPERENGINE_WINDOW_TITLE "JasperEngine")
     endif()
+    # Prefix of the web build's saved keys (the export writes one made safe for a define)
+    if(NOT DEFINED JASPERENGINE_STORAGE_ID)
+        set(JASPERENGINE_STORAGE_ID "${APP_NAME}")
+    endif()
     # ON only when the editor export generated project/app_icon.h (+ .ico/.rc)
     if(NOT DEFINED JASPERENGINE_WINDOW_ICON)
         set(JASPERENGINE_WINDOW_ICON OFF)
@@ -88,6 +95,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_definitions("-DJASPERENGINE_WINDOW_MODE=${JASPERENGINE_WINDOW_MODE}")
     add_definitions("-DJASPERENGINE_WINDOW_RESIZABLE=${JASPERENGINE_WINDOW_RESIZABLE_VALUE}")
     add_definitions("-DJASPERENGINE_WINDOW_TITLE=\"${JASPERENGINE_WINDOW_TITLE}\"")
+    add_definitions("-DJASPERENGINE_STORAGE_ID=\"${JASPERENGINE_STORAGE_ID}\"")
     # X11 class / Wayland app_id (APP_NAME is a plain identifier, safe to quote).
     # Desktop environments match it against <APP_NAME>.desktop for the app icon.
     add_definitions("-DJASPERENGINE_APP_ID=\"${APP_NAME}\"")
@@ -225,9 +233,16 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             endif()
         endif()
 
+        # DWARF limits the wasm optimizer, so release builds keep only the function names
+        # (still readable stack traces) and the wasm is about a third smaller
+        set(EM_DEBUG_INFO "--profiling-funcs")
+        if(CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+            set(EM_DEBUG_INFO "-g")
+        endif()
+
         list(APPEND PLATFORM_PROPERTIES
             LINK_FLAGS
-                "-g \
+                "${EM_DEBUG_INFO} \
                 -s INITIAL_MEMORY=256MB \
                 -s STACK_SIZE=4MB \
                 -s EXPORTED_FUNCTIONS=\"['_getScreenWidth','_getScreenHeight','_changeCanvasSize','_main']\" \
@@ -578,8 +593,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/KeyCodesIOS.h
             ${PLATFORM_ROOT}/ios/ViewController.h
             ${PLATFORM_ROOT}/ios/ViewController.m
-            ${PLATFORM_ROOT}/ios/AdMobAdapter.h
-            ${PLATFORM_ROOT}/ios/AdMobAdapter.m
             ${PLATFORM_ROOT}/Renderer.h
             ${PLATFORM_ROOT}/Renderer.mm
             ${PLATFORM_ROOT}/JasperEngineApple.h
@@ -599,16 +612,27 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
             # GameController framework for gamepad input (JasperEngineGameController.mm)
             "-framework GameController"
+        )
+
+        if(JASPERENGINE_ADMOB)
+            add_definitions("-DJASPERENGINE_ADMOB")
+
+            list(APPEND PLATFORM_SOURCE
+                ${PLATFORM_ROOT}/ios/AdMobAdapter.h
+                ${PLATFORM_ROOT}/ios/AdMobAdapter.m
+            )
 
             # To run on iOS simulator
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework/ios-arm64_x86_64-simulator/FBLPromises.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurement.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurementIdentitySupport.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework/ios-arm64_x86_64-simulator/GoogleMobileAds.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64_x86_64-simulator/GoogleUtilities.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_x86_64-simulator/UserMessagingPlatform.framework
-            ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64_x86_64-simulator/nanopb.framework
-        )
+            list(APPEND PLATFORM_LIBS
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/FBLPromises.xcframework/ios-arm64_x86_64-simulator/FBLPromises.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurement.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurement.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleAppMeasurementIdentitySupport.xcframework/ios-arm64_x86_64-simulator/GoogleAppMeasurementIdentitySupport.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleMobileAds.xcframework/ios-arm64_x86_64-simulator/GoogleMobileAds.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/GoogleUtilities.xcframework/ios-arm64_x86_64-simulator/GoogleUtilities.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/UserMessagingPlatform.xcframework/ios-arm64_x86_64-simulator/UserMessagingPlatform.framework
+                ${PLATFORM_ROOT}/GoogleMobileAdsSdkiOS-10.14.0/nanopb.xcframework/ios-arm64_x86_64-simulator/nanopb.framework
+            )
+        endif()
 
         add_compile_options(-fmodules)
 

@@ -2704,6 +2704,19 @@ std::string editor::Project::toFourPartVersion(const std::string& source){
     return result;
 }
 
+bool editor::isAdMobAppIdValid(const std::string& value){
+    const std::string prefix = "ca-app-pub-";
+    if (value.compare(0, prefix.size(), prefix) != 0) return false;
+
+    const size_t tilde = value.find('~', prefix.size());
+    if (tilde == std::string::npos || tilde == prefix.size() || tilde + 1 == value.size()) return false;
+
+    for (size_t i = prefix.size(); i < value.size(); i++) {
+        if (i != tilde && !std::isdigit(static_cast<unsigned char>(value[i]))) return false;
+    }
+    return true;
+}
+
 editor::WebProjectSettings& editor::Project::getWebProjectSettings(){
     return webProjectSettings;
 }
@@ -6768,15 +6781,18 @@ uint32_t editor::Project::getSelectedSceneForProperties() const{
 }
 
 bool editor::Project::isTempProject() const{
+    // The menu asks every frame, and relative() opens both paths
+    if (projectPath == tempCheckPath) {
+        return tempCheckResult;
+    }
+    tempCheckPath = projectPath;
+
     std::error_code ec;
     auto relPath = std::filesystem::relative(projectPath, std::filesystem::temp_directory_path(), ec);
 
     // relative() returns empty across different roots, like a project on D: while temp is on C:
-    if (ec || relPath.empty()) {
-        return false;
-    }
-
-    return *relPath.begin() != "..";
+    tempCheckResult = !ec && !relPath.empty() && *relPath.begin() != "..";
+    return tempCheckResult;
 }
 
 bool editor::Project::isTempUnsavedProject() const{

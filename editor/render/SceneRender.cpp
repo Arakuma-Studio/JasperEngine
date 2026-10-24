@@ -2078,6 +2078,10 @@ bool editor::SceneRender::isTerrainEditing() const{
     return false;
 }
 
+bool editor::SceneRender::hasHoverFeedback() const{
+    return gizmoTools().isGizmoVisible() || isTerrainEditing();
+}
+
 float editor::SceneRender::snapRotationAngle(float angle, bool invertRotationSnap) const{
     bool snapRotation = displaySettings.snapRotation;
     if (invertRotationSnap){
