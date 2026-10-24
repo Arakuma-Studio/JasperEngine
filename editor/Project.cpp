@@ -2704,6 +2704,19 @@ std::string editor::Project::toFourPartVersion(const std::string& source){
     return result;
 }
 
+bool editor::isAdMobAppIdValid(const std::string& value){
+    const std::string prefix = "ca-app-pub-";
+    if (value.compare(0, prefix.size(), prefix) != 0) return false;
+
+    const size_t tilde = value.find('~', prefix.size());
+    if (tilde == std::string::npos || tilde == prefix.size() || tilde + 1 == value.size()) return false;
+
+    for (size_t i = prefix.size(); i < value.size(); i++) {
+        if (i != tilde && !std::isdigit(static_cast<unsigned char>(value[i]))) return false;
+    }
+    return true;
+}
+
 editor::WebProjectSettings& editor::Project::getWebProjectSettings(){
     return webProjectSettings;
 }

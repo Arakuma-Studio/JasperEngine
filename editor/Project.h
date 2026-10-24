@@ -525,6 +525,9 @@ namespace jasperengine::editor{
         bool hideStatusBar = true;
         bool hideHomeIndicator = true;
         bool supportsHighRefreshRate = true;
+        // Google Mobile Ads is linked only when enabled
+        bool admobEnabled = false;
+        std::string admobAppId;
     };
 
     enum class AndroidOrientation {
@@ -555,7 +558,17 @@ namespace jasperengine::editor{
         bool allowBackup = true;
         bool fullscreen = true;
         bool keepScreenOn = false;
+        // Google Mobile Ads is compiled in only when enabled
+        bool admobEnabled = false;
+        std::string admobAppId;
     };
+
+    // Google's sample AdMob apps, which only serve test ads. Exports never fall back to them.
+    inline constexpr const char* androidSampleAdMobAppId = "ca-app-pub-3940256099942544~3347511713";
+    inline constexpr const char* iosSampleAdMobAppId = "ca-app-pub-3940256099942544~1458002511";
+
+    // ca-app-pub-<publisher>~<app>; ad unit ids have a slash instead
+    bool isAdMobAppIdValid(const std::string& value);
 
     struct ComponentRecoveryEntry {
         Entity entity;

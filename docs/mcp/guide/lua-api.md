@@ -410,7 +410,9 @@ Setters: `UserSettings.setBoolForKey(k, v)`, `setIntegerForKey`, `setLongForKey`
 `setClipboardText(s)`, `getClipboardText()` (the system clipboard, UTF-8; on Web the text of
 the last copy or paste), `getDirSeparator()`, `getAssetPath()`, `getUserDataPath()`, `getLuaPath()`,
 `getShaderPath()`; ads/web: `initializeAdMob()`, `setMaxAdContentRating(AdMobRating.*)`,
-`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()`,
+`loadInterstitialAd(id)`, `isInterstitialAdLoaded()`, `showInterstitialAd()` (Android/iOS; the
+export compiles Google Mobile Ads in only with the project settings `android.admob_enabled` /
+`ios.admob_enabled` and their `admob_app_id`, otherwise these do nothing),
 `initializeCrazyGamesSDK()`, `showCrazyGamesAd(type)`, `happytimeCrazyGames()`,
 `gameplayStartCrazyGames()`, `gameplayStopCrazyGames()`, `loadingStartCrazyGames()`,
 `loadingStopCrazyGames()`.

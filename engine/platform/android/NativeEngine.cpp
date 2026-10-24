@@ -821,13 +821,14 @@ void NativeEngine::setupJNI(){
     mJniData.gameActivityClsRef = env->GetObjectClass(mJniData.gameActivityObjRef);
 
     mJniData.getUserSettingsRef = env->GetMethodID(mJniData.gameActivityClsRef, "getUserSettings", "()Lcom/jaspergameengine/jasperengine/UserSettings;");
-    mJniData.getAdMobWrapperRef = env->GetMethodID(mJniData.gameActivityClsRef, "getAdMobWrapper", "()Lcom/jaspergameengine/jasperengine/AdMobWrapper;");
+    mJniData.getAdMobWrapperRef = env->GetMethodID(mJniData.gameActivityClsRef, "getAdMobWrapper", "()Ljava/lang/Object;");
 
     mJniData.userSettingsObjRef = env->CallObjectMethod(mJniData.gameActivityObjRef, mJniData.getUserSettingsRef);
     mJniData.userSettingsClsRef = env->GetObjectClass(mJniData.userSettingsObjRef);
 
+    // null when the export leaves AdMob out
     mJniData.adMobWrapperObjRef = env->CallObjectMethod(mJniData.gameActivityObjRef, mJniData.getAdMobWrapperRef);
-    mJniData.adMobWrapperClsRef = env->GetObjectClass(mJniData.adMobWrapperObjRef);
+    mJniData.adMobWrapperClsRef = mJniData.adMobWrapperObjRef ? env->GetObjectClass(mJniData.adMobWrapperObjRef) : NULL;
 
     mJniData.getBoolForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "getBoolForKey", "(Ljava/lang/String;Z)Z");
     mJniData.getIntegerForKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "getIntegerForKey", "(Ljava/lang/String;I)I");
@@ -845,11 +846,19 @@ void NativeEngine::setupJNI(){
 
     mJniData.removeKeyRef = env->GetMethodID(mJniData.userSettingsClsRef, "removeKey", "(Ljava/lang/String;)V");
 
-    mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");
-    mJniData.setMaxAdContentRating = env->GetMethodID(mJniData.adMobWrapperClsRef, "setMaxAdContentRating","(I)V");
-    mJniData.loadInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "loadInterstitialAd","(Ljava/lang/String;)V");
-    mJniData.isInterstitialAdLoaded = env->GetMethodID(mJniData.adMobWrapperClsRef, "isInterstitialAdLoaded","()Z");
-    mJniData.showInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "showInterstitialAd","()V");
+    if (mJniData.adMobWrapperClsRef) {
+        mJniData.initializeAdMob = env->GetMethodID(mJniData.adMobWrapperClsRef, "initialize","(ZZ)V");
+        mJniData.setMaxAdContentRating = env->GetMethodID(mJniData.adMobWrapperClsRef, "setMaxAdContentRating","(I)V");
+        mJniData.loadInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "loadInterstitialAd","(Ljava/lang/String;)V");
+        mJniData.isInterstitialAdLoaded = env->GetMethodID(mJniData.adMobWrapperClsRef, "isInterstitialAdLoaded","()Z");
+        mJniData.showInterstitialAd = env->GetMethodID(mJniData.adMobWrapperClsRef, "showInterstitialAd","()V");
+    } else {
+        mJniData.initializeAdMob = NULL;
+        mJniData.setMaxAdContentRating = NULL;
+        mJniData.loadInterstitialAd = NULL;
+        mJniData.isInterstitialAdLoaded = NULL;
+        mJniData.showInterstitialAd = NULL;
+    }
 
     // an activity without them (an older MainActivity) keeps the base in-process clipboard
     mJniData.setClipboardText = env->GetMethodID(mJniData.gameActivityClsRef, "setClipboardText", "(Ljava/lang/String;)V");
