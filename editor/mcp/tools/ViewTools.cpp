@@ -28,6 +28,7 @@
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/JobsMemoryWindow.h"
 #include "window/SceneWindow.h"
 #include "window/SystemsWindow.h"
 
@@ -1020,8 +1021,11 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "systems") {
         ctx.systemsWindow()->setOpen(true);
         imguiName = SystemsWindow::WINDOW_NAME;
+    } else if (window == "jobs_memory") {
+        app.getJobsMemoryWindow()->setOpen(true);
+        imguiName = JobsMemoryWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, systems.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, systems, jobs_memory.");
         return;
     }
     (void)app;
@@ -1190,7 +1194,7 @@ void registerViewTools(McpRegistry& registry) {
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "systems"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "systems", "jobs_memory"})},
             {"scene", sceneRef("window scene: whose tab.")}
         }, {"window"});
         tool.annotations.idempotent = true;

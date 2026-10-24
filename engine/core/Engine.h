@@ -220,6 +220,14 @@ namespace jasperengine {
         Failed
     };
 
+    // Project Settings > Player > Threading (project.yaml `threading:`). -1 is Auto.
+    struct ThreadingSettings {
+        int workers = -1;                // job system workers: applies when it starts (next launch)
+        int reservedFrameWorkers = -1;   // workers kept free of Background work: applies live
+        int ioThreads = -1;              // asset reader threads: applies when the reader service starts
+        double webPumpBudgetMs = 4.0;    // single-thread mode: Background work per frame, live
+    };
+
     class JASPERENGINE_API Engine {
     public:
         // draw calls, instances and triangles submitted by the last systemDraw
@@ -446,8 +454,17 @@ namespace jasperengine {
         // inside systemDraw(): scenes are updating, a stack must not be torn down
         static bool isFrameRunning();
 
+        // The most workers Background (asset) jobs may occupy at once: the job system's gate,
+        // changed live. 0 returns to the reserve-derived maximum.
         static void setMaxResourceLoadingThreads(size_t maxThreads);
+        // Asset jobs queued or running, queued reads included: 0 only once loading is idle.
         static size_t getQueuedResourceCount();
+
+        // Starts the job system and the asset reader service with these settings when they
+        // are not running yet; once running, the reserve and the pump budget apply live and
+        // the thread counts on the next launch. The generated game main calls it first.
+        static void setThreadingSettings(const ThreadingSettings& settings);
+        static const ThreadingSettings& getThreadingSettings();
 
         static void setFramebuffer(Framebuffer* framebuffer);
         static Framebuffer* getFramebuffer();

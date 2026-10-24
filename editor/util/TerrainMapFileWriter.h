@@ -9,8 +9,9 @@
 #include <map>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
+
+#include "jobs/JobSystem.h"
 
 namespace jasperengine::editor {
 
@@ -69,6 +70,8 @@ private:
     static bool writeJob(const std::string& path, const Job& job);
     void startWorkerLocked();
     void retryFailedLocked(const std::string& path);
+    void drainInlineIfAlone(std::unique_lock<std::mutex>& lock);
+    // writes the queued jobs, then ends (the drain job's body)
     void run();
 
     std::mutex mutex;
@@ -76,7 +79,8 @@ private:
     std::map<std::string, Job> jobs;
     std::map<std::string, Job> failedJobs;
     std::string writingPath;
-    std::thread worker;
+    // the drain on the io-write channel, while workerRunning
+    jobs::Task<void> drainTask;
     bool workerRunning = false;
     bool stopRequested = false;
 };
