@@ -1,0 +1,173 @@
+"""FBX import (ufbx): an .fbx in the assets is converted into a .glb in .jasperengine/imported and
+loads as a glTF while the scene keeps its .fbx path. import_files converts what it copies,
+get_asset_info summarizes the conversion, set_model loads it (mesh, two bones, an animation,
+a blend shape), a saved scene records which import its model parts came from, an edit of the
+FBX reloads the scene's model, and an export ships each FBX as <name>.fbx.glb next to where the
+.fbx was (the .fbx itself stays behind).
+
+The model is editor/tests/fixtures/rigged_cube.fbx, the gtest FbxImportTest's handwritten ASCII FBX.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import re
+import struct
+import time
+import zlib
+from pathlib import Path
+
+import yaml
+
+from harness import Editor, find_key
+
+EDITOR = {"create": True, "name": "FBX Test"}
+REPO = Path(__file__).resolve().parents[3]
+FIXTURE = REPO / "editor" / "tests" / "fixtures" / "rigged_cube.fbx"
+S: dict = {}
+
+
+def write_png(path: Path, size: int = 4) -> None:
+    """A small grey checker, written without any image library"""
+    rows = b""
+    for y in range(size):
+        rows += b"\x00" + b"".join(bytes([255 if (x + y) % 2 else 64] * 3) for x in range(size))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+    png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 2, 0, 0, 0))
+    png += chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(png)
+
+
+async def wait_until(ed: Editor, what: str, probe, timeout: float = 30.0):
+    deadline = time.monotonic() + timeout
+    while True:
+        value = await probe()
+        if value:
+            return value
+        if time.monotonic() > deadline:
+            ed.fail(f"timed out waiting for {what}")
+        await asyncio.sleep(0.5)
+
+
+async def test_import_files_converts_the_fbx(ed: Editor):
+    ed.require_tools("import_files", "get_project_summary")
+    summary = await ed.call("get_project_summary")
+    assets = summary["assets_dir"].rstrip("/") or "."
+    S["assets"] = ed.project / assets
+    S["models"] = f"{assets}/models" if assets != "." else "models"
+    S["fbx"] = f"{S['models']}/rigged_cube.fbx"
+
+    incoming = ed.scratch.root / "incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    (incoming / "rigged_cube.fbx").write_bytes(FIXTURE.read_bytes())
+    write_png(incoming / "textures" / "checker.png")
+
+    r = await ed.call("import_files", sources=[str(incoming / "rigged_cube.fbx"), str(incoming / "textures")],
+                      to_dir=S["models"])
+    ed.check_eq(r.get("fbx_imports"), [S["fbx"]], f"{r!r}")
+    ed.check("fbx_import_failed" not in r, f"{r!r}")
+    S["glb"] = ed.project / ".jasperengine" / "imported" / "models" / "rigged_cube.fbx.glb"
+    ed.check(S["glb"].is_file(), f"no import at {S['glb']}")
+    ed.check(S["glb"].read_bytes()[:4] == b"glTF", "the import is a binary glTF")
+    ed.check(not (S["assets"] / "models" / "rigged_cube.fbx.glb").exists(), "the import stays out of the assets")
+
+
+async def test_asset_info_summarizes_the_import(ed: Editor):
+    info = await ed.call("get_asset_info", path=S["fbx"])
+    ed.check_eq(info["type"], "model")
+    ed.check(info.get("fbx_import", "").endswith("rigged_cube.fbx.glb"), f"{info!r}")
+    model = info["model"]
+    ed.check_eq(len(model["meshes"]), 1, f"{model!r}")
+    ed.check_eq(model["skins"], 1)
+    ed.check_eq([a["name"] for a in model["animations"]], ["Take 001"])
+    ed.check_eq(model["materials"], ["Checker"])
+    ed.check_eq(model["images"], ["textures/checker.png"], "the texture is linked, relative to the FBX")
+    ed.check_in("ufbx", model["generator"])
+
+
+async def test_set_model_loads_the_fbx(ed: Editor):
+    ed.require_tools("set_model", "create_scene")
+    made = await ed.call("create_scene", name="FbxWorld", type="3d")
+    S["scene"] = made["scene"]["id"]
+    r = await ed.call("set_model", scene=S["scene"], create={"name": "Rig"}, path=S["fbx"])
+    S["rig"] = find_key(r["model"], "id", "entity_id")
+    ed.check_eq(r["file"], S["fbx"], "the model keeps its .fbx path")
+    ed.check(not r["loading"], "loaded")
+    ed.check(len(r["meshes"]) >= 1, f"{r!r}")
+    ed.check_eq(r["bone_count"], 2, f"{r!r}")
+    ed.check_eq(len(r["animations"]), 1, f"{r!r}")
+    ed.check_eq(r["morph_targets"], ["Bulge"], f"{r!r}")
+
+
+async def test_saved_scene_records_the_import(ed: Editor):
+    saved = await ed.call("save_scene", scene=S["scene"], path="scenes/FbxWorld")
+    S["path"] = saved["scene"]["path"]
+    data = yaml.safe_load((ed.project / S["path"]).read_text())
+    rel = S["fbx"][len(S["assets"].relative_to(ed.project).as_posix()) + 1:] if S["fbx"].startswith(
+        S["assets"].relative_to(ed.project).as_posix() + "/") else S["fbx"]
+    imports = data.get("imports") or {}
+    ed.check(rel in imports, f"scene imports {imports!r} has no {rel}")
+    ed.check(re.fullmatch(r"\d+-[0-9a-f]{16}", imports.get(rel, "")), f"import id {imports.get(rel)!r}")
+    S["import_id"] = imports.get(rel)
+
+
+async def test_fbx_edit_reloads_the_model(ed: Editor):
+    fbx = ed.project / S["fbx"]
+    fbx.write_text(fbx.read_text().replace("SubDeformer::Bulge", "SubDeformer::Swell"))
+    before = S["glb"].stat().st_mtime_ns
+
+    async def renamed():
+        info = await ed.call("get_model_info", scene=S["scene"], entity=S["rig"])
+        return info if info["morph_targets"] == ["Swell"] and not info["loading"] else None
+
+    info = await wait_until(ed, "the scene's model to reload the edited FBX", renamed)
+    ed.check_eq(info["bone_count"], 2)
+    ed.check(S["glb"].stat().st_mtime_ns != before, "reimported")
+
+    await ed.call("save_scene", scene=S["scene"])
+    data = yaml.safe_load((ed.project / S["path"]).read_text())
+    ids = list((data.get("imports") or {}).values())
+    ed.check(ids and ids[0] != S["import_id"], f"the saved import id follows the edit: {ids!r}")
+
+
+async def test_source_export_ships_the_imports(ed: Editor):
+    ed.require_tools("build_project", "edit_build_scenes")
+    # an FBX no scene uses still ships: scripts can load any of them by path
+    (S["assets"] / "models" / "unused.fbx").write_bytes(FIXTURE.read_bytes())
+    await ed.call("sync_files", paths=[f"{S['models']}/unused.fbx"])
+    await ed.call("edit_build_scenes", action="add", scene=S["path"])
+    await ed.call("edit_build_scenes", action="set_start", scene=S["path"])
+
+    out = ed.scratch.root / "export-fbx"
+    r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", timeout_seconds=900)
+    ed.check_eq(r["status"], "succeeded", f"{r!r}")
+    assets = out / "project" / "assets"
+    if not assets.is_dir():
+        assets = next(p for p in out.rglob("assets") if p.is_dir())
+    shipped = assets / "models"
+    for name in ("rigged_cube.fbx.glb", "unused.fbx.glb"):
+        ed.check((shipped / name).is_file(), f"{name} exported to {shipped}")
+        ed.check((shipped / name).read_bytes()[:4] == b"glTF", f"{name} is a binary glTF")
+    ed.check(not (shipped / "rigged_cube.fbx").exists(), "the .fbx itself is not shipped")
+    ed.check(not (shipped / "unused.fbx").exists(), "the .fbx itself is not shipped")
+    ed.check((shipped / "textures" / "checker.png").is_file(), "its linked texture ships as an asset")
+    sources = [p for p in out.rglob("*.cpp") if "rigged_cube.fbx" in p.read_text(errors="ignore")]
+    ed.check(sources, "the scene source loads the model by its .fbx path")
+
+
+async def test_an_asset_at_the_import_path_fails_the_export(ed: Editor):
+    clash = S["assets"] / "models" / "unused.fbx.glb"
+    clash.write_bytes(b"glTF")
+    try:
+        await ed.call("sync_files", paths=[f"{S['models']}/unused.fbx.glb"])
+        r = await ed.call("build_project", mode="source", output_dir=str(ed.scratch.root / "export-fbx-clash"),
+                          platform="linux", timeout_seconds=900)
+        ed.check_eq(r["status"], "failed", f"{r!r}")
+        ed.check_in("would replace the import", str(r))
+    finally:
+        clash.unlink()
+        await ed.call("sync_files", paths=[f"{S['models']}/unused.fbx.glb"])

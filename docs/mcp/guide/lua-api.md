@@ -764,6 +764,10 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 `getBone(indexOrName)`, `getMorphWeight(indexOrName)`, `setMorphWeight(indexOrName, w)`,
 `resetToBindPose()`, `enabled` (rw).
 
+`loadModel` / `loadGLTF` also take an `.fbx` path: it loads the glTF the editor converted the FBX
+into (`.jasperengine/imported/<path>.fbx.glb` in the editor, `<path>.fbx.glb` next to it in an
+exported game, which ships only that). Every FBX of the assets is converted before Play and export.
+
 ### 4.9 Camera (GameObject) - partial
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,

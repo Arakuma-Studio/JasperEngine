@@ -2791,6 +2791,10 @@ void editor::TerrainEditWindow::drawFoliageMesh(const TerrainFoliageLayer& layer
         SceneProject* sceneProject = getTargetSceneProject();
         const std::string property = "foliageLayers[" + std::to_string(selectedFoliageLayer) + "].meshPath";
         const std::string meshPath = path.empty() ? std::string() : project->normalizeToAssetsRelative(path).generic_string();
+        // An FBX loads from its import, created here the first time
+        if (!project->prepareModelFile(meshPath)){
+            return;
+        }
         CommandHandle::get(sceneProject->id)->addCommandNoMerge(new PropertyCmd<std::string>(
             project, sceneProject->id, selectedEntity, ComponentType::TerrainComponent, property, meshPath));
     };
@@ -2996,7 +3000,10 @@ void editor::TerrainEditWindow::drawPlacementAsset(){
             Backend::getApp().registerOutsideAssetsAlert(path.string());
             return;
         }
-        placeAssetPath = project->normalizeToAssetsRelative(path).generic_string();
+        const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
+        if (project->prepareModelFile(assetPath)){
+            placeAssetPath = assetPath;
+        }
     };
 
     const ImVec2 buttonSize(ImGui::GetFrameHeight(), ImGui::GetFrameHeight());

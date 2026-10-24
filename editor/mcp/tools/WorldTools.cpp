@@ -3888,7 +3888,7 @@ void setModelTool(const CallPtr& call) {
     std::string error;
     const bool clear = boolOr(args, "clear", false);
     if (!clear && !has(args, "path")) {
-        call->fail("Pass path (a .gltf / .glb / .obj inside the assets directory) to load, or clear: true to clear the model.");
+        call->fail("Pass path (a .gltf / .glb / .obj / .fbx inside the assets directory) to load, or clear: true to clear the model.");
         return;
     }
     std::string stored;
@@ -3928,7 +3928,7 @@ void setModelTool(const CallPtr& call) {
         ? new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored, boolOr(args, "merge_static_meshes", false))
         : new ModelLoadCmd(target.project, target.sceneId(), target.entity, stored);
     if (!step.add(load)) {
-        step.fail(call, "The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ file (the console has details).");
+        step.fail(call, "The model failed to load: check that \"" + stringOr(args, "path", "") + "\" is a valid glTF/GLB/OBJ/FBX file (the console has details).");
         return;
     }
     step.commit();
@@ -4498,8 +4498,9 @@ void registerWorldTools(McpRegistry& registry) {
         getModelInfoTool, true, true);
 
     add("set_model", "Load / Clear Model",
-        "Load a .gltf/.glb/.obj into a Model GameObject (replacing it), or clear it; create instead of entity "
-        "makes one. Waits for the load; returns get_model_info's summary.",
+        "Load a .gltf/.glb/.obj/.fbx into a Model GameObject (replacing it), or clear it; create instead of entity "
+        "makes one; an .fbx loads through its glTF conversion, redone when it changes. Waits for the load; returns "
+        "get_model_info's summary.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

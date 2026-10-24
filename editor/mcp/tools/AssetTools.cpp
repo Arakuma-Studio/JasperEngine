@@ -42,6 +42,7 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "util/FbxImporter.h"
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
@@ -794,7 +795,19 @@ void getAssetInfoTool(const CallPtr& call) {
         }
     } else if (kind == "model") {
         std::string error;
-        Json info = modelInfo(file, error);
+        Json info;
+        if (FbxImporter::isFbxFile(file)) {
+            // An FBX loads as the glTF it is imported into, so that is what is summarized
+            if (project->importFbxModel(file)) {
+                const fs::path glbPath = project->getImportedModelPath(file);
+                data["fbx_import"] = projectRelative(project, glbPath);
+                info = modelInfo(glbPath, error);
+            } else {
+                error = "The FBX could not be imported (the console has details).";
+            }
+        } else {
+            info = modelInfo(file, error);
+        }
         if (info.is_null()) data["error"] = error;
         else {
             data["model"] = info;
@@ -1339,7 +1352,33 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     for (const Json& rel : imported) changed.push_back(project->getProjectPath() / fs::u8path(rel.get<std::string>()));
     syncFiles(call->ctx(), changed, false);
     data["imported"] = imported;
+    // An FBX loads from the glTF it is converted into, made now so the next tool can use it
+    Json fbxImports = Json::array();
+    Json fbxFailed = Json::array();
+    auto importFbx = [&](const fs::path& fbxPath) {
+        if (!FbxImporter::isFbxFile(fbxPath) || !project->isInsideAssetsPath(fbxPath)) return;
+        (project->importFbxModel(fbxPath) ? fbxImports : fbxFailed).push_back(projectRelative(project, fbxPath));
+    };
+    for (const fs::path& path : changed) {
+        if (fs::is_directory(path, ec)) {
+            for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+                 !ec && it != end; it.increment(ec)) {
+                if (it->is_regular_file(ec)) importFbx(it->path());
+            }
+            ec.clear();
+        } else {
+            importFbx(path);
+        }
+    }
+    if (!fbxImports.empty()) data["fbx_imports"] = fbxImports;
+    if (!fbxFailed.empty()) data["fbx_import_failed"] = fbxFailed;
     text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
+    if (!fbxImports.empty()) {
+        text += " Converted " + std::to_string(fbxImports.size()) + " FBX model(s) to glTF.";
+    }
+    if (!fbxFailed.empty()) {
+        text += " " + std::to_string(fbxFailed.size()) + " FBX model(s) could not be converted (fbx_import_failed; the console has details).";
+    }
     if (!project->isInsideAssetsPath(target)) {
         text += " Note: outside the assets directory (" + projectRelative(project, project->getAssetsPath()) + "), components can't reference them.";
     }
@@ -2933,7 +2972,8 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Asset Info";
         tool.description =
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
-            "regenerate arguments); model meshes, materials, animations, nodes; WAV format/duration; .material fields, "
+            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion); "
+            "WAV format/duration; .material fields, "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -3052,7 +3092,8 @@ void registerAssetTools(McpRegistry& registry) {
             "Copy files/folders from absolute local paths into a project folder (created if missing), like dropping "
             "them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts "
             "[\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
-            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
+            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg), "
+            ".fbx is converted to glTF (fbx_imports).";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
             {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},

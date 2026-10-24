@@ -8,6 +8,7 @@
 #include "Out.h"
 #include "Stream.h"
 #include "util/Base64.h"
+#include "util/FbxImporter.h"
 #include "util/FileUtils.h"
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
@@ -534,6 +535,17 @@ bool editor::Exporter::generateShaders(const ExportConfig& cfg) {
 void editor::Exporter::runExport() {
     const bool shaderGenerationOnly = (project == nullptr);
     const bool buildMode = !shaderGenerationOnly && config.mode != ExportMode::SourceCode;
+
+    // The scene sources describe the FBX imports that ship, so none may change mid-export
+    struct FbxImportPause {
+        Project* project;
+        explicit FbxImportPause(Project* project): project(project) {
+            if (project) project->setFbxImportsPaused(true);
+        }
+        ~FbxImportPause() {
+            if (project) project->setFbxImportsPaused(false);
+        }
+    } fbxImportPause(project);
 
     // Generation steps report progress in the [0,1] SourceCode range; for build
     // modes they occupy the first half, leaving the rest for configure/build/collect.
@@ -1411,11 +1423,15 @@ bool editor::Exporter::loadAndSaveAllScenes() {
 
     std::promise<bool> savePromise;
     auto saveFuture = savePromise.get_future();
+    std::string importError;
 
-    editor::getEditorHost().enqueueMainThreadTask([this, &savePromise]() {
+    editor::getEditorHost().enqueueMainThreadTask([this, &savePromise, &importError]() {
         try {
             std::vector<uint32_t> temporarilyLoaded;
             auto& scenes = project->getScenes();
+
+            // Imports done before this export reload into the open scenes first
+            bool imported = project->flushFbxReloads(importError);
 
             // Prefab Mode's unsaved changes (Auto Save off) are the assets the build uses
             for (size_t i = 0; i < project->getPrefabStageCount(); i++) {
@@ -1426,7 +1442,7 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             }
 
             // Load all unloaded scenes (opened=false to avoid UI side-effects)
-            for (size_t i = 0; i < scenes.size(); i++) {
+            for (size_t i = 0; imported && i < scenes.size(); i++) {
                 auto& sceneProject = scenes[i];
                 if (sceneProject.filepath.empty() || sceneProject.scene) {
                     continue;
@@ -1436,8 +1452,11 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 temporarilyLoaded.push_back(sceneProject.id);
             }
 
+            // Every FBX model needs its current import before the sources describe it
+            imported = imported && project->prepareFbxModelsForExport(importError);
+
             // Save all scenes to regenerate their .cpp sources
-            for (size_t i = 0; i < scenes.size(); i++) {
+            for (size_t i = 0; imported && i < scenes.size(); i++) {
                 auto& sceneProject = scenes[i];
                 if (sceneProject.filepath.empty() || !sceneProject.scene) {
                     continue;
@@ -1491,14 +1510,17 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 }
             }
 
-            savePromise.set_value(true);
+            savePromise.set_value(imported);
         } catch (...) {
             savePromise.set_exception(std::current_exception());
         }
     });
 
     try {
-        saveFuture.get();
+        if (!saveFuture.get()) {
+            setError(importError);
+            return false;
+        }
     } catch (const std::exception& e) {
         setError(std::string("Scene save failed: ") + e.what());
         return false;
@@ -1775,6 +1797,35 @@ bool editor::Exporter::copyAssets() {
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
+
+        // An FBX ships as its import, which the engine loads in its place. Those the scenes
+        // use were imported before the scenes were saved, others are imported here.
+        if (FbxImporter::isFbxFile(entry.path())) {
+            fs::path importRelPath = relPath;
+            importRelPath += ".glb";
+            // The engine loads the import from that path, so no asset can have it
+            if (fs::exists(assetsSrc / importRelPath, ec)) {
+                setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
+                    relPath.generic_string() + ". Rename it.");
+                return false;
+            }
+            const fs::path fbxPath = project->resolveAssetPath(relPath);
+            const fs::path glbPath = project->getImportedModelPath(fbxPath);
+            // Scripts may load any of them, so none can be left out or outdated
+            if (!project->importFbxModel(fbxPath) ||
+                    FbxImporter::getState(fbxPath, glbPath, project->getAssetsPath()) != FbxImporter::State::UpToDate) {
+                setError("Cannot export: " + relPath.generic_string() + " could not be imported");
+                return false;
+            }
+            const fs::path importPath = assetsDst / importRelPath;
+            fs::create_directories(importPath.parent_path(), ec);
+            fs::copy_file(glbPath, importPath, fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                setError("Failed to copy the import of " + relPath.generic_string() + ": " + ec.message());
+                return false;
+            }
+            continue;
+        }
 
         // Skip Lua sources already shipped in the lua tree
         if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(entry.path().lexically_normal())) continue;

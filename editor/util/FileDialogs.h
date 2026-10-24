@@ -58,7 +58,7 @@ namespace jasperengine::editor{
                     filterItems.push_back({ "Font files", "ttf,otf" });
                 }
                 if (filterFlags & FILE_DIALOG_MODEL) {
-                    filterItems.push_back({ "Model files", "gltf,glb,obj" });
+                    filterItems.push_back({ "Model files", "gltf,glb,obj,fbx" });
                 }
                 if (filterFlags & FILE_DIALOG_AUDIO) {
                     filterItems.push_back({ "Sound files", "wav,ogg,mp3,flac" });

@@ -20,7 +20,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 
 - Shared ECS runtime for 2D and 3D scenes, with scene layers and serialization
 - Sprites, tilemaps, and polygons, plus 2D lights, normal maps, and 2D shadow casters
-- GLTF and OBJ models with skeletal animation, morph targets, and mesh instancing
+- glTF, OBJ, and FBX models with skeletal animation, morph targets, and mesh instancing (the editor converts FBX to glTF with [ufbx](https://github.com/ufbx/ufbx): meshes, materials and textures, skins, animations, blend shapes, node hierarchy, units and axes; reimported when the file or its textures change)
 - PBR materials with dynamic lights and cascaded shadows, sky-driven IBL, SSAO, fog, and planar mirrors
 - A library of 40 ready-made shaders (toon, matcap, water, glass, outlines, sprites, skies, post effects...), per-pixel, per-vertex or mixed lighting with any number of lights, and a mobile-first post-processing stack (tone mapping and grading in the shaders, one uber pass, quarter-resolution bloom): see [docs/shaders](docs/shaders/README.md)
 - Keyframe tracks, tweens with easing, crossfade blending, and sprite-sheet animation

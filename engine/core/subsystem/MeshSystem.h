@@ -29,6 +29,7 @@ namespace tinygltf {
     struct Accessor;
     struct Image;
     class Model;
+    class TinyGLTF;
 }
 
 namespace jasperengine{
@@ -91,6 +92,8 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
+        // An FBX is read from its imported .glb, with texture URIs still relative to the FBX
+        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
@@ -173,6 +176,10 @@ namespace jasperengine{
         // Foliage ownership, for editor shader collection and selection.
         std::vector<Entity> getFoliageEntities(Entity terrainEntity) const;
         Entity getFoliageOwner(Entity foliageEntity) const;
+        // Reloads the foliage chunks drawn from a model file that changed on disk
+        void reloadFoliageMesh(const std::string& filename);
+        // Retries the failed loads of a file that appeared or changed on disk
+        void retryFailedModelLoads(const std::string& filename);
 
         void createPlane(MeshComponent& mesh, float width=1, float depth=1, unsigned int tiles=1);
         void createWall(MeshComponent& mesh, float width=1, float height=1, unsigned int tiles=1);
@@ -193,6 +200,9 @@ namespace jasperengine{
 
         // Canonical form of a model path: the same file spelled in different ways maps to one key.
         static std::string getModelFilenameKey(const std::string& filename);
+        // The .glb an FBX is imported into: in the editor's import cache (System::getImportPath),
+        // next to the FBX in an exported game (<name>.fbx.glb)
+        static std::string getImportedModelPath(const std::string& filename);
 
         // Submesh edits (Submesh::overrideFields) carried across a load, keyed by the ordinal of
         // the primitive that built each one. The loaders do this themselves; it is public for the
@@ -210,6 +220,8 @@ namespace jasperengine{
         static void cancelPreloadModel(const std::string& filename);
         // Drops a preloaded model and its images from the pools, unless a scene uses them
         static void releasePreloadedModel(const std::string& filename);
+        // Drops the cached parse and images of a file that changed on disk, even while in use
+        static void invalidateModelFile(const std::string& filename);
 
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.
