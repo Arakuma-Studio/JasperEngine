@@ -808,3 +808,119 @@ Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (on
 `editor/shader/{ShaderVariantCollector.{h,cpp},ShaderLibraryMatrix.cpp}`, `editor/Project.cpp`,
 `docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
 `engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
+
+### 12.x WP-ECS (LatticeSystem, Lattice object, EntityCloner, sprite grid, Lua)
+
+Files: `engine/core/subsystem/LatticeSystem.{h,cpp}`, `engine/core/object/Lattice.{h,cpp}`,
+`engine/core/registry/EntityCloner.cpp` (lattice parts), `engine/core/subsystem/MeshSystem.{h,cpp}`
+(sprite grid), `engine/core/script/binding/{GameObjectClassesLua,ECSClassesLua}.cpp`,
+`generate_api_suggestions.py` (MANUAL_SYMBOLS for the lambda/overload bindings),
+`docs/mcp/guide/lua-api.md` (§4.19 Lattice, the enums table, the class tree),
+`editor/Project.cpp` (one line, below), `tools/mcp/tests/test_lattice_lua.py`. No stub fragment
+was needed: `generate_lua_stubs.py` resolves every new binding (0 unresolved).
+
+Frame flow and play mode:
+- `update(dt)` advances pose tweens and accumulates the play time; `lateUpdate()` (called by
+  RenderSystem::update, WP-RENDER) steps the jiggle with that time, then runs followers. The
+  jiggle is in `lateUpdate` (not `update`) so it reads the lattice's world position of this
+  frame (no lag, no stale identity matrix on the first frame) and followers ride on the
+  jiggle in the same frame. Without WP-RENDER's call neither jiggle nor followers run.
+- Edit mode: `editor::Project::pauseEngineScene` now also pauses `LatticeSystem` (one line,
+  next to Physics/Action/Audio). Paused = no tweens, no jiggle; followers still run (they
+  only place transforms) and offsets/poses written by the API show at once. The game's Pause
+  freezes tweens and jiggle where they are.
+- Disabled (`enabled = false`) or inactive lattices: tweens and the jiggle state are kept
+  but not advanced; a disabled jiggle (or lattice) clears `dynamicOffsets`.
+
+Tweens: any direct write of offsets (setOffset..., setPointPosition..., resetOffsets,
+applyPose, applyPreset) stops a running tween. `EaseType::CUSTOM` tweens linearly (the
+component cannot hold a function). A tween whose from/to size no longer matches the
+resolution (changed without `LatticeSystem::setResolution`) is stopped.
+
+Poses and resolution: `LatticeSystem::setResolution(component, rx, ry, rz)` resamples the
+offsets, every pose and a running tween with `lattice::resample`, and resets the jiggle.
+**WP-EDITOR-SCENE/WP-MCP: `LatticeEditorOps::setResolution` should apply this helper to a copy
+of the component (then commit it as the command's new value), so poses stay in step.** A
+pose whose size does not match the resolution (data from a path that did not resample it)
+is resampled on use from the resolution its size factors into, the factorization closest to
+the current resolution (ties: x before y before z); a size no resolution has reads as zeros.
+
+Jiggle (spec §6.2) details: acceleration from finite differences of the lattice's world
+position in `lateUpdate`; frames 1 and 2 after enabling, `resetJiggle()`, a frame longer
+than 0.25 s or a jump of more than 2 lattice sizes (largest world axis length) in one frame
+only rebuild the history (teleport). Substeps of at most `min(1/120 s, 1/sqrt(k))`, at most
+64 per frame; a frame longer than 0.25 s is integrated as 0.25 s. Clamp keeps
+`|x| <= max(0, jiggleMaxOffset)` and removes the outward velocity at the limit. While asleep
+it wakes when `inertia * |a_local| > 1e-4 * max(k, 1)` or on a poke; `poke`/`pokeAt` do
+nothing while `jiggle` is off. Anchor weight is linear across the lattice (0 at the anchored
+face, 1 at the opposite). `revision` is bumped every simulated frame and when it sleeps.
+
+Followers (spec §6.3) details: processed in Transform array order (a follower inside another
+follower's subtree sees it moved). Rotation: the rest's world axes pushed through the world
+Jacobian, Gram-Schmidt x then y, z = x cross y (a degenerate basis keeps the rest rotation).
+Scale: rest world scale times the lengths of the deformed rest axes. Channels whose apply
+flag is off are not written (the follower keeps its own value). The follower and its subtree
+get `needUpdate` and `RenderSystem::updateTransform` (already public) in the same frame; when
+nothing changed nothing is written. Left alone: follower disabled/inactive, missing lattice
+or rest, a zero-scale lattice transform, the follower being its rest or an ancestor of it,
+and (addition) the lattice inside the follower's subtree, which would feed back every frame.
+A disabled or inactive lattice puts the follower at its (undeformed) rest. Followers write
+Transform values in edit mode too: a saved scene stores the placed values, recomputed
+identically on load; moving the follower by hand is undone the next frame (move the rest).
+Integrator: check that prefab override detection does not record these writes as overrides
+(they bypass the command system the same way a script would).
+
+Sprite grid (spec §6.4): `MeshSystem::createSprite` builds `n x n` cells
+(`n = clamp(lattice.tessellation, 1, 64)` while `lattice.wantsTessellation`), vertices
+row-major from the bottom row, corners computed as `(1 - t) * a + t * b` so they equal the
+quad's values exactly (same AABB), same UV cut ratios, flipY, pivot, normals, tangents,
+colours, winding. Without the flag the quad code path is unchanged (verified byte-identical
+vertex and index data, and pixel-identical rendering of an undeformed 8x8 grid vs the quad).
+`createOrUpdateSprite` compares the grid the mesh was built with (from its vertex count:
+4 = quad, `(n+1)^2` = grid) with the request and rebuilds; a loaded mesh whose grid size
+changes (quad <-> grid, n -> m) gets `needReload` (its GPU buffers keep their size), the same
+size only `needUpdateBuffer`. Indices stay 16-bit (65 x 65 vertices at most).
+
+EntityCloner: copies the four components. `LatticeModifierComponent::bindings[].lattice` and
+`LatticeFollowerComponent::lattice/rest` are remapped (a copied lattice -> its copy; one not
+copied stays in the same registry and becomes `NULL_ENTITY` in another; the binding is kept,
+skipped at runtime like a deleted lattice). The copy's jiggle state is cleared (asleep,
+warm-up again where it is placed); a running tween goes on. `prepare<MeshComponent>` resets
+`MeshComponent::lattice` (the copy packs and uploads its own texture; sharing the original's
+`TextureRender` would double-destroy it) but keeps `wantsTessellation`/`tessellation`, which
+the copied vertices were built for.
+
+Contract additions (all in WP-ECS files):
+- `LatticeSystem`: static component helpers `getResolution`, `setResolution`, `findPose`,
+  `getPoseOffsets`, `savePose`, `applyPose`, `startTween`, `stopTween`, `resetJiggle`, `poke`,
+  `pokeAt`; members `deformWorldPoint(Entity, point, weight)`, `isValidFollower(follower,
+  lattice, rest)` (the inspector/MCP refusal rule, shared).
+- `Lattice`: the §8 API plus `getLatticeComponent`, `setEnabled/isEnabled`,
+  `getResolutionX/Y/Z`, `getPointIndex`, `getRestPosition`, getters for every setter,
+  `hasPose`, `removePose`, `stopTween`, `isJiggleSleeping`, `getJiggleOffset`, `resetJiggle`,
+  `addFollower(follower, rest[, applyPosition, applyRotation, applyScale, weight])`,
+  `removeFollower`, `getModifierComponent(entity)`, `getFollowerComponent(entity)`;
+  `bind`/`unbind`/`addFollower`/`removeFollower` take an entity or any GameObject wrapper.
+  `getResolution()` returns a Vector3 of whole numbers. Indices are 0-based (as
+  `lattice::copyAsLua`). `bind` adds the component with `includeChildren = true` when the
+  target has no MeshComponent of its own, clamps the weight to 0..2, updates the weight of
+  an existing binding to the same lattice, and refuses the lattice itself.
+- `MeshSystem::createSpriteGrid` (private).
+- Lua: enums `LatticeInterpolation`, `LatticeOutside`, `LatticeJiggleAnchor`, `LatticeStage`,
+  `LatticeMaskChannel`; classes `LatticePose`, `LatticeComponent` (resolution and the vectors
+  read-only, setting enabled/interpolation/outside/fadeDistance bumps `revision`),
+  `LatticeBinding`, `LatticeModifierComponent` (bindings: read a copy, assign it back),
+  `LatticeFollowerComponent`, `LatticeTracksComponent` (WP-ANIM may add its action class).
+
+Verification: `jasperengine-editor` builds with no new warnings in these files (also checked
+with `-Wall -Wextra`). `tools/mcp/tests/test_lattice_lua.py` (3 tests, real editor, needs
+WP-RENDER's `lateUpdate` call): a script creates and binds a lattice, offsets by index/flat
+index, local/world point positions, poses, resampling, follower placement equal to
+`deformPoint`, a tween ending exactly on the pose, a poked jiggle that settles and sleeps
+with no dynamic offsets left, an acceleration that wakes it, back at rest; edit mode
+(applyPose immediate, tween waits, follower follows); `GameObject.instantiate` remaps. The
+offline stub check (every Lua symbol of `engine_api_suggestions.h` has a stub) passes; the
+editor-side `test_stubs.py`/`test_docs.py` failures on this host match the baseline.
+Branch `lat/ecs` merged `lattice` (WP-SOLVER) and `lat/render` (for the `lateUpdate` call
+and the tessellation request); with them the three tests pass and a 2D sprite bound to a
+lattice renders as a smoothly warped 8 x 8 grid.
