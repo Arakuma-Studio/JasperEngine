@@ -190,6 +190,24 @@ bool AtmosphereRenderer::isForceLowPrecisionTargets(){
     return forceLowPrecision;
 }
 
+std::vector<ShaderType> AtmosphereRenderer::passShaderTypes(bool heightFog, bool volumetricFog, bool clouds){
+    std::vector<ShaderType> types;
+    // the sky composite: the sky fill and the Sky Map clouds
+    if (heightFog || clouds)
+        types.push_back(ShaderType::SKY_COMPOSITE);
+    // the reduced-resolution passes: the volumetric fog, the Screen clouds
+    if (volumetricFog || clouds){
+        types.push_back(ShaderType::ATMOSPHERE_DEPTH);
+        types.push_back(ShaderType::ATMOSPHERE_DENOISE);
+        types.push_back(ShaderType::VOLUMETRIC_COMPOSITE);
+    }
+    if (volumetricFog)
+        types.push_back(ShaderType::VOLUMETRIC_FOG);
+    if (clouds)
+        types.push_back(ShaderType::VOLUMETRIC_CLOUDS);
+    return types;
+}
+
 void AtmosphereRenderer::storeHorizonRing(const std::string& textureId, const IBLEnvironment::HorizonRing& ring){
     horizonRings()[textureId] = ring;
 }

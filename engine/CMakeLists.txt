@@ -1088,6 +1088,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
     core/subsystem/PhysicsSystem.cpp
+    core/subsystem/AtmosphereRenderer.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp

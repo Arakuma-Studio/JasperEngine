@@ -9191,7 +9191,7 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
     }
     endTable();
 
-    const AtmosphereInfo& info = sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(sceneProject->playState != ScenePlayState::STOPPED ? GAME_VIEW_ID : SCENE_VIEW_ID);
+    const AtmosphereInfo& info = sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(0);
 
     if (beginFoldout("Height Fog")){
         RowSettings settingsColorMode;

@@ -236,6 +236,10 @@ namespace jasperengine{
         void drawComposites(const PassPlan& plan, PipelineType pipelineType, int msaaSamples, const Rect& viewport,
                             unsigned int targetHeight, bool flipped, const CameraComponent& camera, const Transform& cameraTransform);
 
+        // the atmosphere passes a scene with a height fog (volumetric or not) and clouds can draw, as
+        // exports ship them (ShaderVariantCollector)
+        static std::vector<ShaderType> passShaderTypes(bool heightFog, bool volumetricFog, bool clouds);
+
         // the horizon ring of a sky's cube map (computed with its IBL maps, cached by texture)
         static void storeHorizonRing(const std::string& textureId, const IBLEnvironment::HorizonRing& ring);
 

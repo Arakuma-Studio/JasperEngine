@@ -3282,6 +3282,15 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
+    // the atmosphere's passes: the scene's first Fog and Volumetric Clouds (RenderSystem's)
+    {
+        const FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
+        const bool heightFog = fog && fog->type == FogType::HEIGHT;
+        const bool clouds = scene->getComponentArray<VolumetricCloudsComponent>()->size() > 0;
+        for (ShaderType type : AtmosphereRenderer::passShaderTypes(heightFog, heightFog && fog->volumetric, clouds))
+            keys.insert(ShaderPool::getShaderKey(type, 0));
+    }
+
     // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
