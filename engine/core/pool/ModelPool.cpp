@@ -6,9 +6,16 @@
 
 #include "tiny_gltf.h"
 
+#include <mutex>
 #include <vector>
 
 using namespace jasperengine;
+
+// A game's loading thread (Engine.startAsyncThread) loads models next to the main thread
+static std::recursive_mutex& getPoolMutex(){
+    static std::recursive_mutex mutex;
+    return mutex;
+}
 
 models_t& ModelPool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization
@@ -23,11 +30,13 @@ obj_models_t& ModelPool::getObjMap(){
 }
 
 std::shared_ptr<tinygltf::Model> ModelPool::getGLTF(const std::string& id){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto it = getMap().find(id);
     return it == getMap().end() ? nullptr : it->second;
 }
 
 std::shared_ptr<tinygltf::Model> ModelPool::addGLTF(const std::string& id, std::shared_ptr<tinygltf::Model> model){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto& shared = getMap()[id];
 
     if (shared.use_count() > 0){
@@ -39,11 +48,13 @@ std::shared_ptr<tinygltf::Model> ModelPool::addGLTF(const std::string& id, std::
 }
 
 std::shared_ptr<ObjModelData> ModelPool::getObj(const std::string& id){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto it = getObjMap().find(id);
     return it == getObjMap().end() ? nullptr : it->second;
 }
 
 std::shared_ptr<ObjModelData> ModelPool::addObj(const std::string& id, std::shared_ptr<ObjModelData> model){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto& shared = getObjMap()[id];
 
     if (shared.use_count() > 0){
@@ -55,6 +66,7 @@ std::shared_ptr<ObjModelData> ModelPool::addObj(const std::string& id, std::shar
 }
 
 void ModelPool::removeGLTF(const std::string& id){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto& map = getMap();
     auto it = map.find(id);
     if (it != map.end() && it->second.use_count() <= 1)
@@ -62,6 +74,7 @@ void ModelPool::removeGLTF(const std::string& id){
 }
 
 void ModelPool::removeObj(const std::string& id){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto& map = getObjMap();
     auto it = map.find(id);
     if (it != map.end() && it->second.use_count() <= 1)
@@ -69,11 +82,13 @@ void ModelPool::removeObj(const std::string& id){
 }
 
 void ModelPool::clear(){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     getMap().clear();
     getObjMap().clear();
 }
 
 void ModelPool::clearUnused(){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     std::vector<std::string> gltfIds;
     gltfIds.reserve(getMap().size());
     for (const auto& [id, _] : getMap()) {

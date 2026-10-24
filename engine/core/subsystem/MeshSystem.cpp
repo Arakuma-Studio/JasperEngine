@@ -26,6 +26,7 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <mutex>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -143,6 +144,11 @@ std::string MeshSystem::getModelFilenameKey(const std::string& filename){
     // loader does. This keeps the model/texture pools from treating the same
     // file as separate absolute and relative resources.
     return std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal().generic_string();
+}
+
+static std::recursive_mutex& getPooledGLTFMutex(){
+    static std::recursive_mutex mutex;
+    return mutex;
 }
 
 // Name of a converted or baked copy of an accessor's data appended to a (pooled) glTF model:
@@ -4394,9 +4400,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
         res = true;
     }else{
-        // Try cache before hitting disk. The loader appends synthetic buffers to the model and
-        // ModelPool has no lock, so an off-thread load (a thumbnail) parses its own copy.
-        const bool sharePool = !Engine::isAsyncThread();
+        // Try cache before hitting disk. A preview load (a thumbnail, its images decoded
+        // downscaled) parses its own copy: it neither takes nor publishes the pooled model.
+        const bool sharePool = (g_imageDecodeMaxDimension == 0);
         auto cached = sharePool ? ModelPool::getGLTF(poolKey) : nullptr;
         if (cached){
             model.gltfModel = cached;
@@ -4439,6 +4445,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 ModelPool::addGLTF(poolKey, model.gltfModel);
             }
         }
+    }
+
+    // Every entity of the file shares the pooled model, and a load appends synthetic buffers to
+    // it (once per key): loads of a pooled model take turns, a game's loading thread with the
+    // main thread included
+    std::unique_lock<std::recursive_mutex> pooledModelLock;
+    if (ModelPool::getGLTF(poolKey) == model.gltfModel) {
+        pooledModelLock = std::unique_lock<std::recursive_mutex>(getPooledGLTFMutex());
     }
 
     // Build parent map and collect all nodes that own a mesh primitive.
@@ -4566,8 +4580,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
 
     // cullingMode is the user's (a glTF has none to give): a load keeps it
-    // from what places the vertices: the scene root (on the entity) and the baked offset
-    const Matrix4 placedMatrix = (bakeSceneRoot && bakeMeshOffset) ? meshOffset : matrix * meshOffset;
+    // from what places the vertices: the scene root (on the entity) and the baked offset; an
+    // entity the root does not place has only the offset (none when the mesh cannot be baked)
+    const Matrix4 placedMatrix = (bakeSceneRoot && !bakingFlatten) ? meshOffset : matrix * meshOffset;
     mesh.windingOrder = (placedMatrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
     if (asyncLoad) {

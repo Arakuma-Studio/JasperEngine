@@ -70,7 +70,9 @@ namespace {
     }
 
     // a .gltf (+ .bin) with the triangle on the given nodes and scene roots
-    fs::path writeGltf(const std::string& name, const nlohmann::json& nodes, const nlohmann::json& roots) {
+    // morph: the primitive also has a morph target (the normals' view as its POSITION
+    // displacements), which the bake rejects
+    fs::path writeGltf(const std::string& name, const nlohmann::json& nodes, const nlohmann::json& roots, bool morph = false) {
         const fs::path dir = fs::temp_directory_path() / "jasperengine-editor-tests-gltf";
         fs::create_directories(dir);
         const std::vector<unsigned char> buffer = triangleBuffer();
@@ -95,6 +97,9 @@ namespace {
                 {{"bufferView", 1}, {"componentType", 5126}, {"count", 3}, {"type", "VEC3"}},
                 {{"bufferView", 2}, {"componentType", 5123}, {"count", 3}, {"type", "SCALAR"}}}},
         };
+        if (morph) {
+            gltf["meshes"][0]["primitives"][0]["targets"] = {{{"POSITION", 1}}};
+        }
         const fs::path path = dir / (name + ".gltf");
         std::ofstream(path) << gltf.dump(2);
         return path;
@@ -237,7 +242,7 @@ TEST_F(GltfMeshOffset, InstancesAndReloadsShareOneBake) {
     expectPositions(scene.getComponent<MeshComponent>(first.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
 }
 
-TEST_F(GltfMeshOffset, OffThreadLoadLeavesThePooledModel) {
+TEST_F(GltfMeshOffset, PreviewLoadLeavesThePooledModel) {
     const fs::path path = writeGltf("offthread", nestedNodes, {0});
     Scene scene;
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
@@ -247,7 +252,7 @@ TEST_F(GltfMeshOffset, OffThreadLoadLeavesThePooledModel) {
     const std::shared_ptr<tinygltf::Model> shared = ModelPool::getGLTF(MeshSystem::getModelFilenameKey(path.string()));
     ASSERT_EQ(shared, scene.getComponent<ModelComponent>(pooled.getEntity()).gltfModel);
 
-    // a thumbnail load parses its own copy, which it bakes
+    // a thumbnail load (images decoded downscaled) parses its own copy, which it bakes
     Scene preview;
     Model thumbnail(&preview);
     // on a thread flagged async, as ProjectWindow's thumbnail worker (no AsyncThreadScope: its
@@ -255,13 +260,67 @@ TEST_F(GltfMeshOffset, OffThreadLoadLeavesThePooledModel) {
     bool loaded = false;
     std::thread worker([&]() {
         Engine::startAsyncThread();
+        MeshSystem::setImageDecodeMaxDimension(256);
         loaded = preview.getSystem<MeshSystem>()->loadGLTF(thumbnail.getEntity(), path.string());
+        MeshSystem::setImageDecodeMaxDimension(0);
     });
     worker.join();
     ASSERT_TRUE(loaded);
     EXPECT_NE(preview.getComponent<ModelComponent>(thumbnail.getEntity()).gltfModel, shared);
     EXPECT_EQ(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(path.string())), shared);
     expectPositions(preview.getComponent<MeshComponent>(thumbnail.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
+}
+
+TEST_F(GltfMeshOffset, LoadingThreadSharesThePooledModel) {
+    // a game's loading thread (Engine.startAsyncThread, full-resolution images) and the main
+    // thread load instances of one file at once: they share the pooled model, the main thread
+    // its first load's bake, the loading thread (foliage chunks) one it appends meanwhile
+    const fs::path path = writeGltf("loadingthread", nestedNodes, {0});
+    const std::string key = MeshSystem::getModelFilenameKey(path.string());
+
+    Scene first;
+    Model pooled(&first);
+    ASSERT_TRUE(first.getSystem<MeshSystem>()->loadGLTF(pooled.getEntity(), path.string()));
+    const std::shared_ptr<tinygltf::Model> shared = ModelPool::getGLTF(key);
+    ASSERT_EQ(shared, first.getComponent<ModelComponent>(pooled.getEntity()).gltfModel);
+    const unsigned char* baked = positionData(first.getComponent<MeshComponent>(pooled.getEntity()));
+    ASSERT_NE(baked, nullptr);
+
+    constexpr int count = 8;
+    Scene workerScene;
+    Scene mainScene;
+    std::vector<std::unique_ptr<Model>> workerModels, mainModels;
+    for (int i = 0; i < count; i++) {
+        workerModels.push_back(std::make_unique<Model>(&workerScene));
+        mainModels.push_back(std::make_unique<Model>(&mainScene));
+    }
+    bool workerLoaded = true;
+    std::thread worker([&]() {
+        Engine::startAsyncThread();
+        for (auto& model : workerModels)
+            workerLoaded = workerScene.getSystem<MeshSystem>()->loadGLTF(model->getEntity(), path.string(), false, true, false, true) && workerLoaded;
+    });
+    bool mainLoaded = true;
+    for (auto& model : mainModels)
+        mainLoaded = mainScene.getSystem<MeshSystem>()->loadGLTF(model->getEntity(), path.string()) && mainLoaded;
+    worker.join();
+    ASSERT_TRUE(workerLoaded);
+    ASSERT_TRUE(mainLoaded);
+
+    EXPECT_EQ(ModelPool::getGLTF(key), shared);
+    const unsigned char* chunkBake = positionData(workerScene.getComponent<MeshComponent>(workerModels[0]->getEntity()));
+    EXPECT_NE(chunkBake, baked);
+    for (int i = 0; i < count; i++) {
+        EXPECT_EQ(mainScene.getComponent<ModelComponent>(mainModels[i]->getEntity()).gltfModel, shared) << i;
+        const MeshComponent& mesh = mainScene.getComponent<MeshComponent>(mainModels[i]->getEntity());
+        EXPECT_EQ(positionData(mesh), baked) << i;
+        expectPositions(mesh, {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
+
+        EXPECT_EQ(workerScene.getComponent<ModelComponent>(workerModels[i]->getEntity()).gltfModel, shared) << i;
+        const MeshComponent& chunk = workerScene.getComponent<MeshComponent>(workerModels[i]->getEntity());
+        EXPECT_EQ(positionData(chunk), chunkBake) << i;
+        expectPositions(chunk, {Vector3(1, 2, 6), Vector3(3, 2, 6), Vector3(1, 4, 6)});
+    }
 }
 
 TEST_F(GltfMeshOffset, SceneLoadKeepsTheSavedRootTransform) {
@@ -298,6 +357,15 @@ TEST_F(GltfMeshOffset, FoliageBakesTheWholeNodeTransform) {
     const MeshComponent& rootMesh = scene.getComponent<MeshComponent>(rootChunk.getEntity());
     expectPositions(rootMesh, {Vector3(0, 0, 3), Vector3(-1, 0, 3), Vector3(0, 1, 3)});
     EXPECT_EQ(rootMesh.windingOrder, WindingOrder::CW);
+
+    // a mesh that cannot be baked (a morph target) under a mirrored root keeps its vertices,
+    // and the winding of what is applied to them: nothing
+    const fs::path morph = writeGltf("foliage-morph", rootNodes, {0}, true);
+    Model morphChunk(&scene);
+    ASSERT_TRUE(meshSystem->loadGLTF(morphChunk.getEntity(), morph.string(), false, true, false, true));
+    const MeshComponent& morphMesh = scene.getComponent<MeshComponent>(morphChunk.getEntity());
+    expectPositions(morphMesh, {Vector3(0, 0, 0), Vector3(1, 0, 0), Vector3(0, 1, 0)});
+    EXPECT_EQ(morphMesh.windingOrder, WindingOrder::CCW);
     EXPECT_GE(editor::Project::countGltfExternalBuffers(root, true), rootMesh.numExternalBuffers);
 
     // a file without node transforms is not baked (and renders as before)
