@@ -7,12 +7,19 @@
 #include "Log.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
+#include "pose/ModelRig.h"
 #include "pose/PoseFile.h"
 
 #include <cmath>
+#include <utility>
 #include <vector>
 
 using namespace jasperengine;
+
+namespace {
+    // how often a failed animator tries to load again
+    constexpr float FAILED_RETRY_SECONDS = 1.0f;
+}
 
 PoseAnimatorSystem::PoseAnimatorSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<PoseAnimatorComponent>());
@@ -20,11 +27,18 @@ PoseAnimatorSystem::PoseAnimatorSystem(Scene* scene): SubSystem(scene){
 
 bool PoseAnimatorSystem::fail(PoseAnimatorComponent& animator, const std::string& message){
     pose::PoseAnimatorRuntime& runtime = *animator.runtime;
+    // a disabled animator leaves the bones as they were before it
+    restoreBones(runtime);
     runtime.failed = true;
     runtime.loading = false;
     runtime.error = message;
+    runtime.retryTimer = 0.0f;
     animator.needsLoad = false;
-    Log::error("Pose Animator: %s", message.c_str());
+    // the same error again (a retry of a file still broken) is not logged again
+    if (message != runtime.loggedError){
+        Log::error("Pose Animator: %s", message.c_str());
+        runtime.loggedError = message;
+    }
     return false;
 }
 
@@ -37,13 +51,18 @@ bool PoseAnimatorSystem::startLoad(PoseAnimatorComponent& animator){
     // the bones keep what the previous runtime wrote: its blend state says what is under it
     if (animator.runtime){
         runtime->blend = animator.runtime->blend;
+        runtime->blendEntities = animator.runtime->blendEntities;
+        if (animator.runtime->path == animator.animation){
+            runtime->loggedError = animator.runtime->loggedError;
+        }
     }
     runtime->path = animator.animation;
     runtime->loading = true;
     animator.runtime = runtime;
 
     if (animator.animation.empty()){
-        // nothing to play, not an error
+        // nothing to play, not an error: the bones get their base pose back
+        restoreBones(*runtime);
         runtime->loading = false;
         animator.needsLoad = false;
         return false;
@@ -92,10 +111,36 @@ bool PoseAnimatorSystem::buildRuntime(Entity entity, PoseAnimatorComponent& anim
     }
 
     runtime.model = entity;
-    runtime.modelFile = model->filename;
+    runtime.modelFile = model->loadedFilename;
 
-    // the rig, the realised keys and the frames come with the pose maths (phase 1)
-    return fail(animator, "the pose rig is not available in this build");
+    pose::ModelRigInfo rigInfo;
+    std::vector<Entity> boneEntities;
+    std::vector<Matrix4> bridges;
+    std::string error;
+    if (!pose::buildModelRig(scene, entity, rigInfo, boneEntities, &bridges, &error)){
+        return fail(animator, "'" + scene->getEntityName(entity) + "': " + error);
+    }
+    if (!runtime.build(rigInfo.rig, &error)){
+        return fail(animator, animator.animation + ": " + error);
+    }
+
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+        const int bone = runtime.rig->boneIndex(pose::boneAt(b));
+        runtime.slotEntities[b] = (bone >= 0 && bone < (int)boneEntities.size()) ? boneEntities[bone] : NULL_ENTITY;
+        runtime.bridgeRotationInverse[b] = Quaternion();
+        if (bone >= 0 && bone < (int)bridges.size()){
+            Vector3 position, scale;
+            Quaternion rotation;
+            bridges[bone].decompose(position, scale, rotation);
+            runtime.bridgeRotationInverse[b] = rotation.inverse();
+            if (b == pose::boneIndex(pose::HumanBone::Hips)){
+                runtime.hipsBridgeInverse = bridges[bone].inverse();
+            }
+        }
+    }
+    // bones of another model file (reloaded): those get their base back, the others keep blending
+    restoreBones(runtime, true);
+    return true;
 }
 
 bool PoseAnimatorSystem::bonesAlive(const pose::PoseAnimatorRuntime& runtime) const{
@@ -103,6 +148,39 @@ bool PoseAnimatorSystem::bonesAlive(const pose::PoseAnimatorRuntime& runtime) co
         if (bone != NULL_ENTITY && !scene->isEntityCreated(bone)) return false;
     }
     return true;
+}
+
+void PoseAnimatorSystem::restoreBones(pose::PoseAnimatorRuntime& runtime, bool onlyStale){
+    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+        pose::PoseBlendBone& blend = runtime.blend[b];
+        const Entity bone = runtime.blendEntities[b];
+        if (onlyStale && bone == runtime.slotEntities[b]) continue;
+        if (bone != NULL_ENTITY && scene->isEntityCreated(bone)){
+            if (Transform* transform = scene->findComponent<Transform>(bone)){
+                bool changed = false;
+                // what the animator wrote is still there: nobody (no clip) wrote the bone since
+                if (blend.rotationActive && transform->rotation == blend.writtenRotation){
+                    transform->rotation = blend.baseRotation;
+                    changed = true;
+                }
+                if (blend.positionActive && transform->position == blend.writtenPosition){
+                    transform->position = blend.basePosition;
+                    changed = true;
+                }
+                if (changed) transform->needUpdate = true;
+            }
+        }
+        blend.reset();
+        runtime.blendEntities[b] = NULL_ENTITY;
+    }
+}
+
+void PoseAnimatorSystem::onComponentRemoved(Entity entity, ComponentId componentId){
+    if (componentId != scene->getComponentId<PoseAnimatorComponent>()) return;
+    PoseAnimatorComponent* animator = scene->findComponent<PoseAnimatorComponent>(entity);
+    if (animator && animator->runtime){
+        restoreBones(*animator->runtime);
+    }
 }
 
 void PoseAnimatorSystem::applyPose(pose::PoseAnimatorRuntime& runtime, const pose::HumanPose& pose, float weight){
@@ -116,11 +194,15 @@ void PoseAnimatorSystem::applyPose(pose::PoseAnimatorRuntime& runtime, const pos
         // weight 0 from the start: the bones were never touched, leave them
         if (weight <= 0.0f && !blend.rotationActive) continue;
 
-        transform->rotation = blend.blendRotation(transform->rotation, pose.rotations[b], weight);
+        // skeleton local = bridge * Transform local
+        const Quaternion rotation = runtime.bridgeRotationInverse[b] * pose.rotations[b];
+        transform->rotation = blend.blendRotation(transform->rotation, rotation, weight);
         if (b == pose::boneIndex(pose::HumanBone::Hips)){
-            transform->position = blend.blendPosition(transform->position, pose.hipsPosition, weight);
+            const Vector3 position = runtime.hipsBridgeInverse * pose.hipsPosition;
+            transform->position = blend.blendPosition(transform->position, position, weight);
         }
         transform->needUpdate = true;
+        runtime.blendEntities[b] = bone;
     }
 }
 
@@ -147,6 +229,8 @@ void PoseAnimatorSystem::resetAnimators(){
         animator.started = false;
         animator.needsLoad = true;
         animator.runtime.reset();
+        // play's scripts and C++ libraries are gone after it: their callbacks with them
+        animator.onFinish.clear();
     }
 }
 
@@ -180,6 +264,17 @@ void PoseAnimatorSystem::update(double dt){
             animator.started = true;
         }
 
+        // a failed animator tries its file again now and then: fixed (written, re-set to the same
+        // path, a sidecar corrected), it plays; still broken, the same error is not logged again
+        if (!animator.needsLoad && animator.runtime && animator.runtime->failed && !animator.animation.empty()){
+            animator.runtime->retryTimer += (float)dt;
+            if (animator.runtime->retryTimer >= FAILED_RETRY_SECONDS){
+                animator.runtime->retryTimer = 0.0f;
+                animator.needsLoad = true;
+                animator.runtime->loading = false;
+            }
+        }
+
         if (animator.needsLoad){
             if (!startLoad(animator)){
                 continue;
@@ -190,9 +285,18 @@ void PoseAnimatorSystem::update(double dt){
             }
             animator.runtime->loading = false;
             animator.needsLoad = false;
-            if (animator.runtime->pending.key >= 0){
-                animator.runtime->startTransition(animator.runtime->pending);
-                animator.runtime->pending = pose::PoseGoTo();
+            pose::PoseAnimatorRuntime& loaded = *animator.runtime;
+            if (loaded.pending.key >= 0){
+                loaded.startTransition(loaded.pending);
+                loaded.pending = pose::PoseGoTo();
+            }else if (animator.playing && animator.speed < 0.0f && !loaded.data.settings.loop && animator.time <= 0.0f){
+                // a one-shot played backwards starts at its end
+                animator.time = loaded.length;
+            }else if (!animator.playing && animator.time == 0){
+                // not playing (no autoplay, or stopped before the load): key pose 0, as stop shows it
+                loaded.transitionActive = true;
+                loaded.transitionArrived = true;
+                loaded.transitionKey = 0;
             }
         }
 
@@ -202,14 +306,15 @@ void PoseAnimatorSystem::update(double dt){
         pose::PoseAnimatorRuntime& runtime = *animator.runtime;
 
         // the model reloaded under us (file changed): build again on its new bones
-        if (!bonesAlive(runtime)){
+        const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+        if (!bonesAlive(runtime) || (model && !model->needUpdateModel && model->loadedFilename != runtime.modelFile)){
             animator.needsLoad = true;
             continue;
         }
 
         pose::HumanPose shown = runtime.hasDisplayed ? runtime.displayed : runtime.frames[0];
         if (runtime.transitionActive){
-            runtime.sampleTransition((float)dt * std::abs(animator.speed), shown);
+            runtime.sampleTransition(runtime.transitionPaused ? 0.0f : (float)dt * std::abs(animator.speed), shown);
         }else{
             if (pose::advancePlayback(animator.time, animator.playing, (float)dt, animator.speed,
                                       runtime.length, runtime.data.settings.loop)){

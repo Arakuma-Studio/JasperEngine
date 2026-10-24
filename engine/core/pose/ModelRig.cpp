@@ -30,6 +30,8 @@ namespace {
         if (accessorIndex < 0 || accessorIndex >= (int)gltf.accessors.size()) return false;
         const tinygltf::Accessor& accessor = gltf.accessors[accessorIndex];
         if (element >= accessor.count) return false;
+        // the sparse substitution is not applied: refused rather than read wrong
+        if (accessor.sparse.isSparse) return false;
         if (accessor.bufferView < 0 || accessor.bufferView >= (int)gltf.bufferViews.size()) return false;
         const tinygltf::BufferView& view = gltf.bufferViews[accessor.bufferView];
         if (view.buffer < 0 || view.buffer >= (int)gltf.buffers.size()) return false;
@@ -215,6 +217,8 @@ std::shared_ptr<PoseSkin> pose::buildSkin(Scene* scene, Entity model, const Skel
     for (const SkinnedPrimitive& primitive : primitives){
         size_t first = (base % stride == 0) ? 0 : stride - base % stride;
         for (size_t v = first; v < primitive.count && out->vertices.size() < PoseSkin::MAX_VERTICES; v += stride){
+            // sparse accessors (substituted values) and accessors without a buffer view are
+            // not read: their vertices are left out of the sample (readAccessor fails)
             float position[3], joints[4], weights[4];
             if (!readAccessor(gltf, primitive.position, v, 3, position) ||
                     !readAccessor(gltf, primitive.joints, v, 4, joints) ||
@@ -285,28 +289,55 @@ PoseRigCache& PoseRigCache::shared(){
     return cache;
 }
 
+bool PoseRigCache::find(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
+                        const Skeleton& skeleton, ModelRigInfo& out){
+    std::lock_guard<std::mutex> lock(mutex);
+    // the data of a reloaded or unloaded model is gone: its rigs too
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& entry){ return entry.hasSource && entry.source.expired(); }), entries.end());
+    for (const Entry& entry : entries){
+        if (entry.modelPath != modelPath || entry.stamp != sidecarStamp) continue;
+        if (entry.hasSource != (source != nullptr)) continue;
+        if (entry.hasSource && entry.source.lock() != source) continue;
+        if (!sameSkeleton(entry.skeleton, skeleton)) continue;
+        out = entry.info;
+        return true;
+    }
+    return false;
+}
+
 bool PoseRigCache::get(const std::string& modelPath, const std::string& sidecarStamp, const Skeleton& skeleton,
                        const HumanoidOverrides& overrides, const std::function<std::shared_ptr<PoseSkin>()>& skinFactory,
                        ModelRigInfo& out, std::string* error){
-    std::lock_guard<std::mutex> lock(mutex);
-    for (const Entry& entry : entries){
-        if (entry.modelPath == modelPath && entry.stamp == sidecarStamp && sameSkeleton(entry.skeleton, skeleton)){
-            out = entry.info;
-            return true;
-        }
-    }
+    return get(modelPath, sidecarStamp, nullptr, skeleton, overrides, skinFactory, out, error);
+}
 
+bool PoseRigCache::get(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
+                       const Skeleton& skeleton, const HumanoidOverrides& overrides,
+                       const std::function<std::shared_ptr<PoseSkin>()>& skinFactory, ModelRigInfo& out, std::string* error){
+    if (find(modelPath, sidecarStamp, source, skeleton, out)) return true;
+
+    // built without the lock: the skin factory reads the scene, and builds take a while
     ModelRigInfo info;
     if (!resolveHumanoid(skeleton, overrides, info.humanoid, error, &info.notes)) return false;
-    info.skin = skinFactory ? skinFactory() : nullptr;
-    info.rig = std::make_shared<PoseRig>();
+    std::shared_ptr<PoseSkin> skin = skinFactory ? skinFactory() : nullptr;
+    auto rig = std::make_shared<PoseRig>();
     // the skin first: it sets the floor and the sole offsets the neutral pose is grounded with
-    if (info.skin) info.rig->setSkin(info.skin);
-    if (!info.rig->build(skeleton, info.humanoid, error)) return false;
+    if (skin) rig->setSkin(skin);
+    if (!rig->build(skeleton, info.humanoid, error)) return false;
+    info.skin = skin;
+    info.rig = rig;
 
-    // one rig per model file: an older sidecar or skeleton is replaced
+    std::lock_guard<std::mutex> lock(mutex);
+    // one rig per model file: an older sidecar, model data or skeleton is replaced
     entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const Entry& entry){ return entry.modelPath == modelPath; }), entries.end());
-    entries.push_back({modelPath, sidecarStamp, skeleton, info});
+    Entry entry;
+    entry.modelPath = modelPath;
+    entry.stamp = sidecarStamp;
+    entry.source = source;
+    entry.hasSource = source != nullptr;
+    entry.skeleton = skeleton;
+    entry.info = info;
+    entries.push_back(std::move(entry));
     out = info;
     return true;
 }
@@ -352,7 +383,11 @@ bool pose::buildModelRig(Scene* scene, Entity model, ModelRigInfo& out, std::vec
     }
 
     const std::string modelPath = modelComponent->filename;
-    if (!PoseRigCache::shared().get(modelPath, stamp, skeleton, overrides,
+    // the loaded data identifies the file's content: a reload is a new rig
+    std::shared_ptr<const void> source;
+    if (modelComponent->gltfModel) source = modelComponent->gltfModel;
+    else if (modelComponent->objModel) source = modelComponent->objModel;
+    if (!PoseRigCache::shared().get(modelPath, stamp, source, skeleton, overrides,
             [&]() { return buildSkin(scene, model, skeleton, boneEntities); }, out, error)){
         if (error && !error->empty()) *error = modelPath + ": " + *error;
         return false;

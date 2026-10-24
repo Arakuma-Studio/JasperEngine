@@ -91,8 +91,13 @@ entity names as bone names, parents from the Transform hierarchy restricted to b
 copy of the skinned meshes' positions, joints and weights (find where the engine keeps them after
 upload; if a platform frees CPU buffers, keep a sample copy at load time for models whose entity
 has a PoseAnimator, or fall back to the sole estimate: `skin == nullptr`). A
-`PoseRigCache` keyed by (model file path, sidecar modification stamp) shares rigs between
-animators using the same model.
+`PoseRigCache` shares rigs (`std::shared_ptr<const PoseRig>`) between animators using the same
+model, keyed by (model file path, the sidecar's content as its stamp: exported games have no file
+modification times, the loaded model data held weakly as the content identity: a reloaded file is
+new data and its old entries are dropped, the skeleton). The editor clears the cache when a project
+closes. Implemented in `engine/core/pose/ModelRig.{h,cpp}` (`buildModelRig` runs the whole path for a
+scene Model; non-bone nodes between bones or above the root bone are folded into the rest TRS and
+returned as bridges).
 
 ### 3.2 `pose/PoseMetrics.{h,cpp}`
 
@@ -121,7 +126,7 @@ PoseMetrics computeMetrics(const PoseRig&, const HumanPose&, const BodyPose&);
 
 ```cpp
 struct PoseAnimatorComponent {
-    std::string animation;   // project-relative .poseanim
+    std::string animation;   // .poseanim, relative to the assets folder (like ModelComponent::filename)
     bool autoplay = true;
     float speed = 1.0f;
     float weight = 1.0f;     // 0..1 blend over whatever the ActionSystem wrote this frame
@@ -131,7 +136,10 @@ struct PoseAnimatorComponent {
 };
 ```
 
-Lives on the Model entity. Registered like every component (`EntityRegistry`, Catalog
+Lives on the Model entity. Runtime-only additions of the implementation: `started` (the initial
+playing state was decided: autoplay, or a script's play/pause/stop/goToPose before the first update)
+and the `onFinish` callback (`FunctionSubscribe<void()>`, cleared when Play stops, never restored
+from a scene snapshot). Registered like every component (`EntityRegistry`, Catalog
 properties `animation`, `autoplay`, `speed`, `weight`, `Stream` encode/decode under the YAML key
 `poseanimator`, `Factory` C++ scene code generation, Inspector section, Add Component menu under
 Animation, `docs/unity-glossary.md` row). The Inspector section shows the asset field (with

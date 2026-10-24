@@ -62,21 +62,29 @@ namespace jasperengine::pose {
     // (the engine file API has no modification times in exported games, the text is tiny)
     JASPERENGINE_API std::string humanoidSidecarStamp(const std::string& modelPath);
 
+    // A cached rig is shared: read-only (const) for everyone
     struct JASPERENGINE_API ModelRigInfo {
-        std::shared_ptr<PoseRig> rig;          // built, skin set (when there is one)
-        std::shared_ptr<PoseSkin> skin;        // may be nullptr
+        std::shared_ptr<const PoseRig> rig;    // built, skin set (when there is one)
+        std::shared_ptr<const PoseSkin> skin;  // may be nullptr
         HumanoidMap humanoid;
         std::vector<std::string> notes;
     };
 
-    // Rigs shared by model file and sidecar: get() returns the cached rig when the model path,
-    // the sidecar stamp and the skeleton (names, parents, rest TRS) all match, else builds it
-    // (resolveHumanoid + PoseRig::build + setSkin) and caches it. Thread safe.
+    // Rigs shared by model file and sidecar: get() returns the cached rig when the model path, the
+    // sidecar stamp, the model's loaded data (`source`: the ModelComponent's gltfModel/objModel,
+    // held weakly, so a reloaded file is new data) and the skeleton (names, parents, rest TRS)
+    // all match, else builds it (resolveHumanoid + setSkin + PoseRig::build) outside the lock and
+    // caches it. Entries whose source data is gone (model reloaded or unloaded) are dropped.
+    // Thread safe. The editor clears it when a project closes.
     class JASPERENGINE_API PoseRigCache {
     public:
         static PoseRigCache& shared();
 
-        // `skinFactory` builds the skin when a new rig is needed (may return nullptr)
+        // `skinFactory` builds the skin when a new rig is needed (may return nullptr); `source`
+        // nullptr: no content identity (the path, stamp and skeleton decide)
+        bool get(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
+                 const Skeleton& skeleton, const HumanoidOverrides& overrides,
+                 const std::function<std::shared_ptr<PoseSkin>()>& skinFactory, ModelRigInfo& out, std::string* error);
         bool get(const std::string& modelPath, const std::string& sidecarStamp, const Skeleton& skeleton,
                  const HumanoidOverrides& overrides, const std::function<std::shared_ptr<PoseSkin>()>& skinFactory,
                  ModelRigInfo& out, std::string* error);
@@ -89,9 +97,13 @@ namespace jasperengine::pose {
         struct Entry {
             std::string modelPath;
             std::string stamp;
+            std::weak_ptr<const void> source;
+            bool hasSource = false;
             Skeleton skeleton;
             ModelRigInfo info;
         };
+        bool find(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
+                  const Skeleton& skeleton, ModelRigInfo& out);
         mutable std::mutex mutex;
         std::vector<Entry> entries;
     };

@@ -11,8 +11,9 @@
 
 namespace jasperengine{
 
-    // Plays a Pose Animation (.poseanim) live on a humanoid Model (spec: pose animation phase 2,
-    // section 4.3). Lives on the Model's GameObject; Model::getPoseAnimator() returns it.
+    // Plays a pose animation (.poseanim) live on a humanoid Model: playback, a blend weight over
+    // the Model's animation clips and live goToPose transitions. Lives on the Model's GameObject
+    // (Model::getPoseAnimator() returns it); runs in play mode and in games.
     class JASPERENGINE_API PoseAnimator: public EntityHandle{
     public:
         // adds the Pose Animator component to the entity when it has none
@@ -24,13 +25,14 @@ namespace jasperengine{
         PoseAnimator(PoseAnimator&& rhs) noexcept;
         PoseAnimator& operator=(PoseAnimator&& rhs) noexcept;
 
-        // project-relative .poseanim; setting it loads the file again (even the same path)
+        // .poseanim path relative to the assets folder; setting it loads the file again (even the same path)
         void setAnimation(const std::string& path);
         std::string getAnimation() const;
 
         void play();
+        // stops playback; a live goToPose transition freezes where it is
         void pause();
-        // back to time 0, showing pose 0
+        // back to time 0, showing key pose 0
         void stop();
         bool isPlaying() const;
 
