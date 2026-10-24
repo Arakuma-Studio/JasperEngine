@@ -360,9 +360,10 @@ std::string Text::getCustomShader() const{
 void Text::setShaderUniform(const std::string& name, const Vector4& value){
     UIComponent& ui = getComponent<UIComponent>();
 
-    if (ShaderUniforms::set(ui.shaderUniforms, name, value))
+    if (ShaderUniforms::set(ui.shaderUniforms, name, value)){
         ui.needUpdateShaderUniforms = true;
         markChanged<UIComponent>();
+    }
 }
 
 void Text::setShaderUniform(const std::string& name, const Vector3& value){

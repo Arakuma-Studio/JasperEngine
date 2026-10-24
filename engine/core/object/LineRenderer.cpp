@@ -239,9 +239,10 @@ std::string LineRenderer::getCustomShader() const{
 void LineRenderer::setShaderUniform(const std::string& name, const Vector4& value){
     LineRendererComponent& lines = getComponent<LineRendererComponent>();
 
-    if (ShaderUniforms::set(lines.shaderUniforms, name, value))
+    if (ShaderUniforms::set(lines.shaderUniforms, name, value)){
         lines.needUpdateShaderUniforms = true;
         markChanged<LineRendererComponent>();
+    }
 }
 
 void LineRenderer::setShaderUniform(const std::string& name, const Vector3& value){

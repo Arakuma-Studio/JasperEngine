@@ -136,9 +136,10 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
         markChanged<MeshComponent>();
         if (reload)
             mesh.needReload = true;
-        if (paramsChanged)
+        if (paramsChanged){
             mesh.needUpdateShaderUniforms = true;
             markChanged<MeshComponent>();
+        }
     }
 }
 
@@ -457,9 +458,10 @@ std::string Mesh::getCustomDepthShader() const{
 void Mesh::setShaderUniform(const std::string& name, const Vector4& value){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
-    if (ShaderUniforms::set(mesh.shaderUniforms, name, value))
+    if (ShaderUniforms::set(mesh.shaderUniforms, name, value)){
         mesh.needUpdateShaderUniforms = true;
         markChanged<MeshComponent>();
+    }
 }
 
 void Mesh::setShaderUniform(const std::string& name, const Vector3& value){

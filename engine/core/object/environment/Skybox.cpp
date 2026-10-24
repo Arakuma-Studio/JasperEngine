@@ -186,9 +186,10 @@ std::string Skybox::getCustomShader() const{
 void Skybox::setShaderUniform(const std::string& name, const Vector4& value){
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
-    if (ShaderUniforms::set(sky.shaderUniforms, name, value))
+    if (ShaderUniforms::set(sky.shaderUniforms, name, value)){
         sky.needUpdateShaderUniforms = true;
         markChanged<SkyboxComponent>();
+    }
 }
 
 void Skybox::setShaderUniform(const std::string& name, const Vector3& value){

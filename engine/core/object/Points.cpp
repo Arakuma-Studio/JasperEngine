@@ -367,9 +367,10 @@ std::string Points::getCustomShader() const{
 void Points::setShaderUniform(const std::string& name, const Vector4& value){
     PointsComponent& points = getComponent<PointsComponent>();
 
-    if (ShaderUniforms::set(points.shaderUniforms, name, value))
+    if (ShaderUniforms::set(points.shaderUniforms, name, value)){
         points.needUpdateShaderUniforms = true;
         markChanged<PointsComponent>();
+    }
 }
 
 void Points::setShaderUniform(const std::string& name, const Vector3& value){
