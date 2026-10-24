@@ -3,12 +3,24 @@ type=water: the grid, the material preset and the underwater pass it adds, one u
 the Rigidbody buoyancy fields, buoyancy in Play (a box floats, one without buoyancy sinks), the
 Lua surface queries (Water.getHeight / getNormal / isUnderwater, the same waves as the
 shader), the automatic library:underwater pass (on under the surface, off above, the surface
-height and colours written into it) and screenshots of the water from above and below
-(screenshots/water_above.png, water_below.png, water_up.png in the scratch project)."""
+height and colours written into it), screenshots of the water from above and below
+(screenshots/water_above.png, water_below.png, water_up.png in the scratch project), and that a
+library:water material without textures keeps the flat, grey defaults it had (no ripples:
+the preset's BUILTIN_TEXTURES alone picks the engine's ripples and noise)."""
 
 from __future__ import annotations
 
+import asyncio
+import importlib.util
+from pathlib import Path
+
 from harness import Editor, find_key
+
+# test_play.py's PNG decoder (the tests are not a package)
+_spec = importlib.util.spec_from_file_location("water_test_play", Path(__file__).with_name("test_play.py"))
+_play = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_play)
+decode_png = _play.decode_png
 
 EDITOR = {"create": True, "name": "WaterTest"}
 TIMEOUT = 900
@@ -41,7 +53,7 @@ async def test_menu_entry_creates_water(ed: Editor):
     mesh = entity["components"]["mesh"]
     ed.check_eq(mesh.get(M + "shader"), "library:water", f"water material: {mesh!r}")
     features = mesh.get(M + "shaderFeatures") or []
-    for feature in ("WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"):
+    for feature in ("BUILTIN_TEXTURES", "WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"):
         ed.check(feature in features, f"preset feature {feature}: {features!r}")
     ed.check_eq(mesh.get(M + "lighting"), "pixel", "lit per pixel")
 
@@ -154,10 +166,58 @@ async def test_underwater_pass_switches(ed: Editor):
 async def test_caustics_and_absorption_screenshot(ed: Editor):
     # every feature, from above, stopped (the game view through the main camera)
     await ed.call("set_properties", entity="Water", values={"mesh": {
-        M + "shaderFeatures": ["WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "ABSORPTION", "REFRACTION", "CAUSTICS"],
+        M + "shaderFeatures": ["BUILTIN_TEXTURES", "WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "ABSORPTION", "REFRACTION", "CAUSTICS"],
         M + "shaderParams": {"absorptionDepth": 4, "causticsStrength": 2}}})
     shot = await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_caustics.png"})
     ed.check(shot.images, "screenshot with caustics")
     r = await ed.call("check_shader", timeout=300)
     errors = [f for f in r.get("findings", []) if f.get("severity") == "error"]
     ed.check(not errors, f"the water's variant has no check error: {errors!r}")
+
+
+def roughness(png: bytes) -> int:
+    """How many horizontal neighbours (green) in the middle half of an image differ by more than 4
+    (a smooth gradient: almost none)."""
+    w, h, channels, rows = decode_png(png)
+    steps = 0
+    for row in rows[h // 4: 3 * h // 4]:
+        for x in range(w // 4, 3 * w // 4):
+            steps += abs(row[x * channels + 1] - row[(x + 1) * channels + 1]) > 4
+    return steps
+
+
+async def test_old_materials_keep_flat_defaults(ed: Editor):
+    # the manifest: unset textures stay flat and grey, BUILTIN_TEXTURES picks the built-in ones
+    entry = (await ed.call("list_shaders", name="water"))["shaders"][0]
+    textures = {t["uniform"]: t for t in entry.get("textures", [])}
+    ed.check_eq(textures["u_normalTexture"]["default"], "normal", f"old normal default: {textures!r}")
+    ed.check_eq(textures["u_noiseTexture"]["default"], "gray", "old noise default")
+    ed.check_eq(textures["u_normalTexture"].get("default_with"), {"feature": "BUILTIN_TEXTURES", "default": "ripples"})
+    ed.check_eq(textures["u_noiseTexture"].get("default_with"), {"feature": "BUILTIN_TEXTURES", "default": "noise"})
+
+    # rendered: a plain library:water plane (no textures, no features, unlit) is a smooth
+    # gradient, as before (pixel-identical to the editor before these features); BUILTIN_TEXTURES
+    # ripples it
+    await ed.call("create_scene", name="Plain", path="scenes/Plain.scene")
+    plane = find_key(await ed.call("create_entity", type="plane", name="Pond"), "entity_id", "id")
+    await ed.call("set_properties", entity=plane, values={"mesh": {M + "shader": "library:water"}})
+    # at a slant, where the fresnel colour shows the normals
+    cam = find_key(await ed.call("create_entity", type="camera", name="Slant", position=[0, 1.5, 4],
+                                 rotation={"euler": [-30, 0, 0]}), "entity_id", "id")
+    await ed.call("set_main_camera", entity=cam)
+    plain = await ed.call_raw("screenshot", {"view": "game", "max_width": 400, "save_path": "screenshots/water_plain.png"})
+    ed.check(plain.images, "screenshot of the plain water")
+    flat = roughness(plain.images[0][0])
+    ed.check(flat <= 20, f"no ripples without textures ({flat} sharp neighbour steps)")
+
+    await ed.call("set_properties", entity=plane, values={"mesh": {M + "shaderFeatures": ["BUILTIN_TEXTURES"]}})
+    # the new variant compiles in the background: the old one draws until it is ready
+    ripples = 0
+    for _ in range(40):
+        rippled = await ed.call_raw("screenshot", {"view": "game", "max_width": 400, "save_path": "screenshots/water_builtin.png"})
+        ed.check(rippled.images, "screenshot with the built-in textures")
+        ripples = roughness(rippled.images[0][0])
+        if ripples > 200:
+            break
+        await asyncio.sleep(0.5)
+    ed.check(ripples > 200 and ripples > 10 * max(flat, 1), f"BUILTIN_TEXTURES ripples it ({ripples} sharp steps against {flat})")

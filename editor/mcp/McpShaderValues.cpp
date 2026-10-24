@@ -315,6 +315,9 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         Json entry = {{"uniform", texture.uniform}, {"default", textureDefaultName(texture.defaultTexture)}, {"label", texture.label}};
         if (texture.cube) entry["cube"] = true;
         if (!texture.feature.empty()) entry["feature"] = texture.feature;
+        // the default an unset slot binds instead while that define is on
+        if (!texture.featureDefaultDefine.empty())
+            entry["default_with"] = {{"feature", texture.featureDefaultDefine}, {"default", textureDefaultName(texture.featureDefaultTexture)}};
         textures.push_back(entry);
     }
     out["textures"] = textures;

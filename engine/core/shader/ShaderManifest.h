@@ -104,7 +104,15 @@ namespace jasperengine{
         bool cube = false;
         std::string label;
         std::string feature; // as ShaderManifestProperty::feature
+        // default[<DEFINE>]=<default>: what an unset slot binds instead while that @feature (or
+        // @keywords value) is on, so a material opts into a built-in texture without a file
+        // (library:water's BUILTIN_TEXTURES); empty: none
+        std::string featureDefaultDefine;
+        ShaderTextureDefault featureDefaultTexture = ShaderTextureDefault::WHITE;
         int line = 0;
+
+        // the default an unset slot binds with these defines on (ShaderReference::getEnabledFeatures)
+        ShaderTextureDefault getDefault(const std::vector<std::string>& enabledFeatures) const;
     };
 
     struct JASPERENGINE_API ShaderManifestFeature{

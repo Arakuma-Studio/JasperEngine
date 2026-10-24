@@ -3,7 +3,7 @@
 // @shader mesh
 // @name "Water"
 // @category "Nature"
-// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers (built-in ripples and foam noise by default) and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION and CAUSTICS are a few instructions (one cube map read). REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows."
+// @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION and CAUSTICS are a few instructions (one cube map read). REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows."
 // @lighting none pixel
 // @require position normals
 // @require scenedepth feature=DEPTH_FOAM
@@ -43,9 +43,10 @@
 // @property causticsDepth float 3 "Caustics fade depth (world units below the surface)" feature=CAUSTICS
 // @property buoyancy toggle 1 "Floats rigidbodies (those with a Buoyancy)"
 // @property buoyancyDepth float 0 "Floating depth (world units below the surface; 0: no bottom)"
-// @texture u_normalTexture ripples "Ripple normal map"
-// @texture u_noiseTexture noise "Foam noise (red)"
+// @texture u_normalTexture normal "Ripple normal map" default[BUILTIN_TEXTURES]=ripples
+// @texture u_noiseTexture gray "Foam noise (red)" default[BUILTIN_TEXTURES]=noise
 // @feature WAVES "Waves"
+// @feature BUILTIN_TEXTURES "Built-in ripples and foam noise (unset textures)"
 // @feature REFLECTION "Reflection (sky or reflection probe, GGX glint)"
 // @feature UNDERSIDE "Seen from below (both faces, Snell's window)"
 // @feature DEPTH_FOAM "Shore foam (reads the scene depth)"
@@ -57,10 +58,12 @@
 // Made for a horizontal surface (a plane, tessellated for WAVES: the GameObject menu's
 // 3D Object > Water is a 64 x 64 grid). Both layers sample the normal map and the foam noise
 // at the world XZ divided by their size, so the pattern is the same size whatever the mesh's
-// scale and continues across neighbouring tiles. Unset, the two textures are the engine's
+// scale and continues across neighbouring tiles. Unset, the two textures are flat (no
+// ripples) and mid grey (no noise); with BUILTIN_TEXTURES (the manifest's default[...]: it
+// only changes what an unset slot binds, the shader is the same) they are the engine's
 // built-in ripples (a seamless normal map of whole-wavenumber sines) and foam noise (seamless
-// value noise). Foam shows where the two noise layers together exceed 1 - foamAmount (more on
-// wave crests). Pixel lighting: Lambert from the ambient and the pixel lights on the water and
+// value noise), so a preset needs no image files. Foam shows where the two noise layers
+// together exceed 1 - foamAmount (more on wave crests). Pixel lighting: Lambert from the ambient and the pixel lights on the water and
 // foam colour, plus a Blinn-Phong glint of each pixel light (shadowed; GGX with REFLECTION),
 // which also makes the water more opaque. Light units: includes/lights.glsl. No shadows
 // (@state shadows=off): the surface is see-through, so the bed below stays lit.

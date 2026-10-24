@@ -1528,9 +1528,11 @@ namespace jasperengine{
 		// (includes/environment.glsl): its reflection probe, else the sky's prefiltered map
 		void applyEnvironment(ObjectRender& render, const ShaderLibraryBindings& bindings, const MeshComponent& mesh, const Transform& transform);
 		// resolves the frame block slots and the custom textures of a loaded shader, then
-		// binds the textures (false while one is still loading)
+		// binds the textures (false while one is still loading); enabledFeatures (the variant's,
+		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
 		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
-		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest);
+		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
+		                               const std::vector<std::string>& enabledFeatures = {});
 		// binds the resolved custom textures again (they changed or a render target was redrawn)
 		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
 		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);

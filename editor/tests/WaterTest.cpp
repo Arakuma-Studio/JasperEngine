@@ -291,23 +291,54 @@ TEST(Water, BuiltInTexturesTile) {
 TEST(Water, Manifests) {
     std::shared_ptr<const ShaderManifest> water = ShaderManifests::get(Water::SHADER);
     ASSERT_TRUE(water && water->present);
-    for (const char* feature : {"WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "ABSORPTION", "REFRACTION", "CAUSTICS"}) {
+    for (const char* feature : {"WAVES", "BUILTIN_TEXTURES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "ABSORPTION", "REFRACTION", "CAUSTICS"}) {
         EXPECT_TRUE(std::any_of(water->features.begin(), water->features.end(),
                     [&](const ShaderManifestFeature& f) { return f.define == feature; })) << feature;
     }
     Vector4 value;
     ASSERT_TRUE(water->getDefault("buoyancy", value));
     EXPECT_FLOAT_EQ(value.x, 1.0f);
-    for (const ShaderManifestTexture& texture : water->textures) {
-        if (texture.uniform == "u_normalTexture") EXPECT_EQ(texture.defaultTexture, ShaderTextureDefault::RIPPLES);
-        if (texture.uniform == "u_noiseTexture") EXPECT_EQ(texture.defaultTexture, ShaderTextureDefault::NOISE);
-    }
+    // unset textures keep their old defaults (flat, grey: an existing water looks the same);
+    // BUILTIN_TEXTURES picks the engine's ripples and noise instead (default[...]=)
+    const ShaderManifestTexture* normal = water->findTexture("u_normalTexture");
+    const ShaderManifestTexture* noise = water->findTexture("u_noiseTexture");
+    ASSERT_TRUE(normal && noise);
+    EXPECT_EQ(normal->getDefault({}), ShaderTextureDefault::NORMAL);
+    EXPECT_EQ(noise->getDefault({"WAVES"}), ShaderTextureDefault::GRAY);
+    EXPECT_EQ(normal->getDefault({"BUILTIN_TEXTURES", "WAVES"}), ShaderTextureDefault::RIPPLES);
+    EXPECT_EQ(noise->getDefault({"BUILTIN_TEXTURES"}), ShaderTextureDefault::NOISE);
+    EXPECT_TRUE(std::none_of(water->diagnostics.begin(), water->diagnostics.end(),
+                             [](const ShaderManifestDiagnostic& d) { return d.error; }));
 
     std::shared_ptr<const ShaderManifest> underwater = ShaderManifests::get(Water::UNDERWATER_SHADER);
     ASSERT_TRUE(underwater && underwater->present);
     EXPECT_EQ(underwater->type, ShaderType::POSTPROCESS);
     ASSERT_TRUE(underwater->getDefault("followWater", value));
     EXPECT_FLOAT_EQ(value.x, 1.0f);
+}
+
+TEST(Water, TextureDefaultRuleParsing) {
+    ShaderManifest manifest;
+    manifest.parse("// @shader mesh\n// @name \"T\"\n// @feature FANCY \"Fancy\"\n"
+                   "// @texture u_a normal \"A\" default[FANCY]=ripples\n"
+                   "// @texture u_b gray default[!FANCY]=noise\n"
+                   "// @texture u_c white default[NOPE]=noise\n"
+                   "// @texture u_d white default[FANCY]=sparkles\n", "t.frag");
+    manifest.checkComplete("t.frag", false);
+    const ShaderManifestTexture* a = manifest.findTexture("u_a");
+    const ShaderManifestTexture* b = manifest.findTexture("u_b");
+    ASSERT_TRUE(a && b);
+    EXPECT_EQ(a->featureDefaultDefine, "FANCY") << "the define keeps its case";
+    EXPECT_EQ(a->getDefault({"FANCY"}), ShaderTextureDefault::RIPPLES);
+    EXPECT_EQ(a->getDefault({}), ShaderTextureDefault::NORMAL);
+    EXPECT_EQ(b->getDefault({}), ShaderTextureDefault::NOISE) << "!FANCY: while it is off";
+    EXPECT_EQ(b->getDefault({"FANCY"}), ShaderTextureDefault::GRAY);
+    auto reported = [&](const char* text) {
+        return std::any_of(manifest.diagnostics.begin(), manifest.diagnostics.end(),
+                           [&](const ShaderManifestDiagnostic& d) { return d.message.find(text) != std::string::npos; });
+    };
+    EXPECT_TRUE(reported("default[NOPE] names undeclared feature"));
+    EXPECT_TRUE(reported("unknown @texture default 'sparkles'"));
 }
 
 TEST(Water, GameObjectMenuEntry) {

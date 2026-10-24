@@ -366,7 +366,10 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
                     label += " (cube map)";
                 if (!texture.feature.empty())
                     label += " (" + rowCondition(texture.feature) + ")";
-                out << "| `" << texture.uniform << "` | " << textureDefault(texture.defaultTexture) << " | " << escapeCell(label) << " |\n";
+                std::string fallback = textureDefault(texture.defaultTexture);
+                if (!texture.featureDefaultDefine.empty())
+                    fallback += "; " + textureDefault(texture.featureDefaultTexture) + " " + rowCondition(texture.featureDefaultDefine);
+                out << "| `" << texture.uniform << "` | " << fallback << " | " << escapeCell(label) << " |\n";
             }
         }
         if (!manifest.features.empty()){

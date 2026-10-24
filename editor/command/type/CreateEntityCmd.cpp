@@ -642,8 +642,9 @@ bool editor::CreateEntityCmd::execute(){
 
     }else if (type == EntityCreationType::WATER){
 
-        // a 20 x 20 grid fine enough for the waves, drawn with library:water: waves,
-        // reflection, the underside, shore foam and refraction, lit per pixel
+        // a 20 x 20 grid fine enough for the waves, drawn with library:water: the engine's
+        // ripples and foam noise (no image files), waves, reflection, the underside, shore
+        // foam and refraction, lit per pixel
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
 
@@ -653,7 +654,7 @@ bool editor::CreateEntityCmd::execute(){
         Material& material = mesh.submeshes[0].material;
         material.name = "Water";
         material.shader = Water::SHADER;
-        material.shaderFeatures = {"WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"};
+        material.shaderFeatures = {"BUILTIN_TEXTURES", "WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"};
         material.lighting = MaterialLighting::PIXEL;
         ShaderUniforms::set(material.shaderParams, "waveHeight", Vector4(0.1f, 0.0f, 0.0f, 0.0f));
         ShaderUniforms::set(material.shaderParams, "waveLength", Vector4(4.0f, 0.0f, 0.0f, 0.0f));
