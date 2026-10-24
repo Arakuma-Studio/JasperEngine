@@ -201,9 +201,16 @@ namespace{
         }
 
         void consider(const LatticeModifierComponent& modifier, Entity modifierEntity, const Transform& meshTransform, MeshStack& stack){
+            // as LatticeRender: a lattice taken from a nearer modifier is not applied again
+            const size_t nearer = stack.accepted.size();
             for (size_t b = 0; b < modifier.bindings.size(); b++){
                 const size_t resolved = bindingOf(modifierEntity, b, modifier.bindings[b]);
                 if (!bindings[resolved].valid) continue;
+                bool overridden = false;
+                for (size_t a = 0; a < nearer; a++){
+                    overridden = overridden || bindings[stack.accepted[a].binding].lattice == bindings[resolved].lattice;
+                }
+                if (overridden) continue;
                 const ResolvedLattice& lattice = lattices[bindings[resolved].lattice];
                 const Matrix4 toNormalized = lattice::objectToNormalized(lattice.model, meshTransform.modelMatrix);
                 const Matrix4 toObject = toNormalized.inverse();

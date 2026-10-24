@@ -14714,16 +14714,23 @@ static std::vector<Entity> latticeModifierMeshes(Scene* scene, Entity entity, bo
 }
 
 // bindings that reach a mesh (spec §2.1 stacking): its own, then those of the ancestors with
-// includeChildren, counting only the ones naming a lattice
+// includeChildren, counting only the ones naming a lattice; a lattice a nearer modifier already
+// binds is not applied again (LatticeRender)
 static size_t latticeBindingCount(Scene* scene, Entity mesh){
-    auto valid = [scene](const LatticeModifierComponent& modifier){
+    std::vector<Entity> nearer;
+    auto valid = [scene, &nearer](const LatticeModifierComponent& modifier){
         size_t count = 0;
+        std::vector<Entity> level;
         for (const LatticeBinding& binding : modifier.bindings){
-            if (binding.lattice != NULL_ENTITY && scene->isEntityCreated(binding.lattice) && scene->findComponent<LatticeComponent>(binding.lattice)){
+            if (binding.lattice != NULL_ENTITY && scene->isEntityCreated(binding.lattice) && scene->findComponent<LatticeComponent>(binding.lattice) &&
+                    std::find(nearer.begin(), nearer.end(), binding.lattice) == nearer.end()){
                 count++;
+                level.push_back(binding.lattice);
             }
         }
-        return modifier.enabled ? count : 0;
+        if (!modifier.enabled) return size_t(0);
+        nearer.insert(nearer.end(), level.begin(), level.end());
+        return count;
     };
     size_t count = 0;
     if (const LatticeModifierComponent* own = scene->findComponent<LatticeModifierComponent>(mesh)){
@@ -14855,7 +14862,7 @@ void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType,
             warnings.push_back(label + ": \"" + scene->getEntityName(latticeEntity) + "\" has no Lattice component.");
         }
     }
-    // the same lattice reaching a mesh twice (its own binding and an inherited one) deforms it twice
+    // the same lattice bound here and inherited: this binding overrides the inherited one here
     {
         auto bindsLattice = [](const LatticeModifierComponent& other, Entity latticeEntity){
             if (!other.enabled) return false;
@@ -14872,7 +14879,8 @@ void editor::InspectorWindow::drawLatticeModifierComponent(ComponentType cpType,
                 const LatticeModifierComponent* inherited = scene->findComponent<LatticeModifierComponent>(ancestor);
                 if (inherited && inherited->includeChildren && bindsLattice(*inherited, binding.lattice)){
                     warnings.push_back("\"" + scene->getEntityName(binding.lattice) + "\" also reaches this GameObject through \"" +
-                                       scene->getEntityName(ancestor) + "\" (Include Children): it deforms it twice. Remove one binding.");
+                                       scene->getEntityName(ancestor) + "\" (Include Children): this binding replaces that one here "
+                                       "(weight 0 excludes this GameObject). Remove it to inherit again.");
                     break;
                 }
                 const Transform* ancestorTransform = scene->findComponent<Transform>(ancestor);

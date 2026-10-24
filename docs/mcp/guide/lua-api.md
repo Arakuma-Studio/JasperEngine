@@ -1053,13 +1053,13 @@ cage:tweenToPose("tall", 0.4, EaseType.BACK_OUT)
 | `getRestPosition(i, j, k)`, `getPointPosition` / `setPointPosition(i, j, k, v)` | local space (rest + offset) |
 | `getPointWorldPosition` / `setPointWorldPosition(i, j, k, v)` | world space (last frame's Transform) |
 | `resetOffsets()` | all zero |
-| `applyPreset(name, axis, amount [, toward])` | `"squash"`, `"stretch"`, `"taper"`, `"twist"`, `"bend"`, `"bulge"`, `"shear"`, `"noise"`; axis `"x"`/`"y"`/`"z"`; added to the offsets |
+| `applyPreset(name, axis, amount [, toward])` | `"squash"`, `"stretch"`, `"taper"`, `"twist"`, `"bend"`, `"bulge"`, `"shear"`, `"noise"`; axis `"x"`/`"y"`/`"z"`, toward also `"-x"`...; added to the offsets; bend/twist angles are true in the world (the cage's proportions) |
 | `savePose(name)`, `hasPose(name)`, `removePose(name)`, `applyPose(name [, weight])` | `applyPose`: offsets = pose * weight |
 | `tweenToPose(name, seconds [, EaseType])`, `tweenToRest(seconds [, EaseType])`, `isTweening()`, `stopTween()` | runs while playing; ends exactly on the target |
 | `jiggle` (`setJiggle(b)`), `jiggleStiffness`, `jiggleDamping`, `jiggleInertia`, `jiggleAnchor` (`LatticeJiggleAnchor`), `jiggleMaxOffset` | rw; springs driven by the cage's acceleration, while playing |
 | `poke(i, j, k, impulseV3)` (local units/s), `pokeAt(worldPoint, worldImpulse, radius)` | wake the jiggle; `isJiggleSleeping()`, `getJiggleOffset(i, j, k)`, `resetJiggle()` (after a teleport) |
 | `deformPoint(worldPoint)` | world in, world out |
-| `bind(goOrEntity [, weight])`, `unbind(goOrEntity)` | binding in the target's `LatticeModifierComponent` (added when missing, with `includeChildren` when the target has no mesh); weight 0..2 |
+| `bind(goOrEntity [, weight])`, `unbind(goOrEntity)` | binding in the target's `LatticeModifierComponent` (added when missing, with `includeChildren` when the target has no mesh); weight 0..2; a child's own binding replaces the one it inherits (weight 0 excludes it) |
 | `addFollower(follower, rest [, applyPosition, applyRotation, applyScale, weight])`, `removeFollower(follower)` | the follower is placed where `rest` ends up through the cage each frame (a prop on a squashed surface); refused when the follower is the rest or an ancestor of it |
 | `getLatticeComponent()`, `getModifierComponent(entity)`, `getFollowerComponent(entity)` | raw components (nil when missing); their `std::vector` fields read as copies |
 

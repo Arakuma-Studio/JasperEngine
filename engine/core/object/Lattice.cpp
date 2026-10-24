@@ -257,19 +257,25 @@ bool Lattice::applyPreset(const std::string& name, const std::string& axis, floa
         Log::error("Lattice:applyPreset: axis '%s' is not x, y or z", axis.c_str());
         return false;
     }
+    // toward "-x": the other way (bend and shear: the amount negated)
+    const bool negative = toward.size() == 2 && toward[0] == '-';
+    const bool signedAxis = toward.size() == 2 && (toward[0] == '-' || toward[0] == '+');
     if (toward.empty()){
         params.toward = (lattice::LatticeAxis)(((int)params.axis + 1) % 3);
-    }else if (!axisFromName(toward, params.toward)){
-        Log::error("Lattice:applyPreset: toward '%s' is not x, y or z", toward.c_str());
+    }else if (!axisFromName(signedAxis ? toward.substr(1) : toward, params.toward)){
+        Log::error("Lattice:applyPreset: toward '%s' is not x, y or z (or -x, -y, -z)", toward.c_str());
         return false;
     }
-    params.amount = amount;
+    const bool directed = params.preset == lattice::LatticePreset::BEND || params.preset == lattice::LatticePreset::SHEAR;
+    params.amount = (negative && directed) ? -amount : amount;
 
     LatticeComponent& lattice = getComponent<LatticeComponent>();
     int rx, ry, rz;
     LatticeSystem::getResolution(lattice, rx, ry, rz);
     lattice.offsets.resize((size_t)(rx * ry * rz), Vector3(0, 0, 0));
     LatticeSystem::stopTween(lattice);
+    // bend and twist in the cage's proportions: true angles in the world
+    params.proportions = lattice::presetProportions(getComponent<Transform>().modelMatrix);
     lattice::applyPreset(rx, ry, rz, lattice.offsets, params);
     lattice.revision++;
     return true;

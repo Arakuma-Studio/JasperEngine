@@ -819,7 +819,7 @@ async def test_guide_names_exist(ed: Editor):
         schema_words(t.input_schema, known)
     # op keys from the server itself: an unknown key lists the valid ones
     lat = await cage(ed, "GuideCage", position=(0, 40, 0))
-    for op in ("set", "move", "reset", "preset", "mirror", "fit", "bind", "unbind", "pose", "bake"):
+    for op in ("set", "move", "reset", "preset", "mirror", "fit", "bind", "unbind", "follow", "pose", "bake"):
         msg = await el_error(ed, lattice=lat, ops=[{"op": op, "zz_unknown": 1}], contains="Keys:")
         known.update(k.strip() for k in msg.split("Keys:")[1].strip().rstrip(".").split(","))
     msg = await el_error(ed, lattice=lat, ops=[{"op": "reset", "select": {"zz_unknown": 1}}], contains="Keys:")
@@ -831,7 +831,15 @@ async def test_guide_names_exist(ed: Editor):
         known.update(k.strip() for k in msg.split("Use one of:")[1].strip().rstrip(".").split(","))
     camera = await ed.call("set_scene_camera", scene=s["scene"])
     known.update(camera["display"].keys())
+    # a follower just outside the cage (follower_outside) and one without a rest (follower_no_rest)
+    prop = (await ed.call("create_entity", scene=s["scene"], type="sphere", name="GuideProp", position=[0, 41.2, 0]))["entity_id"]
+    lone = (await ed.call("create_entity", scene=s["scene"], type="empty", name="GuideLone", position=[0, 40, 0]))["entity_id"]
+    await el(ed, lattice=lat, ops=[{"op": "follow", "target": prop}])
+    await ed.call("add_component", scene=s["scene"], entity=lone, component="latticefollower",
+                  values={"latticefollower": {"lattice": lat}})
     read = await el(ed, lattice=lat, sample=[[0, 40, 0]], detail="points")
+    known.update(w["kind"] for w in read["warnings"])
+    ed.check({"follower_outside", "follower_no_rest"} <= known, f"the follower warnings: {read['warnings']}")
     def keys(value):
         if isinstance(value, dict):
             for k, v in value.items():
@@ -853,10 +861,11 @@ async def test_guide_names_exist(ed: Editor):
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")
     # the backticked op and selector words exist
-    for word in ("set", "move", "reset", "preset", "mirror", "fit", "bind", "unbind", "pose", "bake",
+    for word in ("set", "move", "reset", "preset", "mirror", "fit", "bind", "unbind", "follow", "pose", "bake",
                  "center", "lattice", "selected", "exterior", "interior", "all"):
         ed.check(f"`{word}`" in text or f'"{word}"' in text, f"the guide covers {word}")
-    await ed.call("delete_entities", scene=s["scene"], entity=lat)
+    rest = next(f["rest"]["id"] for f in read["followers"] if f["rest"])
+    await ed.call("delete_entities", scene=s["scene"], entities=[lat, prop, lone, rest])
 
 
 async def test_budget(ed: Editor):

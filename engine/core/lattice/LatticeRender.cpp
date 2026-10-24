@@ -156,12 +156,21 @@ void LatticeRender::prepare(Scene* scene, LatticeRenderState& state){
     LatticeRenderState::Accepted accepted[LATTICE_MAX_PER_MESH];
     int count = 0;
 
-    // the bindings of one modifier, in order, that deform the mesh being filled
+    // the bindings of one modifier, in order, that deform the mesh being filled. A lattice
+    // already taken from a nearer modifier (the mesh's own, then nearer ancestors) is skipped:
+    // each lattice deforms a mesh once, and a child's own binding (weight 0: excluded)
+    // overrides the one it inherits (spec §12 Agent UX pass)
     auto consider = [&](const LatticeModifierComponent& modifier, size_t modifierIndex, Entity meshEntity, const Transform& meshTransform){
+        const int nearer = count;
         for (const LatticeBinding& binding : modifier.bindings){
             const size_t latticeIndex = findLattice(scene, state, binding.lattice);
             const LatticeRenderState::Lattice& lattice = state.lattices[latticeIndex];
             if (!lattice.valid || !std::isfinite(binding.weight))
+                continue;
+            bool overridden = false;
+            for (int b = 0; b < nearer; b++)
+                overridden = overridden || accepted[b].lattice == latticeIndex;
+            if (overridden)
                 continue;
             const Matrix4 toNormalized = lattice::objectToNormalized(lattice.model, meshTransform.modelMatrix);
             const Matrix4 toObject = toNormalized.inverse();

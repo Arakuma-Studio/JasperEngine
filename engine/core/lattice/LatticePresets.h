@@ -35,7 +35,15 @@ namespace jasperengine{ namespace lattice{
         float amount = 0.25f;                // see spec §4 per preset (degrees for twist and bend)
         unsigned int seed = 1;               // noise
         bool replace = false;                // false: add to the current offsets
+        // the cage's size (its world scale; only the ratios matter): bend and twist are computed
+        // in these proportions so their angles are true in the world on a non-cubic cage (a 60
+        // degree bend of a tall cage turns 60 degrees, not less, and keeps its cross-section).
+        // (1, 1, 1): the unit cube of local space. Zero or invalid components count as 1.
+        Vector3 proportions = Vector3(1.0f, 1.0f, 1.0f);
     };
+
+    // PresetParams::proportions of a cage with this world matrix (its axes' lengths)
+    JASPERENGINE_API Vector3 presetProportions(const Matrix4& latticeWorld);
 
     // name <-> enum ("squash", "stretch", "taper", "twist", "bend", "bulge", "shear", "noise")
     JASPERENGINE_API bool presetFromName(const std::string& name, LatticePreset& out);
