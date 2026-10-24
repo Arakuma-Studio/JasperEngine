@@ -667,6 +667,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/lattice/LatticeEditorOps.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneRender.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
+    ${EDITOR_DIR}/lattice/LatticeBake.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp

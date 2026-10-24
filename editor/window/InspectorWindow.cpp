@@ -14621,13 +14621,23 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
     }
 }
 
+// up the Transform parents of `entity`: whether `ancestor` is one of them
+static bool isLatticeDescendant(Scene* scene, Entity ancestor, Entity entity){
+    const Transform* transform = scene->findComponent<Transform>(entity);
+    while (transform && transform->parent != NULL_ENTITY){
+        if (transform->parent == ancestor) return true;
+        transform = scene->findComponent<Transform>(transform->parent);
+    }
+    return false;
+}
+
 // meshes a modifier on `entity` deforms: its own and, with includeChildren, its descendants'
 static std::vector<Entity> latticeModifierMeshes(Scene* scene, Entity entity, bool includeChildren){
     std::vector<Entity> meshes;
     auto array = scene->getComponentArray<MeshComponent>();
     for (size_t m = 0; m < array->size(); m++){
         Entity meshEntity = array->getEntity(m);
-        if (meshEntity == entity || (includeChildren && scene->isParentOf(entity, meshEntity))){
+        if (meshEntity == entity || (includeChildren && isLatticeDescendant(scene, entity, meshEntity))){
             meshes.push_back(meshEntity);
         }
     }
@@ -14853,7 +14863,7 @@ void editor::InspectorWindow::drawLatticeFollowerComponent(ComponentType cpType,
     for (size_t t = 0; t < transforms->size(); t++){
         Entity other = transforms->getEntity(t);
         for (Entity selected : entities){
-            if (scene->isParentOf(selected, other)){
+            if (isLatticeDescendant(scene, selected, other)){
                 subtree.push_back(other);
                 break;
             }

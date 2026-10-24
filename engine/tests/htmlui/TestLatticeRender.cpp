@@ -52,10 +52,10 @@ namespace {
 
         Scene& scene(){ return fixture.getScene(); }
 
-        // a box at the origin, subdivided so a curved deformation shows in its outline
+        // a box at the origin (one quad per side)
         Primitive& addBox(float size, float r = 1.0f, float g = 1.0f, float b = 1.0f){
             Primitive& box = fixture.add<Primitive>();
-            box.createBox(size, size, size, 16);
+            box.createBox(size, size, size);
             box.setColor(r, g, b, 1.0f);
             return box;
         }
@@ -227,11 +227,18 @@ TEST_F(LatticeRenderTest, MovedPointsBendTheSilhouetteWhereTheSolverDoes){
 
         Screen screen;
         ASSERT_TRUE(screen.read());
+        // the box's sides are single quads: the GPU moves their corners (where the solver
+        // does) and the rasterizer draws the straight edges between them
+        const Vector3 bottomLeft = solverPoint(lattice, Vector3(-1.0f, -1.0f, 1.0f));
+        const Vector3 topLeft = solverPoint(lattice, Vector3(-1.0f, 1.0f, 1.0f));
+        const Vector3 bottomRight = solverPoint(lattice, Vector3(1.0f, -1.0f, 1.0f));
+        const Vector3 topRight = solverPoint(lattice, Vector3(1.0f, 1.0f, 1.0f));
         for (float y : {0.8f, 0.4f, 0.0f, -0.4f, -0.8f}){
             const InkBox ink = rowInk(screen, y);
             ASSERT_FALSE(ink.empty()) << "row at y " << y;
-            const float left = toScreenX(solverPoint(lattice, Vector3(-1.0f, y, 1.0f)).x);
-            const float right = toScreenX(solverPoint(lattice, Vector3(1.0f, y, 1.0f)).x);
+            const float t = (y + 1.0f) * 0.5f;
+            const float left = toScreenX(bottomLeft.x + (topLeft.x - bottomLeft.x) * t);
+            const float right = toScreenX(bottomRight.x + (topRight.x - bottomRight.x) * t);
             EXPECT_NEAR(ink.x0, left, 1.5f) << "left edge at y " << y;
             EXPECT_NEAR(ink.x1 + 1, right, 1.5f) << "right edge at y " << y;
         }
@@ -250,6 +257,54 @@ TEST_F(LatticeRenderTest, MovedPointsBendTheSilhouetteWhereTheSolverDoes){
             EXPECT_SCREEN_GOLDEN(screen, "lattice_shear");
         }
     }
+}
+
+TEST_F(LatticeRenderTest, NormalsFollowTheJacobian){
+    // the right face's points of a lattice around the box pushed toward the camera tilt its
+    // front face: z' = z + 0.4 u_x (local units), a slope of 0.4, so its normal (the cofactor
+    // of the Jacobian) is (-0.4, 0, 1) normalised. The same box rotated about y to that normal,
+    // lit by the same light and seen at the same place, shades its front face the same
+    const float angle = std::atan2(-0.4f, 1.0f) * 180.0f / 3.14159265f;
+    enum class Box { DEFORMED, ROTATED, PLAIN };
+    auto render = [angle](Box kind, Screen& screen){
+        LatticeScene s;
+        s.scene().setGlobalIllumination(0.1f);
+        Light& light = s.fixture.add<Light>();
+        light.setType(LightType::DIRECTIONAL);
+        light.setDirection(0.5f, -0.3f, -1.0f);
+        light.setIntensity(3.0f);
+        Primitive& box = s.addBox(2.0f, 0.8f, 0.8f, 0.8f);
+        if (kind == Box::DEFORMED){
+            Lattice& lattice = s.addLattice(0.0f, 0.0f, 0.0f, 2.5f, LatticeInterpolation::SHARP);
+            LatticeComponent& component = lattice.getComponent<LatticeComponent>();
+            for (int k = 0; k < 2; k++){
+                for (int j = 0; j < 2; j++){
+                    component.offsets[lattice::pointIndex(2, 2, 1, j, k)] = Vector3(0.0f, 0.0f, 0.4f);
+                }
+            }
+            component.revision++;
+            s.bind(box.getEntity(), lattice.getEntity());
+        }else if (kind == Box::ROTATED){
+            box.setRotation(0.0f, angle, 0.0f);
+        }
+        ASSERT_TRUE(s.settle());
+        ASSERT_TRUE(screen.read());
+    };
+    Screen deformed, rotated, plain;
+    render(Box::DEFORMED, deformed);
+    render(Box::ROTATED, rotated);
+    render(Box::PLAIN, plain);
+
+    const int x = int(toScreenX(0.0f));
+    const int row = toScreenRow(0.2f);
+    const uint8_t* a = deformed.at(x, row);
+    const uint8_t* b = rotated.at(x, row);
+    const uint8_t* f = plain.at(x, row);
+    for (int c = 0; c < 3; c++){
+        EXPECT_NEAR(int(a[c]), int(b[c]), 1) << "channel " << c;
+    }
+    EXPECT_GT(std::abs(int(f[0]) - int(a[0])), 2) << "the tilt changes the shading";
+    EXPECT_SCREEN_GOLDEN(deformed, "lattice_normals");
 }
 
 TEST_F(LatticeRenderTest, ShadowsAndTheDepthPrePassFollow){

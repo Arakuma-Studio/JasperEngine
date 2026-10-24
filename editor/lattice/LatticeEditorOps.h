@@ -101,6 +101,15 @@ namespace jasperengine::editor{
         static bool deletePose(Project* project, uint32_t sceneId, Entity lattice, const std::string& name,
                                std::string* error = nullptr);
 
+        // writes the target's current deformation into a new model file next to its model and
+        // switches the target to it, removing the baked bindings (spec §9.4), one undo step;
+        // `path` receives the project-relative file written, `note` what was kept and why.
+        // Implemented in LatticeBake.cpp.
+        static bool bake(Project* project, uint32_t sceneId, Entity target, std::string* path = nullptr,
+                         std::string* note = nullptr, std::string* error = nullptr);
+        // whether bake() can run on the target, with the reason when it cannot (inspector tooltip)
+        static bool canBake(Scene* scene, Entity target, std::string* reason = nullptr);
+
         // creates a lattice entity fitted around `targets` (or a unit lattice at `fallbackPosition`
         // without targets) and binds it to them, one undo step; NULL_ENTITY on failure
         static Entity createLattice(Project* project, uint32_t sceneId, const std::vector<Entity>& targets,
