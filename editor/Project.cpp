@@ -1803,7 +1803,8 @@ bool editor::Project::reloadModelFile(const fs::path& fbxPath, bool synchronous)
 
         for (Entity entity : users) {
             const ModelComponent& model = sceneProject->scene->getComponent<ModelComponent>(entity);
-            CommandHandle::get(sceneProject->id)->addCommandNoMerge(
+            // Not a user edit: the redo steps stay (undoing it puts the parts of the old import back)
+            CommandHandle::get(sceneProject->id)->insertCommand(
                 new ModelLoadCmd(this, sceneProject->id, entity, model.filename, model.mergeStaticMeshes));
         }
     }

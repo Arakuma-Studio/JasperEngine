@@ -34,6 +34,10 @@ namespace jasperengine::editor{
 
         bool addCommand(Command* cmd);
         void addCommandNoMerge(Command* cmd);
+        // A step the editor takes by itself (a model reloaded because its file changed on disk):
+        // undone like any other, but placed at the current position without ending the redo tail
+        // that a user edit would drop. In Play it goes below the play floor, so Stop keeps it.
+        bool insertCommand(Command* cmd);
 
         void undo();
         void redo();
