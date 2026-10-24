@@ -289,6 +289,15 @@ async def test_esc_cancels_a_terrain_stroke(ed: Editor):
     await ui.drag_to(start, 120, 30, steps=20)
     await frames(ed, 3)
     during = await heights(ed, sid, terrain)
+    # a loaded machine draws a few frames a second: keep the brush held (and moving) until the
+    # stroke shows in the samples
+    for k in range(20):
+        if during != before:
+            break
+        ui.xdo("mousemove", str(start[0] + 120 - (k % 2) * 6), str(start[1] + 30))
+        await asyncio.sleep(0.25)
+        await frames(ed, 2)
+        during = await heights(ed, sid, terrain)
     await ed.screenshot("editor", path=str(s["out"] / "ac5-5-terrain-stroke.png"))
     ed.check(during != before, "the stroke raised the terrain: the brush or the press missed")
     await ui.key("Escape")
