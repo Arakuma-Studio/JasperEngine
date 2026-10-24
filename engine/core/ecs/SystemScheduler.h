@@ -146,9 +146,12 @@ namespace jasperengine {
     // inside a StructuralDeferScope; during a wave of declared (non-Exclusive) systems the
     // registry refuses structural changes and index observations that would reorder an
     // array, and every system stamps its changes with its own tick. Each system's command
-    // buffer is played back after the wave, in registration order. Waves run their systems
-    // one after the other on the calling thread (also with JE_ECS_SERIAL=1 or without
-    // worker threads), which gives the same result as running them concurrently.
+    // buffer is played back after the wave, in registration order. A wave of two or more
+    // declared systems runs them concurrently on S06's job system (the calling thread takes
+    // part; MainThread systems run on it); with JE_ECS_SERIAL=1, setSerial(true) or without
+    // worker threads they run one after the other in the wave's order, with the same result.
+    // Timings and trace entries are recorded per system on the thread that ran it; the S15
+    // profiler hooks are called there too.
     class JASPERENGINE_API SystemScheduler {
     public:
         // S15's CPU profiler: called around each system run with "System/Phase"
@@ -175,7 +178,10 @@ namespace jasperengine {
 
         void buildPlan(SystemPhase phase);
         static bool conflicts(const ScheduledSystem& a, const ScheduledSystem& b);
-        void runSystem(Scene& scene, ScheduledSystem& system, double dt, bool declared, uint32_t wave);
+        void runSystem(Scene& scene, ScheduledSystem& system, double dt, bool declared, uint32_t wave, WaveTraceEntry& trace);
+        // a wave's systems: concurrently on S06's workers unless serial
+        void runWave(Scene& scene, const std::vector<ScheduledSystem*>& running, const std::vector<double>& runDt,
+                     bool declared, uint32_t wave);
 
     public:
         SystemScheduler();

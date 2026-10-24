@@ -7,10 +7,16 @@
 
 #include "Scene.h"
 #include "EcsTestUtil.h"
+#include "jobs/JobSystem.h"
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
+#include <mutex>
+#include <set>
+#include <stdexcept>
+#include <thread>
 #include <cstdio>
 #include <cstdint>
 #include <string>
@@ -215,9 +221,102 @@ TEST(SchedulerTest, SevenSystemsOneWaveEachInOrder){
 
 // over 5 s: a Slow suite (docs/testing.md)
 TEST(SchedulerTestSlow, ParallelEqualsSerial){
+    // the parallel run uses S06's workers (the process job system the engine started)
+    if (std::thread::hardware_concurrency() > 1){
+        ASSERT_GT(SystemScheduler::workerCount(), 0u);
+    }
     const uint64_t serial = runSynthetic(true);
     const uint64_t parallel = runSynthetic(false);
     EXPECT_EQ(serial, parallel);
+}
+
+namespace {
+
+    void spinFor(std::chrono::microseconds duration){
+        const auto until = std::chrono::steady_clock::now() + duration;
+        while (std::chrono::steady_clock::now() < until){}
+    }
+
+}
+
+// A wave of independent systems runs on more than one thread; MainThread systems stay on the
+// calling thread; per-system timings and the trace stay complete
+TEST(SchedulerTest, WaveRunsOnWorkers){
+    if (SystemScheduler::workerCount() == 0){
+        GTEST_SKIP() << "no job-system workers on this machine";
+    }
+    Scene scene;
+    disableSubSystems(scene);
+    std::mutex mutex;
+    std::set<std::thread::id> threads;
+    std::set<std::thread::id> mainThreadRuns;
+    std::atomic<int> concurrent{0};
+    std::atomic<int> maxConcurrent{0};
+    for (int i = 0; i < 6; i++){
+        scene.addSystemFunction(descriptor("Pooled" + std::to_string(i), {}, {}), [&](SystemContext&){
+            const int now = ++concurrent;
+            int seen = maxConcurrent.load();
+            while (now > seen && !maxConcurrent.compare_exchange_weak(seen, now)){}
+            spinFor(std::chrono::microseconds(3000));
+            --concurrent;
+            std::lock_guard<std::mutex> lock(mutex);
+            threads.insert(std::this_thread::get_id());
+        });
+    }
+    scene.addSystemFunction(descriptor("OnMain", {}, {}, SystemResource::MainThread), [&](SystemContext&){
+        spinFor(std::chrono::microseconds(1000));
+        std::lock_guard<std::mutex> lock(mutex);
+        mainThreadRuns.insert(std::this_thread::get_id());
+    });
+    ASSERT_EQ(scene.getScheduler().getWaves(SystemPhase::Update).size(), 1u);
+
+    for (int frame = 0; frame < 5; frame++){
+        scene.update(0.016);
+        scene.getScheduler().runPhase(scene, SystemPhase::Draw, 0.0);
+    }
+
+    EXPECT_GT(threads.size(), 1u);
+    EXPECT_GT(maxConcurrent.load(), 1);
+    ASSERT_EQ(mainThreadRuns.size(), 1u);
+    EXPECT_EQ(*mainThreadRuns.begin(), std::this_thread::get_id());
+    for (const auto& system : scene.getScheduler().getSystems()){
+        if (!system->getDescriptor().enabled) continue;
+        EXPECT_EQ(system->getTiming().callCount(), 5u) << system->getName();
+        EXPECT_GT(system->getTiming().lastMs(), 0.5) << system->getName();
+    }
+    const auto& trace = scene.getScheduler().getLastTrace();
+    ASSERT_EQ(trace.size(), 7u);
+    for (size_t i = 0; i < 6; i++){
+        EXPECT_EQ(*trace[i].system, "Pooled" + std::to_string(i)); // the wave's order
+    }
+    EXPECT_EQ(*trace[6].system, "OnMain");
+}
+
+// A system that throws on a worker: the wave finishes, the exception reaches the caller and
+// the next frame runs normally
+TEST(SchedulerTest, WaveExceptionReachesCaller){
+    if (SystemScheduler::workerCount() == 0){
+        GTEST_SKIP() << "no job-system workers on this machine";
+    }
+    Scene scene;
+    disableSubSystems(scene);
+    std::atomic<int> runs{0};
+    bool fail = true;
+    for (int i = 0; i < 4; i++){
+        scene.addSystemFunction(descriptor("S" + std::to_string(i), {}, {}), [&, i](SystemContext&){
+            spinFor(std::chrono::microseconds(500));
+            runs++;
+            if (i == 2 && fail) throw std::runtime_error("system failed");
+        });
+    }
+    EXPECT_THROW(scene.getScheduler().runPhase(scene, SystemPhase::Update, 0.016), std::runtime_error);
+    // the systems that started finished (one not yet started may be skipped, as serially)
+    const int first = runs.load();
+    EXPECT_GE(first, 3);
+    EXPECT_LE(first, 4);
+    fail = false;
+    scene.getScheduler().runPhase(scene, SystemPhase::Update, 0.016);
+    EXPECT_EQ(runs.load(), first + 4);
 }
 
 TEST(SchedulerTest, Timings){

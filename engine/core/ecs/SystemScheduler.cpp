@@ -6,12 +6,14 @@
 #include "Scene.h"
 #include "SubSystem.h"
 #include "Log.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <exception>
 
 using namespace jasperengine;
 
@@ -128,9 +130,13 @@ SystemScheduler::SystemScheduler(){
 }
 
 size_t SystemScheduler::workerCount(){
-    // no job system to run a wave's systems on: every wave runs on the calling thread, in
-    // its systems' order (which does not change the result)
-    return 0;
+    // S06's process job system; none yet (or single-thread mode, the web build without
+    // pthreads): every wave runs on the calling thread, in its systems' order
+    if (!jobs::hasSystem()){
+        return 0;
+    }
+    const int workers = jobs::system().getWorkerCount();
+    return workers > 0 ? (size_t)workers : 0;
 }
 
 void SystemScheduler::setProfilerHooks(ProfileBegin begin, ProfileEnd end){
@@ -304,7 +310,7 @@ bool SystemScheduler::oldestGate(Tick& tick) const {
     return found;
 }
 
-void SystemScheduler::runSystem(Scene& scene, ScheduledSystem& system, double dt, bool declared, uint32_t wave){
+void SystemScheduler::runSystem(Scene& scene, ScheduledSystem& system, double dt, bool declared, uint32_t wave, WaveTraceEntry& trace){
     const double start = nowUs();
     {
         RunGuard guard(&scene.getChangeClock(), system, system.tick, declared);
@@ -321,7 +327,67 @@ void SystemScheduler::runSystem(Scene& scene, ScheduledSystem& system, double dt
     // entry-sample contract: what it changed at its tick is not new to it next time
     system.gate.last = system.tick;
     system.timing.record((end - start) / 1000.0);
-    currentTrace.push_back({&system.descriptor.name, system.descriptor.phase, wave, start - frameStartUs, end - frameStartUs});
+    trace = {&system.descriptor.name, system.descriptor.phase, wave, start - frameStartUs, end - frameStartUs};
+}
+
+void SystemScheduler::runWave(Scene& scene, const std::vector<ScheduledSystem*>& running, const std::vector<double>& runDt,
+                              bool declared, uint32_t wave){
+    std::vector<WaveTraceEntry> traces(running.size());
+
+    // A wave of declared systems runs on S06's workers; its MainThread systems on this
+    // thread meanwhile. Serial: the same systems one after the other, in the same order.
+    if (!declared || running.size() < 2 || isSerial()){
+        for (size_t i = 0; i < running.size(); i++){
+            runSystem(scene, *running[i], runDt[i], declared, wave, traces[i]);
+        }
+    }else{
+        std::vector<size_t> pooled;
+        std::vector<size_t> onCaller;
+        for (size_t i = 0; i < running.size(); i++){
+            if (running[i]->descriptor.resources & SystemResource::MainThread){
+                onCaller.push_back(i);
+            }else{
+                pooled.push_back(i);
+            }
+        }
+        auto run = [&](size_t i){
+            runSystem(scene, *running[i], runDt[i], declared, wave, traces[i]);
+        };
+
+        if (onCaller.empty()){
+            // the calling thread takes systems too; the first exception is rethrown after
+            // every started system has finished
+            jobs::parallelFor(pooled.size(), [&](size_t unit){ run(pooled[unit]); },
+                              jobs::ParallelForOptions{1, jobs::ParallelForOptions::kAllWorkers, jobs::Lane::High, nullptr});
+        }else{
+            std::vector<jobs::Task<void>> tasks;
+            tasks.reserve(pooled.size());
+            for (size_t i : pooled){
+                tasks.push_back(jobs::submit([&run, i]{ run(i); }, jobs::SubmitOptions{jobs::Lane::High, jobs::GateClass::Default, "ecs-system"}));
+            }
+            std::exception_ptr failure;
+            try {
+                for (size_t i : onCaller){
+                    run(i);
+                }
+            } catch (...) {
+                failure = std::current_exception();
+            }
+            // every task ends before the wave's state goes out of scope
+            for (const jobs::Task<void>& task : tasks){
+                task.wait();
+            }
+            if (failure){
+                std::rethrow_exception(failure);
+            }
+            for (const jobs::Task<void>& task : tasks){
+                task.get();
+            }
+        }
+    }
+
+    // the trace in the wave's order, whichever thread ran each system
+    currentTrace.insert(currentTrace.end(), traces.begin(), traces.end());
 }
 
 void SystemScheduler::runPhase(Scene& scene, SystemPhase phase, double dt){
@@ -379,9 +445,7 @@ void SystemScheduler::runPhase(Scene& scene, SystemPhase phase, double dt){
         {
             StructuralDeferScope scope(scene);
             WaveLock lock(clock, declared);
-            for (size_t i = 0; i < running.size(); i++){
-                runSystem(scene, *running[i], runDt[i], declared, waveIndex);
-            }
+            runWave(scene, running, runDt, declared, waveIndex);
             // the gates are samples: a change after the wave is newer than all of them
             clock.sample();
         }
