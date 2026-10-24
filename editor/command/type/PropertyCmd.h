@@ -10,6 +10,7 @@
 #include "ecs/Entity.h"
 #include "component/Transform.h"
 #include "Catalog.h"
+#include "pose/PoseInspectorHooks.h"
 #include <functional>
 #include <type_traits>
 
@@ -118,6 +119,9 @@ namespace jasperengine::editor{
             SceneProject* sceneProject = project->getScene(sceneId);
             if (!sceneProject){
                 return false;
+            }
+            if (type == ComponentType::Transform && poseInspectorHooks().beforeTransformWrite){
+                for (const auto& entry : values) poseInspectorHooks().beforeTransformWrite(sceneId, entry.first);
             }
             for (auto& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);

@@ -25,6 +25,11 @@ namespace jasperengine::editor{
         std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> bake;
         // Open `animation` in the Pose Animation window, bound to the model entity
         std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> open;
+        // A scene command is about to read and write `entity`'s Transform (PropertyCmd,
+        // ObjectTransformCmd: Inspector, gizmo, MCP set_transform / set_properties): a posed bone
+        // goes back to its rest first, so the command records and edits the rest pose, never the
+        // posed values (final review)
+        std::function<void(uint32_t sceneId, Entity entity)> beforeTransformWrite;
     };
 
     // the editor-wide hooks (set once at startup by the tasks that own them)

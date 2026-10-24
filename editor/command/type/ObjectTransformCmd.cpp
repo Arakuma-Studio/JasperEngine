@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ObjectTransformCmd.h"
+#include "pose/PoseInspectorHooks.h"
 
 using namespace jasperengine;
 
@@ -34,6 +35,10 @@ bool editor::ObjectTransformCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject){
         return false;
+    }
+    // a posed bone: the old values recorded are its rest, and the edit applies to the rest
+    if (poseInspectorHooks().beforeTransformWrite){
+        for (const auto& entry : props) poseInspectorHooks().beforeTransformWrite(static_cast<uint32_t>(sceneId), entry.first);
     }
     for (auto& [entity, property] : props){
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){

@@ -102,8 +102,16 @@ Additions (implementation; the members above are unchanged, these are extra):
     centrally (final review): `DuplicateEntityCmd::execute`, the `DeleteEntityCmd` constructor (its undo
     snapshots), `EntityClipboard::copyGameObjects`, `AddEntityToPrefabCmd::execute`, an applying
     `PrefabOverrideCmd`, `PrefabOverridesCmd::applyAll`, and the MCP create_prefab / create_prefab_variant
-    encodes; `suspendActiveForScene` before every scene undo / redo (`CommandHistory::beforeStep`), so a
-    step that changes a bone is what the next pose application saves (the restore does not revert it).
+    encodes.
+  - Commands are never recorded against posed bone values (re-review ruling): a `PropertyCmd` on a
+    Transform, an `ObjectTransformCmd` and a Transform `ComponentValuesCmd` (paste values, reset) call `poseInspectorHooks().beforeTransformWrite` before they
+    read the old values, and the window's hook `suspendActiveForBone` restores the rest when the entity
+    is a posed bone (not the model): the edit applies to the rest pose (Inspector, gizmo, MCP
+    set_transform / set_properties alike). Scene undo / redo (`CommandHistory::beforeStep` /
+    `afterStep` -> `beginSceneStep` / `endSceneStep`): the posed bones' local TRS are taken before the
+    step; after it, only a saved bone whose Transform the step changed takes the step's value as its
+    rest (then restore, and the pose again on the next update); the other bones keep their rest. A
+    redo whose command already suspended (its execute) has nothing to adopt.
   - The rig follows the model's `.humanoid` sidecar: a change on disk (Map Bones, its undo/redo, MCP
     `set_humanoid`) rebinds.
   - Global Edit stays active through window edits that keep the poses (angles, offset, hold,

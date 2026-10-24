@@ -45,10 +45,56 @@ void editor::PoseEditSession::suspendActive(){
     }
 }
 
-void editor::PoseEditSession::suspendActiveForScene(uint32_t sceneId){
-    // the next update applies the pose again over what the step left, saving that as the rest
-    if (activeSession && activeSession->bound() && activeSession->sceneId() == sceneId && activeSession->bonesApplied()){
-        activeSession->suspend();
+void editor::PoseEditSession::beginSceneStep(uint32_t sceneId){
+    PoseEditSession* session = activeSession;
+    if (!session) return;
+    session->stepOpen = false;
+    session->stepBones.clear();
+    if (!session->bound() || session->sceneId() != sceneId || !session->applied || !session->scenePtr) return;
+    for (const SavedBone& saved : session->savedBones){
+        const Transform* transform = session->scenePtr->isEntityCreated(saved.entity) ? session->scenePtr->findComponent<Transform>(saved.entity) : nullptr;
+        session->stepBones.push_back(transform ? StepBone{transform->position, transform->rotation, transform->scale} : StepBone{});
+    }
+    session->stepOpen = true;
+}
+
+void editor::PoseEditSession::endSceneStep(uint32_t sceneId){
+    PoseEditSession* session = activeSession;
+    if (!session || !session->stepOpen) return;
+    session->stepOpen = false;
+    // a command of the step put the bones back to rest itself (its execute suspended): nothing to adopt
+    if (!session->bound() || session->sceneId() != sceneId || !session->applied || !session->scenePtr ||
+            session->stepBones.size() != session->savedBones.size()){
+        session->stepBones.clear();
+        return;
+    }
+    bool changed = false;
+    for (size_t i = 0; i < session->savedBones.size(); i++){
+        SavedBone& saved = session->savedBones[i];
+        const Transform* transform = session->scenePtr->isEntityCreated(saved.entity) ? session->scenePtr->findComponent<Transform>(saved.entity) : nullptr;
+        if (!transform) continue;
+        const StepBone& before = session->stepBones[i];
+        if (transform->position == before.position && transform->rotation == before.rotation && transform->scale == before.scale) continue;
+        // only what the step wrote: that bone's rest is the step's value now
+        saved.position = transform->position;
+        saved.rotation = transform->rotation;
+        saved.scale = transform->scale;
+        saved.localMatrix = Matrix4::translateMatrix(saved.position) * saved.rotation.getRotationMatrix() * Matrix4::scaleMatrix(saved.scale);
+        saved.recompute = true;
+        changed = true;
+    }
+    session->stepBones.clear();
+    if (changed){
+        // the rest as the step left it (restore), the pose again over it on the next update
+        session->suspend();
+    }
+}
+
+void editor::PoseEditSession::suspendActiveForBone(uint32_t sceneId, Entity entity){
+    PoseEditSession* session = activeSession;
+    if (!session || !session->bound() || session->sceneId() != sceneId || entity == session->modelEntity) return;
+    if (session->ownsEntity(sceneId, entity)){
+        session->suspend();
     }
 }
 
@@ -892,7 +938,7 @@ void editor::PoseEditSession::restoreBones(){
             transform->rotation = saved.rotation;
             transform->scale = saved.scale;
             transform->localMatrix = saved.localMatrix;
-            if (moved){
+            if ((moved || saved.recompute) && parent){
                 transform->modelMatrix = parent->modelMatrix * saved.localMatrix;
                 transform->worldPosition = parent->modelMatrix * saved.position;
                 transform->worldRotation = parent->worldRotation * saved.rotation;

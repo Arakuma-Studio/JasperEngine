@@ -6,6 +6,7 @@
 #include "Stream.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ModelClearCmd.h"
+#include "pose/PoseInspectorHooks.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -248,6 +249,10 @@ bool editor::ComponentValuesCmd::execute(){
         defaults = EntityClipboard::encodeDefaultComponent(type);
     }
 
+    // a posed bone's Transform (paste values, reset): recorded and edited on its rest pose
+    if (type == ComponentType::Transform && poseInspectorHooks().beforeTransformWrite) {
+        for (const Target& target : targets) poseInspectorHooks().beforeTransformWrite(sceneId, target.entity);
+    }
     for (Target& target : targets) {
         target.before = YAML::Node();
         if (!hasComponent(scene, target.entity, type)) {

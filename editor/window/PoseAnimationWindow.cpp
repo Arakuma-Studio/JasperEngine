@@ -141,6 +141,9 @@ editor::PoseAnimationWindow::PoseAnimationWindow(Project* project): project(proj
     poseInspectorHooks().open = [this](Project*, uint32_t sceneId, Entity model, const std::string& animation){
         openFromAsset(animation, sceneId, model);
     };
+    poseInspectorHooks().beforeTransformWrite = [](uint32_t sceneId, Entity entity){
+        PoseEditSession::suspendActiveForBone(sceneId, entity);
+    };
     // the Templates tab (phase 6, PoseAnimationWindowTemplates.cpp) through the tab extension point
     const auto& tabs = extraTabs();
     if (std::none_of(tabs.begin(), tabs.end(), [](const Tab& tab){ return tab.name == TEMPLATES_TAB; })){
@@ -150,6 +153,7 @@ editor::PoseAnimationWindow::PoseAnimationWindow(Project* project): project(proj
 
 editor::PoseAnimationWindow::~PoseAnimationWindow(){
     poseInspectorHooks().open = nullptr;
+    poseInspectorHooks().beforeTransformWrite = nullptr;
     if (PoseEditSession::active() == &session){
         PoseEditSession::setActive(nullptr);
     }

@@ -381,6 +381,53 @@ async def test_scene_undo_while_posed_is_not_reverted_by_the_restore(ed: Editor)
     ed.check(close(back, S["rest"]), f"the undo stays: the rest, not the edit saved by posing: {back} vs rest {S['rest']}")
 
 
+async def leave_posing(ed: Editor):
+    # a selection change off the character leaves posing
+    await ed.call("select_entities", entities=["Hero"])
+    await ed.call("select_entities", entities=["Ground"])
+    ed.check_eq((await state(ed))["mode"], "idle", "posing left")
+
+
+async def pose_again(ed: Editor):
+    st = (await focus(ed, index=0))["state"]
+    ed.check_eq(st["mode"], "posing", f"posing: {st}")
+    await ed.call("wait", seconds=0.2)
+
+
+async def test_bone_edit_while_posed_is_recorded_on_the_rest(ed: Editor):
+    """MCP set_transform on a posed bone records and edits the rest pose (never the posed values):
+    its undo and redo while posed leave the rest and the edit, not the pose (re-review probe
+    /tmp/f1rr-probe/test_probe_undo_leak.py)."""
+    await leave_posing(ed)
+    ed.check(close(await bone_rotation(ed), S["rest"]), "rest")
+    await pose_again(ed)
+    posed = await bone_rotation(ed)
+    ed.check(not close(posed, S["rest"]), f"posed: {posed}")
+    await ed.call("set_transform", entity=THIGH, rotation={"euler": [10, 0, 0]})
+    await ed.call("wait", seconds=0.2)
+    ed.check(not close(await bone_rotation(ed), S["rest"]), "still posed after the edit")
+    await leave_posing(ed)
+    edited = await bone_rotation(ed)
+    ed.check(not close(edited, S["rest"]) and not close(edited, posed), f"the edit applied to the rest: {edited}")
+    # undo while posed: the rest comes back, not the pose
+    await pose_again(ed)
+    await ed.call("undo", scene="Main Scene")
+    await ed.call("wait", seconds=0.2)
+    ed.check(not close(await bone_rotation(ed), S["rest"]), "posed again after the undo")
+    await leave_posing(ed)
+    back = await bone_rotation(ed)
+    ed.check(close(back, S["rest"]), f"undo while posed: the rest: {back} vs rest {S['rest']} (posed {posed})")
+    # redo while posed: the edit again, not the pose
+    await pose_again(ed)
+    await ed.call("redo", scene="Main Scene")
+    await ed.call("wait", seconds=0.2)
+    await leave_posing(ed)
+    again = await bone_rotation(ed)
+    ed.check(close(again, edited), f"redo while posed: the edit: {again} vs {edited} (posed {posed})")
+    await ed.call("undo", scene="Main Scene")
+    ed.check(close(await bone_rotation(ed), S["rest"]), "undone")
+
+
 def entity_ids(result) -> list:
     """The ids of the GameObjects a find_entities result lists."""
     ids = []
