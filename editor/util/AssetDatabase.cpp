@@ -948,6 +948,31 @@ void editor::AssetDatabase::saveCache() const {
     if (projectPath.empty()) {
         return;
     }
+    writeCache(snapshotCache());
+}
+
+editor::AssetDatabase::CacheSnapshot editor::AssetDatabase::snapshotCache() const {
+    CacheSnapshot snapshot;
+    snapshot.entries.reserve(byPath.size());
+    for (const auto& [k, entry] : byPath) {
+        snapshot.entries.push_back(entry);
+    }
+    // what is known of the assets whose metas are orphans, for R5 next session
+    for (const auto& [k, entry] : orphanLast) {
+        if (!byPath.count(k)) {
+            snapshot.orphanEntries.push_back(entry);
+        }
+    }
+    snapshot.caseInsensitive = caseInsensitive;
+    snapshot.file = cacheFile();
+    snapshot.legacyFile = projectPath / ".jasperengine" / "assetdb.yaml";
+    return snapshot;
+}
+
+void editor::AssetDatabase::writeCache(const CacheSnapshot& snapshot) {
+    if (snapshot.file.empty()) {
+        return;
+    }
     Json assets = Json::array();
     auto entryJson = [](const Entry& entry) {
         Json item;
@@ -984,27 +1009,24 @@ void editor::AssetDatabase::saveCache() const {
         }
         return item;
     };
-    for (const auto& [k, entry] : byPath) {
+    for (const Entry& entry : snapshot.entries) {
         assets.push_back(entryJson(entry));
     }
-    // what is known of the assets whose metas are orphans, for R5 next session
-    for (const auto& [k, entry] : orphanLast) {
-        if (!byPath.count(k)) {
-            Json item = entryJson(entry);
-            item["orphan"] = true;
-            assets.push_back(item);
-        }
+    for (const Entry& entry : snapshot.orphanEntries) {
+        Json item = entryJson(entry);
+        item["orphan"] = true;
+        assets.push_back(item);
     }
     Json root;
     root["version"] = cacheVersion;
-    root["caseInsensitive"] = caseInsensitive;
+    root["caseInsensitive"] = snapshot.caseInsensitive;
     root["assets"] = assets;
     std::string error;
-    if (!assetio::writeFile(cacheFile(), root.dump() + "\n", assetio::Durability::Cache, &error)) {
+    if (!assetio::writeFile(snapshot.file, root.dump() + "\n", assetio::Durability::Cache, &error)) {
         Out::warning("Could not write the asset database cache: %s", error.c_str());
     }
     std::error_code ec;
-    fs::remove(projectPath / ".jasperengine" / "assetdb.yaml", ec);
+    fs::remove(snapshot.legacyFile, ec);
 }
 
 std::vector<fs::path> editor::AssetDatabase::takeTemporaryFiles() {
@@ -1929,8 +1951,14 @@ void editor::AssetDatabase::hashWorker() {
                     cacheDirty = false;
                     lock.unlock();
                     {
-                        std::lock_guard<std::recursive_mutex> dbLock(mutex);
-                        if (!projectPath.empty()) saveCache();
+                        // copied under the lock, serialized and written without it: the main
+                        // thread is not kept waiting for the file
+                        CacheSnapshot snapshot;
+                        {
+                            std::lock_guard<std::recursive_mutex> dbLock(mutex);
+                            if (!projectPath.empty()) snapshot = snapshotCache();
+                        }
+                        writeCache(snapshot);
                     }
                     lock.lock();
                     computed = false;

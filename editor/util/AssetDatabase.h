@@ -264,6 +264,16 @@ namespace jasperengine::editor {
         std::filesystem::path cacheFile() const;
         void loadCache(std::map<std::string, Entry>& cached) const;
         void saveCache() const;
+        // what saveCache() writes, copied under the lock; written without it (the background thread)
+        struct CacheSnapshot {
+            std::vector<Entry> entries;
+            std::vector<Entry> orphanEntries;
+            bool caseInsensitive = false;
+            std::filesystem::path file;
+            std::filesystem::path legacyFile;
+        };
+        CacheSnapshot snapshotCache() const;
+        static void writeCache(const CacheSnapshot& snapshot);
         // saveCache() off the caller's thread when background work runs (the cache is disposable:
         // a crash before the write only costs a rebuild), at once otherwise
         void requestCacheSave();
