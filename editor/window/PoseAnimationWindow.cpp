@@ -172,7 +172,31 @@ void editor::PoseAnimationWindow::requestFocus(){
 }
 
 void editor::PoseAnimationWindow::selectTab(const std::string& name){
+    // tab names are matched without case (MCP passes "feel")
     requestedTab = name;
+    std::vector<std::string> names = {"Pose", "Feel", "Humanize"};
+    for (const Tab& tab : extraTabs()) names.push_back(tab.name);
+    for (const std::string& candidate : names){
+        if (candidate.size() == name.size() && std::equal(candidate.begin(), candidate.end(), name.begin(),
+                [](char a, char b){ return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b)); })){
+            requestedTab = candidate;
+        }
+    }
+}
+
+bool editor::PoseAnimationWindow::openMappingFor(std::string* error){
+    const uint32_t sceneId = session.bound() ? session.sceneId() : candidateScene;
+    const Entity entity = session.bound() ? session.model() : candidateEntity;
+    if (entity == NULL_ENTITY){
+        if (error) *error = "no character: bind a model first";
+        return false;
+    }
+    openMappingPopup(sceneId, entity);
+    if (!mappingInfo){
+        if (error) *error = "the character's model has no rig information";
+        return false;
+    }
+    return true;
 }
 
 // ---- helpers ----
@@ -182,7 +206,22 @@ const pose::PoseAnimationData* editor::PoseAnimationWindow::data() const{
     return doc && doc->exists() ? &doc->data() : nullptr;
 }
 
-std::vector<int> editor::PoseAnimationWindow::selection() const{
+std::shared_ptr<const pose::PoseAnimationData> editor::PoseAnimationWindow::view(){
+    const auto& doc = session.document();
+    if (!doc || !doc->exists()){
+        viewData.reset();
+        viewRevision = 0;
+        return nullptr;
+    }
+    if (!viewData || viewDocument != doc.get() || viewRevision != doc->revision()){
+        viewData = std::make_shared<const pose::PoseAnimationData>(doc->data());
+        viewDocument = doc.get();
+        viewRevision = doc->revision();
+    }
+    return viewData;
+}
+
+const std::vector<int>& editor::PoseAnimationWindow::selection() const{
     return session.selection();
 }
 
@@ -627,7 +666,7 @@ void editor::PoseAnimationWindow::actionRename(int index){
     renameIndex = index;
     renameFocus = true;
     std::snprintf(renameBuffer, sizeof(renameBuffer), "%s", animation->poses[index].name.c_str());
-    ImGui::OpenPopup("Rename Pose###PoseRename");
+    // drawRenamePopup opens it at the window level (this may run inside the strip's child window)
 }
 
 void editor::PoseAnimationWindow::actionAutoTiming(){
@@ -731,8 +770,10 @@ void editor::PoseAnimationWindow::updateThumbnails(){
     liveThumbnails.beginFrame();
     if (session.bound() && session.rigInfo()){
         const std::shared_ptr<const PoseRigInfo>& info = session.rigInfo();
-        thumbnails.setModel(info->model, session.rig(), info->bridges);
-        liveThumbnails.setModel(info->model, session.rig(), info->bridges);
+        // absolute: PoseRender resolves relative paths against the assets folder
+        const std::string modelFile = (project->getProjectPath() / fs::u8path(info->model)).string();
+        thumbnails.setModel(modelFile, session.rig(), info->bridges);
+        liveThumbnails.setModel(modelFile, session.rig(), info->bridges);
     }else{
         if (!thumbnails.getModel().empty()) thumbnails.clear();
         if (!liveThumbnails.getModel().empty()) liveThumbnails.clear();
@@ -756,6 +797,8 @@ void editor::PoseAnimationWindow::show(){
         focusRequested = false;
     }
     ImGui::SetNextWindowSizeConstraints(ImVec2(Theme::dpi(320.0f), Theme::dpi(200.0f)), ImVec2(FLT_MAX, FLT_MAX));
+    // a floating (undocked) window starts big enough for the strip, the timing bar and a tab
+    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(940.0f), Theme::dpi(640.0f)), ImGuiCond_FirstUseEver);
     bool open = windowOpen;
     windowVisible = ImGui::Begin(WINDOW_NAME, &open);
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -786,10 +829,15 @@ void editor::PoseAnimationWindow::show(){
 // ---- setup row ----
 
 void editor::PoseAnimationWindow::drawSetupRow(){
+    // one row when the window is wide (the bottom dock is short), else two
+    const bool wide = ImGui::GetContentRegionAvail().x > Theme::dpi(1000.0f);
     drawCharacterField();
     ImGui::SameLine();
+    // the chip wraps to its own line in a narrow window
+    if (ImGui::GetContentRegionAvail().x < Theme::dpi(230.0f)) ImGui::NewLine();
     drawRigChip();
-    drawAnimationField();
+    if (wide) ImGui::SameLine(0.0f, Theme::dpi(24.0f));
+    drawAnimationField(wide);
 }
 
 void editor::PoseAnimationWindow::drawCharacterField(){
@@ -797,8 +845,9 @@ void editor::PoseAnimationWindow::drawCharacterField(){
     ImGui::TextUnformatted("Character");
     ImGui::SameLine(Theme::dpi(78.0f));
     const std::string name = characterName();
-    const float buttonWidth = Theme::dpi(96.0f);
-    const float width = std::max(Theme::dpi(80.0f), std::min(Theme::dpi(220.0f), ImGui::GetContentRegionAvail().x - buttonWidth - Theme::dpi(170.0f)));
+    const float buttonWidth = ImGui::CalcTextSize(ICON_FA_CROSSHAIRS " Use Selection").x + ImGui::GetStyle().FramePadding.x * 2 +
+                              ImGui::GetStyle().ItemSpacing.x;
+    const float width = std::clamp(ImGui::GetContentRegionAvail().x - buttonWidth, Theme::dpi(60.0f), Theme::dpi(220.0f));
     const std::string label = (name.empty() ? std::string("None (Model)") : std::string(ICON_FA_PERSON " ") + name) + "###PoseCharacter";
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
     if (ImGui::Button(label.c_str(), ImVec2(width, 0)) && session.bound()){
@@ -830,7 +879,7 @@ void editor::PoseAnimationWindow::drawCharacterField(){
 void editor::PoseAnimationWindow::drawRigChip(){
     const std::shared_ptr<const PoseRigInfo> info = session.bound() ? session.rigInfo() : candidateInfo;
     if (!info && candidateError.empty()){
-        ImGui::NewLine();
+        ImGui::Dummy(ImVec2(0.0f, 0.0f));
         return;
     }
     poseui::RigStatus status;
@@ -861,15 +910,18 @@ void editor::PoseAnimationWindow::drawRigChip(){
     }
 }
 
-void editor::PoseAnimationWindow::drawAnimationField(){
+void editor::PoseAnimationWindow::drawAnimationField(bool inlineRow){
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted("Animation");
-    ImGui::SameLine(Theme::dpi(78.0f));
+    if (inlineRow) ImGui::SameLine();
+    else ImGui::SameLine(Theme::dpi(78.0f));
     const auto& doc = session.document();
     std::string label = doc ? std::string(ICON_FA_PERSON " ") + fs::u8path(doc->path()).filename().u8string() : std::string("None (Pose Animation)");
     if (doc && !doc->exists()) label += " (deleted)";
     label += "###PoseAnimationAsset";
-    const float width = std::max(Theme::dpi(80.0f), std::min(Theme::dpi(220.0f), ImGui::GetContentRegionAvail().x - Theme::dpi(140.0f)));
+    const float buttons = ImGui::CalcTextSize(ICON_FA_FILE_CIRCLE_PLUS " New" ICON_FA_FOLDER_OPEN " Open").x +
+                          ImGui::GetStyle().FramePadding.x * 4 + ImGui::GetStyle().ItemSpacing.x * 2;
+    const float width = std::clamp(ImGui::GetContentRegionAvail().x - buttons, Theme::dpi(60.0f), Theme::dpi(220.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign, ImVec2(0.0f, 0.5f));
     ImGui::Button(label.c_str(), ImVec2(width, 0));
     ImGui::PopStyleVar();
@@ -975,7 +1027,9 @@ bool editor::PoseAnimationWindow::drawEmptyState(){
 // ---- transport ----
 
 void editor::PoseAnimationWindow::drawTransport(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     const bool previewing = session.mode() == PoseEditSession::Mode::Previewing;
     const bool playing = session.previewPlaying();
@@ -996,15 +1050,18 @@ void editor::PoseAnimationWindow::drawTransport(){
     const std::string label = poseui::transportLabel(length, static_cast<int>(animation->poses.size()), previewing, time,
                                                      session.previewFrame());
     const float labelWidth = ImGui::CalcTextSize("00.00 / 00.00 s \xC2\xB7 frame 0000").x;
-    const float rightWidth = labelWidth + Theme::dpi(200.0f);
-    ImGui::SetNextItemWidth(std::max(Theme::dpi(60.0f), ImGui::GetContentRegionAvail().x - rightWidth));
+    const float bakeWidth = ImGui::CalcTextSize(ICON_FA_FILM " Bake").x + ImGui::GetStyle().FramePadding.x * 2 + Theme::dpi(150.0f);
+    const bool oneRow = ImGui::GetContentRegionAvail().x > Theme::dpi(900.0f) + bakeWidth;
+    const bool narrow = ImGui::GetContentRegionAvail().x < labelWidth + Theme::dpi(320.0f);
+    const float rightWidth = labelWidth + Theme::dpi(200.0f) + (oneRow ? bakeWidth + Theme::dpi(16.0f) : 0.0f);
+    ImGui::SetNextItemWidth(narrow ? -FLT_MIN : std::max(Theme::dpi(60.0f), ImGui::GetContentRegionAvail().x - rightWidth));
     if (ImGui::SliderFloat("##PoseScrub", &time, 0.0f, std::max(length, 0.001f), "", ImGuiSliderFlags_AlwaysClamp)){
         if (!previewing) session.startPreview();
         session.setPreviewPlaying(false);
         session.setPreviewTime(time);
     }
     ImGui::SetItemTooltip("Scrub the preview (, and . step one frame)");
-    ImGui::SameLine();
+    if (!narrow) ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(label.c_str());
     ImGui::SameLine();
@@ -1032,7 +1089,8 @@ void editor::PoseAnimationWindow::drawTransport(){
     }
     ImGui::SetItemTooltip("Frames per second of the preview, the bake and runtime playback");
 
-    // bake row
+    // bake: on the same row when there is room
+    if (oneRow) ImGui::SameLine(0.0f, Theme::dpi(16.0f));
     if (ImGui::Button(ICON_FA_FILM " Bake")) bake();
     ImGui::SetItemTooltip("Bake to an Animation of the character (same frames as the preview; baking again updates it).\n"
                           "Plays with Model:playAnimation(name) and in the Animation window.");
@@ -1044,20 +1102,14 @@ void editor::PoseAnimationWindow::drawTransport(){
         bakeName = nameBuffer;
     }
     ImGui::SetItemTooltip("The Animation's name (default: the asset's file name)");
-    if (!statusLine.empty()){
-        ImGui::SameLine();
-        ImGui::AlignTextToFramePadding();
-        ImGui::PushStyleColor(ImGuiCol_Text, statusError ? Theme::Colors::ErrorText : Theme::Colors::SubtleText);
-        ImGui::TextUnformatted(statusLine.c_str());
-        ImGui::PopStyleColor();
-        ImGui::SetItemTooltip("%s", statusLine.c_str());
-    }
 }
 
 // ---- Global Edit bar ----
 
 void editor::PoseAnimationWindow::drawGlobalEditBar(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     // the strip header: its title and the Global Edit tool
     ImGui::AlignTextToFramePadding();
@@ -1065,6 +1117,19 @@ void editor::PoseAnimationWindow::drawGlobalEditBar(){
     ImGui::SameLine();
     const bool active = session.globalEditActive();
     const float toolWidth = ImGui::CalcTextSize(ICON_FA_LAYER_GROUP " Global Edit").x + ImGui::GetStyle().FramePadding.x * 2;
+    // the status line (bake result, errors) between the title and the tool
+    if (!statusLine.empty()){
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Theme::dpi(12.0f));
+        const float room = ImGui::GetContentRegionAvail().x - toolWidth - Theme::dpi(12.0f);
+        ImGui::PushStyleColor(ImGuiCol_Text, statusError ? Theme::Colors::ErrorText : Theme::Colors::SubtleText);
+        ImGui::PushClipRect(ImGui::GetCursorScreenPos(), ImVec2(ImGui::GetCursorScreenPos().x + std::max(0.0f, room),
+                            ImGui::GetCursorScreenPos().y + ImGui::GetFrameHeight()), true);
+        ImGui::TextUnformatted(statusLine.c_str());
+        ImGui::PopClipRect();
+        ImGui::PopStyleColor();
+        ImGui::SetItemTooltip("%s", statusLine.c_str());
+        ImGui::SameLine();
+    }
     rightAlign(toolWidth);
     if (active) ImGui::PushStyleColor(ImGuiCol_Button, GLOBAL_EDIT_ORANGE);
     if (active) ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 0.1f, 0.1f, 1.0f));
@@ -1113,7 +1178,9 @@ void editor::PoseAnimationWindow::drawGlobalEditBar(){
 // ---- strip ----
 
 void editor::PoseAnimationWindow::drawStrip(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     const int count = static_cast<int>(animation->poses.size());
     const float cardWidth = Theme::dpi(CARD_WIDTH);
@@ -1204,7 +1271,10 @@ void editor::PoseAnimationWindow::drawStrip(){
 }
 
 void editor::PoseAnimationWindow::drawCard(int index, const ImVec2& pos, float cardWidth, float cardHeight){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
+    if (!animation || index >= static_cast<int>(animation->poses.size())) return;
     const pose::PoseKey& key = animation->poses[index];
     const bool selected = std::find(selection().begin(), selection().end(), index) != selection().end();
     const bool primary = index == session.primary();
@@ -1307,7 +1377,10 @@ void editor::PoseAnimationWindow::drawCard(int index, const ImVec2& pos, float c
 }
 
 void editor::PoseAnimationWindow::drawChip(int index, const ImVec2& pos, float chipWidth, float cardHeight){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
+    if (!animation || index >= static_cast<int>(animation->poses.size())) return;
     const pose::PoseKey& key = animation->poses[index];
     const pose::Transition& transition = pose::transitionOut(*animation, index);
     const bool loopBack = index == static_cast<int>(animation->poses.size()) - 1;
@@ -1395,7 +1468,9 @@ void editor::PoseAnimationWindow::drawRenamePopup(){
 // ---- timing bar ----
 
 void editor::PoseAnimationWindow::drawTimingBar(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     const poseui::TimingLayout layout = poseui::timingLayout(*animation);
     if (layout.length <= 0.0) return;
@@ -1451,7 +1526,7 @@ void editor::PoseAnimationWindow::drawTimingBar(){
             x0 = mid - Theme::dpi(1.5f);
             x1 = mid + Theme::dpi(1.5f);
         }
-        const ImVec4 fill = selected ? Theme::Colors::Selection : Theme::Colors::FoldoutHeaderHovered;
+        const ImVec4 fill = selected ? Theme::Colors::Selection : ImVec4(0.36f, 0.36f, 0.38f, 1.0f);
         draw->AddRectFilled(ImVec2(x0, top + Theme::dpi(8.0f)), ImVec2(x1, bottom), color(fill), 2.0f);
         if (hold.pose == session.primary()){
             draw->AddRect(ImVec2(x0, top + Theme::dpi(8.0f)), ImVec2(x1, bottom), color(Theme::Colors::PrefabText), 2.0f);
@@ -1609,7 +1684,9 @@ void editor::PoseAnimationWindow::drawCurvePlot(const pose::Transition& transiti
 }
 
 void editor::PoseAnimationWindow::drawPoseTab(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     const int primary = session.primary();
     if (primary < 0 || primary >= static_cast<int>(animation->poses.size())){
@@ -1819,7 +1896,9 @@ void editor::PoseAnimationWindow::drawPoseTab(){
 }
 
 void editor::PoseAnimationWindow::drawJointAngles(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     ImGui::Spacing();
     if (!Theme::foldoutHeader("Joint angles")) return;
@@ -1875,7 +1954,9 @@ void editor::PoseAnimationWindow::drawJointAngles(){
 }
 
 void editor::PoseAnimationWindow::drawFeelTab(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     const pose::PoseAnimationSettings& settings = animation->settings;
     const float labelWidth = Theme::dpi(110.0f);
@@ -1966,7 +2047,9 @@ void editor::PoseAnimationWindow::drawFeelTab(){
 }
 
 void editor::PoseAnimationWindow::drawHumanizeTab(){
-    const pose::PoseAnimationData* animation = data();
+    // a snapshot: an edit committed below replaces the document's data, not this
+    const std::shared_ptr<const pose::PoseAnimationData> held = view();
+    const pose::PoseAnimationData* animation = held.get();
     if (!animation) return;
     const pose::HumanizeSettings& humanize = animation->settings.humanize;
     const float labelWidth = Theme::dpi(110.0f);
@@ -2106,19 +2189,26 @@ void editor::PoseAnimationWindow::applyMapping(){
 
 void editor::PoseAnimationWindow::drawMappingPopup(){
     if (mappingRequested){
-        ImGui::OpenPopup("Map Bones###PoseMapBones");
         mappingRequested = false;
         mappingOpen = true;
+    }
+    // open until Apply, Cancel or its close button (a focus change elsewhere closes ImGui popups:
+    // it opens again)
+    if (mappingOpen && !ImGui::IsPopupOpen("Map Bones###PoseMapBones")){
+        ImGui::OpenPopup("Map Bones###PoseMapBones");
     }
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(560.0f), Theme::dpi(560.0f)), ImGuiCond_Appearing);
     bool open = mappingOpen;
     if (!ImGui::BeginPopupModal("Map Bones###PoseMapBones", &open)){
-        mappingOpen = false;
+        if (!open) mappingOpen = false;
         return;
     }
     if (!mappingInfo){
         ImGui::TextUnformatted("The model is gone.");
-        if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+        if (ImGui::Button("Close")){
+            mappingOpen = false;
+            ImGui::CloseCurrentPopup();
+        }
         ImGui::EndPopup();
         return;
     }
@@ -2156,8 +2246,7 @@ void editor::PoseAnimationWindow::drawMappingPopup(){
                 ImGui::TableSetColumnIndex(1);
                 const std::optional<std::string>& override = mappingOverrides[b];
                 const std::string current = override ? *override : mappingInfo->humanoid.bones[b];
-                std::string preview = current.empty() ? std::string("(none)") : current;
-                if (!override) preview += "  (auto)";
+                const std::string preview = current.empty() ? std::string("(none)") : current;
                 ImGui::SetNextItemWidth(-Theme::dpi(50.0f));
                 if (ImGui::BeginCombo("##bone", preview.c_str(), ImGuiComboFlags_HeightLarge)){
                     if (ImGui::Selectable("(none)", override && override->empty())) mappingOverrides[b] = std::string();

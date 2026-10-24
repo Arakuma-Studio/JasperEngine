@@ -61,6 +61,8 @@ namespace jasperengine::editor{
         void openFromAsset(const std::string& path, uint32_t sceneId = 0, Entity entity = NULL_ENTITY);
         // shows a tab by name ("Pose", "Feel", "Humanize" or an added one) on the next draw
         void selectTab(const std::string& name);
+        // opens the humanoid mapping popup for the Character field's model (Map Bones...)
+        bool openMappingFor(std::string* error);
 
         // The shortcuts of spec 3.3. The window runs them while it has focus; the App runs them
         // for the Scene view while it poses this window's model.
@@ -180,7 +182,7 @@ namespace jasperengine::editor{
 
         void drawSetupRow();
         void drawCharacterField();
-        void drawAnimationField();
+        void drawAnimationField(bool inlineRow);
         void drawRigChip();
         bool drawEmptyState();
         void drawTransport();
@@ -231,8 +233,13 @@ namespace jasperengine::editor{
         void applyMapping();
         void refreshCandidate();
         void updateThumbnails();
-        std::vector<int> selection() const;
+        const std::vector<int>& selection() const;
         const pose::PoseAnimationData* data() const;
+        // the document's data as an immutable snapshot (kept alive by its holders across commits)
+        std::shared_ptr<const pose::PoseAnimationData> view();
+        std::shared_ptr<const pose::PoseAnimationData> viewData;
+        const PoseAnimationDocument* viewDocument = nullptr;
+        uint64_t viewRevision = 0;
         std::string characterName() const;
         void collectOpenCandidates();
         void processPendingOpen();

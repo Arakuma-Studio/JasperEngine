@@ -65,6 +65,24 @@ Rules:
   target pose (offset unchanged), clamps, re-grounds, one undo step ("Global edit"); selecting
   another pose, previewing or closing cancels (restores the baseline).
 
+Additions (implementation; the members above are unchanged, these are extra):
+- `struct ViewSettings { bool showBalance = true; bool ghostDuringPreview = false; }; ViewSettings& view();`:
+  the Pose tab's "Show balance" and "Ghost during preview" toggles that phase 5 reads, beside `onion()`.
+- `bound()`, `rigInfo()` (the phase 2 `PoseRigInfo`: map, bone entities, bridges), `modelFile()`,
+  `realisation()` (`document()->realise(rig())`), `keyPose(i)` (realised key), `displayed()` (the pose the
+  bones show), `previewLength()`, `previewFrame()`, `globalEditChangedSlots()` (0: "Nothing changed yet").
+- `commitData(data, undoName, mergeKey, selection*, primary)` (the window's edits), `setSelection`, `goIdle()`
+  (window close), `suspend()` (before a save / play: bones restored, applied again by `update(dt)` once the
+  scene is stopped), `clearSceneState(sceneId)`, `update(dt)` (advances a playing preview, follows play
+  mode, scene switch and deleted models), `closeDocument()`, `setActive()`.
+- Global Edit computes `E` from a slot's three DOF values alone (4.5), so it needs no rig and also carries
+  slots the bound rig does not map (`poseui::applyGlobalEditDelta`). Cancelling after an edit commits the
+  baseline back as its own undo step ("Cancel global edit").
+- The window: `PoseAnimationWindow::addTab({name, draw, order})` is the Templates tab's extension point;
+  MCP `focus_window {window: "pose_animation", pose: {entity, path, index, play, tab}}` binds, opens,
+  selects, previews and switches tabs (`tab: "map_bones"` opens the mapping popup) and returns the window
+  state.
+
 ## 3. The window (`editor/window/PoseAnimationWindow.{h,cpp}`)
 
 Opened from **Window > Animation > Pose Animation**, docked next to the Animation window by

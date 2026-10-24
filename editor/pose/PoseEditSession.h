@@ -17,6 +17,7 @@
 #pragma once
 
 #include "ecs/Entity.h"
+#include "math/Matrix4.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
 #include "pose/PoseRig.h"
@@ -132,11 +133,19 @@ namespace jasperengine::editor{
         int globalEditChangedSlots();
 
     private:
+        // a bone's Transform as the scene had it, with its derived matrices: a scene saved right
+        // after restoreBones() writes exactly these values (the next update recomputes them)
         struct SavedBone{
             Entity entity = NULL_ENTITY;
             Vector3 position;
             Quaternion rotation;
             Vector3 scale;
+            Vector3 worldPosition;
+            Quaternion worldRotation;
+            Vector3 worldScale;
+            Matrix4 localMatrix;
+            Matrix4 modelMatrix;
+            Matrix4 normalMatrix;
         };
 
         Project* projectPtr = nullptr;

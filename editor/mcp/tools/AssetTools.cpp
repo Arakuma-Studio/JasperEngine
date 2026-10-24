@@ -866,8 +866,10 @@ void viewAssetTool(const CallPtr& call) {
         replyImage(call, file, rel, maxSize);
         return;
     }
-    if (!(Util::isImageFile(rel) || Util::isModelFile(rel) || Util::isMaterialFile(rel) || Util::isPrefabFile(rel))) {
-        call->fail("view_asset shows images, and thumbnails of models, materials and prefabs. For scenes use the screenshot tools.");
+    // .poseanim: the middle pose on its preview model (the Project window's thumbnail)
+    if (!(Util::isImageFile(rel) || Util::isModelFile(rel) || Util::isMaterialFile(rel) || Util::isPrefabFile(rel) ||
+          extensionOf(file) == ".poseanim")) {
+        call->fail("view_asset shows images, and thumbnails of models, materials, prefabs and pose animations. For scenes use the screenshot tools.");
         return;
     }
     // The Project window's thumbnail, generated on demand
