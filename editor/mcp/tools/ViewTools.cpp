@@ -29,7 +29,9 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/PlayModeChangesWindow.h"
 #include "window/SceneWindow.h"
+#include "window/UndoHistoryWindow.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -546,6 +548,12 @@ void captureScene(const CaptureJobPtr& job) {
                     info["camera"]["zoom"] = static_cast<SceneRender2D*>(sc->sceneRender)->getZoom();
                 }
             }
+            // where the view sits in the editor window: maps the image to pointer positions
+            float vx = 0.0f, vy = 0.0f, vw = 0.0f, vh = 0.0f;
+            if (SceneWindow* sw = cx.sceneWindow(); sw && sw->getViewRect(sceneId, vx, vy, vw, vh)) {
+                info["view_rect_in_window"] = {{"x", std::round(vx)}, {"y", std::round(vy)},
+                                               {"width", std::round(vw)}, {"height", std::round(vh)}};
+            }
             readFramebuffer(job, sc->sceneRender->getFramebuffer(), std::move(info));
         });
     });
@@ -1020,8 +1028,15 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "undo_history") {
+        app.getUndoHistoryWindow()->setOpen(true);
+        imguiName = UndoHistoryWindow::WINDOW_NAME;
+    } else if (window == "play_mode_changes") {
+        app.getPlayModeChangesWindow()->setOpen(true);
+        imguiName = PlayModeChangesWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, jobs_memory.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
+                   "jobs_memory, undo_history, play_mode_changes.");
         return;
     }
     (void)app;
@@ -1032,7 +1047,13 @@ void focusWindowTool(const CallPtr& call) {
             ImGuiWindow* w = ImGui::FindWindowByName(imguiName.c_str());
             const bool shown = w && w->WasActive && !w->Hidden;
             Json data = {{"window", window}, {"shown", shown}};
-            if (w) data["size"] = {w->Size.x, w->Size.y};
+            if (w) {
+                data["size"] = {w->Size.x, w->Size.y};
+                // in the editor window's client area, as the OS pointer sees it
+                const ImVec2 origin = ImGui::GetMainViewport()->Pos;
+                data["rect"] = {{"x", std::round(w->Pos.x - origin.x)}, {"y", std::round(w->Pos.y - origin.y)},
+                                {"width", std::round(w->Size.x)}, {"height", std::round(w->Size.y)}};
+            }
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
                 return;
@@ -1190,7 +1211,8 @@ void registerViewTools(McpRegistry& registry) {
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "jobs_memory"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
+                                       "jobs_memory", "undo_history", "play_mode_changes"})},
             {"scene", sceneRef("window scene: whose tab.")}
         }, {"window"});
         tool.annotations.idempotent = true;

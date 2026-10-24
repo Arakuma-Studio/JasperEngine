@@ -1318,7 +1318,7 @@ Open and bring an editor panel to the front, e.g. to show a watching human. Not 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `scene` | integer or string |  | window scene: whose tab. |
-| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"terrain"` \| `"mcp"` \| `"jobs_memory"` | yes |  |
+| `window` | `"scene"` \| `"game"` \| `"console"` \| `"hierarchy"` \| `"inspector"` \| `"project"` \| `"animation"` \| `"terrain"` \| `"mcp"` \| `"jobs_memory"` \| `"undo_history"` \| `"play_mode_changes"` | yes |  |
 
 
 ### `frame_entity`

@@ -15,4 +15,8 @@ namespace jasperengine::editor {
     // made the tree; a null or undefined node is 0.
     size_t yamlFootprint(const YAML::Node& node);
 
+    // Whether two YAML trees hold the same data: maps by key (any order), sequences in order,
+    // scalars by text. Stops at the first difference, emits nothing.
+    bool yamlEqual(const YAML::Node& a, const YAML::Node& b);
+
 }

@@ -85,6 +85,14 @@ are described in the agent guide (`jasper://guide`, section Undo) and `docs/mcp/
 with `undo_group` and `undo_name`, and `get_play_changes` / `apply_play_changes` /
 `discard_play_changes`.
 
+## Tests
+
+`editor/tests/command/` (the `CommandHistoryTests`, `UndoTimelineTests`, `PrefabUndoTests`,
+`PlayChangeReviewTests` and `CommandHistoryBench` suites of `jasperengine-editor-tests`),
+`tools/mcp/tests/test_undo.py` (agent semantics, CI) and `tools/mcp/tests/test_undo_ui.py`: Esc in a
+gizmo, Inspector and terrain drag, the Undo History panel and the Play Mode Changes window driven
+with real mouse and keys (xdotool in the harness's Xvfb), with screenshots.
+
 ## Command line
 
 `jasperengine-editor scene-dump --ops <file>` runs its `undo` and `redo` ops through the editor's

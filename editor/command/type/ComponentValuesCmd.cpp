@@ -287,7 +287,7 @@ bool editor::ComponentValuesCmd::execute(){
         changed = true;
         // the same values again are no edit (the history then drops the command)
         if (!differs) {
-            differs = YAML::Dump(EntityClipboard::encodeComponent(scene, target.entity, type)) != YAML::Dump(target.before);
+            differs = !yamlEqual(EntityClipboard::encodeComponent(scene, target.entity, type), target.before);
         }
     }
 

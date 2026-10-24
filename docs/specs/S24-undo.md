@@ -749,9 +749,13 @@ with the code base:
     `tools/fixtures/prefab-runtime` headless, as `scene-dump` does, and emulate Play's snapshot and
     Stop as `scene-dump --ops playStart/playStop` do. S02's characterization tests needed only the
     fake command's names (the history still frees in list order).
-14. **Manual checks (AC5, AC15, AC16)** need a person at the editor; their behaviour is covered by the
-    gtest suites (interactive cancel/commit, jumps, the review) and the MCP tests, and is left for the
-    integrator's manual pass.
+14. **AC5, AC15 and AC16 are scripted** instead of manual: `tools/mcp/tests/test_undo_ui.py` drives
+    the editor with real mouse and key input (xdotool in the harness's Xvfb, as S06's AC23 test) and
+    checks every step through MCP, with screenshots ($JE_EVIDENCE_DIR). For the pointer positions
+    `focus_window` returns the panel's `rect` (and fronts the two new panels, `undo_history` and
+    `play_mode_changes`), and a `screenshot` of the Scene view returns `view_rect_in_window`; the
+    offsets inside the panels are measured in the default layout. It runs outside the CI suite
+    (it needs the harness's Xvfb and xdotool), as S06's does.
 15. **Stop now removes GameObjects that edits made while playing.** `restorePlaySnapshot` removed
     only script-made GameObjects; ones made by a command (Create, Duplicate, Paste, an agent's
     `create_entity`) are tracked and survived Stop, although their steps went with the play

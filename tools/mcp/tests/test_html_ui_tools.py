@@ -55,9 +55,10 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
           "list_ui_effects": 900, "set_ui_effect_time": 500}
 # S03 (data safety, R37/R38): +1479 for get_load_report (225), discard_scene_backup (146),
 # list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
-# S24 (undo, R36-R39): +2129 for get_undo_history (561), get/apply/discard_play_changes (776),
-# undo/redo scope timeline, to_id and expect_top_id, batch undo_name and play keep_changes
-TOTAL_LIMIT = 99800 + 837 + 1479 + 2129
+# S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
+# undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
+# focus_window's undo_history / play_mode_changes panels (35)
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2164
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

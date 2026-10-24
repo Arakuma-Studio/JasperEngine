@@ -1039,6 +1039,16 @@ void editor::App::undoRedo(bool undo){
 }
 
 void editor::App::handleInteractiveEdits(bool popupOpen){
+    ImGuiIO& io = ImGui::GetIO();
+    // Esc puts a drag's values back; a text field keeps Esc for its own revert. First: ImGui
+    // lets go of the dragged widget on Esc itself, which must not read as a drag that ended
+    if (CommandHistory::anyInteractiveOpen() && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        for (CommandHistory* history : std::vector<CommandHistory*>(CommandHistory::all())) {
+            history->cancelInteractive();
+        }
+        ImGui::ClearActiveID();
+        return;
+    }
     // the widget let go last frame: its drag is one step
     const ImGuiID active = ImGui::GetActiveID();
     if (widgetEdit.isOpen() && active != widgetEditItem) {
@@ -1049,15 +1059,6 @@ void editor::App::handleInteractiveEdits(bool popupOpen){
         CommandHistory::flushReleased();
     }
     if (!CommandHistory::anyInteractiveOpen()) {
-        return;
-    }
-    ImGuiIO& io = ImGui::GetIO();
-    // Esc puts a drag's values back; a text field keeps Esc for its own revert
-    if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-        for (CommandHistory* history : std::vector<CommandHistory*>(CommandHistory::all())) {
-            history->cancelInteractive();
-        }
-        ImGui::ClearActiveID();
         return;
     }
     // A menu or popup opening, or the editor window losing focus, ends the drag as it is

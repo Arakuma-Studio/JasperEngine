@@ -59,3 +59,35 @@ size_t editor::yamlFootprint(const YAML::Node& root){
     }
     return footprint(root);
 }
+
+bool editor::yamlEqual(const YAML::Node& a, const YAML::Node& b){
+    if (a.Type() != b.Type()){
+        return false;
+    }
+    switch (a.Type()){
+        case YAML::NodeType::Scalar:
+            return a.Scalar() == b.Scalar();
+        case YAML::NodeType::Sequence: {
+            if (a.size() != b.size()){
+                return false;
+            }
+            YAML::const_iterator other = b.begin();
+            for (YAML::const_iterator it = a.begin(); it != a.end(); ++it, ++other){
+                if (!yamlEqual(*it, *other)) return false;
+            }
+            return true;
+        }
+        case YAML::NodeType::Map: {
+            if (a.size() != b.size()){
+                return false;
+            }
+            for (YAML::const_iterator it = a.begin(); it != a.end(); ++it){
+                const YAML::Node other = b[it->first.Scalar()];
+                if (!other || !yamlEqual(it->second, other)) return false;
+            }
+            return true;
+        }
+        default:
+            return true;
+    }
+}

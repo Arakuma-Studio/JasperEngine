@@ -413,6 +413,8 @@ namespace jasperengine::editor{
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
+        UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }
+        PlayModeChangesWindow* getPlayModeChangesWindow() const { return playModeChangesWindow; }
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
