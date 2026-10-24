@@ -979,7 +979,7 @@ void tick(const PlacementCallPtr& state) {
             if (state->spec.settings.decomposition == PlacementDecomposition::ALWAYS && cache) {
                 const PlacementWorldSettings settings = makePlacementWorldSettings(state->spec.settings, cache);
                 for (Entity root : state->spec.entities) {
-                    if (PlacementWorld::requestDecompositions(sp->scene, root, settings) > 0) state->decomposing.push_back(root);
+                    if (PlacementWorld::requestDecompositions(sp->scene, root, settings, nullptr, true) > 0) state->decomposing.push_back(root);
                 }
             }
             state->phase = PlacementCall::Phase::Simulating;
