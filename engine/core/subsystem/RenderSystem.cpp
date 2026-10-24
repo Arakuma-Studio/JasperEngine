@@ -25,6 +25,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "lattice/LatticeRender.h"
 #include "object/environment/Water.h"
+#include "subsystem/FluidSystem.h"
 #include <memory>
 #include <algorithm>
 #include <array>
@@ -485,11 +486,13 @@ namespace {
 
 uint32_t RenderSystem::pixelsWhite[64];
 uint32_t RenderSystem::pixelsBlack[64];
+uint32_t RenderSystem::pixelsTransparent[64];
 uint32_t RenderSystem::pixelsNormal[64];
 
 TextureRender RenderSystem::emptyWhite;
 TextureRender RenderSystem::emptyArrayWhite;
 TextureRender RenderSystem::emptyBlack;
+TextureRender RenderSystem::emptyTransparent;
 TextureRender RenderSystem::emptyCubeBlack;
 TextureRender RenderSystem::emptyCubeWhite;
 TextureRender RenderSystem::emptyNormal;
@@ -841,6 +844,17 @@ void RenderSystem::createEmptyTextures(){
         emptyBlack.createTexture(
                 "empty|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
+
+        // what a texture of a framebuffer that is gone shows (Texture::getRender): nothing
+        for (int i = 0; i < 64; i++) {
+            pixelsTransparent[i] = 0x00000000;
+        }
+        data_array[0] = (void*)pixelsTransparent;
+        emptyTransparent.createTexture(
+                "empty|transparent", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data_array, size_array,
+                TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
+        Texture::setDestroyedFramebufferFallback(&emptyTransparent);
+        data_array[0] = (void*)pixelsBlack;
         emptyCubeBlack.createTexture(
                 "empty|cube|black", 8, 8, ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, data_array, size_array, 
                 TextureFilter::NEAREST, TextureFilter::NEAREST, TextureWrap::REPEAT, TextureWrap::REPEAT);
@@ -898,7 +912,7 @@ void RenderSystem::createEmptyTextures(){
 void RenderSystem::destroyEmptyTextures(){
     TextureRender* textures[] = {
         &emptyWhite, &emptyArrayWhite, &emptyBlack, &emptyCubeBlack, &emptyCubeWhite, &emptyNormal,
-        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &emptyCubeGray
+        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &emptyCubeGray, &emptyTransparent
     };
     // (destroyTexture skips handles that are already gone and clears them)
     for (TextureRender* texture : textures){
@@ -5273,6 +5287,9 @@ bool RenderSystem::loadTerrainTextures(Entity entity, TerrainComponent& terrain,
     for (int m = 0; m < MAX_TERRAIN_BLENDMAPS; m++){
         const bool covered = m < coveredMaps && m < static_cast<int>(terrain.blendMaps.size());
         textureRender = covered ? terrain.blendMaps[m].getRender(&emptyBlack) : NULL;
+        // (a render target not drawn: its version is taken, it is not outdated for the reload check)
+        if (!covered && m < static_cast<int>(terrain.blendMaps.size()) && terrain.blendMaps[m].isFramebuffer())
+            terrain.blendMaps[m].getRender(&emptyBlack);
         slotTex = shaderData.getTextureIndex(static_cast<TextureShaderType>(static_cast<int>(TextureShaderType::BLENDMAP) + m));
         if (textureRender){
             if (!textureRender->isCreated()){
@@ -5303,6 +5320,15 @@ bool RenderSystem::loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRen
 }
 
 bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh){
+    // a render target its maps show was made again (a fluid's output, a camera's after a view
+    // loss): bound again, as meshes do (checkPBRFrabebufferUpdate)
+    if (!terrain.needUpdateTexture){
+        bool outdated = terrain.heightMap.isFramebufferOutdated();
+        for (const Texture& blendMap : terrain.blendMaps)
+            outdated = outdated || blendMap.isFramebufferOutdated();
+        if (outdated)
+            terrain.needUpdateTexture = true;
+    }
     if (!terrain.needUpdateTexture){
         return true;
     }
@@ -5557,6 +5583,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         scanSubmeshAttributes(mesh.submeshes[i], attributeBuffers);
 
         submeshLoads[i].shaderInputs = getSubmeshShaderInputs(mesh, mesh.submeshes[i], terrain, instmesh, hasMirror, sceneMeshShader);
+        // a FluidSimulation's output lent to submesh 0 (drawMesh) needs its texture coordinates
+        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+            submeshLoads[i].shaderInputs.baseColorTexture = true;
         submeshLoads[i].variant = getSubmeshShaderVariant(shaderEnvironment, submeshLoads[i].shaderInputs);
         const SubmeshShaderInputs& shaderInputs = submeshLoads[i].shaderInputs;
         const SubmeshShaderVariant& variant = submeshLoads[i].variant;
@@ -5830,7 +5859,14 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         bool blended = false;
         bool transparentQueue = false;
         const ShaderManifestState* manifestState = mesh.submeshes[i].manifest ? &mesh.submeshes[i].manifestState : nullptr;
-        const RenderState colorState = resolveSubmeshRenderState(mesh, mesh.submeshes[i], manifestState, blended, transparentQueue);
+        RenderState colorState = resolveSubmeshRenderState(mesh, mesh.submeshes[i], manifestState, blended, transparentQueue);
+        // a transparent FluidSimulation output lent to it blends like a transparent texture
+        if (i == 0 && lendsTransparentFluid(entity, mesh.submeshes[i])){
+            blended = true;
+            transparentQueue = true;
+            if (mesh.submeshes[i].material.depthWrite == MaterialDepthWrite::AUTO)
+                colorState.depthWrite = false;
+        }
         mesh.submeshes[i].skipsScreenEffects = colorState.colorWriteMask == 0 && !colorState.depthWrite;
         mesh.submeshes[i].alphaBlend = transparentQueue;
         if (mesh.autoTransparency && !mesh.transparent && transparentQueue){
@@ -7742,6 +7778,12 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                         bindShaderTextures(libraryBindings, render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
                 }
+            }
+            // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
+            // base colour, lent for the draw (the material keeps its own texture)
+            if (i == 0 && frameFluids && frameFluids->hasMaterialFluids()){
+                if (TextureRender* fluidTexture = frameFluids->getMaterialTexture(entity))
+                    render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
             }
 
             if (!render.beginDraw(pipType, passNoFaceCulling())){
@@ -9746,7 +9788,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     render.beginLoad(ui.primitiveType);
 
-    bool hasUITexture = !ui.texture.empty();
+    // (an Image showing a FluidSimulation's output samples it even without a texture of its own)
+    bool hasUITexture = !ui.texture.empty() || (!isText && frameFluids && frameFluids->getMaterialTexture(entity));
 
     bool p_hasTexture = false;
     bool p_vertexColorVec4 = true;
@@ -9853,7 +9896,17 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     return true;
 }
 
-bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType){
+bool RenderSystem::lendsTransparentFluid(Entity entity, const Submesh& submesh) const{
+    if (!frameFluids || !frameFluids->hasMaterialFluids())
+        return false;
+    // (a material or shader that chose its blending keeps it)
+    if (submesh.manifest || submesh.material.alphaMode != MaterialAlphaMode::AUTO || submesh.material.blendMode != MaterialBlendMode::AUTO)
+        return false;
+    bool transparent = false;
+    return frameFluids->getMaterialTexture(entity, &transparent) && transparent;
+}
+
+bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pipType, TextureRender* textureOverride){
     if (ui.loaded && ui.buffer.getSize() > 0){
 
         if (ui.needUpdateTexture || ui.texture.isFramebufferOutdated()){
@@ -9865,6 +9918,8 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
                     ui.needUpdateTexture = false;
                 }
         }
+        if (textureOverride && textureOverride->isCreated())
+            ui.render.addTexture(ui.shader.get()->shaderData.getTextureIndex(TextureShaderType::UI), ShaderStageType::FRAGMENT, textureOverride);
         if (!ui.libraryBindings.textures.empty() && (ui.needUpdateTexture || shaderTexturesOutdated(ui.libraryBindings, ui.shaderTextures))){
             bindShaderTextures(ui.libraryBindings, ui.render, ui.shaderTextures);
         }
@@ -11244,7 +11299,9 @@ bool RenderSystem::meshVariantShadersReady(Entity entity, const MeshComponent& m
     bool allReady = true;
     for (unsigned int i = 0; i < mesh.numSubmeshes; i++){
         const Submesh& submesh = mesh.submeshes[i];
-        const SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
+        SubmeshShaderInputs inputs = getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, hasMirror, sceneMeshShader);
+        if (i == 0 && frameFluids && frameFluids->getMaterialTexture(entity))
+            inputs.baseColorTexture = true;
         const SubmeshShaderVariant variant = getSubmeshShaderVariant(shaderEnvironment, inputs);
         allReady = ready(ShaderType::MESH, variant.properties,
                          ShaderPool::registerCustomShader(getSubmeshShaderReference(mesh, submesh, sceneMeshShader))) && allReady;
@@ -12891,6 +12948,8 @@ void RenderSystem::update(double dt){
                 // the manifest's state as loaded (keyword rules resolved at load, no allocation)
                 resolveSubmeshRenderState(mesh, mesh.submeshes[s], mesh.submeshes[s].manifest ? &mesh.submeshes[s].manifestState : nullptr,
                                           blended, alphaBlend);
+                if (s == 0 && lendsTransparentFluid(entity, mesh.submeshes[s]))
+                    alphaBlend = true;
                 expectedTransparent = expectedTransparent || alphaBlend;
 
                 if (mesh.submeshes[s].alphaBlend != alphaBlend){
@@ -13837,6 +13896,12 @@ void RenderSystem::drawFramePasses(){
     frameShadows.projectiveKey.epoch = hasShadows ? shadowEpoch : 0;
     frameShadows.pointKey.epoch = hasShadows ? shadowEpoch : 0;
     render2DShadows();
+
+    // the fluid simulations step and draw their outputs before any camera samples them (as a
+    // material or a texture link) or composites them (SCREEN)
+    frameFluids = scene->findSystem<FluidSystem>().get();
+    if (frameFluids)
+        frameFluids->renderFluids();
 
     // Runtime-captured probes share a strict budget: one cubemap face total per
     // frame. Static probes without an authored cubemap capture once; dynamic
@@ -14799,6 +14864,24 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    // SCREEN fluid simulations: a layer over the scene and under the UI, in the game's views
+    // (not the editor's Scene view, which they would cover). Drawn right before the pass's first
+    // component UI element (else after the transparent renderers), so always under the HTML
+    // UI documents; post-processed with the scene and the UI
+    bool screenFluidsPending = isMainCamera && !pass.renderToTexture;
+#ifdef JASPERENGINE_EDITOR
+    screenFluidsPending = screenFluidsPending && !passDrawsOverlays;
+#endif
+    FluidSystem* screenFluids = screenFluidsPending ? scene->findSystem<FluidSystem>().get() : nullptr;
+    screenFluidsPending = screenFluids && screenFluids->hasScreenFluids();
+    auto drawScreenFluids = [&](){
+        if (!screenFluidsPending)
+            return;
+        screenFluidsPending = false;
+        camera.render.applyScissor(colorPassViewport);
+        screenFluids->drawScreen(targetFormatFor(colorPip, passMsaa), isRenderingFlipped(camera));
+    };
+
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
@@ -14806,6 +14889,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         if (signature.test(scene->getComponentId<CameraComponent>())){
             continue;
+        }
+
+        // (a UI element this pass draws: not one hidden, inactive or culled)
+        if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>()) && transform.visible &&
+                isRenderActive(entity, signature) && isLayerVisible(entity, cullingMask) &&
+                !samplesCameraTarget(camera, scene->getComponent<UIComponent>(entity).texture)){
+            drawScreenFluids();
         }
 
         // a 2D pass: what was drawn before the first draw requiring the scene colour (one this
@@ -14915,7 +15005,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             UIComponent& ui = scene->getComponent<UIComponent>(entity);
 
             if (transform.visible && renderActive && !samplesCameraTarget(camera, ui.texture))
-                drawUI(ui, transform, colorPip);
+                drawUI(ui, transform, colorPip,
+                       (frameFluids && frameFluids->hasMaterialFluids()) ? frameFluids->getMaterialTexture(entity) : nullptr);
 
         }else if (signature.test(scene->getComponentId<PointsComponent>())){
             PointsComponent& points = scene->getComponent<PointsComponent>(entity);
@@ -14960,6 +15051,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawPoints(renderData.entity, *renderData.points, *renderData.transform, camera, cameraTransform, colorPip);
         }
     }
+
+    //---------Draw SCREEN fluid simulations, if no UI element came first----------
+    drawScreenFluids();
 
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
     // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a

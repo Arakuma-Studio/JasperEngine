@@ -165,7 +165,8 @@ namespace jasperengine{
         HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
         UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
-        PROBE_FILTER     // reflection probe capture prefiltered into roughness mip levels (probe_filter.frag)
+        PROBE_FILTER,    // reflection probe capture prefiltered into roughness mip levels (probe_filter.frag)
+        FLUID            // FluidSimulator's passes (the solver and the display), the pass in the property bits
     };
 
     enum class AttributeType{
@@ -340,7 +341,12 @@ namespace jasperengine{
         // SystemRender::getFeatures() before creating one
         RGBA16F,
         RGBA32F,
-        R32F
+        R32F,
+        // half-float two- and one-channel targets (the fluid simulation's velocity and its
+        // pressure, divergence and curl): renderable and filterable where RGBA16F is (same GLES3
+        // extension rules), half the memory of RGBA16F per channel dropped
+        RG16F,
+        R16F
     };
 
     enum class TextureFilter{

@@ -1453,16 +1453,16 @@ void registerLatticeTools(McpRegistry& registry) {
     tool.name = "edit_lattice";
     tool.title = "Edit Lattice";
     tool.description =
-        "Lattice (FFD cage) edits, as in the Scene view; one undo step, rolled back on any error. lattice: "
-        "default the selected/only one; create {targets, name, resolution, fit_padding} fits a new one "
-        "around targets and binds them. Then resolution (resamples), interpolation, outside, fade_distance, "
+        "Lattice (FFD cage) edits as in the Scene view; one undo step, undone on any error. lattice: "
+        "default: selected/only one; create {targets, name, resolution, fit_padding} fits one "
+        "around targets, bound. Then resolution (resamples), interpolation, outside, fade_distance, "
         "then ops in order: set {points: [{ijk|index, offset|position, space}]}, move {select, offset, "
         "rotate (deg), scale, pivot center|lattice|[x,y,z], space, falloff {radius, curve}}, reset {select}, "
         "preset {name, axis, toward, amount, seed, mode, select}, mirror {axis, from +|-}, fit {targets, "
         "padding}, bind {target, weight, stage, submesh, mask, include_children}, unbind {target}, follow "
         "{target, rest}, pose {save|apply|delete: name, weight}, bake {target}. select (default all): all, exterior, interior, "
         "selected, +x..-z, [points] or {face, i, j, k (n|[lo,hi]), points, box, sphere (world)} intersected. "
-        "Offsets are lattice-local (cage = unit cube). Returns targets, moved_points, max_offset, warnings, "
+        "Offsets: lattice-local (unit cube). Returns targets, moved_points, max_offset, warnings, "
         "points (detail points), samples (sample: world points -> deformed, stretch). No edits: a read (play "
         "too). jasper://docs/lattice.";
     tool.inputSchema = object({

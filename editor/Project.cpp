@@ -42,6 +42,8 @@
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
+#include "fluid/FluidSimulator.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -3840,6 +3842,9 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
                                          scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+    // a fluid a script makes (FluidSimulation in Lua or C++) needs its programs too
+    if (scriptsMention("FluidSimulation"))
+        ShaderVariantCollector::addFluidKeys(keys);
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -3970,6 +3975,25 @@ Entity editor::Project::getSceneCamera(const SceneProject* sceneProject) const {
     }
 }
 
+namespace {
+    // Play reuses the edit-time Scene and Stop decodes the snapshot over it, both keeping each
+    // fluid's simulator: restart them, so the game starts its fluids as an export does (the
+    // seed, the start burst; seed 0 a new one each start), not from what an edit-mode preview
+    // or eval_lua step() left, and Stop brings back the edit-mode start, not the game's last frame
+    void restartFluids(Scene* scene) {
+        if (!scene || !scene->isComponentRegistered<FluidSimulationComponent>()) return;
+        auto fluids = scene->getComponentArray<FluidSimulationComponent>();
+        for (size_t i = 0; i < fluids->size(); ++i) {
+            FluidSimulationComponent& fluid = fluids->getComponentFromIndex(i);
+            fluid.needReset = true;
+            fluid.pendingSplats.clear();
+            fluid.pendingBursts.clear();
+            fluid.pendingSteps = 0;
+            if (fluid.simulator) fluid.simulator->pointerCancelAll();
+        }
+    }
+}
+
 void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
     if (!entry.runtime || !entry.runtime->scene) return;
 
@@ -3987,6 +4011,8 @@ void editor::Project::prepareRuntimeScene(PlayRuntimeScene& entry) {
         probe.needUpdate = true;
         probe.captureRevision++;
     }
+
+    restartFluids(entry.runtime->scene);
 
     entry.runtime->scene->getSystem<ActionSystem>()->resetRunningActions();
 
@@ -5265,6 +5291,8 @@ void editor::Project::pauseEngineScene(Scene* scene, bool pause) const{
     scene->getSystem<PhysicsSystem>()->setPaused(pause);
     scene->getSystem<ActionSystem>()->setPaused(pause);
     scene->getSystem<AudioSystem>()->setPaused(pause);
+    // the fluids hold still in edit mode (the Inspector's preview steps one: FluidSystem::setPreview)
+    if (auto fluids = scene->findSystem<FluidSystem>()) fluids->setPaused(pause);
     // lattice tweens and jiggle (followers and offsets still show in edit mode)
     scene->getSystem<LatticeSystem>()->setPaused(pause);
 }
@@ -5624,6 +5652,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
 
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
+        // the fluids too: back to the edit-mode start, not the game's last frame
+        restartFluids(sceneProject->scene);
 
         sceneProject->playState = ScenePlayState::STOPPED;
         if (!entry.ownedRuntime) {

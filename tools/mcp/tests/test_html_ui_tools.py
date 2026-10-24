@@ -48,16 +48,19 @@ SEND_INPUT_BEFORE = 1780
 IMPORT_FILES_BEFORE = 452
 # phase 5 (p5-tooling, spec 3.13): the effects tools within their caps, inspect_ui's `effects`
 # within +150 of its size before (1806), the total raised by what they measure (+837:
-# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9)
+# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9); fluid-fx: set_ui_effect_time's scripted
+# pointer_path and splats (cap 750), paid for inside the total
 INSPECT_UI_BEFORE_P5 = 1806
 LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
           "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
-          "list_ui_effects": 900, "set_ui_effect_time": 500}
+          "list_ui_effects": 900, "set_ui_effect_time": 750}
 # raised to what main measured after phase 6 and Texture Synthesis (104736, synthesize_texture and
 # the tools that grew since), plus the upstream catch-up's additions (+731: FBX imports in
 # import_files/get_asset_info, create_entity type water, physics_interpolation, edit_animation
-# loop/relative/ping-pong/spin, screenshot save_path project-relative)
-TOTAL_LIMIT = 105467
+# loop/relative/ping-pong/spin, screenshot save_path project-relative), plus the fluid's (+51:
+# create_entity type fluid_simulation, {"fluid": <entity>} texture links, set_ui_effect_time's
+# pointer_path and splats, net of the tightened inspect_ui/assert_ui/create_ui_document texts)
+TOTAL_LIMIT = 105518
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

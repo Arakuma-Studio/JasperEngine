@@ -168,7 +168,7 @@ std::string getLangSuffix(shadercompiler::lang_type_t lang, int version, bool es
 }
 
 // The defines and annotations of a stateful UI effect (phase 6), read from its manifest block (the
-// "// @" lines right after #version 450): JFX_PASS_<NAME> = the index of each @init/@step pass in
+// "// @" lines right after #version 450): JFX_PASS_<NAME> = the index of each @init/@step/@frame pass in
 // declaration order, JFX_PASSES (their count), JFX_STATEFUL; and the 32-bit float states' textures and
 // samplers annotated unfilterable (GLES3/WebGL2 cannot filter them), in a buffer of their own.
 void addUiEffectStateDefinitions(const std::string& source, shadercompiler::args_t& args) {
@@ -211,7 +211,7 @@ void addUiEffectStateDefinitions(const std::string& source, shadercompiler::args
         const std::vector<std::string> w = words(lines[i]);
         if (w.size() < 2 || w[0] != "//" || w[1].empty() || w[1][0] != '@')
             break;
-        if ((w[1] == "@init" || w[1] == "@step") && w.size() >= 3) {
+        if ((w[1] == "@init" || w[1] == "@step" || w[1] == "@frame") && w.size() >= 3) {
             std::string macro = "JFX_PASS_";
             for (char c : w[2])
                 macro += c == '-' ? '_' : (char)std::toupper((unsigned char)c);
@@ -486,6 +486,12 @@ void addBloomPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
     if (prop & shaderPropertyBit(3))  defs.push_back({"BLOOM_MIX", "1"});                // 'Mix'
 }
 
+// FluidSimulator's programs: the solver (none), the look passes, the solver without linear filtering
+void addFluidPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
+    if (prop & shaderPropertyBit(0))  defs.push_back({"FLUID_LOOK", "1"});               // 'Lok'
+    if (prop & shaderPropertyBit(1))  defs.push_back({"FLUID_MANUAL_FILTERING", "1"});   // 'Mfl'
+}
+
 void addSkyPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
     if (prop & shaderPropertyBit(0))  defs.push_back({"USE_POST_COLOR", "1"});           // 'Pcl'
 }
@@ -590,6 +596,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
             args.defines.push_back({"JFX_STEP_FORM", "1"});
         if (scatterForm)
             args.defines.push_back({"JFX_SCATTER_FORM", "1"});
+    }else if (shaderType == ShaderType::FLUID){
+        args.vert_file = "fluid.vert";
+        args.frag_file = "fluid.frag";
+        addFluidPropertyDefinitions(args.defines, properties);
     }else{
         return false;
     }

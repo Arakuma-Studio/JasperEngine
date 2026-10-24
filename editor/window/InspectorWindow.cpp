@@ -15,6 +15,10 @@
 #include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
+#include "util/FluidEditorTools.h"
+#include "util/UIProbe.h"
+#include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
@@ -882,9 +886,13 @@ void editor::InspectorWindow::requestAddComponent(){
 void editor::InspectorWindow::stopTransientPreviews() {
     stopSoundPreview();
     stopActionPreviewIfActive();
+    // the fluid previews and the Paint Dye brush (play starts, a save, the window closes)
+    FluidEditorTools::stopAll(project);
 }
 
 void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
+    FluidEditorTools::forgetScene(sceneId);
+
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
         actionPreviewStates.clear();
@@ -4203,6 +4211,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
 
         bool isCameraTexture = CameraTextureLink::isCameraTexture(newValue);
+        bool isFluidTexture = FluidTextureLink::isFluidTexture(newValue);
 
         float thumbSize = ImGui::GetFrameHeight() * 3;
         Texture* thumbTexture = findThumbnail(newValue.getPath());
@@ -4217,8 +4226,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 Widgets::image(Backend::getImGuiTexture(thumbTexture->getRender()), ImVec2(thumbTexture->getWidth(), thumbTexture->getHeight()));
                 ImGui::EndTooltip();
             }
-        } else if (isCameraTexture && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
-            // live preview of the linked camera framebuffer
+        } else if ((isCameraTexture || isFluidTexture) && newValue.isFramebuffer() && newValue.getFramebuffer()->isCreated()) {
+            // live preview of the linked camera framebuffer or fluid output
             ImU32 border_col = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_FrameBg]);
             if (dif){
                 border_col = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
@@ -4228,12 +4237,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         // sampler settings (min/mag filter, wrap) only apply to an actual image texture,
         // not to a camera/framebuffer link or an empty slot
-        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !newValue.empty();
+        bool showTexSettings = settings.allowTextureSettings && !isCameraTexture && !isFluidTexture && !newValue.empty();
 
         ImVec2 texButtonSize = ImGui::CalcItemSize(ImVec2(0, 0), ImGui::GetFrameHeight(), ImGui::GetFrameHeight());
-        // reserve room for the action buttons (file + camera, plus a settings button when
-        // applicable), with one gap between each item and a trailing gap on the right
-        int texButtonCount = settings.allowCameraTexture ? 2 : 1;
+        // reserve room for the action buttons (file + camera + fluid, plus a settings button
+        // when applicable), with one gap between each item and a trailing gap on the right
+        int texButtonCount = settings.allowCameraTexture ? 3 : 1;
         if (showTexSettings) texButtonCount++;
         float texButtonsReserve = texButtonSize.x * texButtonCount + ImGui::GetStyle().ItemSpacing.x * (texButtonCount + 1);
         ImGui::BeginChild("textureframe", ImVec2(-texButtonsReserve, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2),
@@ -4242,6 +4251,8 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         std::string texName = newValue.getId();
         if (isCameraTexture) {
             texName = std::string(ICON_FA_VIDEO) + " " + CameraTextureLink::cameraName(sceneProject->scene, newValue);
+        } else if (isFluidTexture) {
+            texName = std::string(ICON_FA_DROPLET) + " " + FluidTextureLink::fluidName(sceneProject->scene, newValue);
         } else {
             // Never show the "?svgScale=" suffix in the slot; display the clean path/name.
             texName = TextureData::parseSvgScalePath(texName);
@@ -4304,6 +4315,13 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 ImGui::OpenPopup("cameratexturepopup");
             }
             ImGui::SetItemTooltip("Camera as source (render to texture)");
+
+            ImGui::SameLine();
+            if (ImGui::Button(ICON_FA_DROPLET, texButtonSize)) {
+                ImGui::OpenPopup("fluidtexturepopup");
+            }
+            UIProbe::item("texture.fluid." + id);
+            ImGui::SetItemTooltip("Fluid Simulation as source (its output, live)");
         }
 
         if (showTexSettings) {
@@ -4337,6 +4355,37 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             }
             if (!hasCamera) {
                 ImGui::TextDisabled("No camera in scene");
+            }
+            ImGui::EndPopup();
+        }
+
+        if (settings.allowCameraTexture && ImGui::BeginPopup("fluidtexturepopup")) {
+            Scene* scene = sceneProject->scene;
+            auto fluidsArray = scene->getComponentArray<FluidSimulationComponent>();
+            bool hasFluid = false;
+            for (size_t f = 0; f < fluidsArray->size(); f++) {
+                Entity fluidEntity = fluidsArray->getEntity(f);
+                // only user scene entities
+                if (std::find(sceneProject->entities.begin(), sceneProject->entities.end(), fluidEntity) == sceneProject->entities.end())
+                    continue;
+
+                hasFluid = true;
+                const FluidSimulationComponent& fluid = fluidsArray->getComponentFromIndex(f);
+                std::string fluidLabel = std::string(ICON_FA_DROPLET) + " " + scene->getEntityName(fluidEntity) + "##fluid_" + std::to_string(fluidEntity);
+                const bool linked = FluidTextureLink::parse(newValue.getId()) == fluidEntity && !dif;
+                if (ImGui::MenuItem(fluidLabel.c_str(), nullptr, linked)) {
+                    applyFluidTexture(fluidEntity, cpType, id, sceneProject, entities, settings.onValueChanged);
+                    finishProperty = true;
+                }
+                UIProbe::item("texture.fluid.item." + std::to_string(fluidEntity));
+                if (fluid.output != FluidOutput::TEXTURE) {
+                    ImGui::SetItemTooltip("Its output; it is also drawn %s. Output Texture draws it only here.",
+                                          fluid.output == FluidOutput::SCREEN ? "over the screen" : "on its own GameObject");
+                }
+            }
+            if (!hasFluid) {
+                ImGui::TextDisabled("No Fluid Simulation in scene");
+                ImGui::SetItemTooltip("GameObject > Effects > Fluid Simulation");
             }
             ImGui::EndPopup();
         }
@@ -15354,6 +15403,12 @@ void editor::InspectorWindow::show(){
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
 
+    // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
+    // what they work on (FluidEditorTools)
+    FluidEditorTools::update(project);
+    // UI tests: what the last frame named (UIProbe, JASPER_UI_PROBE only)
+    UIProbe::flush();
+
     if (!windowOpen) {
         return;
     }
@@ -15373,6 +15428,11 @@ void editor::InspectorWindow::show(){
         return;
     }
     if (nameFocusFrames > 0) nameFocusFrames--;
+    if (UIProbe::enabled()) {
+        // what shows of the window, wherever it is scrolled
+        const ImRect inner = ImGui::GetCurrentWindow()->InnerClipRect;
+        UIProbe::rect("inspector", inner.Min.x, inner.Min.y, inner.Max.x, inner.Max.y);
+    }
     const bool openAddComponent = std::exchange(addComponentRequested, false);
 
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();
@@ -15579,6 +15639,11 @@ void editor::InspectorWindow::show(){
                     drawPointsComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::InstancedMeshComponent){
                     drawInstancedMeshComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::FluidSimulationComponent){
+                    // its preview bar is no edit: it works on a read-only (play-created) fluid too
+                    if (compReadOnly) ImGui::EndDisabled();
+                    drawFluidSimulationComponent(cpType, sceneProject, entities, compReadOnly);
+                    if (compReadOnly) ImGui::BeginDisabled(true);
                 }
 
                 if (compReadOnly) ImGui::EndDisabled();

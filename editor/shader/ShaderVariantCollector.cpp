@@ -9,6 +9,7 @@
 #include "io/FileData.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/FogComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/Light2DComponent.h"
@@ -392,7 +393,13 @@ namespace {
                 }
                 if (!modelMeshes.count(entity)){
                     if (const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity)){
+                        // a FluidSimulation shown on it (MATERIAL) lends submesh 0 a base colour
+                        // texture at draw time (FluidSystem::getMaterialTexture)
+                        const FluidSimulationComponent* fluid = registry->isComponentRegistered<FluidSimulationComponent>()
+                                                                ? registry->findComponent<FluidSimulationComponent>(entity) : nullptr;
+                        lentBaseColor = fluid && fluid->output == FluidOutput::MATERIAL;
                         collectMesh(registry, entity, *mesh);
+                        lentBaseColor = false;
                     }
                 }
                 if (const TerrainComponent* terrain = registry->findComponent<TerrainComponent>(entity)){
@@ -423,6 +430,7 @@ namespace {
 
     private:
         Scene* scene;
+        bool lentBaseColor = false;     // the mesh being collected shows a fluid's output
         const std::vector<MeshShaderEnvironment>& environments;
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
@@ -530,6 +538,8 @@ namespace {
                 const unsigned int submeshes = terrain ? 1 : generated->numSubmeshes;
                 for (unsigned int s = 0; s < submeshes; s++){
                     collectSubmesh(*generated, generated->submeshes[s], &buffers, terrain, instmesh, mirror, lattice);
+                    if (s == 0 && lentBaseColor)
+                        collectSubmesh(*generated, lent(generated->submeshes[s]), &buffers, terrain, instmesh, mirror, lattice);
                 }
                 return;
             }
@@ -541,7 +551,17 @@ namespace {
             }
             for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
                 collectSubmesh(mesh, mesh.submeshes[s], &buffers, nullptr, instmesh, mirror, lattice);
+                if (s == 0 && lentBaseColor)
+                    collectSubmesh(mesh, lent(mesh.submeshes[s]), &buffers, nullptr, instmesh, mirror, lattice);
             }
+        }
+
+        // the submesh as it draws with a texture lent to its base colour
+        static Submesh lent(Submesh submesh){
+            static Framebuffer lentOutput;   // never made: it only makes the texture non-empty
+            if (submesh.material.baseColorTexture.empty())
+                submesh.material.baseColorTexture.setFramebuffer(&lentOutput);
+            return submesh;
         }
 
         // A model mesh: the file's submeshes, with the fields saved over them (overrideFields)
@@ -910,6 +930,15 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     return features;
 }
 
+void editor::ShaderVariantCollector::addFluidKeys(std::set<ShaderKey>& keys){
+    // ShaderType::FLUID bits: 'Lok' 1, 'Mfl' 2 (the solver and the look, each with and
+    // without linear filtering: the device decides at run time)
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 0));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 1u));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 2u));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 3u));
+}
+
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
                                                   const std::vector<ShaderVariantContent>& prefabContents,
                                                   std::set<ShaderKey>& keys, const fs::path& projectRoot,
@@ -995,6 +1024,22 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (allFacts & FACT_SHADOW_LIGHTS_2D){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW2D, 0));
     }
+    // the fluid simulations' programs (FluidSimulator, ShaderType::FLUID bits 'Lok' 1, 'Mfl' 2):
+    // the solver, the look, and the solver of devices that cannot filter half floats
+    auto hasFluid = [](const ShaderVariantContent& content){
+        if (!content.registry || !content.registry->isComponentRegistered<FluidSimulationComponent>())
+            return false;
+        for (Entity entity : content.entities){
+            if (content.registry->isEntityCreated(entity) && content.registry->findComponent<FluidSimulationComponent>(entity))
+                return true;
+        }
+        return false;
+    };
+    bool fluid = hasFluid(sceneContent);
+    for (const ShaderVariantContent& prefab : prefabContents)
+        fluid = fluid || hasFluid(prefab);
+    if (fluid)
+        addFluidKeys(keys);
 
     // the UI effects the scene's (and its prefabs') HTML UI documents use
     if (!projectRoot.empty()){

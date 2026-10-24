@@ -245,6 +245,8 @@ void LuaBinding::registerActionClasses(lua_State *L){
             luabridge::overload<float, float, float, float>(&ParticleSystem::setScaleModifier),
             luabridge::overload<float, float, Vector3, Vector3, EaseType>(&ParticleSystem::setScaleModifier),
             luabridge::overload<float, float, Vector3, Vector3, Ease>(&ParticleSystem::setScaleModifier))
+        .addFunction("getParticleSystemComponent", &ParticleSystem::getComponent<ParticleSystemComponent>)
+        // deprecated: the old misspelt name, kept so existing scripts still run
         .addFunction("getParticlesomponent", &ParticleSystem::getComponent<ParticleSystemComponent>)
         .endClass();
 

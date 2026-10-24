@@ -63,9 +63,12 @@ namespace jasperengine::editor{
         UpdateFlags_Scene_Mesh_Variant  = (uint64_t)1 << 37,
         // a UIDocument's file changed: load it again
         UpdateFlags_UIDocument_Reload   = (uint64_t)1 << 38,
+        // what a FluidSimulation's start depends on changed (seed, the start burst): restart it
+        // (sizes need nothing, FluidSimulator recreates its targets itself)
+        UpdateFlags_Fluid_Reset         = (uint64_t)1 << 39,
         // a lattice's offsets, resolution or settings, or a modifier's bindings changed: bumps
         // LatticeComponent::revision and lets an over-full modifier warn again
-        UpdateFlags_Lattice             = (uint64_t)1 << 39,
+        UpdateFlags_Lattice             = (uint64_t)1 << 40,
         // handlers that touch the whole scene, must be masked out when applying all flags
         UpdateFlags_SceneWide = UpdateFlags_Scene_Mesh_Reload | UpdateFlags_Scene_Mesh_Variant | UpdateFlags_Reflection_Probe_Recapture_All
     };
@@ -127,14 +130,17 @@ namespace jasperengine::editor{
         // position in Prefab's in-memory component override mask.
         ReflectionProbeComponent,
         UIDocumentComponent,
+        FluidSimulationComponent,
         LatticeComponent,
         LatticeModifierComponent,
         LatticeFollowerComponent,
         LatticeTracksComponent
     };
 
-    // The last ComponentType, for loops over every type
-    constexpr ComponentType LAST_COMPONENT_TYPE = ComponentType::LatticeTracksComponent;
+    // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
+    // Move it with each new type appended above.
+    constexpr ComponentType LastComponentType = ComponentType::LatticeTracksComponent;
+    constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
 
     enum class PropertyType{
         Bool,
@@ -192,7 +198,8 @@ namespace jasperengine::editor{
         static std::map<std::string, PropertyData> findEntityProperties(EntityRegistry* registry, Entity entity, ComponentType component);
         // False when the component certainly holds none of the properties a reference pass
         // looks at: Entity and EntityReference ones (entities) or Textures naming a
-        // render-to-texture camera (cameraTextures). Such a pass can then skip building its
+        // render-to-texture camera or a fluid (cameraTextures: "camera|<e>" and "fluid|<e>"
+        // links, CameraTextureLink::parseLink). Such a pass can then skip building its
         // property map, the costly part for a thousand sprites. Knows Transform, Sprite
         // and Mesh; any other component answers true.
         static bool mayHoldReferences(EntityRegistry* registry, Entity entity, ComponentType component, bool entities, bool cameraTextures);

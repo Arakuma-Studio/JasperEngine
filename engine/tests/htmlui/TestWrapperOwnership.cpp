@@ -13,6 +13,7 @@
 
 #include "Scene.h"
 #include "object/GameObject.h"
+#include "object/FluidSimulation.h"
 #include "object/Bone.h"
 #include "object/Camera.h"
 #include "object/Light.h"
@@ -131,7 +132,7 @@ namespace {
     using Wrappers = ::testing::Types<
         EntityHandle, GameObject, Mesh, Model, Primitive, Mirror, MeshPolygon, Sprite, Terrain, Tilemap,
         Light, Light2D, Camera, Points, LineRenderer, ShadowCaster2D, Bone,
-        Fog, Skybox, ReflectionProbe, AudioSource,
+        Fog, Skybox, ReflectionProbe, AudioSource, FluidSimulation,
         RectTransform, Image, Button, Panel, Scrollbar, Progressbar, InputField, LayoutGroup, Polygon, Text, UIDocument,
 #ifdef JASPERENGINE_PHYSICS_2D
         Rigidbody2D, Joint2D,
@@ -149,7 +150,7 @@ namespace {
             const char* names[] = {
                 "EntityHandle", "GameObject", "Mesh", "Model", "Primitive", "Mirror", "MeshPolygon", "Sprite", "Terrain", "Tilemap",
                 "Light", "Light2D", "Camera", "Points", "LineRenderer", "ShadowCaster2D", "Bone",
-                "Fog", "Skybox", "ReflectionProbe", "AudioSource",
+                "Fog", "Skybox", "ReflectionProbe", "AudioSource", "FluidSimulation",
                 "RectTransform", "Image", "Button", "Panel", "Scrollbar", "Progressbar", "InputField", "LayoutGroup", "Polygon", "Text", "UIDocument",
 #ifdef JASPERENGINE_PHYSICS_2D
                 "Rigidbody2D", "Joint2D",
@@ -368,6 +369,29 @@ TEST_F(WrapperLuaTest, BoundFunctionsReturnOwningWrappers){
     for (Entity entity : entities){
         EXPECT_FALSE(scene->isEntityCreated(entity)) << "a collected handle leaked its entity";
     }
+}
+
+TEST_F(WrapperLuaTest, EnumPropertiesAreIntegers){
+    // enum class properties go through a LuaBridgeAddon Stack: without one LuaBridge pushes
+    // them as unregistered userdata (an error) and cannot read the namespace's integers
+    ASSERT_TRUE(luabridge::push(L, scene.get()));
+    lua_setglobal(L, "enumScene");
+    EXPECT_EQ(lua(R"(
+        pushed = { ReflectionProbe(enumScene), ParticleSystem(enumScene) }
+        local probe, particles = pushed[1], pushed[2]
+        assert(probe.mode == ReflectionProbeMode.STATIC, "probe.mode reads " .. tostring(probe.mode))
+        probe.mode = ReflectionProbeMode.DYNAMIC
+        assert(probe.mode == ReflectionProbeMode.DYNAMIC)
+        probe.updateMode = ReflectionProbeUpdateMode.MANUAL
+        assert(probe.updateMode == ReflectionProbeUpdateMode.MANUAL)
+        particles.emitterShape = ParticleEmitterShape.Sphere
+        assert(particles.emitterShape == ParticleEmitterShape.Sphere, "emitterShape reads " .. tostring(particles.emitterShape))
+        -- an enum argument takes the namespace's integer
+        assert(type(ShaderPool.isShaderReady(ShaderType.FLUID, 0)) == "boolean")
+        assert(ShaderType.FLUID == ShaderType.PROBE_FILTER + 1)
+        enumScene = nil
+    )"), "");
+    ASSERT_EQ(lua("pushed = nil; collectgarbage(); collectgarbage()"), "");
 }
 
 TEST_F(WrapperLuaTest, PushedCopiesDoNotOwn){

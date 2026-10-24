@@ -139,6 +139,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::PROBE_FILTER;
         return true;
     }
+    if (typeToken == "fluid") {
+        shaderType = ShaderType::FLUID;
+        return true;
+    }
 
     return false;
 }
@@ -495,6 +499,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
         case ShaderType::PROBE_FILTER: return lowerCase ? "probefilter" : "Probe Filter";
+        case ShaderType::FLUID:  return lowerCase ? "fluid"  : "Fluid";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -534,6 +539,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
         case ShaderType::PROBE_FILTER: return 0;
+        // Lok (the look program), Mfl (the solver with manual filtering)
+        case ShaderType::FLUID:  return 2;
         default:                 return 0;
     }
 }
@@ -695,6 +702,12 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 1: return shortName ? "Thr" : "Threshold";
             case 2: return shortName ? "Ups" : "Upsample";
             case 3: return shortName ? "Mix" : "Mix Level";
+        }
+    } else if (shaderType == ShaderType::FLUID) {
+        // FluidSimulator's programs (fluid.frag): 0 is the solver
+        switch (bit) {
+            case 0: return shortName ? "Lok" : "Look";
+            case 1: return shortName ? "Mfl" : "Manual Filtering";
         }
     }
     return shortName ? "?" : "Unknown";
@@ -1223,13 +1236,15 @@ bool ShaderPool::expandShaderSpec(const std::string& spec, std::vector<ShaderKey
         const size_t end = kind == std::string::npos ? kind : source.find('\n', kind);
         const bool paint = kind != std::string::npos && source.substr(kind, end - kind).find("paint") != std::string::npos;
         // phase 6: a stateful effect (// @state lines) has a step form per draw form, and a
-        // scatter form when a step pass scatters
+        // scatter form when a step (or frame) pass scatters
         const bool stateful = source.find("\n// @state") != std::string::npos;
         bool scatter = false;
-        for (size_t at = source.find("\n// @step"); stateful && at != std::string::npos; at = source.find("\n// @step", at + 1)) {
-            const size_t lineEnd = source.find('\n', at + 1);
-            if (source.substr(at, lineEnd == std::string::npos ? std::string::npos : lineEnd - at).find(" scatter ") != std::string::npos)
-                scatter = true;
+        for (const char* directive : {"\n// @step", "\n// @frame"}) {
+            for (size_t at = source.find(directive); stateful && at != std::string::npos; at = source.find(directive, at + 1)) {
+                const size_t lineEnd = source.find('\n', at + 1);
+                if (source.substr(at, lineEnd == std::string::npos ? std::string::npos : lineEnd - at).find(" scatter ") != std::string::npos)
+                    scatter = true;
+            }
         }
         auto addForms = [&](uint64_t drawForm){
             shaderKeys.push_back(getShaderKey(ShaderType::UI_EFFECT, drawForm, customId));

@@ -219,6 +219,8 @@ const RenderFeatures& SokolSystem::getFeatures(){
         const sg_pixelformat_info rgba16f = sg_query_pixelformat(SG_PIXELFORMAT_RGBA16F);
         const sg_pixelformat_info rgba32f = sg_query_pixelformat(SG_PIXELFORMAT_RGBA32F);
         const sg_pixelformat_info r32f = sg_query_pixelformat(SG_PIXELFORMAT_R32F);
+        const sg_pixelformat_info rg16f = sg_query_pixelformat(SG_PIXELFORMAT_RG16F);
+        const sg_pixelformat_info r16f = sg_query_pixelformat(SG_PIXELFORMAT_R16F);
         features.renderRGBA16F = rgba16f.render;
         features.blendRGBA16F = rgba16f.blend;
         features.filterRGBA16F = rgba16f.filter;
@@ -228,6 +230,13 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.renderR32F = r32f.render;
         features.blendR32F = r32f.blend;
         features.filterR32F = r32f.filter;
+        features.renderRG16F = rg16f.render;
+        features.blendRG16F = rg16f.blend;
+        features.filterRG16F = rg16f.filter;
+        features.renderR16F = r16f.render;
+        features.blendR16F = r16f.blend;
+        features.filterR16F = r16f.filter;
+        features.maxTextureSize2D = sg_query_limits().max_image_size_2d;
         featuresQueried = true;
     }
     return features;

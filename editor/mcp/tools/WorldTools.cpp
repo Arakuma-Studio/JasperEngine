@@ -4688,8 +4688,8 @@ void registerWorldTools(McpRegistry& registry) {
     add("edit_animation", "Edit Animation",
         "Author an Animation timeline (seconds); no animation: creates one under target. tracks: keys {time, "
         "value, ease} of local position/scale, rotation (quaternion or euler; > 180 degrees needs middle keys, "
-        "or a spin tween), morph weights or lattice offsets (points {\"i\": [x,y,z]}, [[[i,j,k],[x,y,z]]], "
-        "\"current\" = editor keying, \"rest\" or a pose name); ease to the next key: linear, step, "
+        "or a spin tween), morph weights or lattice offsets (points {\"i\": [x,y,z]} | [[[i,j,k],[x,y,z]]], "
+        "\"current\", \"rest\" or a pose name); ease to the next key: linear, step, "
         "<quad|cubic|sine|back|bounce|elastic...>_<in|out|in_out>; the same target+channel replaces or merges; "
         "relative: offsets from the target's pose when the track starts (anchored UI moves by its offset). "
         "tweens: tween actions (from: current). add_actions: existing actions; set_frames/remove_actions: "

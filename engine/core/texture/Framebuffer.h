@@ -6,9 +6,16 @@
 
 #include "render/FramebufferRender.h"
 
+#include <memory>
+
 namespace jasperengine{
 
-    class JASPERENGINE_API Framebuffer{
+    // A framebuffer owned through a std::shared_ptr (make_shared) is shared by the Textures
+    // showing it (Texture::setFramebuffer takes a reference through weak_from_this()): it
+    // outlives its owner while a texture links it (FluidSimulator's output). Its GPU side is
+    // still freed by its owner (destroy()); a texture of a destroyed framebuffer draws its
+    // fallback (Texture::getRender). Others (members, `new`) are linked by raw pointer.
+    class JASPERENGINE_API Framebuffer : public std::enable_shared_from_this<Framebuffer> {
 
         private:
             FramebufferRender render;
@@ -25,7 +32,7 @@ namespace jasperengine{
             // a depth-stencil attachment (default), depth only, or none
             FramebufferDepth depth;
 
-            unsigned long version; // increment every creation
+            unsigned long version; // incremented when its image is made, replaced or freed
 
             // set by create(const FramebufferDesc&): create() builds from it
             FramebufferDesc desc;
@@ -42,6 +49,7 @@ namespace jasperengine{
             // a framebuffer of that description (MSAA, depth-stencil, shared depth-stencil);
             // later create() calls rebuild the same. False when it could not be created
             bool create(const FramebufferDesc& desc);
+            // frees the GPU side (a new version when there was one: textures rebind)
             void destroy();
             bool isCreated();
 

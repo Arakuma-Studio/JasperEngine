@@ -595,6 +595,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
         .addVariable("UI_EFFECT", ShaderType::UI_EFFECT)
         .addVariable("PROBE_FILTER", ShaderType::PROBE_FILTER)
+        .addVariable("FLUID", ShaderType::FLUID)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an

@@ -620,6 +620,10 @@ bool SokolTexture::createFramebufferTexture(
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA32F;
         }else if (colorFormat == ColorFormat::R32F){
             img_desc.pixel_format = SG_PIXELFORMAT_R32F;
+        }else if (colorFormat == ColorFormat::RG16F){
+            img_desc.pixel_format = SG_PIXELFORMAT_RG16F;
+        }else if (colorFormat == ColorFormat::R16F){
+            img_desc.pixel_format = SG_PIXELFORMAT_R16F;
         }else{
             img_desc.pixel_format = SG_PIXELFORMAT_RGBA8;
         }

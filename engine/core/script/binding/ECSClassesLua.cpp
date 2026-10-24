@@ -31,6 +31,7 @@
 #include "component/AudioSourceComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
+#include "component/FluidSimulationComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
@@ -731,6 +732,49 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addProperty("length", &AudioSourceComponent::length)
         .addProperty("playingTime", &AudioSourceComponent::playingTime)
         .addProperty("needUpdate", &AudioSourceComponent::needUpdate, &AudioSourceComponent::needUpdate)
+        .endClass();
+
+    // the raw fields (no validation: FluidSimulation's setters check their values)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FluidSimulationComponent>("FluidSimulationComponent")
+        .addProperty("enabled", &FluidSimulationComponent::enabled, &FluidSimulationComponent::enabled)
+        .addProperty("output", &FluidSimulationComponent::output, &FluidSimulationComponent::output)
+        .addProperty("interactive", &FluidSimulationComponent::interactive, &FluidSimulationComponent::interactive)
+        .addProperty("aspectRatio", &FluidSimulationComponent::aspectRatio, &FluidSimulationComponent::aspectRatio)
+        .addProperty("simResolution", &FluidSimulationComponent::simResolution, &FluidSimulationComponent::simResolution)
+        .addProperty("dyeResolution", &FluidSimulationComponent::dyeResolution, &FluidSimulationComponent::dyeResolution)
+        .addProperty("densityDissipation", &FluidSimulationComponent::densityDissipation, &FluidSimulationComponent::densityDissipation)
+        .addProperty("velocityDissipation", &FluidSimulationComponent::velocityDissipation, &FluidSimulationComponent::velocityDissipation)
+        .addProperty("pressure", &FluidSimulationComponent::pressure, &FluidSimulationComponent::pressure)
+        .addProperty("pressureIterations", &FluidSimulationComponent::pressureIterations, &FluidSimulationComponent::pressureIterations)
+        .addProperty("curl", &FluidSimulationComponent::curl, &FluidSimulationComponent::curl)
+        .addProperty("gradientScale", &FluidSimulationComponent::gradientScale, &FluidSimulationComponent::gradientScale)
+        .addProperty("simulationRate", &FluidSimulationComponent::simulationRate, &FluidSimulationComponent::simulationRate)
+        .addProperty("maxSubsteps", &FluidSimulationComponent::maxSubsteps, &FluidSimulationComponent::maxSubsteps)
+        .addProperty("timeScale", &FluidSimulationComponent::timeScale, &FluidSimulationComponent::timeScale)
+        .addProperty("paused", &FluidSimulationComponent::paused, &FluidSimulationComponent::paused)
+        .addProperty("splatRadius", &FluidSimulationComponent::splatRadius, &FluidSimulationComponent::splatRadius)
+        .addProperty("splatForce", &FluidSimulationComponent::splatForce, &FluidSimulationComponent::splatForce)
+        .addProperty("colorful", &FluidSimulationComponent::colorful, &FluidSimulationComponent::colorful)
+        .addProperty("colorUpdateSpeed", &FluidSimulationComponent::colorUpdateSpeed, &FluidSimulationComponent::colorUpdateSpeed)
+        .addProperty("splatsOnStart", &FluidSimulationComponent::splatsOnStart, &FluidSimulationComponent::splatsOnStart)
+        .addProperty("randomSplatCount", &FluidSimulationComponent::randomSplatCount, &FluidSimulationComponent::randomSplatCount)
+        .addProperty("seed", &FluidSimulationComponent::seed, &FluidSimulationComponent::seed)
+        .addProperty("shading", &FluidSimulationComponent::shading, &FluidSimulationComponent::shading)
+        .addProperty("backColor", &FluidSimulationComponent::backColor, &FluidSimulationComponent::backColor)
+        .addProperty("transparent", &FluidSimulationComponent::transparent, &FluidSimulationComponent::transparent)
+        .addProperty("bloom", &FluidSimulationComponent::bloom, &FluidSimulationComponent::bloom)
+        .addProperty("bloomIterations", &FluidSimulationComponent::bloomIterations, &FluidSimulationComponent::bloomIterations)
+        .addProperty("bloomResolution", &FluidSimulationComponent::bloomResolution, &FluidSimulationComponent::bloomResolution)
+        .addProperty("bloomIntensity", &FluidSimulationComponent::bloomIntensity, &FluidSimulationComponent::bloomIntensity)
+        .addProperty("bloomThreshold", &FluidSimulationComponent::bloomThreshold, &FluidSimulationComponent::bloomThreshold)
+        .addProperty("bloomSoftKnee", &FluidSimulationComponent::bloomSoftKnee, &FluidSimulationComponent::bloomSoftKnee)
+        .addProperty("sunrays", &FluidSimulationComponent::sunrays, &FluidSimulationComponent::sunrays)
+        .addProperty("sunraysResolution", &FluidSimulationComponent::sunraysResolution, &FluidSimulationComponent::sunraysResolution)
+        .addProperty("sunraysWeight", &FluidSimulationComponent::sunraysWeight, &FluidSimulationComponent::sunraysWeight)
+        .addProperty("pendingSteps", &FluidSimulationComponent::pendingSteps)
+        .addProperty("needReset", &FluidSimulationComponent::needReset, &FluidSimulationComponent::needReset)
+        .addProperty("revision", &FluidSimulationComponent::revision)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

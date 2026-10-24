@@ -15,6 +15,7 @@
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
 #include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
 #include "ecs/EntityManager.h"
@@ -1081,7 +1082,7 @@ YAML::Node editor::Stream::encodeShaderTextures(const std::vector<std::pair<std:
     YAML::Node node(YAML::NodeType::Map);
     for (const auto& [uniform, texture] : textures) {
         // an empty one binds the manifest default, like no entry
-        if (texture.empty() && !CameraTextureLink::isCameraTexture(texture)) continue;
+        if (texture.empty() && !CameraTextureLink::isLinkTexture(texture)) continue;
         node[uniform] = encodeTexture(texture, embedData);
     }
     return node;
@@ -1451,6 +1452,21 @@ UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::str
     return UIDocumentRenderMode::SCREEN;
 }
 
+std::string editor::Stream::fluidOutputToString(FluidOutput output) {
+    switch (output) {
+        case FluidOutput::SCREEN: return "screen";
+        case FluidOutput::TEXTURE: return "texture";
+        case FluidOutput::MATERIAL:
+        default: return "material";
+    }
+}
+
+FluidOutput editor::Stream::stringToFluidOutput(const std::string& str) {
+    if (str == "screen") return FluidOutput::SCREEN;
+    if (str == "texture") return FluidOutput::TEXTURE;
+    return FluidOutput::MATERIAL;
+}
+
 std::string editor::Stream::latticeInterpolationToString(LatticeInterpolation interpolation) {
     switch (interpolation) {
         case LatticeInterpolation::SHARP: return "sharp";
@@ -1803,6 +1819,14 @@ YAML::Node editor::Stream::encodeTexture(const Texture& texture, bool embedData)
         node["camera"] = linkedCamera;
         return node;
     }
+    // a FluidSimulation's output (FluidTextureLink), the same way
+    Entity linkedFluid = FluidTextureLink::parse(texture.getId());
+    if (linkedFluid != NULL_ENTITY) {
+        node["textureType"] = "2D";
+        node["source"] = "fluid";
+        node["fluid"] = linkedFluid;
+        return node;
+    }
 
     if (texture.empty() || texture.isFramebuffer())
         return node;
@@ -1922,6 +1946,11 @@ Texture editor::Stream::decodeTexture(const YAML::Node& node) {
                 // after every entity of the scene exists
                 if (node["camera"]) {
                     texture.setId(CameraTextureLink::makeId(YamlNumbers::as<Entity>(node["camera"])));
+                }
+            } else if (source == "fluid") {
+                // a FluidSimulation's output, bound by CameraTextureLink::resolve too
+                if (node["fluid"]) {
+                    texture.setId(FluidTextureLink::makeId(YamlNumbers::as<Entity>(node["fluid"])));
                 }
             }
         }
@@ -4190,7 +4219,7 @@ YAML::Node editor::Stream::encodeMaterial(const Material& material, bool embedTe
     // Encode textures using the helper method. A camera link is one even unbound (a prefab
     // registry, its camera a stripped object or not resolved yet)
     auto present = [](const Texture& texture) {
-        return !texture.empty() || CameraTextureLink::isCameraTexture(texture);
+        return !texture.empty() || CameraTextureLink::isLinkTexture(texture);
     };
     if (present(material.baseColorTexture)) {
         node["baseColorTexture"] = encodeTexture(material.baseColorTexture, embedTextureData);
@@ -4489,6 +4518,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
     if (signature.test(registry->getComponentId<UIDocumentComponent>())) {
         const UIDocumentComponent& document = registry->getComponent<UIDocumentComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::UIDocumentComponent, true)] = encodeUIDocumentComponent(document);
+    }
+
+    if (signature.test(registry->getComponentId<FluidSimulationComponent>())) {
+        const FluidSimulationComponent& fluid = registry->getComponent<FluidSimulationComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::FluidSimulationComponent, true)] = encodeFluidSimulationComponent(fluid);
     }
 
     if (signature.test(registry->getComponentId<LatticeComponent>())) {
@@ -4964,6 +4998,19 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
         }else{
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::UIDocumentComponent, existing, &document);
             registry->getComponent<UIDocumentComponent>(entity) = std::move(document);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::FluidSimulationComponent, true);
+    if (compNode[compName]) {
+        FluidSimulationComponent* existing = registry->findComponent<FluidSimulationComponent>(entity);
+        FluidSimulationComponent fluid = decodeFluidSimulationComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<FluidSimulationComponent>())){
+            registry->addComponent<FluidSimulationComponent>(entity, std::move(fluid));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::FluidSimulationComponent, existing, &fluid);
+            registry->getComponent<FluidSimulationComponent>(entity) = std::move(fluid);
             Catalog::updateEntity(registry, entity, flags);
         }
     }
@@ -6835,6 +6882,113 @@ UIDocumentComponent editor::Stream::decodeUIDocumentComponent(const YAML::Node& 
     }
 
     return document;
+}
+
+YAML::Node editor::Stream::encodeFluidSimulationComponent(const FluidSimulationComponent& fluid) {
+    YAML::Node node;
+    node["enabled"] = fluid.enabled;
+
+    // only what differs from the defaults (Pavel's); decode restores the defaults
+    const FluidSimulationComponent defaults;
+    if (fluid.output != defaults.output) node["output"] = fluidOutputToString(fluid.output);
+    if (fluid.interactive != defaults.interactive) node["interactive"] = fluid.interactive;
+    if (fluid.aspectRatio != defaults.aspectRatio) encodeFinite(node, "aspectRatio", fluid.aspectRatio);
+    if (fluid.simResolution != defaults.simResolution) node["simResolution"] = fluid.simResolution;
+    if (fluid.dyeResolution != defaults.dyeResolution) node["dyeResolution"] = fluid.dyeResolution;
+    if (fluid.densityDissipation != defaults.densityDissipation) encodeFinite(node, "densityDissipation", fluid.densityDissipation);
+    if (fluid.velocityDissipation != defaults.velocityDissipation) encodeFinite(node, "velocityDissipation", fluid.velocityDissipation);
+    if (fluid.pressure != defaults.pressure) encodeFinite(node, "pressure", fluid.pressure);
+    if (fluid.pressureIterations != defaults.pressureIterations) node["pressureIterations"] = fluid.pressureIterations;
+    if (fluid.curl != defaults.curl) encodeFinite(node, "curl", fluid.curl);
+    if (fluid.gradientScale != defaults.gradientScale) encodeFinite(node, "gradientScale", fluid.gradientScale);
+    if (fluid.simulationRate != defaults.simulationRate) encodeFinite(node, "simulationRate", fluid.simulationRate);
+    if (fluid.maxSubsteps != defaults.maxSubsteps) node["maxSubsteps"] = fluid.maxSubsteps;
+    if (fluid.timeScale != defaults.timeScale) encodeFinite(node, "timeScale", fluid.timeScale);
+    if (fluid.paused != defaults.paused) node["paused"] = fluid.paused;
+    if (fluid.splatRadius != defaults.splatRadius) encodeFinite(node, "splatRadius", fluid.splatRadius);
+    if (fluid.splatForce != defaults.splatForce) encodeFinite(node, "splatForce", fluid.splatForce);
+    if (fluid.colorful != defaults.colorful) node["colorful"] = fluid.colorful;
+    if (fluid.colorUpdateSpeed != defaults.colorUpdateSpeed) encodeFinite(node, "colorUpdateSpeed", fluid.colorUpdateSpeed);
+    if (fluid.splatsOnStart != defaults.splatsOnStart) node["splatsOnStart"] = fluid.splatsOnStart;
+    if (fluid.randomSplatCount != defaults.randomSplatCount) node["randomSplatCount"] = fluid.randomSplatCount;
+    if (fluid.seed != defaults.seed) node["seed"] = fluid.seed;
+    if (fluid.shading != defaults.shading) node["shading"] = fluid.shading;
+    if (fluid.backColor != defaults.backColor) encodeFiniteVector3(node, "backColor", fluid.backColor);
+    if (fluid.transparent != defaults.transparent) node["transparent"] = fluid.transparent;
+    if (fluid.bloom != defaults.bloom) node["bloom"] = fluid.bloom;
+    if (fluid.bloomIterations != defaults.bloomIterations) node["bloomIterations"] = fluid.bloomIterations;
+    if (fluid.bloomResolution != defaults.bloomResolution) node["bloomResolution"] = fluid.bloomResolution;
+    if (fluid.bloomIntensity != defaults.bloomIntensity) encodeFinite(node, "bloomIntensity", fluid.bloomIntensity);
+    if (fluid.bloomThreshold != defaults.bloomThreshold) encodeFinite(node, "bloomThreshold", fluid.bloomThreshold);
+    if (fluid.bloomSoftKnee != defaults.bloomSoftKnee) encodeFinite(node, "bloomSoftKnee", fluid.bloomSoftKnee);
+    if (fluid.sunrays != defaults.sunrays) node["sunrays"] = fluid.sunrays;
+    if (fluid.sunraysResolution != defaults.sunraysResolution) node["sunraysResolution"] = fluid.sunraysResolution;
+    if (fluid.sunraysWeight != defaults.sunraysWeight) encodeFinite(node, "sunraysWeight", fluid.sunraysWeight);
+
+    return node;
+}
+
+FluidSimulationComponent editor::Stream::decodeFluidSimulationComponent(const YAML::Node& node, const FluidSimulationComponent* oldFluid) {
+    // the old one's runtime state (its simulator, which textures linked to "fluid|<entity>"
+    // show, and what is queued for it) stays
+    FluidSimulationComponent fluid;
+    if (oldFluid) {
+        fluid = *oldFluid;
+    }
+
+    if (node["enabled"]) fluid.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    // keys are omitted at their defaults, so a missing key is the default, not the old value
+    // (paste and play-stop restore decode over an existing component); the clipboard fills a
+    // key it has no default for with an empty scalar, which is the default too
+    const FluidSimulationComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    fluid.output = given("output") ? stringToFluidOutput(node["output"].as<std::string>()) : defaults.output;
+    fluid.interactive = given("interactive") ? YamlNumbers::as<bool>(node["interactive"]) : defaults.interactive;
+    fluid.aspectRatio = given("aspectRatio") ? decodeFinite(node["aspectRatio"], defaults.aspectRatio) : defaults.aspectRatio;
+    fluid.simResolution = given("simResolution") ? YamlNumbers::as<unsigned int>(node["simResolution"]) : defaults.simResolution;
+    fluid.dyeResolution = given("dyeResolution") ? YamlNumbers::as<unsigned int>(node["dyeResolution"]) : defaults.dyeResolution;
+    fluid.densityDissipation = given("densityDissipation") ? decodeFinite(node["densityDissipation"], defaults.densityDissipation) : defaults.densityDissipation;
+    fluid.velocityDissipation = given("velocityDissipation") ? decodeFinite(node["velocityDissipation"], defaults.velocityDissipation) : defaults.velocityDissipation;
+    fluid.pressure = given("pressure") ? decodeFinite(node["pressure"], defaults.pressure) : defaults.pressure;
+    fluid.pressureIterations = given("pressureIterations") ? YamlNumbers::as<unsigned int>(node["pressureIterations"]) : defaults.pressureIterations;
+    fluid.curl = given("curl") ? decodeFinite(node["curl"], defaults.curl) : defaults.curl;
+    fluid.gradientScale = given("gradientScale") ? decodeFinite(node["gradientScale"], defaults.gradientScale) : defaults.gradientScale;
+    fluid.simulationRate = given("simulationRate") ? decodeFinite(node["simulationRate"], defaults.simulationRate) : defaults.simulationRate;
+    fluid.maxSubsteps = given("maxSubsteps") ? YamlNumbers::as<unsigned int>(node["maxSubsteps"]) : defaults.maxSubsteps;
+    fluid.timeScale = given("timeScale") ? decodeFinite(node["timeScale"], defaults.timeScale) : defaults.timeScale;
+    fluid.paused = given("paused") ? YamlNumbers::as<bool>(node["paused"]) : defaults.paused;
+    fluid.splatRadius = given("splatRadius") ? decodeFinite(node["splatRadius"], defaults.splatRadius) : defaults.splatRadius;
+    fluid.splatForce = given("splatForce") ? decodeFinite(node["splatForce"], defaults.splatForce) : defaults.splatForce;
+    fluid.colorful = given("colorful") ? YamlNumbers::as<bool>(node["colorful"]) : defaults.colorful;
+    fluid.colorUpdateSpeed = given("colorUpdateSpeed") ? decodeFinite(node["colorUpdateSpeed"], defaults.colorUpdateSpeed) : defaults.colorUpdateSpeed;
+    fluid.splatsOnStart = given("splatsOnStart") ? YamlNumbers::as<bool>(node["splatsOnStart"]) : defaults.splatsOnStart;
+    fluid.randomSplatCount = given("randomSplatCount") ? YamlNumbers::as<unsigned int>(node["randomSplatCount"]) : defaults.randomSplatCount;
+    fluid.seed = given("seed") ? YamlNumbers::as<uint32_t>(node["seed"]) : defaults.seed;
+    fluid.shading = given("shading") ? YamlNumbers::as<bool>(node["shading"]) : defaults.shading;
+    fluid.backColor = given("backColor") ? decodeFiniteVector3(node["backColor"], defaults.backColor) : defaults.backColor;
+    fluid.transparent = given("transparent") ? YamlNumbers::as<bool>(node["transparent"]) : defaults.transparent;
+    fluid.bloom = given("bloom") ? YamlNumbers::as<bool>(node["bloom"]) : defaults.bloom;
+    fluid.bloomIterations = given("bloomIterations") ? YamlNumbers::as<unsigned int>(node["bloomIterations"]) : defaults.bloomIterations;
+    fluid.bloomResolution = given("bloomResolution") ? YamlNumbers::as<unsigned int>(node["bloomResolution"]) : defaults.bloomResolution;
+    fluid.bloomIntensity = given("bloomIntensity") ? decodeFinite(node["bloomIntensity"], defaults.bloomIntensity) : defaults.bloomIntensity;
+    fluid.bloomThreshold = given("bloomThreshold") ? decodeFinite(node["bloomThreshold"], defaults.bloomThreshold) : defaults.bloomThreshold;
+    fluid.bloomSoftKnee = given("bloomSoftKnee") ? decodeFinite(node["bloomSoftKnee"], defaults.bloomSoftKnee) : defaults.bloomSoftKnee;
+    fluid.sunrays = given("sunrays") ? YamlNumbers::as<bool>(node["sunrays"]) : defaults.sunrays;
+    fluid.sunraysResolution = given("sunraysResolution") ? YamlNumbers::as<unsigned int>(node["sunraysResolution"]) : defaults.sunraysResolution;
+    fluid.sunraysWeight = given("sunraysWeight") ? decodeFinite(node["sunraysWeight"], defaults.sunraysWeight) : defaults.sunraysWeight;
+
+    // what the start depends on: a new seed or start burst restarts it (sizes and the look
+    // are read by FluidSimulator each frame)
+    if (oldFluid && (oldFluid->seed != fluid.seed || oldFluid->splatsOnStart != fluid.splatsOnStart ||
+                     oldFluid->randomSplatCount != fluid.randomSplatCount)) {
+        fluid.needReset = true;
+    }
+
+    return fluid;
 }
 
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {

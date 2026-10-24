@@ -12,6 +12,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Build 2D and 3D scenes from GameObjects with sprites, tilemaps, models, cameras, lights, and reusable Prefabs
 - Edit components, assets, animations, bones, and terrain without leaving the editor
 - Synthesize textures from an example: extend, make tileable, inpaint, or guide them, with matching normal/roughness/height maps (Window > Texture Synthesis, the `synthesize-texture` CLI, or the `synthesize_texture` MCP tool)
+- Tune a fluid simulation from presets in the Inspector, preview it in edit mode and paint dye into it with a Scene view brush
 - Write Lua and C++ in the integrated code editor with engine API completion
 - Fork the built-in shaders or write custom post-process passes, with live viewport recompilation
 - Play the game in the Game view, then build it from Build Settings as a standalone CMake project, a desktop binary, or a web build
@@ -27,6 +28,7 @@ JasperEngine is based on [Doriax](https://github.com/doriaxengine/doriax) by Edu
 - Lattice deformers (free-form deformation cages) that bend, squash, twist, or wobble meshes, skinned models, and sprites on the GPU, with Scene-view point editing, presets, poses, keyframes, jiggle physics, and baking to a mesh; agents drive them through the `edit_lattice` MCP tool (see [docs/mcp/guide/lattice.md](docs/mcp/guide/lattice.md))
 - Stochastic Tiling (hex-tiling) to hide texture repetition on Lit materials, terrain layers, and library shaders
 - Particle systems and heightmap terrain with clipmap LOD and sculpting tools
+- A GPU fluid simulation component (a port of Pavel Dobryakov's WebGL-Fluid-Simulation: vorticity, bloom, sunrays) shown over the screen, on a sprite, image or mesh, or as a texture any material can use, with presets, seeded deterministic runs and a Lua API: see [docs/mcp/guide/fluid.md](docs/mcp/guide/fluid.md)
 - UI toolkit with Rect Transforms, layout groups, text, images, buttons, input fields, scrollbars, and other widgets
 - Box2D and Jolt Physics for 2D/3D rigidbodies, colliders, and joints, drawn interpolated between fixed steps
 - Spatial 3D audio and multithreaded asynchronous resource loading

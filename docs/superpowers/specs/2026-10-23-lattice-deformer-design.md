@@ -1902,6 +1902,12 @@ prop at the squashed top, refusals); rest/pose keys and their errors; the play h
   non-looping clip stops in the reworked `animationUpdate`, `EntityCreationType` and
   `TextureShaderType` carry both sides' additions (WATER, PROBESOURCE), editor shader cache v38.
   The tool definitions measure 105466 characters against main's raised limit of 105467.
+- Joining main after the GPU fluid simulation: `FluidSimulationComponent` keeps main's
+  component and `ComponentType` position, the four lattice types follow it; the lattice update
+  flag moved to bit 40; main's `LastComponentType`/`ComponentTypeCount` replace the branch's
+  `LAST_COMPONENT_TYPE`. The agent instructions' lattice pointer is one clause after the fluid's
+  (the guide stays within 16 KB) and `edit_lattice`'s description is shorter (tools 105515 chars,
+  main's limit 105518).
 - Unit test `BendAndTwistUseTheCageProportions` for the agent-UX pass's preset change.
 - Xcode project (`engine/workspaces/xcode/JasperEngine.xcodeproj`): the new engine sources,
   in a `lattice` group and next to their siblings (the editor has no Xcode project).

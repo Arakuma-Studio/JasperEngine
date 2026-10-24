@@ -59,13 +59,28 @@ Texture::Texture(const std::string& id, TextureData data): Texture(){
     this->data = TextureDataPool::get(id, *this->data.get());
 }
 
+namespace {
+    TextureRender* destroyedFramebufferFallback = nullptr;
+
+    // a framebuffer owned by a std::shared_ptr is shared with the textures showing it
+    std::shared_ptr<Framebuffer> ownerOf(Framebuffer* framebuffer){
+        return framebuffer ? framebuffer->weak_from_this().lock() : nullptr;
+    }
+}
+
+void Texture::setDestroyedFramebufferFallback(TextureRender* texture){
+    destroyedFramebufferFallback = texture;
+}
+
 Texture::Texture(Framebuffer* framebuffer): Texture(){
     this->framebuffer = framebuffer;
+    this->framebufferOwner = ownerOf(framebuffer);
 }
 
 Texture::Texture(const Texture& rhs){
     render = rhs.render;
     framebuffer = rhs.framebuffer;
+    framebufferOwner = rhs.framebufferOwner;
     type = rhs.type;
     id = rhs.id;
     for (int i = 0; i < 6; i++){
@@ -89,6 +104,7 @@ Texture& Texture::operator=(const Texture& rhs){
     if (this != &rhs) {
         render = rhs.render;
         framebuffer = rhs.framebuffer;
+        framebufferOwner = rhs.framebufferOwner;
         type = rhs.type;
         id = rhs.id;
         for (int i = 0; i < 6; i++){
@@ -150,6 +166,7 @@ void Texture::setPath(const std::string& path){
     this->svgScale = 1.0f;
     this->paths[0] = TextureData::parseSvgScalePath(path, &this->svgScale);
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_2D;
     this->numFaces = 1;
     this->loadFromPath = true;
@@ -165,6 +182,7 @@ void Texture::setData(const std::string& id, TextureData data){
 
     this->id = id;
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_2D;
     this->numFaces = 1;
     this->loadFromPath = false;
@@ -199,6 +217,7 @@ void Texture::setCubeMap(const std::string& path){
     }
 
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = true;
@@ -224,6 +243,7 @@ void Texture::setCubePath(size_t index, const std::string& path){
     destroy();
 
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = true;
@@ -252,6 +272,7 @@ void Texture::setCubePaths(const std::string& front, const std::string& back,
     this->paths[3] = down;
 
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = true;
@@ -268,6 +289,7 @@ void Texture::setCubeDatas(const std::string& id, TextureData front, TextureData
 
     this->id = id;
     this->framebuffer = NULL;
+    this->framebufferOwner.reset();
     this->type = TextureType::TEXTURE_CUBE;
     this->numFaces = 6;
     this->loadFromPath = false;
@@ -294,6 +316,7 @@ void Texture::setFramebuffer(Framebuffer* framebuffer){
     destroy();
 
     this->framebuffer = framebuffer;
+    this->framebufferOwner = ownerOf(framebuffer);
     this->id.clear();
     this->numFaces = 1;
     this->loadFromPath = false;
@@ -454,6 +477,15 @@ void Texture::invalidateRender(){
 TextureRender* Texture::getRender(TextureRender* fallBackTexture){
     if (framebuffer){
         lastFramebufferVersion = framebuffer->getVersion();
+        // a framebuffer that was made and is gone (its owner freed it: a removed fluid, a
+        // view loss) shows a transparent placeholder until it is made again (a new version):
+        // what drew nothing before draws nothing still. One never made yet is not ready (its
+        // texture, not created)
+        if (fallBackTexture && framebuffer->getVersion() > 0 && !framebuffer->isCreated()){
+            if (destroyedFramebufferFallback && destroyedFramebufferFallback->isCreated())
+                return destroyedFramebufferFallback;
+            return fallBackTexture;
+        }
         return &framebuffer->getRender().getColorTexture();
     }
 

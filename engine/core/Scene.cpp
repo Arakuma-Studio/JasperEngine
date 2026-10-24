@@ -12,6 +12,7 @@
 #include "subsystem/LatticeSystem.h"
 #include "subsystem/UISystem.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/FluidSystem.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
@@ -37,6 +38,7 @@ void Scene::init(){
     registerSystem<LatticeSystem>();
     registerSystem<UISystem>();
     registerSystem<UIDocumentSystem>();
+    registerSystem<FluidSystem>();
     registerSystem<RenderSystem>();
     registerSystem<PhysicsSystem>();
     registerSystem<AudioSystem>();

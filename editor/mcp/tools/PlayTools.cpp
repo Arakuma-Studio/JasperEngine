@@ -2134,12 +2134,18 @@ void getRuntimeEntityTool(const CallPtr& call) {
     data["scene"] = McpRefs::sceneJson(project, *sp);
     data["created_at_runtime"] = std::find(created.begin(), created.end(), entity) != created.end();
     data["components"] = components;
+    // a fluid's runtime state (read only; FluidStats, the matching preset)
+    if (only.empty() || only.count(ComponentType::FluidSimulationComponent)) {
+        const Json fluid = McpValues::fluidStatsToJson(sp->scene, entity);
+        if (!fluid.is_null()) data["fluid_stats"] = fluid;
+    }
     if (args.value("include_script_state", true)) {
         data["scripts"] = scriptStateJson(project, sp, entity, std::clamp(args.value("max_depth", 2), 1, 8));
     }
     std::string text = "Live GameObject " + std::to_string(entity) + " \"" + data["path"].get<std::string>() + "\" in \"" +
                        sp->name + "\": " + data["components"].dump();
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
+    if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
     if (text.size() > 12000) text = text.substr(0, 12000) + " ... (see structuredContent)";
     call->ok(text, data);
 }
