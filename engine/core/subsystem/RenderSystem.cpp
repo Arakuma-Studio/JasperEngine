@@ -462,6 +462,7 @@ TextureRender RenderSystem::defaultNoise;
 TextureRender RenderSystem::emptyCubeGray;
 
 bool RenderSystem::emptyTexturesCreated = false;
+int RenderSystem::emptyTextureUsers = 0;
 
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
@@ -549,6 +550,10 @@ void RenderSystem::load(){
     numLights2D = 0;
 
     createEmptyTextures();
+    if (!usesEmptyTextures){
+        usesEmptyTextures = true;
+        emptyTextureUsers++;
+    }
 
     update(0); // first update
 }
@@ -562,9 +567,17 @@ void RenderSystem::destroy(){
         destroyMirrorCamera(mirrorCameras.begin()->first);
     }
 
-    // cannot destroy static textures because it affects other scenes
-
-    emptyTexturesCreated = false;
+    // The static textures are shared by every scene's RenderSystem, whose bindings hold their
+    // handles: a scene going while others draw keeps them. With the view (every scene reloads)
+    // or the last RenderSystem they are destroyed, and the next load makes them again (before,
+    // only the flag was reset and the next load made new images over the old handles).
+    if (usesEmptyTextures){
+        usesEmptyTextures = false;
+        emptyTextureUsers--;
+    }
+    if (reloadView || emptyTextureUsers <= 0){
+        destroyEmptyTextures();
+    }
 
 #ifdef JASPERENGINE_EDITOR
     for (auto& entry : secondaryViews){
@@ -835,6 +848,18 @@ void RenderSystem::createEmptyTextures(){
             TextureFilter::NEAREST, TextureFilter::NEAREST,
             TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER);
     }
+}
+
+void RenderSystem::destroyEmptyTextures(){
+    TextureRender* textures[] = {
+        &emptyWhite, &emptyArrayWhite, &emptyBlack, &emptyCubeBlack, &emptyCubeWhite, &emptyNormal,
+        &emptyShadowDepth, &emptyGray, &emptyFlatNormal, &defaultRipples, &defaultNoise, &emptyCubeGray
+    };
+    // (destroyTexture skips handles that are already gone and clears them)
+    for (TextureRender* texture : textures){
+        texture->destroyTexture();
+    }
+    emptyTexturesCreated = false;
 }
 
 int RenderSystem::checkLightsAndShadow(){
