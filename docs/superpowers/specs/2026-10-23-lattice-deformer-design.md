@@ -957,6 +957,400 @@ Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (on
 `docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
 `engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
 
+### 12.x WP-ECS (LatticeSystem, Lattice object, EntityCloner, sprite grid, Lua)
+
+Files: `engine/core/subsystem/LatticeSystem.{h,cpp}`, `engine/core/object/Lattice.{h,cpp}`,
+`engine/core/registry/EntityCloner.cpp` (lattice parts), `engine/core/subsystem/MeshSystem.{h,cpp}`
+(sprite grid), `engine/core/script/binding/{GameObjectClassesLua,ECSClassesLua}.cpp`,
+`generate_api_suggestions.py` (MANUAL_SYMBOLS for the lambda/overload bindings),
+`docs/mcp/guide/lua-api.md` (§4.19 Lattice, the enums table, the class tree),
+`editor/Project.cpp` (one line, below), `tools/mcp/tests/test_lattice_lua.py`. No stub fragment
+was needed: `generate_lua_stubs.py` resolves every new binding (0 unresolved).
+
+Frame flow and play mode:
+- `update(dt)` advances pose tweens and accumulates the play time; `lateUpdate()` (called by
+  RenderSystem::update, WP-RENDER) steps the jiggle with that time, then runs followers. The
+  jiggle is in `lateUpdate` (not `update`) so it reads the lattice's world position of this
+  frame (no lag, no stale identity matrix on the first frame) and followers ride on the
+  jiggle in the same frame. Without WP-RENDER's call neither jiggle nor followers run.
+- Edit mode: `editor::Project::pauseEngineScene` now also pauses `LatticeSystem` (one line,
+  next to Physics/Action/Audio). Paused = no tweens, no jiggle; followers still run (they
+  only place transforms) and offsets/poses written by the API show at once. The game's Pause
+  freezes tweens and jiggle where they are.
+- Disabled (`enabled = false`) or inactive lattices: tweens and the jiggle state are kept
+  but not advanced; a disabled jiggle (or lattice) clears `dynamicOffsets`.
+
+Tweens: any direct write of offsets (setOffset..., setPointPosition..., resetOffsets,
+applyPose, applyPreset) stops a running tween. `EaseType::CUSTOM` tweens linearly (the
+component cannot hold a function). A tween whose from/to size no longer matches the
+resolution (changed without `LatticeSystem::setResolution`) is stopped.
+
+Poses and resolution: `LatticeSystem::setResolution(component, rx, ry, rz)` resamples the
+offsets, every pose and a running tween with `lattice::resample`, and resets the jiggle.
+**WP-EDITOR-SCENE/WP-MCP: `LatticeEditorOps::setResolution` should apply this helper to a copy
+of the component (then commit it as the command's new value), so poses stay in step.** A
+pose whose size does not match the resolution (data from a path that did not resample it)
+is resampled on use from the resolution its size factors into, the factorization closest to
+the current resolution (ties: x before y before z); a size no resolution has reads as zeros.
+
+Jiggle (spec §6.2) details: acceleration from finite differences of the lattice's world
+position in `lateUpdate`; frames 1 and 2 after enabling, `resetJiggle()`, a frame longer
+than 0.25 s or a jump of more than 2 lattice sizes (largest world axis length) in one frame
+only rebuild the history (teleport). Substeps of at most `min(1/120 s, 1/sqrt(k))`, at most
+64 per frame; a frame longer than 0.25 s is integrated as 0.25 s. Clamp keeps
+`|x| <= max(0, jiggleMaxOffset)` and removes the outward velocity at the limit. While asleep
+it wakes when `inertia * |a_local| > 1e-4 * max(k, 1)` or on a poke; `poke`/`pokeAt` do
+nothing while `jiggle` is off. Anchor weight is linear across the lattice (0 at the anchored
+face, 1 at the opposite). `revision` is bumped every simulated frame and when it sleeps.
+
+Followers (spec §6.3) details: processed in Transform array order (a follower inside another
+follower's subtree sees it moved). Rotation: the rest's world axes pushed through the world
+Jacobian, Gram-Schmidt x then y, z = x cross y (a degenerate basis keeps the rest rotation).
+Scale: rest world scale times the lengths of the deformed rest axes. Channels whose apply
+flag is off are not written (the follower keeps its own value). The follower and its subtree
+get `needUpdate` and `RenderSystem::updateTransform` (already public) in the same frame; when
+nothing changed nothing is written. Left alone: follower disabled/inactive, missing lattice
+or rest, a zero-scale lattice transform, the follower being its rest or an ancestor of it,
+and (addition) the lattice inside the follower's subtree, which would feed back every frame.
+A disabled or inactive lattice puts the follower at its (undeformed) rest. Followers write
+Transform values in edit mode too: a saved scene stores the placed values, recomputed
+identically on load; moving the follower by hand is undone the next frame (move the rest).
+Integrator: check that prefab override detection does not record these writes as overrides
+(they bypass the command system the same way a script would).
+
+Sprite grid (spec §6.4): `MeshSystem::createSprite` builds `n x n` cells
+(`n = clamp(lattice.tessellation, 1, 64)` while `lattice.wantsTessellation`), vertices
+row-major from the bottom row, corners computed as `(1 - t) * a + t * b` so they equal the
+quad's values exactly (same AABB), same UV cut ratios, flipY, pivot, normals, tangents,
+colours, winding. Without the flag the quad code path is unchanged (verified byte-identical
+vertex and index data, and pixel-identical rendering of an undeformed 8x8 grid vs the quad).
+`createOrUpdateSprite` compares the grid the mesh was built with (from its vertex count:
+4 = quad, `(n+1)^2` = grid) with the request and rebuilds; a loaded mesh whose grid size
+changes (quad <-> grid, n -> m) gets `needReload` (its GPU buffers keep their size), the same
+size only `needUpdateBuffer`. Indices stay 16-bit (65 x 65 vertices at most).
+
+EntityCloner: copies the four components. `LatticeModifierComponent::bindings[].lattice` and
+`LatticeFollowerComponent::lattice/rest` are remapped (a copied lattice -> its copy; one not
+copied stays in the same registry and becomes `NULL_ENTITY` in another; the binding is kept,
+skipped at runtime like a deleted lattice). The copy's jiggle state is cleared (asleep,
+warm-up again where it is placed); a running tween goes on. `prepare<MeshComponent>` resets
+`MeshComponent::lattice` (the copy packs and uploads its own texture; sharing the original's
+`TextureRender` would double-destroy it) but keeps `wantsTessellation`/`tessellation`, which
+the copied vertices were built for.
+
+Contract additions (all in WP-ECS files):
+- `LatticeSystem`: static component helpers `getResolution`, `setResolution`, `findPose`,
+  `getPoseOffsets`, `savePose`, `applyPose`, `startTween`, `stopTween`, `resetJiggle`, `poke`,
+  `pokeAt`; members `deformWorldPoint(Entity, point, weight)`, `isValidFollower(follower,
+  lattice, rest)` (the inspector/MCP refusal rule, shared).
+- `Lattice`: the §8 API plus `getLatticeComponent`, `setEnabled/isEnabled`,
+  `getResolutionX/Y/Z`, `getPointIndex`, `getRestPosition`, getters for every setter,
+  `hasPose`, `removePose`, `stopTween`, `isJiggleSleeping`, `getJiggleOffset`, `resetJiggle`,
+  `addFollower(follower, rest[, applyPosition, applyRotation, applyScale, weight])`,
+  `removeFollower`, `getModifierComponent(entity)`, `getFollowerComponent(entity)`;
+  `bind`/`unbind`/`addFollower`/`removeFollower` take an entity or any GameObject wrapper.
+  `getResolution()` returns a Vector3 of whole numbers. Indices are 0-based (as
+  `lattice::copyAsLua`). `bind` adds the component with `includeChildren = true` when the
+  target has no MeshComponent of its own, clamps the weight to 0..2, updates the weight of
+  an existing binding to the same lattice, and refuses the lattice itself.
+- `MeshSystem::createSpriteGrid` (private).
+- Lua: enums `LatticeInterpolation`, `LatticeOutside`, `LatticeJiggleAnchor`, `LatticeStage`,
+  `LatticeMaskChannel`; classes `LatticePose`, `LatticeComponent` (resolution and the vectors
+  read-only, setting enabled/interpolation/outside/fadeDistance bumps `revision`),
+  `LatticeBinding`, `LatticeModifierComponent` (bindings: read a copy, assign it back),
+  `LatticeFollowerComponent`, `LatticeTracksComponent` (WP-ANIM may add its action class).
+
+Verification: `jasperengine-editor` builds with no new warnings in these files (also checked
+with `-Wall -Wextra`). `tools/mcp/tests/test_lattice_lua.py` (3 tests, real editor, needs
+WP-RENDER's `lateUpdate` call): a script creates and binds a lattice, offsets by index/flat
+index, local/world point positions, poses, resampling, follower placement equal to
+`deformPoint`, a tween ending exactly on the pose, a poked jiggle that settles and sleeps
+with no dynamic offsets left, an acceleration that wakes it, back at rest; edit mode
+(applyPose immediate, tween waits, follower follows); `GameObject.instantiate` remaps. The
+offline stub check (every Lua symbol of `engine_api_suggestions.h` has a stub) passes; the
+editor-side `test_stubs.py`/`test_docs.py` failures on this host match the baseline.
+Timing note (test_lattice_lua mid-tween check): a script's `onUpdate` (Engine event) runs
+before the scene's systems in the same frame, and the first frame after Play starts has its
+delta clamped to 0.25 s. The first version of the test (06be36e9e, still in `lat/anim`)
+sampled the offset on the first `onUpdate` with 0.2 s elapsed and saw 0, since the tween had
+not run that frame. Fixed in ecc5bc286: it records the first value strictly between the rest
+and the pose while tweening (a 1 s tween spans at least four updates). LatticeSystem was not
+at fault: a frame trace shows the offset advancing every update (0, 0.109, 0.181, ... 0.25).
+Branch `lat/ecs` merged `lattice` (WP-SOLVER) and `lat/render` (for the `lateUpdate` call
+and the tessellation request); with them the three tests pass and a 2D sprite bound to a
+lattice renders as a smoothly warped 8 x 8 grid.
+
+### 12.x WP-ANIM (LatticeTracks, §7)
+
+Files: `engine/core/action/keyframe/LatticeTracks.{h,cpp}` (stub replaced),
+`engine/core/subsystem/ActionSystem.{h,cpp}`, `engine/core/script/binding/ActionClassesLua.cpp`,
+`engine/core/script/LuaBinding.cpp` (`pushEntityHandleByType` key `latticetracks`),
+`engine/core/JasperEngine.h` (include), `engine/tests/htmlui/TestWrapperOwnership.cpp` (LatticeTracks
+in the wrapper list), `editor/util/LatticeTrackKeys.{h,cpp}` (new, root `CMakeLists.txt`),
+`editor/window/AnimationWindow.{h,cpp}`, `editor/command/type/CreateTrackKeyCmd.{h,cpp}`,
+`editor/command/type/CreateEntityCmd.{h,cpp}`, `editor/window/HierarchyWindow.cpp` (Create >
+Animation > Lattice Track), `editor/util/ProjectUtils.cpp` (script references to a lattice track
+are `LatticeTracks`), `editor/mcp/tools/WorldTools.cpp` (`edit_animation` only),
+`docs/mcp/guide/lua-api.md`, `tools/mcp/tests/test_lattice_anim.py`.
+
+Added declarations (nothing in a contract header renamed): the `LatticeTracks` API (the contract
+header was empty): constructors `(Scene*)`, `(Scene*, Entity)`, `(Scene*, times, points, values)`,
+`setTimes`, `setPoints`, `setValues` (keeps tangents mirrored like MorphTracks), `setEasings`,
+`setEasing`; private `ActionSystem::LatticeBlendAccum`, `latticeBlend`, `latticeTracksUpdate`;
+`EntityCreationType::LATTICE_TRACKS` (after `MORPH_TRACKS`); a lattice constructor of
+`CreateTrackKeyCmd`; private `AnimationWindow::selectLatticeTrackPoints`; `editor::LatticeTrackData`
+and `editor::LatticeTrackKeys` (the keying rules, shared by the Animation window and MCP).
+
+Runtime:
+- Dispatch: an action with KeyframeTracks + LatticeTracks whose target has a LatticeComponent.
+  Per point column: lerp with the segment easing, Hermite when `inTangents`/`outTangents` have one
+  row per key and the segment's two rows are sized like its value rows (else linear), as morph
+  tracks. A segment animates the columns both of its keys have (`min(points, row sizes)`): a
+  hand-edited short row animates fewer points instead of failing the track (morph logs an error and
+  skips it). Points `< 0` or `>= rx*ry*rz` (clamped resolution) are skipped.
+- `LatticeBlendAccum` per target: weighted sums and weights per point, sized to the point count
+  when first touched in a frame, kept between frames (`active` flag, no reallocation; entries of
+  destroyed entities are dropped in `clearPoseBlend`). Flush: points with weight > 0 get
+  `sum / weight` (normalized like morph weights: one clip fading in or out alone is not mixed with
+  the authored offsets); other points keep their values. `offsets` is grown to the point count
+  when shorter; `revision` is bumped only when a value changed. The editor preview uses the same
+  path (`updateAnimationPreview`).
+- A LatticeSystem tween/pose writing the same lattice while a LatticeTracks plays: the later
+  writer of the frame wins (the systems are not blended).
+- Engine fix found by the play test (all keyframe tracks, not only lattice): a non-looping
+  Animation that ended in an update stopped its tracks before the all-actions pass sampled them
+  at the end, so the last keys were missed by up to a frame (0.385 instead of 0.4 at the ~8 fps of
+  the headless test). `ActionSystem::animationApplyEnd` (private, added) samples every running
+  keyframe child once at the clip's end (its frame's end at most, the animation duration when that
+  cut it) before the clip stops; the pose blend of that update writes the final values.
+- Integration fix: `pushEntityHandleByType` had no `Lattice` entry (ProjectUtils names a lattice
+  entity's class `Lattice`, so `eval_lua object(ref, "Lattice")` and typed script references fell
+  back to EntityHandle); added `DISPATCH_TYPE(Lattice, "lattice")` in `LuaBinding.cpp`.
+
+Editor keying (`LatticeTrackKeys`):
+- Recorded points: the Scene-view selection (`LatticeEditorOps::getSelectedPoints`) when points
+  are selected, else every non-zero point plus every point already in the track, at the current
+  resolution. Extension: a lattice at rest whose track has no point (or no track) keys **every**
+  point, so the rest pose can be keyed (the spec rule would record nothing and a later key would
+  then have no rest to come from).
+- A key within 1 ms of an existing one updates the recorded columns only. A new key is inserted in
+  time order; the columns it does not record get the track's own value at that time (sampled as
+  ActionSystem plays it: easing, tangents), so the rest of the animation is unchanged; the split
+  segment keeps its easing on both halves; tangent tracks get zero tangents for it.
+- Points new to the track become columns; the keys that exist get the lattice's **current offset**
+  of those points (the only value known for them), tangents zero. Hand-edited rows shorter than the
+  point list are completed the same way.
+- Animation window: lattice blocks are labelled "Lattice Tracks" (rose); right-click a lattice
+  block: Insert Lattice Key; right-click the empty area with a lattice target: Key Lattice (creates
+  the track with CreateTrackKeyCmd when none spans the time); Snapshot keys lattice tracks too; Add
+  Property > Lattice Tracks; the preview snapshot excludes LatticeTracksComponent (the target's
+  LatticeComponent is snapshotted and restored, so a preview never leaves animated offsets behind).
+  Selecting a lattice block (or one of its keys) selects its lattice as the GameObject and the
+  track's points (valid at the current resolution) in the Scene view.
+
+MCP `edit_animation` channel `lattice`: per key `points` (or `value`) as `{"<index>": [x,y,z]}`,
+`[[[i,j,k],[x,y,z]], ...]` / `[[index, [x,y,z]], ...]`, or `"current"` (the lattice's offsets
+chosen by the keying rules above, the MCP path of editor keying). Indices are validated against
+the target's resolution (error names the key, the point and the resolution). Replace mode: one
+column per point any key names (ascending); a key that leaves a point out gets it linearly
+interpolated in time between the nearest keys naming it (held before the first / after the last).
+Merge mode: each key goes through `LatticeTrackKeys::setKey` (same as editor keying), its `ease`
+set for its segment. MCP writes linear keys (tangents cleared), as the other channels.
+`get_animation`/results read lattice keys back as `points: {"<index>": [x,y,z]}`. The keys
+schema now requires only `time` (lattice keys have `points`). Description trimmed to keep the tool
+total within the budget.
+
+Tests: `tools/mcp/tests/test_lattice_anim.py` (7 tests, new project): the MCP channel (both point
+forms, read back, one undo step, redo), fill/merge/errors, `"current"` keying (rest pose, moved
+points, new point at its current offset in earlier keys), the Animation window preview
+(`preview_animation` seek: offsets within one 1/60 s step of the key line, the unnamed point kept,
+the Scene view screenshot differs from the rest frame because the GPU path deforms the bound box,
+stop restores the authored offsets and leaves the keys), play mode (offsets on the key line at most one
+frame behind the action time at every sample, end exactly on the last key, untouched points kept,
+stop reverts), Lua (`LatticeTracks` by constructor and by setters, out-of-range point ignored, two
+clips on different points plus a shared point crossfaded with fadeOut/fadeIn: the shared point is
+the fade-weighted mean, the others keep the value of the only clip naming them, also after it
+stopped), a second editor reloading the scene (tracks, easings) and re-saving byte-identical.
+`test_html_ui_tools.py -k budget`: 100628 of 100637 characters after the trims.
+
+    JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
+        tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_anim.py
+
+Not verified headless (no MCP path for them): clicking a lattice block in the Animation window
+(point selection in the Scene view), the right-click/Snapshot menu items, keying with a Scene-view
+point selection (`LatticeEditorOps::getSelectedPoints` was still the contract stub in this branch;
+WP-EDITOR-SCENE's implementation filters by lattice and works with the calls made here).
+
+Not done here: `create_entity` type `lattice_tracks` (EntityTools, WP-MCP), `docs/mcp/TOOLS.md`
+regeneration (WP-MCP), the Xcode project entry for `editor/util/LatticeTrackKeys.cpp` (integration).
+
+### 12.x WP-EDITOR-SCENE (Scene-view editing, LatticeEditorOps)
+
+Files: `editor/lattice/LatticeEditorOps.cpp` (stubs replaced), `editor/lattice/LatticeSceneRender.cpp`
+(new: `SceneRender`'s lattice members, cages, picking, point gizmo drag),
+`editor/lattice/LatticeSceneTools.{h,cpp}` (new: right-click menu, shortcuts),
+`editor/command/type/LatticePointsCmd.{h,cpp}` and `LatticeBindingsCmd.{h,cpp}` (new),
+`editor/render/SceneRender.{h,cpp}` (hooks in `update`, `mouseClickEvent`, `mouseDragEvent`,
+`mouseReleaseEvent`, `hideAllGizmos`, destructor; `SceneDisplaySettings::showAllLattices`),
+`editor/window/SceneWindow.{h,cpp}` (picking, rectangle, empty click, Esc/O/... shortcuts, F,
+right-click menu, wheel, Gizmos toggle, `focusOnBounds`), `editor/AppSettings.{h,cpp}`
+(`LatticeViewSettings`, YAML `lattice:`), `editor/window/dialog/EditorSettingsWindow.{h,cpp}`
+(Preferences > Lattice page, `open(project, category)`), `editor/App.{h,cpp}` (`openPreferences`,
+Ctrl+A in the Scene view selects points), `editor/Stream.cpp` (`showAllLattices` in the
+workspace's per-scene view settings, written only when on), `CMakeLists.txt`,
+`tools/mcp/tests/test_lattice_scene.py` (new).
+
+Contract additions (all in `LatticeEditorOps.h`, under "additions to the contract"):
+- `getEditedLattice(project, sceneId)`: the lattice the Scene view edits (the only selected
+  entity, with LatticeComponent and Transform), else `NULL_ENTITY`.
+- `validateSelection(sceneId, lattice, pointCount)`: SceneRender calls it every update; the
+  stored point selection is dropped when another entity is edited (another selection, a
+  deleted lattice) and indices past the point count are dropped (undo of a resolution change).
+- `setOffsetsContinuous(...)` + `endContinuousEdit(sceneId)`: an edit made of many steps (the
+  Scene-view drag; an inspector widget held, if WP-EDITOR-DATA wants live feedback) merges
+  into the previous continuous edit of the same lattice until `endContinuousEdit` marks the
+  history (`CommandHistory::mark`). Every other op is a discrete step that never merges
+  (`setNoMerge` before `addCommand`), so two MCP/inspector edits in a row are two undo steps.
+- `transformedOffsets(...)` (pure; what `transformPoints` and the drag both use) and
+  `falloffWeight(falloff, distance)`.
+- `getPointLocalPosition(lattice, index, position)`, `getSelectedOrAllPoints(...)`.
+WP-RENDER (not me) added `bake`/`canBake` to the same header for WP-BAKE.
+
+Commands:
+- `LatticePointsCmd`: the only writer of lattice offsets in the editor. Offsets-only form
+  (size must match the resolution when it runs) or whole-state form (resolution, offsets,
+  poses: resample, pose save/rename/delete, creation's flat-axis resolution). It bumps
+  `revision`, marks the scene modified, embeds `PrefabEditUndo`, and records prefab instance
+  overrides: per changed point `offsets[i]` for offsets edits; for whole-state edits also
+  `recordPrefabComponentEdit` with the component as it was. A whole-state apply clears
+  `dynamicOffsets`, `jiggleVelocities` and `tweening` (laid out for the old points).
+  `affectsStructure()` is false (no Hierarchy rebuild per drag frame).
+- `LatticeBindingsCmd`: sets a target's `bindings` + `includeChildren`, adding the
+  LatticeModifierComponent when missing (`ProjectUtils::addEntityComponent`,
+  `recordPrefabComponentAdded`; undo removes it), else `recordPrefabComponentEdit`.
+
+Ops behaviour (one undo step each; nothing changes on failure; an edit that changes nothing
+pushes no step and returns true):
+- Validation errors name the fix: point index range, offsets/points count, non-finite values,
+  resolution 2..16, squash amount 0..0.95, bend/shear `toward` != `axis`, binding weight 0..2,
+  submesh >= -1, enum ranges, "not a lattice (it has no Lattice component)", a broken layout
+  (offsets size != rx*ry*rz) is refused with "set its resolution again".
+- `transformPoints`/drag: `p' = pivot + T (p - pivot)` in lattice local space; falloff weight from
+  the distance (local units, current positions) to the nearest moved point; weighted points
+  get translation * w, slerp(identity, rotation, w), scale lerp(1, s, w) when `T` decomposes
+  into TRS (checked by recomposing), else their moved position blended by w (a world rotation
+  of a non-uniformly scaled lattice is a shear in local space). Curves: smooth
+  `t*t*(3-2t)`, linear `t`, sharp `t*t`, constant 1, with `t = 1 - d/r`, 0 at and past r.
+- `setResolution` resamples through `LatticeSystem::setResolution` on a copy (offsets and
+  every pose, the runtime's rule for poses of another size), so the editor and
+  `Lattice:setResolution` give identical results; it clears the point selection.
+- `applyPose` uses `LatticeSystem::getPoseOffsets` (a pose of another size is resampled as at
+  runtime), times the weight. `savePose` overwrites a pose of the same name; rename refuses
+  an existing name.
+- `computeFit`: meshes = targets and their descendants with a non-null local AABB
+  (`SceneRender::getMeshLocalAABB`: skinnedAABB when set, the rest shape, never the
+  lattice-grown worldAABB). One target: measured in its frame (world position/rotation,
+  |world scale|; a zero scale falls back to world axes). Padding: size + max(size * padding,
+  0.01) per axis. Flat axis (<= max(1e-3 * largest, 1e-6)): max(10% of largest, 0.01) and
+  resolution 2.
+- `fitTo` moves/rotates/scales the lattice (ObjectTransformCmd, parent space) and keeps its
+  resolution and offsets (an edited cage keeps its points; only creation picks resolution 2
+  for flat axes).
+- `bind` replaces the settings of a binding already listing the lattice (no duplicates),
+  `includeChildren` is set to the argument; refuses the lattice itself and entities without
+  Transform. `unbind` removes the lattice's entries and keeps the (possibly empty) component.
+- `createLattice`: `CreateEntityCmd(GAMEOBJECT)` with the fitted Transform +
+  `AddComponentCmd(LatticeComponent)` + (flat axes) the resolution + one `LatticeBindingsCmd`
+  per target with a mesh (own or below; `includeChildren` when the target has no mesh of its
+  own, or already had it), grouped by `mark`/`groupSince`; the lattice becomes the selection.
+  Targets without any mesh are not bound; when none has one the result is the no-selection
+  cage at `fallbackPosition`. **Deviation**: that cage is 1 unit in 3D scenes and 100 units in
+  2D/UI scenes (which measure in pixels: a 1-unit cage would be invisible).
+
+Scene view (§9.2):
+- Cages: each lattice drawn with two LineRenderers, one in the tools scene (always on top,
+  `behindOpacity` in perspective views, full colour in 2D/orthographic views) and one
+  depth-tested in the scene (`overlay`, full colour, perspective views only): parts behind
+  geometry show faded. Edges stop at the point squares; squares are filled camera-facing
+  squares (`pointSize` px, outlines only for unselected points of lattices above 512 points),
+  nudged towards the camera so their own edges never cut them. Thickness = parallel 1-px
+  copies across the edge on screen (engine lines are 1 px). Stretch colour: log2(length /
+  rest length) clamped to [-1, 1] blends the line colour (rest) to the squash colour (half) or
+  the stretch colour (double). Rest cage at 22% alpha when any offset is non-zero. Unselected
+  lattices (Gizmos > "Show all lattices") at 35% alpha without points; the selected one shows
+  whatever the other toggles say. Hidden with the other gizmos (camera preview).
+- Gizmo on selected points: centroid (the editor has no pivot/center toggle, so the last
+  selected point is stored but unused), lattice world rotation in Local mode, identity in
+  Global (MainToolbar's X toggle); W/E/R and the 2D gizmo's move; same snapping as objects
+  (grid on translation deltas, rotation step, Ctrl inverts rotation snap). The point gizmo is
+  disabled while an edit layer (inline child scene / game layer) holds the tools, while
+  terrain editing, and for a lattice with a non-invertible Transform.
+- Picking: a click on a point selects it (Shift or Ctrl toggles); the points drawn on the same
+  spot (a flat 2D cage seen face on has two layers) are taken together. The gizmo then sits
+  on it, so the next press on its centre drags. With no point selected a point under the
+  cursor wins over the lattice entity's own gizmo (its arrows cross the cage); with points
+  selected their gizmo's handles win, as for the other sub-selections. Verified by hand: the
+  wheel during a falloff drag shrinks the ring and the moved neighbours without zooming, F
+  frames the selected point, E on all points rotates them about the centroid (y offsets stay
+  0, radii kept, the axis column stays), R scales them. The uniform scale handle inherits the
+  object tool's ratio (distance from the gizmo centre now / at the press), so a press right on
+  the centre gives a very large factor, as it does for objects. A rectangle while a lattice is edited selects
+  points (Shift adds) and keeps the lattice selected; a click on empty space with points
+  selected clears the points and keeps the lattice (the next one deselects as usual);
+  clicking another entity selects it (points dropped by `validateSelection`).
+- Shortcuts (Scene view focused, a lattice edited; none collides): Ctrl+A select all (in
+  `App::selectAll`, else the entities as before), Alt+A none, Ctrl+I invert, Ctrl+= /
+  Ctrl+keypad+ expand, Ctrl+- / Ctrl+keypad- shrink, O proportional falloff, Esc clears the
+  points (the editor has no Esc deselect for entities, so a second Esc does nothing, as
+  before), F frames the selected points (else the cage: `focusOnEntities` frames a lattice by
+  its cage bounds, also from the Hierarchy and MCP `frame_entity`).
+- Mouse wheel during a point drag with the falloff on scales the radius by 1.1 per notch
+  (0.01..10 local units) instead of zooming; the ring (a local-space circle facing the
+  camera, so an ellipse for a non-uniform cage) is drawn around the selection's centroid.
+- Right-click menu: a right click that turns the camera less than 4 px opens it where the
+  click was (3D right-drag still flies). For the edited lattice, or the only lattice of a
+  multi-selection (then point items are disabled): Select All/None/Invert/Exterior/Face
+  (+X..-Z)/Expand/Shrink, Mirror (X/Y/Z, "+ to -" / "- to +"), Reset Selected, Reset All,
+  Presets... (submenu: preset, axis, toward, amount, seed, replace, Apply to the selected
+  points or all), Fit to Targets, Fit to Selection... (submenu: fits to the *other* selected
+  entities, padding in %), Copy as Lua (`lattice:setOffset(...)` lines of the selected or all
+  points to the clipboard), Proportional Falloff (O), Falloff (curve, radius), Lattice
+  Preferences... (opens Preferences on the Lattice page).
+- Preferences > Lattice (`settings.yaml` `lattice:`): line colour, thickness 1..4 px,
+  behind-geometry opacity, point size 3..20 px, point colour, selected point colour, stretch
+  colouring + squash/stretch colours, falloff curve, default radius (1.0 local units: with
+  0.5 a 3x3x3 cage's neighbours, 0.5 apart, would not move). Applying new falloff defaults
+  sets the live falloff.
+- Play mode: the same rules as other component edits (commands go to the play session's
+  history; the tools skip what the running scene created).
+
+Verification: `tools/mcp/tests/test_lattice_scene.py` (8 tests, new empty project,
+`xvfb="harness"`, real X input with xdotool, points found by their on-screen colour): Ctrl+A /
+Alt+A / Esc, click + gizmo drag moves exactly one point, undo/redo restore it exactly, a
+rectangle and Shift+rectangle, the falloff drag (neighbours move less, one undo step), the
+right-click menu opens, a prefab instance's dragged point is the `offsets[i]` override and undo
+drops it, a 2D view's click takes the three points stacked on one spot. Run with
+`JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_scene.py`.
+Also driven by hand on Xvfb (screenshots): GameObject > 3D Object > Lattice around a box (fit
+1.02 x 2.04 x 0.51, bound, one undo step, redo), corner drag bending the mesh (WP-RENDER
+merged), falloff drag with the ring, every menu (Mirror, Presets, Reset All), the preferences
+page, a 2D scene (sprite: 3x3x2 cage, the corner drag moves both layers). `test_lattice_data.py`
+passes on the merge; `test_regressions`, `test_post_processing_views`/`_two_views`,
+`test_scene_color_scale`, `test_scene`, `test_ui_anchors`, `test_project` show no new failure
+against the baseline run on the empty fixture. Build: no warnings in the files above.
+
+Integrator notes:
+- WP-MCP's `edit_lattice` should call the ops and group a call with
+  `CommandHistory::mark()`/`groupSince()`; `move` maps to `transformPoints` (its `pivot` in
+  lattice local space); selection helpers + `setSelectedPoints` for nothing (MCP selectors are
+  per call). `create` = `createLattice`; `fit` = `fitTo` (keeps the resolution).
+- The inspector's Offset field could use `setOffsetsContinuous` while held and
+  `endContinuousEdit` on release for live feedback; today it commits once on release, which is
+  also correct.
+- `LatticeEditorOps::falloff()` is initialised from the preferences on first use.
+- SceneRender finds its project scene id by searching the project's scenes and prefab stages
+  for itself (cached), so no Project.cpp change was needed.
+
 ### 12.x WP-BAKE
 
 §9.4 as specified, with these decisions:

@@ -120,7 +120,7 @@ namespace jasperengine{
         Vector3 getJiggleOffset(int i, int j, int k) const;
         // clears the jiggle motion, e.g. after teleporting the lattice
         void resetJiggle();
-        // adds velocity to one point (local units per second) and wakes the jiggle
+        // adds velocity to one point (local units per second) and wakes the jiggle (needs jiggle on)
         void poke(int i, int j, int k, Vector3 impulse);
         // adds velocity (world units per second) to the points within `radius` (world units) of
         // `worldPoint`, fading smoothly to the edge; radius <= 0 pokes the nearest point

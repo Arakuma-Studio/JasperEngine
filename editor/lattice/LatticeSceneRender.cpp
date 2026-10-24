@@ -185,6 +185,38 @@ int SceneRender::hitTestLatticePoint(Entity entity, float x, float y){
     return bestIndex;
 }
 
+std::vector<int> SceneRender::getLatticeCoincidentPoints(Entity entity, int index){
+    std::vector<int> points;
+    std::vector<Vector3> world;
+    if (!getLatticeWorldPoints(entity, world) || index < 0 || index >= (int)world.size()){
+        return points;
+    }
+    const float width = (viewWidth > 0) ? (float)viewWidth : (float)Engine::getCanvasWidth();
+    const float height = (viewHeight > 0) ? (float)viewHeight : (float)Engine::getCanvasHeight();
+    const Matrix4 vpMatrix = camera->getViewProjectionMatrix();
+    auto toPixels = [&](const Vector3& p, Vector2& pixels){
+        Vector4 clip = vpMatrix * Vector4(p, 1.0f);
+        if (!(clip.w > 0.0f)){
+            return false;
+        }
+        pixels = Vector2(clip.x / clip.w * width * 0.5f, clip.y / clip.w * height * 0.5f);
+        return true;
+    };
+    Vector2 target;
+    if (!toPixels(world[(size_t)index], target)){
+        return {index};
+    }
+    const float tolerance = 1.5f * overlayScale;
+    for (size_t i = 0; i < world.size(); i++){
+        Vector2 pixels;
+        if ((int)i == index || (toPixels(world[i], pixels) && std::fabs(pixels.x - target.x) <= tolerance &&
+                std::fabs(pixels.y - target.y) <= tolerance)){
+            points.push_back((int)i);
+        }
+    }
+    return points;
+}
+
 std::vector<int> SceneRender::getLatticePointsInRect(Entity entity, Vector2 start, Vector2 end){
     std::vector<int> inside;
     std::vector<Vector3> world;

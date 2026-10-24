@@ -20,6 +20,7 @@
 #include "action/SpriteAnimation.h"
 #include "action/Ease.h"
 #include "action/keyframe/MorphTracks.h"
+#include "action/keyframe/LatticeTracks.h"
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
 #include "action/keyframe/TranslateTracks.h"
@@ -325,6 +326,16 @@ void LuaBinding::registerActionClasses(lua_State *L){
         .addFunction("setValues", &MorphTracks::setValues)
         .addFunction("setEasings", &MorphTracks::setEasings)
         .addFunction("setEasing", &MorphTracks::setEasing)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<LatticeTracks, Action>("LatticeTracks")
+        .addConstructor <void(Scene*), void(Scene*, Entity), void(Scene*, std::vector<float>, std::vector<int>, std::vector<std::vector<Vector3>>)> ()
+        .addFunction("setTimes", &LatticeTracks::setTimes)
+        .addFunction("setPoints", &LatticeTracks::setPoints)
+        .addFunction("setValues", &LatticeTracks::setValues)
+        .addFunction("setEasings", &LatticeTracks::setEasings)
+        .addFunction("setEasing", &LatticeTracks::setEasing)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
