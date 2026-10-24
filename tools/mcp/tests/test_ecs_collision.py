@@ -29,6 +29,7 @@ async def test_contact_callbacks_destroy_for_1000_frames(ed: Editor):
         ed.check(not done.is_error and done.structured.get("reason") == "condition", f"1000 frames: {done.text[:500]}")
         values = (await ed.call("eval_lua", code="local s = script('Spawner') return s.frames, s.hits, s.spawned, s.toggles"))["values"]
         frames, hits, spawned, toggles = values
+        print(f"[ecs-collision] {frames} frames, {hits} contacts handled, {spawned} boxes spawned, {toggles} Rigidbody2D toggles", flush=True)
         ed.check(frames >= 1000, f"frames {frames}")
         ed.check(hits >= 100 and toggles == hits, f"contacts handled: {hits} hits, {toggles} toggles, {spawned} spawned")
         errors = await ed.call("read_console", since=cursor, types=["error"], limit=50)
