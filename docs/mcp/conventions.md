@@ -90,7 +90,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 
 | Group | Specs |
 |---|---|
-| `core` | the 140 tools before S31, plus `tool_groups` |
+| `core` | the tools before S31 (but the terrain ones), plus `tool_groups` |
 | `assets_pipeline` | S04, S05, S14 |
 | `data_safety` | S03 (`get_load_report`, `list_scene_backups`, `discard_scene_backup`) |
 | `diagnostics` | S06 (`get_job_system_stats`, `set_job_system_config`, `get_memory_stats`), S07, S09 (`get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`), S28 |
@@ -98,6 +98,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `profiling` | S15 |
 | `rendering_fx` | S12, S13 |
 | `splines` | S18 |
+| `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
 | `navigation` | S19 |
 | `particles` | S20 |
 | `animation` | S21 |

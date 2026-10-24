@@ -1562,7 +1562,7 @@ void registerSceneTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"path", assetPath(".scene path.")},
             {"all", withDefault(boolean(""), false)},
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
+            {"allow_data_loss", boolean("")}
         });
         tool.allowedWhilePlaying = false;
         tool.annotations.idempotent = true;

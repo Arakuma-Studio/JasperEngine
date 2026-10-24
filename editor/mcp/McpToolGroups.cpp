@@ -22,6 +22,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
         {"rendering_fx", "Fog, clouds and post effects beyond the core set."},
         {"splines", "Splines and what is built on them: roads, walls, placement, terrain and water."},
+        {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps and sampling."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},

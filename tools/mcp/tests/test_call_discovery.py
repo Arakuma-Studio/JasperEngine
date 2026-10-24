@@ -71,8 +71,17 @@ async def test_discovery():
         async with a, b:
             await wait_for_port(port_a)
             await wait_for_port(port_b)
-            p = await asyncio.to_thread(run_cli, ["editors", "--json"], config, home, cwd)
-            listed = json.loads(p.stdout)
+            # both have their projects open (initialize is answered before the project loads),
+            # and the next frame rewrites the instance files with them
+            await a.call("editor_status")
+            await b.call("editor_status")
+            deadline = time.monotonic() + 30
+            while True:
+                p = await asyncio.to_thread(run_cli, ["editors", "--json"], config, home, cwd)
+                listed = json.loads(p.stdout)
+                if (len(listed) == 2 and all(e["project"] for e in listed)) or time.monotonic() > deadline:
+                    break
+                await asyncio.sleep(0.5)
             by_port = {e["url"]: e for e in listed}
             a.check(len(listed) == 2 and f"http://127.0.0.1:{port_a}/mcp" in by_port, f"editors lists both: {listed}")
             entry_a = by_port[f"http://127.0.0.1:{port_a}/mcp"]
@@ -125,7 +134,11 @@ async def test_instance_file_removed_on_quit():
         async with RawEditor(create=True, extra_args=["--http-port", str(port)], env={"XDG_CONFIG_HOME": str(config)}) as raw:
             await raw.initialize()
             await wait_for_port(port)
-            files = list((config / "jasperengine" / "mcp" / "instances").glob("*.json"))
+            deadline = time.monotonic() + 30
+            files: list[Path] = []
+            while not files and time.monotonic() < deadline:
+                files = list((config / "jasperengine" / "mcp" / "instances").glob("*.json"))
+                await asyncio.sleep(0.2)
             if len(files) != 1:
                 raw.fail(f"one instance file while HTTP serves: {files}")
             code = await raw.close_stdin_and_wait(60)
@@ -171,6 +184,9 @@ async def test_spawn():
         # the project open in an editor without HTTP: project_locked, exit 3, its pid
         async with RawEditor(project=project, env={"XDG_CONFIG_HOME": str(config)}) as raw:
             await raw.initialize()
+            # the project is open (and locked) once a main-thread call answers
+            raw.send({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "editor_status", "arguments": {}}})
+            await raw.response(2)
             holder = raw.proc.pid
             p = await asyncio.to_thread(run_cli, ["call", "--project", str(raw.scratch.project), "get_scene_tree"],
                                         config, home, cwd)

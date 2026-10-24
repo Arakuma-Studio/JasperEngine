@@ -4073,10 +4073,13 @@ void setShapePointsTool(const CallPtr& call) {
 void registerWorldTools(McpRegistry& registry) {
     using namespace schema;
 
-    auto add = [&registry](const char* name, const char* title, std::string description, Json input,
-                           std::function<void(CallPtr)> handler, bool readOnly, bool whilePlaying, bool idempotent = false) {
+    // the tool group of the tools added next (empty: core; docs/mcp/conventions.md)
+    std::string group;
+    auto add = [&registry, &group](const char* name, const char* title, std::string description, Json input,
+                                   std::function<void(CallPtr)> handler, bool readOnly, bool whilePlaying, bool idempotent = false) {
         ToolDef tool;
         tool.name = name;
+        tool.group = group;
         tool.title = title;
         tool.description = std::move(description);
         tool.inputSchema = std::move(input);
@@ -4096,6 +4099,9 @@ void registerWorldTools(McpRegistry& registry) {
     const Json integerItem = Json{{"type", "integer"}};
 
     // ---------------------------------------------------------------- terrain
+    // a group of their own: the default listing could not hold them once the S03/S09 tool
+    // changes landed (budget.json); hidden until tool_groups enables "terrain", callable always
+    group = "terrain";
     add("sculpt_terrain", "Sculpt / Paint Terrain",
         "Terrain-window brush strokes (as a mouse drag): the brush moves along each stroke's points, holding "
         "seconds_per_point at each. Heights are 0-1 of max_height; raise/lower move "
@@ -4174,6 +4180,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"grid", integer("Default 9 without points.", 0, 65)}
         }),
         sampleTerrainTool, true, true);
+    group.clear();
 
     // ---------------------------------------------------------------- physics
     add("edit_colliders", "Edit Colliders",

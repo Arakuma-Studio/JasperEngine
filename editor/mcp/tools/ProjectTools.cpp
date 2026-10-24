@@ -2228,7 +2228,7 @@ void registerProjectTools(McpRegistry& registry) {
             {"path", string("Temporary project: Save As to this empty absolute dir.")},
             {"name", string("Rename the project.")},
             {"untitled_scene_dir", withDefault(string(""), "")},
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
+            {"allow_data_loss", boolean("")}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = saveProjectTool;

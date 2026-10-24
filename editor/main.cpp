@@ -18,12 +18,26 @@ using namespace jasperengine;
 
 namespace {
 
+// `call`, `batch`, `list-tools`, `editors`: MCP tools from a shell (editor/cli/CallCommand.h)
+bool isCallCommand(int argc, char* argv[]) {
+    return argc >= 2 && (std::strcmp(argv[1], "call") == 0 || std::strcmp(argv[1], "batch") == 0 ||
+                         std::strcmp(argv[1], "list-tools") == 0 || std::strcmp(argv[1], "editors") == 0);
+}
+
 int runEditor(int argc, char* argv[]) {
+    // Relative path arguments are relative to the directory the editor started in: read it first
+    editor::CommandLine::invocationDirectory();
+
+    // A client of a running editor, or of one it starts headless; never the backend in this
+    // process. Before the PATH bootstrap: its login-shell probe would take most of the 300 ms
+    // these commands may take, and a spawned editor bootstraps its own PATH.
+    if (isCallCommand(argc, argv)) {
+        return editor::cli::CallCommand::run(argc - 1, argv + 1, argv[0]);
+    }
+
     // A desktop launcher starts the editor without the user's shell environment,
     // so the build tools go back on PATH before anything can spawn a command.
     editor::ShellEnv::bootstrapPath();
-    // Relative path arguments are relative to the directory the editor started in: read it first
-    editor::CommandLine::invocationDirectory();
 
     // CLI subcommands run before the backend starts, so they never create a window.
     if (argc >= 2 && std::strcmp(argv[1], "export") == 0) {
@@ -52,12 +66,6 @@ int runEditor(int argc, char* argv[]) {
             return editor::CommandLine::runBenchmarkHelp(argv[0]);
         }
         return editor::Backend::init(argc, argv);
-    }
-    // MCP tools from a shell (editor/cli/CallCommand.h): a client of a running editor, or of
-    // one it starts headless; never the backend in this process
-    if (argc >= 2 && (std::strcmp(argv[1], "call") == 0 || std::strcmp(argv[1], "batch") == 0 ||
-                      std::strcmp(argv[1], "list-tools") == 0 || std::strcmp(argv[1], "editors") == 0)) {
-        return editor::cli::CallCommand::run(argc - 1, argv + 1, argv[0]);
     }
     // The GUI editor as an MCP server on stdio (see editor/mcp/McpLaunch.h)
     if (argc >= 2 && std::strcmp(argv[1], "mcp") == 0) {
@@ -88,6 +96,8 @@ int runEditor(int argc, char* argv[]) {
 // --log-level <level>[,category=level...] (or --log-level=...), anywhere on the command line:
 // applied (after JASPER_LOG_LEVEL) and removed before the subcommands parse their arguments
 bool takeLogLevelFlag(std::vector<char*>& args) {
+    // after `call <tool>` every flag is the tool's (a log_level parameter included)
+    if (isCallCommand(static_cast<int>(args.size()), args.data())) return true;
     std::string spec;
     if (const char* fromEnvironment = std::getenv("JASPER_LOG_LEVEL")) spec = fromEnvironment;
     for (size_t i = 1; i < args.size();) {

@@ -148,9 +148,9 @@ return Player
   with onKeyDown(key, isRepeat, mods). Log.print/warn/error take ONE string (use ..).
 - Time: Engine.timeScale and Engine.fixedDeltatime (read/write), Engine.gameTime and
   Engine.frameCount (scaled game time and frames since start).
-- C++ default arguments do not exist in Lua: pass every argument (e.g. the wake flag).
-- Lua has no Dori.Script, on_start, getComponent, setProperty or timers. Never put editor
-  property paths (submeshes[0]...) in scripts.
+- Lua has no C++ default arguments: pass every argument (e.g. the wake flag).
+- Lua has no on_start, getComponent or setProperty (timers: Timer.after/every). Never put
+  editor property paths (submeshes[0]...) in scripts.
 
 ## C++ scripts
 Two kinds (create_script): a ScriptBase subclass, or a subclass of the GameObject's own class
@@ -203,7 +203,7 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   true), applyLinearImpulseToCenter(i, true); mass is body:getMass().
 - Never move a body by writing its GameObject's transform from onFixedUpdate (silently
   overwritten). Teleport with body.position (and body.rotation / body.angle), velocity with
-  body.linearVelocity. One-shot impulses fire once per press, not every held frame.
+  body.linearVelocity.
 - Layer Collision Matrix (project settings, per backend) gates contacts; raycasts take an
   optional layer mask.
 
@@ -253,7 +253,8 @@ set_ui_effect_time).
 Edit mode runs no Lua. First read jasper://docs/html-ui (with the UI tools' rules).
 
 ## Data safety
-Save after each step (Auto Save keeps backups only). degraded_document, recovery,
+Save after each step (Auto Save keeps backups only). A save that would lose data the editor
+could not read is refused; allow_data_loss writes it anyway. degraded_document, recovery,
 project_locked: jasper://docs/data-safety.
 
 ## Pitfalls
@@ -275,10 +276,9 @@ std::string toolGroupsSection(const McpRegistry& registry) {
             break;
         }
     }
-    return "\n## Tool groups\n`tool_groups` lists the tool groups beyond core" +
+    return "\n## Tool groups\n`tool_groups` lists and enables the groups beyond core" +
            (names.empty() ? std::string() : " (" + names + ")") +
-           " and adds them to this session's tools/list; every tool is callable by name anyway (also in "
-           "`batch`).\n";
+           " in this session's tools/list; any tool is callable by name without it (also in `batch`).\n";
 }
 
 } // namespace

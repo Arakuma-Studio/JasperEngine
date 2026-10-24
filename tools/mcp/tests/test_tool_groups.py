@@ -46,7 +46,8 @@ async def test_hidden_by_default(ed: Editor):
     ed.check(tool_meta(ed.tool("create_entity")).get("jasper/module"), "a core tool's _meta module")
     chosen = names(await ed.tools(groups=["selftest"]))
     ed.check(TOOL in chosen and "create_entity" in chosen, "a list of groups adds them to core")
-    ed.check_eq(chosen, names(everything), "core + selftest is everything here")
+    core = {t.name for t in everything if tool_meta(t).get("jasper/group") == "core"}
+    ed.check_eq(chosen, core | {TOOL}, "core + selftest exactly")
 
 
 async def test_callable_without_enabling(ed: Editor):
@@ -202,6 +203,7 @@ SPEC_GROUPS = {
     "diagnostics": ["get_job_system_stats", "set_job_system_config", "get_memory_stats",   # S06
                     "get_log_config", "set_log_level", "wait_for_log", "list_timers"],     # S09
     "data_safety": ["get_load_report", "list_scene_backups", "discard_scene_backup"],      # S03
+    "terrain": ["sculpt_terrain", "set_terrain_maps", "sample_terrain"],                   # S31 (budget)
 }
 
 

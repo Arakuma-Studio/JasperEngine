@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 import harness
 from harness import Editor, TestFailure
@@ -67,12 +68,15 @@ async def test_rcss_properties_keep_loop_registered_names():
 async def test_project_agents_file(ed: Editor):
     target = ed.scratch.root / "made-by-create-project"
     await ed.call("create_project", path=str(target), name="AgentsDoc", unsaved="discard")
+    status = await ed.call("editor_status")
+    ed.check_eq(Path(status["project"]["path"]).resolve(), target.resolve(), "the new project is open")
+    # written on the first play/build, or on the first read of the resource
+    got = await ed.session.read_resource("jasper://project/AGENTS.md")
+    served = "".join(getattr(c, "text", "") or "" for c in got.contents)
     agents = (target / "AGENTS.md").read_text(encoding="utf-8")
     ed.check_eq(agents.splitlines()[0], "# JasperEngine Project Context", "the generated AGENTS.md")
     ed.check("`jasperengine-editor call <tool> [--flags]`" in agents, "it names the call CLI")
     ed.check_eq((target / "CLAUDE.md").read_text(encoding="utf-8"), "@AGENTS.md\n", "CLAUDE.md imports it")
-    got = await ed.session.read_resource("jasper://project/AGENTS.md")
-    served = "".join(getattr(c, "text", "") or "" for c in got.contents)
     ed.check_eq(served, agents, "jasper://project/AGENTS.md serves the project's file")
     repo = (harness.REPO / "AGENTS.md").read_text(encoding="utf-8")
     ed.check(served != repo and "For engine contributors" not in served, "not the repository's contributor AGENTS.md")

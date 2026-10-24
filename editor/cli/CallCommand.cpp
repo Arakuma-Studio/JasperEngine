@@ -450,7 +450,22 @@ void connect(Session& session, const Options& o, const char* executableName) {
 
     session.client->interrupted = []() { return interruptFlag.load(); };
     try {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(static_cast<long long>(spawnTimeout()));
         session.client->initialize(session.spawned ? spawnTimeout() : std::min(o.timeout, 30.0));
+        // initialize is answered before the project has loaded: a spawned editor is ready once
+        // it has the project open (a locked project makes it exit instead, spawnFailed)
+        while (session.spawned) {
+            const Json status = session.client->request("tools/call", Json{{"name", "editor_status"}, {"arguments", Json::object()}},
+                                                        spawnTimeout());
+            const Json path = status.contains("result") ? status["result"].value("structuredContent", Json::object())
+                                                              .value("project", Json::object()).value("path", Json()) : Json();
+            if (path.is_string() && mcp::sameProjectPath(path.get<std::string>(), o.project)) break;
+            if (std::chrono::steady_clock::now() >= deadline) {
+                throw ClientError(Connection, "the editor did not open " + o.project + " within " +
+                                  std::to_string(static_cast<int>(spawnTimeout())) + " s (JASPER_CALL_SPAWN_TIMEOUT)");
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        }
     } catch (const ClientError& error) {
         if (session.spawned) spawnFailed(session, error);
         throw;
@@ -838,9 +853,12 @@ int runCall(const std::vector<std::string>& args, const char* executableName) {
             return Ok;
         }
 
-        // parse against this build's schema first: a usage error never starts an editor
+        // parse against this build's schema first: a usage error never starts an editor. A tool
+        // this build lacks may still exist in an editor named explicitly (another version).
         const Catalog offline = offlineCatalog();
-        if (const Json* def = offline.find(tool)) parseToolArgs(closedSchema(*def), tokens);
+        const Json* known = offline.find(tool);
+        if (!known && !o.hasTarget()) findToolOrThrow(offline, tool);
+        if (known) parseToolArgs(closedSchema(*known), tokens);
 
         installInterruptHandler();
         Session session;
