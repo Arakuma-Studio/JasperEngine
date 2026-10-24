@@ -322,6 +322,9 @@ namespace jasperengine::editor {
         // that produces the workspace file share one schema.
         static YAML::Node encodeTerrainEditorSettings(const TerrainEditorSettings& settings);
         static TerrainEditorSettings decodeTerrainEditorSettings(const YAML::Node& node);
+        // Every field by name; a missing, unknown or unreadable value keeps its default
+        static YAML::Node encodePhysicsPlacementSettings(const PhysicsPlacementSettings& settings);
+        static PhysicsPlacementSettings decodePhysicsPlacementSettings(const YAML::Node& node);
 
         static YAML::Node encodeSceneDisplaySettings(const SceneDisplaySettings& settings);
         static void decodeSceneDisplaySettings(const YAML::Node& node, SceneDisplaySettings& settings);

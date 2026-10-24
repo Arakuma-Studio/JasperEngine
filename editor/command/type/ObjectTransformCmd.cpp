@@ -30,6 +30,33 @@ editor::ObjectTransformCmd::ObjectTransformCmd(Project* project, size_t sceneId,
     this->wasModified = project->getScene(sceneId)->isModified;
 }
 
+editor::ObjectTransformCmd::ObjectTransformCmd(Project* project, size_t sceneId){
+    this->project = project;
+    this->sceneId = sceneId;
+
+    this->wasModified = project->getScene(sceneId) ? project->getScene(sceneId)->isModified : false;
+}
+
+void editor::ObjectTransformCmd::addEntity(Entity entity, Vector3 position, Quaternion rotation, Vector3 scale){
+    TransformCmdValue& value = props[entity];
+    value.newPosition = position;
+    value.newRotation = rotation;
+    value.newScale = scale;
+    value.explicitOld = false;
+}
+
+void editor::ObjectTransformCmd::addEntity(Entity entity, Vector3 position, Quaternion rotation, Vector3 scale,
+                                           Vector3 oldPosition, Quaternion oldRotation, Vector3 oldScale){
+    TransformCmdValue& value = props[entity];
+    value.newPosition = position;
+    value.newRotation = rotation;
+    value.newScale = scale;
+    value.oldPosition = oldPosition;
+    value.oldRotation = oldRotation;
+    value.oldScale = oldScale;
+    value.explicitOld = true;
+}
+
 bool editor::ObjectTransformCmd::execute(){
     SceneProject* sceneProject = project->getScene(sceneId);
     if (!sceneProject){
@@ -37,9 +64,11 @@ bool editor::ObjectTransformCmd::execute(){
     }
     for (auto& [entity, property] : props){
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){
-            property.oldPosition = transform->position;
-            property.oldRotation = transform->rotation;
-            property.oldScale = transform->scale;
+            if (!property.explicitOld){
+                property.oldPosition = transform->position;
+                property.oldRotation = transform->rotation;
+                property.oldScale = transform->scale;
+            }
 
             prefabUndo.capture(project, sceneId, entity);
 

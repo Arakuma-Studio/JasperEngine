@@ -2776,6 +2776,14 @@ const editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings()
     return terrainEditorSettings;
 }
 
+editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings(){
+    return physicsPlacementSettings;
+}
+
+const editor::PhysicsPlacementSettings& editor::Project::getPhysicsPlacementSettings() const{
+    return physicsPlacementSettings;
+}
+
 bool editor::Project::isSimulateTouch() const{
     return simulateTouch;
 }
@@ -4490,6 +4498,10 @@ std::vector<uint32_t> editor::Project::getChildScenes(uint32_t sceneId) const {
 }
 
 void editor::Project::deleteSceneProject(SceneProject* sceneProject){
+    if (sceneProject->scene) {
+        editor::getEditorHost().sceneDeleting(sceneProject->id);
+    }
+
     if (sceneProject->sceneRender) {
         Camera* editorCam = sceneProject->sceneRender->getCamera();
         if (editorCam) {
@@ -4611,6 +4623,7 @@ void editor::Project::resetConfigs() {
     startSceneId = NULL_PROJECT_SCENE;
     loadingSettings = {};
     terrainEditorSettings = {};
+    physicsPlacementSettings = {};
     simulateTouch = false;
     projectPath.clear();
     assetDatabase.close();
