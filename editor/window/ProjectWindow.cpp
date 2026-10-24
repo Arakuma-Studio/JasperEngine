@@ -847,7 +847,9 @@ void editor::ProjectWindow::renderHeader() {
     const float searchW = std::min(Theme::dpi(240.0f), std::max(Theme::dpi(100.0f), barW * 0.35f));
     ImGui::SameLine();
     ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(4.0f) - searchW, barMin.y + padY));
-    if (UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW)) {
+    const bool searchEdited = UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW);
+    uiBuilding.searchBox = lastItemRect();
+    if (searchEdited) {
         std::string trimmed = searchBuffer;
         trimmed.erase(0, trimmed.find_first_not_of(" \t"));
         trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
@@ -1302,6 +1304,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
             ImVec2 itemMin = ImGui::GetItemRectMin();
             ImVec2 itemMax = ImGui::GetItemRectMax();
+            if (uiBuilding.entries.size() < 200) {
+                uiBuilding.entries.push_back({file.name, lastItemRect()});
+            }
 
             if (hovered) hoveredFile = file.name;
 
@@ -1719,10 +1724,14 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
                 if (!file.isDirectory) {
                     const Guid guid = project->getAssetDatabase().getAssetGuid(currentPath / file.name);
-                    if (ImGui::MenuItem(ICON_FA_FINGERPRINT " Copy GUID", nullptr, false, !guid.isNull())) {
+                    const bool copyGuid = ImGui::MenuItem(ICON_FA_FINGERPRINT " Copy GUID", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Copy GUID", lastItemRect()});
+                    if (copyGuid) {
                         ImGui::SetClipboardText(guid.str().c_str());
                     }
-                    if (ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS " Find References", nullptr, false, !guid.isNull())) {
+                    const bool findReferences = ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS " Find References", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Find References", lastItemRect()});
+                    if (findReferences) {
                         if (AssetReferencesWindow* references = Backend::getApp().getAssetReferencesWindow()) {
                             references->findReferences((currentPath / file.name).string());
                         }
@@ -1739,7 +1748,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 ImGui::Separator();
 
                 if (ImGui::MenuItem(ICON_FA_TRASH " Delete")) showDeleteConfirmation = true;
-                if (ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2")){
+                const bool rename = ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2");
+                uiBuilding.contextMenu.push_back({"Rename", lastItemRect()});
+                if (rename){
                     startRename(file.name);
                     ImGui::CloseCurrentPopup();
                 }
@@ -3208,7 +3219,14 @@ void editor::ProjectWindow::refreshCurrentDirectory() {
     scanDirectory(currentPath);
 }
 
+editor::ProjectWindow::UiRect editor::ProjectWindow::lastItemRect() {
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    return {min.x, min.y, max.x - min.x, max.y - min.y};
+}
+
 void editor::ProjectWindow::show() {
+    uiBuilding = UiState();
     if (firstOpen) {
         // Load saved settings (AppSettings is initialized by now)
         iconSize = AppSettings::getResourcesIconSize();
@@ -3511,6 +3529,12 @@ void editor::ProjectWindow::show() {
             }
         }
     }
+
+    uiBuilding.drawn = true;
+    uiBuilding.directory = project->normalizeToProjectRelative(currentPath).generic_string();
+    uiBuilding.search = searchText;
+    uiBuilding.selected = lastSelectedFile;
+    uiState = std::move(uiBuilding);
 
     ImGui::End();
 

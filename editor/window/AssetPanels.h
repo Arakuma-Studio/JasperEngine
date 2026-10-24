@@ -56,6 +56,10 @@ namespace jasperengine::editor {
         bool isOpen() const { return windowOpen; }
         // Find References of a file of the project (an absolute or project-relative path)
         void findReferences(const std::string& path);
+        // What the panel lists (editor_status reports it)
+        const std::string& getTargetPath() const { return targetPath; }
+        const Guid& getTargetGuid() const { return targetGuid; }
+        const std::vector<DepEdge>& getResults() const { return results; }
 
     private:
         Project* project;

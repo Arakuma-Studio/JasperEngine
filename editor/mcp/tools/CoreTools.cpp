@@ -25,6 +25,7 @@
 #include "memory/MemoryStats.h"
 #include "window/CodeEditor.h"
 #include "window/ProjectWindow.h"
+#include "window/AssetPanels.h"
 
 #include <algorithm>
 #include <cmath>
@@ -405,6 +406,33 @@ void editorStatusTool(const CallPtr& call) {
         dialog = {{"kind", info.kind}, {"title", info.title}, {"message", info.message}, {"choices", info.choices}};
     }
 
+    // What the asset windows show (S04), with the Project window's clickable rects in window
+    // pixels (UI automation: a test right-clicks an entry for real)
+    auto rectJson = [](const ProjectWindow::UiRect& r) { return Json::array({r.x, r.y, r.w, r.h}); };
+    Json ui = Json::object();
+    if (ProjectWindow* projectWindow = ctx.projectWindow()) {
+        const ProjectWindow::UiState& state = projectWindow->getUiState();
+        Json entries = Json::array();
+        for (const auto& [name, rect] : state.entries) entries.push_back({{"name", name}, {"rect", rectJson(rect)}});
+        Json menu = Json::array();
+        for (const auto& [label, rect] : state.contextMenu) menu.push_back({{"label", label}, {"rect", rectJson(rect)}});
+        ui["project_window"] = {{"drawn", state.drawn}, {"directory", state.directory}, {"search", state.search},
+                                {"selected", state.selected}, {"search_box", rectJson(state.searchBox)},
+                                {"entries", entries}, {"context_menu", menu}};
+    }
+    if (AssetReferencesWindow* references = app.getAssetReferencesWindow()) {
+        Json referrers = Json::array();
+        for (const DepEdge& edge : references->getResults()) {
+            referrers.push_back({{"referrer", project->getAssetIndex().referrerPath(edge.referrer)}, {"field", edge.field}});
+        }
+        ui["references"] = {{"open", references->isOpen()}, {"asset", references->getTargetPath()},
+                            {"guid", references->getTargetGuid().isNull() ? Json(nullptr) : Json(references->getTargetGuid().str())},
+                            {"results", referrers}};
+    }
+    if (MissingAssetsWindow* missing = app.getMissingAssetsWindow()) {
+        ui["missing_assets"] = {{"open", missing->isOpen()}};
+    }
+
     const SceneProject* selected = project->getSelectedScene();
     Json data = {
         {"editor", {{"version", JASPERENGINE_EDITOR_VERSION}}},
@@ -426,6 +454,7 @@ void editorStatusTool(const CallPtr& call) {
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
         {"dialog", dialog},
+        {"ui", ui},
         {"mcp", {
             {"server", McpServer::SERVER_NAME},
             {"stdio", status.stdio},
