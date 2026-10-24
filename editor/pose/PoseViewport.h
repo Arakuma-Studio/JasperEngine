@@ -56,8 +56,6 @@ namespace jasperengine::editor{
         PoseViewport(const PoseViewport&) = delete;
         PoseViewport& operator=(const PoseViewport&) = delete;
 
-        // the scene the ghosts live in: a layer of the Scene view between the scene and the tools
-        Scene* getGhostScene() const { return ghostScene; }
 
         // Once per editor frame (App): a selection outside the posed model leaves posing, and a
         // view whose scene is not posed any more drops its ghosts even when it does not draw
@@ -80,7 +78,12 @@ namespace jasperengine::editor{
         void mouseDrag(const Ray& ray, bool shift, bool ctrl);
         void mouseUp();
         void hover(const Ray& ray);
+        // the mouse left the view: nothing is hovered (the session's handle flag goes false)
+        void hoverEnd();
         bool isDragging() const;
+        // A left click (no drag) the handles did not take picked `picked` (NULL_ENTITY: empty
+        // space): anything but the posed model or its bones leaves posing. True when it did.
+        bool clicked(Entity picked);
 
         // the joint whose rings show (HumanBone::Count: none); false when the rig lacks it
         bool setActiveJoint(pose::HumanBone bone);
@@ -146,8 +149,7 @@ namespace jasperengine::editor{
 
         Scene* scene;
         Scene* toolsScene;
-        Scene* ghostScene = nullptr;
-        Camera* ghostCamera = nullptr;
+        bool objectsCreated = false;
 
         // tools layer
         std::array<Primitive*, 4> ends{};        // left hand, right hand, left foot, right foot
@@ -224,7 +226,15 @@ namespace jasperengine::editor{
         void drawRings(const pose::PoseRig& rig, const pose::HumanPose& pose);
         void drawFloor(const pose::PoseRig& rig, const pose::HumanPose& pose, bool showBalance);
         void updateMetrics(const pose::PoseRig& rig, const pose::HumanPose& pose);
-        void syncGhostCamera(Camera* camera);
+        struct RingLimitCache{
+            bool valid = false;
+            pose::HumanBone bone = pose::HumanBone::Count;
+            Vector3 axisModel;
+            pose::HumanPose pose;
+            poseview::AngleRange range;
+            Vector3 reference;                   // model space
+        };
+        std::array<RingLimitCache, 3> ringLimits;
 
         // ghosts
         struct GhostWish{ std::string kind; pose::HumanPose pose; Vector4 color; };

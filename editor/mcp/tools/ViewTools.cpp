@@ -51,6 +51,7 @@
 #endif
 
 #include <algorithm>
+#include <cstdlib>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -985,14 +986,44 @@ PoseViewport* posedViewport(Project* project, PoseEditSession& session, SceneRen
     return sp->sceneRender->getPoseViewport();
 }
 
-// pose.viewport (a test hook, not in the tool description): drives the posing Scene view through
-// the same calls as the mouse in SceneWindow. {joint: slot or "" (the rings shown), handle: slot
-// or ring_l/u/f/free | press: [x, y] (view px), drag: [[x, y], ...], shift, ctrl, release (true),
-// global_edit: begin | apply_all | apply_selected | cancel (after the drag)}
+// The MCP test harness's hooks (JASPER_MCP_TEST_HOOKS=1, set by tools/mcp/harness.py): the Scene
+// view pose handles in pixels and pose.viewport below. Off for agents and users.
+bool mcpTestHooks() {
+    static const bool on = [] {
+        const char* value = std::getenv("JASPER_MCP_TEST_HOOKS");
+        return value && std::string(value) == "1";
+    }();
+    return on;
+}
+
+// pose.viewport (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): drives the
+// posing Scene view through the same calls as the mouse in SceneWindow. {onion: {previous, next,
+// opacity}, ghost_during_preview, joint: slot or "" (the rings shown), handle: slot or
+// ring_l/u/f/free | press: [x, y] (view px), drag: [[x, y], ...], shift, ctrl, release (true),
+// click: [x, y] (a click the handles do not take: what SceneWindow does on release), global_edit:
+// begin | apply_all | apply_selected | cancel (after the drag), close_window: true (last)}
 bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
+    if (!mcpTestHooks()) {
+        call->fail("pose.viewport: unknown key (valid: entity, path, index, play, tab).");
+        return false;
+    }
     if (!hook.is_object()) {
         call->fail("pose.viewport must be an object.");
         return false;
+    }
+    PoseEditSession& hookSession = window->getSession();
+    if (hook.contains("onion") && hook["onion"].is_object()) {
+        const Json& onion = hook["onion"];
+        if (onion.contains("previous")) hookSession.onion().previous = onion["previous"].get<bool>();
+        if (onion.contains("next")) hookSession.onion().next = onion["next"].get<bool>();
+        if (onion.contains("opacity")) hookSession.onion().opacity = onion["opacity"].get<float>();
+    }
+    if (hook.contains("ghost_during_preview")) hookSession.view().ghostDuringPreview = hook["ghost_during_preview"].get<bool>();
+    if (hook.value("close_window", false) && !hook.contains("handle") && !hook.contains("press") && !hook.contains("click") &&
+            !hook.contains("global_edit")) {
+        window->setOpen(false);
+        out["closed"] = true;
+        return true;
     }
     Project* project = call->ctx().project();
     PoseEditSession& session = window->getSession();
@@ -1065,6 +1096,22 @@ bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Js
     if ((pressed || render->isPoseDragging()) && hook.value("release", true)) {
         render->mouseReleaseEvent(x, y);
     }
+    if (hook.contains("click")) {
+        const Json& p = hook["click"];
+        if (!p.is_array() || p.size() != 2 || !p[0].is_number() || !p[1].is_number()) {
+            call->fail("pose.viewport.click: [x, y] in Scene view pixels.");
+            return false;
+        }
+        const float cx = p[0].get<float>();
+        const float cy = p[1].get<float>();
+        // as SceneWindow: the handles first, then what the click picks
+        const bool took = render->poseMouseDown(cx, cy, false, false);
+        if (took) render->mouseReleaseEvent(cx, cy);
+        uint32_t pickedScene = session.sceneId();
+        const Entity picked = took ? NULL_ENTITY : project->findObjectByRay(session.sceneId(), cx, cy, &pickedScene);
+        out["click_took_handle"] = took;
+        out["left_posing"] = !took && viewport->clicked(pickedScene == session.sceneId() ? picked : NULL_ENTITY);
+    }
     if (hook.contains("global_edit")) {
         const std::string action = hook["global_edit"].is_string() ? hook["global_edit"].get<std::string>() : std::string();
         bool ok = true;
@@ -1084,6 +1131,10 @@ bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Js
             return false;
         }
         out["global_edit"] = ok;
+    }
+    if (hook.value("close_window", false)) {
+        window->setOpen(false);
+        out["closed"] = true;
     }
     return true;
 }
@@ -1189,16 +1240,21 @@ Json poseWindowState(const CallPtr& call) {
     PoseEditSession& session = call->ctx().app().getPoseAnimationWindow()->getSession();
     if (PoseViewport* viewport = posedViewport(call->ctx().project(), session)) {
         const PoseViewport::State view = viewport->getState();
+        int shownHandles = 0;
         Json handles = Json::object();
         for (const PoseViewport::HandleView& handle : view.handles) {
-            if (handle.visible) handles[handle.name] = Json::array({handle.position.x, handle.position.y});
+            if (!handle.visible) continue;
+            shownHandles++;
+            if (mcpTestHooks()) handles[handle.name] = Json::array({handle.position.x, handle.position.y});
         }
-        data["viewport"] = {{"posing", view.posing}, {"previewing", view.previewing}, {"handles", handles},
+        data["viewport"] = {{"posing", view.posing}, {"previewing", view.previewing}, {"handle_count", shownHandles},
                             {"active_joint", view.activeJoint.empty() ? Json() : Json(view.activeJoint)},
                             {"ghosts", view.ghosts}, {"floor", view.floor}, {"contacts", view.contacts},
                             {"balanced", view.balanceShown ? Json(view.balanced) : Json()},
                             {"global_edit", session.globalEditActive()},
                             {"view", Json::array({view.viewWidth, view.viewHeight})}};
+        // the pixel position of every handle: the test harness only
+        if (mcpTestHooks()) data["viewport"]["handles"] = handles;
     }
     return data;
 }

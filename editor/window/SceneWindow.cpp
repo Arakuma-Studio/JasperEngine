@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "pose/PoseViewport.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -76,6 +77,16 @@ void editor::SceneWindow::closeSceneInternal(uint32_t sceneId) {
         }
         closeSceneQueue.push_back(sceneId);
     }
+}
+
+bool editor::SceneWindow::isNavigatingCamera() const{
+    for (const auto& [id, dragging] : draggingMouse){
+        if (dragging) return true;
+    }
+    for (const auto& [id, looking] : lookActive){
+        if (looking) return true;
+    }
+    return false;
 }
 
 bool editor::SceneWindow::isFocused() const {
@@ -1359,6 +1370,14 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             bool consumeSelectionRelease = subSelectionClickConsumesRelease[sceneId];
+            if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease &&
+                    sceneProject->sceneRender->isPoseEditing()){
+                // posing (pose animation): a click on empty space or on anything but the posed
+                // model and its bones leaves posing, also when the selection stays the same
+                uint32_t pickedSceneId = sceneId;
+                Entity picked = findSelectableObjectByRay(sceneId, x, y, &pickedSceneId);
+                sceneProject->sceneRender->getPoseViewport()->clicked(pickedSceneId == sceneId ? picked : NULL_ENTITY);
+            }
             if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease){
                 // Remember sub-selection anchors BEFORE re-selecting, so we can tell
                 // whether the release click actually changed the host entity.
@@ -1435,6 +1454,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             subSelectionClickConsumesRelease[sceneId] = false;
 
             mouseLeftDraggedInside = false;
+        }
+    }
+
+    if (!isMouseInWindow){
+        // nothing of the view is hovered (a pose handle's highlight and the session's flag)
+        if (PoseViewport* poseViewport = sceneProject->sceneRender->getPoseViewport()){
+            poseViewport->hoverEnd();
         }
     }
 

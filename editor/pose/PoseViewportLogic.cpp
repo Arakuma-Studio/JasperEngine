@@ -137,13 +137,31 @@ float poseview::rayBox(const Vector3& origin, const Vector3& direction, const Ve
     return tNear >= 0.0f ? tNear : tFar;
 }
 
+float poseview::rayOrientedBox(const Vector3& origin, const Vector3& direction, const Vector3& center, const Quaternion& orientation,
+                               float halfSize){
+    // the ray in the cube's frame (a rotation keeps distances: t is the same)
+    const Quaternion inverse = orientation.inverse();
+    const Vector3 localOrigin = inverse * (origin - center);
+    const Vector3 localDirection = inverse * direction;
+    return rayBox(localOrigin, localDirection, Vector3(0, 0, 0), halfSize);
+}
+
+bool poseview::sceneViewTakesPoseKeys(bool rightMouseDown, bool middleMouseDown, bool cameraNavigating){
+    return !rightMouseDown && !middleMouseDown && !cameraNavigating;
+}
+
+bool poseview::clickLeavesPosing(bool handleTookIt, bool dragged, bool pickedSomething, bool pickedPosedModel){
+    if (handleTookIt || dragged) return false;
+    return !pickedSomething || !pickedPosedModel;
+}
+
 int poseview::pickHandle(const Vector3& origin, const Vector3& direction, const std::vector<Handle>& handles, float* distance){
     int best = -1;
     float bestT = std::numeric_limits<float>::infinity();
     for (size_t i = 0; i < handles.size(); i++){
         const Handle& handle = handles[i];
         if (handle.kind == HandleKind::None || handle.radius <= 0.0f) continue;
-        const float t = handle.box ? rayBox(origin, direction, handle.center, handle.radius)
+        const float t = handle.box ? rayOrientedBox(origin, direction, handle.center, handle.orientation, handle.radius)
                                    : raySphere(origin, direction, handle.center, handle.radius);
         if (t >= 0.0f && t < bestT){
             bestT = t;

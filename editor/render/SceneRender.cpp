@@ -552,10 +552,6 @@ void editor::SceneRender::activate(){
         Engine::addSceneLayer(childScene);
     }
 
-    if (poseViewport){
-        // pose animation ghosts: over the scene, under the handles
-        Engine::addSceneLayer(poseViewport->getGhostScene());
-    }
     Engine::addSceneLayer(toolslayer.getScene());
     engineLayerTools = editLayer.active ? layerToolsIndex() : -1;
     if (engineLayerTools >= 0){

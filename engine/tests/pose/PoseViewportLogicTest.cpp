@@ -85,15 +85,44 @@ TEST(PoseViewportLogic, HandlePickingNearestToTheCameraWins){
     EXPECT_LT(poseview::raySphere(origin, Vector3(0, 0, 1), Vector3(0, 0, 0), 1.0f), 0.0f) << "behind the ray";
 
     std::vector<poseview::Handle> handles(3);
-    handles[0] = {poseview::HandleKind::Hand, H::LeftHand, Vector3(0, 0, -2), 0.5f, false};
-    handles[1] = {poseview::HandleKind::Hips, H::Hips, Vector3(0, 0, 1), 0.5f, true};     // in front
-    handles[2] = {poseview::HandleKind::Joint, H::Spine, Vector3(3, 0, 3), 0.5f, false};  // off the ray
+    handles[0] = {poseview::HandleKind::Hand, H::LeftHand, Vector3(0, 0, -2), 0.5f, false, Quaternion()};
+    handles[1] = {poseview::HandleKind::Hips, H::Hips, Vector3(0, 0, 1), 0.5f, true, Quaternion()};     // in front
+    handles[2] = {poseview::HandleKind::Joint, H::Spine, Vector3(3, 0, 3), 0.5f, false, Quaternion()};  // off the ray
     float t = 0.0f;
     EXPECT_EQ(poseview::pickHandle(origin, dir, handles, &t), 1);
     EXPECT_NEAR(t, 8.5f, 1e-5);
     handles[1].kind = poseview::HandleKind::None;   // hidden handles are not picked
     EXPECT_EQ(poseview::pickHandle(origin, dir, handles), 0);
     EXPECT_EQ(poseview::pickHandle(Vector3(10, 10, 10), dir, handles), -1);
+}
+
+TEST(PoseViewportLogic, OrientedHipsCube){
+    // a cube turned 45 degrees about y: its corner sticks out along x
+    const Quaternion turned = pose::axisAngleRad(Vector3(0, 1, 0), static_cast<float>(POSE_PI / 4));
+    const Vector3 dir(0, 0, -1);
+    const float corner = std::sqrt(2.0f) * 0.5f;   // half the diagonal of a unit-half-size... face
+    EXPECT_GT(poseview::rayOrientedBox(Vector3(0.6f, 0, 10), dir, Vector3(0, 0, 0), turned, 0.5f), 0.0f) << "inside the corner";
+    EXPECT_LT(poseview::rayBox(Vector3(0.6f, 0, 10), dir, Vector3(0, 0, 0), 0.5f), 0.0f) << "outside the unturned cube";
+    EXPECT_LT(poseview::rayOrientedBox(Vector3(0.75f, 0, 10), dir, Vector3(0, 0, 0), turned, 0.5f), 0.0f);
+    // straight on, the turned cube's near edge is at z = half diagonal
+    EXPECT_NEAR(poseview::rayOrientedBox(Vector3(0, 0, 10), dir, Vector3(0, 0, 0), turned, 0.5f), 10.0f - corner, 1e-4);
+    std::vector<poseview::Handle> handles(1);
+    handles[0] = {poseview::HandleKind::Hips, H::Hips, Vector3(0, 0, 0), 0.5f, true, turned};
+    EXPECT_EQ(poseview::pickHandle(Vector3(0.6f, 0, 10), dir, handles), 0);
+}
+
+TEST(PoseViewportLogic, SceneViewInputRouting){
+    // flying the camera (right mouse + W A S D Q E) or orbiting: the pose keys (E: Global Edit) wait
+    EXPECT_TRUE(poseview::sceneViewTakesPoseKeys(false, false, false));
+    EXPECT_FALSE(poseview::sceneViewTakesPoseKeys(true, false, false));
+    EXPECT_FALSE(poseview::sceneViewTakesPoseKeys(false, true, false));
+    EXPECT_FALSE(poseview::sceneViewTakesPoseKeys(false, false, true));
+    // a click on empty space or another object leaves posing; on the model, a handle or a drag it does not
+    EXPECT_TRUE(poseview::clickLeavesPosing(false, false, false, false));
+    EXPECT_TRUE(poseview::clickLeavesPosing(false, false, true, false));
+    EXPECT_FALSE(poseview::clickLeavesPosing(false, false, true, true));
+    EXPECT_FALSE(poseview::clickLeavesPosing(true, false, false, false));
+    EXPECT_FALSE(poseview::clickLeavesPosing(false, true, false, false));
 }
 
 TEST(PoseViewportLogic, RingsShowAndPickTheirFrontHalf){

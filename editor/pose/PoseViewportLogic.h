@@ -90,14 +90,28 @@ namespace jasperengine::editor::poseview{
         pose::HumanBone bone = pose::HumanBone::Count;
         Vector3 center;
         float radius = 0.0f;           // sphere radius / cube half size (pick size)
-        bool box = false;              // picked as an axis-aligned cube, else a sphere
+        bool box = false;              // picked as a cube turned by `orientation`, else a sphere
+        Quaternion orientation;        // the cube's (the hips cube turns with the model)
     };
 
     // distance along the (unit) ray to the first hit, < 0 for a miss
     float raySphere(const Vector3& origin, const Vector3& direction, const Vector3& center, float radius);
     float rayBox(const Vector3& origin, const Vector3& direction, const Vector3& center, float halfSize);
+    // the same for a cube turned by `orientation` about its centre
+    float rayOrientedBox(const Vector3& origin, const Vector3& direction, const Vector3& center, const Quaternion& orientation,
+                         float halfSize);
     // the handle the ray hits nearest to the camera, -1 for none (`distance`: along the ray)
     int pickHandle(const Vector3& origin, const Vector3& direction, const std::vector<Handle>& handles, float* distance = nullptr);
+
+    // ---- input routing ----
+
+    // Whether a posing Scene view takes the pose keys this frame: not while the camera is
+    // being flown or orbited (right / middle mouse held, a camera drag running), whose W A S D
+    // Q E keys move the camera
+    bool sceneViewTakesPoseKeys(bool rightMouseDown, bool middleMouseDown, bool cameraNavigating);
+    // Whether a left click in a posing Scene view leaves posing: a click (no drag) that took no
+    // handle and picked nothing, or something other than the posed model and its bones
+    bool clickLeavesPosing(bool handleTookIt, bool dragged, bool pickedSomething, bool pickedPosedModel);
 
     // ---- rings ----
 

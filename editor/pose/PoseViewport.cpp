@@ -56,11 +56,16 @@ namespace {
 
     // the ghost look: the library Hologram shader alpha blended, without scanlines or flicker,
     // so it is a tint whose opacity and brightness rise towards the silhouette (rim). The tint's
-    // alpha is twice the onion opacity and the fill half: surfaces facing the view show at the
-    // opacity, the rim up to twice it (then brighter)
-    constexpr float GHOST_FILL = 0.5f;
+    // alpha is twice the onion opacity and the fill an eighth: surfaces facing the view show at a
+    // quarter of the opacity, the rim (which carries the shape) up to twice it
+    constexpr float GHOST_FILL = 0.125f;
     constexpr float GHOST_RIM_POWER = 2.0f;
-    constexpr float GHOST_RIM_INTENSITY = 1.2f;
+    constexpr float GHOST_RIM_INTENSITY = 1.6f;
+    // depth bias pushing the ghost back (polygon offset: slope factor, constant units), so where
+    // the ghost's pose coincides with the model's the model wins and the ghost shows only where
+    // the poses differ
+    constexpr float GHOST_DEPTH_FACTOR = 1.0f;
+    constexpr float GHOST_DEPTH_UNITS = 4.0f;
 
     const char* kindName(HandleKind kind){
         switch (kind){
@@ -118,7 +123,11 @@ namespace {
             material.blendMode = MaterialBlendMode::ALPHA;
             material.cullMode = MaterialCullMode::BACK;
             material.depthWrite = MaterialDepthWrite::DISABLED;
+            // equal to the pre-pass's own depth (the front surface), so behind the scene's
+            // (the model's, anything in front of the character) it fails like the pre-pass
             material.depthTest = MaterialDepthTest::LESS_EQUAL;
+            material.depthOffsetFactor = GHOST_DEPTH_FACTOR;
+            material.depthOffsetUnits = GHOST_DEPTH_UNITS;
             material.lighting = MaterialLighting::AUTO;
             material.sortPriority = 10;
             // the depth pre-pass: only the ghost's front surface takes the blend
@@ -128,7 +137,9 @@ namespace {
             prepass.order = MaterialPassOrder::BEFORE;
             prepass.colorWrite = MATERIAL_COLOR_WRITE_NONE;
             prepass.depthWrite = MaterialDepthWrite::ENABLED;
-            prepass.depthTest = MaterialDepthTest::LESS;
+            prepass.depthTest = MaterialDepthTest::LESS;      // strictly in front of the scene, model included
+            prepass.depthOffsetFactor = GHOST_DEPTH_FACTOR;
+            prepass.depthOffsetUnits = GHOST_DEPTH_UNITS;
             prepass.cullMode = MaterialCullMode::BACK;
             prepass.blendMode = MaterialBlendMode::NONE;
             prepass.stencil.compare = MaterialStencilCompare::DISABLED;
@@ -159,11 +170,7 @@ namespace {
 // ---- lifetime ----
 
 editor::PoseViewport::PoseViewport(Scene* editedScene, Scene* toolsLayerScene): scene(editedScene), toolsScene(toolsLayerScene){
-    ghostScene = new Scene(EntityPool::System);
-    ghostCamera = new Camera(ghostScene);
-    ghostScene->setCamera(ghostCamera);
-    ghostScene->getSystem<RenderSystem>()->setDrawEditorOverlays(true);
-    createObjects();
+    // nothing is made until the view first poses or previews (createObjects)
     instances().push_back(this);
 }
 
@@ -183,14 +190,11 @@ editor::PoseViewport::~PoseViewport(){
     delete ringLines;
     delete floorFill;
     delete floorLines;
-    if (Engine::isSceneRunning(ghostScene)){
-        Engine::removeScene(ghostScene);
-    }
-    delete ghostCamera;
-    delete ghostScene;
 }
 
 void editor::PoseViewport::createObjects(){
+    if (objectsCreated) return;
+    objectsCreated = true;
     {
         ScopedDefaultEntityPool sys(*toolsScene, EntityPool::System);
         for (int i = 0; i < 4; i++){
@@ -385,27 +389,6 @@ void editor::PoseViewport::watchSelection(Project* project, bool act){
     }
 }
 
-void editor::PoseViewport::syncGhostCamera(Camera* camera){
-    if (!camera) return;
-    CameraComponent& source = camera->getComponent<CameraComponent>();
-    const Transform& sourceTransform = camera->getComponent<Transform>();
-    CameraComponent& target = ghostCamera->getComponent<CameraComponent>();
-    ghostCamera->setPosition(sourceTransform.position);
-    ghostCamera->setTarget(source.target);
-    target.type = source.type;
-    target.leftClip = source.leftClip;
-    target.rightClip = source.rightClip;
-    target.bottomClip = source.bottomClip;
-    target.topClip = source.topClip;
-    target.nearClip = source.nearClip;
-    target.farClip = source.farClip;
-    target.yfov = source.yfov;
-    target.aspect = source.aspect;
-    target.useTarget = source.useTarget;
-    target.autoResize = source.autoResize;
-    target.needUpdate = true;
-}
-
 void editor::PoseViewport::update(Camera* camera, int viewWidth, int viewHeight, float overlayScale, bool disabled){
     PoseEditSession* session = disabled ? nullptr : posedSession();
     const PoseEditSession::Mode mode = session ? session->mode() : PoseEditSession::Mode::Idle;
@@ -447,7 +430,7 @@ void editor::PoseViewport::update(Camera* camera, int viewWidth, int viewHeight,
         viewDirection = toCamera.length() > 1e-6f ? (-toCamera).normalized() : Vector3(0, 0, -1);
     }
     updated = width > 0 && height > 0;
-    syncGhostCamera(camera);
+    createObjects();
 
     const pose::HumanPose& shown = session->displayed();
     if (posing && updated){
@@ -531,6 +514,8 @@ void editor::PoseViewport::buildHandles(const pose::PoseRig& rig, const pose::Hu
         add(foot ? HandleKind::Foot : HandleKind::Hand, bone, poseview::HANDLE_RADIUS_PX, false);
     }
     add(HandleKind::Hips, HumanBone::Hips, poseview::HIPS_HALF_SIZE_PX, true);
+    // the hips cube faces where the character faces
+    handles.back().orientation = modelRotation() * rig.characterRotation();
     for (HumanBone bone : poseview::jointDotBones()){
         add(HandleKind::Joint, bone, poseview::JOINT_PICK_RADIUS_PX, false);
     }
@@ -561,7 +546,7 @@ void editor::PoseViewport::drawHandles(){
         hipsCube->setVisible(false);
     }else{
         hipsCube->setPosition(hips.center);
-        hipsCube->setRotation(Quaternion());
+        hipsCube->setRotation(hips.orientation);
         hipsCube->setScale(pixelsToWorld(hips.center, poseview::HIPS_HALF_SIZE_PX));
         Vector4 c = poseview::color(poseview::HIPS_COLOR);
         if (drag.kind == HandleKind::Hips) c = poseview::color(poseview::ACTIVE_COLOR);
@@ -650,8 +635,17 @@ void editor::PoseViewport::drawRings(const pose::PoseRig& rig, const pose::Human
             reference = drag.reference;
         }else{
             const Vector3 axisModel = (inverse * ring.axis).normalized();
-            range = poseview::ringLimitRange(rig, pose, activeJoint, axisModel);
-            reference = (rotation * poseview::ringReference(rig, pose, activeJoint, axisModel)).normalized();
+            RingLimitCache& cache = ringLimits[r];
+            if (!cache.valid || cache.bone != activeJoint || !(cache.axisModel == axisModel) || !samePose(cache.pose, pose)){
+                cache.range = poseview::ringLimitRange(rig, pose, activeJoint, axisModel);
+                cache.reference = poseview::ringReference(rig, pose, activeJoint, axisModel);
+                cache.bone = activeJoint;
+                cache.axisModel = axisModel;
+                cache.pose = pose;
+                cache.valid = true;
+            }
+            range = cache.range;
+            reference = (rotation * cache.reference).normalized();
         }
         const Vector4 tick = poseview::color(poseview::LIMIT_TICK_COLOR);
         for (int side = 0; side < 2; side++){
@@ -779,25 +773,27 @@ bool editor::PoseViewport::createGhost(PoseEditSession& session, Ghost& ghost){
     std::unordered_map<Entity, Entity> map;
     std::vector<Entity> copies;
     {
-        ScopedDefaultEntityPool sys(*ghostScene, EntityPool::System);
-        copies = EntityCloner::clone(scene, sources, ghostScene, NULL_ENTITY, &map);
+        // in the edited scene (its depth occludes the ghost), as System entities: never saved,
+        // never in the Hierarchy or the scene's GameObject list, drawn only by the Scene view
+        ScopedDefaultEntityPool sys(*scene, EntityPool::System);
+        copies = EntityCloner::clone(scene, sources, scene, NULL_ENTITY, &map);
     }
     if (copies.empty()) return false;
     ghost.root = copies.front();
     ghost.entities = copies;
-    strip<ScriptComponent>(ghostScene, ghost.root);
-    strip<PoseAnimatorComponent>(ghostScene, ghost.root);
-    strip<AudioSourceComponent>(ghostScene, ghost.root);
-    strip<LightComponent>(ghostScene, ghost.root);
-    strip<CameraComponent>(ghostScene, ghost.root);
-    strip<ParticleSystemComponent>(ghostScene, ghost.root);
-    strip<ActionComponent>(ghostScene, ghost.root);
-    strip<AnimationComponent>(ghostScene, ghost.root);
-    strip<PrefabComponent>(ghostScene, ghost.root);
-    if (ModelComponent* copy = ghostScene->findComponent<ModelComponent>(ghost.root)){
-        copy->animations.clear();
+    strip<ScriptComponent>(scene, ghost.root);
+    strip<PoseAnimatorComponent>(scene, ghost.root);
+    strip<AudioSourceComponent>(scene, ghost.root);
+    strip<LightComponent>(scene, ghost.root);
+    strip<CameraComponent>(scene, ghost.root);
+    strip<ParticleSystemComponent>(scene, ghost.root);
+    strip<ActionComponent>(scene, ghost.root);
+    strip<AnimationComponent>(scene, ghost.root);
+    strip<PrefabComponent>(scene, ghost.root);
+    if (ModelComponent* copy = scene->findComponent<ModelComponent>(ghost.root)){
+        copy->animations.clear();   // within one registry they would still name the model's
     }
-    std::shared_ptr<RenderSystem> render = ghostScene->getSystem<RenderSystem>();
+    std::shared_ptr<RenderSystem> render = scene->getSystem<RenderSystem>();
     ghost.bones.assign(info->boneEntities.size(), NULL_ENTITY);
     for (size_t i = 0; i < info->boneEntities.size(); i++){
         auto it = map.find(info->boneEntities[i]);
@@ -805,7 +801,7 @@ bool editor::PoseViewport::createGhost(PoseEditSession& session, Ghost& ghost){
     }
     for (Entity copy : copies){
         render->setEditorOverlay(copy, true);
-        if (ghostScene->findComponent<MeshComponent>(copy)) ghost.meshes.push_back(copy);
+        if (scene->findComponent<MeshComponent>(copy)) ghost.meshes.push_back(copy);
     }
     ghost.colorSet = false;
     return true;
@@ -813,7 +809,7 @@ bool editor::PoseViewport::createGhost(PoseEditSession& session, Ghost& ghost){
 
 void editor::PoseViewport::destroyGhost(Ghost& ghost){
     for (auto it = ghost.entities.rbegin(); it != ghost.entities.rend(); ++it){
-        if (ghostScene->isEntityCreated(*it)) ghostScene->destroyEntity(*it);
+        if (scene->isEntityCreated(*it)) scene->destroyEntity(*it);
     }
     ghost = Ghost();
 }
@@ -829,7 +825,7 @@ void editor::PoseViewport::dropGhosts(){
 void editor::PoseViewport::colorGhost(Ghost& ghost, const Vector4& color){
     if (ghost.colorSet && ghost.color == color) return;
     for (Entity entity : ghost.meshes){
-        if (MeshComponent* mesh = ghostScene->findComponent<MeshComponent>(entity)){
+        if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
             if (!ghost.colorSet){
                 setGhostMaterial(*mesh, color);
             }else{
@@ -848,7 +844,7 @@ void editor::PoseViewport::poseGhost(PoseEditSession& session, Ghost& ghost, con
     const std::shared_ptr<const PoseRigInfo>& info = session.rigInfo();
     const pose::PoseRig& rig = *session.rig();
     // the ghost stands where the model stands
-    if (Transform* root = ghostScene->findComponent<Transform>(ghost.root)){
+    if (Transform* root = scene->findComponent<Transform>(ghost.root)){
         Vector3 position, scale;
         Quaternion rotation;
         modelMatrix().decompose(position, scale, rotation);
@@ -859,7 +855,7 @@ void editor::PoseViewport::poseGhost(PoseEditSession& session, Ghost& ghost, con
     }
     const pose::Skeleton& skeleton = rig.skeleton();
     for (size_t i = 0; i < skeleton.bones.size() && i < ghost.bones.size(); i++){
-        Transform* transform = ghostScene->findComponent<Transform>(ghost.bones[i]);
+        Transform* transform = scene->findComponent<Transform>(ghost.bones[i]);
         if (!transform) continue;
         const pose::SkeletonBone& rest = skeleton.bones[i];
         const int slot = rig.slotOfBone(static_cast<int>(i));
@@ -913,11 +909,39 @@ void editor::PoseViewport::publishEngaged(){
 }
 
 bool editor::PoseViewport::sceneEditable() const{
-    // no pose edits while the scene saves or plays (the session does not apply poses then)
+    // no pose edits while the scene saves (also asynchronously) or plays: the session writes
+    // no bones then
     PoseEditSession* session = posedSession();
-    if (!session || !session->project()) return false;
+    if (!session || !session->editable() || !session->project()) return false;
     const SceneProject* sceneProject = session->project()->getScene(session->sceneId());
     return sceneProject && sceneProject->playState == ScenePlayState::STOPPED;
+}
+
+void editor::PoseViewport::hoverEnd(){
+    hasHoverRay = false;
+    if (hoverKind == HandleKind::None && hoverRing < 0){
+        publishEngaged();
+        return;
+    }
+    hoverKind = HandleKind::None;
+    hoverBone = HumanBone::Count;
+    hoverRing = -1;
+    publishEngaged();
+    if (PoseEditSession* session = posedSession()){
+        if (SceneProject* sceneProject = session->project()->getScene(session->sceneId())) sceneProject->needUpdateRender = true;
+    }
+}
+
+bool editor::PoseViewport::clicked(Entity picked){
+    PoseEditSession* session = posedSession();
+    if (!session || session->mode() != PoseEditSession::Mode::Posing) return false;
+    if (!poseview::clickLeavesPosing(false, false, picked != NULL_ENTITY, covers(picked))) return false;
+    // empty space or another object: posing ends (the bones go back), even when the
+    // selection does not change
+    if (isDragging()) endDrag(false);
+    watching = false;
+    session->goIdle();
+    return true;
 }
 
 void editor::PoseViewport::hover(const Ray& ray){

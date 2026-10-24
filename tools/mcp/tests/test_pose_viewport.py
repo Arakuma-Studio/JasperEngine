@@ -30,7 +30,7 @@ TIMEOUT = 900
 HERO = "assets/models/hero_tpose.gltf"
 WALK = "assets/anim/walk.poseanim"
 SCENE = "Main Scene"
-SHOTS = Path(os.environ.get("POSE_SHOTS", "/tmp/pose-research/reports/D3-shots"))
+SHOTS = Path(os.environ.get("POSE_SHOTS", "/tmp/pose-research/reports/D3-shots/fix1"))
 
 HIPS_YELLOW = (0xFF, 0xD5, 0x4F)
 ORANGE_GHOST = (0xFF, 0x9F, 0x43)
@@ -64,6 +64,27 @@ def near(a, b, tol) -> bool:
     return all(abs(int(x) - int(y)) <= tol for x, y in zip(a, b))
 
 
+def changed_fraction(a: bytes, b: bytes, tol: int = 24) -> float:
+    """The share of pixels that differ by more than tol in a channel"""
+    wa, ha, ca, ra = decode_png(a)
+    wb, hb, cb, rb = decode_png(b)
+    assert (wa, ha) == (wb, hb), "same size"
+    changed = sum(1 for y in range(ha) for x in range(wa)
+                  if any(abs(ra[y][x * ca + k] - rb[y][x * cb + k]) > tol for k in range(3)))
+    return changed / float(wa * ha)
+
+
+def max_warmth(png: bytes, view: list, point: list, radius: int = 7) -> int:
+    """The largest red-minus-blue of the pixels around a point (orange shows, grey does not)"""
+    w, h, ch, rows = decode_png(png)
+    cx, cy = int(point[0] * w / view[0]), int(point[1] * h / view[1])
+    best = -255
+    for y in range(max(0, cy - radius), min(h, cy + radius + 1)):
+        for x in range(max(0, cx - radius), min(w, cx + radius + 1)):
+            best = max(best, rows[y][x * ch] - rows[y][x * ch + 2])
+    return best
+
+
 def count_near(png: bytes, color, tol: int, step: int = 2) -> int:
     w, h, ch, rows = decode_png(png)
     return sum(1 for y in range(0, h, step) for x in range(0, w, step) if near(rows[y][x * ch:x * ch + 3], color, tol))
@@ -74,6 +95,10 @@ async def window_state(ed: Editor, pose: dict | None = None) -> dict:
     if pose is not None:
         args["pose"] = pose
     return await ed.call("focus_window", args)
+
+
+async def viewport_or_none(ed: Editor):
+    return (await window_state(ed))["state"].get("viewport")
 
 
 async def viewport(ed: Editor) -> dict:
@@ -96,12 +121,14 @@ async def pose_data(ed: Editor, index: int) -> dict:
     return data["poses"][index]
 
 
-DERIVED = re.compile(r"^\s*(worldPosition|worldRotation|worldScale|localMatrix|modelMatrix|normalMatrix|min|max):")
+# The session puts the bones' derived matrices back with them; the skinned mesh bounds it does not
+# yet (the window task's fix): only those are left out of the comparison
+DERIVED = re.compile(r"^\s*(min|max):")
 
 
 def authored(scene_text: str) -> list:
-    """The scene file without the values derived from the transforms (world matrices, bounds),
-    which a save right after the bones are put back may write before they are recomputed"""
+    """The scene file without the mesh bounds (min/max), which a save right after the bones are
+    put back may write before they are recomputed"""
     return [line for line in scene_text.splitlines() if not DERIVED.match(line)]
 
 
@@ -150,6 +177,8 @@ async def setup_posing(ed: Editor, index: int = 1) -> dict:
         ])
     await ed.call("select_entities", scene=SCENE, entities=[])
     await ed.call("set_scene_camera", scene=SCENE, **CAMERA)
+    await window_state(ed, {"viewport": {"global_edit": "cancel", "onion": {"previous": True, "next": False},
+                                         "ghost_during_preview": False}} if (await viewport_or_none(ed)) else None)
     r = await window_state(ed, {"entity": "Hero", "path": WALK, "index": index})
     ed.check_eq(r["state"]["mode"], "posing", "selecting a pose poses it")
     # the Scene view draws (and the ghost material compiles)
@@ -273,6 +302,7 @@ async def test_hips_drag_keeps_feet_planted(ed: Editor):
     await setup_posing(ed, index=2)
     vp = await viewport(ed)
     hips = vp["handles"]["hips"]
+    feet_before = [vp["handles"]["left_foot"], vp["handles"]["right_foot"]]
     before = await pose_data(ed, 2)
     r = await hook(ed, handle="hips", drag=drag_path(hips, 0, 25, 5))
     ed.check(r["viewport_input"]["pressed"], "the hips cube took the press")
@@ -282,28 +312,46 @@ async def test_hips_drag_keeps_feet_planted(ed: Editor):
     ed.check(knees > 5, f"lowering the hips bends the knees: {b} -> {a}")
     feet = after["metrics"]["feet"]
     ed.check(feet["left"]["contact"] or feet["right"]["contact"], f"the pose stays on the floor: {after['metrics']}")
+    vp = await viewport(ed)
+    for name, start in zip(("left_foot", "right_foot"), feet_before):
+        now = vp["handles"][name]
+        ed.check(abs(now[0] - start[0]) <= 1.5 and abs(now[1] - start[1]) <= 1.5,
+                 f"the {name} stays where it was: {start} -> {now}")
+    ed.check(vp["handles"]["hips"][1] > hips[1] + 10, f"the hips went down: {hips} -> {vp['handles']['hips']}")
     await scene_shot(ed, "05_hips_lowered")
     await undo_project(ed)
 
 
 async def test_global_edit_ghost_and_apply(ed: Editor):
     await setup_posing(ed)
+    await hook(ed, onion={"previous": False})
+    no_ghost = await scene_shot(ed, "06_before_global_edit_no_onion")
     r = await hook(ed, global_edit="begin")
     ed.check(r["viewport_input"]["global_edit"], "Global Edit began")
     vp = r["state"]["viewport"]
     ed.check(vp["global_edit"], "the session is in Global Edit")
     ed.check_eq(vp["ghosts"], ["global_edit"], "the orange baseline replaces the onion skin")
+    # the baseline coincides with the model: the model wins (depth-tested, pushed back)
+    unchanged = await scene_shot(ed, "06a_global_edit_nothing_changed")
+    fraction = changed_fraction(no_ghost, unchanged)
+    ed.check(fraction < 0.002, f"an unchanged baseline ghost is hidden by the model ({fraction:.4%} of the pixels changed)")
     poses_before = [await angles(ed, i) for i in range(3)]
     hand = vp["handles"]["left_hand"]
+    shoulder = vp["handles"]["left_upper_arm"]
     await hook(ed, handle="left_hand", drag=drag_path(hand, 45, -50))
     shot = await scene_shot(ed, "06_global_edit_baseline_ghost")
-    ed.check(count_near(shot, ORANGE_GHOST, 45) > 30, "the orange ghost shows")
+    # where the hand was, the baseline's orange forearm shows over the background now
+    old_forearm = [(hand[0] * 2 + shoulder[0]) / 3, (hand[1] * 2 + shoulder[1]) / 3]
+    view = vp["view"]
+    ed.check(max_warmth(shot, view, hand) > 25 or max_warmth(shot, view, old_forearm) > 25,
+             f"the orange ghost shows where the arm was: {max_warmth(shot, view, hand)}, {max_warmth(shot, view, old_forearm)}")
+    ed.check(changed_fraction(no_ghost, shot) > 0.002, "the change shows")
     ed.check((await viewport(ed))["global_edit"], "a drag keeps Global Edit on")
     r = await hook(ed, global_edit="apply_all")
     ed.check(r["viewport_input"]["global_edit"], "applied")
     vp = r["state"]["viewport"]
     ed.check(not vp["global_edit"], "Global Edit ends after applying")
-    ed.check_eq(vp["ghosts"], ["previous"], "the onion skin is back")
+    ed.check_eq(vp["ghosts"], [], "the onion skin is back (switched off here)")
     poses_after = [await angles(ed, i) for i in range(3)]
     for i in (0, 2):
         ed.check(poses_after[i] != poses_before[i], f"pose {i} got the change: {poses_before[i]} -> {poses_after[i]}")
@@ -313,6 +361,27 @@ async def test_global_edit_ghost_and_apply(ed: Editor):
         ed.check_eq(await angles(ed, i), poses_before[i], f"one undo restores pose {i}")
     await undo_project(ed)
     ed.check_eq(await angles(ed, 1), poses_before[1], "the drag undoes too")
+    await hook(ed, onion={"previous": True})
+
+
+async def test_next_pose_and_preview_ghosts(ed: Editor):
+    await setup_posing(ed)
+    r = await hook(ed, onion={"previous": True, "next": True})
+    await scene_shot(ed, "08_onion_previous_and_next")
+    ed.check_eq((await viewport(ed))["ghosts"], ["previous", "next"], "both onion ghosts")
+    # the robot in front of the hero hides the ghosts too (they are depth-tested against the scene)
+    await ed.call("set_scene_camera", scene=SCENE, position=[2.6, 1.1, 0.9], target=[-0.75, 0.8, 0.0])
+    await scene_shot(ed, "10_ghosts_behind_the_robot")
+    await ed.call("set_scene_camera", scene=SCENE, **CAMERA)
+    await hook(ed, onion={"previous": True, "next": False}, ghost_during_preview=True)
+    r = await window_state(ed, {"play": True})
+    await window_state(ed, {"play": False})
+    await window_state(ed, {"play": True})
+    vp = await viewport(ed)
+    ed.check(vp["previewing"], f"previewing: {vp}")
+    ed.check_eq(vp["ghosts"], ["preview"], "the key pose being left as a ghost")
+    await window_state(ed, {"play": False})
+    await hook(ed, ghost_during_preview=False)
 
 
 async def test_preview_hides_handles(ed: Editor):
@@ -321,9 +390,38 @@ async def test_preview_hides_handles(ed: Editor):
     vp = r["state"]["viewport"]
     ed.check(vp["previewing"] and not vp["posing"], f"previewing: {vp}")
     ed.check_eq(vp["handles"], {}, "no handles while previewing")
+    ed.check_eq(vp["handle_count"], 0, "no handles while previewing")
     await scene_shot(ed, "07_preview")
     r = await window_state(ed, {"play": False})
     ed.check(r["state"]["viewport"]["posing"], "stop poses again")
+
+
+async def test_clicks_off_the_model_leave_posing(ed: Editor):
+    await setup_posing(ed)
+    vp = await viewport(ed)
+    # a click on the hero's body (between the spine and hips handles, off to the side): still posing
+    spine, hips = vp["handles"]["spine"], vp["handles"]["hips"]
+    body = [(spine[0] + hips[0]) / 2 + 10, (spine[1] + hips[1]) / 2]
+    r = await hook(ed, click=body)
+    ed.check(not r["viewport_input"]["left_posing"], f"a click on the model keeps posing: {r['viewport_input']}")
+    ed.check_eq(r["state"]["mode"], "posing", "posing")
+    # empty sky, with nothing selected before or after: posing ends anyway
+    r = await hook(ed, click=[12, 12])
+    ed.check(r["viewport_input"]["left_posing"], f"a click on empty space leaves posing: {r['viewport_input']}")
+    ed.check_eq(r["state"]["mode"], "idle", "idle")
+    ed.check(not (await viewport(ed)).get("ghosts"), "the ghosts went")
+
+
+async def test_closing_the_window_restores_bones(ed: Editor):
+    await setup_posing(ed)
+    posed = await bone_transform(ed, "mixamorig:LeftArm")
+    r = await hook(ed, close_window=True)
+    ed.check(r["viewport_input"].get("closed"), "the window closed")
+    rest = await bone_transform(ed, "mixamorig:LeftArm")
+    ed.check(rest != posed, f"the bones went back: {posed} -> {rest}")
+    vp = await viewport(ed)
+    ed.check(not vp.get("posing") and not vp.get("ghosts"), f"no posing or ghosts after closing: {vp}")
+    await window_state(ed)   # open again for the next tests
 
 
 async def test_exit_paths_restore_bones_and_drop_ghosts(ed: Editor):

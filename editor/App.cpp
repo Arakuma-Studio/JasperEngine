@@ -2005,8 +2005,13 @@ void editor::App::show(){
         // pose edits are project files: their undo is the project history's
         if (isUndo) project.getProjectCommandHistory()->undo();
         if (isRedo) project.getProjectCommandHistory()->redo();
-        // the window runs its own shortcuts while focused; a posing Scene view gets them here
-        if (!poseAnimationWindow->isFocused()) poseAnimationWindow->handleShortcuts(true);
+        // the window runs its own shortcuts while focused; a posing Scene view gets them here,
+        // but not while its camera flies or orbits (right/middle mouse: W A S D Q E move it)
+        if (!poseAnimationWindow->isFocused() &&
+                poseview::sceneViewTakesPoseKeys(ImGui::IsMouseDown(ImGuiMouseButton_Right), ImGui::IsMouseDown(ImGuiMouseButton_Middle),
+                                                 sceneWindow->isNavigatingCamera())){
+            poseAnimationWindow->handleShortcuts(true);
+        }
     }
 
     if (!popupOpen && !poseKeys && !projectWindow->isFocused() && !codeEditor->isFocused()){
