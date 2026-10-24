@@ -149,3 +149,15 @@ async def test_underwater_pass_switches(ed: Editor):
     await ed.call("play", action="stop")
     passes = passes_of(await ed.call("get_scene_settings", names=["post_process"]))
     ed.check(passes and passes[0].get("enabled") is False, f"stop restores the edit-time chain: {passes!r}")
+
+
+async def test_caustics_and_absorption_screenshot(ed: Editor):
+    # every feature, from above, stopped (the game view through the main camera)
+    await ed.call("set_properties", entity="Water", values={"mesh": {
+        M + "shaderFeatures": ["WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "ABSORPTION", "REFRACTION", "CAUSTICS"],
+        M + "shaderParams": {"absorptionDepth": 4, "causticsStrength": 2}}})
+    shot = await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_caustics.png"})
+    ed.check(shot.images, "screenshot with caustics")
+    r = await ed.call("check_shader", timeout=300)
+    errors = [f for f in r.get("findings", []) if f.get("severity") == "error"]
+    ed.check(not errors, f"the water's variant has no check error: {errors!r}")
