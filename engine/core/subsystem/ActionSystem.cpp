@@ -507,8 +507,10 @@ void ActionSystem::animationUpdate(double dt, Entity entity, ActionComponent& ac
 
 // A clip that ends in this update stops its tracks before the all-actions pass samples them
 // at the end, so the last keys would be missed by up to a frame (at low frame rates, visibly).
-// Sample every running keyframe track once at the clip's end (its frame's end at most): the
-// pose blend of this update then writes the final values.
+// Sample every running keyframe track once at the clip's end: the pose blend of this update
+// then writes the final values. A track is sampled at the time animationUpdate gives it on
+// every other frame (an explicit frame duration does not cut it there either), so a frame
+// shorter than its keys does not jump back to its frame's end on the last update.
 void ActionSystem::animationApplyEnd(ActionComponent& action, AnimationComponent& animcomp, bool durationPassed){
     float endTime = action.timecount;
     if (durationPassed){
@@ -530,8 +532,7 @@ void ActionSystem::animationApplyEnd(ActionComponent& action, AnimationComponent
         if (timeDiff < 0 || childAction->speed <= 0){
             continue;
         }
-        float frameDuration = getFrameDuration(frame) / childAction->speed;
-        childAction->timecount = std::min(timeDiff, frameDuration) * childAction->speed;
+        childAction->timecount = timeDiff * childAction->speed;
         processRunningAction(0, child, *childAction);
     }
 }
