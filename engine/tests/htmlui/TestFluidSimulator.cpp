@@ -17,11 +17,14 @@
 #include "harness/TestSystem.h"
 #include "TestRenderCommon.h"
 
+#include "Engine.h"
 #include "System.h"
 #include "component/MeshComponent.h"
 #include "fluid/FluidSimulator.h"
 #include "object/Sprite.h"
+#include "object/ui/Image.h"
 #include "pool/ShaderPool.h"
+#include "render/ShaderRender.h"
 #include "render/SystemRender.h"
 #include "subsystem/FluidSystem.h"
 
@@ -29,9 +32,12 @@
 
 #include <algorithm>
 #include <functional>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -103,7 +109,7 @@ namespace {
         SystemRender::commit();
     }
 
-    struct Image {
+    struct FluidImage {
         int width = 0, height = 0;
         std::vector<uint8_t> rgba;
 
@@ -115,8 +121,8 @@ namespace {
         }
     };
 
-    Image readOutput(FluidSimulator& sim){
-        Image image;
+    FluidImage readOutput(FluidSimulator& sim){
+        FluidImage image;
         Framebuffer* output = sim.getOutputFramebuffer();
         image.width = (int)output->getWidth();
         image.height = (int)output->getHeight();
@@ -124,7 +130,7 @@ namespace {
         return image;
     }
 
-    size_t differingBytes(const Image& a, const Image& b){
+    size_t differingBytes(const FluidImage& a, const FluidImage& b){
         if (a.rgba.size() != b.rgba.size())
             return (size_t)-1;
         size_t n = 0;
@@ -134,7 +140,7 @@ namespace {
     }
 
     // the largest channel difference (INT_MAX when the sizes differ)
-    int maxDifference(const Image& a, const Image& b){
+    int maxDifference(const FluidImage& a, const FluidImage& b){
         if (a.rgba.size() != b.rgba.size())
             return 1 << 30;
         int worst = 0;
@@ -143,7 +149,7 @@ namespace {
         return worst;
     }
 
-    int brightest(const Image& image){
+    int brightest(const FluidImage& image){
         int value = 0;
         for (size_t i = 0; i < image.rgba.size(); i += 4)
             value = std::max<int>(value, std::max<int>(image.rgba[i], std::max<int>(image.rgba[i + 1], image.rgba[i + 2])));
@@ -212,9 +218,9 @@ TEST_F(FluidSimulatorTest, SameSeedSameBytes){
     EXPECT_EQ(b.getStats().steps, 20u);
     EXPECT_NEAR(a.getStats().time, 20.0 / 60.0, 1e-9);
 
-    const Image ia = readOutput(a);
-    const Image ib = readOutput(b);
-    const Image io = readOutput(other);
+    const FluidImage ia = readOutput(a);
+    const FluidImage ib = readOutput(b);
+    const FluidImage io = readOutput(other);
     ASSERT_FALSE(ia.rgba.empty());
     EXPECT_EQ(differingBytes(ia, ib), 0u) << "a seed and its steps must give the same image";
     EXPECT_GT(differingBytes(ia, io), ia.rgba.size() / 20) << "another seed gives another image";
@@ -250,7 +256,7 @@ TEST_F(FluidSimulatorTest, SplatPaintsAtItsPlace){
     FluidSimulator sim;
     FluidSimulationComponent c = plainFluid();
     ASSERT_TRUE(warmUp(sim, c));
-    Image empty = readOutput(sim);
+    FluidImage empty = readOutput(sim);
     const uint8_t* black = empty.at(0.25f, 0.75f);
     EXPECT_EQ(black[0], 0);
     EXPECT_EQ(black[3], 255) << "opaque over the back colour";
@@ -261,7 +267,7 @@ TEST_F(FluidSimulatorTest, SplatPaintsAtItsPlace){
     EXPECT_TRUE(c.pendingSplats.empty());
     EXPECT_EQ(sim.getStats().splats, 1u);
     EXPECT_EQ(sim.getStats().steps, 0u);
-    Image image = readOutput(sim);
+    FluidImage image = readOutput(sim);
     const uint8_t* hit = image.at(0.25f, 0.75f);
     EXPECT_GT(hit[0], 200);
     EXPECT_LT(hit[1], 10);
@@ -353,7 +359,7 @@ TEST_F(FluidSimulatorTest, StrokeSpreadsOverTheFrameSteps){
     ASSERT_TRUE(frame(sim, c, 1.0f, 4.0 / 60.0));
     EXPECT_EQ(sim.getStats().steps, 4u);
     EXPECT_EQ(sim.getStats().splats, 4u);
-    const Image image = readOutput(sim);
+    const FluidImage image = readOutput(sim);
     int lit = 0;
     for (float x : {0.3f, 0.5f, 0.7f, 0.9f}){
         const uint8_t* p = image.at(x, 0.5f);
@@ -384,7 +390,7 @@ TEST_F(FluidSimulatorTest, ResizeKeepsTheFields){
     EXPECT_NE(output->getVersion(), version);
     EXPECT_TRUE(texture.isFramebufferOutdated());
     EXPECT_EQ(sim.getStats().dyeWidth, 128);
-    const Image wide = readOutput(sim);
+    const FluidImage wide = readOutput(sim);
     EXPECT_EQ(wide.width, 128);
     EXPECT_GT(wide.at(0.5f, 0.5f)[0], 200) << "the dye survives the resize";
     EXPECT_LT(wide.at(0.05f, 0.95f)[0], 10);
@@ -403,7 +409,7 @@ TEST_F(FluidSimulatorTest, HalfFloatFallbackGivesTheSameImage){
     FluidSimulator a;
     ASSERT_TRUE(warmUp(a, compact));
     steps(a, compact, 1.0f, 12);
-    const Image reference = readOutput(a);
+    const FluidImage reference = readOutput(a);
     const size_t compactBytes = a.getStats().gpuBytes;
 
     // RG16F and R16F refused: every field in RGBA16F (Pavel's fallback), the same values
@@ -432,7 +438,7 @@ TEST_F(FluidSimulatorTest, ManualFilteringFallback){
     FluidSimulator a;
     ASSERT_TRUE(warmUp(a, linear));
     steps(a, linear, 1.0f, 6);
-    const Image reference = readOutput(a);
+    const FluidImage reference = readOutput(a);
     EXPECT_FALSE(a.getStats().manualFiltering);
 
     FluidSimulator::setDisabledFeaturesForTesting(FLUID_TEST_NO_LINEAR_FILTER);
@@ -451,7 +457,7 @@ TEST_F(FluidSimulatorTest, ManualFilteringFallback){
     EXPECT_FALSE(stats.sunraysActive);
     EXPECT_EQ(stats.steps, 6u);
     // his bilerp by hand: the same fluid as the hardware's filter, to its precision
-    const Image image = readOutput(sim);
+    const FluidImage image = readOutput(sim);
     EXPECT_GT(brightest(image), 100);
     EXPECT_LE(maxDifference(image, reference), 24);
 }
@@ -735,7 +741,7 @@ TEST_F(FluidSimulatorTest, TransparentMaterialHasNoDarkFringe){
     GpuEnvironment::drawFrames(4);
 
     // the output itself: straight alpha (the colour stays red where alpha fades)
-    Image output = readOutput(*scene.getComponent<FluidSimulationComponent>(entity).simulator);
+    FluidImage output = readOutput(*scene.getComponent<FluidSimulationComponent>(entity).simulator);
     const uint8_t* edge = output.at(0.5f, 0.5f + 0.12f);
     ASSERT_GT((int)edge[3], 20);
     ASSERT_LT((int)edge[3], 235);
@@ -765,4 +771,407 @@ TEST_F(FluidSimulatorTest, TransparentMaterialHasNoDarkFringe){
     EXPECT_LT((int)centre[1], 30);
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
     scene.removeComponent<FluidSimulationComponent>(entity);
+}
+
+// ---------------------------------------------------------------- reviewers' findings
+
+namespace {
+
+    // the main view's pixels now
+    std::vector<uint8_t> readTarget(int& w, int& h){
+        Framebuffer& target = GpuEnvironment::target();
+        w = (int)target.getWidth();
+        h = (int)target.getHeight();
+        std::vector<uint8_t> rgba;
+        EXPECT_TRUE(readTexture(target.getRender().getColorTexture(), w, h, rgba));
+        return rgba;
+    }
+
+}
+
+TEST_F(FluidSimulatorTest, RemovedFluidLeavesItsLinkedTexturesSafe){
+    // a sprite showing a TEXTURE fluid's output (a fluid|<e> link, getTexture(), the exported
+    // game's setFramebuffer(simulator->getOutputFramebuffer())); the fluid is then deleted
+    TestSystem::get().clearLogs();
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    ensureFluidComponent(scene);
+    FluidSimulationComponent c = plainFluid();
+    c.output = FluidOutput::TEXTURE;
+    c.paused = true;
+    FluidSplat red = splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f));
+    red.radius = 20.0f;
+    c.pendingSplats.push_back(red);
+    c.simulator = std::make_shared<FluidSimulator>();
+    Framebuffer* output = c.simulator->getOutputFramebuffer();
+    const std::weak_ptr<Framebuffer> shared = output->weak_from_this();
+    ASSERT_FALSE(shared.expired()) << "the output is shared (std::make_shared)";
+    const Entity fluidEntity = scene.createEntity();
+    scene.addComponent<FluidSimulationComponent>(fluidEntity, c);
+    c.simulator.reset();    // (the component's is the only one)
+    FluidSimulationComponent& fluid = scene.getComponent<FluidSimulationComponent>(fluidEntity);
+
+    Sprite& sprite = fixture.add<Sprite>();
+    sprite.setSize(120, 60);
+    sprite.setPivotPreset(PivotPreset::CENTER);
+    sprite.setPosition(200.0f, 150.0f, 0.0f);
+    sprite.setTexture(output);
+    // a script's copy of the texture (Lua's getTexture() returns one)
+    Texture scriptCopy = fluid.simulator->getOutputTexture();
+    EXPECT_EQ(scriptCopy.getFramebuffer(), output);
+
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(framesUntil([&](){ return fluid.simulator->getStats().splats == 1 && output->isCreated(); }))
+        << fluid.simulator->getError();
+    GpuEnvironment::drawFrames(3);
+    int w = 0, h = 0;
+    std::vector<uint8_t> rgba = readTarget(w, h);
+    PixelProbe probe{rgba, w};
+    EXPECT_GT((int)probe.at(200, 150)[0], 150) << "the sprite shows the fluid";
+    EXPECT_LT((int)probe.at(200, 150)[1], 80);
+
+    // deleted: its GPU side goes, the Framebuffer object stays while textures show it
+    const sg_image outputImage = output->getRender().getColorTexture().backend.get();
+    const unsigned long version = output->getVersion();
+    scene.destroyEntity(fluidEntity);
+    EXPECT_EQ(sg_query_image_state(outputImage), SG_RESOURCESTATE_INVALID);
+    ASSERT_FALSE(shared.expired()) << "the textures linked to the output keep it alive";
+    EXPECT_FALSE(output->isCreated());
+    EXPECT_GT(output->getVersion(), version) << "a new version: the textures bound to it rebind";
+    EXPECT_EQ(sprite.getComponent<MeshComponent>().submeshes[0].material.baseColorTexture.getFramebuffer(), output);
+
+    // drawn: no stale image, the texture's fallback (white, the untextured look)
+    GpuEnvironment::drawFrames(3);
+    rgba = readTarget(w, h);
+    const uint8_t* shown = probe.at(200, 150);
+    EXPECT_GT((int)shown[1], 200) << "the sprite shows the placeholder, not the freed fluid";
+    EXPECT_GT((int)shown[2], 200);
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+
+    // the last texture gone, the object goes too
+    sprite.getComponent<MeshComponent>().submeshes[0].material.baseColorTexture = Texture();
+    scriptCopy = Texture();
+    GpuEnvironment::drawFrames(1);
+    EXPECT_TRUE(shared.expired());
+}
+
+TEST_F(FluidSimulatorTest, MaterialFluidSurvivesAViewLoss){
+    // the shaders ready at once (an exported game's precompiled ones): the output is back at
+    // the first frame of the new view
+    TestSystem::get().clearLogs();
+    const bool async = ShaderPool::isAsyncCompilation();
+    ShaderPool::setAsyncCompilation(false);
+    {
+        SceneFixture fixture;
+        Scene& scene = fixture.getScene();
+        ensureFluidComponent(scene);
+        Sprite& sprite = fixture.add<Sprite>();
+        sprite.setSize(120, 60);
+        sprite.setPivotPreset(PivotPreset::CENTER);
+        sprite.setPosition(200.0f, 150.0f, 0.0f);
+
+        FluidSimulationComponent c = plainFluid();
+        c.output = FluidOutput::MATERIAL;
+        c.paused = true;
+        FluidSplat red = splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f));
+        red.radius = 20.0f;
+        c.pendingSplats.push_back(red);
+        const Entity entity = sprite.getEntity();
+        scene.addComponent<FluidSimulationComponent>(entity, c);
+        FluidSimulationComponent& fluid = scene.getComponent<FluidSimulationComponent>(entity);
+        FluidSystem* system = scene.getSystem<FluidSystem>().get();
+
+        ASSERT_TRUE(fixture.waitUntilLoaded());
+        ASSERT_TRUE(framesUntil([&](){ return system->getMaterialTexture(entity) != nullptr; }));
+        GpuEnvironment::drawFrames(2);
+        int w = 0, h = 0;
+        std::vector<uint8_t> rgba = readTarget(w, h);
+        PixelProbe probe{rgba, w};
+        ASSERT_GT((int)probe.at(200, 150)[0], 150) << "the untextured sprite shows the fluid";
+        ASSERT_LT((int)probe.at(200, 150)[1], 80);
+
+        // the platform drops the view (Android pause, Web context loss) and gives it back
+        Engine::systemViewDestroyed();
+        EXPECT_FALSE(system->hasMaterialFluids()) << "nothing is lent without a view";
+        Engine::systemViewLoaded();
+        Engine::systemViewChanged();
+        // (the fields restarted: paint again)
+        fluid.pendingSplats.push_back(red);
+        ASSERT_TRUE(fixture.waitUntilLoaded());
+        ASSERT_TRUE(framesUntil([&](){ return system->getMaterialTexture(entity) != nullptr; }));
+        GpuEnvironment::drawFrames(3);
+        rgba = readTarget(w, h);
+        EXPECT_GT((int)probe.at(200, 150)[0], 150) << "the sprite shows the fluid again";
+        EXPECT_LT((int)probe.at(200, 150)[1], 80);
+        EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+        scene.removeComponent<FluidSimulationComponent>(entity);
+    }
+    ShaderPool::setAsyncCompilation(async);
+}
+
+TEST_F(FluidSimulatorTest, ScreenFluidStaysUnderTheUI){
+    TestSystem::get().clearLogs();
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    ensureFluidComponent(scene);
+    // a red box at (40, 30), 220 x 120 (ecs/basic.rml)
+    fixture.addDocument("ecs/basic.rml");
+    // the scene: a white sprite; its UI: a green image (both made before the fluid)
+    Sprite& sprite = fixture.add<Sprite>();
+    sprite.setSize(80, 60);
+    sprite.setPivotPreset(PivotPreset::CENTER);
+    sprite.setPosition(140.0f, 280.0f, 0.0f);
+    jasperengine::Image& image = fixture.add<jasperengine::Image>();
+    image.setPosition(400, 40);
+    image.setSize(150, 80);
+    image.setColor(0.0f, 1.0f, 0.0f, 1.0f);
+
+    // an opaque SCREEN fluid: its blue back colour over the whole view
+    FluidSimulationComponent c = plainFluid();
+    c.output = FluidOutput::SCREEN;
+    c.paused = true;
+    c.backColor = Vector3(0.0f, 0.0f, 1.0f);
+    const Entity entity = scene.createEntity();
+    scene.addComponent<FluidSimulationComponent>(entity, c);
+    FluidSystem* system = scene.getSystem<FluidSystem>().get();
+    ASSERT_TRUE(fixture.waitUntilLoaded());
+    ASSERT_TRUE(framesUntil([&](){ return system->hasScreenFluids(); }));
+    GpuEnvironment::drawFrames(3);
+
+    int w = 0, h = 0;
+    std::vector<uint8_t> rgba = readTarget(w, h);
+    PixelProbe probe{rgba, w};
+    EXPECT_TRUE(probe.is(150, 90, 255, 0, 0, 255, 8)) << "the document's box over the fluid";
+    EXPECT_TRUE(probe.is(475, 80, 0, 255, 0, 255, 8)) << "the component UI image over the fluid";
+    EXPECT_TRUE(probe.is(500, 300, 0, 0, 255, 255, 8)) << "the fluid over the scene's background";
+    EXPECT_TRUE(probe.is(140, 280, 0, 0, 255, 255, 8)) << "the fluid over the scene's sprite";
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
+
+    // transparent: the scene shows through where there is no dye, the UI stays on top
+    scene.getComponent<FluidSimulationComponent>(entity).transparent = true;
+    GpuEnvironment::drawFrames(3);
+    rgba = readTarget(w, h);
+    EXPECT_TRUE(probe.isBackground(500, 300));
+    EXPECT_GT((int)probe.at(140, 280)[0], 200) << "the sprite shows through";
+    EXPECT_TRUE(probe.is(150, 90, 255, 0, 0, 255, 8));
+    EXPECT_TRUE(probe.is(475, 80, 0, 255, 0, 255, 8));
+    scene.removeComponent<FluidSimulationComponent>(entity);
+}
+
+TEST_F(FluidSimulatorTest, PausedLookTargetsRedrawTheOutput){
+    // the same dye, paused: a new bloom or sunrays size redraws the output at once
+    auto made = [](FluidSimulator& sim, FluidSimulationComponent& c){
+        c.paused = true;
+        c.pendingSplats.push_back(splatAt(0.4f, 0.6f, Vector3(1.5f, 0.6f, 0.2f)));
+        c.pendingSplats.push_back(splatAt(0.7f, 0.3f, Vector3(0.2f, 0.8f, 1.6f)));
+        return warmUp(sim, c);
+    };
+    for (int field = 0; field < 3; field++){
+        FluidSimulationComponent a = smallFluid(5);
+        a.splatsOnStart = false;
+        FluidSimulator simA;
+        ASSERT_TRUE(made(simA, a));
+        ASSERT_TRUE(frame(simA, a, 1.0f, 0.1));
+        const FluidImage before = readOutput(simA);
+
+        FluidSimulationComponent b = a;
+        b.pendingSplats.clear();
+        b.needReset = true;
+        b.simulator.reset();
+        if (field == 0)
+            b.sunraysResolution = 16;
+        else if (field == 1)
+            b.bloomResolution = 32;
+        else
+            b.bloomIterations = 2;
+        FluidSimulationComponent reference = b;
+        FluidSimulator simB;
+        ASSERT_TRUE(made(simB, reference));
+        const FluidImage expected = readOutput(simB);
+        ASSERT_GT(maxDifference(before, expected), 1) << "field " << field << " does not change the look: no test";
+
+        // the running one, paused: changed at a frame
+        a.sunraysResolution = b.sunraysResolution;
+        a.bloomResolution = b.bloomResolution;
+        a.bloomIterations = b.bloomIterations;
+        ASSERT_TRUE(frame(simA, a, 1.0f, 0.1));
+        EXPECT_EQ(simA.getStats().steps, 0u);
+        EXPECT_LE(maxDifference(readOutput(simA), expected), 1) << "field " << field << ": the output is stale";
+    }
+}
+
+TEST_F(FluidSimulatorTest, TargetsFitTheDevice){
+    // a device whose largest texture is 256: every target fits, the aspect kept
+    FluidSimulator::setMaxTextureSizeForTesting(256);
+    FluidSimulator sim;
+    FluidSimulationComponent c = smallFluid(8);
+    c.dyeResolution = 1024;
+    c.simResolution = 512;
+    c.bloomResolution = 1024;
+    c.sunraysResolution = 1024;
+    ASSERT_TRUE(warmUp(sim, c, 2.0f)) << sim.getError();
+    const FluidStats& stats = sim.getStats();
+    EXPECT_EQ(stats.dyeWidth, 256);
+    EXPECT_EQ(stats.dyeHeight, 128);
+    EXPECT_EQ(stats.simWidth, 256);
+    EXPECT_EQ(stats.simHeight, 128);
+    EXPECT_EQ(stats.outputWidth, 256);
+    EXPECT_TRUE(stats.bloomActive);
+    EXPECT_TRUE(stats.sunraysActive);
+    EXPECT_EQ(stats.targetFailures, 0);
+    FluidSimulator::setMaxTextureSizeForTesting(0);
+}
+
+TEST_F(FluidSimulatorTest, OptionalTargetFailureTurnsTheFeatureOff){
+    FluidSimulator::setDisabledFeaturesForTesting(FLUID_TEST_FAIL_OPTIONAL_TARGETS);
+    FluidSimulator sim;
+    FluidSimulationComponent c = smallFluid(9);
+    ASSERT_TRUE(warmUp(sim, c)) << sim.getError();
+    // drawn without bloom and sunrays, said so
+    EXPECT_FALSE(sim.getStats().bloomActive);
+    EXPECT_FALSE(sim.getStats().sunraysActive);
+    EXPECT_TRUE(sim.getStats().shadingActive);
+    EXPECT_NE(sim.getError().find("bloom is off"), std::string::npos) << sim.getError();
+    EXPECT_NE(sim.getError().find("sunrays are off"), std::string::npos) << sim.getError();
+    EXPECT_GT(brightest(readOutput(sim)), 50);
+    // not tried again every frame
+    const int failures = sim.getStats().targetFailures;
+    EXPECT_GE(failures, 2);
+    for (int i = 0; i < 10; i++)
+        ASSERT_TRUE(frame(sim, c, 1.0f, 1.0 / 60.0));
+    EXPECT_EQ(sim.getStats().targetFailures, failures);
+    EXPECT_GT(sim.getStats().steps, 0u);
+
+    // another size is tried again (and works on a device that can)
+    FluidSimulator::setDisabledFeaturesForTesting(0);
+    c.bloomResolution = 32;
+    c.sunraysResolution = 32;
+    ASSERT_TRUE(frame(sim, c, 1.0f, 0.0));
+    EXPECT_TRUE(sim.getStats().bloomActive);
+    EXPECT_TRUE(sim.getStats().sunraysActive);
+    EXPECT_TRUE(sim.getError().empty()) << sim.getError();
+}
+
+TEST_F(FluidSimulatorTest, RequiredTargetFailureWaitsBeforeRetrying){
+    FluidSimulationComponent c = smallFluid(10);
+    FluidSimulator sim;
+    // the programs first (their compile is not a target failure); then a new size the device
+    // cannot make
+    ASSERT_TRUE(warmUp(sim, c));
+    EXPECT_EQ(sim.getStats().targetFailures, 0);
+    FluidSimulator::setDisabledFeaturesForTesting(FLUID_TEST_FAIL_TARGETS);
+    c.dyeResolution = 128;
+    EXPECT_FALSE(frame(sim, c, 1.0f, 0.0));
+    const std::string error = sim.getError();
+    EXPECT_NE(error.find("could not make"), std::string::npos) << error;
+    const int failures = sim.getStats().targetFailures;
+    EXPECT_EQ(failures, 1);
+    for (int i = 0; i < 20; i++){
+        EXPECT_FALSE(frame(sim, c, 1.0f, 0.0));
+        EXPECT_EQ(sim.getError(), error);
+    }
+    EXPECT_EQ(sim.getStats().targetFailures, failures) << "retried every frame";
+    // the device recovers: made again after the wait
+    FluidSimulator::setDisabledFeaturesForTesting(0);
+    bool drawn = false;
+    for (int i = 0; i < 200 && !drawn; i++)
+        drawn = frame(sim, c, 1.0f, 0.0);
+    EXPECT_TRUE(drawn) << sim.getError();
+}
+
+TEST_F(FluidSimulatorTest, AnyFieldValueIsSafe){
+    // raw writes (C++ or Lua fields, not the validating setters)
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    FluidSimulationComponent c = smallFluid(12);
+    c.simulationRate = nan;
+    c.timeScale = inf;
+    c.densityDissipation = -inf;
+    c.velocityDissipation = nan;
+    c.pressure = nan;
+    c.curl = inf;
+    c.gradientScale = nan;
+    c.splatRadius = -1.0f;
+    c.splatForce = nan;
+    c.colorUpdateSpeed = inf;
+    c.bloomIntensity = nan;
+    c.bloomThreshold = -2.0f;
+    c.bloomSoftKnee = nan;
+    c.sunraysWeight = inf;
+    c.backColor = Vector3(nan, -1.0f, inf);
+    c.aspectRatio = nan;
+    c.simResolution = 0;
+    c.dyeResolution = 0;
+    c.bloomResolution = 0;
+    c.sunraysResolution = 0;
+    c.maxSubsteps = 4000000000u;
+    c.randomSplatCount = 4000000000u;
+    FluidSimulator sim;
+    ASSERT_TRUE(warmUp(sim, c, nan)) << sim.getError();
+    EXPECT_GE(sim.getStats().simWidth, 1);
+    EXPECT_GE(sim.getStats().dyeWidth, 1);
+    EXPECT_LE(sim.getStats().splats, (uint64_t)FLUID_MAX_BURST_SPLATS);
+    // the clock: not a number, infinite or huge times step at most the (bounded) cap
+    for (double dt : {(double)nan, (double)inf, -1.0, 1.0e300, 1.0 / 60.0}){
+        const uint64_t before = sim.getStats().steps;
+        ASSERT_TRUE(frame(sim, c, 1.0f, dt)) << dt;
+        EXPECT_LE(sim.getStats().steps - before, 1000u) << dt;
+    }
+    // splats that are not finite are dropped, the others painted
+    const uint64_t splats = sim.getStats().splats;
+    c.pendingSplats.push_back(splatAt(nan, 0.5f, Vector3(1.0f, 0.0f, 0.0f)));
+    FluidSplat bad = splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f));
+    bad.radius = nan;
+    c.pendingSplats.push_back(bad);
+    c.pendingSplats.push_back(splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f), Vector2(inf, 0.0f)));
+    c.pendingSplats.push_back(splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f)));
+    sim.pointerDown(3, Vector2(nan, 0.5f));
+    ASSERT_TRUE(frame(sim, c, 1.0f, 0.0));
+    EXPECT_EQ(sim.getStats().splats, splats + 1);
+    // the component itself is left as written (the editor shows what was set)
+    EXPECT_TRUE(std::isnan(c.simulationRate));
+    EXPECT_EQ(c.maxSubsteps, 4000000000u);
+}
+
+TEST_F(FluidSimulatorTest, ManualFilteringReadsUnfilterableImages){
+    // without linear filtering the half floats are bound as unfilterable images through
+    // non-filtering samplers (sokol's validation wants a filterable format otherwise)
+    FluidSimulator::setDisabledFeaturesForTesting(FLUID_TEST_NO_LINEAR_FILTER);
+    FluidSimulationComponent c = plainFluid();
+    FluidSimulator sim;
+    ASSERT_TRUE(warmUp(sim, c));
+    ASSERT_TRUE(sim.getStats().manualFiltering);
+    auto samplerTypes = [](uint32_t properties){
+        std::map<std::string, TextureSamplerType> textures;
+        std::map<std::string, SamplerType> samplers;
+        std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::FLUID, properties);
+        EXPECT_TRUE(shader && shader->isCreated()) << properties;
+        if (shader){
+            for (const ShaderStage& stage : shader->shaderData.stages){
+                for (const ShaderTexture& texture : stage.textures)
+                    textures[texture.name] = texture.samplerType;
+                for (const ShaderSampler& sampler : stage.samplers)
+                    samplers[sampler.name] = sampler.type;
+            }
+        }
+        return std::make_pair(textures, samplers);
+    };
+    // the solver: both images
+    auto solver = samplerTypes(2u);
+    for (const char* name : {"u_fluidRaw0", "u_fluidRaw1"}){
+        ASSERT_TRUE(solver.first.count(name)) << name;
+        EXPECT_EQ(solver.first[name], TextureSamplerType::UNFILTERABLE_FLOAT) << name;
+        EXPECT_EQ(solver.second[std::string(name) + "_smp"], SamplerType::NONFILTERING) << name;
+    }
+    // the look: the dye through the third, the composite's RGBA8 output through the first
+    auto look = samplerTypes(3u);
+    ASSERT_TRUE(look.first.count("u_fluidRaw2"));
+    EXPECT_EQ(look.first["u_fluidRaw2"], TextureSamplerType::UNFILTERABLE_FLOAT);
+    EXPECT_EQ(look.second["u_fluidRaw2_smp"], SamplerType::NONFILTERING);
+    ASSERT_TRUE(look.first.count("u_fluidTex0"));
+    EXPECT_EQ(look.first["u_fluidTex0"], TextureSamplerType::FLOAT);
+    // the filtering variants keep filterable images
+    auto plain = samplerTypes(1u);
+    ASSERT_TRUE(plain.first.count("u_fluidTex2"));
+    EXPECT_EQ(plain.first["u_fluidTex2"], TextureSamplerType::FLOAT);
 }

@@ -89,6 +89,10 @@ FramebufferDepth Framebuffer::getDepthAttachment() const{
 }
 
 void Framebuffer::destroy(){
+    // the textures bound to it see the change (Texture::isFramebufferOutdated) and rebind
+    // instead of drawing with the freed image
+    if (render.isCreated())
+        version++;
     render.destroyFramebuffer();
 }
 

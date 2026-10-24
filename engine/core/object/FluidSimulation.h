@@ -116,10 +116,13 @@ namespace jasperengine{
         float getSunraysWeight() const;
 
         // a splat at the next step, also while paused (fluid coordinates, Pavel's force, HDR
-        // colour; radius 0: the component's splatRadius)
+        // colour; radius 0: the component's splatRadius). A fluid that does not run (disabled,
+        // inactive) keeps the latest FLUID_MAX_PENDING_SPLATS (1024), the oldest dropped
         void splat(Vector2 position, Vector2 velocity, Vector3 color, float radius = 0.0f);
         void splat(const float x, const float y, const float dx, const float dy, const float r, const float g, const float b);
-        // a random burst at the next step (0: Pavel's random 5-24 splats), from the seeded source
+        // a random burst at the next step (0: Pavel's random 5-24 splats; at most
+        // FLUID_MAX_BURST_SPLATS, 1000), from the seeded source; the latest
+        // FLUID_MAX_PENDING_BURSTS (64) are kept while the fluid does not run
         void randomSplats(unsigned int count = 0);
         // restarts at the next frame: zero fields, the seed, the start burst (splatsOnStart)
         void reset();

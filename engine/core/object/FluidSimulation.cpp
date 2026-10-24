@@ -5,6 +5,7 @@
 #include "fluid/FluidPresets.h"
 #include "Log.h"
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
 
@@ -385,7 +386,10 @@ void FluidSimulation::splat(Vector2 position, Vector2 velocity, Vector3 color, f
     splat.velocity = velocity;
     splat.color = color;
     splat.radius = radius;
-    getComponent().pendingSplats.push_back(splat);
+    // (a fluid that does not run keeps the latest ones: FLUID_MAX_PENDING_SPLATS)
+    FluidSimulationComponent& fluid = getComponent();
+    fluid.pendingSplats.push_back(splat);
+    trimFluidQueue(fluid.pendingSplats, FLUID_MAX_PENDING_SPLATS);
 }
 
 void FluidSimulation::splat(const float x, const float y, const float dx, const float dy, const float r, const float g, const float b){
@@ -393,7 +397,9 @@ void FluidSimulation::splat(const float x, const float y, const float dx, const 
 }
 
 void FluidSimulation::randomSplats(unsigned int count){
-    getComponent().pendingBursts.push_back(count);
+    FluidSimulationComponent& fluid = getComponent();
+    fluid.pendingBursts.push_back(std::min(count, FLUID_MAX_BURST_SPLATS));
+    trimFluidQueue(fluid.pendingBursts, FLUID_MAX_PENDING_BURSTS);
 }
 
 void FluidSimulation::reset(){

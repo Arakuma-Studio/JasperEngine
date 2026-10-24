@@ -10,6 +10,7 @@
 #include "render/CameraRender.h"
 #include "render/TextureRender.h"
 #include "texture/Framebuffer.h"
+#include "fluid/FluidSimulator.h"
 
 #include <unordered_set>
 
@@ -21,8 +22,11 @@ struct CloneContext {
     const std::unordered_map<Entity, Entity>& map;
     bool sameRegistry;
     Entity sourceRoot;
-    // a copied camera's framebuffer -> the copy's, for textures that show it
+    // a copied camera's framebuffer (a copied fluid's output) -> the copy's, for textures
+    // that show it
     std::unordered_map<const Framebuffer*, Framebuffer*> framebuffers;
+    // a copied fluid with a simulator -> the copy's own (made first: its output is mapped)
+    std::unordered_map<Entity, std::shared_ptr<FluidSimulator>> fluidSimulators;
     // meshes whose external buffers point into the file data of a model copied with them
     std::unordered_set<Entity> modelMeshes;
 
@@ -289,9 +293,12 @@ void prepare<UIDocumentComponent>(UIDocumentComponent& document, Entity, CloneCo
 }
 
 template<>
-void prepare<FluidSimulationComponent>(FluidSimulationComponent& fluid, Entity, CloneContext&) {
-    // the copy runs its own simulation (its own targets and output), restarted from its settings
-    fluid.simulator.reset();
+void prepare<FluidSimulationComponent>(FluidSimulationComponent& fluid, Entity sourceEntity, CloneContext& ctx) {
+    // the copy runs its own simulation (its own targets and output), restarted from its
+    // settings: the simulator clone() made for it when the original had one (the copied
+    // textures showing the original's output show its output), else one made when it runs
+    auto it = ctx.fluidSimulators.find(sourceEntity);
+    fluid.simulator = it != ctx.fluidSimulators.end() ? it->second : nullptr;
     fluid.pendingSplats.clear();
     fluid.pendingBursts.clear();
     fluid.pendingSteps = 0;
@@ -705,7 +712,7 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
         copies.push_back(copy);
     }
 
-    CloneContext ctx{map, source == static_cast<EntityRegistry*>(target), sources[0], {}, {}};
+    CloneContext ctx{map, source == static_cast<EntityRegistry*>(target), sources[0], {}, {}, {}};
     for (Entity entity : sources) {
         if (ModelComponent* model = source->findComponent<ModelComponent>(entity)) {
             ctx.modelMeshes.insert(entity);
@@ -714,12 +721,19 @@ std::vector<Entity> EntityCloner::clone(EntityRegistry* source, const std::vecto
             }
         }
     }
-    // cameras first: textures showing what one renders follow it to the copy
+    // cameras and fluids first: textures showing what one renders follow it to the copy
+    const bool fluidsRegistered = source->isComponentRegistered<FluidSimulationComponent>();
     for (Entity entity : sources) {
         if (CameraComponent* camera = source->findComponent<CameraComponent>(entity)) {
             if (camera->framebuffer && !ctx.framebuffers.count(camera->framebuffer)) {
                 ctx.framebuffers[camera->framebuffer] = new Framebuffer();
             }
+        }
+        FluidSimulationComponent* fluid = fluidsRegistered ? source->findComponent<FluidSimulationComponent>(entity) : nullptr;
+        if (fluid && fluid->simulator) {
+            std::shared_ptr<FluidSimulator> copy = std::make_shared<FluidSimulator>();
+            ctx.framebuffers[fluid->simulator->getOutputFramebuffer()] = copy->getOutputFramebuffer();
+            ctx.fluidSimulators[entity] = copy;
         }
     }
 

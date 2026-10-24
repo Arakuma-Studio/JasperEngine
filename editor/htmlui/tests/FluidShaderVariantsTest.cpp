@@ -28,7 +28,7 @@ namespace {
 
     bool hasFluidKeys(const std::set<ShaderKey>& keys){
         return keys.count(ShaderPool::getShaderKey(ShaderType::FLUID, 0)) && keys.count(ShaderPool::getShaderKey(ShaderType::FLUID, 1u)) &&
-               keys.count(ShaderPool::getShaderKey(ShaderType::FLUID, 2u));
+               keys.count(ShaderPool::getShaderKey(ShaderType::FLUID, 2u)) && keys.count(ShaderPool::getShaderKey(ShaderType::FLUID, 3u));
     }
 
     size_t fluidKeys(const std::set<ShaderKey>& keys){
@@ -73,7 +73,7 @@ TEST(FluidShaderVariants, AddFluidKeys){
     std::set<ShaderKey> keys;
     ShaderVariantCollector::addFluidKeys(keys);
     EXPECT_TRUE(hasFluidKeys(keys));
-    EXPECT_EQ(keys.size(), 3u);
+    EXPECT_EQ(keys.size(), 4u);
 }
 
 TEST(FluidShaderVariants, SceneWithoutAFluid){

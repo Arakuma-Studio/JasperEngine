@@ -89,6 +89,11 @@ namespace {
         return features;
     }
 
+    int& testMaxTextureSize(){
+        static int size = 0;
+        return size;
+    }
+
     // what the device offers, the test overrides applied
     struct Caps {
         bool floatTargets = false;      // RGBA16F renderable
@@ -171,21 +176,39 @@ namespace {
 
     const int MAX_SIDE = 8192;
 
-    // his getResolution: `resolution` on the short side, resolution x aspect on the long one
-    Size resolutionOf(unsigned int resolution, float aspect){
-        float ratio = aspect;
-        if (ratio < 1.0f)
-            ratio = 1.0f / ratio;
-        const float res = (float)std::max(1u, resolution);
-        const int shortSide = std::clamp((int)std::lround(res), 1, MAX_SIDE);
-        const int longSide = std::clamp((int)std::lround(res * ratio), 1, MAX_SIDE);
+    // the largest side a target may have: the device's (its largest 2D texture), at most
+    // MAX_SIDE
+    int maxSide(){
+        int side = MAX_SIDE;
+        const int device = SystemRender::getFeatures().maxTextureSize2D;
+        if (device > 0)
+            side = std::min(side, device);
+        if (testMaxTextureSize() > 0)
+            side = std::min(side, testMaxTextureSize());
+        return std::max(side, 1);
+    }
+
+    // his getResolution: `resolution` on the short side, resolution x aspect on the long one;
+    // a long side over `limit` is brought to it, the short one scaled with it (the aspect kept)
+    Size resolutionOf(unsigned int resolution, float aspect, int limit){
+        double ratio = (std::isfinite(aspect) && aspect > 0.0f) ? (double)aspect : 1.0;
+        if (ratio < 1.0)
+            ratio = 1.0 / ratio;
+        double shortSide = (double)std::max(1u, resolution);
+        double longSide = shortSide * ratio;
+        if (longSide > (double)limit){
+            shortSide *= (double)limit / longSide;
+            longSide = (double)limit;
+        }
+        const int shortPixels = std::clamp((int)std::lround(std::min(shortSide, (double)limit)), 1, limit);
+        const int longPixels = std::clamp((int)std::lround(longSide), 1, limit);
         Size size;
         if (aspect > 1.0f){
-            size.width = longSide;
-            size.height = shortSide;
+            size.width = longPixels;
+            size.height = shortPixels;
         }else{
-            size.width = shortSide;
-            size.height = longSide;
+            size.width = shortPixels;
+            size.height = longPixels;
         }
         return size;
     }
@@ -283,7 +306,7 @@ struct FluidSimulator::Impl {
         Vector3 color = Vector3(0.0f, 0.0f, 0.0f);
     };
 
-    Impl(): outputTexture(&output) {}
+    Impl() {}
 
     Program solver;
     Program look;
@@ -296,9 +319,23 @@ struct FluidSimulator::Impl {
     TargetPtr bloom;
     std::vector<TargetPtr> bloomDown, bloomUp;
     TargetPtr sunrays, sunraysTemp;
-    Framebuffer output;     // stable: outputTexture points at it
-    Texture outputTexture;
+    // stable, shared with the textures showing it (they keep the object, not its GPU side,
+    // alive after the simulator): outputTexture is one of them
+    std::shared_ptr<Framebuffer> output = std::make_shared<Framebuffer>();
+    Texture outputTexture{output.get()};
     int outputWidth = 0, outputHeight = 0;
+
+    // targets that could not be made: not tried again every frame. Optional ones (bloom,
+    // sunrays) stay off while their size is the failed one; the required ones wait
+    // REQUIRED_RETRY_FRAMES updates before the next attempt
+    static constexpr int REQUIRED_RETRY_FRAMES = 120;
+    uint64_t bloomFailedKey = 0, sunraysFailedKey = 0;
+    uint64_t requiredFailedKey = 0;
+    int requiredRetryIn = 0;
+    std::string requiredError;
+    std::string optionalFailure;                // the last optional target that failed
+    std::string bloomFailure, sunraysFailure;   // why bloom / sunrays are off
+    std::string degraded;       // what this frame had to turn off (getError() after a draw)
 
     bool manual = false;
     bool compact = false;
@@ -373,9 +410,12 @@ struct FluidSimulator::Impl {
         }
         ShaderData& data = program.shader->shaderData;
         program.blockSlot = data.getUniformBlockIndexByName("u_fs_fluid");
-        program.textures[0] = data.getTextureIndexByName("u_fluidTex0");
-        program.textures[1] = data.getTextureIndexByName("u_fluidTex1");
-        program.textures[2] = data.getTextureIndexByName("u_fluidTex2");
+        // (u_fluidRaw<i>: the manual filtering variants' unfilterable images, fluid.frag)
+        for (int i = 0; i < 3; i++){
+            program.textures[i] = data.getTextureIndexByName("u_fluidTex" + std::to_string(i));
+            if (program.textures[i].first < 0)
+                program.textures[i] = data.getTextureIndexByName("u_fluidRaw" + std::to_string(i));
+        }
         program.object.beginLoad(PrimitiveType::TRIANGLES);
         program.object.setShader(program.shader.get());
         for (const auto& slot : program.textures){
@@ -392,9 +432,11 @@ struct FluidSimulator::Impl {
     }
 
     bool ensurePrograms(bool manualFiltering){
-        // both asked for at once, so they build together
-        const bool solverReady = load(solver, manualFiltering ? PROPERTY_MANUAL_FILTERING : 0u);
-        const bool lookReady = load(look, PROPERTY_LOOK);
+        // both asked for at once, so they build together; without linear filtering both read
+        // the half floats as unfilterable images (sokol validates a filterable one otherwise)
+        const uint32_t manualBit = manualFiltering ? PROPERTY_MANUAL_FILTERING : 0u;
+        const bool solverReady = load(solver, manualBit);
+        const bool lookReady = load(look, PROPERTY_LOOK | manualBit);
         return solverReady && lookReady;
     }
 
@@ -446,22 +488,31 @@ struct FluidSimulator::Impl {
 
     // --- targets ---
 
-    TargetPtr makeTarget(int w, int h, ColorFormat format, bool linear, const char* label){
+    // optional: a bloom or sunrays target (the fluid draws without it)
+    TargetPtr makeTarget(int w, int h, ColorFormat format, bool linear, const char* label, bool optional = false){
         TargetPtr target = std::make_unique<FluidTarget>();
-        if (!target->create(w, h, format, linear, label)){
-            error = std::string("the fluid could not make its ") + label + " target (" + std::to_string(w) + " x " + std::to_string(h) + ")";
+        const uint32_t off = disabledFeatures();
+        const bool refused = (off & FLUID_TEST_FAIL_TARGETS) || (optional && (off & FLUID_TEST_FAIL_OPTIONAL_TARGETS));
+        if (refused || !target->create(w, h, format, linear, label)){
+            stats.targetFailures++;
+            const std::string what = std::string("the fluid could not make its ") + label + " target (" + std::to_string(w) + " x " + std::to_string(h) + ")";
+            if (optional)
+                optionalFailure = what;
+            else
+                error = what;
             return nullptr;
         }
         clear(*target);
+        outputDirty = true;
         return target;
     }
 
     // a target of that kind, cleared when it is made
-    bool ensureTarget(TargetPtr& target, int w, int h, ColorFormat format, bool linear, const char* label){
+    bool ensureTarget(TargetPtr& target, int w, int h, ColorFormat format, bool linear, const char* label, bool optional = false){
         if (target && target->matches(w, h, format, linear))
             return true;
         target.reset();
-        target = makeTarget(w, h, format, linear, label);
+        target = makeTarget(w, h, format, linear, label, optional);
         return (bool)target;
     }
 
@@ -504,10 +555,56 @@ struct FluidSimulator::Impl {
         curl.reset();
         destroyBloom();
         destroySunrays();
-        if (output.isCreated())
-            output.destroy();
+        if (output->isCreated())
+            output->destroy();
         outputWidth = 0;
         outputHeight = 0;
+    }
+
+    // the bloom chain (his initBloomFramebuffers) at that size; false: some level could not
+    // be made (the chain is then left empty)
+    bool makeBloom(const FluidSimulationComponent& c, Size res){
+        if (!ensureTarget(bloom, res.width, res.height, ColorFormat::RGBA16F, true, "fluid bloom", true))
+            return false;
+        std::vector<Size> levels;
+        for (unsigned int i = 0; i < std::min(c.bloomIterations, 16u); i++){
+            Size level;
+            level.width = res.width >> (i + 1);
+            level.height = res.height >> (i + 1);
+            if (level.width < 2 || level.height < 2)
+                break;
+            levels.push_back(level);
+        }
+        bool same = levels.size() == bloomDown.size() && bloomUp.size() + (levels.empty() ? 0 : 1) == levels.size();
+        for (size_t i = 0; same && i < levels.size(); i++)
+            same = bloomDown[i]->width == levels[i].width && bloomDown[i]->height == levels[i].height;
+        if (same)
+            return true;
+        bloomDown.clear();
+        bloomUp.clear();
+        outputDirty = true;
+        for (size_t i = 0; i < levels.size(); i++){
+            TargetPtr down = makeTarget(levels[i].width, levels[i].height, ColorFormat::RGBA16F, true, "fluid bloom level", true);
+            if (!down)
+                return false;
+            bloomDown.push_back(std::move(down));
+            // the sum of the way up at this level (not the smallest)
+            if (i + 1 < levels.size()){
+                TargetPtr up = makeTarget(levels[i].width, levels[i].height, ColorFormat::RGBA16F, true, "fluid bloom up", true);
+                if (!up)
+                    return false;
+                bloomUp.push_back(std::move(up));
+            }
+        }
+        return true;
+    }
+
+    // the key of a set of target sizes and formats (what failed is not tried again for it)
+    static uint64_t sizeKey(std::initializer_list<int> values){
+        uint64_t h = 14695981039346656037ull;
+        for (int value : values)
+            h = fnvValue(h, value);
+        return h == 0 ? 1 : h;
     }
 
     bool ensureTargets(const FluidSimulationComponent& c, const Caps& caps){
@@ -520,10 +617,66 @@ struct FluidSimulator::Impl {
         const ColorFormat sunraysFormat = caps.filterR ? ColorFormat::R16F : (caps.filterRG ? ColorFormat::RG16F : ColorFormat::RGBA16F);
         compact = velocityFormat == ColorFormat::RG16F && scalarFormat == ColorFormat::R16F;
 
-        const Size simSize = resolutionOf(c.simResolution, aspect);
-        const Size dyeSize = resolutionOf(c.dyeResolution, aspect);
+        const int limit = maxSide();
+        const Size simSize = resolutionOf(c.simResolution, aspect, limit);
+        const Size dyeSize = resolutionOf(c.dyeResolution, aspect, limit);
         const bool keep = started;
 
+        // the required targets: a size that failed waits before it is tried again
+        const uint64_t requiredKey = sizeKey({simSize.width, simSize.height, dyeSize.width, dyeSize.height, (int)velocityFormat,
+                                              (int)scalarFormat, linear ? 1 : 0});
+        if (requiredKey == requiredFailedKey && requiredRetryIn > 0){
+            requiredRetryIn--;
+            error = requiredError;
+            return false;
+        }
+        if (!ensureRequired(simSize, dyeSize, velocityFormat, scalarFormat, linear, keep)){
+            requiredFailedKey = requiredKey;
+            requiredRetryIn = REQUIRED_RETRY_FRAMES;
+            requiredError = error;
+            return false;
+        }
+        requiredFailedKey = 0;
+
+        // the bloom chain, only while it is drawn; a size that failed stays off
+        const Size bloomSize = resolutionOf(c.bloomResolution, aspect, limit);
+        const uint64_t bloomKey = sizeKey({bloomSize.width, bloomSize.height, (int)std::min(c.bloomIterations, 16u)});
+        if (c.bloom && !manual && bloomKey != bloomFailedKey){
+            if (!makeBloom(c, bloomSize)){
+                destroyBloom();
+                bloomFailedKey = bloomKey;
+                bloomFailure = "bloom is off: " + optionalFailure;
+                outputDirty = true;
+            }
+        }else if (bloom || !bloomDown.empty()){
+            destroyBloom();
+            outputDirty = true;
+        }
+        if (c.bloom && !manual && bloomKey == bloomFailedKey)
+            degraded = bloomFailure;
+
+        // the sunrays (his initSunraysFramebuffers); the mask is drawn into the dye's write image
+        const Size sunraysSize = resolutionOf(c.sunraysResolution, aspect, limit);
+        const uint64_t sunraysKey = sizeKey({sunraysSize.width, sunraysSize.height, (int)sunraysFormat});
+        if (c.sunrays && !manual && sunraysKey != sunraysFailedKey){
+            if (!ensureTarget(sunrays, sunraysSize.width, sunraysSize.height, sunraysFormat, true, "fluid sunrays", true) ||
+                !ensureTarget(sunraysTemp, sunraysSize.width, sunraysSize.height, sunraysFormat, true, "fluid sunrays blur", true)){
+                destroySunrays();
+                sunraysFailedKey = sunraysKey;
+                sunraysFailure = "sunrays are off: " + optionalFailure;
+                outputDirty = true;
+            }
+        }else if (sunrays || sunraysTemp){
+            destroySunrays();
+            outputDirty = true;
+        }
+        if (c.sunrays && !manual && sunraysKey == sunraysFailedKey)
+            degraded += (degraded.empty() ? "" : "; ") + sunraysFailure;
+        return true;
+    }
+
+    // the fields and the output; false (error set) when one could not be made
+    bool ensureRequired(Size simSize, Size dyeSize, ColorFormat velocityFormat, ColorFormat scalarFormat, bool linear, bool keep){
         if (!ensurePair(dye, dyeSize.width, dyeSize.height, ColorFormat::RGBA16F, linear, keep, "fluid dye"))
             return false;
         if (!ensurePair(velocity, simSize.width, simSize.height, velocityFormat, linear, keep, "fluid velocity"))
@@ -536,61 +689,10 @@ struct FluidSimulator::Impl {
             !ensurePair(pressure, simSize.width, simSize.height, scalarFormat, false, false, "fluid pressure"))
             return false;
 
-        // the bloom chain (his initBloomFramebuffers), only while it is drawn
-        if (c.bloom && !manual){
-            const Size res = resolutionOf(c.bloomResolution, aspect);
-            if (!ensureTarget(bloom, res.width, res.height, ColorFormat::RGBA16F, true, "fluid bloom"))
-                return false;
-            std::vector<Size> levels;
-            for (unsigned int i = 0; i < std::min(c.bloomIterations, 16u); i++){
-                Size level;
-                level.width = res.width >> (i + 1);
-                level.height = res.height >> (i + 1);
-                if (level.width < 2 || level.height < 2)
-                    break;
-                levels.push_back(level);
-            }
-            bool same = levels.size() == bloomDown.size();
-            for (size_t i = 0; same && i < levels.size(); i++)
-                same = bloomDown[i]->width == levels[i].width && bloomDown[i]->height == levels[i].height;
-            if (!same){
-                bloomDown.clear();
-                bloomUp.clear();
-                for (size_t i = 0; i < levels.size(); i++){
-                    TargetPtr down = makeTarget(levels[i].width, levels[i].height, ColorFormat::RGBA16F, true, "fluid bloom level");
-                    if (!down)
-                        return false;
-                    bloomDown.push_back(std::move(down));
-                    // the sum of the way up at this level (not the smallest)
-                    if (i + 1 < levels.size()){
-                        TargetPtr up = makeTarget(levels[i].width, levels[i].height, ColorFormat::RGBA16F, true, "fluid bloom up");
-                        if (!up)
-                            return false;
-                        bloomUp.push_back(std::move(up));
-                    }
-                }
-                outputDirty = true;
-            }
-        }else if (bloom){
-            destroyBloom();
-            outputDirty = true;
-        }
-
-        // the sunrays (his initSunraysFramebuffers); the mask is drawn into the dye's write image
-        if (c.sunrays && !manual){
-            const Size res = resolutionOf(c.sunraysResolution, aspect);
-            if (!ensureTarget(sunrays, res.width, res.height, sunraysFormat, true, "fluid sunrays") ||
-                !ensureTarget(sunraysTemp, res.width, res.height, sunraysFormat, true, "fluid sunrays blur"))
-                return false;
-        }else if (sunrays){
-            destroySunrays();
-            outputDirty = true;
-        }
-
         // the output: RGBA8 at the dye's size, the same Framebuffer object (a new version)
-        if (!output.isCreated() || outputWidth != dyeSize.width || outputHeight != dyeSize.height){
-            if (output.isCreated())
-                output.destroy();
+        if (!output->isCreated() || outputWidth != dyeSize.width || outputHeight != dyeSize.height){
+            if (output->isCreated())
+                output->destroy();
             FramebufferDesc desc;
             desc.width = dyeSize.width;
             desc.height = dyeSize.height;
@@ -600,7 +702,11 @@ struct FluidSimulator::Impl {
             desc.minFilter = desc.magFilter = TextureFilter::LINEAR;
             desc.wrapU = desc.wrapV = TextureWrap::CLAMP_TO_EDGE;
             desc.label = "fluid output";
-            if (!output.create(desc)){
+            const bool refused = (disabledFeatures() & FLUID_TEST_FAIL_TARGETS) != 0;
+            if (refused || !output->create(desc)){
+                if (output->isCreated())
+                    output->destroy();
+                stats.targetFailures++;
                 outputWidth = outputHeight = 0;
                 error = "the fluid could not make its output (" + std::to_string(dyeSize.width) + " x " + std::to_string(dyeSize.height) + ")";
                 return false;
@@ -655,6 +761,7 @@ struct FluidSimulator::Impl {
         stats = FluidStats();
         stats.seed = seed;
         stats.passesLastFrame = previous.passesLastFrame;
+        stats.targetFailures = previous.targetFailures;
         accumulator = 0.0;
         colorTimer = 0.0;
         for (auto& entry : pointers)
@@ -831,8 +938,14 @@ struct FluidSimulator::Impl {
         const float alphaMode = !c.transparent ? 0.0f : (c.output == FluidOutput::SCREEN ? 1.0f : 2.0f);
         set4(block.color, c.backColor.x, c.backColor.y, c.backColor.z, alphaMode);
         set4(block.flags, shadingOn ? 1.0f : 0.0f, bloomOn ? 1.0f : 0.0f, sunraysOn ? 1.0f : 0.0f, 0.0f);
-        draw(look, output, outputWidth, outputHeight, ColorFormat::RGBA, LOOK_DISPLAY, block, &dye.read().texture(),
-             bloomOn ? &bloom->texture() : nullptr, sunraysOn ? &sunrays->texture() : nullptr);
+        if (manual){
+            // (the manual filtering look reads the dye, a half float it cannot filter, as its
+            // third image: fluid.frag; no bloom nor sunrays then)
+            draw(look, *output, outputWidth, outputHeight, ColorFormat::RGBA, LOOK_DISPLAY, block, nullptr, nullptr, &dye.read().texture());
+        }else{
+            draw(look, *output, outputWidth, outputHeight, ColorFormat::RGBA, LOOK_DISPLAY, block, &dye.read().texture(),
+                 bloomOn ? &bloom->texture() : nullptr, sunraysOn ? &sunrays->texture() : nullptr);
+        }
         stats.shadingActive = shadingOn;
         stats.bloomActive = bloomOn;
         stats.sunraysActive = sunraysOn;
@@ -852,13 +965,44 @@ struct FluidSimulator::Impl {
         h = fnvValue(h, c.bloomThreshold);
         h = fnvValue(h, c.bloomSoftKnee);
         h = fnvValue(h, c.sunraysWeight);
+        // (the targets these size are remade when they change: drawn again, also paused)
+        h = fnvValue(h, c.bloomIterations);
+        h = fnvValue(h, c.bloomResolution);
+        h = fnvValue(h, c.sunraysResolution);
         return h;
     }
 
+    // the settings of a component (its queues left out), sanitized
+    static FluidSimulationComponent settingsOf(FluidSimulationComponent& c){
+        std::vector<FluidSplat> splats;
+        std::vector<unsigned int> bursts;
+        splats.swap(c.pendingSplats);
+        bursts.swap(c.pendingBursts);
+        FluidSimulationComponent settings = c;
+        splats.swap(c.pendingSplats);
+        bursts.swap(c.pendingBursts);
+        FluidSimulator::sanitizeSettings(settings);
+        return settings;
+    }
+
+    static bool usable(const FluidSplat& s){
+        return std::isfinite(s.position.x) && std::isfinite(s.position.y) && std::isfinite(s.velocity.x) && std::isfinite(s.velocity.y) &&
+               std::isfinite(s.color.x) && std::isfinite(s.color.y) && std::isfinite(s.color.z) && std::isfinite(s.radius) && s.radius >= 0.0f;
+    }
+
     // one frame: (re)make, restart, splats, steps, display. False before anything changed
-    bool frame(FluidSimulationComponent& c, float aspectRatio, double dt, int forcedSteps, bool clock){
+    bool frame(FluidSimulationComponent& component, float aspectRatio, double dt, int forcedSteps, bool clock){
         stats.passesLastFrame = 0;
         error.clear();
+        degraded.clear();
+        if (!std::isfinite(dt) || dt < 0.0)
+            dt = 0.0;
+        forcedSteps = std::max(forcedSteps, 0);
+        // (what scripts queued while the fluid could not run: the latest ones)
+        trimFluidQueue(component.pendingSplats, FLUID_MAX_PENDING_SPLATS);
+        trimFluidQueue(component.pendingBursts, FLUID_MAX_PENDING_BURSTS);
+        const FluidSimulationComponent c = settingsOf(component);
+
         const Caps caps = currentCaps();
         if (!caps.floatTargets){
             error = "this device cannot render to half-float (RGBA16F) targets, which the fluid simulation needs";
@@ -870,46 +1014,50 @@ struct FluidSimulator::Impl {
         if (!ensureTargets(c, caps))
             return false;
 
-        if (c.needReset || !started){
+        if (component.needReset || !started){
             resetState(c);
-            c.needReset = false;
+            component.needReset = false;
         }
         if (needClear){
             clearFields();
             needClear = false;
         }
 
-        const double h = 1.0 / (double)std::max(c.simulationRate, 1.0f);
+        const double h = 1.0 / (double)c.simulationRate;
         updateColors(c, clock ? dt : (double)forcedSteps * h);
 
         // the queued splats, also while paused (his applyInputs)
         if (startBurst >= 0){
-            const unsigned int count = (unsigned int)startBurst;
+            const unsigned int count = std::min((unsigned int)startBurst, FLUID_MAX_BURST_SPLATS);
             startBurst = -1;
             multipleSplats(c, count);
         }
-        for (unsigned int count : c.pendingBursts)
-            multipleSplats(c, count);
-        c.pendingBursts.clear();
-        for (const FluidSplat& s : c.pendingSplats)
-            splat(s.position, s.velocity, s.color, s.radius > 0.0f ? s.radius : c.splatRadius);
-        c.pendingSplats.clear();
+        for (unsigned int count : component.pendingBursts)
+            multipleSplats(c, std::min(count, FLUID_MAX_BURST_SPLATS));
+        component.pendingBursts.clear();
+        for (const FluidSplat& s : component.pendingSplats){
+            // (a raw write may hold anything: a splat that is not finite is dropped)
+            if (usable(s))
+                splat(s.position, s.velocity, s.color, s.radius > 0.0f ? s.radius : c.splatRadius);
+        }
+        component.pendingSplats.clear();
 
         // the clock: whole fixed steps, the substep cap dropping the rest
         int clockSteps = 0;
         if (clock && !c.paused && dt > 0.0){
             accumulator += dt;
-            clockSteps = (int)std::floor(accumulator / h + 1e-9);
-            const int cap = (int)std::max(c.maxSubsteps, 1u);
-            if (clockSteps > cap){
+            const double due = std::floor(accumulator / h + 1e-9);
+            const int cap = (int)c.maxSubsteps;
+            if (!(due <= (double)cap)){
                 clockSteps = cap;
                 accumulator = 0.0;
             }else{
+                clockSteps = (int)due;
                 accumulator = std::max(0.0, accumulator - (double)clockSteps * h);
             }
         }
-        const int steps = clockSteps + std::max(forcedSteps, 0) + (int)std::min(c.pendingSteps, 100000u);
-        c.pendingSteps = 0;
+        const int steps = clockSteps + std::min(forcedSteps, 100000) + (int)std::min(component.pendingSteps, 100000u);
+        component.pendingSteps = 0;
 
         // the pointers' strokes: spread over the frame's steps, or one splat now when nothing
         // steps (paused, his splats while paused; no time, a paused scene or the editor's
@@ -963,11 +1111,16 @@ struct FluidSimulator::Impl {
         stats.seed = seed;
         stats.manualFiltering = manual;
         stats.compactFormats = compact;
+        error = degraded;
         return true;
     }
 
     void releaseAll(){
         destroyTargets();
+        // (another device, or the same one later: every size is tried again)
+        stats.targetFailures = 0;
+        bloomFailedKey = sunraysFailedKey = requiredFailedKey = 0;
+        requiredRetryIn = 0;
         unload(solver);
         unload(look);
         if (placeholderCreated)
@@ -1001,11 +1154,59 @@ bool FluidSimulator::isSupported(std::string* reason){
 }
 
 bool FluidSimulator::update(FluidSimulationComponent& component, float aspectRatio, double dt){
-    return impl->frame(component, aspectRatio, std::max(dt, 0.0), 0, true);
+    return impl->frame(component, aspectRatio, dt, 0, true);
 }
 
 void FluidSimulator::reset(const FluidSimulationComponent& component){
-    impl->resetState(component);
+    FluidSimulationComponent settings = component;
+    sanitizeSettings(settings);
+    impl->resetState(settings);
+}
+
+void FluidSimulator::sanitizeSettings(FluidSimulationComponent& c){
+    const FluidSimulationComponent d;
+    // non-finite: the default; then >= 0, or > 0 (else the default) where it divides
+    auto nonNegative = [](float& value, float fallback){
+        if (!std::isfinite(value))
+            value = fallback;
+        value = std::max(value, 0.0f);
+    };
+    auto positive = [](float& value, float fallback, float most){
+        if (!std::isfinite(value) || value <= 0.0f)
+            value = fallback;
+        value = std::min(value, most);
+    };
+    auto side = [](unsigned int& value){
+        value = std::clamp(value, 1u, (unsigned int)MAX_SIDE);
+    };
+    if (!std::isfinite(c.aspectRatio) || c.aspectRatio < 0.0f)
+        c.aspectRatio = 0.0f;
+    side(c.simResolution);
+    side(c.dyeResolution);
+    side(c.bloomResolution);
+    side(c.sunraysResolution);
+    nonNegative(c.densityDissipation, d.densityDissipation);
+    nonNegative(c.velocityDissipation, d.velocityDissipation);
+    nonNegative(c.pressure, d.pressure);
+    c.pressureIterations = std::min(c.pressureIterations, 1000u);
+    nonNegative(c.curl, d.curl);
+    nonNegative(c.gradientScale, d.gradientScale);
+    positive(c.simulationRate, d.simulationRate, 10000.0f);
+    c.maxSubsteps = std::clamp(c.maxSubsteps, 1u, 1000u);
+    nonNegative(c.timeScale, d.timeScale);
+    positive(c.splatRadius, d.splatRadius, 1.0e6f);
+    nonNegative(c.splatForce, d.splatForce);
+    nonNegative(c.colorUpdateSpeed, d.colorUpdateSpeed);
+    c.colorUpdateSpeed = std::min(c.colorUpdateSpeed, 1.0e6f);
+    c.randomSplatCount = std::min(c.randomSplatCount, FLUID_MAX_BURST_SPLATS);
+    nonNegative(c.backColor.x, d.backColor.x);
+    nonNegative(c.backColor.y, d.backColor.y);
+    nonNegative(c.backColor.z, d.backColor.z);
+    c.bloomIterations = std::min(c.bloomIterations, 16u);
+    nonNegative(c.bloomIntensity, d.bloomIntensity);
+    nonNegative(c.bloomThreshold, d.bloomThreshold);
+    nonNegative(c.bloomSoftKnee, d.bloomSoftKnee);
+    nonNegative(c.sunraysWeight, d.sunraysWeight);
 }
 
 void FluidSimulator::step(FluidSimulationComponent& component, float aspectRatio, int steps){
@@ -1017,6 +1218,8 @@ void FluidSimulator::step(FluidSimulationComponent& component, float aspectRatio
 }
 
 void FluidSimulator::pointerDown(int id, Vector2 position){
+    if (!std::isfinite(position.x) || !std::isfinite(position.y))
+        return;
     Impl::Pointer& pointer = impl->pointers[id];
     pointer.down = true;
     pointer.position = position;
@@ -1026,7 +1229,7 @@ void FluidSimulator::pointerDown(int id, Vector2 position){
 
 void FluidSimulator::pointerMove(int id, Vector2 position){
     auto it = impl->pointers.find(id);
-    if (it == impl->pointers.end() || !it->second.down)
+    if (it == impl->pointers.end() || !it->second.down || !std::isfinite(position.x) || !std::isfinite(position.y))
         return;
     it->second.position = position;
 }
@@ -1042,7 +1245,7 @@ void FluidSimulator::pointerCancelAll(){
 }
 
 Framebuffer* FluidSimulator::getOutputFramebuffer(){
-    return &impl->output;
+    return impl->output.get();
 }
 
 Texture& FluidSimulator::getOutputTexture(){
@@ -1071,7 +1274,7 @@ void FluidSimulator::release(){
 
 bool FluidSimulator::drawComposite(const PipelineState& state, bool flipY){
     Impl::Program& look = impl->look;
-    if (!look.loaded || !impl->output.isCreated())
+    if (!look.loaded || !impl->output->isCreated())
         return false;
     PipelineState composite = state;
     composite.blend = BlendMode::PREMULTIPLIED;
@@ -1082,7 +1285,7 @@ bool FluidSimulator::drawComposite(const PipelineState& state, bool flipY){
         return false;
     FluidBlock block{};
     set4(block.target, 1.0f, 1.0f, (float)LOOK_COMPOSITE, flipY ? 1.0f : 0.0f);
-    impl->bind(look, 0, &impl->output.getRender().getColorTexture());
+    impl->bind(look, 0, &impl->output->getRender().getColorTexture());
     impl->bind(look, 1, nullptr);
     impl->bind(look, 2, nullptr);
     look.object.applyUniformBlock(look.blockSlot, sizeof(FluidBlock), &block);
@@ -1092,4 +1295,8 @@ bool FluidSimulator::drawComposite(const PipelineState& state, bool flipY){
 
 void FluidSimulator::setDisabledFeaturesForTesting(uint32_t features){
     disabledFeatures() = features;
+}
+
+void FluidSimulator::setMaxTextureSizeForTesting(int size){
+    testMaxTextureSize() = std::max(size, 0);
 }

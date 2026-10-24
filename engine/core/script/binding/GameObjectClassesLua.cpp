@@ -696,6 +696,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("compactFormats", &FluidStats::compactFormats)
         .addProperty("outputWidth", &FluidStats::outputWidth)
         .addProperty("outputHeight", &FluidStats::outputHeight)
+        .addProperty("targetFailures", &FluidStats::targetFailures)
         .endClass();
 
     // Pavel Dobryakov's WebGL fluid on a GameObject (GameObject > Effects > Fluid Simulation)

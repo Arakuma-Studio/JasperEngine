@@ -23,6 +23,9 @@ namespace jasperengine{
 
             std::shared_ptr<TextureRender> render = NULL;
             Framebuffer* framebuffer;
+            // keeps a shared framebuffer alive while this texture shows it (one made with
+            // std::make_shared, see Framebuffer); empty for the others
+            std::shared_ptr<Framebuffer> framebufferOwner;
             unsigned long lastFramebufferVersion = 0;
 
             TextureType type;

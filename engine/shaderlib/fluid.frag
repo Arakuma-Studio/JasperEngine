@@ -14,7 +14,17 @@ precision highp int;
 // (the engine's texture convention, framebuffer textures are top-left origin everywhere).
 //
 // FLUID_MANUAL_FILTERING: the device cannot filter half floats linearly, the advection
-// interpolates itself (the solver program only).
+// interpolates itself (the solver program). The half floats are then declared unfilterable
+// images read through non-filtering samplers (sokol validates a filterable format for a plain
+// texture2D): the solver's two images, and the look's third, through which its display reads
+// the dye (bloom and sunrays are off then; its first image stays the composite's RGBA8 output).
+// The annotations name textures only these variants have (they apply wherever the name is):
+// @image_sample_type u_fluidRaw0 unfilterable_float
+// @sampler_type u_fluidRaw0_smp nonfiltering
+// @image_sample_type u_fluidRaw1 unfilterable_float
+// @sampler_type u_fluidRaw1_smp nonfiltering
+// @image_sample_type u_fluidRaw2 unfilterable_float
+// @sampler_type u_fluidRaw2_smp nonfiltering
 
 #ifdef FLUID_LOOK
     in vec2 v_clip;
@@ -32,28 +42,53 @@ uniform u_fs_fluid {
     vec4 flags;     // display: x shading, y bloom, z sunrays (0 or 1)
 } fluid;
 
-uniform texture2D u_fluidTex0;
-uniform sampler u_fluidTex0_smp;
-uniform texture2D u_fluidTex1;
-uniform sampler u_fluidTex1_smp;
+#if defined(FLUID_MANUAL_FILTERING) && !defined(FLUID_LOOK)
+    uniform texture2D u_fluidRaw0;
+    uniform sampler u_fluidRaw0_smp;
+    uniform texture2D u_fluidRaw1;
+    uniform sampler u_fluidRaw1_smp;
+    #define FLUID_IMAGE0 sampler2D(u_fluidRaw0, u_fluidRaw0_smp)
+    #define FLUID_IMAGE1 sampler2D(u_fluidRaw1, u_fluidRaw1_smp)
+#else
+    uniform texture2D u_fluidTex0;
+    uniform sampler u_fluidTex0_smp;
+    uniform texture2D u_fluidTex1;
+    uniform sampler u_fluidTex1_smp;
+    #define FLUID_IMAGE0 sampler2D(u_fluidTex0, u_fluidTex0_smp)
+    #define FLUID_IMAGE1 sampler2D(u_fluidTex1, u_fluidTex1_smp)
+#endif
 #ifdef FLUID_LOOK
-    uniform texture2D u_fluidTex2;
-    uniform sampler u_fluidTex2_smp;
+    #ifdef FLUID_MANUAL_FILTERING
+        uniform texture2D u_fluidRaw2;
+        uniform sampler u_fluidRaw2_smp;
+        #define FLUID_IMAGE2 sampler2D(u_fluidRaw2, u_fluidRaw2_smp)
+    #else
+        uniform texture2D u_fluidTex2;
+        uniform sampler u_fluidTex2_smp;
+        #define FLUID_IMAGE2 sampler2D(u_fluidTex2, u_fluidTex2_smp)
+    #endif
 #endif
 
 vec4 tex0(vec2 uv){
-    return texture(sampler2D(u_fluidTex0, u_fluidTex0_smp), uv);
+    return texture(FLUID_IMAGE0, uv);
 }
 
 vec4 tex1(vec2 uv){
-    return texture(sampler2D(u_fluidTex1, u_fluidTex1_smp), uv);
+    return texture(FLUID_IMAGE1, uv);
 }
 
 #ifdef FLUID_LOOK
 
     vec4 tex2(vec2 uv){
-        return texture(sampler2D(u_fluidTex2, u_fluidTex2_smp), uv);
+        return texture(FLUID_IMAGE2, uv);
     }
+
+    // the image the display shows: tex0, or tex2 without linear filtering (see above)
+    #ifdef FLUID_MANUAL_FILTERING
+        #define FLUID_DISPLAY_SOURCE(uv) tex2(uv)
+    #else
+        #define FLUID_DISPLAY_SOURCE(uv) tex0(uv)
+    #endif
 
     // tex0: the image the pass reads; tex1: the level added (bloom up) or the bloom (display);
     // tex2: the sunrays (display)
@@ -121,12 +156,12 @@ void main(){
     }else if (pass == PASS_DISPLAY){
         // the output's first row is the fluid's top
         vec2 p = vec2(uv.x, 1.0 - uv.y);
-        vec3 c = tex0(p).rgb;
+        vec3 c = FLUID_DISPLAY_SOURCE(p).rgb;
         if (fluid.flags.x > 0.5){
-            vec3 l = tex0(p - vec2(texel.x, 0.0)).rgb;
-            vec3 r = tex0(p + vec2(texel.x, 0.0)).rgb;
-            vec3 t = tex0(p + vec2(0.0, texel.y)).rgb;
-            vec3 b = tex0(p - vec2(0.0, texel.y)).rgb;
+            vec3 l = FLUID_DISPLAY_SOURCE(p - vec2(texel.x, 0.0)).rgb;
+            vec3 r = FLUID_DISPLAY_SOURCE(p + vec2(texel.x, 0.0)).rgb;
+            vec3 t = FLUID_DISPLAY_SOURCE(p + vec2(0.0, texel.y)).rgb;
+            vec3 b = FLUID_DISPLAY_SOURCE(p - vec2(0.0, texel.y)).rgb;
             c *= fluidShadingDiffuse(l, r, t, b, texel);
         }
         bool useBloom = fluid.flags.y > 0.5;

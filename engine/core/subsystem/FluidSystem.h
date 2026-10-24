@@ -9,13 +9,14 @@
 // steps and draws them in RenderSystem's frame passes (before any camera pass, so cameras and
 // materials sample this frame's fluid), lends MATERIAL outputs to the entity's Sprite, Image or
 // Mesh at draw time (getMaterialTexture: the component data keeps its own texture, so nothing
-// of it is saved or becomes a prefab override), composites SCREEN outputs over the main
-// camera, and frees the GPU side on removal. An existing component.simulator (made by the
+// of it is saved or becomes a prefab override), draws SCREEN outputs in the main camera's
+// pass (over the scene, under the HTML UI documents), and frees the GPU side on removal. An existing component.simulator (made by the
 // GameObject wrapper or a texture link first) is the one used.
 
 #include "ecs/SubSystem.h"
 #include "component/FluidSimulationComponent.h"
 #include "math/Rect.h"
+#include "render/PipelineState.h"
 
 namespace jasperengine{
 
@@ -42,9 +43,12 @@ namespace jasperengine{
         // RenderSystem's frame passes: steps and draws every active fluid (once a frame)
         void renderFluids();
 
-        // RenderSystem, after a view's main camera and its post-processing: the SCREEN fluids
-        // over the view (target null: the swapchain; flipY: a target drawn Y-flipped, GL
-        // offscreen ones), premultiplied, in a pass of their own (none without such a fluid)
+        // RenderSystem, in the main camera's colour pass after the scene (before the HTML UI
+        // documents): the SCREEN fluids over the pass's viewport, premultiplied (target: the
+        // pass's formats; flipY: a target drawn Y-flipped, RenderSystem::isRenderingFlipped)
+        void drawScreen(const RenderTargetFormat& target, bool flipY);
+        // the same in a pass of its own over a target (null: the swapchain), e.g. after
+        // post-processing (none without such a fluid)
         void compositeScreen(FramebufferRender* target, const Rect& viewRect, bool flipY);
         bool hasScreenFluids() const;
 

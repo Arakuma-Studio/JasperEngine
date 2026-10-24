@@ -22,6 +22,8 @@ namespace jasperengine{
         bool renderR32F = false, blendR32F = false, filterR32F = false;
         bool renderRG16F = false, blendRG16F = false, filterRG16F = false;
         bool renderR16F = false, blendR16F = false, filterR16F = false;
+        // the largest side of a 2D texture (0: unknown)
+        int maxTextureSize2D = 0;
     };
 
     class JASPERENGINE_API SystemRender{
