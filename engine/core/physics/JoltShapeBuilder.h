@@ -106,8 +106,10 @@ namespace jasperengine {
         static JPH::JobSystemThreadPool& sharedPhysicsJobSystem();
 
         // The builders return null and set *error (when there is something to say) on failure.
+        // hullTolerance: how far a point may lie outside the hull Jolt builds (its default 1 mm,
+        // too coarse for a body a few millimetres thick)
         static JPH::ShapeRefC buildConvexHullShape(const std::vector<Vector3>& points, std::string* error,
-                                                   float maxConvexRadius = JPH::cDefaultConvexRadius);
+                                                   float maxConvexRadius = JPH::cDefaultConvexRadius, float hullTolerance = 1.0e-3f);
         static JPH::ShapeRefC buildMeshShape(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& indices,
                                              std::string* error);
         // The rendered terrain surface (MeshSystem::sampleTerrainSurface) in terrain-local space,

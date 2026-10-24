@@ -16,6 +16,7 @@
 #include "physics/PlacementWorld.h"
 #include "subsystem/MeshSystem.h"
 
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -191,7 +192,8 @@ TEST(PlacementWorldSettle, SphereRollsOffRamp) {
     EXPECT_EQ(world.getState(ball).shape, PlacementShapeKind::SPHERE);
 
     bool touchedRamp = false;
-    for (int i = 0; i < 360; i++) {
+    // 20 degrees, slowed by rolling resistance (0.2): about 1 m/s^2, off in 4 s
+    for (int i = 0; i < 480; i++) {
         world.step();
         const PlacementBodyState state = world.getState(ball);
         touchedRamp = touchedRamp || std::find(state.restingOn.begin(), state.restingOn.end(), ramp) != state.restingOn.end();
@@ -955,6 +957,94 @@ TEST(PlacementWorldColliders, BakeThenMoveIsDecomposedAtOnce) {
     EXPECT_FALSE(world.hasPendingDecompositions());
 }
 
+namespace {
+
+    // The order a bake's roots and a mover finish their decompositions in, polled every 2 ms
+    struct QueueRace {
+        TestScene t;
+        std::vector<Entity> baked;
+        Entity mover = NULL_ENTITY;
+        ConvexDecompositionCache cache{""};
+        PlacementWorldSettings settings;
+
+        QueueRace() {
+            // different rings: different geometry, so six keys
+            for (int i = 0; i < 6; i++) baked.push_back(t.torus(0.4f + 0.05f * i, 0.12f, Vector3(3.0f * i, 0, 0)));
+            mover = t.torus(0.75f, 0.12f, Vector3(-5, 0, 0));
+            t.resolve();
+            settings.decompositionCache = &cache;
+            settings.decompositionResolution = 100000;
+        }
+
+        // the moment (poll index) each root's parts were all cached
+        std::vector<int> finishOrder(const std::vector<Entity>& roots) {
+            std::vector<int> when(roots.size(), -1);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(300);
+            for (int poll = 0; std::chrono::steady_clock::now() < deadline; poll++) {
+                bool all = true;
+                for (size_t i = 0; i < roots.size(); i++) {
+                    if (when[i] < 0 && PlacementWorld::decompositionReady(&t.scene, roots[i], settings)) when[i] = poll;
+                    all = all && when[i] >= 0;
+                }
+                if (all) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            return when;
+        }
+    };
+
+}
+
+// A mover's decomposition goes ahead of a bake's queue (only the job running already finishes
+// first), and a part the bake queued already moves up when it becomes a mover's; the bake
+// itself runs first come, first served
+TEST(PlacementWorldColliders, MoversJumpTheBakeQueue) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    for (const bool alreadyQueued : {false, true}) {
+        SCOPED_TRACE(alreadyQueued ? "the mover's part queued by the bake" : "the mover's part new");
+        QueueRace race;
+        for (Entity e : race.baked) ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, e, race.settings), 1u);
+        if (alreadyQueued) {
+            ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, race.mover, race.settings), 1u);
+        }
+        PlacementWorld world(&race.t.scene, race.settings);
+        ASSERT_TRUE(world.addMover(race.mover));
+        ASSERT_TRUE(world.hasPendingDecompositions());
+
+        std::vector<Entity> roots = race.baked;
+        roots.push_back(race.mover);
+        const std::vector<int> when = race.finishOrder(roots);
+        const int moverDone = when.back();
+        ASSERT_GE(moverDone, 0);
+        int bakedBefore = 0;
+        for (size_t i = 0; i + 1 < when.size(); i++) {
+            ASSERT_GE(when[i], 0);
+            if (when[i] < moverDone) bakedBefore++;
+        }
+        EXPECT_LE(bakedBefore, 1);   // the one that was running
+        for (size_t i = 1; i + 1 < when.size(); i++) EXPECT_LE(when[i - 1], when[i]) << i;   // the bake in order
+        world.refreshShapes();
+        EXPECT_EQ(world.getState(race.mover).shape, PlacementShapeKind::DECOMPOSED);
+    }
+}
+
+// A bake for a caller that waits (an agent's decompose "always") can be urgent too
+TEST(PlacementWorldColliders, UrgentBakesJumpTheQueue) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    QueueRace race;
+    for (Entity e : race.baked) ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, e, race.settings), 1u);
+    ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, race.mover, race.settings, nullptr, true), 1u);
+    std::vector<Entity> roots = race.baked;
+    roots.push_back(race.mover);
+    const std::vector<int> when = race.finishOrder(roots);
+    int bakedBefore = 0;
+    for (size_t i = 0; i + 1 < when.size(); i++) {
+        ASSERT_GE(when[i], 0);
+        if (when[i] < when.back()) bakedBefore++;
+    }
+    EXPECT_LE(bakedBefore, 1);
+}
+
 TEST(PlacementWorldColliders, BakeSkipsPrimitivesAndRefusals) {
     TestScene t;
     const Entity cube = t.box(Vector3(1, 1, 1), Vector3(0, 0, 0));
@@ -1671,20 +1761,114 @@ TEST(PlacementWorldReview, SimplificationErrorIsAbsolute) {
     for (size_t i = 0; i < full.size(); i++) EXPECT_NEAR(simplified[i], full[i], 0.012f) << i;
 }
 
-// Run on its own in a fresh process (below): a world made before any Scene, so before anything
-// else set Jolt up
-TEST(PlacementWorldReview, FirstInAFreshProcess) {
-    if (!std::getenv("PLACEMENT_WORLD_FRESH_PROCESS")) GTEST_SKIP() << "run by WorldBeforeAnySceneInAFreshProcess";
-    PlacementWorld world(nullptr, PlacementWorldSettings());
-    world.step();
-    EXPECT_EQ(world.getStepCount(), 1u);
-    EXPECT_TRUE(world.allAsleep());
+// The fixture's pencil (Plates.scene): a 2 cm, 12-sided cylinder scaled 0.35 across, so 7 mm
+// thick, lying on a 20 cm slab. Jolt's default 1 mm hull tolerance cut its section lopsided
+// (30% of its volume and its centre of mass 2 mm off), and it sank through the slab.
+TEST(PlacementWorldReview, ThinScaledCylinderRestsOnTheSlab) {
+    TestScene t;
+    const Entity slab = t.box(Vector3(1, 1, 1), Vector3(0, -0.1f, 0));
+    t.setScale(slab, Vector3(12, 0.2f, 12));
+    const Entity group = t.entity(Vector3(0, 0, 0));
+    Primitive& pencil = t.primitive(Vector3(0.6f, 0.3f, -0.2f), group);
+    pencil.createCylinder(0.01f, 0.18f, 12, 18);
+    t.setScale(pencil.getEntity(), Vector3(0.35f, 1, 0.35f));
+    t.setRotation(pencil.getEntity(), Quaternion(0.70710677f, 0, 0, 0.70710677f));
+    t.resolve();
+
+    PlacementWorldSettings settings;
+    PlacementWorld world(&t.scene, settings);
+    ASSERT_TRUE(world.addMover(pencil.getEntity()));
+    AABB region = world.getMoversBounds();
+    region = AABB(region.getMinimum() - Vector3(2, 2, 2), region.getMaximum() + Vector3(2, 2, 2));
+    settings.killY = region.getMinimum().y - 50.0f;
+    world.setSettings(settings);
+    world.ensureContext(region);
+    ASSERT_GT(stepUntilAsleep(world, 1200), 0);
+    const PlacementBodyState state = world.getState(pencil.getEntity());
+    EXPECT_FALSE(state.fellOut);
+    EXPECT_NEAR(state.pose.position.y, 0.0035f, 1e-3f);
+    EXPECT_NEAR(world.getMoversBounds().getMinimum().y, 0.0f, 1e-3f);
+    EXPECT_EQ(state.restingOn, std::vector<Entity>{slab});
 }
 
+// The fixture's six 12 mm plates (Plates.scene), dropped tilted into a pile: with the Balanced
+// preset's 8 / 2 solver iterations the pile sank 6 mm into itself; thin bodies get more
+TEST(PlacementWorldReview, ThinPlatesPileWithoutSinking) {
+    TestScene t;
+    const Entity slab = t.box(Vector3(1, 1, 1), Vector3(0, -0.1f, 0));
+    t.setScale(slab, Vector3(12, 0.2f, 12));
+    const Entity group = t.entity(Vector3(0, 0, 0));
+    const float poses[6][7] = {{-0.05f, 0.4f, 0, 1, 0, 0, 0},
+                               {0, 0.65f, 0.04f, 0.96186835f, 0.07857748f, 0.25500378f, -0.06006758f},
+                               {0.05f, 0.9f, 0, 0.78045887f, -0.13537884f, 0.5958951f, 0.13215727f},
+                               {-0.05f, 1.15f, 0.04f, 0.9811203f, 0.17068131f, 0.09033051f, 0.010551917f},
+                               {0, 1.4f, 0, 0.49928352f, 0.11380611f, 0.8579609f, -0.04083237f},
+                               {0.05f, 1.65f, 0.04f, 0.17505363f, -0.20864053f, 0.9621182f, 0.012403287f}};
+    std::vector<Entity> plates;
+    for (const auto& p : poses) {
+        plates.push_back(t.box(Vector3(1, 1, 1), Vector3(p[0], p[1], p[2]), group));
+        t.setScale(plates.back(), Vector3(0.5f, 0.012f, 0.35f));
+        t.setRotation(plates.back(), Quaternion(p[3], p[4], p[5], p[6]));
+    }
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    for (Entity e : plates) ASSERT_TRUE(world.addMover(e));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 1200), 0);
+    EXPECT_LT(world.getMaxPenetration(), 1e-3f);
+    for (const PlacementBodyState& state : world.getStates()) {
+        EXPECT_LT(state.maxPenetration, 1e-3f) << state.entity;
+        EXPECT_GT(state.pose.position.y, 0.0055f) << state.entity;   // none sunk into the slab
+    }
+    (void)slab;
+}
+
+// Rolling resistance: a ball comes to rest on a 5 degree slope, and still rolls down 30 degrees
+TEST(PlacementWorldReview, BallsStopOnGentleSlopesAndRollDownSteepOnes) {
+    for (const float degrees : {5.0f, 30.0f}) {
+        TestScene t;
+        const Entity slope = t.box(Vector3(12, 0.2f, 4), Vector3(0, 0, 0));
+        t.setRotation(slope, axisAngle(Vector3(0, 0, 1), degrees * DEG));
+        // just above the slope's surface, 2 m up its length
+        const float angle = degrees * DEG;
+        const Vector3 normal(-std::sin(angle), std::cos(angle), 0);
+        const Vector3 along(std::cos(angle), std::sin(angle), 0);
+        const Entity ball = t.sphere(0.2f, along * 2.0f + normal * (0.1f + 0.21f));
+        t.resolve();
+
+        PlacementWorld world(&t.scene, PlacementWorldSettings());
+        ASSERT_TRUE(world.addMover(ball));
+        world.ensureContext(everywhere);
+        const Vector3 start = world.getState(ball).pose.position;
+        if (degrees < 10.0f) {
+            ASSERT_GT(stepUntilAsleep(world, 1200), 0) << degrees;
+            const PlacementBodyState state = world.getState(ball);
+            EXPECT_EQ(state.restingOn, std::vector<Entity>{slope});
+            EXPECT_LT((state.pose.position - start).length(), 0.3f);
+        } else {
+            for (int i = 0; i < 180; i++) world.step();
+            const PlacementBodyState state = world.getState(ball);
+            EXPECT_FALSE(state.asleep);
+            // g (sin 30 - 0.2) / 1.4 = 2.1 m/s^2 down the slope: over 2 m in 1.5 s
+            EXPECT_LT(state.pose.position.x, start.x - 1.7f);
+            EXPECT_GT(state.angularVelocity.length(), 10.0f);   // rolling, not sliding
+        }
+    }
+}
+
+// A world made before any Scene, so before anything else set Jolt up, in a process of its own
+// (jasperengine-placement-fresh-process, built next to this binary): this one can't, as the
+// editor's static App builds a Scene before main
 TEST(PlacementWorldReview, WorldBeforeAnySceneInAFreshProcess) {
-    const std::string command = "PLACEMENT_WORLD_FRESH_PROCESS=1 /proc/" + std::to_string(::getpid()) +
-                                "/exe --gtest_filter=PlacementWorldReview.FirstInAFreshProcess > /dev/null 2>&1";
-    EXPECT_EQ(std::system(command.c_str()), 0);
+    char self[4096] = {};
+    const ssize_t length = ::readlink("/proc/self/exe", self, sizeof(self) - 1);
+    ASSERT_GT(length, 0);
+    std::string program(self, (size_t)length);
+    program = program.substr(0, program.rfind('/') + 1) + "jasperengine-placement-fresh-process";
+    const int status = std::system((program + " > /dev/null 2>&1").c_str());
+    ASSERT_TRUE(WIFEXITED(status)) << "it crashed";
+    EXPECT_EQ(WEXITSTATUS(status), 0) << "2: Jolt was set up before main there too, nothing was checked";
 }
 
 TEST(PlacementWorldReview, OverflowingContactBuffersAreReported) {

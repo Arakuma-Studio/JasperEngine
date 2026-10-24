@@ -349,6 +349,10 @@ namespace {
     constexpr float FRICTION = 0.5f;
     // a driven mover that starts this deep in a body passes through it until they are apart
     constexpr float GHOST_DEPTH = 0.005f;
+    // rolling resistance coefficient: a ball on a slope steeper than atan(this) still rolls
+    constexpr float ROLLING_RESISTANCE = 0.2f;
+    // thinner than this (m), a body gets more solver iterations (solverStepsFor)
+    constexpr float THIN_BODY = 0.05f;
     // a manifold this close (negative depth: speculative) counts as touching
     constexpr float TOUCH_DISTANCE = 0.002f;
     // the contact normal (into the body) within ~45 degrees of up: resting on the other body
@@ -571,6 +575,17 @@ namespace {
         return std::max(0.0f, std::min(JPH::cDefaultConvexRadius, 0.1f * thinnestSide));
     }
 
+    // How far a vertex may be left outside a hull: Jolt's 1 mm would cut a pencil's 7 mm
+    // section down to a lopsided few
+    float hullToleranceFor(float thinnestSide) {
+        return std::max(1e-5f, std::min(1e-3f, 0.01f * thinnestSide));
+    }
+
+    // A generated hull: its convex radius and tolerance follow its thinnest side
+    JPH::ShapeRefC thinHull(const std::vector<Vector3>& points, float thinnestSide) {
+        return JoltShapeBuilder::buildConvexHullShape(points, nullptr, convexRadiusFor(thinnestSide), hullToleranceFor(thinnestSide));
+    }
+
     JPH::ShapeRefC withDensity(JPH::ShapeRefC shape) {
         // density 1: mass is the volume (spec section 5.2); each shape here is new and unshared
         if (shape && shape->GetType() == JPH::EShapeType::Convex) {
@@ -746,7 +761,7 @@ namespace {
         }
 
         const float thinnest = std::min(alignedThin, principalThin);
-        out.hull = withDensity(JoltShapeBuilder::buildConvexHullShape(points, nullptr, convexRadiusFor(thinnest)));
+        out.hull = withDensity(thinHull(points, thinnest));
         if (!out.hull) {
             // too small or thin for Jolt's hull builder: its bounding box
             out.primitive = boxShape(JPH::Vec3::sMax(aligned.halfExtent, JPH::Vec3::sReplicate(0.0005f)));
@@ -866,7 +881,7 @@ namespace {
                         std::vector<Vector3> scaled(h.points.size());
                         for (size_t i = 0; i < h.points.size(); i++) scaled[i] = linear * h.points[i];
                         OrientedBox bounds = axisAlignedBox(scaled);
-                        JPH::ShapeRefC piece = withDensity(JoltShapeBuilder::buildConvexHullShape(scaled, nullptr, convexRadiusFor(2.0f * bounds.halfExtent.ReduceMin())));
+                        JPH::ShapeRefC piece = withDensity(thinHull(scaled, 2.0f * bounds.halfExtent.ReduceMin()));
                         if (!piece) continue;
                         ShapePart part;
                         part.shape = piece;
@@ -1094,6 +1109,7 @@ struct PlacementWorld::Impl {
         bool mover = false;
         JPH::BodyID id;
         float size = 0.0f;                   // longest side of the shape's bounds
+        float rollingRadius = 0.0f;          // half its shortest side: a ball's radius
         PlacementShapeKind shape = PlacementShapeKind::NONE;
         int hullCount = 0;
         std::vector<uint64_t> decompositionKeys;
@@ -1113,6 +1129,7 @@ struct PlacementWorld::Impl {
         // from the contacts after the last update
         std::vector<Entity> touching;        // bodies touched, by entity
         bool sunk = false;                   // deep in context that pushes it down (raiseSunkBodies)
+        bool onContextOnly = true;           // touches only static context (resistRolling)
         uint32_t contacts = 0;
         float maxPenetration = 0.0f;
         JPH::Vec3 contextNormalSum = JPH::Vec3::sZero();
@@ -1233,6 +1250,8 @@ struct PlacementWorld::Impl {
         creation.mLinearDamping = linearDamping > 0.0f ? linearDamping : DEFAULT_DAMPING;
         creation.mAngularDamping = angularDamping > 0.0f ? angularDamping : DEFAULT_DAMPING;
         creation.mMaxLinearVelocity = speedLimit();
+        solverStepsFor(2.0f * std::max(0.0005f, 0.5f * built.shape->GetLocalBounds().GetSize().ReduceMin()),
+                       creation.mNumVelocityStepsOverride, creation.mNumPositionStepsOverride);
         creation.mUserData = root;
 
         JPH::BodyInterface& bi = bodyInterface();
@@ -1245,6 +1264,7 @@ struct PlacementWorld::Impl {
         body->id = jbody->GetID();
         const JPH::AABox bounds = built.shape->GetLocalBounds();
         body->size = bounds.GetSize().ReduceMax();
+        body->rollingRadius = std::max(0.001f, 0.5f * bounds.GetSize().ReduceMin());
         body->shape = built.kind;
         body->hullCount = built.hullCount;
         body->decompositionKeys = built.keys;
@@ -1253,11 +1273,18 @@ struct PlacementWorld::Impl {
         return body;
     }
 
-    void issueRequests(const DynamicShape& built) const {
-        if (!settings.decompositionCache) return;
+    // A mover's decompositions are urgent: the user drags it now, or a run waits on it. One a
+    // bake queued already moves up ahead of the bake's others.
+    void issueRequests(const DynamicShape& built, bool urgent) const {
+        ConvexDecompositionCache* cache = settings.decompositionCache;
+        if (!cache) return;
         const DecompositionParams params = shapes().decompositionParams();
-        for (const DecompositionRequest& request : built.requests) {
-            settings.decompositionCache->request(request.positions, request.indices, params);
+        for (size_t i = 0; i < built.requests.size(); i++) {
+            if (urgent && i < built.keys.size() && cache->status(built.keys[i]) == DecompositionStatus::PENDING) {
+                cache->prioritize(built.keys[i]);
+            } else {
+                cache->request(built.requests[i].positions, built.requests[i].indices, params, urgent);
+            }
         }
     }
 
@@ -1331,7 +1358,7 @@ struct PlacementWorld::Impl {
             for (int c = 0; c < 8; c++) points.push_back(toBody * corners[c]);
             const OrientedBox bounds = axisAlignedBox(points);
             // the hull of the corners sits where they are; too thin for a hull, a box at their centre
-            JPH::ShapeRefC box = JoltShapeBuilder::buildConvexHullShape(points, nullptr, convexRadiusFor(2.0f * bounds.halfExtent.ReduceMin()));
+            JPH::ShapeRefC box = thinHull(points, 2.0f * bounds.halfExtent.ReduceMin());
             JPH::Vec3 position = JPH::Vec3::sZero();
             if (!box) {
                 box = boxShape(JPH::Vec3::sMax(bounds.halfExtent, JPH::Vec3::sReplicate(0.0005f)));
@@ -1502,7 +1529,7 @@ struct PlacementWorld::Impl {
         for (Entity neighbour : inside) removeDynamic(neighbourBodies, neighbours, neighbour);
         std::unique_ptr<DynamicBody> body = createDynamicBody(root, false, built);
         if (!body) return false;
-        issueRequests(built);
+        issueRequests(built, false);
         for (Entity e : subtreeOf(scene, root)) {
             removeContextOf(e);
             processed.insert(e);
@@ -1601,6 +1628,7 @@ struct PlacementWorld::Impl {
             body->restingOn.clear();
             body->touching.clear();
             body->sunk = false;
+            body->onContextOnly = true;
         }
         const JPH::Vec3 up = upDirection();
         contactTracker.forEach([&](const ContactTracker::Contact& contact) {
@@ -1618,6 +1646,7 @@ struct PlacementWorld::Impl {
                 if (!other.dynamic && contact.depth > GHOST_DEPTH && intoSelf.Dot(up) < -0.5f) { body->sunk = true; }
                 if (contact.depth < -TOUCH_DISTANCE) return;
                 body->touching.push_back(other.entity);
+                if (other.dynamic) body->onContextOnly = false;
                 body->maxPenetration = std::max(body->maxPenetration, contact.depth);
                 if (intoSelf.Dot(up) > RESTING_COS) body->restingOn.push_back(other.entity);
             };
@@ -1879,6 +1908,38 @@ struct PlacementWorld::Impl {
         }
     }
 
+    // Rolling resistance: a free body on the ground under gravity (touching static context only:
+    // in a stack the solver balances each box against the others, and taking spin out of them
+    // there tips the stack) feels a torque against its spin of ROLLING_RESISTANCE x its weight x
+    // its rolling radius (half its shortest side),
+    // so a pebble comes to rest on a gentle slope (a ball stops below atan(0.2), about 11
+    // degrees) instead of creeping on forever, a ball still rolls down a steeper ramp and on
+    // across the floor, and a long body (a pencil) still topples: about its long axes its
+    // inertia dwarfs that torque
+    void resistRolling(float dt) {
+        const float g = gravity.length();
+        if (g <= 0.0f) return;
+        // a body barely turning is left to the solver and to sleep
+        const float turning = settings.tuning.sleepAngularDeg * JPH::JPH_PI / 180.0f;
+        const JPH::BodyLockInterfaceNoLock& locks = physics.GetBodyLockInterfaceNoLock();
+        for (DynamicBody* body : dynamicBodies()) {
+            if (body->fellOut || body->hasTarget || body->contacts == 0 || !body->onContextOnly) continue;
+            JPH::BodyLockWrite lock(locks, body->id);
+            if (!lock.Succeeded() || !lock.GetBody().IsActive()) continue;
+            JPH::Body& jbody = lock.GetBody();
+            const JPH::Vec3 w = jbody.GetAngularVelocity();
+            const float speed = w.Length();
+            const float inverseMass = jbody.GetMotionProperties()->GetInverseMass();
+            if (speed <= turning || inverseMass <= 0.0f) continue;
+            const float torque = ROLLING_RESISTANCE * g * body->rollingRadius / inverseMass;
+            // about the spin axis only (the inverse inertia along it), so the spin slows without
+            // turning: a full inverse-inertia kick would tip a box in a stack sideways
+            const JPH::Vec3 axis = w / speed;
+            const float slowing = torque * dt * axis.Dot(jbody.GetInverseInertia().Multiply3x3(axis));
+            jbody.SetAngularVelocityClamped(w * (std::max(turning, speed - slowing) / speed));
+        }
+    }
+
     void afterStep() {
         const PlacementTuning& tuning = settings.tuning;
         const float sleepAngular = tuning.sleepAngularDeg * JPH::JPH_PI / 180.0f;
@@ -1937,6 +1998,20 @@ struct PlacementWorld::Impl {
         bodyInterface().SetGravityFactor(body->id, body->hasTarget ? 0.0f : 1.0f);
     }
 
+    // A thin body (a plate, a pencil) gets twice the solver iterations, at least 16 and 4, in
+    // whatever island it is in: with the presets' few, a stack of six 12 mm plates sank 6 mm into
+    // itself, half a plate. 0 = the world's.
+    void solverStepsFor(float thinnestSide, JPH::uint& velocitySteps, JPH::uint& positionSteps) const {
+        if (thinnestSide >= THIN_BODY) {
+            velocitySteps = 0;
+            positionSteps = 0;
+            return;
+        }
+        const PlacementTuning& tuning = settings.tuning;
+        velocitySteps = (JPH::uint)std::min(255, std::max(16, 2 * tuning.velocityIterations));
+        positionSteps = (JPH::uint)std::min(255, std::max(4, 2 * tuning.positionIterations));
+    }
+
     // No dynamic body outruns maxSpeed: not a driven mover, a pushed neighbour, a body pushed out
     // of an overlap, nor a fall
     float speedLimit() const { return std::max(0.01f, settings.tuning.maxSpeed); }
@@ -1948,6 +2023,10 @@ struct PlacementWorld::Impl {
             if (!lock.Succeeded()) continue;
             JPH::Body& jbody = lock.GetBody();
             jbody.GetMotionProperties()->SetMaxLinearVelocity(speedLimit());
+            JPH::uint velocitySteps = 0, positionSteps = 0;
+            solverStepsFor(2.0f * body->rollingRadius, velocitySteps, positionSteps);
+            jbody.GetMotionProperties()->SetNumVelocityStepsOverride(velocitySteps);
+            jbody.GetMotionProperties()->SetNumPositionStepsOverride(positionSteps);
             jbody.SetLinearVelocityClamped(jbody.GetLinearVelocity());
         }
     }
@@ -2092,7 +2171,7 @@ bool PlacementWorld::addMover(Entity root, std::string* why) {
 
     std::unique_ptr<Impl::DynamicBody> body = impl->createDynamicBody(root, true, built);
     if (!body) return refuse("too many bodies in the placement world");
-    impl->issueRequests(built);
+    impl->issueRequests(built, true);
     impl->dynamicByEntity[root] = body.get();
     impl->movers.push_back(root);
     impl->moverBodies.push_back(std::move(body));
@@ -2195,10 +2274,11 @@ void PlacementWorld::refreshShapes() {
             body->asleep = false;
         }
         body->size = built.shape->GetLocalBounds().GetSize().ReduceMax();
+        body->rollingRadius = std::max(0.001f, 0.5f * built.shape->GetLocalBounds().GetSize().ReduceMin());
         body->shape = built.kind;
         body->hullCount = built.hullCount;
         body->decompositionKeys = built.keys;
-        impl->issueRequests(built);
+        impl->issueRequests(built, body->mover);
     }
 #endif
 }
@@ -2213,7 +2293,7 @@ bool PlacementWorld::hasPendingDecompositions() const {
 }
 
 size_t PlacementWorld::requestDecompositions(Scene* scene, Entity root, const PlacementWorldSettings& settings,
-                                             std::vector<std::string>* notes) {
+                                             std::vector<std::string>* notes, bool urgent) {
 #ifdef JASPERENGINE_PHYSICS_3D
     ConvexDecompositionCache* cache = settings.decompositionCache;
     if (!cache) {
@@ -2224,7 +2304,7 @@ size_t PlacementWorld::requestDecompositions(Scene* scene, Entity root, const Pl
     const DecompositionParams params = shapes.decompositionParams();
     size_t count = 0;
     shapes.forEachDecomposable(root, notes, [&](Entity part, uint64_t key, const PartGeometry& geometry) {
-        if (cache->status(key) != DecompositionStatus::READY) cache->request(geometry.local, geometry.indices, params);
+        if (cache->status(key) != DecompositionStatus::READY) cache->request(geometry.local, geometry.indices, params, urgent);
         if (cache->status(key) == DecompositionStatus::FAILED) {
             if (notes) notes->push_back(scene->getEntityName(part) + ": " + cache->failureReason(key));
             return;
@@ -2236,6 +2316,7 @@ size_t PlacementWorld::requestDecompositions(Scene* scene, Entity root, const Pl
     (void)scene;
     (void)root;
     (void)settings;
+    (void)urgent;
     if (notes) notes->push_back("3D physics is not available in this build");
     return 0;
 #endif
@@ -2385,6 +2466,7 @@ void PlacementWorld::step() {
     if (dt <= 0.0f) return;
     for (int i = 0; i < substeps; i++) {
         impl->driveTargets(dt);
+        impl->resistRolling(dt);
         const JPH::EPhysicsUpdateError errors = impl->physics.Update(dt, 1, &JoltShapeBuilder::sharedPhysicsTempAllocator(), &JoltShapeBuilder::sharedPhysicsJobSystem());
         if (errors != JPH::EPhysicsUpdateError::None) impl->overflowed = true;
         impl->releaseGhosts();
