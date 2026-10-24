@@ -33,7 +33,7 @@ namespace jasperengine{
 
         Matrix4 inverseDerivedTransform;
         
-        Entity skeleton;
+        Entity skeleton = NULL_ENTITY;
 
         std::map<std::string, Entity> bonesNameMapping;
         std::map<int, Entity> bonesIdMapping;
