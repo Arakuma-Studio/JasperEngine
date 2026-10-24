@@ -144,8 +144,6 @@ namespace jasperengine::editor{
         // Lets go of a scene's gesture at once: a held one is cancelled (cancelHeld) or ended,
         // then a settle runs to its end (bounded in simulated and wall time) and commits
         void finalise(SceneSession& sceneSession, bool cancelHeld);
-        // Commits a settle's current poses now (they are physically valid, only not at rest)
-        void commitNow(PlacementSession& session);
         // > 0 inside a call into a session, whose own commit must not finalise it again
         int sessionCalls = 0;
         struct SessionCall{

@@ -26,10 +26,8 @@ namespace Limits = jasperengine::editor::PlacementSettingLimits;
 
 namespace {
 
-    // A settle run to its end at once (Physics turned off, Hand or Rect picked) steps at the
-    // world's own rate
-    constexpr double SETTLE_STEP_SECONDS = 1.0 / 120.0;
-    // ...for at most this long, then what is there commits
+    // A settle run to its end at once (a save, Play, Physics off, Hand or Rect picked, another
+    // edit) takes at most this long, then the poses it has are committed
     constexpr double SETTLE_WALL_SECONDS = 2.0;
 
     const ImU32 HUD_BACKGROUND = IM_COL32(20, 20, 20, 210);
@@ -236,19 +234,6 @@ editor::PlacementSession* editor::PhysicsPlacementWindow::sessionFor(uint32_t sc
     return sessions.emplace(sceneId, std::move(sceneSession)).first->second.session.get();
 }
 
-void editor::PhysicsPlacementWindow::commitNow(PlacementSession& session){
-    // a settle stops at maxSettleSeconds and commits the poses it has: with no time left, the
-    // next steps end the approach (Gather, Distribute) and then the settle
-    const PhysicsPlacementSettings kept = session.getSettings();
-    PhysicsPlacementSettings now = kept;
-    now.maxSettleSeconds = 0.0f;
-    session.setSettings(now);
-    for (int i = 0; i < 4 && session.isBusy(); i++){
-        session.tick(SETTLE_STEP_SECONDS);
-    }
-    session.setSettings(kept);
-}
-
 void editor::PhysicsPlacementWindow::finalise(SceneSession& sceneSession, bool cancelHeld){
     const SessionCall call(sessionCalls);
     PlacementSession& session = *sceneSession.session;
@@ -262,24 +247,10 @@ void editor::PhysicsPlacementWindow::finalise(SceneSession& sceneSession, bool c
     }
     sceneSession.input = GestureInput::None;
 
-    // the settle runs to its end now: up to the session's own limit in simulated time, and
-    // SETTLE_WALL_SECONDS of wall time; whatever is left then commits as it is
-    const double limit = std::max(0.0, (double)session.getSettings().maxSettleSeconds) + 1.0;
-    const auto begin = std::chrono::steady_clock::now();
-    for (double simulated = 0.0; simulated < limit && session.isBusy(); simulated += SETTLE_STEP_SECONDS){
-        if (std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count() >= SETTLE_WALL_SECONDS){
-            break;
-        }
-        session.tick(SETTLE_STEP_SECONDS);
-    }
-    if (session.isBusy()){
-        commitNow(session);
-    }
-    if (session.isBusy()){
-        // no step could run (colliders still decomposing with Decomposition: Always): nothing
-        // physical to commit, the poses go back
-        session.cancel();
-    }
+    // the settle runs to its end now: up to the session's own limit in simulated time and
+    // SETTLE_WALL_SECONDS of wall time, then the poses it has are committed (a Drop that was just
+    // ended has committed already; with colliders still decomposing it cancels instead)
+    session.finishNow(SETTLE_WALL_SECONDS);
     if (SceneProject* sceneProject = sceneFor(session.getSceneId())){
         sceneProject->needUpdateRender = true;
     }
@@ -654,18 +625,32 @@ void editor::PhysicsPlacementWindow::drawSceneHud(uint32_t sceneId, ImDrawList* 
     }
     lines.push_back({hint, ImGui::ColorConvertFloat4ToU32(Theme::Colors::SubtleText)});
 
-    float boxWidth = 0.0f;
-    for (const auto& line : lines) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(line.first.c_str()).x);
+    // as wide as the longest line, but within the canvas: a longer line (a status with a note,
+    // "… · too many contacts: place fewer objects at once") wraps instead of being cut off
     const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
-    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-    const ImVec2 boxSize(boxWidth + pad.x * 2.0f, lineHeight * (float)lines.size() + pad.y * 2.0f - ImGui::GetStyle().ItemSpacing.y);
     const float margin = Theme::dpi(8.0f);
+    const float maxTextWidth = std::max(Theme::dpi(80.0f), (canvasMax.x - canvasMin.x) - margin * 2.0f - pad.x * 2.0f);
+    float textWidth = 0.0f;
+    for (const auto& line : lines) textWidth = std::max(textWidth, ImGui::CalcTextSize(line.first.c_str()).x);
+    textWidth = std::min(textWidth, maxTextWidth);
+    const float lineSpacing = ImGui::GetStyle().ItemSpacing.y;
+    std::vector<float> lineHeights;
+    float textHeight = 0.0f;
+    for (const auto& line : lines){
+        lineHeights.push_back(ImGui::CalcTextSize(line.first.c_str(), nullptr, false, textWidth).y);
+        textHeight += lineHeights.back();
+    }
+    textHeight += lineSpacing * (float)(lines.size() - 1);
+    const ImVec2 boxSize(textWidth + pad.x * 2.0f, textHeight + pad.y * 2.0f);
     const ImVec2 boxMin(canvasMin.x + margin, canvasMin.y + margin);
 
     drawList->PushClipRect(canvasMin, canvasMax, true);
     drawList->AddRectFilled(boxMin, ImVec2(boxMin.x + boxSize.x, boxMin.y + boxSize.y), HUD_BACKGROUND, Theme::dpi(3.0f));
+    float y = boxMin.y + pad.y;
     for (size_t i = 0; i < lines.size(); i++){
-        drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * (float)i), lines[i].second, lines[i].first.c_str());
+        drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), ImVec2(boxMin.x + pad.x, y), lines[i].second,
+                          lines[i].first.c_str(), nullptr, textWidth);
+        y += lineHeights[i] + lineSpacing;
     }
 
     // labels at their world points: why an object can't move, how far the surroundings are
