@@ -916,10 +916,12 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
 }
 
 void editor::ShaderVariantCollector::addFluidKeys(std::set<ShaderKey>& keys){
-    // ShaderType::FLUID bits: 'Lok' 1, 'Mfl' 2
+    // ShaderType::FLUID bits: 'Lok' 1, 'Mfl' 2 (the solver and the look, each with and
+    // without linear filtering: the device decides at run time)
     keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 0));
     keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 1u));
     keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 2u));
+    keys.insert(ShaderPool::getShaderKey(ShaderType::FLUID, 3u));
 }
 
 void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVariantContent& sceneContent,

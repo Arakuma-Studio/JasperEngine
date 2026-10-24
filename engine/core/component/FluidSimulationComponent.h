@@ -16,6 +16,7 @@
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -26,7 +27,9 @@ namespace jasperengine{
 
     // where the output goes
     enum class FluidOutput{
-        // drawn over the main camera's image (after post-processing), the size of the view;
+        // drawn in the main camera's pass over the scene and under the HTML UI documents
+        // (post-processed with them; component UI draws with the scene, in its order, and a
+        // layer scene's after it), the size of the view;
         // `interactive` takes the mouse and touches over the whole view
         SCREEN,
         // the entity's own Sprite, Image or Mesh (submesh 0's base colour) texture; `interactive`
@@ -44,6 +47,22 @@ namespace jasperengine{
         Vector3 color = Vector3(0.15f, 0.15f, 0.15f);
         float radius = 0.0f;        // splatRadius units (0: the component's splatRadius)
     };
+
+    // The queues scripts fill (FluidSimulation::splat, randomSplats) are bounded: a fluid that
+    // does not run (disabled, inactive, unsupported, its shaders building) keeps at most the
+    // latest FLUID_MAX_PENDING_SPLATS splats and FLUID_MAX_PENDING_BURSTS bursts, the oldest
+    // dropped (FluidSystem trims them every frame, FluidSimulation when queuing). A burst makes
+    // at most FLUID_MAX_BURST_SPLATS splats (randomSplatCount too).
+    constexpr size_t FLUID_MAX_PENDING_SPLATS = 1024;
+    constexpr size_t FLUID_MAX_PENDING_BURSTS = 64;
+    constexpr unsigned int FLUID_MAX_BURST_SPLATS = 1000;
+
+    // keeps the latest `limit` entries of a queue
+    template<typename T>
+    inline void trimFluidQueue(std::vector<T>& queue, size_t limit){
+        if (queue.size() > limit)
+            queue.erase(queue.begin(), queue.begin() + (std::ptrdiff_t)(queue.size() - limit));
+    }
 
     struct JASPERENGINE_API FluidSimulationComponent{
         bool enabled = true;

@@ -227,6 +227,7 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.renderR16F = r16f.render;
         features.blendR16F = r16f.blend;
         features.filterR16F = r16f.filter;
+        features.maxTextureSize2D = sg_query_limits().max_image_size_2d;
         featuresQueried = true;
     }
     return features;

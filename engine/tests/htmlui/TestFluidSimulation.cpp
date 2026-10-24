@@ -14,8 +14,11 @@
 #include "component/FluidSimulationComponent.h"
 #include "fluid/FluidPresets.h"
 #include "fluid/FluidSimulator.h"
+#include "component/MeshComponent.h"
 #include "object/FluidSimulation.h"
+#include "object/Sprite.h"
 #include "registry/EntityCloner.h"
+#include "subsystem/FluidSystem.h"
 #include "script/LuaBinding.h"
 
 #include "lua.hpp"
@@ -361,7 +364,10 @@ TEST_F(FluidSimulationTest, ClonesStartTheirOwnSimulation){
     std::vector<Entity> copies = EntityCloner::clone(scene.get(), {fluid.getEntity()}, scene.get());
     ASSERT_EQ(copies.size(), 1u);
     FluidSimulationComponent& copy = scene->getComponent<FluidSimulationComponent>(copies[0]);
-    EXPECT_EQ(copy.simulator, nullptr) << "the copy shares the original's GPU side";
+    // its own simulator (made by the clone, so textures showing the original's output can be
+    // pointed at the copy's)
+    EXPECT_NE(copy.simulator, nullptr);
+    EXPECT_NE(copy.simulator, source.simulator) << "the copy shares the original's GPU side";
     EXPECT_TRUE(copy.pendingSplats.empty());
     EXPECT_TRUE(copy.pendingBursts.empty());
     EXPECT_EQ(copy.pendingSteps, 0u);
@@ -380,6 +386,129 @@ TEST_F(FluidSimulationTest, ClonesStartTheirOwnSimulation){
 }
 
 // ---------------------------------------------------------------- Lua
+
+TEST_F(FluidSimulationTest, ClonedHierarchyShowsItsOwnFluid){
+    // a TEXTURE fluid and a sprite (its child) showing its output
+    FluidSimulation fluid(scene.get());
+    fluid.setOutput(FluidOutput::TEXTURE);
+    Framebuffer* output = fluid.getTexture().getFramebuffer();
+    ASSERT_NE(output, nullptr);
+    Sprite sprite(scene.get());
+    sprite.setTexture(output);
+    fluid.addChild(&sprite);
+
+    std::vector<Entity> copies = EntityCloner::clone(scene.get(), EntityCloner::collectHierarchy(scene.get(), fluid.getEntity()), scene.get());
+    ASSERT_EQ(copies.size(), 2u);
+    FluidSimulationComponent& copy = scene->getComponent<FluidSimulationComponent>(copies[0]);
+    ASSERT_NE(copy.simulator, nullptr);
+    ASSERT_NE(copy.simulator, fluid.getComponent().simulator);
+    const MeshComponent& copiedSprite = scene->getComponent<MeshComponent>(copies[1]);
+    EXPECT_EQ(copiedSprite.submeshes[0].material.baseColorTexture.getFramebuffer(), copy.simulator->getOutputFramebuffer())
+        << "the copy's sprite shows the copy's fluid";
+    // the original keeps showing its own
+    EXPECT_EQ(sprite.getComponent<MeshComponent>().submeshes[0].material.baseColorTexture.getFramebuffer(), output);
+
+    // a fluid without a simulator yet: none made for the copy (nothing can show its output)
+    FluidSimulation lone(scene.get());
+    std::vector<Entity> loneCopies = EntityCloner::clone(scene.get(), {lone.getEntity()}, scene.get());
+    ASSERT_EQ(loneCopies.size(), 1u);
+    EXPECT_EQ(scene->getComponent<FluidSimulationComponent>(loneCopies[0]).simulator, nullptr);
+
+    scene->destroyEntity(loneCopies[0]);
+    scene->destroyEntity(copies[1]);
+    scene->destroyEntity(copies[0]);
+}
+
+TEST_F(FluidSimulationTest, SanitizedSettings){
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    const FluidSimulationComponent d;
+    FluidSimulationComponent c;
+    c.aspectRatio = nan;
+    c.simResolution = 0;
+    c.dyeResolution = 100000;
+    c.densityDissipation = nan;
+    c.velocityDissipation = -3.0f;
+    c.pressure = inf;
+    c.pressureIterations = 1000000;
+    c.curl = -inf;
+    c.gradientScale = nan;
+    c.simulationRate = 0.0f;
+    c.maxSubsteps = 0;
+    c.timeScale = nan;
+    c.splatRadius = nan;
+    c.splatForce = -1.0f;
+    c.colorUpdateSpeed = inf;
+    c.randomSplatCount = 4000000000u;
+    c.backColor = Vector3(nan, -1.0f, 0.5f);
+    c.bloomIterations = 1000;
+    c.bloomResolution = 0;
+    c.bloomIntensity = nan;
+    c.bloomThreshold = -1.0f;
+    c.bloomSoftKnee = inf;
+    c.sunraysResolution = 0;
+    c.sunraysWeight = nan;
+    FluidSimulator::sanitizeSettings(c);
+    EXPECT_EQ(c.aspectRatio, 0.0f);
+    EXPECT_EQ(c.simResolution, 1u);
+    EXPECT_EQ(c.dyeResolution, 8192u);
+    EXPECT_EQ(c.densityDissipation, d.densityDissipation);
+    EXPECT_EQ(c.velocityDissipation, 0.0f);
+    EXPECT_EQ(c.pressure, d.pressure);
+    EXPECT_EQ(c.pressureIterations, 1000u);
+    EXPECT_EQ(c.curl, d.curl);
+    EXPECT_EQ(c.gradientScale, d.gradientScale);
+    EXPECT_EQ(c.simulationRate, d.simulationRate);
+    EXPECT_EQ(c.maxSubsteps, 1u);
+    EXPECT_EQ(c.timeScale, d.timeScale);
+    EXPECT_EQ(c.splatRadius, d.splatRadius);
+    EXPECT_EQ(c.splatForce, 0.0f);
+    EXPECT_EQ(c.colorUpdateSpeed, d.colorUpdateSpeed);
+    EXPECT_EQ(c.randomSplatCount, FLUID_MAX_BURST_SPLATS);
+    EXPECT_EQ(c.backColor, Vector3(0.0f, 0.0f, 0.5f));
+    EXPECT_EQ(c.bloomIterations, 16u);
+    EXPECT_EQ(c.bloomResolution, 1u);
+    EXPECT_EQ(c.bloomIntensity, d.bloomIntensity);
+    EXPECT_EQ(c.bloomThreshold, 0.0f);
+    EXPECT_EQ(c.bloomSoftKnee, d.bloomSoftKnee);
+    EXPECT_EQ(c.sunraysResolution, 1u);
+    EXPECT_EQ(c.sunraysWeight, d.sunraysWeight);
+    // valid values are kept
+    FluidSimulationComponent valid;
+    valid.simulationRate = 30.0f;
+    valid.maxSubsteps = 9;
+    valid.curl = 0.0f;
+    FluidSimulator::sanitizeSettings(valid);
+    EXPECT_EQ(valid.simulationRate, 30.0f);
+    EXPECT_EQ(valid.maxSubsteps, 9u);
+    EXPECT_EQ(valid.curl, 0.0f);
+}
+
+TEST_F(FluidSimulationTest, QueuesAreBounded){
+    // a disabled fluid while a script splats every frame keeps the latest splats only
+    FluidSimulation fluid(scene.get());
+    fluid.setEnabled(false);
+    for (int i = 0; i < 3000; i++)
+        fluid.splat(Vector2((float)i / 3000.0f, 0.5f), Vector2(0.0f, 0.0f), Vector3(0.1f, 0.1f, 0.1f));
+    FluidSimulationComponent& c = fluid.getComponent();
+    ASSERT_EQ(c.pendingSplats.size(), FLUID_MAX_PENDING_SPLATS);
+    EXPECT_FLOAT_EQ(c.pendingSplats.back().position.x, 2999.0f / 3000.0f) << "the latest are kept";
+    EXPECT_FLOAT_EQ(c.pendingSplats.front().position.x, (float)(3000 - FLUID_MAX_PENDING_SPLATS) / 3000.0f);
+    for (int i = 0; i < 100; i++)
+        fluid.randomSplats(4000000000u);
+    ASSERT_EQ(c.pendingBursts.size(), FLUID_MAX_PENDING_BURSTS);
+    EXPECT_EQ(c.pendingBursts.back(), FLUID_MAX_BURST_SPLATS);
+
+    // raw C++ pushes are trimmed by the system while the fluid does not run
+    for (int i = 0; i < 5000; i++)
+        c.pendingSplats.push_back(FluidSplat());
+    for (int i = 0; i < 500; i++)
+        c.pendingBursts.push_back(3);
+    scene->getSystem<FluidSystem>()->update(1.0 / 60.0);
+    EXPECT_EQ(c.pendingSplats.size(), FLUID_MAX_PENDING_SPLATS);
+    EXPECT_EQ(c.pendingBursts.size(), FLUID_MAX_PENDING_BURSTS);
+    EXPECT_EQ(c.simulator, nullptr) << "a disabled fluid makes nothing";
+}
 
 namespace {
 

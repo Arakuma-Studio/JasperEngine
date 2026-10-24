@@ -38,6 +38,10 @@ namespace jasperengine{
         // fields R16F (else RGBA16F, Pavel's fallback)
         bool manualFiltering = false, compactFormats = false;
         int outputWidth = 0, outputHeight = 0;
+        // render targets that could not be made since the simulator was made or released (a
+        // failed size is not tried again every frame: optional ones, bloom and sunrays, stay
+        // off until their size changes; required ones are retried every few seconds)
+        int targetFailures = 0;
     };
 
     // FluidSimulator::setDisabledFeaturesForTesting: device features reported missing
@@ -45,7 +49,9 @@ namespace jasperengine{
         FLUID_TEST_NO_FLOAT_TARGETS = 1u << 0,     // no renderable half floats: not supported
         FLUID_TEST_NO_RG16F = 1u << 1,             // RG16F neither renderable nor filterable
         FLUID_TEST_NO_R16F = 1u << 2,              // R16F neither renderable nor filterable
-        FLUID_TEST_NO_LINEAR_FILTER = 1u << 3      // half floats not filterable: manual filtering
+        FLUID_TEST_NO_LINEAR_FILTER = 1u << 3,     // half floats not filterable: manual filtering
+        FLUID_TEST_FAIL_OPTIONAL_TARGETS = 1u << 4, // the bloom and sunrays targets cannot be made
+        FLUID_TEST_FAIL_TARGETS = 1u << 5          // no target can be made
     };
 
     class JASPERENGINE_API FluidSimulator{
@@ -63,7 +69,16 @@ namespace jasperengine{
         // paused) and pointer splats, runs the clock's fixed steps for `dt` seconds (already
         // time-scaled by the caller) and draws the output. False: nothing could be drawn
         // (getError()).
+        // Any field value is safe (raw C++ or Lua writes are not validated): the settings used
+        // are sanitized (sanitizeSettings), as are dt and the queued splats (a non-finite one
+        // is dropped). Target sizes fit the device (its largest texture side, the aspect kept).
         bool update(FluidSimulationComponent& component, float aspectRatio, double dt);
+
+        // the settings a simulator runs with: a non-finite field takes its default, then each
+        // one is clamped where the solver needs it (resolutions >= 1, rates and radii > 0,
+        // others >= 0) and bounded where a value would stall a frame (substeps, burst sizes,
+        // Jacobi iterations). The queues are left as they are
+        static void sanitizeSettings(FluidSimulationComponent& settings);
 
         // restarts: zero fields, the seed (0: a new one), the start burst
         void reset(const FluidSimulationComponent& component);
@@ -83,7 +98,10 @@ namespace jasperengine{
         // for output SCREEN (FluidSystem's composite blends ONE, ONE_MINUS_SRC_ALPHA) but
         // straight for MATERIAL and TEXTURE (the alpha blending of sprites, images and meshes,
         // SRC_ALPHA, ONE_MINUS_SRC_ALPHA, gives the same picture). The object is stable for the
-        // simulator's lifetime; its version changes when it is recreated
+        // simulator's lifetime; its version changes when it is recreated or freed. It is owned
+        // by a std::shared_ptr: every Texture linked to it (Texture(Framebuffer*),
+        // setFramebuffer, getOutputTexture() copies) keeps the object alive after the
+        // simulator is gone, its GPU side freed (the texture draws its fallback, white)
         Framebuffer* getOutputFramebuffer();
         Texture& getOutputTexture();
         // the raw fields (current read side): dye RGBA16F (HDR), velocity RG16F (sim texels / s)
@@ -91,6 +109,8 @@ namespace jasperengine{
         Framebuffer* getVelocityFramebuffer();
 
         const FluidStats& getStats() const;
+        // why the last update drew nothing; after one that drew, what it had to turn off (a
+        // bloom or sunrays target that could not be made), else empty
         const std::string& getError() const;
 
         // frees every GPU resource (a view loss, removal); the next update recreates them
@@ -106,6 +126,8 @@ namespace jasperengine{
         // tests: device features reported missing (FluidTestFeature bits, 0: none), for every
         // simulator; their targets are made again at the next update
         static void setDisabledFeaturesForTesting(uint32_t features);
+        // tests: the device's largest texture side reported smaller (0: the device's)
+        static void setMaxTextureSizeForTesting(int size);
 
     private:
         struct Impl;

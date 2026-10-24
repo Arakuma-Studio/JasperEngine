@@ -14299,6 +14299,24 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    // SCREEN fluid simulations: a layer over the scene and under the UI, in the game's views
+    // (not the editor's Scene view, which they would cover). Drawn right before the pass's first
+    // component UI element (else after the transparent renderers), so always under the HTML
+    // UI documents; post-processed with the scene and the UI
+    bool screenFluidsPending = isMainCamera && !pass.renderToTexture;
+#ifdef JASPERENGINE_EDITOR
+    screenFluidsPending = screenFluidsPending && !passDrawsOverlays;
+#endif
+    FluidSystem* screenFluids = screenFluidsPending ? scene->findSystem<FluidSystem>().get() : nullptr;
+    screenFluidsPending = screenFluids && screenFluids->hasScreenFluids();
+    auto drawScreenFluids = [&](){
+        if (!screenFluidsPending)
+            return;
+        screenFluidsPending = false;
+        camera.render.applyScissor(colorPassViewport);
+        screenFluids->drawScreen(targetFormatFor(colorPip, passMsaa), isRenderingFlipped(camera));
+    };
+
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
@@ -14306,6 +14324,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
         if (signature.test(scene->getComponentId<CameraComponent>())){
             continue;
+        }
+
+        if (screenFluidsPending && signature.test(scene->getComponentId<UIComponent>())){
+            drawScreenFluids();
         }
 
         // a 2D pass: what was drawn before the first draw requiring the scene colour (one this
@@ -14462,6 +14484,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
     }
 
+    //---------Draw SCREEN fluid simulations, if no UI element came first----------
+    drawScreenFluids();
+
     //---------Draw HTML UI documents (in front of everything, including component UI)----------
     // UI and 2D cameras draw the canvas in world space, the editor's Scene view included; a
     // 3D camera fills its viewport, in the game camera only
@@ -14535,23 +14560,6 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // the resolved multisampled scene, onto the swapchain
     if (useMsaaRedirect){
         renderBlit(&rv().msaaResolveFramebuffer.getRender().getColorTexture(), targetViewRect());
-    }
-
-    // SCREEN fluid simulations over the view's final image (after post-processing), in the
-    // game's views (not the editor's Scene view, which they would cover)
-    bool compositeFluids = isMainCamera && !pass.renderToTexture;
-#ifdef JASPERENGINE_EDITOR
-    compositeFluids = compositeFluids && !passDrawsOverlays;
-#endif
-    if (compositeFluids){
-        FluidSystem* fluids = scene->getSystem<FluidSystem>().get();
-        if (fluids->hasScreenFluids()){
-            Framebuffer* destination = targetFramebuffer();
-            if (destination && !destination->isCreated())
-                destination->create();
-            // offscreen targets are drawn Y-flipped on GL (isRenderingFlipped), the swapchain is not
-            fluids->compositeScreen(destination ? &destination->getRender() : nullptr, viewRect, destination && Engine::isOpenGL());
-        }
     }
 }
 

@@ -82,7 +82,18 @@ void FluidSystem::draw(){
 }
 
 void FluidSystem::destroy(){
-    // a view loss or the scene's end: the GPU side goes, the fields restart with the next view
+    // a view loss or the scene's end: the GPU side goes, the fields restart with the next view.
+    // Nothing is lent any more: the Sprites, Images and Meshes reloaded with the next view load
+    // without the output, and lending it again reloads the untextured ones with a texture
+    // (with shaders ready at once, an exported game's, the output is there again at its first
+    // frame: still lent, they would never get it)
+    for (auto& [entity, entry] : state->entries){
+        entry.lending = false;
+        entry.outputVersion = 0;
+        entry.mouseDown = false;
+        entry.touches.clear();
+    }
+    state->materials = false;
     if (!scene->isComponentRegistered<FluidSimulationComponent>())
         return;
     auto fluids = scene->getComponentArray<FluidSimulationComponent>();
@@ -189,15 +200,20 @@ void FluidSystem::update(double dt){
         const Entity entity = fluids->getEntity(i);
         FluidSimulationComponent& fluid = fluids->getComponentFromIndex(i);
         State::Entry& entry = state->entries[entity];
+        // what scripts queue for a fluid that does not run is bounded (the latest kept)
+        trimFluidQueue(fluid.pendingSplats, FLUID_MAX_PENDING_SPLATS);
+        trimFluidQueue(fluid.pendingBursts, FLUID_MAX_PENDING_BURSTS);
         if (!fluid.enabled || !scene->isEntityActiveInHierarchy(entity))
             continue;
         if (!fluid.simulator)
             fluid.simulator = std::make_shared<FluidSimulator>();
 
-        // the scene's time (none in a paused scene, the editor's edit mode, unless previewed)
+        // the scene's time (none in a paused scene, the editor's edit mode, unless previewed);
+        // a raw timeScale that is not a number runs at 1
         const bool running = !paused || entry.preview;
-        if (running && dt > 0.0)
-            entry.time += dt * (double)std::max(fluid.timeScale, 0.0f);
+        const double timeScale = std::isfinite(fluid.timeScale) ? (double)std::max(fluid.timeScale, 0.0f) : 1.0;
+        if (running && dt > 0.0 && std::isfinite(dt))
+            entry.time = std::min(entry.time + dt * timeScale, 3600.0);
 
         // the pointer: Pavel's mouse and touches, over the view (SCREEN) or the quad (MATERIAL)
         FluidSimulator& simulator = *fluid.simulator;
@@ -297,15 +313,16 @@ void FluidSystem::renderFluids(){
 
         const bool drawn = fluid.simulator->update(fluid, getAspectRatio(entity), entry.time);
         entry.time = 0.0;
+        const std::string& error = fluid.simulator->getError();
         if (!drawn){
-            const std::string& error = fluid.simulator->getError();
             // (shaders building is no error: the fluid starts once they are)
             if (!error.empty() && error != entry.lastError && error.find("being compiled") == std::string::npos)
                 Log::error("Fluid Simulation '%s': %s", scene->getEntityName(entity).c_str(), error.c_str());
-            entry.lastError = error;
-        }else{
-            entry.lastError.clear();
+        }else if (!error.empty() && error != entry.lastError){
+            // drawn without what it could not make (bloom, sunrays)
+            Log::warn("Fluid Simulation '%s': %s", scene->getEntityName(entity).c_str(), error.c_str());
         }
+        entry.lastError = error;
 
         Framebuffer* output = fluid.simulator->getOutputFramebuffer();
         if (output->isCreated() && output->getVersion() != entry.outputVersion){
@@ -346,6 +363,20 @@ bool FluidSystem::hasScreenFluids() const{
             return true;
     }
     return false;
+}
+
+void FluidSystem::drawScreen(const RenderTargetFormat& target, bool flipY){
+    if (!hasScreenFluids())
+        return;
+    PipelineState composite;
+    composite.target = target;
+    auto fluids = scene->getComponentArray<FluidSimulationComponent>();
+    for (size_t i = 0; i < fluids->size(); i++){
+        FluidSimulationComponent& fluid = fluids->getComponentFromIndex(i);
+        if (fluid.output != FluidOutput::SCREEN || !fluid.enabled || !fluid.simulator || !scene->isEntityActiveInHierarchy(fluids->getEntity(i)))
+            continue;
+        fluid.simulator->drawComposite(composite, flipY);
+    }
 }
 
 void FluidSystem::compositeScreen(FramebufferRender* target, const Rect& viewRect, bool flipY){
