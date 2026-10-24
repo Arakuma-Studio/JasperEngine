@@ -5,6 +5,7 @@
 
 #include "SceneSettings.h"
 #include "util/CubeLut.h"
+#include "subsystem/RenderSystem.h"
 
 #include <string>
 #include <vector>
@@ -101,5 +102,22 @@ namespace jasperengine::editor {
     std::string describeLutInputEncoding(LutInputEncoding setting, const CubeLut* lut, const std::string& error);
     // the encoding's display name ("ACEScct", "DaVinci Intermediate")
     const char* getLutInputEncodingName(LutInputEncoding encoding);
+
+    class Command;
+    class Project;
+
+    // One undo step that replaces a scene's whole post_processing, named by the label in the
+    // undo history ("Apply Film Preset (Main)"); the plain property command without a label
+    Command* makePostProcessingCommand(Project* project, uint32_t sceneId, const PostProcessingSettings& settings,
+                                       const std::string& label);
+
+    // A colour LUT file in words, for the Project window's tooltip: "Color LUT", its title, table
+    // sizes, input range, the encoding Auto proposes and its stage, or why it does not load
+    std::string describeColorLut(const CubeLut* lut, const std::string& error);
+
+    // The "Applied now" line of dynamic resolution while playing (R16): "Dynamic resolution 0.75
+    // (GPU 14.2 / 16.7 ms)", "(frame law: probing in 4 s)"; empty when it is off. warnings gets
+    // the saturation and ineffective-scale warnings
+    std::string describeDynamicResolution(const DynamicResolutionStatus& status, std::vector<std::string>& warnings);
 
 }

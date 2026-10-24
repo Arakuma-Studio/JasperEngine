@@ -13,7 +13,9 @@
 #include "Out.h"
 #include "Stream.h"
 #include "util/Base64.h"
+#include "util/CubeLut.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
@@ -42,6 +44,7 @@
 #include <future>
 #include <iterator>
 #include <map>
+#include <sstream>
 #include <vector>
 
 using namespace jasperengine;
@@ -2047,9 +2050,41 @@ bool editor::Exporter::copyAssets() {
 
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
+
+        // A .cube colour LUT ships cooked (S13 R25): <name>.jlut, float16 with the 3D table at most
+        // 33^3, which the game loads in place of the .cube. One that does not parse ships as it
+        // is, so the game logs the same error the editor does
+        if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) continue;
+
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
+    return true;
+}
+
+bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& destination) {
+    std::ifstream in(source, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    CubeLut lut;
+    std::string error;
+    std::vector<uint8_t> bytes;
+    if (!in || !parseCubeLut(text.str(), lut, error) || !writeJlut(lut, bytes)) {
+        Out::warning("%s ships uncooked: %s", source.filename().string().c_str(), error.empty() ? "it could not be read" : error.c_str());
+        return false;
+    }
+    fs::path cooked = destination;
+    cooked.replace_extension(".jlut");
+    std::ofstream out(cooked, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(bytes.data()), (std::streamsize)bytes.size());
+    if (!out) {
+        Out::warning("%s ships uncooked: %s could not be written", source.filename().string().c_str(), cooked.string().c_str());
+        return false;
+    }
+    // a .cube left from an earlier export would shadow nothing (the game prefers the .jlut), but
+    // it is not part of this one
+    std::error_code ec;
+    fs::remove(destination, ec);
     return true;
 }
 

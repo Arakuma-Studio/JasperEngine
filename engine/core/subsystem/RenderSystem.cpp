@@ -5186,13 +5186,43 @@ void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
 }
 
 void RenderSystem::setDisableDynamicResolution(bool disableDynamicResolution){
+    // leaving Play: what its scripts and tests pinned ends with it (the next Play starts clean)
+    if (disableDynamicResolution && !this->disableDynamicResolution){
+        dynamicResolutionOverride = 0.0f;
+        dynamicResolutionFakeGpuMs = 0.0f;
+    }
     this->disableDynamicResolution = disableDynamicResolution;
 }
 
 float RenderSystem::getAppliedRenderScale() const{
-    if (dynamicResolutionOverride > 0.0f)
+    // a pinned scale applies where dynamic resolution may run (Play and the game, never the
+    // editor's edit mode)
+    if (dynamicResolutionOverride > 0.0f && !disableDynamicResolution)
         return dynamicResolutionOverride;
     return dynamicResolutionRunning ? dynamicResolutionScale : postTiers.renderScale;
+}
+
+DynamicResolutionStatus RenderSystem::getDynamicResolutionStatus() const{
+    DynamicResolutionStatus status;
+    status.enabled = scene && scene->getPostProcessing().dynamicResolutionEnabled;
+    status.running = dynamicResolutionRunning;
+    status.overridden = dynamicResolutionOverride > 0.0f && !disableDynamicResolution;
+    status.scale = getAppliedRenderScale();
+    status.maxScale = postTiers.renderScale;
+    status.minScale = status.maxScale;
+    if (dynamicResolutionRunning){
+        const DynamicResolutionController::Stats& stats = dynamicResolution.getStats();
+        status.minScale = dynamicResolution.getConfig().minScale;
+        status.maxScale = dynamicResolution.getConfig().maxScale;
+        status.source = dynamicResolutionSourceName(stats.source);
+        status.smoothedMs = stats.smoothedMs;
+        status.targetMs = dynamicResolution.getConfig().targetMs;
+        status.saturatedLow = stats.saturatedLow;
+        status.ineffective = stats.scalingIneffective;
+        status.acceptedChanges = stats.acceptedChanges;
+        status.probeSeconds = stats.source == DynamicResolutionSource::FRAME ? stats.probeRemainingSeconds : 0.0f;
+    }
+    return status;
 }
 
 void RenderSystem::setDynamicResolutionOverride(float scale){

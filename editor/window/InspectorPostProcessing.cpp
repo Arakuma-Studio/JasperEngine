@@ -513,7 +513,7 @@ void editor::InspectorWindow::drawPostProcessingFieldRow(SceneProject* sceneProj
     if (!state.inactiveReason.empty()) {
         ImGui::PopStyleVar();
         if (ImGui::IsItemHovered())
-            wrappedTooltip(state.inactiveReason);
+            postProcessingWrappedTooltip(state.inactiveReason);
     }
 
     if (ImGui::IsItemDeactivatedAfterEdit() && cmd) {
@@ -586,6 +586,18 @@ void editor::InspectorWindow::drawPostProcessingCost(SceneProject* sceneProject,
                                   "JASPERENGINE_READY_SIGNAL=1 and JASPERENGINE_FRAME_STATS=all to log the measured pass "
                                   "list of every frame once loaded (=1: three frames); in the editor each extra view "
                                   "(the Scene view while playing) logs its own line.");
+            // the scale dynamic resolution applies and what it reads (S13 R16)
+            std::vector<std::string> warnings;
+            const std::string dynamic = describeDynamicResolution(render->getDynamicResolutionStatus(), warnings);
+            if (!dynamic.empty()) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_PLAY " %s", dynamic.c_str());
+                for (const std::string& warning : warnings)
+                    ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s", warning.c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::SetItemTooltip("GPU: the GPU frame time drives it. Frame law (no GPU timing on this backend): it drops on "
+                                      "missed frames and probes one step up after a while without one.");
+            }
         }
     }
 
@@ -596,9 +608,9 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
     const uint32_t sceneId = sceneProject->id;
     const PostProcessingSettings settings = Catalog::getSceneProperty<PostProcessingSettings>(sceneProject->scene, "post_processing");
 
-    auto setAll = [&](const PostProcessingSettings& value) {
-        CommandHandle::get(sceneId)->addCommandNoMerge(
-            new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", value));
+    // the whole struct in one undo step, named for the history ("Apply Film Preset (Main)")
+    auto setAll = [&](const PostProcessingSettings& value, const std::string& label) {
+        CommandHandle::get(sceneId)->addCommandNoMerge(makePostProcessingCommand(project, sceneId, value, label));
     };
 
     ImGui::PushTextWrapPos(0.0f);
@@ -616,7 +628,7 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
         if (ImGui::BeginCombo("##pp_preset", matched ? matched->name.c_str() : "Custom")) {
             for (const PostProcessingPreset& preset : getPostProcessingPresets()) {
                 if (ImGui::Selectable(preset.name.c_str(), matched == &preset) && matched != &preset)
-                    setAll(preset.settings);
+                    setAll(preset.settings, "Apply " + preset.name + " Preset");
                 if (ImGui::IsItemHovered()) {
                     const PostProcessingCost cost = estimatePostProcessingCost(preset.settings, {}, false);
                     postProcessingWrappedTooltip(preset.description + "\n\nEstimate: " + std::to_string(cost.engine.passCount) + " passes, " +
@@ -658,7 +670,7 @@ void editor::InspectorWindow::drawScenePostProcessing(SceneProject* sceneProject
                 PostProcessingSettings changed = settings;
                 for (const EffectDef& effect : group.effects)
                     setEffect(changed, effect, on == 0);
-                setAll(changed);
+                setAll(changed, std::string(on == 0 ? "Turn On " : "Turn Off ") + group.name);
             }
             if (mixed) ImGui::PopItemFlag();
             // a group of one effect (Bloom, Blur): its checkbox is the effect's, with its help

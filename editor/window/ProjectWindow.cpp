@@ -23,6 +23,9 @@
 #include "resources/icons/font-icon_png.h"
 #include "resources/icons/html-icon_png.h"
 #include "resources/icons/css-icon_png.h"
+#include "resources/icons/lut-icon_png.h"
+#include "PostProcessingPresets.h"
+#include "util/CubeLut.h"
 
 #include "Out.h"
 #include "util/HtmlUITemplates.h"
@@ -305,6 +308,31 @@ void editor::ProjectWindow::handleExternalDragEnter() {
 
 void editor::ProjectWindow::handleExternalDragLeave() {
     isExternalDragHovering = false;
+}
+
+std::string editor::ProjectWindow::colorLutTooltip(const fs::path& filePath) {
+    // the renderer's cache, by the path the scene stores (assets-relative): parsed once
+    const std::string stored = project->normalizeToAssetsRelative(filePath).generic_string();
+    const std::shared_ptr<const CubeLut> lut = getCachedColorLut(stored);
+    return describeColorLut(lut.get(), getCachedColorLutError(stored)) +
+           "\n\nDouble-click: the open scene's Color Grading LUT (one undo step).";
+}
+
+void editor::ProjectWindow::assignColorLut(const fs::path& filePath) {
+    SceneProject* scene = project->getSelectedScene();
+    if (!scene || !scene->scene || scene->sceneType == SceneType::SCENE_UI) {
+        Out::warning("Open a 2D or 3D scene to grade it with %s.", editor::FileUtils::pathToUtf8(filePath.filename()).c_str());
+        return;
+    }
+    PostProcessingSettings settings = scene->scene->getPostProcessing();
+    settings.lutTexture = project->normalizeToAssetsRelative(filePath).generic_string();
+    settings.colorGradingEnabled = true;
+    if (settings.lutContribution <= 0.0f)
+        settings.lutContribution = 1.0f;
+    CommandHandle::get(scene->id)->addCommandNoMerge(makePostProcessingCommand(
+        project, scene->id, settings, "Assign Color LUT " + editor::FileUtils::pathToUtf8(filePath.filename())));
+    Out::info("%s grades \"%s\" (Color Grading > LUT Texture).", editor::FileUtils::pathToUtf8(filePath.filename()).c_str(),
+              scene->name.c_str());
 }
 
 void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) {
@@ -774,6 +802,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.89f, 0.30f, 0.15f, 1.0f));
         case FileType::CSS:
             return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
+        case FileType::COLOR_LUT:
+            return ImGui::GetColorU32(ImVec4(0.06f, 0.46f, 0.43f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -1330,6 +1360,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         project->openScene(filePath);
                     else if (Util::isPrefabFile(filePath.string()))
                         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+                    else if (file.type == FileType::COLOR_LUT)
+                        assignColorLut(filePath);  // the open scene's Color Grading LUT
                     else
                         codeEditor->openFile(filePath.string(), true);
                 }
@@ -1548,7 +1580,10 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (notInProject) ImGui::PopStyleVar();
 
                 if (hovered){
-                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                    if (file.type == FileType::COLOR_LUT)
+                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), colorLutTooltip(currentPath / file.name).c_str());
+                    else
+                        ImGui::SetTooltip("%s", file.displayName.c_str());
                 }
 
             }else{
@@ -1633,7 +1668,10 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 }
 
                 if (hovered && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)){
-                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                    if (file.type == FileType::COLOR_LUT)
+                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), colorLutTooltip(currentPath / file.name).c_str());
+                    else
+                        ImGui::SetTooltip("%s", file.displayName.c_str());
                 }
             }
 
@@ -2161,6 +2199,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
         }else if (Util::isCssFile(fileEntry.extension)){
             fileEntry.type = FileType::CSS;
             fileEntry.icon = cssIcon.getRender();
+        }else if (Util::isColorLutFile(fileEntry.extension)){
+            fileEntry.type = FileType::COLOR_LUT;
+            fileEntry.icon = lutIcon.getRender();
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
@@ -3288,6 +3329,10 @@ void editor::ProjectWindow::show() {
         data.loadTextureFromMemory(css_icon_png, css_icon_png_len);
         cssIcon.setData("editor:resources:css_icon", data);
         cssIcon.load();
+
+        data.loadTextureFromMemory(lut_icon_png, lut_icon_png_len);
+        lutIcon.setData("editor:resources:lut_icon", data);
+        lutIcon.load();
 
         scanDirectory(project->getProjectPath().string());
 

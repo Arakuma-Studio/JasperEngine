@@ -176,6 +176,8 @@ namespace jasperengine::editor {
         bool checkHtmlUIReferences();
         bool copyGenerated();
         bool copyAssets();
+        // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
+        bool cookColorLut(const fs::path& source, const fs::path& destination);
         // S04: a reference of the build's scenes (and the prefabs and materials they use) that
         // resolves to no asset fails the export, listing each one, unless allowMissingAssets
         bool checkMissingAssets();

@@ -378,6 +378,24 @@ namespace jasperengine{
 		bool dynamicResolution = false;
 	};
 
+	// Dynamic resolution as the renderer applies it now (RenderSystem::getDynamicResolutionStatus,
+	// MCP get_post_processing_status, Lua scene:getDynamicResolution())
+	struct DynamicResolutionStatus {
+		bool enabled = false;          // the settings ask for it
+		bool running = false;          // the controller drives the scale (Play / the game, no fixed resolution)
+		bool overridden = false;       // a pinned scale (setDynamicResolutionOverride) replaces it
+		float scale = 1.0f;            // the render scale the main camera draws at
+		float minScale = 1.0f;         // its range
+		float maxScale = 1.0f;
+		const char* source = "none";   // the law of the last measurement: "gpu", "frame" or "none"
+		float smoothedMs = 0.0f;       // its smoothed cost (GPU time or frame period), ms
+		float targetMs = 0.0f;
+		bool saturatedLow = false;     // at the min scale and still over the target
+		bool ineffective = false;      // the scale buys too little for the content (GPU law)
+		uint32_t acceptedChanges = 0;
+		float probeSeconds = 0.0f;     // frame law: seconds until it probes one rung up (0: none)
+	};
+
 	// What the shader variant of a submesh depends on in its mesh and GameObject
 	struct SubmeshShaderInputs {
 		// vertex attributes, see RenderSystem::scanSubmeshAttributes
@@ -1917,6 +1935,7 @@ namespace jasperengine{
 		// the post-processed main camera draws at (the controller's while it runs, the pinned
 		// one, else the settings'), whether the controller runs, and its state
 		float getAppliedRenderScale() const;
+		DynamicResolutionStatus getDynamicResolutionStatus() const;
 		bool isDynamicResolutionRunning() const { return dynamicResolutionRunning; }
 		const DynamicResolutionController& getDynamicResolution() const { return dynamicResolution; }
 		// pins the applied scale (0.5..1) while the uber pass runs; 0 or below releases it

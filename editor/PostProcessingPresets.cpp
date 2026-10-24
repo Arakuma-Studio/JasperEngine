@@ -3,11 +3,16 @@
 
 #include "PostProcessingPresets.h"
 
+#include "Project.h"
+#include "command/CommandGroup.h"
+#include "command/CommandNames.h"
+#include "command/type/ScenePropertyCmd.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace jasperengine::editor {
 
@@ -309,6 +314,59 @@ std::string describeLutInputEncoding(LutInputEncoding setting, const CubeLut* lu
     if (setting == LutInputEncoding::AUTO)
         return std::string("Auto: ") + getLutInputEncodingName(resolved) + " (" + reason + "; " + stage + ")";
     return std::string(getLutInputEncodingName(resolved)) + " (" + stage + ")";
+}
+
+Command* makePostProcessingCommand(Project* project, uint32_t sceneId, const PostProcessingSettings& settings, const std::string& label) {
+    Command* command = new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", settings);
+    if (label.empty()) return command;
+    std::vector<std::unique_ptr<Command>> commands;
+    commands.emplace_back(command);
+    return new CommandGroup(std::move(commands), label + " (" + CommandNames::scene(project, sceneId) + ")", false);
+}
+
+std::string describeColorLut(const CubeLut* lut, const std::string& error) {
+    if (!lut) return "Color LUT: " + (error.empty() ? std::string("not loaded") : "does not load: " + error);
+    std::string text = lut->fromStrip ? "Color LUT (image strip)" : "Color LUT (.cube)";
+    if (!lut->title.empty()) text += "\nTitle: " + lut->title;
+    char line[160];
+    if (lut->size1D > 0) {
+        std::snprintf(line, sizeof(line), "\n1D table: %d entries, input %g to %g", lut->size1D, lut->in1D[0], lut->in1D[1]);
+        text += line;
+    }
+    if (lut->size3D > 0) {
+        std::snprintf(line, sizeof(line), "\n3D table: %d^3, input %g to %g", lut->size3D, lut->in3D[0], lut->in3D[1]);
+        text += line;
+    }
+    text += "\nInput encoding: " + describeLutInputEncoding(LutInputEncoding::AUTO, lut, error);
+    return text;
+}
+
+std::string describeDynamicResolution(const DynamicResolutionStatus& status, std::vector<std::string>& warnings) {
+    if (!status.enabled && !status.overridden) return std::string();
+    char text[160];
+    if (status.overridden) {
+        std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (pinned)", status.scale);
+        return text;
+    }
+    if (!status.running) return "Dynamic resolution off (fixed resolution, or not the main camera's view)";
+    const std::string source = status.source;
+    if (source == "gpu") {
+        std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (GPU %.1f / %.1f ms)", status.scale, status.smoothedMs, status.targetMs);
+    } else if (source == "frame") {
+        if (status.probeSeconds > 0.0f)
+            std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (frame law: probing in %.0f s)", status.scale, std::ceil(status.probeSeconds));
+        else
+            std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (frame law: %.1f / %.1f ms)", status.scale, status.smoothedMs, status.targetMs);
+    } else {
+        std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (measuring)", status.scale);
+    }
+    if (status.saturatedLow)
+        warnings.push_back("Dynamic resolution is at Min Scale and still over the target: the cost the scale does not move "
+                           "(CPU, geometry, post chain) misses the frame alone.");
+    if (status.ineffective)
+        warnings.push_back("Dynamic resolution judged the scale ineffective for this content (it saves too little): it holds "
+                           "Render Scale until the cost changes.");
+    return text;
 }
 
 PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& settings, const std::vector<PostProcessPass>& passes,
