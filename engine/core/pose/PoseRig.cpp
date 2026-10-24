@@ -500,12 +500,17 @@ namespace jasperengine::pose {
         if (!built){
             return;
         }
-        const double target = floor + static_cast<double>(lift) * scale;
+        moveLowestTo(pose, floor + static_cast<double>(lift) * scale, lowestPointPrecise(pose, skin), skin);
+    }
+
+    double PoseRig::moveLowestTo(HumanPose& pose, double target, double lowest, const PoseSkin* skin) const{
+        if (!built){
+            return lowest;
+        }
         const double tolerance = 1e-12 * std::max(1.0, std::fabs(target));
         // One step is exact when the lowest point moves with the hips. A lowest skin vertex
         // weighted partly to bones outside the hips subtree moves less: the next steps divide by
         // the measured response (secant). A step that does not move it at all is undone.
-        double lowest = lowestPointPrecise(pose, skin);
         double response = 1.0;
         for (int iteration = 0; iteration < 8; iteration++){
             const double remaining = target - lowest;
@@ -523,6 +528,7 @@ namespace jasperengine::pose {
             response = clampd((moved - lowest) / step, 0.05, 1.0);
             lowest = moved;
         }
+        return lowest;
     }
 
     BodyPose mirrorBodyPose(const BodyPose& body){
@@ -542,6 +548,11 @@ namespace jasperengine::pose {
         return result;
     }
 
+    // |(dof1, dof2)| in double, as both the cap and the check measure it
+    static double swingLength(const float angles[DOFS_PER_BONE]){
+        return std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
+    }
+
     bool boneWithinLimits(HumanBone bone, const float angles[DOFS_PER_BONE]){
         for (int k = 0; k < DOFS_PER_BONE; k++){
             const DofInfo& info = dofInfo(dofIndex(bone, k));
@@ -549,7 +560,8 @@ namespace jasperengine::pose {
                 return false;
             }
         }
-        return std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]) <= 180.0;
+        // the same cap clampBoneToLimits applies: a bone within limits is left unchanged by it
+        return swingLength(angles) <= MAX_SWING_DEGREES;
     }
 
     unsigned clampBoneToLimits(HumanBone bone, float angles[DOFS_PER_BONE]){
@@ -567,11 +579,17 @@ namespace jasperengine::pose {
         // rotation as a shorter swing the other way, and at 180 the twist is undefined (a twisted
         // key would not survive the frames' limit pass), so the cap is half a degree below.
         // Every limit range contains 0, so scaling stays inside.
-        const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
+        const double swing = swingLength(angles);
         if (swing > MAX_SWING_DEGREES){
             const double factor = MAX_SWING_DEGREES / swing;
             angles[0] = static_cast<float>(angles[0] * factor);
             angles[1] = static_cast<float>(angles[1] * factor);
+            // rounding to float can land a hair above the cap: step toward 0 until the result
+            // passes boneWithinLimits (one or two ulps; the direction is kept)
+            while (swingLength(angles) > MAX_SWING_DEGREES){
+                angles[0] = std::nextafter(angles[0], 0.0f);
+                angles[1] = std::nextafter(angles[1], 0.0f);
+            }
             changed |= 3u;
         }
         return changed;

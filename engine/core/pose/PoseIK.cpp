@@ -135,7 +135,13 @@ namespace jasperengine::pose {
         // the solved triangle: C* on the target line at the clamped reach, B* on the normal's
         // side. The plane follows the limb by the shortest rotation from C - A to T - A (as
         // fromTo(C - A, T - A) turns it), so it never spins when the target crosses the normal.
-        Vec3d newNormal = fromToRotation(ac.length() > 1e-12 ? ac : aim, aim) * normal;
+        // Singular case: T - A within 1 degree of exactly opposite C - A. The shortest rotation is
+        // then (nearly) a half turn whose axis the approach direction or fromToRotation's fixed
+        // model-space axis picks, and that axis would decide the bend side (rig-dependent): the
+        // pole plane at the target direction decides instead (knees forward, elbows back).
+        const double SINGULAR_COS = -0.9998476951563913;   // cos(179 degrees)
+        const Vec3d from = ac.length() > 1e-12 ? ac.normalized() : aim;
+        Vec3d newNormal = from.dot(aim) < SINGULAR_COS ? limbPoleNormal(rig, limb, aim) : fromToRotation(from, aim) * normal;
         newNormal = newNormal - aim * newNormal.dot(aim);
         if (newNormal.length() < 1e-9){
             newNormal = limbPoleNormal(rig, limb, aim);

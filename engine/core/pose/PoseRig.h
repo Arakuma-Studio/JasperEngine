@@ -103,6 +103,9 @@ namespace jasperengine::pose {
         double lowestPointPrecise(const HumanPose& pose, const PoseSkin* skin) const;
         // moves the hips along up so the lowest point is floor + lift * humanScale
         void groundPose(HumanPose& pose, float lift, const PoseSkin* skin) const;
+        // the same towards a model-space height `target`, from the pose's already measured
+        // lowestPointPrecise(pose, skin) `lowest`; returns the lowest point it ends at
+        double moveLowestTo(HumanPose& pose, double target, double lowest, const PoseSkin* skin) const;
 
     private:
         struct Slot {
@@ -145,7 +148,8 @@ namespace jasperengine::pose {
     JASPERENGINE_API std::vector<int> clampToLimits(BodyPose& body);
     // the same for one slot's three values; returns a bit mask of the changed DOFs (bit k = dof k)
     JASPERENGINE_API unsigned clampBoneToLimits(HumanBone bone, float angles[DOFS_PER_BONE]);
-    // every value within its limits and the swing at most 180 degrees long
+    // every value within its limits and the swing at most MAX_SWING_DEGREES long: exactly the
+    // values clampBoneToLimits leaves unchanged (and every result of clampBoneToLimits passes)
     JASPERENGINE_API bool boneWithinLimits(HumanBone bone, const float angles[DOFS_PER_BONE]);
 
 }

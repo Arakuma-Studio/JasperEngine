@@ -14,12 +14,19 @@
 //   smoothstep(-1, 0, cos(angle between the current and the pole plane)): the current plane loses
 //   its weight as it turns past 90 degrees from the pole plane, so a limb bent slightly away from
 //   the pole side (float noise of a straight rest or neutral limb) takes the pole's side without
-//   any jump. Above sinA = 0.1 the limb keeps its own plane on either side (the one documented
+//   any jump. Above sinA = 0.1 the limb keeps its own plane on either side (a documented
 //   discontinuity: a limb bent backwards by ~5.7 degrees).
 // - The solve: the chosen plane normal is carried by the shortest rotation from C - A to T - A
 //   (like fromTo(C - A, T - A) of the spec), the target triangle is built in that plane (C* on the
 //   target line at the clamped reach, B* on the normal's side), then A is turned onto it
 //   (aligning B - A and the plane normal) and B onto C* by the shortest arc.
+// - Singular configuration: T - A within 1 degree of exactly opposite C - A (a hanging leg's foot
+//   pulled overhead). The shortest rotation is then a half turn about an axis the approach
+//   direction (or, exactly opposite, fromToRotation's fixed model-space axis) picks, so it would
+//   decide the bend side depending on how the model is turned. There the plane is the pole's at
+//   the target direction instead (knees forward, elbows back on every rig); the switch at 1
+//   degree is a discontinuity, as is the singularity itself (the shortest rotation's plane
+//   already depends on the side the target comes from).
 
 #ifndef POSE_IK_H
 #define POSE_IK_H

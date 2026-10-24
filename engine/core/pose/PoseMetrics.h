@@ -21,7 +21,8 @@
 // - Support: each foot in contact gives its heel (the foot bone) and toe (the toes bone, else the
 //   foot tip estimated 0.15 humanScale along the foot) points, widened by 0.045 humanScale to
 //   each side so one foot alone has an area; the support is their convex hull on the floor.
-// - limitHits lists only DOFs of slots the rig has.
+// - limitHits lists only DOFs of slots the rig has, and only those outside the clampToLimits
+//   limits (per DOF, then the swing cap) by more than LIMIT_HIT_TOLERANCE degrees.
 
 #ifndef POSE_METRICS_H
 #define POSE_METRICS_H
@@ -36,6 +37,9 @@
 namespace jasperengine::pose {
 
     constexpr float FOOT_CONTACT_HEIGHT = 0.02f;   // humanScale units
+    // degrees a DOF (or a swing) may exceed its limit before it is a limit hit: a frame clamped to
+    // a limit by the frames' limit pass reads back slightly outside it (e.g. a knee bend of -0.003)
+    constexpr float LIMIT_HIT_TOLERANCE = 0.05f;
 
     struct FootMetrics {
         float height = 0.0f;        // lowest sole point above the floor
@@ -49,7 +53,7 @@ namespace jasperengine::pose {
         Vector3 centerOfMass;
         bool balanced = false;      // the centre of mass is above the support of the feet in contact
         float balanceMargin = 0.0f; // signed distance to the support's edge (negative outside)
-        std::vector<int> limitHits; // DOF indices outside the joint limits (before any clamping)
+        std::vector<int> limitHits; // DOF indices outside the joint limits by more than LIMIT_HIT_TOLERANCE (before any clamping), ascending
     };
 
     // `pose` realised from `body` on `rig` (body gives limitHits; it is not clamped here)

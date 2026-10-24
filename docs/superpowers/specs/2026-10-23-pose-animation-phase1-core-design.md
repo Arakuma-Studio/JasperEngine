@@ -386,8 +386,33 @@ Then, with humanize: in-betweens (`inbetweens > 0`): `maxDeg = lerp(180, 12, inb
 a running state per bone follows the frames with `rotateTowards(state, frame, maxDeg)` (hips
 position not limited); loops run one warm-up pass first and force the last frame equal to the
 first. Then follow-through (4.9), then joint limits (via `toBodyPose` / `clampToLimits` /
-`fromBodyPose` keeping the frame's hips position) when `jointLimits`. Frames are the single
-source for preview, bake and runtime playback.
+`fromBodyPose` keeping the frame's hips position) when `jointLimits`.
+
+Ground correction (with a rig, always, not only with humanize; added in the polish round, revised
+in its review): the hips position is interpolated linearly while the legs swing, so a fast springy
+move between a deep crouch and standing would sink the feet (about 0.05 to 0.07 humanScale for a
+jump's crouch and landing). Each frame gets a ground weight `g` in [0, 1] from its time (after the
+`stepRate` quantisation, as `sample` sees it) on the timeline: `g = 1` in the hold of a grounded
+key (`PoseKey::grounded`) followed by a grounded key, and in a segment whose both end keys are
+grounded; `g = 0` in the hold of a lifted key followed by a lifted key, and in a segment whose both
+ends are lifted; in a launch segment (grounded -> lifted) and in the hold before it
+`g = 1 - smoothstep(0, 1, clamp01(e_hips))`, in a landing segment (lifted -> grounded) and in the
+hold before it `g = smoothstep(0, 1, clamp01(e_hips))`, with `e_hips` the hips' ease value of that
+segment at that time (step 4, moving holds included: during the hold before the segment it drifts
+from 0 at the hold's start to the drift value at the segment's start, which a flat 0 / 1 in the
+hold would turn into a jump; it is 0 there without moving holds, and 1 at the segment's end). So a
+wind-up dip (`e < 0`) stays fully grounded and `g` is continuous where the hips' motion is (the
+last key's hold of a non-looping animation is flat). With `h` the frame's uncorrected lowest point above the
+floor, the hips move along up so it ends at `(1 - g) * max(h, 0)` (that is
+`g * exact + (1 - g) * max(0, penetration)`: on the floor when `g = 1`, only pushed out of it
+when `g = 0`, so lifts and launches are kept), through `groundPose`'s secant steps with the rig's
+skin, as the keys are grounded. The correction runs after the in-betweens and before
+follow-through, so follow-through is driven by the corrected hips path; the frames follow-through
+or the limits then change are measured again and corrected by the same rule (their uncorrected
+height is the new lowest point minus the first correction). A loop's last segment leads back to
+key 0 and its last frame stays a copy of the first. `SamplerInput::grounded` holds the keys'
+flags (`makeSamplerInput` fills it; empty = no correction). Frames are the single source for
+preview, bake and runtime playback.
 
 **Auto timing** `void autoTiming(PoseAnimationData&, const std::vector<HumanPose>& realised, float humanScale)`:
 motion of segment `i` = mean angle between the poses' bone rotations (degrees) + 100 * hips travel
@@ -435,10 +460,18 @@ Two-bone IK (A = upper, B = lower, C = end, T = target; revised in review rounds
    the weight of the current plane is `w = smoothstep(0.02, 0.1, sinA) * smoothstep(-1, 0, c)` for
    `sinA < 0.1` and `w = 1` above; `n = normalize(w * n_current + (1 - w) * n_pole)`. So a straight
    (or float-noise-bent) limb takes the pole's side, a clearly bent one keeps its plane, the
-   current plane's weight fades as it turns past 90 degrees from the pole plane, and the only
-   discontinuity is at `sinA = 0.1` for a limb bent backwards (it then keeps its own plane).
+   current plane's weight fades as it turns past 90 degrees from the pole plane, and the one
+   discontinuity of this blend is at `sinA = 0.1` for a limb bent backwards (it then keeps its own
+   plane).
 3. The plane follows the limb: `n' = fromTo(C - A, T - A) * n` (the shortest rotation, like the
    original "rotate B, then A by fromTo(C - A, T - A)" order; it never spins when T crosses n).
+   Singular configuration: when `T - A` is within 1 degree of exactly opposite `C - A`, the
+   shortest rotation is a half turn about an axis picked by the approach direction (or, exactly
+   opposite, by `fromToRotation`'s fixed model-space axis), which would make the bend side depend
+   on the model's orientation; there `n'` is the pole normal at the target direction
+   `cross(T - A, pole)` (with the up / down blend of step 2) instead: knees forward, elbows back,
+   on every rig; the switch at 1 degree is a discontinuity (as is the singularity itself).
+   (Added in the polish round.)
 4. Solved triangle in that plane: `C* = A + reach * t`, `B* = A + lab * (cos(a) t + sin(a) cross(n', t))`
    with `t = (T - A) / |T - A|` and `cos(a)` from the law of cosines.
 5. A turns by the rotation taking the pair (`B - A`, `n` projected off `B - A`) to (`B* - A`, `n'`);
@@ -496,7 +529,10 @@ engine's mesh buffers.
 11. Sampler: telescoping (all e = 1 gives the last key exactly); loop seam (sample(0) ==
     sample(len)); overlap delays deep bones; stepRate quantises; moving holds drift during a
     hold; life loops seamlessly; frames count and last == first when looping; in-betweens cap
-    the per-frame rotation; one-pose animations are static.
+    the per-frame rotation; one-pose animations are static; a springy crouch to stand between
+    grounded keys stays exactly on the floor, a jump never penetrates and keeps its flight, the
+    correction is continuous across holds and segments, follow-through follows the corrected
+    hips.
 12. Auto timing: preserves total length, larger motion gets a longer snap, snaps to the step
     grid, zero motion is a no-op.
 13. Follow-through: the three effects of 4.9 on synthetic hips motion; loop steady state.

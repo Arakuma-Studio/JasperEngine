@@ -793,6 +793,13 @@ void editor::PoseRender::setInEditorFrame(bool inFrame){
 }
 
 void editor::PoseRender::releaseGpu(){
+    // Shutdown only: App::engineViewDestroyed is called by the editor backends only once the
+    // main loop has ended (BackendLinux/BackendWin after the loop, BackendMac after the loop and
+    // on the Metal command queue failure at startup), right before Engine::systemShutdown; the
+    // editor never recreates its view. scene->destroy() runs here while the view still exists,
+    // so RenderSystem::destroy takes its reloadView=false path and discards the CPU assets: were
+    // a view-recreation path ever added, a renderer used after it must reload its model too
+    // (reloading the scene alone, as sceneLoaded=false does, would find no CPU assets).
     // a copy: cancelled callbacks may destroy renderers
     const std::vector<PoseRender*> renders = liveRenders();
     for (PoseRender* render : renders){
