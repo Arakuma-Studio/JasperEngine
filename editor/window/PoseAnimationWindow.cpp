@@ -666,7 +666,7 @@ void editor::PoseAnimationWindow::actionRename(int index){
     renameIndex = index;
     renameFocus = true;
     std::snprintf(renameBuffer, sizeof(renameBuffer), "%s", animation->poses[index].name.c_str());
-    ImGui::OpenPopup("Rename Pose###PoseRename");
+    // drawRenamePopup opens it at the window level (this may run inside the strip's child window)
 }
 
 void editor::PoseAnimationWindow::actionAutoTiming(){
