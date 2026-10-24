@@ -21,8 +21,10 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <limits>
 #include <sstream>
 #include <thread>
@@ -141,6 +143,29 @@ std::string MeshSystem::getModelFilenameKey(const std::string& filename){
     // loader does. This keeps the model/texture pools from treating the same
     // file as separate absolute and relative resources.
     return std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal().generic_string();
+}
+
+// Name of a converted or baked copy of an accessor's data appended to a (pooled) glTF model:
+// the source data and the bake matrix, so a later load finds the copy instead of adding one
+static const char* const GLTF_SYNTH_PREFIX = "jasperengine_synth|";
+
+static std::string gltfSynthKey(const char* kind, const tinygltf::Accessor& accessor, const Matrix4* matrix = nullptr){
+    std::string key = std::string(GLTF_SYNTH_PREFIX) + kind + "|" + std::to_string(accessor.bufferView) + "," +
+        std::to_string(accessor.byteOffset) + "," + std::to_string(accessor.count) + "," +
+        std::to_string(accessor.componentType) + "," + std::to_string(accessor.type);
+    if (matrix) {
+        char hex[9];
+        for (int c = 0; c < 4; c++) {
+            for (int r = 0; r < 4; r++) {
+                uint32_t bits;
+                std::memcpy(&bits, &(*matrix)[c][r], sizeof(bits));
+                std::snprintf(hex, sizeof(hex), "%08x", bits);
+                key += (c == 0 && r == 0 ? "|" : ",");
+                key += hex;
+            }
+        }
+    }
+    return key;
 }
 
 // Key texture storage by image source and sampler, not glTF texture index: glTF files
@@ -3216,8 +3241,8 @@ bool MeshSystem::loadFoliageMesh(Entity entity, const std::string& path){
     if (FileData::getFilePathExtension(path).compare("obj") == 0){
         return loadOBJ(entity, path);
     }
-    // Keep all geometry on the instanced root.
-    return loadGLTF(entity, path, false, true, false);
+    // Keep all geometry on the instanced root, with the file's node transforms baked in.
+    return loadGLTF(entity, path, false, true, false, true);
 }
 
 // Sample height and normal in terrain-local space.
@@ -4293,7 +4318,7 @@ void MeshSystem::createTorus(MeshComponent& mesh, float radius, float ringRadius
         mesh.needReload = true;
 }
 
-bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform){
+bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncLoad, bool skipEntities, bool changeRootTransform, bool bakeSceneRoot){
     const std::string poolKey = getModelFilenameKey(filename);
 
     failedModelLoads.erase(filename); // an explicit load is a new attempt
@@ -4369,8 +4394,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
         res = true;
     }else{
-        // Try cache before hitting disk.
-        auto cached = ModelPool::getGLTF(poolKey);
+        // Try cache before hitting disk. The loader appends synthetic buffers to the model and
+        // ModelPool has no lock, so an off-thread load (a thumbnail) parses its own copy.
+        const bool sharePool = !Engine::isAsyncThread();
+        auto cached = sharePool ? ModelPool::getGLTF(poolKey) : nullptr;
         if (cached){
             model.gltfModel = cached;
             res = true;
@@ -4408,7 +4435,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
             // Only cache full-resolution parses. A downscaled preview decode must not be reused
             // as the full-resolution model in the user's scene.
-            if (maxImageDim == 0) {
+            if (maxImageDim == 0 && sharePool) {
                 ModelPool::addGLTF(poolKey, model.gltfModel);
             }
         }
@@ -4498,17 +4525,23 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     Matrix4 matrix = getGLTFMeshGlobalMatrix(transformNode, model, nodesParent);
 
     // The transforms between the scene root and a lone mesh node, which the entity transform
-    // (the scene root's) misses: baked into the vertices like a merged model's nodes
+    // (the scene root's, also when a scene load keeps the saved one) misses: baked into the
+    // vertices like a merged model's nodes. An entity placed by something else (a foliage
+    // chunk) bakes the node's whole global transform, as the merged nodes of a model do.
     Matrix4 meshOffset;
     if (!useChildEntities && !bakingFlatten && !anyNodeSkinned &&
             canBakeGLTFMesh(model, model.gltfModel->nodes[meshNodes[0]].mesh)) {
-        int node = meshNodes[0];
-        while (node >= 0 && node != transformNode) {
-            meshOffset = getGLTFNodeMatrix(node, model) * meshOffset;
-            node = nodesParent[node];
-        }
-        if (node < 0) {
-            meshOffset = matrix.inverse() * meshOffset; // the mesh is under another scene root
+        if (bakeSceneRoot) {
+            meshOffset = getGLTFMeshGlobalMatrix(meshNodes[0], model, nodesParent);
+        } else {
+            int node = meshNodes[0];
+            while (node >= 0 && node != transformNode) {
+                meshOffset = getGLTFNodeMatrix(node, model) * meshOffset;
+                node = nodesParent[node];
+            }
+            if (node < 0) {
+                meshOffset = matrix.inverse() * meshOffset; // the mesh is under another scene root
+            }
         }
     }
     const bool bakeMeshOffset = (meshOffset != Matrix4());
@@ -4533,7 +4566,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
 
     // cullingMode is the user's (a glTF has none to give): a load keeps it
-    mesh.windingOrder = ((matrix * meshOffset).determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
+    // from what places the vertices: the scene root (on the entity) and the baked offset
+    const Matrix4 placedMatrix = (bakeSceneRoot && bakeMeshOffset) ? meshOffset : matrix * meshOffset;
+    mesh.windingOrder = (placedMatrix.determinant() < 0.0) ? WindingOrder::CW : WindingOrder::CCW;
 
     if (asyncLoad) {
         ResourceProgress::updateProgress(buildId, 0.4f); // Transform processing done
@@ -4586,6 +4621,29 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     if (skipEntities && useChildEntities && model.nodesIdMapping.empty()) {
         remapMeshNodesByName(model, meshNodes);
     }
+
+    // Converted and baked copies are appended to the model, which ModelPool shares between every
+    // entity of the file: one made by an earlier load is found by its key and reused, so loads
+    // and instances do not each add their own.
+    std::unordered_map<std::string, int> synthViews;
+    for (size_t v = 0; v < model.gltfModel->bufferViews.size(); v++) {
+        const std::string& name = model.gltfModel->bufferViews[v].name;
+        if (name.rfind(GLTF_SYNTH_PREFIX, 0) == 0) {
+            synthViews.emplace(name, static_cast<int>(v));
+        }
+    }
+    auto synthView = [&](const std::string& key, const std::function<int()>& make) {
+        auto found = synthViews.find(key);
+        if (found != synthViews.end()) {
+            return found->second;
+        }
+        const int view = make();
+        if (isValidGLTFIndex(view, model.gltfModel->bufferViews)) {
+            model.gltfModel->bufferViews[view].name = key;
+            synthViews.emplace(key, view);
+        }
+        return view;
+    };
 
     // Creating node meshes may reallocate the MeshComponent array. Do it only after the root mesh
     // setup above; the child path does not dereference that root reference again.
@@ -4781,7 +4839,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 indexType = AttributeDataType::UNSIGNED_INT;
             } else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
                 // No 8-bit index format in the renderer: expand to 16-bit via a synthetic buffer view.
-                indexBufferView = convertGLTFByteIndicesToShort(indexAccessor, model);
+                indexBufferView = synthView(gltfSynthKey("byteindex", indexAccessor), [&]() {
+                    return convertGLTFByteIndicesToShort(indexAccessor, model);
+                });
                 if (!isValidGLTFIndex(indexBufferView, model.gltfModel->bufferViews)) {
                     Log::error("Failed to convert 8-bit indices for primitive %u: %s", i, filename.c_str());
                     continue;
@@ -4887,8 +4947,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     continue; // baked preview is static geometry; drop the skinning attributes
                 }
                 if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
-                    int baked = bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix,
-                                                             attrib.first == "NORMAL", model);
+                    const bool isNormal = attrib.first == "NORMAL";
+                    int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
+                        return bakeGLTFTransformedAttribute(accessor, nodeBakeMatrix, nodeBakeNormalMatrix, isNormal, model);
+                    });
                     if (baked >= 0) {
                         attrBufferView = baked;
                         attrByteOffset = 0;
@@ -4896,7 +4958,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     }
                 }
                 if ((bakingFlatten || bakeMeshOffset) && attrib.first == "TANGENT") {
-                    int baked = bakeGLTFTransformedTangent(accessor, nodeBakeMatrix.linear(), model);
+                    int baked = synthView(gltfSynthKey("tangent", accessor, &nodeBakeMatrix), [&]() {
+                        return bakeGLTFTransformedTangent(accessor, nodeBakeMatrix.linear(), model);
+                    });
                     if (baked >= 0) {
                         attrBufferView = baked;
                         attrByteOffset = 0;
@@ -4906,7 +4970,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 // glTF also allows VEC3 colors; only the normalized integer ones need a copy
                 bool colorConvertedToVec4 = false;
                 if (attrib.first == "COLOR_0" && accessor.type == TINYGLTF_TYPE_VEC3) {
-                    int converted = convertGLTFColorToVec4(accessor, model);
+                    int converted = synthView(gltfSynthKey("color4", accessor), [&]() {
+                        return convertGLTFColorToVec4(accessor, model);
+                    });
                     if (converted >= 0) {
                         attrBufferView = converted;
                         attrByteOffset = 0;
