@@ -955,7 +955,46 @@ Files: `engine/core/lattice/LatticeRender.{h,cpp}`, `lattice/LatticeTypes.h` (on
 `library/lattice_stretch.{vert,frag}`, `library/{water,spin_bob,dissolve}_depth.vert`,
 `editor/shader/{ShaderVariantCollector.{h,cpp},ShaderLibraryMatrix.cpp}`, `editor/Project.cpp`,
 `docs/mcp/guide/shaders.md`, `docs/shaders/library.md` (regenerated),
-`engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens, `fixtures/lattice/skinned_column.gltf`).
+`engine/tests/htmlui/TestLatticeRender.cpp` (+ goldens `golden/lattice_*.png`,
+`fixtures/lattice/skinned_column.gltf`, a copy of the shader-library fixture's).
+
+Limits: a lattice variant of a manifest shader that did not read the vertex colour now
+declares it, so a mesh already at the 16 vertex attributes (skinning + 8 morph attributes +
+instancing + colour) can exceed the limit in its lattice variant only; the non-lattice
+variant of such a mesh already fails today with morph normals. Physics colliders and
+triangle picking keep the rest shape (§1.1).
+
+Verification (all on this host, GL 4.1 core through Mesa llvmpipe under Xvfb):
+- `jasperengine-editor shaders --out ... --backend all` with 14 built-in lattice specs
+  (`mesh`, `depth`, `gbuffer` with skinning, morphs, instancing and fade, vertex colours,
+  shadows, vertex lights, sprite rect, 2D lights, terrain): 84 compiles, 0 failed (GLSL 4.10,
+  GLSL ES 3.00, HLSL 5, MSL macOS/iOS, SPIR-V). This caught `active` (a GLSL reserved word)
+  and a dynamic index into the block GL flattens (`latticeStarts[b]`): both fixed.
+- `shaders --library all --backend all`: 41 library shaders, 16230 compiles, OK (the matrix
+  includes the four lattice cases). `docs/shaders/library.md` regenerated.
+- `jasperengine-htmlui-tests --gtest_filter=LatticeRender*` (standalone engine build,
+  `cmake -S engine -B build/htmlui-tests -DJASPERENGINE_HTMLUI_TESTS=ON`): 6 tests: a lattice
+  at rest draws pixel-identical to no lattice and unbinding restores the variant and image;
+  sheared silhouettes match `lattice::deformWorldPoint` (sharp, smooth, cubic) within 1.5 px;
+  the tilted front face's shading equals a box rotated to the cofactor normal; the shadow on
+  a wall shifts by the deformation, a RED mask (white vertices) equals no mask and
+  INVERTED_RED equals no lattice in colour and shadow, and the depth pre-pass image is
+  identical to the one without it; a skinned column deformed before skinning (lattice at
+  the bind pose) and after (at the posed column), and not when the after-skinning lattice
+  stands at the bind pose; two instances, only the one inside the lattice deformed. A
+  mutation (no lattice call in `depth.vert`) fails the shadow and pre-pass checks. The whole
+  htmlui suite without the perf tests: 3232 passed.
+- MCP (merged with lat/editor-data): `test_lattice_data.py` 7/7; shader library tests as in
+  the baseline; a throwaway script binding a cube and a sphere (with `library:lattice_stretch`)
+  through `add_component`/`set_properties` showed the deformation and the heat map, and
+  `get_build_info include_shaders` listed `Mesh (..., Ltc, ...)` and `Depth (Vc4, Ltc)` for a
+  cube inheriting a binding from its parent.
+
+Integration notes: `RenderSystem::update` calls `scene->getSystem<LatticeSystem>()->lateUpdate()`
+then `LatticeRender::prepare(scene, latticeState)` right after the skin-binding bone loop.
+WP-ECS's MeshSystem reads `LatticeMeshState::wantsTessellation`/`tessellation` (set for every
+target, read for sprites). `EntityCloner.cpp` gets one line from this package. Followers,
+bake and sampling use the solver directly; nothing else needs to call LatticeRender.
 
 ### 12.x WP-ECS (LatticeSystem, Lattice object, EntityCloner, sprite grid, Lua)
 
@@ -994,7 +1033,8 @@ is resampled on use from the resolution its size factors into, the factorization
 the current resolution (ties: x before y before z); a size no resolution has reads as zeros.
 
 Jiggle (spec §6.2) details: acceleration from finite differences of the lattice's world
-position in `lateUpdate`; frames 1 and 2 after enabling, `resetJiggle()`, a frame longer
+position in `lateUpdate`; frames 1 and 2 after enabling, `resetJiggle()`, frames the lattice
+spent inactive or the system paused (the springs are kept, only the history restarts), a frame longer
 than 0.25 s or a jump of more than 2 lattice sizes (largest world axis length) in one frame
 only rebuild the history (teleport). Substeps of at most `min(1/120 s, 1/sqrt(k))`, at most
 64 per frame; a frame longer than 0.25 s is integrated as 0.25 s. Clamp keeps
@@ -1121,8 +1161,9 @@ Runtime:
   Animation that ended in an update stopped its tracks before the all-actions pass sampled them
   at the end, so the last keys were missed by up to a frame (0.385 instead of 0.4 at the ~8 fps of
   the headless test). `ActionSystem::animationApplyEnd` (private, added) samples every running
-  keyframe child once at the clip's end (its frame's end at most, the animation duration when that
-  cut it) before the clip stops; the pose blend of that update writes the final values.
+  keyframe child once at the clip's end (at the clip time, as every other update samples it, the
+  animation duration when that cut it) before the clip stops; the pose blend of that update writes
+  the final values.
 - Integration fix: `pushEntityHandleByType` had no `Lattice` entry (ProjectUtils names a lattice
   entity's class `Lattice`, so `eval_lua object(ref, "Lattice")` and typed script references fell
   back to EntityHandle); added `DISPATCH_TYPE(Lattice, "lattice")` in `LuaBinding.cpp`.
@@ -1350,3 +1391,141 @@ Integrator notes:
 - `LatticeEditorOps::falloff()` is initialised from the preferences on first use.
 - SceneRender finds its project scene id by searching the project's scenes and prefab stages
   for itself (cached), so no Project.cpp change was needed.
+
+### 12.x WP-BAKE
+
+§9.4 as specified, with these decisions:
+
+- **What a bake takes.** `bake(target)` / `canBake(target)`: the meshes of the target (its glTF
+  Model's meshes: the Model itself on the flat path, every mesh part entity on the node path; a
+  mesh part alone when the target is one), plus, when the target's Lattice Modifier has Include
+  Children, every mesh below it. Each glTF Model among them gets its own file (`path` returns
+  them joined by ", "). Meshes that are not glTF models (sprites, primitives, polygons,
+  tilemaps, terrains, meshes made by tools, OBJ models, Models without a file or still loading)
+  cannot be baked; when nothing else is left the reason names what the target is ("'Box' is a
+  generated mesh: only glTF models (.gltf, .glb) can be baked", "an OBJ model ... export it as
+  glTF first", "a sprite", ...). Refused while the scene plays.
+- **Same bindings as the GPU.** The bindings are resolved per mesh exactly as
+  `LatticeRender::prepare` packs them (lat/render exposes no per-entity resolver, so
+  `LatticeBake.cpp` has a `Resolver` mirroring it): own bindings when the modifier is enabled,
+  then every enabled ancestor modifier with Include Children nearest first, lattices skipped
+  when deleted / without a component / disabled / inactive in the hierarchy / with a singular or
+  non-finite transform / a padded grid that does not fit / non-finite offsets, non-finite weights
+  skipped, a mesh with a singular transform skipped, at most `LATTICE_MAX_PER_MESH`, terrains
+  never. `M = objectToNormalized(lattice, mesh)` and `Minv = M^-1` as packed. Per submesh: the
+  Submesh filter (engine submesh index; the loader stores a node's primitives reversed, the
+  bake maps them back), the mask only when the submesh has vertex colours (COLOR_0 VEC4, or VEC3
+  FLOAT/UBYTE/USHORT, as the loader binds them; otherwise mask 1), the weight; bindings at rest
+  or with weight 0 (`movingBindings` off) are not baked. Vertices go through
+  `lattice::deformVertex` in order; a vertex no binding moves keeps its file values bit for bit.
+- **Which bindings bake.** A binding is baked (and removed) only when everything it deforms is
+  baked with it, in the order the GPU applies it: (1) every mesh it deforms is in the bake (a
+  binding that also deforms another mesh stays: "it also deforms 'Prop', ..."); (2) on a
+  skinned submesh (JOINTS_0 or WEIGHTS_0 loaded) only Before Skinning bindings bake, into the
+  bind pose; After Skinning ones stay ("set its Stage to Before Skinning..."); (3) without
+  skinning every binding deforms after the instance matrix, so nothing bakes into an instanced
+  mesh (an `InstancedMeshComponent` on it); (4) lattices do not commute, so a submesh bakes the
+  bindings before the first one that stays (skinned: in the Before Skinning sequence, which runs
+  before the rest); this is iterated to a fixed point over all submeshes. Bindings that stay are
+  listed in `note` ("Kept binding 2 of 'Hero' (lattice 'Feet'): ..."), also those at rest,
+  invalid or past the limit; `note` also says when a mesh had more than 4 lattices (the ignored
+  ones deform it once the baked ones are gone) and when morph weights are not 0.
+- **Morph targets** (applied before the lattices) become displacements of the baked shape:
+  `deform(base + delta) - deform(base)` per target (position, normal, tangent), exact at weight
+  0 and 1 of a single target, close in between. A delta whose vertex no binding moves keeps its
+  file value; a sparse target without a base stays sparse with the same indices.
+- **The file** (`LatticeBakeGltf.{h,cpp}`, the glTF is read as JSON + buffers, not through
+  tinygltf, so everything not touched is kept as written: key order, extensions, extras,
+  materials, textures, samplers, skins, animations, morph targets, scenes). `<stem>_lattice.glb`
+  next to the original, never an existing file (`_2`, `_3`...; baking `x_lattice[_n].glb` counts
+  on from `x`). One binary buffer: the old buffers one after the other (16-byte aligned, external
+  `.bin` files and data URIs embedded), new data after them; bufferViews moved with them. Images
+  keep their URIs (valid: same directory) or bufferViews. New vertex data per node: a mesh used
+  by several nodes that get different data is copied for the nodes with new data (nodes that keep
+  their data keep the mesh index); an accessor is written in place when it is FLOAT, dense, every
+  primitive using it gets the same data, nothing else uses it (indices, skins, animations,
+  EXT_mesh_gpu_instancing) and no other accessor, sparse part or image shares its bytes
+  (interleaved attributes in one bufferView do not count); otherwise the primitives get new FLOAT
+  accessors (one per distinct result), the old one stays for its other users. POSITION
+  accessors get exact `min`/`max`, also in place. Normalized/quantized (KHR_mesh_quantization)
+  and sparse inputs are read as glTF defines them and written as FLOAT, which is exact; refused:
+  KHR_draco_mesh_compression / EXT_meshopt_compression / KHR_meshopt_compression ("export the
+  model uncompressed"), a file that changed on disk since the Model loaded it ("load the model
+  again"), Merge Static Meshes models whose vertex data is not FLOAT (the merge only transforms
+  FLOAT data), merged nodes scaled to zero. Merge Static Meshes models are baked in the space the
+  merge puts the vertices in (the node transforms, computed as `MeshSystem` does) and written
+  back in node space (the load applies the transforms again); their morph deltas are not
+  transformed by the merge, nor by the bake.
+- **The scene** (`command/type/LatticeBakeCmd.{h,cpp}`, one undo step): the baked bindings leave
+  their modifiers (`LatticeBindingsCmd` each, the component stays) and every baked Model loads
+  the new file in place with `MeshSystem::loadGLTF(..., skipEntities)` as a reopened scene does:
+  the node, mesh part, bone and animation entities are kept with their ids and components
+  (Lattice Modifiers on parts, submesh edits), because the file has the same nodes. A Prefab
+  instance records a `filename` override of its Model. Undo loads the original file back and
+  restores the bindings; the baked file stays (redo loads it again). A failure to load the new
+  file rolls everything back and deletes the files that bake wrote. The Project window refreshes
+  its directory. `path` is the file as the Model stores it (relative to the assets directory,
+  `ModelComponent::filename`'s convention).
+- **Inspector**: a "Bake" section at the end of the Lattice Modifier (single selection): "Bake
+  Deformation", disabled with `canBake`'s reason (or "Stop the scene to bake") as tooltip; the
+  result goes to the Console (the path, each note as a warning, or the error).
+- Known engine limitations met (not WP-BAKE's files): the loader ignores the sparse part of a
+  base attribute (POSITION/NORMAL/...; only morph targets are materialized), so the live render
+  of such a model shows the base values while the bake writes the glTF-correct ones; sokol has no
+  3-component SHORT/BYTE vertex format, so a KHR_mesh_quantization model with VEC3 positions does
+  not render before the bake (it does after: FLOAT).
+
+Contract additions: none in the headers. New: `editor/lattice/LatticeBakeGltf.{h,cpp}`,
+`editor/command/type/LatticeBakeCmd.{h,cpp}` (CMake editor list), the editor's include path gains
+`engine/libs/tinygltf` (the bake reads the loaded `tinygltf::Model` for the layout the meshes were
+built from). Xcode project entries for the new files are the integrator's.
+
+Files: `editor/lattice/LatticeBake.cpp` (stub replaced), `editor/lattice/LatticeBakeGltf.{h,cpp}`,
+`editor/command/type/LatticeBakeCmd.{h,cpp}`, `editor/window/InspectorWindow.cpp` (the Bake row:
+`drawLatticeBakeRow`, called at the end of `drawLatticeModifierComponent`), `CMakeLists.txt`,
+`tools/mcp/tests/test_lattice_bake.py` (new).
+
+Tests: `tools/mcp/tests/test_lattice_bake.py` (4 tests, new empty project, harness Xvfb, the button
+clicked with xdotool: it is found in an editor screenshot as the lowest full-width button-coloured
+row once the inspector is scrolled to its end; the test skips with a message if the layout moves).
+Ball (.gltf + .bin + PNG, NORMAL, TANGENT with w = -1 on half, COLOR_0, a sparse morph target, two
+primitives sharing their accessors; two lattices, one on submesh 1 with the red mask): positions,
+normals, tangents (w kept) and the morph displacement of chosen vertices against the spec formulas
+computed in Python, texture URI, one embedded buffer, split accessors; the baked render matches the
+live GPU render (pngdiff, tolerance 16, at most 0.3% of the pixels; the unbaked view is checked to
+differ), undo/redo, a second bake writes `_2` and leaves the first file alone, the saved scene names
+the file. Column (skinned): Before Skinning bakes into the bind pose (every vertex checked, written
+in place, skin and joints untouched, `max` updated), the After Skinning binding stays with its
+Console note, render matches, undo/redo. Pair (two nodes, one mesh, one bound): the bound node gets
+a mesh copy, the other keeps its data, part entities keep their ids, undo. Box primitive: the
+button is disabled and clicking it writes nothing. With a temporary debug MCP tool (not committed)
+the reasons above, a group with Include Children baking two models into two files, a quantized
+model (exact to 1e-7) and a Merge Static Meshes model (exact to 1e-8, the unbound node unchanged)
+were also checked. WP-MCP: `edit_lattice` `bake` should call `LatticeEditorOps::bake` and return
+`path` and `note`; adding its variant of these checks to the test drops the xdotool dependency.
+
+    JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
+        tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_bake.py
+
+### 12.x Engine runtime review
+
+Adversarial review of the merged engine side (solver, presets, LatticeSystem, Lattice, LatticeTracks
+and the ActionSystem changes, EntityCloner, the sprite grid, the Lua bindings). Fixed:
+
+- `EntityCloner` `prepare<MeshComponent>`: WP-RENDER's `mesh.lattice = LatticeMeshState()` ran
+  before WP-ECS read `wantsTessellation`/`tessellation`, so a copied lattice sprite was rebuilt
+  as a quad, drawn bilinearly bent for a frame, then rebuilt and reloaded as its grid. The
+  request is kept now (`TestLatticeRuntime.cpp`, htmlui tests).
+- `ActionSystem::animationApplyEnd` clamped each track to its frame's explicit duration, while
+  every other update samples it at the clip time (an explicit frame duration does not cut a track
+  at runtime): a track whose frame is shorter than its keys jumped back to its value at the
+  frame's end on the clip's last update (all track types). It samples at the clip time now.
+- Jiggle: the position history now restarts after frames without a step (inactive lattice,
+  paused system); a lattice moved meanwhile was kicked by a stale finite difference.
+- Lua `Lattice:addFollower` had only the 2- and 6-argument forms (LuaBridge matches the exact
+  arity): the documented optional `applyPosition, applyRotation, applyScale` failed with 3 to 5
+  arguments.
+- `LatticeSystem` steady frames allocate nothing (jiggle anchor weights, follower order, padded
+  grids and the subtree walk use kept scratch).
+
+Tests: `tools/mcp/tests/test_lattice_review.py` (3 tests), `engine/tests/htmlui/TestLatticeRuntime.cpp`.
