@@ -1742,7 +1742,9 @@ TEST(PhysicsPlacementSim, TableCrateDropPushingNeighboursWithATightMargin) {
     Vector3 crate(0.0f, 1.0f, 0.0f);
     for (const PlacementEntityResult& e : result.entities) {
         EXPECT_FALSE(e.fellOut) << e.path;
-        if (e.entity == t.table) EXPECT_LT(e.movedMeters, 0.02f);
+        if (e.entity == t.table) {
+            EXPECT_LT(e.movedMeters, 0.02f);
+        }
         if (e.entity == t.crate) {
             crate = e.after.position;
             EXPECT_FALSE(e.mover);   // nudged by the boxes landing in it: a pushed neighbour
