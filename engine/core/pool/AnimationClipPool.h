@@ -30,6 +30,10 @@
 //     of an alias the table does not know yet (model never loaded) return null / 0; getOrLoad
 //     fills the table first. invalidateModel drops the entries and the alias table.
 // - Invariants:
+//   * generations come from one pool-wide counter (round 1 of the T1a review): no two versions
+//     of any keys share a number, so a sub-clip alias that resolves to another index entry after
+//     a reimport also reads as changed. A sub-clip load is cached only when neither its entry
+//     nor the model's alias table it resolved through was invalidated meanwhile.
 //   * a key's generation increases on every invalidate or reload of it and never decreases, so
 //     a player that remembers the generation it bound to re-fetches (keeping its rest) when it
 //     changes; revision() increases on any change of any key (a cheap per-frame "anything?").
