@@ -20,7 +20,7 @@ using namespace jasperengine::jobs;
 using namespace jasperengine::jobs::detail;
 
 JobCounter::JobCounter(JobSystem* system):
-    system(system ? system : &jobs::system()), queue(createCounterQueue()){
+    system(system), queue(createCounterQueue()){
 }
 
 JobCounter::~JobCounter(){
