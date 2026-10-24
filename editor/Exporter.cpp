@@ -1789,8 +1789,10 @@ bool editor::Exporter::checkMissingAssets() {
     if (missingBuildReferences.empty()) {
         return true;
     }
+    // errors that stop the build, warnings when it goes on anyway
     for (const std::string& line : missingBuildReferences) {
-        Out::error("%s", line.c_str());
+        if (config.allowMissingAssets) Out::warning("%s", line.c_str());
+        else Out::error("%s", line.c_str());
     }
     if (config.allowMissingAssets) {
         Out::warning("Exporting with %zu missing asset reference(s) (Export Anyway)", missingBuildReferences.size());
