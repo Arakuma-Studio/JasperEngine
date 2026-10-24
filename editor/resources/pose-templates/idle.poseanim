@@ -1,0 +1,39 @@
+{
+  "format": "jasperengine.poseanim",
+  "version": 1,
+  "template": {"name": "Idle", "description": "Standing and breathing with a little sway, 2 poses.", "category": "Basics"},
+  "preview_model": "",
+  "frame_rate": 30,
+  "loop": true,
+  "feel": {
+    "transition": {"curve": "smooth", "duration": 0.3, "overshoot": 0, "anticipation": 0},
+    "step_rate": 0, "overlap": 0.06, "looseness": 0.15,
+    "weights": {"spine": 1, "head": 1, "arms": 1, "legs": 0}
+  },
+  "humanize": {"enabled": true, "joint_limits": true, "moving_holds": 0.2, "inbetweens": 0.4,
+               "life": 1, "seed": 1, "head_follow": 0.5, "torso_follow": 0.4, "springiness": 0.5},
+  "poses": [
+    {"name": "Inhale", "hold": 0.6, "grounded": true, "lift": 0,
+     "transition": {"curve": "smooth", "duration": 1, "overshoot": 0, "anticipation": 0},
+     "offset": {"left": 0, "forward": 0},
+     "angles": {"chest.bend": -3, "upper_chest.bend": -2, "neck.bend": -1, "head.bend": -2,
+                "left_shoulder.raise": 4, "left_upper_arm.raise": 10, "left_upper_arm.forward": 4,
+                "left_lower_arm.bend": 14, "left_hand.bend": 6, "right_shoulder.raise": 4,
+                "right_upper_arm.raise": 10, "right_upper_arm.forward": 4,
+                "right_lower_arm.bend": 14, "right_hand.bend": 6, "left_upper_leg.forward": 2,
+                "left_upper_leg.out": 4, "left_lower_leg.bend": 3, "left_foot.side": 8,
+                "right_upper_leg.forward": 2, "right_upper_leg.out": 4, "right_lower_leg.bend": 3,
+                "right_foot.side": 8}},
+    {"name": "Exhale", "hold": 0.7, "grounded": true, "lift": 0,
+     "transition": {"curve": "smooth", "duration": 1, "overshoot": 0, "anticipation": 0},
+     "offset": {"left": 0, "forward": 0},
+     "angles": {"spine.bend": 2, "chest.bend": 1.5, "neck.bend": 1, "head.bend": 2,
+                "left_shoulder.raise": -1, "left_upper_arm.raise": 9, "left_upper_arm.forward": 4,
+                "left_lower_arm.bend": 16, "left_hand.bend": 6, "right_shoulder.raise": -1,
+                "right_upper_arm.raise": 9, "right_upper_arm.forward": 4,
+                "right_lower_arm.bend": 16, "right_hand.bend": 6, "left_upper_leg.forward": 2,
+                "left_upper_leg.out": 4, "left_lower_leg.bend": 3, "left_foot.side": 8,
+                "right_upper_leg.forward": 2, "right_upper_leg.out": 4, "right_lower_leg.bend": 3,
+                "right_foot.side": 8}}
+  ]
+}

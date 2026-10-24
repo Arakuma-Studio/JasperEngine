@@ -1,0 +1,39 @@
+{
+  "format": "jasperengine.poseanim",
+  "version": 1,
+  "template": {"name": "Bow", "description": "A polite bow from the hips, 3 poses, once.", "category": "Gestures"},
+  "preview_model": "",
+  "frame_rate": 30,
+  "loop": false,
+  "feel": {
+    "transition": {"curve": "smooth", "duration": 0.3, "overshoot": 0, "anticipation": 0},
+    "step_rate": 0, "overlap": 0.06, "looseness": 0.15,
+    "weights": {"spine": 1, "head": 1, "arms": 1, "legs": 0}
+  },
+  "humanize": {"enabled": false, "joint_limits": true, "moving_holds": 0.08, "inbetweens": 0.4,
+               "life": 0.6, "seed": 1, "head_follow": 0.5, "torso_follow": 0.4, "springiness": 0.5},
+  "poses": [
+    {"name": "Stand", "hold": 0.3, "grounded": true, "lift": 0,
+     "transition": {"curve": "smooth", "duration": 0.6, "overshoot": 0, "anticipation": 0},
+     "offset": {"left": 0, "forward": 0},
+     "angles": {"left_upper_arm.raise": 6, "left_lower_arm.bend": 8, "right_upper_arm.raise": 6,
+                "right_lower_arm.bend": 8, "left_upper_leg.out": 3, "left_foot.side": 6,
+                "right_upper_leg.out": 3, "right_foot.side": 6}},
+    {"name": "Bow", "hold": 0.5, "grounded": true, "lift": 0,
+     "transition": {"curve": "smooth", "duration": 0.7, "overshoot": 0, "anticipation": 0},
+     "offset": {"left": 0, "forward": 0},
+     "angles": {"hips.lean": 34, "spine.bend": 10, "chest.bend": 6, "neck.bend": 8, "head.bend": 14,
+                "left_upper_arm.raise": 4, "left_upper_arm.forward": 14, "left_lower_arm.bend": 10,
+                "right_upper_arm.raise": 4, "right_upper_arm.forward": 14,
+                "right_lower_arm.bend": 10, "left_upper_leg.forward": 46, "left_upper_leg.out": 3,
+                "left_foot.point": 10, "left_foot.side": 6, "right_upper_leg.forward": 46,
+                "right_upper_leg.out": 3, "right_foot.point": 10, "right_foot.side": 6}},
+    {"name": "Return", "hold": 0.4, "grounded": true, "lift": 0,
+     "transition": null,
+     "offset": {"left": 0, "forward": 0},
+     "angles": {"spine.bend": -2, "chest.bend": -2, "head.bend": -3, "left_shoulder.raise": 2,
+                "left_upper_arm.raise": 6, "left_lower_arm.bend": 8, "right_shoulder.raise": 2,
+                "right_upper_arm.raise": 6, "right_lower_arm.bend": 8, "left_upper_leg.out": 3,
+                "left_foot.side": 6, "right_upper_leg.out": 3, "right_foot.side": 6}}
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "format": "jasperengine.poseanim",
+  "version": 1,
+  "template": {"name": "Wave", "description": "Waving the right hand, 2 poses.", "category": "Gestures"},
+  "preview_model": "",
+  "frame_rate": 30,
+  "loop": true,
+  "feel": {
+    "transition": {"curve": "spring", "duration": 0.2, "overshoot": 0.35, "anticipation": 0.12},
+    "step_rate": 0, "overlap": 0.1, "looseness": 0.6,
+    "weights": {"spine": 1, "head": 1, "arms": 1, "legs": 0}
+  },
+  "humanize": {"enabled": false, "joint_limits": true, "moving_holds": 0.08, "inbetweens": 0.4,
+               "life": 0.6, "seed": 1, "head_follow": 0.5, "torso_follow": 0.4, "springiness": 0.5},
+  "poses": [
+    {"name": "Hand Left", "hold": 0.08, "grounded": true, "lift": 0,
+     "transition": null,
+     "offset": {"left": 0, "forward": 0},
+     "angles": {"spine.side": 2, "chest.side": 3, "neck.side": -3, "head.bend": -4, "head.side": -6,
+                "head.twist": -4, "left_upper_arm.raise": 9, "left_upper_arm.forward": 3,
+                "left_lower_arm.bend": 16, "right_shoulder.raise": 14, "right_upper_arm.raise": 105,
+                "right_upper_arm.forward": 12, "right_upper_arm.twist": 38,
+                "right_lower_arm.bend": 85, "right_hand.bend": -10, "right_hand.side": 14,
+                "left_upper_leg.out": 3, "left_foot.side": 6, "right_upper_leg.out": 3,
+                "right_foot.side": 6}},
+    {"name": "Hand Right", "hold": 0.08, "grounded": true, "lift": 0,
+     "transition": null,
+     "offset": {"left": 0, "forward": 0},
+     "angles": {"spine.side": 2, "chest.side": 3, "neck.side": -3, "head.bend": -4, "head.side": -6,
+                "head.twist": -8, "left_upper_arm.raise": 9, "left_upper_arm.forward": 3,
+                "left_lower_arm.bend": 16, "right_shoulder.raise": 14, "right_upper_arm.raise": 100,
+                "right_upper_arm.forward": 12, "right_upper_arm.twist": 84,
+                "right_lower_arm.bend": 85, "right_hand.bend": 15, "right_hand.side": -6,
+                "left_upper_leg.out": 3, "left_foot.side": 6, "right_upper_leg.out": 3,
+                "right_foot.side": 6}}
+  ]
+}
