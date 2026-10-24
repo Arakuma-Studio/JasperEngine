@@ -18,7 +18,7 @@ compilation off, so a variant the export did not precompile is a missing shader 
   Hex                a hex tiled floor and a hex tiled terrain
   PBX_SCENE=<name> in the game's environment loads that scene instead of Lobes (SceneSelect.lua).
 
-    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/fixtures/pbr-extended/generate.py [dir]
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/fixtures/pbr-extended/generate.py [dir] [--export-only]
 
 (JASPER_EDITOR selects the editor; it needs an S11 build.) Textures come from
 tools/fixtures/shader-library/assets/textures, the model from engine/tests/render/assets/khronos.
@@ -286,12 +286,20 @@ def copy_project(project: Path, out: Path, files) -> None:
     if (out / "assets").exists():
         shutil.rmtree(out / "assets")
     shutil.copytree(project / "assets", out / "assets", ignore=shutil.ignore_patterns("*.meta", ".*"))
+    # the terrains' generated height and blend maps
+    if (out / "terrain_maps").exists():
+        shutil.rmtree(out / "terrain_maps")
+    if (project / "terrain_maps").exists():
+        shutil.copytree(project / "terrain_maps", out / "terrain_maps", ignore=shutil.ignore_patterns("*.meta", ".*"))
 
 
-async def main(benchmarks: Path) -> None:
-    await build_benchmarks(benchmarks)
+async def main(args) -> None:
+    export_only = "--export-only" in args
+    args = [a for a in args if a != "--export-only"]
+    if not export_only:
+        await build_benchmarks(Path(args[0]) if args else REPO / "build" / "pbr-extended")
     await build_export(EXPORT)
 
 
 if __name__ == "__main__":
-    asyncio.run(main(Path(sys.argv[1]) if len(sys.argv) > 1 else REPO / "build" / "pbr-extended"))
+    asyncio.run(main(sys.argv[1:]))

@@ -1,5 +1,5 @@
 formatVersion: 1
-id: 821421869
+id: 3472611311
 name: Hex
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -170,7 +170,7 @@ entities:
         heightMap:
           textureType: 2D
           source: path
-          path: terrain_maps/terrain_821421869_1003_height_3_0.png
+          path: terrain_maps/terrain_3472611311_1003_height_3_0.png
           minFilter: linear
           magFilter: linear
           wrapU: repeat
@@ -179,7 +179,7 @@ entities:
         blendMaps:
           - textureType: 2D
             source: path
-            path: terrain_maps/terrain_821421869_1003_blend.png
+            path: terrain_maps/terrain_3472611311_1003_blend.png
             minFilter: linear
             magFilter: linear
             wrapU: repeat

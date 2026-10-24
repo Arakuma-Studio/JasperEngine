@@ -105,37 +105,52 @@ TEST(HexTiling, OneVertexPerColour){
 
 TEST(HexTiling, ChangingSlotHasNoWeight){
     // across a triangle edge only the slot whose vertex changes may change, with no weight
-    // there: a tap never jumps where it counts
+    // there: a tap never jumps where it counts. Lines in random directions are walked in steps
+    // of a hundredth of a cell; each edge crossed is bisected to 1e-6 of a cell, and the slots
+    // on its two sides compared.
     std::mt19937 random(99);
     std::uniform_real_distribution<float> angle(0.0f, 6.2831853f);
-    const float step = 2e-5f / HEX_DENSITY;
+    const float cell = 1.0f / HEX_DENSITY;
+    const auto same = [](const HexSimplex& a, const HexSimplex& b){
+        return a.v0 == b.v0 && a.v1 == b.v1 && a.v2 == b.v2;
+    };
     int crossings = 0;
-    for (const vec2& uv : samplePoints()){
+    // near the origin (far away float precision, not the lattice, limits how close to an edge a
+    // point can be)
+    const std::vector<vec2> points = samplePoints();
+    for (size_t n = 0; n < 1000; n++){
+        const vec2 start = points[n];
         const float a = angle(random);
-        const vec2 next = uv + vec2(std::cos(a), std::sin(a)) * step;
-        const HexSimplex s0 = hexSimplex(uv);
-        const HexSimplex s1 = hexSimplex(next);
-        const ivec2 v0[3] = {s0.v0, s0.v1, s0.v2};
-        const ivec2 v1[3] = {s1.v0, s1.v1, s1.v2};
-        const float w0[3] = {s0.w.x, s0.w.y, s0.w.z};
-        const float w1[3] = {s1.w.x, s1.w.y, s1.w.z};
-        int changed = 0;
-        for (int k = 0; k < 3; k++){
-            if (v0[k] != v1[k]){
-                changed++;
-                EXPECT_LT(std::fabs(w0[k]), 1e-4f) << "slot " << k << " at (" << uv.x << ", " << uv.y << ")";
-                EXPECT_LT(std::fabs(w1[k]), 1e-4f) << "slot " << k << " at (" << next.x << ", " << next.y << ")";
+        const vec2 dir = vec2(std::cos(a), std::sin(a));
+        for (int i = 0; i < 300; i++){
+            vec2 p = start + dir * (cell * 0.01f * float(i));
+            vec2 q = p + dir * (cell * 0.01f);
+            if (same(hexSimplex(p), hexSimplex(q)))
+                continue;
+            for (int k = 0; k < 24; k++){
+                const vec2 mid = (p + q) * 0.5f;
+                if (same(hexSimplex(p), hexSimplex(mid))) p = mid; else q = mid;
             }
+            const HexSimplex s0 = hexSimplex(p);
+            const HexSimplex s1 = hexSimplex(q);
+            const ivec2 v0[3] = {s0.v0, s0.v1, s0.v2};
+            const ivec2 v1[3] = {s1.v0, s1.v1, s1.v2};
+            const float w0[3] = {s0.w.x, s0.w.y, s0.w.z};
+            const float w1[3] = {s1.w.x, s1.w.y, s1.w.z};
+            int changed = 0;
+            for (int k = 0; k < 3; k++){
+                if (v0[k] != v1[k]){
+                    changed++;
+                    EXPECT_LT(std::fabs(w0[k]), 1e-4f) << "slot " << k << " at (" << p.x << ", " << p.y << ")";
+                    EXPECT_LT(std::fabs(w1[k]), 1e-4f) << "slot " << k << " at (" << q.x << ", " << q.y << ")";
+                }
+            }
+            // a vertex of the lattice crossed exactly can change two; an edge changes one
+            EXPECT_LE(changed, 2);
+            crossings++;
         }
-        EXPECT_LE(changed, 1);
-        crossings += changed;
     }
-    // the samples near an edge: some cross it (the check above ran)
-    const vec2 edge = vec2(0.5f, 0.0f) * (1.0f / HEX_DENSITY);
-    const HexSimplex left = hexSimplex(edge + vec2(-step, 0.25f / HEX_DENSITY));
-    const HexSimplex right = hexSimplex(edge + vec2(step, 0.25f / HEX_DENSITY));
-    const bool crossed = left.v0 != right.v0 || left.v1 != right.v1 || left.v2 != right.v2;
-    EXPECT_TRUE(crossed || crossings > 0);
+    EXPECT_GT(crossings, 100) << "the walks cross edges (the check ran)";
 }
 
 TEST(HexTiling, HashIsDeterministicForAnyId){

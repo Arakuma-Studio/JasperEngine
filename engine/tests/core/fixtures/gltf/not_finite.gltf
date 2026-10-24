@@ -46,8 +46,8 @@
    },
    "extensions": {
     "KHR_materials_clearcoat": {
-     "clearcoatFactor": 1e400,
-     "clearcoatRoughnessFactor": 1e400
+     "clearcoatFactor": 1e39,
+     "clearcoatRoughnessFactor": 1e39
     }
    }
   }

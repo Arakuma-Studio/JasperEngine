@@ -100,7 +100,7 @@ Test assets (never shipped: `engine/tests/` stays out of the editor install and 
 
 | Model | Location | License | Credit |
 |---|---|---|---|
-| ClearCoatTest | `engine/tests/render/assets/khronos/ClearCoatTest/` | CC-BY-4.0 | Ed Mackey, © 2020 Analytical Graphics, Inc. |
+| ClearCoatTest | `engine/tests/render/assets/khronos/ClearCoatTest/` (a copy in the test fixture `tools/fixtures/pbr-extended-export/assets/models/ClearCoatTest/`) | CC-BY-4.0 | Ed Mackey, © 2020 Analytical Graphics, Inc. |
 | AnisotropyRotationTest | `engine/tests/render/assets/khronos/AnisotropyRotationTest/` | CC-BY-4.0 | Ed Mackey, © 2023 Analytical Graphics, Inc. |
 | TransmissionRoughnessTest | `engine/tests/render/assets/khronos/TransmissionRoughnessTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
 | AttenuationTest | `engine/tests/render/assets/khronos/AttenuationTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |

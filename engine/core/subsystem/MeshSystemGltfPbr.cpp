@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <mutex>
 #include <set>
 
@@ -48,8 +49,13 @@ namespace {
         float scale = 1.0f;
     };
 
-    // a number of an extension's object, the default when absent; a non-finite one (a NaN in
-    // a hand-written file) takes the default and is reported
+    // finite as a float: JSON has no NaN or infinity, but 1e39 overflows a float to infinity
+    bool finiteFloat(double number){
+        return std::isfinite(number) && std::fabs(number) <= (double)std::numeric_limits<float>::max();
+    }
+
+    // a number of an extension's object, the default when absent; a non-finite one (past the
+    // float range: it would be infinity) takes the default and is reported
     float number(const tinygltf::Value& object, const char* key, float fallback, bool& nonFinite){
         if (!object.Has(key))
             return fallback;
@@ -57,7 +63,7 @@ namespace {
         if (!value.IsNumber())
             return fallback;
         const double number = value.GetNumberAsDouble();
-        if (!std::isfinite(number)){
+        if (!finiteFloat(number)){
             nonFinite = true;
             return fallback;
         }
@@ -74,7 +80,7 @@ namespace {
         for (int c = 0; c < 3; c++){
             const tinygltf::Value& channel = value.Get(c);
             const double number = channel.IsNumber() ? channel.GetNumberAsDouble() : NAN;
-            if (!std::isfinite(number)){
+            if (!finiteFloat(number)){
                 nonFinite = true;
                 return fallback;
             }

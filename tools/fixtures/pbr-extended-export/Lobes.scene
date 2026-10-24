@@ -1,5 +1,5 @@
 formatVersion: 1
-id: 2871484510
+id: 3706682953
 name: Lobes
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -1735,7 +1735,7 @@ entities:
                       map:
                         textureType: 2D
                         source: id
-                        id: pack|cc|/tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|0|none
+                        id: pack|cc|/tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|0|none
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -1814,7 +1814,7 @@ entities:
                   baseColorTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|1|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|1|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -1986,7 +1986,7 @@ entities:
                       map:
                         textureType: 2D
                         source: id
-                        id: pack|cc|none|/tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2
+                        id: pack|cc|none|/tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -2065,7 +2065,7 @@ entities:
                   metallicRoughnessTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2150,7 +2150,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2235,7 +2235,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2488,7 +2488,7 @@ entities:
                       normalMap:
                         textureType: 2D
                         source: id
-                        id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
+                        id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -2567,7 +2567,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2652,7 +2652,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2737,7 +2737,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2757,7 +2757,7 @@ entities:
                       normalMap:
                         textureType: 2D
                         source: id
-                        id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                        id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -2836,7 +2836,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2921,7 +2921,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3006,7 +3006,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3091,7 +3091,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3176,7 +3176,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3261,7 +3261,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3346,7 +3346,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3431,7 +3431,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3516,7 +3516,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3601,7 +3601,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-exuilkof/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
