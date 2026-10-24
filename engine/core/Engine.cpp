@@ -33,6 +33,7 @@
 #include "pool/FontPool.h"
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
+#include "pool/AnimationClipPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #ifndef NO_THREAD_SUPPORT
     #include "thread/ThreadPoolManager.h"
@@ -822,6 +823,7 @@ void Engine::clearPools(){
     FontPool::clear();
     ModelPool::clear();
     MeshLodPool::clear();
+    AnimationClipPool::clear();
 }
 
 void Engine::clearUnusedPools(){
@@ -832,6 +834,7 @@ void Engine::clearUnusedPools(){
     FontPool::clearUnused();
     ModelPool::clearUnused();
     MeshLodPool::clearUnused();
+    AnimationClipPool::clearUnused();
 }
 
 void Engine::removeSubscriptionsByTag(const std::string& substring) {

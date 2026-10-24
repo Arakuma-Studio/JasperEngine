@@ -88,6 +88,7 @@ void ModelPool::clear(){
 }
 
 void ModelPool::invalidate(const std::string& id){
+    std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     getMap().erase(id);
     getObjMap().erase(id);
 }

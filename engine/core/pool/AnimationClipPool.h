@@ -37,6 +37,10 @@
 //     players every 1 s, PoseAnimator style).
 // - Test (T1a): invalidate through AnimationClipDocument::absolutePath() reaches a clip a player
 //   loaded through the asset-relative component path.
+// - Sub-clip branch (implemented by T1a around T1c's builders): the alias table comes from
+//   anim::listModelFileClips(model), the clip from anim::buildModelSubClip("<model>#<name>")
+//   with the name of the resolved index; until T1c implements them every sub-clip getOrLoad
+//   fails with their error.
 
 #ifndef ANIMATION_CLIP_POOL_H
 #define ANIMATION_CLIP_POOL_H
@@ -75,13 +79,16 @@ namespace jasperengine{
         // The editor changed the file (document commit, undo, auto-sync): dropped even while
         // referenced, so the next getOrLoad reads it again
         static void invalidate(const std::string& path);
-        // A model file changed: every sub-clip of it
+        // A model file changed: every sub-clip of it ("<model key>#*" and the alias table).
+        // invalidate() of a model file path (.gltf/.glb/.fbx without '#') does the same (R13).
         static void invalidateModel(const std::string& modelPath);
 
         // engine shutdown / project change
         static void clear();
         // drops the entries no one else references
         static void clearUnused();
+        // drops one entry when no one else references it (a scene preload's release)
+        static void releaseUnused(const std::string& path);
 
         static size_t size();
     };
