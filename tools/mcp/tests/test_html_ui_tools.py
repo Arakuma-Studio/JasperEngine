@@ -63,7 +63,8 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
 # undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
 # focus_window's undo_history / play_mode_changes panels (35)
-TOTAL_LIMIT = 99800 + 837 + 1479 + 1540 + 808 + 2633 + 2164
+# S07's focus_window "systems" result (each row's Enabled checkbox rect, AC17): +57
+TOTAL_LIMIT = 99800 + 837 + 1479 + 1540 + 808 + 2633 + 2164 + 57
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
