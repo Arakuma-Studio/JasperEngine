@@ -483,6 +483,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             list(APPEND PLATFORM_RESOURCES
                 ${PLATFORM_ROOT}/macos/Main.storyboard
             )
+            set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_CONTENT_DIR:${APP_NAME}>/Resources)
 
             list(APPEND PLATFORM_PROPERTIES
                 MACOSX_BUNDLE_INFO_PLIST "${JASPERENGINE_ROOT}/workspaces/xcode/macos/Info.plist"
@@ -588,6 +589,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             ${PLATFORM_ROOT}/ios/LaunchScreen.storyboard
             ${PLATFORM_ROOT}/ios/Main.storyboard
         )
+        set(BUNDLE_RESOURCES_DIR $<TARGET_BUNDLE_DIR:${APP_NAME}>)
 
         list(APPEND PLATFORM_LIBS
             -ObjC
@@ -1253,6 +1255,19 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/lua ${LUA_DEST_DIR}
         )
         install(DIRECTORY ${LUA_DEST_DIR} DESTINATION bin)
+    endif()
+
+    # Apple apps read the assets and scripts from inside their bundle
+    if(DEFINED BUNDLE_RESOURCES_DIR)
+        foreach(PROJECT_CONTENT assets lua)
+            if(EXISTS "${PROJECT_ROOT}/${PROJECT_CONTENT}")
+                add_custom_command(
+                    TARGET ${APP_NAME} POST_BUILD
+                    COMMAND "${CMAKE_COMMAND}" -E remove_directory ${BUNDLE_RESOURCES_DIR}/${PROJECT_CONTENT}
+                    COMMAND "${CMAKE_COMMAND}" -E copy_directory ${PROJECT_ROOT}/${PROJECT_CONTENT} ${BUNDLE_RESOURCES_DIR}/${PROJECT_CONTENT}
+                )
+            endif()
+        endforeach()
     endif()
 
     set_target_properties(
