@@ -12,6 +12,7 @@
 
 #include "command/CommandHistory.h"
 #include "command/type/RemoveFilesCmd.h"
+#include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseDofs.h"
 #include "pose/PoseRealisation.h"
 #include "pose/PoseSampler.h"
@@ -339,6 +340,101 @@ TEST(PoseTemplates, LoopsAreSeamless){
                 }
             }
         }
+    }
+}
+
+// goToPose (phase 2, 4.8 frames' rules on live transitions): between two grounded keys of every
+// template the body never sinks into the floor (it did by up to 0.29 humanScale, Sneak 0 -> 3)
+// and with joint limits on the bones stay within them
+TEST(PoseTemplates, GoToPoseBetweenGroundedKeysStaysOnTheFloor){
+    std::vector<std::pair<std::string, std::shared_ptr<PoseRig>>> rigs = {{"tpose (skinned)", tposeRig().skinned}};
+    for (const FixtureRig& fixture : fixtureRigs()){
+        rigs.push_back({fixture.label, fixture.rig});
+    }
+    for (const PoseTemplate& t : PoseTemplates::builtins()){
+        for (const auto& [label, rig] : rigs){
+            PoseAnimatorRuntime runtime;
+            runtime.data = t.data;
+            runtime.dataLoaded = true;
+            std::string error;
+            ASSERT_TRUE(runtime.build(rig, &error)) << t.info.name << " on " << label << ": " << error;
+            const double scale = rig->humanScale();
+            double worst = 1e9;
+            for (size_t i = 0; i < runtime.keys.size(); i++){
+                for (size_t j = 0; j < runtime.keys.size(); j++){
+                    if (i == j || !t.data.poses[i].grounded || !t.data.poses[j].grounded){
+                        continue;
+                    }
+                    runtime.displayed = runtime.keys[i];
+                    runtime.hasDisplayed = true;
+                    PoseGoTo request;
+                    request.key = static_cast<int>(j);
+                    ASSERT_TRUE(runtime.startTransition(request));
+                    EXPECT_TRUE(runtime.transitionFromGrounded) << t.info.name << " key " << i;
+                    HumanPose pose;
+                    for (float time = 0.0f; time < runtime.transitionSettle; time += 1.0f / 120.0f){
+                        runtime.transitionPose(time, pose);
+                        const double height = (rig->lowestPointPrecise(pose, rig->skin()) - rig->floorHeight()) / scale;
+                        worst = std::min(worst, height);
+                        EXPECT_LT(std::fabs(height), 1e-3) << t.info.name << " on " << label << ": " << i << " -> " << j << " at " << time;
+                        if (!t.data.settings.humanize.jointLimits){
+                            continue;
+                        }
+                        const BodyPose body = rig->toBodyPose(pose);
+                        for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+                            if (!rig->has(boneAt(b))) continue;
+                            for (int k = 0; k < DOFS_PER_BONE; k++){
+                                const int dof = dofIndex(boneAt(b), k);
+                                EXPECT_GE(body.angles[dof], dofInfo(dof).minDegrees - 0.5f) << t.info.name << " on " << label << ": " << dofName(dof);
+                                EXPECT_LE(body.angles[dof], dofInfo(dof).maxDegrees + 0.5f) << t.info.name << " on " << label << ": " << dofName(dof);
+                            }
+                        }
+                    }
+                }
+            }
+            EXPECT_GT(worst, -1e-3) << t.info.name << " on " << label;
+        }
+    }
+}
+
+// a goToPose from a grounded key to a lifted one (Jump) leaves the floor with the hips' ease,
+// arrives at the key's lift and is never below the floor on the way
+TEST(PoseTemplates, GoToPoseLaunchFadesTheGroundOut){
+    const PoseAnimationData& jump = builtin("Jump").data;
+    const std::shared_ptr<PoseRig> rig = tposeRig().skinned;
+    PoseAnimatorRuntime runtime;
+    runtime.data = jump;
+    runtime.dataLoaded = true;
+    std::string error;
+    ASSERT_TRUE(runtime.build(rig, &error)) << error;
+    int grounded = -1, lifted = -1;
+    for (size_t i = 0; i < jump.poses.size(); i++){
+        if (jump.poses[i].grounded && grounded < 0) grounded = static_cast<int>(i);
+        if (!jump.poses[i].grounded && lifted < 0) lifted = static_cast<int>(i);
+    }
+    ASSERT_GE(grounded, 0);
+    ASSERT_GE(lifted, 0);
+    runtime.displayed = runtime.keys[grounded];
+    runtime.hasDisplayed = true;
+    PoseGoTo request;
+    request.key = lifted;
+    ASSERT_TRUE(runtime.startTransition(request));
+    EXPECT_TRUE(runtime.transitionFromGrounded);
+    HumanPose pose;
+    for (float time = 0.0f; time < runtime.transitionSettle; time += 1.0f / 120.0f){
+        runtime.transitionPose(time, pose);
+        EXPECT_GT((rig->lowestPointPrecise(pose, rig->skin()) - rig->floorHeight()) / rig->humanScale(), -1e-3) << time;
+    }
+    runtime.transitionPose(runtime.transitionSettle, pose);
+    EXPECT_NEAR(rig->lowestPointPrecise(pose, rig->skin()), rig->lowestPointPrecise(runtime.keys[lifted], rig->skin()), 1e-3 * rig->humanScale());
+    // and back: a landing from the air
+    runtime.displayed = runtime.keys[lifted];
+    request.key = grounded;
+    ASSERT_TRUE(runtime.startTransition(request));
+    EXPECT_FALSE(runtime.transitionFromGrounded);
+    for (float time = 0.0f; time < runtime.transitionSettle; time += 1.0f / 120.0f){
+        runtime.transitionPose(time, pose);
+        EXPECT_GT((rig->lowestPointPrecise(pose, rig->skin()) - rig->floorHeight()) / rig->humanScale(), -1e-3) << time;
     }
 }
 

@@ -81,6 +81,17 @@ namespace jasperengine::pose {
     // count = max(1, round(length * fps)) + 1 frames, frame f at t = f * length / count
     JASPERENGINE_API std::vector<HumanPose> frames(const SamplerInput& input, int fps);
 
+    // The frames' ground weight of a motion from a pose (fromGrounded: on the floor) to a key
+    // (toGrounded) at the hips' ease `hipsEase`: constant when both agree, else faded with
+    // smoothstep(clamp01(hipsEase)) (out on a launch, in on a landing)
+    JASPERENGINE_API double transitionGroundWeight(bool fromGrounded, bool toGrounded, double hipsEase);
+    // The frames' ground correction of one pose (rig skin): its lowest point, at height h above
+    // the floor, ends at floor + (1 - weight) * max(h, 0). Returns the lowest point it ends at.
+    JASPERENGINE_API double groundToWeight(const PoseRig& rig, HumanPose& pose, double weight);
+    // The frames' joint limits pass (humanize.jointLimits) on one pose: the mapped bones outside
+    // their limits clamped (a long-form swing within the limits kept), the others untouched
+    JASPERENGINE_API void clampPoseToLimits(const PoseRig& rig, HumanPose& pose);
+
     // the humanize life sway of one bone at time t (loops seamlessly over `length`)
     JASPERENGINE_API Quaternion lifeRotation(int bone, float t, float length, float lifeDegrees, uint32_t seed);
     JASPERENGINE_API double hash01(uint32_t seed, int bone, int axis, int k);

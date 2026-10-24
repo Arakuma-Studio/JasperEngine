@@ -206,6 +206,10 @@ bool PoseAnimatorRuntime::startTransition(const PoseGoTo& request){
     tr.anticipation = std::clamp(tr.anticipation, 0.0f, 0.5f);
 
     transitionFrom = hasDisplayed ? displayed : frames[0];
+    // the frames' ground rule (4.8): a start on the floor (up to 1e-3 humanScale above it)
+    // counts as grounded
+    transitionFromGrounded = !rig->valid() ||
+        rig->lowestPointPrecise(transitionFrom, rig->skin()) - rig->floorHeight() <= 1e-3 * rig->humanScale();
     transition = tr;
     transitionKey = request.key;
     transitionTime = 0.0f;
@@ -234,6 +238,7 @@ void PoseAnimatorRuntime::transitionPose(float time, HumanPose& out) const{
     if (data.settings.stepRate > 0.0f){
         t = std::floor(t * data.settings.stepRate + 1e-4f) / data.settings.stepRate;
     }
+    float hipsEase = 1.0f;
     for (int b = 0; b < HUMAN_BONE_COUNT; b++){
         float delay = 0.0f;
         Transition tr;
@@ -242,7 +247,17 @@ void PoseAnimatorRuntime::transitionPose(float time, HumanPose& out) const{
         out.rotations[b] = slerpUnclamped(transitionFrom.rotations[b], to.rotations[b], e);
         if (b == boneIndex(HumanBone::Hips)){
             out.hipsPosition = transitionFrom.hipsPosition + (to.hipsPosition - transitionFrom.hipsPosition) * e;
+            hipsEase = e;
         }
+    }
+    // as the frames: the joint limits, then the ground correction (a grounded start and key stay
+    // on the floor; a launch or landing fades with the hips' ease and is only pushed out of it)
+    if (rig && rig->valid()){
+        if (data.settings.humanize.jointLimits){
+            clampPoseToLimits(*rig, out);
+        }
+        const bool toGrounded = transitionKey < (int)data.poses.size() && data.poses[transitionKey].grounded;
+        groundToWeight(*rig, out, transitionGroundWeight(transitionFromGrounded, toGrounded, hipsEase));
     }
 }
 

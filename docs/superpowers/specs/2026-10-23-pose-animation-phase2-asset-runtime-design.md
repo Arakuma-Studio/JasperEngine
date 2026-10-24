@@ -163,6 +163,12 @@ flushed and before transforms and skinning are computed. Per animator:
 - Live transition (`goToPose`): from the currently displayed human pose to a key's realised pose
   with the given transition, using the phase 1 ease per bone (with overlap/looseness from the
   settings), then holds the key pose. Playback stops while a live transition is active.
+  Every transition pose gets the frames' rules (phase 1, 4.8): the joint limits pass when
+  `humanize.jointLimits`, then the ground correction with ground weight g = 1 when the start is on
+  the floor (lowest point at most 1e-3 humanScale above it) and the key is grounded, g = 0 when
+  neither is, else smoothstep(clamp01(e_hips)) faded out (launch) or in (landing); the lowest point
+  ends at floor + (1 - g) * max(h, 0) (`pose::transitionGroundWeight`, `pose::groundToWeight` and
+  `pose::clampPoseToLimits` are the frames' own code).
 - Apply: for every mapped slot bone: `local = slerp(current, pose, weight)`; hips position lerped
   the same way; unmapped bones untouched; mark transforms dirty.
 - Editor: animators do not run in edit mode (the Pose Animation window drives previews itself,

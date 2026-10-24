@@ -257,8 +257,7 @@ namespace jasperengine::pose {
                 }
                 double tau = 0.0, loose = 0.0;
                 boneTiming(input, 0, t, tau, loose);
-                const double w = smoothstep(0.0, 1.0, clampd(segmentEase(input, tau, loose, s, 0), 0.0, 1.0));
-                return from > 0.0 ? 1.0 - w : w;
+                return transitionGroundWeight(from > 0.0, to > 0.0, segmentEase(input, tau, loose, s, 0));
             };
             for (size_t s = 0; s < segments; s++){
                 if (t < timeline.start[s] + std::max(0.0, static_cast<double>(timeline.transitions[s].duration))){
@@ -333,6 +332,50 @@ namespace jasperengine::pose {
             }
         }
 
+    }
+
+    double transitionGroundWeight(bool fromGrounded, bool toGrounded, double hipsEase){
+        if (fromGrounded == toGrounded){
+            return fromGrounded ? 1.0 : 0.0;
+        }
+        const double w = smoothstep(0.0, 1.0, clampd(hipsEase, 0.0, 1.0));
+        return fromGrounded ? 1.0 - w : w;
+    }
+
+    double groundToWeight(const PoseRig& rig, HumanPose& pose, double weight){
+        return groundFrame(rig, pose, weight, rig.lowestPointPrecise(pose, rig.skin()), 0.0);
+    }
+
+    void clampPoseToLimits(const PoseRig& rig, HumanPose& pose){
+        for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+            const HumanBone bone = boneAt(b);
+            if (!rig.has(bone)){
+                continue;
+            }
+            float angles[DOFS_PER_BONE];
+            rig.anglesFromLocal(bone, pose.rotations[b], angles);
+            if (boneWithinLimits(bone, angles)){
+                continue;
+            }
+            // a swing longer than 180 degrees (inside the limits) decomposes to the short
+            // form the other way: keep the rotation when its long form is within limits
+            const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
+            if (swing > 1e-6){
+                const double factor = 1.0 - 360.0 / swing;
+                const float longForm[DOFS_PER_BONE] = {static_cast<float>(angles[0] * factor), static_cast<float>(angles[1] * factor), angles[2]};
+                bool inside = true;
+                for (int k = 0; k < DOFS_PER_BONE; k++){
+                    const DofInfo& dof = dofInfo(dofIndex(bone, k));
+                    inside = inside && longForm[k] >= dof.minDegrees && longForm[k] <= dof.maxDegrees;
+                }
+                if (inside){
+                    continue;
+                }
+            }
+            // only clamped bones change: the others keep their exact rotation
+            clampBoneToLimits(bone, angles);
+            pose.rotations[b] = rig.localFromAngles(bone, angles);
+        }
     }
 
     double hash01(uint32_t seed, int bone, int axis, int k){
@@ -516,37 +559,8 @@ namespace jasperengine::pose {
         }
 
         if (input.rig && humanize.jointLimits){
-            const PoseRig& rig = *input.rig;
             for (HumanPose& frame : result){
-                for (int b = 0; b < HUMAN_BONE_COUNT; b++){
-                    const HumanBone bone = boneAt(b);
-                    if (!rig.has(bone)){
-                        continue;
-                    }
-                    float angles[DOFS_PER_BONE];
-                    rig.anglesFromLocal(bone, frame.rotations[b], angles);
-                    if (boneWithinLimits(bone, angles)){
-                        continue;
-                    }
-                    // a swing longer than 180 degrees (inside the limits) decomposes to the short
-                    // form the other way: keep the rotation when its long form is within limits
-                    const double swing = std::sqrt(static_cast<double>(angles[0]) * angles[0] + static_cast<double>(angles[1]) * angles[1]);
-                    if (swing > 1e-6){
-                        const double factor = 1.0 - 360.0 / swing;
-                        const float longForm[DOFS_PER_BONE] = {static_cast<float>(angles[0] * factor), static_cast<float>(angles[1] * factor), angles[2]};
-                        bool inside = true;
-                        for (int k = 0; k < DOFS_PER_BONE; k++){
-                            const DofInfo& dof = dofInfo(dofIndex(bone, k));
-                            inside = inside && longForm[k] >= dof.minDegrees && longForm[k] <= dof.maxDegrees;
-                        }
-                        if (inside){
-                            continue;
-                        }
-                    }
-                    // only clamped bones change: the others keep their exact rotation
-                    clampBoneToLimits(bone, angles);
-                    frame.rotations[b] = rig.localFromAngles(bone, angles);
-                }
+                clampPoseToLimits(*input.rig, frame);
             }
         }
 

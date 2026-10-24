@@ -108,6 +108,7 @@ namespace jasperengine::pose {
         int transitionKey = -1;
         Transition transition;
         HumanPose transitionFrom;
+        bool transitionFromGrounded = true;   // the start was on the floor (the ground correction's weight)
         PoseGoTo pending;
 
         // the weight blend per slot, and the bone entity each blend state was written to (the
@@ -135,7 +136,9 @@ namespace jasperengine::pose {
         // advances the live transition by dt and writes its pose: the key pose exactly once
         // every bone's spring has settled (|ease - 1| < 1e-4 from then on)
         void sampleTransition(float dt, HumanPose& out);
-        // the eased pose `time` seconds into the current transition
+        // the eased pose `time` seconds into the current transition, with the frames' joint
+        // limits (humanize.jointLimits) and ground correction (4.8 frames: g = 1 from a start on
+        // the floor to a grounded key, else faded with smoothstep(clamp01(e_hips)))
         void transitionPose(float time, HumanPose& out) const;
         // seconds until the current transition has settled
         float transitionSettleTime() const;
