@@ -161,7 +161,7 @@ async def test_rename_touches_no_referrers(ed: Editor):
     spot = await ed.call("get_entity", scene="Closed.scene", entity="Spot", components=["light"], properties=["spotMask"])
     ed.check("assets/m2.png" in json.dumps(spot), f"{spot}")
     ed.check_eq((await ed.call("resolve_asset", asset=mask))["resolved_by"], "live")
-    await ed.call("close_scene", scene="Closed.scene")
+    await ed.call("close_scene", scene="Closed.scene", unsaved="discard")   # its hint changed in memory
     # back, for the tests after
     await ed.call("undo", scope="project")
     ed.check((ed.project / "assets/textures/mask.png").exists(), "the move was not undone")
