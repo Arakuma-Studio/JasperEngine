@@ -457,3 +457,41 @@ async def test_paint_dye_brush(ed: Editor):
     await ed.call("undo", scene=S["scene"])
     ed.check(close(await position(ed, fluid), start), "move undone")
     await ed.check_alive()
+
+
+# ---------------------------------------------------------------------------- a play-created fluid
+
+
+async def test_preview_bar_on_a_play_created_fluid(ed: Editor):
+    # a fluid the running game made is read only in the Inspector (Stop destroys it), but its
+    # preview bar is no edit: Random Splats still bursts it
+    ui = S["ui"]
+    await ed.call("play", action="start", scene=S["scene"], timeout_seconds=300)
+    try:
+        got = await ed.call("eval_lua", code='local f = FluidSimulation(getScene()); f.name = "Spawned"; '
+                                             'f.output = FluidOutput.TEXTURE; f.paused = true; f.splatsOnStart = false; '
+                                             'f.randomSplatCount = 7; f.dyeResolution = 128; f.simResolution = 32; '
+                                             'return f.entity')
+        spawned = got["values"][0]
+        live = await ed.call("get_runtime_entity", entity="Spawned", components=["fluid"], include_script_state=False)
+        ed.check(live["created_at_runtime"], f"made by the game: {live}")
+        await ed.call("select_entities", scene=S["scene"], entities=[spawned])
+        await ed.call("wait", frames=10)
+        await ui.focus()
+        before = live.get("fluid_stats", {}).get("splats", 0)
+        await ui.click_item("fluid.burst")
+        after = before
+        for _ in range(20):
+            await ed.call("wait", frames=3)
+            live = await ed.call("get_runtime_entity", entity="Spawned", components=["fluid"], include_script_state=False)
+            after = live.get("fluid_stats", {}).get("splats", 0)
+            if after >= before + 7:
+                break
+        ed.check(after >= before + 7, f"Random Splats bursts a read-only fluid: splats {before} -> {after}")
+        # its property rows stay read only: a click on the Bloom checkbox changes nothing
+        await ui.click_item("fluid.group.bloom")
+        live = await ed.call("get_runtime_entity", entity="Spawned", components=["fluid"], include_script_state=False)
+        ed.check(live["components"][KEY]["bloom"] is True, f"the rows stay disabled: {live['components'][KEY]['bloom']}")
+    finally:
+        await ed.call("play", action="stop")
+    await ed.check_alive()
