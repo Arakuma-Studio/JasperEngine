@@ -522,6 +522,33 @@ local hit = Physics2D.raycast(self.scene, Vector2(x, y), Vector2(0, -1), 100)
 if hit.hit then local e = hit.body end
 ```
 
+### 2.10.1 Water (static)
+
+The water surfaces of a scene are its meshes drawn with `library:water` (enabled, active), each
+resting at the top of its world bounds and covering their XZ extent; with `WAVES` the heights
+follow the same waves the shader draws, on its clock (`Water.getTime()`, `frame.time.x`:
+seconds since the engine started, wall-clock, running in the editor and while the game is
+paused or time-scaled), so a script and the screen agree. Where waters overlap the one whose
+bottom (the material's `buoyancyDepth` below its surface; none at 0) is highest wins. Each call
+looks through the scene's meshes: for many points a frame, keep the results.
+
+| Name | Notes |
+|---|---|
+| `Water.getHeight(scene, x, z)` | surface height (world Y, waves included) of the topmost water over (x, z); `nil` where none covers it |
+| `Water.getNormal(scene, x, z)` | its normal (`Vector3`; up without `WAVES`); `nil` where none |
+| `Water.isUnderwater(scene, point)` | `point` (`Vector3`) is under the surface of the water it is in |
+| `Water.getTime()` | the shader library's clock, seconds |
+
+```lua
+local y = Water.getHeight(self.scene, pos.x, pos.z)
+if y and pos.y < y then -- swimming
+end
+```
+
+Buoyancy needs no script: a dynamic `Rigidbody` with `buoyancy > 0` floats (4.14). The
+`library:underwater` post-process pass switches itself on under a surface (shaders guide,
+"Water").
+
 ### 2.11 Angle (static)
 
 `Angle.degToRad(d)`, `Angle.radToDeg(r)`, `Angle.defaultToRad(a)`, `Angle.defaultToDeg(a)`,
@@ -721,7 +748,8 @@ against its own shader; e.g.
 
 ### 4.4 Primitive (Mesh)
 
-`createPlane(w, d [, tiles])`, `createWall(w, h [, tiles])`, `createBox(w, h, d [, tiles])`,
+`createPlane(w, d [, tiles])`, `createGrid(w, d, segments [, tiles])` (the plane as segments x
+segments quads, 1..255, for `library:water` WAVES), `createWall(w, h [, tiles])`, `createBox(w, h, d [, tiles])`,
 `createSphere(r)` / `createSphere(r, slices, stacks)`, `createCylinder(r, h)` /
 `(baseR, topR, h)` / `(r, h, slices, stacks)` / `(baseR, topR, h, slices, stacks)`,
 `createCapsule(...)` (same overload shapes as cylinder), `createTorus(r, ringR [, sides, rings])`.
@@ -877,6 +905,7 @@ Restart a one-shot: `snd:stop(); snd:play()`.
 | `type` | rw `BodyType.*` | |
 | `motionQuality` | rw | `RigidbodyMotionQuality.DISCRETE` / `LINEAR_CAST` |
 | `friction`, `restitution`, `gravityFactor`, `sensor`, `allowSleeping`, `enabled`, `shapeDensity`, `collisionGroupID`, `categoryBitsFilter`, `maskBitsFilter`, `collideKinematicVsNonDynamic` | rw | |
+| `buoyancy`, `waterDrag`, `waterAngularDrag` | rw numbers | floating in a `library:water` (2.10.1): Jolt's buoyancy at the centre of mass each fixed step of a dynamic body, 1 neutral, more floats, less sinks, 0 (default) ignores water; drags default 0.5 and 0.01 |
 | `applyForce(f)`, `applyForce(f, point)` | method | f in Vector3; single-arg = at center (no `applyForceToCenter` in 3D) |
 | `applyImpulse(i)`, `applyImpulse(i, point)`, `applyTorque(t)`, `applyAngularImpulse(a)` | methods | |
 | `activate()`, `deactivate()` | methods | |
