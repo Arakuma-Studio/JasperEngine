@@ -9,6 +9,7 @@
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 #include "util/STBText.h"
+#include "jobs/JobSystem.h"
 
 #include <algorithm>
 #include <cstring>
@@ -346,7 +347,8 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
     }
 
     try {
-        std::thread([pixels, needDelete, width, height, path, flipY, onComplete]() {
+        // must-run (the pixels are freed and onComplete called there): a detached Background job
+        jobs::enqueueDetached([pixels, needDelete, width, height, path, flipY, onComplete]() {
             // Do not use stb's process-global flip flag from concurrent writers.
             // The readback buffer is owned here, so flip its rows directly.
             if (flipY && pixels) {
@@ -368,7 +370,7 @@ bool editor::GraphicUtils::saveFramebufferImage(Framebuffer* framebuffer, fs::pa
             if (onComplete) {
                 onComplete();
             }
-        }).detach();
+        }, jobs::Lane::Background, "save-framebuffer-png");
     } catch (...) {
         if (needDelete && pixels) {
             delete[] pixels;

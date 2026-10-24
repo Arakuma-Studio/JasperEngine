@@ -8,6 +8,8 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "command/CommandHistory.h"
+#include "command/type/ThreadingSettingsCmd.h"
 
 #include <algorithm>
 #include <array>
@@ -148,6 +150,7 @@ enum class ProjectCategory {
 static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
+                   "threading worker threads reserved frame workers asset io threads web pump budget multithreaded "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
     {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
                      "html ui msaa anti-aliasing antialiasing"},
@@ -506,6 +509,25 @@ static void drawIntSetting(const char* label, const char* id, int& value, int de
     ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
     ImGui::InputInt(id, &value);
     value = std::max(value, minValue);
+    endSettingsRow(tooltip);
+}
+
+// A thread count: Auto (-1) or minValue..maxValue.
+static void drawCountSetting(const char* label, const char* id, int& value, int minValue, int maxValue, const char* tooltip) {
+    if (projectBeginSettingsRow(label, value != -1)) {
+        value = -1;
+    }
+    ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
+    const std::string current = value < 0 ? std::string("Auto") : std::to_string(value);
+    if (ImGui::BeginCombo(id, current.c_str())) {
+        if (ImGui::Selectable("Auto", value < 0)) value = -1;
+        for (int count = minValue; count <= maxValue; count++) {
+            const bool selected = value == count;
+            if (ImGui::Selectable(std::to_string(count).c_str(), selected)) value = count;
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
     endSettingsRow(tooltip);
 }
 
@@ -958,6 +980,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
 
     m_loadingSettings = project->getLoadingSettings();
+    m_threading = project->getThreadingSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -1278,6 +1301,38 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             }
             ImGui::Checkbox("##AsyncLoading", &loading.asyncLoading);
             endSettingsRow("Exported games load resources on worker threads. The editor always does.");
+
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Threading") && beginSettingsTable("##PlayerThreadingTable")) {
+            const ThreadingProjectSettings defaults;
+            ThreadingProjectSettings& threading = m_threading;
+            drawCountSetting("Worker Threads", "##WorkerThreads", threading.workers, 1, 15,
+                "Job system workers. Auto: one per logical core minus one (at most 15; 4 on mobile and web). "
+                "Applies on the next launch.");
+            drawCountSetting("Reserved Frame Workers", "##ReservedFrameWorkers", threading.reservedFrameWorkers, 0, 4,
+                "Workers Background work (asset decoding, cooks) never takes, so the frame always has them. "
+                "Auto: 2 on desktop, 1 on mobile and web. Applies immediately.");
+            drawCountSetting("Asset I/O Threads", "##AssetIOThreads", threading.ioThreads, 0, 4,
+                "Threads that read asset files. Auto: 2 on desktop, 1 on mobile, none on web (the decode job reads). "
+                "Applies on the next launch.");
+
+            if (projectBeginSettingsRow("Web Pump Budget", threading.webPumpBudgetMs != defaults.webPumpBudgetMs)) {
+                threading.webPumpBudgetMs = defaults.webPumpBudgetMs;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputFloat("##WebPumpBudget", &threading.webPumpBudgetMs, 0.5f, 1.0f, "%.1f ms");
+            threading.webPumpBudgetMs = std::isfinite(threading.webPumpBudgetMs)
+                ? std::min(std::max(threading.webPumpBudgetMs, 0.5f), 50.0f) : defaults.webPumpBudgetMs;
+            endSettingsRow("Web builds without threads run Background jobs for this long each frame.");
+
+            if (projectBeginSettingsRow("Web: Multithreaded", threading.webMultithreaded != defaults.webMultithreaded)) {
+                threading.webMultithreaded = defaults.webMultithreaded;
+            }
+            ImGui::Checkbox("##WebMultithreaded", &threading.webMultithreaded);
+            endSettingsRow("Also builds the web player with threads (requires cross-origin isolation): the page "
+                           "picks it when the browser allows SharedArrayBuffer, else the single-thread build.");
 
             ImGui::EndTable();
         }
@@ -2115,6 +2170,10 @@ bool ProjectSettingsWindow::applySettings() {
     }
 
     m_project->getLoadingSettings() = m_loadingSettings;
+    // undoable: the reserve applies to the editor's job system at once
+    if (m_threading != m_project->getThreadingSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));
+    }
 
     m_project->setPackNativeResources(m_packNativeResources);
     m_project->setVersionControlMetadata(m_versionControlMetadata);

@@ -593,9 +593,7 @@
 		71651FF92AA804B4008D9BF5 /* Contact2D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71651FED2AA804B4008D9BF5 /* Contact2D.cpp */; };
 		716803C82DF75E6F00ED71BE /* ThreadClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */; };
 		716803C92DF75E6F00ED71BE /* ThreadClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */; };
-		716803CF2DF75EA200ED71BE /* ThreadPoolManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 716803CD2DF75EA200ED71BE /* ThreadPoolManager.cpp */; };
 		716803D02DF75EA200ED71BE /* ResourceProgress.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 716803CB2DF75EA200ED71BE /* ResourceProgress.cpp */; };
-		716803D12DF75EA200ED71BE /* ThreadPoolManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 716803CD2DF75EA200ED71BE /* ThreadPoolManager.cpp */; };
 		716803D22DF75EA200ED71BE /* ResourceProgress.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 716803CB2DF75EA200ED71BE /* ResourceProgress.cpp */; };
 		716803D32DF75EA200ED71BE /* ResourceProgress.h in Headers */ = {isa = PBXBuildFile; fileRef = 716803CA2DF75EA200ED71BE /* ResourceProgress.h */; };
 		716803D42DF75EA200ED71BE /* ThreadPoolManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 716803CC2DF75EA200ED71BE /* ThreadPoolManager.h */; };
@@ -1130,6 +1128,8 @@
 		71EA6DA92AE20B8C00CA9A75 /* Contact3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71EA6DA42AE20B8C00CA9A75 /* Contact3D.cpp */; };
 		71EA6DAA2AE20B8C00CA9A75 /* Contact3D.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71EA6DA42AE20B8C00CA9A75 /* Contact3D.cpp */; };
 		71ED64C528B45E0B005D2D96 /* Angle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ED64C328B45E0B005D2D96 /* Angle.cpp */; };
+		A1B2C3D4E5F60718293A4B5E /* JoltJobAdapter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* JoltJobAdapter.cpp */; };
+		A1B2C3D4E5F60718293A4B5F /* JoltJobAdapter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* JoltJobAdapter.cpp */; };
 		71ED64C628B45E0B005D2D96 /* Angle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71ED64C328B45E0B005D2D96 /* Angle.cpp */; };
 		71ED64C728B45E0B005D2D96 /* Angle.h in Headers */ = {isa = PBXBuildFile; fileRef = 71ED64C428B45E0B005D2D96 /* Angle.h */; };
 		71F225452C58736B006ED3CA /* InstancedMeshComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 71F225442C58736B006ED3CA /* InstancedMeshComponent.h */; };
@@ -3128,6 +3128,34 @@
 		564944455DB009B63B74F936 /* loopfilter16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */; };
 		56494445772C1363CE27A8BD /* looprestoration16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */; };
 		56494445FFA36BAE684D5CC3 /* mc16_sse.asm in Sources */ = {isa = PBXBuildFile; fileRef = 564944451D86439B773050CE /* mc16_sse.asm */; };
+		61854776A660BA58B34ADB3C /* ThreadUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9ECE89D24D34E5E3B4A00BF8 /* ThreadUtil.cpp */; };
+		66D0DA1C2F98FBC52911FBE7 /* BackgroundGate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F7796983B1548A1074758DEB /* BackgroundGate.cpp */; };
+		D44D6D7AD63CFC230F45D73B /* JobCounter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AE69C840359F9E935C5178F5 /* JobCounter.cpp */; };
+		029F7A514D5507F1810BBEF4 /* JobSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1BCAE7F72F90BB776DCC7EA /* JobSystem.cpp */; };
+		7168F53B568117CEE62092EB /* ParallelFor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 23FFDDBDE2CC5FE4A95A8F2E /* ParallelFor.cpp */; };
+		67B771C8CEC08E01F5531AED /* Primitives.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 238CC28D868BCA0D628B8DE6 /* Primitives.cpp */; };
+		C0C65F9A26B9D065DEA9A721 /* SerialQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7A7B7B9DEED078A3960E3190 /* SerialQueue.cpp */; };
+		5C54646E9425A98904A6DBA0 /* SlabPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 39F32A1FDBC0F27F60910903 /* SlabPool.cpp */; };
+		5F96DAA4D7BC2A7A89FC1DC5 /* Arena.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 916D997559BD2518D226BD10 /* Arena.cpp */; };
+		9BEE64D3852A9E8662C4F338 /* MemoryStats.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1F92A03C0E01D130CDCEA20B /* MemoryStats.cpp */; };
+		768004239D5E1060F0A1FFCF /* ObjectPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6F7ACE1024DB4202DA62DF32 /* ObjectPool.cpp */; };
+		C27B07F24A9054D6D918054A /* RangeAllocator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 49262177987C766B66F58CE0 /* RangeAllocator.cpp */; };
+		A90C9D5BDADD7A21ACFB8E5F /* ScratchScope.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 173FC152830948AB621DDCA3 /* ScratchScope.cpp */; };
+		1AFFFAC106250FA9CCC91312 /* ThreadUtil.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9ECE89D24D34E5E3B4A00BF8 /* ThreadUtil.cpp */; };
+		E42FB4CE8AA339B38F206E3E /* BackgroundGate.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F7796983B1548A1074758DEB /* BackgroundGate.cpp */; };
+		0F548938344DD33E9C3F8505 /* JobCounter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AE69C840359F9E935C5178F5 /* JobCounter.cpp */; };
+		9597D2A61B9D6196191CFE08 /* JobSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1BCAE7F72F90BB776DCC7EA /* JobSystem.cpp */; };
+		A58321715F951F5BA1AAE527 /* ParallelFor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 23FFDDBDE2CC5FE4A95A8F2E /* ParallelFor.cpp */; };
+		B07671525AAAF88F25A80A70 /* Primitives.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 238CC28D868BCA0D628B8DE6 /* Primitives.cpp */; };
+		9EBC35FE04730F16F5604C65 /* SerialQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7A7B7B9DEED078A3960E3190 /* SerialQueue.cpp */; };
+		E39FF8391AF9CD62280F850B /* SlabPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 39F32A1FDBC0F27F60910903 /* SlabPool.cpp */; };
+		C6FE32B9A580B284F2F65D4A /* Arena.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 916D997559BD2518D226BD10 /* Arena.cpp */; };
+		81CE44DD8BDDB0D986F33285 /* MemoryStats.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1F92A03C0E01D130CDCEA20B /* MemoryStats.cpp */; };
+		6BACA3E1B80DB0CC2ED4D4A7 /* ObjectPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6F7ACE1024DB4202DA62DF32 /* ObjectPool.cpp */; };
+		B879148DC2EC511FEF2CD5E3 /* RangeAllocator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 49262177987C766B66F58CE0 /* RangeAllocator.cpp */; };
+		64F8D0F603C260AA87E1ABA3 /* ScratchScope.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 173FC152830948AB621DDCA3 /* ScratchScope.cpp */; };
+		27B4E894C8EE1F33E2D2935A /* AssetIOService.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CBB1E8D1CB13912DD7AAB17E /* AssetIOService.cpp */; };
+		1ED7FD701BCEB526C9EB4B00 /* AssetIOService.cpp in Sources */ = {isa = PBXBuildFile; fileRef = CBB1E8D1CB13912DD7AAB17E /* AssetIOService.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -4248,7 +4276,6 @@
 		716803CA2DF75EA200ED71BE /* ResourceProgress.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ResourceProgress.h; sourceTree = "<group>"; };
 		716803CB2DF75EA200ED71BE /* ResourceProgress.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ResourceProgress.cpp; sourceTree = "<group>"; };
 		716803CC2DF75EA200ED71BE /* ThreadPoolManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ThreadPoolManager.h; sourceTree = "<group>"; };
-		716803CD2DF75EA200ED71BE /* ThreadPoolManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ThreadPoolManager.cpp; sourceTree = "<group>"; };
 		716A72E22B5DF9A500DDE179 /* AllowedDOFs.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AllowedDOFs.h; sourceTree = "<group>"; };
 		716A72E32B5DF9B700DDE179 /* BodyType.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BodyType.h; sourceTree = "<group>"; };
 		716A72E42B5DF9CC00DDE179 /* SpringSettings.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SpringSettings.cpp; sourceTree = "<group>"; };
@@ -5043,6 +5070,8 @@
 		71EA6DA32AE20B8C00CA9A75 /* CollideShapeResult3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CollideShapeResult3D.cpp; sourceTree = "<group>"; };
 		71EA6DA42AE20B8C00CA9A75 /* Contact3D.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Contact3D.cpp; sourceTree = "<group>"; };
 		71ED64C328B45E0B005D2D96 /* Angle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Angle.cpp; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* JoltJobAdapter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = JoltJobAdapter.cpp; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5D /* JoltJobAdapter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JoltJobAdapter.h; sourceTree = "<group>"; };
 		71ED64C428B45E0B005D2D96 /* Angle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Angle.h; sourceTree = "<group>"; };
 		71F225442C58736B006ED3CA /* InstancedMeshComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InstancedMeshComponent.h; sourceTree = "<group>"; };
 		71F225462C587388006ED3CA /* ParticleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystem.h; sourceTree = "<group>"; };
@@ -6381,6 +6410,41 @@
 		56494445510B4F7F7CC70869 /* loopfilter16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = loopfilter16_sse.asm; sourceTree = "<group>"; };
 		5649444590A96BA2FDF7923E /* looprestoration16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = looprestoration16_sse.asm; sourceTree = "<group>"; };
 		564944451D86439B773050CE /* mc16_sse.asm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.asm.asm; path = mc16_sse.asm; sourceTree = "<group>"; };
+		307CF4D0CF6BD27F75C43DC6 /* ThreadUtil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ThreadUtil.h; path = ThreadUtil.h; sourceTree = "<group>"; };
+		9ECE89D24D34E5E3B4A00BF8 /* ThreadUtil.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ThreadUtil.cpp; path = ThreadUtil.cpp; sourceTree = "<group>"; };
+		F7796983B1548A1074758DEB /* BackgroundGate.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = BackgroundGate.cpp; path = ../jobs/BackgroundGate.cpp; sourceTree = "<group>"; };
+		AE69C840359F9E935C5178F5 /* JobCounter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = JobCounter.cpp; path = ../jobs/JobCounter.cpp; sourceTree = "<group>"; };
+		B1BCAE7F72F90BB776DCC7EA /* JobSystem.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = JobSystem.cpp; path = ../jobs/JobSystem.cpp; sourceTree = "<group>"; };
+		23FFDDBDE2CC5FE4A95A8F2E /* ParallelFor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ParallelFor.cpp; path = ../jobs/ParallelFor.cpp; sourceTree = "<group>"; };
+		238CC28D868BCA0D628B8DE6 /* Primitives.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Primitives.cpp; path = ../jobs/Primitives.cpp; sourceTree = "<group>"; };
+		7A7B7B9DEED078A3960E3190 /* SerialQueue.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = SerialQueue.cpp; path = ../jobs/SerialQueue.cpp; sourceTree = "<group>"; };
+		39F32A1FDBC0F27F60910903 /* SlabPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = SlabPool.cpp; path = ../jobs/SlabPool.cpp; sourceTree = "<group>"; };
+		E52B978D56059FC0DE55A300 /* BackgroundGate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = BackgroundGate.h; path = ../jobs/BackgroundGate.h; sourceTree = "<group>"; };
+		A6A6BB1A0E7BCD20AD80F284 /* JobChannel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JobChannel.h; path = ../jobs/JobChannel.h; sourceTree = "<group>"; };
+		8F3E182ADF5193AFA1C6BA1D /* JobCounter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JobCounter.h; path = ../jobs/JobCounter.h; sourceTree = "<group>"; };
+		31901A938D42819A492DB542 /* JobStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JobStats.h; path = ../jobs/JobStats.h; sourceTree = "<group>"; };
+		66C03601B22B19078B7BF51D /* JobSystem.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JobSystem.h; path = ../jobs/JobSystem.h; sourceTree = "<group>"; };
+		5E6BC60C17A144EF6515D903 /* JobTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JobTypes.h; path = ../jobs/JobTypes.h; sourceTree = "<group>"; };
+		DBECDDBC2140B5EE797F5341 /* ParallelFor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ParallelFor.h; path = ../jobs/ParallelFor.h; sourceTree = "<group>"; };
+		8007CCEC63F99120D23A40C7 /* Primitives.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Primitives.h; path = ../jobs/Primitives.h; sourceTree = "<group>"; };
+		A35FD34FF73FC22F901CF741 /* SerialQueue.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SerialQueue.h; path = ../jobs/SerialQueue.h; sourceTree = "<group>"; };
+		F9F125C5B7C6354BD89334D6 /* Task.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Task.h; path = ../jobs/Task.h; sourceTree = "<group>"; };
+		B0FCC339254D23F701BC1770 /* JobCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JobCore.h; path = ../jobs/detail/JobCore.h; sourceTree = "<group>"; };
+		919455383BAF5AB9221A0350 /* Scheduler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Scheduler.h; path = ../jobs/detail/Scheduler.h; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B60 /* TimedWait.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = TimedWait.h; path = ../jobs/detail/TimedWait.h; sourceTree = "<group>"; };
+		916D997559BD2518D226BD10 /* Arena.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = Arena.cpp; path = ../memory/Arena.cpp; sourceTree = "<group>"; };
+		2E881A7FC55B538D3ED246FC /* Arena.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = Arena.h; path = ../memory/Arena.h; sourceTree = "<group>"; };
+		1F92A03C0E01D130CDCEA20B /* MemoryStats.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = MemoryStats.cpp; path = ../memory/MemoryStats.cpp; sourceTree = "<group>"; };
+		DF836624E21C692FA786747F /* MemoryStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MemoryStats.h; path = ../memory/MemoryStats.h; sourceTree = "<group>"; };
+		6F7ACE1024DB4202DA62DF32 /* ObjectPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ObjectPool.cpp; path = ../memory/ObjectPool.cpp; sourceTree = "<group>"; };
+		6C8F02ECF0F2D8A75061216F /* ObjectPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ObjectPool.h; path = ../memory/ObjectPool.h; sourceTree = "<group>"; };
+		49262177987C766B66F58CE0 /* RangeAllocator.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = RangeAllocator.cpp; path = ../memory/RangeAllocator.cpp; sourceTree = "<group>"; };
+		67B05B493A6825E8727A3EEB /* RangeAllocator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = RangeAllocator.h; path = ../memory/RangeAllocator.h; sourceTree = "<group>"; };
+		173FC152830948AB621DDCA3 /* ScratchScope.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = ScratchScope.cpp; path = ../memory/ScratchScope.cpp; sourceTree = "<group>"; };
+		2CCD8E1FB15ADCA9E2AA83C5 /* ScratchScope.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = ScratchScope.h; path = ../memory/ScratchScope.h; sourceTree = "<group>"; };
+		EA199B0F796D9E777176C601 /* MemoryDebug.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MemoryDebug.h; path = ../memory/MemoryDebug.h; sourceTree = "<group>"; };
+		CBB1E8D1CB13912DD7AAB17E /* AssetIOService.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = AssetIOService.cpp; path = AssetIOService.cpp; sourceTree = "<group>"; };
+		6275E3D8D049746EE76E8FFF /* AssetIOService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AssetIOService.h; path = AssetIOService.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7622,6 +7686,8 @@
 			children = (
 				71ED64C428B45E0B005D2D96 /* Angle.h */,
 				71ED64C328B45E0B005D2D96 /* Angle.cpp */,
+				A1B2C3D4E5F60718293A4B5C /* JoltJobAdapter.cpp */,
+				A1B2C3D4E5F60718293A4B5D /* JoltJobAdapter.h */,
 				71165BBE282981BE00CF79C1 /* Base64.h */,
 				71165BBD282981BE00CF79C1 /* Base64.cpp */,
 				7105CAA72AD61BD5007C91BA /* Box2DAux.h */,
@@ -7670,6 +7736,8 @@
 				7162FC3525962A0E0075B97D /* File.cpp */,
 				7162FC3725962A0E0075B97D /* FileData.h */,
 				7162FC3625962A0E0075B97D /* FileData.cpp */,
+				CBB1E8D1CB13912DD7AAB17E /* AssetIOService.cpp */,
+				6275E3D8D049746EE76E8FFF /* AssetIOService.h */,
 				7162FC392E76C0010075B97D /* ResourcePack.h */,
 				7162FC3A2E76C0010075B97D /* ResourcePack.cpp */,
 				7162FC3425962A0E0075B97D /* UserSettings.h */,
@@ -8037,8 +8105,40 @@
 			children = (
 				716803CA2DF75EA200ED71BE /* ResourceProgress.h */,
 				716803CB2DF75EA200ED71BE /* ResourceProgress.cpp */,
+				307CF4D0CF6BD27F75C43DC6 /* ThreadUtil.h */,
+				9ECE89D24D34E5E3B4A00BF8 /* ThreadUtil.cpp */,
+				F7796983B1548A1074758DEB /* BackgroundGate.cpp */,
+				AE69C840359F9E935C5178F5 /* JobCounter.cpp */,
+				B1BCAE7F72F90BB776DCC7EA /* JobSystem.cpp */,
+				23FFDDBDE2CC5FE4A95A8F2E /* ParallelFor.cpp */,
+				238CC28D868BCA0D628B8DE6 /* Primitives.cpp */,
+				7A7B7B9DEED078A3960E3190 /* SerialQueue.cpp */,
+				39F32A1FDBC0F27F60910903 /* SlabPool.cpp */,
+				E52B978D56059FC0DE55A300 /* BackgroundGate.h */,
+				A6A6BB1A0E7BCD20AD80F284 /* JobChannel.h */,
+				8F3E182ADF5193AFA1C6BA1D /* JobCounter.h */,
+				31901A938D42819A492DB542 /* JobStats.h */,
+				66C03601B22B19078B7BF51D /* JobSystem.h */,
+				5E6BC60C17A144EF6515D903 /* JobTypes.h */,
+				DBECDDBC2140B5EE797F5341 /* ParallelFor.h */,
+				8007CCEC63F99120D23A40C7 /* Primitives.h */,
+				A35FD34FF73FC22F901CF741 /* SerialQueue.h */,
+				F9F125C5B7C6354BD89334D6 /* Task.h */,
+				B0FCC339254D23F701BC1770 /* JobCore.h */,
+				919455383BAF5AB9221A0350 /* Scheduler.h */,
+				A1B2C3D4E5F60718293A4B60 /* TimedWait.h */,
+				916D997559BD2518D226BD10 /* Arena.cpp */,
+				2E881A7FC55B538D3ED246FC /* Arena.h */,
+				1F92A03C0E01D130CDCEA20B /* MemoryStats.cpp */,
+				DF836624E21C692FA786747F /* MemoryStats.h */,
+				6F7ACE1024DB4202DA62DF32 /* ObjectPool.cpp */,
+				6C8F02ECF0F2D8A75061216F /* ObjectPool.h */,
+				49262177987C766B66F58CE0 /* RangeAllocator.cpp */,
+				67B05B493A6825E8727A3EEB /* RangeAllocator.h */,
+				173FC152830948AB621DDCA3 /* ScratchScope.cpp */,
+				2CCD8E1FB15ADCA9E2AA83C5 /* ScratchScope.h */,
+				EA199B0F796D9E777176C601 /* MemoryDebug.h */,
 				716803CC2DF75EA200ED71BE /* ThreadPoolManager.h */,
-				716803CD2DF75EA200ED71BE /* ThreadPoolManager.cpp */,
 			);
 			path = thread;
 			sourceTree = "<group>";
@@ -13089,8 +13189,20 @@
 				71ABBD0F277A313C001CE3AF /* AlphaTween.cpp in Sources */,
 				1776226E3058741F00F220CC /* ShaderUniforms.cpp in Sources */,
 				17A1C0A53058741F00F220CC /* ShaderManifest.cpp in Sources */,
-				716803CF2DF75EA200ED71BE /* ThreadPoolManager.cpp in Sources */,
 				716803D02DF75EA200ED71BE /* ResourceProgress.cpp in Sources */,
+				61854776A660BA58B34ADB3C /* ThreadUtil.cpp in Sources */,
+				66D0DA1C2F98FBC52911FBE7 /* BackgroundGate.cpp in Sources */,
+				D44D6D7AD63CFC230F45D73B /* JobCounter.cpp in Sources */,
+				029F7A514D5507F1810BBEF4 /* JobSystem.cpp in Sources */,
+				7168F53B568117CEE62092EB /* ParallelFor.cpp in Sources */,
+				67B771C8CEC08E01F5531AED /* Primitives.cpp in Sources */,
+				C0C65F9A26B9D065DEA9A721 /* SerialQueue.cpp in Sources */,
+				5C54646E9425A98904A6DBA0 /* SlabPool.cpp in Sources */,
+				5F96DAA4D7BC2A7A89FC1DC5 /* Arena.cpp in Sources */,
+				9BEE64D3852A9E8662C4F338 /* MemoryStats.cpp in Sources */,
+				768004239D5E1060F0A1FFCF /* ObjectPool.cpp in Sources */,
+				C27B07F24A9054D6D918054A /* RangeAllocator.cpp in Sources */,
+				A90C9D5BDADD7A21ACFB8E5F /* ScratchScope.cpp in Sources */,
 				71BE624225B1DB9E006D6E02 /* TexturePool.cpp in Sources */,
 				713D8293259D307F00567F9F /* Scene.cpp in Sources */,
 				7105A56D28B305B20092EA05 /* IOClassesLua.cpp in Sources */,
@@ -13124,6 +13236,7 @@
 				71451BE3270CA17F00712643 /* ScaleTween.cpp in Sources */,
 				714741FD2B029F7D00C891FF /* TextureDataPool.cpp in Sources */,
 				713D8297259D307F00567F9F /* FileData.cpp in Sources */,
+				27B4E894C8EE1F33E2D2935A /* AssetIOService.cpp in Sources */,
 				71451BEC270CA2C900712643 /* Sprite.cpp in Sources */,
 				717AD98F29211976007D7DB5 /* LayoutGroup.cpp in Sources */,
 				713D8298259D307F00567F9F /* ShaderRender.cpp in Sources */,
@@ -13213,6 +13326,7 @@
 				713D82B3259D307F00567F9F /* SokolObject.cpp in Sources */,
 				713D82B4259D307F00567F9F /* SokolBuffer.cpp in Sources */,
 				71ED64C628B45E0B005D2D96 /* Angle.cpp in Sources */,
+				A1B2C3D4E5F60718293A4B5E /* JoltJobAdapter.cpp in Sources */,
 				71CC83AC26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54507284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
 				1789660E2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,
@@ -13461,8 +13575,20 @@
 				71ABBD0E277A313C001CE3AF /* AlphaTween.cpp in Sources */,
 				1776226D3058741F00F220CC /* ShaderUniforms.cpp in Sources */,
 				17A1C0A43058741F00F220CC /* ShaderManifest.cpp in Sources */,
-				716803D12DF75EA200ED71BE /* ThreadPoolManager.cpp in Sources */,
 				716803D22DF75EA200ED71BE /* ResourceProgress.cpp in Sources */,
+				1AFFFAC106250FA9CCC91312 /* ThreadUtil.cpp in Sources */,
+				E42FB4CE8AA339B38F206E3E /* BackgroundGate.cpp in Sources */,
+				0F548938344DD33E9C3F8505 /* JobCounter.cpp in Sources */,
+				9597D2A61B9D6196191CFE08 /* JobSystem.cpp in Sources */,
+				A58321715F951F5BA1AAE527 /* ParallelFor.cpp in Sources */,
+				B07671525AAAF88F25A80A70 /* Primitives.cpp in Sources */,
+				9EBC35FE04730F16F5604C65 /* SerialQueue.cpp in Sources */,
+				E39FF8391AF9CD62280F850B /* SlabPool.cpp in Sources */,
+				C6FE32B9A580B284F2F65D4A /* Arena.cpp in Sources */,
+				81CE44DD8BDDB0D986F33285 /* MemoryStats.cpp in Sources */,
+				6BACA3E1B80DB0CC2ED4D4A7 /* ObjectPool.cpp in Sources */,
+				B879148DC2EC511FEF2CD5E3 /* RangeAllocator.cpp in Sources */,
+				64F8D0F603C260AA87E1ABA3 /* ScratchScope.cpp in Sources */,
 				71BE624125B1DB9E006D6E02 /* TexturePool.cpp in Sources */,
 				7162FE0E2596A5BE0075B97D /* SokolShader.cpp in Sources */,
 				7105A56C28B305B20092EA05 /* IOClassesLua.cpp in Sources */,
@@ -13504,6 +13630,7 @@
 				71CC839B26B8C4FD00EEBB93 /* FramebufferRender.cpp in Sources */,
 				7162FD1925963AE00075B97D /* File.cpp in Sources */,
 				7162FD1A25963AE00075B97D /* FileData.cpp in Sources */,
+				1ED7FD701BCEB526C9EB4B00 /* AssetIOService.cpp in Sources */,
 				7162FD1C25963AE00075B97D /* ShaderRender.cpp in Sources */,
 				71451BD7270CA17F00712643 /* ColorTween.cpp in Sources */,
 				7162FD2125963AE00075B97D /* ObjectRender.cpp in Sources */,
@@ -13585,6 +13712,7 @@
 				7162FD5825963AE00075B97D /* InterleavedBuffer.cpp in Sources */,
 				7162FD5925963AE00075B97D /* Buffer.cpp in Sources */,
 				71ED64C528B45E0B005D2D96 /* Angle.cpp in Sources */,
+				A1B2C3D4E5F60718293A4B5F /* JoltJobAdapter.cpp in Sources */,
 				71CC83AB26B8D54800EEBB93 /* SokolFramebuffer.cpp in Sources */,
 				71E54506284D5BB700C68FAB /* MorphTracks.cpp in Sources */,
 				1789660C2F1D764600E89E52 /* ShaderDataSerializer.cpp in Sources */,

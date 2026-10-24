@@ -15,7 +15,8 @@
 #include <functional>
 #include <atomic>
 #include <mutex>
-#include <thread>
+
+#include "jobs/JobSystem.h"
 
 namespace jasperengine::editor {
 
@@ -67,6 +68,9 @@ namespace jasperengine::editor {
         std::string emsdkPath;
         // Export anyway when a scene of the build references an asset that is missing (S04)
         bool allowMissingAssets = false;
+        // Web: also a pthreads build (threads/), which the page picks when cross-origin
+        // isolated (Project Settings > Player > Threading > Web: Multithreaded)
+        bool webMultithreaded = false;
     };
 
     struct ExportProgress {
@@ -93,7 +97,8 @@ namespace jasperengine::editor {
         mutable std::mutex progressMutex;
         std::atomic<bool> cancelRequested{false};
 
-        std::thread exportThread;
+        // the export run on the process channel (it waits on cmake, the compilers, packagers)
+        jobs::Task<void> exportTask;
 
         ShaderBuilder shaderBuilder;
         CommandRunner commandRunner;
@@ -125,6 +130,8 @@ namespace jasperengine::editor {
         void setDetail(const std::string& line);
         void setError(const std::string& message);
         void runExport();
+        // returns once the export started by startExport has ended
+        void waitForExport();
 
         bool isCancelled() const;
 
@@ -151,6 +158,14 @@ namespace jasperengine::editor {
         bool runBuild();
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
+        // the pthreads build next to the single-thread one, the cross-origin isolation
+        // service worker, and the page's choice between the two
+        bool collectWebThreadsArtifacts();
+
+        // the build tree configureBuild and runBuild work in ("build", or "build-threads")
+        std::string buildDirName = "build";
+        // CMake options of that tree beyond the export's
+        std::string extraCMakeArgs;
         bool collectSourceResourcePack();
         bool collectPackedTreeEntries(const fs::path& dir, std::vector<fs::path>& out, const fs::path& keep = fs::path());
         bool removeResourcePack(const fs::path& packPath);

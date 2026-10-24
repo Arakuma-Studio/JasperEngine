@@ -15,6 +15,7 @@
 #include "StreamPreserved.h"
 #include "Workspace.h"
 #include "io/AtomicFile.h"
+#include "jobs/JobSystem.h"
 #include "util/FileUtils.h"
 
 #include "json.hpp"
@@ -335,7 +336,19 @@ void editor::Project::autosaveDocument(SceneProject& sceneProject, BackupKind ki
     }
     std::shared_ptr<std::atomic<int>> inFlight = autosaveWritesInFlight;
     inFlight->fetch_add(1);
-    std::thread([project, kind, source, sceneId, root, baseSha1, version, prefab, written, inFlight]() {
+    // the flag and the count drop when the write ends, or when the job is dropped unrun (the
+    // job system cancels jobs not started at shutdown)
+    std::shared_ptr<void> finished(nullptr, [written, inFlight](void*) {
+        {
+            std::lock_guard<std::mutex> lock(written->mutex);
+            written->writing = false;
+        }
+        inFlight->fetch_sub(1);
+    });
+    // a disk write: the io-write channel (one at a time, in order with the scene saves)
+    jobs::SubmitOptions options;
+    options.name = "autosave-write";
+    jobs::system().ioWriteChannel().submit([project, kind, source, sceneId, root, baseSha1, version, prefab, written, finished]() {
         // the tree belongs to this thread now: nothing else holds its nodes
         const std::string text = prefab ? YAML::Dump(root) : DocumentFiles::text(root);
         const std::string sha1 = DocumentFiles::sha1(text);
@@ -349,12 +362,7 @@ void editor::Project::autosaveDocument(SceneProject& sceneProject, BackupKind ki
             std::lock_guard<std::mutex> lock(written->mutex);
             written->sha1 = sha1;
         }
-        {
-            std::lock_guard<std::mutex> lock(written->mutex);
-            written->writing = false;
-        }
-        inFlight->fetch_sub(1);
-    }).detach();
+    }, options);
 }
 
 void editor::Project::deleteSceneBackup(const SceneProject& sceneProject, const fs::path& previousPath) {

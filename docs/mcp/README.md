@@ -260,6 +260,12 @@ Main ideas:
 - **Assets** use paths relative to the project.
 - `batch` runs many calls in one round trip, as one undo step.
 - Long operations return a job: poll it with `get_job` and stop it with `cancel_job`.
+- The engine's job system and memory are separate from those jobs:
+  - `get_job_system_stats` shows the workers, lanes, the Background gate and the asset reads.
+  - `get_memory_stats` shows the named memory records (textures, meshes, Lua, Jolt, arenas).
+  - `set_job_system_config` changes Reserved Frame Workers live (undo with scope `project`).
+
+  See [../jobs-memory.md](../jobs-memory.md).
 
 Tool definitions (name, description, input schema) are sent to the agent in every session,
 so keep them lean: `tools/mcp/tool_budget.py` prints each tool's size and the total (target:

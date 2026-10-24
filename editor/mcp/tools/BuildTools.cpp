@@ -21,6 +21,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
 
+#include "jobs/JobSystem.h"
 #include "App.h"
 #include "AppSettings.h"
 #include "Exporter.h"
@@ -414,7 +415,7 @@ struct BuildRun {
     std::string executableName;
     std::mutex mutex;                     // guards exporter
     std::unique_ptr<Exporter> exporter;
-    std::thread worker;                   // generate_shaders: runs Exporter::generateShaders
+    jobs::Task<void> worker;              // generate_shaders: Exporter::generateShaders on the process channel
     uint64_t logCursor = 0;
     std::vector<Diagnostic> diagnostics;
     size_t errorCount = 0;
@@ -581,7 +582,7 @@ void watchRun(std::shared_ptr<BuildRun> run) {
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
     drainLogs();
 
-    if (r.worker.joinable()) r.worker.join();
+    r.worker.wait();
     {
         // joins the export thread, which has returned
         std::lock_guard<std::mutex> lock(r.mutex);
@@ -601,7 +602,12 @@ void startRun(const std::shared_ptr<BuildRun>& run) {
             if (r->exporter) r->exporter->cancelExport();
         }
     });
-    std::thread(watchRun, run).detach();
+    // The watcher polls the exporter (on the process channel) until it ends. It has a channel
+    // of its own: on the process channel it could hold the slot the export it waits for needs.
+    static jobs::JobChannel* watchChannel = new jobs::JobChannel("build-watch", 2);
+    jobs::SubmitOptions options;
+    options.name = "build-watch";
+    watchChannel->submit([run]() { watchRun(run); }, options);
 }
 
 bool openRunLog(BuildRun& run, Project* project) {
@@ -981,10 +987,12 @@ void generateShadersTool(const CallPtr& call) {
         std::lock_guard<std::mutex> lock(manager().mutex);
         manager().active = run;
     }
-    // Shader generation runs the exporter on the calling thread: a worker, not the main thread.
-    // project is not used (no scene saving), so it never waits for the main thread.
+    // Shader generation runs the exporter on the calling thread: a process-channel job, not the
+    // main thread. project is not used (no scene saving), so it never waits for the main thread.
     Exporter* exporter = run->exporter.get();
-    run->worker = std::thread([exporter, config]() { exporter->generateShaders(config); });
+    jobs::SubmitOptions options;
+    options.name = "generate-shaders";
+    run->worker = jobs::system().processChannel().submit([exporter, config]() { exporter->generateShaders(config); }, options);
     startRun(run);
     replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
 }

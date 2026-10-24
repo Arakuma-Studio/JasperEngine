@@ -7,8 +7,8 @@
 #include "Export.h"
 #include "Engine.h"
 #include "render/Render.h"
+#include "jobs/JobSystem.h"
 #include <cstdint>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -38,9 +38,9 @@ namespace jasperengine{
         AttributeDataType indexType = AttributeDataType::UNSIGNED_SHORT;
     };
 
-    typedef std::unordered_map< uint64_t, std::shared_future<std::shared_ptr<MeshLodData>> > lods_t;
+    typedef std::unordered_map< uint64_t, jobs::Task<std::shared_ptr<MeshLodData>> > lods_t;
 
-    // Detail levels keyed by a hash of the geometry, built on the thread pool
+    // Detail levels keyed by a hash of the geometry, simplified as Background Heavy jobs
     class JASPERENGINE_API MeshLodPool{
     private:
         static lods_t& getMap();

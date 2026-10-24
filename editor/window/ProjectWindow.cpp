@@ -195,16 +195,14 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     memset(this->nameBuffer, 0, sizeof(this->nameBuffer));
     memset(this->searchBuffer, 0, sizeof(this->searchBuffer));
 
-    thumbnailThread = std::thread(&ProjectWindow::thumbnailWorker, this);
 }
 
 editor::ProjectWindow::~ProjectWindow() {
     cancelThumbnailWork();
     stopThumbnailThread = true;
-    thumbnailCondition.notify_one(); // Wake the worker thread to check stop condition
-    if (thumbnailThread.joinable()) {
-        thumbnailThread.join();
-    }
+    // the steps capture this window
+    thumbnails.cancelPending();
+    thumbnails.waitIdle();
 }
 
 bool editor::ProjectWindow::isFocused() const{
@@ -293,7 +291,12 @@ void editor::ProjectWindow::resumeThumbnailWork(){
         std::lock_guard<std::mutex> lock(thumbnailMutex);
         thumbnailWorkSuspended = false;
     }
+    notifyThumbnailWork();
+}
+
+void editor::ProjectWindow::notifyThumbnailWork(){
     thumbnailCondition.notify_all();
+    scheduleThumbnailStep();
 }
 
 void editor::ProjectWindow::handleExternalDragEnter() {
@@ -391,7 +394,7 @@ void editor::ProjectWindow::processMaterialThumbnails() {
                     pendingMaterialGeneration = 0;
                 }
             }
-            thumbnailCondition.notify_one();
+            notifyThumbnailWork();
             return;
         }
 
@@ -439,7 +442,7 @@ void editor::ProjectWindow::processMaterialThumbnails() {
             }
         }
 
-        thumbnailCondition.notify_one();
+        notifyThumbnailWork();
     }
 }
 
@@ -476,7 +479,7 @@ void editor::ProjectWindow::processModelThumbnails() {
                     pendingModelGeneration = 0;
                 }
             }
-            thumbnailCondition.notify_one();
+            notifyThumbnailWork();
             return;
         }
 
@@ -535,7 +538,7 @@ void editor::ProjectWindow::processModelThumbnails() {
             }
         }
 
-        thumbnailCondition.notify_one();
+        notifyThumbnailWork();
     }
 }
 
@@ -2575,13 +2578,16 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
     scanDirectory(currentPath);
 }
 
-// Converting a video takes seconds to minutes: a worker runs FFmpeg (htmlui/VideoImporter, as
-// import_files does) and reports each file in the Console; the folder is listed again on the
-// main thread when a file is written. An existing output is not replaced.
+// Converting a video takes seconds to minutes: a job of the process channel runs FFmpeg
+// (htmlui/VideoImporter, as import_files does) and reports each file in the Console; the
+// folder is listed again on the main thread when a file is written. An existing output is not
+// replaced. The job captures no window, so its handle is not kept.
 void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir) {
     for (const fs::path& video : videos)
         Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", editor::FileUtils::pathToUtf8(video.filename()).c_str());
-    std::thread([videos, targetDir]() {
+    jobs::SubmitOptions options;
+    options.name = "ffmpeg-import";
+    jobs::system().processChannel().submit([videos, targetDir]() {
         for (const fs::path& video : videos) {
             const htmlui::VideoImportResult result = htmlui::VideoImporter::importFile(video, targetDir, false);
             if (result.ok) {
@@ -2603,7 +2609,7 @@ void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, co
                 });
             }
         }
-    }).detach();
+    }, options);
 }
 
 void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate) {
@@ -2673,20 +2679,31 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
         }
         thumbnailQueue.push(thumbFile);
     }
-    thumbnailCondition.notify_one();
+    notifyThumbnailWork();
 }
 
-void editor::ProjectWindow::thumbnailWorker() {
-    // warm shared preview resources in background: rendering the material preview
-    // scene once generates the IBL environment maps, which are pooled by texture id
-    // (TexturePool), so the first material preview in Properties opens without lag
-    {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (!stopThumbnailThread && !Engine::isViewLoaded() && std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
+void editor::ProjectWindow::scheduleThumbnailStep() {
+    if (!thumbnailStepScheduled.exchange(true))
+        thumbnails.push([this]() { thumbnailStep(); });
+}
+
+// One step of the thumbnail strand (a Background SerialQueue): one request, then the next
+// step is scheduled while work is left. A step never waits: a request that must wait for the
+// main thread (a pending material or model render) is picked up by the step the main thread
+// schedules when it clears that state.
+void editor::ProjectWindow::thumbnailStep() {
+    thumbnailStepScheduled.store(false);
+    if (stopThumbnailThread) {
+        return;
+    }
+
+    // warm shared preview resources once: rendering the material preview scene once
+    // generates the IBL environment maps, which are pooled by texture id (TexturePool), so
+    // the first material preview in Properties opens without lag
+    if (!thumbnailWarmupDone && Engine::isViewLoaded()) {
+        thumbnailWarmupDone = true;
         bool runWarmup = false;
-        if (!stopThumbnailThread && Engine::isViewLoaded()) {
+        {
             std::lock_guard<std::mutex> lock(thumbnailMutex);
             if (!thumbnailWorkSuspended) {
                 thumbnailWorkerBusy = true;
@@ -2710,22 +2727,13 @@ void editor::ProjectWindow::thumbnailWorker() {
         }
     }
 
-    while (!stopThumbnailThread) {
+    {
         ThumbnailRequest thumbFile;
         {
             std::unique_lock<std::mutex> lock(thumbnailMutex);
-            // Wait until there is work or the thread is stopped
-            thumbnailCondition.wait(lock, [this]() {
-                return (!thumbnailWorkSuspended && !thumbnailQueue.empty() &&
-                        !hasPendingMaterialRender && !hasPendingModelRender) || stopThumbnailThread;
-            });
-
-            // If we're stopping, exit
-            if (stopThumbnailThread) {
+            if (thumbnailWorkSuspended || thumbnailQueue.empty() || hasPendingMaterialRender || hasPendingModelRender) {
                 return;
             }
-
-            // Get the next file path
             thumbFile = thumbnailQueue.front();
             thumbnailQueue.pop();
             thumbnailWorkerBusy = true;
@@ -2865,6 +2873,7 @@ void editor::ProjectWindow::thumbnailWorker() {
         }
         thumbnailCondition.notify_all();
     }
+    scheduleThumbnailStep();
 }
 
 ImTextureID editor::ProjectWindow::getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight) {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpTransportStdio.h"
+#include "thread/ThreadUtil.h"
 
 #include "McpServer.h"
 
@@ -67,8 +68,8 @@ void McpTransportStdio::start() {
     session = server.createSession("stdio");
     open = true;
     inputOpen = true;
-    writer = std::thread([this]() { writeLoop(); });
-    reader = std::thread([this]() { readLoop(); });
+    writer = jasperengine::thread::spawnNamed("je-mcp-write", [this]() { writeLoop(); });
+    reader = jasperengine::thread::spawnNamed("je-mcp-read", [this]() { readLoop(); });
 }
 
 void McpTransportStdio::send(const Json& message) {
