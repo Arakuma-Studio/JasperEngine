@@ -645,8 +645,21 @@ Recorded by the implementer; each is the closest correct alternative to the text
 15. **Tests location.** The unit tests are where S02 puts them (`engine/tests/core/asset/`,
     `editor/tests/asset/`), built into `jasperengine-core-tests` and
     `jasperengine-editor-tests` (`tools/build.sh unit-tests`).
-16. **HTML5 player run of AC16** needs S02's web gate (headless Chrome). The asset map is
-    read through the same `asset://` path on every target.
+16. **HTML5 run of AC16** has no script of its own: the smoke test's export of the fixture is
+    built with `emcmake cmake` in the web image and opened with S02's
+    `tools/web/browser_gate.py --expect "[S04] Asset.path ..." --expect "[S04] portrait ..."`.
 17. **Excluded files.** Besides `project.yaml` and `CMakeLists.txt`, the project root's
     `ProjectBuild.cmake` and `compile_commands.json` are not assets, and neither are hidden
     files (S03's temporaries).
+18. **The poll (R23).** Until S05's watcher feeds `refresh()`, the editor polls every 2 s (and
+    never more than a fifth of the time): `AssetDatabase::scanDisk()` walks and stats on a
+    background thread, `refresh(scan)` applies it on the main thread and drops a scan older
+    than the database's last change. Tools that answer from the database
+    (`resolve_asset`, `find_references`...) refresh first, so files an agent changed with its
+    own tools count at once. A save updates its entry and its edges in place; the index cache
+    is written by the background thread (and on close), not by each save.
+19. **First open of a project written before GUIDs** writes one meta per asset. Metas that hold
+    only what their path derives (legacy GUID, derived sub-assets) skip the sync, since a crash
+    rewrites them identically; it is still a write per asset (about 15 s for 25,000 assets on
+    the build server), which R22's 1 s identity budget (measured with metas present) does not
+    cover.
