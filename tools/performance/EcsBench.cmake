@@ -10,7 +10,9 @@ if(GRAPHIC_BACKEND STREQUAL "vulkan")
 else()
     target_link_libraries(jasperengine-ecs-bench PRIVATE GL)
 endif()
-set_target_properties(jasperengine-ecs-bench PROPERTIES
-    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
-    CXX_STANDARD_REQUIRED ON
-)
+# the engine's standard (an engine before S01 has no jasperengine_apply_cxx_standard)
+if(COMMAND jasperengine_apply_cxx_standard)
+    jasperengine_apply_cxx_standard(jasperengine-ecs-bench)
+else()
+    set_target_properties(jasperengine-ecs-bench PROPERTIES CXX_STANDARD ${JASPERENGINE_CXX_STANDARD} CXX_STANDARD_REQUIRED ON)
+endif()
