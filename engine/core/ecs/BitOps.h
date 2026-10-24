@@ -26,6 +26,15 @@
 #define JE_ECS_INLINE inline
 #endif
 
+// A hint to start loading the cache line at p (no fault on any address): a structural change
+// starts the loads of the metadata record and of every touched array's slot at once, so their
+// cache misses overlap instead of following one another
+#if defined(__GNUC__) || defined(__clang__)
+#define JE_ECS_PREFETCH(p) __builtin_prefetch((const void*)(p), 1, 3)
+#else
+#define JE_ECS_PREFETCH(p) ((void)(p))
+#endif
+
 namespace jasperengine::ecs {
 
     // Index of the lowest set bit; the word must not be zero

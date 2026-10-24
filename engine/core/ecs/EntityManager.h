@@ -296,6 +296,11 @@ namespace jasperengine{
             data->signature = signature;
         }
 
+        // starts loading the entity's record (JE_ECS_PREFETCH)
+        JE_ECS_INLINE void prefetch(Entity entity) const{
+            JE_ECS_PREFETCH(find(entity));
+        }
+
         JE_ECS_INLINE Signature getSignature(Entity entity) const{
             const EntityMetadata* data = find(entity);
             if (!data) [[unlikely]] {

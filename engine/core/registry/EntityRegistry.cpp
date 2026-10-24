@@ -244,6 +244,8 @@ void EntityRegistry::destroyEntity(Entity entity) {
     }
 
     const Signature signature = entityManager.getSignature(entity);
+    // the arrays' slots load while the hooks run
+    componentManager.prefetchEntity(entity, signature);
     onEntityDestroyed(entity, signature);
     if (editorData) {
         editorData->entityDestroyed(entity);

@@ -217,6 +217,15 @@ namespace jasperengine {
 			}
 		}
 
+		// starts loading the entity's slots in the arrays of the signature's types
+		void prefetchEntity(Entity entity, const Signature& signature) const {
+			signature.forEachSet([&](size_t id){
+				if (const ComponentArrayBase* array = arraysById[id]){
+					array->prefetchEntity(entity);
+				}
+			});
+		}
+
 		// Only the arrays of the signature's types
 		void entityDestroyed(Entity entity, const Signature& signature) {
 			signature.forEachSet([&](size_t id){

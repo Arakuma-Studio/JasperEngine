@@ -173,6 +173,9 @@ namespace jasperengine {
 
         virtual void settleSlow() = 0;
 
+        // the cache line of the component in `slot` (JE_ECS_PREFETCH)
+        virtual void prefetchComponent(size_t slot) const = 0;
+
         Tick stampTick(){
             return clock ? clock->stamp() : 0;
         }
@@ -251,6 +254,16 @@ namespace jasperengine {
         virtual void shrinkStorage() = 0;
 
     public:
+        // Starts loading what removing the entity's component touches: its slot's owner and
+        // component (one index lookup; nothing is read but the index)
+        JE_ECS_INLINE void prefetchEntity(Entity entity) const {
+            const uint32_t slot = entityToSlot.find(entity);
+            if (slot != ecs::SparseIndex::kNone){
+                JE_ECS_PREFETCH(slotEntities.slot(slot));
+                prefetchComponent(slot);
+            }
+        }
+
         ComponentArrayBase() = default;
         ComponentArrayBase(const ComponentArrayBase&) = delete;
         ComponentArrayBase& operator=(const ComponentArrayBase&) = delete;
@@ -500,6 +513,10 @@ namespace jasperengine {
             holeCount = 0;
             compactions++;
             shrinkStorage();
+        }
+
+        void prefetchComponent(size_t slot) const override {
+            JE_ECS_PREFETCH(slotPtr(slot));
         }
 
         void settleSlow() override {

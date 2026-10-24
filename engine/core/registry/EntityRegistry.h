@@ -371,6 +371,9 @@ namespace jasperengine {
             if (structuralLocked("removeComponent")){
                 return;
             }
+            // the record (signature) and the component load together, while the hooks run
+            entityManager.prefetch(entity);
+            componentManager.getComponentArray<T>()->prefetchEntity(entity);
 
             onComponentRemoved(entity, componentManager.getComponentId<T>());
             if (editorData) {
