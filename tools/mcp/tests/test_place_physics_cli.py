@@ -6,7 +6,8 @@ simulation straight through.
 
 - usage errors exit 2 with the reason on stderr (unknown option, bad values, options of another
   mode, a mode without what it needs, --save with --dry-run, no project.yaml, an unknown scene or
-  GameObject, an ambiguous name); --help exits 0 and the top-level help lists the command;
+  GameObject, an ambiguous name, what checkPlacementSpec refuses); --help exits 0 and the top-level
+  help lists the command;
 - a dry run with --format json -q prints one object of the documented shape (spec section 8.1)
   and nothing on stderr, and leaves every file of the project byte-identical; text mode prints a
   line per object; the scene is found by name, file name or path;
@@ -14,7 +15,7 @@ simulation straight through.
   floor and its rim), resting on it;
 - separate pushes the two interpenetrating cubes apart (at most 1 mm into each other);
 - the 30 m room is refused as a mover ("too large (> 25 m), treated as environment") and is the
-  environment the furniture lands on;
+  environment the furniture lands on; alone nothing can move: exit 2 with the result object;
 - --max-seconds 0.05 on falling pebbles: exit 3, the result still printed, all_settled false;
 - the same arguments twice give the same state_hash (with jitter and a seed); another seed another;
 - every mode runs from the command line (move, snap, gather, distribute, the tuning flags);
@@ -78,15 +79,18 @@ def run(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, timeout=600)
 
 
-def place(proj: Path, scene: str, entities: list[str], *args: str, want: tuple[int, ...] = (0,)) -> dict:
-    """A --format json -q run; its result object"""
+def place(proj: Path, scene: str, entities: list[str], *args: str, want: tuple[int, ...] = (0,), quiet_stderr: bool = True) -> dict:
+    """A --format json -q run; its result object (quiet_stderr: nothing on stderr, the run succeeded)"""
     argv = ["--project", str(proj), "--scene", scene]
     for e in entities:
         argv += ["--entity", e]
     r = run(*argv, *args, "--format", "json", "-q")
     check(r.returncode in want, f"{scene} {entities} {args}: exit {r.returncode}, want {want}\n"
                                 f"stdout: {r.stdout[-3000:]}\nstderr: {r.stderr[-3000:]}")
-    check(r.stderr == "", f"-q: stderr is not empty: {r.stderr[-2000:]}")
+    if quiet_stderr:
+        check(r.stderr == "", f"-q: stderr is not empty: {r.stderr[-2000:]}")
+    else:
+        check(r.stderr.strip() != "", "a failed run said nothing on stderr")
     try:
         return json.loads(r.stdout)
     except json.JSONDecodeError as e:
@@ -168,6 +172,9 @@ async def test_usage_errors():
     loaded = [
         (["--project", str(proj), "--scene", "Kitchen", "--entity", "Props/Box1"], "no scene 'Kitchen' in the project (scenes: TableCrate"),
         (["--project", str(proj), "--scene", "TableCrate", "--entity", "Props/Nothing"], "no GameObject 'Props/Nothing' in scene TableCrate"),
+        # what checkPlacementSpec refuses
+        (p + ["--max-seconds", "500"], "max_seconds must be above 0 and at most 120"),
+        (p + ["--jitter", "0,200"], "jitter.rotation_deg must be between 0 and 180"),
     ]
     twin = project("twin")
     scene = twin / "TableCrate.scene"
@@ -177,9 +184,10 @@ async def test_usage_errors():
     loaded.append((["--project", str(twin), "--scene", "TableCrate", "--entity", "Box1"],
                    "'Box1' names 2 GameObjects in scene TableCrate: "))
     for args, expected in loaded:
-        r = run(*args, "-q")
+        r = run(*args, "-q", "--format", "json")
         check(r.returncode == 2, f"{args}: exit {r.returncode}, want 2\nstderr: {r.stderr[-1500:]}")
         check(expected in r.stderr, f"{args}: stderr lacks {expected!r}:\n{r.stderr[-1500:]}")
+        check(r.stdout == "", f"{args}: printed before any run: {r.stdout[-500:]}")
     r = run("--project", str(twin), "--scene", "TableCrate", "--entity", "Box1", "-q")
     check("Overlap/Box1" in r.stderr and "Props/Box1" in r.stderr and "(give the path)" in r.stderr,
           f"the ambiguous name's candidates: {r.stderr}")
@@ -250,7 +258,7 @@ async def test_dry_run_json_and_crate_drop():
             check(f"  {path}: moved " in r.stdout, f"text lacks {path}:\n{r.stdout}")
         check("resting on Props/" in r.stdout and "dry run: TableCrate.scene not changed" in r.stdout, f"text:\n{r.stdout}")
         check("[INFO]" not in r.stdout, f"the engine log went to stdout:\n{r.stdout}")
-        check("place-physics: simulating drop (3 movers)" in r.stderr, f"progress on stderr: {r.stderr[-1000:]}")
+        check("place-physics: simulating drop (3 GameObjects)" in r.stderr, f"progress on stderr: {r.stderr[-1000:]}")
     check(tree_bytes(proj) == before, "a dry run changed a file of the project")
 
 
@@ -268,6 +276,10 @@ async def test_separate_resolves_overlap():
 
 
 async def test_large_room_is_environment():
+    # alone, nothing can move: a usage error, the refusal in the result object
+    lone = place(project(), "Room", ["Room"], want=(2,), quiet_stderr=False)
+    check(lone["error"].startswith("nothing can move (Room: too large (> 25 m)"), f"error: {lone.get('error')}")
+    check(lone["entities"] == [] and [r["path"] for r in lone["refused"]] == ["Room"], f"refused: {lone['refused']}")
     result = place(project(), "Room", ["Room", "Furniture/Box", "Furniture/Ball"])
     refused = {r["path"]: r["reason"] for r in result["refused"]}
     check("Room" in refused, f"the room was not refused: {result['refused']}")

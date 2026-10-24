@@ -510,30 +510,37 @@ namespace jasperengine::editor {
                 return 2;
             }
 
-            auto run = std::make_unique<PlacementRun>();
-            if (!run->start(&project, spec)) {
-                err << prefix << "the simulation could not start: " << run->result().error << "\n";
-                return 1;
+            // with --format json the run's result object goes to stdout whether it ran or not
+            auto jsonReport = [&](const PlacementResult& result, bool applied) {
+                if (o.format == "json") {
+                    report = placementResultJson(&project, result, applied).dump(1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
+                }
+            };
+            PlacementRun run;
+            if (!run.start(&project, spec)) {
+                // nothing can move (every one refused), a target it can't set up
+                err << prefix << run.result().error << "\n";
+                jsonReport(run.result(), false);
+                return 2;
             }
-            // --decompose always: every decomposition the movers asked for is computed first, then
-            // a fresh run (a fresh world: the same as with a warm cache) picks them all up
+            // --decompose always: the run steps once the decompositions its movers asked for are
+            // in the project's cache (it waits for them itself; this reports the wait)
             ConvexDecompositionCache* cache = placementDecompositionCache(&project);
             if (spec.settings.decomposition == PlacementDecomposition::ALWAYS && cache && cache->pendingCount() > 0) {
-                if (!o.quiet) err << "place-physics: decomposing " << cache->pendingCount() << " mesh(es) into convex hulls\n";
+                if (!o.quiet) err << "place-physics: decomposing " << cache->pendingCount() << " mesh(es) into convex hulls first\n";
                 while (cache->pendingCount() > 0) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 }
-                run = std::make_unique<PlacementRun>();
-                if (!run->start(&project, spec)) {
-                    err << prefix << "the simulation could not start: " << run->result().error << "\n";
-                    return 1;
-                }
             }
-            if (!o.quiet) err << "place-physics: simulating " << placementModeName(spec.mode) << " (" << spec.entities.size() << " movers)\n";
-            run->advance(0.0);
-            const PlacementResult& result = run->result();
+            if (!o.quiet) {
+                err << "place-physics: simulating " << placementModeName(spec.mode) << " (" << spec.entities.size()
+                    << (spec.entities.size() == 1 ? " GameObject)\n" : " GameObjects)\n");
+            }
+            run.advance(0.0);
+            const PlacementResult& result = run.result();
             if (!result.ok) {
                 err << prefix << "the simulation failed: " << result.error << "\n";
+                jsonReport(result, false);
                 return 1;
             }
 
@@ -553,7 +560,7 @@ namespace jasperengine::editor {
             }
 
             if (o.format == "json") {
-                report = placementResultJson(&project, result, saved).dump(1, ' ', false, nlohmann::json::error_handler_t::replace) + "\n";
+                jsonReport(result, saved);
             } else {
                 std::ostringstream text;
                 printText(*sp, result, saved, text);
@@ -607,11 +614,13 @@ namespace jasperengine::editor {
             << "      --format <format>       text (default): a summary per object; json: the place_with_physics result.\n"
             << "  -q, --quiet                 Only problems on stderr (no engine log, no progress).\n"
             << "  -h, --help                  Show this help.\n\n"
-            << "Paths are absolute or relative to the current directory. The result goes to stdout; the engine's log\n"
-            << "and progress to stderr.\n"
-            << "Exit code: 0 every object settled, 1 failure (project, scene, simulation, apply or save), 2 usage\n"
-            << "error (bad option or value, unknown scene or GameObject), 3 it ran but not every object came to rest\n"
-            << "within --max-seconds (--save still writes the result).\n";
+            << "Paths are absolute or relative to the current directory. The result goes to stdout (with --format json\n"
+            << "also when the run could not start or failed: its error and refusals); problems, the engine's log and\n"
+            << "progress to stderr.\n"
+            << "Exit code: 0 every object settled, 1 failure (the project or scene could not load; the simulation,\n"
+            << "apply or save failed), 2 usage error (bad option or value, unknown scene or GameObject, nothing that\n"
+            << "can move), 3 it ran but not every object came to rest within --max-seconds (--save still writes the\n"
+            << "result).\n";
     }
 
     int runPlacePhysics(int argc, char** argv, const std::string& commandName, std::ostream& out, std::ostream& err) {
