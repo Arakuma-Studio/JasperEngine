@@ -686,11 +686,14 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
   base was already at 100.6 K, over the ~100 K target, so the total is 101.5 K. The overage
   predates S06. `focus_window` also gains `jobs_memory`.
 
-### Acceptance evidence (server C, 8 vCPU VM, after merging oe-port with S01 and S03)
+### Acceptance evidence (server C, 8 vCPU VM, after merging oe-port with S01, S02 and S03)
 
-- **AC1-AC10, AC22.** `jasperengine-core-tests` (S06 and S03 suites) passes 251 of 251:
-  three runs in Release, two under TSan with 0 warnings, and through `tools/build.sh
-  unit-tests`. `jasperengine-editor-tests` passes 29 of 29.
+- **AC1-AC10, AC22.**
+  - `WERROR=1 tools/build.sh unit-tests`: `jasperengine-core-tests` passes 608 of 608 (the
+    S06 suites with S02's and S03's), and `jasperengine-editor-tests` passes 247 of 247.
+  - `SANITIZE=thread UNIT_SUITE=core tools/build.sh unit-tests` (GPU suites filtered out):
+    606 of 606, no race report.
+  - The unity builds (`UNITY=1`) of the engine, the editor and the core tests compile.
 - **AC11-AC14.** `je-bench-jobs`, `je-bench-memory` and `check_bench.py`: all budgets hold in
   three consecutive runs.
   - R23: 5.9-8.5 M jobs/s, dispatch 24 ns, round trip p99 1-2.3 µs.
@@ -720,6 +723,15 @@ Recorded by the implementer (branch `feat/s06-jobs-memory`).
     idle p95.
   - Screenshots are written to `$JE_EVIDENCE_DIR`.
   - The smoke test passes.
-- **Waiting on S02's browser gate:** AC20 (web single-thread run) and AC21 (threaded web
-  build under COOP/COEP, and its fallback). Both web players build. The threaded build's
-  loader logs `crossOriginIsolated=` and `threads=` for that gate.
+- **AC20, AC21 (S02's browser gate).**
+  - `tools/build.sh web`, then `tools/build.sh web-gate`: PASS (ready, centre pixel, no
+    console errors).
+  - `WEB_THREADS=1 tools/build.sh web`, then `GATE=sample-project-threads tools/build.sh
+    web-gate`: PASS (crossOriginIsolated, ready, centre pixel, no console errors).
+  - Before the fix, the threaded gate failed in two ways. Its link lacked `-pthread` (the S02
+    merge kept the compile flag only), so `pthread_create` returned EOPNOTSUPP. Its Debug link
+    failed on `emscripten_set_thread_name`.
+  - Not run: an exported game behind a server without cross-origin isolation (the loader's
+    fallback to the single-thread player). That needs S30's publish pipeline.
+- **Builds.** `WERROR=1 tools/build.sh linux`, `tools/build.sh android` and the smoke test
+  pass.
