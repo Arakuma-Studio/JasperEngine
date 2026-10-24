@@ -62,6 +62,16 @@ an appropriate feel preset/humanize. Mirrored halves use `mirror_pose`.
 - Right-click: **Replace Poses in Current Animation** (one undo step; keeps the asset's preview
   model), **Append Poses**, and for user templates **Show in Project** and **Delete** (confirm dialog).
 - **Save Current as Template...**: a small popup with name, description, category.
+- (Implemented: `editor/window/PoseAnimationWindowTemplates.cpp`, registered with
+  `PoseAnimationWindow::addTab`; the list comes from `PoseTemplates` and is re-read when
+  `<project>/pose-templates/` changes; thumbnails share the strip's `PoseThumbnails` cache. The
+  save dialog is an in-window modal whose default is numbered (" 1", " 2") when the file exists.
+  Without a character the cards have no thumbnails and the hint "Bind a character to preview
+  templates"; the no-character, no-animation and no-poses empty states show the grid too. Delete
+  asks for confirmation. MCP: `focus_window` `pose.tab: "templates"`; the state lists the cards;
+  the tab's actions are reachable for tests through the `pose.templates` hook
+  (`JASPER_MCP_TEST_HOOKS=1`); filter, labels, default path and the replace/append edit are
+  `poseui` functions with unit tests.)
 
 ## 5. MCP
 
