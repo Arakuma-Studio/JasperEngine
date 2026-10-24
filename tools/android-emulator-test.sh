@@ -107,19 +107,26 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     -e BOOT_TIMEOUT="${EMULATOR_BOOT_TIMEOUT:-600}" -e MEMORY="${EMULATOR_MEMORY:-3072}" -e CORES="${EMULATOR_CORES:-4}" \
     "$IMAGE_ID" bash -euo pipefail -c '
         log() { echo "android-emulator-test: $*"; }
-        export ANDROID_AVD_HOME="$(mktemp -d)"
+        # on the host disk (the container layer is small), removed at the end
+        export ANDROID_AVD_HOME="$OUT/avd"
         export ANDROID_EMULATOR_HOME="$ANDROID_AVD_HOME"
+        rm -rf "$ANDROID_AVD_HOME"
+        mkdir -p "$ANDROID_AVD_HOME"
         IMAGE="system-images;android-${EMULATOR_API};${EMULATOR_TAG};x86_64"
         echo no | avdmanager --silent create avd --force -n jasper -k "$IMAGE" -d pixel_6 >/dev/null
+        # a 2 GB userdata partition is plenty for one app (the default is 6 GB)
+        echo "disk.dataPartition.size=2048M" >> "$ANDROID_AVD_HOME/jasper.avd/config.ini"
         log "booting $IMAGE"
         emulator -avd jasper -no-window -no-audio -no-boot-anim -no-snapshot -wipe-data \
-            -gpu swiftshader_indirect -accel on -memory "$MEMORY" -cores "$CORES" -no-metrics > "$OUT/emulator.log" 2>&1 &
+            -partition-size 2048 -gpu swiftshader_indirect -accel on -memory "$MEMORY" -cores "$CORES" -no-metrics \
+            > "$OUT/emulator.log" 2>&1 &
         EMULATOR_PID=$!
         cleanup() {
             adb emu kill >/dev/null 2>&1 || true
             sleep 2
             kill "$EMULATOR_PID" >/dev/null 2>&1 || true
             wait "$EMULATOR_PID" 2>/dev/null || true
+            rm -rf "$ANDROID_AVD_HOME"
         }
         trap cleanup EXIT
 
