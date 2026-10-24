@@ -75,10 +75,9 @@ async def main(out: Path) -> None:
         await ed.call("sync_files")
         made = await ed.call("create_scene", name="Review", type="3D", path="Review.scene", close_previous=True, unsaved="discard")
         sid = made["scene"]["id"]
-        cams = (await ed.call("find_entities", component="CameraComponent"))["entities"]
-        cam = find_key(cams[0], "entity_id", "id")
-        await ed.call("set_transform", entity=cam, position=[0, 0, 12])
-        await ed.call("set_properties", entity=cam, values={"camera": {"target": [0, 0, 0]}})
+        cam = (await ed.call("create_entity", name="Camera", type="camera", position=[0, 0, 12]))["entity_id"]
+        await ed.call("set_main_camera", entity=cam)
+        await ed.call("set_properties", entity=cam, values={"camera": {"useTarget": True, "target": [0, 0, 0]}})
         await ed.call("create_entity", name="ClearCoatTest", type="model", model="models/ClearCoatTest/ClearCoatTest.glb")
         await ed.call("wait", frames=60)
         meshes = [find_key(e, "entity_id", "id") for e in (await ed.call("find_entities", component="MeshComponent"))["entities"]]
@@ -119,7 +118,8 @@ async def main(out: Path) -> None:
         await ed.call("select_entities", entities=spheres)
         await ed.call("set_properties", entities=spheres, values={"mesh": {M + "pbr.sheen.roughness": 0.8}})
         async def sheen_roughness(e):
-            pbr = find_key(await ed.call("get_entity", entity=e), "pbr") or {}
+            got = await ed.call("get_entity", entity=e, components=["mesh"], properties=[M[:-1]], detail="values")
+            pbr = next(iter(got["components"].values()))[M[:-1]].get("pbr") or {}
             return (pbr.get("sheen") or {}).get("roughness", 0.0)
         got = [await sheen_roughness(e) for e in spheres]
         history = await ed.call("get_undo_history", scene=sid)

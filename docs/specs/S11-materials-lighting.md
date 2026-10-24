@@ -676,3 +676,16 @@ with other streams:
 10. **`KHR_xmp`, `KHR_xmp_json_ld`** are read as known (metadata only) and give no warning.
 11. **MCP** `set_terrain_maps` layers take `hexTiling`/`hexRotation`; project setting
     `graphics.mobile_pbr_tier`.
+12. **AC2 re-save.** The checked-in fixtures were saved by older editors: today's build (with or
+    without S11) rewrites them on a first save (scene keys other streams added, the S03 version
+    line, `maxValues` of what a headless load sees). `test_legacy_resave_identical` therefore
+    checks that a save adds no S11 key to a file that had none and that a second save is
+    identical (shader keys as a set); `Compat.CorpusRoundTrip` covers byte stability of
+    editor-written scenes.
+13. **AC1 golden.** `RenderGpu.LitCube` pins its scene to Standard (its pre-S11 golden matches
+    unchanged); `RenderGpu.LitCubeHigh` has a golden of its own.
+14. **Benchmark fixture** scenes are generated into `build/pbr-extended`
+    (`tools/fixtures/pbr-extended/generate.py`), not checked in (200 spheres are 12 MB of scene
+    file each); `tools/fixtures/pbr-extended-export` is checked in. Its terrain uses an 8-bit
+    height map: a generated 16-bit one is `R16`, which GLES3/WebGL2 cannot sample (a terrain
+    limitation outside S11).

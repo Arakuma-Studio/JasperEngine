@@ -109,15 +109,17 @@ async def with_component(ed, sid, component):
 
 
 async def camera(ed, sid, position, target):
+    """the scene's main camera at position, looking at target (a new scene draws through the
+    default camera, which is no GameObject)"""
     cams = await with_component(ed, sid, "CameraComponent")
     if not cams:
-        # the project's first scene has a sun and a sky but no camera
         cams = [(await ed.call("create_entity", scene=sid, type="camera", name="Camera", select=False))["entity_id"]]
     if not await with_component(ed, sid, "LightComponent"):
         await ed.call("create_entity", scene=sid, type="directional_light", name="Sun", select=False)
     cam = cams[0]
     await ed.call("set_transform", scene=sid, entity=cam, position=list(position))
-    await ed.call("set_properties", scene=sid, entity=cam, values={"camera": {"target": list(target)}})
+    await ed.call("set_properties", scene=sid, entity=cam, values={"camera": {"useTarget": True, "target": list(target)}})
+    await ed.call("set_main_camera", scene=sid, entity=cam)
 
 
 async def sun(ed, sid):

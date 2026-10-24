@@ -10,6 +10,7 @@ Re-saving every scene of tools/fixtures with this build gives the same bytes."""
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import random
@@ -101,6 +102,13 @@ async def make_entity(ed: Editor, name: str, type_: str, **args):
     return eid
 
 
+async def material_of(ed: Editor, eid, submesh: int = 0) -> dict:
+    """a submesh's material as get_entity reads it (the lobes away from their defaults in pbr)"""
+    name = f"submeshes[{submesh}].material"
+    got = await ed.call("get_entity", entity=eid, components=["mesh"], properties=[name], detail="values")
+    return next(iter(got["components"].values()))[name]
+
+
 async def entities_with(ed: Editor, component: str) -> list:
     found = await ed.call("find_entities", component=component)
     return [find_key(e, "entity_id", "id") for e in found.get("entities", [])]
@@ -108,6 +116,16 @@ async def entities_with(ed: Editor, component: str) -> list:
 
 async def variant(ed: Editor, eid, submesh: int = 0) -> dict:
     return await ed.call("get_material_variant", entity=eid, submesh=submesh)
+
+
+async def submesh_count(ed: Editor, eid) -> int:
+    got = await ed.call("get_entity", entity=eid, components=["mesh"], properties=["numSubmeshes"], detail="values")
+    return next(iter(got["components"].values())).get("numSubmeshes") or 1
+
+
+async def ready_all(ed: Editor, eid) -> list:
+    """every submesh's variant, once built"""
+    return [await ready_variant(ed, eid, k) for k in range(await submesh_count(ed, eid))]
 
 
 async def ready_variant(ed: Editor, eid, submesh: int = 0) -> dict:
@@ -135,11 +153,19 @@ async def new_scene(ed: Editor, name: str):
     return sid
 
 
-async def camera_at(ed: Editor, position, target):
+async def scene_camera(ed: Editor):
+    """the scene's main camera (a new scene draws through the default camera, no GameObject)"""
     cams = await entities_with(ed, "CameraComponent")
-    ed.check(cams, "the scene has a camera")
-    await ed.call("set_transform", entity=cams[0], position=list(position))
-    await ed.call("set_properties", entity=cams[0], values={"camera": {"target": list(target)}})
+    if not cams:
+        cams = [await make_entity(ed, "Camera", "camera")]
+        await ed.call("set_main_camera", entity=cams[0])
+    return cams[0]
+
+
+async def camera_at(ed: Editor, position, target):
+    cam = await scene_camera(ed)
+    await ed.call("set_transform", entity=cam, position=list(position))
+    await ed.call("set_properties", entity=cam, values={"camera": {"useTarget": True, "target": list(target)}})
 
 
 async def sun(ed: Editor):
@@ -177,15 +203,14 @@ async def test_pbr_values_merge_and_validate(ed: Editor):
     eid = await make_entity(ed, "Coated", "sphere")
     STATE["sphere"] = eid
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "pbr.clearcoat.enabled": True, M + "pbr.clearcoat.factor": 1.0}})
-    got = await ed.call("get_entity", entity=eid)
-    material = find_key(got, "material")
+    material = await material_of(ed, eid)
     ed.check(material and material.get("pbr", {}).get("clearcoat", {}).get("enabled") is True, f"read back: {material!r}")
     ed.check_eq(material["pbr"]["clearcoat"]["factor"], 1, "factor")
     ed.check_eq(material["emissiveStrength"], 1, "emissiveStrength read")
 
     # a whole material with a partial pbr object merges into the lobes it has
     await ed.call("set_properties", entity=eid, values={"mesh": {"submeshes[0].material": {"pbr": {"clearcoat": {"roughness": 0.25}, "sheen": {"enabled": True}}}}})
-    material = find_key(await ed.call("get_entity", entity=eid), "material")
+    material = await material_of(ed, eid)
     ed.check_eq(material["pbr"]["clearcoat"]["factor"], 1, "kept by the merge")
     ed.check_eq(material["pbr"]["clearcoat"]["roughness"], 0.25, "merged")
     ed.check(material["pbr"]["sheen"]["enabled"], "sheen on")
@@ -300,44 +325,51 @@ async def test_furnace(ed: Editor):
 
 
 async def test_spec_aa_shimmer(ed: Editor):
-    """Specular AA: a high-frequency normal map under a sharp highlight, the camera dollying
-    slowly; the frame-to-frame luminance change of the highlight's pixels is at least 40% lower
-    at High than at Standard."""
+    """Specular AA: small, very smooth metal spheres under the sun on black, the camera panning
+    by a fraction of a pixel per frame. A sphere's normal turns by degrees from one pixel to the
+    next while the GGX lobe is a fraction of one, so at Standard how much of its highlight a
+    sphere shows depends on where the pixels fall: its light flickers as it moves. High widens
+    the lobe by the normal's screen-space variance. The flicker, each sphere's light (the sum
+    over a box around it) from frame to frame relative to its mean, drops by at least 40%."""
     await new_scene(ed, "SpecAA")
     await without_sky(ed)
-    rng = random.Random(7)
-    noise = [[(rng.randint(0, 255), rng.randint(0, 255)) for _ in range(256)] for _ in range(256)]
-
-    def normal(x, y):
-        nx, ny = noise[y][x]
-        return (64 + nx // 2, 64 + ny // 2, 255, 255)
-
-    write_project_png(ed, "textures/noise_normal.png", png(256, 256, normal))
-    plane = await make_entity(ed, "Bumpy", "plane", scale=[4, 1, 4])
-    await ed.call("set_properties", entity=plane, values={"mesh": {
-        M + "normalTexture": "textures/noise_normal.png", M + "roughnessFactor": 0.15, M + "metallicFactor": 1.0,
-        M + "baseColorFactor": [0.9, 0.9, 0.9, 1]}})
+    await ed.call("set_scene_settings", settings={"global_illumination_intensity": 0, "background_color": [0, 0, 0, 1]})
+    spacing, distance, yfov = 0.6, 7.0, 0.75
+    centres = [((col - 2.5) * spacing, (row - 1.5) * spacing) for row in range(4) for col in range(6)]
+    balls = [await make_entity(ed, f"Ball{i}", "sphere", position=[x, y, 0], scale=[0.2, 0.2, 0.2])
+             for i, (x, y) in enumerate(centres)]
+    await ed.call("set_properties", entities=balls, values={"mesh": {
+        M + "roughnessFactor": 0.04, M + "metallicFactor": 1.0, M + "baseColorFactor": [0.9, 0.9, 0.9, 1]}})
+    cam = await scene_camera(ed)
+    await ed.call("set_properties", entity=cam, values={"camera": {"yfov": yfov}})
     sun_id = await sun(ed)
-    await ed.call("set_properties", entity=sun_id, values={"light": {"direction": [0, -1, -0.6], "intensity": 3.0, "shadows": False}})
+    await ed.call("set_properties", entity=sun_id, values={"light": {"direction": [-0.3, -0.4, -1], "intensity": 1.0, "shadows": False}})
 
-    shimmer = {}
+    flicker = {}
     for quality in ("standard", "high"):
         await ed.call("set_scene_settings", settings={"lit_quality": quality})
-        await ready_variant(ed, plane)
-        frames = []
+        await ready_variant(ed, balls[0])
+        energy = [[] for _ in centres]
         for i in range(30):
-            await camera_at(ed, (0, 4.0 - i * 0.01, 4.0 - i * 0.01), (0, 0, 0))
-            frames.append(await shot(ed, frames=2))
-        w, h = frames[0][0], frames[0][1]
-        # the highlight: the brightest tenth of the first frame's pixels
-        samples = [(x, y) for y in range(0, h, 3) for x in range(0, w, 3)]
-        first = sorted(samples, key=lambda p: -luminance(frames[0], *p))[:max(len(samples) // 10, 1)]
-        change = 0.0
-        for a, b in zip(frames, frames[1:]):
-            change += sum((luminance(a, x, y) - luminance(b, x, y)) ** 2 for x, y in first) / len(first)
-        shimmer[quality] = change / (len(frames) - 1)
-    ed.check(shimmer["high"] <= 0.6 * shimmer["standard"],
-             f"High shimmers at least 40% less: {shimmer['high']:.1f} vs Standard {shimmer['standard']:.1f}")
+            pan = i * 0.0021
+            await camera_at(ed, (pan, 0, distance), (pan, 0, 0))
+            img = await shot(ed, frames=2)
+            w, h = img[0], img[1]
+            scale = (h / 2) / (distance * math.tan(yfov / 2))   # pixels per unit at the spheres
+            half = int(spacing * 0.4 * scale)
+            for k, (x, y) in enumerate(centres):
+                cx, cy = int(w / 2 + (x - pan) * scale), int(h / 2 - y * scale)
+                energy[k].append(sum(luminance(img, px, py) for py in range(cy - half, cy + half, 2)
+                                     for px in range(cx - half, cx + half, 2)))
+        values = []
+        for e in energy:
+            mean = sum(e) / len(e)
+            if mean > 1.0:
+                values.append(math.sqrt(sum((v - mean) ** 2 for v in e) / len(e)) / mean)
+        ed.check(values, f"{quality}: the spheres show a highlight")
+        flicker[quality] = sum(values) / len(values)
+    ed.check(flicker["high"] <= 0.6 * flicker["standard"],
+             f"High flickers at least 40% less: {flicker['high']:.4f} vs Standard {flicker['standard']:.4f}")
     await ed.call("set_scene_settings", settings={"lit_quality": "high"})
 
 
@@ -375,8 +407,8 @@ async def test_hex_repetition(ed: Editor):
     floor = await make_entity(ed, "Floor", "plane", scale=[8, 1, 8])
     await ed.call("set_properties", entity=floor, values={"mesh": {M + "baseColorTexture": "textures/tile.png", M + "roughnessFactor": 1.0,
                                                                      M + "metallicFactor": 0.0, "submeshes[0].textureRect": [0, 0, 64, 64]}})
-    cams = await entities_with(ed, "CameraComponent")
-    await ed.call("set_properties", entity=cams[0], values={"camera": {"type": "orthographic"}})
+    cam = await scene_camera(ed)
+    await ed.call("set_properties", entity=cam, values={"camera": {"type": "orthographic"}})
     await camera_at(ed, (0, 10, 0.001), (0, 0, 0))
     plain = await shot(ed)
     w = plain[0]
@@ -404,18 +436,18 @@ async def test_lua(ed: Editor):
     try:
         before = await shot(ed, frames=5)
         values = (await ed.call("eval_lua", code=f"""
-            local mesh = object('Ball')
-            local m = mesh:getMaterial()
+            local mesh = object('Ball', 'Mesh')
+            local m = mesh:getMaterial(0)
             m.baseColorFactor = Vector4(0.6, 0.05, 0.05, 1)
             m.roughnessFactor = 0.9
             m.clearcoatEnabled = true
             m.clearcoatFactor = 1
             m.clearcoatRoughness = 0.02
-            mesh:setMaterial(m)
+            mesh:setMaterial(0, m)
             local light = object('{sun_name}', 'Light')
             light.intensityUnit = LightUnit.LUX
             scene.litQuality = LitQuality.HIGH
-            local again = mesh:getMaterial()
+            local again = mesh:getMaterial(0)
             return again.clearcoatEnabled, again.clearcoatFactor, light.intensityUnit == LightUnit.LUX, scene.litQuality == LitQuality.HIGH
         """))["values"]
         ed.check_eq(values, [True, 1, True, True], "set from Lua")
@@ -442,7 +474,7 @@ async def test_presets(ed: Editor):
     await new_scene(ed, "Presets")
     car = await make_entity(ed, "Car", "sphere")
     await ed.call("apply_material_preset", entity=car, preset="car_paint")
-    material = find_key(await ed.call("get_entity", entity=car), "material")
+    material = await material_of(ed, car)
     ed.check(material["pbr"]["clearcoat"]["enabled"], f"Car Paint applies a clear coat: {material!r}")
     glass = await make_entity(ed, "Glass", "sphere")
     await ed.call("apply_material_preset", entity=glass, preset="clear_glass")
@@ -453,21 +485,86 @@ async def test_presets(ed: Editor):
 # ------------------------------------------------------------------ the Khronos samples
 
 MODELS = {
-    # model: (camera position, target), the lobe(s) the lobe-off twin turns off
-    "ClearCoatTest": ((0, 0, 12), (0, 0, 0), ["clearcoat"]),
-    "SheenTestGrid": ((0, 0, 9), (0, 0, 0), ["sheen"]),
-    "AnisotropyStrengthTest": ((0, 0, 16), (0, 0, 0), ["anisotropy"]),
-    "AnisotropyRotationTest": ((0, 0, 14), (0, 0, 0), ["anisotropy"]),
-    "IridescenceDielectricSpheres": ((0, 0, 22), (0, 0, 0), ["iridescence"]),
-    "IridescenceMetallicSpheres": ((0, 0, 22), (0, 0, 0), ["iridescence"]),
-    "TransmissionTest": ((0, 0.2, 3.5), (0, 0.2, 0), ["transmission"]),
-    "TransmissionRoughnessTest": ((0, 0, 9), (0, 0, 0), ["transmission"]),
-    "AttenuationTest": ((0, 0, 12), (0, 0, 0), ["transmission", "volume"]),
-    "SpecularTest": ((0, 0, 9), (0, 0, 0), ["specular"]),
-    "IORTestGrid": ((0, 0, 11), (0, 0, 0), ["specular", "transmission"]),
-    "EmissiveStrengthTest": ((0, 0, 12), (0, 0, 0), []),
-    "MetalRoughSpheresNoTextures": ((0, 0, 0.6), (0, 0, 0), []),
+    # model: the lobe(s) the lobe-off twin turns off (the camera frames the model's bounds from +Z,
+    # as the Khronos screenshots look at it)
+    "ClearCoatTest": ["clearcoat"],
+    "SheenTestGrid": ["sheen"],
+    "AnisotropyStrengthTest": ["anisotropy"],
+    "AnisotropyRotationTest": ["anisotropy"],
+    "IridescenceDielectricSpheres": ["iridescence"],
+    "IridescenceMetallicSpheres": ["iridescence"],
+    "TransmissionTest": ["transmission"],
+    "TransmissionRoughnessTest": ["transmission"],
+    "AttenuationTest": ["transmission", "volume"],
+    "SpecularTest": ["specular"],
+    "IORTestGrid": ["specular", "transmission"],
+    "EmissiveStrengthTest": [],
+    "MetalRoughSpheresNoTextures": [],
 }
+
+
+def gltf_json(path: Path) -> dict:
+    data = path.read_bytes()
+    if path.suffix == ".glb":
+        length = struct.unpack_from("<I", data, 12)[0]
+        return json.loads(data[20:20 + length])
+    return json.loads(data)
+
+
+def mat_mul(a, b):
+    return [[sum(a[i][k] * b[k][j] for k in range(4)) for j in range(4)] for i in range(4)]
+
+
+def node_matrix(node: dict):
+    if "matrix" in node:
+        m = node["matrix"]  # column major
+        return [[m[c * 4 + r] for c in range(4)] for r in range(4)]
+    tx, ty, tz = node.get("translation", [0, 0, 0])
+    qx, qy, qz, qw = node.get("rotation", [0, 0, 0, 1])
+    sx, sy, sz = node.get("scale", [1, 1, 1])
+    r = [[1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy - qz * qw), 2 * (qx * qz + qy * qw)],
+         [2 * (qx * qy + qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz - qx * qw)],
+         [2 * (qx * qz - qy * qw), 2 * (qy * qz + qx * qw), 1 - 2 * (qx * qx + qy * qy)]]
+    return [[r[0][0] * sx, r[0][1] * sy, r[0][2] * sz, tx], [r[1][0] * sx, r[1][1] * sy, r[1][2] * sz, ty],
+            [r[2][0] * sx, r[2][1] * sy, r[2][2] * sz, tz], [0, 0, 0, 1]]
+
+
+def model_bounds(path: Path):
+    """the world bounds of a glTF's default scene, from its POSITION accessors' min and max"""
+    doc = gltf_json(path)
+    lo, hi = [1e30] * 3, [-1e30] * 3
+    identity = [[1 if i == j else 0 for j in range(4)] for i in range(4)]
+
+    def visit(index, parent):
+        node = doc["nodes"][index]
+        world = mat_mul(parent, node_matrix(node))
+        if "mesh" in node:
+            for prim in doc["meshes"][node["mesh"]]["primitives"]:
+                acc = doc["accessors"][prim["attributes"]["POSITION"]]
+                mn, mx = acc["min"], acc["max"]
+                for cx in (mn[0], mx[0]):
+                    for cy in (mn[1], mx[1]):
+                        for cz in (mn[2], mx[2]):
+                            p = [sum(world[r][c] * v for c, v in enumerate((cx, cy, cz, 1))) for r in range(3)]
+                            for k in range(3):
+                                lo[k] = min(lo[k], p[k])
+                                hi[k] = max(hi[k], p[k])
+        for child in node.get("children", []):
+            visit(child, world)
+
+    for root in doc["scenes"][doc.get("scene", 0)]["nodes"]:
+        visit(root, identity)
+    return lo, hi
+
+
+def framing(path: Path, yfov: float = 0.75, aspect: float = 16 / 9):
+    """a camera on +Z that frames the model (5% margin): position, target"""
+    lo, hi = model_bounds(path)
+    centre = [(a + b) / 2 for a, b in zip(lo, hi)]
+    half_w, half_h, half_d = [(b - a) / 2 for a, b in zip(lo, hi)]
+    t = math.tan(yfov / 2)
+    distance = max(half_h / t, half_w / (t * aspect)) * 1.05 + half_d
+    return (centre[0], centre[1], centre[2] + distance), tuple(centre)
 
 
 def model_file(model: str) -> Path:
@@ -482,8 +579,7 @@ def model_file(model: str) -> Path:
 
 async def lobes_off(ed: Editor, entity_ids, lobes) -> None:
     for eid in entity_ids:
-        got = await ed.call("get_entity", entity=eid)
-        count = len(find_key(got, "submeshes") or []) or 1
+        count = await submesh_count(ed, eid)
         values = {}
         for s in range(count):
             for lobe in lobes:
@@ -493,26 +589,57 @@ async def lobes_off(ed: Editor, entity_ids, lobes) -> None:
             await ed.call("set_properties", entity=eid, values={"mesh": values})
 
 
+async def studio_sky(ed: Editor):
+    """a 6-face studio environment on the scene's sky (a sky with a cubemap gives image based
+    lighting): grey with a softbox on each face"""
+    faces = []
+    for name in ("px", "nx", "py", "ny", "pz", "nz"):
+        def pixel(x, y, name=name):
+            # every face alike (whichever way the faces are ordered): grey with a softbox
+            v = 255 if 18 <= x < 46 and 18 <= y < 46 else 110
+            return (v, v, v, 255)
+        faces.append(write_project_png(ed, f"textures/studio_{name}.png", png(64, 64, pixel)))
+    for sky in await entities_with(ed, "SkyboxComponent"):
+        await ed.call("set_properties", entity=sky, values={"skybox": {"texture": {"cube": faces}}})
+
+
 async def test_khronos_models(ed: Editor):
     missing_goldens = []
-    for model, (position, target, lobes) in MODELS.items():
+    for model, lobes in MODELS.items():
+        position, target = framing(model_file(model))
         source = model_file(model)
         dest = ed.project / "models" / model
         shutil.copytree(source.parent, dest, dirs_exist_ok=True)
         await new_scene(ed, f"Khronos{model}")
-        cursor = await ed.console_since("last")
+        await ed.console_since("last", limit=1000)  # (moves the cursor past what came before)
+        await studio_sky(ed)
+        # the sun from over the camera's shoulder: each sphere and swatch shows its highlight
+        await ed.call("set_properties", entity=await sun(ed), values={"light": {"direction": [-0.35, -0.45, -1], "intensity": 3.0}})
         made = await ed.call("create_entity", name=model, type="model", model=f"models/{model}/{source.name}")
         root = find_key(made, "entity_id", "id")
         await camera_at(ed, position, target)
+        distance = math.dist(position, target)
+        await ed.call("set_properties", entity=await scene_camera(ed),
+                      values={"camera": {"nearClip": distance * 0.01, "farClip": distance * 20}})
         await ed.call("wait", frames=60)
-        meshes = [e for e in await entities_with(ed, "MeshComponent")]
+        # the entities with submeshes, once the model has loaded (in the background)
+        meshes = []
+        for _ in range(60):
+            for eid in await entities_with(ed, "MeshComponent"):
+                r = await ed.call_raw("get_material_variant", {"entity": eid, "submesh": 0})
+                if not r.is_error:
+                    meshes.append(eid)
+            if meshes:
+                break
+            await ed.call("wait", frames=10)
+        ed.check(meshes, f"{model} has meshes")
         # every material's variant built
-        for eid in meshes[:8]:
-            v = await ready_variant(ed, eid)
-            ed.check(not v["failed"], f"{model}: a variant failed: {v!r}")
+        for eid in meshes:
+            for v in await ready_all(ed, eid):
+                ed.check(not v["failed"], f"{model}: a variant failed: {v!r}")
         img = await shot(ed, frames=30)
         ed.check(not pngdiff.flat(img), f"{model} draws something")
-        errors = [l for l in await ed.console_since(cursor) if l.get("level") == "error"]
+        errors = [l for l in await ed.console_since("last", limit=1000) if l.get("level") == "error"]
         ed.check(not errors, f"{model}: errors: {errors[:3]}")
 
         golden = GOLDEN_DIR / f"{model}.png"
@@ -537,10 +664,12 @@ async def test_khronos_models(ed: Editor):
         if off_lobes or model == "EmissiveStrengthTest":
             await lobes_off(ed, meshes, off_lobes)
             await ed.call("wait", frames=10)
-            for eid in meshes[:8]:
-                await ready_variant(ed, eid)
-            twin = pngdiff.downscale(await shot(ed, frames=30), *GOLDEN_SIZE)
-            fraction = differing_fraction(small, twin)
+            for eid in meshes:
+                await ready_all(ed, eid)
+            twin = await shot(ed, frames=30)
+            # (a lobe can be subtle under the sky: a clear coat adds 4% reflection face on, 6 levels
+            # of 255; the render is deterministic, so any change beyond rounding counts)
+            fraction = differing_fraction(img, twin, 4)
             ed.check(fraction > 0.02, f"{model}: its lobe(s) {off_lobes or ['emissive strength']} change "
                                       f"{fraction * 100:.2f}% of the pixels (more than 2%)")
     ed.check(not missing_goldens, f"no golden for {missing_goldens} (JASPER_TEST_UPDATE_GOLDEN=1 writes them)")
@@ -548,24 +677,72 @@ async def test_khronos_models(ed: Editor):
 
 # ------------------------------------------------------------------ old files
 
+def normalized_scene(data: bytes) -> list:
+    """a scene file's lines without the format version line (S03 writes it on every save), its
+    shaderKeys entries sorted (ordered by custom shader ids, which each session assigns anew)"""
+    lines = data.decode("utf-8").split("\n")
+    out, keys, entry, in_keys = [], [], [], False
+    for line in lines:
+        if line.startswith("formatVersion:"):
+            continue
+        top = line and not line.startswith(" ") and not line.startswith("-")
+        if top:
+            if in_keys:
+                if entry:
+                    keys.append("\n".join(entry))
+                out.append("shaderKeys: " + repr(sorted(keys)))
+                keys, entry = [], []
+            in_keys = line.startswith("shaderKeys:")
+            if in_keys:
+                continue
+        if in_keys:
+            if line.startswith("  - ") and entry:
+                keys.append("\n".join(entry))
+                entry = []
+            entry.append(line)
+            continue
+        out.append(line)
+    return out
+
+
+S11_KEYS = ("litQuality:", "physicalLightEV100:", "pbr:", "emissiveStrength:", "intensityUnit:",
+            "useColorTemperature:", "colorTemperature:", "hexTiling:", "hexRotation:", "mobilePbrTier:")
+
+
+def s11_keys(text: str) -> list:
+    return sorted({k for line in text.split("\n") for k in S11_KEYS if line.strip().startswith(k)})
+
+
 def test_legacy_resave_identical_sync():
-    """Every scene of tools/fixtures, loaded and saved by this build, keeps its bytes (no key
-    of the lobes, units or Lit Quality is written for a file that had none)."""
+    """Every scene of tools/fixtures, loaded and saved by this build: no key of the lobes, units,
+    hex tiling or Lit Quality appears in a file that had none, and a second save writes the same
+    text (shaderKeys as a set). A fixture saved by an older editor is first normalised by any save
+    of today's build (keys other streams added, maxValues of what headless loads): that is not
+    S11's, and Compat.CorpusRoundTrip (editor tests) checks those writes."""
     fixtures = REPO / "tools" / "fixtures"
     changed = []
     for project in sorted(p for p in fixtures.iterdir() if (p / "project.yaml").is_file()):
         with tempfile.TemporaryDirectory() as tmp:
             copy = Path(tmp) / project.name
             shutil.copytree(project, copy)
-            before = {p.relative_to(copy): p.read_bytes() for p in copy.rglob("*.scene")}
-            r = subprocess.run(harness.editor_command() + ["scene-dump", "--project", str(copy), "--save"],
-                               capture_output=True, text=True, timeout=600)
-            assert r.returncode == 0, f"{project.name}: scene-dump failed: {r.stderr[-2000:]}"
-            for rel, data in before.items():
-                after = (copy / rel).read_bytes()
-                if after != data:
-                    changed.append(f"{project.name}/{rel}")
-    assert not changed, f"re-saved scenes differ: {changed}"
+            original = {p.relative_to(copy): p.read_bytes() for p in copy.rglob("*.scene")}
+            saves = []
+            for _ in range(2):
+                r = subprocess.run(harness.editor_command() + ["scene-dump", "--project", str(copy), "--save"],
+                                   capture_output=True, text=True, timeout=600)
+                assert r.returncode == 0, f"{project.name}: scene-dump failed: {r.stderr[-2000:]}"
+                saves.append({rel: (copy / rel).read_bytes() for rel in original})
+            for rel, data in original.items():
+                before = s11_keys(data.decode("utf-8"))
+                added = [k for k in s11_keys(saves[0][rel].decode("utf-8")) if k not in before]
+                if added:
+                    changed.append(f"{project.name}/{rel}: S11 keys written: {added}")
+                a, b = normalized_scene(saves[1][rel]), normalized_scene(saves[0][rel])
+                if a != b:
+                    first = next((i for i in range(min(len(a), len(b))) if a[i] != b[i]), min(len(a), len(b)))
+                    changed.append(f"{project.name}/{rel}: the second save differs at line {first}: "
+                                   f"{a[first] if first < len(a) else '<end>'!r} / {b[first] if first < len(b) else '<end>'!r}")
+    assert not changed, f"re-saved scenes: {changed}"
 
 
 async def test_legacy_resave_identical(ed: Editor):
