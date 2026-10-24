@@ -46,12 +46,12 @@ namespace {
                 changes.insert(changes.end(), batch.begin(), batch.end());
             }, DeliverOn::Worker);
             // the index is built and the backend armed before the first edit
-            ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, ms(5000)));
+            ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, timeLimit(ms(5000))));
             if (GetParam() == WatchBackendKind::Polling) std::this_thread::sleep_for(POLL_INTERVAL * 2);
         }
 
         // within 1 s (native) or interval + 1 s (polling) (AC1)
-        ms limit() const { return GetParam() == WatchBackendKind::Native ? ms(1000) : POLL_INTERVAL + ms(1000); }
+        ms limit() const { return timeLimit(GetParam() == WatchBackendKind::Native ? ms(1000) : POLL_INTERVAL + ms(1000)); }
 
         size_t count() {
             std::lock_guard<std::mutex> lock(mutex);

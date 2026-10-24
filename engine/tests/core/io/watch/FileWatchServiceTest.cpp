@@ -32,7 +32,7 @@ namespace {
         }
         void startWatching() {
             ASSERT_TRUE(service.start(dir.path, GetParam(), ms(250)));
-            ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, ms(5000)));
+            ASSERT_TRUE(waitFor([this]() { return service.stats().indexReady; }, timeLimit(ms(5000))));
         }
     };
 
@@ -56,7 +56,7 @@ TEST_P(FileWatchServiceTests, FlushBarrier) {
         const fs::path file = dir.path / ("f" + std::to_string(i) + ".txt");
         writeText(file, std::to_string(i));
         got.clear();
-        ASSERT_TRUE(service.flush(ms(250)));
+        ASSERT_TRUE(service.flush(timeLimit(ms(250))));
         const bool found = std::any_of(got.begin(), got.end(), [&](const FileChange& c) { return c.path == file; });
         if (!found) misses++;
     }
@@ -72,14 +72,14 @@ TEST_P(FileWatchServiceTests, UnsubscribeWaitsForInFlight) {
         finished = true;
     }, DeliverOn::Worker);
     writeText(dir.path / "slow.txt", "x");
-    ASSERT_TRUE(waitFor([&]() { return started.load(); }, ms(3000)));
+    ASSERT_TRUE(waitFor([&]() { return started.load(); }, timeLimit(ms(3000))));
     subscription.reset();
     // returned only after the callback on the dispatcher thread ended
     EXPECT_TRUE(finished);
     // and it is never called again
     started = false;
     writeText(dir.path / "after.txt", "y");
-    service.flush(ms(500));
+    service.flush(timeLimit(ms(500)));
     std::this_thread::sleep_for(ms(300));
     EXPECT_FALSE(started);
 }
@@ -100,9 +100,9 @@ TEST_P(FileWatchServiceTests, SelfUnsubscribe) {
         }, DeliverOn::Worker);
     }
     writeText(dir.path / "one.txt", "1");
-    ASSERT_TRUE(waitFor([&]() { return calls.load() == 1; }, ms(3000)));
+    ASSERT_TRUE(waitFor([&]() { return calls.load() == 1; }, timeLimit(ms(3000))));
     writeText(dir.path / "two.txt", "2");
-    service.flush(ms(500));
+    service.flush(timeLimit(ms(500)));
     std::this_thread::sleep_for(ms(300));
     EXPECT_EQ(calls.load(), 1);
 }
@@ -128,10 +128,10 @@ TEST_P(FileWatchServiceTests, FilterExtensionsGlobs) {
     writeText(dir.path / "lua" / "top.lua", "return 1");
     writeText(dir.path / "lua" / "deep" / "x.lua", "return 2");
     writeText(dir.path / "other" / "y.lua", "return 3");
-    ASSERT_TRUE(service.flush(ms(1000)));
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
     // a folder created with files in it settles in a second pass
     std::this_thread::sleep_for(ms(400));
-    service.flush(ms(1000));
+    service.flush(timeLimit(ms(1000)));
 
     EXPECT_EQ(pathsOf(images), "a.png b.svg ");
     std::sort(scripts.begin(), scripts.end(), [](const FileChange& l, const FileChange& r) { return l.path < r.path; });
@@ -146,7 +146,7 @@ TEST_P(FileWatchServiceTests, PriorityOrder) {
     FileWatchSubscription high = service.subscribe({}, [&](std::span<const FileChange>) { order.push_back(10); }, DeliverOn::MainThread, 10);
     FileWatchSubscription mid = service.subscribe({}, [&](std::span<const FileChange>) { order.push_back(5); }, DeliverOn::MainThread, 5);
     writeText(dir.path / "p.txt", "x");
-    ASSERT_TRUE(service.flush(ms(1000)));
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
     EXPECT_EQ(order, (std::vector<int>{10, 5, 0}));
 }
 
@@ -164,15 +164,16 @@ TEST_P(FileWatchServiceTests, PumpBudget) {
 
     int frames = 0;
     double longest = 0.0;
-    while (delivered < 10000 && frames < 100) {
+    const int maxFrames = static_cast<int>(timeLimit(100.0));
+    while (delivered < 10000 && frames < maxFrames) {
         const auto start = std::chrono::steady_clock::now();
         service.pump(1.0);
         longest = std::max(longest, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
         frames++;
     }
     EXPECT_EQ(delivered, 10000u);
-    EXPECT_LE(frames, 100);
-    EXPECT_LE(longest, 2.0);
+    EXPECT_LE(frames, maxFrames);
+    EXPECT_LE(longest, timeLimit(2.0));
 }
 
 TEST_P(FileWatchServiceTests, JournalCursorsAndPause) {
@@ -183,7 +184,7 @@ TEST_P(FileWatchServiceTests, JournalCursorsAndPause) {
 
     service.setPaused(true);
     writeText(dir.path / "while-paused.txt", "x");
-    ASSERT_TRUE(service.flush(ms(1000)));
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
     // Auto Refresh off: in the journal, not delivered
     EXPECT_TRUE(delivered.empty());
     EXPECT_EQ(service.externalChangesSince(cursor), 1u);
@@ -207,7 +208,7 @@ TEST_P(FileWatchServiceTests, JournalCursorsAndPause) {
 
     service.setPaused(false);
     writeText(dir.path / "after.txt", "x");
-    ASSERT_TRUE(service.flush(ms(1000)));
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
     EXPECT_EQ(pathsOf(delivered), "after.txt ");
 }
 
@@ -215,7 +216,7 @@ TEST_P(FileWatchServiceTests, StoppedConsumersStartOver) {
     startWatching();
     uint64_t cursor = service.journalHead();
     writeText(dir.path / "x.txt", "x");
-    ASSERT_TRUE(service.flush(ms(1000)));
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
     service.stop();
     startWatching();
     // the old cursor points before this journal: one Rescan of the root
@@ -239,7 +240,7 @@ TEST_P(FileWatchServiceTests, IdleCostsNothing) {
     const auto start = std::chrono::steady_clock::now();
     for (int i = 0; i < 1000; i++) service.pump(1.0);
     const double spent = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-    EXPECT_LT(spent, 5.0);
+    EXPECT_LT(spent, timeLimit(5.0));
 }
 
 INSTANTIATE_TEST_SUITE_P(Backends, FileWatchServiceTests, ::testing::Values(WatchBackendKind::Native, WatchBackendKind::Polling),
@@ -253,7 +254,7 @@ TEST(FileWatchServiceOff, OffAttachesForTheEditorsWritesOnly) {
     service.setWarningHandler([](const std::string&) {});
     EXPECT_FALSE(service.start(dir.path, WatchBackendKind::Off));
     EXPECT_TRUE(service.isAttached());
-    EXPECT_FALSE(service.flush(ms(100)));
+    EXPECT_FALSE(service.flush(timeLimit(ms(100))));
     EXPECT_STREQ(FileWatchService::stateName(service.stats().state), "off");
     WatchFilter filter;
     filter.deliverEditorWrites = true;

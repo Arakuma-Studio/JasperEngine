@@ -19,6 +19,13 @@ using namespace jasperengine;
 
 namespace {
 
+    // a pool key of its own per run: the pools are process-wide, and an entry still referenced
+    // when a test ends (the copies below) stays (--gtest_repeat, the sanitizer runs)
+    std::string uniqueId(const std::string& base) {
+        static int run = 0;
+        return base + "#" + std::to_string(++run);
+    }
+
     std::shared_ptr<std::array<TextureData, 6>> solid(unsigned char* pixels) {
         auto faces = std::make_shared<std::array<TextureData, 6>>();
         faces->at(0) = TextureData(1, 1, 4, ColorFormat::RGBA, 4, pixels);
@@ -30,7 +37,7 @@ namespace {
 TEST(PoolGenerationTests, TextureCopiesRefresh) {
     static unsigned char red[4] = {255, 0, 0, 255};
     static unsigned char green[4] = {0, 255, 0, 255};
-    const std::string id = "s05-test:copies";
+    const std::string id = uniqueId("s05-test:copies");
 
     Texture first(id, TextureData(1, 1, 4, ColorFormat::RGBA, 4, red));
     Texture second = first;   // a copy, as the undo history and prefab caches keep them
@@ -53,16 +60,18 @@ TEST(PoolGenerationTests, TextureCopiesRefresh) {
 
 TEST(PoolGenerationTests, UntouchedIdsKeepTheirGeneration) {
     static unsigned char blue[4] = {0, 0, 255, 255};
-    Texture texture("s05-test:untouched", TextureData(1, 1, 4, ColorFormat::RGBA, 4, blue));
-    const uint32_t generation = TextureDataPool::generation("s05-test:untouched");
-    TextureDataPool::replace("s05-test:other", solid(blue));
-    EXPECT_EQ(TextureDataPool::generation("s05-test:untouched"), generation);
+    const std::string untouched = uniqueId("s05-test:untouched");
+    const std::string other = uniqueId("s05-test:other");
+    Texture texture(untouched, TextureData(1, 1, 4, ColorFormat::RGBA, 4, blue));
+    const uint32_t generation = TextureDataPool::generation(untouched);
+    TextureDataPool::replace(other, solid(blue));
+    EXPECT_EQ(TextureDataPool::generation(untouched), generation);
     ASSERT_TRUE(texture.load());
     EXPECT_EQ(static_cast<unsigned char*>(texture.getData().getData())[2], 255);
 }
 
 TEST(PoolGenerationTests, SoundReplaceBumpsTheGeneration) {
-    const std::string id = "s05-test:sound.wav";
+    const std::string id = uniqueId("s05-test:sound.wav");
     const uint32_t before = SoundPool::generation(id);
     EXPECT_EQ(SoundPool::get(id), nullptr);
     std::shared_ptr<SoLoud::Wav> held = SoundPool::get(id);
@@ -73,7 +82,7 @@ TEST(PoolGenerationTests, SoundReplaceBumpsTheGeneration) {
 }
 
 TEST(PoolGenerationTests, ModelReplaceBumpsTheGeneration) {
-    const std::string id = "s05-test:model.obj";
+    const std::string id = uniqueId("s05-test:model.obj");
     auto old = std::make_shared<ObjModelData>();
     ModelPool::addObj(id, old);
     const uint32_t before = ModelPool::generation(id);
@@ -87,7 +96,7 @@ TEST(PoolGenerationTests, ModelReplaceBumpsTheGeneration) {
 }
 
 TEST(PoolGenerationTests, FontReplaceBumpsTheGeneration) {
-    const std::string id = "s05-test:font|12";
+    const std::string id = uniqueId("s05-test:font") + "|12";
     const uint32_t before = FontPool::generation(id);
     auto font = std::make_shared<STBText>();
     FontPool::replace(id, font);

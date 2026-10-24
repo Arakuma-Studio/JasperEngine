@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "JobsTestUtil.h"
+
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -46,6 +48,15 @@ namespace jasperengine::test {
         std::filesystem::create_directories(path.parent_path(), ec);
         std::ofstream out(path, std::ios::binary | std::ios::trunc);
         out << text;
+    }
+
+    // A time limit under a sanitizer, which slows the watcher and the test 5-50x (S06's
+    // testsupport::timeScale)
+    inline std::chrono::milliseconds timeLimit(std::chrono::milliseconds limit) {
+        return std::chrono::milliseconds(static_cast<int64_t>(static_cast<double>(limit.count()) * testsupport::timeScale()));
+    }
+    inline double timeLimit(double milliseconds) {
+        return milliseconds * testsupport::timeScale();
     }
 
     // Polls `done` every 5 ms until it holds or `timeout` passes
