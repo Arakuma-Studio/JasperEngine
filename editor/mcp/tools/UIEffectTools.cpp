@@ -381,10 +381,10 @@ void registerUiEffectTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"time", Json{{"type", Json::array({"number", "null"})}, {"description", "Seconds; null: live."}}},
             {"entity", entityRef("UI Document.")},
-            {"selector", string("Element whose stateful effects replay:")},
-            {"pointer_path", array(Json{{"type", "array"}, {"items", {{"type", "number"}}}}, "a drag [[x,y,t]] (element px, s; [] clears),")},
+            {"selector", string("Element whose effects take pointer_path/splats.")},
+            {"pointer_path", array(Json{{"type", "array"}, {"items", {{"type", "number"}}}}, "Scripted drag [[x,y,t]] (element px, s); [] clears.")},
             {"splats", array(Json{{"type", "object"}, {"required", {"x", "y"}}},
-                             "[{x,y,dx,dy,radius,color,strength,t}] (area px, px/s; 8 a step) exactly.")}
+                             "[{x,y,dx,dy,radius,color,strength,t}] (area px, px/s; 8 a step); replaces.")}
         }, {"time"});
         tool.annotations.readOnly = false;
         tool.annotations.idempotent = true;
