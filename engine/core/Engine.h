@@ -312,6 +312,7 @@ namespace jasperengine {
         static bool ensureCompositeFramebuffer();
         static void beginCompositeFramebuffer();
         static void endCompositeFramebuffer();
+        static void runFrame(bool draw);
         
     public:
         class AsyncThreadScope {
@@ -499,6 +500,8 @@ namespace jasperengine {
         static void systemViewLoaded();
         static void systemViewChanged();
         static void systemDraw();
+        // systemDraw() without drawing, for a view that can't be seen (a minimized window)
+        static void systemUpdate();
         static void systemViewDestroyed();
         static void systemShutdown();
 

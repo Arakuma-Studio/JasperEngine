@@ -975,19 +975,21 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     bool isMouseInWindow = ImGui::IsWindowHovered() && (mousePos.x >= windowPos.x && mousePos.x <= windowPos.x + windowSize.x &&
                             mousePos.y >= windowPos.y && mousePos.y <= windowPos.y + windowSize.y);
 
-    // Keep the viewport redrawing while it is hovered or manipulated (hover highlight,
-    // camera drag/fly, gizmo drag). draggingMouse tracks a drag so it survives the
+    // Keep the viewport redrawing while it is used (hover highlight, camera drag/fly,
+    // gizmo drag, shortcuts). draggingMouse tracks a drag so it survives the
     // cursor leaving the window; edits flag the scene through the command system.
     // A resting pointer changes nothing under it, so hovering alone does not redraw:
     // a headless editor's pointer rests in this view and kept the loop from idling.
+    // Nor does a moving one, unless something under it follows the mouse.
     {
         bool viewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
         bool anyMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                             ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+        bool mouseMoved = io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f;
         bool pointerActive = anyMouseDown ||
-                             io.MouseDelta.x != 0.0f || io.MouseDelta.y != 0.0f ||
-                             io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f;
+                             io.MouseWheel != 0.0f || io.MouseWheelH != 0.0f ||
+                             (mouseMoved && sceneProject->sceneRender->hasHoverFeedback());
         for (int key = ImGuiKey_NamedKey_BEGIN; !pointerActive && key < ImGuiKey_GamepadStart; key++) {
             pointerActive = ImGui::IsKeyDown(static_cast<ImGuiKey>(key)) || ImGui::IsKeyReleased(static_cast<ImGuiKey>(key));
         }
