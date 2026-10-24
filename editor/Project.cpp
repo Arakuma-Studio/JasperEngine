@@ -4840,6 +4840,16 @@ static std::set<Entity> getPlayKeptEntities(const editor::SceneProject* scenePro
         keep.insert(foliage.begin(), foliage.end());
     }
 
+    // The Scene view's own gizmos and icons (SceneRender::overlay) are made when first needed,
+    // also while the game plays or between the play snapshot and the first frame; they are the
+    // editor's, which keeps pointers to them
+    auto renderSystem = scene->getSystem<RenderSystem>();
+    for (Entity entity : scene->getEntityList()) {
+        if (renderSystem->isEditorOverlay(entity)) {
+            keep.insert(entity);
+        }
+    }
+
     return keep;
 }
 

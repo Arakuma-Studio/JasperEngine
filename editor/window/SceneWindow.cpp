@@ -1056,10 +1056,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             subSelectionClickConsumesRelease[sceneId] = false;
 
-            // Shift + press on a selected object (not on a handle) may become a Snap drag
+            // Shift + press on a selected object may become a Snap drag. An axis or plane handle
+            // keeps its drag; the free-move centre gives way, its catch area covers small objects.
             physicsSnapArmed[sceneId] = false;
             physicsSnapBegun[sceneId] = false;
-            if (physicsActive && io.KeyShift && !altHeld && !gizmoSideActive) {
+            const GizmoSideSelected pressedSide = sceneProject->sceneRender->getActiveToolsLayer()->getGizmoSideSelected();
+            const bool onAxisHandle = gizmoSideActive && pressedSide != GizmoSideSelected::XYZ;
+            if (physicsActive && io.KeyShift && !altHeld && !onAxisHandle) {
                 uint32_t hitSceneId = sceneId;
                 const Entity hitEntity = findSelectableObjectByRay(sceneId, x, y, &hitSceneId);
                 physicsSnapArmed[sceneId] = hitEntity != NULL_ENTITY && hitSceneId == sceneId && project->isSelectedEntity(sceneId, hitEntity);

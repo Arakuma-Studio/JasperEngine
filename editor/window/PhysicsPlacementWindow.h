@@ -14,6 +14,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace jasperengine::editor{
@@ -136,7 +137,12 @@ namespace jasperengine::editor{
 
         void drawPanel();
         void drawCacheRow();
-        bool bakeMeshes(SceneProject* sceneProject, const std::vector<Entity>& roots, size_t& requested);
+        // Bake selection / Bake scene: decompositions requested for roots through PlacementWorld
+        // (the shapes and cache keys movers get), what was left out kept for the panel
+        void bake(SceneProject* sceneProject, const std::vector<Entity>& roots);
+        bool bakeRan = false;
+        size_t bakeParts = 0;
+        std::vector<std::string> bakeNotes;
     };
 
 }
