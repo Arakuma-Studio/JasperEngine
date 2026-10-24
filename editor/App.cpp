@@ -3721,7 +3721,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     // v36: terrain triplanar: the vertex normal from central differences, the three projections
     //      weighted by abs(normal)^8 (the slope smoothstep and the two-way side split are gone),
     //      projections under 2% skipped.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v36";
+    // v37: mesh.frag skips the shadow lookup of a surface facing away from the light (unless
+    //      foliage transmission reads it); ssr.frag fades out rough surfaces (SSR_MAX_ROUGHNESS)
+    //      and skips their march; probe_filter (PROBE_FILTER) prefilters runtime reflection probe
+    //      captures into roughness mips, each source level downsampled from the one above.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v37";
 }
 
 void editor::App::pushTabNotificationStyle(){

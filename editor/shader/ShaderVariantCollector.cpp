@@ -942,6 +942,11 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR_BLUR, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::COMPOSITE, 0));
     }
+    // a reflection probe's runtime capture is prefiltered into roughness mips
+    // (RenderSystem::filterReflectionProbes)
+    if (allFacts & FACT_PROBES){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::PROBE_FILTER, 0));
+    }
     // disabled passes ship too: the generated scene carries the whole chain
     for (const PostProcessPass& pass : scene->getPostProcessPasses()){
         const uint16_t id = ShaderPool::registerCustomShader(pass.shader);

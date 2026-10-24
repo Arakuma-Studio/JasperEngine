@@ -3735,6 +3735,11 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
         keys.insert(ShaderPool::getShaderKey(ShaderType::COMPOSITE, 0));
     }
 
+    // a reflection probe's runtime capture is prefiltered into roughness mips
+    if (hasReflectionProbes) {
+        keys.insert(ShaderPool::getShaderKey(ShaderType::PROBE_FILTER, 0));
+    }
+
     // disabled passes ship too: the generated scene carries the whole chain
     for (const PostProcessPass& pass : scene->getPostProcessPasses()) {
         insertKeys(ShaderType::POSTPROCESS, 0, ShaderPool::registerCustomShader(pass.shader));

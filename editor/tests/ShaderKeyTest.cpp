@@ -55,7 +55,7 @@ namespace {
         ShaderType::GBUFFER, ShaderType::UI, ShaderType::SSAO, ShaderType::SSAO_BLUR, ShaderType::SSR,
         ShaderType::SSR_BLUR, ShaderType::COMPOSITE, ShaderType::SHADOW2D, ShaderType::BLIT,
         ShaderType::POSTPROCESS, ShaderType::BLOOM, ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT,
-        ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT};
+        ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER};
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
@@ -268,6 +268,7 @@ TEST(ShaderKeyNormalize, ValidMasksAreTheNamedBits) {
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::HTMLUI_POST), 0x7Fu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::UI_EFFECT), 0x7u);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::SSAO), 0u);
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::PROBE_FILTER), 0u);
 }
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
@@ -513,6 +514,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::HTMLUI, 1, "htmlui_Tex"},
         {ShaderType::HTMLUI_GRADIENT, 0, "htmluigradient"},
         {ShaderType::HTMLUI_POST, 1u << 6, "htmluipost_Yuv"},
+        {ShaderType::PROBE_FILTER, 0, "probefilter"},
     };
     for (const Case& c : cases) {
         EXPECT_EQ(ShaderPool::getShaderStr(c.type, c.properties), c.name);

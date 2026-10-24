@@ -36,6 +36,9 @@ namespace jasperengine{
         void setMultisample(FramebufferRender* msaa);
 
         void startRenderPass(FramebufferRender* framebuffer, size_t face = 0);
+        // into one face and mip level of a colour attachment texture, with no depth
+        // (PIP_RTT_COLORONLY pipelines)
+        void startRenderPass(TextureRender* texture, size_t face, int mip);
         void startRenderPass(int width, int height);
         void startRenderPass();
         // a pass of an offscreen target that keeps its depth and stencil when it ends, so

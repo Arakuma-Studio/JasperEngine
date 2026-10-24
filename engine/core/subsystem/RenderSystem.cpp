@@ -113,6 +113,27 @@ namespace {
         return mesh.worldAABB != AABB::ZERO && (!instmesh || instmesh->cullInstances);
     }
 
+    // a box without finite bounds counts as inside
+    bool isInsidePlanes(const Plane* planes, int count, const AABB& box){
+        if (!box.isFinite())
+            return true;
+
+        const Vector3 center = box.getCenter();
+        const Vector3 halfSize = box.getHalfSize();
+        for (int i = 0; i < count; i++){
+            if (planes[i].getSide(center, halfSize) == Plane::NEGATIVE_SIDE)
+                return false;
+        }
+        return true;
+    }
+
+    // A directional cascade only gets the casters that can shadow the surfaces reading it
+    // (RenderSystem::getShadowReceiverPlanes). Not with a negative depth bias: it lets a
+    // caster just behind a receiver shadow it.
+    bool cullsShadowReceivers(const LightComponent& light, const LightCamera& shadowCamera){
+        return light.type == LightType::DIRECTIONAL && shadowCamera.hasReceiver && light.shadowBias >= 0.0f;
+    }
+
     // getCenter() asserts on null/infinite boxes. New foliage (and any empty
     // instanced mesh) leaves worldAABB null; AABB::ZERO is the unloaded default
     // and is not a useful sample point.
@@ -572,6 +593,7 @@ void RenderSystem::destroy(){
     destroySSAO();
     destroySSR();
     destroyBlit();
+    destroyProbeFilter();
     destroyPostProcess();
     destroyUber();
     destroyBloomPrograms();
@@ -669,6 +691,7 @@ void RenderSystem::destroy(){
     // its Transform and updateReflectionProbes never revisited it)
     for (auto& entry : reflectionProbeRuntimes){
         entry.second->captureFramebuffer.destroyFramebuffer();
+        entry.second->filteredMap.destroyTexture();
         releaseReflectionProbeMaps(*entry.second);
     }
     reflectionProbeRuntimes.clear();
@@ -2138,6 +2161,7 @@ void RenderSystem::destroyReflectionProbe(Entity entity, ReflectionProbeComponen
     auto it = reflectionProbeRuntimes.find(entity);
     if (it != reflectionProbeRuntimes.end()){
         it->second->captureFramebuffer.destroyFramebuffer();
+        it->second->filteredMap.destroyTexture();
         releaseReflectionProbeMaps(*it->second);
         reflectionProbeRuntimes.erase(it);
     }
@@ -2247,6 +2271,8 @@ void RenderSystem::updateReflectionProbes(double dt){
                 activeReflectionProbe = NULL_ENTITY;
             runtime.captureInProgress = false;
             runtime.captureFramebuffer.destroyFramebuffer();
+            runtime.filteredMap.destroyTexture();
+            runtime.needFilter = false;
             runtime.resolution = 0;
             runtime.nextFace = 0;
             runtime.ready = false;
@@ -2373,6 +2399,10 @@ bool RenderSystem::selectReflectionProbe(const Vector3& worldPosition, fs_reflec
     bool hasPrefilteredMap = selectedRuntime->prefilteredMap && selectedRuntime->prefilteredMap->isCreated();
     if (hasPrefilteredMap){
         texture = selectedRuntime->prefilteredMap.get();
+    }else if (selectedRuntime->filteredMap.isCreated()){
+        // a runtime capture prefiltered into roughness mips, as the authored cubemap's
+        texture = &selectedRuntime->filteredMap;
+        hasPrefilteredMap = true;
     }else{
         if (!selectedRuntime->captureFramebuffer.isCreated())
             return false;
@@ -2529,8 +2559,137 @@ void RenderSystem::renderReflectionProbeCapture(){
         runtime.captureInProgress = false;
         runtime.elapsed = 0.0f;
         runtime.capturedPosition = capturePosition;
+        runtime.needFilter = true;
         probe->needUpdate = false;
         activeReflectionProbe = NULL_ENTITY;
+    }
+}
+
+void RenderSystem::loadProbeFilter(){
+    if (probeFilterLoaded)
+        return;
+
+    // the probe filter shader may still be building (async in the editor): the captures
+    // are sampled as they are until it is
+    probeFilterShader = ShaderPool::get(ShaderType::PROBE_FILTER, 0);
+    if (!probeFilterShader || !probeFilterShader->isCreated())
+        return;
+
+    // fullscreen pass (vertexless: no attributes added) into a face and level of a texture
+    probeFilterRender.beginLoad(PrimitiveType::TRIANGLES);
+    probeFilterRender.setShader(probeFilterShader.get());
+    probeFilterSlotParams = probeFilterShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::PROBE_FILTER_FS_PARAMS);
+    if (!probeFilterRender.endLoad(PIP_RTT_COLORONLY, false, false, CullingMode::BACK, WindingOrder::CCW))
+        return;
+
+    // every texel is written: nothing to load
+    probeFilterPassRender.setColorActions(LoadAction::DONTCARE, StoreAction::STORE);
+    probeFilterPassRender.setLabel("reflection probe filter");
+
+    probeFilterLoaded = true;
+}
+
+void RenderSystem::destroyProbeFilter(){
+    if (probeFilterLoaded){
+        probeFilterRender.destroy();
+    }
+    if (probeFilterShader){
+        probeFilterShader.reset();
+        ShaderPool::remove(ShaderType::PROBE_FILTER, 0);
+    }
+
+    probeSourceMap.destroyTexture();
+    probeReduceMap.destroyTexture();
+
+    probeSourceSize = 0;
+    probeFilterSlotParams = -1;
+    probeFilterLoaded = false;
+}
+
+// Prefilters the finished runtime captures as IBLEnvironment does an authored cubemap: a box
+// mip chain of the capture, then one GGX roughness per level of a map the size of the sky's
+// prefiltered map (IBLEnvironment::SPECULAR_BASE_SIZE, SPECULAR_MIPS), sampled from that chain.
+// RGBA8 colour attachments throughout (renderable on every backend, GLES3 included).
+void RenderSystem::filterReflectionProbes(){
+    for (auto& entry : reflectionProbeRuntimes){
+        ReflectionProbeRuntime& runtime = *entry.second;
+        if (!runtime.needFilter || !runtime.ready || !runtime.captureFramebuffer.isCreated())
+            continue;
+
+        loadProbeFilter();
+        if (!probeFilterLoaded)
+            return;
+
+        const int size = IBLEnvironment::SPECULAR_BASE_SIZE;
+        const int levels = IBLEnvironment::SPECULAR_MIPS;
+        const int captureSize = (int)runtime.resolution;
+        // like IBLEnvironment, the chain starts no larger than the prefiltered map
+        const int sourceSize = std::min(captureSize, size);
+        int sourceLevels = 1;
+        while ((sourceSize >> sourceLevels) > 0)
+            sourceLevels++;
+        auto createMap = [](TextureRender& map, int mapSize, int mapLevels){
+            return map.createFramebufferTexture(TextureType::TEXTURE_CUBE, false, false, mapSize, mapSize,
+                    TextureFilter::LINEAR_MIPMAP_LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE,
+                    ColorFormat::RGBA, 1, false, false, mapLevels);
+        };
+        if (!probeSourceMap.isCreated() || !probeReduceMap.isCreated() || probeSourceSize != sourceSize){
+            probeSourceMap.destroyTexture();
+            probeReduceMap.destroyTexture();
+            probeSourceSize = 0;
+            if (!createMap(probeSourceMap, sourceSize, sourceLevels) || !createMap(probeReduceMap, sourceSize, sourceLevels)){
+                probeSourceMap.destroyTexture();
+                probeReduceMap.destroyTexture();
+                continue;
+            }
+            probeSourceSize = sourceSize;
+        }
+        if (!runtime.filteredMap.isCreated() && !createMap(runtime.filteredMap, size, levels)){
+            runtime.filteredMap.destroyTexture();
+            continue;
+        }
+
+        ShaderData& shaderData = probeFilterShader.get()->shaderData;
+        const std::pair<int, int> sourceSlot = shaderData.getTextureIndex(TextureShaderType::PROBESOURCE);
+        auto filterPass = [&](TextureRender& target, TextureRender& source, int level, int face){
+            probeFilterPassRender.startRenderPass(&target, (size_t)face, level);
+            if (probeFilterRender.beginDraw(PIP_RTT_COLORONLY)){
+                probeFilterRender.addTexture(sourceSlot, ShaderStageType::FRAGMENT, &source);
+                probeFilterRender.applyUniformBlock(probeFilterSlotParams, sizeof(fs_probe_filter_t), &fs_probe_filter);
+                probeFilterRender.draw(0, 3, 1);
+            }
+            probeFilterPassRender.endRenderPass();
+        };
+
+        auto downsampleLevel = [&](TextureRender& target, TextureRender& source, int level, int sourceLevel, int sourceBaseSize){
+            const int levelSize = sourceSize >> level;
+            const int sourceLevelSize = sourceBaseSize >> sourceLevel;
+            const float taps = (float)std::min(16, (sourceLevelSize + levelSize - 1) / levelSize);
+            for (int face = 0; face < 6; face++){
+                fs_probe_filter.params = Vector4(0.0f, (float)face, taps, 1.0f);
+                fs_probe_filter.source = Vector4((float)levelSize, (float)sourceBaseSize, 1.0f, (float)sourceLevel);
+                filterPass(target, source, level, face);
+            }
+        };
+
+        // each level is a box of the one above, reduced into probeReduceMap and copied back:
+        // a pass never samples the texture it renders to
+        downsampleLevel(probeSourceMap, runtime.captureFramebuffer.getColorTexture(), 0, 0, captureSize);
+        for (int level = 1; level < sourceLevels; level++){
+            downsampleLevel(probeReduceMap, probeSourceMap, level, level - 1, sourceSize);
+            downsampleLevel(probeSourceMap, probeReduceMap, level, level, sourceSize);
+        }
+
+        for (int level = 0; level < levels; level++){
+            const float roughness = (float)level / (float)(levels - 1);
+            for (int face = 0; face < 6; face++){
+                fs_probe_filter.params = Vector4(roughness, (float)face, 64.0f, 0.0f);
+                fs_probe_filter.source = Vector4((float)(size >> level), (float)sourceSize, (float)sourceLevels, 0.0f);
+                filterPass(runtime.filteredMap, probeSourceMap, level, face);
+            }
+        }
+
+        runtime.needFilter = false;
     }
 }
 
@@ -11243,6 +11402,75 @@ Matrix4 RenderSystem::getDirLightProjection(const Matrix4& viewMatrix, const Mat
     return Matrix4::orthoMatrix(minX, maxX, minY, maxY, -maxZ, -minZ);
 }
 
+// The sweep of a convex slice toward the light is bounded by the slice's faces the light leaves
+// it through and by the planes along the light through its silhouette edges.
+int RenderSystem::getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
+                                          unsigned int slotResolution, float normalBias, const Vector3& lightTravel, Plane* planes){
+    const Matrix4& viewProjection = receiverViewProjection;
+    const Matrix4 inverse = viewProjection.inverse();
+    // a texel of the slot along its coarser axis (the normal offset is given in the finer one's)
+    const float projScale = std::min(std::abs(lightProjection[0][0]), std::abs(lightProjection[1][1]));
+    const float texel = 2.0f / ((float)std::max(1u, slotResolution) * projScale);
+    // the normal offset moves the lookup, the 7x7 PCF and its bilinear taps reach 4 texels out
+    const float margin = (std::abs(normalBias) + 8.0f) * texel;
+    if (!inverse.isValid() || !std::isfinite(margin) || lightTravel.squaredLength() < 0.000001f)
+        return 0;
+    const Vector3 lightDirection = lightTravel.normalized();
+
+    Vector3 corners[8];
+    Vector3 center = Vector3::ZERO;
+    const Vector4 clipCorners[8] = {
+        Vector4(-1, 1,-1, 1), Vector4( 1, 1,-1, 1), Vector4( 1,-1,-1, 1), Vector4(-1,-1,-1, 1),
+        Vector4(-1, 1, 1, 1), Vector4( 1, 1, 1, 1), Vector4( 1,-1, 1, 1), Vector4(-1,-1, 1, 1)
+    };
+    for (int c = 0; c < 8; c++){
+        const Vector4 corner = inverse * clipCorners[c];
+        if (std::abs(corner.w) < 0.000001f)
+            return 0;
+        corners[c] = Vector3(corner.x, corner.y, corner.z) / corner.w;
+        center += corners[c] / 8.0f;
+    }
+
+    int count = 0;
+
+    // the slice's faces the light leaves it through: sweeping the slice toward the light
+    // keeps them (the others are swept away)
+    Plane frustum[6];
+    updateCameraFrustumPlanes(viewProjection, frustum);
+    for (int f = 0; f < 6; f++){
+        if (frustum[f].normal.dotProduct(lightDirection) < -0.00001f){
+            planes[count] = frustum[f];
+            planes[count].d += margin;
+            count++;
+        }
+    }
+
+    // and the planes along the light through its silhouette edges
+    static const int edges[12][2] = {{0,1},{1,2},{2,3},{3,0},{4,5},{5,6},{6,7},{7,4},{0,4},{1,5},{2,6},{3,7}};
+    for (const auto& edge : edges){
+        Vector3 normal = (corners[edge[1]] - corners[edge[0]]).crossProduct(lightDirection);
+        if (normal.normalizeL() < 0.000001f)
+            continue;
+        if (normal.dotProduct(center - corners[edge[0]]) < 0.0f)
+            normal = -normal;
+
+        Plane plane(normal, corners[edge[0]]);
+        bool silhouette = true;
+        for (const Vector3& corner : corners){
+            if (plane.getDistance(corner) < -0.001f){
+                silhouette = false;
+                break;
+            }
+        }
+        if (silhouette){
+            plane.d += margin + 0.001f;
+            planes[count++] = plane;
+        }
+    }
+
+    return count;
+}
+
 void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transform, CameraComponent& camera, Transform& cameraTransform){
     light.worldDirection = transform.worldRotation * light.direction;
     light.worldUp = (transform.worldRotation * light.getLocalSpotProjectionUp()).normalized();
@@ -11328,6 +11556,23 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
                     cameras[ca].lightViewProjectionMatrix = projectionMatrix[ca] * viewMatrix;
                     cameras[ca].nearFar = Vector2(splitNear[ca], splitFar[ca]);
                     updateCameraFrustumPlanes(cameras[ca].lightViewProjectionMatrix, cameras[ca].frustumPlanes);
+
+                    // the surfaces reading this cascade: the camera's own frustum cut to the
+                    // slice the shader picks it for (view depth in nearFar; cascades are not
+                    // blended). Its own projection with the slice's depth row, so an
+                    // off-centre frustum keeps its shape; none for another kind of projection.
+                    cameras[ca].hasReceiver = false;
+                    if (std::abs(projection[2][3] + 1.0f) < 0.0001f && std::abs(projection[3][3]) < 0.0001f &&
+                            std::abs(projection[0][2]) < 0.0001f && std::abs(projection[1][2]) < 0.0001f &&
+                            splitFar[ca] > splitNear[ca] && splitNear[ca] > 0.0f){
+                        Matrix4 slice = projection;
+                        const float sliceNear = splitNear[ca];
+                        const float sliceFar = splitFar[ca];
+                        slice.set(2, 2, -(sliceFar + sliceNear) / (sliceFar - sliceNear));
+                        slice.set(3, 2, -(2.0f * sliceFar * sliceNear) / (sliceFar - sliceNear));
+                        cameras[ca].receiverViewProjection = slice * camera.viewMatrix;
+                        cameras[ca].hasReceiver = true;
+                    }
                 }
 
             } else {
@@ -11345,6 +11590,9 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
                 cameras[0].lightViewProjectionMatrix = projectionMatrix[0] * viewMatrix;
                 cameras[0].nearFar = Vector2(-shadowMaxDistance, shadowMaxDistance);
                 updateCameraFrustumPlanes(cameras[0].lightViewProjectionMatrix, cameras[0].frustumPlanes);
+                // the one cascade serves everything the camera sees
+                cameras[0].receiverViewProjection = camera.viewProjectionMatrix;
+                cameras[0].hasReceiver = true;
 
             }
 
@@ -11367,6 +11615,7 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
             cameras[0].lightViewProjectionMatrix = projectionMatrix * viewMatrix;
             cameras[0].nearFar = shadowCameraNearFar;
             updateCameraFrustumPlanes(cameras[0].lightViewProjectionMatrix, cameras[0].frustumPlanes);
+            cameras[0].hasReceiver = false;
 
         }else if (light.type == LightType::POINT){
             Matrix4 projectionMatrix;
@@ -11392,6 +11641,7 @@ void RenderSystem::computeLightCameras(const LightComponent& light, const Transf
                 cameras[f].lightViewProjectionMatrix = projectionMatrix * viewMatrix[f];
                 cameras[f].nearFar = calculedNearFar;
                 updateCameraFrustumPlanes(cameras[f].lightViewProjectionMatrix, cameras[f].frustumPlanes);
+                cameras[f].hasReceiver = false;
             }
         }
     }
@@ -12796,7 +13046,8 @@ bool RenderSystem::ShadowAtlasKey::sameDepths(const ShadowAtlasKey& other) const
     if (slots != other.slots || cameraCasters != other.cameraCasters)
         return false;
     for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
-        if (casterMask[s] != other.casterMask[s] || viewProjection[s] != other.viewProjection[s])
+        if (casterMask[s] != other.casterMask[s] || viewProjection[s] != other.viewProjection[s] ||
+                receiver[s] != other.receiver[s])
             return false;
     }
     return true;
@@ -12969,6 +13220,7 @@ void RenderSystem::computeShadowKeys(const CameraShadows& target, ShadowAtlasKey
         for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
             key->viewProjection[s] = Matrix4();
             key->casterMask[s] = 0;
+            key->receiver[s] = Matrix4();
         }
     }
     if (!hasShadows)
@@ -13012,8 +13264,13 @@ void RenderSystem::computeShadowKeys(const CameraShadows& target, ShadowAtlasKey
                     continue;
                 projective.slots++;
                 projective.casterMask[slot] = mask;
-                if (mask)
-                    projective.viewProjection[slot] = lightCamera(target, l, light, c).lightViewProjectionMatrix;
+                if (mask){
+                    const LightCamera& shadowCamera = lightCamera(target, l, light, c);
+                    projective.viewProjection[slot] = shadowCamera.lightViewProjectionMatrix;
+                    // its casters depend on the surfaces reading it too (renderShadowMaps)
+                    if (cullsShadowReceivers(light, shadowCamera))
+                        projective.receiver[slot] = shadowCamera.receiverViewProjection;
+                }
                 if (cameraCasters)
                     projective.cameraCasters = cameraCasters;
             }
@@ -13142,6 +13399,8 @@ void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraCompo
         if (!transform){
             for (int c = 0; c < MAX_SHADOWCASCADES; c++){
                 cameras.cameras[c] = light.cameras[c];
+                // fitted to the scene camera, not this one: every caster stays
+                cameras.cameras[c].hasReceiver = false;
             }
             continue;
         }
@@ -13390,6 +13649,8 @@ void RenderSystem::drawFramePasses(){
     // frame. Static probes without an authored cubemap capture once; dynamic
     // probes follow their configured update policy.
     renderReflectionProbeCapture();
+    // a capture finished above is prefiltered before anything samples it
+    filterReflectionProbes();
 
     // HTML UI documents draw into their own offscreen target before any camera pass, so
     // the composite below never needs a second swapchain pass (Vulkan allows one a frame)
@@ -13431,6 +13692,18 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
         const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : LodView();
         const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
         const uint32_t casterMask = shadowCameraMask & light.cullingMask;
+
+        // a directional cascade leaves out the casters that cannot shadow the surfaces reading
+        // it: its camera's slice extruded toward the light (each camera draws its own
+        // cascades, and the atlas key holds the slice, so a camera sharing these maps sees
+        // the same surfaces)
+        Plane receiverPlanes[18];
+        int numReceiverPlanes = 0;
+        if (pipelineType == PIP_SHADOW_DEPTH && cullsShadowReceivers(light, shadowCamera)){
+            numReceiverPlanes = getShadowReceiverPlanes(shadowCamera.receiverViewProjection, shadowCamera.lightProjectionMatrix,
+                shadowAtlasSlotResolution, light.shadowNormalBias, light.worldDirection, receiverPlanes);
+        }
+
         for (int i = 0; i < meshes->size(); i++){
             MeshComponent& mesh = meshes->getComponentFromIndex(i);
             Entity entity = meshes->getEntity(i);
@@ -13443,6 +13716,12 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
             TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
             TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
+
+            // a billboard turns to the light, its bounds are not where it casts from
+            if (numReceiverPlanes > 0 && !transform->billboard && cullsBatch(mesh, instmesh) &&
+                    !isInsidePlanes(receiverPlanes, numReceiverPlanes, mesh.worldAABB)){
+                continue;
+            }
 
             const Matrix4& model = objectModel(*transform);
             vs_depth_t vsDepthParams;

@@ -570,7 +570,7 @@ void SokolTexture::createTextureView(const char* label){
 bool SokolTexture::createFramebufferTexture(
             TextureType type, bool depth, bool shadowMap, int width, int height,
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV,
-            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve){
+            ColorFormat colorFormat, int sampleCount, bool depthStencil, bool resolve, int numMipmaps){
     sg_image_desc img_desc = {0};
     if (depth){
         img_desc.usage.depth_stencil_attachment = true;
@@ -600,6 +600,8 @@ bool SokolTexture::createFramebufferTexture(
 
     //if not set Sokol gets default from sg_desc.context.sample_count
     img_desc.sample_count = (sampleCount > 1 && !resolve) ? sampleCount : 1;
+    // levels a pass each renders into (multisampled images have one)
+    img_desc.num_mipmaps = (!depth && img_desc.sample_count == 1 && numMipmaps > 1) ? numMipmaps : 1;
 
     if (depth){
         // DEPTH_STENCIL: GL/GLES3 DEPTH24_STENCIL8, D3D11 R24G8_TYPELESS (D24S8 to draw, depth

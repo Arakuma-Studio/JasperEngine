@@ -220,6 +220,8 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_shadow2dParams";
     }else if (type == UniformBlockType::BLIT_FS_PARAMS){
         ustr = "u_fs_blitParams";
+    }else if (type == UniformBlockType::PROBE_FILTER_FS_PARAMS){
+        ustr = "u_fs_probeFilterParams";
     }
 
     if (ustr.empty()){
@@ -345,6 +347,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_shadow2DAtlas";
     }else if (type == TextureShaderType::SPOTMASKATLAS){
         texstr = "u_spotMaskAtlas";
+    }else if (type == TextureShaderType::PROBESOURCE){
+        texstr = "u_probeSourceTexture";
     }
 
     if (texstr.empty()){

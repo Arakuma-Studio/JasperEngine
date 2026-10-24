@@ -135,6 +135,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::UI_EFFECT;
         return true;
     }
+    if (typeToken == "probefilter") {
+        shaderType = ShaderType::PROBE_FILTER;
+        return true;
+    }
 
     return false;
 }
@@ -490,6 +494,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
+        case ShaderType::PROBE_FILTER: return lowerCase ? "probefilter" : "Probe Filter";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -528,6 +533,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
+        case ShaderType::PROBE_FILTER: return 0;
         default:                 return 0;
     }
 }
@@ -837,10 +843,28 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint64_t pr
                                    RuntimeShaderCompiler::getError(shaderKey).c_str());
                     }
                 } else {
-                    // Not in this build: reported once (RenderSystem::draw), and not looked
-                    // for again every frame by whatever needs it
-                    addMissingShader(shaderStr);
-                    failedShaders().insert(shaderKey);
+                    // A build whose variant set came from stale scene keys can lack this
+                    // one: the nearest variant it ships draws instead, with the optional
+                    // features it lacks left out (getFallbackProperties)
+                    bool fallback = false;
+                    for (uint64_t candidate : getFallbackProperties(shaderType, properties)){
+                        const ShaderKey candidateKey = getShaderKey(shaderType, candidate, customId);
+                        const std::string candidateStr = getShaderStr(shaderType, candidate, customId);
+                        ShaderData candidateData;
+                        if (loadPrecompiledShader(candidateKey, candidateStr, candidateData)){
+                            Log::warn("Shader %s (%s) is not in this build, using %s",
+                                      shaderStr.c_str(), getShaderLangStr().c_str(), candidateStr.c_str());
+                            shared->createShader(candidateData);
+                            fallback = true;
+                            break;
+                        }
+                    }
+                    if (!fallback){
+                        // Not in this build: reported once (RenderSystem::draw), and not looked
+                        // for again every frame by whatever needs it
+                        addMissingShader(shaderStr);
+                        failedShaders().insert(shaderKey);
+                    }
                 }
             }
         }
@@ -859,6 +883,58 @@ bool ShaderPool::loadPrecompiledShader(ShaderKey shaderKey, const std::string& s
         return true;
     }
     return ShaderDataSerializer::readFromFile("shader://"+getShaderName(shaderStr)+".sdat", storageKey, shaderData);
+}
+
+std::vector<uint64_t> ShaderPool::getFallbackProperties(ShaderType shaderType, uint64_t properties){
+    // The optional features, in the order they are given up. Only features whose loss keeps
+    // every uniform block the draw uploads by the key's own bits: their resources are blocks,
+    // textures and attributes of their own, which the renderer binds by the variant's
+    // reflection (absent: skipped), and u_fs_litFrame is uploaded at its reflected size, a
+    // prefix (includes/lit_frame.glsl). Never the lighting model or the per-object lights
+    // block (Puc, Vtl, Lc4, L16), the u_fs_pbrParams layout (Ult, Ams, Sto), the output
+    // encoding and litFrame prefix of the post colour (Pcl), nor the geometry (Ski, Mta,
+    // Ter, Ist, Txr...).
+    static const int meshBits[] = {21, 12, 23, 4, 20, 19, 7, 8, 2, 1}; // Sao Fog S2d Shw Mir Ibl Nmp Tan Uv2 Uv1
+    static const int depthBits[] = {7, 0};                               // Ams Tex
+    static const int gbufferBits[] = {8, 0};                             // Mrt Bct
+
+    const int* bits = nullptr;
+    size_t bitCount = 0;
+    if (shaderType == ShaderType::MESH){
+        bits = meshBits;
+        bitCount = sizeof(meshBits) / sizeof(meshBits[0]);
+    }else if (shaderType == ShaderType::DEPTH){
+        bits = depthBits;
+        bitCount = sizeof(depthBits) / sizeof(depthBits[0]);
+    }else if (shaderType == ShaderType::GBUFFER){
+        bits = gbufferBits;
+        bitCount = sizeof(gbufferBits) / sizeof(gbufferBits[0]);
+    }
+
+    std::vector<uint64_t> present;
+    for (size_t i = 0; i < bitCount; i++){
+        if (properties & shaderPropertyBit(bits[i]))
+            present.push_back(shaderPropertyBit(bits[i]));
+    }
+
+    // fewest features dropped first; among as many, the earlier ones in the order above
+    std::vector<uint64_t> candidates;
+    const uint32_t combinations = 1u << present.size();
+    for (size_t dropped = 1; dropped <= present.size(); dropped++){
+        for (uint32_t combination = 1; combination < combinations; combination++){
+            size_t count = 0;
+            uint64_t candidate = properties;
+            for (size_t i = 0; i < present.size(); i++){
+                if (combination & (1u << i)){
+                    candidate &= ~present[i];
+                    count++;
+                }
+            }
+            if (count == dropped)
+                candidates.push_back(candidate);
+        }
+    }
+    return candidates;
 }
 
 bool ShaderPool::warmUp(ShaderType shaderType, uint64_t properties, uint16_t customId){
