@@ -123,8 +123,10 @@ namespace jasperengine{
         Vector3 loadedScale = Vector3::UNIT_SCALE;
 
         // Runtime state of the body sync (PhysicsSystem), not saved
-        // kinematic, moving to its Transform with MoveKinematic over the frame's fixed steps
-        bool followingTransform = false;
+        // kinematic, moving to its Transform with MoveKinematic over the frame's fixed steps (each
+        // part on its own: a part not followed keeps its own velocity)
+        bool followingPosition = false;
+        bool followingRotation = false;
         // pose before the last step, drawn towards the current one
         Vector3 previousPosition;
         Quaternion previousRotation;

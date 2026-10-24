@@ -178,15 +178,19 @@ TEST(PhysicsSync, InterpolationDrawsBetweenStepsAndLeavesTheSimulationAlone) {
 TEST(PhysicsSync, ATransformMovedAfterTheInterpolationMovesTheBody) {
     MovingSphere sphere(true);
     frame(sphere.scene, sphere.entities, 1, 0.5);
+    // drawn half a step behind the body
+    const float lag = sphere.bodyPosition().x - sphere.transform().worldPosition.x;
+    EXPECT_GT(lag, 0.25f * step);
 
-    // a script (or the editor) puts the GameObject somewhere else
+    // a script (or the editor) puts the GameObject somewhere else: the body moves as far,
+    // from where it really is
     Transform& transform = sphere.transform();
     transform.position = Vector3(5, 0, 0);
     transform.needUpdate = true;
     updateTransforms(sphere.scene, sphere.entities);
 
     frame(sphere.scene, sphere.entities, 1, 1.0);
-    EXPECT_NEAR(sphere.bodyPosition().x, 5.0f + step, 1e-3f);
+    EXPECT_NEAR(sphere.bodyPosition().x, 5.0f + lag + step, 1e-3f);
 }
 
 TEST(PhysicsSync2D, ATransformMovedBackWhereNothingWasSyncedMovesTheBody) {
@@ -245,15 +249,20 @@ TEST(PhysicsSync, AKinematicBodyMovedByItsTransformCarriesWhatStandsOnIt) {
         updateTransforms(scene, entities);
         frame(scene, entities, 1);
 
-        // where its Transform is at the end of the frame, at rest
+        // where its Transform is at the end of the frame, at its speed
         EXPECT_NEAR(Rigidbody(&scene, platform).getPosition().x, 0.05f * i, 1e-4f);
-        EXPECT_NEAR(Rigidbody(&scene, platform).getLinearVelocity().x, 0.0f, 1e-4f);
+        EXPECT_NEAR(Rigidbody(&scene, platform).getLinearVelocity().x, 0.05f / step, 1e-3f);
         // and its Transform is left as the animation wrote it
         EXPECT_FLOAT_EQ(scene.getComponent<Transform>(platform).position.x, 0.05f * i);
     }
 
     // a teleported platform would slide out under the crate
     EXPECT_GT(Rigidbody(&scene, crate).getPosition().x - crateStart, 0.5f);
+
+    // the animation stops: so does the platform, at the next step
+    frame(scene, entities, 1);
+    EXPECT_NEAR(Rigidbody(&scene, platform).getPosition().x, 1.5f, 1e-4f);
+    EXPECT_NEAR(Rigidbody(&scene, platform).getLinearVelocity().x, 0.0f, 1e-4f);
 
     // put back where it started, a pose physics had written before the animation
     Transform& transform = scene.getComponent<Transform>(platform);
@@ -263,6 +272,135 @@ TEST(PhysicsSync, AKinematicBodyMovedByItsTransformCarriesWhatStandsOnIt) {
     frame(scene, entities, 1);
     EXPECT_NEAR(Rigidbody(&scene, platform).getPosition().x, 0.0f, 1e-4f);
     EXPECT_FLOAT_EQ(scene.getComponent<Transform>(platform).position.x, 0.0f);
+}
+
+namespace {
+
+    // a dynamic sphere falling for 20 frames drawn halfway between steps; turned (or held at
+    // x = 0) by a script after every frame's update when asked
+    float fallDistance(bool turnEachFrame, bool clampX) {
+        Scene scene;
+        scene.setGravity3D(Vector3(0, -9.81f, 0));
+        std::vector<Entity> entities{createSphere(scene, Vector3(0, 10, 0), BodyType::DYNAMIC)};
+        updateTransforms(scene, entities);
+        scene.getSystem<PhysicsSystem>()->load();
+        Rigidbody body(&scene, entities[0]);
+        body.setLinearVelocity(Vector3(clampX ? 1.0f : 0.0f, 0, 0));
+
+        for (int i = 1; i <= 20; i++) {
+            frame(scene, entities, 1, 0.5);
+            Transform& transform = scene.getComponent<Transform>(entities[0]);
+            if (turnEachFrame) {
+                transform.rotation = Quaternion(Angle::radToDefault(0.05f * i), Vector3(0, 1, 0));
+                transform.needUpdate = true;
+            }
+            if (clampX) {
+                transform.position.x = 0;
+                transform.needUpdate = true;
+            }
+            updateTransforms(scene, entities);
+        }
+        return 10.0f - body.getPosition().y;
+    }
+
+}
+
+TEST(PhysicsSync, AScriptTurningADrawnBodyLeavesItsFallAlone) {
+    const float free = fallDistance(false, false);
+    EXPECT_GT(free, 0.4f);
+    // the rotation written over an interpolated pose does not put the body back to that pose
+    EXPECT_NEAR(fallDistance(true, false), free, 1e-4f);
+    // nor does holding one axis: the others go on as physics has them
+    EXPECT_NEAR(fallDistance(false, true), free, 1e-4f);
+}
+
+TEST(PhysicsSync, SettingHalfThePoseOfANewBodyKeepsTheOtherHalf) {
+    for (int path = 0; path < 2; path++) {
+        Scene scene;
+        Entity entity = createSphere(scene, Vector3(3, 2, 1), BodyType::DYNAMIC);
+        Transform& transform = scene.getComponent<Transform>(entity);
+        const Quaternion turned(Angle::radToDefault(0.5f), Vector3(0, 0, 1));
+        transform.rotation = turned;
+        std::vector<Entity> entities{entity};
+        updateTransforms(scene, entities);
+
+        // as a Lua init() reaching its body before the scene steps, made on the spot or by load()
+        Rigidbody body(&scene, entity);
+        if (path == 1) body.load();
+        body.setRotation(Quaternion(Angle::radToDefault(1.0f), Vector3(0, 0, 1)));
+        expectNear(scene.getComponent<Transform>(entity).worldPosition, Vector3(3, 2, 1));
+        body.setPosition(Vector3(-1, 5, 0));
+        const Quaternion rotation = scene.getComponent<Transform>(entity).worldRotation;
+        EXPECT_NEAR(std::fabs(rotation.dot(Quaternion(Angle::radToDefault(1.0f), Vector3(0, 0, 1)))), 1.0f, 1e-4f) << "path " << path;
+
+        frame(scene, entities, 1);
+        EXPECT_NEAR(body.getPosition().x, -1.0f, 1e-3f) << "path " << path;
+    }
+}
+
+TEST(PhysicsSync2D, SettingHalfThePoseOfANewBodyKeepsTheOtherHalf) {
+    Scene scene;
+    Entity entity = createEntity(scene, Vector3(100, 50, 0));
+    Rigidbody2DComponent component;
+    component.type = BodyType::DYNAMIC;
+    scene.addComponent<Rigidbody2DComponent>(entity, component);
+    Rigidbody2D body(&scene, entity);
+    body.createCircleCollider(Vector2(0, 0), 16);
+    std::vector<Entity> entities{entity};
+    updateTransforms(scene, entities);
+
+    body.load();
+    body.setAngle(Angle::radToDefault(1.0f));
+    EXPECT_NEAR(scene.getComponent<Transform>(entity).worldPosition.x, 100.0f, 1e-3f);
+    EXPECT_NEAR(scene.getComponent<Transform>(entity).worldPosition.y, 50.0f, 1e-3f);
+}
+
+TEST(PhysicsSync, AKinematicBodyKeepsItsVelocityWhenOnlyItsRotationIsAnimated) {
+    Scene scene;
+    scene.setGravity3D(Vector3::ZERO);
+    Entity platform = createBox(scene, Vector3(0, 0, 0), BodyType::KINEMATIC, Vector3(1, 1, 1), 0.2f);
+    std::vector<Entity> entities{platform};
+    updateTransforms(scene, entities);
+    scene.getSystem<PhysicsSystem>()->load();
+    Rigidbody body(&scene, platform);
+    body.setLinearVelocity(Vector3(2, 0, 0));
+
+    for (int i = 1; i <= 10; i++) {
+        frame(scene, entities, 1, 0.5);
+        // a rotation Tween turning it
+        Transform& transform = scene.getComponent<Transform>(platform);
+        transform.rotation = Quaternion(Angle::radToDefault(0.02f * i), Vector3(0, 1, 0));
+        transform.needUpdate = true;
+        updateTransforms(scene, entities);
+    }
+    frame(scene, entities, 1, 0.5);
+
+    EXPECT_NEAR(body.getLinearVelocity().x, 2.0f, 1e-3f);
+    EXPECT_NEAR(body.getPosition().x, 2.0f * 11 * step, 1e-3f);
+    // turned as the Tween has it
+    EXPECT_NEAR(std::fabs(body.getRotation().dot(Quaternion(Angle::radToDefault(0.2f), Vector3(0, 1, 0)))), 1.0f, 1e-5f);
+}
+
+TEST(PhysicsSync, AKinematicBodyMovedFarByItsTransformIsTeleported) {
+    Scene scene;
+    scene.setGravity3D(Vector3::ZERO);
+    Entity platform = createBox(scene, Vector3(0, 0, 0), BodyType::KINEMATIC, Vector3(1, 1, 1), 0.2f);
+    std::vector<Entity> entities{platform};
+    updateTransforms(scene, entities);
+    scene.getSystem<PhysicsSystem>()->load();
+    frame(scene, entities, 1);
+
+    // a respawn
+    Transform& transform = scene.getComponent<Transform>(platform);
+    transform.position = Vector3(50, 0, 0);
+    transform.needUpdate = true;
+    updateTransforms(scene, entities);
+    scene.getSystem<PhysicsSystem>()->fixedUpdate(step);
+
+    Rigidbody body(&scene, platform);
+    expectNear(body.getPosition(), Vector3(50, 0, 0));
+    // not swept there at 3000 m/s
+    EXPECT_NEAR(body.getLinearVelocity().length(), 0.0f, 1e-4f);
 }
 
 TEST(PhysicsSync2D, SeveralStepsInOneFrameMoveAsFarAsOneStepPerFrame) {

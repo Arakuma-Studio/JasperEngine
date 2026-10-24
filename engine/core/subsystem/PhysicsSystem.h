@@ -109,10 +109,14 @@ namespace jasperengine{
 
 #ifdef JASPERENGINE_PHYSICS_2D
 		void ensureWorld2D();
-		// Puts the body at its Transform when something other than physics moved it. Inside a
-		// step (stepTime > 0) a kinematic body is moved there with a velocity instead, spread
-		// over the fixed steps left in the frame, so it carries and pushes other bodies.
+		// Moves the body by what something other than physics moved its Transform, position
+		// and rotation each on its own. Inside a step (stepTime > 0) a kinematic body is moved
+		// there with a velocity instead, spread over the fixed steps left in the frame, so it
+		// carries and pushes other bodies (teleported past its own size or a quarter turn).
 		void updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body, float stepTime = 0.0f);
+		// Puts the parts a following kinematic body is on its way to where its Transform has
+		// them, after the last step of the frame
+		void finishFollowing2D(Entity entity, Rigidbody2DComponent& body);
 		bool loadJoint2D(Entity entity, Joint2DComponent& joint);
 		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body);
 		static Vector2 absScale2D(const Vector2& scale);
@@ -125,6 +129,7 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_3D
 		// The 3D counterpart of updateRigidbody2DPosition()
 		void updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body, float stepTime = 0.0f);
+		void finishFollowing3D(Entity entity, RigidbodyComponent& body);
 		bool loadJoint3D(Entity entity, Joint3DComponent& joint);
 		bool syncRigidbodyColliders(Entity entity, RigidbodyComponent& body);
 		bool isShapeSourceLoading(Entity entity, const Collider3D& shapeData) const;
