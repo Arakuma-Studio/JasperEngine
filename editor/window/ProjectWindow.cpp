@@ -1102,7 +1102,7 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
             navigateTo = segments[i].second;
         }
         if (!isCurrent && ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            if (ImGui::AcceptDragDropPayload("resource_files")) {
                 dropTarget = segments[i].second;
             }
             ImGui::EndDragDropTarget();
@@ -1395,7 +1395,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             // --- Directory as drop target ----------------------------------
             if (file.isDirectory){
                 if (ImGui::BeginDragDropTarget()){
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                    if (ImGui::AcceptDragDropPayload("resource_files")){
                         dropTarget = currentPath / file.name;
                     }
                     ImGui::EndDragDropTarget();
@@ -2002,7 +2002,7 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
 
     // Handle drag and drop target
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+        if (ImGui::AcceptDragDropPayload("resource_files")) {
             handleInternalDragAndDrop(rootPath);
         }
         ImGui::EndDragDropTarget();
@@ -3207,8 +3207,6 @@ void editor::ProjectWindow::show() {
         itemViewStyle = static_cast<ItemViewStyle>(AppSettings::getResourcesItemViewStyle());
         leftPanelWidth = AppSettings::getResourcesLeftPanelWidth();
 
-        int iconWidth, iconHeight;
-
         TextureData data;
 
         data.loadTextureFromMemory(folder_icon_png, folder_icon_png_len);
@@ -3465,7 +3463,6 @@ void editor::ProjectWindow::show() {
 
 
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
-        ImGuiDragDropFlags target_flags = ImGuiDragDropFlags_AcceptBeforeDelivery;
         if (const ImGuiPayload* payload = ImGui::GetDragDropPayload()) {
             if (payload->IsDataType("external_files")) highlightDragAndDrop();
         }

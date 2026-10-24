@@ -68,7 +68,7 @@ namespace luabridge
     template<> struct Stack<ShaderRef> : AssetPathStack<ShaderRef>{};
 
     template<> struct Stack<Scaling> : EnumWrapper<Scaling>{};
-    template<> struct Stack<Platform> : EnumWrapper<Platform>{};
+    template<> struct Stack<jasperengine::Platform> : EnumWrapper<jasperengine::Platform>{};  // qualified: the editor has a Platform class too
     template<> struct Stack<GraphicBackend> : EnumWrapper<GraphicBackend>{};
     template<> struct Stack<TextureStrategy> : EnumWrapper<TextureStrategy>{};
     template<> struct Stack<TextureType> : EnumWrapper<TextureType>{};

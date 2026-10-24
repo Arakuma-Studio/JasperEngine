@@ -114,10 +114,12 @@ TEST(AtomicFile, FailureKeepsTarget){
             EXPECT_EQ(result.error, step.expected);
             EXPECT_EQ(result.code, std::errc::no_space_on_device);
             EXPECT_EQ(io::describeWriteError(result), "the disk is full");
-            if (existed)
+            if (existed){
                 EXPECT_EQ(TestTempDir::read(target), oldBytes);
-            else
+            }
+            else{
                 EXPECT_FALSE(fs::exists(target));
+            }
             EXPECT_TRUE(temporarySiblings(dir.path()).empty());
         }
     }

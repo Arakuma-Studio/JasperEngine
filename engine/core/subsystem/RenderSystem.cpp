@@ -318,17 +318,6 @@ namespace {
         return state;
     }
 
-    // the same without explicit stencil or colour write (AUTO: the manifest's, else off / all)
-    RenderState resolveRenderState(MaterialBlendMode blendMode, MaterialCullMode cullMode, MaterialDepthWrite depthWrite,
-                                   MaterialDepthTest depthTest, float offsetFactor, float offsetUnits,
-                                   const ShaderManifestState* resolvedState, bool legacyBlended, bool legacyFaceCulling,
-                                   CullingMode legacyCullingMode, WindingOrder windingOrder,
-                                   bool& blended, bool& transparentQueue){
-        return resolveRenderState(blendMode, cullMode, depthWrite, depthTest, offsetFactor, offsetUnits,
-                                  MaterialStencil(), -1, resolvedState, legacyBlended, legacyFaceCulling,
-                                  legacyCullingMode, windingOrder, blended, transparentQueue);
-    }
-
     // the manifest a shader string has, when it has one (built-in and forks without
     // manifest lines: null, the legacy path)
     std::shared_ptr<const ShaderManifest> findManifest(const std::string& shader){
@@ -659,7 +648,6 @@ void RenderSystem::destroy(){
 
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
-        Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -2016,7 +2004,7 @@ bool RenderSystem::loadAndProcessFog(){
     if (fog){
         hasFog = true;
 
-        int fogTypeI;
+        int fogTypeI = 0;
         if (fog->type == FogType::LINEAR){
             fogTypeI = 0;
         }else if (fog->type == FogType::EXPONENTIAL){
@@ -5821,11 +5809,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }
 
-            unsigned int gbufferIndexCount = 0;
             for (auto const& buf : buffers){
                 if (buf.second->isRenderAttributes()) {
                     if (buf.second->getType() == BufferType::INDEX_BUFFER){
-                        gbufferIndexCount = buf.second->getCount();
                         Attribute indexattr = buf.second->getAttributes()[AttributeType::INDEX];
                         gbufferRender.setIndex(buf.second->getRender(), indexattr.getDataType(), indexattr.getOffset());
                     }else{
@@ -11030,11 +11016,6 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
-        Vector3 camPos = camTransform.worldPosition;
-        if (instmesh.instancedCylindricalBillboard){
-            camPos.y = transform.worldPosition.y;
-        }
-
         Matrix4 m1 = camera.viewMatrix.inverse();
         bRotation.fromRotationMatrix(m1);
         bRotation = transform.worldRotation.inverse() * bRotation;

@@ -18,8 +18,12 @@
 
 namespace jasperengine::editor {
     class Workspace;
+    class StreamTestAccess;
 
     class Stream {
+        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream)
+        friend class StreamTestAccess;
+
     private:
 
         static std::string sceneTypeToString(SceneType type);

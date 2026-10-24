@@ -3167,7 +3167,6 @@ namespace {
     }
 
     PropertyData getPolygonPropertyFast(PolygonComponent* comp, const std::string& propertyName) {
-        PolygonComponent& def = getDefaultComponent<PolygonComponent>();
         if (!comp) return PropertyData();
 
         if (propertyName == "points") {
@@ -3202,7 +3201,6 @@ namespace {
 
     void enumeratePolygonProperties(void* compRef, std::map<std::string, PropertyData>& ps) {
         PolygonComponent* comp = static_cast<PolygonComponent*>(compRef);
-        PolygonComponent& def = getDefaultComponent<PolygonComponent>();
 
         static std::vector<PolygonPoint> defPoints;
         ps["points"] = {PropertyType::Custom, UpdateFlags_UI_Reload, (void*)&defPoints, comp ? (void*)&comp->points : nullptr};

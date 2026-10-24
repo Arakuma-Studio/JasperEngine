@@ -22,8 +22,9 @@ option(JASPERENGINE_RUNTIME_SHADERS "Compile missing shader variants at runtime"
 # googletest suite of the HTML/CSS UI (engine/tests/htmlui), standalone engine builds only:
 # the editor's shared engine hides the RmlUi symbols the tests need (tools/build.sh htmlui-tests)
 option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
-# googletest unit tests of engine core (engine/tests/core, tools/build.sh unit-tests)
-option(JASPERENGINE_TESTS "Build jasperengine-core-tests" OFF)
+# The unit tests (docs/testing.md): jasperengine-core-tests in a standalone engine build
+# (engine/tests/core, against the static engine), jasperengine-editor-tests in the editor build
+option(JASPERENGINE_TESTS "Build the unit-test target of this build tree" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -38,6 +39,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endif()
 
     project(${APP_NAME})
+
+    # before any target: sanitizers apply to the whole tree (empty by default, as in every export)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperSanitizers.cmake)
 
     set(JASPERENGINE_SHARED OFF)
 
@@ -219,6 +223,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(EMSCRIPTEN_THREAD_SUPPORT)
             set(USE_PTHREADS "-s USE_PTHREADS=1 -s PTHREAD_POOL_SIZE=4")
             list(APPEND PLATFORM_OPTIONS -pthread)
+            # shared memory links only objects built with atomics: every library of the tree,
+            # not only the engine (wasm-ld refuses glslang's PoolAlloc.cpp otherwise)
+            add_compile_options(-pthread)
         endif()
 
         # GROWABLE_ARRAYBUFFERS only exists on recent Emscripten, and emcc errors
@@ -659,6 +666,10 @@ endif()
 
 option(JASPERENGINE_SHARED "Build jasperengine as a shared library" OFF)
 
+# Warnings (off here by default, so exports stay quiet) and unity builds of our own targets
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperWarnings.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/JasperUnityBuild.cmake)
+
 if(JASPERENGINE_SHARED)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
     set(JASPERENGINE_LIB_TYPE SHARED)
@@ -669,7 +680,8 @@ endif()
 if(WIN32)
     if(MSVC)
         add_compile_options(/bigobj)
-        if(JASPERENGINE_SHARED)
+        # (MSVC's AddressSanitizer needs the DLL runtime too, JasperSanitizers.cmake)
+        if(JASPERENGINE_SHARED OR JASPERENGINE_SANITIZE_ADDRESS)
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
         else()
             set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
@@ -821,7 +833,9 @@ if(JASPERENGINE_HTMLUI_TESTS)
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         message(FATAL_ERROR "JASPERENGINE_HTMLUI_TESTS needs the standalone engine build (cmake -S engine): the editor's shared engine hides the RmlUi symbols the tests use")
     endif()
-    # the tests read render targets back (engine/tests/htmlui/harness/Readback.cpp)
+endif()
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    # the tests read render targets back (engine/tests/support/Readback.cpp)
     add_definitions(-DJASPERENGINE_TEXTURE_READBACK)
 endif()
 
@@ -1102,6 +1116,15 @@ add_library(
 
 jasperengine_htmlui_compat_embed(jasperengine)
 jasperengine_htmlui_lucide_embed(jasperengine)
+jasperengine_target_warnings(jasperengine)
+# Unity build: the HTML UI sources keep generic file-local helpers (lower, trim, startsWith, PI,
+# Registry, Cache, ...) in anonymous namespaces at global scope, one helper set per file
+get_target_property(JASPERENGINE_UNITY_SKIP jasperengine SOURCES)
+list(FILTER JASPERENGINE_UNITY_SKIP INCLUDE REGEX "core/htmlui/")
+jasperengine_skip_unity_build(
+    REASON "the HTML UI subsystem: per-file helper sets with the same names"
+    SOURCES ${JASPERENGINE_UNITY_SKIP})
+jasperengine_target_unity_build(jasperengine)
 
 target_compile_definitions(jasperengine
     PUBLIC
@@ -1252,6 +1275,15 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         include(${JASPERENGINE_ROOT}/platform/win/WindowsManifest.cmake)
         jasperengine_add_windows_manifest(${APP_NAME})
     endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        jasperengine_skip_unity_build(
+            REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+            SOURCES ${JASPERENGINE_ROOT}/platform/linux/JasperEngineLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                    ${JASPERENGINE_ROOT}/platform/linux/LinuxInputRouter.cpp ${JASPERENGINE_ROOT}/platform/linux/SystemLinux.cpp)
+    endif()
+    jasperengine_target_warnings(${APP_NAME})
+    jasperengine_target_unity_build(${APP_NAME})
+    jasperengine_stage_asan_runtime(${APP_NAME})
 
     # Project script roots are injected here by the editor Exporter. They are
     # scoped to this target: include_directories() would reach the jasperengine
@@ -1321,6 +1353,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
 endif() # End standalone executable build
 
+# googletest targets of the standalone engine tree (engine/cmake/JasperTesting.cmake)
+if((JASPERENGINE_HTMLUI_TESTS OR JASPERENGINE_TESTS) AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/JasperTesting.cmake)
+endif()
 if(JASPERENGINE_HTMLUI_TESTS)
     add_subdirectory(tests/htmlui)
 endif()

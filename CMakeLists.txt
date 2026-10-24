@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(jasperengine-editor)
 
+# Build options of our own targets (docs/testing.md), shared with the standalone engine tree:
+# sanitizers (before any target: they apply to the whole tree), warnings (on here; off in
+# engine/, which exported games build), warnings as errors, unity builds
+option(JASPERENGINE_WARNINGS "Warnings on the engine, editor and test targets" ON)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperSanitizers.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperWarnings.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperUnityBuild.cmake)
+
 # Same as CI (.github/workflows/ci.yml): git describe --tags --match 'v[0-9]*' --always --dirty.
 # Only version tags count, so the doriax-base fork-point tag never names a build.
 # CI passes JASPERENGINE_EDITOR_VERSION explicitly; local builds ask git here.
@@ -799,6 +807,14 @@ if(WIN32)
     list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/util/MsBuildProgress.cpp)
 endif()
 
+# Unity build: these sources keep generic file-local helpers (lower, trim, Target, sceneArg, ...) in
+# anonymous namespaces, one helper set per file, so they never share a unity unit
+set(JASPERENGINE_EDITOR_UNITY_SKIP ${JASPERENGINE_EDITOR_SOURCES})
+list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools)/")
+jasperengine_skip_unity_build(
+    REASON "the HTML UI importers and the MCP tools: per-file helper sets with the same names"
+    SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
+
 function(configure_jasperengine_editor_target target_name)
     add_dependencies(${target_name} generate_api_suggestions)
 
@@ -854,6 +870,14 @@ function(configure_jasperengine_editor_target target_name)
     if(X11_FOUND)
         target_compile_definitions(${target_name} PRIVATE JASPERENGINE_HAS_X11_CLIPBOARD)
     endif()
+
+    jasperengine_skip_unity_build(
+        REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+        SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+                ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
+    jasperengine_target_warnings(${target_name})
+    jasperengine_target_unity_build(${target_name})
+    jasperengine_stage_asan_runtime(${target_name})
 
     set_target_properties(
         ${target_name}
@@ -987,13 +1011,14 @@ set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 # jasperengine-htmlui-editor-tests: the HTML UI importers (editor/htmlui) against a local HTTP
 # fixture server, built with the editor (tools/build.sh htmlui-editor-tests, Linux)
 option(JASPERENGINE_HTMLUI_EDITOR_TESTS "Build jasperengine-htmlui-editor-tests (HTML UI importer tests)" OFF)
+# googletest targets of the editor tree (engine/cmake/JasperTesting.cmake, docs/testing.md);
+# JASPERENGINE_TESTS (engine/CMakeLists.txt) builds jasperengine-editor-tests (editor/tests)
+if(JASPERENGINE_TESTS OR JASPERENGINE_HTMLUI_EDITOR_TESTS)
+    include(${JASPERENGINE_ROOT}/cmake/JasperTesting.cmake)
+endif()
 if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
     include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
 endif()
-
-# jasperengine-editor-tests: googletest unit tests of editor logic (editor/tests, tools/build.sh
-# unit-tests)
-option(JASPERENGINE_TESTS "Build jasperengine-editor-tests" OFF)
 if(JASPERENGINE_TESTS)
     include(${EDITOR_DIR}/tests/EditorTests.cmake)
 endif()
@@ -1064,8 +1089,43 @@ else()
             REGEX "/engine/tests$" EXCLUDE
             # RmlUi's own test suites: built standalone by tools/htmlui/run-rmlui-tests.sh, never by a project
             REGEX "/engine/libs/rmlui/Tests$" EXCLUDE
+            # the repository's presets (build directories, tests, sanitizers): not a project's
+            REGEX "/engine/CMakePresets.json$" EXCLUDE
     )
 endif()
+
+# Third-party notices next to the editor binary, so every package (the zips, the AppImage, the
+# dmg's Resources) carries them: NOTICE.md, LICENSE and licenses/<library>-LICENSE for each shipped
+# library, as tools/ci/check-notices.py lists them (and checks an install for: --installed)
+if(APPLE)
+    set(JASPERENGINE_NOTICES_DESTINATION bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources)
+else()
+    set(JASPERENGINE_NOTICES_DESTINATION bin)
+endif()
+set(JASPERENGINE_CHECK_NOTICES ${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/check-notices.py)
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${JASPERENGINE_CHECK_NOTICES} --install-manifest
+    OUTPUT_VARIABLE JASPERENGINE_LICENSE_MANIFEST
+    RESULT_VARIABLE JASPERENGINE_LICENSE_MANIFEST_RESULT
+)
+if(NOT JASPERENGINE_LICENSE_MANIFEST_RESULT EQUAL 0)
+    message(FATAL_ERROR "tools/ci/check-notices.py --install-manifest failed (${JASPERENGINE_LICENSE_MANIFEST_RESULT})")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${JASPERENGINE_CHECK_NOTICES})
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/NOTICE.md ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+        DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}
+        CONFIGURATIONS Release MinSizeRel
+)
+string(REPLACE "\n" ";" JASPERENGINE_LICENSE_MANIFEST "${JASPERENGINE_LICENSE_MANIFEST}")
+foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
+    if(entry MATCHES "^(.+)\\|(.+)$")
+        install(FILES "${CMAKE_MATCH_1}"
+                DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}/licenses
+                RENAME "${CMAKE_MATCH_2}"
+                CONFIGURATIONS Release MinSizeRel
+        )
+    endif()
+endforeach()
 
 # Desktop integration: a launcher entry plus the themed icons the launcher,
 # taskbar and alt-tab switcher look up by the "jasperengine-editor" icon name.

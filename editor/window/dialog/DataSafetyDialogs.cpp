@@ -32,7 +32,7 @@ namespace {
         return ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
     }
 
-    float buttonWidth(const char* label) {
+    float dataSafetyButtonWidth(const char* label) {
         return std::max(120.0f, ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f);
     }
 
@@ -98,7 +98,7 @@ void DataSafetyDialogs::showRecovery(const SceneBackupInfo& backup) {
         if (ImGui::IsWindowAppearing()) {
             ImGui::SetKeyboardFocusHere();
         }
-        if (ImGui::Button("Restore", ImVec2(buttonWidth("Restore"), 0))) {
+        if (ImGui::Button("Restore", ImVec2(dataSafetyButtonWidth("Restore"), 0))) {
             const SceneBackupInfo copy = backup;
             pop();
             // between frames: the scene reopens, its windows must not be drawing it
@@ -118,11 +118,11 @@ void DataSafetyDialogs::showRecovery(const SceneBackupInfo& backup) {
         }
         ImGui::SetItemDefaultFocus();
         ImGui::SameLine();
-        if (ImGui::Button("Discard", ImVec2(buttonWidth("Discard"), 0))) {
+        if (ImGui::Button("Discard", ImVec2(dataSafetyButtonWidth("Discard"), 0))) {
             confirmingDiscard = true;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Decide Later", ImVec2(buttonWidth("Decide Later"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (ImGui::Button("Decide Later", ImVec2(dataSafetyButtonWidth("Decide Later"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             // the backup stays and is offered again the next time the scene opens
             pop();
         }
@@ -130,13 +130,13 @@ void DataSafetyDialogs::showRecovery(const SceneBackupInfo& backup) {
         ImGui::Text("The auto-saved changes will be deleted.");
         ImGui::Spacing();
         ImGui::Separator();
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        if (ImGui::Button("Cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
             confirmingDiscard = false;
         }
         ImGui::SetItemDefaultFocus();
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ErrorText);
-        if (ImGui::Button("Delete", ImVec2(buttonWidth("Delete"), 0))) {
+        if (ImGui::Button("Delete", ImVec2(dataSafetyButtonWidth("Delete"), 0))) {
             SceneBackups::discard(backup.backup);
             Out::info("Discarded the auto-saved changes of \"%s\".", name.c_str());
             pop();
@@ -171,7 +171,7 @@ void DataSafetyDialogs::showDegradedSave(const DegradedSaveRequest& request) {
     if (ImGui::IsWindowAppearing()) {
         ImGui::SetKeyboardFocusHere();
     }
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (ImGui::Button("Cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         pop();
         ImGui::EndPopup();
         return;
@@ -179,7 +179,7 @@ void DataSafetyDialogs::showDegradedSave(const DegradedSaveRequest& request) {
     ImGui::SetItemDefaultFocus();
     if (request.saveAs) {
         ImGui::SameLine();
-        if (ImGui::Button("Save As...", ImVec2(buttonWidth("Save As..."), 0))) {
+        if (ImGui::Button("Save As...", ImVec2(dataSafetyButtonWidth("Save As..."), 0))) {
             const auto saveAs = request.saveAs;
             pop();
             saveAs();
@@ -189,7 +189,7 @@ void DataSafetyDialogs::showDegradedSave(const DegradedSaveRequest& request) {
     }
     ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ErrorText);
-    if (ImGui::Button("Save Anyway", ImVec2(buttonWidth("Save Anyway"), 0))) {
+    if (ImGui::Button("Save Anyway", ImVec2(dataSafetyButtonWidth("Save Anyway"), 0))) {
         const auto saveAnyway = request.saveAnyway;
         pop();
         if (saveAnyway) saveAnyway();
@@ -211,14 +211,14 @@ void DataSafetyDialogs::showLockedProject(const ProjectLockInfo& info) {
     if (ImGui::IsWindowAppearing()) {
         ImGui::SetKeyboardFocusHere();
     }
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (ImGui::Button("Cancel", ImVec2(dataSafetyButtonWidth("Cancel"), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         pop();
         ImGui::EndPopup();
         return;
     }
     ImGui::SetItemDefaultFocus();
     ImGui::SameLine();
-    if (ImGui::Button("Open Anyway", ImVec2(buttonWidth("Open Anyway"), 0))) {
+    if (ImGui::Button("Open Anyway", ImVec2(dataSafetyButtonWidth("Open Anyway"), 0))) {
         const auto openAnyway = info.openAnyway;
         pop();
         if (openAnyway) openAnyway();

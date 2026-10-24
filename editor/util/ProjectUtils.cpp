@@ -9,6 +9,7 @@
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
+#include "pool/TextureDataPool.h"
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
 #include "System.h"
@@ -119,6 +120,15 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
 }
 
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
+    static const char* const id = "editor:resources:default_sky";
+    // Decoded once: the pool keeps the first faces and ignores later ones, whose pixels (not owned
+    // by TextureData) would leak, about 7 MB for every scene decoded with the default sky
+    const std::shared_ptr<std::array<TextureData, 6>> cached = TextureDataPool::get(id);
+    if (cached && cached->at(0).getData()) {
+        outTexture.setCubeDatas(id, cached->at(4), cached->at(5), cached->at(1), cached->at(0), cached->at(2), cached->at(3));
+        return;
+    }
+
     TextureData skyBack;
     TextureData skyBottom;
     TextureData skyFront;
@@ -133,8 +143,8 @@ void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
     skyRight.loadTextureFromMemory(Daylight_Box_Right_png, Daylight_Box_Right_png_len);
     skyTop.loadTextureFromMemory(Daylight_Box_Top_png, Daylight_Box_Top_png_len);
 
-    outTexture.setId("editor:resources:default_sky");
-    outTexture.setCubeDatas("editor:resources:default_sky", skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
+    outTexture.setId(id);
+    outTexture.setCubeDatas(id, skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
 }
 
 namespace {
@@ -750,7 +760,6 @@ std::string editor::ProjectUtils::makeUniqueEntityName(Scene* scene, const std::
 size_t editor::ProjectUtils::getTransformIndex(EntityRegistry* registry, Entity entity){
     Signature signature = registry->getSignature(entity);
     if (signature.test(registry->getComponentId<Transform>())) {
-        Transform& transform = registry->getComponent<Transform>(entity);
         auto transforms = registry->getComponentArray<Transform>();
         return transforms->getIndex(entity);
     }
