@@ -1572,6 +1572,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "get_load_report";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Get Load Report";
         tool.description =
             "What the scene's load could not read: issues with kind, file:line, did-you-mean and fate (preserved: "
@@ -1584,6 +1585,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "list_scene_backups";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
         tool.title = "List Scene Backups";
         tool.description =
             "Auto Save backups with status (usable: open_scene recovery=restore; stale: the file changed).";
@@ -1595,6 +1597,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "discard_scene_backup";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Discard Scene Backup";
         tool.description = "Deletes a scene's Auto Save backup.";
         tool.inputSchema = object({{"scene", sceneRef()}}, {"scene"});

@@ -194,3 +194,23 @@ async def test_instructions_name_tool_groups(ed: Editor):
     size = len(text.encode())
     ed.check(size <= 16384, f"the guide is {size} bytes, over 16,384")
     print(f"     [guide] {size} bytes")
+
+
+# The groups of the specs merged so far: hidden by default, listed once enabled (the pattern of
+# docs/mcp/conventions.md every spec's group follows)
+SPEC_GROUPS = {
+    "diagnostics": ["get_job_system_stats", "set_job_system_config", "get_memory_stats",   # S06
+                    "get_log_config", "set_log_level", "wait_for_log", "list_timers"],     # S09
+    "data_safety": ["get_load_report", "list_scene_backups", "discard_scene_backup"],      # S03
+}
+
+
+async def test_spec_groups_hidden_until_enabled(ed: Editor):
+    for group, tools in SPEC_GROUPS.items():
+        ed.require_tools(*tools)
+        ed.check(all(tool_meta(ed.tool(t)).get("jasper/group") == group for t in tools), f"{group}: _meta group")
+        default = names(await ed.tools(groups=None))
+        ed.check(not default & set(tools), f"{group} tools hidden by default: {sorted(default & set(tools))}")
+        await ed.call("tool_groups", enable=[group])
+        ed.check(set(tools) <= names(await ed.tools(groups=None)), f"{group} tools listed once enabled")
+        await ed.call("tool_groups", disable=[group])

@@ -152,7 +152,18 @@ For HTTP, use `{"mcpServers": {"jasper": {"url": "http://127.0.0.1:47615/mcp"}}}
 VS Code reads `.vscode/mcp.json` and uses a `servers` key with
 `"type": "stdio"` or `"type": "http"`.
 
+### From a shell: `jasperengine-editor call`
+
+Without an MCP client (CI scripts, hooks, a terminal), run any tool through the editor binary:
+`jasperengine-editor call --project <dir> create_entity --name Box --type box`. It attaches to
+the editor that has the project open (or `--port N`), else starts a one-shot headless one.
+Flags, `--help` and validation come from each tool's schema; `--json` prints one envelope per
+call; exit codes 0 ok, 1 tool error, 2 usage, 3 connection, 4 internal. See [cli.md](cli.md).
+
 ### Developing JasperEngine itself
+
+Agents working on the engine read the repository's `AGENTS.md` and `CLAUDE.md` (build, test,
+run an isolated editor, land a change); a game project has its own, generated `AGENTS.md`.
 
 The repository root has a `.mcp.json` that runs the editor from your build output:
 

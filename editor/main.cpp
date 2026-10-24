@@ -3,6 +3,7 @@
 
 #include "Backend.h"
 #include "Out.h"
+#include "cli/CallCommand.h"
 #include "cli/CommandLine.h"
 #include "mcp/McpLaunch.h"
 #include "util/ShellEnv.h"
@@ -51,6 +52,12 @@ int runEditor(int argc, char* argv[]) {
             return editor::CommandLine::runBenchmarkHelp(argv[0]);
         }
         return editor::Backend::init(argc, argv);
+    }
+    // MCP tools from a shell (editor/cli/CallCommand.h): a client of a running editor, or of
+    // one it starts headless; never the backend in this process
+    if (argc >= 2 && (std::strcmp(argv[1], "call") == 0 || std::strcmp(argv[1], "batch") == 0 ||
+                      std::strcmp(argv[1], "list-tools") == 0 || std::strcmp(argv[1], "editors") == 0)) {
+        return editor::cli::CallCommand::run(argc - 1, argv + 1, argv[0]);
     }
     // The GUI editor as an MCP server on stdio (see editor/mcp/McpLaunch.h)
     if (argc >= 2 && std::strcmp(argv[1], "mcp") == 0) {

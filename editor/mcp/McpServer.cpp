@@ -6,6 +6,7 @@
 
 #include "McpAutoSync.h"
 #include "McpContext.h"
+#include "McpInstances.h"
 #include "McpToolGroups.h"
 #include "McpTransportHttp.h"
 #include "McpTransportStdio.h"
@@ -146,6 +147,7 @@ void McpServer::stop() {
     if (httpTransport) {
         httpTransport->stop();
     }
+    instanceRecord.httpStopped();
     // Calls still waiting on frames would never finish now
     std::vector<Deferred> pending;
     pending.swap(deferred);
@@ -163,13 +165,17 @@ void McpServer::setHttpEnabled(bool enabled, int port) {
     }
     if (!enabled) {
         httpTransport->stop();
+        instanceRecord.httpStopped();
         return;
     }
     if (httpTransport->isRunning() && httpTransport->port() == port) return;
     std::string error;
     if (httpTransport->start(port, error)) {
         Out::info("MCP server listening on http://127.0.0.1:%d/mcp", port);
+        // `jasperengine-editor call` finds this editor through its instance file
+        instanceRecord.httpStarted(port, !AppSettings::getMcpHttpToken().empty(), currentProjectPath());
     } else {
+        instanceRecord.httpStopped();
         Out::error("MCP HTTP server could not start on port %d: %s", port, error.c_str());
     }
 }
@@ -802,7 +808,7 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
                 inflightReplies.erase(key);
             }
             endActivity(seq, result, done.elapsedMs(), done.cancelled());
-            trace("done", done.tool() + " " + key + (result.isError ? " error" : " ok"));
+            trace("done", done.tool() + " " + key + (done.cancelled() ? " cancelled" : result.isError ? " error" : " ok"));
             // What the tool wrote is its own, not an external change: settled on the main
             // thread once the handler has returned (before the client's next call runs)
             if (autoSync->settle && autoSync->start != std::chrono::system_clock::time_point{}) {
@@ -1072,9 +1078,15 @@ bool McpServer::hasDeferred(const McpCall* call) const {
     return false;
 }
 
+std::string McpServer::currentProjectPath() const {
+    if (!appPtr || !appPtr->getProject()) return {};
+    return appPtr->getProject()->getProjectPath().generic_string();
+}
+
 void McpServer::tick() {
     if (!started) return;
     if (ctx) McpAutoSync::get().prepare(*ctx);
+    if (instanceRecord.active()) instanceRecord.projectChanged(currentProjectPath());
     if (deferred.empty()) return;
 
     // Callbacks may defer again (chained waits), so work on a snapshot

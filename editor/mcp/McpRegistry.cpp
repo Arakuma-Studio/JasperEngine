@@ -156,7 +156,9 @@ Json McpRegistry::toolToJson(const ToolDef& def) {
     };
     if (!def.title.empty()) annotations["title"] = def.title;
     tool["annotations"] = annotations;
-    tool["_meta"] = Json{{"jasper/group", groupOf(def)}, {"jasper/module", def.module}};
+    // for clients and the CLI's help; _meta is not part of what the budget measures
+    tool["_meta"] = Json{{"jasper/group", groupOf(def)}, {"jasper/module", def.module},
+                         {"jasper/while_playing", def.allowedWhilePlaying}};
     return tool;
 }
 

@@ -560,6 +560,9 @@ add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${L
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
+    ${EDITOR_DIR}/cli/SchemaArgs.cpp
+    ${EDITOR_DIR}/cli/McpClient.cpp
+    ${EDITOR_DIR}/cli/CallCommand.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppSettings.cpp
     ${EDITOR_DIR}/Theme.cpp
@@ -606,6 +609,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpRegistry.cpp
     ${EDITOR_DIR}/mcp/McpSchema.cpp
     ${EDITOR_DIR}/mcp/McpToolGroups.cpp
+    ${EDITOR_DIR}/mcp/McpInstances.cpp
+    ${EDITOR_DIR}/mcp/McpSocket.cpp
     ${EDITOR_DIR}/mcp/McpServer.cpp
     ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp

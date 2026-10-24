@@ -5,6 +5,7 @@
 #include "thread/ThreadUtil.h"
 
 #include "McpServer.h"
+#include "McpSocket.h"
 
 #include "AppSettings.h"
 
@@ -47,64 +48,22 @@ namespace {
 #ifdef _WIN32
 using socket_t = SOCKET;
 const socket_t INVALID_SOCK = INVALID_SOCKET;
-void closeSock(socket_t s) { closesocket(s); }
-void shutdownSock(socket_t s) { shutdown(s, SD_BOTH); }
-int lastSocketError() { return WSAGetLastError(); }
 #else
 using socket_t = int;
 const socket_t INVALID_SOCK = -1;
-void closeSock(socket_t s) { ::close(s); }
-void shutdownSock(socket_t s) { ::shutdown(s, SHUT_RDWR); }
-int lastSocketError() { return errno; }
 #endif
 
-#if defined(MSG_NOSIGNAL)
-constexpr int SEND_FLAGS = MSG_NOSIGNAL;
-#else
-constexpr int SEND_FLAGS = 0;
-#endif
+// The socket primitives are shared with the CLI's HTTP client (McpSocket.h)
+net::Handle handle(socket_t s) { return static_cast<net::Handle>(s); }
+void closeSock(socket_t s) { net::close(handle(s)); }
+void shutdownSock(socket_t s) { net::shutdown(handle(s)); }
+int lastSocketError() { return net::lastError(); }
+void setNoInherit(socket_t s) { net::setNoInherit(handle(s)); }
+bool ensureSocketsInitialized() { return net::initialize(); }
+bool sendAll(socket_t s, const std::string& data) { return net::sendAll(handle(s), data); }
 
 constexpr size_t MAX_HEADER_BYTES = 64 * 1024;
 constexpr size_t MAX_BODY_BYTES = 64 * 1024 * 1024;
-
-// Child processes (cmake, a run player, Xvfb) must not inherit the server's sockets: a
-// child holding the listen socket keeps the port bound after the editor quits, and one
-// holding a connection keeps it from closing
-void setNoInherit(socket_t s) {
-#ifdef _WIN32
-    SetHandleInformation(reinterpret_cast<HANDLE>(s), HANDLE_FLAG_INHERIT, 0);
-#else
-    const int flags = ::fcntl(s, F_GETFD);
-    if (flags >= 0) ::fcntl(s, F_SETFD, flags | FD_CLOEXEC);
-#endif
-}
-
-bool ensureSocketsInitialized() {
-#ifdef _WIN32
-    static bool ok = []() {
-        WSADATA data;
-        return WSAStartup(MAKEWORD(2, 2), &data) == 0;
-    }();
-    return ok;
-#else
-    return true;
-#endif
-}
-
-bool sendAll(socket_t s, const std::string& data) {
-    size_t sent = 0;
-    while (sent < data.size()) {
-        const int n = static_cast<int>(::send(s, data.data() + sent, static_cast<int>(data.size() - sent), SEND_FLAGS));
-        if (n <= 0) {
-#ifndef _WIN32
-            if (n < 0 && errno == EINTR) continue;
-#endif
-            return false;
-        }
-        sent += static_cast<size_t>(n);
-    }
-    return true;
-}
 
 std::string lowerCase(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {

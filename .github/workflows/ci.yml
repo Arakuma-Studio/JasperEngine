@@ -83,6 +83,10 @@ jobs:
           python3 tools/ci/test_gtest_gate.py
           python3 tools/ci/test_check_notices.py
 
+      # AGENTS.md, CLAUDE.md and .claude/rules name paths and build targets that exist (S31 R27)
+      - name: Contributor docs for agents
+        run: python3 tools/check_agent_docs.py
+
       # docs/data-safety.md: every file write goes through AtomicFile (S03 AC9), and the
       # known-key tables of editor/StreamSchema.cpp list what each decoder reads (S03 AC12)
       - name: Data-safety lints
@@ -616,6 +620,10 @@ jobs:
           python tools/ci/gtest-gate.py --xml build/test-results/editor-windows.xml --max-skipped 0 || status=1
           exit $status
 
+      # jasperengine-editor call --help / --dry-run need no editor (S31 AC15)
+      - name: Call CLI without an editor
+        run: python tools/ci/check-call-cli.py instdir
+
       - name: Warnings
         if: always()
         run: python tools/ci/warning-summary.py build-editor.log build-engine.log >> "$GITHUB_STEP_SUMMARY"
@@ -756,6 +764,10 @@ jobs:
           python3 tools/ci/gtest-gate.py --xml build/test-results/core-macos.xml --max-skipped 0 || status=1
           python3 tools/ci/gtest-gate.py --xml build/test-results/editor-macos.xml --max-skipped 0 || status=1
           exit $status
+
+      # jasperengine-editor call --help / --dry-run need no editor (S31 AC15)
+      - name: Call CLI without an editor
+        run: python3 tools/ci/check-call-cli.py dist/macos-zip/jasperengine-editor
 
       - name: Warnings
         if: always()

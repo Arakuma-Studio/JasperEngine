@@ -4,6 +4,7 @@
 #pragma once
 
 #include "McpCall.h"
+#include "McpInstances.h"
 #include "McpJobs.h"
 #include "McpJson.h"
 #include "McpRegistry.h"
@@ -221,6 +222,9 @@ namespace jasperengine::editor::mcp {
 
         std::unique_ptr<McpTransportStdio> stdioTransport;
         std::unique_ptr<McpTransportHttp> httpTransport;
+        // this editor's file in the instance registry while HTTP serves (McpInstances.h)
+        InstanceRecord instanceRecord;
+        std::string currentProjectPath() const;
 
         mutable std::mutex sessionMutex;
         std::map<std::string, SessionPtr> sessions;

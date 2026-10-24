@@ -144,7 +144,7 @@ namespace jasperengine::editor::mcp {
 
         static bool matchUriTemplate(const std::string& uriTemplate, const std::string& uri, std::map<std::string, std::string>& vars);
 
-        // MCP wire shapes. A tool carries _meta {"jasper/group", "jasper/module"}.
+        // MCP wire shapes. A tool carries _meta {"jasper/group", "jasper/module", "jasper/while_playing"}.
         static Json toolToJson(const ToolDef& def);
         // The group a tool is listed in ("core" for an empty group)
         static const std::string& groupOf(const ToolDef& def);

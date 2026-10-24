@@ -670,6 +670,7 @@ void registerCoreTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "get_job_system_stats";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Get Job System Stats";
         tool.description = "Job system: workers, lanes, Background gate, channels, asset I/O, per-worker busy % over window_frames, totals.";
         tool.inputSchema = object({{"window_frames", withDefault(integer("", 1, 120), 60)}});
@@ -682,6 +683,7 @@ void registerCoreTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "set_job_system_config";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Set Job System Config";
         tool.description = "Player > Threading, applied live and saved: reserved_frame_workers (-1 Auto), web_pump_budget_ms. Undo: scope project.";
         tool.inputSchema = object({
@@ -695,6 +697,7 @@ void registerCoreTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "get_memory_stats";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Get Memory Stats";
         tool.description = "Memory records {name, kind, residency, current, peak, capacity, count} in bytes, totals by residency.";
         tool.inputSchema = object({
