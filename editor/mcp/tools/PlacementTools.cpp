@@ -28,6 +28,7 @@
 #include "registry/TagManager.h"
 #include "render/SceneRender.h"
 #include "texsynth/SynthesisSession.h"
+#include "window/PhysicsPlacementWindow.h"
 #include "window/SceneWindow.h"
 
 #include <algorithm>
@@ -48,6 +49,10 @@ constexpr double SLICE_MS = 4.0;
 // A ray given as {origin, direction} reaches this far (a screen ray spans the camera's range)
 constexpr float RAY_LENGTH = 1000.0f;
 constexpr uint64_t MAX_SEED = 4294967295ULL;
+// structuredContent beyond this lists the first entities only (an agent reads every byte of it)
+constexpr size_t MAX_RESULT_BYTES = 256 * 1024;
+// refusal and warning lines in the text; the rest is in structuredContent
+constexpr size_t MAX_TEXT_LINES = 10;
 
 std::string fixed(double v, int digits) {
     char buffer[64];
@@ -662,8 +667,9 @@ struct PlacementCall {
     bool apply = false;
     ScreenshotOptions screenshot;
     bool screenRay = false;
-    enum class Phase { Start, Decomposing, Simulating, Finishing, Done } phase = Phase::Start;
-    size_t decomposeTotal = 0;
+    enum class Phase { Start, Simulating, Finishing, Done } phase = Phase::Start;
+    std::vector<Entity> decomposing;   // decompose: always: the movers whose parts get decomposed
+    bool committed = false;
     std::unique_ptr<PlacementRun> run;
     std::optional<PlacementResult> fromPreview;   // apply: the stored preview it commits (no run)
     SceneState startState;                         // a preview: the scene it read
@@ -713,6 +719,19 @@ bool sceneStillValid(PlacementCall& state, bool& busy, std::string& why) {
               "changed. Call place_with_physics again.";
         return false;
     }
+    // the Scene view's Physics tool is in a gesture or settle there: its Transforms hold its
+    // preview poses until it commits or cancels
+    if (PhysicsPlacementWindow* window = state.ctx->app().getPhysicsPlacementWindow()) {
+        if (window->isBusy(state.sceneId)) {
+            busy = true;
+            return true;
+        }
+    }
+    // any other edit (a moved floor, an undo): what the run read is not the scene any more
+    if (state.phase != PlacementCall::Phase::Start && !busy && !previewShownIn(state.sceneId) && !(sceneState(sp) == state.startState)) {
+        why = "The scene changed during the simulation (a GameObject moved, an edit, undo or redo): nothing was changed. Run it again.";
+        return false;
+    }
     return true;
 }
 
@@ -730,12 +749,15 @@ std::string summaryText(const PlacementCall& state, const PlacementResult& r, co
     text += " after " + fixed(r.simSeconds, 2) + " s simulated (" + std::to_string(r.steps) + " steps), state_hash " + r.stateHash + ".";
     if (state.apply) text += " Committed as one undo step.";
     else text += " Nothing was changed: the same arguments with apply: true commit exactly this (one undo step).";
-    for (const PlacementRefusal& refusal : r.refused) {
-        text += "\nRefused " + (state.ctx->project() ? McpRefs::entityPath(state.ctx->project()->getScene(state.sceneId), refusal.entity)
-                                                     : std::to_string(refusal.entity)) + ": " + refusal.reason + ".";
+    SceneProject* sp = state.ctx->project() ? state.ctx->project()->getScene(state.sceneId) : nullptr;
+    for (size_t i = 0; i < r.refused.size() && i < MAX_TEXT_LINES; i++) {
+        const PlacementRefusal& refusal = r.refused[i];
+        text += "\nRefused " + (sp ? McpRefs::entityPath(sp, refusal.entity) : std::to_string(refusal.entity)) + ": " + refusal.reason + ".";
     }
+    if (r.refused.size() > MAX_TEXT_LINES) text += "\n+" + std::to_string(r.refused.size() - MAX_TEXT_LINES) + " more refused (see refused).";
     if (!hint.empty()) text += "\nHint: " + hint;
-    for (const std::string& w : r.warnings) text += "\nWarning: " + w;
+    for (size_t i = 0; i < r.warnings.size() && i < MAX_TEXT_LINES; i++) text += "\nWarning: " + r.warnings[i];
+    if (r.warnings.size() > MAX_TEXT_LINES) text += "\n+" + std::to_string(r.warnings.size() - MAX_TEXT_LINES) + " more warnings (see warnings).";
     return text;
 }
 
@@ -763,6 +785,11 @@ struct PlacementCapture {
             state->text += "\n(Screenshot failed: " + note + ")";
         }
         data["screenshot"] = shot;
+        if (state->committed && state->job->cancelRequested()) {
+            const std::string note = "cancel_job came after the commit: already committed; use undo to revert.";
+            data["note"] = note;
+            state->text += "\n" + note;
+        }
         state->phase = PlacementCall::Phase::Done;
         state->run.reset();
         state->job->succeed(state->text, data);
@@ -820,6 +847,29 @@ void captureAndFinish(const PlacementCallPtr& state, Json data) {
     });
 }
 
+// A result over MAX_RESULT_BYTES keeps its first entities (and refusals) only, saying so: the
+// rest of it (state_hash, counts, all_settled, warnings) still covers every body
+void capEntities(Json& result) {
+    if (result.dump().size() <= MAX_RESULT_BYTES) return;
+    for (const char* key : {"entities", "refused"}) {
+        if (!result.contains(key) || !result[key].is_array()) continue;
+        Json& list = result[key];
+        const size_t total = list.size();
+        size_t bytes = 0;
+        size_t kept = 0;
+        for (; kept < total; kept++) {
+            bytes += list[kept].dump().size() + 1;
+            if (bytes > MAX_RESULT_BYTES / 2) break;
+        }
+        if (kept == total) continue;
+        list.erase(list.begin() + static_cast<std::ptrdiff_t>(kept), list.end());
+        result[std::string(key) + "_total"] = total;
+        result["truncated"] = std::string("only the first ") + std::to_string(kept) + " of " + std::to_string(total) + " " + key +
+                              " are listed (the result would be over " + std::to_string(MAX_RESULT_BYTES / 1024) +
+                              " KB); state_hash, all_settled, steps and warnings cover them all";
+    }
+}
+
 // The run finished: commit when asked, build the result
 void finishPlacement(const PlacementCallPtr& state) {
     JobPtr job = state->job;
@@ -841,8 +891,17 @@ void finishPlacement(const PlacementCallPtr& state) {
     }
     Project* project = state->ctx->project();
     if (state->apply) {
-        // checked again right before writing (sceneStillValid ran this frame); commitPlacement
-        // refuses a structure change or a missing GameObject itself too
+        // checked again right before writing (sceneStillValid ran this frame, with the scene read
+        // as it was when the run started); commitPlacement refuses a structure change or a
+        // missing GameObject itself too
+        SceneProject* sp = project->getScene(state->sceneId);
+        if (!sp || !(sceneState(sp) == state->startState)) {
+            data["error"] = "scene changed";
+            state->phase = PlacementCall::Phase::Done;
+            state->run.reset();
+            job->fail("The scene changed during the simulation: nothing was changed. Run it again.", data);
+            return;
+        }
         std::string error;
         if (!commitPlacement(project, r, error)) {
             data["error"] = error;
@@ -851,6 +910,7 @@ void finishPlacement(const PlacementCallPtr& state) {
             job->fail("The simulation finished but committing it failed: " + error + " Nothing was changed.", data);
             return;
         }
+        state->committed = true;
     }
     Json result = placementResultJson(project, r, state->apply);
     if (!result.is_object()) result = Json::object();
@@ -859,6 +919,7 @@ void finishPlacement(const PlacementCallPtr& state) {
     }
     result["applied"] = state->apply;
     result["from_preview"] = state->fromPreview.has_value();
+    capEntities(result);
     state->text = summaryText(*state, r, result.value("hint", r.hint));
     if (state->fromPreview) state->text += " (The stored preview of these arguments, committed without simulating again.)";
     if (!state->apply) {
@@ -925,47 +986,39 @@ void tick(const PlacementCallPtr& state) {
         job->markCancelled("Physics placement cancelled; nothing was changed.");
         return;
     }
-    // the scene is being saved, or another call's preview poses are in it for a screenshot: the
-    // run reads the scene (context is gathered as it goes), so it waits
+    // the scene is being saved, the Scene view's Physics tool or another call's screenshot has
+    // preview poses in it: the run reads the scene (context is gathered as it goes), so it waits
     if (busy || previewShownIn(state->sceneId)) {
+        PhysicsPlacementWindow* window = state->ctx->app().getPhysicsPlacementWindow();
+        if (window && window->isBusy(state->sceneId)) {
+            job->setProgress(0.0, "waiting for the Scene view's Physics gesture to end (its preview poses are in the scene)");
+        }
         scheduleTick(state);
         return;
     }
     Project* project = state->ctx->project();
     switch (state->phase) {
         case PlacementCall::Phase::Start: {
+            // the scene as the run reads it (here, not when the call came: the Physics tool or
+            // a screenshot may have held preview poses until now)
+            SceneProject* sp = project->getScene(state->sceneId);
+            McpValues::refreshTransforms(sp);
+            state->structureVersion = sp->structureVersion;
+            state->startState = sceneState(sp);
+            if (state->apply) state->fromPreview = takeStoredPreview(project, sp, state->fingerprint);
             if (state->fromPreview) {
                 finishPlacement(state);
                 return;
             }
             if (!startRun(state)) return;
+            // decompose: always: the run waits for its movers' decompositions; they are counted
+            // per mover for the progress (other decompositions in the cache are not waited for)
             ConvexDecompositionCache* cache = placementDecompositionCache(project);
-            if (state->spec.settings.decomposition == PlacementDecomposition::ALWAYS && cache && cache->pendingCount() > 0) {
-                state->phase = PlacementCall::Phase::Decomposing;
-                state->decomposeTotal = cache->pendingCount();
-                job->setProgress(0.0, "Decomposing 0/" + std::to_string(state->decomposeTotal));
-            } else {
-                state->phase = PlacementCall::Phase::Simulating;
-                job->setProgress(0.0, "starting");
-            }
-            break;
-        }
-        case PlacementCall::Phase::Decomposing: {
-            // decompose: always: the movers' decompositions first; then a fresh run builds every
-            // mover from the cache (the same world an apply with these arguments builds)
-            ConvexDecompositionCache* cache = placementDecompositionCache(project);
-            const size_t pending = cache ? cache->pendingCount() : 0;
-            if (pending > 0) {
-                state->decomposeTotal = std::max(state->decomposeTotal, pending);
-                const size_t done = state->decomposeTotal - pending;
-                job->setProgress(static_cast<double>(done) / static_cast<double>(state->decomposeTotal),
-                                 "Decomposing " + std::to_string(done) + "/" + std::to_string(state->decomposeTotal));
-                break;
-            }
-            if (!startRun(state)) return;
-            if (cache && cache->pendingCount() > 0) {
-                state->decomposeTotal = cache->pendingCount();
-                break;
+            if (state->spec.settings.decomposition == PlacementDecomposition::ALWAYS && cache) {
+                const PlacementWorldSettings settings = makePlacementWorldSettings(state->spec.settings, cache);
+                for (Entity root : state->spec.entities) {
+                    if (PlacementWorld::requestDecompositions(sp->scene, root, settings) > 0) state->decomposing.push_back(root);
+                }
             }
             state->phase = PlacementCall::Phase::Simulating;
             job->setProgress(0.0, "starting");
@@ -973,7 +1026,19 @@ void tick(const PlacementCallPtr& state) {
         }
         case PlacementCall::Phase::Simulating: {
             const bool done = state->run->advance(SLICE_MS);
-            job->setProgress(state->run->progress(), state->run->progressText());
+            const std::string text = state->run->progressText();
+            if (!done && !state->decomposing.empty() && text.rfind("waiting for colliders", 0) == 0) {
+                const PlacementWorldSettings settings = makePlacementWorldSettings(state->spec.settings, placementDecompositionCache(project));
+                Scene* scene = project->getScene(state->sceneId)->scene;
+                size_t ready = 0;
+                for (Entity root : state->decomposing) {
+                    if (PlacementWorld::decompositionReady(scene, root, settings)) ready++;
+                }
+                job->setProgress(static_cast<double>(ready) / static_cast<double>(state->decomposing.size()),
+                                 "Decomposing " + std::to_string(ready) + "/" + std::to_string(state->decomposing.size()));
+            } else {
+                job->setProgress(state->run->progress(), text);
+            }
             if (done) {
                 finishPlacement(state);
                 return;
@@ -1056,14 +1121,13 @@ void placeWithPhysicsTool(const CallPtr& call) {
     McpValues::refreshTransforms(sp);
     watchSceneEdits();
     state->fingerprint = state->spec.fingerprint();
-    state->startState = sceneState(sp);
-    if (state->apply) state->fromPreview = takeStoredPreview(project, sp, state->fingerprint);
 
     const std::string title = std::string("Physics ") + placementModeName(state->spec.mode) + " of " +
                               std::to_string(state->spec.entities.size()) + " GameObject(s)" + (state->apply ? "" : " (preview)");
     state->job = ctx.jobs().create("place_with_physics", title);
     std::weak_ptr<PlacementCall> weak = state;
     state->job->setCancelHandler([weak]() {
+        // once committed (an apply's screenshot) it is too late: the job ends with a note
         if (auto s = weak.lock()) {
             if (s->run && s->phase == PlacementCall::Phase::Simulating) s->run->cancel();
         }
