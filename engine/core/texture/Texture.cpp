@@ -7,6 +7,21 @@
 
 using namespace jasperengine;
 
+namespace {
+    // owns the face data: a project switch frees the Texture (and the pool entry) before the
+    // render queue runs the deferred cleanup
+    struct TextureFaceCleanup{
+        std::shared_ptr<std::array<TextureData,6>> data;
+        size_t face;
+    };
+
+    void cleanupTextureFace(void* cleanupData){
+        TextureFaceCleanup* cleanup = static_cast<TextureFaceCleanup*>(cleanupData);
+        TextureData::cleanupTexture(&cleanup->data->at(cleanup->face));
+        delete cleanup;
+    }
+}
+
 Texture::Texture(){
     this->render = NULL;
     this->framebuffer = NULL;
@@ -399,8 +414,12 @@ void Texture::destroy(){
         }
 
         if (data) {
+            // remove() works on the pool's current copy, which may no longer be this one
+            const bool pooled = data == TextureDataPool::get(id);
             data.reset();
-            TextureDataPool::remove(id);
+            if (pooled) {
+                TextureDataPool::remove(id);
+            }
         }
 
         if (!framebuffer){
@@ -447,7 +466,7 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
 
     if (render && releaseDataAfterLoad && data){
         for (int f = 0; f < numFaces; f++){
-            SystemRender::scheduleCleanup(TextureData::cleanupTexture, &data->at(f));
+            SystemRender::scheduleCleanup(cleanupTextureFace, new TextureFaceCleanup{data, (size_t)f});
         }
     }
 
