@@ -277,7 +277,9 @@ TEST_F(FileChangeCoalescerTests, GrowingFileIsDeliveredAfterTheCap) {
     for (int t = 0; t <= 6000; t += 10) {
         env.disk["/p/big.fbx"] = FakeEnvironment::file(static_cast<uint64_t>(1000 + t), 1000 + t, 7);
         std::vector<FileChange> got = coalescer.take(now);
-        if (!got.empty() && out.empty()) EXPECT_GE(t, 5000);
+        if (!got.empty() && out.empty()) {
+            EXPECT_GE(t, 5000);
+        }
         out.insert(out.end(), got.begin(), got.end());
         advance(10);
     }

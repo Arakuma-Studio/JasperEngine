@@ -440,8 +440,8 @@ void EditorSettingsWindow::drawCodeEditorSettings() {
 }
 
 void EditorSettingsWindow::drawAssetPipelineSettings() {
-    drawSettingsPanel("##EditorAssetPipelinePanel", [this]() {
-        if (beginSettingsRow("Auto Refresh",
+    prefsDrawSettingsPanel("##EditorAssetPipelinePanel", [this]() {
+        if (prefsBeginSettingsRow("Auto Refresh",
                              "Reload textures, models, materials, shaders, audio, fonts, scripts and HTML UI when they change on "
                              "disk. Off: the status bar counts the changes and Assets > Refresh (Ctrl+R) applies them.",
                              m_autoRefresh != true)) {
@@ -451,7 +451,7 @@ void EditorSettingsWindow::drawAssetPipelineSettings() {
 
         WatchBackendKind forced;
         const bool overridden = HotReloadService::getWatcherOverride(forced);
-        if (beginSettingsRow("Watcher",
+        if (prefsBeginSettingsRow("Watcher",
                              overridden ? "How the editor finds changed files. --file-watcher (or JASPER_FILE_WATCHER) decides it for "
                                           "this run."
                                         : "How the editor finds changed files. Auto: the system's file notifications, and polling where "
@@ -467,7 +467,7 @@ void EditorSettingsWindow::drawAssetPipelineSettings() {
 
         // only polling has an interval
         if (m_fileWatcher == 2) {
-            if (beginSettingsRow("Polling Interval", "Seconds between two looks at the project's files.",
+            if (prefsBeginSettingsRow("Polling Interval", "Seconds between two looks at the project's files.",
                                  std::fabs(m_pollingInterval - 1.0f) > 1e-4f)) {
                 m_pollingInterval = 1.0f;
             }
@@ -475,7 +475,7 @@ void EditorSettingsWindow::drawAssetPipelineSettings() {
             ImGui::DragFloat("##AssetPollingInterval", &m_pollingInterval, 0.05f, 0.25f, 10.0f, "%.2f s", ImGuiSliderFlags_AlwaysClamp);
         }
 
-        if (beginSettingsRow("Log Reloads", "Write a [Hot Reload] line to the Console for what reloaded (failures always are).",
+        if (prefsBeginSettingsRow("Log Reloads", "Write a [Hot Reload] line to the Console for what reloaded (failures always are).",
                              m_logReloads != true)) {
             m_logReloads = true;
         }

@@ -179,7 +179,9 @@ TEST_F(HotReloadServiceTests, OpenSceneChangedOnDiskShowsTheBarAndStays) {
 TEST_F(HotReloadServiceTests, EditorWritesFanOutButDoNotTouchScenes) {
     SceneProject* scene = project.getSelectedScene();
     ASSERT_NE(scene, nullptr);
-    if (scene->filepath.empty()) ASSERT_TRUE(project.saveSceneNow(scene->id, "scenes/Main.scene"));
+    if (scene->filepath.empty()) {
+        ASSERT_TRUE(project.saveSceneNow(scene->id, "scenes/Main.scene"));
+    }
     FileChange change;
     change.kind = FileChangeKind::Modified;
     change.path = project.getProjectPath() / project.getScene(scene->id)->filepath;
