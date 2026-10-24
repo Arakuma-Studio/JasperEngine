@@ -12,6 +12,7 @@
 #include "window/Widgets.h"
 #include "SettingsCategoryList.h"
 #include "htmlui/VideoImporter.h"
+#include "lattice/LatticeEditorOps.h"
 
 #include <algorithm>
 #include <cmath>
@@ -30,6 +31,7 @@ namespace {
     enum class PreferencesCategory {
         General,
         CodeEditor,
+        Lattice,
         ExternalTools,
         ShaderCache,
         Count
@@ -39,6 +41,8 @@ namespace {
     const settingsui::Category preferencesCategories[] = {
         {"General", "", "editor vsync default build directory output"},
         {"Code Editor", "", "font size"},
+        {"Lattice", "", "lattice cage line colour color thickness behind geometry opacity point size selected stretch squash "
+                        "gradient falloff curve radius proportional"},
         {"External Tools", "", "cmake compiler kit emscripten sdk emsdk web desktop ffmpeg video import av1"},
         {"Shader Cache", "", "clear shader cache"},
     };
@@ -186,8 +190,20 @@ void EditorSettingsWindow::open(Project* project) {
     m_htmlUiAutoImport = AppSettings::getHtmlUiAutoImport();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
+    m_lattice = AppSettings::getLatticeViewSettings();
     m_defaultExportDirectory = AppSettings::getDefaultExportDirectory();
     refreshEmsdkStatus();
+}
+
+void EditorSettingsWindow::open(Project* project, const std::string& category) {
+    open(project);
+    for (int i = 0; i < preferencesCategoryCount; i++) {
+        if (category == preferencesCategories[i].name) {
+            m_category = i;
+            m_categorySearch[0] = '\0';
+            break;
+        }
+    }
 }
 
 LocalBuildSettings EditorSettingsWindow::projectBuildSettings() const {
@@ -270,6 +286,7 @@ void EditorSettingsWindow::drawSettings() {
     switch (static_cast<PreferencesCategory>(m_category)) {
         case PreferencesCategory::General: drawGeneralSettings(); break;
         case PreferencesCategory::CodeEditor: drawCodeEditorSettings(); break;
+        case PreferencesCategory::Lattice: drawLatticeSettings(); break;
         case PreferencesCategory::ExternalTools: drawExternalToolsSettings(); break;
         case PreferencesCategory::ShaderCache: drawAdvancedSettings(); break;
         default: break;
@@ -356,6 +373,71 @@ void EditorSettingsWindow::drawCodeEditorSettings() {
         ImGui::SetNextItemWidth(Theme::dpi(120.0f));
         ImGui::DragFloat("##CodeEditorFontSize", &m_codeEditorFontSize, 0.2f, AppSettings::minCodeEditorFontSize,
                          AppSettings::maxCodeEditorFontSize, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    });
+}
+
+void EditorSettingsWindow::drawLatticeSettings() {
+    drawSettingsPanel("##EditorLatticeSettingsPanel", [this]() {
+        const LatticeViewSettings defaults;
+        const ImGuiColorEditFlags colorFlags = ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar;
+
+        auto colorRow = [&](const char* label, const char* tooltip, std::array<float, 4>& color, const std::array<float, 4>& defaultColor) {
+            if (beginSettingsRow(label, tooltip, color != defaultColor)) {
+                color = defaultColor;
+            }
+            ImGui::ColorEdit4((std::string("##Lattice") + label).c_str(), color.data(), colorFlags);
+        };
+
+        sectionRow("Cage");
+        colorRow("Line Colour", "Edges of the cage at their rest length (the middle of the stretch gradient).",
+                 m_lattice.lineColor, defaults.lineColor);
+        if (beginSettingsRow("Line Thickness", "Width of the cage's edges in pixels.", m_lattice.lineThickness != defaults.lineThickness)) {
+            m_lattice.lineThickness = defaults.lineThickness;
+        }
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::SliderFloat("##LatticeLineThickness", &m_lattice.lineThickness, 1.0f, 4.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp);
+        if (beginSettingsRow("Behind Geometry", "Opacity of the parts of the cage that meshes hide (3D views).",
+                             m_lattice.behindOpacity != defaults.behindOpacity)) {
+            m_lattice.behindOpacity = defaults.behindOpacity;
+        }
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::SliderFloat("##LatticeBehindOpacity", &m_lattice.behindOpacity, 0.0f, 1.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+
+        sectionRow("Points");
+        if (beginSettingsRow("Point Size", "Size of the point squares in pixels.", m_lattice.pointSize != defaults.pointSize)) {
+            m_lattice.pointSize = defaults.pointSize;
+        }
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::SliderFloat("##LatticePointSize", &m_lattice.pointSize, 3.0f, 20.0f, "%.0f px", ImGuiSliderFlags_AlwaysClamp);
+        colorRow("Point Colour", nullptr, m_lattice.pointColor, defaults.pointColor);
+        colorRow("Selected Point Colour", nullptr, m_lattice.selectedPointColor, defaults.selectedPointColor);
+
+        sectionRow("Stretch");
+        if (beginSettingsRow("Stretch Colouring", "Colour the edges by their length over their rest length: squashed edges "
+                             "towards the squash colour (at half), stretched ones towards the stretch colour (at twice).",
+                             m_lattice.stretchColoring != defaults.stretchColoring)) {
+            m_lattice.stretchColoring = defaults.stretchColoring;
+        }
+        ImGui::Checkbox("##LatticeStretchColoring", &m_lattice.stretchColoring);
+        ImGui::BeginDisabled(!m_lattice.stretchColoring);
+        colorRow("Squash Colour", nullptr, m_lattice.squashColor, defaults.squashColor);
+        colorRow("Stretch Colour", nullptr, m_lattice.stretchColor, defaults.stretchColor);
+        ImGui::EndDisabled();
+
+        sectionRow("Proportional Falloff");
+        static const char* curves[] = {"Smooth", "Linear", "Sharp", "Constant"};
+        if (beginSettingsRow("Falloff Curve", "How the points around the moved ones follow them (O toggles the falloff).",
+                             m_lattice.falloffCurve != defaults.falloffCurve)) {
+            m_lattice.falloffCurve = defaults.falloffCurve;
+        }
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::Combo("##LatticeFalloffCurve", &m_lattice.falloffCurve, curves, IM_ARRAYSIZE(curves));
+        if (beginSettingsRow("Default Radius", "Falloff radius in lattice local units (the cage is 1 across); "
+                             "the mouse wheel changes it during a drag.", m_lattice.falloffRadius != defaults.falloffRadius)) {
+            m_lattice.falloffRadius = defaults.falloffRadius;
+        }
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::DragFloat("##LatticeFalloffRadius", &m_lattice.falloffRadius, 0.01f, 0.01f, 10.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     });
 }
 
@@ -548,6 +630,19 @@ void EditorSettingsWindow::drawAdvancedSettings() {
 
 bool EditorSettingsWindow::applySettings() {
     AppSettings::setEditorVSyncEnabled(m_editorVSyncEnabled);
+    const LatticeViewSettings previousLattice = AppSettings::getLatticeViewSettings();
+    AppSettings::setLatticeViewSettings(m_lattice);
+    const LatticeViewSettings lattice = AppSettings::getLatticeViewSettings();
+    if (lattice.falloffCurve != previousLattice.falloffCurve || lattice.falloffRadius != previousLattice.falloffRadius) {
+        // new defaults take over the falloff the Scene view uses
+        LatticeEditorOps::falloff().curve = static_cast<LatticeFalloffCurve>(lattice.falloffCurve);
+        LatticeEditorOps::falloff().radius = lattice.falloffRadius;
+    }
+    if (lattice != previousLattice && m_project) {
+        for (SceneProject& sceneProject : m_project->getScenes()) {
+            sceneProject.needUpdateRender = true;
+        }
+    }
     AppSettings::setHtmlUiAutoImport(m_htmlUiAutoImport);
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
