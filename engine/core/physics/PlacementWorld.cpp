@@ -59,6 +59,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
 #include <map>
 #include <mutex>
 #include <set>
@@ -230,8 +231,12 @@ namespace {
         }
 
         if (RigidbodyComponent* body = authoredBody(scene, entity)) {
+            // the colliders are sized by worldScale, and placed by modelMatrix, whose largest
+            // stretch is no more than its Frobenius norm
             const Vector3 scale = transform->worldScale;
-            const float maxScale = std::max(std::fabs(scale.x), std::max(std::fabs(scale.y), std::fabs(scale.z)));
+            float frobenius = 0.0f;
+            for (int c = 0; c < 3; c++) for (int r = 0; r < 3; r++) frobenius += model.get(c, r) * model.get(c, r);
+            const float maxScale = std::max(std::sqrt(frobenius), std::max(std::fabs(scale.x), std::max(std::fabs(scale.y), std::fabs(scale.z))));
             for (size_t i = 0; i < body->numColliders; i++) {
                 const Collider3D& c = body->colliders[i];
                 if ((c.type == Collider3DType::CONVEX_HULL || c.type == Collider3DType::MESH) &&
@@ -329,8 +334,9 @@ namespace {
         constexpr JPH::uint COUNT = 2;
     }
 
-    // the step's contact buffers come from the shared 10 MiB temp allocator (about 400 bytes
-    // a constraint), so these stay well inside it
+    // the step's contact buffers come from the shared 10 MiB temp allocator (864 bytes a
+    // contact constraint, measured), so these stay inside it; a step that needs more reports it
+    // (contactsOverflowed)
     constexpr JPH::uint MAX_BODIES = 4096;
     constexpr JPH::uint MAX_BODY_PAIRS = 8192;
     constexpr JPH::uint MAX_CONTACT_CONSTRAINTS = 8192;
@@ -347,6 +353,8 @@ namespace {
     constexpr float TOUCH_DISTANCE = 0.002f;
     // the contact normal (into the body) within ~45 degrees of up: resting on the other body
     constexpr float RESTING_COS = 0.7f;
+    // how far (m) a simplified context mesh may stray from the original surface
+    constexpr float MESH_SIMPLIFY_ERROR = 0.01f;
     // primitive fits closer than this (relative volume over the hull) replace the hull
     constexpr float PRIMITIVE_FIT_ERROR = 0.05f;
     // a mesh filling less of its hull than this is concave enough to want a decomposition
@@ -646,12 +654,22 @@ namespace {
         Scene* scene;
         const PlacementWorldSettings& settings;
 
-    // The pose of entity relative to the body at (bodyPosition, bodyRotation), world scale apart
-    void relativePose(Entity entity, JPH::RVec3Arg bodyPosition, JPH::QuatArg bodyRotation, JPH::Vec3& position, JPH::Quat& rotation) const {
-        Transform& transform = scene->getComponent<Transform>(entity);
+    // The pose of entity relative to the body at (bodyPosition, bodyRotation); its scale (and
+    // shear) is in linearOf(). False when the entity has no Transform (gone).
+    bool relativePose(Entity entity, JPH::RVec3Arg bodyPosition, JPH::QuatArg bodyRotation, JPH::Vec3& position, JPH::Quat& rotation) const {
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform) return false;
         const JPH::Quat inverse = bodyRotation.Conjugated();
-        position = inverse * JPH::Vec3(toJolt(transform.worldPosition) - bodyPosition);
-        rotation = (inverse * toJolt(transform.worldRotation)).Normalized();
+        position = inverse * JPH::Vec3(toJolt(transform->worldPosition) - bodyPosition);
+        rotation = (inverse * toJolt(transform->worldRotation)).Normalized();
+        return true;
+    }
+
+    // Entity space into its part frame (at its world position and rotation): the linear part of
+    // its modelMatrix, so a turned child of a non-uniformly scaled parent is shaped as drawn
+    Matrix4 linearOf(Entity entity) const {
+        resolveTransform(scene, entity);
+        return JoltShapeBuilder::entityLinearMatrix(scene, entity);
     }
 
     // Authored colliders of one entity as parts in the body's space. Movers can't be triangle
@@ -659,7 +677,7 @@ namespace {
     // heightfield is left out.
     void authoredParts(Entity entity, RigidbodyComponent& body, bool dynamic, JPH::Vec3Arg partPosition, JPH::QuatArg partRotation,
                        std::vector<ShapePart>& parts) const {
-        const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
+        const Matrix4 linear = linearOf(entity);
         for (size_t i = 0; i < body.numColliders; i++) {
             Collider3D collider = body.colliders[i];
             if (dynamic) {
@@ -677,7 +695,7 @@ namespace {
             }
             ShapePart part;
             part.shape = shape;
-            part.position = partPosition + partRotation * toJolt(collider.position * scale);
+            part.position = partPosition + partRotation * toJolt(linear * collider.position);
             part.rotation = (partRotation * toJolt(collider.rotation)).Normalized();
             part.kind = PlacementShapeKind::AUTHORED;
             parts.push_back(part);
@@ -688,9 +706,9 @@ namespace {
         JoltShapeBuilder::appendMeshTriangles(mesh, Matrix4(), out.local, out.indices);
         weldExact(out.local, out.indices);
         if (out.local.empty()) return false;
-        const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
+        const Matrix4 linear = linearOf(entity);
         out.scaled.resize(out.local.size());
-        for (size_t i = 0; i < out.local.size(); i++) out.scaled[i] = out.local[i] * scale;
+        for (size_t i = 0; i < out.local.size(); i++) out.scaled[i] = linear * out.local[i];
         return true;
     }
 
@@ -841,11 +859,12 @@ namespace {
                 const uint64_t key = hashDecompositionInput(geometry.local, geometry.indices, params);
                 std::vector<ConvexHullPoints> hulls;
                 if (cache->find(key, hulls)) {
-                    const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
+                    // a linear map keeps every hull convex
+                    const Matrix4 linear = linearOf(entity);
                     std::vector<ShapePart> pieces;
                     for (const ConvexHullPoints& h : hulls) {
                         std::vector<Vector3> scaled(h.points.size());
-                        for (size_t i = 0; i < h.points.size(); i++) scaled[i] = h.points[i] * scale;
+                        for (size_t i = 0; i < h.points.size(); i++) scaled[i] = linear * h.points[i];
                         OrientedBox bounds = axisAlignedBox(scaled);
                         JPH::ShapeRefC piece = withDensity(JoltShapeBuilder::buildConvexHullShape(scaled, nullptr, convexRadiusFor(2.0f * bounds.halfExtent.ReduceMin())));
                         if (!piece) continue;
@@ -861,7 +880,8 @@ namespace {
                         parts.insert(parts.end(), pieces.begin(), pieces.end());
                         return;
                     }
-                } else if (cache->status(key) != DecompositionStatus::FAILED) {
+                } else if (cache->status(key) != DecompositionStatus::FAILED || cache->failureReason(key) == "cancelled") {
+                    // a cancelled one is asked for again (request() queues it again)
                     keys.push_back(key);
                     requests.push_back({geometry.local, geometry.indices});
                 }
@@ -980,10 +1000,14 @@ namespace {
         const PlacementColliderPolicy policy = settings.colliders;
         std::vector<Entity> entities;
         std::vector<PartSource> sources;
+        Transform* rootTransform = scene->isEntityCreated(root) ? scene->findComponent<Transform>(root) : nullptr;
+        if (!rootTransform) {
+            if (why) *why = "no mesh or collider";
+            return false;
+        }
         if (!collectSources(root, entities, sources, why)) return false;
-        Transform& rootTransform = scene->getComponent<Transform>(root);
-        const JPH::RVec3 rootPosition(toJolt(rootTransform.worldPosition));
-        const JPH::Quat rootRotation = toJolt(rootTransform.worldRotation);
+        const JPH::RVec3 rootPosition(toJolt(rootTransform->worldPosition));
+        const JPH::Quat rootRotation = toJolt(rootTransform->worldRotation);
 
         std::vector<ShapePart> parts;
         bool skinned = false;
@@ -991,7 +1015,7 @@ namespace {
             resolveTransform(scene, source.entity);
             JPH::Vec3 position;
             JPH::Quat rotation;
-            relativePose(source.entity, rootPosition, rootRotation, position, rotation);
+            if (!relativePose(source.entity, rootPosition, rootRotation, position, rotation)) continue;
             if (source.body) authoredParts(source.entity, *source.body, true, position, rotation, parts);
             if (source.mesh) {
                 skinned = skinned || isSkinned(source.mesh);
@@ -1063,6 +1087,7 @@ struct PlacementWorld::Impl {
     float linearDamping = 0.0f;
     float angularDamping = 0.0f;
     float separationBoost = 1.0f;
+    bool overflowed = false;   // a step ran out of contact or body-pair buffers (contactsOverflowed)
 
     struct DynamicBody {
         Entity entity = NULL_ENTITY;
@@ -1079,6 +1104,8 @@ struct PlacementWorld::Impl {
 
         bool fellOut = false;
         PlacementPose frozenPose;
+        bool mayFallAsleep = true;           // Jolt's AllowSleeping, off while falling (afterStep)
+        float secondsUntouched = 0.0f;       // since its last contact
         bool teleported = false;
         bool asleep = false;
         float stillSeconds = 0.0f;
@@ -1121,8 +1148,6 @@ struct PlacementWorld::Impl {
     std::unordered_set<Entity> processed;
 
     Impl() {
-        JoltShapeBuilder::ensureJoltGlobalInit();
-
         broadPhaseLayers.MapObjectToBroadPhaseLayer(Layers::STATIC, BroadPhaseLayers::STATIC);
         broadPhaseLayers.MapObjectToBroadPhaseLayer(Layers::MOVING, BroadPhaseLayers::MOVING);
         layerPairs.EnableCollision(Layers::MOVING, Layers::STATIC);
@@ -1198,8 +1223,9 @@ struct PlacementWorld::Impl {
     }
 
     std::unique_ptr<DynamicBody> createDynamicBody(Entity root, bool mover, DynamicShape& built) {
-        Transform& transform = scene->getComponent<Transform>(root);
-        JPH::BodyCreationSettings creation(built.shape, JPH::RVec3(toJolt(transform.worldPosition)), toJolt(transform.worldRotation),
+        Transform* transform = scene->findComponent<Transform>(root);
+        if (!transform) return nullptr;
+        JPH::BodyCreationSettings creation(built.shape, JPH::RVec3(toJolt(transform->worldPosition)), toJolt(transform->worldRotation),
                                            JPH::EMotionType::Dynamic, Layers::MOVING);
         creation.mMotionQuality = JPH::EMotionQuality::LinearCast;
         creation.mFriction = FRICTION;
@@ -1269,7 +1295,8 @@ struct PlacementWorld::Impl {
     JPH::ShapeRefC contextMeshShape(Entity entity, MeshComponent* mesh) const {
         std::vector<Vector3> vertices;
         std::vector<uint32_t> indices;
-        JoltShapeBuilder::appendMeshTriangles(mesh, Matrix4::scaleMatrix(JoltShapeBuilder::entityWorldScale(scene, entity)), vertices, indices);
+        // in the body's frame, mirrored triangles wound back (appendMeshTriangles)
+        JoltShapeBuilder::appendMeshTriangles(mesh, shapes().linearOf(entity), vertices, indices);
         weldExact(vertices, indices);
         if (indices.empty()) return nullptr;
 
@@ -1278,8 +1305,9 @@ struct PlacementWorld::Impl {
             const size_t target = (size_t)settings.meshSimplifyAbove * 3;
             static_assert(sizeof(Vector3) == 3 * sizeof(float), "meshopt reads the positions as packed floats");
             std::vector<unsigned int> simplified(indices.size());
+            // at most 1 cm off the surface, in the body's (world-scaled) units
             const size_t count = meshopt_simplify(simplified.data(), indices.data(), indices.size(), &vertices[0].x, vertices.size(),
-                                                  sizeof(Vector3), target, 0.01f, 0, nullptr);
+                                                  sizeof(Vector3), target, MESH_SIMPLIFY_ERROR, meshopt_SimplifyErrorAbsolute, nullptr);
             if (count >= 3) {
                 simplified.resize(count);
                 indices.assign(simplified.begin(), simplified.end());
@@ -1288,22 +1316,29 @@ struct PlacementWorld::Impl {
         return JoltShapeBuilder::buildMeshShape(vertices, indices, nullptr);
     }
 
-    // Instances of an instanced mesh as boxes (spec section 9)
+    // Instances of an instanced mesh as boxes (spec section 9): each instance's mesh bounds
+    // through its own transform and the entity's linear map, a box or (sheared) parallelepiped
     JPH::ShapeRefC instancedShape(Entity entity, MeshComponent* mesh, InstancedMeshComponent& instanced) const {
-        const Vector3 scale = JoltShapeBuilder::entityWorldScale(scene, entity);
-        const JPH::Vec3 center = toJolt(mesh->verticesAABB.getCenter());
-        const JPH::Vec3 half = toJolt(mesh->verticesAABB.getHalfSize());
+        const Matrix4 linear = shapes().linearOf(entity);
+        const Vector3* corners = mesh->verticesAABB.getCorners();
         JPH::StaticCompoundShapeSettings compound;
         int added = 0;
         for (const InstanceData& instance : instanced.instances) {
             if (!instance.visible) continue;
-            const JPH::Vec3 instanceScale = toJolt(instance.scale).Abs();
-            const JPH::Quat rotation = toJolt(instance.rotation);
-            const JPH::Vec3 boxHalf = JPH::Vec3::sMax(half * instanceScale * toJolt(scale).Abs(), JPH::Vec3::sReplicate(0.0005f));
-            JPH::ShapeRefC box = boxShape(boxHalf);
+            const Matrix4 toBody = linear * Matrix4::translateMatrix(instance.position) * instance.rotation.getRotationMatrix() *
+                                   Matrix4::scaleMatrix(instance.scale);
+            std::vector<Vector3> points;
+            for (int c = 0; c < 8; c++) points.push_back(toBody * corners[c]);
+            const OrientedBox bounds = axisAlignedBox(points);
+            // the hull of the corners sits where they are; too thin for a hull, a box at their centre
+            JPH::ShapeRefC box = JoltShapeBuilder::buildConvexHullShape(points, nullptr, convexRadiusFor(2.0f * bounds.halfExtent.ReduceMin()));
+            JPH::Vec3 position = JPH::Vec3::sZero();
+            if (!box) {
+                box = boxShape(JPH::Vec3::sMax(bounds.halfExtent, JPH::Vec3::sReplicate(0.0005f)));
+                position = bounds.center;
+            }
             if (!box) continue;
-            const JPH::Vec3 position = toJolt(scale) * (toJolt(instance.position) + rotation * (center * instanceScale));
-            compound.AddShape(position, rotation, box);
+            compound.AddShape(position, JPH::Quat::sIdentity(), box);
             added++;
         }
         if (added == 0) return nullptr;
@@ -1366,6 +1401,8 @@ struct PlacementWorld::Impl {
             }
         }
 
+        // no room for all of them: none now, so a later call (with room) adds them
+        if (physics.GetNumBodies() + contextShapes.size() > MAX_BODIES) return false;
         JPH::BodyInterface& bi = bodyInterface();
         for (const JPH::ShapeRefC& shape : contextShapes) {
             JPH::BodyCreationSettings creation(shape, JPH::RVec3(toJolt(transform->worldPosition)), toJolt(transform->worldRotation),
@@ -1444,9 +1481,10 @@ struct PlacementWorld::Impl {
 
     // The world bounds of a built shape placed at the root's scene pose
     float worldSize(Entity root, const DynamicShape& built) const {
-        Transform& transform = scene->getComponent<Transform>(root);
+        Transform* transform = scene->findComponent<Transform>(root);
+        if (!transform) return std::numeric_limits<float>::infinity();
         const JPH::AABox bounds = built.shape->GetWorldSpaceBounds(
-            JPH::Mat44::sRotationTranslation(toJolt(transform.worldRotation), toJolt(transform.worldPosition)) *
+            JPH::Mat44::sRotationTranslation(toJolt(transform->worldRotation), toJolt(transform->worldPosition)) *
             JPH::Mat44::sTranslation(built.shape->GetCenterOfMass()), JPH::Vec3::sReplicate(1.0f));
         return bounds.GetSize().ReduceMax();
     }
@@ -1456,6 +1494,12 @@ struct PlacementWorld::Impl {
         if (!buildDynamicShape(root, built, nullptr)) return false;
         // a large dynamic Rigidbody (a platform, a vehicle) stays environment, as it would as a mover
         if (worldSize(root, built) > settings.maxMoverSize) return false;
+        // neighbours inside it (a cup on a table that only now came free) become part of it
+        std::vector<Entity> inside;
+        for (Entity neighbour : neighbours) {
+            if (isAncestorOf(scene, root, neighbour)) inside.push_back(neighbour);
+        }
+        for (Entity neighbour : inside) removeDynamic(neighbourBodies, neighbours, neighbour);
         std::unique_ptr<DynamicBody> body = createDynamicBody(root, false, built);
         if (!body) return false;
         issueRequests(built);
@@ -1571,7 +1615,7 @@ struct PlacementWorld::Impl {
                     body->contextNormalSum += intoSelf;
                     body->touchingContext = true;
                 }
-                if (!other.dynamic && contact.depth > GHOST_DEPTH && intoSelf.Dot(up) < -0.5f) body->sunk = true;
+                if (!other.dynamic && contact.depth > GHOST_DEPTH && intoSelf.Dot(up) < -0.5f) { body->sunk = true; }
                 if (contact.depth < -TOUCH_DISTANCE) return;
                 body->touching.push_back(other.entity);
                 body->maxPenetration = std::max(body->maxPenetration, contact.depth);
@@ -1853,6 +1897,28 @@ struct PlacementWorld::Impl {
                 continue;
             }
 
+            // Under gravity a free body that has touched nothing for a while is falling, however
+            // slowly (weak gravity keeps it under the sleep thresholds for a time): neither rule
+            // may put it to sleep. Half the sleep time, so a resting body's micro-bounces off its
+            // support (a few steps without a contact) don't count, while a still body in the air
+            // is caught before it could have slept. Without gravity (Separate) a body may come to
+            // rest in the air.
+            body->secondsUntouched = body->contacts > 0 ? 0.0f : body->secondsUntouched + settings.fixedStep;
+            const bool falling = !body->hasTarget && gravity.squaredLength() > 1e-12f &&
+                                 body->secondsUntouched > 0.5f * tuning.sleepSeconds;
+           
+            if (falling == body->mayFallAsleep) {
+                body->mayFallAsleep = !falling;
+                JPH::BodyLockWrite lock(physics.GetBodyLockInterfaceNoLock(), body->id);
+                if (lock.Succeeded()) lock.GetBody().SetAllowSleeping(!falling);
+            }
+            if (falling) {
+                if (!bi.IsActive(body->id)) bi.ActivateBody(body->id);
+                body->stillSeconds = 0.0f;
+                body->asleep = false;
+                continue;
+            }
+
             if (!bi.IsActive(body->id)) {
                 body->asleep = true;
                 continue;
@@ -1948,7 +2014,15 @@ struct PlacementWorld::Impl {
 
 #endif
 
-PlacementWorld::PlacementWorld(Scene* scene, const PlacementWorldSettings& settings): impl(new Impl) {
+// Jolt's allocator and factory come first: Impl's members (the layer tables, the PhysicsSystem)
+// allocate as they are constructed, and a world may be made before any Scene, whose
+// PhysicsSystem would otherwise have set Jolt up
+PlacementWorld::PlacementWorld(Scene* scene, const PlacementWorldSettings& settings): impl([]() {
+#ifdef JASPERENGINE_PHYSICS_3D
+    JoltShapeBuilder::ensureJoltGlobalInit();
+#endif
+    return new Impl();
+}()) {
     impl->scene = scene;
     impl->settings = settings;
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -2083,8 +2157,26 @@ AABB PlacementWorld::getContextRegion() const {
 
 void PlacementWorld::refreshShapes() {
 #ifdef JASPERENGINE_PHYSICS_3D
+    Scene* scene = impl->scene;
+    // bodies whose entity is gone leave the world
+    std::vector<Impl::DynamicBody*> gone;
+    for (Impl::DynamicBody* body : impl->dynamicBodies()) {
+        if (!scene || !scene->isEntityCreated(body->entity) || !scene->findComponent<Transform>(body->entity)) gone.push_back(body);
+    }
+    for (Impl::DynamicBody* body : gone) {
+        const Entity entity = body->entity;
+        if (body->mover) impl->removeDynamic(impl->moverBodies, impl->movers, entity);
+        else impl->removeDynamic(impl->neighbourBodies, impl->neighbours, entity);
+    }
+
+    // only a body with a decomposition that has landed since changes shape; the others keep
+    // theirs, and their contacts
+    ConvexDecompositionCache* cache = impl->settings.decompositionCache;
     JPH::BodyInterface& bi = impl->bodyInterface();
     for (Impl::DynamicBody* body : impl->dynamicBodies()) {
+        bool landed = false;
+        for (uint64_t key : body->decompositionKeys) landed = landed || (cache && cache->status(key) == DecompositionStatus::READY);
+        if (!landed) continue;
         DynamicShape built;
         if (!impl->buildDynamicShape(body->entity, built, nullptr)) continue;
         // the scene's transform may have moved since; the body keeps its own pose
@@ -2092,14 +2184,16 @@ void PlacementWorld::refreshShapes() {
         const JPH::Quat rotation = bi.GetRotation(body->id);
         const JPH::Vec3 linear = bi.GetLinearVelocity(body->id);
         const JPH::Vec3 angular = bi.GetAngularVelocity(body->id);
-        const bool active = bi.IsActive(body->id);
         bi.SetShape(body->id, built.shape, true, JPH::EActivation::DontActivate);
         bi.SetPositionAndRotation(body->id, position, rotation, JPH::EActivation::DontActivate);
-        if (active) {
+        impl->forgetContacts(*body);
+        // awake, so Jolt finds the new shape's contacts on the next step
+        if (!body->fellOut) {
             bi.ActivateBody(body->id);
             bi.SetLinearAndAngularVelocity(body->id, linear, angular);
+            body->stillSeconds = 0.0f;
+            body->asleep = false;
         }
-        impl->forgetContacts(*body);
         body->size = built.shape->GetLocalBounds().GetSize().ReduceMax();
         body->shape = built.kind;
         body->hullCount = built.hullCount;
@@ -2280,6 +2374,7 @@ void PlacementWorld::wakeAll() {
 void PlacementWorld::clearFlags() {
 #ifdef JASPERENGINE_PHYSICS_3D
     for (Impl::DynamicBody* body : impl->dynamicBodies()) body->teleported = false;
+    impl->overflowed = false;
 #endif
 }
 
@@ -2290,7 +2385,8 @@ void PlacementWorld::step() {
     if (dt <= 0.0f) return;
     for (int i = 0; i < substeps; i++) {
         impl->driveTargets(dt);
-        impl->physics.Update(dt, 1, &JoltShapeBuilder::sharedPhysicsTempAllocator(), &JoltShapeBuilder::sharedPhysicsJobSystem());
+        const JPH::EPhysicsUpdateError errors = impl->physics.Update(dt, 1, &JoltShapeBuilder::sharedPhysicsTempAllocator(), &JoltShapeBuilder::sharedPhysicsJobSystem());
+        if (errors != JPH::EPhysicsUpdateError::None) impl->overflowed = true;
         impl->releaseGhosts();
         impl->settleContacts();
         impl->summariseContacts();
@@ -2319,6 +2415,14 @@ bool PlacementWorld::allAsleep() const {
     }
 #endif
     return true;
+}
+
+bool PlacementWorld::contactsOverflowed() const {
+#ifdef JASPERENGINE_PHYSICS_3D
+    return impl->overflowed;
+#else
+    return false;
+#endif
 }
 
 float PlacementWorld::getMaxPenetration() const {

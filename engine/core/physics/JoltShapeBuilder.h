@@ -61,6 +61,13 @@ namespace jasperengine {
         // entity owns both. Brings them into body-local (rotation-free, world-scaled) space.
         static Matrix4 meshToBodyMatrix(Scene* scene, Entity bodyEntity, Entity meshEntity);
 
+        // The linear part of the entity's modelMatrix with its world rotation taken out: entity
+        // space into a frame at the entity's world position and rotation, scale and any shear (a
+        // turned child of a non-uniformly scaled parent) included, as the renderer draws it
+        static Matrix4 entityLinearMatrix(Scene* scene, Entity entity);
+        // Determinant of a matrix's 3x3 linear part: negative when it mirrors
+        static float linearDeterminant(const Matrix4& matrix);
+
         // Transform::worldScale is the entity's accumulated scale, resolved by
         // RenderSystem::updateTransform. Identity when there is no Transform, matching an
         // unscaled body.
@@ -83,7 +90,9 @@ namespace jasperengine {
         // whose child meshes are filled in by the ancestor holding the ModelComponent.
         static bool isGeometryLoading(Scene* scene, Entity entity);
 
-        // One heightfield sample per heightmap texel (the smaller side), at least 4
+        // One heightfield sample per heightmap texel (the smaller side), at least 4 and at most
+        // MAX_HEIGHTFIELD_SAMPLES (a larger heightmap is resampled through sampleTerrainSurface)
+        static constexpr unsigned int MAX_HEIGHTFIELD_SAMPLES = 1025;
         static unsigned int defaultHeightFieldSamples(const TerrainComponent& terrain);
 
 #ifdef JASPERENGINE_PHYSICS_3D
@@ -102,9 +111,9 @@ namespace jasperengine {
         static JPH::ShapeRefC buildMeshShape(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& indices,
                                              std::string* error);
         // The rendered terrain surface (MeshSystem::sampleTerrainSurface) in terrain-local space,
-        // scaled by scale (the entity's world scale): samplesSize x samplesSize samples spanning
-        // the whole terrain, edge to edge. samplesSize 0 is defaultHeightFieldSamples. A terrain
-        // without a heightmap is flat.
+        // scaled by scale (the entity's world scale, a negative x or z mirroring it):
+        // samplesSize x samplesSize samples spanning the whole terrain, edge to edge.
+        // samplesSize 0 is defaultHeightFieldSamples. A terrain without a heightmap is flat.
         static JPH::ShapeRefC buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
                                                     unsigned int samplesSize, std::string* error);
 

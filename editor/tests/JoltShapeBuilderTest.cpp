@@ -117,6 +117,31 @@ TEST(ScenePhysics, ThinBoxAndCylinder) {
     EXPECT_GT(t.transform(coin).position.y, -0.01f);   // on the plate (Jolt's 2 cm slop), not through it
 }
 
+// A mirrored (negative scale) triangle-mesh floor still faces up: its winding is flipped back
+TEST(ScenePhysics, MirroredMeshFloor) {
+    TestScene t;
+    const Entity floor = t.box(Vector3(10, 1, 10), Vector3(0, -0.5f, 0));
+    t.setScale(floor, Vector3(-1, 1, 1));
+    t.collider(floor, Collider3DType::MESH).source = Collider3DSource::ENTITY_MESH;
+    const Entity raw = t.entity(Vector3(20, 0, 0));
+    t.setScale(raw, Vector3(1, 1, -1));
+    Collider3D& mesh = t.collider(raw, Collider3DType::MESH);
+    mesh.source = Collider3DSource::RAW_MESH;
+    const Vector3 corners[4] = {Vector3(-5, 0, -5), Vector3(5, 0, -5), Vector3(5, 0, 5), Vector3(-5, 0, 5)};
+    for (const Vector3& c : corners) mesh.vertices[mesh.numVertices++] = c;
+    const uint16_t tris[6] = {0, 2, 1, 0, 3, 2};
+    for (uint16_t i : tris) mesh.indices[mesh.numIndices++] = i;
+
+    std::vector<Entity> crates;
+    for (const Vector3& at : {Vector3(0.5f, 2, 0.3f), Vector3(20.5f, 2, 0.3f)}) {
+        crates.push_back(t.box(Vector3(1, 1, 1), at));
+        Collider3D& c = t.collider(crates.back(), Collider3DType::BOX, BodyType::DYNAMIC);
+        c.width = 1; c.height = 1; c.depth = 1;
+    }
+    runScene(t, 240);
+    for (Entity crate : crates) EXPECT_NEAR(t.transform(crate).position.y, 0.5f, 0.03f) << crate;
+}
+
 // A box falls on a flat-topped terrain heightfield
 TEST(ScenePhysics, BoxOnHeightfield) {
     TestScene t;
@@ -173,6 +198,23 @@ TEST(ScenePhysics, HeightfieldMatchesTerrainSurface) {
         EXPECT_NEAR(hit.point.y, world.y, 2e-3f) << "point " << i << " local (" << localX << ", " << localZ << ")";
     }
     EXPECT_EQ(hits, 20);
+
+    // mirrored along x, the collider mirrors with the rendered surface
+    t.setScale(terrain, Vector3(-scale.x, scale.y, scale.z));
+    t.scene.getComponent<RigidbodyComponent>(terrain).needReloadBody = true;
+    runScene(t, 1);
+    for (int i = 0; i < 20; i++) {
+        const float localX = -terrainSize * 0.45f + terrainSize * 0.9f * (i / 19.0f);
+        const float localZ = 3.0f;
+        float height = 0.0f;
+        Vector3 normal;
+        meshSystem->sampleTerrainSurface(component, localX, localZ, height, normal);
+        const Vector3 world = origin + Vector3(-localX * scale.x, height * scale.y, localZ * scale.z);
+        Ray ray(Vector3(world.x, 20.0f, world.z), Vector3(0, -40.0f, 0));
+        RayReturn hit = ray.intersects(&t.scene, RayFilter::BODY_3D);
+        ASSERT_TRUE(hit.hit) << "mirrored point " << i;
+        EXPECT_NEAR(hit.point.y, world.y, 2e-3f) << "mirrored point " << i;
+    }
     std::printf("[scene-physics] heightfield max error %.6f m\n", maxError);
 }
 
