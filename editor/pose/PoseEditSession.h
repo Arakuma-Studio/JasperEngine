@@ -20,6 +20,7 @@
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
+#include "pose/PoseRealisation.h"
 #include "pose/PoseRig.h"
 #include "pose/PoseTypes.h"
 
@@ -38,7 +39,6 @@ namespace jasperengine::editor{
 
     class Project;
     class PoseAnimationDocument;
-    struct PoseRealisation;
     struct PoseRigInfo;
 
     class PoseEditSession{
@@ -96,7 +96,7 @@ namespace jasperengine::editor{
         const std::string& modelFile() const { return modelPath; }
         // the document realised on the bound rig (keys, frames, timeline, metrics); null
         // without a rig or a document
-        std::shared_ptr<const PoseRealisation> realisation();
+        std::shared_ptr<const pose::PoseRealisation> realisation();
         // closes the document (bones restored, Idle)
         void closeDocument();
 

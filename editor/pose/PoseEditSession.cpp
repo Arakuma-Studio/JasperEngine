@@ -233,7 +233,7 @@ void editor::PoseEditSession::documentChanged(int change){
     notify();
 }
 
-std::shared_ptr<const editor::PoseRealisation> editor::PoseEditSession::realisation(){
+std::shared_ptr<const pose::PoseRealisation> editor::PoseEditSession::realisation(){
     if (!doc || !rigPtr || !doc->exists()){
         return nullptr;
     }
