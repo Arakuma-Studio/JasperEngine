@@ -34,6 +34,11 @@ namespace jasperengine::editor::mcp {
     void registerHtmlUiTools(McpRegistry& registry);
     void registerUiEffectTools(McpRegistry& registry);
     void registerSynthesisTools(McpRegistry& registry);
+    void registerPlacementTools(McpRegistry& registry);
+
+    // PlacementTools.cpp: puts back the preview poses a place_with_physics screenshot shows for a
+    // few frames (App::stopTransientPreviews: before a save or Play)
+    void stopPlacementPreviews(Project* project);
 
     // SynthesisTools.cpp: the jasper.synthesis recipe of a PNG for get_asset_info / view_asset:
     // {role, mode, quality, seed, size, sources: [{role, path, state}], sources_changed,

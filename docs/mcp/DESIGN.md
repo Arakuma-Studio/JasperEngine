@@ -86,6 +86,9 @@ editor/mcp/
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
+    PlacementTools.cpp    physics placement (place_with_physics: drop, separate, move, snap, gather,
+                          distribute in edit mode), sharing physics/PlacementSession with the Scene
+                          view's Physics tool and the place-physics CLI
     HtmlUiTools.cpp       HTML/CSS UI: inspect_ui, assert_ui, create_ui_document, the example resources
 ```
 
@@ -149,11 +152,13 @@ Errors that are the agent's fault (bad args, unknown entity) are tool results wi
 JSON-RPC errors. JSON-RPC errors are only for protocol problems (unknown tool, bad params
 shape).
 
-Long operations (export/build players, C++ script compile, play startup with a C++ build)
-take `wait` (bool, default true) and `timeout_seconds` (default 120). They start a **job**
+Long operations (export/build players, C++ script compile, play startup with a C++ build,
+texture synthesis, physics placement) take `wait` (bool, default true) and `timeout_seconds` (default 120). They start a **job**
 (`McpJobs`: id, kind, status running/succeeded/failed/cancelled, progress, log tail,
 result); if not done within the timeout the tool returns the job id and the agent polls
-`get_job` / `cancel_job`.
+`get_job` / `cancel_job`. Work that must stay on the main thread (`place_with_physics` steps
+a private physics world) advances a slice of a few milliseconds per editor frame, so the editor
+keeps drawing while the job runs.
 
 `batch` (CoreTools): `{calls: [{tool, arguments}], undo_group: bool, stop_on_error: bool}`
 runs several tool calls in one round-trip, sequentially on the main thread; with

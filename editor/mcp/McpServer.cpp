@@ -105,6 +105,7 @@ void McpServer::registerAllTools() {
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);
+    registerPlacementTools(reg);
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
 }

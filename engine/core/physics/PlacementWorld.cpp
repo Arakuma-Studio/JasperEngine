@@ -106,6 +106,10 @@ namespace {
     // An unselected object no larger than this, and not a static Rigidbody, is pushed around
     // by the movers when pushNeighbours is on (spec section 3.4)
     constexpr float NEIGHBOUR_MAX_SIZE = 2.0f;
+    // the context a neighbour stands on: around its bounds, at least this far (m)
+    constexpr float NEIGHBOUR_SUPPORT_MARGIN = 0.5f;
+    // rounds of neighbours found under neighbours (each round one level of a stack)
+    constexpr int MAX_SUPPORT_ROUNDS = 16;
 
     // world pose of a transform the render pass has not updated yet: from the topmost stale
     // ancestor down, so a moved parent carries its children along
@@ -363,6 +367,12 @@ namespace {
     // job threads during PhysicsSystem::Update, hence the lock; the main thread reads the map
     // between updates. A std::map keeps the iteration order (and so the sums made from it)
     // the same however the threads interleaved.
+    //
+    // Jolt also removes every contact of a body that falls asleep, though nothing moved apart.
+    // Removals are only recorded during the update; settle() then keeps a removed contact whose
+    // bodies are all asleep (a dormant contact, what the body rests on) and drops the others.
+    // A dormant contact goes once a body of it wakes: Jolt reports the contacts it still has
+    // afresh in that update, and a pair that came apart is not reported again.
     class ContactTracker final : public JPH::ContactListener {
     public:
         struct Contact {
@@ -370,6 +380,7 @@ namespace {
             uint32_t body2 = 0;
             JPH::Float3 normal;   // from body 1 toward body 2
             float depth = 0.0f;   // negative: speculative, not touching yet
+            bool dormant = false; // removed by Jolt as its bodies fell asleep
         };
         typedef std::tuple<uint32_t, uint32_t, uint32_t, uint32_t> Key;
 
@@ -383,10 +394,29 @@ namespace {
             record(body1, body2, manifold);
         }
 
+        // The bodies can't be read here (Jolt has them locked, some mid-update): decided in settle()
         void OnContactRemoved(const JPH::SubShapeIDPair& pair) override {
             std::lock_guard<std::mutex> lock(mutex);
-            contacts.erase(Key(bodyKey(pair.GetBody1ID()), pair.GetSubShapeID1().GetValue(),
-                               bodyKey(pair.GetBody2ID()), pair.GetSubShapeID2().GetValue()));
+            removed.push_back(Key(bodyKey(pair.GetBody1ID()), pair.GetSubShapeID1().GetValue(),
+                                  bodyKey(pair.GetBody2ID()), pair.GetSubShapeID2().GetValue()));
+        }
+
+        // After each update, on the main thread. active(body key) is whether the body is awake
+        // (false for static bodies and bodies no longer in the world).
+        template<typename F>
+        void settle(F active) {
+            std::lock_guard<std::mutex> lock(mutex);
+            for (const Key& key : removed) {
+                auto found = contacts.find(key);
+                if (found == contacts.end()) continue;
+                if (!active(found->second.body1) && !active(found->second.body2)) found->second.dormant = true;
+                else contacts.erase(found);
+            }
+            removed.clear();
+            for (auto it = contacts.begin(); it != contacts.end();) {
+                if (it->second.dormant && (active(it->second.body1) || active(it->second.body2))) it = contacts.erase(it);
+                else ++it;
+            }
         }
 
         // A body left the world or changed shape: its sub-shape ids are gone with it
@@ -397,6 +427,9 @@ namespace {
                 if (it->second.body1 == key || it->second.body2 == key) it = contacts.erase(it);
                 else ++it;
             }
+            removed.erase(std::remove_if(removed.begin(), removed.end(), [key](const Key& k) {
+                return std::get<0>(k) == key || std::get<2>(k) == key;
+            }), removed.end());
         }
 
         template<typename F>
@@ -419,6 +452,7 @@ namespace {
 
         std::mutex mutex;
         std::map<Key, Contact> contacts;
+        std::vector<Key> removed;   // during the update in flight
     };
 
     // One convex piece of a body, placed in the body's space
@@ -1411,7 +1445,9 @@ struct PlacementWorld::Impl {
         return true;
     }
 
-    void gatherContext(const AABB* region, Entity only) {
+    // Adds the context in region (or only's subtree, static); returns the neighbours it made
+    std::vector<Entity> gatherContext(const AABB* region, Entity only) {
+        std::vector<Entity> newNeighbours;
         std::vector<JPH::BodyID> added;
         std::map<Entity, bool> movableCache;
         std::set<Entity> foliage;
@@ -1438,12 +1474,42 @@ struct PlacementWorld::Impl {
 
             if (region && settings.pushNeighbours && movableObject(entity, movableCache)) {
                 const Entity root = neighbourRoot(entity, movableCache);
-                if (!findDynamic(root) && addNeighbour(root)) continue;
+                if (!findDynamic(root) && addNeighbour(root)) {
+                    newNeighbours.push_back(root);
+                    continue;
+                }
             }
 
             if (addStaticContext(entity, added)) processed.insert(entity);
         }
         finishAdding(added);
+        return newNeighbours;
+    }
+
+    // A neighbour falls unless what it stands on is in the world too, and the region it was
+    // found in need not reach that far down: the context around every new neighbour (its
+    // bounds grown by half its size, at least 0.5 m) joins, which can find neighbours of its
+    // own, until no new one appears
+    void supportNeighbours(std::vector<Entity> pending) {
+        const JPH::BodyLockInterfaceNoLock& locks = physics.GetBodyLockInterfaceNoLock();
+        for (int round = 0; round < MAX_SUPPORT_ROUNDS && !pending.empty(); round++) {
+            std::vector<Entity> found;
+            for (Entity neighbour : pending) {
+                DynamicBody* body = findDynamic(neighbour);
+                if (!body) continue;
+                AABB support;
+                {
+                    JPH::BodyLockRead lock(locks, body->id);
+                    if (!lock.Succeeded()) continue;
+                    const JPH::AABox box = lock.GetBody().GetWorldSpaceBounds();
+                    const float margin = std::max(NEIGHBOUR_SUPPORT_MARGIN, 0.5f * box.GetSize().ReduceMax());
+                    support = AABB(fromJolt(box.mMin) - Vector3(margin, margin, margin), fromJolt(box.mMax) + Vector3(margin, margin, margin));
+                }
+                contextRegion.merge(support);
+                for (Entity e : gatherContext(&support, NULL_ENTITY)) found.push_back(e);
+            }
+            pending.swap(found);
+        }
     }
 
     // ---- stepping -----------------------------------------------------------------------
@@ -1451,6 +1517,11 @@ struct PlacementWorld::Impl {
     JPH::Vec3 upDirection() const {
         const JPH::Vec3 g = toJolt(gravity);
         return g.LengthSq() > 1e-12f ? -g.Normalized() : JPH::Vec3::sAxisY();
+    }
+
+    void settleContacts() {
+        const JPH::BodyInterface& bi = bodyInterface();
+        contactTracker.settle([&](uint32_t key) { return bi.IsActive(JPH::BodyID(key)); });
     }
 
     void summariseContacts() {
@@ -1819,7 +1890,7 @@ void PlacementWorld::ensureContext(const AABB& region) {
     if (region.isNull()) return;
     impl->contextRegion.merge(region);
 #ifdef JASPERENGINE_PHYSICS_3D
-    if (impl->scene) impl->gatherContext(&region, NULL_ENTITY);
+    if (impl->scene) impl->supportNeighbours(impl->gatherContext(&region, NULL_ENTITY));
 #endif
 }
 
@@ -2054,6 +2125,7 @@ void PlacementWorld::step() {
     for (int i = 0; i < substeps; i++) {
         impl->driveTargets(dt);
         impl->physics.Update(dt, 1, &JoltShapeBuilder::sharedPhysicsTempAllocator(), &JoltShapeBuilder::sharedPhysicsJobSystem());
+        impl->settleContacts();
         impl->summariseContacts();
     }
     impl->afterStep();
@@ -2111,6 +2183,20 @@ AABB PlacementWorld::getMoversBounds() const {
 #ifdef JASPERENGINE_PHYSICS_3D
     const JPH::BodyLockInterfaceNoLock& locks = impl->physics.GetBodyLockInterfaceNoLock();
     for (const auto& body : impl->moverBodies) {
+        JPH::BodyLockRead lock(locks, body->id);
+        if (!lock.Succeeded()) continue;
+        const JPH::AABox box = lock.GetBody().GetWorldSpaceBounds();
+        bounds.merge(AABB(fromJolt(box.mMin), fromJolt(box.mMax)));
+    }
+#endif
+    return bounds;
+}
+
+AABB PlacementWorld::getDynamicBounds() const {
+    AABB bounds;
+#ifdef JASPERENGINE_PHYSICS_3D
+    const JPH::BodyLockInterfaceNoLock& locks = impl->physics.GetBodyLockInterfaceNoLock();
+    for (Impl::DynamicBody* body : impl->dynamicBodies()) {
         JPH::BodyLockRead lock(locks, body->id);
         if (!lock.Succeeded()) continue;
         const JPH::AABox box = lock.GetBody().GetWorldSpaceBounds();
