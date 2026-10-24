@@ -222,14 +222,11 @@ void registerShadowTools(McpRegistry& registry){
         tool.name = "get_shadow_stats";
         tool.title = "Get Shadow Stats";
         tool.description =
-            "What the scene's shadows did on the last update: quality tier, atlas sizes, memory (and the tier's budget), "
-            "and per shadowed light its direction, slots, resolutions, cascade splits, radius and texel size, and per slot the cache "
-            "path of this update (skip, restore, static, full, uncached) and why, and its last_render (path, cause, rect) "
-            "frames_since_render updates ago; render passes and draw calls by path. camera game reads the running game's "
-            "scene. (docs/mcp/guide/shadows.md)";
+            "A scene's shadows on its last update: tier, atlases, memory vs budget; per light its slots, splits, texel size; per "
+            "slot the cache path now and its last_render. camera game: the running game's. (jasper://docs/shadows)";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"camera", withDefault(stringEnum("Whose shadows: the editor's view or the running game's.", {"scene", "game"}), "scene")}
+            {"camera", withDefault(stringEnum("", {"scene", "game"}), "scene")}
         });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
@@ -241,16 +238,14 @@ void registerShadowTools(McpRegistry& registry){
         tool.name = "set_shadow_debug";
         tool.title = "Set Shadow Debug";
         tool.description =
-            "Editor-only, transient shadow debugging of a scene: fit_camera_offset [x,y,z] and fit_camera_euler [pitch,yaw,roll] "
-            "(degrees) move only the camera the directional cascades are fitted to (the view stays: shimmer tests); "
-            "freeze_cache holds every shadow slot as drawn; force_rerender redraws every slot each frame. Omitted keys "
-            "keep their value; zeros and false undo it.";
+            "Editor-only, transient: fit_camera_offset/_euler move only the camera the cascades fit (the view stays); "
+            "freeze_cache holds every slot; force_rerender redraws them all. Omitted keys stay; zeros/false undo.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"fit_camera_offset", array(number(""), "World offset of the fit camera.")},
-            {"fit_camera_euler", array(number(""), "Pitch, yaw, roll of the fit camera in degrees.")},
-            {"freeze_cache", boolean("Hold every slot as drawn.")},
-            {"force_rerender", boolean("Redraw every slot every frame.")}
+            {"fit_camera_offset", array(number(""), "[x,y,z] world offset.")},
+            {"fit_camera_euler", array(number(""), "[pitch,yaw,roll] degrees.")},
+            {"freeze_cache", boolean("")},
+            {"force_rerender", boolean("")}
         });
         tool.annotations.idempotent = true;
         tool.handler = setShadowDebugTool;

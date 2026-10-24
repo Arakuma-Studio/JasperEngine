@@ -283,15 +283,24 @@ float shadowSlotVisibility(int slot, vec3 worldPos, vec3 dpdx, vec3 dpdy, float 
     return shadowFilter(false, shadowData.atlasRect[slot], uv, depth, gradient, resolution, mode, int(radiusTexels + 0.5), radiusTexels, noiseKey);
 }
 
+// the depth a receiver sloping away from the light changes by across the Low tier's filter, in
+// shadow texels per unit of tan (its 3x3 grid's taps 1.5 texels out, half a texel of bilinear
+// comparison), and the most it is given
+const float SHADOW_SLOPE_TEXELS = 2.0;
+const float SHADOW_SLOPE_MAX_TEXELS = 16.0;
+
 // the receiver offset by a slot's biases: towards the light by the depth bias, along the normal
-// by the normal offset, more the more it faces away from the light: (1 - n.l) where the
-// receiver-plane bias follows the slope, sin of the angle without it (the Low tier), whose
-// margin over the surface, normalOffset * tan, keeps up with the slope's depth change across
-// the filter's texels
-vec3 shadowBiasedPosition(vec3 worldPos, vec3 worldNormal, vec3 towardsLight, float depthBias, float normalOffset){
+// by the normal offset, more the more it faces away from the light. Without the receiver-plane
+// bias (the Low tier), whose taps compare against the receiver's plane, also towards the light by
+// the depth its slope spans under the filter's taps: along the light the shadow map position
+// stays, so that is depth margin
+vec3 shadowBiasedPosition(vec3 worldPos, vec3 worldNormal, vec3 towardsLight, float depthBias, float normalOffset, float texelWorld){
     float NdotL = clamp(dot(worldNormal, towardsLight), 0.0, 1.0);
-    float slope = shadowReceiverPlaneEnabled() ? (1.0 - NdotL) : sqrt(1.0 - NdotL * NdotL);
-    return worldPos + towardsLight * depthBias + worldNormal * (normalOffset * slope);
+    if (!shadowReceiverPlaneEnabled()){
+        float tangent = sqrt(1.0 - NdotL * NdotL) / max(NdotL, 0.001);
+        depthBias += texelWorld * min(SHADOW_SLOPE_TEXELS * tangent, SHADOW_SLOPE_MAX_TEXELS);
+    }
+    return worldPos + towardsLight * depthBias + worldNormal * (normalOffset * (1.0 - NdotL));
 }
 
 // view depth of a world position along the camera the cascades are fitted to
@@ -351,7 +360,7 @@ float shadowDirectional(int firstSlot, int cascades, vec3 worldPos, vec3 worldNo
     vec4 biasB = shadowData.bias[next];
     float texelWorld = mix(biasA.z, biasB.z, blend);
     float scale = texelWorld / max(biasA.z, 0.000001);
-    vec3 position = shadowBiasedPosition(worldPos, worldNormal, towardsLight, biasA.x * scale, biasA.y * scale);
+    vec3 position = shadowBiasedPosition(worldPos, worldNormal, towardsLight, biasA.x * scale, biasA.y * scale, texelWorld);
 
     float visibility = shadowSlotVisibility(slot, position, dpdx, dpdy, biasA.z, 0.0);
     if (blend > 0.0){
@@ -366,7 +375,8 @@ float shadowDirectional(int firstSlot, int cascades, vec3 worldPos, vec3 worldNo
 float shadowSpot(int slot, vec3 lightPosition, vec3 worldPos, vec3 worldNormal, vec3 towardsLight, vec3 dpdx, vec3 dpdy){
     vec4 bias = shadowData.bias[slot];
     float lightDistance = length(worldPos - lightPosition);
-    vec3 position = shadowBiasedPosition(worldPos, worldNormal, towardsLight, bias.x * lightDistance, bias.y * lightDistance);
+    vec3 position = shadowBiasedPosition(worldPos, worldNormal, towardsLight, bias.x * lightDistance, bias.y * lightDistance,
+                                         bias.z * lightDistance);
     float visibility = shadowSlotVisibility(slot, position, dpdx, dpdy, bias.z * lightDistance, max(lightDistance, 0.001));
     return mix(1.0, visibility, shadowData.filtering[slot].w);
 }
@@ -440,7 +450,8 @@ float shadowPoint(int firstSlot, vec3 lightPosition, vec3 worldPos, vec3 worldNo
     vec4 filterParams = pointShadowData.filtering[light];
 
     float lightDistance = length(worldPos - lightPosition);
-    vec3 position = shadowBiasedPosition(worldPos, worldNormal, towardsLight, bias.x * lightDistance, bias.y * lightDistance);
+    vec3 position = shadowBiasedPosition(worldPos, worldNormal, towardsLight, bias.x * lightDistance, bias.y * lightDistance,
+                                         projection.w * lightDistance);
     vec3 v = position - lightPosition;
     int face = shadowCubeFace(v);
     vec3 faceSpace = shadowCubeFaceSpace(v, face);
