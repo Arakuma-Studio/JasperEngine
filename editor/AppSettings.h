@@ -113,6 +113,7 @@ private:
     // Editor viewport settings
     static bool multiViewportEnabled;
     static bool editorVSyncEnabled;
+    static float uiScale;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
 
@@ -211,6 +212,10 @@ public:
     // VSync for the editor's own frames; Play mode and builds use the project setting
     static bool getEditorVSyncEnabled();
     static void setEditorVSyncEnabled(bool enabled);
+
+    // Editor UI Scale (Preferences): multiplies the display scale the system reports
+    static float getUiScale();
+    static void setUiScale(float scale);
 
     // Panels toggled from the View menu
     static PanelVisibilitySettings getPanelVisibility();

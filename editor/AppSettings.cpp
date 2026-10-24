@@ -7,6 +7,7 @@
 #include "htmlui/VideoImporter.h"
 #include <fstream>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 namespace jasperengine::editor {
@@ -70,6 +71,7 @@ float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::editorVSyncEnabled = true;
+float AppSettings::uiScale = 1.0f;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
 bool AppSettings::mcpHttpEnabled = false;
@@ -234,6 +236,9 @@ bool AppSettings::loadSettings() {
             if (editorNode["vsync"]) {
                 editorVSyncEnabled = editorNode["vsync"].as<bool>();
             }
+            if (editorNode["ui_scale"]) {
+                setUiScale(editorNode["ui_scale"].as<float>());
+            }
             if (editorNode["panels"]) {
                 auto panelsNode = editorNode["panels"];
                 if (panelsNode["hierarchy"]) panelVisibility.hierarchy = panelsNode["hierarchy"].as<bool>();
@@ -371,6 +376,7 @@ bool AppSettings::saveSettings() {
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
         editorNode["vsync"] = editorVSyncEnabled;
+        editorNode["ui_scale"] = uiScale;
         YAML::Node panelsNode;
         panelsNode["hierarchy"] = panelVisibility.hierarchy;
         panelsNode["inspector"] = panelVisibility.inspector;
@@ -640,6 +646,15 @@ bool AppSettings::getEditorVSyncEnabled() {
 
 void AppSettings::setEditorVSyncEnabled(bool enabled) {
     editorVSyncEnabled = enabled;
+}
+
+float AppSettings::getUiScale() {
+    return uiScale;
+}
+
+void AppSettings::setUiScale(float scale) {
+    // clamp lets NaN through
+    uiScale = std::isnan(scale) ? 1.0f : std::clamp(scale, 0.5f, 3.0f);
 }
 
 PanelVisibilitySettings AppSettings::getPanelVisibility() {
