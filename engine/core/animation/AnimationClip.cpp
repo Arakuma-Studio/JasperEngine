@@ -75,7 +75,18 @@ std::shared_ptr<const AnimationClip> AnimationClip::build(const ClipData& input,
     std::vector<ClipWarning> normalizeWarnings;
     anim::normalize(data, &normalizeWarnings);
     if (warnings) warnings->insert(warnings->end(), normalizeWarnings.begin(), normalizeWarnings.end());
+    std::vector<ClipWarning> all = loadWarnings;
+    all.insert(all.end(), normalizeWarnings.begin(), normalizeWarnings.end());
+    return buildNormalized(data, std::move(all));
+}
 
+std::shared_ptr<const AnimationClip> AnimationClip::build(const anim::ClipParseResult& parsed){
+    if (!parsed.ok()) return nullptr;
+    // parseClip's output is normalized already
+    return buildNormalized(*parsed.data, parsed.warnings);
+}
+
+std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipData& data, std::vector<ClipWarning> clipWarnings){
     AnimationClip* clip = new AnimationClip();
     std::shared_ptr<const AnimationClip> shared(clip);
     clip->frameRate = data.frameRate;
@@ -86,8 +97,7 @@ std::shared_ptr<const AnimationClip> AnimationClip::build(const ClipData& input,
     clip->previewModel = data.previewModel;
     clip->source = data.source;
     clip->unknownKeys = data.unknownKeys;
-    clip->warnings = loadWarnings;
-    clip->warnings.insert(clip->warnings.end(), normalizeWarnings.begin(), normalizeWarnings.end());
+    clip->warnings = std::move(clipWarnings);
     clip->events = data.events;
 
     // sizes first: the Track pointers point into the storage, which must not move afterwards

@@ -17,7 +17,10 @@
 #include "animation/KeyframeSampling.h"
 #include "component/Transform.h"
 #include "subsystem/ActionSystem.h"
+#include "math/Interpolation.h"
 
+#include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <random>
 #include <vector>
@@ -87,6 +90,66 @@ namespace {
     void expectRotation(const Quaternion& actual, const Quaternion& expected, float tolerance = 1e-5f){
         EXPECT_NEAR(std::fabs(actual.dot(expected)), 1.0f, tolerance)
             << actual.w << " " << actual.x << " " << actual.y << " " << actual.z;
+    }
+
+    // every component bit for bit
+    void expectSameSample(const anim::TrackSample& a, const anim::TrackSample& b){
+        EXPECT_EQ(a.valid, b.valid);
+        EXPECT_EQ(a.vector.x, b.vector.x);
+        EXPECT_EQ(a.vector.y, b.vector.y);
+        EXPECT_EQ(a.vector.z, b.vector.z);
+        EXPECT_EQ(a.rotation.w, b.rotation.w);
+        EXPECT_EQ(a.rotation.x, b.rotation.x);
+        EXPECT_EQ(a.rotation.y, b.rotation.y);
+        EXPECT_EQ(a.rotation.z, b.rotation.z);
+        EXPECT_EQ(a.weights, b.weights);
+        ASSERT_EQ(a.offsets.size(), b.offsets.size());
+        for (size_t o = 0; o < a.offsets.size(); o++){
+            EXPECT_EQ(a.offsets[o].x, b.offsets[o].x);
+            EXPECT_EQ(a.offsets[o].y, b.offsets[o].y);
+            EXPECT_EQ(a.offsets[o].z, b.offsets[o].z);
+        }
+    }
+
+    // ---- the value samplers of ActionSystem before the refactor (the reference) ----
+
+    Vector3 referenceVector(int index, float interpolation, const std::vector<float>& times, const std::vector<Vector3>& values,
+                            const std::vector<Vector3>& inTangents, const std::vector<Vector3>& outTangents){
+        Vector3 previous = values[(index > 0) ? index - 1 : 0];
+        bool cubic = index > 0 && values.size() > 0 && inTangents.size() == values.size() && outTangents.size() == values.size();
+        if (cubic){
+            float td = times[index] - times[index-1];
+            return Interpolation::cubicSpline(interpolation, td, previous, outTangents[index-1], values[index], inTangents[index]);
+        }
+        return previous + interpolation * (values[index] - previous);
+    }
+
+    Quaternion referenceRotation(int index, float interpolation, const std::vector<float>& times, const std::vector<Quaternion>& values,
+                                 const std::vector<Quaternion>& inTangents, const std::vector<Quaternion>& outTangents){
+        Quaternion previousRotation = values[(index > 0) ? index - 1 : 0];
+        Quaternion value;
+        bool cubic = index > 0 && values.size() > 0 && inTangents.size() == values.size() && outTangents.size() == values.size();
+        if (cubic){
+            float td = times[index] - times[index-1];
+            value = Interpolation::cubicSpline(interpolation, td, previousRotation, outTangents[index-1], values[index], inTangents[index]);
+            if (value.norm() > FLT_EPSILON){
+                value.normalize();
+            }else{
+                value = (interpolation < 0.5f) ? previousRotation : values[index];
+            }
+        }else{
+            value = Quaternion::slerp(interpolation, previousRotation, values[index]);
+        }
+        return value;
+    }
+
+    float referenceRowValue(int index, float interpolation, float td, bool cubic, const std::vector<std::vector<float>>& values,
+                            const std::vector<std::vector<float>>& inTangents, const std::vector<std::vector<float>>& outTangents, size_t i){
+        const std::vector<float>& previous = values[(index > 0) ? index - 1 : 0];
+        if (cubic){
+            return Interpolation::cubicSpline(interpolation, td, previous[i], outTangents[index-1][i], values[index][i], inTangents[index][i]);
+        }
+        return previous[i] + interpolation * (values[index][i] - previous[i]);
     }
 
     void step(Scene& scene, double dt, int count = 1){
@@ -359,15 +422,14 @@ TEST(KeyframeSampling, SamplingIsDeterministicWhateverTheCursor){
         for (size_t t = 0; t < first->getTracks().size(); t++){
             anim::TrackSample hinted;
             anim::TrackSample plain;
+            anim::TrackSample stale;
+            anim::KeyCursor far;
+            far.index = random() % 20;
             anim::sampleTrack(first->getTracks()[t], time, hinted, &cursors[t]);
             anim::sampleTrack(second->getTracks()[t], time, plain);
-            EXPECT_EQ(hinted.vector.x, plain.vector.x);
-            EXPECT_EQ(hinted.vector.z, plain.vector.z);
-            EXPECT_EQ(hinted.rotation.w, plain.rotation.w);
-            EXPECT_EQ(hinted.rotation.y, plain.rotation.y);
-            EXPECT_EQ(hinted.weights, plain.weights);
-            ASSERT_EQ(hinted.offsets.size(), plain.offsets.size());
-            for (size_t o = 0; o < hinted.offsets.size(); o++) EXPECT_EQ(hinted.offsets[o].y, plain.offsets[o].y);
+            anim::sampleTrack(second->getTracks()[t], time, stale, &far);
+            expectSameSample(hinted, plain);
+            expectSameSample(stale, plain);
         }
     }
 }
@@ -420,4 +482,117 @@ TEST(KeyframeSampling, EntityTracksMatchTheClipSamplers){
         ASSERT_TRUE(anim::sampleTrack(built->getTracks()[1], elapsed, turn));
         expectRotation(scene.getComponent<Transform>(target).rotation, turn.rotation, 1e-5f);
     }
+}
+
+// The value samplers against copies of the ActionSystem expressions they replaced, bit for bit,
+// with ActionSystem's tangent gating (vector, rotation incl. the zero-norm guard, morph, lattice)
+TEST(KeyframeSampling, ValueSamplersMatchTheFormerActionSystemExpressions){
+    std::mt19937 random(31);
+    std::uniform_real_distribution<float> unit(-2.0f, 2.0f);
+    std::uniform_real_distribution<float> fraction(0.0f, 1.0f);
+    for (int round = 0; round < 3000; round++){
+        size_t count = 1 + random() % 5;
+        bool cubic = round % 3 == 0;
+        std::vector<float> times;
+        std::vector<Vector3> vectors, vin, vout;
+        std::vector<Quaternion> rotations, rin, rout;
+        std::vector<std::vector<float>> rows, win, wout;
+        size_t width = 1 + random() % 8;
+        for (size_t k = 0; k < count; k++){
+            times.push_back((float)k * 0.5f + fraction(random) * 0.25f);
+            vectors.push_back(Vector3(unit(random), unit(random), unit(random)));
+            Quaternion q(unit(random), unit(random), unit(random), unit(random));
+            // some segments end on the opposite quaternion: the zero-norm guard
+            rotations.push_back(round % 7 == 1 && k > 0 ? -rotations[k - 1] : q.normalized());
+            std::vector<float> row;
+            for (size_t i = 0; i < width; i++) row.push_back(unit(random));
+            rows.push_back(row);
+            if (cubic){
+                bool zero = round % 7 == 1;
+                vin.push_back(Vector3(unit(random), unit(random), unit(random)));
+                vout.push_back(Vector3(unit(random), unit(random), unit(random)));
+                rin.push_back(zero ? Quaternion(0, 0, 0, 0) : Quaternion(unit(random), unit(random), unit(random), unit(random)));
+                rout.push_back(zero ? Quaternion(0, 0, 0, 0) : Quaternion(unit(random), unit(random), unit(random), unit(random)));
+                std::vector<float> a, b;
+                for (size_t i = 0; i < width; i++){ a.push_back(unit(random)); b.push_back(unit(random)); }
+                win.push_back(a);
+                wout.push_back(b);
+            }
+        }
+        int index = (int)(random() % count);
+        float interpolation = round % 11 == 0 ? 0.5f : fraction(random);
+        anim::KeyLocation at;
+        at.index = (size_t)index;
+        at.interpolation = interpolation;
+        if (index > 0) at.segmentDuration = times[index] - times[index - 1];
+        bool tangents = cubic && index > 0;
+
+        Vector3 v = anim::sampleVector3(at, vectors.data(), tangents ? vin.data() : nullptr, tangents ? vout.data() : nullptr);
+        Vector3 vr = referenceVector(index, interpolation, times, vectors, vin, vout);
+        ASSERT_EQ(v.x, vr.x) << "round " << round;
+        ASSERT_EQ(v.y, vr.y);
+        ASSERT_EQ(v.z, vr.z);
+
+        Quaternion q = anim::sampleQuaternion(at, rotations.data(), tangents ? rin.data() : nullptr, tangents ? rout.data() : nullptr);
+        Quaternion qr = referenceRotation(index, interpolation, times, rotations, rin, rout);
+        ASSERT_EQ(q.w, qr.w) << "round " << round;
+        ASSERT_EQ(q.x, qr.x);
+        ASSERT_EQ(q.y, qr.y);
+        ASSERT_EQ(q.z, qr.z);
+
+        const std::vector<float>& previous = rows[index > 0 ? index - 1 : 0];
+        std::vector<float> morph(width);
+        anim::sampleFloatRow(at, previous.data(), rows[index].data(), width,
+                             tangents ? wout[index - 1].data() : nullptr, tangents ? win[index].data() : nullptr, morph.data());
+        for (size_t i = 0; i < width; i++){
+            ASSERT_EQ(morph[i], referenceRowValue(index, interpolation, at.segmentDuration, tangents, rows, win, wout, i)) << "round " << round;
+        }
+
+        // lattice: one point per call, as latticeTracksUpdate does
+        Vector3 offset;
+        const Vector3* outRow = tangents ? &vout[index - 1] : nullptr;
+        const Vector3* inRow = tangents ? &vin[index] : nullptr;
+        anim::sampleVector3Row(at, &vectors[index > 0 ? index - 1 : 0], &vectors[index], 1, outRow, inRow, &offset);
+        ASSERT_EQ(offset.x, vr.x);
+        ASSERT_EQ(offset.y, vr.y);
+        ASSERT_EQ(offset.z, vr.z);
+    }
+}
+
+TEST(KeyframeSampling, NaNTimesAndBinarySearch){
+    float times[] = {0, 1, 2, 3};
+    anim::KeyCursor cursor;
+    cursor.index = 2;
+    EXPECT_EQ(anim::locateKey(times, 4, nullptr, 0, NAN, &cursor).index, anim::locateKey(times, 4, nullptr, 0, NAN).index);
+    EXPECT_EQ(cursor.index, 0u);
+
+    // a long track: without a cursor (binary search) and with stale cursors anywhere, the
+    // location is the linear scan's
+    std::vector<ClipKey> keys;
+    for (int k = 0; k < 500; k++) keys.push_back(key(k * 0.1f, {(float)k, 0, 0}, (EaseType)(k % (int)EaseType::CUSTOM)));
+    ClipData clip;
+    clip.tracks = {track(ClipChannel::Position, keys)};
+    std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
+    const AnimationClip::Track& t = built->getTracks()[0];
+    std::mt19937 random(5);
+    std::uniform_real_distribution<float> time(-1.0f, 51.0f);
+    for (int i = 0; i < 2000; i++){
+        float at = time(random);
+        anim::KeyLocation linear = anim::locateKey(t.times, t.keyCount, t.easings, t.keyCount, at);
+        anim::KeyCursor stale;
+        stale.index = random() % 600;
+        anim::KeyLocation hinted = anim::locateKey(t.times, t.keyCount, t.easings, t.keyCount, at, &stale);
+        ASSERT_EQ(hinted.index, linear.index) << at;
+        ASSERT_EQ(hinted.interpolation, linear.interpolation);
+        anim::TrackSample plain, withCursor;
+        anim::KeyCursor walking;
+        walking.index = random() % 600;
+        anim::sampleTrack(t, at, plain);
+        anim::sampleTrack(t, at, withCursor, &walking);
+        expectSameSample(plain, withCursor);
+    }
+    // a NaN time samples the first key
+    anim::TrackSample nan;
+    ASSERT_TRUE(anim::sampleTrack(t, NAN, nan));
+    EXPECT_EQ(nan.vector.x, 0.0f);
 }
