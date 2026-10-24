@@ -162,8 +162,8 @@ namespace testsupport {
         return 0.0;
     #else
         const char* value = std::getenv("JASPER_TEST_PERF_SLACK");
-        const double slack = value ? std::atof(value) : 1.0;
-        return slack > 0.0 ? slack : 1.0;
+        const double slack = value ? std::atof(value) : 0.0;
+        return slack > 0.0 ? slack : 0.0;
     #endif
     }
 

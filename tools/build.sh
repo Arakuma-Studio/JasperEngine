@@ -180,8 +180,9 @@ CPUS="${CPUS:-${DOCKER_CPUS:-${JOBS:-}}}"
 [[ -n "$CPUS" ]] && CPU_FLAGS=(--cpus "$CPUS")
 ENV_FLAGS=()
 for name in JASPER_HTMLUI_UPDATE_GOLDEN JASPER_HTMLUI_WRITE_ACTUAL JASPER_TEST_UPDATE_GOLDEN JASPER_TEST_WRITE_ACTUAL \
-            JASPER_TEST_KEEP_TEMP JASPER_HTMLUI_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME; do
-    # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp)
+            JASPER_TEST_KEEP_TEMP JASPER_HTMLUI_PERF_SLACK JASPER_TEST_PERF_SLACK HTMLUI_LIVE_NETWORK JASPER_CHROME; do
+    # (JASPER_HTMLUI_PERF_SLACK: the HTML UI performance tests' tolerance on a loaded host, compat_perf_test.cpp;
+    # JASPER_TEST_PERF_SLACK: the core tests' wall-clock budgets are enforced only when it is set)
     [[ -n "${!name:-}" ]] && ENV_FLAGS+=(-e "$name=${!name}")
 done
 # Sanitizer runtime options for every run (tools/sanitizers/*.supp: third-party code only)

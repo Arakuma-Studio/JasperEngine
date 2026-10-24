@@ -153,9 +153,18 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   allocations at `malloc` (wrapped by GNU ld, so on Linux; elsewhere `countsAllocations()` is
   false and the counts stay 0). `AllocationCountScope` counts the whole process,
   `ThreadAllocationCount` only the calling thread (for code that must not allocate while the
-  logger's drain thread or the workers may); `perfSlack()` scales performance budgets by
-  `JASPER_TEST_PERF_SLACK` (0 under a sanitizer: budgets are only printed). `*Bench` suites (`LoggerBench`, `SchedulerBench`,
-  `SignalBench`) check the S09 budgets that way and print `[bench]` lines.
+  logger's drain thread or the workers may); `perfSlack()` is the factor wall-clock budgets are
+  enforced with: `JASPER_TEST_PERF_SLACK`, unset (0) by default and under a sanitizer, where the
+  budgets are only printed. `*Bench` suites (`LoggerBench`, `SchedulerBench`, `SignalBench`) and
+  `SchedulerTest.Process10kUnder2ms` check the S09 budgets that way and print `[bench]` lines. A
+  shared build server's load alone misses them (10k timers in 20 ms instead of 2), so an ordinary
+  unit test run never fails on wall-clock time; the benchmark run enforces them on the
+  benchmark-only server E, which runs one job at a time:
+
+  ```bash
+  rb.sh E env JASPER_TEST_PERF_SLACK=1 UNIT_SUITE=core \
+      UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms' tools/build.sh unit-tests
+  ```
 
 ### Golden images
 
