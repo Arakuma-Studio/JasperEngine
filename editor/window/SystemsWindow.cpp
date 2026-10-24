@@ -8,6 +8,7 @@
 #include "Scene.h"
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -45,6 +46,7 @@ void SystemsWindow::setOpen(bool open){
 }
 
 void SystemsWindow::show(){
+    rowRects.clear();
     if (!windowOpen) return;
 
     if (focusRequested){
@@ -95,9 +97,13 @@ void SystemsWindow::drawTable(SceneProject* sceneProject, bool playing){
     const ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable |
                                   ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
     const float height = ImGui::GetTextLineHeightWithSpacing() * 14.0f;
+    rowRects.clear();
     if (!ImGui::BeginTable("##systems", 8, flags, ImVec2(0.0f, height))){
         return;
     }
+    // the rows' visible area: under the frozen header row, inside the table's scroll view
+    const ImGuiTable* table = ImGui::GetCurrentTable();
+    ImRect view = table->InnerClipRect;
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Phase");
     ImGui::TableSetupColumn("Wave");
@@ -108,6 +114,7 @@ void SystemsWindow::drawTable(SceneProject* sceneProject, bool playing){
     ImGui::TableSetupColumn("Enabled");
     ImGui::TableSetupColumn("Every N");
     ImGui::TableHeadersRow();
+    view.Min.y = std::max(view.Min.y, ImGui::GetCursorScreenPos().y);
 
     int row = 0;
     for (SystemPhase phase : {SystemPhase::FixedUpdate, SystemPhase::Update, SystemPhase::PostUpdate, SystemPhase::Draw}){
@@ -136,6 +143,9 @@ void SystemsWindow::drawTable(SceneProject* sceneProject, bool playing){
                 if (ImGui::Checkbox("##enabled", &enabled)){
                     scheduler.setEnabled(system->getName(), enabled);
                 }
+                const ImRect box(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+                rowRects.push_back({systemPhaseName(phase), system->getName(), box.Min.x, box.Min.y, box.GetWidth(), box.GetHeight(),
+                                    view.Contains(box)});
                 ImGui::TableNextColumn();
                 int every = (int)system->getEveryNFrames();
                 ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);

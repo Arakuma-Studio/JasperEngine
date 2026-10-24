@@ -1425,7 +1425,6 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_middle, ImVec2(viewport.x - rightWidth, viewport.y));
     ImGui::DockBuilderDockWindow(InspectorWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(mcp::McpActivityWindow::WINDOW_NAME, dock_id_right);
-    ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_right);
     ImGui::DockBuilderDockWindow(TerrainEditWindow::WINDOW_NAME, dock_id_right);
 
     // Project, Console and Animation across the bottom, under Hierarchy + Scene.
@@ -1436,6 +1435,9 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
+    // Systems: an eight-column table, wide enough only here (in the Inspector's column the
+    // system names and the Enabled checkboxes were cut off)
+    ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -1463,6 +1465,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
     stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 3);
     stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 4);
+    stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 5);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the

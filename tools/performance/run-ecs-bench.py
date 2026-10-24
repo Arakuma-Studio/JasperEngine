@@ -12,6 +12,7 @@ plain vectors (no ECS), which shows a budget no storage can meet on the machine.
 to <output>/ecs-bench.csv.
 
     tools/performance/run-ecs-bench.py [--baseline-ref oe-port] [--sizes 10000,100000] [--runs 7]
+    tools/performance/run-ecs-bench.py --baseline-archive build/oe-port-engine.tar   # git archive oe-port engine
 
 Run it inside the Linux build image (rb.sh <server> --img '...'), never on a dev machine.
 """
@@ -59,12 +60,15 @@ def build(source_engine: Path, build_dir: Path, bench_cmake: Path, jobs: str) ->
     return build_dir / "jasperengine-ecs-bench"
 
 
-def export_baseline(ref: str, out: Path) -> Path:
+def export_baseline(ref: str, out: Path, archive_path: Path = None) -> Path:
     source = out / "baseline-src"
     if source.exists():
         shutil.rmtree(source)
     source.mkdir(parents=True)
-    archive = subprocess.run(["git", "-C", str(ROOT), "archive", "--format=tar", ref, "engine"], check=True, capture_output=True).stdout
+    if archive_path:
+        archive = archive_path.read_bytes()
+    else:
+        archive = subprocess.run(["git", "-C", str(ROOT), "archive", "--format=tar", ref, "engine"], check=True, capture_output=True).stdout
     subprocess.run(["tar", "-x", "-C", str(source)], input=archive, check=True)
     engine = source / "engine"
     # the working tree's benchmark target, built against this engine
@@ -99,6 +103,9 @@ def run(binary: Path, sizes: str, runs: int, name: str, out: Path, ops: str = ""
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--baseline-ref", help="git revision to compare with (R26)")
+    parser.add_argument("--baseline-archive", type=Path,
+                        help="instead of --baseline-ref: a tar of a revision's engine/ (git archive REV engine), "
+                             "for a checkout without that revision (a build server's synced worktree)")
     parser.add_argument("--output", type=Path, default=ROOT / "build/performance-ecs")
     parser.add_argument("--sizes", default="10000,100000")
     parser.add_argument("--runs", type=int, default=7)
@@ -110,8 +117,8 @@ def main():
     after_binary = build(ROOT / "engine", out / "after-build", None, args.jobs)
     after, metrics = run(after_binary, args.sizes, args.runs, "after", out)
     before = None
-    if args.baseline_ref:
-        baseline_engine = export_baseline(args.baseline_ref, out)
+    if args.baseline_ref or args.baseline_archive:
+        baseline_engine = export_baseline(args.baseline_ref, out, args.baseline_archive)
         before_binary = build(baseline_engine, out / "before-build", baseline_engine, args.jobs)
         # only what R26 compares (the pre-S07 engine builds its worlds in quadratic time)
         before, _ = run(before_binary, args.sizes, args.runs, "before", out, "destroy,index_loop,lookup")

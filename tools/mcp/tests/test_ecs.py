@@ -1,12 +1,19 @@
 """S07: the ECS tools (get_ecs_stats, get_system_schedule, set_system_options, query_entities).
 
 Runs against the TappyPlane fixture (a 2D Lua game). Tests run in order and share one editor.
+The editor runs in the harness's Xvfb, so test_systems_window can click the Systems window's
+Enabled checkbox with xdotool (AC17).
 """
 
+import asyncio
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
 from harness import Editor
 
+EDITOR = {"xvfb": "harness"}
 TIMEOUT = 900
 
 # screenshots of the Systems window kept as evidence (AC17)
@@ -35,6 +42,54 @@ def system_entry(schedule, phase_name, system):
             if entry["name"] == system:
                 return entry
     raise AssertionError(f"no {system} in {phase_name}")
+
+
+def pointer(ed: Editor):
+    """xdotool on the harness's Xvfb, or None (no xdotool, or the editor runs its own Xvfb)."""
+    xvfb = getattr(ed, "_xvfb", None)
+    if not shutil.which("xdotool") or not xvfb or not xvfb.display:
+        return None
+    env = dict(os.environ, DISPLAY=xvfb.display)
+
+    def xdo(*args: str) -> str:
+        return subprocess.run(["xdotool", *args], env=env, capture_output=True, text=True, timeout=20).stdout
+
+    windows = xdo("search", "--name", ".").split()
+    if not windows:
+        return None
+    xdo("windowfocus", "--sync", windows[-1])
+    return xdo
+
+
+def systems_row(shown, phase_name, system):
+    for row in shown.get("rows", []):
+        if row["phase"] == phase_name and row["system"] == system:
+            return row
+    raise AssertionError(f"the Systems window has no {phase_name} {system} row: {shown.get('rows')}")
+
+
+async def click_enabled_checkbox(ed: Editor, xdo, phase_name: str, system: str):
+    """Scrolls the Systems table until the row's Enabled checkbox is in view, then clicks it."""
+    for _ in range(20):
+        shown = await ed.call("focus_window", window="systems")
+        row = systems_row(shown, phase_name, system)
+        box = row["enabled_checkbox"]
+        if row["visible"]:
+            xdo("mousemove", str(int(box["x"] + box["width"] / 2)), str(int(box["y"] + box["height"] / 2)))
+            await asyncio.sleep(0.3)
+            xdo("click", "1")
+            await asyncio.sleep(0.5)
+            await ed.call("wait", frames=3)
+            return
+        # wheel over the table (the first row's checkbox column) one notch down
+        first = shown["rows"][0]["enabled_checkbox"]
+        top = shown["rect"]["y"] + 60
+        xdo("mousemove", str(int(first["x"] + first["width"] / 2)), str(int(max(top, min(first["y"], box["y"] - 40)))))
+        await asyncio.sleep(0.2)
+        xdo("click", "5")
+        await asyncio.sleep(0.3)
+        await ed.call("wait", frames=2)
+    raise AssertionError(f"the {phase_name} {system} row never scrolled into view: {row}")
 
 
 async def test_ecs_stats_counts(ed: Editor):
@@ -163,7 +218,8 @@ async def test_system_schedule_and_options(ed: Editor):
 
 
 async def test_systems_window(ed: Editor):
-    """AC17 scripted: Window > Analysis > Systems in Play, with the data it shows checked through the tools."""
+    """AC17 scripted: Window > Analysis > Systems in Play: its rows, a real click on AudioSystem's Enabled
+    checkbox, screenshots, and what it shows checked through the tools."""
     ed.require_tools("focus_window", "screenshot", "get_system_schedule", "set_system_options", "get_ecs_stats", "play", "wait")
     EVIDENCE.mkdir(parents=True, exist_ok=True)
     await ed.call("play", action="start")
@@ -171,6 +227,8 @@ async def test_systems_window(ed: Editor):
         await ed.call("wait", seconds=1)
         shown = await ed.call("focus_window", window="systems")
         ed.check(shown["shown"], f"the Systems window is shown: {shown}")
+        ed.check_eq(sorted(row["system"] for row in shown["rows"] if row["phase"] == "Update"), sorted(SYSTEMS),
+                    "the table's Update rows")
         shot = await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window.png")})
         ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
 
@@ -184,12 +242,20 @@ async def test_systems_window(ed: Editor):
         listed = await ed.call("list_component_types")
         ed.check_eq(stats["component_types"]["registered"], len(listed["components"]), "component types in the footer")
 
-        # unchecking AudioSystem: it stops (and pauses its sounds) until Play stops
-        await ed.call("set_system_options", name="AudioSystem", enabled=False)
+        # unchecking AudioSystem: it stops (and pauses its sounds) until Play stops; with the
+        # pointer, the click on its Enabled checkbox in the window, else through the tool
+        xdo = pointer(ed)
+        if xdo:
+            await click_enabled_checkbox(ed, xdo, "Update", "AudioSystem")
+        else:
+            print("no xdotool on the harness's Xvfb: AudioSystem is unchecked through set_system_options")
+            await ed.call("set_system_options", name="AudioSystem", enabled=False)
         calls = system_entry(await ed.call("get_system_schedule", runtime=True), "Update", "AudioSystem")["timing"]["calls"]
         await ed.call("wait", seconds=0.5)
         after = system_entry(await ed.call("get_system_schedule", runtime=True), "Update", "AudioSystem")
         ed.check(not after["enabled"] and after["timing"]["calls"] == calls, f"AudioSystem disabled: {after}")
+        others = [system_entry(await ed.call("get_system_schedule", runtime=True), "Update", name) for name in SYSTEMS if name != "AudioSystem"]
+        ed.check(all(entry["enabled"] for entry in others), f"only AudioSystem was unchecked: {others}")
         await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window-audio-off.png")})
     finally:
         await ed.call("play", action="stop")
