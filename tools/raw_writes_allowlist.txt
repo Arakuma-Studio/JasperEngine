@@ -1,0 +1,41 @@
+# Writes that stay raw on purpose (tools/check_raw_writes.py, docs/data-safety.md).
+# <path> :: <code fragment found on the line> :: <reason>
+
+# append-only logs: a crash loses at most the last lines, never earlier ones
+editor/Out.cpp :: std::ofstream logFileStream; :: the editor log, append-only
+editor/mcp/tools/BuildTools.cpp :: std::ofstream logFile; :: build log, append-only while the build runs
+editor/mcp/tools/BuildTools.cpp :: std::ofstream out(run->logPath :: build run log, streamed while the process runs
+editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log, append-only
+
+# not a document
+editor/AppSettings.cpp :: std::ofstream f(probe); :: write probe of the settings directory, removed at once
+editor/htmlui/HttpClient.cpp :: std::ofstream out(config, std::ios::binary); :: private temporary curl config, removed after the request
+editor/Conector.cpp :: fs::copy_file(fullLibPath, candidate :: hot-reload copy of the script library under a unique name in a temp directory
+
+# output to a path the user named on the command line
+editor/App.cpp :: std::ofstream file(benchmarkOut); :: --benchmark-out report
+editor/cli/CommandLine.cpp :: std::ofstream file(options.docFile :: --doc output
+
+# a stream writer published atomically with io::publishFile
+editor/Exporter.cpp :: std::ofstream out(tempPath, std::ios::binary); :: resource pack streamed to resources.pak.tmp, then io::publishFile
+
+# export staging copies (S30 owns export staging and its swap)
+editor/Exporter.cpp :: fs::copy_file(source, targetPath :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(exePath, config.destinationDir :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(src, config.destinationDir :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(favicon, config.destinationDir :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(dataSrc, config.destinationDir :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec); :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(entry.path(), destination, :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(srcPath, dstPath :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(hdrPath, dstPath :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(entry.path(), dstPath :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(it->path(), dstPath :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(entry.path(), target, :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(sdkRoot / "jasperengine.py" :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(src / "shaderlib.h" :: export staging (S30)
+editor/Exporter.cpp :: fs::copy_file(resolveProjectFile(project, source), target :: export staging (S30)
+editor/Exporter.cpp :: if (!ec) fs::copy_file(source, target :: export staging (S30)
+
+# the game's own file API (File::open for writing, used by scripts): it streams
+engine/core/io/File.cpp :: platformFopen(systemPath.c_str(), "w+b") :: File, the engine's public read/write file API used by game code

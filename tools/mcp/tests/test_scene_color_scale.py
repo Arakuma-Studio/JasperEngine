@@ -8,6 +8,7 @@ import re
 
 from harness import Editor
 
+CI = True
 EDITOR = {"create": True, "name": "Scene Color Scale"}
 TIMEOUT = 600
 

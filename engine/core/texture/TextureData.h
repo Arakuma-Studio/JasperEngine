@@ -53,6 +53,9 @@ namespace jasperengine {
         bool loadTexture(Data* filedata);
         bool loadTextureFromFile(const char* filename);
         bool loadTextureFromMemory(unsigned char* data, unsigned int dataLength);
+        // The bytes of the file `filename` names (read elsewhere: an asset reader thread), with
+        // the same svgScale suffix and SVG handling as loadTextureFromFile.
+        bool loadTextureFromFileData(const char* filename, unsigned char* data, unsigned int dataLength);
 
         static bool hasSvgExtension(const char* filename);
 
@@ -66,6 +69,10 @@ namespace jasperengine {
         static std::string buildSvgScalePath(const std::string& cleanPath, float scale);
 
         static bool loadCubeMapFromSingleFile(const char* filename, std::array<TextureData, 6>& data);
+        // loadCubeMapFromSingleFile from the file's bytes
+        static bool loadCubeMapFromSingleFileData(const char* filename, unsigned char* bytes, unsigned int length, std::array<TextureData, 6>& data);
+        // splits a horizontal (4:3) or vertical (3:4) cross into the six faces; releases `texture`
+        static bool splitCubeMapCross(TextureData& texture, std::array<TextureData, 6>& data);
 
         void releaseImageData();
         

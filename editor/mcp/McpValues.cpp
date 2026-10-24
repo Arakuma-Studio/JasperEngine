@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpValues.h"
+#include "DocumentFile.h"
 
 #include "McpRefs.h"
 
@@ -2179,7 +2180,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 }
                 Material material;
                 try {
-                    material = Stream::decodeMaterial(YAML::LoadFile(absolute.string()));
+                    material = Stream::decodeMaterial(DocumentFiles::read(absolute, DocumentKind::Material).root);
                 } catch (const std::exception& e) {
                     error = std::string("Failed to read the material: ") + e.what();
                     return nullptr;

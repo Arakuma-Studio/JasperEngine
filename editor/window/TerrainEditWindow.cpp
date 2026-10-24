@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "DocumentFile.h"
 
 #include "Backend.h"
 #include "Catalog.h"
@@ -2615,7 +2616,7 @@ void editor::TerrainEditWindow::applyLayerMaterial(TerrainComponent& terrain, in
 
     Material material;
     try{
-        material = Stream::decodeMaterial(YAML::LoadFile((project->getProjectPath() / materialPath).string()));
+        material = Stream::decodeMaterial(DocumentFiles::read(project->getProjectPath() / materialPath, DocumentKind::Material).root);
     }catch (const std::exception& e){
         Out::error("Failed to read material '%s': %s", materialPath.c_str(), e.what());
         return;

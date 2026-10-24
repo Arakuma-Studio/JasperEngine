@@ -7,6 +7,9 @@ from __future__ import annotations
 
 from harness import Editor, find_key
 
+CI = True
+EDITOR = {"create": True, "name": "Scene Inputs CI"}
+
 TIMEOUT = 600
 
 SCENE = "scenes/SceneInputs.scene"

@@ -7,6 +7,7 @@
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpDataSafety.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
@@ -14,6 +15,7 @@
 
 #include "PostProcessingPresets.h"
 #include "Project.h"
+#include "StreamPreserved.h"
 #include "command/CommandNames.h"
 #include "command/type/AddChildSceneCmd.h"
 #include "command/type/DeleteFileCmd.h"
@@ -111,6 +113,9 @@ Json sceneInfo(Project* project, SceneProject& scene) {
         item["main_camera"] = McpValues::entityToJson(&scene, scene.mainCamera);
     }
     if (!scene.childScenes.empty()) item["child_scenes"] = childScenesJson(project, scene);
+    // what its file's load could not read (docs/data-safety.md); a scene with dropped values
+    // is saved only with allow_data_loss
+    if (scene.scene) item["degraded"] = degradedJson(scene);
     const uint32_t runtime = project->getPlayRuntimeSceneId(scene.id);
     if (runtime != NULL_PROJECT_SCENE && runtime != scene.id) item["runtime_scene_id"] = runtime;
     return item;
@@ -178,20 +183,69 @@ void createSceneTool(const CallPtr& call) {
              data);
 }
 
+// recovery: {available, autosaved_at, status, applied} of the scene just opened
+Json recoveryJson(const RecoveryOutcome& outcome, const char* applied) {
+    const bool usable = outcome.checked && outcome.backup.status == BackupStatus::Usable;
+    return {{"available", usable},
+            {"autosaved_at", outcome.backup.savedAt},
+            {"status", outcome.checked ? backupStatusName(outcome.backup.status) : "none"},
+            {"applied", usable ? applied : "none"}};
+}
+
+const char* recoveryName(RecoveryChoice choice) {
+    switch (choice) {
+        case RecoveryChoice::Restore: return "restore";
+        case RecoveryChoice::Discard: return "discard";
+        case RecoveryChoice::Keep: return "keep";
+    }
+    return "keep";
+}
+
 void openSceneTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     UnsavedChoice unsaved;
     if (!parseUnsaved(call, unsaved)) return;
+    // a crash backup of the scene: decided here, never by a modal (R36)
+    const std::string recoveryArg = args.value("recovery", std::string("keep"));
+    RecoveryChoice recovery = RecoveryChoice::Keep;
+    if (recoveryArg == "restore") recovery = RecoveryChoice::Restore;
+    else if (recoveryArg == "discard") recovery = RecoveryChoice::Discard;
+    else if (recoveryArg != "keep") {
+        call->fail("recovery is keep, restore or discard.");
+        return;
+    }
     std::string given;
     if (args.contains("scene")) {
         if (args["scene"].is_string()) given = args["scene"].get<std::string>();
         std::string error;
         if (SceneProject* known = McpRefs::resolveScene(project, args["scene"], error)) {
             if (known->opened && known->scene) {
-                project->setSelectedSceneId(known->id);
-                call->ok("Scene " + std::to_string(known->id) + " \"" + known->name + "\" is open; selected it.",
-                         Json{{"scene", sceneInfo(project, *known)}});
+                // open already: its backup can still be restored or discarded now
+                RecoveryOutcome outcome;
+                const uint32_t knownId = known->id;
+                if (!known->filepath.empty()) {
+                    outcome.checked = true;
+                    outcome.backup = SceneBackups::scan(project->getProjectPath(), project->normalizeToProjectRelative(known->filepath));
+                    outcome.applied = recovery;
+                    if (outcome.backup.status == BackupStatus::Usable) {
+                        if (recovery == RecoveryChoice::Restore && !project->restoreSceneFromBackup(knownId)) {
+                            call->fail("The auto-saved copy of the scene could not be restored (see the console).");
+                            return;
+                        }
+                        if (recovery == RecoveryChoice::Discard) project->discardSceneBackup(knownId);
+                    }
+                }
+                SceneProject* current = project->getScene(project->findSceneByPath(project->getProjectPath() / outcome.backup.source));
+                if (!current) current = project->getScene(knownId);
+                if (!current) {
+                    call->fail("The scene is gone.");
+                    return;
+                }
+                project->setSelectedSceneId(current->id);
+                call->ok("Scene " + std::to_string(current->id) + " \"" + current->name + "\" is open; selected it.",
+                         Json{{"scene", sceneInfo(project, *current)}, {"recovery", recoveryJson(outcome, recoveryName(outcome.applied))},
+                              {"load_report", loadReportSummary(current->loadReport, findPreservedStore(current->scene))}});
                 return;
             }
             if (known->filepath.empty()) {
@@ -218,14 +272,29 @@ void openSceneTool(const CallPtr& call) {
         call->fail("\"" + given + "\" is not a .scene file.");
         return;
     }
+    project->setNextRecoveryChoice(recovery);
     const uint32_t id = project->openSceneNow(given, args.value("close_previous", false), unsaved, &error);
+    project->setNextRecoveryChoice(RecoveryChoice::Keep);
     SceneProject* scene = id != NULL_PROJECT_SCENE ? project->getScene(id) : nullptr;
     if (!scene) {
         call->fail(error.empty() ? "The scene could not be opened." : error);
         return;
     }
-    call->ok("Opened scene " + std::to_string(id) + " \"" + scene->name + "\" and selected it.",
-             Json{{"scene", sceneInfo(project, *scene)}});
+    const RecoveryOutcome& outcome = project->getLastRecovery();
+    std::string note;
+    if (outcome.checked && outcome.backup.status == BackupStatus::Usable) {
+        note = outcome.applied == RecoveryChoice::Restore ? " Restored its auto-saved changes (modified; save to keep them)." :
+               outcome.applied == RecoveryChoice::Discard ? " Discarded its auto-saved changes." :
+               " It has auto-saved changes from a session that did not close normally (" + outcome.backup.savedAt +
+               "): open_scene recovery=restore or discard.";
+    }
+    const Json report = loadReportSummary(scene->loadReport, findPreservedStore(scene->scene));
+    if (report["skipped"].get<size_t>() > 0) {
+        note += " It did not load completely: get_load_report lists what was kept and dropped.";
+    }
+    call->ok("Opened scene " + std::to_string(id) + " \"" + scene->name + "\" and selected it." + note,
+             Json{{"scene", sceneInfo(project, *scene)}, {"recovery", recoveryJson(outcome, recoveryName(outcome.applied))},
+                  {"load_report", report}});
 }
 
 void closeSceneTool(const CallPtr& call) {
@@ -265,28 +334,44 @@ void saveSceneTool(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     std::string error;
+    // a scene that did not load completely is written only when the agent accepts the loss
+    const DegradedSavePolicy policy = args.value("allow_data_loss", false) ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
 
     if (args.value("all", false)) {
         Json saved = Json::array();
         Json skipped = Json::array();
         Json failed = Json::array();
+        Json refused = Json::array();
         for (SceneProject* scene : project->getScenesAndPrefabStages()) {
             if (!scene->scene || !project->hasSceneUnsavedChanges(scene->id)) continue;
             if (scene->filepath.empty() && !project->isPrefabStage(scene->id)) {
                 skipped.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"reason", "never saved: save_scene with a path"}});
                 continue;
             }
-            if (project->saveSceneNow(scene->id, {}, &error)) {
-                saved.push_back(Json{{"id", scene->id}, {"name", scene->name}});
+            const uint32_t id = scene->id;
+            const std::string name = scene->name;
+            SaveResult result = SaveResult::Failed;
+            if (project->saveSceneNow(id, {}, &error, policy, &result)) {
+                SceneProject* after = project->getScene(id);
+                saved.push_back(Json{{"id", id}, {"name", name}, {"degraded", after ? degradedJson(*after) : Json(nullptr)}});
+            } else if (result == SaveResult::RefusedDegraded) {
+                SceneProject* after = project->getScene(id);
+                Json item = after ? degradedDocumentError(after->filepath.generic_string(), after->loadReport) : Json::object();
+                item["id"] = id;
+                item["name"] = name;
+                refused.push_back(item);
             } else {
-                failed.push_back(Json{{"id", scene->id}, {"name", scene->name}, {"error", error}});
+                failed.push_back(Json{{"id", id}, {"name", name}, {"error", error}});
             }
         }
-        Json data = {{"saved", saved}, {"skipped", skipped}, {"failed", failed}};
+        Json data = {{"saved", saved}, {"skipped", skipped}, {"failed", failed}, {"refused", refused}};
         const std::string text = "Saved " + std::to_string(saved.size()) + " scene(s)" +
             (skipped.empty() ? std::string() : ", skipped " + std::to_string(skipped.size()) + " untitled") +
-            (failed.empty() ? std::string() : ", " + std::to_string(failed.size()) + " failed") + ".";
-        if (!failed.empty()) call->fail(text, data);
+            (failed.empty() ? std::string() : ", " + std::to_string(failed.size()) + " failed") +
+            (refused.empty() ? std::string() : ", refused " + std::to_string(refused.size()) +
+                " that did not load completely (allow_data_loss=true writes them anyway)") + ".";
+        if (!refused.empty()) data["code"] = "degraded_document";
+        if (!failed.empty() || !refused.empty()) call->fail(text, data);
         else call->ok(text, data);
         return;
     }
@@ -303,7 +388,8 @@ void saveSceneTool(const CallPtr& call) {
         }
         const fs::path current = project->normalizeToProjectRelative(scene->filepath).lexically_normal();
         if (relative != current) {
-            // Save As: the scene now lives in the new file (the old one stays on disk)
+            // Save As: the scene now lives in the new file (the old one stays on disk, and with
+            // it whatever this editor could not read: never gated)
             if (scene->playState != ScenePlayState::STOPPED) {
                 call->fail("Cannot save a scene while it plays.");
                 return;
@@ -322,7 +408,7 @@ void saveSceneTool(const CallPtr& call) {
             if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
             SceneProject* saved = project->getScene(id);
             call->ok("Saved scene " + std::to_string(id) + " as " + relative.generic_string() + ".",
-                     Json{{"scene", sceneInfo(project, *saved)}});
+                     Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
             return;
         }
     }
@@ -333,7 +419,21 @@ void saveSceneTool(const CallPtr& call) {
             return;
         }
     }
-    if (!project->saveSceneNow(id, untitledPath, &error)) {
+    SaveResult result = SaveResult::Failed;
+    if (!project->saveSceneNow(id, untitledPath, &error, policy, &result)) {
+        SceneProject* refused = project->getScene(id);
+        if (result == SaveResult::RefusedDegraded && refused) {
+            if (project->isPrefabStage(id)) {
+                const PrefabStage* stage = project->getPrefabStage(id);
+                const Prefab* prefab = stage ? project->getPrefab(stage->assetPath) : nullptr;
+                if (prefab) {
+                    failDegraded(*call, stage->assetPath.generic_string(), prefab->loadReport);
+                    return;
+                }
+            }
+            failDegraded(*call, refused->filepath.generic_string(), refused->loadReport);
+            return;
+        }
         call->fail(error.empty() ? "The scene could not be saved." : error);
         return;
     }
@@ -345,7 +445,68 @@ void saveSceneTool(const CallPtr& call) {
     }
     call->ok("Saved scene " + std::to_string(id) + " \"" + saved->name + "\"" +
              (saved->filepath.empty() ? "." : " to " + project->normalizeToProjectRelative(saved->filepath).generic_string() + "."),
-             Json{{"scene", sceneInfo(project, *saved)}});
+             Json{{"scene", sceneInfo(project, *saved)}, {"degraded", degradedJson(*saved)}});
+}
+
+// ------------------------------------------------------------------ load reports / backups
+
+void getLoadReportTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    const PreservedStore* store = findPreservedStore(scene->scene);
+    Json report = loadReportJson(scene->loadReport, store);
+    report["scene_id"] = scene->id;
+    std::string text = "Scene " + std::to_string(scene->id) + " \"" + scene->name + "\": ";
+    const size_t preserved = report["preserved"].get<size_t>();
+    const size_t dropped = report["dropped"].get<size_t>();
+    if (preserved == 0 && dropped == 0) {
+        text += "loaded completely.";
+    } else {
+        text += std::to_string(preserved) + " value(s) this editor does not read are kept in the file, " + std::to_string(dropped) +
+                " would be lost by a save" + (dropped > 0 ? " (save_scene refuses without allow_data_loss)." : ".");
+        for (const LoadIssue* issue : scene->loadReport.outstanding(store)) {
+            text += "\n" + issue->consoleLine();
+        }
+    }
+    (void)project;
+    call->ok(text, report);
+}
+
+void listSceneBackupsTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    Json backups = Json::array();
+    std::string text;
+    for (const SceneBackupInfo& backup : project->listSceneBackups()) {
+        Json item = backupJson(project, backup);
+        text += "\n" + item["source"].get<std::string>() + " -> " + item["backup"].get<std::string>() + " (" +
+                item["status"].get<std::string>() + ", auto-saved " + backup.savedAt + ")";
+        backups.push_back(item);
+    }
+    call->ok(backups.empty() ? "No auto-saved backups." : std::to_string(backups.size()) + " backup(s):" + text, Json{{"backups", backups}});
+}
+
+void discardSceneBackupTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const Json& args = call->args();
+    std::string error;
+    if (SceneProject* scene = McpRefs::resolveScene(project, args.value("scene", Json()), error)) {
+        if (project->discardSceneBackup(scene->id)) {
+            call->ok("Deleted the auto-saved backup of scene " + std::to_string(scene->id) + " \"" + scene->name + "\".",
+                     Json{{"scene_id", scene->id}, {"discarded", true}});
+        } else {
+            call->ok("Scene \"" + scene->name + "\" has no auto-saved backup.", Json{{"scene_id", scene->id}, {"discarded", false}});
+        }
+        return;
+    }
+    const std::string given = args.value("scene", Json()).is_string() ? args["scene"].get<std::string>() : std::string();
+    if (!given.empty() && Util::isSceneFile(given)) {
+        const bool removed = project->discardSceneBackup(fs::path(given));
+        call->ok(removed ? "Deleted the auto-saved backup of " + given + "." : given + " has no auto-saved backup.",
+                 Json{{"scene", given}, {"discarded", removed}});
+        return;
+    }
+    call->fail(error.empty() ? "Pass scene: a scene id, name or .scene path." : error);
 }
 
 void renameSceneTool(const CallPtr& call) {
@@ -1362,7 +1523,9 @@ void registerSceneTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"scene", sceneRef(".scene path, or id/name of a project scene.")},
             {"close_previous", withDefault(boolean("Close the previously selected scene."), false)},
-            {"unsaved", unsavedSchema()}
+            {"unsaved", unsavedSchema()},
+            {"recovery", withDefault(stringEnum("Its crash backup: keep (offered again), restore (modified) or discard.",
+                {"keep", "restore", "discard"}), "keep")}
         }, {"scene"});
         tool.allowedWhilePlaying = false;
         tool.handler = openSceneTool;
@@ -1397,15 +1560,50 @@ void registerSceneTools(McpRegistry& registry) {
         tool.title = "Save Scene";
         tool.description =
             "Save a scene and its modified child scenes. Untitled scenes need path; path on a saved scene = Save As. "
-            "all=true: every modified scene (untitled skipped). A prefab stage id saves its prefab.";
+            "all=true: every modified scene (untitled skipped). A prefab stage id saves its prefab. Fails with "
+            "degraded_document if data would be lost (get_load_report).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"path", assetPath(".scene path.")},
-            {"all", withDefault(boolean(""), false)}
+            {"all", withDefault(boolean(""), false)},
+            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
         });
         tool.allowedWhilePlaying = false;
         tool.annotations.idempotent = true;
         tool.handler = saveSceneTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_load_report";
+        tool.title = "Get Load Report";
+        tool.description =
+            "What the scene's load could not read: issues with kind, file:line, did-you-mean and fate (preserved: "
+            "kept on save; dropped: lost by a save).";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.handler = getLoadReportTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "list_scene_backups";
+        tool.title = "List Scene Backups";
+        tool.description =
+            "Auto Save backups with status (usable: open_scene recovery=restore; stale: the file changed).";
+        tool.inputSchema = object({});
+        tool.annotations.readOnly = true;
+        tool.handler = listSceneBackupsTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "discard_scene_backup";
+        tool.title = "Discard Scene Backup";
+        tool.description = "Deletes a scene's Auto Save backup.";
+        tool.inputSchema = object({{"scene", sceneRef()}}, {"scene"});
+        tool.annotations.destructive = true;
+        tool.handler = discardSceneBackupTool;
         registry.addTool(std::move(tool));
     }
     {

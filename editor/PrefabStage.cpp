@@ -11,6 +11,7 @@
 
 #include "Project.h"
 #include "EditorHost.h"
+#include "StreamPreserved.h"
 #include "Out.h"
 #include "Stream.h"
 #include "Factory.h"
@@ -644,17 +645,51 @@ YAML::Node editor::Project::encodePrefabStage(PrefabStage& stage) {
     node["nextEntity"] = nextEntity;
     node["root"] = stage.root;
     node["members"] = membersNode;
+    // the asset's header keys this editor does not know go with it (docs/data-safety.md)
+    if (prefab && prefab->registry) {
+        StreamSave::applyRootKeys(prefab->registry.get(), NULL_ENTITY, node);
+    }
     return node;
 }
 
-bool editor::Project::savePrefabStage(uint32_t sceneId) {
+bool editor::Project::isPrefabStageDegraded(uint32_t sceneId) const {
+    const PrefabStage* stage = getPrefabStage(sceneId);
+    if (!stage) {
+        return false;
+    }
+    auto it = prefabAssets.find(stage->assetPath);
+    return it != prefabAssets.end() && it->second.loadReport.dropped() > 0;
+}
+
+bool editor::Project::savePrefabStage(uint32_t sceneId, DegradedSavePolicy policy) {
     PrefabStage* stage = getPrefabStage(sceneId);
     if (!stage) {
         return false;
     }
-    stage->changePending = false;
     SceneProject& sceneProject = stage->sceneProject;
     const std::filesystem::path path = stage->assetPath;
+
+    // the asset did not load completely: the host decides (Refuse when headless)
+    if (policy == DegradedSavePolicy::Refuse && isPrefabStageDegraded(sceneId)) {
+        DegradedSaveRequest request;
+        request.documentName = path.filename().string();
+        request.path = path;
+        for (const LoadIssue& issue : prefabAssets.at(path).loadReport.issues) {
+            if (issue.fate == LoadIssueFate::Dropped) {
+                request.dropped.push_back(issue);
+            }
+        }
+        request.saveAnyway = [this, sceneId]() {
+            savePrefabStage(sceneId, DegradedSavePolicy::SaveAnyway);
+        };
+        policy = editor::getEditorHost().confirmDegradedSave(request);
+        if (policy == DegradedSavePolicy::Refuse) {
+            Out::warning("Prefab %s not saved: it did not load completely and saving it would remove %zu value(s) "
+                         "this editor could not read.", path.generic_string().c_str(), request.dropped.size());
+            return false;
+        }
+    }
+    stage->changePending = false;
 
     const YAML::Node node = encodePrefabStage(*stage);
     if (!node || !node.IsMap()) {
@@ -684,7 +719,7 @@ bool editor::Project::savePrefabStage(uint32_t sceneId) {
     }
     prefab->needsUpgrade = false;
     prefab->isModified = true;
-    savePrefabToDisk(path);
+    savePrefabToDisk(path, policy);
     if (prefab->isModified) {
         return false; // could not be written (logged)
     }
@@ -953,7 +988,9 @@ void editor::Project::updatePrefabStages(bool userEditing) {
             stage.changePending = true;
             stage.lastChange = now;
         }
-        if (prefabAutoSave && unsaved && stage.changePending && !userEditing && now - stage.lastChange >= AUTO_SAVE_DELAY) {
+        // never for an asset that did not load completely (the stage bar says Auto Save is paused)
+        if (prefabAutoSave && unsaved && stage.changePending && !userEditing && now - stage.lastChange >= AUTO_SAVE_DELAY &&
+                !isPrefabStageDegraded(sceneId)) {
             // a save that fails (no root) is tried again after the next change only
             stage.autoSaveFailed = !savePrefabStage(sceneId);
         }

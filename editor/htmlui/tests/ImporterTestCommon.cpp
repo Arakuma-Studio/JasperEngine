@@ -10,6 +10,7 @@
 #include "htmlui/compat/UrlResolver.h"
 
 #include "json.hpp"
+#include "util/FileUtils.h"
 
 #include <cerrno>
 #include <csignal>
@@ -62,11 +63,11 @@ namespace {
 }
 
 fs::path test::fixtureDir(){
-    return fs::u8path(JASPER_EDITOR_TEST_FIXTURES);
+    return editor::FileUtils::pathFromUtf8(JASPER_EDITOR_TEST_FIXTURES);
 }
 
 fs::path test::sourceDir(){
-    return fs::u8path(JASPER_EDITOR_TEST_SOURCE_DIR);
+    return editor::FileUtils::pathFromUtf8(JASPER_EDITOR_TEST_SOURCE_DIR);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -221,16 +222,16 @@ ImportTarget TempProject::target(const std::string& destDir) const{
 }
 
 void TempProject::write(const std::string& projectRelative, const std::string& content) const{
-    writeFile(directory / fs::u8path(projectRelative), content);
+    writeFile(directory / editor::FileUtils::pathFromUtf8(projectRelative), content);
 }
 
 std::string TempProject::read(const std::string& projectRelative) const{
-    return readFile(directory / fs::u8path(projectRelative));
+    return readFile(directory / editor::FileUtils::pathFromUtf8(projectRelative));
 }
 
 bool TempProject::exists(const std::string& projectRelative) const{
     std::error_code ec;
-    return fs::is_regular_file(directory / fs::u8path(projectRelative), ec);
+    return fs::is_regular_file(directory / editor::FileUtils::pathFromUtf8(projectRelative), ec);
 }
 
 compat::ImportManifest TempProject::manifest() const{

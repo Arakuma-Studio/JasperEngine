@@ -27,6 +27,7 @@
 
 #include "window/dialog/ProjectSaveDialog.h"
 #include "window/dialog/SceneSaveDialog.h"
+#include "window/dialog/DataSafetyDialogs.h"
 #include "window/dialog/ExportWindow.h"
 #include "window/dialog/EditorSettingsWindow.h"
 #include "window/dialog/ProjectSettingsWindow.h"
@@ -53,6 +54,8 @@ namespace jasperengine::editor::mcp {
 }
 
 namespace jasperengine::editor{
+
+    class JobsMemoryWindow;
 
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
@@ -130,6 +133,12 @@ namespace jasperengine::editor{
         bool benchmarkEnabled = false;
         bool benchmarkExit = false;
         bool benchmarkFailed = false;
+        // `mcp --project` on a project another editor holds: project_locked, exit code 3
+        int startupExitCode = 0;
+        // the window title: the project's name, then " - Level1.scene (Partial Load)" while the
+        // scene shown did not load completely
+        std::string windowTitleProject;
+        std::string windowTitleSuffix;
         bool benchmarkCameraReady = false;
         uint32_t benchmarkSceneId = 0;
         std::filesystem::path benchmarkProject;
@@ -166,6 +175,7 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
+        JobsMemoryWindow* jobsMemoryWindow;
         PlayInput* playInput;
         GameWindow* gameWindow;
         MainToolbar* mainToolbar;
@@ -200,6 +210,8 @@ namespace jasperengine::editor{
         std::string alertPendingChoice;
         ProjectSaveDialog projectSaveDialog;
         SceneSaveDialog sceneSaveDialog;
+        // Recover Unsaved Changes, Saving Would Lose Data, the second-instance dialog
+        DataSafetyDialogs dataSafetyDialogs;
         ExportWindow exportWindow;
         EditorSettingsWindow editorSettingsWindow;
         ProjectSettingsWindow projectSettingsWindow;
@@ -305,7 +317,7 @@ namespace jasperengine::editor{
 
         bool isBenchmarkMode() const { return benchmarkEnabled; }
         bool consumeBenchmarkExit();
-        int getExitCode() const { return benchmarkFailed ? 1 : 0; }
+        int getExitCode() const { return startupExitCode != 0 ? startupExitCode : (benchmarkFailed ? 1 : 0); }
 
         bool isProjectLoading() const { return projectLoading; }
         const std::string& getLoadingStatus() const { return loadingStatus; }
@@ -343,6 +355,9 @@ namespace jasperengine::editor{
         void registerSaveDiscardAlert(std::string title, std::string message, std::function<void()> onSave, std::function<void()> onDiscard = nullptr, std::function<void()> onCancel = nullptr) override;
         void openPrefabAsset(const std::filesystem::path& path, uint32_t contextSceneId = 0, uint32_t contextRoot = 0, bool inContext = true) override;
         void registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback = nullptr) override;
+        DegradedSavePolicy confirmDegradedSave(const DegradedSaveRequest& request) override;
+        RecoveryChoice resolveSceneRecovery(const SceneBackupInfo& backup) override;
+        bool confirmOpenLockedProject(const ProjectLockInfo& info) override;
         void registerProjectSaveDialog(std::function<void()> callback = nullptr) override;
 
         // Thread-safe: schedules a task to run on the main/GL thread during the next frame.
@@ -389,6 +404,7 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        JobsMemoryWindow* getJobsMemoryWindow() const;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;

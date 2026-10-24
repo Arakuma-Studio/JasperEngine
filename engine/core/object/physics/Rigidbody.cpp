@@ -334,7 +334,7 @@ size_t Rigidbody::getNumColliders() const{
 Collider3DType Rigidbody::getColliderType(size_t index) const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numColliders){
+    if (index < body.numColliders){
         return body.colliders[index].type;
     }else{
         Log::error("Cannot find shape %i of body", index);
@@ -349,7 +349,7 @@ void Rigidbody::setColliderDensity(float density){
 void Rigidbody::setColliderDensity(size_t index, float density){
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numColliders){
+    if (index < body.numColliders){
         body.colliders[index].density = density;
         if (body.colliders[index].shape && body.colliders[index].shape->GetType() == JPH::EShapeType::Convex){
             JPH::ConvexShape* convexShape = (JPH::ConvexShape*)body.colliders[index].shape.GetPtr();
@@ -369,7 +369,7 @@ float Rigidbody::getColliderDensity() const{
 float Rigidbody::getColliderDensity(size_t index) const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
-    if (index >= 0 && index < body.numColliders){
+    if (index < body.numColliders){
         return body.colliders[index].density;
     }else{
         Log::error("Cannot find shape %i of body", index);
@@ -798,7 +798,6 @@ void Rigidbody::applyAngularImpulse(const Vector3& angularImpulse){
 }
 
 bool Rigidbody::applyBuoyancyImpulse(const Vector3& surfacePosition, const Vector3& surfaceNormal, const float buoyancy, const float linearDrag, const float angularDrag, const Vector3& fluidVelocity, const Vector3& gravity, const float deltaTime){
-    RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
     JPH::Vec3 surPos = JPH::Vec3(surfacePosition.x, surfacePosition.y, surfacePosition.z);
     JPH::Vec3 surNor = JPH::Vec3(surfaceNormal.x, surfaceNormal.y, surfaceNormal.z);

@@ -11,6 +11,8 @@
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"
+#include "util/JoltJobAdapter.h"
+#include "memory/MemoryStats.h"
 #endif
 
 #include <algorithm>
@@ -75,16 +77,29 @@ namespace {
     // Scene) in a static, so ~PhysicsSystem runs during static destruction and must not
     // find these already gone.
     JPH::TempAllocatorImpl& sharedPhysicsTempAllocator(){
-        static JPH::TempAllocatorImpl* instance = new JPH::TempAllocatorImpl(10 * 1024 * 1024);
+        constexpr unsigned int bytes = 10 * 1024 * 1024;
+        static JPH::TempAllocatorImpl* instance = [](){
+            // its block, reserved for the process, in the memory stats
+            static memory::TrackedBytes* tracked = new memory::TrackedBytes("Physics.JoltTempAllocator", memory::Residency::Cpu);
+            tracked->add(bytes);
+            tracked->setCapacity(bytes);
+            return new JPH::TempAllocatorImpl(bytes);
+        }();
         return *instance;
     }
-    JPH::JobSystemThreadPool& sharedPhysicsJobSystem(){
+    // Physics jobs run on the engine's job system (one CPU budget for the engine and Jolt);
+    // JE_JOLT_OWN_POOL keeps Jolt's own pool for one release as a fallback.
+    JPH::JobSystem& sharedPhysicsJobSystem(){
+    #ifdef JE_JOLT_OWN_POOL
         // hardware_concurrency() is unsigned and reports 0 when unknown, so clamp
         // instead of subtracting into a huge worker count on a single-core machine.
         const unsigned int cores = JPH::thread::hardware_concurrency();
         const int workers = (cores > 1) ? (int)(cores - 1) : 1;
         static JPH::JobSystemThreadPool* instance =
             new JPH::JobSystemThreadPool(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workers);
+    #else
+        static JoltJobAdapter* instance = new JoltJobAdapter(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers);
+    #endif
         return *instance;
     }
 #endif
@@ -2880,7 +2895,7 @@ void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude
 }
 
 void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude, uint32_t groupsToExclude){
-    if (index >= 0 && index < MAX_BROADPHASELAYER_3D){
+    if (index < MAX_BROADPHASELAYER_3D){
         broad_phase_layer_interface->ConfigureLayer(JPH::BroadPhaseLayer(index), groupsToInclude, groupsToExclude);
 
         auto bodies3d = scene->getComponentArray<RigidbodyComponent>();

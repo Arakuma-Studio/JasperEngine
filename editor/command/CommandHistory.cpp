@@ -232,9 +232,8 @@ void editor::CommandHistory::releaseCommand(std::unique_ptr<Command> cmd, size_t
 }
 
 void editor::CommandHistory::releaseEntries(std::vector<UndoEntry>& entries){
-    // newest first, as an undo history frees its tail
-    for (auto it = entries.rbegin(); it != entries.rend(); ++it){
-        releaseCommand(std::move(it->cmd), it->info.bytes);
+    for (UndoEntry& entry : entries){
+        releaseCommand(std::move(entry.cmd), entry.info.bytes);
     }
     entries.clear();
 }

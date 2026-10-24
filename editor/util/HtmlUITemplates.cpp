@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUITemplates.h"
+#include "io/AtomicFile.h"
 
 #include <fstream>
 
@@ -74,23 +75,19 @@ bool editor::HtmlUITemplates::createDocument(const fs::path& directory, const st
     const fs::path html = directory / (name + ".html");
     const fs::path css = directory / (name + ".css");
 
-    std::ofstream cssFile(css, std::ios::trunc | std::ios::binary);
-    if (!cssFile){
-        error = "could not write " + css.string();
+    const io::WriteResult cssWritten = io::writeFileAtomic(css, styleSheetText());
+    if (!cssWritten.ok()){
+        error = "could not write " + css.string() + ": " + io::describeWriteError(cssWritten);
         return false;
     }
-    cssFile << styleSheetText();
-    cssFile.close();
 
-    std::ofstream htmlFile(html, std::ios::trunc | std::ios::binary);
-    if (!htmlFile){
+    const io::WriteResult htmlWritten = io::writeFileAtomic(html, documentText(name));
+    if (!htmlWritten.ok()){
         std::error_code ignored;
         fs::remove(css, ignored);
-        error = "could not write " + html.string();
+        error = "could not write " + html.string() + ": " + io::describeWriteError(htmlWritten);
         return false;
     }
-    htmlFile << documentText(name);
-    htmlFile.close();
 
     return true;
 }

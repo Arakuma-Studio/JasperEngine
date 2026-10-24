@@ -138,8 +138,8 @@ with clangd 18 it printed the same diagnostics and count, so it is not needed fo
 
 Headers and C++ files created after the editor last wrote the compile database get the flags
 of the closest listed source, so a new script checks right away; the editor lists it on its
-next open or build. The C++ standard is Project Settings > Build > C++ Standard
-(`set_project_settings` `scripting.cxx_standard`).
+next open or build. The C++ standard is Project Settings > Scripting > C++ Standard
+(`set_project_settings` `scripting.cxx_standard`: 20, the default, or 23).
 
 The CMake build of the scripts (Play, `compile_scripts`) also exports its own
 `compile_commands.json` in `.jasperengine/build`, for IDEs that read that one.

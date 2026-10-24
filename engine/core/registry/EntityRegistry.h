@@ -70,11 +70,24 @@ namespace jasperengine {
 
     enum class EntityPool { User, System };
 
+    // Data the editor keeps next to a registry: what a scene file held that the editor could
+    // not read, written back on save (editor/StreamPreserved.h). The engine never reads it; it
+    // only reports destroyed entities and removed components, so no entry outlives the entity
+    // or component it belongs to.
+    class JASPERENGINE_API EntityRegistryEditorData {
+    public:
+        virtual ~EntityRegistryEditorData() = default;
+        virtual void entityDestroyed(Entity entity) = 0;
+        virtual void componentRemoved(Entity entity, ComponentId componentId) = 0;
+        virtual void registryCleared() = 0;
+    };
+
     class JASPERENGINE_API EntityRegistry {
     private:
         EntityManager entityManager;
         ComponentManager componentManager;
         EntityPool defaultPool = EntityPool::User;
+        std::shared_ptr<EntityRegistryEditorData> editorData;
 
         void moveChildAux(Entity entity, bool increase, bool stopIfFound);
         void changeTransformChildren(Entity entity);
@@ -170,6 +183,10 @@ namespace jasperengine {
 
         void clear();
 
+        // For editor use: the editor's side table of this registry (nullptr until it sets one)
+        EntityRegistryEditorData* getEditorData() const { return editorData.get(); }
+        void setEditorData(std::shared_ptr<EntityRegistryEditorData> data) { editorData = std::move(data); }
+
         // Component methods
 
         template<typename T>
@@ -211,6 +228,9 @@ namespace jasperengine {
         template<typename T>
         void removeComponent(Entity entity){
             onComponentRemoved(entity, componentManager.getComponentId<T>());
+            if (editorData) {
+                editorData->componentRemoved(entity, componentManager.getComponentId<T>());
+            }
 
             if (componentManager.getComponentId<T>() == getComponentId<Transform>()) {
                 changeTransformChildren(entity);

@@ -44,7 +44,7 @@ namespace {
 
     class LuaRefHolder;
 
-    std::unordered_set<LuaRefHolder*>& liveRefs(){
+    std::unordered_set<LuaRefHolder*>& animeLiveRefs(){
         static auto* refs = new std::unordered_set<LuaRefHolder*>();
         return *refs;
     }
@@ -54,11 +54,11 @@ namespace {
         LuaRefHolder(lua_State* L, int index): L(L){
             lua_pushvalue(L, index);
             ref = luaL_ref(L, LUA_REGISTRYINDEX);
-            liveRefs().insert(this);
+            animeLiveRefs().insert(this);
         }
         ~LuaRefHolder(){
             release();
-            liveRefs().erase(this);
+            animeLiveRefs().erase(this);
         }
         LuaRefHolder(const LuaRefHolder&) = delete;
         LuaRefHolder& operator=(const LuaRefHolder&) = delete;
@@ -88,7 +88,7 @@ namespace {
     using LuaRefPtr = std::shared_ptr<LuaRefHolder>;
 
     void releaseAllRefs(){
-        for (LuaRefHolder* ref : liveRefs())
+        for (LuaRefHolder* ref : animeLiveRefs())
             ref->release();
     }
 
@@ -437,7 +437,7 @@ namespace {
     }
 
     // the `root` of a parameters table: a UIElement or a UIDocument
-    UIElement rootOf(lua_State* L, int paramsIndex){
+    UIElement animeRootOf(lua_State* L, int paramsIndex){
         UIElement root;
         if (lua_type(L, paramsIndex) != LUA_TTABLE)
             return root;
@@ -474,7 +474,7 @@ namespace {
             lua_pushstring(L, "anime.animate(targets, params): params must be a table");
             return false;
         }
-        UIElement root = rootOf(L, 2);
+        UIElement root = animeRootOf(L, 2);
         AnimTargetList targets;
         toTargets(L, 1, root, targets);
         AnimParam params = toParam(L, 2, "");
@@ -762,7 +762,7 @@ namespace {
         }
         std::shared_ptr<AnimTimeline> keep = self(timeline);
         if (lua_type(L, 3) == LUA_TTABLE){
-            UIElement root = rootOf(L, 3);
+            UIElement root = animeRootOf(L, 3);
             AnimTargetList targets;
             toTargets(L, 2, root, targets);
             timeline->add(targets, toParam(L, 3, ""), positionArg(L, 4));
@@ -791,7 +791,7 @@ namespace {
             return false;
         }
         std::shared_ptr<AnimTimeline> keep = self(timeline);
-        UIElement root = rootOf(L, 3);
+        UIElement root = animeRootOf(L, 3);
         AnimTargetList targets;
         toTargets(L, 2, root, targets);
         timeline->set(targets, toParam(L, 3, ""), positionArg(L, 4));
@@ -1086,7 +1086,7 @@ namespace {
             lua_pushstring(L, "anime.utils.set(targets, props): props must be a table");
             return false;
         }
-        UIElement root = rootOf(L, 2);
+        UIElement root = animeRootOf(L, 2);
         AnimTargetList targets;
         toTargets(L, 1, root, targets);
         pushTimer(L, AnimUtils::set(targets, toParam(L, 2, "")));
@@ -1186,7 +1186,7 @@ namespace {
 
 size_t AnimLua::getLiveLuaRefs(){
     size_t count = 0;
-    for (LuaRefHolder* ref : liveRefs()){
+    for (LuaRefHolder* ref : animeLiveRefs()){
         if (ref->isAlive())
             count++;
     }

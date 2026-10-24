@@ -123,7 +123,12 @@ void editor::SceneWindow::drawPrefabStageBar(SceneProject& sceneProject) {
     const char* visibilityNames[] = {"Normal", "Gray", "Hidden"};
     const int visibility = static_cast<int>(project->getPrefabContextVisibility());
     const std::string contextLabel = std::string("Context: ") + visibilityNames[visibility] + " " ICON_FA_CARET_DOWN;
-    const float saveWidth = autoSave ? 0.0f : ImGui::CalcTextSize("Save").x + style.FramePadding.x * 2.0f + style.ItemSpacing.x;
+    // Auto Save never writes over an asset that did not load completely
+    const bool degraded = project->isPrefabStageDegraded(sceneProject.id);
+    const char* pausedText = "Auto Save paused: this prefab did not load completely";
+    const bool showSave = !autoSave || degraded;
+    const float saveWidth = (showSave ? ImGui::CalcTextSize("Save").x + style.FramePadding.x * 2.0f + style.ItemSpacing.x : 0.0f) +
+        (autoSave && degraded ? ImGui::CalcTextSize(pausedText).x + style.ItemSpacing.x : 0.0f);
     const float autoSaveWidth = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize("Auto Save").x + style.ItemSpacing.x;
     const float contextWidth = stage->inContext() ? ImGui::CalcTextSize(contextLabel.c_str(), nullptr, true).x + style.FramePadding.x * 2.0f + style.ItemSpacing.x : 0.0f;
     const float rightX = ImGui::GetWindowContentRegionMax().x - (saveWidth + autoSaveWidth + contextWidth) + style.ItemSpacing.x;
@@ -132,7 +137,12 @@ void editor::SceneWindow::drawPrefabStageBar(SceneProject& sceneProject) {
         ImGui::SetCursorPosX(rightX);
     }
 
-    if (!autoSave) {
+    if (autoSave && degraded) {
+        ImGui::TextColored(Theme::Colors::WarningText, "%s", pausedText);
+        ImGui::SetItemTooltip("Saving it would remove values this editor could not read. Save asks first.");
+        ImGui::SameLine();
+    }
+    if (showSave) {
         ImGui::BeginDisabled(!unsaved);
         if (ImGui::Button("Save")) {
             project->savePrefabStage(sceneProject.id);

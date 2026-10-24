@@ -13,7 +13,9 @@
 //                          (replaces add_project_scene / set_start_scene)
 //   edit_project_build_file  read / write ProjectBuild.cmake (replaces update_project_build_file)
 #include "McpTools.h"
+#include "DocumentFile.h"
 
+#include "mcp/McpDataSafety.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -200,7 +202,8 @@ fs::path untitledScenePath(Project* project, const SceneProject& scene, const fs
 // Saves prefab stages, scenes with unsaved changes (untitled ones into untitledDir) and the
 // code editor's buffers. Fills `saved` with what it saved.
 // saveUntitled: also untitled scenes without changes (a new project's scene), so they reach the build.
-bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntitled, Json& saved, std::string& error) {
+bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntitled, Json& saved, std::string& error,
+        DegradedSavePolicy policy = DegradedSavePolicy::Refuse, Json* refused = nullptr) {
     Project* project = ctx.project();
     saved = {{"scenes", Json::array()}, {"prefab_stages", Json::array()}, {"scripts", false}};
 
@@ -217,8 +220,13 @@ bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntit
         PrefabStage* stage = project->getPrefabStageAt(i);
         if (!stage || !project->hasUnsavedPrefabStage(stage->sceneProject.id)) continue;
         std::string message;
-        if (!project->saveSceneNow(stage->sceneProject.id, {}, &message)) {
+        SaveResult result = SaveResult::Failed;
+        if (!project->saveSceneNow(stage->sceneProject.id, {}, &message, policy, &result)) {
             error = "Could not save the prefab open in Prefab Mode: " + message;
+            if (result == SaveResult::RefusedDegraded && refused) {
+                const Prefab* prefab = project->getPrefab(stage->assetPath);
+                if (prefab) *refused = degradedDocumentError(stage->assetPath.generic_string(), prefab->loadReport);
+            }
             return false;
         }
         saved["prefab_stages"].push_back(stage->sceneProject.id);
@@ -236,8 +244,13 @@ bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntit
         fs::path target;
         if (scene->filepath.empty()) target = untitledScenePath(project, *scene, untitledDir);
         std::string message;
-        if (!project->saveSceneNow(id, target, &message)) {
+        SaveResult result = SaveResult::Failed;
+        if (!project->saveSceneNow(id, target, &message, policy, &result)) {
             error = "Could not save scene " + std::to_string(id) + " \"" + scene->name + "\": " + message;
+            if (result == SaveResult::RefusedDegraded && refused) {
+                SceneProject* after = project->getScene(id);
+                if (after) *refused = degradedDocumentError(after->filepath.generic_string(), after->loadReport);
+            }
             return false;
         }
         SceneProject* after = project->getScene(id);
@@ -455,11 +468,29 @@ void saveProjectTool(const CallPtr& call) {
         }
     }
 
+    // documents that did not load completely are written only when the agent accepts the loss
+    const bool allowDataLoss = args.value("allow_data_loss", false);
+    const DegradedSavePolicy policy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     Json saved;
+    Json refused;
     std::string error;
-    if (!saveEverything(ctx, sceneDir, true, saved, error)) {
-        call->fail(error, Json{{"unsaved", unsavedState(ctx)}});
+    if (!saveEverything(ctx, sceneDir, true, saved, error, policy, &refused)) {
+        Json data = refused.is_object() ? refused : Json::object();
+        data["unsaved"] = unsavedState(ctx);
+        call->fail(refused.is_object() ? error + " Pass allow_data_loss=true to write anyway." : error, data);
         return;
+    }
+    const LoadReport& projectReport = project->getProjectLoadReport();
+    if (projectReport.dropped() > 0) {
+        if (!allowDataLoss) {
+            Json data = degradedDocumentError("project.yaml", projectReport);
+            data["saved"] = saved;
+            call->fail("project.yaml did not load completely (" + std::to_string(projectReport.dropped()) +
+                       " value(s) this editor could not read); the scenes were saved, project.yaml was not. Pass "
+                       "allow_data_loss=true to write it anyway.", data);
+            return;
+        }
+        project->saveProjectFile(DegradedSavePolicy::SaveAnyway);
     }
 
     const std::string name = args.value("name", "");
@@ -972,6 +1003,67 @@ const std::vector<Setting>& settingsTable() {
         }
         add(boolField("player.async_loading", "Load the start scene asynchronously behind the loading scene.",
                       [](Project& p) -> bool& { return p.getLoadingSettings().asyncLoading; }));
+        // ---- threading (Project Settings > Player > Threading)
+        {
+            struct ThreadCount {
+                const char* key;
+                const char* description;
+                int minimum;
+                int maximum;
+                int ThreadingProjectSettings::*field;
+            };
+            const ThreadCount counts[] = {
+                {"player.threading.workers", "Job system workers: -1 Auto, 1-15. Applies on the next launch.", 1, 15, &ThreadingProjectSettings::workers},
+                {"player.threading.reserved_frame_workers", "Workers kept free of Background work: -1 Auto, 0-4. Applies live.", 0, 4, &ThreadingProjectSettings::reservedFrameWorkers},
+                {"player.threading.io_threads", "Asset reader threads: -1 Auto, 0-4. Applies on the next launch.", 0, 4, &ThreadingProjectSettings::ioThreads},
+            };
+            for (const ThreadCount& count : counts) {
+                Setting s;
+                s.key = count.key;
+                s.type = "int";
+                s.description = count.description;
+                const auto field = count.field;
+                const int minimum = count.minimum;
+                const int maximum = count.maximum;
+                s.get = [field](McpContext& ctx) { return Json(ctx.project()->getThreadingSettings().*field); };
+                s.set = [field, minimum, maximum](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                    long long v;
+                    if (!readInt(value, -1, maximum, v, error)) return false;
+                    if (v >= 0 && v < minimum) {
+                        error = "must be -1 (Auto) or " + std::to_string(minimum) + "-" + std::to_string(maximum);
+                        return false;
+                    }
+                    if (apply) {
+                        ThreadingProjectSettings settings = ctx.project()->getThreadingSettings();
+                        settings.*field = static_cast<int>(v);
+                        ctx.project()->setThreadingSettings(settings);
+                    }
+                    return true;
+                };
+                add(s);
+            }
+        }
+        {
+            Setting s;
+            s.key = "player.threading.web_pump_budget_ms";
+            s.type = "number";
+            s.description = "Web builds without threads: Background job time per frame (ms, 0.5-50).";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getThreadingSettings().webPumpBudgetMs); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.5, 50.0, v, error)) return false;
+                if (apply) {
+                    ThreadingProjectSettings settings = ctx.project()->getThreadingSettings();
+                    settings.webPumpBudgetMs = static_cast<float>(v);
+                    ctx.project()->setThreadingSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("player.threading.web_multithreaded", "Web export also builds a pthreads player, picked when the page is cross-origin isolated.",
+                        [](Project& p) { return p.getThreadingSettings().webMultithreaded; },
+                        [](Project& p, bool v) { ThreadingProjectSettings settings = p.getThreadingSettings(); settings.webMultithreaded = v; p.setThreadingSettings(settings); }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
 
@@ -1932,11 +2024,9 @@ void editProjectBuildFileTool(const CallPtr& call) {
     if (content.empty()) {
         fs::remove(path, ec);
     } else {
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        out << content;
-        out.close();
-        if (!out) {
-            call->fail("Could not write ProjectBuild.cmake.");
+        const io::WriteResult written = DocumentFiles::write(path, content);
+        if (!written.ok()) {
+            call->fail(DocumentFiles::saveFailureMessage("ProjectBuild.cmake", written));
             return;
         }
     }
@@ -2021,7 +2111,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", string("Temporary project: Save As to this empty absolute dir.")},
             {"name", string("Rename the project.")},
-            {"untitled_scene_dir", withDefault(string(""), "")}
+            {"untitled_scene_dir", withDefault(string(""), "")},
+            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = saveProjectTool;

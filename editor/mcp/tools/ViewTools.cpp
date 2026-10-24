@@ -3,6 +3,7 @@
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
 #include "McpTools.h"
+#include "io/AtomicFile.h"
 #include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
@@ -27,6 +28,7 @@
 #include "util/GraphicUtils.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/JobsMemoryWindow.h"
 #include "window/SceneWindow.h"
 
 #include "imgui.h"
@@ -279,9 +281,12 @@ void finishWithPng(const CaptureJobPtr& job, std::vector<uint8_t> png, int width
         }
         std::error_code ec;
         if (target.has_parent_path()) fs::create_directories(target.parent_path(), ec);
-        std::ofstream file(target, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(reinterpret_cast<const char*>(png.data()), static_cast<std::streamsize>(png.size()))) {
-            job->fail("Could not write the PNG to " + target.generic_string() + ".");
+        io::AtomicWriteOptions options;
+        options.durability = io::Durability::Cache;
+        const io::WriteResult written = io::writeFileAtomic(target,
+                std::string_view(reinterpret_cast<const char*>(png.data()), png.size()), options);
+        if (!written.ok()) {
+            job->fail("Could not write the PNG to " + target.generic_string() + ": " + io::describeWriteError(written) + ".");
             return;
         }
         info["saved_to"] = target.generic_string();
@@ -1012,8 +1017,11 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = TerrainEditWindow::WINDOW_NAME;
     } else if (window == "mcp") {
         imguiName = McpActivityWindow::WINDOW_NAME;
+    } else if (window == "jobs_memory") {
+        app.getJobsMemoryWindow()->setOpen(true);
+        imguiName = JobsMemoryWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp.");
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, jobs_memory.");
         return;
     }
     (void)app;
@@ -1182,7 +1190,7 @@ void registerViewTools(McpRegistry& registry) {
             "Open and bring an editor panel to the front, e.g. to show a watching human. Not needed before "
             "screenshot.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp"})},
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp", "jobs_memory"})},
             {"scene", sceneRef("window scene: whose tab.")}
         }, {"window"});
         tool.annotations.idempotent = true;
