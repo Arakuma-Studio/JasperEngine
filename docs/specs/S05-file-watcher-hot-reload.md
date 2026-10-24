@@ -544,9 +544,30 @@ Each backend test is parameterised over `{Native, Polling}`.
 - **Model materials.** "Submeshes not overridden or linked" are the ones without
   `overrideFields` (MeshSystem's existing submesh overrides, which loadGLTF restores).
 - **Prefab Mode Reload** closes the stage without saving and opens the prefab again.
-- **AC21** (manual Windows/macOS) and **AC23** (a wasm test run) could not be run here: the
-  procedure and the record are in `docs/specs/acceptance/S05.md`; on Android, iOS and the web
-  `FileWatchService` allocates nothing and `start` returns false by construction.
+- **AC21** (manual Windows/macOS) could not be run here: the procedure and the record are in
+  `docs/specs/acceptance/S05.md`. The Windows and macOS backends were reviewed by reading
+  instead; the review fixed FSEvents under a symlinked root (macOS reports `/var/folders/...`,
+  the temp folders the tests use, as `/private/var/...`: event paths are mapped back to the
+  root's spelling).
+- **AC23** is checked in the web build itself rather than by a wasm gtest (S02 builds no unit
+  tests for Emscripten): the page `?jasperengine_watch_probe=1` logs what
+  `FileWatchService::start` does there, and S02's browser gate expects
+  `start(native)=0 start(polling)=0 start(auto)=0 attached=0` (`tools/web/browser_gate.py`
+  gained `--query`). Android and iOS refuse by the same `WATCHING_SUPPORTED` constant.
+- **Reload stamps** (found by `test_rapid_saves_during_play`'s rare failure, which a 150-round
+  stress run reproduced 3 times): the applied-stamp table took the file's stat *after* the
+  handlers read it, so a save landing during a reload was recorded as reloaded and its own
+  change skipped. The trigger was a batch the paused reloader held during a writing call, applied
+  by the next frame in the middle of the next burst of saves. The stamp is now what the file was
+  before it was read; a change the watcher journaled is deduplicated by its journal sequence
+  (the watcher's delivery and a call's pick-up of it reload once, whatever the stat says); a
+  stamp within 100 ms of the file's mtime is "racy" (two saves in one timestamp tick keep mtime
+  and size) and compares the bytes; and HTML UI documents forget their own stamps for a change
+  the service reloads (`UIDocumentSystem::forgetFileStamps`). Regression tests:
+  `HotReloadServiceTests.RacyStampComparesTheBytes`,
+  `UIDocumentReloadTest.ForgottenStampsReloadASaveTheStampsCannotSee` and
+  `test_html_ui_reload.py::test_burst_after_writing_call_during_play` (40 rounds, more with
+  `JASPER_BURST_ROUNDS`).
 - **AC18.** `test_autosync.py` passes with one assertion widened: in
   `test_large_project_incremental`, "the scan is incremental" (`complete` false, `checked` <
   files) holds for the stat scan; with the watcher running there is no scan (`auto_sync.source`

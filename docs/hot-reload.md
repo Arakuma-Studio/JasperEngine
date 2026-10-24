@@ -104,6 +104,12 @@ A cache that depends on a file (thumbnails, glyph atlases, cooked textures) foll
 with a `ReloadInvalidator` (`editor/reload/HotReloadService.h`): Reloaded, Dropped and Content
 events by path and kind.
 
+A reload is recorded with what the file was before it was read (a save that lands while it
+reads keeps its own change) and the watcher's journal sequence; the watcher's delivery and a
+call's pick-up of the same change reload once. A stamp taken within 100 ms of the file's mtime
+is racy (two saves in one timestamp tick keep the time and the size): it compares the bytes
+before it says "unchanged".
+
 Inside `engine/core/io/watch/`: `FileWatcher` (one backend thread per root), the pure
 `FileChangeCoalescer` (quiet window 150 ms, settle by two stats 50 ms apart, removals held
 200 ms so a safe-save is one change, temp files never delivered), `ProjectFileIndex`,
