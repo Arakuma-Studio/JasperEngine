@@ -51,14 +51,14 @@ namespace fs = std::filesystem;
 namespace {
 
     // A scratch project directory, removed afterwards
-    class TempDir {
+    class AssetTestDir {
     public:
-        TempDir() {
+        AssetTestDir() {
             std::random_device device;
             path = fs::temp_directory_path() / ("je-asset-test-" + std::to_string(device()) + std::to_string(device()));
             fs::create_directories(path);
         }
-        ~TempDir() {
+        ~AssetTestDir() {
             std::error_code ec;
             fs::remove_all(path, ec);
         }
@@ -273,7 +273,7 @@ TEST(AssetTypes, TableDecidesTracking) {
 
 // AC1: two machines upgrading the same commit write the same identities
 TEST(AssetIdentity, UpgradeIsDeterministic) {
-    TempDir first, second;
+    AssetTestDir first, second;
     const fs::path a = copyFixture("legacy_paths_project", first.path / "project");
     const fs::path b = copyFixture("legacy_paths_project", second.path / "project");
     AssetDatabase dbA, dbB;
@@ -316,7 +316,7 @@ TEST(AssetIdentity, UpgradeIsDeterministic) {
 }
 
 TEST(AssetDatabase, OpeningAgainChangesNothing) {
-    TempDir dir;
+    AssetTestDir dir;
     const fs::path project = copyFixture("legacy_paths_project", dir.path / "project");
     {
         AssetDatabase database;
@@ -333,7 +333,7 @@ TEST(AssetDatabase, OpeningAgainChangesNothing) {
 
 // AC3: a file moved without its meta adopts it
 TEST(AssetDatabase, ExternalMoveWithoutMeta) {
-    TempDir dir;
+    AssetTestDir dir;
     write(dir.path / "assets/a.png", "png a content");
     write(dir.path / "assets/other.png", "other");
     AssetDatabase database;
@@ -356,7 +356,7 @@ TEST(AssetDatabase, ExternalMoveWithoutMeta) {
 
 // AC3 variant: no hash, two candidates with the orphan's name and size: the orphan stays
 TEST(AssetDatabase, ExternalMoveWithoutMetaAmbiguousKeepsOrphan) {
-    TempDir dir;
+    AssetTestDir dir;
     write(dir.path / "assets/a.png", "same size");
     AssetDatabase database;
     database.setBackgroundHashing(false);
@@ -376,7 +376,7 @@ TEST(AssetDatabase, ExternalMoveWithoutMetaAmbiguousKeepsOrphan) {
     EXPECT_NE(database.getAssetGuid("assets/y/a.png"), guid);
 
     // one candidate by name and size: adopted without a hash
-    TempDir single;
+    AssetTestDir single;
     write(single.path / "assets/b.png", "bbb");
     AssetDatabase other;
     other.setBackgroundHashing(false);
@@ -390,7 +390,7 @@ TEST(AssetDatabase, ExternalMoveWithoutMetaAmbiguousKeepsOrphan) {
 
 // AC4: a directory moved outside the editor with its metas
 TEST(AssetDatabase, ExternalDirectoryMove) {
-    TempDir dir;
+    AssetTestDir dir;
     for (int i = 0; i < 50; i++) {
         write(dir.path / "assets/pack" / ("tex" + std::to_string(i) + ".png"), "texture " + std::to_string(i));
     }
@@ -412,7 +412,7 @@ TEST(AssetDatabase, ExternalDirectoryMove) {
 
 // AC6: a copy made outside the editor gets a new GUID, its sub-assets derived from it
 TEST(AssetDatabase, DuplicateMetaResolution) {
-    TempDir dir;
+    AssetTestDir dir;
     write(dir.path / "assets/a.png", "aaa");
     write(dir.path / "assets/ship.gltf", gltf({"Hull", "", "Mast"}));
     AssetDatabase database;
@@ -443,7 +443,7 @@ TEST(AssetDatabase, DuplicateMetaResolution) {
 
 // AC7: sub-asset GUIDs survive a reorder (by key) and a rename of an unnamed mesh (by index)
 TEST(SubAssets, StableKeys) {
-    TempDir dir;
+    AssetTestDir dir;
     write(dir.path / "assets/ship.gltf", gltf({"Hull", "Mast", ""}));
     AssetDatabase database;
     database.open(dir.path, "assets");
@@ -468,7 +468,7 @@ TEST(SubAssets, StableKeys) {
 
 // AC9: path fallback for non-prefab types only (PREFABS.md §3)
 TEST(AssetResolve, PathFallbackNonPrefab) {
-    TempDir dir;
+    AssetTestDir dir;
     write(dir.path / "assets/a.png", "aaa");
     write(dir.path / "enemy.prefab", "type: Prefab\nversion: 3\nnextEntity: 1\nroot: 0\nmembers: []\n");
     AssetDatabase database;
@@ -496,7 +496,7 @@ TEST(AssetResolve, PathFallbackNonPrefab) {
 }
 
 TEST(AssetDatabase, InFileFormerGuids) {
-    TempDir dir;
+    AssetTestDir dir;
     write(dir.path / "level.scene", "id: 1\nname: Level\nentities: []\n");
     AssetDatabase database;
     database.open(dir.path, "assets");
@@ -515,7 +515,7 @@ TEST(AssetDatabase, InFileFormerGuids) {
 
 // AC5: deleting the cache changes no answer
 TEST(AssetIndex, CacheIsDisposable) {
-    TempDir dir;
+    AssetTestDir dir;
     const fs::path project = copyFixture("legacy_paths_project", dir.path / "project");
     const AssetIndex::Roots roots{"assets", "scripts"};
 
@@ -549,7 +549,7 @@ TEST(AssetIndex, CacheIsDisposable) {
 }
 
 TEST(AssetIndex, EdgesOfClosedFiles) {
-    TempDir dir;
+    AssetTestDir dir;
     const fs::path project = copyFixture("legacy_paths_project", dir.path / "project");
     AssetDatabase database;
     database.open(project, "assets");
