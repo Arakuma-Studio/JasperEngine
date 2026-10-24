@@ -180,3 +180,12 @@ async def test_preview_then_play_mode_restores(ed: Editor):
     st = (await focus(ed, index=0))["state"]
     ed.check_eq(st["mode"], "posing", "a pose click poses again")
     await ed.check_error("focus_window", {"window": "pose_animation", "pose": {"index": 99}}, contains="pose.index")
+
+
+async def test_project_window_thumbnail(ed: Editor):
+    """A .poseanim gets a Project window thumbnail: its middle pose on the preview model."""
+    r = await ed.call_raw("view_asset", {"path": WALK})
+    ed.check(not r.is_error and r.images, f"a thumbnail image: {r.text[:300]}")
+    image = pngdiff.decode(r.images[0][0])
+    ed.check(image[0] >= 64 and not pngdiff.flat(image, 8), "the thumbnail shows the character")
+    (ed.scratch.root / "poseanim-thumbnail.png").write_bytes(r.images[0][0])
