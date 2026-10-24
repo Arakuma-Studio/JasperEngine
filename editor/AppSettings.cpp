@@ -69,6 +69,7 @@ int AppSettings::resourcesItemViewStyle = 1;
 float AppSettings::resourcesLeftPanelWidth = 200.0f;
 float AppSettings::codeEditorFontSize = AppSettings::defaultCodeEditorFontSize;
 bool AppSettings::multiViewportEnabled = false;
+bool AppSettings::poseDockGrown = false;
 bool AppSettings::editorVSyncEnabled = true;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
@@ -231,6 +232,9 @@ bool AppSettings::loadSettings() {
             if (editorNode["multi_viewport"]) {
                 multiViewportEnabled = editorNode["multi_viewport"].as<bool>();
             }
+            if (editorNode["pose_dock_grown"]) {
+                poseDockGrown = editorNode["pose_dock_grown"].as<bool>();
+            }
             if (editorNode["vsync"]) {
                 editorVSyncEnabled = editorNode["vsync"].as<bool>();
             }
@@ -241,6 +245,7 @@ bool AppSettings::loadSettings() {
                 if (panelsNode["project"]) panelVisibility.project = panelsNode["project"].as<bool>();
                 if (panelsNode["console"]) panelVisibility.console = panelsNode["console"].as<bool>();
                 if (panelsNode["animation"]) panelVisibility.animation = panelsNode["animation"].as<bool>();
+                if (panelsNode["poseAnimation"]) panelVisibility.poseAnimation = panelsNode["poseAnimation"].as<bool>();
                 if (panelsNode["terrain"]) panelVisibility.terrain = panelsNode["terrain"].as<bool>();
                 if (panelsNode["mcp"]) panelVisibility.mcp = panelsNode["mcp"].as<bool>();
                 if (panelsNode["game"]) panelVisibility.game = panelsNode["game"].as<bool>();
@@ -369,6 +374,7 @@ bool AppSettings::saveSettings() {
         // Editor viewport settings
         YAML::Node editorNode;
         editorNode["multi_viewport"] = multiViewportEnabled;
+        editorNode["pose_dock_grown"] = poseDockGrown;
         editorNode["vsync"] = editorVSyncEnabled;
         YAML::Node panelsNode;
         panelsNode["hierarchy"] = panelVisibility.hierarchy;
@@ -376,6 +382,7 @@ bool AppSettings::saveSettings() {
         panelsNode["project"] = panelVisibility.project;
         panelsNode["console"] = panelVisibility.console;
         panelsNode["animation"] = panelVisibility.animation;
+        panelsNode["poseAnimation"] = panelVisibility.poseAnimation;
         panelsNode["terrain"] = panelVisibility.terrain;
         panelsNode["mcp"] = panelVisibility.mcp;
         panelsNode["game"] = panelVisibility.game;
@@ -613,6 +620,14 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+bool AppSettings::getPoseDockGrown() {
+    return poseDockGrown;
+}
+
+void AppSettings::setPoseDockGrown(bool grown) {
+    poseDockGrown = grown;
 }
 
 bool AppSettings::getHtmlUiAutoImport() {

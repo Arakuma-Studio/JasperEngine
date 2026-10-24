@@ -72,6 +72,7 @@
 #include "subsystem/AudioSystem.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
+#include "pose/PoseEditSession.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
 #include "yaml-cpp/yaml.h"
@@ -5542,11 +5543,24 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
         }
     }
 
+    // the bones of a character the Pose Animation window poses belong to the pose: read-only
+    bool posedBones = false;
+    if (PoseEditSession* pose = PoseEditSession::active(); pose && sceneProject && pose->bonesApplied()){
+        for (Entity entity : entities){
+            if (entity != pose->model() && pose->ownsEntity(sceneProject->id, entity)) posedBones = true;
+        }
+    }
+    if (posedBones){
+        ImGui::TextColored(Theme::Colors::WarningText, "Posed by the Pose Animation window (read-only)");
+    }
+
     beginTable(cpType, getLabelSize("billboard"));
 
+    ImGui::BeginDisabled(posedBones);
     propertyRow(RowPropertyType::Vector3, cpType, "position", "Position", sceneProject, entities, settingsPos);
     propertyRow(RowPropertyType::Quat, cpType, "rotation", "Rotation", sceneProject, entities);
     propertyRow(RowPropertyType::Vector3, cpType, "scale", "Scale", sceneProject, entities);
+    ImGui::EndDisabled();
     propertyRow(RowPropertyType::Bool, cpType, "visible", "Visible", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "billboard", "Billboard", sceneProject, entities);
 

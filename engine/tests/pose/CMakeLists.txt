@@ -23,6 +23,8 @@ file(GLOB POSE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 set(POSE_TEST_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 set(POSE_TEST_EDITOR_SOURCES
     ${POSE_TEST_REPO_ROOT}/editor/pose/PoseImage.cpp
+    ${POSE_TEST_REPO_ROOT}/editor/pose/PoseUiLogic.cpp
+    ${POSE_TEST_REPO_ROOT}/editor/pose/PoseViewportLogic.cpp
     ${POSE_TEST_REPO_ROOT}/editor/command/CommandHistory.cpp
     ${POSE_TEST_REPO_ROOT}/editor/command/type/WriteFilesCmd.cpp
     ${POSE_TEST_REPO_ROOT}/editor/command/type/RemoveFilesCmd.cpp

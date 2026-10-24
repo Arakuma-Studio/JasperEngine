@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "pose/PoseViewport.h"
 
 #include "resources/icons/sun-icon_png.h"
 #include "resources/icons/bulb-icon_png.h"
@@ -268,9 +269,13 @@ editor::SceneRender3D::SceneRender3D(Scene* scene): SceneRender(scene, false, tr
 
     uilayer.setViewportGizmoTexture(viewgizmo.getFramebuffer());
 
+    poseViewport = std::make_unique<PoseViewport>(scene, toolslayer.getScene());
 }
 
 editor::SceneRender3D::~SceneRender3D(){
+    // the pose overlays and ghosts first: they live in this scene and the tools layer
+    poseViewport.reset();
+
     delete lines;
     delete selLines;
 
@@ -1807,6 +1812,9 @@ void editor::SceneRender3D::updateSelLines(std::vector<OBB> obbs){
 
 void editor::SceneRender3D::update(std::vector<Entity> selEntities, std::vector<Entity> entities, Entity mainCamera, const SceneDisplaySettings& settings){
     SceneRender::update(selEntities, entities, mainCamera, settings);
+
+    // pose animation handles, floor and ghosts (hidden while playing or previewing a camera)
+    poseViewport->update(camera, getViewWidth(), getViewHeight(), overlayScale, isPlaying || isPreviewCameraActive());
 
     if (isPreviewCameraActive()){
         return;

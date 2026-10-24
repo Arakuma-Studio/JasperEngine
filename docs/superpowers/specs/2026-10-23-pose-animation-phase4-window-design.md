@@ -41,7 +41,7 @@ public:
     void setWorking(const pose::HumanPose&);         // applies to the bones immediately (no undo)
     bool commitWorking(const std::string& undoName, const std::string& mergeKey);  // toBodyPose, limits, grounding, doc commit
     // ghost / onion settings read by phase 5
-    struct OnionSettings { bool previous = true; bool next = false; float opacity = 0.3f; };
+    struct OnionSettings { bool previous = true; bool next = false; float opacity = 0.5f; };  // 0.5: ruling of the phase 5 fix round (was 0.3)
     OnionSettings& onion();
     // global edit (phase 5 drives it; the window shows its bar)
     bool globalEditActive() const;  void beginGlobalEdit();  bool applyGlobalEdit(const std::vector<int>& targets /* empty = all others */);  void cancelGlobalEdit();
@@ -64,6 +64,49 @@ Rules:
   `E` rotations, slots whose change is > 0.01 degrees) and applies `E'_b = D_b * E_b` to every
   target pose (offset unchanged), clamps, re-grounds, one undo step ("Global edit"); selecting
   another pose, previewing or closing cancels (restores the baseline).
+
+Additions (implementation; the members above are unchanged, these are extra):
+- `struct ViewSettings { bool showBalance = true; bool ghostDuringPreview = false; }; ViewSettings& view();`:
+  the Pose tab's "Show balance" and "Ghost during preview" toggles that phase 5 reads, beside `onion()`.
+- `bound()`, `rigInfo()` (the phase 2 `PoseRigInfo`: map, bone entities, bridges), `modelFile()`,
+  `realisation()` (`document()->realise(rig())`), `keyPose(i)` (realised key), `displayed()` (the pose the
+  bones show), `previewLength()`, `previewFrame()`, `globalEditChangedSlots()` (0: "Nothing changed yet").
+- `commitData(data, undoName, mergeKey, selection*, primary)` (the window's edits), `setSelection`, `goIdle()`
+  (window close), `suspend()` (before a save / play: bones restored, applied again by `update(dt)` once the
+  scene is stopped), `clearSceneState(sceneId)`, `update(dt)` (advances a playing preview, follows play
+  mode, scene switch and deleted models), `closeDocument()`, `setActive()`.
+- Global Edit computes `E` from a slot's three DOF values alone (4.5), so it needs no rig and also carries
+  slots the bound rig does not map (`poseui::applyGlobalEditDelta`). Cancelling after an edit commits the
+  baseline back as its own undo step ("Cancel global edit").
+- Fix round 1 (all additive, source-compatible):
+  - `int addListener(std::function<void()>)` now returns an id for `removeListener(id)`. A change made
+    while the listeners run queues one more round, so it is not dropped. The destructor notifies no one.
+  - `editable()`: false while the scene is saved (sync or async) or played, until `update()` reopens the
+    bone writes. Bones are never written then, whatever starts in between (select, posing, preview,
+    document edits). The window disables its edit controls; phase 5 must disable its handles too.
+  - `ownsEntity(sceneId, entity)`: the bound model or one of its bones. The Inspector keeps bone transforms
+    read-only while posing.
+  - `setViewportHandleEngaged(bool)` / `viewportHandleEngaged()` (also under the first names
+    `setViewportHandleActive` / `viewportHandleActive`): phase 5 sets it while a handle is hovered or dragged;
+    it is part of the Scene view's key routing condition.
+  - Bone restores also put back the skinned meshes' `bonesMatrix`, `skinnedAABB` and `worldAABB`, which
+    the scene file stores: a scene saved while posing is byte-identical to one saved without posing.
+  - `keyRouting()`: the Scene view's keys and undo go to the window. True only while the window is
+    shown, the session poses, and either the scene selection is the model or its bones, or a phase 5
+    handle is active. While it is true the window shows a "Pose keys" hint over the Scene view.
+  - `static suspendActive()`: called before duplicate, copy/cut, delete, create prefab (drag, variant)
+    and apply prefab, so those copy the rest bones.
+  - The rig follows the model's `.humanoid` sidecar: a change on disk (Map Bones, its undo/redo, MCP
+    `set_humanoid`) rebinds.
+  - Global Edit stays active through window edits that keep the poses (angles, offset, hold,
+    transition, feel, humanize, mirror, paste, reset/ground/center). Selecting another pose,
+    previewing, closing, adding, deleting or reordering cancels it (`poseui::keepsGlobalEdit`).
+  - The DOF maths behind `E` lives in one place, `pose::jointRotation` / `pose::jointAngles` in
+    `PoseRig.h`, which `PoseRig::localFromAngles` / `anglesFromLocal` use too.
+- The window: `PoseAnimationWindow::addTab({name, draw, order})` is the Templates tab's extension point;
+  MCP `focus_window {window: "pose_animation", pose: {entity, path, index, play, tab}}` binds, opens,
+  selects, previews and switches tabs (`tab: "map_bones"` opens the mapping popup) and returns the window
+  state.
 
 ## 3. The window (`editor/window/PoseAnimationWindow.{h,cpp}`)
 

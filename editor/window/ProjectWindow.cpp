@@ -31,6 +31,7 @@
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
 #include "pose/PoseAnimationDocument.h"
+#include "pose/PoseEditSession.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -162,6 +163,9 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     }
     if (editor::Util::isPrefabFile(extension)) {
         return editor::FileType::PREFAB;
+    }
+    if (extension == ".poseanim") {
+        return editor::FileType::POSE_ANIMATION;
     }
 
     return editor::FileType::NONE;
@@ -342,7 +346,8 @@ bool editor::ProjectWindow::hasPendingThumbnailWork() {
     std::lock_guard<std::mutex> lock(thumbnailMutex);
     // Any pending thumbnail work needs the shared systemDraw pass to keep running.
     return thumbnailWorkerBusy || hasPendingModelRender || hasPendingMaterialRender ||
-           !thumbnailQueue.empty() || hasActivePrefabThumbnail || !prefabThumbnailQueue.empty();
+           !thumbnailQueue.empty() || hasActivePrefabThumbnail || !prefabThumbnailQueue.empty() ||
+           !poseThumbnailQueue.empty() || poseThumbnailer.busy();
 }
 
 void editor::ProjectWindow::processMaterialThumbnails() {
@@ -600,6 +605,9 @@ void editor::ProjectWindow::checkPrefabThumbnailStamps() {
 void editor::ProjectWindow::cancelPrefabThumbnails() {
     std::queue<ThumbnailRequest> empty;
     std::swap(prefabThumbnailQueue, empty);
+    std::queue<ThumbnailRequest> emptyPose;
+    std::swap(poseThumbnailQueue, emptyPose);
+    poseThumbnailer.cancel();
     if (hasActivePrefabThumbnail) {
         if (Scene* scene = prefabRender.getScene()) {
             Engine::removeScene(scene);
@@ -771,6 +779,10 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.89f, 0.30f, 0.15f, 1.0f));
         case FileType::CSS:
             return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
+        case FileType::POSE_ANIMATION:
+            return ImGui::GetColorU32(ImVec4(0.23f, 0.43f, 0.65f, 1.0f));
+        case FileType::HUMANOID:
+            return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -806,6 +818,10 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     if (ImGui::MenuItem(ICON_FA_FOLDER_PLUS " Create Folder")){
         isCreatingNewDirectory = true;
         memset(nameBuffer, 0, sizeof(nameBuffer));
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_PERSON " Create Pose Animation")){
+        assetsCreatePoseAnimation();
         ImGui::CloseCurrentPopup();
     }
 
@@ -1320,6 +1336,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         imageViewerWindow->openFile(filePath);
                     else if (file.type == FileType::SCENE)
                         project->openScene(filePath);
+                    else if (file.type == FileType::POSE_ANIMATION)
+                        Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
                     else if (Util::isPrefabFile(filePath.string()))
                         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
                     else
@@ -2125,10 +2143,15 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
         }else if (Util::isCssFile(fileEntry.extension)){
             fileEntry.type = FileType::CSS;
             fileEntry.icon = cssIcon.getRender();
+        }else if (fileEntry.extension == ".poseanim"){
+            fileEntry.type = FileType::POSE_ANIMATION;
+            fileEntry.icon = poseAnimationIcon.getRender();
+        }else if (fileEntry.extension == ".humanoid"){
+            fileEntry.type = FileType::HUMANOID;
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
-            fileEntry.type == FileType::PREFAB) {
+            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION) {
             queueThumbnailGeneration(entry.path(), fileEntry.type);
         }
     } else {
@@ -2652,6 +2675,11 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
             return;
         }
         thumbFile.generation = thumbnailGeneration;
+        if (type == FileType::POSE_ANIMATION) {
+            // the main thread renders these too (processPoseThumbnails)
+            poseThumbnailQueue.push(thumbFile);
+            return;
+        }
         if (type == FileType::PREFAB) {
             // the main thread renders these (processPrefabThumbnails)
             prefabThumbnailStamps[requestKey] = stamp;
@@ -3074,6 +3102,7 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
         return;
     }
 
+    PoseEditSession::suspendActive();   // prefabs of a posed character keep its rest bones
     CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, sceneId, prefabs);
     CommandHandle::get(sceneId)->addCommandNoMerge(createPrefabCmd);
 
@@ -3100,6 +3129,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     const float buttonWidth = Theme::dpi(130.0f);
     bool done = false;
     if (ImGui::Button("Original Prefab", ImVec2(buttonWidth, 0))) {
+        PoseEditSession::suspendActive();
         CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, pendingPrefabDrop.prefabs));
         done = true;
     }
@@ -3112,6 +3142,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
                 prefabs[i].first = pendingPrefabDrop.variantPaths[i];
             }
         }
+        PoseEditSession::suspendActive();
         CreatePrefabCmd* command = new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, prefabs);
         for (size_t i = 0; i < prefabs.size(); i++) {
             command->setVariant(i, i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]);
@@ -3240,10 +3271,19 @@ void editor::ProjectWindow::show() {
         cssIcon.setData("editor:resources:css_icon", data);
         cssIcon.load();
 
+        const int poseIconSize = 64;
+        makePoseAnimationIcon(poseIconSize, poseAnimationIconPixels);
+        poseAnimationIcon.setData("editor:resources:pose_animation_icon",
+            TextureData(poseIconSize, poseIconSize, static_cast<unsigned int>(poseAnimationIconPixels.size()), ColorFormat::RGBA, 4,
+                        poseAnimationIconPixels.data()));
+        poseAnimationIcon.load();
+
         scanDirectory(project->getProjectPath().string());
 
         firstOpen = false;
     }
+
+    processPoseThumbnails();
 
     // Process completed thumbnails
     while (true) {
@@ -3685,6 +3725,54 @@ void editor::ProjectWindow::assetsCreateHtmlDocument() {
     startRename(fileName);
 }
 
+void editor::ProjectWindow::assetsCreatePoseAnimation() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // previews on the Pose Animation window's character, when it has one
+    std::string previewModel;
+    PoseEditSession& session = Backend::getApp().getPoseAnimationWindow()->getSession();
+    if (session.bound() && session.scene()) {
+        if (ModelComponent* model = session.scene()->findComponent<ModelComponent>(session.model())) {
+            previewModel = model->filename;
+        }
+    }
+    std::string error;
+    const std::string created = PoseAnimationWindow::createAsset(project, currentPath, "New Pose Animation", previewModel, &error);
+    if (created.empty()) {
+        Backend::getApp().registerAlert("Create Pose Animation", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = fs::u8path(created).filename().u8string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+}
+
+void editor::ProjectWindow::processPoseThumbnails() {
+    poseThumbnailer.process();
+    if (poseThumbnailer.busy() || poseThumbnailQueue.empty() || !Engine::isViewLoaded()) {
+        return;
+    }
+    ThumbnailRequest request = poseThumbnailQueue.front();
+    poseThumbnailQueue.pop();
+    const fs::path thumbnailPath = project->getThumbnailPath(request.path);
+    poseThumbnailer.request(project, request.path, thumbnailPath, [this, request](bool ok) {
+        {
+            std::lock_guard<std::mutex> lock(thumbnailMutex);
+            pendingThumbnailRequests.erase(thumbnailRequestKey(request.path));
+            if (request.generation != thumbnailGeneration) return;
+        }
+        if (!ok) return;   // no preview model: the file keeps its icon
+        evictThumbnailTexture(project->getThumbnailPath(request.path).string());
+        std::lock_guard<std::mutex> completedLock(completedThumbnailMutex);
+        completedThumbnailQueue.push(request);
+    });
+    poseThumbnailer.process();
+}
+
 void editor::ProjectWindow::assetsShowInFileManager() {
     fs::path target = currentPath;
     if (selectedFiles.size() == 1) {
@@ -3717,6 +3805,8 @@ void editor::ProjectWindow::assetsOpenSelected() {
         imageViewerWindow->openFile(filePath);
     } else if (it->type == FileType::SCENE) {
         project->openScene(filePath);
+    } else if (it->type == FileType::POSE_ANIMATION) {
+        Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
     } else if (Util::isPrefabFile(filePath.string())) {
         editor::getEditorHost().openPrefabAsset(filePath);
     } else {

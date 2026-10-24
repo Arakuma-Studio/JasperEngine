@@ -17,6 +17,7 @@
 #include "command/type/RemoveChildSceneCmd.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
+#include "pose/PoseEditSession.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
 
@@ -44,6 +45,7 @@
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
 #include "pose/PoseTemplates.h"
+#include "pose/PoseViewport.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -118,6 +120,7 @@ editor::App::App(){
     projectWindow = new ProjectWindow(&project, codeEditor, imageViewerWindow);
     loadingWindow = new LoadingWindow();
     animationWindow = new AnimationWindow(&project);
+    poseAnimationWindow = new PoseAnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
     // pose templates saved or deleted (and their undo/redo): the asset database and the Project
@@ -253,6 +256,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleProject,
     ToggleConsole,
     ToggleAnimation,
+    TogglePoseAnimation,
     ToggleTerrain,
     ToggleMcpActivity,
     FocusScene,
@@ -274,6 +278,7 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateFolder,
     AssetsCreateLuaScript,
     AssetsCreateHtmlDocument,
+    AssetsCreatePoseAnimation,
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -435,7 +440,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     bool canUndo = false;
     bool canRedo = false;
     if (!textInput) {
-        if (lastFocusedWindow == LastFocusedWindow::Resources) {
+        if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
             canUndo = project.getProjectCommandHistory()->canUndo();
             canRedo = project.getProjectCommandHistory()->canRedo();
         } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -542,6 +547,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuSeparator(),
             menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
             menuSeparator(),
+            menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation"),
+            menuSeparator(),
             menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
         }),
         menuCommand(AppMenuCommand::AssetsShowInFileManager, "Show in File Manager"),
@@ -574,7 +581,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C")
         }),
         menuSubmenu("Animation", {
-            menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
+            menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6"),
+            menuCommand(AppMenuCommand::TogglePoseAnimation, windowMenuLabel(PoseAnimationWindow::WINDOW_NAME))
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         menuSubmenu("MCP", {
@@ -683,7 +691,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             exit();
             break;
         case AppMenuCommand::Undo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
+            if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
                 project.getProjectCommandHistory()->undo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -693,7 +701,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         case AppMenuCommand::Redo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
+            if (lastFocusedWindow == LastFocusedWindow::Resources || lastFocusedWindow == LastFocusedWindow::PoseAnimation) {
                 project.getProjectCommandHistory()->redo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -740,6 +748,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleAnimation:
             showEditorWindow(animationWindow);
             break;
+        case AppMenuCommand::TogglePoseAnimation:
+            showEditorWindow(poseAnimationWindow);
+            break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
@@ -781,6 +792,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             projectWindow->setOpen(true);
             consoleWindow->setOpen(true);
             animationWindow->setOpen(true);
+            poseAnimationWindow->setOpen(false);
             terrainEditWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
             gameWindow->setOpen(true);
@@ -871,6 +883,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
+            break;
+        case AppMenuCommand::AssetsCreatePoseAnimation:
+            projectWindow->assetsCreatePoseAnimation();
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -1336,6 +1351,7 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(ProjectWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
@@ -1360,6 +1376,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(PoseAnimationWindow::WINDOW_NAME, 3);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -1720,6 +1737,8 @@ bool editor::App::canEditSelection(bool duplicate) {
 }
 
 void editor::App::deleteSelection() {
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     if (!canEditSelection(false)) return;
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t selectedSceneForProperties = project.getSelectedSceneForProperties();
@@ -1781,6 +1800,8 @@ void editor::App::deleteSelection() {
 
 void editor::App::duplicateSelection() {
     if (!canEditSelection(true)) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
     SceneProject* sp = project.getScene(targetSceneId);
@@ -1855,6 +1876,8 @@ void editor::App::selectAll() {
 
 void editor::App::copySelection(bool cut) {
     if (!(cut ? canCutSelection() : canCopySelection())) return;
+    // a posed character goes back to its rest bones first, so they are what gets copied
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     std::vector<Entity> selection = EntityClipboard::getCopyableSelection(&project, sceneId);
     if (selection.empty()) return;
@@ -1907,6 +1930,8 @@ void editor::App::show(){
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
+        } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
+            lastFocusedWindow = LastFocusedWindow::PoseAnimation;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
@@ -1933,7 +1958,9 @@ void editor::App::show(){
         }
 
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
-        mainToolbar->handleShortcuts(!codeEditor->isFocused());
+        // a Scene view posing the window's character keeps its letter keys for the pose (E: Global Edit)
+        const bool scenePosing = sceneWindow->isFocused() && poseAnimationWindow->ownsUndo(true) && !poseAnimationWindow->isFocused();
+        mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing);
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
 
         // Unity menu shortcuts. Not while typing: text fields and the code editor
@@ -1980,7 +2007,21 @@ void editor::App::show(){
         // space to keys events
     }
 
-    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    const bool poseKeys = lastFocusedWindow == LastFocusedWindow::PoseAnimation;
+    if (!popupOpen && poseKeys) {
+        // pose edits are project files: their undo is the project history's
+        if (isUndo) project.getProjectCommandHistory()->undo();
+        if (isRedo) project.getProjectCommandHistory()->redo();
+        // the window runs its own shortcuts while focused; a posing Scene view gets them here,
+        // but not while its camera flies or orbits (right/middle mouse: W A S D Q E move it)
+        if (!poseAnimationWindow->isFocused() &&
+                poseview::sceneViewTakesPoseKeys(ImGui::IsMouseDown(ImGuiMouseButton_Right), ImGui::IsMouseDown(ImGuiMouseButton_Middle),
+                                                 sceneWindow->isNavigatingCamera())){
+            poseAnimationWindow->handleShortcuts(true);
+        }
+    }
+
+    if (!popupOpen && !poseKeys && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic:
@@ -2070,6 +2111,9 @@ void editor::App::show(){
     imageViewerWindow->show();
     consoleWindow->show();
     animationWindow->show();
+    poseAnimationWindow->show();
+    // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
+    PoseViewport::frame(&project);
     terrainEditWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
@@ -3295,12 +3339,18 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
         animationWindow->clearSceneState(sceneId);
     }
 
+    if (poseAnimationWindow) {
+        poseAnimationWindow->clearSceneState(sceneId);
+    }
+
     if (lastActivatedScene == sceneId) {
         resetLastActivatedScene();
     }
 }
 
 void editor::App::prepareForProjectSwitch() {
+    // the posed bones go back while their scenes still exist
+    poseAnimationWindow->prepareForProjectSwitch();
     imageViewerWindow->closeAll();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
@@ -3404,6 +3454,10 @@ void editor::App::updateWindowTitle(const std::string& projectName) {
 }
 
 void editor::App::stopTransientPreviews() {
+    // before a scene save or play: posed bones go back to their saved transforms
+    if (poseAnimationWindow) {
+        poseAnimationWindow->stopTransientPreviews();
+    }
     if (terrainEditWindow) {
         terrainEditWindow->endStroke();
         terrainEditWindow->updateFoliagePreview();
@@ -3679,6 +3733,10 @@ editor::AnimationWindow* editor::App::getAnimationWindow() const{
     return animationWindow;
 }
 
+editor::PoseAnimationWindow* editor::App::getPoseAnimationWindow() const{
+    return poseAnimationWindow;
+}
+
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
 }
@@ -3887,6 +3945,7 @@ void editor::App::applyPanelVisibilitySettings() {
     projectWindow->setOpen(visibility.project);
     consoleWindow->setOpen(visibility.console);
     animationWindow->setOpen(visibility.animation);
+    poseAnimationWindow->setOpen(visibility.poseAnimation);
     terrainEditWindow->setOpen(visibility.terrain);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
@@ -3899,6 +3958,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.project = projectWindow->isOpen();
     visibility.console = consoleWindow->isOpen();
     visibility.animation = animationWindow->isOpen();
+    visibility.poseAnimation = poseAnimationWindow->isOpen();
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();

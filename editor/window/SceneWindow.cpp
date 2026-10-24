@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "pose/PoseViewport.h"
 #include "util/BidiText.h"
 #include "imgui_internal.h"
 
@@ -76,6 +77,16 @@ void editor::SceneWindow::closeSceneInternal(uint32_t sceneId) {
         }
         closeSceneQueue.push_back(sceneId);
     }
+}
+
+bool editor::SceneWindow::isNavigatingCamera() const{
+    for (const auto& [id, dragging] : draggingMouse){
+        if (dragging) return true;
+    }
+    for (const auto& [id, looking] : lookActive){
+        if (looking) return true;
+    }
+    return false;
 }
 
 bool editor::SceneWindow::isFocused() const {
@@ -1029,6 +1040,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         altHeld ||
         handPanEnabled || 
         sceneProject->sceneRender->isTerrainEditing() ||
+        sceneProject->sceneRender->isPoseDragging() ||
         gizmoSideActive ||
         sceneProject->sceneType != SceneType::SCENE_3D && ImGui::IsKeyDown(ImGuiKey_Space);
 
@@ -1040,7 +1052,23 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         float y = logicalY;
         toEngineCanvas(sceneId, x, y);
 
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
+        // Posing a humanoid (pose animation): a click on a pose handle is the handle's, not
+        // a selection or a tool's
+        bool poseHandleClick = false;
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !altHeld && !suppressLeftMouse && !handPanEnabled &&
+                sceneProject->sceneRender->isPoseEditing()){
+            poseHandleClick = sceneProject->sceneRender->poseMouseDown(x, y, io.KeyShift, io.KeyCtrl || io.KeySuper);
+            if (poseHandleClick){
+                subSelectionClickConsumesRelease[sceneId] = true;
+                mouseLeftStartPos = Vector2(logicalX, logicalY);
+                // a joint dot only picks the joint: the rest of the press is nobody's
+                if (!sceneProject->sceneRender->isPoseDragging()){
+                    suppressLeftMouseUntilRelease[sceneId] = true;
+                }
+            }
+        }
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse && !poseHandleClick){
             subSelectionClickConsumesRelease[sceneId] = false;
 
             // Selecting and dragging an unselected object at same time (just for 2D object mode)
@@ -1328,19 +1356,28 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             mouseLeftDragPos = Vector2(logicalX, logicalY);
             // Terrain brush strokes skip the drag threshold: holding the button
             // keeps applying flow and tiny precise drags still paint.
-            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing()){
+            if (mouseLeftStartPos.distance(mouseLeftDragPos) > 5 || sceneProject->sceneRender->isTerrainEditing() ||
+                    sceneProject->sceneRender->isPoseDragging()){
                 mouseLeftDraggedInside = true;
             }
             if (mouseLeftDraggedInside){
                 float origX = mouseLeftStartPos.x;
                 float origY = mouseLeftStartPos.y;
                 toEngineCanvas(sceneId, origX, origY);
-                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, io.KeyCtrl, io.KeyShift);
+                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, io.KeyCtrl || io.KeySuper, io.KeyShift);
             }
         }
 
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && (!altHeld || altGizmoDrag) && !suppressLeftMouse){
             bool consumeSelectionRelease = subSelectionClickConsumesRelease[sceneId];
+            if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease &&
+                    sceneProject->sceneRender->isPoseEditing()){
+                // posing (pose animation): a click on empty space or on anything but the posed
+                // model and its bones leaves posing, also when the selection stays the same
+                uint32_t pickedSceneId = sceneId;
+                Entity picked = findSelectableObjectByRay(sceneId, x, y, &pickedSceneId);
+                sceneProject->sceneRender->getPoseViewport()->clicked(pickedSceneId == sceneId ? picked : NULL_ENTITY);
+            }
             if (!mouseLeftDraggedInside && mouseLeftDown && !disableSelection && !consumeSelectionRelease){
                 // Remember sub-selection anchors BEFORE re-selecting, so we can tell
                 // whether the release click actually changed the host entity.
@@ -1417,6 +1454,13 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
             subSelectionClickConsumesRelease[sceneId] = false;
 
             mouseLeftDraggedInside = false;
+        }
+    }
+
+    if (!isMouseInWindow){
+        // nothing of the view is hovered (a pose handle's highlight and the session's flag)
+        if (PoseViewport* poseViewport = sceneProject->sceneRender->getPoseViewport()){
+            poseViewport->hoverEnd();
         }
     }
 

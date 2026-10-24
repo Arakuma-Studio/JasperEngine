@@ -139,6 +139,12 @@ namespace jasperengine::pose {
     // Mirror (4.5): left/right triples swapped, centre U/F-axis DOFs negated, offset.x negated
     JASPERENGINE_API BodyPose mirrorBodyPose(const BodyPose& body);
 
+    // A slot's joint-angle rotation E (4.5) from its three DOF values in degrees (the swing about
+    // the two DOF axes, then the twist), and back (swing-twist about the neutral direction, twist
+    // wrapped to (-180, 180]). Rig-independent: PoseRig's local rotations are left * E * neutral.
+    JASPERENGINE_API Quatd jointRotation(HumanBone bone, const float angles[DOFS_PER_BONE]);
+    JASPERENGINE_API void jointAngles(HumanBone bone, const Quatd& rotation, float angles[DOFS_PER_BONE]);
+
     // the longest swing |(dof1, dof2)| clampToLimits keeps (spec 4.5): below 180, where the twist
     // is undefined
     constexpr float MAX_SWING_DEGREES = 179.5f;

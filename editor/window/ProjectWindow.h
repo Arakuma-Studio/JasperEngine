@@ -8,6 +8,7 @@
 #include "util/EntityPayload.h"
 #include "render/preview/ModelRender.h"
 #include "render/preview/PrefabRender.h"
+#include "pose/PoseThumbnails.h"
 
 #include <iostream>
 #include <filesystem>
@@ -42,7 +43,9 @@ namespace jasperengine::editor {
         AUDIO,
         FONT,
         HTML,
-        CSS
+        CSS,
+        POSE_ANIMATION,     // .poseanim (the Pose Animation window)
+        HUMANOID            // .humanoid bone-mapping sidecar (plain data)
     };
 
     struct FileEntry {
@@ -114,6 +117,9 @@ namespace jasperengine::editor {
         Texture fontIcon;
         Texture htmlIcon;
         Texture cssIcon;
+        // drawn by the editor (PoseThumbnails), not a bundled image
+        Texture poseAnimationIcon;
+        std::vector<uint8_t> poseAnimationIconPixels;
         // Bounded cache of GPU thumbnail textures; must stay well below the
         // sokol image/sampler pool sizes (2048), which are shared with scenes
         static constexpr size_t MAX_THUMBNAIL_TEXTURES = 512;
@@ -238,6 +244,10 @@ namespace jasperengine::editor {
         // The dependency stamp (the prefab file and its nested prefabs' sizes and times) each
         // prefab's thumbnail was made from: a change re-renders it
         std::unordered_map<std::string, std::string> prefabThumbnailStamps;
+        // .poseanim thumbnails: the middle pose on the preview model (PoseRender, main thread)
+        PoseAssetThumbnailer poseThumbnailer;
+        std::queue<ThumbnailRequest> poseThumbnailQueue;
+        void processPoseThumbnails();
         // The prefab files each prefab depends on, read again when its own file changes
         struct PrefabDependencies {
             std::filesystem::file_time_type writeTime{};
@@ -340,6 +350,8 @@ namespace jasperengine::editor {
         void assetsCreateScript(bool lua);
         // Assets > Create > HTML Document: NewDocument.html + NewDocument.css (HtmlUITemplates)
         void assetsCreateHtmlDocument();
+        // Assets > Create > Pose Animation: a .poseanim with one neutral pose (Pose Animation window)
+        void assetsCreatePoseAnimation();
         void assetsShowInFileManager();
         void assetsOpenSelected();
         void assetsRenameSelected();

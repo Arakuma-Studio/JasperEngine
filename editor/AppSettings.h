@@ -16,6 +16,7 @@ struct PanelVisibilitySettings {
     bool project = true;
     bool console = true;
     bool animation = true;
+    bool poseAnimation = false;
     bool terrain = false;
     bool mcp = false;
     bool game = true;
@@ -26,6 +27,7 @@ struct PanelVisibilitySettings {
             && project == other.project
             && console == other.console
             && animation == other.animation
+            && poseAnimation == other.poseAnimation
             && terrain == other.terrain
             && mcp == other.mcp
             && game == other.game;
@@ -111,6 +113,7 @@ private:
     // Editor viewport settings
     static bool multiViewportEnabled;
     static bool editorVSyncEnabled;
+    static bool poseDockGrown;
     static PanelVisibilitySettings panelVisibility;
     static GameViewSettings gameViewSettings;
 
@@ -205,6 +208,10 @@ public:
     // Multi-viewport: allow dockable windows to be dragged out into their own OS window
     static bool getMultiViewportEnabled();
     static void setMultiViewportEnabled(bool enabled);
+
+    // The Pose Animation window grew the bottom dock once on its first open (not again)
+    static bool getPoseDockGrown();
+    static void setPoseDockGrown(bool grown);
 
     // VSync for the editor's own frames; Play mode and builds use the project setting
     static bool getEditorVSyncEnabled();
