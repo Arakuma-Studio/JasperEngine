@@ -579,8 +579,9 @@ The `gpuMs` value is present when S15 timings exist.
   GLSL 410, GLSL 300 es, HLSL 5, MSL macOS/iOS and SPIR-V (`editor/tests/shader/
   AtmosphereShaderBuildTest.cpp`; the editor CLI `shaders --backend all`). The HLSL march takes
   about 0.25 s to produce; the driver's own D3D compile on Windows was not timed.
-- **Noise bake without workers.** A web build without threads bakes on the main thread, half the
-  last frame's time per frame (4 to 250 ms), so a slow frame does not stretch the bake: the debug
-  WebGL2 gate on SwiftShader (about 1 fps) went from no ready line in 900 s to ready in 92 s.
+- **Noise bake without workers.** A web build without threads bakes on the main thread, each
+  frame half the wall time the rest of the frame took (4 to 250 ms), so a slow frame does not
+  stretch the bake: the debug WebGL2 gate on SwiftShader (about 1 fps) went from no ready line in
+  900 s to ready in 54 s (bake 44 s).
 - **Not covered by a dedicated test:** water refraction under fog (AC16 relies on the water pass
   sampling the fogged scene colour, unchanged by S12), and the AC10 reference-hardware run.
