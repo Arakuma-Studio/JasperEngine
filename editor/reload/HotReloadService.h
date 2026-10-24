@@ -240,7 +240,14 @@ namespace jasperengine::editor {
         std::function<bool(const std::filesystem::path&)> scriptChangedHook;
         std::map<uint64_t, std::pair<uint8_t, EventFn>> invalidators;
         uint64_t nextInvalidator = 1;
-        Json lateProblems = Json::array();
+        // with what the file was when the problem was found: one that changed since (fixed,
+        // restored) is not reported (its own reload reports what it finds)
+        struct LateProblem {
+            Json problem;
+            bool existed = false;
+            watch::PathStat stat;
+        };
+        std::deque<LateProblem> lateProblems;
         struct LateUi {
             std::chrono::steady_clock::time_point at;
             Json reloaded;

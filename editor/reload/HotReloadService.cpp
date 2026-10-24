@@ -145,7 +145,7 @@ void HotReloadService::detach() {
     projectFileChanged = false;
     deferredScripts.clear();
     assetRefreshAfterPlay = false;
-    lateProblems = Json::array();
+    lateProblems.clear();
     lateUi.clear();
     project = nullptr;
 }
@@ -498,11 +498,11 @@ void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, do
         notify(job.path, job.kind, Event::Content);
     } else if (warning) {
         Out::warning("[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
-        lateProblems.push_back({{"path", record.path}, {"severity", "warning"}, {"message", error}});
+        addLateProblem({{"path", record.path}, {"severity", "warning"}, {"message", error}});
     } else {
         Out::error("[Hot Reload] %s: %s (kept the previous version)", record.path.c_str(), error.c_str());
         // a shader reports its compile errors with their lines itself
-        if (job.kind != "shader") lateProblems.push_back({{"path", record.path}, {"message", "Reload failed: " + error + " (the previous version is kept)."}});
+        if (job.kind != "shader") addLateProblem({{"path", record.path}, {"message", "Reload failed: " + error + " (the previous version is kept)."}});
         // a later save of the same bytes would not be tried again otherwise
         applied.erase(key(job.path));
     }
@@ -586,15 +586,23 @@ void HotReloadService::deferScripts(const std::vector<fs::path>& paths) {
 }
 
 Json HotReloadService::takeLateProblems() {
-    Json out = lateProblems;
-    lateProblems = Json::array();
+    Json out = Json::array();
+    for (const LateProblem& late : lateProblems) {
+        watch::PathStat now;
+        const bool exists = project && watch::statPath(project->getProjectPath() / watch::pathFromUtf8(late.problem.value("path", std::string())), now, false);
+        if (exists == late.existed && (!exists || now.sameContent(late.stat))) out.push_back(late.problem);
+    }
+    lateProblems.clear();
     return out;
 }
 
 void HotReloadService::addLateProblem(const Json& problem) {
+    LateProblem late;
+    late.problem = problem;
+    if (project) late.existed = watch::statPath(project->getProjectPath() / watch::pathFromUtf8(problem.value("path", std::string())), late.stat, false);
     // no MCP client takes them: the oldest go
-    if (lateProblems.size() >= LATE_MAX) lateProblems.erase(lateProblems.begin());
-    lateProblems.push_back(problem);
+    if (lateProblems.size() >= LATE_MAX) lateProblems.pop_front();
+    lateProblems.push_back(std::move(late));
 }
 
 HotReloadService::WatcherUi HotReloadService::takeWatcherUi(std::chrono::steady_clock::time_point since) {
