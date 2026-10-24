@@ -3,8 +3,10 @@
 
 #include "log/LogSinks.h"
 #include "log/Backtrace.h"
+#include "io/AtomicFile.h"
 
 #include <cmath>
+#include <filesystem>
 #include <cstdio>
 #include <string>
 
@@ -51,12 +53,11 @@ namespace {
 #endif
     }
 
+    // with the retries of io/AtomicFile (a reader holding the file open on Windows)
     bool osRename(const std::string& from, const std::string& to) {
-#if defined(_WIN32)
-        return MoveFileExW(widen(from).c_str(), widen(to).c_str(), MOVEFILE_REPLACE_EXISTING) != FALSE;
-#else
-        return ::rename(from.c_str(), to.c_str()) == 0;
-#endif
+        std::error_code error;
+        return io::renameWithRetry(std::filesystem::path(std::u8string(from.begin(), from.end())),
+                                   std::filesystem::path(std::u8string(to.begin(), to.end())), error);
     }
 
 }

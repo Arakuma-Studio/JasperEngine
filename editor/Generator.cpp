@@ -378,10 +378,7 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
     if (result) {
         std::error_code ec;
         fs::create_directories(buildPath, ec);
-        std::ofstream f(buildPath / ".jasperengine_kit");
-        if (f.is_open()) {
-            f << currentKit;
-        }
+        FileUtils::writeFile(buildPath / ".jasperengine_kit", currentKit);
     }
 
     return result;
@@ -777,9 +774,8 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
         sourceContent += "            if (scriptEntry.instance) {\n";
         for (const auto& s : scriptFiles) {
             sourceContent += "                if (scriptEntry.className == \"" + s.className + "\") {\n";
-            sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(scriptEntry.instance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            // its REGISTER_* subscriptions and its timers
+            sourceContent += "                    SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(scriptEntry.instance));\n";
             sourceContent += "                    delete static_cast<" + s.className + "*>(scriptEntry.instance);\n";
             sourceContent += "                }\n";
         }
@@ -806,9 +802,7 @@ std::string editor::Generator::buildCleanupSceneScriptsSource(const std::vector<
             sourceContent += "                for (auto& prop : scriptEntry.properties) {\n";
             sourceContent += "                    if (!prop.ownedInstance) continue;\n";
             sourceContent += "\n";
-            sourceContent += "                    std::string addr = \"_\" + std::to_string(reinterpret_cast<std::uintptr_t>(prop.ownedInstance)) + \"_\";\n";
-            sourceContent += "                    Engine::removeSubscriptionsByTag(addr);\n";
-            sourceContent += "                    scene->removeSubscriptionsByTag(addr);\n";
+            sourceContent += "                    SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(prop.ownedInstance));\n";
             sourceContent += "\n";
             sourceContent += deleteContent;
             sourceContent += "\n";
@@ -869,6 +863,24 @@ std::string editor::Generator::getEditorPluginAbiCheck() {
     cmakeContent += "    endif()\n";
     cmakeContent += "endif()\n\n";
 #endif
+    return cmakeContent;
+}
+
+std::string editor::Generator::getToolchainFloorCheck() {
+    // The floors of engine/cmake/JasperEngineToolchain.cmake, which the root CMakeLists.txt
+    // passes to the editor; a plugin has no engine tree to include that file from
+    std::string cmakeContent;
+    cmakeContent += "# Oldest compilers with the C++20 JasperEngine uses (as the engine build checks)\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_GNU " JASPERENGINE_CXX_FLOOR_GNU ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_Clang " JASPERENGINE_CXX_FLOOR_CLANG ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_AppleClang " JASPERENGINE_CXX_FLOOR_APPLECLANG ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR_MSVC " JASPERENGINE_CXX_FLOOR_MSVC ")\n";
+    cmakeContent += "set(JASPERENGINE_CXX_FLOOR \"${JASPERENGINE_CXX_FLOOR_${CMAKE_CXX_COMPILER_ID}}\")\n";
+    cmakeContent += "if(JASPERENGINE_CXX_FLOOR AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS JASPERENGINE_CXX_FLOOR)\n";
+    cmakeContent += "    message(FATAL_ERROR \"JasperEngine requires C++20: the ${CMAKE_CXX_COMPILER_ID} compiler ${CMAKE_CXX_COMPILER_VERSION} is older than \"\n";
+    cmakeContent += "        \"the supported minimum ${CMAKE_CXX_COMPILER_ID} ${JASPERENGINE_CXX_FLOOR}. Update it, or choose another compiler in \"\n";
+    cmakeContent += "        \"Preferences > External Tools.\")\n";
+    cmakeContent += "endif()\n\n";
     return cmakeContent;
 }
 
@@ -1019,6 +1031,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     // Both modes link the editor's engine library, which always has both physics backends
     cmakeContent += "add_compile_definitions(JASPERENGINE_PHYSICS_2D JASPERENGINE_PHYSICS_3D)\n\n";
 
+    cmakeContent += getToolchainFloorCheck();
     cmakeContent += getEditorPluginAbiCheck();
     cmakeContent += "if(JASPERENGINE_EDITOR_PLUGIN)\n";
     cmakeContent += "    add_compile_definitions(JASPERENGINE_EDITOR_PLUGIN)\n";
@@ -1113,10 +1126,12 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    # limit to translation units within this single-target plugin project.\n";
     cmakeContent += "    # /utf-8: generated sources embed UTF-8 literals and carry no BOM, so\n";
     cmakeContent += "    # MSVC would otherwise decode them in the active code page.\n";
+    cmakeContent += "    # /Zc:__cplusplus: the real language level, as in the engine build, so header-only\n";
+    cmakeContent += "    # libraries (nlohmann json, LuaBridge3) take the same code paths on both sides.\n";
     cmakeContent += "    if(DEFINED JASPERENGINE_PARALLEL_BUILD_JOBS AND JASPERENGINE_PARALLEL_BUILD_JOBS GREATER 0)\n";
-    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /MP${JASPERENGINE_PARALLEL_BUILD_JOBS} /wd4251 /wd4275)\n";
+    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /Zc:__cplusplus /MP${JASPERENGINE_PARALLEL_BUILD_JOBS} /wd4251 /wd4275)\n";
     cmakeContent += "    else()\n";
-    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /MP /wd4251 /wd4275)\n";
+    cmakeContent += "        target_compile_options(" + libName + " PRIVATE /W4 /EHsc /utf-8 /Zc:__cplusplus /MP /wd4251 /wd4275)\n";
     cmakeContent += "    endif()\n";
     cmakeContent += "else()\n";
     cmakeContent += "    target_compile_options(" + libName + " PRIVATE -Wall -Wextra -fPIC)\n";
@@ -1484,7 +1499,7 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "A directory listed as a script root (JasperEngine Editor: Project Settings > Directories) is compiled whole: "
                      "source files are built even when no component references them. Discovery skips hidden directories and directories named `build`. The root is an include directory, "
                      "so a header at `<root>/PLAYER/Thing.h` is included as `PLAYER/Thing.h`.\n";
-    agentsContent += "The C++ language standard is Project Settings > Build > C++ Standard (`cxxStandard` in `project.yaml`): "
+    agentsContent += "The C++ language standard is Project Settings > Scripting > C++ Standard (`cxxStandard` in `project.yaml`): "
                      + editor::cxxStandardList() + ". Play and export both build with it; do not edit `CMAKE_CXX_STANDARD` in the generated CMakeLists.txt.\n";
     agentsContent += "Lua scripts (`.lua`) are separate — they are loaded at runtime and are not compiled into the binary.\n\n";
     agentsContent += "## Instantiate and Destroy (prefabs at runtime)\n\n";

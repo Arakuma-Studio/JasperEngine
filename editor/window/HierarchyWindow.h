@@ -254,6 +254,10 @@ namespace jasperengine::editor{
         HierarchyWindow(Project* project, SceneWindow* sceneWindow);
 
         void show();
+
+        // "This scene did not load completely" above the tree, when the scene has dropped load issues
+
+        void showPartialLoadBanner(const SceneProject& sceneProject);
         void revealEntity(uint32_t sceneId, Entity entity);
         void setOpen(bool open);
         bool isOpen() const;

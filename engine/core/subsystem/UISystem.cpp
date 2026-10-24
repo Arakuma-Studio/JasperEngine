@@ -1802,7 +1802,6 @@ void UISystem::load(){
 void UISystem::destroy(){
     auto layouts = scene->getComponentArray<RectTransformComponent>();
     for (int i = 0; i < layouts->size(); i++) {
-        RectTransformComponent& layout = layouts->getComponentFromIndex(i);
         Entity entity = layouts->getEntity(i);
         Signature signature = scene->getSignature(entity);
 

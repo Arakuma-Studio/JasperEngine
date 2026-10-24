@@ -45,7 +45,7 @@ void check(const std::string& text) {
 template <typename Work>
 double timed(Work work, size_t iterations) {
     const auto start = std::clock();
-    for (size_t i = 0; i < iterations; ++i) sink += work();
+    for (size_t i = 0; i < iterations; ++i) sink = sink + work();
     return double(std::clock() - start) * 1e9 / CLOCKS_PER_SEC / iterations;
 }
 

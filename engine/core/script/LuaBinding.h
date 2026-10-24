@@ -35,7 +35,6 @@ namespace jasperengine {
         static int luaRegisterEvent(lua_State* L);
         static int luaRegisterEngineEvent(lua_State* L);
         static int luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex, const char* methodName, const char* tag, bool guardActive);
-        static std::string getScriptSubscriptionTag(int luaRef);
 
         static int moduleLoader(lua_State *L);
         static int handleLuaError(lua_State* L);
@@ -112,7 +111,8 @@ namespace jasperengine {
 
         static void cleanup();
 
-        static void removeScriptSubscriptions(Scene* scene, int luaRef);
+        // Removes the event subscriptions and timers of a script instance (its table)
+        static void removeScriptSubscriptions(int luaRef);
         static void releaseLuaRef(int luaRef);
 
         // For editor scripts use

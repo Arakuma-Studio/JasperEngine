@@ -33,11 +33,11 @@ using namespace jasperengine;
 namespace {
 
     // Prefab (prefab) text color, as in the Hierarchy and the rest of the Inspector
-    const ImVec4 prefabTextColor = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
+    const ImVec4 prefabBarTextColor = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
     // Unity's override bar
     const ImU32 overrideBarColor = IM_COL32(1, 153, 235, 255);
 
-    using Kind = editor::PrefabOverrideEntry::Kind;
+    using OverrideKind = editor::PrefabOverrideEntry::Kind;
     using Operation = editor::PrefabOverrideCmd::Operation;
 
     std::string stateNames(uint8_t bits) {
@@ -419,13 +419,13 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
     // Overrides dropdown
     const std::filesystem::path basePath = mixedAsset || assetPath.empty() ? std::filesystem::path() : project->getPrefabFileBase(assetPath);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextColored(prefabTextColor, "%s", basePath.empty() ? ICON_FA_CUBE " Prefab" : ICON_FA_CUBE "  Prefab Variant");
+    ImGui::TextColored(prefabBarTextColor, "%s", basePath.empty() ? ICON_FA_CUBE " Prefab" : ICON_FA_CUBE "  Prefab Variant");
     if (!basePath.empty()) {
         const ImVec2 iconMin = ImGui::GetItemRectMin();
         const float iconWidth = ImGui::CalcTextSize(ICON_FA_CUBE).x;
         const float iconTop = iconMin.y + (ImGui::GetItemRectSize().y - ImGui::GetFontSize()) * 0.5f;
         UIUtils::drawPrefabVariantBadge(ImGui::GetWindowDrawList(), ImVec2(iconMin.x, iconTop),
-            ImVec2(iconMin.x + iconWidth, iconTop + ImGui::GetFontSize()), ImGui::GetColorU32(prefabTextColor));
+            ImVec2(iconMin.x + iconWidth, iconTop + ImGui::GetFontSize()), ImGui::GetColorU32(prefabBarTextColor));
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
         const std::string kind = basePath.empty() ? "Prefab" : "Prefab Variant";
@@ -495,7 +495,7 @@ void editor::InspectorWindow::drawPrefabBar(SceneProject* sceneProject, const st
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("Base");
         ImGui::SameLine(0.0f, gap);
-        ImGui::PushStyleColor(ImGuiCol_Text, prefabTextColor);
+        ImGui::PushStyleColor(ImGuiCol_Text, prefabBarTextColor);
         const std::string baseLabel = std::string(ICON_FA_CUBE "  ") + basePath.stem().string() + "##prefab_base";
         if (ImGui::Selectable(baseLabel.c_str(), false, ImGuiSelectableFlags_None,
                 ImVec2(ImGui::CalcTextSize(baseLabel.c_str(), nullptr, true).x, 0.0f))) {
@@ -579,18 +579,18 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
     // Title
     std::string title;
     switch (entry.kind) {
-        case Kind::State: title = scene->getEntityName(entry.entity) + " (GameObject)"; break;
-        case Kind::Property: title = scene->getEntityName(entry.entity) + " " ICON_FA_ANGLE_RIGHT " " + Catalog::getComponentDisplayName(entry.type); break;
-        case Kind::AddedComponent: title = scene->getEntityName(entry.entity) + " " ICON_FA_ANGLE_RIGHT " " + Catalog::getComponentDisplayName(entry.type) + " (Added)"; break;
-        case Kind::RemovedComponent: title = scene->getEntityName(entry.entity) + " " ICON_FA_ANGLE_RIGHT " " + Catalog::getComponentDisplayName(entry.type) + " (Removed)"; break;
-        case Kind::AddedGameObject: title = scene->getEntityName(entry.entity) + " (Added GameObject)"; break;
-        case Kind::RemovedGameObject: title = entry.removal.name + " (Removed GameObject)"; break;
+        case OverrideKind::State: title = scene->getEntityName(entry.entity) + " (GameObject)"; break;
+        case OverrideKind::Property: title = scene->getEntityName(entry.entity) + " " ICON_FA_ANGLE_RIGHT " " + Catalog::getComponentDisplayName(entry.type); break;
+        case OverrideKind::AddedComponent: title = scene->getEntityName(entry.entity) + " " ICON_FA_ANGLE_RIGHT " " + Catalog::getComponentDisplayName(entry.type) + " (Added)"; break;
+        case OverrideKind::RemovedComponent: title = scene->getEntityName(entry.entity) + " " ICON_FA_ANGLE_RIGHT " " + Catalog::getComponentDisplayName(entry.type) + " (Removed)"; break;
+        case OverrideKind::AddedGameObject: title = scene->getEntityName(entry.entity) + " (Added GameObject)"; break;
+        case OverrideKind::RemovedGameObject: title = entry.removal.name + " (Removed GameObject)"; break;
     }
     ImGui::TextUnformatted(title.c_str());
 
     // Revert and Apply for this item
     std::vector<std::filesystem::path> targets;
-    if (entry.kind == Kind::AddedGameObject) {
+    if (entry.kind == OverrideKind::AddedGameObject) {
         // the prefab of its parent GameObject (for an instance root its prefab, and that
         // prefab's bases for a variant: their root GameObject), then each prefab holding that
         // instance (a GameObject the outer prefab adds to its nested instance, PREFABS.md 17)
@@ -598,7 +598,7 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
         if (targets.empty()) {
             targets.push_back(project->findPrefabPathFor(sceneId, entry.parent));
         }
-    } else if (entry.kind == Kind::RemovedGameObject) {
+    } else if (entry.kind == OverrideKind::RemovedGameObject) {
         // the prefab holding the GameObject, then the ones holding that instance (a variant
         // of it, a prefab it is nested in) as their override
         targets = project->getPrefabApplyTargets(sceneId, entry.removal.instanceRoot);
@@ -612,30 +612,30 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
     const std::vector<std::string> names(entry.properties.begin(), entry.properties.end());
     auto applyCommand = [&](const std::filesystem::path& target) -> Command* {
         switch (entry.kind) {
-            case Kind::State: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyState, ComponentType::PrefabComponent, {}, entry.state, target);
-            case Kind::Property: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyProperty, entry.type, names, 0, target);
-            case Kind::AddedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyAddedComponent, entry.type, {}, 0, target);
-            case Kind::RemovedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyRemovedComponent, entry.type, {}, 0, target);
-            case Kind::AddedGameObject: return new AddEntityToPrefabCmd(project, sceneId, entry.entity, entry.parent, target);
-            case Kind::RemovedGameObject: return new ApplyPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity,
+            case OverrideKind::State: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyState, ComponentType::PrefabComponent, {}, entry.state, target);
+            case OverrideKind::Property: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyProperty, entry.type, names, 0, target);
+            case OverrideKind::AddedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyAddedComponent, entry.type, {}, 0, target);
+            case OverrideKind::RemovedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::ApplyRemovedComponent, entry.type, {}, 0, target);
+            case OverrideKind::AddedGameObject: return new AddEntityToPrefabCmd(project, sceneId, entry.entity, entry.parent, target);
+            case OverrideKind::RemovedGameObject: return new ApplyPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity,
                 target);
         }
         return nullptr;
     };
     auto revertCommand = [&]() -> Command* {
         switch (entry.kind) {
-            case Kind::State: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertState, ComponentType::PrefabComponent, {}, entry.state);
-            case Kind::Property: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertProperty, entry.type, names);
-            case Kind::AddedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertAddedComponent, entry.type);
-            case Kind::RemovedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertRemovedComponent, entry.type);
-            case Kind::AddedGameObject: return new DeleteEntityCmd(project, sceneId, entry.entity);
-            case Kind::RemovedGameObject: return new RevertPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity);
+            case OverrideKind::State: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertState, ComponentType::PrefabComponent, {}, entry.state);
+            case OverrideKind::Property: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertProperty, entry.type, names);
+            case OverrideKind::AddedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertAddedComponent, entry.type);
+            case OverrideKind::RemovedComponent: return new PrefabOverrideCmd(project, sceneId, entry.entity, Operation::RevertRemovedComponent, entry.type);
+            case OverrideKind::AddedGameObject: return new DeleteEntityCmd(project, sceneId, entry.entity);
+            case OverrideKind::RemovedGameObject: return new RevertPrefabRemovalCmd(project, sceneId, entry.removal.path, entry.removal.instanceRoot, entry.removal.registryEntity);
         }
         return nullptr;
     };
     std::string reason;
     bool canApply = !locked && project->canApplyPrefabOverrides(&reason);
-    if (canApply && (entry.kind == Kind::Property || entry.kind == Kind::AddedComponent)) {
+    if (canApply && (entry.kind == OverrideKind::Property || entry.kind == OverrideKind::AddedComponent)) {
         canApply = project->canApplyPrefabOverride(sceneId, entry.entity, entry.type, names, {}, &reason);
     }
 
@@ -673,7 +673,7 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
             const std::string label = applyTargetLabel(project, targets, t, sceneId);
             std::string targetReason;
             bool enabled = true;
-            if (entry.kind == Kind::Property || entry.kind == Kind::AddedComponent) {
+            if (entry.kind == OverrideKind::Property || entry.kind == OverrideKind::AddedComponent) {
                 enabled = project->canApplyPrefabOverride(sceneId, entry.entity, entry.type, names, targets[t], &targetReason);
             }
             if (ImGui::MenuItem(label.c_str(), nullptr, false, enabled)) {
@@ -714,7 +714,7 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
     ImGui::TableHeadersRow();
 
     switch (entry.kind) {
-        case Kind::State: {
+        case OverrideKind::State: {
             std::string name, tag;
             bool active = true;
             int layer = 0;
@@ -726,12 +726,12 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
             if (bit(PrefabObjectOverrides::StateLayer)) row("Layer", known ? std::to_string(layer) : "-", std::to_string(scene->getEntityLayer(entry.entity)), true);
             break;
         }
-        case Kind::Property:
-        case Kind::RemovedComponent: {
+        case OverrideKind::Property:
+        case OverrideKind::RemovedComponent: {
             PrefabSourceValue source;
             const bool hasSource = project->getPrefabSourceValue(sceneId, entry.entity, entry.type, std::string(), source) && source.registry;
             std::vector<std::string> shown;
-            if (entry.kind == Kind::RemovedComponent || entry.properties.count(PrefabObjectOverrides::WHOLE_COMPONENT)) {
+            if (entry.kind == OverrideKind::RemovedComponent || entry.properties.count(PrefabObjectOverrides::WHOLE_COMPONENT)) {
                 EntityRegistry* registry = hasSource ? source.registry.get() : scene;
                 const Entity entity = hasSource ? source.entity : entry.entity;
                 for (auto& [name, data] : Catalog::findEntityProperties(registry, entity, entry.type)) {
@@ -742,25 +742,25 @@ void editor::InspectorWindow::drawPrefabComparison(SceneProject* sceneProject, c
             }
             for (const std::string& name : shown) {
                 const std::string sourceText = hasSource ? formatPrefabValue(scene, Catalog::findProperty(source.registry.get(), source.entity, entry.type, name)) : "-";
-                const std::string ownText = entry.kind == Kind::RemovedComponent ? std::string("(Removed)") :
+                const std::string ownText = entry.kind == OverrideKind::RemovedComponent ? std::string("(Removed)") :
                     formatPrefabValue(scene, Catalog::findProperty(scene, entry.entity, entry.type, name));
-                row(name, sourceText, ownText, entry.kind == Kind::RemovedComponent || sourceText != ownText || entry.properties.count(name) != 0);
+                row(name, sourceText, ownText, entry.kind == OverrideKind::RemovedComponent || sourceText != ownText || entry.properties.count(name) != 0);
             }
             break;
         }
-        case Kind::AddedComponent:
+        case OverrideKind::AddedComponent:
             for (auto& [name, data] : Catalog::findEntityProperties(scene, entry.entity, entry.type)) {
                 row(name, "(not in the Prefab)", formatPrefabValue(scene, data), true);
             }
             break;
-        case Kind::AddedGameObject: {
+        case OverrideKind::AddedGameObject: {
             row("GameObject", "(not in the Prefab)", scene->getEntityName(entry.entity), true);
             for (ComponentType type : Catalog::findComponents(scene, entry.entity)) {
                 row("Component", "", Catalog::getComponentDisplayName(type), true);
             }
             break;
         }
-        case Kind::RemovedGameObject:
+        case OverrideKind::RemovedGameObject:
             row("GameObject", entry.removal.name, entry.removal.belowRemoved ? "(Removed with its parent)" : "(Removed)", true);
             break;
     }
@@ -788,9 +788,9 @@ void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProjec
     // The items, keyed for the selection
     auto keyOf = [](const PrefabOverrideEntry& entry) {
         switch (entry.kind) {
-            case Kind::State: return "s" + std::to_string(entry.entity);
-            case Kind::AddedGameObject: return "a" + std::to_string(entry.entity);
-            case Kind::RemovedGameObject: return "r" + std::to_string(entry.removal.instanceRoot) + "_" + std::to_string(entry.removal.registryEntity);
+            case OverrideKind::State: return "s" + std::to_string(entry.entity);
+            case OverrideKind::AddedGameObject: return "a" + std::to_string(entry.entity);
+            case OverrideKind::RemovedGameObject: return "r" + std::to_string(entry.removal.instanceRoot) + "_" + std::to_string(entry.removal.registryEntity);
             default: return "c" + std::to_string(entry.entity) + "_" + std::to_string(static_cast<int>(entry.type));
         }
     };
@@ -810,8 +810,8 @@ void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProjec
     std::map<Entity, std::vector<const PrefabOverrideEntry*>> byGroup;
     for (const PrefabOverrideEntry& entry : entries) {
         Entity group = entry.entity;
-        if (entry.kind == Kind::AddedGameObject) group = entry.parent;
-        if (entry.kind == Kind::RemovedGameObject) group = entry.removal.instanceRoot;
+        if (entry.kind == OverrideKind::AddedGameObject) group = entry.parent;
+        if (entry.kind == OverrideKind::RemovedGameObject) group = entry.removal.instanceRoot;
         if (!byGroup.count(group)) groups.push_back(group);
         byGroup[group].push_back(&entry);
     }
@@ -829,12 +829,12 @@ void editor::InspectorWindow::drawPrefabOverridesPopup(SceneProject* sceneProjec
             std::string itemLabel;
             bool greyed = false;
             switch (entry->kind) {
-                case Kind::State: itemLabel = ICON_FA_CUBE "  GameObject (" + stateNames(entry->state) + ")"; break;
-                case Kind::Property: itemLabel = std::string(Catalog::getComponentIcon(entry->type)) + "  " + Catalog::getComponentDisplayName(entry->type); break;
-                case Kind::AddedComponent: itemLabel = ICON_FA_PLUS "  " + Catalog::getComponentDisplayName(entry->type) + " (Added)"; break;
-                case Kind::RemovedComponent: itemLabel = ICON_FA_MINUS "  " + Catalog::getComponentDisplayName(entry->type) + " (Removed)"; greyed = true; break;
-                case Kind::AddedGameObject: itemLabel = ICON_FA_PLUS "  " + scene->getEntityName(entry->entity) + " (Added GameObject)"; break;
-                case Kind::RemovedGameObject: itemLabel = ICON_FA_MINUS "  " + entry->removal.name + " (Removed GameObject)"; greyed = true; break;
+                case OverrideKind::State: itemLabel = ICON_FA_CUBE "  GameObject (" + stateNames(entry->state) + ")"; break;
+                case OverrideKind::Property: itemLabel = std::string(Catalog::getComponentIcon(entry->type)) + "  " + Catalog::getComponentDisplayName(entry->type); break;
+                case OverrideKind::AddedComponent: itemLabel = ICON_FA_PLUS "  " + Catalog::getComponentDisplayName(entry->type) + " (Added)"; break;
+                case OverrideKind::RemovedComponent: itemLabel = ICON_FA_MINUS "  " + Catalog::getComponentDisplayName(entry->type) + " (Removed)"; greyed = true; break;
+                case OverrideKind::AddedGameObject: itemLabel = ICON_FA_PLUS "  " + scene->getEntityName(entry->entity) + " (Added GameObject)"; break;
+                case OverrideKind::RemovedGameObject: itemLabel = ICON_FA_MINUS "  " + entry->removal.name + " (Removed GameObject)"; greyed = true; break;
             }
             const std::string key = keyOf(*entry);
             if (greyed) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);

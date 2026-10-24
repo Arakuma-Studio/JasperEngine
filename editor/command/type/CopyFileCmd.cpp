@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CopyFileCmd.h"
+#include "util/FileUtils.h"
 
 #include "util/Util.h"
 
@@ -34,7 +35,7 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
 }
 
 void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& destination, bool isDirectory){
-    fs::rename(source, destination);
+    FileUtils::renameWithRetry(source, destination);
     if (!project) {
         return;
     }

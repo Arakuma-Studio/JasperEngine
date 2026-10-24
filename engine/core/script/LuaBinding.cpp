@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "log/Logger.h"
+#include "util/SubscriptionOwnerIndex.h"
 #include "shader/ShaderManifest.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -491,7 +492,12 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     lua_pushvalue(L, tagIndex);
     lua_pushvalue(L, closureIndex);
 
-    if (pcallWithTraceback(L, 3, 0) != LUA_OK) {
+    // the subscription belongs to the script (its table), explicit tag or not: releasing the
+    // script removes it (SubscriptionOwnerIndex::releaseOwner)
+    const uint64_t previousOwner = SubscriptionOwnerIndex::setRegistrationOwner(ownerKeyOf(lua_topointer(L, selfIndex)));
+    const int status = pcallWithTraceback(L, 3, 0);
+    SubscriptionOwnerIndex::setRegistrationOwner(previousOwner);
+    if (status != LUA_OK) {
         return lua_error(L);
     }
 
@@ -743,28 +749,13 @@ void LuaBinding::cleanup(){
     }
 }
 
-std::string LuaBinding::getScriptSubscriptionTag(int luaRef){
-    if (!luastate) return "";
-
+void LuaBinding::removeScriptSubscriptions(int luaRef){
+    if (!luastate) return;
     lua_rawgeti(luastate, LUA_REGISTRYINDEX, luaRef);
-    const void* ptr = lua_topointer(luastate, -1);
-    std::string addr;
-    if (ptr) {
-        addr = "_" + std::to_string(reinterpret_cast<std::uintptr_t>(ptr)) + "_";
-    }
+    const void* table = lua_topointer(luastate, -1);
     lua_pop(luastate, 1);
-
-    return addr;
-}
-
-void LuaBinding::removeScriptSubscriptions(Scene* scene, int luaRef){
-    std::string addr = getScriptSubscriptionTag(luaRef);
-    if (addr.empty()) return;
-
-    Engine::removeSubscriptionsByTag(addr);
-    if (scene) {
-        scene->removeSubscriptionsByTag(addr);
-    }
+    // every event subscription (engine, components, physics) and timer of the script
+    if (table) SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(table));
 }
 
 void LuaBinding::releaseLuaRef(int luaRef){
@@ -1046,7 +1037,7 @@ void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, c
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
     int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
-    removeScriptSubscriptions(scene, ref);
+    removeScriptSubscriptions(ref);
     releaseLuaRef(ref);
     scriptEntry.instance = nullptr;
     for (auto& prop : scriptEntry.properties) {

@@ -161,7 +161,7 @@ static double measure(TreeNode& tree, const char* search, bool optimized) {
             const bool rebuild = frame % 31 == 0;
             if (optimized) window.updateSearchAndSelectionOrder(tree, rebuild);
             else window.baselineUpdate(tree, rebuild);
-            sink += window.visibleEntitySelectionOrder.size();
+            sink = sink + window.visibleEntitySelectionOrder.size();
         }
         samples.push_back(1.0e6 * (std::clock() - start) / CLOCKS_PER_SEC / frames);
     }
@@ -191,7 +191,7 @@ int main() {
         cpp = directory / "benchmark.cpp"
         binary = directory / "benchmark"
         cpp.write_text(fixture)
-        subprocess.run([os.environ.get("CXX", "c++"), "-std=c++17", "-O2", "-Wall", "-Wextra", str(cpp), "-o", str(binary)], check=True)
+        subprocess.run([os.environ.get("CXX", "c++"), "-std=c++20", "-O2", "-Wall", "-Wextra", str(cpp), "-o", str(binary)], check=True)
         subprocess.run([str(binary)], check=True)
 
 

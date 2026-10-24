@@ -5,6 +5,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "log/Logger.h"
+#include "util/Scheduler.h"
 #include "Scene.h"
 #include "Input.h"
 #include "render/SystemRender.h"
@@ -108,6 +109,7 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
+bool Engine::gameEventsPaused = false;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -366,7 +368,12 @@ Scene* Engine::getLastScene(){
     return scenes.empty() ? nullptr : scenes.back();
 }
 
+bool Engine::areGameEventsPaused() {
+    return gameEventsPaused;
+}
+
 void Engine::pauseGameEvents(bool pause) {
+    gameEventsPaused = pause;
     // Pause ALL subscriptions for game events
     // Don't pause drawing and lifecycle events
     onUpdate.setEnabled(!pause);
@@ -1117,6 +1124,8 @@ void Engine::systemInit(int argc, char* argv[], System* system){
         startGameLogger(system, std::vector<std::string>(argv, argv + argc));
     }
     Logger::setThreadName("main");
+    // the game's timers run on this thread (Engine::systemDraw)
+    Scheduler::game().setOwnerThread();
 
     Engine::setCanvasSize(1000,480);
 
@@ -1301,6 +1310,12 @@ void Engine::systemDraw(){
     // stops with the updates: a held simulation or a paused app
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
+    // timers: what other threads posted, then the real clock (runs paused or loading too)
+    Scheduler& scheduler = Scheduler::game();
+    scheduler.processPosted();
+    scheduler.advance(TimeDomain::Real, rawDelta);
+    scheduler.process(TimeDomain::Real);
+
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
     // held gamepad directions repeat on the UI clock
@@ -1328,6 +1343,13 @@ void Engine::systemDraw(){
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
+        // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
+        const bool gameClocks = !gameEventsPaused;
+        if (gameClocks) {
+            scheduler.advance(TimeDomain::Game, frameDelta);
+            scheduler.advance(TimeDomain::Unscaled, frameTime);
+            scheduler.advance(TimeDomain::Frames, 1.0);
+        }
 
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
@@ -1339,6 +1361,10 @@ void Engine::systemDraw(){
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
+                }
+                if (gameClocks) {
+                    scheduler.advance(TimeDomain::FixedSteps, 1.0);
+                    scheduler.process(TimeDomain::FixedSteps);
                 }
                 updateTimeCount -= updateTime;
                 fixedLoops++;
@@ -1356,6 +1382,12 @@ void Engine::systemDraw(){
         Engine::onUpdate.call();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
+        }
+        // timers and coroutines run after the update, before the post-update (as Unity's)
+        if (gameClocks) {
+            scheduler.process(TimeDomain::Game);
+            scheduler.process(TimeDomain::Unscaled);
+            scheduler.process(TimeDomain::Frames);
         }
         Engine::onPostUpdate.call();
 
@@ -1489,8 +1521,9 @@ void Engine::systemViewDestroyed(){
 void Engine::systemShutdown(){
     Engine::onShutdown.call();
 
-    // anime's Lua references go while the Lua state still exists
+    // anime's and the timers' Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
+    Scheduler::game().clear();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);

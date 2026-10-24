@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "util/PngWriter.h"
+#include "DocumentFile.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -141,7 +143,7 @@ bool editor::ProjectWindow::writeImageThumbnail(const fs::path& sourcePath, cons
     );
 
     fs::create_directories(thumbnailPath.parent_path());
-    const bool written = stbi_write_png(thumbnailPath.string().c_str(), newWidth, newHeight, 4, thumbData.data(), newWidth * 4) != 0;
+    const bool written = writePng(thumbnailPath, newWidth, newHeight, 4, thumbData.data(), newWidth * 4, io::Durability::Cache);
 
     sourceData.releaseImageData();
     return written;
@@ -674,10 +676,7 @@ void editor::ProjectWindow::processPrefabThumbnails() {
         }
         saveStarted = GraphicUtils::saveFramebufferImage(framebuffer, thumbnailPath, false,
             [this, pending, thumbnailPath, stamp]() {
-                {
-                    std::ofstream stampFile(prefabStampPath(thumbnailPath), std::ios::trunc);
-                    stampFile << stamp;
-                }
+                FileUtils::writeFile(prefabStampPath(thumbnailPath), stamp);
                 bool publish = false;
                 {
                     std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
@@ -1101,7 +1100,7 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
             navigateTo = segments[i].second;
         }
         if (!isCurrent && ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            if (ImGui::AcceptDragDropPayload("resource_files")) {
                 dropTarget = segments[i].second;
             }
             ImGui::EndDragDropTarget();
@@ -1394,7 +1393,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             // --- Directory as drop target ----------------------------------
             if (file.isDirectory){
                 if (ImGui::BeginDragDropTarget()){
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                    if (ImGui::AcceptDragDropPayload("resource_files")){
                         dropTarget = currentPath / file.name;
                     }
                     ImGui::EndDragDropTarget();
@@ -1988,7 +1987,7 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
 
     // Handle drag and drop target
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+        if (ImGui::AcceptDragDropPayload("resource_files")) {
             handleInternalDragAndDrop(rootPath);
         }
         ImGui::EndDragDropTarget();
@@ -2566,7 +2565,7 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
 // main thread when a file is written. An existing output is not replaced.
 void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir) {
     for (const fs::path& video : videos)
-        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", video.filename().u8string().c_str());
+        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", editor::FileUtils::pathToUtf8(video.filename()).c_str());
     std::thread([videos, targetDir]() {
         for (const fs::path& video : videos) {
             const htmlui::VideoImportResult result = htmlui::VideoImporter::importFile(video, targetDir, false);
@@ -2738,7 +2737,7 @@ void editor::ProjectWindow::thumbnailWorker() {
             }
         } else if (thumbFile.type == FileType::MATERIAL) {
             try {
-                if (YAML::Node materialNode = YAML::LoadFile(thumbFile.path.string())) {
+                if (YAML::Node materialNode = DocumentFiles::read(thumbFile.path, DocumentKind::Material).root) {
                     Material material = Stream::decodeMaterial(materialNode);
                     materialRender.applyMaterial(material);
 
@@ -3191,8 +3190,6 @@ void editor::ProjectWindow::show() {
         itemViewStyle = static_cast<ItemViewStyle>(AppSettings::getResourcesItemViewStyle());
         leftPanelWidth = AppSettings::getResourcesLeftPanelWidth();
 
-        int iconWidth, iconHeight;
-
         TextureData data;
 
         data.loadTextureFromMemory(folder_icon_png, folder_icon_png_len);
@@ -3449,7 +3446,6 @@ void editor::ProjectWindow::show() {
 
 
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
-        ImGuiDragDropFlags target_flags = ImGuiDragDropFlags_AcceptBeforeDelivery;
         if (const ImGuiPayload* payload = ImGui::GetDragDropPayload()) {
             if (payload->IsDataType("external_files")) highlightDragAndDrop();
         }
@@ -3584,8 +3580,7 @@ void editor::ProjectWindow::renameNewLuaScript(const fs::path& file, const std::
     if (text != newLuaScriptText) {
         return;  // edited since: leave it to its author
     }
-    std::ofstream out(file, std::ios::trunc | std::ios::binary);
-    out << newLuaScriptTemplate(name);
+    DocumentFiles::write(file, newLuaScriptTemplate(name));
 }
 
 void editor::ProjectWindow::assetsCreateScript(bool lua) {
@@ -3606,23 +3601,17 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
     }
 
     if (lua) {
-        std::ofstream f(currentPath / (name + ".lua"), std::ios::trunc | std::ios::binary);
-        if (!f) {
-            Backend::getApp().registerAlert("Create Lua Script", "Could not write to " + currentPath.string());
-            return;
-        }
         newLuaScriptFile = name + ".lua";
         newLuaScriptText = newLuaScriptTemplate(name);
-        f << newLuaScriptText;
-        f.close();
-        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
-    } else {
-        std::ofstream h(currentPath / (name + ".h"), std::ios::trunc);
-        std::ofstream c(currentPath / (name + ".cpp"), std::ios::trunc);
-        if (!h || !c) {
-            Backend::getApp().registerAlert("Create C++ Script", "Could not write to " + currentPath.string());
+        const io::WriteResult written = DocumentFiles::write(currentPath / newLuaScriptFile, newLuaScriptText);
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create Lua Script", DocumentFiles::saveFailureMessage(currentPath / newLuaScriptFile, written));
             return;
         }
+        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
+    } else {
+        std::ostringstream h;
+        std::ostringstream c;
         h << "#pragma once\n\n";
         h << "#include \"ScriptBase.h\"\n";
         h << "#include \"Engine.h\"\n";
@@ -3645,6 +3634,14 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
         c << "}\n\n";
         c << "void " << name << "::onUpdate() {\n";
         c << "}\n";
+        io::WriteResult written = DocumentFiles::write(currentPath / (name + ".h"), h.str());
+        if (written.ok()) {
+            written = DocumentFiles::write(currentPath / (name + ".cpp"), c.str());
+        }
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create C++ Script", DocumentFiles::saveFailureMessage(currentPath, written));
+            return;
+        }
     }
 
     scanDirectory(currentPath);

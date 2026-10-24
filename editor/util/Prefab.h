@@ -14,6 +14,7 @@
 
 #include "Scene.h"     // Entity, EntityRegistry, NULL_ENTITY
 #include "Catalog.h"   // ComponentType
+#include "LoadReport.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -197,6 +198,11 @@ public:
     // Read from a file older than FILE_VERSION: written again the next time a scene using it
     // is saved, even if nothing changed
     bool needsUpgrade = false;
+    // What the asset's file load could not read (docs/data-safety.md): with dropped issues
+    // outstanding, its saves are gated (Project::savePrefabToDisk)
+    LoadReport loadReport;
+    // SHA-1 of the file's bytes as last loaded or saved by this session
+    std::string diskSha1;
     uint32_t nextInstanceId = 1;
 
     uint32_t getInstanceId(uint32_t sceneId, Entity entity) const;

@@ -2880,7 +2880,7 @@ void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude
 }
 
 void PhysicsSystem::addBroadPhaseLayer3D(uint8_t index, uint32_t groupsToInclude, uint32_t groupsToExclude){
-    if (index >= 0 && index < MAX_BROADPHASELAYER_3D){
+    if (index < MAX_BROADPHASELAYER_3D){
         broad_phase_layer_interface->ConfigureLayer(JPH::BroadPhaseLayer(index), groupsToInclude, groupsToExclude);
 
         auto bodies3d = scene->getComponentArray<RigidbodyComponent>();

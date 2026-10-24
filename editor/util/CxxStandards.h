@@ -8,8 +8,9 @@
 
 namespace jasperengine::editor {
 
-    // Mirrored by JASPERENGINE_CXX_STANDARDS in engine/CMakeLists.txt, first entry is the default
-    inline constexpr int cxxStandards[] = {17, 20, 23};
+    // JASPERENGINE_CXX_STANDARDS of engine/CMakeLists.txt, which passes it to the editor
+    // targets; the first entry is the default
+    inline constexpr int cxxStandards[] = { JASPERENGINE_CXX_STANDARD_LIST };
 
     inline bool isSupportedCxxStandard(int standard) {
         for (int supported : cxxStandards) {
@@ -22,12 +23,13 @@ namespace jasperengine::editor {
         return isSupportedCxxStandard(standard) ? standard : cxxStandards[0];
     }
 
-    // "17, 20, or 23", for settings text, AI tool schemas and generated docs
+    // "20 or 23", or "20, 23, or 26" from three entries on, for settings text, AI tool
+    // schemas and generated docs
     inline std::string cxxStandardList() {
         const size_t count = std::size(cxxStandards);
         std::string list;
         for (size_t i = 0; i < count; i++) {
-            if (i > 0) list += (i + 1 == count) ? ", or " : ", ";
+            if (i > 0) list += (i + 1 < count) ? ", " : (count == 2) ? " or " : ", or ";
             list += std::to_string(cxxStandards[i]);
         }
         return list;

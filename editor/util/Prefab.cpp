@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Prefab.h"
+#include "StreamPreserved.h"
 
 #include "Stream.h"
 #include "util/YamlNumbers.h"
@@ -179,6 +180,8 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node, const std::strin
     root = NULL_ENTITY;
 
     Stream::decodeEntitySelection(node, registry.get(), &registryEntities);
+    // the header keys this editor does not know go back into the file on save
+    StreamLoad::preserveRootKeys(registry.get(), NULL_ENTITY, node, RootKind::PrefabHeader);
 
     FileHeader header = readHeader(node);
     const bool legacyFile = header.version < FILE_VERSION;
@@ -402,6 +405,8 @@ void Prefab::takeAssetData(Prefab&& loaded) {
     stripped = std::move(loaded.stripped);
     addedObjects = std::move(loaded.addedObjects);
     needsUpgrade = loaded.needsUpgrade;
+    loadReport = std::move(loaded.loadReport);
+    diskSha1 = std::move(loaded.diskSha1);
 }
 
 Entity Prefab::Instance::getRegistryEntity(Entity localEntity) const {

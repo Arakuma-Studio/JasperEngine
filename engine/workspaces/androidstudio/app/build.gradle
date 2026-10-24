@@ -8,6 +8,9 @@ def jasperengineRootAbs = file(jasperengineRoot).toString()
 
 android {
     compileSdk 36
+    // The NDK AGP 9.4.1 installs by default, pinned: its Clang (19) is above the C++20 floor
+    // (engine/cmake/JasperEngineToolchain.cmake), and exports keep this line
+    ndkVersion "28.2.13676358"
     defaultConfig {
         applicationId "com.yourcompany.project"
         minSdkVersion 21

@@ -9,10 +9,10 @@
 
 namespace jasperengine::editor {
 
-static constexpr float dialogWidth = 600.0f;
-static constexpr float dialogHeight = 420.0f;
-static constexpr float dialogButtonWidth = 120.0f;
-static constexpr ImGuiWindowFlags noScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+static constexpr float scenesDialogWidth = 600.0f;
+static constexpr float scenesDialogHeight = 420.0f;
+static constexpr float scenesDialogButtonWidth = 120.0f;
+static constexpr ImGuiWindowFlags scenesNoScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 void ScenesWindow::open(Project* project) {
     m_isOpen = true;
@@ -71,15 +71,15 @@ void ScenesWindow::show() {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImVec2 size(
-        std::min(Theme::dpi(dialogWidth), viewport->WorkSize.x * 0.9f),
-        std::min(Theme::dpi(dialogHeight), viewport->WorkSize.y * 0.9f)
+        std::min(Theme::dpi(scenesDialogWidth), viewport->WorkSize.x * 0.9f),
+        std::min(Theme::dpi(scenesDialogHeight), viewport->WorkSize.y * 0.9f)
     );
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal |
                              ImGuiWindowFlags_NoResize |
-                             noScrollFlags;
+                             scenesNoScrollFlags;
 
     if (ImGui::BeginPopupModal("Scenes in Build##ScenesModal", &m_isOpen, flags)) {
         if (!m_isOpen) {
@@ -168,7 +168,7 @@ void ScenesWindow::drawScenes() {
 
     // Unity-style footer: buttons on the right, primary first.
     const float footerWidth = std::max(1.0f, ImGui::GetWindowWidth() - style.WindowPadding.x * 2.0f);
-    const float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(dialogButtonWidth));
+    const float buttonWidth = std::clamp((footerWidth - style.ItemSpacing.x) * 0.5f, 1.0f, Theme::dpi(scenesDialogButtonWidth));
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x + std::max(0.0f, footerWidth - buttonsWidth), footerY));
 

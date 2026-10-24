@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from harness import Editor
 
+CI = True
 EDITOR = {"create": True, "name": "Post Processing Settings"}
 TIMEOUT = 600
 

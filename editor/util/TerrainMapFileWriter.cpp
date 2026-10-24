@@ -86,7 +86,7 @@ bool TerrainMapFileWriter::writeJob(const std::string& path, const Job& job){
     if (job.bytesPerChannel >= 2){
         return writeGray16Png(fs::path(path), job.width, job.height, job.pixels.data(), job.pixels.size());
     }
-    return stbi_write_png(path.c_str(), job.width, job.height, job.channels, job.pixels.data(), job.width * job.channels) != 0;
+    return writePng(fs::path(path), job.width, job.height, job.channels, job.pixels.data(), job.width * job.channels);
 }
 
 void TerrainMapFileWriter::startWorkerLocked(){

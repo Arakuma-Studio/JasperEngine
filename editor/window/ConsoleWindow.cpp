@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConsoleWindow.h"
+#include <cstdio>
 #include "external/IconsFontAwesome6.h"
 #include "util/UIUtils.h"
 #include "App.h"
@@ -132,6 +133,12 @@ void ConsoleWindow::setOpen(bool open) {
 
 bool ConsoleWindow::isOpen() const {
     return windowOpen;
+}
+
+void ConsoleWindow::setSearchText(const std::string& text) {
+    std::snprintf(filter.InputBuf, sizeof(filter.InputBuf), "%s", text.c_str());
+    filter.Build();
+    needsRebuild = true;
 }
 
 void ConsoleWindow::requestFocus() {

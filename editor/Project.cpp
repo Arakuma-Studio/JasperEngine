@@ -3,6 +3,8 @@
 
 #include "Project.h"
 #include "util/CrashHook.h"
+#include "util/Scheduler.h"
+#include "io/AtomicFile.h"
 #include "Factory.h"
 #include "Workspace.h"
 #include "registry/PhysicsLayers.h"
@@ -44,6 +46,9 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "Stream.h"
+#include "StreamPreserved.h"
+#include "DocumentFile.h"
+#include "StreamSchema.h"
 #include "util/FileDialogs.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
@@ -1637,7 +1642,7 @@ void editor::Project::refreshLinkedMaterials(bool force) {
             // Only load the file once per unique path
             if (changedFiles.find(linkEntry.filePath) == changedFiles.end()) {
                 try {
-                    YAML::Node materialNode = YAML::LoadFile(absolutePath.string());
+                    YAML::Node materialNode = DocumentFiles::read(absolutePath, DocumentKind::Material).root;
                     Material updatedMaterial = Stream::decodeMaterial(materialNode);
                     updatedMaterial.name = linkEntry.filePath;
                     changedFiles[linkEntry.filePath] = {linkEntry.filePath, updatedMaterial};
@@ -2222,7 +2227,7 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
 
         Material material;
         try {
-            material = Stream::decodeMaterial(YAML::LoadFile(entry.path().string()));
+            material = Stream::decodeMaterial(DocumentFiles::read(entry.path(), DocumentKind::Material).root);
         } catch (const std::exception& e) {
             Out::warning("Could not read material %s: %s", entry.path().string().c_str(), e.what());
             continue;
@@ -2232,12 +2237,10 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
             continue;
         }
 
-        std::ofstream file(entry.path());
-        if (!file){
-            Out::error("Failed to write material: %s", entry.path().string().c_str());
+        // a material this editor could not read completely is left as it is (the gate)
+        if (DocumentFiles::saveMaterial(entry.path(), Stream::encodeMaterial(material)) != SaveResult::Saved){
             continue;
         }
-        file << YAML::Dump(Stream::encodeMaterial(material));
         changed = true;
     }
 
@@ -2321,7 +2324,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
         }
 
         fs::create_directories(destination.parent_path(), moveEc);
-        fs::rename(source, destination, moveEc);
+        io::renameWithRetry(source, destination, moveEc);
         if (moveEc){
             // A root on another volume rejects rename, so the file is copied and only then dropped.
             std::error_code copyEc;
@@ -2359,7 +2362,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
                 continue;
             }
 
-            fs::rename(destination, source, undoEc);
+            io::renameWithRetry(destination, source, undoEc);
             if (!undoEc){
                 continue;
             }
@@ -2901,7 +2904,7 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
         fullPath = getProjectPath() / fullPath;
     }
 
-    YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
+    YAML::Node sceneNode = DocumentFiles::read(fullPath, DocumentKind::Scene).root;
     Stream::decodeSceneProject(runtime.get(), sceneNode, true);
     runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
     Stream::decodeSceneProjectEntities(this, runtime.get(), sceneNode);
@@ -3241,7 +3244,7 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
         } else {
             try {
                 Prefab loaded;
-                loaded.loadRegistry(YAML::LoadFile((getProjectPath() / info.prefabPath).string()));
+                loaded.loadRegistry(DocumentFiles::read(getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
                 content.entities = loaded.registryEntities;
                 content.registry = loaded.registry.get();
                 fileRegistries.push_back(std::move(loaded.registry));
@@ -3469,7 +3472,20 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         }
 
         editor::getEditorHost().reportLoadingProgress("Loading scenes...");
-        YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
+        // The report collects what the decode cannot read; it lives on the scene and gates
+        // saves that would drop it (docs/data-safety.md)
+        LoadReport loadReport;
+        const fs::path shownPath = fullPath.lexically_relative(getProjectPath());
+        loadReport.documentPath = FileUtils::pathToUtf8(shownPath.empty() ? fullPath : shownPath);
+        // a crash backup of this file: restored, discarded or kept (R17-R19)
+        std::string restoredBytes;
+        const bool restoring = loadSceneData && opened && !shownPath.empty() && resolveSceneRecovery(shownPath.lexically_normal(), restoredBytes);
+        std::unique_ptr<ScopedLoadReport> reportScope = std::make_unique<ScopedLoadReport>(loadReport);
+        DocumentFile document = restoring ? DocumentFiles::fromBytes(std::move(restoredBytes), loadReport.documentPath, DocumentKind::Scene) :
+                DocumentFiles::read(fullPath, DocumentKind::Scene);
+        // the file's bytes are what a later backup and save build on, even when restoring
+        const std::string diskSha1 = restoring ? lastRecovery.backup.baseSha1 : document.sha1;
+        YAML::Node sceneNode = document.root;
 
         if (isNewScene) {
             scenes.emplace_back();
@@ -3502,6 +3518,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         }
 
         Stream::decodeSceneProject(targetScene, sceneNode, loadSceneData);
+        targetScene->diskSha1 = diskSha1;
         // the build's prefab list of a closed scene follows the prefabs' GUIDs too
         resolveScenePrefabInfos(*targetScene);
 
@@ -3537,6 +3554,11 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
 
             loadSceneProjectData(targetScene, sceneNode);
         }
+        reportScope.reset();
+        if (loadSceneData) {
+            targetScene->loadReport = std::move(loadReport);
+            logLoadReport(targetScene->loadReport);
+        }
 
         if (opened){
             // Sync linked materials with latest file contents on disk
@@ -3555,7 +3577,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                     if (!fs::exists(materialPath) || fs::is_directory(materialPath)) continue;
 
                     try {
-                        YAML::Node materialNode = YAML::LoadFile(materialPath.string());
+                        YAML::Node materialNode = DocumentFiles::read(materialPath, DocumentKind::Material).root;
                         Material fileMaterial = Stream::decodeMaterial(materialNode);
                         fileMaterial.name = normalizedPath;
 
@@ -3583,7 +3605,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         targetScene->needUpdateRender = opened;
         // A prefab its file names by an old path (moved since, found by GUID) is saved
         // with the new one
-        targetScene->isModified = loadSceneData && targetScene->prefabRefsChanged;
+        targetScene->isModified = loadSceneData && (targetScene->prefabRefsChanged || restoring);
         targetScene->opened = opened;
 
         if (opened) {
@@ -3601,6 +3623,10 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             } else {
                 Out::warning("Scene has no ID, assigning ID %u", targetScene->id);
             }
+        }
+
+        for (LoadIssue& issue : targetScene->loadReport.issues) {
+            issue.sceneId = targetScene->id;
         }
 
         if (opened && !isNewScene) {
@@ -3627,6 +3653,51 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
     }
 
     return false;
+}
+
+uint32_t editor::Project::loadUntitledScene(const std::string& text, const std::string& displayName) {
+    SceneProject* targetScene = nullptr;
+    try {
+        LoadReport loadReport;
+        loadReport.documentPath = displayName;
+        std::unique_ptr<ScopedLoadReport> reportScope = std::make_unique<ScopedLoadReport>(loadReport);
+        DocumentFile document = DocumentFiles::fromBytes(text, displayName, DocumentKind::Scene);
+
+        scenes.emplace_back();
+        targetScene = &scenes.back();
+        Stream::decodeSceneProject(targetScene, document.root, true);
+        targetScene->sceneRender = createSceneRender(targetScene->sceneType, targetScene->scene);
+        if (!targetScene->sceneRender) {
+            throw std::runtime_error("no usable scene data");
+        }
+        loadSceneProjectData(targetScene, document.root);
+        reportScope.reset();
+        targetScene->loadReport = std::move(loadReport);
+        logLoadReport(targetScene->loadReport);
+
+        // never written: no path, a transient id unless the backup's is free
+        SceneProject* existing = getScene(targetScene->id);
+        if (targetScene->id == NULL_PROJECT_SCENE || (existing && existing != targetScene)) {
+            targetScene->id = allocateSceneId();
+        }
+        targetScene->filepath.clear();
+        targetScene->transientId = true;
+        targetScene->opened = true;
+        targetScene->isVisible = true;
+        targetScene->needUpdateRender = true;
+        targetScene->isModified = true;
+        const uint32_t id = targetScene->id;
+        setSelectedSceneId(id);
+        editor::getEditorHost().addNewSceneToDock(id);
+        Out::info("Restored the untitled scene \"%s\" from its auto-saved copy; save it to keep it.", targetScene->name.c_str());
+        return id;
+    } catch (const std::exception& e) {
+        Out::error("Could not restore the untitled scene %s: %s", displayName.c_str(), e.what());
+        if (targetScene) {
+            discardHalfLoadedScene(targetScene, true);
+        }
+    }
+    return NULL_PROJECT_SCENE;
 }
 
 // A scene loadScene() appended goes away; one already in the project is put back the
@@ -3757,6 +3828,11 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
 
     // Debounced writes still need the live scene to encode the material from
     editor::getEditorHost().flushSceneMaterialWrites(sceneId);
+
+    // closed with changes not saved: they were discarded, and so is their backup (R16)
+    if (it->isModified) {
+        deleteSceneBackup(*it, it->filepath);
+    }
 
     deleteSceneProject(&(*it));
 
@@ -4124,14 +4200,22 @@ bool editor::Project::closeSceneNow(uint32_t sceneId, UnsavedChoice unsaved, std
     return true;
 }
 
-bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntitled, std::string* error) {
+bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntitled, std::string* error,
+        DegradedSavePolicy policy, SaveResult* outcome) {
     NonInteractiveScope scope(nonInteractiveDepth);
     std::string message;
     if (isPrefabStage(sceneId)) {
+        // decided here: an API save never meets the editor's modal
+        if (policy == DegradedSavePolicy::Refuse && isPrefabStageDegraded(sceneId)) {
+            if (outcome) *outcome = SaveResult::RefusedDegraded;
+            return failWith(error, "The prefab of the stage did not load completely; saving it would permanently remove values "
+                                   "this editor could not read");
+        }
         const uint64_t logId = Out::lastLogId();
-        if (!savePrefabStage(sceneId)) {
+        if (!savePrefabStage(sceneId, policy)) {
             return failWithLogged(error, logId, "The prefab of the stage could not be saved");
         }
+        if (outcome) *outcome = SaveResult::Saved;
         return true;
     }
     if (isPlayRuntimeScene(sceneId)) {
@@ -4181,9 +4265,16 @@ bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntit
     }
 
     const uint64_t logId = Out::lastLogId();
-    if (!saveSceneToPath(sceneId, target)) {
+    SaveResult result = SaveResult::Failed;
+    if (!saveSceneToPath(sceneId, target, true, policy, &result)) {
+        if (outcome) *outcome = result;
+        if (result == SaveResult::RefusedDegraded) {
+            return failWith(error, "\"" + normalizeToProjectRelative(target).generic_string() + "\" did not load completely; saving it would "
+                                   "permanently remove " + std::to_string(sceneProject->loadReport.dropped()) + " value(s) this editor could not read");
+        }
         return failWithLogged(error, logId, "Failed to save scene " + target.generic_string());
     }
+    if (outcome) *outcome = SaveResult::Saved;
 
     // what Save does next: the child scenes with changes of their own
     std::vector<uint32_t> involvedIds;
@@ -4315,10 +4406,19 @@ bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
             fullPath = getProjectPath() / fullPath;
         }
 
-        YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
+        LoadReport loadReport;
+        loadReport.documentPath = FileUtils::pathToUtf8(childScene->filepath);
+        {
+            ScopedLoadReport reportScope(loadReport, childScene->id);
+            DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Scene);
+            YAML::Node sceneNode = document.root;
 
-        Stream::decodeSceneProject(childScene, sceneNode, true);
-        loadSceneProjectData(childScene, sceneNode);
+            Stream::decodeSceneProject(childScene, sceneNode, true);
+            loadSceneProjectData(childScene, sceneNode);
+            childScene->diskSha1 = document.sha1;
+        }
+        childScene->loadReport = std::move(loadReport);
+        logLoadReport(childScene->loadReport);
 
         childScene->expandedInline = true;
         childScene->needUpdateRender = true;
@@ -5088,6 +5188,10 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         if (modelLoaded && !projectPath.empty()) {
             saveWorkspaceFile();
         }
+        // the outgoing session ended cleanly (R16): its backups and its lock go
+        if (modelLoaded) {
+            endProjectSession();
+        }
 
         editor::getEditorHost().prepareForProjectSwitch();
 
@@ -5114,6 +5218,12 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
                 std::filesystem::create_directories(projectPath);
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
+
+            // a new project is locked like an opened one (R10); the editor's own temporary
+            // project is not (each editor remakes it)
+            if (!isEditorTempProject() && !takeProjectLock(projectPath)) {
+                return false;
+            }
 
             // Inherit the compiler chosen in a previous session so new temp projects
             // don't silently fall back to the Default toolchain every time. Drop a
@@ -5169,8 +5279,22 @@ bool editor::Project::saveProject(bool userCalled, std::function<void()> callbac
     return saveret;
 }
 
-bool editor::Project::saveProjectFile() {
+bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* outcome) {
+    if (outcome) {
+        *outcome = SaveResult::Failed;
+    }
     if (projectPath.empty()) {
+        return false;
+    }
+
+    // project.yaml read with values this editor could not keep (a newer format): not written
+    // over unless the loss was accepted
+    if (projectLoadReport.dropped() > 0 && policy == DegradedSavePolicy::Refuse) {
+        Out::warning("project.yaml not saved: it did not load completely and saving it would remove %zu value(s) "
+                     "this editor could not read (save_project allow_data_loss writes it anyway).", projectLoadReport.dropped());
+        if (outcome) {
+            *outcome = SaveResult::RefusedDegraded;
+        }
         return false;
     }
 
@@ -5191,22 +5315,24 @@ bool editor::Project::saveProjectFile() {
 
     try {
         std::filesystem::path projectFile = projectPath / "project.yaml";
-        std::ofstream fout(projectFile.string());
-        if (!fout) {
-            Out::error("Failed to open project file for writing: %s", projectFile.string().c_str());
+        YAML::Node root = Stream::encodeProject(this);
+        // the keys of the file this editor does not know stay (R28)
+        DocumentFiles::overlayUnknownRootKeys(root, projectFile, RootKind::Project);
+        const io::WriteResult written = DocumentFiles::write(projectFile, DocumentFiles::text(root));
+        if (!written.ok()) {
+            const std::string message = DocumentFiles::saveFailureMessage("project.yaml", written);
+            Out::error(message);
+            alertUser("Error", message);
             return false;
         }
-
-        // Trailing newline: git reports a file without one as changed as soon as
-        // anything is appended to it
-        fout << YAML::Dump(Stream::encodeProject(this)) << "\n";
-        fout.close();
-
-        if (!fout) {
-            Out::error("Failed to write project file: %s", projectFile.string().c_str());
-            return false;
+        if (projectLoadReport.dropped() > 0) {
+            Out::warning("Saved project.yaml without %zu value(s) this editor could not read.", projectLoadReport.dropped());
+            projectLoadReport.clearDropped();
         }
 
+        if (outcome) {
+            *outcome = SaveResult::Saved;
+        }
         return true;
     } catch (const std::exception& e) {
         Out::error("Failed to save project file: \"%s\"", e.what());
@@ -5406,6 +5532,11 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
         assetDatabase.open(projectPath);
     }
 
+    // the temporary project saved somewhere of its own is locked there (R10)
+    if (wasTemp && oldPath != path && !isEditorTempProject()) {
+        takeProjectLock(projectPath);
+    }
+
     if (!saveProjectFile()) {
         return false;
     }
@@ -5443,12 +5574,27 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
 
         // Load and parse project file
         editor::getEditorHost().reportLoadingProgress("Loading project...");
-        YAML::Node projectNode = YAML::LoadFile(projectFile.string());
+        LoadReport projectReport;
+        projectReport.documentPath = "project.yaml";
+        std::unique_ptr<ScopedLoadReport> projectReportScope = std::make_unique<ScopedLoadReport>(projectReport);
+        YAML::Node projectNode = DocumentFiles::read(projectFile, DocumentKind::Project).root;
+
+        // One editor per project (R10): another live editor holding it stops the load
+        // unless the user (or --ignore-lock) says otherwise
+        const std::filesystem::path previousProject = projectPath;
+        if (!takeProjectLock(path)) {
+            return false;
+        }
 
         // The workspace is written from the live model, which resetConfigs() is about
         // to drop, so the outgoing project is flushed first
         if (modelLoaded && !projectPath.empty()) {
             saveWorkspaceFile();
+        }
+        // the outgoing session ended cleanly: its backups go (R16)
+        if (!previousProject.empty() && previousProject != path) {
+            SceneBackups::removeOwnedBy(previousProject, io::currentProcessId());
+            autosaveScenes.clear();
         }
 
         editor::getEditorHost().prepareForProjectSwitch();
@@ -5467,6 +5613,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         // upgrade of files written before them) and references resolve through it
         editor::getEditorHost().reportLoadingProgress("Scanning assets...");
         assetDatabase.open(projectPath);
+        // the temps of saves a crash interrupted, found by that walk (R12)
+        sweepOrphanedTemporaryFiles();
 
         // Per-user state comes from .jasperengine/user/, falling back to the copy an older
         // editor left in project.yaml
@@ -5476,6 +5624,9 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         workspaceMigrationPending = workspace.hasAdoptedLegacyState();
 
         Stream::decodeProject(this, projectNode, workspace);
+        projectReportScope.reset();
+        projectLoadReport = std::move(projectReport);
+        logLoadReport(projectLoadReport);
         setUnresolvedSceneStates(workspace.statesForUnresolvedScenes(this));
 
         // unlike the other settings it applies while editing too, textures are shared with Play
@@ -5520,6 +5671,9 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
             Out::warning("This project's editor state could not be written to \"%s\"; project.yaml still holds the only copy",
                          Workspace::getUserDirectory(projectPath).string().c_str());
         }
+
+        // untitled scenes a crashed session was editing, offered once (R17)
+        offerUntitledBackups();
 
         Out::info("Project loaded successfully: \"%s\"", projectPath.string().c_str());
         return true;
@@ -5600,7 +5754,35 @@ void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> call
         return;
     }
 
+    refusedSaves.erase(sceneId);
     if (!sceneProject->filepath.empty()) {
+        if (isSceneSaveGated(sceneProject)) {
+            // never through the default alerts: the host decides (a modal in the editor,
+            // Refuse when headless)
+            DegradedSaveRequest request;
+            request.documentName = sceneProject->filepath.filename().string();
+            request.path = sceneProject->filepath;
+            for (const LoadIssue& issue : sceneProject->loadReport.issues) {
+                if (issue.fate == LoadIssueFate::Dropped) {
+                    request.dropped.push_back(issue);
+                }
+            }
+            request.saveAnyway = [this, sceneId, finishWithChildren]() {
+                if (SceneProject* scene = getScene(sceneId)) {
+                    saveSceneToPathAsync(sceneId, scene->filepath, finishWithChildren, DegradedSavePolicy::SaveAnyway);
+                }
+            };
+            request.saveAs = [sceneId]() {
+                editor::getEditorHost().registerSaveSceneDialog(sceneId);
+            };
+            if (editor::getEditorHost().confirmDegradedSave(request) == DegradedSavePolicy::SaveAnyway) {
+                saveSceneToPathAsync(sceneId, sceneProject->filepath, finishWithChildren, DegradedSavePolicy::SaveAnyway);
+            } else {
+                refusedSaves.insert(sceneId);
+                if (callback) callback(false);
+            }
+            return;
+        }
         saveSceneToPathAsync(sceneId, sceneProject->filepath, finishWithChildren);
     } else {
         editor::getEditorHost().registerSaveSceneDialog(sceneId, [finishWithChildren]() {
@@ -5612,11 +5794,18 @@ void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> call
 void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<void(bool)> callback) {
     auto ids = std::make_shared<std::vector<uint32_t>>(std::move(sceneIds));
     auto index = std::make_shared<size_t>(0);
+    auto anyRefused = std::make_shared<bool>(false);
     auto saveNext = std::make_shared<std::function<void(bool)>>();
-    *saveNext = [this, ids, index, callback, saveNext](bool previousSuccess) {
+    *saveNext = [this, ids, index, anyRefused, callback, saveNext](bool previousSuccess) {
         if (!previousSuccess) {
-            if (callback) callback(false);
-            return;
+            // a document the save gate refused does not stop the others (Save All asks about
+            // each degraded one, after saving the clean ones)
+            const uint32_t previous = *index > 0 ? (*ids)[*index - 1] : NULL_PROJECT_SCENE;
+            if (previous == NULL_PROJECT_SCENE || !refusedSaves.count(previous)) {
+                if (callback) callback(false);
+                return;
+            }
+            *anyRefused = true;
         }
 
         while (*index < ids->size()) {
@@ -5627,7 +5816,7 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
             }
         }
 
-        if (callback) callback(true);
+        if (callback) callback(!*anyRefused);
     };
 
     (*saveNext)(true);
@@ -5649,8 +5838,36 @@ void editor::Project::saveModifiedChildScenes(uint32_t sceneId, std::function<vo
     saveSceneListSequentially(std::move(childIds), std::move(callback));
 }
 
-bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews) {
+bool editor::Project::isSceneSaveGated(const SceneProject* sceneProject, const fs::path& path) const {
+    if (!sceneProject || sceneProject->filepath.empty() || sceneProject->loadReport.dropped() == 0) {
+        return false;
+    }
+    // Save As to another file is never gated: the original keeps the data
+    fs::path target = path.empty() ? sceneProject->filepath : path;
+    if (target.is_relative()) {
+        target = getProjectPath() / target;
+    }
+    return target.lexically_normal() == (getProjectPath() / sceneProject->filepath).lexically_normal();
+}
+
+bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews,
+        DegradedSavePolicy policy, SaveResult* outcome) {
+    if (outcome) {
+        *outcome = SaveResult::Failed;
+    }
     if (!sceneProject || path.empty()) {
+        return false;
+    }
+
+    // A file that did not load completely is not written over unless the loss was accepted
+    const bool ownFile = isSceneSaveGated(sceneProject, path);
+    if (ownFile && policy == DegradedSavePolicy::Refuse) {
+        Out::warning("Not saved: \"%s\" did not load completely and saving it would remove %zu value(s) this editor could not read. "
+                     "Save Anyway (allow_data_loss) or Save As keeps the original.",
+                     sceneProject->filepath.filename().string().c_str(), sceneProject->loadReport.dropped());
+        if (outcome) {
+            *outcome = SaveResult::RefusedDegraded;
+        }
         return false;
     }
 
@@ -5669,6 +5886,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         Out::error("Scene filepath must be relative to project path: %s", path.string().c_str());
         return false;
     }
+    const fs::path previousPath = sceneProject->filepath;
 
     // Its prefabs with changes, and the ones read from a file of an older version (upgraded)
     for (const auto& [filepath, prefab] : prefabAssets) {
@@ -5695,14 +5913,38 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
 
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
-        std::ofstream fout(fullPath.string());
-        if (!fout) {
-            Out::error("Failed to open scene file for writing: %s", fullPath.string().c_str());
+        const std::string text = DocumentFiles::text(root);
+        const io::WriteResult written = DocumentFiles::write(fullPath, text);
+        if (!written.ok()) {
+            const std::string message = DocumentFiles::saveFailureMessage(relPath, written);
+            Out::error(message);
+            editor::getEditorHost().enqueueMainThreadTask([this, message]() {
+                alertUser("Error", message);
+            });
             return false;
         }
-
-        fout << YAML::Dump(root) << "\n";
-        fout.close();
+        sceneProject->diskSha1 = DocumentFiles::sha1(text);
+        const size_t lost = sceneProject->loadReport.dropped();
+        if (lost > 0) {
+            if (ownFile) {
+                std::string list;
+                for (const LoadIssue& issue : sceneProject->loadReport.issues) {
+                    if (issue.fate == LoadIssueFate::Dropped) {
+                        list += "\n  " + issue.describe();
+                    }
+                }
+                Out::warning("Saved \"%s\" without %zu value(s) this editor could not read:%s",
+                             relPath.generic_string().c_str(), lost, list.c_str());
+            } else if (!previousPath.empty()) {
+                Out::warning("The original %s still holds %zu value(s) this save did not keep.",
+                             previousPath.filename().string().c_str(), lost);
+            }
+            // the file written no longer has them
+            sceneProject->loadReport.clearDropped();
+        }
+        sceneProject->loadReport.documentPath = FileUtils::pathToUtf8(relPath);
+        // the file has these changes now: the backup protects nothing more (R16)
+        deleteSceneBackup(*sceneProject, previousPath);
 
         // Every id this file carries has reached disk and can no longer be reclaimed
         sceneProject->transientId = false;
@@ -5731,18 +5973,23 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         return false;
     }
 
+    if (outcome) {
+        *outcome = SaveResult::Saved;
+    }
     return true;
 }
 
-bool editor::Project::saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews) {
-    if (!writeSceneToPath(sceneId, path, stopTransientPreviews)) {
+bool editor::Project::saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews,
+        DegradedSavePolicy policy, SaveResult* outcome) {
+    if (!writeSceneToPath(sceneId, path, stopTransientPreviews, policy, outcome)) {
         return false;
     }
 
     return saveProject();
 }
 
-bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews) {
+bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews,
+        DegradedSavePolicy policy, SaveResult* outcome) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
@@ -5754,7 +6001,7 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
     }
 
     std::string oldFilepath = sceneProject->filepath.string();
-    if (!saveSceneFile(sceneProject, path, stopTransientPreviews)) {
+    if (!saveSceneFile(sceneProject, path, stopTransientPreviews, policy, outcome)) {
         return false;
     }
 
@@ -5878,7 +6125,8 @@ void editor::Project::markGeneratedSourcesDirty() {
     generatedSourcesDirty.store(true);
 }
 
-void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback) {
+void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback,
+        DegradedSavePolicy policy) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         if (callback) callback(false);
@@ -5896,10 +6144,10 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
 
-    std::thread([this, sceneId, savePath, callback = std::move(callback)]() mutable {
+    std::thread([this, sceneId, savePath, policy, callback = std::move(callback)]() mutable {
         bool success = false;
         try {
-            success = writeSceneToPath(sceneId, savePath, false);
+            success = writeSceneToPath(sceneId, savePath, false, policy);
         } catch (const std::exception& e) {
             Out::error("Failed to save scene in background: %s", e.what());
         }
@@ -7320,6 +7568,7 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         PrefabManager::clearAll();
         ObjectManager::clearAll();
         clearPlayPrefabTemplates();
+        Scheduler::game().clear();
         jasperengine::CrashHook::set(nullptr);
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
@@ -7381,7 +7630,19 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
             if (currentSceneProject.opened || (isInvolvedScene && currentSceneProject.scene)) {
                 updateAllScriptsProperties(currentSceneProject.id);
 
+                if (isInvolvedScene) {
+                    warnPreservedNotInBuild(currentSceneProject);
+                }
                 if (currentSceneProject.isModified && !currentSceneProject.filepath.empty()) {
+                    if (isSceneSaveGated(&currentSceneProject)) {
+                        // Play saves modified scenes first: never by dropping what a file holds
+                        failPlayStartup(session, sceneId, "\"" + currentSceneProject.filepath.filename().string() +
+                            "\" did not load completely and Play would save it without " +
+                            std::to_string(currentSceneProject.loadReport.dropped()) + " value(s). Save it first (Save Anyway or Save As).",
+                            "Cannot Play", "\"" + currentSceneProject.filepath.filename().string() + "\" did not load completely. "
+                            "Save it first: Save Anyway drops what this editor could not read, Save As keeps the original.");
+                        return;
+                    }
                     if (!saveSceneForPlayStartup(&currentSceneProject)) {
                         failPlayStartup(session, sceneId, "Failed to save modified scene before play startup");
                         return;
@@ -8054,6 +8315,8 @@ void editor::Project::stop(uint32_t sceneId) {
         Engine::onShutdown.call();
         Engine::pauseGameEvents(true);
         Engine::clearAllSubscriptions(true);
+        // the play's timers and coroutines (Lua's Timer): none runs after Stop
+        Scheduler::game().clear();
     }
 
     // Clear crash handler when stopping
@@ -8094,6 +8357,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // and timers the scripts' onShutdown made
+            Scheduler::game().clear();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {

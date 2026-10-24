@@ -17,6 +17,9 @@ from harness import Editor
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_html_ui_input import Shot, near  # noqa: E402
 
+CI = True
+EDITOR = {"create": True, "name": "Html Ui Gamepad CI"}
+
 TIMEOUT = 900
 
 S: dict = {}
