@@ -1809,3 +1809,65 @@ passed; `test_lattice_shaders.py` 2 passed (8460 GL pairs, 1320 all-backend pair
 failure matched by its twin's: over 16 vertex attributes); `test_shader_library.py` passed,
 `test_shader_library_fixes.py` 13/15 with the two failures the baseline binary has too (the
 lattice fixture has no `assets/sprites/rock.png`).
+
+### 12.x Agent UX pass
+
+An agent that had never seen the feature used it through MCP only (initialize instructions,
+tools/list, jasper://docs/lattice and lua-api, results and errors) for seven tasks: bend a
+cylinder 60 degrees, a squash-and-stretch bounce with keys, a 2D flag waved by Lua, one cage on a
+hierarchy with one child excluded, a prop riding a squashed box, three rock variants with noise and
+a bake, and deliberate mistakes. The selector, axis, resolution, fold and unknown-key errors were
+already good (indexed, listing the choices). Fixed:
+
+- **Presets in the cage's proportions** (deviation from §4, which computed every preset on the unit
+  cube): bend and twist now work on the rest positions scaled by the cage's world scale
+  (`PresetParams::proportions`, `lattice::presetProportions(world matrix)`; `LatticeEditorOps::
+  applyPreset` and `Lattice:applyPreset` pass it; the default (1, 1, 1) is the old behaviour, so the
+  solver unit tests are unchanged). A cage fitted around a pole is tall and thin: a "60 degree" bend
+  turned it about 23 degrees in the world and stretched its cross-section into a long ellipse with a
+  pointed tip; now the axis ends a 60 degree arc of the cage's world length and the cross-section
+  stays rigid. Squash, stretch, taper, bulge are per-axis scales (unaffected); shear and noise stay
+  in local units. `toward` also takes a sign (`-x` bends or shears the other way, MCP and Lua: the amount negated).
+- **Each lattice deforms a mesh once** (§2.1 stacking): a lattice already taken from a nearer
+  modifier (the mesh's own, then nearer ancestors) is skipped (`LatticeRender::prepare`, the bake
+  `Resolver`, the MCP and inspector counts). A child bound to a lattice its group already hands down
+  through Include Children was deformed twice (the review's `createLattice` fix covered creation
+  only; Add Binding, `edit_lattice bind`, Lua `bind` and set_properties could still do it). Now its
+  own binding replaces the inherited one: `weight 0` excludes the child, another weight tunes it.
+  There was no way at all to exclude one child before. `edit_lattice bind` returns `overrides` (the
+  ancestor) and a note; `unbind` of a child that only inherits explains the weight-0 exclusion; the
+  inspector's row says the binding replaces the inherited one.
+- **Followers over MCP**: op `follow {target, rest}` (`LatticeEditorOps::follow`: adds the Lattice
+  Follower, rest = the given one, else its existing rest, else a new empty sibling where it stands,
+  as the inspector's Create Rest Here; refuses a follower that is the lattice or above it, a rest in
+  its subtree and a GameObject the lattice deforms). Results list `followers`; warnings
+  `follower_no_rest` and `follower_outside` (the rest in the fade zone, with its `share`: a prop on
+  top of a squashed box got 16% of the deformation and floated; the message says `outside: "extend"`).
+- **Animation keys**: `points: "rest"` and a pose name (keys name every point the call's other keys,
+  its poses and, merging, the track animate, so each key holds the whole shape); an all-zero key reads
+  back as `"rest"` (a rest key echoed 27 zero vectors). The bounce needed 7 calls of the "current"
+  dance; with poses it is 2. Errors: the mesh as a lattice track's target names its cage; `value`
+  instead of `points` says so; an unknown pose lists the poses.
+- Hints: `toward` equal to the axis names `ops[i].toward` and the valid axes; edits refused in play
+  point at `eval_lua` with the Lua methods; a bake that leaves the cage without targets says to delete it.
+- Guide: exclusion, followers, recipes for a prop on a surface and excluding a child, the bounce with
+  poses and the cage parented under the ball (it stayed behind before), the 2D flag waving along y,
+  rock noise that shows (resolution 4, 0.12; 0.08 on 3x3x3 was invisible, 0.2 folded), bake is
+  glTF only (the guide said OBJ too), the mask read as 0..1. lua-api: toward `-x`, binding override.
+- Budget: edit_lattice +32 (`follow`), edit_animation +25; total 100570 of 100637.
+
+Not changed (recorded): `frame_entity` on a bound mesh frames the grown bounds (§5.5, conservative:
+a bent pole framed from 39 units instead of 6); fixing needs per-axis padding in `LatticeMeshState`.
+`create_entity` has no `box` (it is `cube`) and a sprite's texture is
+`mesh.submeshes[0].material.baseColorTexture`, both found by errors (not lattice). The instructions
+line stays as is (the instructions are at 16383 of 16384 bytes). `test_lattice_scene.py::
+test_select_all_none_and_escape` (Ctrl+A after Alt+A) fails on this host with the pre-review MCP
+binary too.
+
+Tests: `tools/mcp/tests/test_lattice_ux.py` (7): the tall-cage bend against the analytic arc (top
+centre, rigid top face turned 60 degrees), toward -x, a 2x1 twist keeping its corners on their
+circle; the double binding (screenshot identical with and without the child's extra binding; it
+differs by 2% of the pixels on the pre-fix binary), weight-0 exclusion equal to binding the other
+child alone, the unbind hint; follow (rest where the prop stands, follower_outside then extend, the
+prop at the squashed top, refusals); rest/pose keys and their errors; the play hint; the bake note.
+`test_lattice.py::test_guide_names_exist` covers `follow` and the follower warnings.

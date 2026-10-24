@@ -19,7 +19,7 @@ generic tools (`get_entity`, `set_properties`, `add_component`) see the four com
   animated, overridden in prefabs. `offsets[i]` is a property per point.
 - **Target**: a GameObject with a mesh that has a `latticemodifier` listing **bindings**
   (`lattice`, `weight` 0..2, `stage`, `submesh` -1 = all, `mask` = a vertex colour channel
-  that scales the effect). `includeChildren` extends the bindings to every mesh below it (a
+  that scales the effect, read as 0..1). `includeChildren` extends the bindings to every mesh below it (a
   car, a character with props). At most 4 lattices deform one mesh: its own bindings in
   order, then inherited ones; the rest are ignored (a warning says so). Each lattice deforms
   a mesh once: a child's own binding to a lattice it also inherits **replaces** the inherited
