@@ -59,6 +59,9 @@ namespace jasperengine::editor::mcp {
 
 namespace jasperengine::editor{
 
+    // animation/AnimationClipAppHooks.h
+    struct ClipUndoFocus;
+
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
         std::string kind;                  // "alert", "save_dialog" or "modal"
@@ -250,6 +253,8 @@ namespace jasperengine::editor{
 
         // the Undo/Redo target is the project history (Project window, Pose window, clip edits)
         bool undoGoesToProjectHistory() const;
+        // which windows have focus, for AnimationClipAppHooks::ownsUndo
+        ClipUndoFocus clipUndoFocus() const;
 
         void saveFunc();
         void saveAllFunc(std::function<void(bool)> callback = nullptr);

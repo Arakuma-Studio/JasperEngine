@@ -309,6 +309,8 @@ namespace jasperengine::editor {
         ~ProjectWindow();
 
         bool isFocused() const;
+        // absolute paths of the selected files and folders, sorted (animation clips spec 9.R30)
+        std::vector<fs::path> getSelectedPaths() const;
 
         void notifyProjectPathChange();
         void cancelThumbnailWork();

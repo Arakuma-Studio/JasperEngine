@@ -292,6 +292,7 @@ enum class AppMenuCommand : uint32_t {
     AssetsCreateLuaScript,
     AssetsCreateHtmlDocument,
     AssetsCreatePoseAnimation,
+    AssetsCreateAnimationClip,      // shown only once AnimationClipAppHooks::createClipAsset is set
     AssetsCreateCppScript,
     AssetsShowInFileManager,
     AssetsOpen,
@@ -551,19 +552,25 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::EditorSettings, "Preferences...")
     }));
 
+    std::vector<PlatformMenuItem> assetsCreateItems = {
+        menuCommand(AppMenuCommand::AssetsCreateFolder, "Folder"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
+        menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
+        menuSeparator(),
+        menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation")
+    };
+    // Animation Clip: once the clip asset task set its hook
+    if (animationClipAppHooks().createClipAsset) {
+        assetsCreateItems.push_back(menuCommand(AppMenuCommand::AssetsCreateAnimationClip, "Animation Clip"));
+    }
+    assetsCreateItems.push_back(menuSeparator());
+    assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
+
     menu.menus.push_back(menuSubmenu("Assets", {
-        menuSubmenu("Create", {
-            menuCommand(AppMenuCommand::AssetsCreateFolder, "Folder"),
-            menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateLuaScript, "Lua Script"),
-            menuCommand(AppMenuCommand::AssetsCreateCppScript, "C++ Script"),
-            menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreateHtmlDocument, "HTML Document"),
-            menuSeparator(),
-            menuCommand(AppMenuCommand::AssetsCreatePoseAnimation, "Pose Animation"),
-            menuSeparator(),
-            menuSubmenu("Scene", newSceneItems(), !isProjectBusy)
-        }),
+        menuSubmenu("Create", assetsCreateItems),
         menuCommand(AppMenuCommand::AssetsShowInFileManager, "Show in File Manager"),
         menuCommand(AppMenuCommand::AssetsOpen, "Open", singleAsset),
         menuCommand(AppMenuCommand::AssetsRename, "Rename", singleAsset),
@@ -909,6 +916,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
+            break;
+        case AppMenuCommand::AssetsCreateAnimationClip:
+            if (animationClipAppHooks().createClipAsset) {
+                animationClipAppHooks().createClipAsset(&project);
+                projectWindow->refreshCurrentDirectory();
+            }
             break;
         case AppMenuCommand::AssetsShowInFileManager:
             projectWindow->assetsShowInFileManager();
@@ -2054,12 +2067,15 @@ void editor::App::show(){
             lastFocusedWindow = LastFocusedWindow::Code;
         } else if (poseAnimationWindow->ownsUndo(sceneWindow->isFocused())) {
             lastFocusedWindow = LastFocusedWindow::PoseAnimation;
-        } else if (animationClipAppHooks().ownsUndo && animationClipAppHooks().ownsUndo(sceneWindow->isFocused())) {
+        } else if (animationClipAppHooks().ownsUndo && animationClipAppHooks().ownsUndo(clipUndoFocus())) {
             lastFocusedWindow = LastFocusedWindow::AnimationClip;
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
     }
+
+    // the Animation window handles its own keys while focused (AnimationClipAppHooks::takesKeys)
+    const bool clipWindowKeys = animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys();
 
     ImGuiIO& io = ImGui::GetIO();
     bool isUndo = !io.WantTextInput && (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift);
@@ -2084,7 +2100,6 @@ void editor::App::show(){
         // Play mode (Ctrl+P, Ctrl+Shift+P, Ctrl+Alt+P, F5/F6/F7) and tool shortcuts
         // a Scene view posing the window's character keeps its letter keys for the pose (E: Global Edit)
         const bool scenePosing = sceneWindow->isFocused() && poseAnimationWindow->ownsUndo(true) && !poseAnimationWindow->isFocused();
-        const bool clipWindowKeys = animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys();
         mainToolbar->handleShortcuts(!codeEditor->isFocused() && !poseAnimationWindow->isFocused() && !scenePosing && !clipWindowKeys);
         if (ImGui::IsKeyPressed(ImGuiKey_F1)) executeMenuCommand({static_cast<uint32_t>(AppMenuCommand::Documentation), {}});
 
@@ -2153,15 +2168,16 @@ void editor::App::show(){
         if (isRedo) project.getProjectCommandHistory()->redo();
     }
 
-    if (!popupOpen && !poseKeys && !clipKeys && !projectWindow->isFocused() && !codeEditor->isFocused()){
+    // Record routing undo from the Scene view keeps the scene's other keys (Delete, Ctrl+D...)
+    if (!popupOpen && !poseKeys && !(clipKeys && clipWindowKeys) && !projectWindow->isFocused() && !codeEditor->isFocused()){
         uint32_t sceneId = project.getSelectedSceneId();
 
         // Update the Undo and Redo button logic (during a physics gesture or its settle, undo
         // cancels it and redo waits: CommandHistory::beforeChange)
-        if (isUndo) {
+        if (isUndo && !clipKeys) {
             CommandHandle::get(sceneId)->undo();
         }
-        if (isRedo) {
+        if (isRedo && !clipKeys) {
             CommandHandle::get(sceneId)->redo();
         }
 
@@ -3440,6 +3456,10 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // clip previews restored while the scenes still exist (nothing of them runs at static exit)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
@@ -3513,6 +3533,10 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 void editor::App::prepareForProjectSwitch() {
     // the posed bones go back while their scenes still exist
     poseAnimationWindow->prepareForProjectSwitch();
+    // and the clip previews (documents and the shared clip controller are released)
+    if (animationClipAppHooks().projectClosed) {
+        animationClipAppHooks().projectClosed();
+    }
     imageViewerWindow->closeAll();
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
@@ -3625,7 +3649,11 @@ void editor::App::stopTransientPreviews() {
     if (poseAnimationWindow) {
         poseAnimationWindow->stopTransientPreviews();
     }
-    // and the Animation window's previewed targets to their snapshots (animation clips 9.R6)
+    // and the Animation window's previewed targets to their snapshots (animation clips 9.R6):
+    // the entity-sequence mode, then the clip mode
+    if (animationWindow) {
+        animationWindow->stopTransientPreviews();
+    }
     if (animationClipAppHooks().stopTransientPreviews) {
         animationClipAppHooks().stopTransientPreviews();
     }
@@ -3648,6 +3676,21 @@ void editor::App::stopTransientPreviews() {
 bool editor::App::dispatchClipDrop(uint32_t sceneId, Entity target, const std::vector<std::string>& paths) {
     if (!animationClipAppHooks().dropClips) return false;
     return animationClipAppHooks().dropClips(&project, sceneId, target, paths);
+}
+
+editor::ClipUndoFocus editor::App::clipUndoFocus() const {
+    ClipUndoFocus focus;
+    focus.sceneView = sceneWindow && sceneWindow->isFocused();
+    focus.hierarchy = hierarchyWindow && hierarchyWindow->isFocused();
+    // the Inspector and the Animation window keep no focus flag: ImGui's focused window
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    ImGuiWindow* focused = context ? context->NavWindow : nullptr;
+    if (focused) {
+        ImGuiWindow* root = focused->RootWindow;
+        focus.inspector = root == ImGui::FindWindowByName(InspectorWindow::WINDOW_NAME);
+        focus.animationWindow = root == ImGui::FindWindowByName(AnimationWindow::WINDOW_NAME);
+    }
+    return focus;
 }
 
 bool editor::App::undoGoesToProjectHistory() const {

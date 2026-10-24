@@ -985,7 +985,18 @@ namespace jasperengine::editor{
         // and cannot compile, so a variant the editor never draws with is missing there.
         void buildStandaloneShaderCache();
 
+    private:
+        // see getInspectedAsset()
+        std::filesystem::path inspectedAsset;
+
     public:
+        // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
+        // the Project window when a single asset is clicked (T2b), cleared by any scene selection
+        // change (T2c); empty = the Inspector shows the scene selection. Absolute path.
+        void setInspectedAsset(const std::filesystem::path& absolutePath);
+        void clearInspectedAsset();
+        const std::filesystem::path& getInspectedAsset() const;
+
         // The C++ scripts the build compiles: every scene's and the build prefabs'
         std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }
         // Writes what a C++ build of the scripts needs (scene and prefab sources, the generated

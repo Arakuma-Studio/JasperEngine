@@ -25,11 +25,25 @@ AnimationClipController::AnimationClipController(Project* project): project(proj
 AnimationClipController::~AnimationClipController(){
 }
 
+namespace{
+    std::map<Project*, std::unique_ptr<AnimationClipController>>& controllers(){
+        static std::map<Project*, std::unique_ptr<AnimationClipController>> map;
+        return map;
+    }
+}
+
 AnimationClipController& AnimationClipController::shared(Project* project){
-    static std::map<Project*, std::unique_ptr<AnimationClipController>> controllers;
-    std::unique_ptr<AnimationClipController>& controller = controllers[project];
+    std::unique_ptr<AnimationClipController>& controller = controllers()[project];
     if (!controller) controller.reset(new AnimationClipController(project));
     return *controller;
+}
+
+void AnimationClipController::release(Project* project){
+    auto it = controllers().find(project);
+    if (it == controllers().end()) return;
+    it->second->stopPreview();
+    it->second->closeClip();
+    controllers().erase(it);
 }
 
 bool AnimationClipController::bindRoot(uint32_t sceneId, Entity root, std::string* error){
@@ -141,9 +155,10 @@ std::vector<AnimationClipController::BoundTransform> AnimationClipController::sa
     return {};
 }
 
-bool AnimationClipController::addProperty(const std::string& path, ClipChannel channel, std::string* error){
+bool AnimationClipController::addProperty(const std::string& path, ClipChannel channel, size_t* newTrack, std::string* error){
     (void)path;
     (void)channel;
+    (void)newTrack;
     return fail(error);
 }
 
@@ -171,11 +186,51 @@ bool AnimationClipController::setKeyValue(const KeyRef& key, const std::vector<f
     return fail(error);
 }
 
-bool AnimationClipController::moveKeys(const std::vector<KeyRef>& keys, float deltaTime, const std::string& mergeKey, std::string* error){
+bool AnimationClipController::moveKeys(const std::vector<KeyRef>& keys, float deltaTime, const std::string& mergeKey,
+                                       std::vector<KeyRef>* moved, std::string* error){
     (void)keys;
     (void)deltaTime;
     (void)mergeKey;
+    (void)moved;
     return fail(error);
+}
+
+bool AnimationClipController::beginKeyDrag(const std::vector<KeyRef>& keys, std::string* error){
+    (void)keys;
+    return fail(error);
+}
+
+bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vector<float>* valueDelta,
+                                            std::vector<KeyRef>* moved, std::string* error){
+    (void)totalDeltaTime;
+    (void)valueDelta;
+    (void)moved;
+    return fail(error);
+}
+
+void AnimationClipController::endKeyDrag(){
+    dragging = false;
+    dragKeys.clear();
+}
+
+bool AnimationClipController::isDraggingKeys() const{
+    return dragging;
+}
+
+bool AnimationClipController::findKey(const ClipData& data, const std::string& path, ClipChannel channel, float time, KeyRef& out){
+    // complete: a pure lookup
+    int track = data.findTrack(path, channel);
+    if (track < 0) return false;
+    const std::vector<ClipKey>& keys = data.tracks[(size_t)track].keys;
+    for (size_t k = 0; k < keys.size(); k++){
+        float difference = keys[k].time - time;
+        if (difference <= anim::ANIM_TIME_EPSILON && difference >= -anim::ANIM_TIME_EPSILON){
+            out.track = (size_t)track;
+            out.key = k;
+            return true;
+        }
+    }
+    return false;
 }
 
 bool AnimationClipController::deleteKeys(const std::vector<KeyRef>& keys, std::string* error){

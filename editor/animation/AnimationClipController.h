@@ -15,7 +15,15 @@
 //   * scene commands / undo / redo that write a previewed channel update its snapshot (R6);
 //   * every key edit is one AnimationClipDocument::commit (project history), drags merge with a
 //     merge key; edits of a read-only (sub-clip) document fail with an "Extract to .anim" error;
-//   * one controller per window; shared() is the editor's (the window's and MCP's).
+//   * key indices (KeyRef) are only valid for the document revision they were read from: a commit
+//     re-sorts tracks and keys. Every edit that can insert or reorder reports where the keys it
+//     touched are now; findKey maps a stable (path, channel, time) identity back to a KeyRef.
+//   * drags: beginKeyDrag keeps the clip as it was (the base); every updateKeyDrag commits
+//     base + the TOTAL delta with one merge key, so a key passed over is never merged or lost
+//     mid-drag; keys that end the drag on the same time collapse then (with a warning).
+//   * one controller per project for the window and MCP (shared()); release() restores any
+//     preview and drops it (project close, shutdown: AnimationClipAppHooks::projectClosed). The
+//     destructor never touches scenes.
 
 #pragma once
 
@@ -59,6 +67,9 @@ namespace jasperengine::editor{
 
         // the editor's controller (the Animation window's and MCP's), created on first use
         static AnimationClipController& shared(Project* project);
+        // stops its preview (restoring the scene while it still exists), closes its document and
+        // deletes it; the next shared() makes a new one
+        static void release(Project* project);
 
         // ---- binding and clip ----
 
@@ -105,15 +116,29 @@ namespace jasperengine::editor{
 
         // ---- keying (each one commit; `mergeKey` "" = its own undo step) ----
 
-        // a track for `path` : `channel` with a key at the playhead holding the current value
-        bool addProperty(const std::string& path, ClipChannel channel, std::string* error);
+        // a track for `path` : `channel` with a key at the playhead holding the current value;
+        // `newTrack` (optional) receives its index after the commit
+        bool addProperty(const std::string& path, ClipChannel channel, size_t* newTrack, std::string* error);
         // keys `tracks` (all tracks when empty) at `time` with the bound entities' current values
         bool keyTracks(const std::vector<size_t>& tracks, float time, const std::string& mergeKey, std::string* error);
         // K: every bound channel; Shift+K: the channels whose value differs from the clip
         bool keyAll(float time, std::string* error);
         bool keyModified(float time, std::string* error);
         bool setKeyValue(const KeyRef& key, const std::vector<float>& value, const std::string& mergeKey, std::string* error);
-        bool moveKeys(const std::vector<KeyRef>& keys, float deltaTime, const std::string& mergeKey, std::string* error);
+        // a discrete move (arrow keys, snap): `moved` (optional) receives the keys' refs afterwards
+        bool moveKeys(const std::vector<KeyRef>& keys, float deltaTime, const std::string& mergeKey,
+                      std::vector<KeyRef>* moved, std::string* error);
+
+        // A key drag (time and/or value): see the drag invariant above. `valueDelta` (optional)
+        // is added to every dragged key's value (ClipKey::value layout, the curves view's
+        // vertical drag). `moved` receives where the dragged keys are now.
+        bool beginKeyDrag(const std::vector<KeyRef>& keys, std::string* error);
+        bool updateKeyDrag(float totalDeltaTime, const std::vector<float>* valueDelta,
+                           std::vector<KeyRef>* moved, std::string* error);
+        void endKeyDrag();
+        bool isDraggingKeys() const;
+        // a key's stable identity across commits: (path, channel, time within ANIM_TIME_EPSILON)
+        static bool findKey(const ClipData& data, const std::string& path, ClipChannel channel, float time, KeyRef& out);
         bool deleteKeys(const std::vector<KeyRef>& keys, std::string* error);
         bool setEase(const std::vector<KeyRef>& keys, EaseType ease, std::string* error);
         bool removeTrack(size_t track, std::string* error);
@@ -148,6 +173,11 @@ namespace jasperengine::editor{
         bool playing = false;
         bool recording = false;
         bool lastActionWasClipEdit = false;
+        // the drag's base clip and keys (beginKeyDrag)
+        bool dragging = false;
+        ClipData dragBase;
+        std::vector<KeyRef> dragKeys;
+        std::string dragMergeKey;
     };
 
 }

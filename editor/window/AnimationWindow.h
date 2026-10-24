@@ -171,6 +171,10 @@ namespace jasperengine::editor{
         void externalStop();
         void externalPause();
         void seekPreviewExternal(Scene* scene, SceneProject* sceneProject, float time);
+
+        // Restores the entity-mode preview's snapshot before a save, play, scene switch or close
+        // (animation clips spec 9.R6); App::stopTransientPreviews calls it. TODO(T3b): stub.
+        void stopTransientPreviews();
     };
 
 }

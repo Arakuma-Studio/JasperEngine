@@ -31,6 +31,7 @@
 #include "window/PoseAnimationWindow.h"
 #include "window/SceneWindow.h"
 #include "pose/PoseAnimationDocument.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "pose/PoseViewport.h"
 
 #include "imgui.h"
@@ -1477,6 +1478,21 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "animation") {
         ctx.animationWindow()->setOpen(true);
         imguiName = AnimationWindow::WINDOW_NAME;
+        // animation (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): drives
+        // the window's clip mode (AnimationClipAppHooks::windowTestHook, animation clips spec 7)
+        if (args.contains("animation")) {
+            if (!mcpTestHooks() || !animationClipAppHooks().windowTestHook) {
+                call->fail("animation: test hook not available.");
+                return;
+            }
+            Json out = Json::object();
+            std::string error;
+            if (!animationClipAppHooks().windowTestHook(project, args["animation"], out, error)) {
+                call->fail("animation: " + error);
+                return;
+            }
+            hookResult = out;
+        }
     } else if (window == "terrain") {
         ctx.terrainEditWindow()->setOpen(true);
         imguiName = TerrainEditWindow::WINDOW_NAME;
@@ -1498,6 +1514,10 @@ void focusWindowTool(const CallPtr& call) {
     }
     if (args.contains("pose") && window != "pose_animation") {
         call->fail("pose: only for window \"pose_animation\".");
+        return;
+    }
+    if (args.contains("animation") && window != "animation") {
+        call->fail("animation: only for window \"animation\".");
         return;
     }
     // A window opened just now exists after its next draw (real input given to the pose window
@@ -1680,7 +1700,8 @@ void registerViewTools(McpRegistry& registry) {
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
                                        "terrain", "mcp", "texture_synthesis"})},
             {"scene", sceneRef("window scene: whose tab.")},
-            {"pose", {{"type", "object"}}}
+            {"pose", {{"type", "object"}}},
+            {"animation", {{"type", "object"}}}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;

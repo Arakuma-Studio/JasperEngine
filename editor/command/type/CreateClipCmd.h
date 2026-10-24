@@ -19,7 +19,10 @@
 //     exist) or given its previous content back (it existed), but only when its bytes are still
 //     the ones this command wrote; otherwise it is kept and the mismatch logged.
 //   * the scene's modified flag is set on execute and put back on undo (like CreatePrefabCmd);
-//     AnimationClipDocument::filesChanged runs for the files after execute, undo and redo.
+//     after execute, undo and redo the files go through AnimationClipDocument::filesChanged and
+//     the same files-written hook as document commits (AnimationClipDocument::
+//     setFilesWrittenHook: AssetDatabase GUID registration, Project window refresh, McpAutoSync
+//     stamps).
 
 #pragma once
 

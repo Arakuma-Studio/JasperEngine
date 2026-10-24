@@ -5669,6 +5669,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
         // what the animators played (and the bone poses they remember) goes with Play
         sceneProject->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
+        // and the Animation Players (animation clips spec 3.3; a no-op until T1b)
+        sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game
         // made in it went (their destroyer finds the copy by that id), before the copy is
@@ -9063,4 +9065,16 @@ std::vector<editor::SceneProject*> editor::Project::getRunningRuntimeLayerScenes
     }
 
     return runningLayers;
+}
+
+void editor::Project::setInspectedAsset(const std::filesystem::path& absolutePath){
+    inspectedAsset = absolutePath;
+}
+
+void editor::Project::clearInspectedAsset(){
+    inspectedAsset.clear();
+}
+
+const std::filesystem::path& editor::Project::getInspectedAsset() const{
+    return inspectedAsset;
 }

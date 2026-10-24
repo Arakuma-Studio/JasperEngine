@@ -3301,3 +3301,7 @@ void editor::AnimationWindow::seekPreviewExternal(Scene* scene, SceneProject* sc
     // External callers scrub the selected clip, not a transition-preview target.
     seekPreview(scene, sceneProject, time, selectedEntity);
 }
+
+void editor::AnimationWindow::stopTransientPreviews(){
+    // TODO(T3b): stop the entity-mode preview (restore its snapshot) when one runs
+}

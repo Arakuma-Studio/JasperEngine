@@ -16,7 +16,9 @@
 //   (commit, undo, redo, reload) invalidates AnimationClipPool for the path, so players in open
 //   scenes rebind (edit preview and play mode see edits immediately).
 // - Owner: T0 (API); T2b implements it (and the Project window, AssetDatabase GUID and auto-sync
-//   plumbing around it).
+//   plumbing around it). Order: everything here reads and writes through AnimationClipIO, which
+//   is a stub until T1a lands: T2b codes in parallel with T1a but runs its document tests after
+//   T1a is merged (or rebases on it).
 // - Thread-safety: main thread.
 // - Invariants: one document per normalized path; path() is project-relative with '/'; a parse
 //   failure on reload keeps the last good data and adds a warning (with line:col); the GUID of
@@ -26,6 +28,7 @@
 
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
+#include "ecs/Entity.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -38,6 +41,21 @@
 namespace jasperengine::editor{
 
     class Project;
+
+    // One Animation Player entry that references a clip (Inspector "users", MCP `users`, the
+    // "changes the clip for all N users in open scenes" texts, Retarget)
+    struct ClipUser{
+        uint32_t sceneId = 0;           // 0 for a loaded prefab asset that is not open in a stage
+        Entity entity = NULL_ENTITY;
+        size_t entry = 0;               // index into AnimationPlayerComponent::clips
+        bool prefabAsset = false;       // a loaded prefab asset (not a scene instance)
+        std::string prefabPath;         // prefabAsset: its project-relative path
+    };
+
+    // Every Animation Player entry referencing `clip` (a .anim path in any accepted form, its
+    // GUID, or a sub-clip reference) in open scenes, prefab stages and loaded prefab assets.
+    // Owner: T2b (with the reference remapping that walks the same places). Main thread.
+    std::vector<ClipUser> findClipUsers(Project* project, const std::string& clip);
 
     class AnimationClipDocument{
     public:
@@ -72,6 +90,7 @@ namespace jasperengine::editor{
         static std::string fileText(const ClipData& data);
 
         const std::string& path() const { return relativePath; }            // project-relative, generic
+        // what AnimationClipPool calls take (never path(): the engine has no project root)
         const std::filesystem::path& absolutePath() const { return filePath; }
         const ClipData& data() const { return current; }
         // the runtime form of data(), built once per revision (preview, sampling, validation)

@@ -3883,3 +3883,12 @@ void editor::ProjectWindow::assetsImport() {
 void editor::ProjectWindow::assetsRefresh() {
     refreshCurrentDirectory();
 }
+
+std::vector<fs::path> editor::ProjectWindow::getSelectedPaths() const{
+    std::vector<fs::path> paths;
+    for (const std::string& name : selectedFiles){
+        paths.push_back((currentPath / name).lexically_normal());
+    }
+    std::sort(paths.begin(), paths.end());
+    return paths;
+}

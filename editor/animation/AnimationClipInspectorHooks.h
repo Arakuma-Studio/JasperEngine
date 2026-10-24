@@ -28,6 +28,7 @@ namespace jasperengine::editor{
     struct AnimationClipInspectorHooks{
         // Open a clip in the Animation window, bound to `root` (NULL_ENTITY: target-less, the
         // clip's preview model). `clip` = .anim path or "<model>#<clip>" as a component stores it.
+        // The Project window's double-click (T2b) calls it too: openClip(project, 0, NULL_ENTITY, path).
         std::function<void(Project* project, uint32_t sceneId, Entity root, const std::string& clip)> openClip;
         // "Open in Animation window" of an entity Animation (AnimationComponent section)
         std::function<void(Project* project, uint32_t sceneId, Entity animation)> openEntityAnimation;

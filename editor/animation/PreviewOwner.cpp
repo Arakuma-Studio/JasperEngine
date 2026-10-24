@@ -3,10 +3,18 @@
 
 #include "PreviewOwner.h"
 
+#include <set>
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-// TODO(T3a): the owner registry. The stubs grant every request and stop nobody.
+// TODO(T3a): the owner registry. The stubs grant every request (a new valid token) and stop
+// nobody.
+
+namespace{
+    PreviewOwner::Token nextToken = 1;
+    std::set<PreviewOwner::Token> liveTokens;
+}
 
 PreviewOwner::Token PreviewOwner::acquire(uint32_t sceneId, Entity root, EntityRegistry* registry, const std::string& name, Stop stop){
     (void)sceneId;
@@ -14,16 +22,17 @@ PreviewOwner::Token PreviewOwner::acquire(uint32_t sceneId, Entity root, EntityR
     (void)registry;
     (void)name;
     (void)stop;
-    return 0;
+    Token token = nextToken++;
+    liveTokens.insert(token);
+    return token;
 }
 
 void PreviewOwner::release(Token token){
-    (void)token;
+    liveTokens.erase(token);
 }
 
 bool PreviewOwner::owns(Token token){
-    (void)token;
-    return false;
+    return token != 0 && liveTokens.count(token) > 0;
 }
 
 PreviewOwner::Owner PreviewOwner::ownerOf(uint32_t sceneId, Entity root){

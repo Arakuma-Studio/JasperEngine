@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ObjectTransformCmd.h"
+#include "animation/ClipRecordHooks.h"
 #include "pose/PoseInspectorHooks.h"
 
 using namespace jasperengine;
@@ -67,6 +68,8 @@ bool editor::ObjectTransformCmd::execute(){
     if (poseInspectorHooks().beforeTransformWrite){
         for (const auto& entry : props) poseInspectorHooks().beforeTransformWrite(static_cast<uint32_t>(sceneId), entry.first);
     }
+    // clip previews put a previewed Transform back to its rest (animation clips 9.R6)
+    for (const auto& entry : props) ClipRecordHooks::beforeComponentWrite(static_cast<uint32_t>(sceneId), entry.first, ComponentType::Transform, "");
     for (auto& [entity, property] : props){
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){
             if (!property.explicitOld){
@@ -96,6 +99,8 @@ bool editor::ObjectTransformCmd::execute(){
 
     sceneProject->isModified = true;
 
+    for (const auto& entry : props) ClipRecordHooks::afterComponentWrite(static_cast<uint32_t>(sceneId), entry.first, ComponentType::Transform, "");
+
     return true;
 }
 
@@ -104,6 +109,7 @@ void editor::ObjectTransformCmd::undo(){
     if (!sceneProject){
         return;
     }
+    for (const auto& entry : props) ClipRecordHooks::beforeComponentWrite(static_cast<uint32_t>(sceneId), entry.first, ComponentType::Transform, "");
     for (auto const& [entity, property] : props){
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){
             transform->position = property.oldPosition;
@@ -116,6 +122,8 @@ void editor::ObjectTransformCmd::undo(){
     prefabUndo.restore(project, sceneId);
 
     sceneProject->isModified = wasModified;
+
+    for (const auto& entry : props) ClipRecordHooks::afterComponentWrite(static_cast<uint32_t>(sceneId), entry.first, ComponentType::Transform, "");
 }
 
 bool editor::ObjectTransformCmd::mergeWith(editor::Command* otherCommand){

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticePointsCmd.h"
+#include "animation/ClipRecordHooks.h"
 
 #include "Catalog.h"
 #include "util/EntityClipboard.h"
@@ -86,7 +87,10 @@ bool editor::LatticePointsCmd::execute(){
             EntityClipboard::encodeComponent(scene, entity, ComponentType::LatticeComponent);
     }
 
+    // clip previews put previewed offsets back to their rest (animation clips 9.R6)
+    ClipRecordHooks::beforeComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
     apply(*lattice, newState, wholeState);
+    ClipRecordHooks::afterComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
 
     if (sameLayout){
         // Unity: an edited point of a prefab instance's lattice is an override of that point
@@ -126,7 +130,9 @@ void editor::LatticePointsCmd::undo(){
         return;
     }
 
+    ClipRecordHooks::beforeComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
     apply(*lattice, oldState, wholeState);
+    ClipRecordHooks::afterComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
     prefabUndo.restore(project, sceneId);
 
     sceneProject->isModified = wasModified;

@@ -8,6 +8,12 @@ using namespace jasperengine::editor;
 
 // TODO(T2b): everything below (PoseAnimationDocument is the model)
 
+std::vector<ClipUser> jasperengine::editor::findClipUsers(Project* project, const std::string& clip){
+    (void)project;
+    (void)clip;
+    return {};
+}
+
 std::shared_ptr<AnimationClipDocument> AnimationClipDocument::open(Project* project, const std::string& path, std::string* error){
     (void)project;
     (void)path;

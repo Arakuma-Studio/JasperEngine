@@ -395,7 +395,9 @@ sub-clips), lua-api sections, DESIGN.md auto-sync list, AGENTS.md generator bull
 
 Every task gets a brief with an explicit file list; a file not in your list is read-only for you. Shared wiring files
 (`editor/App.cpp`, root `CMakeLists.txt`, `engine/CMakeLists.txt`, Xcode project) are edited only by T0 (stubs and every
-source-list entry for T1–T4) and later only by the task named for the hook.
+source-list entry for T1–T4) and later only by the task named for the hook. The T0 contract index
+(`2026-10-24-animation-clips-contract.md`, "Ownership") is the authority for who owns each hook, call site and helper;
+the clarifications below follow it.
 
 1. **T0 Contract** — every new public header with compiling stubs: `engine/core/animation/{AnimationClip, AnimationClipIO,
    KeyframeSampling, ClipBinding, AnimationEvent}.h`, `engine/core/pool/AnimationClipPool.h`,
@@ -411,36 +413,45 @@ source-list entry for T1–T4) and later only by the task named for the hook.
 3. **T1b Player** (after T1a): ClipBinding resolver + hierarchy revision (all mutation paths of R9), Animation Player
    system (states, wrap, play/crossFade/blend/queue/stop/rewind/sample, events queue + dispatch rules, rest capture,
    flush rest term, deferral on model loads, previewPlayer/sampleClip), Lua bindings + stubs, Model integration,
-   EntityCloner, Engine/Scene callback clearing, ScriptEvents entry; engine tests.
+   EntityCloner, Engine/Scene callback clearing, ScriptEvents entry (`editor/util/ScriptEvents.cpp`: T1b, not T2a),
+   `LuaFunctionBase::push_value(const AnimationEvent&)`; engine tests.
 4. **T1c Model sub-clips** (after T1a, parallel with T1b): the sub-clip builder (mirrors buildGLTFNodeHierarchy, thread
    safety, accessor reads), node-hierarchy layout forcing for models under a player (MeshSystem + ModelLoadCmd reload
    step), `ModelComponent.animationEntities` flag honoured by MeshSystem, new fixtures (animated hero glTF with walk,
    idle, one unnamed, two same-named animations; FBX with namespaced bones), engine tests.
 5. **T2a Component plumbing** (after T1a): Catalog (props incl. `clips[i].clip/name/wrap/guid`, name, icon, enabled),
    Stream encode/decode (GUID + path hint), Factory emitter, ProjectUtils add/remove, PropertyCmd hierarchy switch,
-   ComponentAddDialog, PoseViewport stripToRender, collectResources, McpValues clip validation; editor tests.
+   ComponentAddDialog, PoseViewport stripToRender, collectResources, McpValues clip validation (`editor/mcp/McpValues.cpp`
+   clip-path validation is T2a's, excepted from T4); editor tests.
 6. **T2b Asset plumbing** (after T0, parallel with T1*): AnimationClipDocument, Util predicates (+ ProjectWindow using
    them), FileDialogs, Project window (FileType, icon, Create, double-click, drag sources/targets via the App hook),
    AssetDatabase GUID tracking of `.anim` (JSON guid), rename/move/delete semantics (R8, R26), McpAutoSync +
-   `ScriptTools::syncFiles` + problems (+ the `.poseanim` problems gap), `isTextFile` (`.anim`, `.poseanim`); editor tests.
+   `ScriptTools::syncFiles` + problems (+ the `.poseanim` problems gap), `isTextFile` (`.anim`, `.poseanim`),
+   `findClipUsers`, the `createClipAsset` App hook (main menu Assets > Create > Animation Clip), `Project::setInspectedAsset`
+   on a single-asset click; document tests run after T1a is merged (IO is a stub until then); editor tests.
 7. **T2c Inspector** (after T2a, T2b, T1b): Animation Player section, asset inspector + inspected-object model (R30),
    AnimationComponent "Convert to Clip...", Model "Extract to .anim" / "Use Animation Player", Bindings foldout; via
-   hooks so InspectorWindow includes no window.
+   hooks so InspectorWindow includes no window; the Inspector action preview acquires `PreviewOwner` (R7).
 8. **T2d Validation + converters + bake** (after T1b, T1c, T2b): ClipValidation, ClipConverters (convert, extract, use
    player), PoseBaker bake-to-clip + Pose window Bake menu entry, composite scene commands (R4); editor tests.
 9. **T3a Clip controller** (after T1b, T2a, T2b): AnimationClipController (bound root, preview snapshot of bound
-   channels, PreviewOwner, beforeChannelWrite updating snapshots, stopTransientPreviews, undo routing), gtests.
+   channels, PreviewOwner registry, ClipRecordHooks registries, beforeChannelWrite updating snapshots (the command call
+   sites are T0's), the AnimationClipAppHooks setters stopTransientPreviews / ownsUndo / takesKeys / sceneClosed /
+   projectClosed, undo routing, key drag API), gtests.
 10. **T3b Window UI** (after T3a, T2d): clip mode in new files (`AnimationWindowClipSheet.cpp`, `…ClipEvents.cpp`):
     dropdown, empty state, rows, Add Property, keys (multi-select, box, drag, delete, copy/paste/duplicate, context
     menu), events lane, toolbar (frames/seconds, samples, snap), shortcuts, read-only banner + Extract, lanes made
-    view-only (R31); window test hooks + test_animation_window.py.
+    view-only (R31); `AnimationWindow::stopTransientPreviews` (entity mode, R6); window test hooks through
+    `AnimationClipAppHooks::windowTestHook` (focus_window `animation`, wired by T0) + test_animation_window.py.
 11. **T3c Curves view + Record** (after T3b): curves view (sampled curves, vertical key drag, segment ease, F/A), Record
-    mode through ClipRecordHooks at the source call sites (SceneRender gizmo drag, Inspector Transform/morph rows,
-    LatticeEditorOps) with chained `beforeChannelWrite` shared with the Pose window; tests.
+    mode through ClipRecordHooks claims/record at the source call sites (SceneRender gizmo drag, Inspector Transform/morph
+    rows, LatticeEditorOps) with the Pose window moved from `beforeTransformWrite` onto the chained `beforeChannelWrite`;
+    new morph-row writes notify `before/afterComponentWrite`; tests.
 12. **T4 MCP + CLI** (after T3a; owns `editor/mcp/**` except T2b's files, `editor/cli/**`, `docs/mcp/**`,
     `tools/mcp/tests/test_animation_clip.py`, test_checks/test_html_ui_tools/test_autosync/test_docs/
-    test_synthesize_texture_tool edits): the 9.R28/R29 argument design, results, rejection table, budget trims and
-    caps, guide, instructions bullet, TOOLS.md regeneration.
+    test_synthesize_texture_tool edits; not `McpValues.cpp` clip validation, T2a's): the 9.R28/R29 argument design,
+    results, rejection table, budget trims and caps (counting T0's focus_window `animation` test-hook property), guide,
+    instructions bullet, TOOLS.md regeneration.
 13. **T5 Docs** (after T3c, T4): docs/animation-clips.md, README, glossary (R52), lua-api, AGENTS.md generator, DESIGN.md.
 
 After each task: a review (spec compliance, code quality, adversarial correctness) and fix rounds until clean; then

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentValuesCmd.h"
+#include "animation/ClipRecordHooks.h"
 
 #include "Stream.h"
 #include "command/type/AddComponentCmd.h"
@@ -253,6 +254,8 @@ bool editor::ComponentValuesCmd::execute(){
     if (type == ComponentType::Transform && poseInspectorHooks().beforeTransformWrite) {
         for (const Target& target : targets) poseInspectorHooks().beforeTransformWrite(sceneId, target.entity);
     }
+    // clip previews put previewed channels back to their rest (animation clips 9.R6)
+    for (const Target& target : targets) ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, type, "");
     for (Target& target : targets) {
         target.before = YAML::Node();
         if (!hasComponent(scene, target.entity, type)) {
@@ -288,6 +291,8 @@ bool editor::ComponentValuesCmd::execute(){
         changed = true;
     }
 
+    for (const Target& target : targets) ClipRecordHooks::afterComponentWrite(sceneId, target.entity, type, "");
+
     if (!changed) {
         return false;
     }
@@ -306,6 +311,7 @@ void editor::ComponentValuesCmd::undo(){
     }
     Scene* scene = sceneProject->scene;
 
+    for (const Target& target : targets) ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, type, "");
     for (auto it = targets.rbegin(); it != targets.rend(); ++it) {
         if (!it->before.IsMap() || !hasComponent(scene, it->entity, type)) {
             continue;
@@ -322,6 +328,8 @@ void editor::ComponentValuesCmd::undo(){
         CameraTextureLink::resolve(scene);
     }
     sceneProject->isModified = wasModified;
+
+    for (const Target& target : targets) ClipRecordHooks::afterComponentWrite(sceneId, target.entity, type, "");
 }
 
 bool editor::ComponentValuesCmd::canPasteValues(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,

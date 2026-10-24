@@ -14,14 +14,23 @@
 //     takes the new value as its snapshot after (then re-applies its preview).
 //   This replaces the single poseInspectorHooks().beforeTransformWrite slot: both the Pose window
 //   and the Animation window are listeners.
-// - Owner: T0 (API); T3a implements the registry and the Animation window's listeners; T3c calls
-//   claims/record at the sources (SceneRender gizmo drag, Inspector Transform rows, MeshComponent
-//   morph rows, LatticeEditorOps::push) and moves the Pose window and the existing
-//   beforeTransformWrite call sites onto beforeChannelWrite.
+// - Owner: T0 (API, the component-write helpers and the channel write CALL SITES, already in
+//   place: PropertyCmd, ObjectTransformCmd, ComponentValuesCmd, LatticePointsCmd, execute and
+//   undo; the morph weights have no editor write site yet: whoever adds one, e.g. T3c's Inspector
+//   morph rows, calls before/afterComponentWrite); T3a implements the registries and the Animation
+//   window's listeners; T3c calls claims/record at the sources (SceneRender gizmo drag, Inspector
+//   Transform rows, morph rows, LatticeEditorOps) and moves the Pose window from
+//   poseInspectorHooks().beforeTransformWrite onto beforeChannelWrite (the old slot stays called
+//   until then, before the clip notifications).
 // - Thread-safety: main thread.
 // - Invariants: listeners run in registration order; a listener may not add or remove listeners
 //   while it runs (removal is deferred until the call returns); MCP set_properties never records
-//   (its call sites do not ask claims()).
+//   (its call sites do not ask claims()). A write notifies once per channel it writes: a Transform
+//   property write ("position") one channel, a whole-Transform write (gizmo, paste, reset) three
+//   (Position, Rotation, Scale), a lattice offsets write Lattice, a whole MeshComponent write
+//   Morph; before* runs before the value changes, after* once it changed (also for undo/redo).
+//   Listeners only write values of existing components (never add or remove components or
+//   entities): the call sites hold component pointers across the call.
 
 #pragma once
 
@@ -34,6 +43,9 @@
 #include <vector>
 
 namespace jasperengine::editor{
+
+    // Catalog.h
+    enum class ComponentType : int;
 
     // A value as Record writes it: the channel's flattened key value (ClipKey::value layout:
     // position/scale 3, rotation 4 x y z w, morph one per target, lattice 3 per point of `points`)
@@ -75,6 +87,14 @@ namespace jasperengine::editor{
         static void removeChannelWriteListener(Id id);
         static void beforeChannelWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
         static void afterChannelWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
+
+        // The channels a component write touches (implemented): Transform "position" / "rotation"
+        // / "scale" that one, "" (the whole component) all three, other Transform properties none;
+        // LatticeComponent "offsets" or "" Lattice; MeshComponent "" Morph; anything else none
+        static std::vector<ClipChannel> channelsOf(ComponentType type, const std::string& property);
+        // before/afterChannelWrite for every channel of channelsOf (the command call sites)
+        static void beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
+        static void afterComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
     };
 
 }

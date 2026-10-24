@@ -20,6 +20,7 @@
 #include "command/type/CreateClipCmd.h"
 
 #include <string>
+#include <type_traits>
 #include <vector>
 
 using namespace jasperengine;
@@ -62,23 +63,42 @@ TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
               scene.getComponentId<AnimationPlayerComponent>());
 }
 
-TEST(AnimationClipContract, HooksAreUnsetByDefault){
-    const AnimationClipAppHooks& app = animationClipAppHooks();
+// the hook structs (later tasks set the editor-wide instances at startup: only fresh structs
+// are checked here)
+TEST(AnimationClipContract, HookStructsStartUnset){
+    static_assert(std::is_default_constructible<AnimationClipAppHooks>::value, "app hooks");
+    static_assert(std::is_default_constructible<AnimationClipInspectorHooks>::value, "inspector hooks");
+    AnimationClipAppHooks app;
     EXPECT_FALSE(app.stopTransientPreviews);
     EXPECT_FALSE(app.ownsUndo);
     EXPECT_FALSE(app.takesKeys);
     EXPECT_FALSE(app.sceneClosed);
+    EXPECT_FALSE(app.projectClosed);
+    EXPECT_FALSE(app.createClipAsset);
     EXPECT_FALSE(app.dropClips);
     EXPECT_FALSE(app.windowTestHook);
+    ClipUndoFocus focus;
+    EXPECT_FALSE(focus.sceneView || focus.inspector || focus.hierarchy || focus.animationWindow);
 
-    const AnimationClipInspectorHooks& inspector = animationClipInspectorHooks();
+    AnimationClipInspectorHooks inspector;
     EXPECT_FALSE(inspector.openClip);
-    EXPECT_FALSE(inspector.openEntityAnimation);
-    EXPECT_FALSE(inspector.createNewClip);
     EXPECT_FALSE(inspector.convertToClip);
-    EXPECT_FALSE(inspector.extractSubClip);
     EXPECT_FALSE(inspector.useAnimationPlayer);
-    EXPECT_FALSE(inspector.addToAnimationPlayer);
+    (void)&animationClipAppHooks();
+    (void)&animationClipInspectorHooks();
+}
+
+TEST(AnimationClipContract, ChannelsOfComponentWrites){
+    using Channels = std::vector<ClipChannel>;
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::Transform, "position"), Channels{ClipChannel::Position});
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::Transform, "rotation"), Channels{ClipChannel::Rotation});
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::Transform, "scale"), Channels{ClipChannel::Scale});
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::Transform, ""),
+              (Channels{ClipChannel::Position, ClipChannel::Rotation, ClipChannel::Scale}));
+    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::Transform, "parent").empty());
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::LatticeComponent, "offsets"), Channels{ClipChannel::Lattice});
+    EXPECT_EQ(ClipRecordHooks::channelsOf(ComponentType::MeshComponent, ""), Channels{ClipChannel::Morph});
+    EXPECT_TRUE(ClipRecordHooks::channelsOf(ComponentType::CameraComponent, "").empty());
 }
 
 TEST(AnimationClipContract, Document){
@@ -145,7 +165,11 @@ TEST(AnimationClipContract, RecordHooksWithoutListeners){
 TEST(AnimationClipContract, PreviewOwner){
     PreviewOwner::release(0);
     EXPECT_FALSE(PreviewOwner::owns(0));
-    EXPECT_EQ(PreviewOwner::ownerOf(1, 2).token, 0);
+    PreviewOwner::Token token = PreviewOwner::acquire(1, 2, nullptr, "test", [](){});
+    EXPECT_GT(token, 0);
+    EXPECT_TRUE(PreviewOwner::owns(token));
+    PreviewOwner::release(token);
+    EXPECT_FALSE(PreviewOwner::owns(token));
     PreviewOwner::releaseScene(1);
 }
 
@@ -162,4 +186,21 @@ TEST(AnimationClipContract, Controller){
     controller.stopPreview();
     std::string error;
     EXPECT_FALSE(controller.openClip("assets/anim/missing.anim", &error));
+    EXPECT_FALSE(controller.isDraggingKeys());
+
+    ClipData data = oneTrackClip();
+    AnimationClipController::KeyRef ref;
+    ASSERT_TRUE(AnimationClipController::findKey(data, "Hips/Spine", ClipChannel::Rotation, 0.0f, ref));
+    EXPECT_EQ(ref.track, 0u);
+    EXPECT_EQ(ref.key, 0u);
+    EXPECT_FALSE(AnimationClipController::findKey(data, "Hips/Spine", ClipChannel::Rotation, 0.5f, ref));
+    EXPECT_FALSE(AnimationClipController::findKey(data, "Hips", ClipChannel::Rotation, 0.0f, ref));
+
+    AnimationClipController::shared(nullptr);
+    AnimationClipController::release(nullptr);
+    AnimationClipController::release(nullptr);
+}
+
+TEST(AnimationClipContract, ClipUsersWithoutProject){
+    EXPECT_TRUE(findClipUsers(nullptr, "anim/walk.anim").empty());
 }

@@ -7,8 +7,10 @@
 //   action preview, PoseEditSession) acquires the root first; acquiring stops the previous owner
 //   of that root (or of a root above or below it) first, so every snapshot is taken from the
 //   unpreviewed scene and restores happen in a safe order.
-// - Owner: T0 (API); T3a implements it and makes the Animation window acquire it; the Pose
-//   window (PoseEditSession::goIdle) and the Inspector action preview join in T3a too.
+// - Owner: T0 (API); T3a implements it, makes the Animation window acquire it and joins the Pose
+//   window (PoseEditSession::goIdle); T2c makes the Inspector's action preview acquire it
+//   (InspectorWindow.cpp is T2c's). Until T3a lands, acquire() grants every request with a new
+//   valid token and stops nobody.
 // - Thread-safety: main thread.
 // - Invariants:
 //   * at most one owner per (scene, overlapping root); a token is released once (release of a
@@ -34,7 +36,8 @@ namespace jasperengine::editor{
 
     class PreviewOwner{
     public:
-        using Token = int;                          // 0 = none
+        // > 0 for a granted ownership; 0 is never a valid token (no owner / not granted)
+        using Token = int;
         using Stop = std::function<void()>;
 
         struct Owner{

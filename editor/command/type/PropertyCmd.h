@@ -11,6 +11,7 @@
 #include "component/Transform.h"
 #include "Catalog.h"
 #include "pose/PoseInspectorHooks.h"
+#include "animation/ClipRecordHooks.h"
 #include <functional>
 #include <type_traits>
 
@@ -129,6 +130,8 @@ namespace jasperengine::editor{
             if (type == ComponentType::Transform && poseInspectorHooks().beforeTransformWrite){
                 for (const auto& entry : values) poseInspectorHooks().beforeTransformWrite(sceneId, entry.first);
             }
+            // clip previews put a previewed channel back to its rest (animation clips 9.R6)
+            for (const auto& entry : values) ClipRecordHooks::beforeComponentWrite(sceneId, entry.first, type, propertyName);
             for (auto& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
                 T* valueRef = static_cast<T*>(prop.ref);
@@ -166,6 +169,8 @@ namespace jasperengine::editor{
 
             sceneProject->isModified = true;
 
+            for (const auto& entry : values) ClipRecordHooks::afterComponentWrite(sceneId, entry.first, type, propertyName);
+
             if (onValueChanged) {
                 onValueChanged();
             }
@@ -178,6 +183,7 @@ namespace jasperengine::editor{
             if (!sceneProject){
                 return;
             }
+            for (const auto& entry : values) ClipRecordHooks::beforeComponentWrite(sceneId, entry.first, type, propertyName);
             for (auto const& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
                 T* valueRef = static_cast<T*>(prop.ref);
@@ -204,6 +210,8 @@ namespace jasperengine::editor{
             prefabUndo.restore(project, sceneId);
 
             sceneProject->isModified = wasModified;
+
+            for (const auto& entry : values) ClipRecordHooks::afterComponentWrite(sceneId, entry.first, type, propertyName);
 
             if (onValueChanged) {
                 onValueChanged();
