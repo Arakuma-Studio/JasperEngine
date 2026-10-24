@@ -818,6 +818,7 @@ namespace jasperengine::editor{
         std::chrono::steady_clock::time_point lastAssetRefreshTime;
         // the poll's disk walk, on a background thread (R23); applied on the main thread
         std::future<AssetDatabase::DiskScan> assetScan;
+        std::chrono::steady_clock::duration lastAssetScanDuration{};
         void waitForAssetScan();
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;

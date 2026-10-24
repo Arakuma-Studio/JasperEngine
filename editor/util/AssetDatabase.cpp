@@ -675,8 +675,20 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
 void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::string>& assets, std::vector<std::string>& metas,
                                     std::vector<fs::path>* temporaries) const {
     std::error_code ec;
+    // the walk's paths start with the project's: cut the prefix (toRelative canonicalizes, a
+    // few syscalls per path, which a walk of tens of thousands of files cannot pay)
+    const std::string prefix = projectPath.lexically_normal().generic_string();
+    auto relativeOf = [&](const fs::path& path) -> fs::path {
+        const std::string text = path.generic_string();
+        if (!prefix.empty() && text.size() > prefix.size() + 1 && text.compare(0, prefix.size(), prefix) == 0 &&
+            (prefix.back() == '/' || text[prefix.size()] == '/') && text.find("/./") == std::string::npos &&
+            text.find("/../") == std::string::npos) {
+            return fs::path(text.substr(prefix.size() + (prefix.back() == '/' ? 0 : 1)));
+        }
+        return toRelative(path);
+    };
     auto consider = [&](const fs::path& path) {
-        const fs::path relative = toRelative(path);
+        const fs::path relative = relativeOf(path);
         if (AssetTypes::isMetaFile(relative)) {
             if (relative.filename().string().rfind('.', 0) != 0) {
                 metas.push_back(relative.generic_string());
@@ -1169,6 +1181,8 @@ editor::AssetDatabase::DiskScan editor::AssetDatabase::scanDisk() const {
     // projectPath and assetsDir change only in open(), which the editor never runs during a scan
     std::vector<std::string> assets;
     collect(projectPath, assets, scan.metas);
+    // the walk found the metas: no existence check per asset
+    const std::unordered_set<std::string> metaSet(scan.metas.begin(), scan.metas.end());
     scan.assets.reserve(assets.size());
     for (const std::string& relative : assets) {
         DiskScan::File file;
@@ -1177,8 +1191,7 @@ editor::AssetDatabase::DiskScan editor::AssetDatabase::scanDisk() const {
         const AssetTypeInfo* info = AssetTypes::find(relative, assetsDir);
         if (info && info->identity == AssetIdentity::Sidecar) {
             const std::string metaRelative = AssetTypes::metaPathFor(relative).generic_string();
-            std::error_code ec;
-            file.metaPresent = fs::is_regular_file(projectPath / metaRelative, ec);
+            file.metaPresent = metaSet.count(metaRelative) > 0;
             if (file.metaPresent) statFile(metaRelative, file.metaTime, file.metaSize);
         }
         scan.assets.push_back(std::move(file));

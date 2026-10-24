@@ -165,10 +165,18 @@ void editor::Project::refreshAssetDatabase(bool force) {
         const AssetDatabase::DiskScan scan = assetScan.get();
         found = assetDatabase.refresh(scan);
     } else {
-        if (now - lastAssetRefreshTime >= std::chrono::seconds(2)) {
+        // every 2 s, and never busier than a fifth of the time (a large project's walk is long)
+        const auto interval = std::max<std::chrono::steady_clock::duration>(std::chrono::seconds(2), lastAssetScanDuration * 5);
+        if (now - lastAssetRefreshTime >= interval) {
             lastAssetRefreshTime = now;
             const AssetDatabase* database = &assetDatabase;
-            assetScan = std::async(std::launch::async, [database] { return database->scanDisk(); });
+            std::chrono::steady_clock::duration* duration = &lastAssetScanDuration;
+            assetScan = std::async(std::launch::async, [database, duration] {
+                const auto start = std::chrono::steady_clock::now();
+                AssetDatabase::DiskScan scan = database->scanDisk();
+                *duration = std::chrono::steady_clock::now() - start;   // read after get()
+                return scan;
+            });
         }
         if (pendingAssetChanges.empty()) {
             return;
