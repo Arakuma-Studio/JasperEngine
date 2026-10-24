@@ -797,13 +797,20 @@ void getAssetInfoTool(const CallPtr& call) {
         std::string error;
         Json info;
         if (FbxImporter::isFbxFile(file)) {
-            // An FBX loads as the glTF it is imported into, so that is what is summarized
-            if (project->importFbxModel(file)) {
-                const fs::path glbPath = project->getImportedModelPath(file);
-                data["fbx_import"] = projectRelative(project, glbPath);
-                info = modelInfo(glbPath, error);
+            // An FBX loads as the glTF it is converted into, so that is what is summarized. Read
+            // only: the conversion is not made here (set_model, import_files, Play and export do).
+            if (!project->isInsideAssetsPath(file)) {
+                error = "Outside the assets directory, so never converted.";
             } else {
-                error = "The FBX could not be imported (the console has details).";
+                const fs::path glbPath = project->getImportedModelPath(file);
+                const FbxImporter::State state = FbxImporter::getState(file, glbPath, project->getAssetsPath());
+                data["fbx_import"] = {{"path", projectRelative(project, glbPath)},
+                    {"state", state == FbxImporter::State::UpToDate ? "current" : state == FbxImporter::State::Stale ? "stale" : "missing"}};
+                if (state == FbxImporter::State::Missing) {
+                    error = "Not converted yet: loading it (set_model) or import_files converts it.";
+                } else {
+                    info = modelInfo(glbPath, error);
+                }
             }
         } else {
             info = modelInfo(file, error);
@@ -2972,7 +2979,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Asset Info";
         tool.description =
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
-            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion); "
+            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "WAV format/duration; .material fields, "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});

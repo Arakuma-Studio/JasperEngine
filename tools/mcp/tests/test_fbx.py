@@ -80,7 +80,8 @@ async def test_import_files_converts_the_fbx(ed: Editor):
 async def test_asset_info_summarizes_the_import(ed: Editor):
     info = await ed.call("get_asset_info", path=S["fbx"])
     ed.check_eq(info["type"], "model")
-    ed.check(info.get("fbx_import", "").endswith("rigged_cube.fbx.glb"), f"{info!r}")
+    ed.check_eq(info["fbx_import"]["state"], "current", f"{info!r}")
+    ed.check(info["fbx_import"]["path"].endswith("rigged_cube.fbx.glb"), f"{info!r}")
     model = info["model"]
     ed.check_eq(len(model["meshes"]), 1, f"{model!r}")
     ed.check_eq(model["skins"], 1)
@@ -88,6 +89,22 @@ async def test_asset_info_summarizes_the_import(ed: Editor):
     ed.check_eq(model["materials"], ["Checker"])
     ed.check_eq(model["images"], ["textures/checker.png"], "the texture is linked, relative to the FBX")
     ed.check_in("ufbx", model["generator"])
+
+
+async def test_asset_info_does_not_convert(ed: Editor):
+    # read only: an FBX nothing loaded yet is reported, not converted. In a folder of its own,
+    # which the Project window does not list: its thumbnail would convert it.
+    fresh = S["assets"] / "unlisted" / "fresh.fbx"
+    fresh.parent.mkdir(parents=True, exist_ok=True)
+    fresh.write_bytes(FIXTURE.read_bytes())
+    rel = fresh.relative_to(ed.project).as_posix()
+    info = await ed.call("get_asset_info", path=rel)
+    ed.check_eq(info["fbx_import"]["state"], "missing", f"{info!r}")
+    ed.check_in("Not converted yet", info.get("error", ""))
+    glb = ed.project / ".jasperengine" / "imported" / "unlisted" / "fresh.fbx.glb"
+    ed.check(not glb.exists(), "get_asset_info wrote no conversion")
+    fresh.unlink()
+    fresh.parent.rmdir()
 
 
 async def test_set_model_loads_the_fbx(ed: Editor):
@@ -110,6 +127,7 @@ async def test_gltf_models_still_load(ed: Editor):
     await ed.call("sync_files", paths=[f"{S['models']}/box.gltf"])
     r = await ed.call("set_model", scene=S["scene"], create={"name": "Box"}, path=f"{S['models']}/box.gltf")
     ed.check(not r["loading"] and len(r["meshes"]) >= 1, f"{r!r}")
+    S["box"] = find_key(r["model"], "id", "entity_id")
 
 
 async def test_saved_scene_records_the_import(ed: Editor):
@@ -125,6 +143,9 @@ async def test_saved_scene_records_the_import(ed: Editor):
 
 
 async def test_fbx_edit_reloads_the_model(ed: Editor):
+    # an edit undone before the FBX changes can still be redone after the reload
+    await ed.call("rename_entity", scene=S["scene"], entity=S["box"], name="Crate")
+    await ed.call("undo", scene=S["scene"])
     fbx = ed.project / S["fbx"]
     fbx.write_text(fbx.read_text().replace("SubDeformer::Bulge", "SubDeformer::Swell"))
     before = S["glb"].stat().st_mtime_ns
@@ -136,6 +157,12 @@ async def test_fbx_edit_reloads_the_model(ed: Editor):
     info = await wait_until(ed, "the scene's model to reload the edited FBX", renamed)
     ed.check_eq(info["bone_count"], 2)
     ed.check(S["glb"].stat().st_mtime_ns != before, "reimported")
+
+    r = await ed.call("redo", scene=S["scene"])
+    box = await ed.call("get_entity", scene=S["scene"], entity=S["box"], detail="summary")
+    ed.check_eq(box["name"], "Crate", f"the redo step survived the automatic reload: {r!r}")
+    info = await ed.call("get_model_info", scene=S["scene"], entity=S["rig"])
+    ed.check_eq(info["morph_targets"], ["Swell"], "the redo leaves the reloaded model alone")
 
     await ed.call("save_scene", scene=S["scene"])
     data = yaml.safe_load((ed.project / S["path"]).read_text())
