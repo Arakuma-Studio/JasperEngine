@@ -165,7 +165,8 @@ namespace jasperengine::editor{
         // draw outside it: the loop also runs main-thread tasks in frames that do not draw)
         static void setInEditorFrame(bool inFrame);
         // The graphics view is going away (App::engineViewDestroyed): every queue is cancelled
-        // and every renderer frees its GPU objects; the next use loads its scene again.
+        // and every renderer frees its GPU objects. Editor shutdown only (no backend recreates
+        // the view: see the comment at the definition).
         static void releaseGpu();
 
     private:
