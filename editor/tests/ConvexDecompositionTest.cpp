@@ -540,6 +540,104 @@ TEST(ConvexDecomposition, CorruptEntriesAreMissesAndDeleted) {
     expectSameHulls(found, sampleHulls());
 }
 
+TEST(ConvexDecomposition, ClearLeavesOtherWritersTemporaryFiles) {
+    TempDir dir;
+    ConvexDecompositionCache cache(dir.str());
+    cache.store(1, sampleHulls());
+    // another process (a CLI run on the same project) halfway through writing entry 5: deleting
+    // its file would fail its rename and lose the entry
+    const fs::path busy = dir.path / (entryName(5) + ".0123456789abcdef-7.tmp");
+    std::ofstream(busy) << "half";
+    const fs::path crashed = dir.path / (entryName(6) + ".0123456789abcdef-2.tmp");
+    std::ofstream(crashed) << "half";
+    fs::last_write_time(crashed, fs::file_time_type::clock::now() - std::chrono::minutes(61));
+
+    cache.clear();
+    EXPECT_FALSE(fs::exists(dir.path / entryName(1)));
+    EXPECT_TRUE(fs::exists(busy));
+    EXPECT_FALSE(fs::exists(crashed));
+    // the other writer's rename still lands, and a cache reading the directory finds it
+    fs::rename(busy, dir.path / entryName(5));
+    ConvexDecompositionCache other(dir.str());
+    EXPECT_EQ(other.entryCount(), 1u);
+}
+
+TEST(ConvexDecomposition, UnsavableEntryStaysInMemory) {
+    TempDir dir;
+    const uint64_t key = 77;
+    // a directory where the file should go: every rename onto it fails
+    fs::create_directories(dir.path / entryName(key) / "blocker");
+    {
+        ConvexDecompositionCache cache(dir.str());
+        EXPECT_EQ(cache.lastDiskError(), "");
+        cache.store(key, sampleHulls());
+        std::vector<ConvexHullPoints> found;
+        ASSERT_TRUE(cache.find(key, found));
+        expectSameHulls(found, sampleHulls());
+        EXPECT_EQ(cache.status(key), DecompositionStatus::READY);
+        // reported, not silent
+        EXPECT_EQ(cache.lastDiskError().rfind("could not rename " + (dir.path / entryName(key)).string() + ".", 0), 0u)
+            << cache.lastDiskError();
+        // the next save that works clears it
+        cache.store(key + 1, sampleHulls());
+        EXPECT_EQ(cache.lastDiskError(), "");
+        EXPECT_TRUE(fs::exists(dir.path / entryName(key + 1)));
+        fs::remove(dir.path / entryName(key + 1));
+        cache.store(key, sampleHulls());
+        EXPECT_NE(cache.lastDiskError(), "");
+        cache.clear();
+        EXPECT_EQ(cache.lastDiskError(), "");
+        cache.store(key, sampleHulls());   // fails again, for the checks below
+    }
+    // both tries cleaned up after themselves, and nothing claims the entry is on disk
+    size_t entries = 0;
+    for (const auto& entry : fs::directory_iterator(dir.path)) {
+        EXPECT_EQ(entry.path().filename().string(), entryName(key));
+        entries++;
+    }
+    EXPECT_EQ(entries, 1u);
+    ConvexDecompositionCache other(dir.str());
+    std::vector<ConvexHullPoints> found;
+    EXPECT_FALSE(other.find(key, found));
+    EXPECT_EQ(other.entryCount(), 0u);
+}
+
+TEST(ConvexDecomposition, DiskMissesAreRememberedUntilRequest) {
+    TempDir dir;
+    ConvexDecompositionCache cache(dir.str());
+    ConvexDecompositionCache writer(dir.str());   // another process sharing the directory
+    const Mesh mesh = cube();
+    const uint64_t key = hashDecompositionInput(mesh.positions, mesh.indices, LOW);
+    EXPECT_EQ(cache.status(key), DecompositionStatus::NONE);
+
+    // written behind its back: polling keeps the remembered miss, without touching the disk
+    writer.store(key, sampleHulls());
+    std::vector<ConvexHullPoints> found;
+    EXPECT_EQ(cache.status(key), DecompositionStatus::NONE);
+    EXPECT_FALSE(cache.find(key, found));
+
+    // request() looks again and loads it instead of decomposing
+    EXPECT_EQ(cache.request(mesh.positions, mesh.indices, LOW), key);
+    EXPECT_EQ(cache.pendingCount(), 0u);
+    EXPECT_EQ(cache.completionVersion(), 0u);
+    EXPECT_EQ(cache.status(key), DecompositionStatus::READY);
+    ASSERT_TRUE(cache.find(key, found));
+    expectSameHulls(found, sampleHulls());
+
+    // clear() forgets misses too
+    const uint64_t other = key + 1;
+    EXPECT_EQ(cache.status(other), DecompositionStatus::NONE);
+    cache.clear();
+    writer.store(other, sampleHulls());
+    EXPECT_EQ(cache.status(other), DecompositionStatus::READY);
+
+    // and so does a store() of the key itself
+    const uint64_t third = key + 2;
+    EXPECT_FALSE(cache.find(third, found));
+    cache.store(third, sampleHulls());
+    EXPECT_EQ(cache.status(third), DecompositionStatus::READY);
+}
+
 TEST(ConvexDecomposition, MemoryOnlyCache) {
     ConvexDecompositionCache cache("");
     const std::vector<ConvexHullPoints> hulls = sampleHulls();
@@ -735,8 +833,10 @@ TEST(ConvexDecomposition, ClearRemovesEverything) {
     const Mesh flat = plane(Vector3(1, 0, 0), Vector3(0, 0, 1), 1);
     const uint64_t flatKey = cache.request(flat.positions, flat.indices, LOW);
     ASSERT_TRUE(waitUntil(std::chrono::seconds(5), [&]() { return cache.status(flatKey) == DecompositionStatus::FAILED; }));
-    // a temporary file a writer left behind
-    std::ofstream(dir.path / (entryName(5) + ".deadbeef-0.tmp")) << "partial";
+    // a temporary file a crashed writer left behind, long ago
+    const fs::path stale = dir.path / (entryName(5) + ".00000000deadbeef-0.tmp");
+    std::ofstream(stale) << "partial";
+    fs::last_write_time(stale, fs::file_time_type::clock::now() - std::chrono::hours(2));
     EXPECT_EQ(cache.entryCount(), 2u);
     EXPECT_GT(cache.bytesOnDisk(), 0u);
 

@@ -5,10 +5,12 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <condition_variable>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -101,6 +103,9 @@ namespace{
     // sanity bounds for reading: far above what any parameters produce
     const uint32_t MAX_FILE_HULLS = 1u << 16;
     const uint32_t MAX_FILE_POINTS = 1u << 20;
+
+    // clear() leaves another writer's temporary file alone unless it is this old (left by a crash)
+    const std::chrono::hours STALE_TEMPORARY(1);
 
     const char* const CANCELLED = "cancelled";
     const char* const NOT_AVAILABLE = "convex decomposition is not available in this build";
@@ -400,7 +405,8 @@ namespace{
         return true;
     }
 
-    // A name no other writer uses at the same time, in this process or another one
+    // A name no other writer uses, in this process or another one: a random token per process
+    // and a counter per write
     std::string temporarySuffix(){
         static const uint64_t processId = [](){
             std::random_device device;
@@ -710,6 +716,9 @@ struct ConvexDecompositionCache::Impl {
     std::condition_variable wake;
     std::unordered_map<uint64_t, std::vector<ConvexHullPoints>> memory;
     std::unordered_map<uint64_t, std::string> failures;
+    // keys whose file was not on disk when last looked for: status() and find() skip the disk for
+    // them until request(), store() or clear()
+    std::unordered_set<uint64_t> diskMisses;
     std::deque<Job> queue;
     std::unordered_set<uint64_t> queued;
     bool running = false;
@@ -726,8 +735,9 @@ struct ConvexDecompositionCache::Impl {
     std::mutex lifecycle;
     std::thread worker;
 
-    // reads, writes and deletions of entry files
+    // reads, writes and deletions of entry files; diskError too
     mutable std::mutex disk;
+    std::string diskError;   // why the last write failed both tries; "" after one succeeded
 
     std::string entryPath(uint64_t key) const{
         return (std::filesystem::path(directory) / (keyHex(key) + FILE_EXTENSION)).string();
@@ -754,45 +764,67 @@ struct ConvexDecompositionCache::Impl {
         }
         std::lock_guard<std::mutex> lock(disk);
         const std::string path = entryPath(key);
-        std::ifstream in(path, std::ios::binary);
-        if (!in){
+        // not a file (missing, or a directory in its way): a miss, and nothing to delete
+        std::error_code ec;
+        if (!std::filesystem::is_regular_file(path, ec)){
             return false;
         }
-        std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        const bool good = !in.bad() && decodeHulls(bytes, key, out);
-        in.close();
-        if (!good){
-            std::error_code ec;
-            std::filesystem::remove(path, ec);
+        std::vector<uint8_t> bytes;
+        try{
+            std::ifstream in(path, std::ios::binary);
+            if (!in){
+                return false;
+            }
+            bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+            if (in.bad()){
+                return false;
+            }
+        }catch (const std::exception&){
+            // libstdc++ throws on a read error whatever the stream's exception mask: a miss, the
+            // file may be fine for the next reader
+            return false;
         }
-        return good;
+        if (!decodeHulls(bytes, key, out)){
+            std::filesystem::remove(path, ec);
+            return false;
+        }
+        return true;
     }
 
     // Written aside and renamed into place: a reader never sees half a file. No lock held.
-    void writeToDisk(uint64_t key, const std::vector<ConvexHullPoints>& hulls) const{
+    void writeToDisk(uint64_t key, const std::vector<ConvexHullPoints>& hulls){
         if (directory.empty()){
             return;
         }
         const std::vector<uint8_t> bytes = encodeHulls(key, hulls);
         std::lock_guard<std::mutex> lock(disk);
-        std::error_code ec;
-        std::filesystem::create_directories(directory, ec);
         const std::string path = entryPath(key);
-        const std::string temporary = path + temporarySuffix();
-        bool written;
-        {
-            std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-            out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-            out.close();
-            written = static_cast<bool>(out);
-        }
-        if (written){
-            std::filesystem::rename(temporary, path, ec);
-            written = !ec;
-        }
-        if (!written){
+        std::string problem;
+        // a second try, under a new name, before giving up on the file (the hulls stay in memory)
+        for (int attempt = 0; attempt < 2; attempt++){
+            std::error_code ec;
+            std::filesystem::create_directories(directory, ec);
+            const std::string temporary = path + temporarySuffix();
+            bool written;
+            {
+                std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+                out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+                out.close();
+                written = static_cast<bool>(out);
+            }
+            if (!written){
+                problem = "could not write " + temporary;
+            }else{
+                std::filesystem::rename(temporary, path, ec);
+                if (!ec){
+                    diskError.clear();
+                    return;
+                }
+                problem = "could not rename " + temporary + ": " + ec.message();
+            }
             std::filesystem::remove(temporary, ec);
         }
+        diskError = problem;
     }
 
     // Entry files of the directory, by key
@@ -816,6 +848,7 @@ struct ConvexDecompositionCache::Impl {
             std::lock_guard<std::mutex> lock(mutex);
             memory[key] = hulls;
             failures.erase(key);
+            diskMisses.erase(key);
         }
         writeToDisk(key, hulls);
     }
@@ -881,12 +914,20 @@ bool ConvexDecompositionCache::find(uint64_t key, std::vector<ConvexHullPoints>&
             out = it->second;
             return true;
         }
+        if (impl->directory.empty() || impl->diskMisses.count(key)){
+            return false;
+        }
     }
     std::vector<ConvexHullPoints> hulls;
-    if (!impl->loadFromDisk(key, hulls)){
+    const bool loaded = impl->loadFromDisk(key, hulls);
+    std::lock_guard<std::mutex> lock(impl->mutex);
+    if (!loaded){
+        // unless it landed in memory meanwhile (a job or store()), it is a miss until request()
+        if (!impl->memory.count(key)){
+            impl->diskMisses.insert(key);
+        }
         return false;
     }
-    std::lock_guard<std::mutex> lock(impl->mutex);
     out = impl->memory.emplace(key, std::move(hulls)).first->second;
     return true;
 }
@@ -930,6 +971,8 @@ uint64_t ConvexDecompositionCache::request(const std::vector<Vector3>& positions
         if (settled()){
             return key;
         }
+        // another process may have written it since status() or find() last missed
+        impl->diskMisses.erase(key);
     }
     std::vector<ConvexHullPoints> hulls;
     if (find(key, hulls)){
@@ -1016,6 +1059,11 @@ uint64_t ConvexDecompositionCache::completionVersion() const{
     return impl->completions.load();
 }
 
+std::string ConvexDecompositionCache::lastDiskError() const{
+    std::lock_guard<std::mutex> lock(impl->disk);
+    return impl->diskError;
+}
+
 std::string ConvexDecompositionCache::failureReason(uint64_t key) const{
     std::lock_guard<std::mutex> lock(impl->mutex);
     if (impl->memory.count(key) || impl->pendingLocked(key)){
@@ -1030,17 +1078,26 @@ void ConvexDecompositionCache::clear(){
         std::lock_guard<std::mutex> lock(impl->mutex);
         impl->memory.clear();
         impl->failures.clear();
+        impl->diskMisses.clear();
     }
     if (impl->directory.empty()){
         return;
     }
+    // Temporary files belong to writers still busy, in another process (a CLI run sharing the
+    // project's cache) or another instance: deleting one would make its rename fail. This
+    // instance has none in flight (its writes hold the disk lock), so only ones a crash left,
+    // old enough, go.
     std::lock_guard<std::mutex> lock(impl->disk);
+    impl->diskError.clear();
     std::vector<std::filesystem::path> doomed;
+    const auto staleBefore = std::filesystem::file_time_type::clock::now() - STALE_TEMPORARY;
     std::error_code ec;
     for (std::filesystem::directory_iterator it(impl->directory, ec), end; !ec && it != end; it.increment(ec)){
         uint64_t key;
         const std::string name = it->path().filename().string();
-        if (parseEntryName(name, key) || isTemporaryName(name)){
+        std::error_code timeError;
+        if (parseEntryName(name, key) ||
+            (isTemporaryName(name) && it->last_write_time(timeError) < staleBefore && !timeError)){
             doomed.push_back(it->path());
         }
     }
