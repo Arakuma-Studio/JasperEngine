@@ -873,5 +873,5 @@ async def test_budget(ed: Editor):
     rows = {t.name: tool_budget.measure(t, False) for t in ed.tool_list}
     ed.check(rows["edit_lattice"]["total"] <= 2600, f"edit_lattice is {rows['edit_lattice']['total']} chars")
     total = sum(r["total"] for r in rows.values())
+    # the total of every tool is test_html_ui_tools.py's test_budget (one owner for the limit)
     print(f"     [budget] edit_lattice {rows['edit_lattice']['total']}, total {total}")
-    ed.check(total <= 100637, f"the tool definitions total {total} chars, over the budget (100637)")
