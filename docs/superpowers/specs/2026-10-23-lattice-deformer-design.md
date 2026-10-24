@@ -955,3 +955,107 @@ Integrator notes:
   solver): `test_lattice_data.py` passes, the inspector shows the folded-cell warning and the
   Deforming list. That build's Console showed `includes/lattice.glsl:135: 'active' : Reserved
   word` for the mesh and depth `Ltc` variants (glsl410): WP-RENDER must rename it.
+
+### 12.x WP-ANIM (LatticeTracks, §7)
+
+Files: `engine/core/action/keyframe/LatticeTracks.{h,cpp}` (stub replaced),
+`engine/core/subsystem/ActionSystem.{h,cpp}`, `engine/core/script/binding/ActionClassesLua.cpp`,
+`engine/core/script/LuaBinding.cpp` (`pushEntityHandleByType` key `latticetracks`),
+`engine/core/JasperEngine.h` (include), `engine/tests/htmlui/TestWrapperOwnership.cpp` (LatticeTracks
+in the wrapper list), `editor/util/LatticeTrackKeys.{h,cpp}` (new, root `CMakeLists.txt`),
+`editor/window/AnimationWindow.{h,cpp}`, `editor/command/type/CreateTrackKeyCmd.{h,cpp}`,
+`editor/command/type/CreateEntityCmd.{h,cpp}`, `editor/window/HierarchyWindow.cpp` (Create >
+Animation > Lattice Track), `editor/util/ProjectUtils.cpp` (script references to a lattice track
+are `LatticeTracks`), `editor/mcp/tools/WorldTools.cpp` (`edit_animation` only),
+`docs/mcp/guide/lua-api.md`, `tools/mcp/tests/test_lattice_anim.py`.
+
+Added declarations (nothing in a contract header renamed): the `LatticeTracks` API (the contract
+header was empty): constructors `(Scene*)`, `(Scene*, Entity)`, `(Scene*, times, points, values)`,
+`setTimes`, `setPoints`, `setValues` (keeps tangents mirrored like MorphTracks), `setEasings`,
+`setEasing`; private `ActionSystem::LatticeBlendAccum`, `latticeBlend`, `latticeTracksUpdate`;
+`EntityCreationType::LATTICE_TRACKS` (after `MORPH_TRACKS`); a lattice constructor of
+`CreateTrackKeyCmd`; private `AnimationWindow::selectLatticeTrackPoints`; `editor::LatticeTrackData`
+and `editor::LatticeTrackKeys` (the keying rules, shared by the Animation window and MCP).
+
+Runtime:
+- Dispatch: an action with KeyframeTracks + LatticeTracks whose target has a LatticeComponent.
+  Per point column: lerp with the segment easing, Hermite when `inTangents`/`outTangents` have one
+  row per key and the segment's two rows are sized like its value rows (else linear), as morph
+  tracks. A segment animates the columns both of its keys have (`min(points, row sizes)`): a
+  hand-edited short row animates fewer points instead of failing the track (morph logs an error and
+  skips it). Points `< 0` or `>= rx*ry*rz` (clamped resolution) are skipped.
+- `LatticeBlendAccum` per target: weighted sums and weights per point, sized to the point count
+  when first touched in a frame, kept between frames (`active` flag, no reallocation; entries of
+  destroyed entities are dropped in `clearPoseBlend`). Flush: points with weight > 0 get
+  `sum / weight` (normalized like morph weights: one clip fading in or out alone is not mixed with
+  the authored offsets); other points keep their values. `offsets` is grown to the point count
+  when shorter; `revision` is bumped only when a value changed. The editor preview uses the same
+  path (`updateAnimationPreview`).
+- A LatticeSystem tween/pose writing the same lattice while a LatticeTracks plays: the later
+  writer of the frame wins (the systems are not blended).
+- Engine fix found by the play test (all keyframe tracks, not only lattice): a non-looping
+  Animation that ended in an update stopped its tracks before the all-actions pass sampled them
+  at the end, so the last keys were missed by up to a frame (0.385 instead of 0.4 at the ~8 fps of
+  the headless test). `ActionSystem::animationApplyEnd` (private, added) samples every running
+  keyframe child once at the clip's end (its frame's end at most, the animation duration when that
+  cut it) before the clip stops; the pose blend of that update writes the final values.
+- Integration fix: `pushEntityHandleByType` had no `Lattice` entry (ProjectUtils names a lattice
+  entity's class `Lattice`, so `eval_lua object(ref, "Lattice")` and typed script references fell
+  back to EntityHandle); added `DISPATCH_TYPE(Lattice, "lattice")` in `LuaBinding.cpp`.
+
+Editor keying (`LatticeTrackKeys`):
+- Recorded points: the Scene-view selection (`LatticeEditorOps::getSelectedPoints`) when points
+  are selected, else every non-zero point plus every point already in the track, at the current
+  resolution. Extension: a lattice at rest whose track has no point (or no track) keys **every**
+  point, so the rest pose can be keyed (the spec rule would record nothing and a later key would
+  then have no rest to come from).
+- A key within 1 ms of an existing one updates the recorded columns only. A new key is inserted in
+  time order; the columns it does not record get the track's own value at that time (sampled as
+  ActionSystem plays it: easing, tangents), so the rest of the animation is unchanged; the split
+  segment keeps its easing on both halves; tangent tracks get zero tangents for it.
+- Points new to the track become columns; the keys that exist get the lattice's **current offset**
+  of those points (the only value known for them), tangents zero. Hand-edited rows shorter than the
+  point list are completed the same way.
+- Animation window: lattice blocks are labelled "Lattice Tracks" (rose); right-click a lattice
+  block: Insert Lattice Key; right-click the empty area with a lattice target: Key Lattice (creates
+  the track with CreateTrackKeyCmd when none spans the time); Snapshot keys lattice tracks too; Add
+  Property > Lattice Tracks; the preview snapshot excludes LatticeTracksComponent (the target's
+  LatticeComponent is snapshotted and restored, so a preview never leaves animated offsets behind).
+  Selecting a lattice block (or one of its keys) selects its lattice as the GameObject and the
+  track's points (valid at the current resolution) in the Scene view.
+
+MCP `edit_animation` channel `lattice`: per key `points` (or `value`) as `{"<index>": [x,y,z]}`,
+`[[[i,j,k],[x,y,z]], ...]` / `[[index, [x,y,z]], ...]`, or `"current"` (the lattice's offsets
+chosen by the keying rules above, the MCP path of editor keying). Indices are validated against
+the target's resolution (error names the key, the point and the resolution). Replace mode: one
+column per point any key names (ascending); a key that leaves a point out gets it linearly
+interpolated in time between the nearest keys naming it (held before the first / after the last).
+Merge mode: each key goes through `LatticeTrackKeys::setKey` (same as editor keying), its `ease`
+set for its segment. MCP writes linear keys (tangents cleared), as the other channels.
+`get_animation`/results read lattice keys back as `points: {"<index>": [x,y,z]}`. The keys
+schema now requires only `time` (lattice keys have `points`). Description trimmed to keep the tool
+total within the budget.
+
+Tests: `tools/mcp/tests/test_lattice_anim.py` (7 tests, new project): the MCP channel (both point
+forms, read back, one undo step, redo), fill/merge/errors, `"current"` keying (rest pose, moved
+points, new point at its current offset in earlier keys), the Animation window preview
+(`preview_animation` seek: offsets within one 1/60 s step of the key line, the unnamed point kept,
+the Scene view screenshot differs from the rest frame because the GPU path deforms the bound box,
+stop restores the authored offsets and leaves the keys), play mode (offsets on the key line at most one
+frame behind the action time at every sample, end exactly on the last key, untouched points kept,
+stop reverts), Lua (`LatticeTracks` by constructor and by setters, out-of-range point ignored, two
+clips on different points plus a shared point crossfaded with fadeOut/fadeIn: the shared point is
+the fade-weighted mean, the others keep the value of the only clip naming them, also after it
+stopped), a second editor reloading the scene (tracks, easings) and re-saving byte-identical.
+`test_html_ui_tools.py -k budget`: 100628 of 100637 characters after the trims.
+
+    JASPER_FIXTURE=<empty project> JASPER_EDITOR=build/native/jasperengine-editor \
+        tools/mcp/run-tests.sh tools/mcp/tests/test_lattice_anim.py
+
+Not verified headless (no MCP path for them): clicking a lattice block in the Animation window
+(point selection in the Scene view), the right-click/Snapshot menu items, keying with a Scene-view
+point selection (`LatticeEditorOps::getSelectedPoints` was still the contract stub in this branch;
+WP-EDITOR-SCENE's implementation filters by lattice and works with the calls made here).
+
+Not done here: `create_entity` type `lattice_tracks` (EntityTools, WP-MCP), `docs/mcp/TOOLS.md`
+regeneration (WP-MCP), the Xcode project entry for `editor/util/LatticeTrackKeys.cpp` (integration).
