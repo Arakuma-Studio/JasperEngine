@@ -1883,6 +1883,13 @@ prop at the squashed top, refusals); rest/pose keys and their errors; the play h
 - Falloff (`LatticeEditorOps::transformedOffsets`): far points are rejected by the moved
   points' box grown by the radius, and the nearest-point search uses squared distances
   (was points x moved-points square roots per drag frame).
+- Alt+A (Select None) cancels ImGui's pending Alt menu-layer toggle (`LatticeSceneTools`): ImGui
+  only cancels it for a key pressed in a later frame than Alt, so a fast chord moved the
+  keyboard focus to the menu bar and the next Scene-view shortcut went nowhere.
+- `test_lattice_scene.py` sends chords as modifiers down, key down, key up, modifiers up.
+  `xdotool key ctrl+a` releases Ctrl before A; when both land in one frame ImGui applies the
+  release before shortcut code reads `io.KeyCtrl` (an editor-wide ImGui trait, not lattice
+  specific), which made the test fail under load. Verified with logged X events.
 - Unit test `BendAndTwistUseTheCageProportions` for the agent-UX pass's preset change.
 - Xcode project (`engine/workspaces/xcode/JasperEngine.xcodeproj`): the new engine sources,
   in a `lattice` group and next to their siblings (the editor has no Xcode project).

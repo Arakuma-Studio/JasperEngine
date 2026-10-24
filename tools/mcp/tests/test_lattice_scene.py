@@ -64,7 +64,16 @@ async def settle(ed: Editor, frames: int = 6):
 
 
 async def key(ed: Editor, combo: str):
-    run_x(ed, "xdotool", "key", "--clearmodifiers", combo)
+    # modifiers down, key down, key up, modifiers up: `xdotool key ctrl+a` releases Ctrl before
+    # A, and when both land in one frame (a slow headless editor) ImGui applies the release
+    # before the shortcut code reads the modifiers, so the chord reads as a plain A
+    *modifiers, last = combo.split("+")
+    for modifier in modifiers:
+        run_x(ed, "xdotool", "keydown", "--clearmodifiers", modifier)
+    run_x(ed, "xdotool", "keydown", last)
+    run_x(ed, "xdotool", "keyup", last)
+    for modifier in reversed(modifiers):
+        run_x(ed, "xdotool", "keyup", modifier)
     await settle(ed)
 
 

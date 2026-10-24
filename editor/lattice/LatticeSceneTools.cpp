@@ -12,6 +12,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "lattice/LatticePresets.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -185,6 +186,11 @@ bool LatticeSceneTools::handleShortcuts(Project* project, uint32_t sceneId){
     }
     if (io.KeyAlt && !io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)){
         select(project, sceneId, lattice, {});
+        // the Alt of this chord must not also toggle the menu layer on release: ImGui only
+        // cancels that toggle for a key pressed in a later frame than Alt, so a fast chord (Alt
+        // and A in one frame) moved the keyboard focus to the menu bar and the next Scene-view
+        // shortcut (Ctrl+A) went nowhere
+        ImGui::GetCurrentContext()->NavWindowingToggleLayer = false;
         return true;
     }
     if (io.KeyCtrl && !io.KeyAlt && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_I, false)){
