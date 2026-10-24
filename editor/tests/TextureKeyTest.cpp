@@ -17,6 +17,7 @@
 #include "shader/ShaderManifest.h"
 #include "texture/Texture.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -75,6 +76,26 @@ TEST(TextureRenderId, SamplerIsPartOfTheKey) {
     clamped.setWrapU(TextureWrap::REPEAT);
     clamped.setWrapV(TextureWrap::REPEAT);
     EXPECT_EQ(clamped.getRenderId(), repeat.getRenderId());
+}
+
+TEST(TextureRenderId, PoolHoldsItsEntryWhenStale) {
+    // what Texture::releaseSamplerRender asks before removing the previous key's texture: an
+    // invalidated (stale) entry is still the pool's, a placeholder never was
+    const std::string key = "test/holds.png|sampler=0,0,0,0";
+    std::shared_ptr<TextureRender> render = std::make_shared<TextureRender>();
+    TexturePool::add(key, render);
+    EXPECT_TRUE(TexturePool::holds(key, render));
+    TexturePool::invalidate(key); // still used here: marked stale, kept
+    EXPECT_TRUE(TexturePool::holds(key, render));
+    EXPECT_FALSE(TexturePool::get(key));
+    EXPECT_FALSE(TexturePool::holds(key, std::make_shared<TextureRender>()));
+    EXPECT_FALSE(TexturePool::holds("test/other.png", render));
+
+    // the stale entry goes with its last user
+    std::weak_ptr<TextureRender> pooled = render;
+    render.reset();
+    TexturePool::remove(key);
+    EXPECT_TRUE(pooled.expired());
 }
 
 TEST(TextureRenderId, NoIdNoKey) {

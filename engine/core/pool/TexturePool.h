@@ -27,6 +27,8 @@ namespace jasperengine{
         static std::shared_ptr<TextureRender> get(const std::string& id);
         static std::shared_ptr<TextureRender> get(const std::string& id, TextureType type, const std::shared_ptr<std::array<TextureData,6>> &data, TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
         static void add(const std::string& id, std::shared_ptr<TextureRender> render);
+        // whether the pool's entry of the id is this render (created, stale or not)
+        static bool holds(const std::string& id, const std::shared_ptr<TextureRender>& render);
         static void remove(const std::string& id);
         // also the id's sampler variants
         static void invalidate(const std::string& id);

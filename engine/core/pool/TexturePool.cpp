@@ -107,6 +107,12 @@ std::shared_ptr<TextureRender> TexturePool::get(const std::string& id, TextureTy
 	return shared;
 }
 
+bool TexturePool::holds(const std::string& id, const std::shared_ptr<TextureRender>& render){
+	auto& map = getMap();
+	auto it = map.find(id);
+	return render && it != map.end() && it->second == render;
+}
+
 void TexturePool::add(const std::string& id, std::shared_ptr<TextureRender> render){
 	if (!id.empty() && render){
 		getMap()[id] = render;
