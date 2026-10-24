@@ -1,7 +1,8 @@
 # Animation Clips: shared keyframe clip assets (Unity's AnimationClip + legacy Animation component)
 
-Status: approved direction (owner: "100% complete, like Unity's, best UX for humans and AI agents"), ready for
-implementation. Branch `animation-clips` (from pose-animation, which contains main). Research behind every decision:
+Status: approved direction (owner: "100% complete, like Unity's, best UX for humans and AI agents"), revised after the
+adversarial review (`/tmp/clip-research/reports/SPEC-REVIEW.md`): **section 9 is binding and overrides any earlier text
+it contradicts; section 8 is the work breakdown.** Branch `animation-clips` (from pose-animation, which contains main). Research behind every decision:
 `/tmp/clip-research/reports/R1-unity-reference.md` (Unity/Godot/Unreal), `R2-engine-runtime.md`, `R3-editor.md`,
 `R4-agent-surface.md` (read the parts your task touches; they carry file:line maps).
 
@@ -385,24 +386,137 @@ sub-clips), lua-api sections, DESIGN.md auto-sync list, AGENTS.md generator bull
 - Existing suites unchanged: test_world, test_lattice_anim, test_pose_*, test_fbx, test_html_ui_tools budget,
   test_autosync instructions, test_docs.
 
-## 8. Work breakdown (implementation tasks and file ownership)
+- Existing suites: behaviour unchanged, but these change on purpose (section 9, R32): test_html_ui_tools (caps, lowered
+  TOTAL_LIMIT), test_autosync `pairs`, test_docs DOCS, test_synthesize_texture_tool params. Baseline failure set:
+  `/tmp/merge-tools/base-fails-current.txt` (full suite of origin/main d61bed5a5 = the branch base minus the pose
+  work; the merged base 139d300f2 has the same set). Any FAIL not in it is a regression.
 
-- **T0 Contract** (one agent, first): the public headers of 3.1–3.5 and 4.1/4.3/4.5 with stub implementations that
-  compile and link (engine `engine/core/animation/*`, pool, component header + registration + Catalog enum entry,
-  editor `editor/animation/*`), the gtest targets skeletons, CMake/Xcode source lists (`tools/xcode_sync_engine.py`).
-  Everyone else codes against these headers.
-- **T1 Engine** (after T0): IO, samplers refactor (ActionSystem unchanged in behaviour), pool, sub-clips, binding
-  resolver + hierarchy revision, player system + blending + events + Lua + Model integration + EntityCloner +
-  Engine callback clearing; engine tests. Owns `engine/**` except files T0 created for the editor.
-- **T2 Editor plumbing** (after T0, parallel with T1 where it only needs headers): document, Util/FileDialogs/Project
-  window, rename/move/delete incl. closed scenes, auto-sync + problems (+ .poseanim gap), Catalog props / Stream /
-  Factory / ProjectUtils / ComponentAddDialog / collectResources, McpValues validation, validation module, converters,
-  Inspector (player section, asset inspector, AnimationComponent Convert, Model Extract), pose Bake to Clip; editor
-  gtests. Owns `editor/**` except AnimationWindow* and `editor/mcp/tools/*`.
-- **T3 Animation window clip mode** (after T1+T2 land on the branch): owns `editor/window/AnimationWindow*` (new files
-  for the clip mode are fine, e.g. `AnimationWindowClip.cpp`), the window test hooks, test_animation_window*.py.
-- **T4 MCP + CLI + docs for agents** (after T1+T2): owns `editor/mcp/**`, `editor/cli/**`, `docs/mcp/**`,
-  `tools/mcp/tests/test_animation_clip.py`, test_checks additions, budget trims and caps.
-- **T5 Docs** (after T3+T4): user guide, README, glossary, lua-api, AGENTS.md generator.
-- **Reviews** after every task (spec compliance + code quality + adversarial correctness), fix rounds until clean;
-  a final whole-branch review; full MCP suite vs baseline before merging to pose-animation/main.
+## 8. Work breakdown (tasks, order, file ownership)
+
+Every task gets a brief with an explicit file list; a file not in your list is read-only for you. Shared wiring files
+(`editor/App.cpp`, root `CMakeLists.txt`, `engine/CMakeLists.txt`, Xcode project) are edited only by T0 (stubs and every
+source-list entry for T1–T4) and later only by the task named for the hook.
+
+1. **T0 Contract** — every new public header with compiling stubs: `engine/core/animation/{AnimationClip, AnimationClipIO,
+   KeyframeSampling, ClipBinding, AnimationEvent}.h`, `engine/core/pool/AnimationClipPool.h`,
+   `engine/core/component/AnimationPlayerComponent.h` (+ registration, JasperEngine.h, ComponentType enum entry +
+   LastComponentType), `ActionSystem::previewPlayer/sampleClip` declarations, `EntityRegistry::hierarchyRevision()`
+   declaration; editor `editor/animation/{AnimationClipDocument, ClipValidation, ClipConverters, ClipRecordHooks,
+   PreviewOwner, AnimationClipInspectorHooks, AnimationClipController}.h`; App wiring stubs (stopTransientPreviews entry,
+   undo routing hook, drag-drop dispatch hook); ViewTools animation hook stub; gtest target skeletons
+   (`jasperengine-anim-tests`, editor tests files); every CMake/Xcode entry for files T1–T4 will add.
+2. **T1a Engine core** (after T0): AnimationClipIO (parse/canonical write, GUID key, leniency rules, Unity YAML refusal),
+   KeyframeSampling refactor of ActionSystem (no behaviour change), AnimationClipPool (Data::open, generations,
+   invalidate incl. `<model>#*`, clearUnused, Engine pool hooks, ModelPool::invalidate lock), engine tests for these.
+3. **T1b Player** (after T1a): ClipBinding resolver + hierarchy revision (all mutation paths of R9), Animation Player
+   system (states, wrap, play/crossFade/blend/queue/stop/rewind/sample, events queue + dispatch rules, rest capture,
+   flush rest term, deferral on model loads, previewPlayer/sampleClip), Lua bindings + stubs, Model integration,
+   EntityCloner, Engine/Scene callback clearing, ScriptEvents entry; engine tests.
+4. **T1c Model sub-clips** (after T1a, parallel with T1b): the sub-clip builder (mirrors buildGLTFNodeHierarchy, thread
+   safety, accessor reads), node-hierarchy layout forcing for models under a player (MeshSystem + ModelLoadCmd reload
+   step), `ModelComponent.animationEntities` flag honoured by MeshSystem, new fixtures (animated hero glTF with walk,
+   idle, one unnamed, two same-named animations; FBX with namespaced bones), engine tests.
+5. **T2a Component plumbing** (after T1a): Catalog (props incl. `clips[i].clip/name/wrap/guid`, name, icon, enabled),
+   Stream encode/decode (GUID + path hint), Factory emitter, ProjectUtils add/remove, PropertyCmd hierarchy switch,
+   ComponentAddDialog, PoseViewport stripToRender, collectResources, McpValues clip validation; editor tests.
+6. **T2b Asset plumbing** (after T0, parallel with T1*): AnimationClipDocument, Util predicates (+ ProjectWindow using
+   them), FileDialogs, Project window (FileType, icon, Create, double-click, drag sources/targets via the App hook),
+   AssetDatabase GUID tracking of `.anim` (JSON guid), rename/move/delete semantics (R8, R26), McpAutoSync +
+   `ScriptTools::syncFiles` + problems (+ the `.poseanim` problems gap), `isTextFile` (`.anim`, `.poseanim`); editor tests.
+7. **T2c Inspector** (after T2a, T2b, T1b): Animation Player section, asset inspector + inspected-object model (R30),
+   AnimationComponent "Convert to Clip...", Model "Extract to .anim" / "Use Animation Player", Bindings foldout; via
+   hooks so InspectorWindow includes no window.
+8. **T2d Validation + converters + bake** (after T1b, T1c, T2b): ClipValidation, ClipConverters (convert, extract, use
+   player), PoseBaker bake-to-clip + Pose window Bake menu entry, composite scene commands (R4); editor tests.
+9. **T3a Clip controller** (after T1b, T2a, T2b): AnimationClipController (bound root, preview snapshot of bound
+   channels, PreviewOwner, beforeChannelWrite updating snapshots, stopTransientPreviews, undo routing), gtests.
+10. **T3b Window UI** (after T3a, T2d): clip mode in new files (`AnimationWindowClipSheet.cpp`, `…ClipEvents.cpp`):
+    dropdown, empty state, rows, Add Property, keys (multi-select, box, drag, delete, copy/paste/duplicate, context
+    menu), events lane, toolbar (frames/seconds, samples, snap), shortcuts, read-only banner + Extract, lanes made
+    view-only (R31); window test hooks + test_animation_window.py.
+11. **T3c Curves view + Record** (after T3b): curves view (sampled curves, vertical key drag, segment ease, F/A), Record
+    mode through ClipRecordHooks at the source call sites (SceneRender gizmo drag, Inspector Transform/morph rows,
+    LatticeEditorOps) with chained `beforeChannelWrite` shared with the Pose window; tests.
+12. **T4 MCP + CLI** (after T3a; owns `editor/mcp/**` except T2b's files, `editor/cli/**`, `docs/mcp/**`,
+    `tools/mcp/tests/test_animation_clip.py`, test_checks/test_html_ui_tools/test_autosync/test_docs/
+    test_synthesize_texture_tool edits): the 9.R28/R29 argument design, results, rejection table, budget trims and
+    caps, guide, instructions bullet, TOOLS.md regeneration.
+13. **T5 Docs** (after T3c, T4): docs/animation-clips.md, README, glossary (R52), lua-api, AGENTS.md generator, DESIGN.md.
+
+After each task: a review (spec compliance, code quality, adversarial correctness) and fix rounds until clean; then
+merge into `animation-clips`. At the end: a whole-branch review, the full MCP suite vs the baseline, ASan run of the
+clip test files, then merge to pose-animation/main.
+
+## 9. Review resolutions (binding; numbers refer to SPEC-REVIEW.md, whose "Proposed change" texts are adopted unless noted)
+
+- **R1 Blending (adopted):** a player contributes only (target, channel[, morph index | lattice point]) entries animated
+  by a state with weight > 0 whose track resolved; it adds Σwᵢ·vᵢ with weight Σwᵢ to the shared accumulator exactly like
+  entity tracks and registers the entry's rest value. `flushPoseBlend` adds (1 − W)·rest before normalizing for every
+  entry with a registered rest whose total weight W over all contributors is < 1 (rotations: rest aligned to the
+  accumulator's reference hemisphere). Entries no playing state animates are not written. Targets without a registered
+  rest behave exactly as today (entity-only output byte-identical). Replaces the 3.3 blending bullet.
+- **R2 Rest (adopted):** rest values are kept per (entity, channel) for the life of the player's run (play session, or
+  edit-mode preview session): taken the first time the entity is bound, before the player writes it, kept across
+  rebinding, clip reloads and state changes; for every entity including bones it is the scene value (local TRS, morph
+  weights, lattice offsets). In edit preview rest = the preview snapshot and follows rest edits (R6).
+- **R3 Sub-clip paths (adopted):** paths come from a pure function over the tinygltf model mirroring
+  `buildGLTFNodeHierarchy` (node.name or "Node <i>", parent = the node listing it, parentless nodes under the model root,
+  `#k` = lower-index same-name siblings). A ModelComponent on or under an entity with an Animation Player is always
+  loaded in the node-hierarchy layout (`useNodeHierarchy` forced; adding a player to a legacy-layout model reloads it as
+  part of the same scene step). Merged static models animate only at `""`. PoseBaker/Convert compute paths from actual
+  entities. ClipValidation reports "this model is in the legacy layout" instead of N missing paths. Fixtures as listed.
+- **R4 Undo scopes (adopted):** pure clip edits (keys, tracks, events, settings, Retarget, Extract into an existing file)
+  are project steps via AnimationClipDocument. Every action that also changes a scene (Create New Clip in window /
+  Inspector / empty state, clip drag-drop onto an object, Convert to Clip, Bake to Clip, Use Animation Player, MCP
+  `edit_animation {create: {from: entity}}`) is ONE scene-history composite command (CreatePrefabCmd pattern): writes
+  the file on execute/redo, deletes it on undo only if its bytes are still what it wrote (else keeps it and logs), and
+  does the component/entity changes. The Animation window routes Ctrl+Z to the project history while it has focus and
+  its last action was a pure clip edit. MCP result texts name the scope. Mismatch-order tests required.
+- **R5 Record (adopted):** `editor/animation/ClipRecordHooks.h` chained listeners `claims(sceneId, entity, channel)` /
+  `record(sceneId, entity, channel, value, mergeKey)` called at the sources before any command is built (SceneRender
+  gizmo drag, Inspector Transform rows, MeshComponent morph rows, `LatticeEditorOps::push`); a claimed edit writes the
+  live preview value, no scene command, and commits a key with merge key `record#<dragSerial>`; unclaimed edits stay
+  scene steps and update the preview snapshot. While Record is on, Ctrl+Z from Scene view/Inspector goes to the project
+  history. MCP set_properties is never recorded. `poseInspectorHooks().beforeTransformWrite` becomes a chained
+  `beforeChannelWrite` list used by both windows.
+- **R6 Preview isolation (adopted):** the clip preview snapshot holds only bound channels, taken on the first write per
+  target; restored on stop, scene save, play, scene switch/close, window close (AnimationWindow joins
+  `App::stopTransientPreviews`, entity mode too); scene commands/undo/redo writing a previewed channel update its
+  snapshot (via beforeChannelWrite); preview never writes `isModified`. Test: save during preview writes unpreviewed values.
+- **R7 PreviewOwner (adopted):** one edit-mode pose owner per model root (Animation window clip/entity preview,
+  Inspector action preview, PoseEditSession); acquiring stops the previous owner first.
+- **R8 References (adopted):** clip refs are GUID + path hint (`"guid"` key in `.anim` right after `version`, new GUID for
+  copies; AssetDatabase tracks `.anim`; `clips[]` entries `{clip, guid, name, wrap}`; load resolves GUID first and
+  repairs the hint). Runtime/export use the path only. Sub-clips are path-only and remapped by the model's rename (R26).
+  Delete keeps references (Inspector "Missing (name)"); undoing the delete relinks. No closed file is ever rewritten.
+  This replaces the 4.1 rename bullet.
+- **R9 Hierarchy revision (adopted as proposed)** incl. the validate-then-re-resolve rule and the performance test
+  (100 players × 60 bones, one spawn per frame: player update < 2 ms on this host in Release).
+- **R10 (adopted)** deferral on model loads; **R11 (adopted)** sub-clip naming (`"Animation <i>"`, `"<name> <k>"`
+  duplicates, split at first `#` after a model extension, pool key by index; fix get_asset_info naming); **R12, R13
+  (adopted)**; **R14 (adopted)** `clips[]` entries carry `wrap` (default|once|loop|ping_pong|clamp_forever).
+- **R15 (recommended option adopted):** Model Inspector "Use Animation Player" (one scene step: removes the model's
+  entity animations and tracks, sets new `ModelComponent.animationEntities = false` honoured by MeshSystem at load and
+  reload, adds a player listing every `model#name`). New models keep `animationEntities = true` (existing behaviour).
+  `Model:playAnimation` on a model with a player fades out its running entity animations too.
+- **R16 Events, R17 Queue, R18 Play/stop/fade, R19 Relative-to-rest, R20 Lattice union, R21 Preview entry points
+  (adopted as proposed).** Default fade 0.25 s (R51: between the engine's 0.15 and Unity's 0.3; documented).
+- **R22 (adopted)** extra touch points; **R23 (adopted)** `AnimationEvent` type and C++ script subscription;
+  **R24** `cullWhenHidden` removed (moved to 2.5); **R25** `enabled` added; **R26, R27 (adopted)**.
+- **R28 Budget (adopted with the measured plan):** trims = edit_animation grammar/tween texts → guide (−389),
+  synthesize_texture params → anyObject with fields documented in texture-synthesis.md and its test updated (−433),
+  edit_lattice per-op field lists (−323), render_pose_animation legend (−86), get_pose_animation metrics (−60);
+  edit_colliders untouched. TOTAL_LIMIT lowered to the measured total + 300. Instructions bullet ≤ 130 B (`- Clips
+  (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an Animation Player
+  (jasper://docs/animation).`) paid by removing the Build Settings line and the duplicate Unity-names pitfall.
+- **R29 Arguments (adopted):** `clip` selects file mode; `create` is an object `{from?: "<model>#<name>" | entity ref}`;
+  `root` (not `on`); `events_mode: replace|merge`; file mode rejects `loop/duration/tweens/add_actions/set_frames/
+  remove_actions/target/autoplay/speed`; scene mode rejects `wrap/length/frame_rate/events/root/create`; each with a
+  fix-it message (two-way table in the guide and the T4 brief); preview_animation selects a state with `state`;
+  get_animation `entity` optional with `clip`, entity results `{entity, players: [{states: [{name, clip, wrap}],
+  bindings}], animations: [...]}`.
+- **R30 Inspected object (adopted)**; **R31 view-only lanes + dropdown precedence (adopted)**; **R32 test plan
+  (adopted; baseline is /tmp/merge-tools/base-fails-current.txt)**; **R33/R34 breakdown (adopted, section 8)**.
+- **Minors R35–R54 adopted as proposed**, except R50: Record and the curves view's vertical drag stay in v1 (T3c, last);
+  cut from v1: `cullWhenHidden`, "Re-sync from source" (the `source` key is still written), the Inspector Retarget
+  button (Retarget lives in the window's row menu). Explicit v1 non-goals per R49.
