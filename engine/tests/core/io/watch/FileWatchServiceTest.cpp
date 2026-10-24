@@ -88,10 +88,17 @@ TEST_P(FileWatchServiceTests, SelfUnsubscribe) {
     startWatching();
     std::atomic<int> calls{0};
     auto holder = std::make_shared<FileWatchSubscription>();
-    *holder = service.subscribe({}, [&, holder](std::span<const FileChange>) {
-        calls++;
-        holder->reset();   // a callback may destroy its own subscription
-    }, DeliverOn::Worker);
+    // (the holder is written here and read on the worker: the file write between them is no
+    // happens-before edge for ThreadSanitizer, the mutex is)
+    auto holderMutex = std::make_shared<std::mutex>();
+    {
+        std::lock_guard<std::mutex> assigning(*holderMutex);
+        *holder = service.subscribe({}, [&, holder, holderMutex](std::span<const FileChange>) {
+            calls++;
+            std::lock_guard<std::mutex> lock(*holderMutex);
+            holder->reset();   // a callback may destroy its own subscription
+        }, DeliverOn::Worker);
+    }
     writeText(dir.path / "one.txt", "1");
     ASSERT_TRUE(waitFor([&]() { return calls.load() == 1; }, ms(3000)));
     writeText(dir.path / "two.txt", "2");
