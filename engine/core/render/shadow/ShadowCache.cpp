@@ -87,7 +87,7 @@ ShadowRect ShadowCache::projectedRect(const Matrix4& viewProjection, const Shado
 }
 
 ShadowSlotDecision ShadowCache::evaluate(ShadowSlotState& state, const ShadowSlotInput& input,
-                                         const std::vector<ShadowCasterChange>& changes, uint64_t frame){
+                                         std::span<const ShadowCasterChange> changes, uint64_t frame){
     const ShadowSlotKey& key = input.key;
     ShadowSlotDecision decision;
 
@@ -204,6 +204,8 @@ ShadowSlotDecision ShadowCache::evaluate(ShadowSlotState& state, const ShadowSlo
     state.valid = true;
     state.key = key;
     state.lastRender = frame;
+    state.renderPath = decision.path;
+    state.renderCause = decision.cause;
     state.lastDirtyRect = decision.dirtyRect;
     if (decision.path == ShadowSlotPath::RENDER_STATIC){
         state.staticValid = true;

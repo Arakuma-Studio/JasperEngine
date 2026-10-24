@@ -81,6 +81,7 @@ void getShadowStatsTool(const CallPtr& call){
         Json entry = {
             {"entity", McpRefs::entityJson(sceneProject, light.entity)},
             {"type", lightTypeName(light.type)},
+            {"direction", McpValues::toJson(light.direction)},
             {"first_slot", light.firstSlot},
         };
         Json resolutions = Json::array();
@@ -111,6 +112,9 @@ void getShadowStatsTool(const CallPtr& call){
                 {"path", shadowSlotPathName(slot.path)},
                 {"dirty_cause", shadowDirtyCauseName(slot.cause)},
                 {"frames_since_render", slot.framesSinceRender},
+                {"last_render", {{"path", shadowSlotPathName(slot.renderPath)},
+                                 {"dirty_cause", shadowDirtyCauseName(slot.renderCause)},
+                                 {"dirty_rect", rectJson(slot.dirtyRect)}}},
                 {"static_layer", slot.staticLayer},
             };
             if (slot.path == ShadowSlotPath::RESTORE_DYNAMIC)
@@ -219,9 +223,10 @@ void registerShadowTools(McpRegistry& registry){
         tool.title = "Get Shadow Stats";
         tool.description =
             "What the scene's shadows did on the last update: quality tier, atlas sizes, memory (and the tier's budget), "
-            "and per shadowed light its slots, resolutions, cascade splits, radius and texel size, and per slot the cache "
-            "path (skip, restore, static, full, uncached), why it was redrawn and how long ago; render passes and draw "
-            "calls by path. camera game reads the running game's scene. (docs/mcp/guide/shadows.md)";
+            "and per shadowed light its direction, slots, resolutions, cascade splits, radius and texel size, and per slot the cache "
+            "path of this update (skip, restore, static, full, uncached) and why, and its last_render (path, cause, rect) "
+            "frames_since_render updates ago; render passes and draw calls by path. camera game reads the running game's "
+            "scene. (docs/mcp/guide/shadows.md)";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"camera", withDefault(stringEnum("Whose shadows: the editor's view or the running game's.", {"scene", "game"}), "scene")}

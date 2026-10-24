@@ -15,8 +15,8 @@ namespace jasperengine{
         sg_image image;
         sg_sampler sampler;
         sg_view view;
-        size_t streamBytes;
-        bool aliasImage = false;   // the image is another texture's (createAliasView): never destroyed here   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
+        size_t streamBytes;   // RGBA8/R8 dynamic textures: the size every update must have (0 = not checked)
+        bool aliasImage = false;   // the image is another texture's (createAliasView): never destroyed here
 
         sg_image_type getTextureType(TextureType textureType);
         sg_filter getFilter(TextureFilter textureFilter);

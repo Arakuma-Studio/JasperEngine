@@ -73,6 +73,19 @@ vec2 shadowRotation(vec2 key){
     return vec2(cos(angle), sin(angle));
 }
 
+// The noise key of a receiver in a slot: its position in shadow texels of the light's own frame,
+// so the pattern stays on the world when a stable cascade moves by whole texels (the slot-local
+// uv * resolution would shift with it). A directional cascade's matrix is an ortho box times a
+// rotation: its translation column is the box's (snapped) centre. A spot slot never moves.
+vec2 shadowNoiseKey(mat4 lightVP, vec4 clip, vec2 uv, float resolution){
+    // orthographic: its last row is (0, 0, 0, 1) (a perspective one holds the light's forward)
+    if (abs(lightVP[0][3]) + abs(lightVP[1][3]) + abs(lightVP[2][3]) < 1e-5 && abs(lightVP[3][3] - 1.0) < 1e-5){
+        // w = 1: undo the box's centre
+        return (clip.xy - lightVP[3].xy) * (0.5 * resolution);
+    }
+    return uv * resolution;
+}
+
 // the i-th of n points of a unit Vogel disk (golden-angle spiral), rotated by sc = (cos, sin)
 vec2 shadowVogelDisk(int i, int n, vec2 sc){
     float r = sqrt((float(i) + 0.5) / float(n));
@@ -142,10 +155,11 @@ float shadowGridPcf(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradi
 }
 
 #ifdef SHADOW_SAMPLING_HQ
-// taps of a Vogel disk of radiusTexels, rotated by noise keyed on the shadow texel position
-float shadowVogelPcf(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradient, float resolution, float radiusTexels, int taps){
+// taps of a Vogel disk of radiusTexels, rotated by noise of the receiver's world-locked key
+// (shadowNoiseKey)
+float shadowVogelPcf(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradient, float resolution, float radiusTexels, int taps, vec2 noiseKey){
     float texel = 1.0 / resolution;
-    vec2 sc = shadowRotation(uv * resolution);
+    vec2 sc = shadowRotation(noiseKey);
     float sum = 0.0;
     SHADOW_LOOP for (int i = 0; i < SHADOW_PCSS_MAX_TAPS; ++i){
         if (i >= taps) break;
@@ -159,13 +173,13 @@ float shadowVogelPcf(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 grad
 
 // The filter of a slot: mode 0 hard, 1 grid of radius gridRadius, 2 Vogel of radiusTexels
 // (without SHADOW_SAMPLING_HQ: the Medium tier's 5x5 grid)
-float shadowFilter(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradient, float resolution, int mode, int gridRadius, float radiusTexels){
+float shadowFilter(bool pointAtlas, vec4 rect, vec2 uv, float depth, vec2 gradient, float resolution, int mode, int gridRadius, float radiusTexels, vec2 noiseKey){
     if (mode == 1){
         return shadowGridPcf(pointAtlas, rect, uv, depth, gradient, resolution, gridRadius);
     }
     if (mode >= 2){
         #ifdef SHADOW_SAMPLING_HQ
-            return shadowVogelPcf(pointAtlas, rect, uv, depth, gradient, resolution, radiusTexels, SHADOW_VOGEL_TAPS);
+            return shadowVogelPcf(pointAtlas, rect, uv, depth, gradient, resolution, radiusTexels, SHADOW_VOGEL_TAPS, noiseKey);
         #else
             return shadowGridPcf(pointAtlas, rect, uv, depth, gradient, resolution, 2);
         #endif
@@ -183,7 +197,7 @@ float shadowRawDepth(vec4 rect, vec2 uv){
 // PCSS of a projective slot: the average blocker of a Vogel search, its physical penumbra,
 // then a Vogel PCF that wide. spotNearFar.x > 0 marks a spot slot (perspective depth, linear
 // distances from the light), else the slot is a directional cascade.
-float shadowPcss(int slot, vec2 uv, float depth, vec2 gradient, float texelWorld, float lightSize, vec2 spotNearFar){
+float shadowPcss(int slot, vec2 uv, float depth, vec2 gradient, float texelWorld, float lightSize, vec2 spotNearFar, vec2 noiseKey){
     vec4 rect = shadowData.atlasRect[slot];
     float resolution = shadowData.split[slot].w;
     float texel = 1.0 / resolution;
@@ -200,7 +214,7 @@ float shadowPcss(int slot, vec2 uv, float depth, vec2 gradient, float texelWorld
                         : shadowPcssDirectionalPenumbraWorld(0.0, depth, span, lightSize);
     float searchTexels = shadowPcssSearchTexels(widest / max(texelWorld, 0.000001));
 
-    vec2 sc = shadowRotation(uv * resolution);
+    vec2 sc = shadowRotation(noiseKey);
     float blockerSum = 0.0;
     int blockers = 0;
     SHADOW_LOOP for (int i = 0; i < SHADOW_PCSS_SEARCH_TAPS; ++i){
@@ -220,7 +234,7 @@ float shadowPcss(int slot, vec2 uv, float depth, vec2 gradient, float texelWorld
                                : shadowPcssDirectionalPenumbraWorld(avgBlocker, depth, span, lightSize);
     float radiusTexels = shadowPcssPenumbraTexels(penumbraWorld, texelWorld);
     #undef SHADOW_SPOT_DISTANCE
-    return shadowVogelPcf(false, rect, uv, depth, gradient, resolution, radiusTexels, shadowPcssTapsForRadius(radiusTexels));
+    return shadowVogelPcf(false, rect, uv, depth, gradient, resolution, radiusTexels, shadowPcssTapsForRadius(radiusTexels), noiseKey);
 }
 #endif
 
@@ -254,6 +268,7 @@ float shadowSlotVisibility(int slot, vec3 worldPos, vec3 dpdx, vec3 dpdy, float 
     int mode = int(filterParams.x + 0.5);
     float resolution = shadowData.split[slot].w;
     float radiusTexels = filterParams.y;
+    vec2 noiseKey = shadowNoiseKey(lightVP, clip, uv, resolution);
     if (mode >= 2 && radiusTexels <= 0.0){
         // a spot light's soft radius: its penumbra at the reference distance behind a blocker
         float tanHalf = filterParams.z / max(lightDistance, 0.001);
@@ -262,10 +277,10 @@ float shadowSlotVisibility(int slot, vec3 worldPos, vec3 dpdx, vec3 dpdy, float 
     #if defined(SHADOW_DATA_RAW) && defined(SHADOW_SAMPLING_HQ)
         if (mode == 3 && shadowData.header.z >= 8.0){
             vec2 spotNearFar = (lightDistance > 0.0) ? shadowData.split[slot].xy : vec2(0.0);
-            return shadowPcss(slot, uv, depth, gradient, texelWorld, filterParams.z, spotNearFar);
+            return shadowPcss(slot, uv, depth, gradient, texelWorld, filterParams.z, spotNearFar, noiseKey);
         }
     #endif
-    return shadowFilter(false, shadowData.atlasRect[slot], uv, depth, gradient, resolution, mode, int(radiusTexels + 0.5), radiusTexels);
+    return shadowFilter(false, shadowData.atlasRect[slot], uv, depth, gradient, resolution, mode, int(radiusTexels + 0.5), radiusTexels, noiseKey);
 }
 
 // the receiver offset by a slot's biases: towards the light by the depth bias, along the normal
@@ -320,7 +335,7 @@ float shadowDirectional(int firstSlot, int cascades, vec3 worldPos, vec3 worldNo
     int next = slot + ((cascade + 1 < cascades) ? 1 : 0);
     if (dither && blend > 0.0){
         vec4 clip = shadowData.lightVP[slot] * vec4(worldPos, 1.0);
-        vec2 key = (clip.xy / clip.w * 0.5 + 0.5) * shadowData.split[slot].w;
+        vec2 key = shadowNoiseKey(shadowData.lightVP[slot], clip, clip.xy * 0.5 + 0.5, shadowData.split[slot].w);
         if (shadowNoise(key) < blend){
             slot = next;
         }
@@ -445,7 +460,7 @@ float shadowPoint(int firstSlot, vec3 lightPosition, vec3 worldPos, vec3 worldNo
         radiusTexels = clamp(tanHalf * SHADOW_SOFT_REFERENCE_DISTANCE / max(texelWorld, 0.000001), 1.0, SHADOW_VOGEL_MAX_TEXELS);
     }
     float visibility = shadowFilter(true, pointShadowData.faceRect[firstSlot + face], coord.xy, coord.z, gradient, resolution,
-                                    min(mode, 2), int(filterParams.y + 0.5), radiusTexels);
+                                    min(mode, 2), int(filterParams.y + 0.5), radiusTexels, coord.xy * resolution);
     return mix(1.0, visibility, filterParams.w);
 }
 #endif

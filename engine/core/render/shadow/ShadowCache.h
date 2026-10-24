@@ -10,6 +10,7 @@
 #include "render/shadow/ShadowTypes.h"
 
 #include <cstdint>
+#include <span>
 #include <vector>
 
 namespace jasperengine {
@@ -70,9 +71,11 @@ namespace jasperengine {
         ShadowRect staticRect;
         uint64_t staticGeneration = 0;
         uint64_t lastRender = 0;        // frame of the last draw
-        ShadowSlotPath lastPath = ShadowSlotPath::SKIP;
+        ShadowSlotPath lastPath = ShadowSlotPath::SKIP;          // of the last evaluation
         ShadowDirtyCause lastCause = ShadowDirtyCause::NONE;
-        ShadowRect lastDirtyRect;
+        ShadowSlotPath renderPath = ShadowSlotPath::SKIP;        // of the last draw
+        ShadowDirtyCause renderCause = ShadowDirtyCause::NONE;
+        ShadowRect lastDirtyRect;                                // of the last draw
     };
 
     // Decides, per shadow slot and frame, whether it is skipped, partly restored or redrawn (spec
@@ -81,8 +84,9 @@ namespace jasperengine {
     class JASPERENGINE_API ShadowCache {
     public:
         // decides and updates state as if the decision were carried out at frame
+        // changes: every caster change since the slot was last evaluated
         static ShadowSlotDecision evaluate(ShadowSlotState& state, const ShadowSlotInput& input,
-                                           const std::vector<ShadowCasterChange>& changes, uint64_t frame);
+                                           std::span<const ShadowCasterChange> changes, uint64_t frame);
 
         // whether a world box can reach the shadow camera viewProjection draws (its clip volume)
         static bool intersects(const Matrix4& viewProjection, const ShadowBounds& bounds);

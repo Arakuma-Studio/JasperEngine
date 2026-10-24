@@ -750,8 +750,10 @@ namespace jasperengine{
 			// with a static layer, the other cameras' only skip or redraw
 			std::array<ShadowSlotState, MAX_SHADOW_ATLAS_SLOTS> projectiveSlots;
 			std::array<ShadowSlotState, MAX_POINT_SHADOW_ATLAS_SLOTS> pointSlots;
-			// update() its slots were last evaluated in: one missed loses the changes in between
-			uint64_t slotsFrame = 0;
+			// how far into the caster change log (RenderSystem::casterChangeLog) its atlases'
+			// slots were evaluated: the changes after it are the ones they have not seen
+			uint64_t projectiveChangesSeen = 0;
+			uint64_t pointChangesSeen = 0;
 			int ownProjectiveWidth = 0;
 			int ownProjectiveHeight = 0;
 			int ownPointWidth = 0;
@@ -1159,8 +1161,17 @@ namespace jasperengine{
 		std::vector<int> shadowRequestLight;        // scene light index of each request
 		// the shadow casters and what changed in them this update
 		ShadowCasterRegistry shadowCasters;
+		// the caster changes of the updates since the oldest the frame's atlases have not
+		// evaluated (update() can run more than once per draw: the editor updates the scene
+		// before its frame does); casterChangeBase is the log position of its first entry.
+		// An atlas that falls behind what the log keeps redraws its slots.
+		std::vector<ShadowCasterChange> casterChangeLog;
+		uint64_t casterChangeBase = 0;
+		static constexpr size_t CASTER_CHANGE_LOG_MAX = 16384;
 		// update() clock of the shadow caches
 		uint64_t shadowFrame = 0;
+		// the update a dynamic shadow caster was last seen in (static layers are kept a while after)
+		uint64_t shadowDynamicSeen = 0;
 		// the quality tier this update (Scene Quality, else the project's tier of the platform)
 		ShadowTier shadowTier = ShadowTier::HIGH;
 		bool shadowHardOnly = false;
@@ -1192,15 +1203,18 @@ namespace jasperengine{
 			bool point = false;
 			ShadowRect rect;
 			unsigned int resolution = 0;
-			ShadowSlotPath path = ShadowSlotPath::SKIP;
+			ShadowSlotPath path = ShadowSlotPath::SKIP;            // this update
 			ShadowDirtyCause cause = ShadowDirtyCause::NONE;
+			ShadowSlotPath renderPath = ShadowSlotPath::SKIP;      // its last draw
+			ShadowDirtyCause renderCause = ShadowDirtyCause::NONE;
+			ShadowRect dirtyRect;                                  // what its last draw wrote
 			uint64_t framesSinceRender = 0;
-			ShadowRect dirtyRect;
 			bool staticLayer = false;
 		};
 		struct ShadowLightStats{
 			Entity entity = NULL_ENTITY;
 			LightType type = LightType::DIRECTIONAL;
+			Vector3 direction = Vector3(0.0f, -1.0f, 0.0f);   // world direction the light points
 			int firstSlot = -1;
 			unsigned int cascades = 0;
 			float shadowDistance = 0.0f;
@@ -1609,6 +1623,7 @@ namespace jasperengine{
 		unsigned int lightShadowResolution(const LightComponent& light) const;
 		// the shadow casters of this update (ShadowCasterRegistry), from the meshes
 		void updateShadowCasters();
+		void appendCasterChanges();
 		// the shadow cameras of every shadowed light for the scene camera
 		void updateLightCameras(CameraComponent& camera, Transform& cameraTransform);
 		// the camera the cascades are fitted to: the camera, moved by set_shadow_debug for the frame's

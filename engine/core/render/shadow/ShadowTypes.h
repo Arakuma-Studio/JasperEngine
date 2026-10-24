@@ -60,6 +60,7 @@ namespace jasperengine {
         Vector3 max = Vector3(0.0f, 0.0f, 0.0f);
         bool valid = false;
 
+        // component-wise: the registry merges every caster of a scene every update
         void merge(const ShadowBounds& other){
             if (!other.valid)
                 return;
@@ -67,14 +68,19 @@ namespace jasperengine {
                 *this = other;
                 return;
             }
-            min = Vector3(min.x < other.min.x ? min.x : other.min.x, min.y < other.min.y ? min.y : other.min.y, min.z < other.min.z ? min.z : other.min.z);
-            max = Vector3(max.x > other.max.x ? max.x : other.max.x, max.y > other.max.y ? max.y : other.max.y, max.z > other.max.z ? max.z : other.max.z);
+            if (other.min.x < min.x) min.x = other.min.x;
+            if (other.min.y < min.y) min.y = other.min.y;
+            if (other.min.z < min.z) min.z = other.min.z;
+            if (other.max.x > max.x) max.x = other.max.x;
+            if (other.max.y > max.y) max.y = other.max.y;
+            if (other.max.z > max.z) max.z = other.max.z;
         }
 
         bool operator==(const ShadowBounds& other) const{
             if (valid != other.valid)
                 return false;
-            return !valid || (min == other.min && max == other.max);
+            return !valid || (min.x == other.min.x && min.y == other.min.y && min.z == other.min.z &&
+                              max.x == other.max.x && max.y == other.max.y && max.z == other.max.z);
         }
         bool operator!=(const ShadowBounds& other) const{ return !(*this == other); }
     };

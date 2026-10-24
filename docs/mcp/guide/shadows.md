@@ -41,12 +41,14 @@ ios): low, medium, high, ultra. Defaults: desktop high, web medium, mobile low.
 ## Checking
 
 - `get_shadow_stats` `{scene?, camera?: "scene"|"game"}`: the effective `tier`, the atlas sizes,
-  `memory_bytes` against `memory_budget_bytes`, and per shadowed light its slots (`first_slot` -1:
-  no slot, too many shadowed lights), resolutions, `cascade_splits`, `radius`, `texel_world`; per
-  slot the cache `path` this update (skip, restore, static, full, uncached), `dirty_cause` (first,
-  light, fit, static_caster, dynamic_caster, camera_caster, atlas, forced) and
-  `frames_since_render`; `passes` and `draw_calls` by path. A still scene settles to every slot
-  skip and 0 draw calls after two frames.
+  `memory_bytes` against `memory_budget_bytes`, the shadow clock `update`, and per shadowed light
+  its `direction`, slots (`first_slot` -1: no slot, too many shadowed lights), resolutions,
+  `cascade_splits`, `radius`, `texel_world`; per slot the cache `path` this update (skip, restore,
+  static, full, uncached), `dirty_cause` (first, light, fit, static_caster, dynamic_caster,
+  camera_caster, atlas, forced), and `last_render` (`path`, `dirty_cause`, `dirty_rect`: the rect it
+  wrote) `frames_since_render` updates ago; `passes` and `draw_calls` by path. A still scene settles
+  to every slot skip and 0 draw calls after two frames. To see what a change redrew, read `update`
+  before it: a slot drew since when `update - frames_since_render` is past it.
 - Look at it: `set_scene_settings shadows_debug_view: "shadow_factor"` (grey lit fraction) or
   `"cascades"`, then `screenshot view: "scene"`; set it back to `"none"`.
 - `set_shadow_debug` `{fit_camera_offset?, fit_camera_euler?, freeze_cache?, force_rerender?}`

@@ -82,8 +82,9 @@ TEST(ShadowBench, CascadeFitAndKeysPerCamera){
     }
     const double median = medianOf(samples);
     std::printf("[bench] cascade fit (4 cascades) + 9 slot keys per camera: %.2f us median (budget 30)\n", median);
-    if (testsupport::perfSlack() > 0.0)
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(median, 30.0 * testsupport::perfSlack());
+    }
 }
 
 TEST(ShadowBench, CasterRegistryTenThousandOnePercentMoving){
@@ -112,8 +113,9 @@ TEST(ShadowBench, CasterRegistryTenThousandOnePercentMoving){
             registry.update(i, states[i]);
         registry.endUpdate();
         EXPECT_TRUE(registry.getChanges().empty());
-        if (testsupport::countsAllocations())
+        if (testsupport::countsAllocations()){
             EXPECT_EQ(allocations.count(), 0u);
+        }
     }
 
     std::vector<double> samples;
@@ -133,6 +135,7 @@ TEST(ShadowBench, CasterRegistryTenThousandOnePercentMoving){
     }
     const double median = medianOf(samples);
     std::printf("[bench] caster registry, 10,000 casters, 1 %% moving: %.3f ms median (budget 0.2)\n", median);
-    if (testsupport::perfSlack() > 0.0)
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(median, 0.2 * testsupport::perfSlack());
+    }
 }

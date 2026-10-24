@@ -32,6 +32,8 @@ TIMEOUT = 1500
 
 GOLDEN_DIR = harness.REPO / "tools" / "fixtures" / "shadows" / "golden"
 UPDATE_GOLDEN = os.environ.get("JASPER_SHADOW_UPDATE_GOLDEN") == "1"
+# the measured images of each run, to look at (build/ is not in git)
+SHOT_DIR = harness.REPO / "build" / "test-output" / "shadows"
 SHOT_WIDTH = 640
 DISPLAY = {"show_grid_3d": False, "hide_light_icons": True, "hide_selection_outline": True,
            "hide_camera_view": True, "hide_sound_icons": True}
@@ -84,21 +86,37 @@ async def stats(ed: Editor, scene: int) -> dict:
     return await ed.call("get_shadow_stats", scene=scene)
 
 
+def keep_shot(name: str, img) -> None:
+    SHOT_DIR.mkdir(parents=True, exist_ok=True)
+    (SHOT_DIR / f"{name}.png").write_bytes(pngdiff.encode(img))
+
+
+def check(condition, message: str) -> None:
+    if not condition:
+        raise harness.TestFailure(message)
+
+
 def grey(img, x: int, y: int) -> int:
     w, h, rgba = img
     i = (y * w + x) * 4
     return rgba[i + 1]   # the debug views are grey: green is the value
 
 
-def changed_fraction(a, b, threshold: int = 2) -> float:
+def changed_fraction(a, b, threshold: int = 2, margin: float = 0.0) -> float:
+    """The fraction of pixels (inside a left and right margin, a fraction of the width) whose
+    8-bit value changed by more than threshold."""
     wa, ha, ra = a
     wb, hb, rb = b
     assert (wa, ha) == (wb, hb)
+    x0 = int(wa * margin)
+    x1 = wa - x0
     changed = 0
-    for i in range(0, wa * ha * 4, 4):
-        if max(abs(ra[i] - rb[i]), abs(ra[i + 1] - rb[i + 1]), abs(ra[i + 2] - rb[i + 2])) > threshold:
-            changed += 1
-    return changed / float(wa * ha)
+    for y in range(ha):
+        for x in range(x0, x1):
+            i = (y * wa + x) * 4
+            if max(abs(ra[i] - rb[i]), abs(ra[i + 1] - rb[i + 1]), abs(ra[i + 2] - rb[i + 2])) > threshold:
+                changed += 1
+    return changed / float((x1 - x0) * ha)
 
 
 def slots_of(st: dict) -> list:
@@ -146,19 +164,28 @@ async def test_shadow_settings(ed: Editor):
 
     # reloaded from the file, read back through Lua
     await ed.call("close_scene", scene=scene, unsaved="discard")
-    opened = await ed.call("open_scene", path="scenes/ShadowSettings.scene")
+    opened = await ed.call("open_scene", scene="scenes/ShadowSettings.scene")
     scene = opened["scene"]["id"]
     sun = await sun_of(ed, scene)
-    lua = await ed.call("eval_lua", scene=scene, allow_edit_mode=True, code=(
-        "local l = object(" + str(sun) + ", 'Light') "
-        "local m = object('Crate', 'Mesh') "
-        "return {type = l.shadowType, strength = l.shadowStrength, bias = l.shadowBias, normal = l.shadowNormalBias, "
-        "res = l.shadowResolution, cascades = l.numCascades, mode = l.cascadeSplitMode, split = l.cascadeSplits.y, "
-        "dist = l.shadowDistance, angle = l.shadowAngularDiameter, radius = l.shadowSourceRadius, update = l.shadowUpdateMode, "
-        "static = m.staticShadowCaster, quality = scene.shadowQuality, sdist = scene.shadowDistance, "
-        "fade = scene.shadowFadeFraction, blend = scene.shadowCascadeBlend, HARD = ShadowType.HARD, MANUAL = CascadeSplitMode.MANUAL, "
-        "ON_DEMAND = ShadowUpdateMode.ON_DEMAND, ULTRA = ShadowQuality.ULTRA}"))
-    v = lua["value"]
+    found = await ed.call("find_entities", scene=scene, name="Crate")
+    cube = harness.entity_id_of(harness.find_entities(found)[0])
+    # each field on its own (pcall), so a missing binding names itself
+    fields = {"type": "l.shadowType", "strength": "l.shadowStrength", "bias": "l.shadowBias", "normal": "l.shadowNormalBias",
+              "res": "l.shadowResolution", "cascades": "l.numCascades", "mode": "l.cascadeSplitMode", "split": "l.cascadeSplits.y",
+              "dist": "l.shadowDistance", "angle": "l.shadowAngularDiameter", "radius": "l.shadowSourceRadius",
+              "update": "l.shadowUpdateMode", "static": "m.staticShadowCaster", "quality": "scene.shadowQuality",
+              "sdist": "scene.shadowDistance", "fade": "scene.shadowFadeFraction", "blend": "scene.shadowCascadeBlend",
+              "HARD": "ShadowType.HARD", "MANUAL": "CascadeSplitMode.MANUAL", "ON_DEMAND": "ShadowUpdateMode.ON_DEMAND",
+              "ULTRA": "ShadowQuality.ULTRA"}
+    code = f"local l = object({sun}, 'Light') local m = object({cube}, 'Mesh') local out = {{}} "
+    for key, expression in fields.items():
+        code += (f"do local ok, value = pcall(function() return {expression} end) "
+                 f"if ok then out['{key}'] = value else out['{key}'] = 'ERROR ' .. tostring(value) end end ")
+    code += "return out"
+    lua = await ed.call("eval_lua", scene=scene, allow_edit_mode=True, code=code)
+    v = lua["values"][0]
+    errors = {k: x for k, x in v.items() if isinstance(x, str) and x.startswith("ERROR")}
+    ed.check(not errors, f"every shadow field reads in Lua: {errors}")
     ed.check_eq(v["type"], v["HARD"], "shadowType")
     ed.check(abs(v["strength"] - 0.6) < 1e-5 and abs(v["bias"] - 1.5) < 1e-5 and abs(v["normal"] - 0.75) < 1e-5, f"biases {v}")
     ed.check_eq(v["res"], 1024)
@@ -179,7 +206,7 @@ async def test_shadow_settings(ed: Editor):
     await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": "low"})
     ed.check_eq((await settle(ed, scene))["tier"], "low")
     lua = await ed.call("eval_lua", scene=scene, allow_edit_mode=True, code="return {t = scene.effectiveShadowTier, L = ShadowTier.LOW}")
-    ed.check_eq(lua["value"]["t"], lua["value"]["L"], "Lua effectiveShadowTier")
+    ed.check_eq(lua["values"][0]["t"], lua["values"][0]["L"], "Lua effectiveShadowTier")
 
     # undo reverts a light field (one step)
     await ed.call("set_properties", scene=scene, entity=sun, values={"light": {"shadowBias": 3.0}})
@@ -190,26 +217,38 @@ async def test_shadow_settings(ed: Editor):
 
 # ------------------------------------------------------------------ cache (AC10-AC13)
 
+def redrawn_since(st: dict, update: int) -> list:
+    """The slots drawn after shadow update `update` (their last_render)."""
+    return [s for s in slots_of(st) if s["frames_since_render"] < st["update"] - update]
+
+
 async def cache_scene(ed: Editor, name: str):
     scene = await make_scene(ed, name)
     sun = await sun_of(ed, scene)
-    await light_set(ed, scene, sun, shadows=True)
-    ground = await entity(ed, scene, "plane", "Ground", [0, 0, 0], scale=[6, 1, 6], values={"mesh": {"staticShadowCaster": True}})
+    await light_set(ed, scene, sun, shadows=True, direction=[-0.35, -0.85, -0.4])
+    ground = await entity(ed, scene, "plane", "Ground", [0, 0, 0], scale=[2, 1, 2], values={"mesh": {"staticShadowCaster": True}})
     static_box = await entity(ed, scene, "cube", "StaticBox", [-3, 0.5, 0], values={"mesh": {"staticShadowCaster": True}})
     dynamic_box = await entity(ed, scene, "cube", "DynamicBox", [3, 0.5, 0])
     spot = await entity(ed, scene, "spot_light", "Spot", [0, 6, 4])
-    await light_set(ed, scene, spot, shadows=True, range=20.0)
-    await ed.call("set_transform", scene=scene, entity=spot, rotation={"euler": [-70, 0, 0]})
+    await light_set(ed, scene, spot, shadows=True, range=20.0, direction=[0.0, -0.94, -0.34])
     await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": "medium"})
     await aim(ed, scene, [0, 9, 14], [0, 0, 0])
     return scene, sun, ground, static_box, dynamic_box, spot
+
+
+async def changed(ed: Editor, scene: int, change) -> tuple:
+    """(stats, slots redrawn) after one change, the scene settled before it."""
+    before = await settle(ed, scene, frames=6)
+    await change()
+    st = await settle(ed, scene, frames=3)
+    return st, redrawn_since(st, before["update"])
 
 
 async def test_shadow_cache(ed: Editor):
     scene, sun, ground, static_box, dynamic_box, spot = await cache_scene(ed, "ShadowCache")
 
     # still: every slot skips and nothing is drawn
-    st = await settle(ed, scene, frames=10)
+    await settle(ed, scene, frames=10)
     st = await settle(ed, scene, frames=3)
     slots = slots_of(st)
     ed.check(len(slots) >= 2, f"the sun and the spot have slots: {st['lights']}")
@@ -218,30 +257,23 @@ async def test_shadow_cache(ed: Editor):
     ed.check_eq(st["passes"], 0, "nor begins a shadow pass")
 
     # a dynamic caster moves: its slots restore their static layer under it, within its rects
-    await ed.call("set_transform", scene=scene, entity=dynamic_box, position=[3.5, 0.5, 0.5])
-    await ed.call("wait", frames=1)
-    st = await stats(ed, scene)
-    paths = {(s["atlas"], s["slot"]): s for s in slots_of(st)}
-    touched = [s for s in paths.values() if s["path"] != "skip"]
+    st, touched = await changed(ed, scene, lambda: ed.call("set_transform", scene=scene, entity=dynamic_box, position=[3.5, 0.5, 0.5]))
     ed.check(touched, "the move redrew something")
     for s in touched:
-        ed.check(s["path"] in ("restore", "full"), f"a dynamic move restores or redraws: {s}")
-        ed.check_eq(s["dirty_cause"], "dynamic_caster")
-        if s["path"] == "restore":
-            r, d = s["rect"], s["dirty_rect"]
+        last = s["last_render"]
+        ed.check(last["path"] in ("restore", "full"), f"a dynamic move restores or redraws: {s}")
+        ed.check_eq(last["dirty_cause"], "dynamic_caster")
+        if last["path"] == "restore":
+            r, d = s["rect"], last["dirty_rect"]
             ed.check(d[0] >= r[0] and d[1] >= r[1] and d[0] + d[2] <= r[0] + r[2] and d[1] + d[3] <= r[1] + r[3] and d[2] < r[2],
                      f"the dirty rect lies inside the slot and is smaller: {s}")
-    st = await settle(ed, scene, frames=3)
+    ed.check(any(s["last_render"]["path"] == "restore" for s in touched), f"the static layer is restored under it: {touched}")
     ed.check(all(s["path"] == "skip" for s in slots_of(st)), "and the cache settles again")
 
     # a static caster moves: the static layer of the slots it touches is redrawn
-    await ed.call("set_transform", scene=scene, entity=static_box, position=[-3.5, 0.5, 0])
-    await ed.call("wait", frames=1)
-    st = await stats(ed, scene)
-    touched = [s for s in slots_of(st) if s["path"] != "skip"]
-    ed.check(touched and all(s["path"] in ("static", "full") and s["dirty_cause"] == "static_caster" for s in touched),
-             f"a static move redraws the static layers it touches: {touched}")
-    await settle(ed, scene, frames=3)
+    st, touched = await changed(ed, scene, lambda: ed.call("set_transform", scene=scene, entity=static_box, position=[-3.5, 0.5, 0]))
+    ed.check(touched and all(s["last_render"]["path"] in ("static", "full") and s["last_render"]["dirty_cause"] == "static_caster"
+                             for s in touched), f"a static move redraws the static layers it touches: {touched}")
 
     # the image is the same whether the slots were cached or redrawn
     await debug_view(ed, scene, "shadow_factor")
@@ -249,28 +281,31 @@ async def test_shadow_cache(ed: Editor):
     await ed.call("set_shadow_debug", scene=scene, force_rerender=True)
     forced = await shot(ed, scene)
     await ed.call("set_shadow_debug", scene=scene, force_rerender=False)
+    if changed_fraction(cached, forced, 0) > 0.0:
+        keep_shot("cache_cached", cached)
+        keep_shot("cache_forced", forced)
     ed.check_eq(changed_fraction(cached, forced, 0), 0.0, "cached and re-rendered shadows are identical")
     await debug_view(ed, scene, "none")
 
 
 async def test_shadow_invalidation(ed: Editor):
-    """Each R18 trigger, once: the next frame's cause on the slots, and the image equal to a forced re-render."""
+    """Each R18 trigger, once: the redrawn slots' cause, and the image equal to a forced re-render."""
     scene, sun, ground, static_box, dynamic_box, spot = await cache_scene(ed, "ShadowInvalidation")
     await settle(ed, scene, frames=10)
     await debug_view(ed, scene, "shadow_factor")
 
     async def expect(change, causes: set, label: str):
-        await settle(ed, scene, frames=4)
-        await change()
-        await ed.call("wait", frames=1)
-        st = await stats(ed, scene)
-        touched = [s for s in slots_of(st) if s["path"] != "skip"]
+        st, touched = await changed(ed, scene, change)
         ed.check(touched, f"{label}: something was redrawn")
-        ed.check(all(s["dirty_cause"] in causes for s in touched), f"{label}: causes {[s['dirty_cause'] for s in touched]} in {causes}")
+        ed.check(all(s["last_render"]["dirty_cause"] in causes for s in touched),
+                 f"{label}: causes {[s['last_render']['dirty_cause'] for s in touched]} in {causes}")
         cached = await shot(ed, scene, frames=2)
         await ed.call("set_shadow_debug", scene=scene, force_rerender=True)
         forced = await shot(ed, scene, frames=2)
         await ed.call("set_shadow_debug", scene=scene, force_rerender=False)
+        if changed_fraction(cached, forced, 0) > 0.0:
+            keep_shot(f"invalidation_{label}_cached", cached)
+            keep_shot(f"invalidation_{label}_forced", forced)
         ed.check_eq(changed_fraction(cached, forced, 0), 0.0, f"{label}: the cached image is the re-rendered one")
 
     await expect(lambda: ed.call("set_transform", scene=scene, entity=dynamic_box, position=[2.5, 0.5, -0.5]), {"dynamic_caster"}, "transform")
@@ -286,16 +321,14 @@ async def test_shadow_invalidation(ed: Editor):
                  {"static_caster"}, "static flag")
     await expect(lambda: light_set(ed, scene, spot, range=18.0), {"light", "fit"}, "light range")
     await expect(lambda: light_set(ed, scene, sun, mapResolution=512), {"light", "atlas"}, "resolution")
-    await expect(lambda: ed.call("set_transform", scene=scene, entity=sun, rotation={"euler": [-60, 20, 0]}), {"light", "fit"}, "light direction")
+    await expect(lambda: light_set(ed, scene, sun, direction=[-0.3, -0.8, -0.5]), {"light", "fit"}, "light direction")
     await expect(lambda: light_set(ed, scene, spot, cullingMask=1), {"light"}, "culling mask")
     await expect(lambda: ed.call("delete_entities", scene=scene, entities=[static_box]), {"static_caster"}, "removed")
 
     # receiver-only settings redraw nothing
-    await settle(ed, scene, frames=4)
-    await light_set(ed, scene, sun, shadowBias=2.0, shadowNormalBias=2.0, shadowStrength=0.5, softShadows=False)
-    await ed.call("wait", frames=1)
-    st = await stats(ed, scene)
-    ed.check(all(s["path"] == "skip" for s in slots_of(st)), f"receiver-only edits skip: {[s['dirty_cause'] for s in slots_of(st)]}")
+    st, touched = await changed(ed, scene, lambda: light_set(ed, scene, sun, shadowBias=2.0, shadowNormalBias=2.0, shadowStrength=0.5,
+                                                             softShadows=False))
+    ed.check(not touched, f"receiver-only edits redraw nothing: {[s['last_render'] for s in touched]}")
     await debug_view(ed, scene, "none")
 
 
@@ -305,18 +338,16 @@ async def test_on_demand(ed: Editor):
     await light_set(ed, scene, spot, shadowUpdateMode="on_demand")
     await debug_view(ed, scene, "shadow_factor")
     before = await shot(ed, scene, frames=8)
-    await ed.call("set_transform", scene=scene, entity=dynamic_box, position=[0, 0.5, 2])
-    held = await shot(ed, scene, frames=6)
-    st = await stats(ed, scene)
-    ed.check(all(s["path"] == "skip" for s in slots_of(st)), "On Demand: a moving caster redraws nothing")
+    st, touched = await changed(ed, scene, lambda: ed.call("set_transform", scene=scene, entity=dynamic_box, position=[0, 0.5, 2]))
+    ed.check(not touched, f"On Demand: a moving caster redraws nothing: {[s['last_render'] for s in touched]}")
+    held = await shot(ed, scene, frames=2)
     ed.check(changed_fraction(before, held, 8) > 0.0005, "the cube itself moved")
-    # the shadow is where it was: compare a view of the shadows only, not of the cube (cube pixels differ)
-    await ed.call("eval_lua", scene=scene, allow_edit_mode=True,
-                  code="object('Sun', 'Light'):requestShadowUpdate(); object('Spot', 'Light'):requestShadowUpdate(); return true")
-    await ed.call("wait", frames=1)
-    st = await stats(ed, scene)
-    ed.check(any(s["path"] != "skip" and s["dirty_cause"] == "forced" for s in slots_of(st)), "requestShadowUpdate redraws")
-    updated = await shot(ed, scene, frames=3)
+    st, touched = await changed(ed, scene, lambda: ed.call(
+        "eval_lua", scene=scene, allow_edit_mode=True,
+        code=f"object({sun}, 'Light'):requestShadowUpdate(); object({spot}, 'Light'):requestShadowUpdate(); return true"))
+    ed.check(touched and all(s["last_render"]["dirty_cause"] == "forced" for s in touched),
+             f"requestShadowUpdate redraws: {[s['last_render'] for s in touched]}")
+    updated = await shot(ed, scene, frames=2)
     ed.check(changed_fraction(held, updated, 8) > 0.0005, "then the shadows follow")
     await debug_view(ed, scene, "none")
 
@@ -326,8 +357,7 @@ async def test_on_demand(ed: Editor):
 async def stability_scene(ed: Editor, name: str):
     scene = await make_scene(ed, name)
     sun = await sun_of(ed, scene)
-    await light_set(ed, scene, sun, shadows=True, softShadows=True)
-    await ed.call("set_transform", scene=scene, entity=sun, rotation={"euler": [-50, 35, 0]})
+    await light_set(ed, scene, sun, shadows=True, softShadows=True, direction=[-0.45, -0.8, -0.4])
     await entity(ed, scene, "plane", "Ground", [0, 0, 0], scale=[20, 1, 20])
     for i in range(-3, 4):
         for j in range(-2, 3):
@@ -346,8 +376,7 @@ async def test_no_shimmer_translate(ed: Editor):
     texel = sun_stats["texel_world"][0]
     ed.check(texel > 0, f"cascade 0 has a texel size: {sun_stats}")
     # light-space X (the cascade basis: up Y unless the light is near vertical) and the view's Z
-    got = await ed.call("get_entity", scene=scene, entity=sun, components=["light"])
-    direction = normalize(harness.find_key(got, "worldDirection"))
+    direction = normalize(sun_stats["direction"])
     light_x = normalize(cross(direction, [0.0, 1.0, 0.0]))
     view_z = normalize([0 - 0, 0 - 6, 0 - 16])
     step = 0.13 * texel
@@ -360,7 +389,11 @@ async def test_no_shimmer_translate(ed: Editor):
         offset = [base[i] + axis[i] * step * n for i in range(3)]
         await ed.call("set_shadow_debug", scene=scene, fit_camera_offset=offset)
         current = await shot(ed, scene, frames=2)
-        worst = max(worst, changed_fraction(previous, current))
+        changed = changed_fraction(previous, current)
+        if changed > worst:
+            worst = changed
+            keep_shot("shimmer_translate_a", previous)
+            keep_shot("shimmer_translate_b", current)
         previous = current
     await ed.call("set_shadow_debug", scene=scene, fit_camera_offset=[0, 0, 0])
     print(f"     [shimmer] translate: worst {worst * 100:.4f}% of the pixels changed by more than 2")
@@ -369,13 +402,21 @@ async def test_no_shimmer_translate(ed: Editor):
 
 
 async def test_no_shimmer_rotate(ed: Editor):
+    """Only the camera the cascades are fitted to turns (the view stays), from -4 to +4 degrees of yaw:
+    the screen's sides it turns away from leave its frustum, and with it the cascades (a camera that
+    really turns takes its view along), so they are left out of the metric."""
     scene, sun, sun_stats = await stability_scene(ed, "StabilityRotate")
+    await ed.call("set_shadow_debug", scene=scene, fit_camera_euler=[0.0, -4.0, 0.0])
     previous = await shot(ed, scene)
     worst = 0.0
     for k in range(1, 33):
-        await ed.call("set_shadow_debug", scene=scene, fit_camera_euler=[0.0, 0.25 * k, 0.0])
+        await ed.call("set_shadow_debug", scene=scene, fit_camera_euler=[0.0, -4.0 + 0.25 * k, 0.0])
         current = await shot(ed, scene, frames=2)
-        worst = max(worst, changed_fraction(previous, current))
+        changed = changed_fraction(previous, current, margin=0.1)
+        if changed > worst:
+            worst = changed
+            keep_shot("shimmer_rotate_a", previous)
+            keep_shot("shimmer_rotate_b", current)
         previous = current
     await ed.call("set_shadow_debug", scene=scene, fit_camera_euler=[0, 0, 0])
     st = await stats(ed, scene)
@@ -388,73 +429,130 @@ async def test_no_shimmer_rotate(ed: Editor):
 
 # ------------------------------------------------------------------ blend and fade (AC4)
 
+def tint_of(img, x: int, y: int):
+    """The cascade of a Cascades debug pixel (0 red, 1 green, 2 blue, 3 yellow), 'beyond' for the
+    grey past the last cascade, None for a pixel the view does not tint (the sky)."""
+    w, h, rgba = img
+    i = (y * w + x) * 4
+    r, g, b = rgba[i], rgba[i + 1], rgba[i + 2]
+    if max(r, g, b) - min(r, g, b) <= 3:
+        return "beyond"
+    # the tints (red, green, blue, yellow) dimmed by the shadow and the band's hatching
+    if r > 1.3 * b and g > 1.3 * b and abs(r - g) < 0.15 * max(r, g):
+        return 3
+    if r > 1.3 * g and r > 1.3 * b:
+        return 0
+    if g > 1.3 * r and g > 1.3 * b:
+        return 1
+    if b > 1.2 * r and b > 1.15 * g:
+        return 2
+    return None
+
+
 async def test_cascade_blend_fade(ed: Editor):
     scene = await make_scene(ed, "BlendFade")
     sun = await sun_of(ed, scene)
-    await light_set(ed, scene, sun, shadows=True, shadowDistance=60.0, numShadowCascades=4)
-    await ed.call("set_transform", scene=scene, entity=sun, rotation={"euler": [-75, 0, 0]})
+    # light from the left: a long fence at x = -2 shades the ground under the view's centre line,
+    # from the camera to past the shadow distance
+    await light_set(ed, scene, sun, shadows=True, shadowDistance=60.0, numShadowCascades=4, direction=[0.6, -0.8, 0.0])
     await entity(ed, scene, "plane", "Long", [0, 0, -50], scale=[4, 1, 12])
-    # a long roof over the centre line: it is in shadow from near to far, so a seam would show
-    await entity(ed, scene, "cube", "Roof", [0, 2.5, -50], scale=[2.0, 0.2, 120.0])
+    await entity(ed, scene, "cube", "Fence", [-2.0, 1.5, -50], scale=[0.2, 3.0, 120.0])
     await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": "high", "shadow_fade_fraction": 0.1})
-    await aim(ed, scene, [0, 3.0, 8], [0, 0.6, -40])
+    await aim(ed, scene, [0, 6.0, 8], [0, 0.0, -30])
 
     await debug_view(ed, scene, "cascades")
     cascades = await shot(ed, scene, frames=10)
     await debug_view(ed, scene, "shadow_factor")
     factor = await shot(ed, scene)
     await debug_view(ed, scene, "none")
+    keep_shot("blend_cascades", cascades)
+    keep_shot("blend_factor", factor)
 
-    w, h, rgba = cascades
+    w, h, _ = cascades
     cx = w // 2
-    # rows where the cascade tint changes along the centre column (top = far)
-    def tint(y):
-        i = (y * w + cx) * 4
-        r, g, b = rgba[i], rgba[i + 1], rgba[i + 2]
-        return max(range(3), key=lambda k: (r, g, b)[k])
-    boundaries = [y for y in range(1, h) if tint(y) != tint(y - 1)]
-    ed.check(boundaries, "the cascades show along the plane")
+    column = [tint_of(cascades, cx, y) for y in range(h)]
+    # the cascade changes along the centre column (bottom = near)
+    boundaries = [y for y in range(1, h) if isinstance(column[y], int) and isinstance(column[y - 1], int) and column[y] != column[y - 1]]
+    ed.check(len(boundaries) >= 2, f"the cascades show along the centre line: {sorted(set(c for c in column if c is not None), key=str)}")
     for y in boundaries:
         for yy in range(max(1, y - 3), min(h, y + 4)):
             step = abs(grey(factor, cx, yy) - grey(factor, cx, yy - 1))
             ed.check(step <= 8, f"no seam at the split near row {y}: step {step} at row {yy}")
-    # beyond the shadow distance: exactly lit (the far end of the plane, top rows that show it)
-    far_rows = [y for y in range(h // 2) if grey(factor, cx, y) > 0 and rgba[(y * w + cx) * 4 + 3] > 0]
-    ed.check(far_rows and grey(factor, cx, far_rows[0]) == 255, "past the shadow distance the plane is lit (255)")
+    # inside the shadow distance the centre line is shadowed, beyond it exactly lit
+    near = [y for y in range(h) if isinstance(column[y], int)]
+    ed.check(near and grey(factor, cx, max(near)) < 64, "the fence shades the centre line near the camera")
+    beyond = [y for y in range(h) if column[y] == "beyond"]
+    ed.check(beyond, "the plane reaches past the shadow distance")
+    ed.check(all(grey(factor, cx, y) == 255 for y in beyond), "past the shadow distance the plane is lit (255)")
     await golden(ed, "cascades", cascades)
 
 
 # ------------------------------------------------------------------ bias (AC6)
 
+def is_grey(img, x: int, y: int) -> bool:
+    w, h, rgba = img
+    i = (y * w + x) * 4
+    return rgba[i] == rgba[i + 1] == rgba[i + 2]
+
+
 async def test_bias(ed: Editor):
+    """A flat plane under a sun 1 to 80 degrees from vertical (the receiver at that angle to the
+    light): its lit half (x > 0) shows no acne, its shadowed half (under a slab placed up the light
+    so its shadow's edge is x = 0 at every angle, above and behind the camera) is even. Then a
+    cube's shadow meets its base: no lit gap between the cube's shaded side and its shadow."""
     scene = await make_scene(ed, "Bias")
     sun = await sun_of(ed, scene)
     await light_set(ed, scene, sun, shadows=True)
-    await ed.call("set_transform", scene=scene, entity=sun, rotation={"euler": [-45, 0, 0]})
     await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": "high"})
-    plane = await entity(ed, scene, "plane", "Tilted", [0, 0, 0], scale=[3, 1, 3])
-    blocker = await entity(ed, scene, "cube", "Blocker", [-4, 2, 0], scale=[6, 0.1, 12])
-    await aim(ed, scene, [0, 14, 0.01], [0, 0, 0])
+    await entity(ed, scene, "plane", "Ground", [0, 0, 0])
+    slab = await entity(ed, scene, "cube", "Slab", [-5, 8, 0], scale=[10, 0.1, 30])
+    await aim(ed, scene, [0, 5, 0.01], [0, 0, 0])
     await debug_view(ed, scene, "shadow_factor")
     for angle in (1, 15, 30, 45, 60, 80):
-        await ed.call("set_transform", scene=scene, entity=plane, rotation={"euler": [0, 0, -angle]})
+        a = math.radians(angle)
+        await light_set(ed, scene, sun, direction=[math.sin(a), -math.cos(a), 0.0])
+        # its shadow's edge on the ground at x = 0: the slab's right edge 8 m up the light
+        await ed.call("set_transform", scene=scene, entity=slab, position=[-8.0 * math.tan(a) - 5.0, 8.0, 0.0])
         img = await shot(ed, scene, frames=6)
+        keep_shot(f"bias_{angle}", img)
         w, h, rgba = img
-        lit = shadowed = 0
-        lit_full = 0
+        lit = lit_full = 0
         values = []
-        # the plane's right half (x > 0) is lit, the left half under the blocker
-        for y in range(h // 4, 3 * h // 4, 2):
-            for x in range(w // 2 + w // 16, w // 2 + w // 5, 2):
-                lit += 1
-                lit_full += 1 if grey(img, x, y) == 255 else 0
-            for x in range(w // 2 - w // 5, w // 2 - w // 16, 2):
-                shadowed += 1
-                values.append(grey(img, x, y))
-        mean = sum(values) / max(len(values), 1)
-        variance = sum((v - mean) ** 2 for v in values) / max(len(values), 1)
-        ed.check(lit_full / max(lit, 1) >= 0.995, f"{angle} deg: {lit_full}/{lit} lit pixels at 255 (no acne)")
-        ed.check(variance < 1.0, f"{angle} deg: the shadowed half is even (variance {variance:.2f})")
+        margin = w // 12
+        for y in range(0, h, 2):
+            for x in range(0, w, 2):
+                if not is_grey(img, x, y):
+                    continue   # not the plane
+                if x > w // 2 + margin:
+                    lit += 1
+                    lit_full += 1 if grey(img, x, y) == 255 else 0
+                elif x < w // 2 - margin:
+                    values.append(grey(img, x, y))
+        ed.check(lit > 1000 and len(values) > 1000, f"{angle} deg: the plane fills both halves ({lit}, {len(values)} pixels)")
+        mean = sum(values) / len(values)
+        variance = sum((v - mean) ** 2 for v in values) / len(values)
+        ed.check(lit_full / lit >= 0.995, f"{angle} deg: {lit_full}/{lit} lit pixels at 255 (no acne)")
+        ed.check(mean < 8 and variance < 1.0, f"{angle} deg: the shadowed half is dark and even (mean {mean:.1f}, variance {variance:.2f})")
+
+    # contact: a cube on the lit side, seen from the side its shadow falls to; along the column
+    # through its shaded face, the ground's shadow runs into the face with no lit texel between
+    a = math.radians(45)
+    await light_set(ed, scene, sun, direction=[math.sin(a), -math.cos(a), 0.0])
+    await ed.call("set_transform", scene=scene, entity=slab, position=[-13.0, 8.0, 0.0])
+    await entity(ed, scene, "cube", "Contact", [2.5, 0.5, 0])
+    await aim(ed, scene, [7.0, 2.5, 0.01], [3.0, 0.3, 0.0])
+    img = await shot(ed, scene, frames=6)
+    keep_shot("bias_contact", img)
+    w, h, rgba = img
+    cx = w // 2
+    column = [grey(img, cx, y) for y in range(h - 1, -1, -1)]   # bottom up: near ground first
+    dark = [i for i, v in enumerate(column) if v < 64]
+    ed.check(dark, "the cube and its shadow show")
+    first, last = dark[0], dark[0]
+    while last + 1 < len(column) and (column[last + 1] < 64 or (last + 2 < len(column) and column[last + 2] < 64)):
+        last += 1
+    gap = sum(1 for v in column[first:last + 1] if v >= 128)
+    ed.check(gap <= 1, f"the shadow touches the cube's base: {gap} lit pixels between them")
     await debug_view(ed, scene, "none")
 
 
@@ -475,6 +573,7 @@ async def test_point_shadows(ed: Editor):
     await aim(ed, scene, [0, 16, 0.01], [0, 0, 0])
     await debug_view(ed, scene, "shadow_factor")
     img = await shot(ed, scene, frames=10)
+    keep_shot("point_faces", img)
     w, h, rgba = img
     # along the face edges seen from above (the x = z diagonals): no step over 8 between neighbours
     # on the lit ground (shadows from the poles are away from the diagonals)
@@ -492,6 +591,48 @@ async def test_point_shadows(ed: Editor):
     await debug_view(ed, scene, "none")
 
 
+async def penumbra_of(ed: Editor, kind: str) -> tuple:
+    """(penumbra pixels per edge, pixels per metre) of a pole's soft shadow cast by a light of kind
+    4 m above the ground, 1024 texels per map: across the shadow 2.2 m from under the light."""
+    scene = await make_scene(ed, f"Penumbra{kind}")
+    sun = await sun_of(ed, scene)
+    await light_set(ed, scene, sun, shadows=False, intensity=0.0)
+    light = await entity(ed, scene, f"{kind}_light", "Light", [0, 4, 0])
+    values = {"shadows": True, "softShadows": True, "range": 30.0, "intensity": 40.0, "shadowSourceRadius": 0.3, "mapResolution": 1024}
+    if kind == "spot":
+        values.update({"direction": [0.0, -1.0, 0.0], "outerConeCos": 0.7071068, "innerConeCos": 0.75})   # a 90 degree cone: a cube face
+    await light_set(ed, scene, light, **values)
+    await entity(ed, scene, "plane", "Ground", [0, 0, 0])
+    await entity(ed, scene, "cylinder", "Pole", [1.5, 1.0, 0], scale=[0.1, 1.0, 0.1])
+    await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": "high"})
+    await aim(ed, scene, [2.2, 6.0, 0.01], [2.2, 0.0, 0.0])
+    await debug_view(ed, scene, "shadow_factor")
+    img = await shot(ed, scene, frames=10)
+    keep_shot(f"penumbra_{kind}", img)
+    w, h, rgba = img
+    column = [grey(img, w // 2, y) for y in range(h)]
+    soft = sum(1 for v in column if 24 < v < 231)
+    # the shadow's width there: the pole (0.2 m) at the height whose shadow lands 2.2 m out,
+    # 1.27 m, magnified by 4 / (4 - 1.27): the ground's scale in pixels
+    dark = sum(1 for v in column if v < 128)
+    await debug_view(ed, scene, "none")
+    await ed.call("close_scene", scene=scene, unsaved="discard")
+    return soft / 2.0, dark / (0.2 * 4.0 / (4.0 - 1.27))
+
+
+async def test_point_spot_penumbra(ed: Editor):
+    """AC9: a point light's soft penumbra is a spot light's at the same distance and resolution."""
+    spot, spot_ppm = await penumbra_of(ed, "spot")
+    point, point_ppm = await penumbra_of(ed, "point")
+    ppm = max(spot_ppm, point_ppm, 1.0)
+    # one shadow texel 4.5 m from the light at 1024 texels over a 90 degree face: 2 * 4.5 / 1024 m
+    texel_px = 2.0 * 4.5 / 1024.0 * ppm
+    print(f"     [penumbra] spot {spot:.1f} px, point {point:.1f} px per edge, texel {texel_px:.2f} px")
+    ed.check(spot > 0 and point > 0, "both shadows are soft")
+    ed.check(abs(spot - point) <= max(texel_px, 1.0) + 1.0,
+             f"point {point:.1f} px vs spot {spot:.1f} px: within a texel ({texel_px:.2f} px)")
+
+
 # ------------------------------------------------------------------ goldens per tier (AC5, AC8)
 
 async def golden(ed: Editor, name: str, img):
@@ -504,28 +645,26 @@ async def golden(ed: Editor, name: str, img):
     ed.check(path.is_file(), f"no golden {path} (JASPER_SHADOW_UPDATE_GOLDEN=1 writes it)")
     ok, fraction, diff = pngdiff.compare(img, pngdiff.load(path), 24, 0.01)
     if not ok:
-        actual = ed.scratch.root / f"{name}.actual.png"
-        actual.write_bytes(pngdiff.encode(img))
-        (ed.scratch.root / f"{name}.diff.png").write_bytes(diff or b"")
-        ed.keep = True
+        keep_shot(f"{name}.actual", img)
+        if diff:
+            SHOT_DIR.mkdir(parents=True, exist_ok=True)
+            (SHOT_DIR / f"{name}.diff.png").write_bytes(diff if isinstance(diff, bytes) else pngdiff.encode(diff))
     ed.check(ok, f"{name}: {fraction * 100:.2f}% of the pixels differ from the golden (at most 1%)")
 
 
 async def test_shadow_goldens(ed: Editor):
     scene = await make_scene(ed, "Filters")
     sun = await sun_of(ed, scene)
-    await light_set(ed, scene, sun, shadows=True, softShadows=True, shadowAngularDiameter=3.0)
-    await ed.call("set_transform", scene=scene, entity=sun, rotation={"euler": [-55, 30, 0]})
+    await light_set(ed, scene, sun, shadows=True, softShadows=True, shadowAngularDiameter=3.0, direction=[-0.4, -0.82, -0.4])
     await entity(ed, scene, "plane", "Ground", [0, 0, 0], scale=[3, 1, 3])
     # a contact-hardening pole, a hard and a soft spot, a point light
     await entity(ed, scene, "cylinder", "Pole", [0, 1.5, 0], scale=[0.15, 3.0, 0.15])
     await entity(ed, scene, "cube", "Box", [-4, 0.5, 2])
     hard = await entity(ed, scene, "spot_light", "HardSpot", [-4, 5, 4])
-    await light_set(ed, scene, hard, shadows=True, softShadows=False, range=12.0, intensity=60.0)
-    await ed.call("set_transform", scene=scene, entity=hard, rotation={"euler": [-60, 0, 0]})
+    await light_set(ed, scene, hard, shadows=True, softShadows=False, range=12.0, intensity=60.0, direction=[0.0, -0.87, -0.5])
     soft = await entity(ed, scene, "spot_light", "SoftSpot", [4, 5, 4])
-    await light_set(ed, scene, soft, shadows=True, softShadows=True, range=12.0, intensity=60.0, shadowSourceRadius=0.3)
-    await ed.call("set_transform", scene=scene, entity=soft, rotation={"euler": [-60, 0, 0]})
+    await light_set(ed, scene, soft, shadows=True, softShadows=True, range=12.0, intensity=60.0, shadowSourceRadius=0.3,
+                    direction=[0.0, -0.87, -0.5])
     await entity(ed, scene, "sphere", "Ball", [4, 0.6, 2], scale=[1.2, 1.2, 1.2])
     point = await entity(ed, scene, "point_light", "Lamp", [0, 2.5, -4])
     await light_set(ed, scene, point, shadows=True, range=10.0, intensity=25.0)
@@ -547,6 +686,40 @@ async def test_shadow_goldens(ed: Editor):
     await golden(ed, "pcss_factor", img)
 
 
+async def test_pcss_contact_hardening(ed: Editor):
+    """AC8: on Ultra (PCSS) a pole's shadow is sharp at its base and soft where its top casts. The
+    sun is 45 degrees up, so the pole's point h metres up shades the ground h metres out; the shadow
+    is measured across, from just above the ground, in shadow texels (its umbra is the pole's 0.3 m)."""
+    scene = await make_scene(ed, "Pcss")
+    sun = await sun_of(ed, scene)
+    a = math.radians(45)
+    await light_set(ed, scene, sun, shadows=True, softShadows=True, shadowAngularDiameter=0.53, direction=[math.sin(a), -math.cos(a), 0.0])
+    await entity(ed, scene, "plane", "Ground", [0, 0, 0])
+    await entity(ed, scene, "cylinder", "Pole", [0, 2.0, 0], scale=[0.15, 2.0, 0.15])
+    await ed.call("set_scene_settings", scene=scene, settings={"shadows_quality": "ultra"})
+    await debug_view(ed, scene, "shadow_factor")
+
+    async def across(x: float) -> float:
+        await aim(ed, scene, [x, 0.8, 0.01], [x, 0.0, 0.0])
+        img = await shot(ed, scene, frames=8)
+        keep_shot(f"pcss_{x:.1f}", img)
+        w, h, rgba = img
+        column = [grey(img, w // 2, y) for y in range(h)]
+        soft = sum(1 for v in column if 24 < v < 231) / 2.0
+        dark = sum(1 for v in column if v < 128)
+        st = await stats(ed, scene)
+        texel = [light for light in st["lights"] if light["type"] == "directional"][0]["texel_world"][0]
+        ed.check(dark > 0 and texel > 0, f"the shadow shows {x} m out")
+        return soft / (dark / 0.3) / texel
+
+    base = await across(0.25)
+    top = await across(3.0)
+    await debug_view(ed, scene, "none")
+    print(f"     [pcss] penumbra {base:.1f} texels at the base, {top:.1f} texels 3 m up")
+    ed.check(base < 2.0, f"sharp at the base: {base:.1f} texels")
+    ed.check(top > 6.0, f"soft 3 m up: {top:.1f} texels")
+
+
 # ------------------------------------------------------------------ old scenes (AC18)
 
 async def test_shadow_migration(ed: Editor):
@@ -555,7 +728,7 @@ async def test_shadow_migration(ed: Editor):
     scripts = ed.project / "scripts"
     scripts.mkdir(exist_ok=True)
     shutil.copy(fixture / "scripts" / "Legacy.lua", scripts / "Legacy.lua")
-    opened = await ed.call("open_scene", path="Legacy.scene")
+    opened = await ed.call("open_scene", scene="Legacy.scene")
     scene = opened["scene"]["id"]
     report = await ed.call("get_load_report", scene=scene)
     text = str(report)
@@ -586,7 +759,7 @@ async def test_shader_cross_compile():
         for spec in specs.values():
             args += ["--shader", spec]
         r = subprocess.run(harness.editor_command() + args, capture_output=True, text=True, timeout=1500)
-        harness.check(r.returncode == 0, f"the shadow variants compile on every backend: {r.stdout[-3000:]}{r.stderr[-3000:]}")
+        check(r.returncode == 0, f"the shadow variants compile on every backend: {r.stdout[-3000:]}{r.stderr[-3000:]}")
 
         def fragment(name: str, lang: str) -> str:
             matches = sorted(out.glob(f"*_{lang}.json"))
@@ -599,19 +772,19 @@ async def test_shader_cross_compile():
                     stages = data.get("stages", [])
                     frag = [st for st in stages if "frag" in str(st.get("type", "")).lower() or st.get("name", "").endswith("frag")]
                     return (frag or stages)[-1]["source"]
-            harness.check(False, f"no {lang} output of {specs[name]} in {[p.name for p in matches]}")
+            check(False, f"no {lang} output of {specs[name]} in {[p.name for p in matches]}")
             return ""
 
         for name in ("high", "high_terrain", "high_skinned"):
             hlsl = fragment(name, "hlsl5")
-            harness.check("SampleCmpLevelZero" in hlsl, f"{name}: HLSL compares at LOD 0")
-            harness.check("[loop]" in hlsl, f"{name}: HLSL keeps the shadow loops as loops")
-            harness.check("[unroll]" not in hlsl, f"{name}: no loop is forced to unroll")
+            check("SampleCmpLevelZero" in hlsl, f"{name}: HLSL compares at LOD 0")
+            check("[loop]" in hlsl, f"{name}: HLSL keeps the shadow loops as loops")
+            check("[unroll]" not in hlsl, f"{name}: no loop is forced to unroll")
             for lang in ("msl21macos", "msl21ios"):
                 msl = fragment(name, lang)
-                harness.check("sample_compare" in msl and "level(0" in msl, f"{name}: {lang} compares at level(0)")
-        harness.check("u_shadowAtlasRaw" in fragment("high", "glsl410"), "a High variant reads the raw depths (PCSS)")
-        harness.check("u_shadowAtlasRaw" not in fragment("medium", "glsl410"), "a Medium variant has no raw-depth view")
-        harness.check("u_shadowAtlasRaw" not in fragment("high", "glsl300es"), "GLES has no texture unit for it")
+                check("sample_compare" in msl and "level(0" in msl, f"{name}: {lang} compares at level(0)")
+        check("u_shadowAtlasRaw" in fragment("high", "glsl410"), "a High variant reads the raw depths (PCSS)")
+        check("u_shadowAtlasRaw" not in fragment("medium", "glsl410"), "a Medium variant has no raw-depth view")
+        check("u_shadowAtlasRaw" not in fragment("high", "glsl300es"), "GLES has no texture unit for it")
     finally:
         shutil.rmtree(out, ignore_errors=True)

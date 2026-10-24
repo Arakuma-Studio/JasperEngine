@@ -39,10 +39,13 @@ TEST(PcssDecision, SlopedReceiverIsNotItsOwnBlocker){
     EXPECT_FALSE(shadowPcssIsBlocker(0.497f, 0.5f, vec2(-0.02f, 0.0f), vec2(0.2f, 0.0f)));
 }
 
-TEST(PcssDecision, PenumbraClampsToOneTexelAndTheCap){
+TEST(PcssDecision, PenumbraClampsToHalfATexelAndTheCap){
     const float texelWorld = 0.05f;
-    // contact: no depth between receiver and blocker gives the minimum kernel
-    EXPECT_FLOAT_EQ(shadowPcssPenumbraTexels(shadowPcssDirectionalPenumbraWorld(0.5f, 0.5f, 100.0f, 0.0046f), texelWorld), 1.0f);
+    // contact: no depth between receiver and blocker gives the minimum kernel (a penumbra one
+    // texel wide)
+    EXPECT_FLOAT_EQ(shadowPcssPenumbraTexels(shadowPcssDirectionalPenumbraWorld(0.5f, 0.5f, 100.0f, 0.0046f), texelWorld),
+                    SHADOW_PCSS_MIN_TEXELS);
+    EXPECT_FLOAT_EQ(SHADOW_PCSS_MIN_TEXELS, 0.5f);
     // a blocker behind the receiver is no depth either
     EXPECT_FLOAT_EQ(shadowPcssDirectionalPenumbraWorld(0.6f, 0.5f, 100.0f, 0.0046f), 0.0f);
     // physical: 0.1 of a 100 m span at tan 0.01 is 0.1 m, two texels

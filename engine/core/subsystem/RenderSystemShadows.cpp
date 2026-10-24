@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <span>
 #include <string>
 #include <unordered_set>
 
@@ -220,7 +221,12 @@ void RenderSystem::planShadowSlots(int numLights){
 
     shadowRequests.clear();
     shadowRequestLight.clear();
-    const bool staticAndDynamic = shadowCasters.getStaticBounds().valid && shadowCasters.getDynamicBounds().valid;
+    // a static layer pays while static and dynamic casters share the slots; it is kept a while
+    // after the last dynamic caster went (one toggled off and on does not rebuild it)
+    if (shadowCasters.getDynamicBounds().valid)
+        shadowDynamicSeen = shadowFrame;
+    const bool staticAndDynamic = shadowCasters.getStaticBounds().valid && shadowDynamicSeen > 0 &&
+                                  shadowFrame - shadowDynamicSeen <= STATIC_CACHE_KEEP_UPDATES;
     for (int i = 0; i < numLights; i++){
         LightComponent& light = lights->getComponentFromIndex(i);
         light.shadowMapIndex = -1;
@@ -498,10 +504,30 @@ void RenderSystem::ensureCasterLayers(){
 
 // The casters of this update and what changed in them (the shadow cache's input): sampled once
 // per update, after the transforms, bounds and animation of the update are final
+// This update's changes into the log, keeping what the frame's atlases have not evaluated yet
+// (an atlas behind the log's first entry redraws its slots: renderShadowMaps)
+void RenderSystem::appendCasterChanges(){
+    const CameraShadows& frame = primaryView.shadows;
+    const uint64_t seen = std::min(frame.projectiveChangesSeen, frame.pointChangesSeen);
+    if (seen > casterChangeBase){
+        const size_t consumed = (size_t)std::min<uint64_t>(seen - casterChangeBase, casterChangeLog.size());
+        casterChangeLog.erase(casterChangeLog.begin(), casterChangeLog.begin() + (std::ptrdiff_t)consumed);
+        casterChangeBase += consumed;
+    }
+    const std::vector<ShadowCasterChange>& changes = shadowCasters.getChanges();
+    casterChangeLog.insert(casterChangeLog.end(), changes.begin(), changes.end());
+    if (casterChangeLog.size() > CASTER_CHANGE_LOG_MAX){
+        const size_t dropped = casterChangeLog.size() - CASTER_CHANGE_LOG_MAX;
+        casterChangeLog.erase(casterChangeLog.begin(), casterChangeLog.begin() + (std::ptrdiff_t)dropped);
+        casterChangeBase += dropped;
+    }
+}
+
 void RenderSystem::updateShadowCasters(){
     shadowCasters.beginUpdate();
     if (!hasShadows){
         shadowCasters.endUpdate();
+        appendCasterChanges();
         return;
     }
 
@@ -566,6 +592,7 @@ void RenderSystem::updateShadowCasters(){
         shadowCasters.update((uint32_t)entity, state);
     }
     shadowCasters.endUpdate();
+    appendCasterChanges();
 
 #ifdef JASPERENGINE_EDITOR
     passDrawsOverlays = drawsOverlays;
@@ -1513,19 +1540,28 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
     const bool frame = &target == &primaryView.shadows;
     // the frame's atlases cache with a static layer; another camera's skip or redraw a slot
     const bool caching = frame;
-    // a camera that missed an update missed its changes: everything is redrawn
-    if (target.slotsFrame + 1 != shadowFrame && target.slotsFrame != shadowFrame){
-        target.projectiveSlots.fill(ShadowSlotState());
-        target.pointSlots.fill(ShadowSlotState());
-    }
-    target.slotsFrame = shadowFrame;
     ensureCasterLayers();
     loadShadowRestore();
 
     auto lights = scene->getComponentArray<LightComponent>();
     auto meshes = scene->getComponentArray<MeshComponent>();
     const int shadowLightCount = (int)lights->size();
-    const std::vector<ShadowCasterChange>& changes = shadowCasters.getChanges();
+    // the caster changes an atlas has not evaluated yet; one that fell behind the log's first
+    // entry missed some: its slots are redrawn
+    const uint64_t changesEnd = casterChangeBase + casterChangeLog.size();
+    auto unseenChanges = [&](bool pointAtlas) -> std::span<const ShadowCasterChange>{
+        uint64_t& seen = pointAtlas ? target.pointChangesSeen : target.projectiveChangesSeen;
+        if (seen < casterChangeBase){
+            if (pointAtlas)
+                target.pointSlots.fill(ShadowSlotState());
+            else
+                target.projectiveSlots.fill(ShadowSlotState());
+            seen = casterChangeBase;
+        }
+        const size_t first = (size_t)std::min<uint64_t>(seen - casterChangeBase, casterChangeLog.size());
+        seen = changesEnd;
+        return std::span<const ShadowCasterChange>(casterChangeLog.data() + first, casterChangeLog.size() - first);
+    };
 
     // as in Unity, a layer the rendering camera or the light culls casts no shadow
     const uint32_t shadowCameraMask = target.cameraMask;
@@ -1605,6 +1641,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
         const uint64_t generation = pointAtlas ? (frame ? shadowPointAtlasGeneration : target.ownPointGeneration)
                                                : (frame ? shadowAtlasGeneration : target.ownProjectiveGeneration);
         const uint64_t staticGeneration = pointAtlas ? shadowStaticPointGeneration : shadowStaticGeneration;
+        const std::span<const ShadowCasterChange> changes = unseenChanges(pointAtlas);
         const bool hasAtlas = (pointAtlas ? hasShadowPointAtlas : hasShadowAtlas) && atlas.isCreated();
         if (!hasAtlas)
             return;
@@ -1789,6 +1826,7 @@ void RenderSystem::fillShadowStats(){
         ShadowLightStats entry;
         entry.entity = lights->getEntity(l);
         entry.type = light.type;
+        entry.direction = light.worldDirection.normalized();
         entry.firstSlot = light.shadowMapIndex;
         entry.cascades = (light.type == LightType::DIRECTIONAL) ? light.shadowCascades : 0;
         for (int s = 0; s < 6; s++){
@@ -1819,8 +1857,10 @@ void RenderSystem::fillShadowStats(){
                 slotStats.resolution = (unsigned int)std::max(slotStats.rect.width, 0);
                 slotStats.path = state.lastPath;
                 slotStats.cause = state.lastCause;
+                slotStats.renderPath = state.renderPath;
+                slotStats.renderCause = state.renderCause;
                 slotStats.framesSinceRender = state.valid ? shadowFrame - state.lastRender : 0;
-                slotStats.dirtyRect = (state.lastPath == ShadowSlotPath::RESTORE_DYNAMIC) ? state.lastDirtyRect : ShadowRect();
+                slotStats.dirtyRect = state.lastDirtyRect;
                 slotStats.staticLayer = slot < (int)staticLayout.rects.size() && !staticLayout.rects[slot].empty();
                 entry.slots.push_back(slotStats);
             }

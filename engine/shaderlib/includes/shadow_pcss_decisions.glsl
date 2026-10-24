@@ -23,6 +23,9 @@
 
 // the widest penumbra in texels (the kernel cap of the blocker search and of the PCF)
 const float SHADOW_PCSS_MAX_TEXELS = 24.0;
+// the narrowest PCF kernel radius: a penumbra one texel wide at contact (the bilinear comparison
+// adds its own texel), so a contact shadow is as sharp as the map allows
+const float SHADOW_PCSS_MIN_TEXELS = 0.5;
 // the blocker search's taps
 const int SHADOW_PCSS_SEARCH_TAPS = 16;
 // the PCF's taps: this many for a kernel up to SHADOW_PCSS_TAP_REF_TEXELS wide, then growing
@@ -56,9 +59,9 @@ SHADOW_PCSS_FN float shadowPcssSpotPenumbraWorld(float receiverDistance, float b
     return lightRadius * max(0.0, receiverDistance - blockerDistance) / max(blockerDistance, 0.0001);
 }
 
-// The PCF kernel radius in texels of a penumbra: clamped to [one texel, the cap]
+// The PCF kernel radius in texels of a penumbra: clamped to [half a texel, the cap]
 SHADOW_PCSS_FN float shadowPcssPenumbraTexels(float penumbraWorld, float texelWorld){
-    return clamp(penumbraWorld / max(texelWorld, 0.000001), 1.0, SHADOW_PCSS_MAX_TEXELS);
+    return clamp(penumbraWorld / max(texelWorld, 0.000001), SHADOW_PCSS_MIN_TEXELS, SHADOW_PCSS_MAX_TEXELS);
 }
 
 // The PCF taps for a kernel radius: the minimum up to the reference width, linear past it
