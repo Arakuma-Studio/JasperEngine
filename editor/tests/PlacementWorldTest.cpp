@@ -16,6 +16,7 @@
 #include "physics/PlacementWorld.h"
 #include "subsystem/MeshSystem.h"
 
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -955,6 +956,94 @@ TEST(PlacementWorldColliders, BakeThenMoveIsDecomposedAtOnce) {
     EXPECT_FALSE(world.hasPendingDecompositions());
 }
 
+namespace {
+
+    // The order a bake's roots and a mover finish their decompositions in, polled every 2 ms
+    struct QueueRace {
+        TestScene t;
+        std::vector<Entity> baked;
+        Entity mover = NULL_ENTITY;
+        ConvexDecompositionCache cache{""};
+        PlacementWorldSettings settings;
+
+        QueueRace() {
+            // different rings: different geometry, so six keys
+            for (int i = 0; i < 6; i++) baked.push_back(t.torus(0.4f + 0.05f * i, 0.12f, Vector3(3.0f * i, 0, 0)));
+            mover = t.torus(0.75f, 0.12f, Vector3(-5, 0, 0));
+            t.resolve();
+            settings.decompositionCache = &cache;
+            settings.decompositionResolution = 100000;
+        }
+
+        // the moment (poll index) each root's parts were all cached
+        std::vector<int> finishOrder(const std::vector<Entity>& roots) {
+            std::vector<int> when(roots.size(), -1);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(300);
+            for (int poll = 0; std::chrono::steady_clock::now() < deadline; poll++) {
+                bool all = true;
+                for (size_t i = 0; i < roots.size(); i++) {
+                    if (when[i] < 0 && PlacementWorld::decompositionReady(&t.scene, roots[i], settings)) when[i] = poll;
+                    all = all && when[i] >= 0;
+                }
+                if (all) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            return when;
+        }
+    };
+
+}
+
+// A mover's decomposition goes ahead of a bake's queue (only the job running already finishes
+// first), and a part the bake queued already moves up when it becomes a mover's; the bake
+// itself runs first come, first served
+TEST(PlacementWorldColliders, MoversJumpTheBakeQueue) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    for (const bool alreadyQueued : {false, true}) {
+        SCOPED_TRACE(alreadyQueued ? "the mover's part queued by the bake" : "the mover's part new");
+        QueueRace race;
+        for (Entity e : race.baked) ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, e, race.settings), 1u);
+        if (alreadyQueued) {
+            ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, race.mover, race.settings), 1u);
+        }
+        PlacementWorld world(&race.t.scene, race.settings);
+        ASSERT_TRUE(world.addMover(race.mover));
+        ASSERT_TRUE(world.hasPendingDecompositions());
+
+        std::vector<Entity> roots = race.baked;
+        roots.push_back(race.mover);
+        const std::vector<int> when = race.finishOrder(roots);
+        const int moverDone = when.back();
+        ASSERT_GE(moverDone, 0);
+        int bakedBefore = 0;
+        for (size_t i = 0; i + 1 < when.size(); i++) {
+            ASSERT_GE(when[i], 0);
+            if (when[i] < moverDone) bakedBefore++;
+        }
+        EXPECT_LE(bakedBefore, 1);   // the one that was running
+        for (size_t i = 1; i + 1 < when.size(); i++) EXPECT_LE(when[i - 1], when[i]) << i;   // the bake in order
+        world.refreshShapes();
+        EXPECT_EQ(world.getState(race.mover).shape, PlacementShapeKind::DECOMPOSED);
+    }
+}
+
+// A bake for a caller that waits (an agent's decompose "always") can be urgent too
+TEST(PlacementWorldColliders, UrgentBakesJumpTheQueue) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    QueueRace race;
+    for (Entity e : race.baked) ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, e, race.settings), 1u);
+    ASSERT_EQ(PlacementWorld::requestDecompositions(&race.t.scene, race.mover, race.settings, nullptr, true), 1u);
+    std::vector<Entity> roots = race.baked;
+    roots.push_back(race.mover);
+    const std::vector<int> when = race.finishOrder(roots);
+    int bakedBefore = 0;
+    for (size_t i = 0; i + 1 < when.size(); i++) {
+        ASSERT_GE(when[i], 0);
+        if (when[i] < when.back()) bakedBefore++;
+    }
+    EXPECT_LE(bakedBefore, 1);
+}
+
 TEST(PlacementWorldColliders, BakeSkipsPrimitivesAndRefusals) {
     TestScene t;
     const Entity cube = t.box(Vector3(1, 1, 1), Vector3(0, 0, 0));
@@ -1671,20 +1760,18 @@ TEST(PlacementWorldReview, SimplificationErrorIsAbsolute) {
     for (size_t i = 0; i < full.size(); i++) EXPECT_NEAR(simplified[i], full[i], 0.012f) << i;
 }
 
-// Run on its own in a fresh process (below): a world made before any Scene, so before anything
-// else set Jolt up
-TEST(PlacementWorldReview, FirstInAFreshProcess) {
-    if (!std::getenv("PLACEMENT_WORLD_FRESH_PROCESS")) GTEST_SKIP() << "run by WorldBeforeAnySceneInAFreshProcess";
-    PlacementWorld world(nullptr, PlacementWorldSettings());
-    world.step();
-    EXPECT_EQ(world.getStepCount(), 1u);
-    EXPECT_TRUE(world.allAsleep());
-}
-
+// A world made before any Scene, so before anything else set Jolt up, in a process of its own
+// (jasperengine-placement-fresh-process, built next to this binary): this one can't, as the
+// editor's static App builds a Scene before main
 TEST(PlacementWorldReview, WorldBeforeAnySceneInAFreshProcess) {
-    const std::string command = "PLACEMENT_WORLD_FRESH_PROCESS=1 /proc/" + std::to_string(::getpid()) +
-                                "/exe --gtest_filter=PlacementWorldReview.FirstInAFreshProcess > /dev/null 2>&1";
-    EXPECT_EQ(std::system(command.c_str()), 0);
+    char self[4096] = {};
+    const ssize_t length = ::readlink("/proc/self/exe", self, sizeof(self) - 1);
+    ASSERT_GT(length, 0);
+    std::string program(self, (size_t)length);
+    program = program.substr(0, program.rfind('/') + 1) + "jasperengine-placement-fresh-process";
+    const int status = std::system((program + " > /dev/null 2>&1").c_str());
+    ASSERT_TRUE(WIFEXITED(status)) << "it crashed";
+    EXPECT_EQ(WEXITSTATUS(status), 0) << "2: Jolt was set up before main there too, nothing was checked";
 }
 
 TEST(PlacementWorldReview, OverflowingContactBuffersAreReported) {

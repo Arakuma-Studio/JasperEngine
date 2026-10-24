@@ -185,8 +185,11 @@ namespace jasperengine {
         // primitive fits and parts already cached are not requested. Returns the parts requested
         // or already cached; 0 without settings.decompositionCache or when root can't be a mover.
         // notes (optional) gets a line per part left out and the reason root was refused.
+        // Queued behind the jobs already waiting (a bake), or ahead of every job that is not
+        // urgent with urgent (a caller waiting on the result). A mover's own requests (addMover,
+        // refreshShapes) are always urgent, and move up a part a bake has queued already.
         static size_t requestDecompositions(Scene* scene, Entity root, const PlacementWorldSettings& settings,
-                                            std::vector<std::string>* notes = nullptr);
+                                            std::vector<std::string>* notes = nullptr, bool urgent = false);
         // Every part requestDecompositions would ask for is cached (READY); true when no part
         // needs one, false without a cache or when root can't be a mover.
         static bool decompositionReady(Scene* scene, Entity root, const PlacementWorldSettings& settings);

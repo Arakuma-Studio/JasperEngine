@@ -1253,11 +1253,18 @@ struct PlacementWorld::Impl {
         return body;
     }
 
-    void issueRequests(const DynamicShape& built) const {
-        if (!settings.decompositionCache) return;
+    // A mover's decompositions are urgent: the user drags it now, or a run waits on it. One a
+    // bake queued already moves up ahead of the bake's others.
+    void issueRequests(const DynamicShape& built, bool urgent) const {
+        ConvexDecompositionCache* cache = settings.decompositionCache;
+        if (!cache) return;
         const DecompositionParams params = shapes().decompositionParams();
-        for (const DecompositionRequest& request : built.requests) {
-            settings.decompositionCache->request(request.positions, request.indices, params);
+        for (size_t i = 0; i < built.requests.size(); i++) {
+            if (urgent && i < built.keys.size() && cache->status(built.keys[i]) == DecompositionStatus::PENDING) {
+                cache->prioritize(built.keys[i]);
+            } else {
+                cache->request(built.requests[i].positions, built.requests[i].indices, params, urgent);
+            }
         }
     }
 
@@ -1502,7 +1509,7 @@ struct PlacementWorld::Impl {
         for (Entity neighbour : inside) removeDynamic(neighbourBodies, neighbours, neighbour);
         std::unique_ptr<DynamicBody> body = createDynamicBody(root, false, built);
         if (!body) return false;
-        issueRequests(built);
+        issueRequests(built, false);
         for (Entity e : subtreeOf(scene, root)) {
             removeContextOf(e);
             processed.insert(e);
@@ -2092,7 +2099,7 @@ bool PlacementWorld::addMover(Entity root, std::string* why) {
 
     std::unique_ptr<Impl::DynamicBody> body = impl->createDynamicBody(root, true, built);
     if (!body) return refuse("too many bodies in the placement world");
-    impl->issueRequests(built);
+    impl->issueRequests(built, true);
     impl->dynamicByEntity[root] = body.get();
     impl->movers.push_back(root);
     impl->moverBodies.push_back(std::move(body));
@@ -2198,7 +2205,7 @@ void PlacementWorld::refreshShapes() {
         body->shape = built.kind;
         body->hullCount = built.hullCount;
         body->decompositionKeys = built.keys;
-        impl->issueRequests(built);
+        impl->issueRequests(built, body->mover);
     }
 #endif
 }
@@ -2213,7 +2220,7 @@ bool PlacementWorld::hasPendingDecompositions() const {
 }
 
 size_t PlacementWorld::requestDecompositions(Scene* scene, Entity root, const PlacementWorldSettings& settings,
-                                             std::vector<std::string>* notes) {
+                                             std::vector<std::string>* notes, bool urgent) {
 #ifdef JASPERENGINE_PHYSICS_3D
     ConvexDecompositionCache* cache = settings.decompositionCache;
     if (!cache) {
@@ -2224,7 +2231,7 @@ size_t PlacementWorld::requestDecompositions(Scene* scene, Entity root, const Pl
     const DecompositionParams params = shapes.decompositionParams();
     size_t count = 0;
     shapes.forEachDecomposable(root, notes, [&](Entity part, uint64_t key, const PartGeometry& geometry) {
-        if (cache->status(key) != DecompositionStatus::READY) cache->request(geometry.local, geometry.indices, params);
+        if (cache->status(key) != DecompositionStatus::READY) cache->request(geometry.local, geometry.indices, params, urgent);
         if (cache->status(key) == DecompositionStatus::FAILED) {
             if (notes) notes->push_back(scene->getEntityName(part) + ": " + cache->failureReason(key));
             return;
@@ -2236,6 +2243,7 @@ size_t PlacementWorld::requestDecompositions(Scene* scene, Entity root, const Pl
     (void)scene;
     (void)root;
     (void)settings;
+    (void)urgent;
     if (notes) notes->push_back("3D physics is not available in this build");
     return 0;
 #endif
