@@ -3604,7 +3604,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and the surface includes (MESH bit 5 'Ltc', DEPTH bit 14, GBUFFER bits 10-12), the
     //      tangent of includes/surface_vs.glsl transformed before the hooks; a cache filled by a
     //      build of the lattice branch before its GLSL fixes held lattice variants by these names.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v34";
+    // v35: lattice vertex colour mask clamped to [0, 1] (a v34 cache from the lattice branch holds
+    //      unclamped lattice variants by the same names).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
 }
 
 void editor::App::pushTabNotificationStyle(){

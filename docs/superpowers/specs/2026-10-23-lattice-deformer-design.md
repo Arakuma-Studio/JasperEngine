@@ -187,7 +187,7 @@ Inside `[0,1]` on that axis the derivative factor is `(r-1)`; outside it is 0 (c
 ### 3.4 Deformation, Jacobian, normals, tangents, stretch
 
 With binding weight `w` (default 1, range `[0, 2]`) and vertex mask `m` (1 unless a mask
-channel is set, then the vertex color channel, or `1 - channel` for the inverted ones):
+channel is set, then the vertex color channel, or `1 - channel` for the inverted ones, clamped to [0, 1]):
 
 - `delta(u) = w * m * f(u) * D(u)`; `u' = u + delta(u)`.
 - `J = I + w * m * (f * dD/du + D (x) grad f)` (3x3, columns = derivatives along x, y, z).
@@ -618,7 +618,8 @@ Behaviour the other packages rely on (all in the header comments too):
   exact at rest; the GPU may use either). A vertex the binding does not move (rest
   evaluation, mask 0) is left bit-identical, normal not renormalized. A normal or tangent whose
   transformed length is 0 keeps its old value (GPU: guard `normalize(0)` the same way).
-- Mask: `m` = colour channel, or `1 - channel` inverted, **not clamped**; a null colour means
+- Mask: `m` = colour channel, or `1 - channel` inverted, clamped to [0, 1] (integration: float
+  colours outside it broke the culling bound, which assumes m <= 1); a null colour means
   `m = 1` for every channel including the inverted ones (WP-RENDER: a mesh without a colour
   attribute must behave as mask 1, e.g. pack `maskChannel -1` for it).
 - `deformWorldPoint` returns `p + Lm * delta`; `worldJacobian` returns
