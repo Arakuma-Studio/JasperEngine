@@ -18,6 +18,7 @@
 #endif
 #include "LuaBinding.h"
 #include "Log.h"
+#include "animation/AnimationEvent.h"
 
 #include "lua.hpp"
 #include "LuaBridge.h"
@@ -126,6 +127,11 @@ void LuaFunctionBase::push_value(lua_State *vm, const std::string &s){
 
 void LuaFunctionBase::push_value(lua_State *vm, wchar_t s){
     lua_pushstring(vm, StringUtils::toUTF8(s).c_str());
+}
+
+void LuaFunctionBase::push_value(lua_State *vm, const AnimationEvent &o){
+    if (!luabridge::push<AnimationEvent>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
 void LuaFunctionBase::push_value(lua_State *vm, Vector2 o){

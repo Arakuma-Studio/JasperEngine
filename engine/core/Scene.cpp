@@ -96,6 +96,11 @@ void Scene::removeSubscriptionsByTag(const std::string& substring) {
         animator.onFinish.removeByTagSubstring(tag);
     });
 
+    removeComponentSubscriptionsByTag<AnimationPlayerComponent>(this, substring, [](AnimationPlayerComponent& player, const std::string& tag) {
+        player.onEvent.removeByTagSubstring(tag);
+        player.onFinish.removeByTagSubstring(tag);
+    });
+
     removeComponentSubscriptionsByTag<UIComponent>(this, substring, [](UIComponent& ui, const std::string& tag) {
         ui.onGetFocus.removeByTagSubstring(tag);
         ui.onLostFocus.removeByTagSubstring(tag);

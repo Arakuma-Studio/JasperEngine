@@ -116,6 +116,14 @@ namespace jasperengine::anim{
     // interval; each event at most once per update. Appends indices into clip.getEvents().
     JASPERENGINE_API void collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
                                                bool includeStart, std::vector<size_t>& out);
+    // The same with where each was crossed: its position on the state's unwrapped time line
+    // (between fromTime and toTime), for ordering callbacks of several states by time (T1b)
+    struct CrossedEvent{
+        size_t index = 0;       // into clip.getEvents()
+        double position = 0.0;
+    };
+    JASPERENGINE_API void collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
+                                               bool includeStart, std::vector<CrossedEvent>& out);
 
 }
 

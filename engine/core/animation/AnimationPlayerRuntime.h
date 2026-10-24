@@ -58,8 +58,8 @@ namespace jasperengine::anim{
 
     // The rest values of one entity's channels (R2): what (1 - W) blends toward. morphWeights:
     // one per morph target of the MeshComponent (MAX_MORPHTARGETS); latticeOffsets: the full cage
-    // by flat index. Keyed by Entity (ids are recycled): an entry is dropped when its entity fails
-    // the bind validation (ClipBindings::boundNames / boundParents) or is destroyed.
+    // by flat index. Keyed by Entity: an entry is dropped when its entity is destroyed (a renamed
+    // or reparented entity that fails the bind validation keeps it, R2).
     struct JASPERENGINE_API ChannelRest{
         bool hasTransform = false;
         Vector3 position = Vector3(0, 0, 0);
@@ -77,12 +77,26 @@ namespace jasperengine::anim{
         std::shared_ptr<const AnimationClip> clip;
         uint64_t clipGeneration = 0;        // AnimationClipPool generation bound to
         uint64_t hierarchyRevision = 0;     // EntityRegistry::hierarchyRevision() bound at
+        uint64_t nameRevision = 0;          // EntityRegistry::nameRevision() the names were checked at
         std::vector<Entity> targets;        // per clip track, NULL_ENTITY = unresolved
         // per target: name and parent at bind (validate-then-re-resolve, R9)
         std::vector<std::string> boundNames;
         std::vector<Entity> boundParents;
         std::vector<KeyCursor> cursors;     // per clip track
         float nextUnresolvedRetry = 0.0f;   // re-resolve throttle for unresolved paths (4 Hz)
+        // per target: its index in the Transform array at bind (SIZE_MAX without a Transform),
+        // and the root's: a hierarchy change that shifts every target like the root moved
+        // nothing under it (a spawn elsewhere), any other shift re-resolves (R9)
+        std::vector<size_t> boundIndices;
+        size_t rootIndex = SIZE_MAX;
+        // every entity the resolved paths go through (targets and their ancestors below the
+        // root), with its name, parent and Transform index at bind: what the validation checks
+        std::vector<Entity> pathEntities;
+        std::vector<std::string> pathNames;
+        std::vector<Entity> pathParents;
+        std::vector<size_t> pathIndices;
+        bool resolved = false;              // resolved at least once for `clip`
+        size_t resolvedCount = 0;           // tracks whose path resolved
     };
 
     struct JASPERENGINE_API PlayerStateRuntime{
@@ -107,6 +121,15 @@ namespace jasperengine::anim{
         bool startedThisUpdate = false;     // fire events at exactly 0 (R16)
         bool finishNotified = false;        // clamp_forever: onFinish once
         ClipWrapMode wrapOverride = ClipWrapMode::Default;  // Lua state.wrap
+
+        std::string clip;                   // the entry's clip reference the state was built from
+        ClipWrapMode entryWrap = ClipWrapMode::Default;     // the entry's wrap (R14)
+        bool startAtEnd = false;            // started backwards before its clip loaded: at its length then
+        bool stopAtCycleEnd = false;        // a queued state waits for it: stops at its next end (R17)
+        // this update only: a once state that reached its end is sampled there, then stopped
+        bool finishing = false;
+        float finishTime = 0.0f;            // the clip time it ended at
+        float finishWhen = 0.0f;            // seconds into the update when it ended
     };
 
     struct JASPERENGINE_API QueuedState{
@@ -118,6 +141,8 @@ namespace jasperengine::anim{
     struct JASPERENGINE_API PendingPlayerCallback{
         bool finish = false;
         AnimationEvent event;               // finish: event.state is the finished state
+        float when = 0.0f;                  // seconds into the update it happened (dispatch order)
+        std::string clip;                   // the state's clip reference (missing-handler warning)
     };
 
     class JASPERENGINE_API AnimationPlayerRuntime{
@@ -132,10 +157,52 @@ namespace jasperengine::anim{
         std::vector<PendingPlayerCallback> pending;
         // (clip, function) pairs already warned about having no handler (play mode, once)
         std::vector<std::string> warnedHandlers;
+        // state names a call named that the clip list does not have (warned once each)
+        std::vector<std::string> warnedStates;
+        // seconds the player ran (the 4 Hz unresolved-path throttle)
+        float clock = 0.0f;
+        // EntityRegistry::hierarchyRevision() the models under the root were collected at
+        uint64_t modelsRevision = 0;
+        bool modelsCollected = false;
 
         // index into states, -1 when none
         int findState(const std::string& name) const;
     };
+
+    // ---- playback (T1b; Unity legacy Animation semantics, object/AnimationPlayer.h) ----
+
+    // The player's runtime, created when missing; a changed clip list (needsLoad) rebuilds the
+    // states first (no file is read here: clips load in the system update)
+    JASPERENGINE_API AnimationPlayerRuntime& playerRuntime(AnimationPlayerComponent& player);
+    // the wrap a state plays with: Lua override, else the entry's, else the clip's (Once while
+    // the clip is not loaded)
+    JASPERENGINE_API ClipWrapMode stateWrap(const PlayerStateRuntime& state);
+    // the state's clip length, 0 while not loaded
+    JASPERENGINE_API float stateLength(const PlayerStateRuntime& state);
+    // the state's time in its clip (wrapped for loop / ping-pong)
+    JASPERENGINE_API float stateClipTime(const PlayerStateRuntime& state);
+    // sets a state's time (the stored form: see PlayerStateRuntime::time)
+    JASPERENGINE_API void setStateTime(PlayerStateRuntime& state, float time);
+
+    // a state starts from its beginning (0, or its length when its effective speed is negative,
+    // R18) at its current weight; stop rewinds it and keeps the pose (weight 0, not enabled)
+    JASPERENGINE_API void startState(const AnimationPlayerComponent& player, PlayerStateRuntime& state);
+    JASPERENGINE_API void stopState(PlayerStateRuntime& state);
+    // the state's speed times the player's (0 for non-finite values)
+    JASPERENGINE_API float effectiveSpeed(const AnimationPlayerComponent& player, const PlayerStateRuntime& state);
+
+    // `who` names the player in warnings. False (warned once per name) for an unknown state.
+    // play: fade <= 0 is instant (Unity Play), else crossFade; both clear the queue
+    JASPERENGINE_API bool playState(AnimationPlayerComponent& player, const std::string& name, float fade, const std::string& who);
+    JASPERENGINE_API bool blendState(AnimationPlayerComponent& player, const std::string& name, float weight, float fade, const std::string& who);
+    JASPERENGINE_API bool queueState(AnimationPlayerComponent& player, const std::string& name, float fade, const std::string& who);
+    // name null: every state (and the queue)
+    JASPERENGINE_API void stopStates(AnimationPlayerComponent& player, const std::string* name, const std::string& who);
+    JASPERENGINE_API void rewindStates(AnimationPlayerComponent& player, const std::string* name, const std::string& who);
+    // every playing state fades to 0 over `fade` and stops (instantly when fade <= 0); the queue is cleared
+    JASPERENGINE_API void fadeOutStates(AnimationPlayerComponent& player, float fade);
+    // name null: any state
+    JASPERENGINE_API bool isStatePlaying(const AnimationPlayerComponent& player, const std::string* name);
 
     // One edit-mode clip preview on a root (ActionSystem::previewPlayer): bindings and rest kept
     // between calls; the Animation window / MCP preview own it for the preview's lifetime and end

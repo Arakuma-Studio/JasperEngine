@@ -5,6 +5,7 @@
 
 #include "math/Interpolation.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 
@@ -152,10 +153,29 @@ void anim::sampleVector3Row(const KeyLocation& at, const Vector3* previous, cons
 }
 
 float anim::wrapClipTime(float time, float length, ClipWrapMode wrap){
-    // TODO(T1b)
-    (void)length;
-    (void)wrap;
-    return time;
+    if (!std::isfinite(time) || !(length > 0.0f)){
+        return 0.0f;
+    }
+    switch (wrap){
+        case ClipWrapMode::Loop: {
+            double t = std::fmod((double)time, (double)length);
+            if (t < 0.0) t += length;
+            // fmod of a value just under a multiple can round up to length
+            return t >= length ? 0.0f : (float)t;
+        }
+        case ClipWrapMode::PingPong: {
+            const double period = 2.0 * (double)length;
+            double t = std::fmod((double)time, period);
+            if (t < 0.0) t += period;
+            if (t > length) t = period - t;
+            return (float)std::min(std::max(t, 0.0), (double)length);
+        }
+        case ClipWrapMode::Default:
+        case ClipWrapMode::Once:
+        case ClipWrapMode::ClampForever:
+            break;
+    }
+    return std::min(std::max(time, 0.0f), length);
 }
 
 float anim::trackTime(const AnimationClip::Track& track, float clipTime){
@@ -239,13 +259,115 @@ void anim::sampleClipTracks(const AnimationClip& clip, float clipTime, std::vect
     }
 }
 
+namespace {
+
+    struct RankedEvent{
+        double position;    // where on the state's (unwrapped) time line it was crossed
+        int rank;           // ties at a cycle boundary: the end of a cycle before the start of the next
+        size_t index;
+    };
+
+    // The occurrence of `offset + k * period` (k any integer) first reached going from `from`
+    // towards `to` (forward: from < p <= to, backward: to <= p < from; `start` admits p == from).
+    // False when none lies in the interval.
+    bool firstOccurrence(double offset, double period, double from, double to, bool forward, bool start, double& out){
+        if (forward){
+            double k = std::ceil((from - offset) / period);
+            double p = offset + k * period;
+            if (p < from || (p == from && !start)) p += period;
+            // round-off of the division: the occurrence just before `from`
+            if (p - period > from || (p - period == from && start)) p -= period;
+            if (p > to) return false;
+            out = p;
+            return true;
+        }
+        double k = std::floor((from - offset) / period);
+        double p = offset + k * period;
+        if (p > from || (p == from && !start)) p -= period;
+        if (p + period < from || (p + period == from && start)) p += period;
+        if (p < to) return false;
+        out = p;
+        return true;
+    }
+
+}
+
 void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
                                 bool includeStart, std::vector<size_t>& out){
-    // TODO(T1b)
-    (void)clip;
-    (void)wrap;
-    (void)fromTime;
-    (void)toTime;
-    (void)includeStart;
-    (void)out;
+    std::vector<CrossedEvent> crossed;
+    collectCrossedEvents(clip, wrap, fromTime, toTime, includeStart, crossed);
+    for (const CrossedEvent& event : crossed){
+        out.push_back(event.index);
+    }
+}
+
+void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
+                                bool includeStart, std::vector<CrossedEvent>& out){
+    const std::vector<ClipEventData>& events = clip.getEvents();
+    if (events.empty() || !std::isfinite(fromTime) || !std::isfinite(toTime)) return;
+
+    const double length = clip.getLength();
+    const bool forward = toTime >= fromTime;
+    if (fromTime == toTime && !includeStart) return;
+    const bool cyclic = (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong) && length > 0.0;
+
+    std::vector<RankedEvent> crossed;
+    if (!cyclic){
+        // once / clamp_forever: the time line is the clip itself
+        const double from = std::min(std::max((double)fromTime, 0.0), length);
+        const double to = std::min(std::max((double)toTime, 0.0), length);
+        for (size_t i = 0; i < events.size(); i++){
+            const double t = events[i].time;
+            if (t > length) continue;
+            const bool inside = forward ? (t > from && t <= to) : (t < from && t >= to);
+            if (inside || (includeStart && t == from)){
+                crossed.push_back({t, 0, i});
+            }
+        }
+    }else{
+        const double from = fromTime;
+        const double to = toTime;
+        for (size_t i = 0; i < events.size(); i++){
+            const double t = events[i].time;
+            if (t > length) continue;
+            double best = 0.0;
+            bool found = false;
+            int rank = 1;
+            auto consider = [&](double offset, double period, bool start){
+                double p;
+                if (firstOccurrence(offset, period, from, to, forward, start, p)){
+                    if (!found || (forward ? p < best : p > best)) best = p;
+                    found = true;
+                }
+            };
+            if (wrap == ClipWrapMode::Loop){
+                if (t >= length){
+                    // at the end of every cycle (never the start of the first one)
+                    consider(length, length, includeStart && !forward);
+                    rank = forward ? 0 : 1;
+                }else{
+                    // at the start of a cycle when at 0 (not reached when going back from its end)
+                    consider(t, length, includeStart && (forward || t > 0.0));
+                    rank = (t == 0.0 && !forward) ? 0 : 1;
+                }
+            }else{
+                // ping-pong: the way there at t, the way back at 2 * length - t
+                const double period = 2.0 * length;
+                consider(t, period, includeStart);
+                if (t > 0.0 && t < length) consider(period - t, period, includeStart);
+            }
+            if (found) crossed.push_back({best, rank, i});
+        }
+    }
+
+    std::stable_sort(crossed.begin(), crossed.end(), [forward](const RankedEvent& a, const RankedEvent& b){
+        if (a.position != b.position) return forward ? a.position < b.position : a.position > b.position;
+        return a.rank < b.rank;
+    });
+    for (const RankedEvent& event : crossed){
+        CrossedEvent result;
+        result.index = event.index;
+        result.position = event.position;
+        out.push_back(result);
+    }
 }

@@ -8,8 +8,57 @@
 #include "subsystem/MeshSystem.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "animation/AnimationPlayerRuntime.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
+
+// The Animation Player on the model's GameObject: playAnimation / stopAnimations go to it first
+// (animation clips spec 3.4, 9.R15/R42); the entity animations stay the fallback
+static AnimationPlayerComponent* findModelPlayer(Scene* scene, Entity entity){
+    return scene->isEntityCreated(entity) ? scene->findComponent<AnimationPlayerComponent>(entity) : nullptr;
+}
+
+static bool playerHasState(const AnimationPlayerComponent& player, const std::string& name){
+    std::vector<std::string> names = anim::playerStateNames(player.clips);
+    return std::find(names.begin(), names.end(), name) != names.end();
+}
+
+// every running entity animation of the model fades out (except `keep`)
+static void fadeOutModelAnimations(Scene* scene, const ModelComponent& model, Entity keep, float fadeTime){
+    for (Entity animEntity : model.animations){
+        if (animEntity == keep || animEntity == NULL_ENTITY || !scene->isEntityCreated(animEntity))
+            continue;
+
+        Signature signature = scene->getSignature(animEntity);
+        if (!signature.test(scene->getComponentId<AnimationComponent>()) ||
+            !signature.test(scene->getComponentId<ActionComponent>()))
+            continue;
+
+        ActionComponent& action = scene->getComponent<ActionComponent>(animEntity);
+        if (action.state == ActionState::Running || action.state == ActionState::Paused || action.startTrigger){
+            Animation(scene, animEntity).fadeOut(fadeTime);
+        }
+    }
+}
+
+// the entity animation `index` crossfades in, the model's other running ones out
+static void playModelEntityAnimation(Scene* scene, const ModelComponent& model, int index, float fadeTime){
+    Entity target;
+    try{
+        target = model.animations.at(index);
+    }catch (const std::out_of_range& e){
+        Log::error("Playing non-existent animation: %s", e.what());
+        return;
+    }
+
+    // Fade out every other animation of this model that is currently running.
+    fadeOutModelAnimations(scene, model, target, fadeTime);
+
+    Animation(scene, target).fadeIn(fadeTime);
+}
 
 Model::Model(Scene* scene): Mesh(scene){
     addComponent<ModelComponent>();
@@ -116,34 +165,27 @@ Animation Model::findAnimation(const std::string& name){
 void Model::playAnimation(int index, float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
 
-    Entity target;
-    try{
-        target = model.animations.at(index);
-    }catch (const std::out_of_range& e){
-        Log::error("Playing non-existent animation: %s", e.what());
+    // with an Animation Player the index is one of its states
+    if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
+        std::vector<std::string> names = anim::playerStateNames(player->clips);
+        if (index < 0 || index >= (int)names.size()){
+            Log::error("Playing non-existent animation: the Animation Player of '%s' has no state %i", getName().c_str(), index);
+            return;
+        }
+        anim::playState(*player, names[(size_t)index], fadeTime, getName());
+        fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
         return;
     }
 
-    // Fade out every other animation of this model that is currently running.
-    for (Entity animEntity : model.animations){
-        if (animEntity == target || animEntity == NULL_ENTITY || !scene->isEntityCreated(animEntity))
-            continue;
-
-        Signature signature = scene->getSignature(animEntity);
-        if (!signature.test(scene->getComponentId<AnimationComponent>()) ||
-            !signature.test(scene->getComponentId<ActionComponent>()))
-            continue;
-
-        ActionComponent& action = scene->getComponent<ActionComponent>(animEntity);
-        if (action.state == ActionState::Running || action.state == ActionState::Paused || action.startTrigger){
-            Animation(scene, animEntity).fadeOut(fadeTime);
-        }
-    }
-
-    Animation(scene, target).fadeIn(fadeTime);
+    playModelEntityAnimation(scene, model, index, fadeTime);
 }
 
 void Model::playAnimation(int index){
+    if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
+        playAnimation(index, player->defaultFadeTime);
+        return;
+    }
+
     ModelComponent& model = getComponent<ModelComponent>();
 
     float fadeTime = 0.0f;
@@ -161,11 +203,23 @@ void Model::playAnimation(int index){
 void Model::playAnimation(const std::string& name, float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
 
+    // a state of the Animation Player first; else the entity animation of that name, which the
+    // player's states then make room for
+    AnimationPlayerComponent* player = findModelPlayer(scene, entity);
+    if (player && playerHasState(*player, name)){
+        anim::playState(*player, name, fadeTime, getName());
+        fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
+        return;
+    }
+
     for (int i = 0; i < (int)model.animations.size(); i++){
         Signature signature = scene->getSignature(model.animations[i]);
         if (signature.test(scene->getComponentId<AnimationComponent>())){
             if (scene->getEntityName(model.animations[i]) == name){
-                playAnimation(i, fadeTime);
+                if (player){
+                    anim::fadeOutStates(*player, fadeTime);
+                }
+                playModelEntityAnimation(scene, model, i, fadeTime);
                 return;
             }
         }
@@ -177,11 +231,21 @@ void Model::playAnimation(const std::string& name, float fadeTime){
 void Model::playAnimation(const std::string& name){
     ModelComponent& model = getComponent<ModelComponent>();
 
+    AnimationPlayerComponent* player = findModelPlayer(scene, entity);
+    if (player && playerHasState(*player, name)){
+        playAnimation(name, player->defaultFadeTime);
+        return;
+    }
+
     for (int i = 0; i < (int)model.animations.size(); i++){
         Signature signature = scene->getSignature(model.animations[i]);
         if (signature.test(scene->getComponentId<AnimationComponent>())){
             if (scene->getEntityName(model.animations[i]) == name){
-                playAnimation(i, scene->getComponent<AnimationComponent>(model.animations[i]).defaultFadeTime);
+                const float fadeTime = scene->getComponent<AnimationComponent>(model.animations[i]).defaultFadeTime;
+                if (player){
+                    anim::fadeOutStates(*player, fadeTime);
+                }
+                playModelEntityAnimation(scene, model, i, fadeTime);
                 return;
             }
         }
@@ -192,6 +256,10 @@ void Model::playAnimation(const std::string& name){
 
 void Model::stopAnimations(float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
+
+    if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
+        anim::fadeOutStates(*player, fadeTime);
+    }
 
     for (Entity animEntity : model.animations){
         if (animEntity == NULL_ENTITY || !scene->isEntityCreated(animEntity))
