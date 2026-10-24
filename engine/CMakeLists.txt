@@ -947,6 +947,7 @@ set(JASPERENGINE_SRCS
     core/registry/TagManager.cpp
     core/registry/PhysicsLayers.cpp
     core/physics/ConvexDecomposition.cpp
+    core/physics/JoltShapeBuilder.cpp
     core/physics/PlacementWorld.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
