@@ -16,9 +16,14 @@ simulation straight through.
 - separate pushes the two interpenetrating cubes apart (at most 1 mm into each other);
 - the 30 m room is refused as a mover ("too large (> 25 m), treated as environment") and is the
   environment the furniture lands on; alone nothing can move: exit 2 with the result object;
-- --max-seconds 0.05 on falling pebbles: exit 3, the result still printed, all_settled false;
-- the same arguments twice give the same state_hash (with jitter and a seed); another seed another;
-- every mode runs from the command line (move, snap, gather, distribute, the tuning flags);
+- --max-seconds 0.05 on falling pebbles: exit 3, the result still printed, all_settled false; given
+  time, all thirty settle on the terrain;
+- the same arguments twice give the same state_hash (with jitter and a seed, --decompose never or
+  always); another seed another;
+- the fixture's other scenes: the 20-box stack stands, thin plates and pencils lie on the floor
+  without tunnelling, the balls roll down the ramp to the stop wall;
+- every mode from the command line: move (--delta, --target with --rotation-euler), snap (and a
+  ray that hits nothing), gather, distribute, no gravity, push neighbours (they stay put);
 - --decompose always computes the ring's decomposition first, so it slides down over the peg;
   --decompose never keeps a single hull, which rests on the peg's top;
 - --save writes the scene (applied: true) and a re-run starts from the saved poses;
@@ -43,6 +48,7 @@ EDITOR = {"project": str(FIXTURE)}   # only the last test drives an editor (the 
 TIMEOUT = 900
 
 CRATE_BOXES = ["Props/Box1", "Props/Box2", "Props/Box3"]
+PEBBLES = [f"Pebbles/Pebble{i:02d}" for i in range(1, 31)]
 CRATE_FLOOR, CRATE_RIM, CRATE_INSIDE = 1.04, 1.42, 0.26   # y of the crate's floor and rim, half its inside
 
 S: dict = {}
@@ -294,57 +300,107 @@ async def test_large_room_is_environment():
 
 
 async def test_not_settled_exits_3():
-    result = place(project(), "Pebbles", [f"Pebbles/Pebble{i:02d}" for i in range(1, 31)], "--max-seconds", "0.05", want=(3,))
+    result = place(project(), "Pebbles", PEBBLES, "--max-seconds", "0.05", want=(3,))
     check(result["all_settled"] is False, "all_settled after 0.05 s of falling")
     check(result["sim_seconds"] <= 0.05 + 1e-6, f"sim_seconds {result['sim_seconds']} past --max-seconds")
     check(len(result["entities"]) == 30 and not any(e["settled"] for e in result["entities"]), "a pebble settled in mid-air")
     check(result["warnings"], "no warning about the bodies that never came to rest")
 
 
-async def test_pebbles_deterministic():
-    proj = project()
-    pebbles = [f"Pebbles/Pebble{i:02d}" for i in range(1, 31)]
-    first = place(proj, "Pebbles", pebbles, "--jitter", "0.2,30", "--seed", "11")
-    again = place(proj, "Pebbles", pebbles, "--jitter", "0.2,30", "--seed", "11")
-    check(first["state_hash"] == again["state_hash"], f"state_hash {first['state_hash']} then {again['state_hash']}")
-    check(first == again, "the same arguments gave another result")
-    other = place(proj, "Pebbles", pebbles, "--jitter", "0.2,30", "--seed", "12")
-    check(other["state_hash"] != first["state_hash"] and other["seed"] == 12, "another seed gave the same state")
-    for e in first["entities"]:
-        check(e["settled"], f"{e['path']} never came to rest")
+async def test_pebbles_settle_on_the_terrain():
+    result = place(project(), "Pebbles", PEBBLES, "--decompose", "never")
+    check(result["all_settled"] is True and not result["warnings"], f"warnings: {result['warnings']}")
+    for e in result["entities"]:
+        # the terrain's hills are 0.6 to 1.8 m high under the pebbles' square
+        check(e["settled"] and 0.5 < after(e)[1] < 2.0, f"{e['path']}: settled {e['settled']} at {after(e)}")
         resting = [r["path"] for r in e["resting_on"]]
         check(resting and all(r == "Ground" or r.startswith("Pebbles/") for r in resting), f"{e['path']} rests on {resting}")
 
 
+async def test_deterministic():
+    # --decompose never (or always): no decomposition queued by an earlier run changes a later one
+    proj = project()
+    args = ("--jitter", "0.2,30", "--seed", "11", "--decompose", "never")
+    first = place(proj, "Pebbles", PEBBLES, *args, want=(0, 3))
+    again = place(proj, "Pebbles", PEBBLES, *args, want=(0, 3))
+    check(first["state_hash"] == again["state_hash"], f"state_hash {first['state_hash']} then {again['state_hash']}")
+    check(first == again, "the same arguments gave another result")
+    other = place(proj, "Pebbles", PEBBLES, "--jitter", "0.2,30", "--seed", "12", "--decompose", "never", want=(0, 3))
+    check(other["state_hash"] != first["state_hash"] and other["seed"] == 12, "another seed gave the same state")
+    crate = [place(proj, "TableCrate", CRATE_BOXES, "--decompose", "always")["state_hash"] for _ in range(2)]
+    check(crate[0] == crate[1], f"--decompose always: state_hash {crate[0]} then {crate[1]}")
+
+
+async def test_fixture_scenes():
+    proj = project()
+    # the 20-box stack stands: each box on the one below, about where it started
+    stack = place(proj, "Stack", [f"Stack/Box{i:02d}" for i in range(1, 21)])
+    for i, e in enumerate(sorted(stack["entities"], key=lambda e: e["path"])):
+        below = "Floor" if i == 0 else f"Stack/Box{i:02d}"
+        check([r["path"] for r in e["resting_on"]] == [below], f"{e['path']} rests on {e['resting_on']}, not {below}")
+        check(abs(after(e)[1] - (0.2 + 0.4 * i)) < 0.02 and math.hypot(after(e)[0], after(e)[2]) < 0.1,
+              f"{e['path']} at {after(e)}: the stack did not stand")
+    # thin plates and pencils: on the floor or each other, none through it, the pencils lying
+    thin = place(proj, "Plates", [f"Plates/Plate{i}" for i in range(1, 7)] + [f"Pencils/Pencil{i}" for i in range(1, 5)])
+    for e in thin["entities"]:
+        check(e["settled"] and 0.0 < after(e)[1] < 0.1, f"{e['path']} at {after(e)}")
+        check(e["max_penetration_m"] < 0.002, f"{e['path']}: penetration {e['max_penetration_m']}")
+        if e["path"].startswith("Pencils/"):
+            check(abs(after(e)[1] - 0.0035) < 0.004, f"{e['path']} (7 mm thick) lies at y {after(e)[1]:.4f}")
+    # the balls roll down the ramp toward -x and off it, onto the floor against the stop wall
+    # (its face at x = -4.35)
+    balls = by_path(place(proj, "Ramp", ["Balls/Small", "Balls/Medium", "Balls/Large"]))
+    for name, radius in (("Small", 0.175), ("Medium", 0.33), ("Large", 0.75)):
+        e = balls[f"Balls/{name}"]
+        check(e["collider"] == "sphere", f"{name}: collider {e['collider']}")
+        check(abs(after(e)[1] - radius) < 0.01, f"{name} is not on the floor: y {after(e)[1]:.3f}, radius {radius}")
+        check(abs(after(e)[0] - (-4.35 + radius)) < 0.05, f"{name} did not roll to the stop: x {after(e)[0]:.3f}")
+
+
 async def test_every_mode_runs():
     proj = project()
-    # move: the box goes 2 m along +x across the room's floor
+    # move: the box goes 2 m along +x across the room's floor, then to a target turning 45 degrees
     moved = place(proj, "Room", ["Furniture/Box"], "--mode", "move", "--delta", "2,0,0", "--feel", "precise")
     box = by_path(moved)["Furniture/Box"]
-    check(moved["mode"] == "move" and abs(after(box)[0] - 4.0) < 0.3, f"move: x {after(box)[0]:.3f}, want about 4")
+    check(moved["mode"] == "move" and math.dist(after(box), [4.0, 0.4, 3.0]) < 0.05, f"move --delta: at {after(box)}")
     turned = place(proj, "Room", ["Furniture/Box"], "--mode", "move", "--target", "-2,1.5,3", "--rotation-euler", "0,45,0")
     box = by_path(turned)["Furniture/Box"]
-    check(abs(after(box)[0] + 2.0) < 0.3 and box["rotated_deg"] > 10, f"move to a target, turned: {box}")
+    check(math.dist(after(box), [-2.0, 0.4, 3.0]) < 0.05 and abs(box["rotated_deg"] - 45.0) < 1.0,
+          f"move --target --rotation-euler: at {after(box)}, turned {box['rotated_deg']}")
     # snap: the ball lands where a ray from above hits the room's floor
-    snapped = place(proj, "Room", ["Furniture/Ball"], "--mode", "snap", "--ray", "5,5,5,0,-10,0", "--colliders", "generated")
+    snapped = place(proj, "Room", ["Furniture/Ball"], "--mode", "snap", "--ray", "-1,5,-1,0,-1,0", "--colliders", "generated")
     ball = by_path(snapped)["Furniture/Ball"]
-    check(snapped["mode"] == "snap" and math.dist(after(ball), [5.0, 0.5, 5.0]) < 0.3, f"snap: at {after(ball)}")
-    # gather and distribute: the furniture toward each other, then along z
-    gathered = place(proj, "Room", ["Furniture/Box", "Furniture/Ball"], "--mode", "gather", "--amount", "0.5")
-    spread = by_path(gathered)
-    check(gathered["mode"] == "gather", f"mode {gathered['mode']}")
-    check(math.dist(after(spread["Furniture/Box"]), after(spread["Furniture/Ball"]))
-          < math.dist(spread["Furniture/Box"]["before"]["position"], spread["Furniture/Ball"]["before"]["position"]),
-          "gather did not bring them closer")
-    distributed = place(proj, "Stack", [f"Stack/Box{i:02d}" for i in range(1, 4)], "--mode", "distribute", "--axis", "x", want=(0, 3))
-    check(distributed["mode"] == "distribute" and len(distributed["entities"]) == 3, f"distribute: {distributed['mode']}")
+    check(snapped["mode"] == "snap" and math.dist(after(ball), [-1.0, 0.5, -1.0]) < 0.05, f"snap: at {after(ball)}")
+    r = run("--project", str(proj), "--scene", "Room", "--entity", "Furniture/Ball", "--mode", "snap", "--ray", "0,5,0,0,1,0", "-q")
+    check(r.returncode == 2 and r.stderr, f"a snap ray that hits nothing: exit {r.returncode}: {r.stderr}")
+    # gather halfway: each halfway to their centre (-0.5, 0.5)
+    gathered = by_path(place(proj, "Room", ["Furniture/Box", "Furniture/Ball"], "--mode", "gather", "--amount", "0.5"))
+    check(math.dist(after(gathered["Furniture/Box"]), [0.75, 0.4, 1.75]) < 0.05, f"gather: box at {after(gathered['Furniture/Box'])}")
+    check(math.dist(after(gathered["Furniture/Ball"]), [-1.75, 0.5, -0.75]) < 0.05, f"gather: ball at {after(gathered['Furniture/Ball'])}")
+    # distribute along x: the middle box (Pebble06) goes halfway between the outer ones
+    spread = by_path(place(proj, "Pebbles", ["Pebbles/Pebble02", "Pebbles/Pebble04", "Pebbles/Pebble06"], "--mode", "distribute",
+                           "--axis", "x", "--decompose", "never"))
+    xs = {p: e["before"]["position"][0] for p, e in spread.items()}
+    check(sorted(xs, key=xs.get)[1] == "Pebbles/Pebble06", f"the fixture's middle pebble: {xs}")
+    middle = (xs["Pebbles/Pebble04"] + xs["Pebbles/Pebble02"]) / 2
+    check(abs(after(spread["Pebbles/Pebble06"])[0] - middle) < 0.1, f"distribute: x {after(spread['Pebbles/Pebble06'])[0]:.3f}, want {middle:.3f}")
     # no gravity, no settle: a drop moves nothing
-    still = place(proj, "Room", ["Furniture/Ball"], "--gravity", "0,0,0", "--no-settle", "--max-seconds", "0.5", want=(0, 3))
+    still = place(proj, "Room", ["Furniture/Ball"], "--gravity", "0,0,0", "--no-settle", "--max-seconds", "0.5")
     check(by_path(still)["Furniture/Ball"]["moved_m"] < 1e-3, f"moved without gravity: {by_path(still)['Furniture/Ball']}")
-    # the other tuning flags are accepted and reported the same way
-    pushed = place(proj, "TableCrate", CRATE_BOXES, "--push-neighbours", "--context-margin", "0.5", "--feel", "fast",
-                   "--colliders", "auto", "--decompose", "never")
-    check(len([e for e in pushed["entities"] if e["path"] in CRATE_BOXES]) == 3, f"push neighbours: {pushed['entities']}")
+    # push neighbours: the table and the crate (small, no Rigidbody) are dynamic too; the boxes
+    # land in the crate and the table and crate stay where they stand (a neighbour nothing moved
+    # is not listed), with a margin smaller than the gap down to the floor too
+    for margin in ("2", "0.5"):
+        pushed = place(proj, "TableCrate", CRATE_BOXES, "--push-neighbours", "--context-margin", margin, "--feel", "fast",
+                       "--colliders", "auto", "--decompose", "never")
+        entities = by_path(pushed)
+        check(not pushed["warnings"], f"push neighbours, margin {margin}: warnings {pushed['warnings']}")
+        for path, e in entities.items():
+            if path not in CRATE_BOXES:
+                check(path in ("Table", "Props/Crate") and e["moved_m"] < 0.02 and e["settled"],
+                      f"push neighbours, margin {margin}: the neighbour {path} moved: {e}")
+        for path in CRATE_BOXES:
+            check(CRATE_FLOOR < after(entities[path])[1] < CRATE_RIM, f"margin {margin}: {path} not in the crate: {after(entities[path])}")
 
 
 async def test_ring_decomposition():
@@ -371,7 +427,11 @@ async def test_save_writes_the_scene():
     saved = place(proj, "TableCrate", CRATE_BOXES, "--save")
     check(saved["applied"] is True, "applied is not true after --save")
     check(scene.read_bytes() != before, "--save did not write the scene file")
-    check({k: v for k, v in tree_bytes(proj).items() if k != "TableCrate.scene"} == others, "--save changed another file")
+    # saved as the editor's Save: the project too (unchanged here), and the project's generated
+    # tooling files on a first save; no other scene and no project.yaml change
+    after_save = tree_bytes(proj)
+    changed = sorted(k for k, v in others.items() if after_save.get(k) != v)
+    check(not changed, f"--save changed {changed}")
     # the saved poses are where the next run starts, and they stay put
     again = place(proj, "TableCrate", CRATE_BOXES)
     for path, e in by_path(saved).items():
@@ -384,9 +444,9 @@ async def test_save_writes_the_scene():
 
 async def test_matches_the_mcp_preview(ed):
     ed.require_tools("place_with_physics")
-    cli = place(project(), "TableCrate", CRATE_BOXES, "--jitter", "0.05,15", "--seed", "4")
+    cli = place(project(), "TableCrate", CRATE_BOXES, "--jitter", "0.05,15", "--seed", "4", "--decompose", "never")
     mcp = await ed.call("place_with_physics", scene="TableCrate", entities=CRATE_BOXES, jitter={"position": 0.05, "rotation_deg": 15},
-                        seed=4)
+                        seed=4, decompose="never")
     mcp = {k: v for k, v in mcp.items() if k != "external_changes"}
     check(mcp["state_hash"] == cli["state_hash"], f"MCP state {mcp['state_hash']}, CLI {cli['state_hash']}")
     check(mcp == cli, f"the MCP preview and the CLI dry run differ:\nMCP {json.dumps(mcp)[:3000]}\nCLI {json.dumps(cli)[:3000]}")

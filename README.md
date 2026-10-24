@@ -107,6 +107,7 @@ jasperengine-editor export --help     # export a project to a standalone CMake p
 jasperengine-editor shaders --help    # generate shaders
 jasperengine-editor benchmark --help  # measure scene FPS
 jasperengine-editor place-physics --help  # drop, separate or move GameObjects with physics, no window
+                                          # (--decompose never or always: the same result every run)
 ```
 
 ## Continuous integration

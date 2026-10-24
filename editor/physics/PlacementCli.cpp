@@ -14,6 +14,7 @@
 #include "physics/ConvexDecomposition.h"
 #include "pool/ShaderPool.h"
 #include "shader/ShaderBuilder.h"
+#include "subsystem/MeshSystem.h"
 #include "util/EntityPath.h"
 
 #include "json.hpp"
@@ -467,6 +468,9 @@ namespace jasperengine::editor {
                 err << prefix << "the project could not be loaded: " << o.project.u8string() << "\n";
                 return 1;
             }
+            // loading the project turns asynchronous loading back on (resetEngineConfigs): the
+            // scene's heightmaps and models load now, synchronously, or never
+            ::jasperengine::Engine::setAsyncLoading(false);
             SceneProject* sp = findScene(project, o.scene);
             if (!sp) {
                 err << prefix << "no scene '" << o.scene << "' in the project (scenes: " << sceneList(project) << ")\n";
@@ -482,6 +486,9 @@ namespace jasperengine::editor {
                 err << prefix << "the scene could not be loaded: " << o.scene << "\n";
                 return 1;
             }
+            // what the editor's first frame builds before anything is drawn (no frame runs here):
+            // terrains from their heightmaps, models from their files, synchronously
+            if (std::shared_ptr<MeshSystem> meshSystem = sp->scene->getSystem<MeshSystem>()) meshSystem->load();
 
             // the movers: by path (else a unique name), each once, the top-most roots
             std::vector<Entity> selection;
@@ -551,9 +558,10 @@ namespace jasperengine::editor {
                     err << prefix << "the result could not be applied: " << error << "\n";
                     return 1;
                 }
-                const fs::path file = sp->filepath;
-                if (!project.saveSceneToPath(sceneId, file, false)) {
-                    err << prefix << "the scene could not be saved: " << file.generic_u8string() << "\n";
+                // as the editor's Save (and the save_scene tool): the scene, its modified child
+                // scenes and the project
+                if (!project.saveSceneNow(sceneId, {}, &error)) {
+                    err << prefix << "the scene could not be saved: " << error << "\n";
                     return 1;
                 }
                 saved = true;
@@ -577,7 +585,8 @@ namespace jasperengine::editor {
             << "Places GameObjects with an edit-time physics simulation (Physics Placement): drops them until they\n"
             << "rest, pushes overlapping ones apart, or moves, snaps, gathers or distributes them so they stop\n"
             << "against the scene around them. The same simulation and result as the place_with_physics MCP tool.\n"
-            << "The scene's own physics never runs; nothing changes unless --save.\n\n"
+            << "The scene's own physics never runs; no project file changes unless --save (the convex decomposition\n"
+            << "cache under .jasperengine/ may grow).\n\n"
             << "Options:\n"
             << "  -p, --project <path>        Project directory or project.yaml.\n"
             << "  -s, --scene <scene>         Scene name, file name or path (relative to the current directory, else\n"
@@ -598,7 +607,8 @@ namespace jasperengine::editor {
             << "      --gravity <x,y,z>       Gravity, m/s^2 (default 0,-9.81,0).\n"
             << "      --no-settle             Stop after the gesture: no fall until resting afterwards.\n"
             << "      --seed <n>              Seed of --jitter (default 1). Same scene, arguments and editor build: the\n"
-            << "                              same result and state hash.\n"
+            << "                              same result and state hash, with --decompose never or always (cached may\n"
+            << "                              pick up a decomposition an earlier run queued, and differ from it).\n"
             << "      --max-seconds <s>       Simulated seconds at most (default 10).\n"
             << "      --jitter <pos,deg>      A random offset (metres) and turn (degrees) per object before the first\n"
             << "                              step (default 0,0).\n"
@@ -606,11 +616,13 @@ namespace jasperengine::editor {
             << "      --colliders <c>         auto (default): authored colliders, else a fitted primitive, else a convex\n"
             << "                              hull (decomposition when cached); authored; generated; both.\n"
             << "      --decompose <d>         never; cached (default): use convex decompositions already in the\n"
-            << "                              project's cache; always: compute the missing ones first (waits).\n"
+            << "                              project's cache, queue the missing ones for later runs; always: compute\n"
+            << "                              the missing ones first (waits). never and always are reproducible.\n"
             << "      --push-neighbours       Unselected movable objects nearby can be knocked too.\n"
             << "      --context-margin <m>    The environment gathered around the objects, metres (default 2).\n"
             << "      --dry-run               Print the result, change nothing (the default).\n"
-            << "      --save                  Apply the result (one undo step, as apply:true) and write the scene file.\n"
+            << "      --save                  Apply the result (one undo step, as apply:true) and save the scene as the\n"
+            << "                              editor's Save does (the scene file, modified child scenes, the project).\n"
             << "      --format <format>       text (default): a summary per object; json: the place_with_physics result.\n"
             << "  -q, --quiet                 Only problems on stderr (no engine log, no progress).\n"
             << "  -h, --help                  Show this help.\n\n"

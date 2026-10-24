@@ -104,7 +104,8 @@ async def stack(ed, scene):
 
 async def plates(ed, scene):
     await floor(ed, scene)
-    # six 12 mm plates tilted in the air, and four pencils (7 mm thick, 18 cm long)
+    # six 12 mm plates tilted in the air, and four pencils (7 mm thick, 18 cm long: a 2 cm
+    # cylinder, set_mesh_geometry's thinnest, scaled 0.35 across)
     group = await entity(ed, scene, "empty", "Plates", [0, 0, 0])
     tilts = [[0, 0, 0], [8, 30, -5], [-12, 75, 10], [20, 10, 3], [-5, 120, -18], [3, 160, 25]]
     for i, euler in enumerate(tilts):
@@ -113,7 +114,8 @@ async def plates(ed, scene):
     pencils = await entity(ed, scene, "empty", "Pencils", [0, 0, 0])
     for i in range(4):
         await entity(ed, scene, "cylinder", f"Pencil{i + 1}", [0.6 + 0.1 * i, 0.3 + 0.12 * i, -0.2 + 0.12 * i], parent=pencils,
-                     euler=[0, 35 * i, 90], geometry={"shape": "cylinder", "radius": 0.0035, "height": 0.18, "slices": 12})
+                     euler=[0, 35 * i, 90], scale=[0.35, 1.0, 0.35],
+                     geometry={"shape": "cylinder", "radius": 0.01, "height": 0.18, "slices": 12})
     await view(ed, scene, [1.8, 2.2, -2.8], [0.3, 0.7, 0])
 
 
@@ -149,6 +151,9 @@ async def ramp(ed, scene):
     # a 4 m board tilted 20 degrees (its high end at +x), three balls of the same mesh (radius
     # 0.5) at scale 0.35, 0.66 and 1.5 resting just above its upper half
     await box(ed, scene, "Ramp", [0, 0.8, 0], [4.0, 0.2, 3.2], euler=[0, 0, 20])
+    # a low wall 2.5 m past the ramp's foot: balls roll on without rolling resistance, this
+    # stops them on the floor
+    await box(ed, scene, "Stop", [-4.5, 0.4, 0], [0.3, 0.8, 4.0])
     balls = await entity(ed, scene, "empty", "Balls", [0, 0, 0])
     for name, scale, z in (("Small", 0.35, -1.15), ("Medium", 0.66, -0.55), ("Large", 1.5, 0.65)):
         r = 0.5 * scale
