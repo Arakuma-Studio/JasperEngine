@@ -210,7 +210,7 @@ bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges, 
         refreshAssetDatabase(true);
     } else {
         assetScanRequested = true;
-        refreshAssetDatabase();
+        updateAssetScan();
     }
     return true;
 }

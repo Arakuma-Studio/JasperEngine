@@ -1668,6 +1668,8 @@ namespace jasperengine::editor{
         // starts none of its own (no poll). `force` (Assets > Refresh, a tool answering from
         // the database) looks at the disk now. Does nothing while a scene plays.
         void refreshAssetDatabase(bool force = false);
+        // Every editor loop iteration: starts or applies the walk the watcher asked for
+        void updateAssetScan() { refreshAssetDatabase(false); }
         // Files added, removed, renamed or edited on disk by another program (the file
         // watcher, S05 R14): the database looks at the disk again, on a Background job, or now
         // when `now` (an MCP call waiting for its pick-up). False while a scene plays (nothing

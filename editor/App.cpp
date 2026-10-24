@@ -2716,7 +2716,7 @@ void editor::App::pollExternalChanges(){
     wake = reloads.update() || wake;
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
     // the asset database's walk a watcher batch started (S04 refresh, no poll)
-    project.refreshAssetDatabase();
+    project.updateAssetScan();
 
     const auto now = std::chrono::steady_clock::now();
     for (const auto& pair : htmlUIRedrawTimes) {

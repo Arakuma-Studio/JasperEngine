@@ -69,7 +69,7 @@ namespace {
             while (std::chrono::steady_clock::now() < end) {
                 FileWatchService::get().pump(50.0);
                 service.update();
-                project.refreshAssetDatabase();
+                project.updateAssetScan();
                 if (done()) return true;
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
@@ -395,7 +395,7 @@ TEST_F(HotReloadServiceTests, NoAssetPollWithoutTheWatcher) {
     fs::rename(folder / "still.png.meta", folder / "still_moved.png.meta");
     const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
     while (std::chrono::steady_clock::now() < end) {
-        project.refreshAssetDatabase();
+        project.updateAssetScan();
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
     EXPECT_EQ(database.getPath(guid).generic_string(), "assets/hr/still.png") << "something polled";
