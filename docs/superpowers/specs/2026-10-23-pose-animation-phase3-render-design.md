@@ -58,7 +58,8 @@ public:
 - Layout helpers: a grid of equal cells with 1 px separators `#000000`, a label strip 14 px high
   under each cell (bitmap font 6x10 ASCII, white on `#202022`), a title strip optional.
 - Label text: poses mode `"<index> <name>"` (truncated with `..`), motion mode `"t=<seconds>"`
-  with 2 decimals, plus `" C"` markers for feet in contact (`"L"`, `"R"`, `"LR"`).
+  with 2 decimals, plus a contact marker for the feet in contact, appended as `" [L]"`, `" [R]"`
+  or `" [LR]"` (e.g. `"t=0.25 [LR]"`); no marker when neither foot is in contact.
 - Ruling (implementation): the contact marker is appended as `" [L]"`, `" [R]"` or `" [LR]"` (e.g. `"t=0.25 [LR]"`).
 - PNG encoding through the engine's stb_image_write.
 
