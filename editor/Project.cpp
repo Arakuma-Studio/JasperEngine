@@ -2051,10 +2051,14 @@ void editor::Project::refreshFbxImports() {
                     continue;
                 }
                 bool written = false;
-                importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+                {
+                    // One import of a file at a time, with importFbxModel (Play startup, a drop...)
+                    std::lock_guard<std::mutex> callLock(fbxImportCallMutex);
+                    importFbx(fbxPath, glbPath, assetsRoot, false, true, written);
+                }
                 if (written) {
                     queueModelReload(fbxPath);
-                } else {
+                } else if (FbxImporter::getState(fbxPath, glbPath, assetsRoot) != FbxImporter::State::UpToDate) {
                     failures[fbxPath] = stamp;
                 }
             }

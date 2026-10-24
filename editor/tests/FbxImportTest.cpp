@@ -15,11 +15,13 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine::editor;
@@ -286,6 +288,59 @@ TEST(FbxImport, ReimportsWhenTheFbxOrATextureChanges) {
     ASSERT_TRUE(forced.success) << forced.error;
     EXPECT_NE(std::find_if(forced.warnings.begin(), forced.warnings.end(),
         [](const std::string& w) { return w.find("checker.png") != std::string::npos; }), forced.warnings.end());
+}
+
+TEST(FbxImport, ConcurrentImportsNeverShowAHalfWrittenFile) {
+    // The editor imports from the main thread, the background check, Play startup and the
+    // thumbnail worker; readers load the .glb meanwhile
+    FbxProject project("concurrent");
+    ASSERT_TRUE(FbxImporter::import(project.fbx, project.glb, project.assets).success);
+    std::atomic<bool> done{false};
+    std::atomic<int> failures{0};
+    std::atomic<int> badReads{0};
+    std::vector<std::thread> writers;
+    for (int w = 0; w < 4; w++) {
+        writers.emplace_back([&]() {
+            for (int i = 0; i < 5; i++) {
+                if (!FbxImporter::import(project.fbx, project.glb, project.assets, true).success) failures++;
+            }
+        });
+    }
+    std::thread reader([&]() {
+        while (!done) {
+            std::ifstream file(project.glb, std::ios::binary);
+            const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            tinygltf::TinyGLTF loader;
+            loader.SetImagesAsIs(true);
+            tinygltf::Model model;
+            std::string err, warn;
+            if (bytes.empty() || !loader.LoadBinaryFromMemory(&model, &err, &warn, bytes.data(),
+                    static_cast<unsigned int>(bytes.size()), project.fbx.parent_path().string())) {
+                badReads++;
+            }
+        }
+    });
+    for (std::thread& writer : writers) writer.join();
+    done = true;
+    reader.join();
+    EXPECT_EQ(failures.load(), 0);
+    EXPECT_EQ(badReads.load(), 0);
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::UpToDate);
+    for (const fs::directory_entry& entry : fs::directory_iterator(project.glb.parent_path())) {
+        EXPECT_EQ(entry.path().filename(), "rigged_cube.fbx.glb") << "left behind: " << entry.path();
+    }
+}
+
+TEST(FbxImport, WritesAsideUnderItsOwnName) {
+    // What another writer (a second editor on the project, a crash) left at the old shared name
+    FbxProject project("aside");
+    fs::path shared = project.glb;
+    shared += ".tmp";
+    fs::create_directories(shared / "busy");
+    const FbxImporter::Result result = FbxImporter::import(project.fbx, project.glb, project.assets);
+    EXPECT_TRUE(result.success) << result.error;
+    EXPECT_TRUE(fs::is_directory(shared / "busy")) << "someone else's file is left alone";
+    EXPECT_EQ(FbxImporter::getState(project.fbx, project.glb, project.assets), FbxImporter::State::UpToDate);
 }
 
 TEST(FbxImport, ReportsFilesItCannotConvert) {
