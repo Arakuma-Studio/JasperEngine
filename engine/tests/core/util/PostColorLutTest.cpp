@@ -93,11 +93,23 @@ namespace {
         return rgba;
     }
 
-    int maxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+    // the largest channel difference; with `n` the first worst texel is printed (r, g, b, channel)
+    int maxDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, int n = 0){
         EXPECT_EQ(a.size(), b.size());
         int worst = 0;
-        for (size_t i = 0; i < std::min(a.size(), b.size()); i++)
-            worst = std::max(worst, std::abs((int)a[i] - (int)b[i]));
+        size_t at = 0;
+        for (size_t i = 0; i < std::min(a.size(), b.size()); i++){
+            const int d = std::abs((int)a[i] - (int)b[i]);
+            if (d > worst){
+                worst = d;
+                at = i;
+            }
+        }
+        if (n > 0 && worst > 1){
+            const size_t texel = at / 4;
+            std::printf("worst texel r %d g %d b %d channel %d: %d vs %d\n", (int)(texel % n), (int)(texel / ((size_t)n * n)),
+                        (int)(texel / n % n), (int)(at % 4), a[at], b[at]);
+        }
         return worst;
     }
 
@@ -214,7 +226,7 @@ TEST(PostColorLut, SceneStageLogLut){
     for (const PostProcessingSettings& s : {neutralGrading(), settings}){
         for (int n : {16, 32}){
             for (PostColorLut::Stage bakeStage : STAGES){
-                EXPECT_LE(maxDifference(bake(s, &identityLog, bakeStage, n), bake(s, nullptr, bakeStage, n)), 1)
+                EXPECT_LE(maxDifference(bake(s, &identityLog, bakeStage, n), bake(s, nullptr, bakeStage, n), n), 1)
                     << "size " << n << " stage " << stageName(bakeStage);
             }
         }

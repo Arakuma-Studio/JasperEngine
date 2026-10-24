@@ -173,7 +173,7 @@ depends on what its input is (`lut_input_encoding`; `auto` reads the title, e.g.
 | `logc3`, `acescct`, `cineon`, `davinci_intermediate` (and `linear` above 1) | scene, before the tone mapping | the exposed linear scene colour in the encoding's gamut and curve, decoded back after the lookup |
 
 A scene-stage LUT is part of the in-shader curve (T0). `lut_contribution` mixes either in.
-Exports cook every `.cube` of the assets to a compact `<name>.jlut` (float16, the 3D table at most
+Exports cook every `.cube` of the assets to a compact `<name>.jlut` (16 bits per value across each table's range, the 3D table at most
 33^3) that the game loads in its place; a `.cube` that does not parse ships as it is (and logs the
 same error in the game). No film-stock LUTs ship with the engine.
 

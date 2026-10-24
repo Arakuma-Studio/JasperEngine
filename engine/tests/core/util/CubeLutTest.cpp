@@ -468,7 +468,8 @@ TEST(CubeLut, LogEncodingsRoundTrip){
 // ---- .jlut and loading
 
 TEST(CubeLut, JlutRoundTrip){
-    // float16 values survive (rounded), the 1D table is kept, a small 3D table is not resampled
+    // values survive within a 16-bit step of their table's value range (its ends exactly), the
+    // 1D table is kept, a small 3D table is not resampled
     CubeLut small;
     small.title = "Shaper and table";
     small.size1D = 2;
@@ -488,11 +489,13 @@ TEST(CubeLut, JlutRoundTrip){
     EXPECT_FLOAT_EQ(back.in1D[1], 4.0f);
     ASSERT_EQ(back.lut1D.size(), 6u);
     ASSERT_EQ(back.lut3D.size(), 24u);
-    EXPECT_FLOAT_EQ(back.lut1D[4], 65504.0f) << "past float16's range: clamped";
-    EXPECT_FLOAT_EQ(back.lut1D[5], -0.25f);
-    EXPECT_NEAR(back.lut3D[1], 1e-5f, 1e-7f) << "a float16 subnormal";
+    EXPECT_FLOAT_EQ(back.lut1D[4], 70000.0f) << "the range's top, exactly";
+    EXPECT_FLOAT_EQ(back.lut1D[5], -0.25f) << "the range's bottom, exactly";
+    const float step1D = 70000.25f / 65535.0f;
+    for (size_t i = 0; i < small.lut1D.size(); i++)
+        EXPECT_NEAR(back.lut1D[i], small.lut1D[i], step1D) << i;
     for (size_t i = 0; i < small.lut3D.size(); i++)
-        EXPECT_NEAR(back.lut3D[i], small.lut3D[i], std::fabs(small.lut3D[i]) * 1e-3f + 1e-7f) << i;
+        EXPECT_NEAR(back.lut3D[i], small.lut3D[i], 2.2f / 65535.0f) << i;
 
     // a 65^3 .cube cooks to at most 300 KB (33^3), and bakes within 2/255 of the .cube
     const std::pair<const char*, Look> looks[] = {{"Display look", displayLook}, {"ACEScct look", logLook}};

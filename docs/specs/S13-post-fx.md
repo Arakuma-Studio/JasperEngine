@@ -463,3 +463,11 @@ per-file header, so we add the OE copyright line to each copied file.
     punikonta's, the film-simulation package's with AMD's, and OpenEngine's notices) when a shipped
     uber variant has VHS, film damage or the Lens / Filmic grain, as the shaders.com notice ships with
     UI effects.
+11. **`.jlut` stores 16-bit steps across each table's own value range** (two float32 range ends per
+    table in the header) instead of float16: a log-encoded LUT keeps its highlights near 0.5..1,
+    where float16 has 10 bits, and its gamut decode cancels large channels against each other, so
+    float16 missed AC21's ±2/255 on the ACEScct look. Same size (2 bytes per value; 65³ cooks to
+    about 210 KB).
+12. **A scene-stage LUT scales colours brighter than its input range into it and back** (ACEScct
+    ends near linear 222, LogC3 near 55) instead of clamping each channel, which turned a very bright
+    saturated colour white; an identity log LUT is then neutral at every texel (AC5).

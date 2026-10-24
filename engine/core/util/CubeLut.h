@@ -75,9 +75,10 @@ namespace jasperengine{
     // curve, through the LUT, then decoded back to linear Rec. 709 (LINEAR: the LUT alone)
     JASPERENGINE_API Vector3 applySceneStage(const CubeLut& lut, LutInputEncoding encoding, const Vector3& sceneLinear);
 
-    // cooks a LUT into a .jlut (little-endian: "JLUT", version, 1D size, 3D size, the four range
-    // ends, the title, then float16 RGB of the 1D and 3D tables): the 3D table is resampled
-    // trilinearly to at most JLUT_MAX_3D_SIZE per side, the 1D table is kept. False for an empty LUT
+    // cooks a LUT into a .jlut (little-endian: "JLUT", version, 1D size, 3D size, the four input
+    // range ends, each table's value range, the title, then RGB of the 1D and 3D tables as 16-bit
+    // steps across their value ranges): the 3D table is resampled trilinearly to at most
+    // JLUT_MAX_3D_SIZE per side, the 1D table is kept. False for an empty LUT
     JASPERENGINE_API bool writeJlut(const CubeLut& lut, std::vector<uint8_t>& out);
     // reads a .jlut written by writeJlut; false with an error otherwise
     JASPERENGINE_API bool readJlut(const uint8_t* data, size_t size, CubeLut& out, std::string& error);

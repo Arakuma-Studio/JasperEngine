@@ -521,52 +521,9 @@ namespace{
     // ---- .jlut
 
     const uint32_t JLUT_VERSION = 1;
-    const size_t JLUT_HEADER_SIZE = 36;   // magic, version, 1D size, 3D size, 4 range ends, title length
-
-    // float16 with round to nearest even; NaN becomes 0 and magnitudes past 65504 clamp to it
-    uint16_t floatToHalf(float f){
-        uint32_t x;
-        std::memcpy(&x, &f, sizeof(x));
-        const uint16_t sign = (uint16_t)((x >> 16) & 0x8000u);
-        x &= 0x7fffffffu;
-        if (x > 0x7f800000u)
-            return 0;
-        if (x >= 0x477fe000u)
-            return (uint16_t)(sign | 0x7bffu);
-        if (x < 0x38800000u){
-            // below the smallest normal half (2^-14): a subnormal in units of 2^-24, or 0
-            if (x <= 0x33000000u)
-                return sign;
-            const int shift = 126 - (int)(x >> 23);
-            const uint32_t m = (x & 0x7fffffu) | 0x800000u;
-            uint32_t h = m >> shift;
-            const uint32_t rest = m & ((1u << shift) - 1u);
-            const uint32_t half = 1u << (shift - 1);
-            if (rest > half || (rest == half && (h & 1u)))
-                h++;
-            return (uint16_t)(sign | h);
-        }
-        uint32_t h = (x - 0x38000000u) >> 13;
-        const uint32_t rest = x & 0x1fffu;
-        if (rest > 0x1000u || (rest == 0x1000u && (h & 1u)))
-            h++;
-        return (uint16_t)(sign | h);
-    }
-
-    float halfToFloat(uint16_t h){
-        const uint32_t sign = (uint32_t)(h & 0x8000u) << 16;
-        const uint32_t exponent = (h >> 10) & 0x1fu;
-        const uint32_t mantissa = h & 0x3ffu;
-        if (exponent == 0){
-            const float v = (float)mantissa * (1.0f / 16777216.0f);
-            return sign ? -v : v;
-        }
-        const uint32_t x = exponent == 31 ? (sign | 0x7f800000u | (mantissa << 13))
-                                          : (sign | ((exponent + 112u) << 23) | (mantissa << 13));
-        float f;
-        std::memcpy(&f, &x, sizeof(f));
-        return f;
-    }
+    // magic, version, 1D size, 3D size, the 4 input range ends, the 1D and 3D tables' value
+    // ranges (min, max each), title length
+    const size_t JLUT_HEADER_SIZE = 52;
 
     void putU32(std::vector<uint8_t>& out, uint32_t v){
         out.push_back((uint8_t)v);
@@ -581,11 +538,31 @@ namespace{
         putU32(out, v);
     }
 
-    void putHalves(std::vector<uint8_t>& out, const float* values, size_t count){
-        for (size_t i = 0; i < count; i++){
-            const uint16_t h = floatToHalf(values[i]);
-            out.push_back((uint8_t)h);
-            out.push_back((uint8_t)(h >> 8));
+    // the value range of a table (0, 1 for an empty or constant one: any range decodes it)
+    void valueRange(const std::vector<float>& values, float range[2]){
+        range[0] = 0.0f;
+        range[1] = 1.0f;
+        if (values.empty())
+            return;
+        const auto [lo, hi] = std::minmax_element(values.begin(), values.end());
+        if (std::isfinite(*lo) && std::isfinite(*hi) && *lo < *hi){
+            range[0] = *lo;
+            range[1] = *hi;
+        }else if (std::isfinite(*lo)){
+            range[0] = *lo;
+            range[1] = *lo + 1.0f;
+        }
+    }
+
+    // 16-bit unsigned steps across the table's own value range: 30x float16's precision around
+    // 0.5..1, where log-encoded LUTs keep their highlights
+    void putUnorms(std::vector<uint8_t>& out, const std::vector<float>& values, const float range[2]){
+        const float scale = 65535.0f / (range[1] - range[0]);
+        for (float v : values){
+            const float t = std::isfinite(v) ? (v - range[0]) * scale : 0.0f;
+            const uint16_t u = (uint16_t)std::lround(std::min(std::max(t, 0.0f), 65535.0f));
+            out.push_back((uint8_t)u);
+            out.push_back((uint8_t)(u >> 8));
         }
     }
 
@@ -600,9 +577,10 @@ namespace{
         return f;
     }
 
-    void getHalves(const uint8_t* p, std::vector<float>& values){
+    void getUnorms(const uint8_t* p, std::vector<float>& values, const float range[2]){
+        const float step = (range[1] - range[0]) / 65535.0f;
         for (size_t i = 0; i < values.size(); i++)
-            values[i] = halfToFloat((uint16_t)(p[i * 2] | (p[i * 2 + 1] << 8)));
+            values[i] = range[0] + (float)(p[i * 2] | (p[i * 2 + 1] << 8)) * step;
     }
 
     bool validRange(const float range[2]){
@@ -814,9 +792,27 @@ bool jasperengine::writeJlut(const CubeLut& lut, std::vector<uint8_t>& out){
         return false;
     const int size1D = lut.size1D >= 2 ? lut.size1D : 0;
     const int size3D = lut.size3D >= 2 ? std::min(lut.size3D, JLUT_MAX_3D_SIZE) : 0;
-    const size_t values1D = (size_t)size1D * 3;
-    const size_t values3D = (size_t)size3D * size3D * size3D * 3;
-    out.reserve(JLUT_HEADER_SIZE + lut.title.size() + (values1D + values3D) * 2);
+    const std::vector<float> table1D = size1D > 0 ? lut.lut1D : std::vector<float>();
+    std::vector<float> table3D;
+    if (size3D > 0 && size3D == lut.size3D){
+        table3D = lut.lut3D;
+    }else if (size3D > 0){
+        // resampled on the smaller grid: its texel i sits at i / (size3D - 1) of the table
+        table3D.reserve((size_t)size3D * size3D * size3D * 3);
+        const float step = 1.0f / (size3D - 1);
+        for (int b = 0; b < size3D; b++){
+            for (int g = 0; g < size3D; g++){
+                for (int r = 0; r < size3D; r++){
+                    const Vector3 c = sample3D(lut, r * step, g * step, b * step);
+                    table3D.insert(table3D.end(), {c.x, c.y, c.z});
+                }
+            }
+        }
+    }
+    float range1D[2], range3D[2];
+    valueRange(table1D, range1D);
+    valueRange(table3D, range3D);
+    out.reserve(JLUT_HEADER_SIZE + lut.title.size() + (table1D.size() + table3D.size()) * 2);
     const uint8_t magic[4] = {'J', 'L', 'U', 'T'};
     out.insert(out.end(), magic, magic + 4);
     putU32(out, JLUT_VERSION);
@@ -826,24 +822,14 @@ bool jasperengine::writeJlut(const CubeLut& lut, std::vector<uint8_t>& out){
     putF32(out, lut.in1D[1]);
     putF32(out, lut.in3D[0]);
     putF32(out, lut.in3D[1]);
+    putF32(out, range1D[0]);
+    putF32(out, range1D[1]);
+    putF32(out, range3D[0]);
+    putF32(out, range3D[1]);
     putU32(out, (uint32_t)lut.title.size());
     out.insert(out.end(), lut.title.begin(), lut.title.end());
-    putHalves(out, lut.lut1D.data(), values1D);
-    if (size3D == lut.size3D){
-        putHalves(out, lut.lut3D.data(), values3D);
-    }else if (size3D > 0){
-        // resampled on the smaller grid: its texel i sits at i / (size3D - 1) of the table
-        const float step = 1.0f / (size3D - 1);
-        for (int b = 0; b < size3D; b++){
-            for (int g = 0; g < size3D; g++){
-                for (int r = 0; r < size3D; r++){
-                    const Vector3 c = sample3D(lut, r * step, g * step, b * step);
-                    const float rgb[3] = {c.x, c.y, c.z};
-                    putHalves(out, rgb, 3);
-                }
-            }
-        }
-    }
+    putUnorms(out, table1D, range1D);
+    putUnorms(out, table3D, range3D);
     return true;
 }
 
@@ -875,7 +861,14 @@ bool jasperengine::readJlut(const uint8_t* data, size_t size, CubeLut& out, std:
         out = CubeLut();
         return false;
     }
-    const size_t titleLength = getU32(data + 32);
+    const float range1D[2] = {getF32(data + 32), getF32(data + 36)};
+    const float range3D[2] = {getF32(data + 40), getF32(data + 44)};
+    if (!validRange(range1D) || !validRange(range3D)){
+        error = "Invalid .jlut value range.";
+        out = CubeLut();
+        return false;
+    }
+    const size_t titleLength = getU32(data + 48);
     const size_t values1D = (size_t)size1D * 3;
     const size_t values3D = (size_t)size3D * size3D * size3D * 3;
     if (titleLength > size - JLUT_HEADER_SIZE || size - JLUT_HEADER_SIZE - titleLength != (values1D + values3D) * 2){
@@ -890,8 +883,8 @@ bool jasperengine::readJlut(const uint8_t* data, size_t size, CubeLut& out, std:
     out.size3D = (int)size3D;
     out.lut1D.resize(values1D);
     out.lut3D.resize(values3D);
-    getHalves(p, out.lut1D);
-    getHalves(p + values1D * 2, out.lut3D);
+    getUnorms(p, out.lut1D, range1D);
+    getUnorms(p + values1D * 2, out.lut3D, range3D);
     return true;
 }
 
