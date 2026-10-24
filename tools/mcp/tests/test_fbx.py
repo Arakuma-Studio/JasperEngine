@@ -24,6 +24,7 @@ from harness import Editor, find_key
 EDITOR = {"create": True, "name": "FBX Test"}
 REPO = Path(__file__).resolve().parents[3]
 FIXTURE = REPO / "editor" / "tests" / "fixtures" / "rigged_cube.fbx"
+GLTF = REPO / "tools" / "fixtures" / "shader-library-export" / "assets" / "models" / "box.gltf"
 S: dict = {}
 
 
@@ -103,6 +104,14 @@ async def test_set_model_loads_the_fbx(ed: Editor):
     ed.check_eq(r["morph_targets"], ["Bulge"], f"{r!r}")
 
 
+async def test_gltf_models_still_load(ed: Editor):
+    # the glTF path the FBX import shares (MeshSystem::loadGLTFFile)
+    (S["assets"] / "models" / "box.gltf").write_bytes(GLTF.read_bytes())
+    await ed.call("sync_files", paths=[f"{S['models']}/box.gltf"])
+    r = await ed.call("set_model", scene=S["scene"], create={"name": "Box"}, path=f"{S['models']}/box.gltf")
+    ed.check(not r["loading"] and len(r["meshes"]) >= 1, f"{r!r}")
+
+
 async def test_saved_scene_records_the_import(ed: Editor):
     saved = await ed.call("save_scene", scene=S["scene"], path="scenes/FbxWorld")
     S["path"] = saved["scene"]["path"]
@@ -132,6 +141,19 @@ async def test_fbx_edit_reloads_the_model(ed: Editor):
     data = yaml.safe_load((ed.project / S["path"]).read_text())
     ids = list((data.get("imports") or {}).values())
     ed.check(ids and ids[0] != S["import_id"], f"the saved import id follows the edit: {ids!r}")
+
+
+async def test_play_imports_every_fbx(ed: Editor):
+    # scripts can load any FBX by path, so Play converts those no scene uses too
+    (S["assets"] / "models" / "scripted.fbx").write_bytes(FIXTURE.read_bytes())
+    await ed.call("play", action="start", scene=S["scene"], timeout_seconds=120)
+    try:
+        info = await ed.call("get_model_info", scene=S["scene"], entity=S["rig"])
+        ed.check_eq(info["bone_count"], 2, f"the model plays: {info!r}")
+    finally:
+        await ed.call("play", action="stop")
+    ed.check((S["glb"].parent / "scripted.fbx.glb").is_file(), "Play imported the FBX no scene uses")
+    (S["assets"] / "models" / "scripted.fbx").unlink()
 
 
 async def test_source_export_ships_the_imports(ed: Editor):
@@ -164,10 +186,9 @@ async def test_an_asset_at_the_import_path_fails_the_export(ed: Editor):
     clash.write_bytes(b"glTF")
     try:
         await ed.call("sync_files", paths=[f"{S['models']}/unused.fbx.glb"])
-        r = await ed.call("build_project", mode="source", output_dir=str(ed.scratch.root / "export-fbx-clash"),
-                          platform="linux", timeout_seconds=900)
-        ed.check_eq(r["status"], "failed", f"{r!r}")
-        ed.check_in("would replace the import", str(r))
+        msg = await ed.call("build_project", mode="source", output_dir=str(ed.scratch.root / "export-fbx-clash"),
+                            platform="linux", timeout_seconds=900, expect_error=True)
+        ed.check_in("models/unused.fbx.glb would replace the import of models/unused.fbx", msg)
     finally:
         clash.unlink()
         await ed.call("sync_files", paths=[f"{S['models']}/unused.fbx.glb"])
