@@ -436,6 +436,54 @@ void editor::PoseRender::setView(const Vector3& viewDirection, const Vector3& sc
     view = state;
 }
 
+void editor::PoseRender::setView(const Vector3& viewDirection, const Vector3& screenUp, const std::vector<Vector3>& points, float margin){
+    if (points.empty()){
+        setView(viewDirection, screenUp, AABB(), margin);
+        return;
+    }
+    ViewState state;
+
+    Vector3 direction = viewDirection;
+    if (direction.squaredLength() < 1e-12f){
+        direction = Vector3(0.0f, 0.0f, -1.0f);
+    }
+    direction.normalize();
+    Vector3 right = direction.crossProduct(screenUp);
+    if (right.squaredLength() < 1e-12f){
+        right = direction.crossProduct(anyPerpendicular(direction));
+    }
+    right.normalize();
+    state.direction = direction;
+    state.right = right;
+    state.up = right.crossProduct(direction).normalized();
+
+    // extents along the view axes; the centre is the middle of each
+    float low[3] = {0.0f, 0.0f, 0.0f};
+    float high[3] = {0.0f, 0.0f, 0.0f};
+    const Vector3 axes[3] = {state.right, state.up, state.direction};
+    for (size_t i = 0; i < points.size(); i++){
+        for (int a = 0; a < 3; a++){
+            const float d = points[i].dotProduct(axes[a]);
+            if (i == 0 || d < low[a]) low[a] = d;
+            if (i == 0 || d > high[a]) high[a] = d;
+        }
+    }
+    state.center = axes[0] * ((low[0] + high[0]) * 0.5f) + axes[1] * ((low[1] + high[1]) * 0.5f) +
+                   axes[2] * ((low[2] + high[2]) * 0.5f);
+
+    float radius = 0.0f;
+    for (const Vector3& point : points){
+        radius = std::max(radius, (point - state.center).length());
+    }
+    const float minimum = std::max(radius * 0.05f, 1e-3f);
+    const float grow = 1.0f + std::max(margin, 0.0f);
+    state.halfRight = std::max((high[0] - low[0]) * 0.5f, minimum) * grow;
+    state.halfUp = std::max((high[1] - low[1]) * 0.5f, minimum) * grow;
+    state.radius = std::max(radius, 1e-3f);
+
+    view = state;
+}
+
 void editor::PoseRender::setViewSize(int width, int height){
     viewWidth = std::max(width, 1);
     viewHeight = std::max(height, 1);
