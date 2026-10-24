@@ -97,6 +97,8 @@ Json referrerJson(const MissingAssetTracker::Referrer& referrer) {
 // Runs once the dependency index has its first build (a fresh project indexes in the background)
 void whenIndexed(const CallPtr& call, std::function<void()> then) {
     Project* project = call->ctx().project();
+    // files an agent changed with its own tools since the last frame's look count now
+    project->refreshAssetDatabase(true);
     if (project->getAssetIndex().isReady()) {
         then();
         return;

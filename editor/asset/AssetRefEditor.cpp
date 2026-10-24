@@ -44,32 +44,41 @@ namespace {
         return part.substr(0, open);
     }
 
-    YAML::Node findEntityNode(const YAML::Node& list, uint64_t id) {
-        if (!list || !list.IsSequence()) return YAML::Node();
+    // yaml-cpp: a default YAML::Node is a defined null (truthy), and `node = other` on a bound
+    // node overwrites the tree node it refers to. The finders return found/not found and bind
+    // the result with reset(); the editors below rebind with reset() too.
+    bool findEntityNode(const YAML::Node& list, uint64_t id, YAML::Node& out) {
+        if (!list || !list.IsSequence()) return false;
         for (const YAML::Node& entity : list) {
             if (!entity.IsMap()) continue;
-            if (entity["entity"] && entity["entity"].as<uint64_t>(0) == id) return entity;
-            if (YAML::Node found = findEntityNode(entity["children"], id)) return found;
+            if (entity["entity"] && entity["entity"].as<uint64_t>(0) == id) {
+                out.reset(entity);
+                return true;
+            }
+            if (findEntityNode(entity["children"], id, out)) return true;
             if (const YAML::Node block = entity["prefabInstance"]) {
-                if (YAML::Node found = findEntityNode(block["addedGameObjects"], id)) return found;
+                if (findEntityNode(block["addedGameObjects"], id, out)) return true;
             }
         }
-        return YAML::Node();
+        return false;
     }
 
-    YAML::Node findOverride(const YAML::Node& block, const std::string& registryEntity) {
-        if (!block || !block.IsMap()) return YAML::Node();
+    bool findOverride(const YAML::Node& block, const std::string& registryEntity, YAML::Node& out) {
+        if (!block || !block.IsMap()) return false;
         if (const YAML::Node overrides = block["overrides"]) {
             for (const YAML::Node& entry : overrides) {
-                if (entry["registryEntity"] && entry["registryEntity"].as<std::string>() == registryEntity) return entry;
+                if (entry["registryEntity"] && entry["registryEntity"].as<std::string>() == registryEntity) {
+                    out.reset(entry);
+                    return true;
+                }
             }
         }
         if (const YAML::Node nested = block["nested"]) {
             for (const YAML::Node& entry : nested) {
-                if (YAML::Node found = findOverride(entry, registryEntity)) return found;
+                if (findOverride(entry, registryEntity, out)) return true;
             }
         }
-        return YAML::Node();
+        return false;
     }
 
     // The new value of one file of a shader reference
@@ -100,22 +109,25 @@ namespace {
         const AssetRefField* row = nullptr;
         if (scope.compare(0, 7, "entity:") == 0) {
             const uint64_t id = std::strtoull(scope.c_str() + 7, nullptr, 10);
-            YAML::Node entity = findEntityNode(root["entities"], id);
-            if (!entity) entity = findEntityNode(root["members"], id);
-            if (!entity && root["components"]) entity = root; // a version 1 prefab
-            if (!entity) {
+            YAML::Node entity;
+            bool foundEntity = findEntityNode(root["entities"], id, entity) || findEntityNode(root["members"], id, entity);
+            if (!foundEntity && root["components"]) {
+                entity.reset(root); // a version 1 prefab
+                foundEntity = true;
+            }
+            if (!foundEntity) {
                 error = "no GameObject " + std::to_string(id) + " in the file";
                 return false;
             }
             YAML::Node components = entity["components"];
             if (rest.compare(0, 15, "prefabInstance[") == 0) {
                 const size_t close = rest.find(']');
-                const YAML::Node entry = findOverride(entity["prefabInstance"], rest.substr(15, close - 15));
-                if (!entry) {
+                YAML::Node entry;
+                if (!findOverride(entity["prefabInstance"], rest.substr(15, close - 15), entry)) {
                     error = "no override record " + rest.substr(0, close + 1);
                     return false;
                 }
-                components = entry["components"];
+                components.reset(entry["components"]);
                 rest = rest.substr(std::min(rest.size(), close + 2));
             }
             const size_t dot = rest.find('.');
@@ -125,23 +137,23 @@ namespace {
                 error = "no " + componentName + " on GameObject " + std::to_string(id);
                 return false;
             }
-            base = components[Catalog::getComponentName(component, true)];
+            base.reset(components[Catalog::getComponentName(component, true)]);
             rest = dot == std::string::npos ? std::string("path") : rest.substr(dot + 1);
             row = AssetRefSchema::findRow(AssetRefScope::Component, component, rest);
         } else if (scope == "settings") {
-            base = root["scene"];
+            base.reset(root["scene"]);
             row = AssetRefSchema::findRow(AssetRefScope::SceneSettings, ComponentType::Transform, rest);
         } else if (scope == "material") {
-            base = root;
+            base.reset(root);
             row = AssetRefSchema::findRow(AssetRefScope::Material, ComponentType::MeshComponent, rest);
         } else if (scope == "scene") {
-            base = root;
+            base.reset(root);
             row = AssetRefSchema::findRow(AssetRefScope::SceneFile, ComponentType::Transform, rest);
         } else if (scope == "project") {
-            base = root;
+            base.reset(root);
             row = AssetRefSchema::findRow(AssetRefScope::Project, ComponentType::Transform, rest);
         }
-        if (!row || !base) {
+        if (!row || !base || base.IsNull()) {
             error = "the field " + target.locator + " is not an asset reference of the file";
             return false;
         }
@@ -167,7 +179,12 @@ namespace {
                 index = partIndex;
                 break;
             }
-            parent = partIndex >= 0 ? parent[name][static_cast<size_t>(partIndex)] : parent[name];
+            const YAML::Node next = partIndex >= 0 ? parent[name][static_cast<size_t>(partIndex)] : parent[name];
+            if (!next || next.IsNull()) {
+                error = "the file has no " + target.locator;
+                return false;
+            }
+            parent.reset(next);
             if (!parent) {
                 error = "the file has no " + target.locator;
                 return false;
@@ -209,7 +226,7 @@ namespace {
                     texture["paths"][static_cast<size_t>(target.ordinal)] = hint;
                     YAML::Node guids = texture["guids"];
                     if (!guids || !guids.IsSequence() || guids.size() != texture["paths"].size()) {
-                        guids = YAML::Node(YAML::NodeType::Sequence);
+                        guids.reset(YAML::Node(YAML::NodeType::Sequence));
                         guids.SetStyle(YAML::EmitterStyle::Flow);
                         for (size_t f = 0; f < texture["paths"].size(); f++) guids.push_back(std::string());
                     }
@@ -243,7 +260,7 @@ namespace {
                 list[static_cast<size_t>(index)] = hint;
                 YAML::Node guids = parent[key + "Guid"];
                 if (!guids || !guids.IsSequence() || guids.size() != list.size()) {
-                    guids = YAML::Node(YAML::NodeType::Sequence);
+                    guids.reset(YAML::Node(YAML::NodeType::Sequence));
                     guids.SetStyle(YAML::EmitterStyle::Flow);
                     for (size_t i = 0; i < list.size(); i++) guids.push_back(std::string());
                 }

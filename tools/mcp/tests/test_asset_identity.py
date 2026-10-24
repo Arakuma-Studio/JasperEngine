@@ -55,6 +55,7 @@ def run_cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
 
 async def test_tools_and_upgrade(ed: Editor):
     ed.require_tools(*NEW_TOOLS)
+    await ed.call("editor_status")   # the project is open
     # every asset got an identity on open: metas beside the files, a guid line in scenes, prefabs and materials
     for rel in ["assets/textures/mask.png", "assets/models/ship.gltf", "assets/sounds/beep.wav", "assets/ui/hud.html",
                 "scripts/Spinner.lua", "shaders/tint.frag"]:
@@ -131,8 +132,8 @@ async def test_rename_touches_no_referrers(ed: Editor):
     mask = meta_guid(ed, "assets/textures/mask.png")
     # the open scene references it too, saved
     await ed.call("add_component", scene="Main.scene", entity="Speaker", component="light")
-    await ed.call("set_properties", scene="Main.scene", entity="Speaker", component="light",
-                  values={"spotMask": "assets/textures/mask.png"})
+    await ed.call("set_properties", scene="Main.scene", entity="Speaker",
+                  values={"light": {"spotMask": "assets/textures/mask.png"}})
     await ed.call("save_scene", scene="Main.scene")
     ed.check(mask in (ed.project / "Main.scene").read_text(), "the saved scene does not hold the texture's GUID")
     referrers = ["Main.scene", "Closed.scene", "prefabs/Lamp.prefab", "materials/Brick.material", "project.yaml"]
@@ -159,7 +160,7 @@ async def test_rename_touches_no_referrers(ed: Editor):
 async def test_text_references_broken(ed: Editor):
     """AC20: a stylesheet linked from an HTML document is moved: the link is reported, not rewritten"""
     html_before = (ed.project / "assets/ui/hud.html").read_bytes()
-    result = await ed.call("move_asset", path="assets/ui/hud.css", to="assets/ui/styles/hud.css")
+    result = await ed.call("move_asset", path="assets/ui/hud.css", to="assets/ui/hud-moved.css")
     broken = result["text_references_broken"]
     ed.check(any(b["referrer"] == "assets/ui/hud.html" and b["line"] == 4 for b in broken), f"{broken}")
     ed.check_eq((ed.project / "assets/ui/hud.html").read_bytes(), html_before, "the HTML was rewritten")
@@ -185,13 +186,15 @@ async def test_delete_keeps_references(ed: Editor):
 
 async def test_path_fallback_and_prefab_rule(ed: Editor):
     """AC9: an unknown GUID with a hint at an existing file binds by path, except for prefabs"""
-    closed = yaml.safe_load((ed.project / "Closed.scene").read_text())
+    original = (ed.project / "Closed.scene").read_bytes()
+    closed = yaml.safe_load(original)
     for entity in closed["entities"]:
         if entity["name"] == "Hud":
             entity["components"]["uidocument"]["filenameGuid"] = "0123456789abcdef0123456789abcdef"
         if entity["name"] == "Lantern":
             entity["components"]["prefab"] = {"name": "Lamp", "path": "prefabs/Lamp.prefab", "guid": "fedcba9876543210fedcba9876543210"}
-    await ed.call("write_file", path="Closed.scene", content=yaml.safe_dump(closed, sort_keys=False))
+    # changed outside the editor (write_file refuses scenes): the asset tools look at the disk first
+    (ed.project / "Closed.scene").write_text(yaml.safe_dump(closed, sort_keys=False))
     listing = await ed.call("list_missing_assets")
     healed = [e for e in listing["resolved_by_path"] if e["path"] == "assets/ui/hud.html"]
     ed.check(healed and healed[0]["referenced_guid"] == "0123456789abcdef0123456789abcdef", f"{listing['resolved_by_path']}")
@@ -201,7 +204,9 @@ async def test_path_fallback_and_prefab_rule(ed: Editor):
     await ed.call("retarget_asset_references", **{"from": "0123456789abcdef0123456789abcdef", "to": "assets/ui/hud.html"})
     ed.check("0123456789abcdef0123456789abcdef" in (ed.project / hud_meta).read_text(), "the meta has no former GUID")
     await ed.call("undo", scope="project")
-    await ed.call("undo", scope="project")   # the write_file
+    ed.check("0123456789abcdef0123456789abcdef" not in (ed.project / hud_meta).read_text(), "the undo kept the former GUID")
+    (ed.project / "Closed.scene").write_bytes(original)
+    await ed.call("list_missing_assets")
 
 
 async def test_clear_is_undoable(ed: Editor):
@@ -257,7 +262,7 @@ async def test_cli_check_and_migrate(ed: Editor):
 async def test_lua_asset_api_in_play(ed: Editor):
     """R31: the Asset module answers from the asset database in Play"""
     brick = meta_guid(ed, "assets/textures/brick.png")
-    await ed.call("play", scene="Main.scene")
+    await ed.call("play", action="start", scene="Main.scene")
     path = await ed.call("eval_lua", code=f'return Asset.path("{brick}")')
     ed.check("textures/brick.png" in json.dumps(path), f"{path}")
     guid = await ed.call("eval_lua", code='return Asset.guid("textures/brick.png")')
