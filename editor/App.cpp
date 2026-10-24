@@ -19,6 +19,7 @@
 #include "mcp/McpActivityWindow.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
+#include "mcp/tools/McpTools.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -3422,10 +3423,12 @@ void editor::App::stopTransientPreviews() {
     if (inspectorWindow) {
         inspectorWindow->stopTransientPreviews();
     }
-    // a scene is never saved or played with physics preview poses in it
+    // a scene is never saved or played with physics preview poses in it (the Physics tool's
+    // gestures, place_with_physics screenshots)
     if (physicsPlacementWindow) {
         physicsPlacementWindow->cancelGestures();
     }
+    mcp::stopPlacementPreviews(&project);
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
