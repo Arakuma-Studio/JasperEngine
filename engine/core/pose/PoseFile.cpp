@@ -37,6 +37,11 @@ namespace jasperengine::pose {
         if (notFound){
             *notFound = false;
         }
+        // a directory opens as a file on some platforms (and reads as garbage): it exists, unreadable
+        std::error_code directoryCode;
+        if (fs::is_directory(utf8Path(FileData::getSystemPath(path)), directoryCode)){
+            return fail(error, "cannot read '" + path + "'");
+        }
         Data data;
         const unsigned int result = data.open(path.c_str());
         if (result != FileErrors::FILEDATA_OK){
@@ -64,7 +69,7 @@ namespace jasperengine::pose {
             const unsigned int size = static_cast<unsigned int>(text.size());
             const bool written = size == 0 ||
                                  file.write(reinterpret_cast<unsigned char*>(const_cast<char*>(text.data())), size) == size;
-            file.flush();   // the File destructor closes the handle (close() would be closed twice)
+            file.close();   // flushed and closed before the rename (close is idempotent: the destructor's is a no-op)
             if (!written){
                 std::error_code ignored;
                 fs::remove(utf8Path(temporary), ignored);

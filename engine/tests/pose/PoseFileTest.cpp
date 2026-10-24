@@ -11,6 +11,7 @@
 #include "System.h"
 #include "io/File.h"
 #include "pose/HumanBones.h"
+#include "pose/ModelRig.h"
 #include "pose/PoseFile.h"
 #include "PoseTestUtil.h"
 
@@ -224,6 +225,31 @@ TEST(PoseFile, MissingSidecarIsAllAutoNotAnError){
     loaded.bones[boneIndex(HumanBone::Head)] = "stale";
     EXPECT_TRUE(loadHumanoidOverridesFile(dir.file("none.humanoid"), loaded, warnings, &error));
     EXPECT_TRUE(loaded.empty());
+}
+
+// the runtime's sidecar stamp (ModelRig): missing = all auto, unreadable = an error (as the
+// editor), not a silent auto-detect
+TEST(PoseFile, SidecarStampFailsOnAnUnreadableSidecar){
+    posetest::ScratchDir dir;
+    std::string stamp = "stale";
+    std::string error = "stale";
+    EXPECT_TRUE(humanoidSidecarStamp(dir.file("none.gltf"), stamp, &error));
+    EXPECT_TRUE(stamp.empty());
+    EXPECT_TRUE(error.empty());
+
+    {
+        std::ofstream sidecar(dir.file("hero.gltf.humanoid"));
+        sidecar << "{}";
+    }
+    EXPECT_TRUE(humanoidSidecarStamp(dir.file("hero.gltf"), stamp, &error)) << error;
+    EXPECT_EQ(stamp, "{}");
+
+    // a directory where the sidecar should be: it exists and cannot be read
+    std::filesystem::create_directories(dir.file("robot.gltf.humanoid"));
+    error.clear();
+    EXPECT_FALSE(humanoidSidecarStamp(dir.file("robot.gltf"), stamp, &error));
+    EXPECT_TRUE(stamp.empty());
+    EXPECT_NE(error.find("robot.gltf.humanoid"), std::string::npos) << error;
 }
 
 TEST(PoseFile, CorruptSidecarFailsAndIsNotReportedAsMissing){

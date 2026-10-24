@@ -15,7 +15,9 @@
 #include "pose/PoseTypes.h"
 
 #include <array>
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -66,10 +68,57 @@ namespace jasperengine::pose {
         float anticipation = -1.0f;
     };
 
+    // The realised key poses and the frames of one animation on one rig (frames[f] at
+    // f * length / (frames.size() - 1)): immutable, shared by every animator playing it
+    struct JASPERENGINE_API PoseAnimationBuild {
+        std::vector<HumanPose> keys;
+        std::vector<HumanPose> frames;
+        float length = 0.0f;
+    };
+
+    // Builds shared by animation file and rig (like PoseRigCache): get() returns the build of
+    // `path` whose file text was `source` on `rig` while one is alive, else builds it (outside
+    // the lock) and remembers it. Entries hold the build and the rig weakly: they go with the
+    // last animator playing them (pruned on every get and by prune(); cleared when a project
+    // closes). Thread safe.
+    class JASPERENGINE_API PoseBuildCache {
+    public:
+        static PoseBuildCache& shared();
+
+        // nullptr with `error` when the animation does not build (no poses, no frames)
+        std::shared_ptr<const PoseAnimationBuild> get(const std::string& path, const std::string& source,
+                                                      const std::shared_ptr<const PoseRig>& rig, const PoseAnimationData& data,
+                                                      std::string* error);
+        void prune();
+        void clear();
+        size_t size() const;
+        // the builds made since start (tests)
+        uint64_t buildCount() const;
+
+        // the build of `data` on `rig`, not cached
+        static std::shared_ptr<const PoseAnimationBuild> build(const PoseAnimationData& data, const PoseRig& rig, std::string* error);
+
+    private:
+        struct Entry {
+            std::string path;
+            std::string source;
+            std::weak_ptr<const PoseRig> rig;
+            std::weak_ptr<const PoseAnimationBuild> build;
+        };
+        // under the lock
+        void pruneLocked();
+        std::shared_ptr<const PoseAnimationBuild> findLocked(const std::string& path, const std::string& source,
+                                                             const std::shared_ptr<const PoseRig>& rig) const;
+        mutable std::mutex mutex;
+        std::vector<Entry> entries;
+        uint64_t builds = 0;
+    };
+
     class JASPERENGINE_API PoseAnimatorRuntime {
     public:
         // the asset; `failed` (with `error` logged once) disables the animator until the path changes
         std::string path;
+        std::string source;   // the file text `data` was parsed from ("" = set directly): the shared build's key
         PoseAnimationData data;
         bool dataLoaded = false;
         bool failed = false;
@@ -90,10 +139,11 @@ namespace jasperengine::pose {
         std::array<Quaternion, HUMAN_BONE_COUNT> bridgeRotationInverse;
         Matrix4 hipsBridgeInverse;
 
-        // the realised key poses and the frames played (frames[f] at f * length / (frames.size() - 1))
-        std::vector<HumanPose> keys;
-        std::vector<HumanPose> frames;
+        // the realised key poses and the frames played (shared: PoseBuildCache)
+        std::shared_ptr<const PoseAnimationBuild> built;
         float length = 0.0f;
+        const std::vector<HumanPose>& keys() const;
+        const std::vector<HumanPose>& frames() const;
 
         // the pose shown last (before the weight blend): where a live transition starts
         HumanPose displayed;
@@ -110,6 +160,7 @@ namespace jasperengine::pose {
         HumanPose transitionFrom;
         bool transitionFromGrounded = true;   // the start was on the floor (the ground correction's weight)
         PoseGoTo pending;
+        bool pendingArrived = false;      // `pending` had settled before a rebuild: it holds the key at once
 
         // the weight blend per slot, and the bone entity each blend state was written to (the
         // bones to give their base pose back when the animator stops driving them)
@@ -117,10 +168,11 @@ namespace jasperengine::pose {
         std::array<Entity, HUMAN_BONE_COUNT> blendEntities{};
 
         // Realises the keys on `rig` (joint limits first when humanize.jointLimits, grounded with
-        // the rig's skin) and computes the frames at the animation's frame rate. Uses `data`.
-        bool build(std::shared_ptr<const PoseRig> rig, std::string* error);
+        // the rig's skin) and computes the frames at the animation's frame rate. Uses `data`;
+        // with `cache` and a `source` the build is shared (the same file text on the same rig).
+        bool build(std::shared_ptr<const PoseRig> rig, std::string* error, PoseBuildCache* cache = nullptr);
 
-        bool isLoaded() const { return !failed && rig && !frames.empty(); }
+        bool isLoaded() const { return !failed && rig && built && !built->frames.empty(); }
         int poseCount() const { return dataLoaded ? (int)data.poses.size() : 0; }
         int findPose(const std::string& name) const;
         bool stepped() const { return data.settings.stepRate > 0.0f; }
@@ -142,6 +194,12 @@ namespace jasperengine::pose {
         void transitionPose(float time, HumanPose& out) const;
         // seconds until the current transition has settled
         float transitionSettleTime() const;
+
+        // A rebuild (a new runtime for the same file): the goToPose target of `previous` (its
+        // pending request or its live transition, settled or not) becomes this one's `pending`
+        void keepGoTo(const PoseAnimatorRuntime& previous);
+        // starts `pending` once loaded (settled at once when it had settled before a rebuild)
+        bool startPending();
     };
 
 }

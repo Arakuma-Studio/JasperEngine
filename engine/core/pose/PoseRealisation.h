@@ -21,7 +21,7 @@
 namespace jasperengine::pose {
 
     struct PoseRealisation {
-        std::shared_ptr<PoseRig> rig;
+        std::shared_ptr<const PoseRig> rig;
         uint64_t revision = 0;                  // set by the caller (the document revision)
         std::vector<HumanPose> keys;            // per key pose: realiseKeys (joint limits first when humanize.jointLimits)
         std::vector<PoseMetrics> metrics;       // per key pose; limit hits from the key's own (unclamped) angles
@@ -31,7 +31,7 @@ namespace jasperengine::pose {
 
     // nullptr when the rig is missing or invalid
     JASPERENGINE_API std::shared_ptr<PoseRealisation> realisePoseAnimation(const PoseAnimationData& data,
-                                                                           const std::shared_ptr<PoseRig>& rig);
+                                                                           const std::shared_ptr<const PoseRig>& rig);
 
 }
 

@@ -360,12 +360,12 @@ TEST(PoseTemplates, GoToPoseBetweenGroundedKeysStaysOnTheFloor){
             ASSERT_TRUE(runtime.build(rig, &error)) << t.info.name << " on " << label << ": " << error;
             const double scale = rig->humanScale();
             double worst = 1e9;
-            for (size_t i = 0; i < runtime.keys.size(); i++){
-                for (size_t j = 0; j < runtime.keys.size(); j++){
+            for (size_t i = 0; i < runtime.keys().size(); i++){
+                for (size_t j = 0; j < runtime.keys().size(); j++){
                     if (i == j || !t.data.poses[i].grounded || !t.data.poses[j].grounded){
                         continue;
                     }
-                    runtime.displayed = runtime.keys[i];
+                    runtime.displayed = runtime.keys()[i];
                     runtime.hasDisplayed = true;
                     PoseGoTo request;
                     request.key = static_cast<int>(j);
@@ -414,7 +414,7 @@ TEST(PoseTemplates, GoToPoseLaunchFadesTheGroundOut){
     }
     ASSERT_GE(grounded, 0);
     ASSERT_GE(lifted, 0);
-    runtime.displayed = runtime.keys[grounded];
+    runtime.displayed = runtime.keys()[grounded];
     runtime.hasDisplayed = true;
     PoseGoTo request;
     request.key = lifted;
@@ -426,9 +426,9 @@ TEST(PoseTemplates, GoToPoseLaunchFadesTheGroundOut){
         EXPECT_GT((rig->lowestPointPrecise(pose, rig->skin()) - rig->floorHeight()) / rig->humanScale(), -1e-3) << time;
     }
     runtime.transitionPose(runtime.transitionSettle, pose);
-    EXPECT_NEAR(rig->lowestPointPrecise(pose, rig->skin()), rig->lowestPointPrecise(runtime.keys[lifted], rig->skin()), 1e-3 * rig->humanScale());
+    EXPECT_NEAR(rig->lowestPointPrecise(pose, rig->skin()), rig->lowestPointPrecise(runtime.keys()[lifted], rig->skin()), 1e-3 * rig->humanScale());
     // and back: a landing from the air
-    runtime.displayed = runtime.keys[lifted];
+    runtime.displayed = runtime.keys()[lifted];
     request.key = grounded;
     ASSERT_TRUE(runtime.startTransition(request));
     EXPECT_FALSE(runtime.transitionFromGrounded);

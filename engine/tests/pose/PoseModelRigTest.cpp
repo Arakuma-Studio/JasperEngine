@@ -13,10 +13,13 @@
 #include "component/PoseAnimatorComponent.h"
 #include "component/Transform.h"
 #include "pose/ModelRig.h"
+#include "object/PoseAnimator.h"
 #include "subsystem/PoseAnimatorSystem.h"
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <limits>
 #include <memory>
 
 using namespace posetest;
@@ -134,4 +137,57 @@ TEST(PoseModelRig, RemovingTheAnimatorRestoresTheBones){
     EXPECT_LT(rotationError(scene.getComponent<Transform>(f.spine).rotation, rest), 1e-6);
     // what a clip wrote since stays
     EXPECT_LT(rotationError(scene.getComponent<Transform>(f.hips).rotation, clip), 1e-6);
+}
+
+// NaN / infinity from Lua (setSpeed, setWeight, setTime) or the component fields (Inspector, MCP)
+// never reach the clock or the quaternions
+TEST(PoseModelRig, NonFiniteInputIsIgnored){
+    Fixture f;
+    Scene& scene = *f.scene;
+    PoseAnimator handle(&scene, f.model);
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    handle.setSpeed(nan);
+    handle.setSpeed(inf);
+    EXPECT_FLOAT_EQ(handle.getSpeed(), 1.0f);
+    handle.setWeight(nan);
+    EXPECT_FLOAT_EQ(handle.getWeight(), 1.0f);
+    handle.setWeight(-inf);
+    EXPECT_FLOAT_EQ(handle.getWeight(), 0.0f);
+    handle.setWeight(0.5f);
+    handle.setTime(0.25f);
+    handle.setTime(nan);
+    handle.setTime(inf);
+    EXPECT_FLOAT_EQ(handle.getTime(), 0.25f);
+
+    // a playing animator (built on a synthetic rig, driving no bone entity) with non-finite fields
+    PoseAnimatorComponent& animator = scene.getComponent<PoseAnimatorComponent>(f.model);
+    auto runtime = std::make_shared<PoseAnimatorRuntime>();
+    runtime->data = makeAnimation({bodyWith({{"spine.bend", 0}}), bodyWith({{"spine.bend", 30}})}, true);
+    runtime->dataLoaded = true;
+    std::string error;
+    ASSERT_TRUE(runtime->build(tposeRig().skinned, &error)) << error;
+    animator.runtime = runtime;
+    animator.needsLoad = false;
+    animator.started = true;
+    animator.playing = true;
+    animator.speed = nan;
+    animator.weight = nan;
+    animator.time = 0.1f;
+    PoseAnimatorSystem* system = scene.getSystem<PoseAnimatorSystem>().get();
+    ASSERT_NE(system, nullptr);
+    system->update(0.1);
+    EXPECT_TRUE(std::isfinite(animator.time));
+    EXPECT_FLOAT_EQ(animator.time, 0.1f);
+    animator.speed = inf;
+    system->update(0.1);
+    EXPECT_TRUE(std::isfinite(animator.time));
+    animator.speed = 1.0f;
+    animator.time = nan;
+    system->update(0.1);
+    EXPECT_TRUE(std::isfinite(animator.time));
+    for (int b = 0; b < HUMAN_BONE_COUNT; b++){
+        const Quaternion& q = runtime->displayed.rotations[b];
+        EXPECT_TRUE(std::isfinite(q.w) && std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z)) << b;
+    }
 }

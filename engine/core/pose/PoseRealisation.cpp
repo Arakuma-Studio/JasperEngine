@@ -5,7 +5,7 @@
 
 namespace jasperengine::pose {
 
-    std::shared_ptr<PoseRealisation> realisePoseAnimation(const PoseAnimationData& data, const std::shared_ptr<PoseRig>& rig){
+    std::shared_ptr<PoseRealisation> realisePoseAnimation(const PoseAnimationData& data, const std::shared_ptr<const PoseRig>& rig){
         if (!rig || !rig->valid()){
             return nullptr;
         }

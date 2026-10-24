@@ -8,7 +8,9 @@
 #include "TestUtil.h"
 
 #include "pose/ModelRig.h"
+#include "pose/PoseAnimationIO.h"
 #include "pose/PoseAnimatorRuntime.h"
+#include "pose/PoseRealisation.h"
 #include "pose/PoseSampler.h"
 
 #include <gtest/gtest.h>
@@ -52,33 +54,33 @@ TEST(PoseRuntime, BuildRealisesKeysAndFrames){
         PoseAnimationData data = armsAnimation(true);
         auto runtime = loaded(data, *rig);
         ASSERT_TRUE(runtime->isLoaded()) << rig->label;
-        EXPECT_EQ(runtime->keys.size(), 3u);
+        EXPECT_EQ(runtime->keys().size(), 3u);
         const PoseTimeline timeline = buildTimeline(data);
         EXPECT_NEAR(runtime->length, timeline.length, 1e-6);
         // count + 1 frames, the last a copy of the first (loop)
         const size_t count = std::max<size_t>(1, (size_t)std::lround(timeline.length * data.settings.frameRate));
-        EXPECT_EQ(runtime->frames.size(), count + 1);
-        EXPECT_LT(maxDifference(runtime->frames.front(), runtime->frames.back()), 1e-6);
+        EXPECT_EQ(runtime->frames().size(), count + 1);
+        EXPECT_LT(maxDifference(runtime->frames().front(), runtime->frames().back()), 1e-6);
         // the keys are fromBodyPose of the key bodies (joint limits on, grounded)
         HumanPose expected = rig->skinned->fromBodyPose(data.poses[1].body, nullptr, true, 0.0f);
-        EXPECT_LT(maxDifference(runtime->keys[1], expected), 1e-5) << rig->label;
+        EXPECT_LT(maxDifference(runtime->keys()[1], expected), 1e-5) << rig->label;
     }
 }
 
 TEST(PoseRuntime, SamplingBetweenFrames){
     PoseAnimationData data = armsAnimation(true);
     auto runtime = loaded(data, tposeRig());
-    const size_t last = runtime->frames.size() - 1;
+    const size_t last = runtime->frames().size() - 1;
     const float frameTime = runtime->length / (float)last;
 
     HumanPose out;
     // on a frame: that frame
     runtime->samplePlayback(3 * frameTime, out);
-    EXPECT_LT(maxDifference(out, runtime->frames[3]), 1e-5);
+    EXPECT_LT(maxDifference(out, runtime->frames()[3]), 1e-5);
     // between two frames: the slerp (hips lerp) at the fraction
     runtime->samplePlayback(3.25f * frameTime, out);
-    const HumanPose& a = runtime->frames[3];
-    const HumanPose& b = runtime->frames[4];
+    const HumanPose& a = runtime->frames()[3];
+    const HumanPose& b = runtime->frames()[4];
     for (int s = 0; s < HUMAN_BONE_COUNT; s++){
         EXPECT_LT(rotationError(out.rotations[s], slerpShortest(a.rotations[s], b.rotations[s], 0.25f)), 1e-4) << s;
     }
@@ -95,11 +97,11 @@ TEST(PoseRuntime, SteppedPlaybackShowsThePreviousFrame){
     data.settings.stepRate = 12;
     auto runtime = loaded(data, tposeRig());
     ASSERT_TRUE(runtime->stepped());
-    const size_t last = runtime->frames.size() - 1;
+    const size_t last = runtime->frames().size() - 1;
     const float frameTime = runtime->length / (float)last;
     HumanPose out;
     runtime->samplePlayback(5.9f * frameTime, out);
-    EXPECT_LT(maxDifference(out, runtime->frames[5]), 1e-6);
+    EXPECT_LT(maxDifference(out, runtime->frames()[5]), 1e-6);
 }
 
 TEST(PoseRuntime, OneShotEndsOnceAndClamps){
@@ -135,7 +137,7 @@ TEST(PoseRuntime, OneShotEndsOnceAndClamps){
     auto runtime = loaded(data, aposeRig());
     HumanPose out;
     runtime->samplePlayback(runtime->length + 1.0f, out);
-    EXPECT_LT(maxDifference(out, runtime->frames.back()), 1e-6);
+    EXPECT_LT(maxDifference(out, runtime->frames().back()), 1e-6);
 }
 
 TEST(PoseRuntime, GoToPoseReachesTheKeyPose){
@@ -152,19 +154,19 @@ TEST(PoseRuntime, GoToPoseReachesTheKeyPose){
         HumanPose out = runtime->displayed;
         // moving, not there yet after a third of the duration
         runtime->sampleTransition(0.05f, out);
-        EXPECT_GT(maxDifference(out, runtime->keys[1]), 1e-3) << rig->label;
+        EXPECT_GT(maxDifference(out, runtime->keys()[1]), 1e-3) << rig->label;
         for (int i = 0; i < 600 && !runtime->transitionArrived; i++){
             runtime->sampleTransition(1.0f / 60.0f, out);
         }
         EXPECT_TRUE(runtime->transitionArrived) << rig->label;
-        EXPECT_LT(maxDifference(out, runtime->keys[1]), 1e-7) << rig->label;
+        EXPECT_LT(maxDifference(out, runtime->keys()[1]), 1e-7) << rig->label;
         // then holds it
         runtime->sampleTransition(1.0f, out);
-        EXPECT_LT(maxDifference(out, runtime->keys[1]), 1e-7) << rig->label;
+        EXPECT_LT(maxDifference(out, runtime->keys()[1]), 1e-7) << rig->label;
         // near the settle time it is already within the spring's tolerance
         HumanPose late;
         runtime->transitionPose(runtime->transitionSettle * 0.999f, late);
-        EXPECT_LT(maxDifference(late, runtime->keys[1]), 2e-3) << rig->label;
+        EXPECT_LT(maxDifference(late, runtime->keys()[1]), 2e-3) << rig->label;
     }
 
     PoseAnimatorRuntime empty;
@@ -178,7 +180,7 @@ TEST(PoseRuntime, GoToPoseOvershootsWithASpring){
     data.settings.overlap = 0.0f;
     data.settings.looseness = 0.0f;
     auto runtime = loaded(data, tposeRig());
-    runtime->displayed = runtime->keys[0];
+    runtime->displayed = runtime->keys()[0];
     runtime->hasDisplayed = true;
     PoseGoTo request;
     request.key = 1;
@@ -187,12 +189,12 @@ TEST(PoseRuntime, GoToPoseOvershootsWithASpring){
     request.anticipation = 0.0f;
     ASSERT_TRUE(runtime->startTransition(request));
     const int arm = boneIndex(H::LeftUpperArm);
-    const double total = rotationError(runtime->keys[0].rotations[arm], runtime->keys[1].rotations[arm]);
+    const double total = rotationError(runtime->keys()[0].rotations[arm], runtime->keys()[1].rotations[arm]);
     double peak = 0.0;
     for (float t = 0.0f; t < 1.0f; t += 0.005f){
         HumanPose out;
         runtime->transitionPose(t, out);
-        peak = std::max(peak, rotationError(runtime->keys[0].rotations[arm], out.rotations[arm]));
+        peak = std::max(peak, rotationError(runtime->keys()[0].rotations[arm], out.rotations[arm]));
     }
     EXPECT_GT(peak, total * 1.3);
 }
@@ -243,7 +245,7 @@ TEST(PoseRuntime, WeightBlendOnARig){
     PoseAnimationData data = armsAnimation(true);
     auto runtime = loaded(data, rig);
     const HumanPose& rest = rig.skinned->restPose();
-    const HumanPose& target = runtime->keys[1];
+    const HumanPose& target = runtime->keys()[1];
     for (float weight : {0.0f, 0.5f, 1.0f}){
         std::array<PoseBlendBone, HUMAN_BONE_COUNT> blend;
         for (int s = 0; s < HUMAN_BONE_COUNT; s++){
@@ -345,7 +347,7 @@ TEST(PoseRuntime, RigCacheFollowsTheModelData){
 TEST(PoseRuntime, PausedTransitionFreezes){
     PoseAnimationData data = armsAnimation(true);
     auto runtime = loaded(data, tposeRig());
-    runtime->displayed = runtime->keys[0];
+    runtime->displayed = runtime->keys()[0];
     runtime->hasDisplayed = true;
     PoseGoTo request;
     request.key = 1;
@@ -363,4 +365,107 @@ TEST(PoseRuntime, PausedTransitionFreezes){
     // a new goToPose runs again
     ASSERT_TRUE(runtime->startTransition(request));
     EXPECT_FALSE(runtime->transitionPaused);
+}
+
+// N animators of one animation on one model share one build (PoseBuildCache): the same file text
+// on the same rig is built once; another text or rig builds anew; entries go with the animators
+TEST(PoseRuntime, BuildCacheSharesOneBuild){
+    PoseBuildCache cache;
+    const PoseAnimationData data = armsAnimation(true);
+    const std::string text = writePoseAnimation(data);
+    auto runtimeFor = [&](const std::string& source, const std::shared_ptr<PoseRig>& rig){
+        auto runtime = std::make_shared<PoseAnimatorRuntime>();
+        runtime->path = "anims/arms.poseanim";
+        runtime->source = source;
+        runtime->data = data;
+        runtime->dataLoaded = true;
+        std::string error;
+        EXPECT_TRUE(runtime->build(rig, &error, &cache)) << error;
+        return runtime;
+    };
+    auto a = runtimeFor(text, tposeRig().skinned);
+    auto b = runtimeFor(text, tposeRig().skinned);
+    ASSERT_TRUE(a->isLoaded());
+    EXPECT_EQ(a->built.get(), b->built.get());
+    EXPECT_EQ(cache.buildCount(), 1u);
+    EXPECT_EQ(cache.size(), 1u);
+    EXPECT_EQ(a->keys().size(), 3u);
+    EXPECT_FLOAT_EQ(a->length, b->length);
+    // the file changed, or another model: a build of its own
+    auto edited = runtimeFor(text + " ", tposeRig().skinned);
+    auto other = runtimeFor(text, aposeRig().skinned);
+    EXPECT_NE(edited->built.get(), a->built.get());
+    EXPECT_NE(other->built.get(), a->built.get());
+    EXPECT_EQ(cache.buildCount(), 3u);
+    // the same as an uncached build
+    auto plain = loaded(data, tposeRig());
+    ASSERT_EQ(plain->frames().size(), a->frames().size());
+    for (size_t f = 0; f < a->frames().size(); f++){
+        EXPECT_LT(maxDifference(plain->frames()[f], a->frames()[f]), 1e-7);
+    }
+    // the editor's realisation takes the runtime's (const, cached) rig as it is
+    const std::shared_ptr<const PoseRig> runtimeRig = a->rig;
+    const auto realised = realisePoseAnimation(data, runtimeRig);
+    ASSERT_TRUE(realised);
+    EXPECT_EQ(realised->rig.get(), runtimeRig.get());
+    EXPECT_EQ(realised->frames.size(), a->frames().size());
+    // no source (data set directly): never cached
+    auto direct = runtimeFor("", tposeRig().skinned);
+    EXPECT_EQ(cache.buildCount(), 3u);
+    EXPECT_NE(direct->built.get(), a->built.get());
+    // the entries go with the last animator playing them
+    a.reset();
+    edited.reset();
+    other.reset();
+    cache.prune();
+    EXPECT_EQ(cache.size(), 1u);
+    b.reset();
+    cache.prune();
+    EXPECT_EQ(cache.size(), 0u);
+}
+
+// a rebuild (the model reloaded under a playing animator, a load retried) keeps the goToPose
+// target: a live transition goes on to its key, a settled one holds it at once
+TEST(PoseRuntime, RebuildKeepsTheGoToPoseTarget){
+    const PoseAnimationData data = armsAnimation(false);
+    auto previous = loaded(data, tposeRig());
+    PoseGoTo request;
+    request.key = 2;
+    request.duration = 0.3f;
+    ASSERT_TRUE(previous->startTransition(request));
+    HumanPose out;
+    previous->sampleTransition(0.05f, out);
+
+    auto rebuilt = loaded(data, tposeRig());
+    rebuilt->keepGoTo(*previous);
+    EXPECT_EQ(rebuilt->pending.key, 2);
+    EXPECT_FALSE(rebuilt->pendingArrived);
+    ASSERT_TRUE(rebuilt->startPending());
+    EXPECT_TRUE(rebuilt->transitionActive);
+    EXPECT_FALSE(rebuilt->transitionArrived);
+    EXPECT_EQ(rebuilt->transitionKey, 2);
+    EXPECT_NEAR(rebuilt->transition.duration, 0.3f, 1e-6);
+    EXPECT_EQ(rebuilt->pending.key, -1);
+
+    // settled before the rebuild: the key pose at once
+    previous->sampleTransition(100.0f, out);
+    ASSERT_TRUE(previous->transitionArrived);
+    auto settled = loaded(data, tposeRig());
+    settled->keepGoTo(*previous);
+    ASSERT_TRUE(settled->startPending());
+    HumanPose shown;
+    settled->sampleTransition(0.0f, shown);
+    EXPECT_LT(maxDifference(shown, settled->keys()[2]), 1e-7);
+
+    // a request made before the first load is kept as it is; nothing to keep: nothing pending
+    PoseAnimatorRuntime waiting;
+    waiting.pending = request;
+    auto next = loaded(data, tposeRig());
+    next->keepGoTo(waiting);
+    EXPECT_EQ(next->pending.key, 2);
+    auto idle = loaded(data, tposeRig());
+    auto fresh = loaded(data, tposeRig());
+    fresh->keepGoTo(*idle);
+    EXPECT_EQ(fresh->pending.key, -1);
+    EXPECT_FALSE(fresh->startPending());
 }

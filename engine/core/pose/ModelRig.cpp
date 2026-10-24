@@ -276,12 +276,15 @@ bool pose::resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& ov
     return validateHumanoid(skeleton, out, error);
 }
 
-std::string pose::humanoidSidecarStamp(const std::string& modelPath){
-    std::string text;
-    std::string error;
+bool pose::humanoidSidecarStamp(const std::string& modelPath, std::string& stamp, std::string* error){
+    stamp.clear();
     bool notFound = false;
-    if (!readTextFile(humanoidSidecarPath(modelPath), text, &error, &notFound)) return "";
-    return text;
+    if (readTextFile(humanoidSidecarPath(modelPath), stamp, error, &notFound)) return true;
+    stamp.clear();
+    if (!notFound) return false;
+    // no sidecar: all auto-detect
+    if (error) error->clear();
+    return true;
 }
 
 PoseRigCache& PoseRigCache::shared(){
@@ -292,8 +295,7 @@ PoseRigCache& PoseRigCache::shared(){
 bool PoseRigCache::find(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
                         const Skeleton& skeleton, ModelRigInfo& out){
     std::lock_guard<std::mutex> lock(mutex);
-    // the data of a reloaded or unloaded model is gone: its rigs too
-    entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& entry){ return entry.hasSource && entry.source.expired(); }), entries.end());
+    pruneLocked();
     for (const Entry& entry : entries){
         if (entry.modelPath != modelPath || entry.stamp != sidecarStamp) continue;
         if (entry.hasSource != (source != nullptr)) continue;
@@ -342,9 +344,14 @@ bool PoseRigCache::get(const std::string& modelPath, const std::string& sidecarS
     return true;
 }
 
-void PoseRigCache::remove(const std::string& modelPath){
+void PoseRigCache::pruneLocked(){
+    // the data of a reloaded or unloaded model is gone: its rigs too
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& entry){ return entry.hasSource && entry.source.expired(); }), entries.end());
+}
+
+void PoseRigCache::prune(){
     std::lock_guard<std::mutex> lock(mutex);
-    entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const Entry& entry){ return entry.modelPath == modelPath; }), entries.end());
+    pruneLocked();
 }
 
 void PoseRigCache::clear(){
@@ -370,8 +377,9 @@ bool pose::buildModelRig(Scene* scene, Entity model, ModelRigInfo& out, std::vec
         return false;
     }
 
-    // the sidecar next to the model file; missing = all auto-detect
-    const std::string stamp = humanoidSidecarStamp(modelComponent->filename);
+    // the sidecar next to the model file; missing = all auto-detect, unreadable = an error
+    std::string stamp;
+    if (!humanoidSidecarStamp(modelComponent->filename, stamp, error)) return false;
     HumanoidOverrides overrides;
     std::vector<std::string> warnings;
     if (!stamp.empty()){

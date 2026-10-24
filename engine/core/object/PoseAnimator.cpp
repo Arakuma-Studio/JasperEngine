@@ -6,6 +6,7 @@
 #include "subsystem/PoseAnimatorSystem.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -27,9 +28,11 @@ void PoseAnimator::setAnimation(const std::string& path){
     PoseAnimatorComponent& animator = getComponent<PoseAnimatorComponent>();
     animator.animation = path;
     animator.needsLoad = true;
-    // a new load even for the same path: the file may have changed
+    // a new load even for the same path: the file may have changed (no goToPose carried over)
     if (animator.runtime){
         animator.runtime->loading = false;
+        animator.runtime->pending = pose::PoseGoTo();
+        animator.runtime->transitionActive = false;
     }
     animator.time = 0;
 }
@@ -85,6 +88,8 @@ bool PoseAnimator::isPlaying() const{
 }
 
 void PoseAnimator::setTime(float time){
+    // NaN or infinity from a script: ignored (the clock would never recover)
+    if (!std::isfinite(time)) return;
     PoseAnimatorComponent& animator = getComponent<PoseAnimatorComponent>();
     animator.time = std::max(time, 0.0f);
     if (animator.runtime && animator.runtime->isLoaded()){
@@ -107,6 +112,7 @@ float PoseAnimator::getLength() const{
 }
 
 void PoseAnimator::setSpeed(float speed){
+    if (!std::isfinite(speed)) return;
     getComponent<PoseAnimatorComponent>().speed = speed;
 }
 
@@ -115,6 +121,7 @@ float PoseAnimator::getSpeed() const{
 }
 
 void PoseAnimator::setWeight(float weight){
+    if (std::isnan(weight)) return;
     getComponent<PoseAnimatorComponent>().weight = std::clamp(weight, 0.0f, 1.0f);
 }
 

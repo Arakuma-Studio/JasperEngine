@@ -159,24 +159,107 @@ Vector3 PoseBlendBone::blendPosition(const Vector3& current, const Vector3& pose
     return writtenPosition;
 }
 
-bool PoseAnimatorRuntime::build(std::shared_ptr<const PoseRig> rigToUse, std::string* error){
+PoseBuildCache& PoseBuildCache::shared(){
+    static PoseBuildCache cache;
+    return cache;
+}
+
+std::shared_ptr<const PoseAnimationBuild> PoseBuildCache::build(const PoseAnimationData& data, const PoseRig& rig, std::string* error){
+    if (data.poses.empty()){
+        if (error) *error = "the animation has no poses";
+        return nullptr;
+    }
+    auto result = std::make_shared<PoseAnimationBuild>();
+    result->keys = realiseKeys(data, rig, nullptr);
+    const SamplerInput input = makeSamplerInput(data, result->keys, &rig);
+    result->length = (float)input.timeline.length;
+    result->frames = pose::frames(input, data.settings.frameRate);
+    if (result->frames.empty()){
+        if (error) *error = "the animation has no frames";
+        return nullptr;
+    }
+    return result;
+}
+
+void PoseBuildCache::pruneLocked(){
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [](const Entry& entry){
+        return entry.rig.expired() || entry.build.expired();
+    }), entries.end());
+}
+
+std::shared_ptr<const PoseAnimationBuild> PoseBuildCache::findLocked(const std::string& path, const std::string& source,
+                                                                     const std::shared_ptr<const PoseRig>& rig) const{
+    for (const Entry& entry : entries){
+        if (entry.path != path || entry.source != source || entry.rig.lock() != rig) continue;
+        if (std::shared_ptr<const PoseAnimationBuild> found = entry.build.lock()) return found;
+    }
+    return nullptr;
+}
+
+std::shared_ptr<const PoseAnimationBuild> PoseBuildCache::get(const std::string& path, const std::string& source,
+                                                              const std::shared_ptr<const PoseRig>& rig, const PoseAnimationData& data,
+                                                              std::string* error){
+    if (!rig){
+        if (error) *error = "the rig is not valid";
+        return nullptr;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        pruneLocked();
+        if (std::shared_ptr<const PoseAnimationBuild> found = findLocked(path, source, rig)) return found;
+    }
+    // built without the lock: realising and sampling take a while
+    std::shared_ptr<const PoseAnimationBuild> made = build(data, *rig, error);
+    if (!made) return nullptr;
+    std::lock_guard<std::mutex> lock(mutex);
+    builds++;
+    // another thread built the same meanwhile: theirs is shared
+    if (std::shared_ptr<const PoseAnimationBuild> found = findLocked(path, source, rig)) return found;
+    entries.push_back({path, source, rig, made});
+    return made;
+}
+
+void PoseBuildCache::prune(){
+    std::lock_guard<std::mutex> lock(mutex);
+    pruneLocked();
+}
+
+void PoseBuildCache::clear(){
+    std::lock_guard<std::mutex> lock(mutex);
+    entries.clear();
+}
+
+size_t PoseBuildCache::size() const{
+    std::lock_guard<std::mutex> lock(mutex);
+    return entries.size();
+}
+
+uint64_t PoseBuildCache::buildCount() const{
+    std::lock_guard<std::mutex> lock(mutex);
+    return builds;
+}
+
+const std::vector<HumanPose>& PoseAnimatorRuntime::keys() const{
+    static const std::vector<HumanPose> none;
+    return built ? built->keys : none;
+}
+
+const std::vector<HumanPose>& PoseAnimatorRuntime::frames() const{
+    static const std::vector<HumanPose> none;
+    return built ? built->frames : none;
+}
+
+bool PoseAnimatorRuntime::build(std::shared_ptr<const PoseRig> rigToUse, std::string* error, PoseBuildCache* cache){
     if (!rigToUse || !rigToUse->valid()){
         if (error) *error = "the rig is not valid";
         return false;
     }
-    if (data.poses.empty()){
-        if (error) *error = "the animation has no poses";
-        return false;
-    }
+    std::shared_ptr<const PoseAnimationBuild> made = cache && !source.empty() ? cache->get(path, source, rigToUse, data, error)
+                                                                              : PoseBuildCache::build(data, *rigToUse, error);
+    if (!made) return false;
     rig = rigToUse;
-    keys = realiseKeys(data, *rig, nullptr);
-    SamplerInput input = makeSamplerInput(data, keys, rig.get());
-    length = (float)input.timeline.length;
-    frames = pose::frames(input, data.settings.frameRate);
-    if (frames.empty()){
-        if (error) *error = "the animation has no frames";
-        return false;
-    }
+    built = made;
+    length = made->length;
     hasDisplayed = false;
     transitionActive = false;
     return true;
@@ -191,11 +274,11 @@ int PoseAnimatorRuntime::findPose(const std::string& name) const{
 }
 
 void PoseAnimatorRuntime::samplePlayback(float time, HumanPose& out) const{
-    sampleFrames(frames, length, data.settings.loop, stepped(), time, out);
+    sampleFrames(frames(), length, data.settings.loop, stepped(), time, out);
 }
 
 bool PoseAnimatorRuntime::startTransition(const PoseGoTo& request){
-    if (!isLoaded() || request.key < 0 || request.key >= (int)keys.size()) return false;
+    if (!isLoaded() || request.key < 0 || request.key >= (int)keys().size()) return false;
 
     Transition tr = data.settings.transition;
     if (request.duration >= 0.0f) tr.duration = request.duration;
@@ -205,7 +288,7 @@ bool PoseAnimatorRuntime::startTransition(const PoseGoTo& request){
     tr.overshoot = std::clamp(tr.overshoot, 0.0f, 0.9f);
     tr.anticipation = std::clamp(tr.anticipation, 0.0f, 0.5f);
 
-    transitionFrom = hasDisplayed ? displayed : frames[0];
+    transitionFrom = hasDisplayed ? displayed : frames()[0];
     // the frames' ground rule (4.8): a start on the floor (up to 1e-3 humanScale above it)
     // counts as grounded
     transitionFromGrounded = !rig->valid() ||
@@ -220,6 +303,29 @@ bool PoseAnimatorRuntime::startTransition(const PoseGoTo& request){
     return true;
 }
 
+void PoseAnimatorRuntime::keepGoTo(const PoseAnimatorRuntime& previous){
+    if (previous.pending.key >= 0){
+        pending = previous.pending;
+        pendingArrived = previous.pendingArrived;
+    }else if (previous.transitionActive && previous.transitionKey >= 0){
+        pending.key = previous.transitionKey;
+        pending.duration = previous.transition.duration;
+        pending.overshoot = previous.transition.overshoot;
+        pending.anticipation = previous.transition.anticipation;
+        pendingArrived = previous.transitionArrived;
+    }
+}
+
+bool PoseAnimatorRuntime::startPending(){
+    const bool started = pending.key >= 0 && startTransition(pending);
+    if (started && pendingArrived){
+        transitionArrived = true;
+    }
+    pending = PoseGoTo();
+    pendingArrived = false;
+    return started;
+}
+
 float PoseAnimatorRuntime::transitionSettleTime() const{
     float settle = 0.0f;
     for (int b = 0; b < HUMAN_BONE_COUNT; b++){
@@ -232,8 +338,8 @@ float PoseAnimatorRuntime::transitionSettleTime() const{
 }
 
 void PoseAnimatorRuntime::transitionPose(float time, HumanPose& out) const{
-    if (transitionKey < 0 || transitionKey >= (int)keys.size()) return;
-    const HumanPose& to = keys[transitionKey];
+    if (transitionKey < 0 || transitionKey >= (int)keys().size()) return;
+    const HumanPose& to = keys()[transitionKey];
     float t = std::max(time, 0.0f);
     if (data.settings.stepRate > 0.0f){
         t = std::floor(t * data.settings.stepRate + 1e-4f) / data.settings.stepRate;
@@ -262,15 +368,15 @@ void PoseAnimatorRuntime::transitionPose(float time, HumanPose& out) const{
 }
 
 void PoseAnimatorRuntime::sampleTransition(float dt, HumanPose& out){
-    if (!transitionActive || transitionKey < 0 || transitionKey >= (int)keys.size()) return;
+    if (!transitionActive || transitionKey < 0 || transitionKey >= (int)keys().size()) return;
     if (transitionArrived){
-        out = keys[transitionKey];
+        out = keys()[transitionKey];
         return;
     }
     transitionTime += std::max(dt, 0.0f);
     if (transitionTime >= transitionSettle){
         transitionArrived = true;
-        out = keys[transitionKey];
+        out = keys()[transitionKey];
         return;
     }
     transitionPose(transitionTime, out);

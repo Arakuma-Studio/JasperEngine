@@ -58,9 +58,10 @@ namespace jasperengine::pose {
     JASPERENGINE_API bool resolveHumanoid(const Skeleton& skeleton, const HumanoidOverrides& overrides, HumanoidMap& out,
                                           std::string* error, std::vector<std::string>* notes = nullptr);
 
-    // The sidecar's content, "" when there is none: what decides whether a cached rig is current
-    // (the engine file API has no modification times in exported games, the text is tiny)
-    JASPERENGINE_API std::string humanoidSidecarStamp(const std::string& modelPath);
+    // The sidecar's content in `stamp`, "" when there is none: what decides whether a cached rig
+    // is current (the engine file API has no modification times in exported games, the text is
+    // tiny). False with `error` when the sidecar exists but cannot be read (as the editor fails).
+    JASPERENGINE_API bool humanoidSidecarStamp(const std::string& modelPath, std::string& stamp, std::string* error);
 
     // A cached rig is shared: read-only (const) for everyone
     struct JASPERENGINE_API ModelRigInfo {
@@ -74,7 +75,8 @@ namespace jasperengine::pose {
     // sidecar stamp, the model's loaded data (`source`: the ModelComponent's gltfModel/objModel,
     // held weakly, so a reloaded file is new data) and the skeleton (names, parents, rest TRS)
     // all match, else builds it (resolveHumanoid + setSkin + PoseRig::build) outside the lock and
-    // caches it. Entries whose source data is gone (model reloaded or unloaded) are dropped.
+    // caches it. Entries whose source data is gone (model reloaded or unloaded) are dropped on
+    // every get and by prune() (a scene's PoseAnimatorSystem prunes when the scene goes).
     // Thread safe. The editor clears it when a project closes.
     class JASPERENGINE_API PoseRigCache {
     public:
@@ -89,7 +91,7 @@ namespace jasperengine::pose {
                  const HumanoidOverrides& overrides, const std::function<std::shared_ptr<PoseSkin>()>& skinFactory,
                  ModelRigInfo& out, std::string* error);
 
-        void remove(const std::string& modelPath);
+        void prune();
         void clear();
         size_t size() const;
 
@@ -102,6 +104,7 @@ namespace jasperengine::pose {
             Skeleton skeleton;
             ModelRigInfo info;
         };
+        void pruneLocked();
         bool find(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
                   const Skeleton& skeleton, ModelRigInfo& out);
         mutable std::mutex mutex;

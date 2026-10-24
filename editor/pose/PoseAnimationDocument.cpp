@@ -356,7 +356,7 @@ void editor::PoseAnimationDocument::notify(Change change){
 }
 
 std::shared_ptr<editor::PoseRealisation> editor::PoseAnimationDocument::realiseData(const pose::PoseAnimationData& data,
-                                                                                  const std::shared_ptr<pose::PoseRig>& rig){
+                                                                                  const std::shared_ptr<const pose::PoseRig>& rig){
     return pose::realisePoseAnimation(data, rig);
 }
 
@@ -367,7 +367,7 @@ void editor::PoseAnimationDocument::closeAll(){
     reg.projectPath.clear();
 }
 
-std::shared_ptr<const editor::PoseRealisation> editor::PoseAnimationDocument::realise(const std::shared_ptr<pose::PoseRig>& rig){
+std::shared_ptr<const editor::PoseRealisation> editor::PoseAnimationDocument::realise(const std::shared_ptr<const pose::PoseRig>& rig){
     if (!rig){
         return nullptr;
     }

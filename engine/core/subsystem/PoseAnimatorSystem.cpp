@@ -50,10 +50,13 @@ bool PoseAnimatorSystem::startLoad(PoseAnimatorComponent& animator){
     auto runtime = std::make_shared<pose::PoseAnimatorRuntime>();
     // the bones keep what the previous runtime wrote: its blend state says what is under it
     if (animator.runtime){
-        runtime->blend = animator.runtime->blend;
-        runtime->blendEntities = animator.runtime->blendEntities;
-        if (animator.runtime->path == animator.animation){
-            runtime->loggedError = animator.runtime->loggedError;
+        const pose::PoseAnimatorRuntime& previous = *animator.runtime;
+        runtime->blend = previous.blend;
+        runtime->blendEntities = previous.blendEntities;
+        if (previous.path == animator.animation){
+            runtime->loggedError = previous.loggedError;
+            // a rebuild (model reloaded, load retried) keeps the goToPose target
+            runtime->keepGoTo(previous);
         }
     }
     runtime->path = animator.animation;
@@ -70,7 +73,11 @@ bool PoseAnimatorSystem::startLoad(PoseAnimatorComponent& animator){
 
     std::vector<std::string> warnings;
     std::string error;
-    if (!pose::loadPoseAnimationFile(animator.animation, runtime->data, warnings, &error)){
+    // the text is kept: with the rig it is what animators share one build by (PoseBuildCache)
+    if (!pose::readTextFile(animator.animation, runtime->source, &error)){
+        return fail(animator, animator.animation + ": " + error);
+    }
+    if (!pose::parsePoseAnimation(runtime->source, runtime->data, warnings, &error)){
         return fail(animator, animator.animation + ": " + error);
     }
     for (const std::string& warning : warnings){
@@ -120,7 +127,7 @@ bool PoseAnimatorSystem::buildRuntime(Entity entity, PoseAnimatorComponent& anim
     if (!pose::buildModelRig(scene, entity, rigInfo, boneEntities, &bridges, &error)){
         return fail(animator, "'" + scene->getEntityName(entity) + "': " + error);
     }
-    if (!runtime.build(rigInfo.rig, &error)){
+    if (!runtime.build(rigInfo.rig, &error, &pose::PoseBuildCache::shared())){
         return fail(animator, animator.animation + ": " + error);
     }
 
@@ -241,6 +248,10 @@ void PoseAnimatorSystem::draw(){
 }
 
 void PoseAnimatorSystem::destroy(){
+    // a scene goes: the shared rigs and builds of model data already freed go (this scene's own
+    // on the next prune or get, once its components are gone; the editor prunes after a scene closes)
+    pose::PoseBuildCache::shared().prune();
+    pose::PoseRigCache::shared().prune();
 }
 
 void PoseAnimatorSystem::update(double dt){
@@ -257,6 +268,13 @@ void PoseAnimatorSystem::update(double dt){
 
         if (!scene->isEntityActiveInHierarchy(entity)){
             continue;
+        }
+
+        // non-finite fields (Inspector, MCP, a script's arithmetic) neither move nor drive the pose
+        const float speed = std::isfinite(animator.speed) ? animator.speed : 0.0f;
+        const float weight = std::isfinite(animator.weight) ? animator.weight : 0.0f;
+        if (!std::isfinite(animator.time)){
+            animator.time = 0.0f;
         }
 
         if (!animator.started){
@@ -287,9 +305,8 @@ void PoseAnimatorSystem::update(double dt){
             animator.needsLoad = false;
             pose::PoseAnimatorRuntime& loaded = *animator.runtime;
             if (loaded.pending.key >= 0){
-                loaded.startTransition(loaded.pending);
-                loaded.pending = pose::PoseGoTo();
-            }else if (animator.playing && animator.speed < 0.0f && !loaded.data.settings.loop && animator.time <= 0.0f){
+                loaded.startPending();
+            }else if (animator.playing && speed < 0.0f && !loaded.data.settings.loop && animator.time <= 0.0f){
                 // a one-shot played backwards starts at its end
                 animator.time = loaded.length;
             }else if (!animator.playing && animator.time == 0){
@@ -312,11 +329,11 @@ void PoseAnimatorSystem::update(double dt){
             continue;
         }
 
-        pose::HumanPose shown = runtime.hasDisplayed ? runtime.displayed : runtime.frames[0];
+        pose::HumanPose shown = runtime.hasDisplayed ? runtime.displayed : runtime.frames()[0];
         if (runtime.transitionActive){
-            runtime.sampleTransition(runtime.transitionPaused ? 0.0f : (float)dt * std::abs(animator.speed), shown);
+            runtime.sampleTransition(runtime.transitionPaused ? 0.0f : (float)dt * std::abs(speed), shown);
         }else{
-            if (pose::advancePlayback(animator.time, animator.playing, (float)dt, animator.speed,
+            if (pose::advancePlayback(animator.time, animator.playing, (float)dt, speed,
                                       runtime.length, runtime.data.settings.loop)){
                 finished.push_back(entity);
             }
@@ -325,7 +342,7 @@ void PoseAnimatorSystem::update(double dt){
         runtime.displayed = shown;
         runtime.hasDisplayed = true;
 
-        applyPose(runtime, shown, animator.weight);
+        applyPose(runtime, shown, weight);
     }
 
     // user code last: it may add or remove components (and move the array under the loop)

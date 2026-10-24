@@ -90,9 +90,9 @@ namespace jasperengine::editor{
                     const std::vector<ExtraFile>& extraFiles = {});
 
         // The animation realised on `rig`, cached by revision and rig (null rig: null)
-        std::shared_ptr<const PoseRealisation> realise(const std::shared_ptr<pose::PoseRig>& rig);
+        std::shared_ptr<const PoseRealisation> realise(const std::shared_ptr<const pose::PoseRig>& rig);
         // The same for any data (not cached): auto timing and edits before their commit
-        static std::shared_ptr<PoseRealisation> realiseData(const pose::PoseAnimationData& data, const std::shared_ptr<pose::PoseRig>& rig);
+        static std::shared_ptr<PoseRealisation> realiseData(const pose::PoseAnimationData& data, const std::shared_ptr<const pose::PoseRig>& rig);
 
         // Reads the file again (when its text changed) and notifies the listeners
         void reloadFromDisk();

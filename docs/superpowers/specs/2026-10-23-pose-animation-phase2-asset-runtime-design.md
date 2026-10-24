@@ -95,7 +95,13 @@ has a PoseAnimator, or fall back to the sole estimate: `skin == nullptr`). A
 model, keyed by (model file path, the sidecar's content as its stamp: exported games have no file
 modification times, the loaded model data held weakly as the content identity: a reloaded file is
 new data and its old entries are dropped, the skeleton). The editor clears the cache when a project
-closes. Implemented in `engine/core/pose/ModelRig.{h,cpp}` (`buildModelRig` runs the whole path for a
+closes and prunes it (entries whose model data is gone) after a scene closes; a scene's
+`PoseAnimatorSystem::destroy` prunes it too (`PoseRigCache::remove` is gone: nothing used it). A
+sidecar that exists but cannot be read fails the rig (the animator's error), as in the editor; only
+a missing one means all-auto. `PoseBuildCache` (`PoseAnimatorRuntime.h`) shares the built keys and
+frames (`PoseAnimationBuild`) the same way, keyed by (animation path, the file's text, the rig
+pointer), entries held weakly (gone with the last animator playing them; cleared with the rig
+cache): N animators of one animation on one model build once. Implemented in `engine/core/pose/ModelRig.{h,cpp}` (`buildModelRig` runs the whole path for a
 scene Model; non-bone nodes between bones or above the root bone are folded into the rest TRS and
 returned as bridges).
 
@@ -168,7 +174,11 @@ flushed and before transforms and skinning are computed. Per animator:
   the floor (lowest point at most 1e-3 humanScale above it) and the key is grounded, g = 0 when
   neither is, else smoothstep(clamp01(e_hips)) faded out (launch) or in (landing); the lowest point
   ends at floor + (1 - g) * max(h, 0) (`pose::transitionGroundWeight`, `pose::groundToWeight` and
-  `pose::clampPoseToLimits` are the frames' own code).
+  `pose::clampPoseToLimits` are the frames' own code). A rebuild of the same file (the model
+  reloaded, a failed load retried) keeps the goToPose target (a settled one holds the key at once);
+  `setAnimation` drops it.
+- Non-finite input: `setSpeed`/`setTime` ignore NaN and infinities, `setWeight` ignores NaN; the
+  system treats a non-finite component `speed` or `weight` as 0 and a non-finite `time` as 0.
 - Apply: for every mapped slot bone: `local = slerp(current, pose, weight)`; hips position lerped
   the same way; unmapped bones untouched; mark transforms dirty.
 - Editor: animators do not run in edit mode (the Pose Animation window drives previews itself,
@@ -291,6 +301,18 @@ applied}], warnings: [...], poses: [the touched poses, `full` shape]}` plus the 
 `ops[2].angles: unknown DOF 'left_elbow.bend' (did you mean 'left_lower_arm.bend'?)`.
 Joint limits: when `humanize.joint_limits` is on, added/updated poses are clamped and the
 clamped DOFs are reported in `clamped`.
+Final review rulings: `blend_to` lerps DOF values plainly (they are joint angles inside their ranges,
+not headings: 170 -> -60 at 0.5 is 55). The joint-limit clamp runs after every op (and once more at
+the end, for limits turned on by a later op), so `from`, `blend_to` and `mirror_pose` read the stored
+(clamped) values; `clamped` lists, per pose (its final index) and DOF, the last clamped request
+still in effect. The result always has `preset` (null when no preset matches, as get), and
+`rig_error` (text: `no metrics: <error>`) when the preview model is not a usable humanoid; a
+`create` from a template returns all the template's poses with their metrics. The document
+files-written hook (MCP file sync) is installed once, when the MCP context exists.
+Pose Animator `animation` over MCP (add_component, set_properties, get_entity): project-relative
+like a Model's `filename` (`assets/anim/walk.poseanim`, the path the pose tools take; the stored
+assets-relative form of an existing file is accepted too), a `.poseanim`, stored relative to the
+assets folder; `bake` without path echoes it project-relative in `source`.
 
 ### 6.3 Budget, instructions, guide
 
