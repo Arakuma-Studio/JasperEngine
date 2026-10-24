@@ -1063,7 +1063,10 @@ Scene view (§9.2):
   cursor wins over the lattice entity's own gizmo (its arrows cross the cage); with points
   selected their gizmo's handles win, as for the other sub-selections. Verified by hand: the
   wheel during a falloff drag shrinks the ring and the moved neighbours without zooming, F
-  frames the selected point. A rectangle while a lattice is edited selects
+  frames the selected point, E on all points rotates them about the centroid (y offsets stay
+  0, radii kept, the axis column stays), R scales them. The uniform scale handle inherits the
+  object tool's ratio (distance from the gizmo centre now / at the press), so a press right on
+  the centre gives a very large factor, as it does for objects. A rectangle while a lattice is edited selects
   points (Shift adds) and keeps the lattice selected; a click on empty space with points
   selected clears the points and keeps the lattice (the next one deselects as usual);
   clicking another entity selects it (points dropped by `validateSelection`).
