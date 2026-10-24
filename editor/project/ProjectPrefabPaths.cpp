@@ -458,7 +458,7 @@ void editor::Project::savePrefabToDisk(const std::filesystem::path& filepath) {
     YAML::Node encodedNode = encodePrefabNode(filepath);
     if (encodedNode && !encodedNode.IsNull()) {
         std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
-        if (FileUtils::writeFileReplacing(fullPrefabPath, YAML::Dump(encodedNode))) {
+        if (FileUtils::writeFileReplacing(fullPrefabPath, YAML::Dump(encodedNode), FileUtils::LineEndings::KeepExisting)) {
             prefab->isModified = false;
             prefab->needsUpgrade = false;
             markReferencedSceneIdsPersisted(prefab->registry.get());

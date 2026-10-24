@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // Saving and the child scene graph: FileUtils::writeFileReplacing (what project.yaml, scenes,
-// prefabs and materials are written with) leaves the old file whole when a write fails, and
+// prefabs, materials and scripts are written with) leaves the old file whole when a write fails,
+// retries a rename that fails for a moment and keeps a file's \r\n line endings, and
 // Project refuses a child scene that would make a cycle, also when an undo or redo would.
 // The Stop and model load cases run in the editor (tools/mcp/tests/test_project_save.py).
 
@@ -20,10 +21,12 @@
 #include <sys/resource.h>
 #endif
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -99,6 +102,57 @@ TEST(WriteFileReplacing, AFailedRenameKeepsTheTarget) {
     // no directory to write into: nothing is made
     EXPECT_FALSE(FileUtils::writeFileReplacing(dir / "missing" / "Level.scene", "content\n"));
     EXPECT_FALSE(fs::exists(dir / "missing"));
+    fs::remove_all(dir);
+}
+
+// Windows: a reader or a virus scan holding the file for a moment makes a rename fail; the
+// rename is tried again before the save gives up. Here a directory in the way goes soon after.
+TEST(WriteFileReplacing, RetriesARenameThatFailsForAMoment) {
+    const fs::path dir = tempDir("retry");
+    const fs::path target = dir / "Main.scene";
+    fs::create_directories(target);
+
+    std::thread release([target]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(FileUtils::renameRetryMs / 2));
+        std::error_code ec;
+        fs::remove(target, ec);
+    });
+    const bool written = FileUtils::writeFileReplacing(target, "saved\n");
+    release.join();
+
+    EXPECT_TRUE(written);
+    EXPECT_EQ(readAll(target), "saved\n");
+    EXPECT_EQ(entryCount(dir), 1u);
+    fs::remove_all(dir);
+}
+
+// A file of a Windows checkout keeps its \r\n; new files and files with \n get \n
+TEST(WriteFileReplacing, KeepsTheLineEndingsOfTheFileItReplaces) {
+    const fs::path dir = tempDir("eol");
+    const auto keep = FileUtils::LineEndings::KeepExisting;
+
+    const fs::path crlf = dir / "Windows.scene";
+    writeAll(crlf, "id: 1\r\nname: Old\r\n");
+    EXPECT_TRUE(FileUtils::writeFileReplacing(crlf, "id: 1\nname: New\nscene: {}\n", keep));
+    EXPECT_EQ(readAll(crlf), "id: 1\r\nname: New\r\nscene: {}\r\n");
+    // text that already has \r\n (a script read on Linux) gets no second \r
+    EXPECT_TRUE(FileUtils::writeFileReplacing(crlf, "a\r\nb\nc", keep));
+    EXPECT_EQ(readAll(crlf), "a\r\nb\r\nc");
+
+    const fs::path lf = dir / "Linux.scene";
+    writeAll(lf, "id: 2\nname: Old\r\n");  // the first line decides
+    EXPECT_TRUE(FileUtils::writeFileReplacing(lf, "id: 2\nname: New\n", keep));
+    EXPECT_EQ(readAll(lf), "id: 2\nname: New\n");
+
+    EXPECT_TRUE(FileUtils::writeFileReplacing(dir / "New.prefab", "guid: x\nname: y\n", keep));
+    EXPECT_EQ(readAll(dir / "New.prefab"), "guid: x\nname: y\n");
+
+    // AsGiven (the default): the bytes as they are, whatever the file had
+    const fs::path binary = dir / "Data.bin";
+    writeAll(binary, std::string("\x01\r\n\x02", 4));
+    const std::string bytes("\x89PNG\n\x1a\n\0", 8);
+    EXPECT_TRUE(FileUtils::writeFileReplacing(binary, bytes));
+    EXPECT_EQ(readAll(binary), bytes);
     fs::remove_all(dir);
 }
 

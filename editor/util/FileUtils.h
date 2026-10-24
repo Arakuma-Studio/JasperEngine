@@ -4,12 +4,14 @@
 #pragma once
 
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -157,12 +159,47 @@ public:
         return ofs ? WriteResult::Written : WriteResult::Failed;
     }
 
+    // How writeFileReplacing() treats the line endings of the content
+    enum class LineEndings {
+        AsGiven,        // the bytes as they are (binary files, content that is already final)
+        KeepExisting    // text the editor makes with \n: a file there already written with
+                        // \r\n (an existing Windows checkout) gets \r\n again, a new one \n
+    };
+
+    // True when the first line of the file ends with \r\n
+    static bool fileUsesCrlf(const std::filesystem::path& filePath) {
+        std::ifstream ifs(filePath, std::ios::in | std::ios::binary);
+        char previous = 0;
+        char c = 0;
+        while (ifs.get(c)) {
+            if (c == '\n') {
+                return previous == '\r';
+            }
+            previous = c;
+        }
+        return false;
+    }
+
+    // Every line ending as \r\n (an \r\n already there stays one)
+    static std::string toCrlf(const std::string& text) {
+        std::string out;
+        out.reserve(text.size() + text.size() / 16);
+        for (size_t i = 0; i < text.size(); i++) {
+            if (text[i] == '\n' && (i == 0 || text[i - 1] != '\r')) {
+                out += '\r';
+            }
+            out += text[i];
+        }
+        return out;
+    }
+
     // Writes a temporary file next to the target and renames it over the target, so a save
     // that fails (a full disk, a crash halfway) keeps the old file whole. rename() replaces an
     // existing target on Windows too (MoveFileExW with MOVEFILE_REPLACE_EXISTING). As with a
     // plain write, a symlink is written through and a file the user may not write (read-only,
     // a locked file) is refused; an existing file keeps its permissions.
-    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content) {
+    static bool writeFileReplacing(const std::filesystem::path& filePath, const std::string& content,
+                                   LineEndings lineEndings = LineEndings::AsGiven) {
         namespace fs = std::filesystem;
 
         std::error_code ec;
@@ -176,12 +213,15 @@ public:
 
         const fs::file_status status = fs::status(target, ec);
         const bool exists = !ec && fs::exists(status);
+        const bool existingFile = exists && fs::is_regular_file(status);
 #ifndef _WIN32
         // The directory's permissions would let the rename through
         if (exists && ::access(target.c_str(), W_OK) != 0) {
             return false;
         }
 #endif
+
+        const bool crlf = lineEndings == LineEndings::KeepExisting && existingFile && fileUsesCrlf(target);
 
         // Same directory, so the rename never crosses a file system
         fs::path tempName(".");
@@ -193,7 +233,9 @@ public:
         {
             std::ofstream ofs(tempPath, std::ios::out | std::ios::binary | std::ios::trunc);
             if (ofs) {
-                ofs.write(content.data(), static_cast<std::streamsize>(content.size()));
+                const std::string converted = crlf ? toCrlf(content) : std::string();
+                const std::string& data = crlf ? converted : content;
+                ofs.write(data.data(), static_cast<std::streamsize>(data.size()));
                 ofs.flush();
                 ofs.close();
                 written = !ofs.fail();
@@ -201,13 +243,20 @@ public:
         }
 
         if (written) {
-            if (exists) {
+            if (existingFile) {
                 fs::permissions(tempPath, status.permissions(), fs::perm_options::replace, ec);
             }
-            ec.clear();
-            fs::rename(tempPath, target, ec);
-            if (!ec) {
-                return true;
+            // Windows cannot replace a file that a reader, the indexer or a virus scan
+            // briefly holds, so the rename is tried again for a while
+            for (int attempt = 0; attempt < renameAttempts; attempt++) {
+                if (attempt > 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(renameRetryMs));
+                }
+                ec.clear();
+                fs::rename(tempPath, target, ec);
+                if (!ec) {
+                    return true;
+                }
             }
         }
 
@@ -217,6 +266,10 @@ public:
         errno = writeErrno;
         return false;
     }
+
+    // writeFileReplacing(): renames tried before it fails, and the wait between them
+    static constexpr int renameAttempts = 10;
+    static constexpr int renameRetryMs = 50;
 
     // True when the file holds newContent afterwards, written or already up to date.
     // Use writeFile() when a no-op has to be told apart from a failure.

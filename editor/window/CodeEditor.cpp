@@ -1029,7 +1029,7 @@ void editor::CodeEditor::addScriptEvent(const std::string& filepath, size_t even
             }
             if (isTarget) target = &open->second;
         } else if (change.texts[i] != texts[i]) {
-            if (!FileUtils::writeFileReplacing(resolveFilepath(paths[i]), change.texts[i])) {
+            if (!FileUtils::writeFileReplacing(resolveFilepath(paths[i]), change.texts[i], FileUtils::LineEndings::KeepExisting)) {
                 Out::error("Could not write file: %s", key.c_str());
                 continue;
             }
@@ -1327,7 +1327,8 @@ void editor::CodeEditor::insertCppEntityProperty(EditorInstance& instance, Entit
             }
         }
 
-        if (!FileUtils::writeFileReplacing(resolveFilepath(headerPath), headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos))) {
+        if (!FileUtils::writeFileReplacing(resolveFilepath(headerPath), headerText.substr(0, insertPos) + propCode + headerText.substr(insertPos),
+                                           FileUtils::LineEndings::KeepExisting)) {
             Out::error("Could not write header file: %s", headerPath.string().c_str());
             return;
         }
@@ -1393,7 +1394,7 @@ bool editor::CodeEditor::save(EditorInstance& instance) {
     try {
         fs::path fullPath = resolveFilepath(instance.filepath);
         // A failed write keeps the script as it was on disk
-        if (!FileUtils::writeFileReplacing(fullPath, instance.editor->GetText())) {
+        if (!FileUtils::writeFileReplacing(fullPath, instance.editor->GetText(), FileUtils::LineEndings::KeepExisting)) {
             return false;
         }
 

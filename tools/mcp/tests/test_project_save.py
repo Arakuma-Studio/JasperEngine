@@ -122,6 +122,34 @@ async def test_model_load_undo_keeps_parent(ed: Editor):
     ed.check_in("Tri", [n["name"] for n in holder_node.get("children", [])], "Tri listed under Holder")
 
 
+# -- line endings ---------------------------------------------------------------------------
+
+
+async def test_save_keeps_crlf_of_existing_files(ed: Editor):
+    """A scene and project.yaml checked out with \\r\\n (a Windows checkout) are saved with \\r\\n
+    again, so one save does not show every line as changed; a new scene file gets \\n."""
+    scene = (await ed.call("create_scene", name="Endings", type="3D", path="scenes/Endings"))["scene"]["id"]
+    await ed.call("create_entity", scene=scene, type="cube", name="First")
+    await ed.call("save_scene", scene=scene)
+    scene_file = ed.project / "scenes" / "Endings.scene"
+    first = scene_file.read_bytes()
+    ed.check(b"\r\n" not in first, "a new scene file is written with \\n")
+
+    scene_file.write_bytes(first.replace(b"\n", b"\r\n"))
+    project_file = ed.project / "project.yaml"
+    project_file.write_bytes(project_file.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+
+    await ed.call("create_entity", scene=scene, type="cube", name="Second")
+    await ed.call("save_scene", scene=scene)
+    saved = scene_file.read_bytes()
+    ed.check(b"Second" in saved, "the edit was saved")
+    ed.check(saved.count(b"\n") == saved.count(b"\r\n"), "every line of the scene still ends with \\r\\n")
+    ed.check_in("Second", [n["name"] for n in (await ed.call("get_scene_tree", scene=scene, format="json"))["nodes"]])
+    ed.check(yaml.safe_load(saved.decode()), "the \\r\\n scene file parses")
+    project = project_file.read_bytes()
+    ed.check(project.count(b"\n") == project.count(b"\r\n"), "project.yaml still ends its lines with \\r\\n")
+
+
 # -- Stop and the scenes that ran as Play copies -------------------------------------------
 
 
