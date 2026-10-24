@@ -568,3 +568,11 @@ The `gpuMs` value is present when S15 timings exist.
   switch it to Custom.
 - **Determinism hash (AC9).** The bake's SHA-256 is pinned for x86-64 Linux builds; on other
   toolchains the test checks that two bakes are identical (libm may round differently).
+- **Bake budget scales with the workers (AC9).** `AtmosphereNoiseTest` allows
+  250 ms x max(1, 4 / background workers): the bake is spread over S06's Background lane, so a
+  shared CI host with fewer workers gets proportionally more time.
+- **Web gate (AC14).** `tools/web/gates/atmosphere.json` checks the Low-tier valley scene's centre
+  pixel and the tier's console line in a WebGL2 browser; the forced RGBA8 path is compared with
+  the float one by `AtmosphereGpu.LowPrecisionTargetsMatchFloatOnes` (glcore).
+- **Not covered by a dedicated test:** water refraction under fog (AC16 relies on the water pass
+  sampling the fogged scene colour, unchanged by S12), and the AC10 reference-hardware run.
