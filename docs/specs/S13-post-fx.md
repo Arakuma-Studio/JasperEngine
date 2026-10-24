@@ -435,8 +435,10 @@ per-file header, so we add the OE copyright line to each copied file.
    and scene settings only), so R18's ".cube inspector" is the Project window's tooltip of a
    `.cube` (title, table sizes, input ranges, the proposed encoding and its stage, or the parse
    error), plus `inspect_color_lut` for agents. The Project window lists `.cube` files with a
-   Color LUT icon; a double-click assigns the file to the selected scene's Color Grading (and turns
-   Color Grading on) as one undo step named "Assign Color LUT <file> (<scene>)".
+   Color LUT icon; a double-click, or its context menu's "Use as Color Grading LUT", assigns the
+   file to the selected scene's Color Grading (and turns Color Grading on) as one undo step named
+   "Assign Color LUT <file> (<scene>)". The UI test drives the menu: the harness's software-rendered
+   editor draws a frame in about 250 ms, too slow for ImGui's 0.3 s double-click.
 2. **`.cube` is an S04 asset type of its own** (`AssetType::ColorLut` = 14, "color_lut", appended;
    sidecar meta, assets-relative). `postProcessing.lutTexture` expects a texture or, for a `.cube`
    path, a colour LUT.

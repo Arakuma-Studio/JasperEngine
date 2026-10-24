@@ -315,7 +315,7 @@ std::string editor::ProjectWindow::colorLutTooltip(const fs::path& filePath) {
     const std::string stored = project->normalizeToAssetsRelative(filePath).generic_string();
     const std::shared_ptr<const CubeLut> lut = getCachedColorLut(stored);
     return describeColorLut(lut.get(), getCachedColorLutError(stored)) +
-           "\n\nDouble-click: the open scene's Color Grading LUT (one undo step).";
+           "\n\nDouble-click (or right-click > Use as Color Grading LUT): the open scene's Color Grading LUT.";
 }
 
 void editor::ProjectWindow::assignColorLut(const fs::path& filePath) {
@@ -1756,6 +1756,17 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                             revealAsset(project->getProjectPath() / base);
                         }
                         ImGui::SetItemTooltip("This Prefab Variant's base: %s", base.generic_string().c_str());
+                    }
+                    ImGui::Separator();
+                }
+
+                // a colour LUT: what its double-click does, for the open scene (S13)
+                if (file.type == FileType::COLOR_LUT) {
+                    const bool assign = ImGui::MenuItem(ICON_FA_PALETTE " Use as Color Grading LUT");
+                    uiBuilding.contextMenu.push_back({"Use as Color Grading LUT", lastItemRect()});
+                    ImGui::SetItemTooltip("The open scene's Post-processing > Color Grading > LUT Texture (one undo step)");
+                    if (assign) {
+                        assignColorLut(currentPath / file.name);
                     }
                     ImGui::Separator();
                 }

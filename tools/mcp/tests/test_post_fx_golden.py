@@ -101,6 +101,10 @@ def compare_golden(ed: Editor, name: str, image, tolerance: int = CHANNEL_TOLERA
     if UPDATE_GOLDEN and not (name == "defaults" and path.is_file() and ed.has_tool("set_post_processing_debug")):
         GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
         path.write_bytes(pngdiff.encode(image))
+        # a copy under build/ (ignored by git, so a sync of the worktree never removes it)
+        copy = harness.REPO / "build" / "post_fx_golden" / path.name
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        copy.write_bytes(path.read_bytes())
         print(f"     [golden] wrote {path.relative_to(harness.REPO)}: look at it")
         return
     check(ed, path.is_file(), f"no golden {path} (JASPER_POST_FX_UPDATE_GOLDEN=1 writes it)")

@@ -2,8 +2,10 @@
 R18, AC19): xdotool works the rects editor_status reports (ui.project_window), the assertions read
 the editor's state back, screenshots of each step go to build/test-results/post-fx-inspector/.
 
-- the Project window lists a .cube as a colour LUT (its icon) and double-clicking it makes it the
-  open scene's Color Grading LUT in one named undo step ("Assign Color LUT look_display.cube");
+- the Project window lists a .cube as a colour LUT (its icon), and its context menu's "Use as Color
+  Grading LUT" (what a double-click does: the harness's software-rendered editor draws a frame in
+  about 250 ms, too slow for ImGui's 0.3 s double-click) makes it the open scene's Color Grading LUT
+  in one named undo step ("Assign Color LUT look_display.cube");
   the Inspector (nothing selected: the scene's Post-processing) then shows LUT Input Encoding with
   what Auto resolves to; one undo restores the scene's LUT
 - with VHS on, FXAA's row reads "inactive while VHS is on" (screenshot); presets apply as one step
@@ -78,13 +80,21 @@ async def click(ed: Editor, rect: list) -> None:
     await frames(ed)
 
 
-async def double_click(ed: Editor, rect: list) -> None:
-    """two presses inside ImGui's double-click time (0.3 s), each seen by its own frame"""
+async def click_right(ed: Editor, rect: list) -> None:
     x, y = centre(rect)
     xdo(ed, "mousemove", "--window", window(ed), x, y)
     await frames(ed)
-    xdo(ed, "click", "--repeat", "2", "--delay", "70", "1")
-    await frames(ed, 4)
+    xdo(ed, "mousedown", "3")
+    await frames(ed)
+    xdo(ed, "mouseup", "3")
+    await frames(ed)
+
+
+def menu_item(state: dict, label: str) -> list | None:
+    for item in state["project_window"]["context_menu"]:
+        if item["label"] == label:
+            return item["rect"]
+    return None
 
 
 def tree_node(state: dict, path: str) -> dict | None:
@@ -128,7 +138,7 @@ async def lut(ed: Editor, sid: int) -> dict:
     return {"lut_texture": got.get("lut_texture", ""), "color_grading_enabled": got.get("color_grading_enabled", False)}
 
 
-async def test_cube_double_click_assigns_the_lut(ed: Editor):
+async def test_cube_assigns_the_lut(ed: Editor):
     if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
         skip("needs xdotool and the harness Xvfb")
     sid = (await ed.call("list_scenes"))["selected_scene_id"]
@@ -141,13 +151,16 @@ async def test_cube_double_click_assigns_the_lut(ed: Editor):
     ed.check(not any(n.endswith(".meta") for n in names), f"metas listed: {names}")
     await shot(ed, "project-luts")
 
-    await double_click(ed, entry(state, CUBE))
+    await click_right(ed, entry(state, CUBE))
+    state = await wait_ui(ed, lambda s: menu_item(s, "Use as Color Grading LUT"), "the .cube's context menu")
+    await shot(ed, "project-lut-menu")
+    await click(ed, menu_item(state, "Use as Color Grading LUT"))
     for _ in range(40):
         if (await lut(ed, sid))["lut_texture"]:
             break
         await asyncio.sleep(0.25)
     ed.check_eq(await lut(ed, sid), {"lut_texture": "assets/luts/look_display.cube", "color_grading_enabled": True},
-                "a double-click assigns the LUT")
+                "the menu assigns the LUT")
     status = await ed.call("editor_status")
     ed.check("Assign Color LUT look_display.cube" in (status["undo"]["undo_name"] or ""), f"one named step: {status['undo']}")
     await frames(ed, 4)

@@ -78,7 +78,7 @@ async def test_dynamic_resolution_in_play(ed: Editor):
                  f"edit mode keeps scale 1: {got['dynamic_resolution']}")
     await ed.call("set_post_processing_debug", scene=sid, fake_gpu_ms=None)
 
-    await ed.call("play", action="start")
+    await ed.call("play", action="start", scene=sid)  # (the project's start scene is another one)
     try:
         await ed.call("wait", frames=30)
         got, _ = await wait_for(ed, sid, "running", lambda s: s["dynamic_resolution"]["running"], 5)
