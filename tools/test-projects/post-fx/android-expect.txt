@@ -1,0 +1,5 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the post-fx project logs on Android
+# (`logcat -v tag`): the uber pass with VHS 0x2000, grain 0x20, halation 0x4000, film damage
+# 0x8000 and the Lens grain 0x10000, halation on its own chain, dynamic resolution on the frame law
+I/JasperEngine: [postfx] uber 1 features 0x1e020 chain 1
+I/JasperEngine: [postfx] dynamic resolution running 1 source frame
