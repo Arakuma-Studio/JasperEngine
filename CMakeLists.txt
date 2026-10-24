@@ -632,6 +632,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texsynth/SynthesisSession.cpp
     ${EDITOR_DIR}/physics/PlacementSettings.cpp
     ${EDITOR_DIR}/physics/PlacementSession.cpp
+    ${EDITOR_DIR}/physics/PlacementCli.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
