@@ -30,8 +30,12 @@
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
+#include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/AnimationClipInspectorHooks.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseEditSession.h"
+#include "pose/PoseImage.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -151,6 +155,31 @@ bool editor::ProjectWindow::writeImageThumbnail(const fs::path& sourcePath, cons
     return written;
 }
 
+// The .anim icon: a film strip whose three frames show a ball rising (drawn with PoseImage,
+// like the .poseanim icon)
+static void makeAnimationClipIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor strip = editor::PoseColor::hex(0x2B2F36);
+    const editor::PoseColor hole = editor::PoseColor::hex(0xD9D9D9);
+    const editor::PoseColor frame = editor::PoseColor::hex(0xE8873A);
+    const editor::PoseColor frameEdge = editor::PoseColor::hex(0xB8652A);
+    const editor::PoseColor ball = editor::PoseColor::hex(0xF2F2F2);
+    image.fillRect(px(4), px(12), px(56), px(40), strip);
+    for (int i = 0; i < 6; i++) {
+        image.fillRect(px(8 + i * 9.0f), px(15), px(4), px(4), hole);
+        image.fillRect(px(8 + i * 9.0f), px(45), px(4), px(4), hole);
+    }
+    for (int i = 0; i < 3; i++) {
+        const float x = 8 + i * 17.0f;
+        image.fillRect(px(x), px(22), px(14), px(20), frameEdge);
+        image.fillRect(px(x + 1), px(23), px(12), px(18), frame);
+        image.fillCircle((x + 7) * s, (36 - i * 5.0f) * s, 6.4f * s, ball);
+    }
+    rgba = image.getPixels();
+}
+
 editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path& filePath) {
     const std::string extension = filePath.extension().string();
 
@@ -166,9 +195,10 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     if (editor::Util::isPrefabFile(extension)) {
         return editor::FileType::PREFAB;
     }
-    if (extension == ".poseanim") {
+    if (editor::Util::isPoseAnimationFile(extension)) {
         return editor::FileType::POSE_ANIMATION;
     }
+    // .anim clips keep their icon: no thumbnail render (animation clips spec 9.R53)
 
     return editor::FileType::NONE;
 }
@@ -199,9 +229,15 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     memset(this->searchBuffer, 0, sizeof(this->searchBuffer));
 
     thumbnailThread = std::thread(&ProjectWindow::thumbnailWorker, this);
+
+    // the main menu's Assets > Create > Animation Clip (shown once this is set)
+    animationClipAppHooks().createClipAsset = [this](Project*) {
+        assetsCreateAnimationClip();
+    };
 }
 
 editor::ProjectWindow::~ProjectWindow() {
+    animationClipAppHooks().createClipAsset = nullptr;
     cancelThumbnailWork();
     stopThumbnailThread = true;
     thumbnailCondition.notify_one(); // Wake the worker thread to check stop condition
@@ -785,6 +821,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.23f, 0.43f, 0.65f, 1.0f));
         case FileType::HUMANOID:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
+        case FileType::ANIMATION_CLIP:
+            return ImGui::GetColorU32(ImVec4(0.91f, 0.53f, 0.23f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -824,6 +862,10 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_PERSON " Create Pose Animation")){
         assetsCreatePoseAnimation();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_FILM " Create Animation Clip")){
+        assetsCreateAnimationClip();
         ImGui::CloseCurrentPopup();
     }
 
@@ -1333,17 +1375,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (file.isDirectory){
                     deferredDirectoryChange = true;
                 }else{
-                    const fs::path filePath = currentPath / file.name;
-                    if (file.type == FileType::IMAGE)
-                        imageViewerWindow->openFile(filePath);
-                    else if (file.type == FileType::SCENE)
-                        project->openScene(filePath);
-                    else if (file.type == FileType::POSE_ANIMATION)
-                        Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
-                    else if (Util::isPrefabFile(filePath.string()))
-                        editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
-                    else
-                        codeEditor->openFile(filePath.string(), true);
+                    updateInspectedAsset(file.name);
+                    openFile(file, currentPath / file.name);
                 }
             }
 
@@ -1681,6 +1714,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     selectedFiles.insert(file.name);
                     lastSelectedFile = file.name;
                 }
+                updateInspectedAsset(file.name);
             }
 
             // --- Right-click context menu on the item rect -----------------
@@ -1840,6 +1874,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     // --- Clear selection when clicking empty space -------------------------
     if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered() && !clickedInFile){
         selectedFiles.clear();
+        updateInspectedAsset("");
     }
 
     // --- Draw marquee rectangle --------------------------------------------
@@ -2182,9 +2217,12 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
         }else if (Util::isCssFile(fileEntry.extension)){
             fileEntry.type = FileType::CSS;
             fileEntry.icon = cssIcon.getRender();
-        }else if (fileEntry.extension == ".poseanim"){
+        }else if (Util::isPoseAnimationFile(fileEntry.extension)){
             fileEntry.type = FileType::POSE_ANIMATION;
             fileEntry.icon = poseAnimationIcon.getRender();
+        }else if (Util::isAnimationClipFile(fileEntry.extension)){
+            fileEntry.type = FileType::ANIMATION_CLIP;
+            fileEntry.icon = animationClipIcon.getRender();
         }else if (fileEntry.extension == ".humanoid"){
             fileEntry.type = FileType::HUMANOID;
         }
@@ -2492,6 +2530,10 @@ void editor::ProjectWindow::handleRename(){
                         }
                         codeEditor->handleFileRename(oldPath, newPath);
                         imageViewerWindow->handleFileRename(oldPath, newPath);
+                        // the Inspector keeps showing the renamed asset
+                        if (renamed && project->getInspectedAsset() == oldPath.lexically_normal()) {
+                            project->setInspectedAsset(newPath.lexically_normal());
+                        }
                         scanDirectory(currentPath);
                         isRenaming = false;
                         ImGui::CloseCurrentPopup();
@@ -3320,6 +3362,13 @@ void editor::ProjectWindow::show() {
                         poseAnimationIconPixels.data()));
         poseAnimationIcon.load();
 
+        const int clipIconSize = 64;
+        makeAnimationClipIcon(clipIconSize, animationClipIconPixels);
+        animationClipIcon.setData("editor:resources:animation_clip_icon",
+            TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(animationClipIconPixels.size()), ColorFormat::RGBA, 4,
+                        animationClipIconPixels.data()));
+        animationClipIcon.load();
+
         scanDirectory(project->getProjectPath().string());
 
         firstOpen = false;
@@ -3362,8 +3411,9 @@ void editor::ProjectWindow::show() {
 
     timeSinceLastCheck += ImGui::GetIO().DeltaTime;
     if (timeSinceLastCheck >= 1.0f) {
-        // open pose animation documents follow their files (edited outside, copied over)
+        // open pose animation and clip documents follow their files (edited outside, copied over)
         editor::PoseAnimationDocument::checkDiskChanges();
+        editor::AnimationClipDocument::checkDiskChanges();
         try {
             auto currentWriteTime = fs::last_write_time(currentPath);
             if (currentWriteTime != lastWriteTime) {
@@ -3793,6 +3843,29 @@ void editor::ProjectWindow::assetsCreatePoseAnimation() {
     lastSelectedFile = fileName;
 }
 
+void editor::ProjectWindow::assetsCreateAnimationClip() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    // Unity's Create > Animation: an empty clip (30 samples, once); the Animation window adds
+    // the tracks
+    ClipData initial;
+    std::string error;
+    const fs::path relative = uniqueRelativePath(currentPath, "New Animation", anim::ANIM_EXTENSION);
+    if (!AnimationClipDocument::create(project, relative.generic_string(), initial, "Create Animation Clip", &error)) {
+        Backend::getApp().registerAlert("Create Animation Clip", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
 void editor::ProjectWindow::processPoseThumbnails() {
     poseThumbnailer.process();
     if (poseThumbnailer.busy() || poseThumbnailQueue.empty() || !Engine::isViewLoaded()) {
@@ -3843,16 +3916,44 @@ void editor::ProjectWindow::assetsOpenSelected() {
         scanDirectory(filePath);
         selectedFiles.clear();
         focusProjectPanel(this);
-    } else if (it->type == FileType::IMAGE) {
-        imageViewerWindow->openFile(filePath);
-    } else if (it->type == FileType::SCENE) {
-        project->openScene(filePath);
-    } else if (it->type == FileType::POSE_ANIMATION) {
-        Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
-    } else if (Util::isPrefabFile(filePath.string())) {
-        editor::getEditorHost().openPrefabAsset(filePath);
     } else {
+        openFile(*it, filePath);
+    }
+}
+
+void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& filePath) {
+    if (file.type == FileType::IMAGE) {
+        imageViewerWindow->openFile(filePath);
+    } else if (file.type == FileType::SCENE) {
+        project->openScene(filePath);
+    } else if (file.type == FileType::POSE_ANIMATION) {
+        Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
+    } else if (file.type == FileType::ANIMATION_CLIP && animationClipInspectorHooks().openClip) {
+        // the Animation window, target-less (the clip's preview model), as the component stores it
+        const std::string clip = project->isInsideAssetsPath(filePath)
+            ? project->normalizeToAssetsRelative(filePath).generic_string()
+            : filePath.generic_string();
+        animationClipInspectorHooks().openClip(project, 0, NULL_ENTITY, clip);
+    } else if (Util::isPrefabFile(filePath.string())) {
+        editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+    } else {
+        // also an .anim until the Animation window opens clips: its JSON text
         codeEditor->openFile(filePath.string(), true);
+    }
+}
+
+void editor::ProjectWindow::updateInspectedAsset(const std::string& clickedName) {
+    fs::path inspected;
+    if (!clickedName.empty() && selectedFiles.count(clickedName)) {
+        inspected = currentPath / clickedName;
+    } else if (selectedFiles.size() == 1) {
+        inspected = currentPath / *selectedFiles.begin();
+    }
+    std::error_code ec;
+    if (inspected.empty() || fs::is_directory(inspected, ec)) {
+        project->clearInspectedAsset();
+    } else {
+        project->setInspectedAsset(inspected.lexically_normal());
     }
 }
 
