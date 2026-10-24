@@ -110,6 +110,10 @@ namespace jasperengine::editor {
         void saveCache() const;
         void build();
         void rebuildReverse();
+        // one referrer in or out of the reverse maps (an update touches only its own edges)
+        void linkReverse(const Guid& guid, const Referrer& referrer);
+        void unlinkReverse(const Guid& guid, const Referrer& referrer);
+        void replaceReferrer(const Guid& guid, Referrer&& referrer);
         bool readReferrer(const AssetDatabase::AssetInfo& info, Referrer& referrer) const;
         std::unordered_map<Guid, std::vector<DepEdge>> overlayEdges() const;
         void collectReferences(const Guid& target, const std::string& targetPath,

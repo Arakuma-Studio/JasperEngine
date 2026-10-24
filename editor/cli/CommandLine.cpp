@@ -1770,6 +1770,8 @@ static int runAssetsBench(const fs::path& projectArg) {
         assetio::readFile(project / referrer, text);
         assetio::writeFile(project / referrer, text + "\n", assetio::Durability::Cache);
         fs::last_write_time(project / referrer, fs::last_write_time(project / referrer) + std::chrono::seconds(2));
+        // as in the editor: the cache is written by the background thread, not by the save
+        database.setBackgroundHashing(true);
         start = Clock::now();
         database.registerAsset(project / referrer, referrerGuid.str());
         index.updateReferrer(referrer);

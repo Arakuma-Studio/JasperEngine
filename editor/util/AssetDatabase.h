@@ -257,11 +257,16 @@ namespace jasperengine::editor {
         bool hashStop = false;
         bool hashBusy = false;
         bool hashingEnabled = true;
+        // a cache save asked for: the background thread writes it when idle (close() too)
+        bool cacheDirty = false;
 
         std::filesystem::path cacheDir() const;
         std::filesystem::path cacheFile() const;
         void loadCache(std::map<std::string, Entry>& cached) const;
         void saveCache() const;
+        // saveCache() off the caller's thread when background work runs (the cache is disposable:
+        // a crash before the write only costs a rebuild), at once otherwise
+        void requestCacheSave();
 
         std::string key(const std::filesystem::path& path) const;
         std::string relativeKeyOf(const std::string& relative) const;

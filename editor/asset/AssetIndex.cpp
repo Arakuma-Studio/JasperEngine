@@ -473,14 +473,51 @@ void AssetIndex::rebuildReverse() {
     }
 }
 
+void AssetIndex::linkReverse(const Guid& guid, const Referrer& referrer) {
+    for (const DepEdge& edge : referrer.edges) {
+        if (!edge.target.isNull()) {
+            std::vector<Guid>& list = byTarget[edge.target];
+            if (std::find(list.begin(), list.end(), guid) == list.end()) list.push_back(guid);
+        }
+        if (!edge.targetPath.empty()) {
+            std::vector<Guid>& list = byTargetPath[edge.targetPath];
+            if (std::find(list.begin(), list.end(), guid) == list.end()) list.push_back(guid);
+        }
+    }
+}
+
+void AssetIndex::unlinkReverse(const Guid& guid, const Referrer& referrer) {
+    auto drop = [&guid](auto& map, const auto& key) {
+        auto it = map.find(key);
+        if (it == map.end()) return;
+        it->second.erase(std::remove(it->second.begin(), it->second.end(), guid), it->second.end());
+        if (it->second.empty()) map.erase(it);
+    };
+    for (const DepEdge& edge : referrer.edges) {
+        if (!edge.target.isNull()) drop(byTarget, edge.target);
+        if (!edge.targetPath.empty()) drop(byTargetPath, edge.targetPath);
+    }
+}
+
+void AssetIndex::replaceReferrer(const Guid& guid, Referrer&& referrer) {
+    auto old = referrers.find(guid);
+    if (old != referrers.end()) {
+        unlinkReverse(guid, old->second);
+    }
+    linkReverse(guid, referrer);
+    referrers[guid] = std::move(referrer);
+}
+
 void AssetIndex::update(const std::vector<AssetDatabase::Change>& changes) {
     bool projectChanged = false;
     for (const AssetDatabase::Change& change : changes) {
         const Guid guid = Guid::parse(change.guid);
         if (change.type == AssetDatabase::Change::Type::Removed) {
             std::lock_guard<std::mutex> lock(mutex);
-            if (referrers.erase(guid)) {
-                rebuildReverse();
+            auto it = referrers.find(guid);
+            if (it != referrers.end()) {
+                unlinkReverse(guid, it->second);
+                referrers.erase(it);
                 version++;
             }
             continue;
@@ -524,8 +561,7 @@ void AssetIndex::updateReferrer(const std::string& relativePath) {
         } catch (const std::exception&) {
         }
         std::lock_guard<std::mutex> lock(mutex);
-        referrers[projectReferrer()] = std::move(referrer);
-        rebuildReverse();
+        replaceReferrer(projectReferrer(), std::move(referrer));
         version++;
         return;
     }
@@ -536,9 +572,8 @@ void AssetIndex::updateReferrer(const std::string& relativePath) {
     Referrer referrer;
     readReferrer(info, referrer);
     std::lock_guard<std::mutex> lock(mutex);
-    // a moved referrer drops the entry it had under its old path
-    referrers[info.guid] = std::move(referrer);
-    rebuildReverse();
+    // a moved referrer keeps its GUID: its entry is replaced
+    replaceReferrer(info.guid, std::move(referrer));
     version++;
 }
 

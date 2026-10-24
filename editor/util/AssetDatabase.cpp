@@ -1154,6 +1154,15 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
 void editor::AssetDatabase::close() {
     stopHashing();
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    bool dirty = false;
+    {
+        std::lock_guard<std::mutex> hashLock(hashMutex);
+        dirty = cacheDirty;
+        cacheDirty = false;
+    }
+    if (dirty && !projectPath.empty()) {
+        saveCache();
+    }
     projectPath.clear();
     assetsDir.clear();
     byPath.clear();
@@ -1391,7 +1400,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
 
     if (dirty) {
         reindexRedirects();
-        saveCache();
+        requestCacheSave();
     }
     return changes;
 }
@@ -1582,7 +1591,7 @@ bool editor::AssetDatabase::addFormerGuid(const fs::path& path, const Guid& form
     statFile(entry.path, entry.writeTime, entry.size);
     if (entry.hasMeta) statFile(AssetTypes::metaPathFor(entry.path).generic_string(), entry.metaWriteTime, entry.metaSize);
     reindexRedirects();
-    saveCache();
+    requestCacheSave();
     return true;
 }
 
@@ -1608,7 +1617,7 @@ bool editor::AssetDatabase::removeFormerGuid(const fs::path& path, const Guid& f
     statFile(entry.path, entry.writeTime, entry.size);
     if (entry.hasMeta) statFile(AssetTypes::metaPathFor(entry.path).generic_string(), entry.metaWriteTime, entry.metaSize);
     reindexRedirects();
-    saveCache();
+    requestCacheSave();
     return true;
 }
 
@@ -1636,7 +1645,7 @@ bool editor::AssetDatabase::removeOrphanMeta(const std::string& metaPath, const 
     orphanLast.erase(relativeKeyOf(it->second.assetPath));
     orphans.erase(it);
     version++;
-    saveCache();
+    requestCacheSave();
     return true;
 }
 
@@ -1682,7 +1691,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::moveAssets(con
     std::vector<Change> imported = importAssets(projectPath / newRelative);
     changes.insert(changes.end(), imported.begin(), imported.end());
 
-    saveCache();
+    requestCacheSave();
     return changes;
 }
 
@@ -1708,7 +1717,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::removeAssets(c
     }
     if (!removed.empty()) {
         reindexRedirects();
-        saveCache();
+        requestCacheSave();
     }
     return changes;
 }
@@ -1811,7 +1820,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::importAssets(c
     }
     if (dirty) {
         reindexRedirects();
-        saveCache();
+        requestCacheSave();
     }
     return changes;
 }
@@ -1828,7 +1837,8 @@ void editor::AssetDatabase::registerAsset(const fs::path& path, const std::strin
         return;
     }
     auto other = byGuid.find(guid);
-    if (other != byGuid.end() && other->second != relativeKeyOf(relative)) {
+    const bool tookOver = other != byGuid.end() && other->second != relativeKeyOf(relative);
+    if (tookOver) {
         erase(byPath.at(other->second).path);
     }
     Entry entry;
@@ -1855,9 +1865,13 @@ void editor::AssetDatabase::registerAsset(const fs::path& path, const std::strin
     }
     statFile(relative, entry.writeTime, entry.size);
     entry.hasContentHash = false;
+    // the redirect maps change only with an entry that has (or had) former GUIDs or sub-assets
+    const bool redirects = !entry.formerGuids.empty() || !entry.subAssets.empty() ||
+                           (existing != byPath.end() && (!existing->second.formerGuids.empty() || !existing->second.subAssets.empty())) ||
+                           tookOver;
     insert(std::move(entry));
-    reindexRedirects();
-    saveCache();
+    if (redirects) reindexRedirects();
+    requestCacheSave();
     queueHash(relative);
 }
 
@@ -1866,6 +1880,22 @@ void editor::AssetDatabase::registerAsset(const fs::path& path, const std::strin
 void editor::AssetDatabase::setBackgroundHashing(bool enabled) {
     std::lock_guard<std::mutex> lock(hashMutex);
     hashingEnabled = enabled;
+}
+
+void editor::AssetDatabase::requestCacheSave() {
+    {
+        std::lock_guard<std::mutex> lock(hashMutex);
+        if (hashingEnabled) {
+            cacheDirty = true;
+            if (!hashThread.joinable()) {
+                hashStop = false;
+                hashThread = std::thread([this] { hashWorker(); });
+            }
+            hashWake.notify_one();
+            return;
+        }
+    }
+    saveCache();
 }
 
 void editor::AssetDatabase::queueHash(const std::string& relative) {
@@ -1890,15 +1920,18 @@ void editor::AssetDatabase::hashWorker() {
             if (hashQueue.empty()) {
                 hashBusy = false;
                 hashIdle.notify_all();
-                if (computed) {
+                if (computed || cacheDirty) {
+                    cacheDirty = false;
                     lock.unlock();
-                    std::lock_guard<std::recursive_mutex> dbLock(mutex);
-                    if (!projectPath.empty()) saveCache();
+                    {
+                        std::lock_guard<std::recursive_mutex> dbLock(mutex);
+                        if (!projectPath.empty()) saveCache();
+                    }
                     lock.lock();
                     computed = false;
-                    if (!hashQueue.empty() || hashStop) continue;
+                    if (!hashQueue.empty() || hashStop || cacheDirty) continue;
                 }
-                hashWake.wait(lock, [this] { return hashStop || !hashQueue.empty(); });
+                hashWake.wait(lock, [this] { return hashStop || !hashQueue.empty() || cacheDirty; });
             }
             if (hashStop) {
                 hashBusy = false;
