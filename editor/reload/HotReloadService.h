@@ -234,6 +234,7 @@ namespace jasperengine::editor {
         struct Applied {
             watch::PathStat stat;
             bool racy = false;
+            uint64_t contentHash = 0;   // racy only: what the bytes were (a same-tick save differs)
             uint64_t sequence = 0;
         };
         std::map<std::string, Applied> applied;
@@ -269,7 +270,11 @@ namespace jasperengine::editor {
         // `seen`: the stat taken before the handlers read the file (nullptr: gone). A save that
         // lands while they read leaves the file different from the stamp, so its own change
         // reloads (stamping after the read took it as reloaded)
-        void stamp(const std::filesystem::path& path, const watch::PathStat* seen, uint64_t sequence);
+        struct Seen {
+            watch::PathStat stat;
+            uint64_t contentHash = 0;   // racy stats only
+        };
+        void stamp(const std::filesystem::path& path, const Seen* seen, uint64_t sequence);
         void finishJob(Job& job, bool ok, const std::string& error, double ms, bool warning = false);
         void closeBatchIfDone(uint64_t id);
         void writeBatchLine(const Batch& batch);

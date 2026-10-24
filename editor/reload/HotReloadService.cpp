@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -31,6 +32,23 @@ namespace {
     constexpr size_t RECORDS_MAX = 1000;
     // problems and UI reloads the watcher found that no MCP call took yet
     constexpr size_t LATE_MAX = 200;
+
+    // FNV-1a of a file's bytes (0 when it cannot be read): told apart only for racy stamps
+    uint64_t contentHashOf(const fs::path& path) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return 0;
+        uint64_t hash = 1469598103934665603ull;
+        char buffer[64 * 1024];
+        while (in) {
+            in.read(buffer, sizeof(buffer));
+            const std::streamsize got = in.gcount();
+            for (std::streamsize i = 0; i < got; i++) {
+                hash ^= static_cast<unsigned char>(buffer[i]);
+                hash *= 1099511628211ull;
+            }
+        }
+        return hash;
+    }
 
     double msSince(Clock::time_point start) {
         return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
@@ -217,19 +235,21 @@ bool HotReloadService::isCurrent(const FileChange& change) const {
     if (change.sequence != 0 && change.sequence <= it->second.sequence) return true;
     watch::PathStat now;
     if (!watch::statPath(change.path, now) || !now.sameContent(it->second.stat) || now.identity != it->second.stat.identity) return false;
-    // a save in the same timestamp tick as the one reloaded has the same stat: only the
-    // editor's own write (it knows what it wrote) is taken as that one
-    return !it->second.racy || change.origin == ChangeOrigin::Editor;
+    // a save in the same timestamp tick as the one reloaded has the same stat: the bytes tell
+    // (the editor's own write is the one it reloaded: it knows what it wrote)
+    if (!it->second.racy || change.origin == ChangeOrigin::Editor || now.directory) return true;
+    return it->second.contentHash != 0 && contentHashOf(change.path) == it->second.contentHash;
 }
 
-void HotReloadService::stamp(const fs::path& path, const watch::PathStat* seen, uint64_t sequence) {
+void HotReloadService::stamp(const fs::path& path, const Seen* seen, uint64_t sequence) {
     if (!seen) {
         applied.erase(key(path));
         return;
     }
     Applied& entry = applied[key(path)];
-    entry.stat = *seen;
-    entry.racy = watch::isRacyStamp(seen->mtimeNs);
+    entry.stat = seen->stat;
+    entry.racy = watch::isRacyStamp(seen->stat.mtimeNs);
+    entry.contentHash = entry.racy ? seen->contentHash : 0;
     entry.sequence = std::max(entry.sequence, sequence);
 }
 
@@ -325,12 +345,16 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
 
     // What each file to reload is now, before a handler reads it, and the journal change it is
     // reloaded for (0: a path without one)
-    std::map<std::string, std::pair<watch::PathStat, bool>> seenBefore;
+    std::map<std::string, Seen> seenBefore;
     for (const auto* map : {&external, &editorWritten}) {
         for (const auto& [kind, list] : *map) {
             for (const fs::path& path : list) {
-                auto& seen = seenBefore[key(path)];
-                if (!seen.second) seen.second = watch::statPath(path, seen.first);
+                if (seenBefore.count(key(path))) continue;
+                Seen seen;
+                if (!watch::statPath(path, seen.stat)) continue;
+                // written a moment ago: a save in the same tick would keep the stat
+                if (!seen.stat.directory && watch::isRacyStamp(seen.stat.mtimeNs)) seen.contentHash = contentHashOf(path);
+                seenBefore[key(path)] = seen;
             }
         }
     }
@@ -376,7 +400,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         for (const auto& [kind, list] : *map) {
             for (const fs::path& path : list) {
                 auto seen = seenBefore.find(key(path));
-                stamp(path, seen != seenBefore.end() && seen->second.second ? &seen->second.first : nullptr, sequenceOf[key(path)]);
+                stamp(path, seen != seenBefore.end() ? &seen->second : nullptr, sequenceOf[key(path)]);
             }
         }
     }

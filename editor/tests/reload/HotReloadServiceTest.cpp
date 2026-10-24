@@ -178,14 +178,15 @@ TEST_F(HotReloadServiceTests, SettledStampSaysCurrent) {
 }
 
 // Two saves in one timestamp tick keep the mtime and the size: a stamp taken that close to the
-// write does not say the second one is the first (test_rapid_saves_during_play's burst)
-TEST_F(HotReloadServiceTests, RacyStampIsNotTrusted) {
+// write does not say the second one is the first; the bytes do
+TEST_F(HotReloadServiceTests, RacyStampComparesTheBytes) {
     const fs::path file = project.getProjectPath() / "assets" / "hr" / "racy.png";
     writeSolidPng(file, 10, 20, 30);
     Texture texture(file.string());
     ASSERT_TRUE(texture.load());
 
-    const fs::file_time_type tick = fs::file_time_type::clock::now();
+    // one tick for every save, ahead of the clock: racy however slowly the test runs (sanitizers)
+    const fs::file_time_type tick = fs::file_time_type::clock::now() + std::chrono::hours(1);
     writeSolidPng(file, 40, 50, 60);
     setMtime(file, tick);
     service.apply(journalChange(file, 11), ApplyOptions());
@@ -202,7 +203,7 @@ TEST_F(HotReloadServiceTests, RacyStampIsNotTrusted) {
     const uint64_t before = service.reloadCount();
     service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
     settle();
-    EXPECT_EQ(service.reloadCount(), before + 1) << "a racy stamp is not current";
+    EXPECT_EQ(service.reloadCount(), before + 1) << "a racy stamp with other bytes is not current";
     ASSERT_TRUE(texture.load());
     EXPECT_EQ(firstTexel(texture), 70);
 
@@ -214,6 +215,12 @@ TEST_F(HotReloadServiceTests, RacyStampIsNotTrusted) {
     EXPECT_EQ(service.reloadCount(), before + 2) << "a new journal change of a racy stamp reloads";
     ASSERT_TRUE(texture.load());
     EXPECT_EQ(firstTexel(texture), 100);
+
+    // the same bytes again (the watcher's change for the save a path reload already read): current
+    service.apply(journalChange(file, 13), ApplyOptions());
+    service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
+    settle();
+    EXPECT_EQ(service.reloadCount(), before + 2) << "a racy stamp with the same bytes is current";
 
     // the editor's own write is the one it reloaded (it knows what it wrote)
     ChangeSet own = ChangeSet::fromPaths({file});
