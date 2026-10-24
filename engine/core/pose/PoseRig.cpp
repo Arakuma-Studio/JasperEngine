@@ -349,10 +349,25 @@ namespace jasperengine::pose {
         if (!has(bone)){
             return;
         }
-        const Quatd e = boneE(bone, Quatd(local).normalized()).normalized();
+        jointAngles(bone, boneE(bone, Quatd(local).normalized()).normalized(), angles);
+    }
+
+    Quatd jointRotation(HumanBone bone, const float angles[DOFS_PER_BONE]){
+        const BoneDofInfo& info = boneDofInfo(bone);
+        Vec3d s;
+        for (int k = 0; k < 2; k++){
+            const DofInfo& dof = info.dofs[k];
+            s += Vec3d(canonicalAxis(dof.axis)) * (degToRad(angles[k]) * dof.sign);
+        }
+        const Quatd swing = fromRotationVector(s);
+        const Quatd twist = axisAngleRad(Vec3d(canonicalAxis(info.dofs[2].axis)), degToRad(angles[2]) * info.dofs[2].sign);
+        return (swing * twist).normalized();
+    }
+
+    void jointAngles(HumanBone bone, const Quatd& rotation, float angles[DOFS_PER_BONE]){
         const BoneDofInfo& info = boneDofInfo(bone);
         Quatd swing, twist;
-        swingTwist(e, Vec3d(info.neutralDirection), swing, twist);
+        swingTwist(rotation.normalized(), Vec3d(info.neutralDirection), swing, twist);
         if (swing.w < 0.0){
             swing = -swing;
             twist = -twist;
@@ -371,16 +386,8 @@ namespace jasperengine::pose {
         if (!has(bone)){
             return Quaternion();
         }
-        const BoneDofInfo& info = boneDofInfo(bone);
-        Vec3d s;
-        for (int k = 0; k < 2; k++){
-            const DofInfo& dof = info.dofs[k];
-            s += Vec3d(canonicalAxis(dof.axis)) * (degToRad(angles[k]) * dof.sign);
-        }
-        const Quatd swing = fromRotationVector(s);
-        const Quatd twist = axisAngleRad(Vec3d(canonicalAxis(info.dofs[2].axis)), degToRad(angles[2]) * info.dofs[2].sign);
         const Slot& slot = slots[slotIndex(bone)];
-        return (slot.left * (swing * twist) * slot.neutral).normalized().toQuaternion();
+        return (slot.left * jointRotation(bone, angles) * slot.neutral).normalized().toQuaternion();
     }
 
     BodyPose PoseRig::toBodyPose(const HumanPose& pose) const{

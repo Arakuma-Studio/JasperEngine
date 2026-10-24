@@ -14,6 +14,7 @@
 #include "pose/PoseUiLogic.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <cmath>
 
 using namespace jasperengine;
@@ -36,6 +37,12 @@ void editor::PoseEditSession::setActive(PoseEditSession* session){
     activeSession = session;
 }
 
+void editor::PoseEditSession::suspendActive(){
+    if (activeSession && activeSession->bound()){
+        activeSession->suspend();
+    }
+}
+
 editor::PoseEditSession::PoseEditSession(Project* project): projectPtr(project){
 }
 
@@ -43,26 +50,100 @@ editor::PoseEditSession::~PoseEditSession(){
     if (activeSession == this){
         activeSession = nullptr;
     }
+    // no notifications from here: the listeners may be gone already
+    destroying = true;
+    listeners.clear();
     unbind();
     closeDocument();
 }
 
 // ---- listeners ----
 
-void editor::PoseEditSession::addListener(std::function<void()> listener){
-    if (listener){
-        listeners.push_back(std::move(listener));
-    }
+int editor::PoseEditSession::addListener(std::function<void()> listener){
+    if (!listener) return 0;
+    const int id = nextListener++;
+    listeners.push_back({id, std::move(listener)});
+    return id;
+}
+
+void editor::PoseEditSession::removeListener(int id){
+    listeners.erase(std::remove_if(listeners.begin(), listeners.end(),
+                                   [id](const auto& entry){ return entry.first == id; }), listeners.end());
 }
 
 void editor::PoseEditSession::notify(){
-    if (notifying) return;   // a listener that changes the session does not recurse
+    if (destroying) return;
+    if (notifying){
+        // a change made by a listener: the listeners run once more after this round
+        notifyAgain = true;
+        return;
+    }
     notifying = true;
-    const std::vector<std::function<void()>> copy = listeners;
-    for (const auto& listener : copy){
-        listener();
+    for (int round = 0; round < 8; round++){
+        notifyAgain = false;
+        const auto copy = listeners;
+        for (const auto& entry : copy){
+            const int id = entry.first;
+            // a listener removed by an earlier one this round does not run
+            if (std::any_of(listeners.begin(), listeners.end(), [id](const auto& e){ return e.first == id; })){
+                entry.second();
+            }
+        }
+        if (!notifyAgain) break;
     }
     notifying = false;
+}
+
+bool editor::PoseEditSession::sceneStopped() const{
+    const SceneProject* sceneProject = projectPtr && bound() ? projectPtr->getScene(sceneIdValue) : nullptr;
+    return sceneProject && sceneProject->scene == scenePtr && sceneProject->playState == ScenePlayState::STOPPED;
+}
+
+bool editor::PoseEditSession::editable() const{
+    return bound() && gate.mayWrite(sceneStopped());
+}
+
+bool editor::PoseEditSession::ownsEntity(uint32_t sceneId, Entity entity) const{
+    if (!bound() || sceneId != sceneIdValue || entity == NULL_ENTITY) return false;
+    if (entity == modelEntity) return true;
+    for (Entity bone : rigInfoPtr->boneEntities){
+        if (bone == entity) return true;
+    }
+    return false;
+}
+
+void editor::PoseEditSession::watchSidecar(){
+    sidecarFile.clear();
+    sidecarExists = false;
+    sidecarTime = 0;
+    sidecarSize = 0;
+    if (!bound() || !scenePtr) return;
+    const ModelComponent* model = scenePtr->findComponent<ModelComponent>(modelEntity);
+    if (!model || model->filename.empty()) return;
+    std::filesystem::path file = projectPtr->resolveAssetPath(model->filename);
+    file += ".humanoid";
+    sidecarFile = file.string();
+    sidecarChanged();   // takes the stamp
+}
+
+bool editor::PoseEditSession::sidecarChanged(){
+    if (sidecarFile.empty()) return false;
+    std::error_code ec;
+    const std::filesystem::path file(sidecarFile);
+    const bool exists = std::filesystem::is_regular_file(file, ec);
+    int64_t mtime = 0;
+    uint64_t size = 0;
+    if (exists){
+        const auto time = std::filesystem::last_write_time(file, ec);
+        if (!ec) mtime = static_cast<int64_t>(time.time_since_epoch().count());
+        const auto bytes = std::filesystem::file_size(file, ec);
+        if (!ec) size = static_cast<uint64_t>(bytes);
+    }
+    const bool changed = exists != sidecarExists || mtime != sidecarTime || size != sidecarSize;
+    sidecarExists = exists;
+    sidecarTime = mtime;
+    sidecarSize = size;
+    return changed;
 }
 
 // ---- binding ----
@@ -100,7 +181,9 @@ bool editor::PoseEditSession::bind(Scene* scene, uint32_t sceneId, Entity model,
     rigPtr = info->rig;
     workingPose = rigPtr->restPose();
     shown = workingPose;
+    watchSidecar();
     if (currentMode != Mode::Idle && doc && poseCount() > 0){
+        if (currentMode == Mode::Posing) workingPose = keyPose(primaryIndex);
         applyCurrent();
     }else{
         currentMode = Mode::Idle;
@@ -128,7 +211,10 @@ void editor::PoseEditSession::dropBinding(){
     rigInfoPtr.reset();
     savedBones.clear();
     applied = false;
-    suspended = false;
+    gate = poseui::BoneWriteGate();
+    sidecarFile.clear();
+    handleActive = false;
+    keyRoutingOn = false;
     playing = false;
     currentMode = Mode::Idle;
     globalEdit = false;
@@ -223,7 +309,7 @@ void editor::PoseEditSession::documentChanged(int change){
     }
     if (poseCount() == 0 && currentMode != Mode::Idle){
         goIdle();
-    }else if (currentMode != Mode::Idle && !suspended){
+    }else if (currentMode != Mode::Idle){
         // undo/redo (and every commit) shows the primary pose as the document has it now
         if (currentMode == Mode::Posing){
             workingPose = keyPose(primaryIndex);
@@ -275,7 +361,7 @@ bool editor::PoseEditSession::commitData(const pose::PoseAnimationData& data, co
         return false;
     }
     clampSelectionToDocument();
-    if (currentMode == Mode::Posing && !suspended){
+    if (currentMode == Mode::Posing){
         workingPose = keyPose(primaryIndex);
         applyCurrent();
     }
@@ -330,7 +416,6 @@ void editor::PoseEditSession::startPosing(){
     clampSelectionToDocument();
     playing = false;
     currentMode = Mode::Posing;
-    suspended = false;
     workingPose = keyPose(primaryIndex);
     applyCurrent();
     notify();
@@ -340,7 +425,6 @@ void editor::PoseEditSession::startPreview(){
     if (!bound() || !doc || poseCount() == 0 || !bonesValid()) return;
     cancelGlobalEdit();
     currentMode = Mode::Previewing;
-    suspended = false;
     endPause = 0.0f;
     const float length = previewLength();
     if (time > length) time = 0.0f;
@@ -447,13 +531,14 @@ void editor::PoseEditSession::update(float dt){
     }
     if (sceneProject->playState != ScenePlayState::STOPPED){
         if (sceneProject->playState == ScenePlayState::SAVING){
-            if (applied) suspend();
+            // the scene is being written on another thread: no bone writes until it is done
+            gate.suspend();
             return;
         }
         // play mode: the preview stops and the bones are back at rest (play runs its own copy)
+        gate.suspend();
         if (applied || currentMode != Mode::Idle){
             restoreBones();
-            suspended = false;
             playing = false;
             if (globalEdit){
                 globalEdit = false;
@@ -473,10 +558,27 @@ void editor::PoseEditSession::update(float dt){
         dropBinding();
         return;
     }
-    if (suspended){
-        suspended = false;
+    if (gate.resume(true)){
         if (currentMode != Mode::Idle && doc && poseCount() > 0){
+            if (currentMode == Mode::Posing && !handleActive) workingPose = keyPose(primaryIndex);
             applyCurrent();
+        }
+        notify();
+    }
+    // the humanoid mapping changed on disk (Map Bones, its undo/redo, MCP set_humanoid): a new rig
+    sidecarCheck += dt;
+    if (sidecarCheck >= 0.25f){
+        sidecarCheck = 0.0f;
+        if (sidecarChanged()){
+            std::string error;
+            Scene* scene = scenePtr;
+            const uint32_t sceneId = sceneIdValue;
+            const Entity model = modelEntity;
+            if (!bind(scene, sceneId, model, &error)){
+                // not a usable humanoid any more: the window shows the mapping empty state
+                unbind();
+                return;
+            }
         }
     }
     if (currentMode == Mode::Previewing && playing && dt > 0.0f){
@@ -508,16 +610,15 @@ void editor::PoseEditSession::goIdle(){
         globalEditPose = -1;
     }
     restoreBones();
-    suspended = false;
     playing = false;
     currentMode = Mode::Idle;
     if (changed) notify();
 }
 
 void editor::PoseEditSession::suspend(){
-    if (!applied) return;
+    // also when nothing is applied: a pose started before the next update must not write
+    gate.suspend();
     restoreBones();
-    suspended = currentMode != Mode::Idle;
 }
 
 // ---- working pose ----
@@ -526,7 +627,7 @@ const pose::HumanPose& editor::PoseEditSession::working() const { return working
 
 void editor::PoseEditSession::setWorking(const pose::HumanPose& pose){
     workingPose = pose;
-    if (currentMode == Mode::Posing && !suspended){
+    if (currentMode == Mode::Posing){
         applyPose(workingPose);
     }
     notify();
@@ -646,7 +747,7 @@ bool editor::PoseEditSession::bonesValid() const{
 }
 
 void editor::PoseEditSession::applyCurrent(){
-    if (!bound()) return;
+    if (!bound() || !gate.mayWrite(sceneStopped())) return;
     if (currentMode == Mode::Previewing){
         pose::HumanPose frame = rigPtr->restPose();
         samplePreview(frame);
@@ -657,7 +758,8 @@ void editor::PoseEditSession::applyCurrent(){
 }
 
 void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
-    if (!bound() || !bonesValid()) return;
+    // never while the scene is saved (a thread is serialising it) or played
+    if (!bound() || !gate.mayWrite(sceneStopped()) || !bonesValid()) return;
     const std::vector<Entity>& entities = rigInfoPtr->boneEntities;
     const pose::Skeleton& skeleton = rigPtr->skeleton();
     if (!applied){
@@ -702,6 +804,11 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
 
 void editor::PoseEditSession::restoreBones(){
     if (!applied) return;
+    // a thread is writing the scene file: it must not see bones change under it (the save
+    // began with suspend(), which restored them, so this is only a safety net)
+    if (const SceneProject* sceneProject = projectPtr ? projectPtr->getScene(sceneIdValue) : nullptr){
+        if (sceneProject->playState == ScenePlayState::SAVING) return;
+    }
     applied = false;
     if (scenePtr){
         for (const SavedBone& saved : savedBones){

@@ -182,6 +182,57 @@ async def test_preview_then_play_mode_restores(ed: Editor):
     await ed.check_error("focus_window", {"window": "pose_animation", "pose": {"index": 99}}, contains="pose.index")
 
 
+async def test_save_while_previewing_writes_rest(ed: Editor):
+    """A save during a playing preview: the file gets the rest bones, the preview goes on."""
+    st = (await focus(ed, play=True))["state"]
+    ed.check_eq(st["mode"], "previewing", "previewing")
+    await ed.call("wait", seconds=0.2)
+    await ed.call("save_scene", scene="Main Scene")
+    saved = saved_rotation((ed.project / SCENE_FILE).read_text(encoding="utf-8"), THIGH)
+    ed.check(close(saved, S["rest"]), f"the scene file has the rest rotation: {saved} vs {S['rest']}")
+    await ed.call("wait", seconds=0.3)
+    st = await state(ed)
+    ed.check(st["mode"] == "previewing" and st["playing"] and st["editable"], f"the preview goes on after the save: {st}")
+    await focus(ed, play=False)
+    ed.check_eq((await state(ed))["mode"], "posing", "stop returns to posing")
+
+
+async def test_scene_keys_follow_the_character(ed: Editor):
+    """The Scene view's keys go to the window only while it shows and the character is selected."""
+    await focus(ed, index=0)
+    await ed.call("select_entities", entities=["Ground"])
+    ed.check((await state(ed))["scene_keys"] is False, "another GameObject selected: the Scene view keeps its keys")
+    await ed.call("select_entities", entities=[THIGH])
+    ed.check((await state(ed))["scene_keys"] is True, "a bone of the character: pose keys")
+    await ed.call("select_entities", entities=["Hero"])
+    ed.check((await state(ed))["scene_keys"] is True, "the character: pose keys")
+    # (behind another tab of its dock the window cannot be asked through focus_window, which
+    # fronts it: shown again, the routing is back)
+    await ed.call("focus_window", window="console")
+    await ed.call("wait", seconds=0.2)
+    r = await ed.call("focus_window", window="pose_animation")
+    ed.check(r["state"]["scene_keys"] is True, "shown again: pose keys again")
+
+
+async def test_mapping_change_rebuilds_the_rig(ed: Editor):
+    """Map Bones' undo/redo or MCP set_humanoid: the window's rig follows the sidecar."""
+    await ed.call("edit_pose_animation", path=WALK, ops=[{"op": "set_humanoid", "model": HERO, "bones": {"left_toes": ""}}])
+    await ed.call("wait", seconds=0.6)
+    st = await state(ed)
+    ed.check_eq(st["rig"], "Humanoid 21/22", f"the rig follows the sidecar: {st}")
+    ed.check_eq(st["mode"], "posing", "still posing")
+    await ed.call("undo", scope="project")
+    await ed.call("wait", seconds=0.6)
+    ed.check_eq((await state(ed))["rig"], "Humanoid 22/22", "undo: the mapping is back")
+
+
+async def test_default_dock_layout(ed: Editor):
+    """The bottom dock of a 1600x900 editor: two columns, thumbnails sized to the height."""
+    st = await state(ed)
+    ed.check_eq(st["layout"], "columns", f"wide and short: strip and timing on the left, tabs on the right: {st}")
+    ed.check(64 <= st["thumbnail_height"] <= 116, f"thumbnail height {st['thumbnail_height']}")
+
+
 async def test_project_window_thumbnail(ed: Editor):
     """A .poseanim gets a Project window thumbnail: its middle pose on the preview model."""
     r = await ed.call_raw("view_asset", {"path": WALK})

@@ -121,7 +121,7 @@ void editor::makePoseAnimationIcon(int size, std::vector<uint8_t>& rgba){
 
 // ---- PoseThumbnails ----
 
-editor::PoseThumbnails::PoseThumbnails(): alive(std::make_shared<bool>(true)){
+editor::PoseThumbnails::PoseThumbnails(size_t capacity): capacity(std::max<size_t>(capacity, 2)), alive(std::make_shared<bool>(true)){
 }
 
 editor::PoseThumbnails::~PoseThumbnails(){
@@ -282,13 +282,13 @@ void editor::PoseThumbnails::store(uint64_t key, PoseImage&& image){
 }
 
 void editor::PoseThumbnails::evict(){
-    if (entries.size() <= MAX_ENTRIES) return;
+    if (entries.size() <= capacity) return;
     std::vector<std::pair<int, uint64_t>> byAge;
     for (const auto& entry : entries){
         if (entry.second.ready) byAge.push_back({entry.second.lastUsedFrame, entry.first});
     }
     std::sort(byAge.begin(), byAge.end());
-    size_t excess = entries.size() - MAX_ENTRIES;
+    size_t excess = entries.size() - capacity;
     for (const auto& old : byAge){
         if (excess == 0) break;
         if (old.first >= frameCounter - 1) break;   // still on screen

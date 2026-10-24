@@ -490,7 +490,7 @@ TEST(PoseUiLogic, JointRotationMatchesTheRig){
         if (!t.rig->has(bone)) continue;
         float angles[3] = {angle(random), angle(random), angle(random)};
         float back[3];
-        poseui::jointAngles(bone, poseui::jointRotation(bone, angles), back);
+        pose::jointAngles(bone, pose::jointRotation(bone, angles), back);
         float rigBack[3];
         t.rig->anglesFromLocal(bone, t.rig->localFromAngles(bone, angles), rigBack);
         for (int k = 0; k < 3; k++){
@@ -542,9 +542,44 @@ TEST(PoseUiLogic, GlobalEditAppliesTheChange){
     BodyPose bent;
     bent.angles[dof("head.bend")] = 20.0f;
     poseui::applyGlobalEditDelta(twistBase, twistCurrent, bent);
-    const Quatd expected = (poseui::jointRotation(HumanBone::Head, &twistCurrent.angles[dofIndex(HumanBone::Head, 0)]) *
-                            poseui::jointRotation(HumanBone::Head, &BodyPose().angles[0] /* zero */).inverse() *
-                            [&]{ BodyPose b; b.angles[dof("head.bend")] = 20.0f; return poseui::jointRotation(HumanBone::Head, &b.angles[dofIndex(HumanBone::Head, 0)]); }()).normalized();
-    const Quatd got = poseui::jointRotation(HumanBone::Head, &bent.angles[dofIndex(HumanBone::Head, 0)]);
+    const Quatd expected = (pose::jointRotation(HumanBone::Head, &twistCurrent.angles[dofIndex(HumanBone::Head, 0)]) *
+                            pose::jointRotation(HumanBone::Head, &BodyPose().angles[0] /* zero */).inverse() *
+                            [&]{ BodyPose b; b.angles[dof("head.bend")] = 20.0f; return pose::jointRotation(HumanBone::Head, &b.angles[dofIndex(HumanBone::Head, 0)]); }()).normalized();
+    const Quatd got = pose::jointRotation(HumanBone::Head, &bent.angles[dofIndex(HumanBone::Head, 0)]);
     EXPECT_LT(radToDeg(angleBetween(expected, got)), 1e-3);
+}
+
+// ---- the session's bone writes during a scene save ----
+
+TEST(PoseUiLogic, BoneWriteGateHoldsThroughAnAsyncSave){
+    // Ctrl+S: suspend (bones restored), the scene is SAVING on a thread for a few frames while the
+    // user selects a pose, starts posing or previews: nothing may write until it is stopped again
+    poseui::BoneWriteGate gate;
+    EXPECT_TRUE(gate.mayWrite(true));
+    EXPECT_FALSE(gate.mayWrite(false));       // play mode / saving: never
+    gate.suspend();                           // stopTransientPreviews before the save
+    EXPECT_FALSE(gate.mayWrite(true));        // same frame, scene still STOPPED (sync save): no writes
+    EXPECT_FALSE(gate.resume(false));         // update while SAVING: stays closed
+    EXPECT_FALSE(gate.mayWrite(false));
+    gate.suspend();                           // another suspend while saving (update sees SAVING)
+    EXPECT_FALSE(gate.resume(false));
+    EXPECT_TRUE(gate.resume(true));           // saved: the next update re-applies the pose once
+    EXPECT_TRUE(gate.mayWrite(true));
+    EXPECT_FALSE(gate.resume(true));          // nothing more to resume
+}
+
+TEST(PoseUiLogic, GlobalEditSurvivesEditsOfThePoses){
+    // angles, offset, hold, transition, feel, humanize, mirror, paste: same poses, same primary
+    EXPECT_TRUE(poseui::keepsGlobalEdit(4, 4, false, 2, 2));
+    // add / duplicate / delete change the count, reorders and another primary cancel it
+    EXPECT_FALSE(poseui::keepsGlobalEdit(4, 5, false, 2, 3));
+    EXPECT_FALSE(poseui::keepsGlobalEdit(4, 3, false, 2, 2));
+    EXPECT_FALSE(poseui::keepsGlobalEdit(4, 4, true, 2, 2));
+    EXPECT_FALSE(poseui::keepsGlobalEdit(4, 4, false, 2, 1));
+    // the edits behind the menu keep the primary pose and the count
+    PoseAnimationData data = animationOf(4);
+    const poseui::Edit mirrored = poseui::mirrorPoses(data, {2}, 2);
+    EXPECT_TRUE(poseui::keepsGlobalEdit(data.poses.size(), mirrored.data.poses.size(), false, 2, mirrored.primary));
+    const poseui::Edit deleted = poseui::deletePoses(data, {1}, 2);
+    EXPECT_FALSE(poseui::keepsGlobalEdit(data.poses.size(), deleted.data.poses.size(), false, 2, deleted.primary));
 }

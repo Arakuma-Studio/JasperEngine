@@ -59,7 +59,8 @@ namespace jasperengine::editor{
 
     class PoseThumbnails{
     public:
-        PoseThumbnails();
+        // capacity: the most textures kept (the live card of the window needs only a few)
+        explicit PoseThumbnails(size_t capacity = MAX_ENTRIES);
         ~PoseThumbnails();
         PoseThumbnails(const PoseThumbnails&) = delete;
         PoseThumbnails& operator=(const PoseThumbnails&) = delete;
@@ -95,6 +96,7 @@ namespace jasperengine::editor{
             bool failed = false;
             int lastUsedFrame = 0;
         };
+        size_t capacity = MAX_ENTRIES;
         std::unique_ptr<PoseRender> render;
         std::string modelFile;
         std::shared_ptr<pose::PoseRig> rig;

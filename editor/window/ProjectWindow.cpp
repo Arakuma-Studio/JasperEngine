@@ -31,6 +31,7 @@
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
 #include "pose/PoseAnimationDocument.h"
+#include "pose/PoseEditSession.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -3101,6 +3102,7 @@ void editor::ProjectWindow::saveEntityFile(const fs::path& directory, const char
         return;
     }
 
+    PoseEditSession::suspendActive();   // prefabs of a posed character keep its rest bones
     CreatePrefabCmd* createPrefabCmd = new CreatePrefabCmd(project, sceneId, prefabs);
     CommandHandle::get(sceneId)->addCommandNoMerge(createPrefabCmd);
 
@@ -3127,6 +3129,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     const float buttonWidth = Theme::dpi(130.0f);
     bool done = false;
     if (ImGui::Button("Original Prefab", ImVec2(buttonWidth, 0))) {
+        PoseEditSession::suspendActive();
         CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, pendingPrefabDrop.prefabs));
         done = true;
     }
@@ -3139,6 +3142,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
                 prefabs[i].first = pendingPrefabDrop.variantPaths[i];
             }
         }
+        PoseEditSession::suspendActive();
         CreatePrefabCmd* command = new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, prefabs);
         for (size_t i = 0; i < prefabs.size(); i++) {
             command->setVariant(i, i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]);

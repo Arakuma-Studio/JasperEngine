@@ -23,6 +23,7 @@
 #include "pose/PoseRealisation.h"
 #include "pose/PoseRig.h"
 #include "pose/PoseTypes.h"
+#include "pose/PoseUiLogic.h"
 
 #include <cstdint>
 #include <functional>
@@ -70,7 +71,7 @@ namespace jasperengine::editor{
         // global edit (phase 5 drives it; the window shows its bar)
         bool globalEditActive() const;  void beginGlobalEdit();  bool applyGlobalEdit(const std::vector<int>& targets /* empty = all others */);  void cancelGlobalEdit();
         const pose::HumanPose& globalEditBaseline() const;
-        void addListener(std::function<void()>);         // any change: document, selection, mode, time
+        int addListener(std::function<void()>);          // any change: document, selection, mode, time (returns an id for removeListener)
 
         // ---- additions (phase 4 implementation; the contract above is unchanged) ----
 
@@ -87,6 +88,9 @@ namespace jasperengine::editor{
 
         // the window makes its session active while it is open (null: none)
         static void setActive(PoseEditSession* session);
+        // suspend() on the active session, if any: before scene commands that copy entities
+        // (duplicate, copy, delete, create or apply a prefab), so they copy rest bones
+        static void suspendActive();
         Project* project() const { return projectPtr; }
 
         bool bound() const { return rigPtr != nullptr; }
@@ -132,6 +136,23 @@ namespace jasperengine::editor{
         // the delta Global Edit would apply: the slots changed since beginGlobalEdit
         int globalEditChangedSlots();
 
+        void removeListener(int id);
+        // The scene is stopped and the session may write bones: false while the scene is saved
+        // (sync or async) or played, until update() resumes. The window disables its edit
+        // controls and the viewport (phase 5) its handles while it is false.
+        bool editable() const;
+        // `entity` of scene `sceneId` is the bound model or one of its bones (the Inspector keeps
+        // bone transforms read-only while posing, the Scene view routes pose keys)
+        bool ownsEntity(uint32_t sceneId, Entity entity) const;
+        // Phase 5 sets this while one of its handles is hovered or dragged: the Scene view's
+        // keys and undo then go to the pose window
+        void setViewportHandleActive(bool active) { handleActive = active; }
+        bool viewportHandleActive() const { return handleActive; }
+        // The Scene view routes keys to the pose window (set by the window each frame; the
+        // Scene view shows a "Pose keys" hint while it is true)
+        void setKeyRouting(bool routing) { keyRoutingOn = routing; }
+        bool keyRouting() const { return keyRoutingOn; }
+
     private:
         // a bone's Transform as the scene had it, with its derived matrices: a scene saved right
         // after restoreBones() writes exactly these values (the next update recomputes them)
@@ -170,7 +191,16 @@ namespace jasperengine::editor{
         pose::HumanPose workingPose;
         pose::HumanPose shown;
         bool applied = false;                // the bones show a pose (saved transforms exist)
-        bool suspended = false;              // restored for a save; apply again when stopped
+        poseui::BoneWriteGate gate;          // closed for a save or play; reopened when stopped
+        bool handleActive = false;
+        bool keyRoutingOn = false;
+        // the bound model's .humanoid sidecar as last seen: a change (Map Bones, its undo, MCP
+        // set_humanoid, another program) rebuilds the rig
+        std::string sidecarFile;
+        int64_t sidecarTime = 0;
+        uint64_t sidecarSize = 0;
+        bool sidecarExists = false;
+        float sidecarCheck = 0.0f;
         std::vector<SavedBone> savedBones;
 
         OnionSettings onionSettings;
@@ -181,8 +211,11 @@ namespace jasperengine::editor{
         pose::HumanPose globalBaseline;
         pose::BodyPose globalBaselineBody;
 
-        std::vector<std::function<void()>> listeners;
+        std::vector<std::pair<int, std::function<void()>>> listeners;
+        int nextListener = 1;
         bool notifying = false;
+        bool notifyAgain = false;            // raised while notifying: run the listeners once more
+        bool destroying = false;
 
         void notify();
         void applyPose(const pose::HumanPose& pose);
@@ -194,6 +227,9 @@ namespace jasperengine::editor{
         bool bonesValid() const;
         int poseCount() const;
         void dropBinding();
+        bool sceneStopped() const;
+        void watchSidecar();
+        bool sidecarChanged();
     };
 
 }

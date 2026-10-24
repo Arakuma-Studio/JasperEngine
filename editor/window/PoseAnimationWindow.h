@@ -99,6 +99,10 @@ namespace jasperengine::editor{
             std::string tab;
             std::string status;                 // the last bake / error line
             std::string emptyState;             // the empty state shown, "" for none
+            bool sceneKeys = false;             // the Scene view's keys and undo go to the window
+            bool editable = false;              // not locked by a scene save or play mode
+            std::string layout;                 // "stacked" or "columns"
+            float thumbnailHeight = 116.0f;
         };
         State getState();
 
@@ -120,6 +124,13 @@ namespace jasperengine::editor{
         bool windowFocused = false;
         bool focusRequested = false;
         bool windowVisible = false;
+        bool wasBound = false;
+        // layout: the compact two-column layout and the strip's thumbnail height (logical px)
+        bool compactLayout = false;
+        float thumbHeight = 116.0f;
+        // the dock node to grow once (first open), applied before the next Begin
+        ImGuiID growNode = 0;
+        float growHeight = 0.0f;
 
         // the Character field: also a model that could not be bound (not humanoid)
         uint32_t candidateScene = 0;
@@ -181,6 +192,10 @@ namespace jasperengine::editor{
         Entity pendingOpenEntity = NULL_ENTITY;
 
         void drawSetupRow();
+        void drawBody();
+        void drawStatusAndGlobalEditTool();
+        void drawSceneKeysHint();
+        bool sceneKeysRouted() const;
         void drawCharacterField();
         void drawAnimationField(bool inlineRow);
         void drawRigChip();
@@ -204,7 +219,7 @@ namespace jasperengine::editor{
 
         // edits through the session (one undo step; mergeKey merges a held widget)
         bool commit(const pose::PoseAnimationData& data, const std::string& undoName, const std::string& mergeKey = "");
-        bool commitEdit(const poseui::Edit& edit, const std::string& undoName);
+        bool commitEdit(const poseui::Edit& edit, const std::string& undoName, bool reordered = false);
         std::string widgetMergeKey(const char* field);
         void finishWidgetEdit();
         void setStatus(const std::string& text, bool error);

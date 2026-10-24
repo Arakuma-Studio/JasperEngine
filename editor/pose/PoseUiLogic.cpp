@@ -471,6 +471,10 @@ const std::vector<poseui::DofGroup>& poseui::dofGroups(){
     return groups;
 }
 
+bool poseui::keepsGlobalEdit(size_t posesBefore, size_t posesAfter, bool reordered, int primaryBefore, int primaryAfter){
+    return posesBefore == posesAfter && !reordered && primaryBefore == primaryAfter;
+}
+
 bool poseui::outsideLimits(int dof, float degrees){
     if (dof < 0 || dof >= DOF_COUNT) return false;
     const DofInfo& info = dofInfo(dof);
@@ -637,36 +641,6 @@ double poseui::frameTickStep(double pixelsPerSecond, int frameRate, double minPi
 }
 
 // ---- Global Edit ----
-
-Quatd poseui::jointRotation(HumanBone bone, const float angles[DOFS_PER_BONE]){
-    const BoneDofInfo& info = boneDofInfo(bone);
-    Vec3d s;
-    for (int k = 0; k < 2; k++){
-        const DofInfo& dof = info.dofs[k];
-        s += Vec3d(canonicalAxis(dof.axis)) * (degToRad(angles[k]) * dof.sign);
-    }
-    const Quatd swing = fromRotationVector(s);
-    const Quatd twist = axisAngleRad(Vec3d(canonicalAxis(info.dofs[2].axis)), degToRad(angles[2]) * info.dofs[2].sign);
-    return (swing * twist).normalized();
-}
-
-void poseui::jointAngles(HumanBone bone, const Quatd& rotation, float angles[DOFS_PER_BONE]){
-    const BoneDofInfo& info = boneDofInfo(bone);
-    Quatd swing, twist;
-    swingTwist(rotation.normalized(), Vec3d(info.neutralDirection), swing, twist);
-    if (swing.w < 0.0){
-        swing = -swing;
-        twist = -twist;
-    }
-    const Vec3d s = toRotationVector(swing);
-    const Vec3d axis3(canonicalAxis(info.dofs[2].axis));
-    const double t = 2.0 * std::atan2(twist.vec().dot(axis3), twist.w);
-    for (int k = 0; k < 2; k++){
-        const DofInfo& dof = info.dofs[k];
-        angles[k] = static_cast<float>(dof.sign * radToDeg(s.dot(Vec3d(canonicalAxis(dof.axis)))));
-    }
-    angles[2] = wrapAngle(static_cast<float>(info.dofs[2].sign * radToDeg(t)));
-}
 
 int poseui::applyGlobalEditDelta(const BodyPose& base, const BodyPose& current, BodyPose& target,
                                  std::vector<int>* changedSlots, float thresholdDegrees){
