@@ -21,6 +21,9 @@
 // The V-HACD implementation is compiled here and nowhere else. Its own warnings are not ours:
 // silenced for this include only, so the build stays warning-free on every compiler.
 #ifdef JASPERENGINE_CONVEX_DECOMPOSITION
+    // the size of V-HACD's job pool (m_asyncACD), read by its patched header
+    namespace jasperengine { namespace convexdecomposition { unsigned vhacdThreadCount(); } }
+    #define VHACD_THREAD_COUNT ::jasperengine::convexdecomposition::vhacdThreadCount()
     #if defined(_MSC_VER)
         #pragma warning(push, 0)
     #elif defined(__clang__)
@@ -61,6 +64,7 @@
         #pragma GCC diagnostic ignored "-Wformat-truncation"
         #pragma GCC diagnostic ignored "-Wlogical-op"
         #pragma GCC diagnostic ignored "-Wduplicated-cond"
+        #pragma GCC diagnostic ignored "-Wmissing-declarations"
     #endif
     #define ENABLE_VHACD_IMPLEMENTATION 1
     #include "VHACD.h"
@@ -74,6 +78,15 @@
 #endif
 
 using namespace jasperengine;
+
+#ifdef JASPERENGINE_CONVEX_DECOMPOSITION
+// One core less than the machine has (at least 1, at most upstream's 8), so the editor's main
+// thread keeps one while a job splits hulls in parallel
+unsigned jasperengine::convexdecomposition::vhacdThreadCount(){
+    const unsigned cores = std::thread::hardware_concurrency();
+    return std::min(cores > 1 ? cores - 1 : 1u, 8u);
+}
+#endif
 
 namespace{
     // Part of every key: bump it when anything that shapes the hulls changes (V-HACD version,
@@ -418,7 +431,7 @@ namespace{
     bool hasNoVolume(const std::vector<Vector3>& points){
         const double FLAT_TOLERANCE = 1e-6;
         auto sub = [](const Vector3& a, const Vector3& b){
-            return std::array<double, 3>{double(a.x) - b.x, double(a.y) - b.y, double(a.z) - b.z};
+            return std::array<double, 3>{double(a.x) - double(b.x), double(a.y) - double(b.y), double(a.z) - double(b.z)};
         };
         auto cross = [](const std::array<double, 3>& a, const std::array<double, 3>& b){
             return std::array<double, 3>{a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
@@ -564,7 +577,10 @@ namespace{
         vparams.m_maxNumVerticesPerCH = params.maxVerticesPerHull;
         vparams.m_fillMode = VHACD::FillMode::FLOOD_FILL;
         vparams.m_shrinkWrap = true;
-        vparams.m_asyncACD = false;   // the caller's thread only: jobs never compete for cores
+        // V-HACD's job pool splits and merges hulls in parallel while Compute() still blocks here:
+        // 2-3x faster on concave meshes, and the hulls are bit-identical to a single-threaded run
+        // whatever the thread count (README.jasper.md)
+        vparams.m_asyncACD = true;
 
         if (slot.mutex){
             std::lock_guard<std::mutex> lock(*slot.mutex);

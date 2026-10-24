@@ -5672,6 +5672,11 @@ void ShrinkWrap(SimpleMesh& sourceConvexHull,
 
 #if !VHACD_DISABLE_THREADING
 
+// JasperEngine patch: worker threads of the m_asyncACD pool
+#ifndef VHACD_THREAD_COUNT
+#define VHACD_THREAD_COUNT 8
+#endif
+
 //********************************************************************************************************************
 // Definition of the ThreadPool
 //********************************************************************************************************************
@@ -5965,12 +5970,12 @@ public:
     std::unordered_map<uint32_t, uint32_t>      m_voxelIndexMap; // Maps from a voxel coordinate space into a vertex index space
     std::vector<VHACD::Vertex>                  m_vertices;
     std::vector<VHACD::Triangle>                m_indices;
-    static uint32_t                             m_voxelHullCount;
+    static std::atomic<uint32_t>                m_voxelHullCount; // JasperEngine patch: atomic, hulls are built on several threads
     IVHACD::Parameters                          m_params;
     VHACDCallbacks*                             m_callbacks{ nullptr };
 };
 
-uint32_t VoxelHull::m_voxelHullCount = 0;
+std::atomic<uint32_t> VoxelHull::m_voxelHullCount{ 0 };
 
 VoxelHull::VoxelHull(const VoxelHull& parent,
                      SplitAxis axis,
@@ -7122,7 +7127,8 @@ bool VHACDImpl::Compute(const std::vector<VHACD::Vertex>& points,
 #if !VHACD_DISABLE_THREADING
     if ( m_params.m_asyncACD )
     {
-        m_threadPool = std::unique_ptr<ThreadPool>(new ThreadPool(8));
+        // JasperEngine patch: the pool size comes from VHACD_THREAD_COUNT (upstream: 8)
+        m_threadPool = std::unique_ptr<ThreadPool>(new ThreadPool(VHACD_THREAD_COUNT));
     }
 #endif
     CopyInputMesh(points,
@@ -7509,16 +7515,23 @@ void VHACDImpl::PerformConvexDecomposition()
                 }
             }
 
+#if !VHACD_DISABLE_THREADING
+            // JasperEngine patch: waited for even when canceled; the jobs still queued use 'tasks'
+            // and the hulls, which go away once this returns (upstream skips this on cancel)
+            if ( m_threadPool )
+            {
+                for (CostTask& task : tasks)
+                {
+                    task.m_future.get();
+                }
+            }
+#endif
+
             if ( !m_canceled )
             {
 #if !VHACD_DISABLE_THREADING
                 if ( m_threadPool )
                 {
-                    for (CostTask& task : tasks)
-                    {
-                        task.m_future.get();
-                    }
-
                     for (CostTask& task : tasks)
                     {
                         AddCostToPriorityQueue(task);

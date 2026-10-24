@@ -70,9 +70,9 @@ namespace jasperengine {
     // Written aside and renamed into place; a file that does not read back whole is a miss and
     // is deleted.
     //
-    // Builds without JASPERENGINE_CONVEX_DECOMPOSITION (Web, Android, iOS) keep find(), store()
-    // and clear(); request() marks the key FAILED and decompose() fails, both with "convex
-    // decomposition is not available in this build".
+    // Builds without JASPERENGINE_CONVEX_DECOMPOSITION (exported games, Web, Android, iOS) keep
+    // find(), store() and clear(); request() marks the key FAILED and decompose() fails, both with
+    // "convex decomposition is not available in this build".
     class JASPERENGINE_API ConvexDecompositionCache {
     public:
         // directory: where <key hex>.hulls files live (created on first store); "" keeps the cache
@@ -120,8 +120,9 @@ namespace jasperengine {
         // failure; a mesh with no volume fails, and so do fewer than 4 distinct vertices, no
         // triangle, an index out of range, a non-finite position, parameters out of range
         // (maxHulls 0, resolution outside 10000..64000000, maxVerticesPerHull under 4) and a
-        // V-HACD error. The input is welded as in hashDecompositionInput(). Runs V-HACD on the
-        // calling thread only.
+        // V-HACD error. The input is welded as in hashDecompositionInput(). Blocks the calling
+        // thread while V-HACD's job pool (one thread less than the machine has, 1 to 8) splits
+        // and merges hulls; the result does not depend on the thread count.
         static bool decompose(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                               const DecompositionParams& params, std::vector<ConvexHullPoints>& out,
                               const std::atomic<bool>* cancel, std::string* error);

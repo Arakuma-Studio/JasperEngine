@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -302,6 +303,26 @@ TEST(ConvexDecomposition, TorusLeavesItsHoleOpen) {
     for (int i = 0; i < 8; i++) {
         const float u = 6.28318530718f * float(i) / 8.0f;
         EXPECT_TRUE(insideAny(planes, Vector3(std::cos(u), 0, std::sin(u)), 0.0)) << i;
+    }
+}
+
+TEST(ConvexDecomposition, SameMeshSameHullsBitForBit) {
+    REQUIRE_DECOMPOSITION();
+    // V-HACD splits and merges on its job pool: the order the jobs finish in must not show
+    const Mesh mesh = torus(1.0f, 0.3f, 24, 10);
+    DecompositionParams params = LOW;
+    params.resolution = 20000;
+    std::vector<ConvexHullPoints> first;
+    std::string error;
+    ASSERT_TRUE(ConvexDecompositionCache::decompose(mesh.positions, mesh.indices, params, first, nullptr, &error)) << error;
+    for (int run = 0; run < 2; run++) {
+        std::vector<ConvexHullPoints> again;
+        ASSERT_TRUE(ConvexDecompositionCache::decompose(mesh.positions, mesh.indices, params, again, nullptr, &error)) << error;
+        ASSERT_EQ(again.size(), first.size());
+        for (size_t h = 0; h < first.size(); h++) {
+            ASSERT_EQ(again[h].points.size(), first[h].points.size());
+            EXPECT_EQ(std::memcmp(again[h].points.data(), first[h].points.data(), first[h].points.size() * sizeof(Vector3)), 0) << h;
+        }
     }
 }
 

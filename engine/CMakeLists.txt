@@ -701,10 +701,11 @@ if(JASPERENGINE_PHYSICS_3D)
     include_directories(SYSTEM libs/joltphysics)
 endif()
 
-# Convex decomposition of Physics Placement (V-HACD, engine/libs/vhacd): desktop only. Web,
-# Android and iOS builds keep the hull cache (ConvexDecompositionCache) but cannot decompose.
-# After the standalone block: the platform is only known once project() has read the toolchain.
-if(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+# Convex decomposition of Physics Placement (V-HACD, engine/libs/vhacd): the editor's, on desktop.
+# Exported games (this file as the top-level build) and Web, Android and iOS builds keep the hull
+# cache (ConvexDecompositionCache) but cannot decompose. After the standalone block: the platform
+# is only known once project() has read the toolchain.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR OR EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(JASPERENGINE_CONVEX_DECOMPOSITION_DEFAULT OFF)
 else()
     set(JASPERENGINE_CONVEX_DECOMPOSITION_DEFAULT ON)

@@ -67,4 +67,4 @@ Convex decomposition of Physics Placement (edit-time placement in the Scene view
 
 | Library | Version | Location | License | Used for |
 |---|---|---|---|---|
-| [V-HACD](https://github.com/kmammou/v-hacd) by Khaled Mamou (version 4 by John W. Ratcliff) | 4.1.0 (`master` at `f900e4236149`, the single header `include/VHACD.h`) | `engine/libs/vhacd/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | splitting concave meshes into convex hulls (`engine/core/physics/ConvexDecomposition`), desktop builds only (`JASPERENGINE_CONVEX_DECOMPOSITION`) |
+| [V-HACD](https://github.com/kmammou/v-hacd) by Khaled Mamou (version 4 by John W. Ratcliff) | 4.1.0 (`master` at `f900e4236149`, the single header `include/VHACD.h`) | `engine/libs/vhacd/` (`LICENSE`, `README.jasper.md`; three local fixes for its multithreaded mode, `jasper.patch`) | BSD-3-Clause | splitting concave meshes into convex hulls (`engine/core/physics/ConvexDecomposition`), the editor on desktop only, never exported games (`JASPERENGINE_CONVEX_DECOMPOSITION`) |
