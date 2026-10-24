@@ -45,6 +45,10 @@ namespace jasperengine {
 
     // The cache key: geometry (positions welded by exact value, triangle indices), the
     // parameters and the algorithm version. Same geometry and params: same key on every platform.
+    // Welding maps every copy of a position (UV seams, split normals) to its first index; -0 and
+    // +0 are the same value. Triangles that collapse after welding, triangles with an index out
+    // of range and a trailing partial triangle are left out, as decompose() leaves them out or
+    // refuses them.
     JASPERENGINE_API uint64_t hashDecompositionInput(const std::vector<Vector3>& positions,
                                                      const std::vector<uint32_t>& indices,
                                                      const DecompositionParams& params);
@@ -53,10 +57,22 @@ namespace jasperengine {
         NONE,       // never requested and not cached
         PENDING,    // queued or running
         READY,      // cached (memory or disk)
-        FAILED      // the last attempt failed (degenerate mesh, cancelled, ...); not retried until cleared
+        FAILED      // the last attempt failed (degenerate mesh, cancelled, ...); not retried until
+                    // cleared, except a cancelled one: request() queues it again
     };
 
-    // Thread-safe. One instance per project (editor) or per run (CLI).
+    // Thread-safe: every method may be called from any thread. One instance per project (editor)
+    // or per run (CLI). Jobs run one at a time on a worker thread the cache owns, started by the
+    // first request() and joined by cancelAll() and the destructor.
+    //
+    // Disk entries are <directory>/<key as 16 hex digits>.hulls: little-endian, a magic number and
+    // a format version, the key, the hull count, then per hull its point count and float3 points.
+    // Written aside and renamed into place; a file that does not read back whole is a miss and
+    // is deleted.
+    //
+    // Builds without JASPERENGINE_CONVEX_DECOMPOSITION (exported games, Web, Android, iOS) keep
+    // find(), store() and clear(); request() marks the key FAILED and decompose() fails, both with
+    // "convex decomposition is not available in this build".
     class JASPERENGINE_API ConvexDecompositionCache {
     public:
         // directory: where <key hex>.hulls files live (created on first store); "" keeps the cache
@@ -75,28 +91,44 @@ namespace jasperengine {
 
         DecompositionStatus status(uint64_t key) const;
 
-        // Queues a background decomposition unless the key is cached, pending or failed.
+        // Queues a background decomposition unless the key is cached, pending or failed (a key
+        // that failed by being cancelled is queued again). A key on disk is loaded instead.
         // Returns the key. Inputs are copied.
         uint64_t request(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                          const DecompositionParams& params);
 
+        // A queued job is dropped, a running one stops as soon as V-HACD notices; either way the
+        // key becomes FAILED with "cancelled" (and completionVersion bumps), and a later
+        // request() retries it. No effect on a key that is not pending.
         void cancel(uint64_t key);
         void cancelAll();          // also waits for running jobs to stop
-        size_t pendingCount() const;
+        size_t pendingCount() const;   // queued plus running
 
-        // Bumps whenever a job finishes (ready or failed), so callers can poll cheaply.
+        // Bumps whenever a job finishes (ready, failed or cancelled), so callers can poll cheaply.
         uint64_t completionVersion() const;
 
+        // Why the key is FAILED ("cancelled", "mesh has no volume", ...); "" when it is not.
+        std::string failureReason(uint64_t key) const;
+
         // Removes memory and disk entries and forgets failures.
+        // Jobs still pending are not cancelled: they store their result when they finish.
         void clear();
-        size_t entryCount() const;   // memory + disk entries
+        size_t entryCount() const;   // memory + disk entries, each key once
         size_t bytesOnDisk() const;
 
         // Synchronous decomposition (the job body). cancel may be null. False and *error on
-        // failure; a mesh with no volume fails.
+        // failure; a mesh with no volume fails, and so do fewer than 4 distinct vertices, no
+        // triangle, an index out of range, a non-finite position, parameters out of range
+        // (maxHulls 0, resolution outside 10000..64000000, maxVerticesPerHull under 4) and a
+        // V-HACD error. The input is welded as in hashDecompositionInput(). Blocks the calling
+        // thread while V-HACD's job pool (one thread less than the machine has, 1 to 8) splits
+        // and merges hulls; the result does not depend on the thread count.
         static bool decompose(const std::vector<Vector3>& positions, const std::vector<uint32_t>& indices,
                               const DecompositionParams& params, std::vector<ConvexHullPoints>& out,
                               const std::atomic<bool>* cancel, std::string* error);
+
+        // False when the build has no V-HACD (JASPERENGINE_CONVEX_DECOMPOSITION off).
+        static bool available();
 
     private:
         struct Impl;

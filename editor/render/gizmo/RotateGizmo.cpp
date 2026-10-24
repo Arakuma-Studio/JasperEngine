@@ -38,11 +38,11 @@ editor::RotateGizmo::RotateGizmo(Scene* scene, bool use2DGizmo): GameObject(scen
     }
     zcircle = new Primitive(scene);
 
-    line->addLine(Vector3::ZERO, Vector3::ZERO, Vector4(lineColor, 1.0));
+    line->addLine(Vector3::ZERO, Vector3::ZERO, paint(lineColor, 1.0));
     line->setVisible(false);
 
     maincircle->createTorus((use2DGizmo)?center2DRadius:torusHeight, mainRadius, 32, 32);
-    maincircle->setColor(Vector4(mainColor, circleAlpha));
+    maincircle->setColor(paint(mainColor, circleAlpha));
     maincircle->setBillboardRotation(90,0,0);
     maincircle->setBillboard((!use2DGizmo), false, false);
 
@@ -51,13 +51,13 @@ editor::RotateGizmo::RotateGizmo(Scene* scene, bool use2DGizmo): GameObject(scen
         ycircleAABBs = createHalfTorus(ycircle->getEntity(), torusHeight, axisRadius, 32, 16);
         zcircleAABBs = createHalfTorus(zcircle->getEntity(), torusHeight, axisRadius, 32, 16);
 
-        xcircle->setColor(Vector4(xaxisColor, 1.0));
-        ycircle->setColor(Vector4(yaxisColor, 1.0));
-        zcircle->setColor(Vector4(zaxisColor, 1.0));
+        xcircle->setColor(paint(xaxisColor, 1.0));
+        ycircle->setColor(paint(yaxisColor, 1.0));
+        zcircle->setColor(paint(zaxisColor, 1.0));
     } else {
         // For 2D mode, create a full torus for Z rotation
         zcircle->createTorus(torusHeight, axisRadius, 32, 32);
-        zcircle->setColor(Vector4(zaxisColor, 1.0));
+        zcircle->setColor(paint(zaxisColor, 1.0));
         // Create a dummy AABB for the full circle
         zcircleAABBs.resize(1);
         zcircleAABBs[0] = zcircle->getAABB();
@@ -291,32 +291,32 @@ editor::GizmoSideSelected editor::RotateGizmo::checkHover(const Ray& ray){
 
     if (!use2DGizmo) {
         if (axis == 0){
-            xcircle->setColor(Vector4(xaxisColorHightlight, 1.0));
+            xcircle->setColor(paint(xaxisColorHightlight, 1.0));
             gizmoSideSelected = GizmoSideSelected::X;
         }else{
-            xcircle->setColor(Vector4(xaxisColor, 1.0));
+            xcircle->setColor(paint(xaxisColor, 1.0));
         }
 
         if (axis == 1){
-            ycircle->setColor(Vector4(yaxisColorHightlight, 1.0));
+            ycircle->setColor(paint(yaxisColorHightlight, 1.0));
             gizmoSideSelected = GizmoSideSelected::Y;
         }else{
-            ycircle->setColor(Vector4(yaxisColor, 1.0));
+            ycircle->setColor(paint(yaxisColor, 1.0));
         }
     }
 
     if (axis == 2){
-        zcircle->setColor(Vector4(zaxisColorHightlight, 1.0));
+        zcircle->setColor(paint(zaxisColorHightlight, 1.0));
         gizmoSideSelected = GizmoSideSelected::Z;
     }else{
-        zcircle->setColor(Vector4(zaxisColor, 1.0));
+        zcircle->setColor(paint(zaxisColor, 1.0));
     }
 
     if (axis == 3){
-        maincircle->setColor(Vector4(mainColorHightlight, circleAlpha));
+        maincircle->setColor(paint(mainColorHightlight, circleAlpha));
         gizmoSideSelected = use2DGizmo ? GizmoSideSelected::Z : GizmoSideSelected::XYZ;
     }else{
-        maincircle->setColor(Vector4(mainColor, circleAlpha));
+        maincircle->setColor(paint(mainColor, circleAlpha));
     }
 
     return gizmoSideSelected;

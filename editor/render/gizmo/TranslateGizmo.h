@@ -37,11 +37,18 @@ namespace jasperengine::editor{
         static const Vector3 zaxisColorHightlight;
         static const float rectAlpha;
 
+        // Physics (G) is on: colours from physicsGizmoColor
+        bool physicsTint = false;
+        Vector4 paint(const Vector3& color, float alpha) const { return physicsGizmoColor(color, alpha, physicsTint); }
+
     public:
         TranslateGizmo(Scene* scene, bool use2DGizmo);
         virtual ~TranslateGizmo();
 
         GizmoSideSelected checkHover(const Ray& ray);
+
+        // Takes effect with the next checkHover, which repaints every handle
+        void setPhysicsTint(bool tint) { physicsTint = tint; }
     };
 
 }
