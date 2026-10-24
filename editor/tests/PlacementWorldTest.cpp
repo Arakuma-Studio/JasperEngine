@@ -90,6 +90,89 @@ TEST(PlacementWorldSettle, BoxRestsOnBoxFloor) {
     EXPECT_NEAR(state.averageContactNormal.y, 1.0f, 1e-3f);
 }
 
+// Jolt drops a body's contacts when it falls asleep; the world keeps them, so what rests where
+// is still reported at the end of a settle
+TEST(PlacementWorldSettle, AsleepBodiesKeepTheirContacts) {
+    TestScene t;
+    floorBox(t);
+    const Entity crate = t.entity(Vector3(0, 0.5f, 0));
+    const Entity bottom = t.box(Vector3(3, 0.2f, 3), Vector3(0, 0.1f, 0), crate);
+    t.box(Vector3(0.2f, 1, 3), Vector3(-1.6f, 0.5f, 0), crate);
+    t.box(Vector3(0.2f, 1, 3), Vector3(1.6f, 0.5f, 0), crate);
+    t.box(Vector3(3.4f, 1, 0.2f), Vector3(0, 0.5f, -1.6f), crate);
+    t.box(Vector3(3.4f, 1, 0.2f), Vector3(0, 0.5f, 1.6f), crate);
+    std::vector<Entity> boxes;
+    boxes.push_back(t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(-0.8f, 1.3f, 0.5f)));
+    boxes.push_back(t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(0.0f, 2.3f, -0.6f)));
+    boxes.push_back(t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(0.8f, 3.6f, 0.4f)));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    for (Entity e : boxes) ASSERT_TRUE(world.addMover(e));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 1500), 0);
+    // a while longer, every body asleep in Jolt too
+    for (int i = 0; i < 120; i++) world.step();
+    ASSERT_TRUE(world.allAsleep());
+
+    for (Entity e : boxes) {
+        const PlacementBodyState state = world.getState(e);
+        EXPECT_TRUE(state.asleep) << e;
+        EXPECT_NEAR(state.pose.position.y, 0.95f, 1e-3f) << e;
+        EXPECT_EQ(state.restingOn, std::vector<Entity>{bottom}) << e;
+        EXPECT_GE(state.contacts, 1u) << e;
+        EXPECT_TRUE(state.touchingContext) << e;
+        EXPECT_NEAR(state.averageContactNormal.y, 1.0f, 1e-3f) << e;
+        EXPECT_LT(state.maxPenetration, 1e-3f) << e;
+    }
+
+    // woken, they still rest on it; lifted off and asleep again in the air, on nothing
+    world.wakeAll();
+    world.step();
+    EXPECT_EQ(world.getState(boxes[0]).restingOn, std::vector<Entity>{bottom});
+    world.setGravity(Vector3(0, 0, 0));
+    world.teleport(boxes[0], {Vector3(-0.8f, 3.0f, 0.5f), Quaternion()});
+    world.step();
+    EXPECT_TRUE(world.getState(boxes[0]).restingOn.empty());
+    ASSERT_GT(stepUntilAsleep(world, 1500), 0);
+    for (int i = 0; i < 120; i++) world.step();
+    const PlacementBodyState lifted = world.getState(boxes[0]);
+    EXPECT_TRUE(lifted.asleep);
+    EXPECT_NEAR(lifted.pose.position.y, 3.0f, 1e-4f);
+    EXPECT_TRUE(lifted.restingOn.empty());
+    EXPECT_EQ(lifted.contacts, 0u);
+    EXPECT_FALSE(lifted.touchingContext);
+    // the others still rest where they were
+    EXPECT_EQ(world.getState(boxes[1]).restingOn, std::vector<Entity>{bottom});
+}
+
+// A body driven up off the floor (not teleported) and left to sleep in the air rests on nothing
+TEST(PlacementWorldSettle, LiftedBodiesForgetTheFloor) {
+    TestScene t;
+    floorBox(t);
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 0.5f, 0));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    ASSERT_TRUE(world.addMover(crate));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 600), 0);
+    for (int i = 0; i < 120; i++) world.step();
+    ASSERT_FALSE(world.getState(crate).restingOn.empty());
+
+    world.setGravity(Vector3(0, 0, 0));
+    world.setTarget(crate, {Vector3(0, 2.5f, 0), Quaternion()});
+    for (int i = 0; i < 120; i++) world.step();
+    world.clearTargets();
+    world.stopAll();
+    ASSERT_GT(stepUntilAsleep(world, 600), 0);
+    for (int i = 0; i < 120; i++) world.step();
+    const PlacementBodyState state = world.getState(crate);
+    EXPECT_NEAR(state.pose.position.y, 2.5f, 1e-3f);
+    EXPECT_TRUE(state.restingOn.empty());
+    EXPECT_EQ(state.contacts, 0u);
+}
+
 TEST(PlacementWorldSettle, SphereRollsOffRamp) {
     TestScene t;
     const Entity ramp = t.box(Vector3(6, 0.2f, 2), Vector3(0, 1, 0));
@@ -920,6 +1003,72 @@ TEST(PlacementWorldContext, PushNeighboursMovesWhatItHits) {
             // the pebble is a wall then
             EXPECT_LT(world.getState(crate).pose.position.x, 0.81f);
         }
+    }
+}
+
+// A neighbour brings in what it stands on: three boxes dropped into a crate that stands on a
+// table, the region only half a metre around the boxes, so the floor under the table (and the
+// table under the crate) lie outside it
+TEST(PlacementWorldContext, NeighboursStandOnContextOutsideTheRegion) {
+    TestScene t;
+    const Entity floor = t.box(Vector3(12, 0.2f, 12), Vector3(0, -0.1f, 0));
+    const Entity table = t.entity(Vector3(0, 0, 0));
+    t.box(Vector3(1.6f, 0.1f, 1.0f), Vector3(0, 0.95f, 0), table);
+    for (int i = 0; i < 4; i++) {
+        t.box(Vector3(0.08f, 0.9f, 0.08f), Vector3((i & 1) ? 0.7f : -0.7f, 0.45f, (i & 2) ? 0.4f : -0.4f), table);
+    }
+    const Entity props = t.entity(Vector3(0, 0, 0));
+    const Entity crate = t.entity(Vector3(0, 1.0f, 0), props);
+    t.box(Vector3(0.6f, 0.04f, 0.6f), Vector3(0, 0.02f, 0), crate);
+    t.box(Vector3(0.6f, 0.38f, 0.04f), Vector3(0, 0.23f, 0.28f), crate);
+    t.box(Vector3(0.6f, 0.38f, 0.04f), Vector3(0, 0.23f, -0.28f), crate);
+    t.box(Vector3(0.04f, 0.38f, 0.52f), Vector3(0.28f, 0.23f, 0), crate);
+    t.box(Vector3(0.04f, 0.38f, 0.52f), Vector3(-0.28f, 0.23f, 0), crate);
+    std::vector<Entity> boxes;
+    boxes.push_back(t.box(Vector3(0.14f, 0.14f, 0.14f), Vector3(-0.1f, 1.75f, -0.08f), props));
+    boxes.push_back(t.box(Vector3(0.12f, 0.12f, 0.12f), Vector3(0.09f, 2.0f, 0.06f), props));
+    boxes.push_back(t.box(Vector3(0.16f, 0.1f, 0.12f), Vector3(0.0f, 2.3f, 0.1f), props));
+    t.setRotation(boxes[0], axisAngle(Vector3(0, 1, 0), 25.0f * DEG) * axisAngle(Vector3(1, 0, 0), 12.0f * DEG));
+    t.setRotation(boxes[1], axisAngle(Vector3(0, 1, 0), 40.0f * DEG) * axisAngle(Vector3(0, 0, 1), 15.0f * DEG));
+    t.setRotation(boxes[2], axisAngle(Vector3(1, 0, 0), 30.0f * DEG) * axisAngle(Vector3(0, 0, 1), -10.0f * DEG));
+    t.resolve();
+
+    PlacementWorldSettings settings;
+    settings.pushNeighbours = true;
+    PlacementWorld world(&t.scene, settings);
+    for (Entity e : boxes) ASSERT_TRUE(world.addMover(e));
+    AABB region = world.getMoversBounds();
+    region = AABB(region.getMinimum() - Vector3(0.5f, 0.5f, 0.5f), region.getMaximum() + Vector3(0.5f, 0.5f, 0.5f));
+    ASSERT_GT(region.getMinimum().y, 1.0f);   // the floor and the table's legs are outside
+    settings.killY = region.getMinimum().y - 50.0f;
+    world.setSettings(settings);
+    world.ensureContext(region);
+
+    std::vector<Entity> neighbours = world.getNeighbours();
+    std::sort(neighbours.begin(), neighbours.end());
+    EXPECT_EQ(neighbours, (std::vector<Entity>{table, crate}));
+    EXPECT_LT(world.getContextRegion().getMinimum().y, 0.0f);   // grown down to the floor
+    PlacementRayHit hit;
+    ASSERT_TRUE(world.raycast(Ray(Vector3(3, 5, 3), Vector3(0, -10, 0)), hit));
+    EXPECT_EQ(hit.entity, floor);
+    const AABB dynamic = world.getDynamicBounds();
+    EXPECT_LT(dynamic.getMinimum().y, 0.01f);   // the table's feet
+    EXPECT_GT(dynamic.getMaximum().y, 2.3f);    // the highest box
+
+    ASSERT_GT(stepUntilAsleep(world, 1500), 0);
+    for (const PlacementBodyState& state : world.getStates()) EXPECT_FALSE(state.fellOut) << state.entity;
+    const PlacementBodyState tableState = world.getState(table);
+    EXPECT_LT(tableState.pose.position.length(), 0.02f);
+    EXPECT_EQ(tableState.restingOn, std::vector<Entity>{floor});
+    const PlacementBodyState crateState = world.getState(crate);
+    EXPECT_NEAR(crateState.pose.position.y, 1.0f, 0.02f);
+    EXPECT_EQ(crateState.restingOn, std::vector<Entity>{table});
+    for (Entity e : boxes) {
+        const Vector3 p = world.getState(e).pose.position - crateState.pose.position;
+        EXPECT_LT(std::fabs(p.x), 0.26f) << e;
+        EXPECT_LT(std::fabs(p.z), 0.26f) << e;
+        EXPECT_GT(p.y, 0.04f) << e;
+        EXPECT_LT(p.y, 0.42f) << e;
     }
 }
 
