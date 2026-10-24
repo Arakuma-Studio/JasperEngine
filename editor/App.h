@@ -100,9 +100,9 @@ namespace jasperengine::editor{
     private:
         Project project;
 
-        std::mutex mainThreadTaskMutex;
-        std::queue<std::function<void()>> mainThreadTasks;
         std::thread::id mainThreadId;
+        // the editor scheduler's Real clock
+        std::chrono::steady_clock::time_point lastSchedulerTime{};
 
         // Whether engineRender() drew a scene this frame, and a wake callback the
         // backend loop uses to decide when it can idle.
@@ -360,6 +360,9 @@ namespace jasperengine::editor{
 
         bool didRenderScene() const { return renderedSceneThisFrame; }
         bool hasPendingMainThreadTasks();
+        // How long the idle backend loop may sleep: until the editor scheduler's next timer,
+        // at most maxSeconds
+        double idleWaitSeconds(double maxSeconds) const;
         // Main thread only: keeps the loop drawing while a worker thread drives the UI.
         void requestRedraw();
         bool consumeRedrawRequest();
@@ -405,6 +408,8 @@ namespace jasperengine::editor{
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        // Preferences (Edit > Preferences), for the MCP focus_window tool
+        EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
         PlayInput* getPlayInput() const;
         void resetLayout();
 

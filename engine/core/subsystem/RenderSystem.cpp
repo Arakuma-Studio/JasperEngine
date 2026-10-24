@@ -5171,7 +5171,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         if (!bufferRender->isCreated()) {
             if (!bufferRender->createBuffer(buf.second->getSize(), buf.second->getData(), buf.second->getType(), buf.second->getUsage())) {
-                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %lu; resource pool may be exhausted",
+                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %u; resource pool may be exhausted",
                            buf.first.c_str(), buf.second->getSize(), entity);
                 for (BufferRender* created : buffersCreatedThisLoad) {
                     created->destroyBuffer();

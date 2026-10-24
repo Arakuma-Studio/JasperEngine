@@ -123,6 +123,7 @@ namespace jasperengine{
         // past go, or those older than two frames when no system ran
         void endFrame();
 
+        // Deprecated, as Engine::removeSubscriptionsByTag: SubscriptionOwnerIndex::releaseOwner
         void removeSubscriptionsByTag(const std::string& substring);
 
         void updateCameraSize();

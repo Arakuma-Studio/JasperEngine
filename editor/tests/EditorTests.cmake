@@ -10,6 +10,22 @@ file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
     ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp)
 
+# the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
+# crash handler (editor/tests/util/LogCrashHelper.cpp)
+add_executable(je_log_crash_helper
+    ${CMAKE_CURRENT_LIST_DIR}/util/LogCrashHelper.cpp
+    ${CMAKE_SOURCE_DIR}/${EDITOR_DIR}/util/CrashHandler.cpp)
+target_include_directories(je_log_crash_helper PRIVATE ${CMAKE_SOURCE_DIR}/${EDITOR_DIR} ${GENERATED_DIR})
+target_link_libraries(je_log_crash_helper PRIVATE jasperengine)
+if(WIN32)
+    target_link_libraries(je_log_crash_helper PRIVATE dbghelp)
+endif()
+set_target_properties(je_log_crash_helper PROPERTIES
+    CXX_STANDARD ${JASPERENGINE_CXX_STANDARD}
+    CXX_STANDARD_REQUIRED ON
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+    FOLDER "tests")
+
 jasperengine_add_test_target(jasperengine-editor-tests
     EDITOR
     SOURCES ${EDITOR_TEST_SOURCES}
@@ -21,5 +37,6 @@ jasperengine_add_test_target(jasperengine-editor-tests
         JASPER_TEST_FIXTURES_DIR="${CMAKE_CURRENT_LIST_DIR}/fixtures"
         # tests that run the editor binary (CLI exit codes)
         JASPER_TEST_EDITOR_BINARY="$<TARGET_FILE:jasperengine-editor>"
+        JASPER_TEST_LOG_CRASH_HELPER="$<TARGET_FILE:je_log_crash_helper>"
 )
-add_dependencies(jasperengine-editor-tests jasperengine-editor)
+add_dependencies(jasperengine-editor-tests jasperengine-editor je_log_crash_helper)

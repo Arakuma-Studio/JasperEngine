@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneBackup.h"
+#include "log/LogFormatCheck.h"
 
 #include "DocumentFile.h"
 #include "EditorVersion.h"
@@ -48,7 +49,7 @@ namespace {
         return local;
     }
 
-    std::string formatTime(std::time_t time, const char* format) {
+    JE_STRFTIME_FORMAT(2) std::string formatTime(std::time_t time, const char* format) {
         const std::tm local = localTime(time);
         char buffer[40];
         std::strftime(buffer, sizeof(buffer), format, &local);

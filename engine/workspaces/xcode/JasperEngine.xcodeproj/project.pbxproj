@@ -7,6 +7,38 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		533039212E9B8AAACBFB34F6 /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216521ECDD878DDF6B /* Logger.cpp */; };
+		53303921BD7DD6D8CC5A2CCC /* LogFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039211A410107AC9F4C35 /* LogFormat.cpp */; };
+		533039213F13EC274DF9D1B1 /* Backtrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D4F4BC762EB04EE5 /* Backtrace.cpp */; };
+		533039211E53ADC3EA1D2666 /* ConsoleSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392105E1B5A4325820C8 /* ConsoleSink.cpp */; };
+		53303921A6689AB43A67FD62 /* RotatingFileSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921F8A480B48E3435D0 /* RotatingFileSink.cpp */; };
+		5330392157D82947C7D0BE2B /* MemorySink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392180A070DAADE49C74 /* MemorySink.cpp */; };
+		533039217CD984690CACB1E8 /* CallbackSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921C7337C8A7EC8AB1A /* CallbackSink.cpp */; };
+		53303921EF47B61CDF6B9438 /* PlatformSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921DC3BAB5450EE81F5 /* PlatformSink.cpp */; };
+		53303921BCCE2F9F3D19B3F5 /* PlatformSinks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039219D4F2FC1EA18312C /* PlatformSinks.cpp */; };
+		53303921E69F7E04197D6659 /* AndroidLogSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D11B28DACB878867 /* AndroidLogSink.cpp */; };
+		53303921238E9763F9677F50 /* EmscriptenConsoleSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039217838567F6A22BDF8 /* EmscriptenConsoleSink.cpp */; };
+		53303921959B25A4BD7E23AD /* DebuggerSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D8AB6DCC5FACA688 /* DebuggerSink.cpp */; };
+		533039213FC27C26D02F8CCA /* AppleLogSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392180D5383E44EF7928 /* AppleLogSink.cpp */; };
+		533039216E36144EFCCE2AD1 /* CrashHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216109011E1A94CCC1 /* CrashHook.cpp */; };
+		533039210FBC5DE5AEDEE493 /* Scheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392157EE817230985136 /* Scheduler.cpp */; };
+		533039217995488BCF6CB6FC /* SubscriptionOwnerIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921A87265200F07B6E2 /* SubscriptionOwnerIndex.cpp */; };
+		53303921EB2FAA931E22F83E /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216521ECDD878DDF6B /* Logger.cpp */; };
+		53303921F73661BAFEB28A1B /* LogFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039211A410107AC9F4C35 /* LogFormat.cpp */; };
+		53303921F46D79976D292F8F /* Backtrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D4F4BC762EB04EE5 /* Backtrace.cpp */; };
+		533039217622E5EB4438F79D /* ConsoleSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392105E1B5A4325820C8 /* ConsoleSink.cpp */; };
+		533039210759E5DA97E022C4 /* RotatingFileSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921F8A480B48E3435D0 /* RotatingFileSink.cpp */; };
+		533039216E7973291B70EDF3 /* MemorySink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392180A070DAADE49C74 /* MemorySink.cpp */; };
+		5330392105243564EFCE4DB9 /* CallbackSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921C7337C8A7EC8AB1A /* CallbackSink.cpp */; };
+		533039213772453752897584 /* PlatformSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921DC3BAB5450EE81F5 /* PlatformSink.cpp */; };
+		5330392106A4E1EDC75B7914 /* PlatformSinks.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039219D4F2FC1EA18312C /* PlatformSinks.cpp */; };
+		53303921953D34DEDD25BF5A /* AndroidLogSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D11B28DACB878867 /* AndroidLogSink.cpp */; };
+		5330392132DC039F2367BDE1 /* EmscriptenConsoleSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039217838567F6A22BDF8 /* EmscriptenConsoleSink.cpp */; };
+		53303921C12D3344D0F16B53 /* DebuggerSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D8AB6DCC5FACA688 /* DebuggerSink.cpp */; };
+		53303921AA0C0A3F7CA7A6FB /* AppleLogSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392180D5383E44EF7928 /* AppleLogSink.cpp */; };
+		533039218B446530848CC27A /* CrashHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216109011E1A94CCC1 /* CrashHook.cpp */; };
+		53303921DFF847D57C105983 /* Scheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392157EE817230985136 /* Scheduler.cpp */; };
+		533039213F18666690EE79DE /* SubscriptionOwnerIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921A87265200F07B6E2 /* SubscriptionOwnerIndex.cpp */; };
 		17145B362FF7FC3B00543CB7 /* Light2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B342FF7FC3B00543CB7 /* Light2DComponent.h */; };
 		17145B372FF7FC3B00543CB7 /* ShadowCaster2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B352FF7FC3B00543CB7 /* ShadowCaster2DComponent.h */; };
 		17145B3C2FF7FC5E00543CB7 /* Light2D.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B382FF7FC5E00543CB7 /* Light2D.h */; };
@@ -3556,6 +3588,34 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		53303921B039D6604F0F7143 /* Logger.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Logger.h; sourceTree = "<group>"; };
+		533039216521ECDD878DDF6B /* Logger.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Logger.cpp; sourceTree = "<group>"; };
+		533039212BEB38E5A55A3E83 /* LogCategory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LogCategory.h; sourceTree = "<group>"; };
+		53303921D3432A8EF1AF5C4B /* LogRecord.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LogRecord.h; sourceTree = "<group>"; };
+		533039217DE66E2A22E150E7 /* LogSink.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LogSink.h; sourceTree = "<group>"; };
+		533039218D7773CADB1B0CBE /* LogSinks.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LogSinks.h; sourceTree = "<group>"; };
+		53303921BBAA0633965FF07F /* LogFormatCheck.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LogFormatCheck.h; sourceTree = "<group>"; };
+		533039211A410107AC9F4C35 /* LogFormat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LogFormat.cpp; sourceTree = "<group>"; };
+		533039215ED7902EDF66F89D /* Backtrace.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Backtrace.h; sourceTree = "<group>"; };
+		53303921D4F4BC762EB04EE5 /* Backtrace.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Backtrace.cpp; sourceTree = "<group>"; };
+		5330392105E1B5A4325820C8 /* ConsoleSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ConsoleSink.cpp; sourceTree = "<group>"; };
+		53303921F8A480B48E3435D0 /* RotatingFileSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RotatingFileSink.cpp; sourceTree = "<group>"; };
+		5330392180A070DAADE49C74 /* MemorySink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MemorySink.cpp; sourceTree = "<group>"; };
+		53303921C7337C8A7EC8AB1A /* CallbackSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CallbackSink.cpp; sourceTree = "<group>"; };
+		53303921DC3BAB5450EE81F5 /* PlatformSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformSink.cpp; sourceTree = "<group>"; };
+		533039219D4F2FC1EA18312C /* PlatformSinks.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlatformSinks.cpp; sourceTree = "<group>"; };
+		53303921D11B28DACB878867 /* AndroidLogSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AndroidLogSink.cpp; sourceTree = "<group>"; };
+		533039217838567F6A22BDF8 /* EmscriptenConsoleSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EmscriptenConsoleSink.cpp; sourceTree = "<group>"; };
+		53303921D8AB6DCC5FACA688 /* DebuggerSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DebuggerSink.cpp; sourceTree = "<group>"; };
+		5330392180D5383E44EF7928 /* AppleLogSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AppleLogSink.cpp; sourceTree = "<group>"; };
+		53303921627928F8915EEBF7 /* CrashHook.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CrashHook.h; sourceTree = "<group>"; };
+		533039216109011E1A94CCC1 /* CrashHook.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CrashHook.cpp; sourceTree = "<group>"; };
+		5330392125EA1C3EFE77B589 /* Scheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Scheduler.h; sourceTree = "<group>"; };
+		5330392157EE817230985136 /* Scheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Scheduler.cpp; sourceTree = "<group>"; };
+		53303921CA259DF6A3BB8199 /* Signal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Signal.h; sourceTree = "<group>"; };
+		53303921824498C81D4D7B5F /* SmallFunction.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SmallFunction.h; sourceTree = "<group>"; };
+		53303921BA7707CA4FF0CB2E /* SubscriptionOwnerIndex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SubscriptionOwnerIndex.h; sourceTree = "<group>"; };
+		53303921A87265200F07B6E2 /* SubscriptionOwnerIndex.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SubscriptionOwnerIndex.cpp; sourceTree = "<group>"; };
 		17145B342FF7FC3B00543CB7 /* Light2DComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Light2DComponent.h; sourceTree = "<group>"; };
 		17145B352FF7FC3B00543CB7 /* ShadowCaster2DComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowCaster2DComponent.h; sourceTree = "<group>"; };
 		17145B382FF7FC5E00543CB7 /* Light2D.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Light2D.h; sourceTree = "<group>"; };
@@ -6819,6 +6879,41 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		53303921A04E50219FF75728 /* log */ = {
+			isa = PBXGroup;
+			children = (
+				53303921B039D6604F0F7143 /* Logger.h */,
+				533039216521ECDD878DDF6B /* Logger.cpp */,
+				533039212BEB38E5A55A3E83 /* LogCategory.h */,
+				53303921D3432A8EF1AF5C4B /* LogRecord.h */,
+				533039217DE66E2A22E150E7 /* LogSink.h */,
+				533039218D7773CADB1B0CBE /* LogSinks.h */,
+				53303921BBAA0633965FF07F /* LogFormatCheck.h */,
+				533039211A410107AC9F4C35 /* LogFormat.cpp */,
+				533039215ED7902EDF66F89D /* Backtrace.h */,
+				53303921D4F4BC762EB04EE5 /* Backtrace.cpp */,
+				5330392119EA311012D62001 /* sinks */,
+			);
+			path = log;
+			sourceTree = "<group>";
+		};
+		5330392119EA311012D62001 /* sinks */ = {
+			isa = PBXGroup;
+			children = (
+				5330392105E1B5A4325820C8 /* ConsoleSink.cpp */,
+				53303921F8A480B48E3435D0 /* RotatingFileSink.cpp */,
+				5330392180A070DAADE49C74 /* MemorySink.cpp */,
+				53303921C7337C8A7EC8AB1A /* CallbackSink.cpp */,
+				53303921DC3BAB5450EE81F5 /* PlatformSink.cpp */,
+				533039219D4F2FC1EA18312C /* PlatformSinks.cpp */,
+				53303921D11B28DACB878867 /* AndroidLogSink.cpp */,
+				533039217838567F6A22BDF8 /* EmscriptenConsoleSink.cpp */,
+				53303921D8AB6DCC5FACA688 /* DebuggerSink.cpp */,
+				5330392180D5383E44EF7928 /* AppleLogSink.cpp */,
+			);
+			path = sinks;
+			sourceTree = "<group>";
+		};
 		1787AD932F6C333300DB1D75 /* manager */ = {
 			isa = PBXGroup;
 			children = (
@@ -7650,6 +7745,7 @@
 				7162FC2F25962A0E0075B97D /* io */,
 				7162FC6925962A0E0075B97D /* Log.h */,
 				7162FC2C25962A0E0075B97D /* Log.cpp */,
+				53303921A04E50219FF75728 /* log */,
 				1787AD932F6C333300DB1D75 /* manager */,
 				7162FC4825962A0E0075B97D /* math */,
 				7162FC6225962A0E0075B97D /* object */,
@@ -7685,6 +7781,14 @@
 				7105A55728B305910092EA05 /* Color.h */,
 				7105A55628B305910092EA05 /* Color.cpp */,
 				71AD5E742EAECC69004951AB /* CrashGuard.h */,
+				53303921627928F8915EEBF7 /* CrashHook.h */,
+				533039216109011E1A94CCC1 /* CrashHook.cpp */,
+				5330392125EA1C3EFE77B589 /* Scheduler.h */,
+				5330392157EE817230985136 /* Scheduler.cpp */,
+				53303921CA259DF6A3BB8199 /* Signal.h */,
+				53303921824498C81D4D7B5F /* SmallFunction.h */,
+				53303921BA7707CA4FF0CB2E /* SubscriptionOwnerIndex.h */,
+				53303921A87265200F07B6E2 /* SubscriptionOwnerIndex.cpp */,
 				71ABBD28277A3210001CE3AF /* DefaultFont.h */,
 				175DCE6A30255343008C19EC /* DefaultFontArabic.h */,
 				71BE620D25B1DB37006D6E02 /* FunctionSubscribe.h */,
@@ -13212,6 +13316,22 @@
 				71E8248D2A9C23A600C8E6F2 /* Joint2D.cpp in Sources */,
 				71451BBF270CA16200712643 /* ActionSystem.cpp in Sources */,
 				71BE623D25B1DB9E006D6E02 /* LuaScript.cpp in Sources */,
+				533039212E9B8AAACBFB34F6 /* Logger.cpp in Sources */,
+				53303921BD7DD6D8CC5A2CCC /* LogFormat.cpp in Sources */,
+				533039213F13EC274DF9D1B1 /* Backtrace.cpp in Sources */,
+				533039211E53ADC3EA1D2666 /* ConsoleSink.cpp in Sources */,
+				53303921A6689AB43A67FD62 /* RotatingFileSink.cpp in Sources */,
+				5330392157D82947C7D0BE2B /* MemorySink.cpp in Sources */,
+				533039217CD984690CACB1E8 /* CallbackSink.cpp in Sources */,
+				53303921EF47B61CDF6B9438 /* PlatformSink.cpp in Sources */,
+				53303921BCCE2F9F3D19B3F5 /* PlatformSinks.cpp in Sources */,
+				53303921E69F7E04197D6659 /* AndroidLogSink.cpp in Sources */,
+				53303921238E9763F9677F50 /* EmscriptenConsoleSink.cpp in Sources */,
+				53303921959B25A4BD7E23AD /* DebuggerSink.cpp in Sources */,
+				533039213FC27C26D02F8CCA /* AppleLogSink.cpp in Sources */,
+				533039216E36144EFCCE2AD1 /* CrashHook.cpp in Sources */,
+				533039210FBC5DE5AEDEE493 /* Scheduler.cpp in Sources */,
+				533039217995488BCF6CB6FC /* SubscriptionOwnerIndex.cpp in Sources */,
 				71ABBD3C279116E1001CE3AF /* UniqueToken.cpp in Sources */,
 				71CC83A726B8C54A00EEBB93 /* ShaderData.cpp in Sources */,
 				7181A0B12BC8B6CB00AC230B /* Panel.cpp in Sources */,
@@ -13598,6 +13718,22 @@
 				71E8248C2A9C23A600C8E6F2 /* Joint2D.cpp in Sources */,
 				71451BBE270CA16200712643 /* ActionSystem.cpp in Sources */,
 				71BE623C25B1DB9E006D6E02 /* LuaScript.cpp in Sources */,
+				53303921EB2FAA931E22F83E /* Logger.cpp in Sources */,
+				53303921F73661BAFEB28A1B /* LogFormat.cpp in Sources */,
+				53303921F46D79976D292F8F /* Backtrace.cpp in Sources */,
+				533039217622E5EB4438F79D /* ConsoleSink.cpp in Sources */,
+				533039210759E5DA97E022C4 /* RotatingFileSink.cpp in Sources */,
+				533039216E7973291B70EDF3 /* MemorySink.cpp in Sources */,
+				5330392105243564EFCE4DB9 /* CallbackSink.cpp in Sources */,
+				533039213772453752897584 /* PlatformSink.cpp in Sources */,
+				5330392106A4E1EDC75B7914 /* PlatformSinks.cpp in Sources */,
+				53303921953D34DEDD25BF5A /* AndroidLogSink.cpp in Sources */,
+				5330392132DC039F2367BDE1 /* EmscriptenConsoleSink.cpp in Sources */,
+				53303921C12D3344D0F16B53 /* DebuggerSink.cpp in Sources */,
+				53303921AA0C0A3F7CA7A6FB /* AppleLogSink.cpp in Sources */,
+				533039218B446530848CC27A /* CrashHook.cpp in Sources */,
+				53303921DFF847D57C105983 /* Scheduler.cpp in Sources */,
+				533039213F18666690EE79DE /* SubscriptionOwnerIndex.cpp in Sources */,
 				71ABBD3B279116E1001CE3AF /* UniqueToken.cpp in Sources */,
 				71CC83A626B8C54A00EEBB93 /* ShaderData.cpp in Sources */,
 				7181A0B02BC8B6CB00AC230B /* Panel.cpp in Sources */,

@@ -4510,7 +4510,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         // submesh array is sized for the total up-front and the buffer dedup/reserve happens once.
         mesh.numSubmeshes = totalSubmeshes;
         if (!mesh.submeshes.validIndex(static_cast<int>(totalSubmeshes) - 1)) {
-            Log::error("Model %s has more submeshes than the maximum allowed (%i)", filename.c_str(), mesh.submeshes.size());
+            Log::error("Model %s has more submeshes than the maximum allowed (%zu)", filename.c_str(), mesh.submeshes.size());
             mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
         }
         loadedBuffers.clear();
@@ -4636,7 +4636,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
             if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
-                Log::error("Model %s has more submeshes than the maximum allowed (%i)", filename.c_str(), mesh.submeshes.size());
+                Log::error("Model %s has more submeshes than the maximum allowed (%zu)", filename.c_str(), mesh.submeshes.size());
                 mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
             }
 
@@ -5413,7 +5413,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     }
 
                 }else{
-                    Log::error("Cannot load animation: %s, channel %i: no float elements", animation.name.c_str(), j);
+                    Log::error("Cannot load animation: %s, channel %zu: no float elements", animation.name.c_str(), j);
                 }
             }
 
@@ -5574,7 +5574,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     }
 
     if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)){
-        Log::error("Model %s has more submeshes than the maximum allowed (%i)", filename.c_str(), mesh.submeshes.size());
+        Log::error("Model %s has more submeshes than the maximum allowed (%zu)", filename.c_str(), mesh.submeshes.size());
         mesh.numSubmeshes = static_cast<unsigned int>(mesh.submeshes.size());
     }
 
