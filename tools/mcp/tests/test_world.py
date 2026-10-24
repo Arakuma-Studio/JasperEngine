@@ -6,6 +6,8 @@ Rigidbody 2D and a capsule collider), a UI panel with a button and text, and scu
 every edit is checked and undone. Runs on a scratch copy of the TappyPlane fixture.
 """
 
+import asyncio
+
 from harness import Editor, ToolError
 
 WORLD_TOOLS = (
@@ -346,6 +348,39 @@ async def test_terrain_maps(ed: Editor):
     ed.check_in("normal", err)
     err = await ed.call("set_terrain_maps", scene=sid, entity=terrain, heightmap={"generate": "mountains"}, expect_error=True)
     ed.check_in("fractal_noise", err)
+    await ed.call("delete_entities", scene=sid, entity=terrain)
+
+
+async def test_terrain_maps_rebuild_mesh(ed: Editor):
+    """A height map set together with a blend map or layers in one call still rebuilds the terrain
+    mesh and collision: the blend map / layers change ran after the height map's and used to clear
+    the rebuild request, leaving the old mesh."""
+    ed.require_tools("set_terrain_maps", "sample_terrain", "create_entity", "generate_placeholder_art")
+    sid = await new_scene(ed, "3d", "World")
+    layer_a, layer_b = "assets/terrain_rebuild/a.png", "assets/terrain_rebuild/b.png"
+    for path, color in ((layer_a, [0.4, 0.4, 0.4, 1]), (layer_b, [0.2, 0.6, 0.2, 1])):
+        await ed.call("generate_placeholder_art", path=path, width=8, height=8, color=color, overwrite=True)
+    made = await ed.call("create_entity", name="Rebuilt", type="terrain")
+    terrain = made["entity_id"]
+
+    async def mesh_built() -> dict:
+        info = {}
+        for _ in range(50):
+            info = (await ed.call("sample_terrain", scene=sid, entity=terrain, grid=0))["info"]
+            if info.get("mesh_built"):
+                break
+            await asyncio.sleep(0.2)
+        return info
+
+    for seed, extra in ((3, {"blendmap": {"color": [1, 0, 0], "resolution": 16}}),
+                        (4, {"layers": [{"index": 0, "color": layer_a}]}),
+                        (5, {"blendmap": {"color": [0, 1, 0], "resolution": 16},
+                             "layers": [{"index": 1, "color": layer_b}]})):
+        out = await ed.call("set_terrain_maps", scene=sid, entity=terrain,
+                            heightmap={"generate": "fractal_noise", "resolution": 32, "seed": seed}, **extra)
+        info = await mesh_built()
+        ed.check_eq(info.get("height_map"), out["heightmap"]["path"])
+        ed.check(info.get("mesh_built"), f"the mesh was not rebuilt from the new height map (with {sorted(extra)}): {info}")
     await ed.call("delete_entities", scene=sid, entity=terrain)
 
 

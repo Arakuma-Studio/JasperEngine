@@ -239,7 +239,7 @@ public:
         return std::string(utf8.begin(), utf8.end());
     }
 
-    // With '/' separators on every platform
+    // generic_string() in UTF-8: '/' separators on every platform
     static std::string pathToGenericUtf8(const std::filesystem::path& path) {
         const auto utf8 = path.generic_u8string();
         return std::string(utf8.begin(), utf8.end());

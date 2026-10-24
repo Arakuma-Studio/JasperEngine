@@ -30,6 +30,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/EntityClipboard.h"
 #include "util/FbxImporter.h"
+#include "util/FileUtils.h"
 #include "util/Util.h"
 
 #include <algorithm>
@@ -1196,8 +1197,8 @@ Json McpValues::toJson(const Quaternion& value) {
 }
 
 std::string McpValues::assetPathToJson(Project* project, const std::string& stored) {
-    if (stored.empty() || !project) return stored;
-    return project->normalizeToProjectRelative(project->resolveAssetPath(stored)).generic_string();
+    if (stored.empty() || !project) return FileUtils::pathToGenericUtf8(fs::path(stored));
+    return FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->resolveAssetPath(stored)));
 }
 
 bool McpValues::assetPathFromJson(Project* project, const std::string& projectRelative, std::string& stored, std::string& error) {
@@ -1205,14 +1206,15 @@ bool McpValues::assetPathFromJson(Project* project, const std::string& projectRe
         stored.clear();
         return true;
     }
-    if (!isSafeRelative(projectRelative)) {
+    const fs::path relative = FileUtils::pathFromUtf8(projectRelative);
+    if (!isSafeRelative(relative)) {
         error = "\"" + projectRelative + "\" must be a project-relative path (no '..', not absolute).";
         return false;
     }
-    const fs::path full = project->getProjectPath() / projectRelative;
+    const fs::path full = project->getProjectPath() / relative;
     if (!project->isInsideAssetsPath(full)) {
         error = "\"" + projectRelative + "\" must be inside the assets directory (\"" +
-                project->getAssetsDir().generic_string() + "\").";
+                FileUtils::pathToGenericUtf8(project->getAssetsDir()) + "\").";
         return false;
     }
     stored = project->normalizeToAssetsRelative(full).generic_string();
@@ -1452,8 +1454,8 @@ Json McpValues::materialToJson(Project* project, SceneProject* scene, const Mate
     // values when set
     materialShaderLibraryToJson(project, scene, material, out, false);
     if (!linkedFile.empty()) {
-        out["file"] = project ? project->normalizeToProjectRelative(project->getProjectPath() / linkedFile).generic_string()
-                              : linkedFile;
+        out["file"] = project ? FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->getProjectPath() / linkedFile))
+                              : FileUtils::pathToGenericUtf8(fs::path(linkedFile));
     }
     return out;
 }

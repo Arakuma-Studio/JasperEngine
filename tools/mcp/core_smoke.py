@@ -5,7 +5,7 @@
 
 Runs the real editor under Xvfb against a scratch copy of a project and checks the
 protocol plumbing: initialize, tools/list (schemas), a read tool, an edit + undo,
-batch with undo_group, editor_status, protocol errors, HTTP sessions/SSE/Origin,
+batch with undo_group, editor_status, protocol errors, HTTP token/sessions/SSE/Origin,
 and that the editor exits when the client disconnects.
 
     uv run --no-project --with mcp --with jsonschema --with httpx \
@@ -31,9 +31,11 @@ import httpx
 import jsonschema
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
 
 FAILURES = []
+# settings.yaml mcp.http_token of the scratch editors: HTTP requires the bearer token
+HTTP_TOKEN = "core-smoke-token"
 
 
 def check(condition, message):
@@ -61,6 +63,8 @@ def scratch(project_src):
     work = tempfile.mkdtemp(prefix="mcp-core-smoke-")
     os.makedirs(os.path.join(work, "home"))
     shutil.copytree(project_src, os.path.join(work, "project"))
+    with open(os.path.join(work, "settings.yaml"), "w") as f:
+        f.write(f"mcp:\n  http_token: {HTTP_TOKEN}\n")
     return work
 
 
@@ -253,6 +257,9 @@ async def http_test(editor, project_src):
             except OSError:
                 time.sleep(0.5)
         async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+            check(r.status_code == 401, f"no bearer token -> 401 ({r.status_code})")
+        async with httpx.AsyncClient(timeout=60, headers={"Authorization": f"Bearer {HTTP_TOKEN}"}) as client:
             r = await client.get(url)
             check(r.status_code == 405, f"GET /mcp -> 405 ({r.status_code})")
             r = await client.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "ping"}, headers={"Origin": "http://evil.example"})
@@ -277,7 +284,8 @@ async def http_test(editor, project_src):
             r = await client.post(url, headers=headers, json={"jsonrpc": "2.0", "id": 3, "method": "ping"})
             check(r.status_code == 404, f"ended session -> 404 ({r.status_code})")
 
-        async with streamable_http_client(url) as streams:
+        async with create_mcp_http_client(headers={"Authorization": f"Bearer {HTTP_TOKEN}"}) as http, \
+                streamable_http_client(url, http_client=http) as streams:
             async with ClientSession(streams[0], streams[1]) as session:
                 init = await session.initialize()
                 check(bool(init.instructions), "[http] initialize returns instructions")

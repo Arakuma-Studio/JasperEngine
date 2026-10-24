@@ -121,6 +121,7 @@ private:
     static bool mcpHttpEnabled;
     static int mcpHttpPort;
     static std::string mcpHttpToken;
+    static bool mcpHttpAllowChanges;
 
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
@@ -224,12 +225,16 @@ public:
     static GameViewSettings getGameViewSettings();
     static void setGameViewSettings(const GameViewSettings& settings);
 
-    // MCP server HTTP transport: off by default, port 47615. A non-empty token makes
-    // clients send "Authorization: Bearer <token>".
+    // MCP server HTTP transport: off by default, port 47615. Clients send
+    // "Authorization: Bearer <token>"; the server makes the token the first time HTTP is
+    // enabled. With allow changes off, HTTP clients only get the read-only tools.
     static bool getMcpHttpEnabled();
     static int getMcpHttpPort();
     static std::string getMcpHttpToken();
     static void setMcpHttp(bool enabled, int port);
+    static void setMcpHttpToken(const std::string& token);
+    static bool getMcpHttpAllowChanges();
+    static void setMcpHttpAllowChanges(bool allow);
 
     // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a
     // document references when it loads (default on); log every Info diagnostic (default off)

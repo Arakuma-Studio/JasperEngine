@@ -494,6 +494,8 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
         {"local_bounds", {{"min", {-half, -half}}, {"max", {half, half}}}},
         {"height_map", McpValues::assetPathToJson(project, terrain.heightMap.getPath())},
         {"height_map_loaded", terrain.heightMap.hasData()},
+        // false until the editor has rebuilt the mesh (and collision) from the current height map
+        {"mesh_built", terrain.heightMapLoaded && !terrain.needUpdateTerrain},
         {"blend_maps", blendMaps}, {"surface_layers", terrain.surfaceLayers.size()}, {"foliage_layers", foliage}
     };
 }
@@ -634,11 +636,13 @@ void setTerrainMapsTool(const CallPtr& call) {
             SceneProject* sp = project ? project->getScene(sceneId) : nullptr;
             TerrainComponent* t = sp && sp->scene ? sp->scene->findComponent<TerrainComponent>(entity) : nullptr;
             if (!t) return;
+            // Only ever raised: the blend map / layers callback runs after the height one in a
+            // call that sets both, and must not clear the mesh / collision rebuild it asked for
             if (height) {
                 t->heightMapLoaded = false;
                 t->heightMap.invalidateRender();
+                t->needUpdateTerrain = true;
             }
-            t->needUpdateTerrain = height;
             t->needUpdateTexture = true;
         };
     };
