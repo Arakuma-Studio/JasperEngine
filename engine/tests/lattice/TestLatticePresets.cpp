@@ -6,6 +6,7 @@
 #include "LatticeTestCommon.h"
 
 #include <algorithm>
+#include <limits>
 #include <cstdio>
 #include <sstream>
 
@@ -204,6 +205,49 @@ TEST(LatticePresets, BendIsAnArcAroundTheNegativeEndCentre){
     for (const Vector3& offset : tiny){
         EXPECT_LT(offset.length(), 1e-5f);
     }
+}
+
+TEST(LatticePresets, BendAndTwistUseTheCageProportions){
+    // a cage 1 x 4 x 1 in the world: the bend turns its 4-unit axis by a true 60 degrees and keeps
+    // the 1-unit cross-section rigid (in local units the cage is a unit cube)
+    const double theta = 60.0 * 3.14159265358979323846 / 180.0;
+    const double radius = 4.0 / theta; // world units
+    const int ry = 9;
+    lattice::PresetParams bend = preset(LatticePreset::BEND, LatticeAxis::Y, 60.0f, LatticeAxis::X);
+    bend.proportions = Vector3(1.0f, 4.0f, 1.0f);
+    const std::vector<Vector3> offsets = applied(3, ry, 3, bend);
+    auto world = [](const Vector3& local){ return Vector3(local.x * 1.0f, local.y * 4.0f, local.z * 1.0f); };
+    for (int j = 0; j < ry; j++){
+        const double s = double(j) / double(ry - 1);
+        const Vector3 p = world(position(3, ry, 3, offsets, 1, j, 1));
+        EXPECT_NEAR(p.x, radius - radius * std::cos(theta * s), 1e-5);
+        EXPECT_NEAR(p.y, -2.0 + radius * std::sin(theta * s), 1e-5);
+    }
+    // the end face has turned 60 degrees: its +x half-width (0.5 world units) now points along
+    // (cos 60, -sin 60)
+    const Vector3 endCentre = world(position(3, ry, 3, offsets, 1, ry - 1, 1));
+    const Vector3 endPlusX = world(position(3, ry, 3, offsets, 2, ry - 1, 1));
+    EXPECT_LT(maxAbsDifference(endPlusX - endCentre, Vector3(float(0.5 * std::cos(theta)), float(-0.5 * std::sin(theta)), 0)), 1e-5f);
+
+    // twist around y of a cage 2 x 1 x 1: the +x corner of the top (1 world unit out) turns to
+    // 1 world unit along -z, which is local z = -1 in a cage 1 unit deep
+    lattice::PresetParams twist = preset(LatticePreset::TWIST, LatticeAxis::Y, 90.0f);
+    twist.proportions = Vector3(2.0f, 1.0f, 1.0f);
+    const std::vector<Vector3> twisted = applied(3, 3, 3, twist);
+    EXPECT_LT(maxAbsDifference(position(3, 3, 3, twisted, 2, 2, 1), Vector3(0, 0.5f, -1.0f)), 1e-6f);
+    // and the -z corner (0.5 world units out) turns to +x: local x = 0.25 on a 2-unit-wide cage
+    EXPECT_LT(maxAbsDifference(position(3, 3, 3, twisted, 1, 2, 0), Vector3(-0.25f, 0.5f, 0)), 1e-6f);
+
+    // unit proportions are the plain unit-cube presets; invalid components take the largest valid one
+    lattice::PresetParams unit = preset(LatticePreset::BEND, LatticeAxis::Y, 60.0f);
+    lattice::PresetParams invalid = unit;
+    invalid.proportions = Vector3(0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN());
+    EXPECT_TRUE(sameBits(applied(3, 3, 3, unit), applied(3, 3, 3, invalid)));
+
+    // presetProportions reads the axis lengths of a cage's world matrix (rotation ignored)
+    Matrix4 model = Matrix4::translateMatrix(Vector3(5, 6, 7)) * Matrix4::rotateMatrix(30.0f, Vector3(0, 1, 0)) *
+                    Matrix4::scaleMatrix(Vector3(2, 3, 4));
+    EXPECT_LT(maxAbsDifference(lattice::presetProportions(model), Vector3(2, 3, 4)), 1e-5f);
 }
 
 TEST(LatticePresets, BulgeAndShear){
