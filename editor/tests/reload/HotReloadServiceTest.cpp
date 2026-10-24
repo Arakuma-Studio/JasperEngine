@@ -7,6 +7,7 @@
 // and is left as it is; the file kinds the funnel dispatches on.
 
 #include "support/EditorTestSupport.h"
+#include "TempDir.h"
 
 #include "Project.h"
 #include "pool/TextureDataPool.h"
@@ -24,22 +25,11 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
+using namespace jasperengine::test;
 
 namespace fs = std::filesystem;
 
 namespace {
-
-    struct TempDir {
-        fs::path path;
-        TempDir() {
-            path = fs::temp_directory_path() / ("je-watch-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-            fs::create_directories(path);
-        }
-        ~TempDir() {
-            std::error_code ec;
-            fs::remove_all(path, ec);
-        }
-    };
 
     void writeText(const fs::path& path, const std::string& text) {
         fs::create_directories(path.parent_path());
@@ -62,7 +52,7 @@ namespace {
         void SetUp() override {
             editor::test::ensureEngine();
             std::string error;
-            ASSERT_TRUE(project.createProjectAt(dir.path / "HotReload", "HotReload", &error)) << error;
+            ASSERT_TRUE(project.createProjectAt(dir.path() / "HotReload", "HotReload", &error)) << error;
             // (a project resets the engine's settings: textures load on this thread from here)
             Engine::setAsyncLoading(false);
             service.attach(project);
@@ -287,7 +277,7 @@ TEST_F(HotReloadServiceTests, EditorWritesFanOutButDoNotTouchScenes) {
 TEST(ModelReloadTests, HierarchyMismatchIsReportedNotRebuilt) {
     editor::test::ensureEngine();
     TempDir dir;
-    const fs::path file = dir.path / "model.gltf";
+    const fs::path file = dir.path() / "model.gltf";
     auto gltf = [](const std::string& nodes, const std::string& roots) {
         return "{\"asset\": {\"version\": \"2.0\"}, \"scene\": 0, \"scenes\": [{\"nodes\": [" + roots + "]}], \"nodes\": [" + nodes + "]}";
     };
@@ -330,8 +320,8 @@ TEST(HotReloadKinds, FilesByKind) {
 
 TEST(HotReloadKinds, ChangeSetFromPathsAsksTheDisk) {
     TempDir dir;
-    writeText(dir.path / "there.txt", "x");
-    ChangeSet set = ChangeSet::fromPaths({dir.path / "there.txt", dir.path / "gone.txt"});
+    writeText(dir.path() / "there.txt", "x");
+    ChangeSet set = ChangeSet::fromPaths({dir.path() / "there.txt", dir.path() / "gone.txt"});
     ASSERT_EQ(set.changes.size(), 2u);
     EXPECT_EQ(set.changes[0].kind, FileChangeKind::Modified);
     EXPECT_EQ(set.changes[1].kind, FileChangeKind::Removed);
