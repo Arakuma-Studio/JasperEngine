@@ -236,6 +236,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
             # shared memory links only objects built with atomics: every library of the tree,
             # not only the engine (wasm-ld refuses glslang's PoolAlloc.cpp otherwise)
             add_compile_options(-pthread)
+            # and the link: without it Emscripten links its pthread stubs, and the first thread
+            # the engine starts fails with EOPNOTSUPP
+            add_link_options(-pthread)
         endif()
 
         # GROWABLE_ARRAYBUFFERS only exists on recent Emscripten, and emcc errors
