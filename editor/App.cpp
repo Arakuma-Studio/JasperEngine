@@ -19,6 +19,7 @@
 #include "mcp/McpActivityWindow.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
+#include "mcp/tools/McpTools.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -3397,6 +3398,7 @@ void editor::App::stopTransientPreviews() {
     if (inspectorWindow) {
         inspectorWindow->stopTransientPreviews();
     }
+    mcp::stopPlacementPreviews(&project);
 }
 
 void editor::App::flushSceneMaterialWrites(uint32_t sceneId) {
