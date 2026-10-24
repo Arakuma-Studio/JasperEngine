@@ -3,7 +3,8 @@
 
 // The C++ the editor generates for a project's scenes (Generator, Factory): a scene's source and
 // symbols are named by its name and id, so a scene called "main" leaves main.cpp alone and two
-// scenes whose names map to one identifier keep their own files.
+// scenes whose names map to one identifier keep their own files; loading a stack again starts
+// its scenes from scratch.
 
 #include <gtest/gtest.h>
 
@@ -133,6 +134,48 @@ TEST(GeneratedScenes, SceneNamedMainLeavesMainCppAlone) {
     generator.clearSceneSource(11, "main", internal);
     EXPECT_FALSE(fs::exists(generated / (first + ".cpp")));
     EXPECT_EQ(readFile(generated / "main.cpp"), mainCpp);
+
+    fs::remove_all(project);
+}
+
+TEST(GeneratedScenes, LoadingAStackAgainStartsItsScenesFromScratch) {
+    const fs::path project = tempProject("reload");
+    const fs::path internal = project / ".jasperengine";
+
+    // a stack with a layer, and a loading scene
+    SceneBuildInfo level = stack(5, "Level", true);
+    level.involvedScenes = {5, 6};
+    level.activeScenes = {5, 6};
+    const std::vector<SceneBuildInfo> scenes = {level, stack(6, "HUD"), stack(7, "Loading")};
+    Generator generator;
+    generator.configure(scenes, "test", {}, {}, project, internal, project / "assets", project / "lua", {}, 17);
+
+    const std::string mainCpp = readFile(internal / "generated" / "main.cpp");
+    const std::string levelId = Factory::sceneToFileName(5, "Level");
+    const std::string hudId = Factory::sceneToFileName(6, "HUD");
+    const std::string load = functionBody(mainCpp, "void load_" + levelId + "() {");
+    ASSERT_FALSE(load.empty());
+
+    // each scene of the stack not on screen is dropped before the stack is set up again
+    for (const auto& [id, name] : {std::pair<uint32_t, std::string>{5, levelId}, {6, hudId}}) {
+        const std::string drop =
+            "    if (_" + name + " && !Engine::isSceneRunning(_" + name + ")) {\n"
+            "        cleanupScripts(_" + name + ");\n"
+            "        SceneManager::removeScenePtr(" + std::to_string(id) + ");\n"
+            "        delete _" + name + ";\n"
+            "        _" + name + " = nullptr;\n"
+            "    }\n";
+        const size_t dropAt = load.find(drop);
+        ASSERT_NE(dropAt, std::string::npos) << name << " in\n" << load;
+        const size_t createAt = load.find("    if (!_" + name + "){\n        _" + name + " = new Scene();");
+        ASSERT_NE(createAt, std::string::npos) << name;
+        EXPECT_LT(dropAt, createAt) << name;
+    }
+
+    // adding a stack keeps the scenes it already has
+    const std::string add = functionBody(mainCpp, "void add_" + levelId + "() {");
+    ASSERT_FALSE(add.empty());
+    EXPECT_EQ(add.find("delete _"), std::string::npos);
 
     fs::remove_all(project);
 }

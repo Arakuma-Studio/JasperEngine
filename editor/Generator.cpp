@@ -2119,6 +2119,17 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "// --- Scene stack: " + sceneData.name + " ---\n";
 
         mainContent += "void load_" + stackId + "() {\n";
+        // A loaded stack starts again, except scenes still on screen (the loading scene)
+        for (const auto sceneId : sceneData.involvedScenes) {
+            std::string sceneName = sceneIdToName[sceneId];
+            mainContent += "    if (" + sceneName + " && !Engine::isSceneRunning(" + sceneName + ")) {\n";
+            mainContent += "        cleanupScripts(" + sceneName + ");\n";
+            mainContent += "        SceneManager::removeScenePtr(" + std::to_string(sceneId) + ");\n";
+            mainContent += "        delete " + sceneName + ";\n";
+            mainContent += "        " + sceneName + " = nullptr;\n";
+            mainContent += "    }\n";
+        }
+        mainContent += "\n";
         emitStackSetup(sceneData);
         mainContent += "\n";
         for (const auto sceneId : sceneData.activeScenes) {
