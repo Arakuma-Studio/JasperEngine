@@ -243,7 +243,7 @@ async def test_scene_settings(ed: Editor):
         ed.check(close(after[k], before[k]), f"{k} not undone: {after[k]} vs {before[k]}")
     # errors
     await ed.check_error("set_scene_settings", settings={"no_such": 1}, contains="background_color")
-    await ed.check_error("set_scene_settings", settings={"shadows_quality": "ultra"}, contains="medium")
+    await ed.check_error("set_scene_settings", settings={"shadows_quality": "extreme"}, contains="medium")
     await ed.check_error("set_scene_settings", settings={"post_process": [{"shader": "nope/missing"}]}, contains="fork")
     # all-or-nothing
     await ed.check_error("set_scene_settings", settings={"ssao_enabled": True, "ssao_radius": "big"})

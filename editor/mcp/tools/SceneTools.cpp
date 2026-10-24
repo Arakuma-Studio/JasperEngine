@@ -1390,7 +1390,9 @@ void setSceneSettingsTool(const CallPtr& call) {
     for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
         values[it.key()] = settingValue(updated->scene, *findSetting(it.key()), false, project);
     }
-    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step; shadows_debug_view takes none).",
+    const bool debugView = args["settings"].contains("shadows_debug_view");
+    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step" +
+             (debugView ? std::string("; shadows_debug_view takes none).") : std::string(").")),
              Json{{"scene_id", id}, {"settings", values}});
 }
 
