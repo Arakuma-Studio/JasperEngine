@@ -217,6 +217,7 @@ namespace jasperengine{
         int slotVSMorphTarget = -1;
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
+        bool pbrExtTexCoordSets = false; // u_fs_pbrExt carries the UV sets (no u_fs_texCoordSets)
         int slotFSPbrExt = -1;          // includes/pbr_ext_slots.glsl (the extended lobes, hex tiling)
 
         int slotVSDepthParams = -1;

@@ -651,10 +651,12 @@ with other streams:
    `builtin:lit#<defines>` reference instead (basename code `Lq`), so a Standard scene, and every
    variant without it, keeps its key and its preprocessed source (`ShaderZeroCost` hash list
    unchanged).
-2. **16 textures with transmission.** The scene-colour copy needs a slot: transmission variants
-   drop SSAO (they draw in the transparent queue, which has none), and a variant in a scene with 2D
-   light shadows reserves one of the 3 map slots (`getPbrVariant(..., reservedMaps)`). Both are
-   shown in the Inspector footer and `get_material_variant`.
+2. **16 textures and 8 uniform blocks.** The scene-colour copy needs a texture slot and the
+   scene-inputs block: transmission variants drop SSAO (they draw in the transparent queue, which
+   has none) and 2D lighting, and a variant in a scene with 2D light shadows reserves one of the 3
+   map slots (`getPbrVariant(..., reservedMaps)`, shown in the Inspector footer and
+   `get_material_variant`). With a second UV set, a lobe variant carries the UV sets in
+   `u_fs_pbrExt` instead of `u_fs_texCoordSets`. The `builtin_lit` matrix checks both limits.
 3. **13 Khronos models** (§6.7 as verified), goldens written by the MCP test's own scenes
    (`test_khronos_models`), not by a `tools/fixtures/pbr-extended` scene per model: the fixture
    keeps the benchmark scenes and the export check. `JASPER_TEST_UPDATE_GOLDEN=1` (S02's name) and

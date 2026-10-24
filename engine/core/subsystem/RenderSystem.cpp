@@ -3375,7 +3375,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // dedicated 2D light path: composes with MATERIAL_UNLIT (sprites keep the
     // cheap unlit shader; accumulated 2D light multiplies the base color) and
     // with the lit path in mixed scenes (contributions add)
-    const bool useLight2D = environment.lights2D && inputs.receiveLights;
+    // (not with transmission: like SSAO, a uniform block it has no room for)
+    const bool useLight2D = environment.lights2D && inputs.receiveLights && !inputs.pbrTransmission;
     const bool p_light2d = useLight2D;
     const bool p_shadows2d = useLight2D && environment.shadows2D && inputs.receiveShadows;
     if (useLight2D){
@@ -5556,8 +5557,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
         mesh.submeshes[i].slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
         mesh.submeshes[i].slotFSPbrExt = shaderData.getUniformBlockIndexByName("u_fs_pbrExt");
+        mesh.submeshes[i].pbrExtTexCoordSets = false;
         if (p_hasTexture2){
             mesh.submeshes[i].slotFSTexCoordSets = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS);
+            // an extended lobes variant carries them in u_fs_pbrExt
+            mesh.submeshes[i].pbrExtTexCoordSets = mesh.submeshes[i].slotFSPbrExt != -1 && mesh.submeshes[i].slotFSTexCoordSets == -1;
         }
         if (p_instanceFade){
             mesh.submeshes[i].slotVSFade = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
@@ -7666,26 +7670,42 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 applyInstanceFadeUniform(render, mesh.submeshes[i].slotVSFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
             }
 
-            if (mesh.submeshes[i].slotFSTexCoordSets != -1){
-                // per-texture UV set selector (0 = a_texcoord1, 1 = a_texcoord2):
-                // set0 = baseColor, metallicRoughness, occlusion, emissive; set1.x = normal
+            // per-texture UV set selector (0 = a_texcoord1, 1 = a_texcoord2):
+            // set0 = baseColor, metallicRoughness, occlusion, emissive; set1.x = normal,
+            // set1.yzw the extension map slots' (u_pbrExtTexture0..2)
+            const auto fillTexCoordSets = [&](int32_t texCoordSets[8]){
                 const Material& mat = mesh.submeshes[i].material;
-                int32_t texCoordSets[8] = {
+                const int32_t sets[8] = {
                     mat.baseColorTexCoord, mat.metallicRoughnessTexCoord, mat.occlusionTexCoord, mat.emissiveTexCoord,
                     mat.normalTexCoord, 0, 0, 0
                 };
-                // set1.yzw: the extension map slots' (u_pbrExtTexture0..2)
+                std::memcpy(texCoordSets, sets, sizeof(sets));
                 for (int k = 0; k < MaterialPbr::MAX_EXTENSION_MAPS; k++){
                     if (mesh.submeshes[i].pbrMaps[k] != PbrMap::COUNT)
                         texCoordSets[5 + k] = MaterialPbr::getMapTexCoord(mat.pbr, mesh.submeshes[i].pbrMaps[k]);
                 }
+            };
+
+            if (mesh.submeshes[i].slotFSTexCoordSets != -1){
+                int32_t texCoordSets[8];
+                fillTexCoordSets(texCoordSets);
                 render.applyUniformBlock(mesh.submeshes[i].slotFSTexCoordSets, sizeof(texCoordSets), &texCoordSets);
             }
 
             if (mesh.submeshes[i].slotFSPbrExt != -1){
-                float pbrExt[MaterialPbr::UNIFORM_FLOATS];
-                MaterialPbr::getUniformBlock(mesh.submeshes[i].material.pbr, pbrExt);
-                render.applyUniformBlock(mesh.submeshes[i].slotFSPbrExt, sizeof(pbrExt), pbrExt);
+                // with a second UV set the block carries the UV sets after the lobes (a
+                // fragment uniform block less, includes/pbr_ext_slots.glsl)
+                struct { float lobes[MaterialPbr::UNIFORM_FLOATS]; float texCoordSets[8]; } pbrExt;
+                MaterialPbr::getUniformBlock(mesh.submeshes[i].material.pbr, pbrExt.lobes);
+                size_t size = sizeof(pbrExt.lobes);
+                if (mesh.submeshes[i].pbrExtTexCoordSets){
+                    int32_t sets[8];
+                    fillTexCoordSets(sets);
+                    for (int k = 0; k < 8; k++)
+                        pbrExt.texCoordSets[k] = (float)sets[k];
+                    size = sizeof(pbrExt);
+                }
+                render.applyUniformBlock(mesh.submeshes[i].slotFSPbrExt, size, &pbrExt);
             }
 
             if (terrain){
@@ -9433,6 +9453,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotFSParams = -1;
         submesh.slotFSTexCoordSets = -1;
         submesh.slotFSPbrExt = -1;
+        submesh.pbrExtTexCoordSets = false;
         submesh.slotVSFade = -1;
         // set only when the variant has them (loadMesh): a reload without must not keep them
         submesh.slotFSFog = -1;

@@ -106,7 +106,8 @@ on the CPU, only when a light or the EV100 changes.
 A transmissive material draws after the opaque objects, opaque over a copy of them which it
 refracts (through its volume) and blurs by its roughness. The copy holds the opaque scene and
 the sky: transparent objects are not seen through it, and highlights behind it are clipped to
-the display range. It counts as reading the scene colour (Scene Color Scale, one copy per camera
+the display range. A transmissive material takes no SSAO and no 2D lights (its variant has no
+room left for them). It counts as reading the scene colour (Scene Color Scale, one copy per camera
 pass).
 
 ## Mobile PBR Tier

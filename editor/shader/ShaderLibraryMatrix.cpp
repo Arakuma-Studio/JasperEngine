@@ -497,6 +497,7 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         MeshShaderEnvironment lights2D = worst;
         lights2D.lights2D = true;
         lights2D.shadows2D = true;
+        // (transmission takes no 2D lighting: the variant is the one above)
         add("all lobes, 3 maps, 2d shadows", RenderSystem::getSubmeshShaderVariant(lights2D, inputs));
         // the lobes without transmission, which keeps SSAO
         Material noTransmission = all;
@@ -505,6 +506,10 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
         inputs.material = &noTransmission;
         inputs.pbrTransmission = false;
         add("all lobes but transmission, 3 maps", RenderSystem::getSubmeshShaderVariant(worst, inputs));
+        add("all lobes but transmission, 3 maps, 2d shadows", RenderSystem::getSubmeshShaderVariant(lights2D, inputs));
+        inputs.texCoord2 = true;
+        add("all lobes but transmission, 3 maps, 2d shadows, uv2", RenderSystem::getSubmeshShaderVariant(lights2D, inputs));
+        inputs.texCoord2 = false;
         // the mobile Reduced tier
         MeshShaderEnvironment reduced = worst;
         reduced.pbrTier = PbrTier::REDUCED;

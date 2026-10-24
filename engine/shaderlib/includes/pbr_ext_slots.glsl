@@ -32,6 +32,12 @@
         vec4 attenuation;   // rgb attenuation colour (linear), -
         vec4 specular;      // rgb colour (linear), factor
         vec4 iorHex;        // ior, hex rotation, hex contrast, -
+        #ifdef HAS_UV_SET2
+            // the UV set of each texture (includes/pbr.glsl u_fs_texCoordSets, as floats: the
+            // block stays all float), here so that a variant keeps to 8 fragment uniform blocks
+            vec4 set0;
+            vec4 set1;
+        #endif
     } pbrExt;
 #endif
 

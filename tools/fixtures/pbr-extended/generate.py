@@ -24,6 +24,7 @@ compilation off, so a variant the export did not precompile is a missing shader 
 tools/fixtures/shader-library/assets/textures, the model from engine/tests/render/assets/khronos.
 """
 import asyncio
+import math
 import shutil
 import struct
 import sys
@@ -164,8 +165,15 @@ async def terrain(ed, sid, hex_tiling: bool):
     made = await ed.call("create_entity", scene=sid, type="terrain", name="Terrain", select=False)
     tid = made["entity_id"]
     colors = ["floor_tiles.png", "bricks.png", "checker.png", "ceiling_planks.png"]
-    await ed.call("set_terrain_maps", scene=sid, entity=tid,
-                  heightmap={"generate": "fractal_noise", "resolution": 128, "seed": 3, "amplitude": 0.15},
+    # an 8-bit height map: a generated one is 16-bit (R16), which GLES3 and WebGL2 cannot sample
+    height = ed.project / "assets" / "textures" / "terrain_height.png"
+    if not height.exists():
+        def h(x, y):
+            v = int(128 + 30 * math.sin(x * 0.11) * math.cos(y * 0.07) + 12 * math.sin((x + y) * 0.23))
+            return (v, v, v, 255)
+        height.write_bytes(png(128, 128, h))
+        await ed.call("sync_files")
+    await ed.call("set_terrain_maps", scene=sid, entity=tid, heightmap=T + "terrain_height.png",
                   blendmap={"color": [0.45, 0.35, 0.2], "resolution": 64},
                   layers=[{"index": i, "color": T + c, "hexTiling": hex_tiling, "hexRotation": 1.0} for i, c in enumerate(colors)])
     await camera(ed, sid, (0, 40, 60), (0, 0, 0))
@@ -226,8 +234,8 @@ async def build_export(out: Path) -> None:
 
         lobes = (await ed.call("list_scenes"))["scenes"][0]["id"]
         await ed.call("rename_scene", scene=lobes, name="Lobes")
-        await camera(ed, lobes, (0, 0.5, 9), (0, 0, 0))
-        x = -4.5
+        await camera(ed, lobes, (0, 0, 13), (0, 0, 0))
+        x = -6.3
         for lobe, pbr in LOBES.items():
             made = await ed.call("create_entity", scene=lobes, type="sphere", name=lobe, select=False, position=[x, 1.2, 0])
             if lobe == "Clearcoat":
@@ -235,7 +243,7 @@ async def build_export(out: Path) -> None:
                                      "normalMap": T + "clearcoat_normal.png"}}
             values = material(pbr, T + "floor_tiles.png" if lobe == "Hex" else None)
             await ed.call("set_properties", scene=lobes, entity=made["entity_id"], values={"mesh": values})
-            x += 1.5
+            x += 2.1
         await ed.call("create_entity", scene=lobes, type="model", name="ClearCoatTest", select=False,
                       model="assets/models/ClearCoatTest/ClearCoatTest.glb", position=[0, -1.8, -2], scale=[0.5, 0.5, 0.5])
         sun_id = await sun(ed, lobes)

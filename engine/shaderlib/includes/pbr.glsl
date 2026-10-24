@@ -23,10 +23,16 @@ vec4 getVertexColor(){
 // the renderer supplies u_fs_texCoordSets telling each texture which set to sample
 // (0 = v_uv1, 1 = v_uv2). Without a second set everything samples v_uv1.
 #ifdef HAS_UV_SET2
+    #ifdef PBR_EXT
+        // carried by the extended lobes' block (includes/pbr_ext_slots.glsl)
+        struct PbrTexCoordSets { ivec4 set0; ivec4 set1; };
+        #define texCoordSets PbrTexCoordSets(ivec4(pbrExt.set0), ivec4(pbrExt.set1))
+    #else
     uniform u_fs_texCoordSets {
         ivec4 set0; // x=baseColor, y=metallicRoughness, z=occlusion, w=emissive
         ivec4 set1; // x=normal
     } texCoordSets;
+    #endif
 
     vec2 selectUV(int set)        { return (set == 1) ? v_uv2 : v_uv1; }
     vec2 getBaseColorUV()         { return selectUV(texCoordSets.set0.x); }
