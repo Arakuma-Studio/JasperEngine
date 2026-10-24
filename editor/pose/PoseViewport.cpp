@@ -815,6 +815,13 @@ bool editor::PoseViewport::createGhost(PoseEditSession& session, Ghost& ghost){
         sources.push_back(entity);
         kept.insert(entity);
     }
+    // System entities are few (EntityManager: ids 1..1000, shared with the editor's own): a ghost
+    // that does not fit is not made at all (no partial ghost), the session goes on without it
+    size_t freeSlots = 0;
+    for (Entity e = EntityManager::firstSystemEntity(); e <= EntityManager::lastSystemEntity() && freeSlots < sources.size(); e++){
+        if (!scene->isEntityCreated(e)) freeSlots++;
+    }
+    if (sources.empty() || freeSlots < sources.size()) return false;
     std::unordered_map<Entity, Entity> map;
     std::vector<Entity> copies;
     {
@@ -823,7 +830,13 @@ bool editor::PoseViewport::createGhost(PoseEditSession& session, Ghost& ghost){
         ScopedDefaultEntityPool sys(*scene, EntityPool::System);
         copies = EntityCloner::clone(scene, sources, scene, NULL_ENTITY, &map);
     }
-    if (copies.empty()) return false;
+    if (copies.size() != sources.size() || std::find(copies.begin(), copies.end(), NULL_ENTITY) != copies.end()){
+        // the clone came back short anyway: none of it stays
+        for (Entity copy : copies){
+            if (copy != NULL_ENTITY && scene->isEntityCreated(copy)) scene->destroyEntity(copy);
+        }
+        return false;
+    }
     ghost.root = copies.front();
     ghost.entities = copies;
     for (Entity copy : copies) stripToRender(scene, copy);
@@ -940,8 +953,8 @@ void editor::PoseViewport::publishEngaged(){
     PoseEditSession* session = PoseEditSession::active();
     if (!session || session->scene() != scene) return;
     const bool engaged = isPosing() && (isDragging() || hoverKind != HandleKind::None);
-    if (engaged != engagedPublished || session->viewportHandleActive() != engaged){
-        session->setViewportHandleActive(engaged);
+    if (engaged != engagedPublished || session->viewportHandleEngaged() != engaged){
+        session->setViewportHandleEngaged(engaged);
         engagedPublished = engaged;
     }
 }
@@ -1146,7 +1159,7 @@ void editor::PoseViewport::clear(){
     hoverRing = -1;
     if (engagedPublished){
         if (PoseEditSession* session = PoseEditSession::active()){
-            if (session->scene() == scene || !session->bound()) session->setViewportHandleActive(false);
+            if (session->scene() == scene || !session->bound()) session->setViewportHandleEngaged(false);
         }
         engagedPublished = false;
     }

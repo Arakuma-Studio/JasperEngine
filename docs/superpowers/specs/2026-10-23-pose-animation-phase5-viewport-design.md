@@ -42,7 +42,8 @@ After every handle change: limits (if on), then grounding if the pose is grounde
 point stays on the floor), then `setWorking`.
 
 Shift while dragging a hand/foot: constrain to the horizontal plane; Ctrl/Cmd: snap ring
-rotations to 5 degree steps. Shortcuts are documented in the window's tooltip and guide.
+rotations to 5 degree steps. Shortcuts are documented in the window's tooltip and guide. (Cmd counts
+for the pose drag only: the transform gizmo keeps its Ctrl alone.)
 
 ## 4. Floor and contacts
 
@@ -59,6 +60,9 @@ rotations to 5 degree steps. Shortcuts are documented in the window's tooltip an
   editor overlays (`SceneRender::overlay`, `RenderSystem::setEditorOverlay`), with a dedicated
   ghost material: unlit-ish rim shading, alpha-blended, depth prepass so only the front surface
   shows. Bones of each ghost are driven directly (their own pose), never the scene's bones.
+- The clones are System entities (ids 1..1000, shared with the editor's own): a ghost whose clone
+  needs more free System slots than there are is not made (no partial ghost); the session goes on
+  without it (final review).
 - Readability (ruling, fix round 1; replaces "drawn after the model so they read on top"): ghosts
   are depth-tested against the scene's depth **including the model**, strictly (LESS) and with a
   small depth bias pushing the ghost back, so the current model wins where the poses coincide and

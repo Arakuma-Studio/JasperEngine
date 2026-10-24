@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabOverrideCmd.h"
+#include "pose/PoseEditSession.h"
 
 using namespace jasperengine;
 
@@ -25,6 +26,8 @@ bool editor::PrefabOverrideCmd::isApply() const{
 bool editor::PrefabOverrideCmd::execute(){
     std::vector<std::filesystem::path> targets;
     if (isApply()){
+        // a posed bone applies its rest transform, not the pose
+        PoseEditSession::suspendActiveFor(sceneId, {entity});
         if (!project->canApplyPrefabOverrides()){
             return false;
         }

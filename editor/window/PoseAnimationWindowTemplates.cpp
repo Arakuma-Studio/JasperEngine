@@ -20,6 +20,7 @@
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseSampler.h"
 #include "util/ProjectChecks.h"
+#include "util/Util.h"
 #include "window/ProjectWindow.h"
 
 #include <algorithm>
@@ -174,7 +175,7 @@ bool editor::PoseAnimationWindow::createFromTemplate(const std::string& name, co
         return false;
     }
     std::string target = trimmed(path).empty() ? templateAnimationPath(tmpl.info.name) : trimmed(path);
-    if (fs::u8path(target).extension() != ".poseanim") target += ".poseanim";
+    if (!Util::isPoseAnimationFile(target)) target += ".poseanim";   // any case: "Walk.PoseAnim" is one already
     const pose::PoseAnimationData initial = PoseTemplates::newAnimation(tmpl.data, model->filename);
     std::string failure;
     std::shared_ptr<PoseAnimationDocument> created =
@@ -378,10 +379,12 @@ bool editor::PoseAnimationWindow::drawTemplateCard(TemplateEntry& entry, const I
     ImGui::SetCursorScreenPos(pos);
     ImGui::PushID((std::string(info.user ? "user:" : "builtin:") + info.name).c_str());
     const bool clicked = ImGui::InvisibleButton("##template", ImVec2(cardWidth, cardHeight));
+    noteCardSpot(-1, info.name);
     const bool hovered = ImGui::IsItemHovered();
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)){
         templateMenu = info.name;
-        ImGui::OpenPopup("##PoseTemplateMenu");
+        // opened by drawTemplateMenu, in the ID scope its BeginPopup uses (not this card's)
+        templateMenuRequested = true;
     }
     if (hovered){
         ImGui::SetItemTooltip("%s (%s, %s)\n%s\n\nClick: a new animation from this template\nRight-click: replace or append the poses of "
@@ -450,7 +453,13 @@ bool editor::PoseAnimationWindow::drawTemplateCard(TemplateEntry& entry, const I
 }
 
 void editor::PoseAnimationWindow::drawTemplateMenu(){
+    if (templateMenuRequested){
+        templateMenuRequested = false;
+        ImGui::OpenPopup("##PoseTemplateMenu");
+    }
     if (!ImGui::BeginPopup("##PoseTemplateMenu")) return;
+    menuShownFrame = ImGui::GetFrameCount();
+    menuShown = "template:" + templateMenu;
     const TemplateEntry* entry = nullptr;
     for (const TemplateEntry& candidate : templateEntries){
         if (sameName(candidate.tmpl.info.name, templateMenu)) entry = &candidate;
@@ -519,7 +528,7 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         const bool enter = ImGui::InputText("##PoseTemplatePath", templateCreatePath, sizeof(templateCreatePath),
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         std::string target = trimmed(templateCreatePath);
-        if (!target.empty() && fs::u8path(target).extension() != ".poseanim") target += ".poseanim";
+        if (!target.empty() && !Util::isPoseAnimationFile(target)) target += ".poseanim";
         std::error_code ec;
         const fs::path absolute = fs::u8path(target).is_absolute() ? fs::u8path(target) : project->getProjectPath() / fs::u8path(target);
         const bool taken = !target.empty() && fs::exists(absolute, ec);

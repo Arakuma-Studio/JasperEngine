@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "DeleteEntityCmd.h"
+#include "pose/PoseEditSession.h"
 
 #include "Stream.h"
 #include "Out.h"
@@ -137,6 +138,9 @@ editor::DeleteEntityCmd::DeleteEntityCmd(Project* project, uint32_t sceneId, con
     this->preservedEntities = preservedEntities;
     this->allowLockedRoots = allowLockedRoots;
 
+    // a posed character (Pose Animation window) goes back to its rest bones first: they are what
+    // the undo snapshots keep
+    PoseEditSession::suspendActiveFor(sceneId, entities);
     for (const Entity& entity : entities){
         if (std::find(preservedEntities.begin(), preservedEntities.end(), entity) == preservedEntities.end()) {
             appendEntityData(entity);

@@ -7,11 +7,13 @@
 #include "Scene.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
+#include "pose/HumanoidMapIO.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseIK.h"
 #include "pose/PoseMath.h"
 #include "pose/PoseRigProvider.h"
 #include "pose/PoseUiLogic.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -39,6 +41,13 @@ void editor::PoseEditSession::setActive(PoseEditSession* session){
 
 void editor::PoseEditSession::suspendActive(){
     if (activeSession && activeSession->bound()){
+        activeSession->suspend();
+    }
+}
+
+void editor::PoseEditSession::suspendActiveForScene(uint32_t sceneId){
+    // the next update applies the pose again over what the step left, saving that as the rest
+    if (activeSession && activeSession->bound() && activeSession->sceneId() == sceneId && activeSession->bonesApplied()){
         activeSession->suspend();
     }
 }
@@ -145,8 +154,7 @@ void editor::PoseEditSession::watchSidecar(){
     if (!bound() || !scenePtr) return;
     const ModelComponent* model = scenePtr->findComponent<ModelComponent>(modelEntity);
     if (!model || model->filename.empty()) return;
-    std::filesystem::path file = projectPtr->resolveAssetPath(model->filename);
-    file += ".humanoid";
+    const std::filesystem::path file = projectPtr->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
     sidecarFile = file.string();
     sidecarChanged();   // takes the stamp
 }

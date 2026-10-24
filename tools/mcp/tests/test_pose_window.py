@@ -235,7 +235,8 @@ async def test_save_while_previewing_writes_rest(ed: Editor):
 
 
 async def test_scene_keys_follow_the_character(ed: Editor):
-    """The Scene view's keys go to the window only while it shows and the character is selected."""
+    """The Scene view's keys go to the window while it poses the selected character (also with the
+    window behind another tab)."""
     await focus(ed, index=0)
     await ed.call("select_entities", entities=["Ground"])
     ed.check((await state(ed))["scene_keys"] is False, "another GameObject selected: the Scene view keeps its keys")
@@ -245,12 +246,59 @@ async def test_scene_keys_follow_the_character(ed: Editor):
     ed.check((await state(ed))["scene_keys"] is True, "a bone of the character: pose keys")
     await ed.call("select_entities", entities=["Hero"])
     ed.check((await state(ed))["scene_keys"] is True, "the character: pose keys")
-    # (behind another tab of its dock the window cannot be asked through focus_window, which
-    # fronts it: shown again, the routing is back)
+    # behind another tab of its dock: the viewport handles stay live, and so do the pose keys of
+    # the Scene view (final review ruling). Real key events (pose.input, which neither fronts nor
+    # focuses the window): Ctrl+D in the focused Scene view duplicates the pose, not the Hero
+    heroes = len(hero_rows(await ed.call("get_scene_tree")))
+    count = (await state(ed))["pose_count"]
     await ed.call("focus_window", window="console")
     await ed.call("wait", seconds=0.2)
+    await focus(ed, input={"focus_scene": True})
+    await ed.call("wait", frames=3)
+    r = await focus(ed, input={"keys": [{"key": "d", "ctrl": True}]})
+    ed.check(r["shown"] is False, f"the window stayed behind the Console tab: {r}")
+    ed.check(r["state"]["scene_keys"] is True, f"hidden window, posing Scene view: pose keys: {r['state']}")
+    ed.check_eq(r["state"]["pose_count"], count + 1, "Ctrl+D in the Scene view duplicated the pose")
+    ed.check_eq(len(hero_rows(await ed.call("get_scene_tree"))), heroes, "and not the Hero")
+    await ed.call("undo", scope="project")
+    # the Game tab in front again, as before the Scene view was focused (later saves compare files
+    # whose light shadow range follows the camera that drew last)
+    await ed.call("focus_window", window="game")
     r = await ed.call("focus_window", window="pose_animation")
-    ed.check(r["state"]["scene_keys"] is True, "shown again: pose keys again")
+    ed.check_eq(r["state"]["pose_count"], count, "undone")
+    ed.check(r["state"]["scene_keys"] is True, "shown again: pose keys")
+
+
+def hero_rows(tree) -> list:
+    """The GameObjects of a get_scene_tree result named Hero (or a copy of it)."""
+    found = []
+
+    def walk(value):
+        if isinstance(value, dict):
+            name = value.get("name")
+            if isinstance(name, str) and name.startswith("Hero"):
+                found.append(name)
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+    walk(tree)
+    return found
+
+
+async def test_card_context_menu_opens_on_a_real_right_click(ed: Editor):
+    """A right-click on a strip card opens its context menu (the menu's OpenPopup and BeginPopup
+    share one ID scope): real mouse events through ImGui's queue (pose.input)."""
+    await focus(ed, index=0, tab="Pose")
+    await ed.call("wait", frames=3)
+    r = await focus(ed, input={"right_click": {"card": 1}})
+    st = r["state"]
+    ed.check_eq(st["menu"], "card", f"the card menu is open: {st}")
+    ed.check_eq(st["primary"], 1, f"the right-clicked card is selected: {st}")
+    # focusing the window closes the menu
+    st = await state(ed)
+    ed.check(st["menu"] is None, f"closed: {st}")
 
 
 async def test_mapping_change_rebuilds_the_rig(ed: Editor):
@@ -307,5 +355,67 @@ async def test_save_after_moving_the_posed_character(ed: Editor):
         ed.check_eq(len(a), len(b), "the same lines")
         bad = [(x, y) for x, y in zip(a, b) if not same_line(x, y)]
         ed.check(not bad, f"the save right after the move writes what an unposed save writes: {bad[:6]}")
+    finally:
+        await ed.call("undo", scene="Main Scene")
+
+
+async def test_scene_undo_while_posed_is_not_reverted_by_the_restore(ed: Editor):
+    """A scene undo of a bone edit made before posing, done while posed: leaving posing restores
+    what the undo left (the rest), not the transform saved when posing began."""
+    await ed.call("select_entities", entities=["Ground"])
+    ed.check_eq((await state(ed))["mode"], "idle", "not posing")
+    ed.check(close(await bone_rotation(ed), S["rest"]), "rest")
+    await ed.call("set_transform", entity=THIGH, rotation={"euler": [25, 0, 0]})
+    edited = await bone_rotation(ed)
+    ed.check(not close(edited, S["rest"]), f"the thigh turned: {edited}")
+    st = (await focus(ed, index=0))["state"]
+    ed.check_eq(st["mode"], "posing", f"posing: {st}")
+    await ed.call("wait", seconds=0.2)
+    await ed.call("undo", scene="Main Scene")
+    await ed.call("wait", seconds=0.2)
+    # a selection change off the character leaves posing
+    await ed.call("select_entities", entities=["Hero"])
+    await ed.call("select_entities", entities=["Ground"])
+    ed.check_eq((await state(ed))["mode"], "idle", "posing left")
+    back = await bone_rotation(ed)
+    ed.check(close(back, S["rest"]), f"the undo stays: the rest, not the edit saved by posing: {back} vs rest {S['rest']}")
+
+
+def entity_ids(result) -> list:
+    """The ids of the GameObjects a find_entities result lists."""
+    ids = []
+
+    def walk(value):
+        if isinstance(value, dict):
+            if isinstance(value.get("id"), int) and "name" in value:
+                ids.append(value["id"])
+            for v in value.values():
+                walk(v)
+        elif isinstance(value, list):
+            for v in value:
+                walk(v)
+    walk(result)
+    return ids
+
+
+async def test_copies_of_a_posed_character_get_its_rest_bones(ed: Editor):
+    """MCP duplicate (the DuplicateEntityCmd every path shares) while the Hero is posed: the copy has
+    the rest bones (final review, /tmp/fw-review/probe2.py)."""
+    st = (await focus(ed, index=0))["state"]
+    ed.check_eq(st["mode"], "posing", f"posing: {st}")
+    await ed.call("wait", seconds=0.2)
+    ed.check(not close(await bone_rotation(ed), S["rest"]), "the Hero is posed")
+    original = entity_ids(await ed.call("find_entities", name=THIGH))
+    ed.check_eq(len(original), 1, f"one thigh: {original}")
+    await ed.call("duplicate_entities", entity="Hero")
+    try:
+        thighs = entity_ids(await ed.call("find_entities", name=THIGH))
+        copies = [i for i in thighs if i not in original]
+        ed.check_eq(len(copies), 1, f"the copy's thigh: {thighs}")
+        copied = harness.find_key(await ed.call("get_entity", entity=copies[0], detail="full"), "rotation")
+        if isinstance(copied, dict):
+            copied = copied.get("value", copied)
+            copied = copied.get("quat", copied) if isinstance(copied, dict) else copied
+        ed.check(close(copied, S["rest"]), f"the copy has the rest bones: {copied} vs {S['rest']}")
     finally:
         await ed.call("undo", scene="Main Scene")

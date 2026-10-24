@@ -155,6 +155,8 @@ async def test_create_from_a_template(ed: Editor):
     # an explicit path (the dialog's field); an existing one is refused
     r = await focus(ed, templates={"create": {"name": "Wave", "path": "assets/anim/my wave"}})
     ed.check_eq(r["state"]["animation"], "assets/anim/my wave.poseanim", "the extension is added")
+    r = await focus(ed, templates={"create": {"name": "Idle", "path": "assets/anim/Idle.PoseAnim"}})
+    ed.check_eq(r["state"]["animation"], "assets/anim/Idle.PoseAnim", "an extension in another case is kept (not doubled)")
     await ed.check_error("focus_window", {"window": "pose_animation", "pose": {"templates": {"create": {"name": "Wave", "path": WALK_FILE}}}},
                          contains="exists")
     await ed.check_error("focus_window", {"window": "pose_animation", "pose": {"templates": {"create": {"name": "Moonwalk"}}}},
@@ -170,6 +172,18 @@ async def test_tab_renders_with_thumbnails(ed: Editor):
     r = await focus(ed)
     region = await window_region(ed, r, "03-templates-tab-hero")
     ed.check(not pngdiff.flat(region, 8), "the Templates tab draws")
+
+
+async def test_template_card_menu_opens_on_a_real_right_click(ed: Editor):
+    """A right-click on a Templates card opens its menu (Replace / Append / ...): real mouse events
+    through ImGui's queue (pose.input); the menu's OpenPopup and BeginPopup share one ID scope."""
+    st = (await focus(ed, tab="templates"))["state"]
+    await ed.call("wait", frames=3)
+    first = st["templates"]["cards"][0]
+    r = await focus(ed, input={"right_click": {"template": first}})
+    ed.check_eq(r["state"]["menu"], "template:" + first, f"the template menu is open: {r['state']}")
+    r = await focus(ed)
+    ed.check(r["state"]["menu"] is None, f"focusing the window closes it: {r['state']}")
 
 
 async def test_replace_and_append(ed: Editor):

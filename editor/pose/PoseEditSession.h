@@ -93,6 +93,9 @@ namespace jasperengine::editor{
         // suspend() on the active session, if any: before scene commands that copy entities
         // (duplicate, copy, delete, create or apply a prefab), so they copy rest bones
         static void suspendActive();
+        // suspend() on the active session when it poses a model of scene `sceneId`: before a
+        // scene undo / redo step (CommandHistory::beforeStep), whose bone changes then stay
+        static void suspendActiveForScene(uint32_t sceneId);
         Project* project() const { return projectPtr; }
 
         bool bound() const { return rigPtr != nullptr; }
@@ -155,9 +158,6 @@ namespace jasperengine::editor{
         bool copiesPosedEntities(uint32_t sceneId, const std::vector<Entity>& roots) const;
         // suspend() on the active session when copiesPosedEntities(sceneId, roots)
         static void suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots);
-        // the first name of the same flag (kept for source compatibility)
-        void setViewportHandleActive(bool active) { setViewportHandleEngaged(active); }
-        bool viewportHandleActive() const { return viewportHandleEngaged(); }
         // The Scene view routes keys to the pose window (set by the window each frame; the
         // Scene view shows a "Pose keys" hint while it is true)
         void setKeyRouting(bool routing) { keyRoutingOn = routing; }

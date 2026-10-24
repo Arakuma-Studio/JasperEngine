@@ -28,6 +28,10 @@ namespace jasperengine::editor{
     public:
         // Called after any command apply/undo/redo with the scene id and affectsStructure().
         static std::function<void(size_t, bool)> onSceneModified;
+        // Called before an undo() or redo() steps, with the history's scene id (the Pose
+        // Animation window puts a posed character's rest bones back first: a step that touches a
+        // bone is then not reverted when the pose's saved transforms are restored)
+        static std::function<void(size_t)> beforeStep;
 
         explicit CommandHistory(size_t sceneId = 0);
         ~CommandHistory();

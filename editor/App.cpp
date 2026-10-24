@@ -1737,9 +1737,9 @@ bool editor::App::canEditSelection(bool duplicate) {
 }
 
 void editor::App::deleteSelection() {
-    // a posed character goes back to its rest bones first, so they are what gets copied
-    PoseEditSession::suspendActive();
     if (!canEditSelection(false)) return;
+    // a posed character goes back to its rest bones first, so they are what the undo keeps
+    PoseEditSession::suspendActive();
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t selectedSceneForProperties = project.getSelectedSceneForProperties();
     uint32_t targetSceneId = sceneId;
@@ -2293,6 +2293,10 @@ void editor::App::engineInit(int argc, char** argv) {
     Engine::pauseGameEvents(true);
 
     // Any edit/undo/redo flags its scene for redraw, so the loop can idle otherwise.
+    // a scene undo / redo while a character is posed: its rest bones first (PoseEditSession)
+    CommandHistory::beforeStep = [](size_t sceneId){
+        PoseEditSession::suspendActiveForScene(static_cast<uint32_t>(sceneId));
+    };
     CommandHistory::onSceneModified = [this](size_t sceneId, bool structural){
         if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
             sceneProject->needUpdateRender = true;

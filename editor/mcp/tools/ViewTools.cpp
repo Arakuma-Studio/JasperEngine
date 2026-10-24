@@ -1233,6 +1233,81 @@ bool poseTemplatesHook(const CallPtr& call, PoseAnimationWindow* window, const J
     return true;
 }
 
+// pose.input (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): real input
+// through ImGui's event queue, as the platform backend sends it (ImGui trickles it over the next
+// frames); focus_window then neither fronts nor focuses the window. {right_click: {card: pose
+// index} | {template: name}}: the pointer on the card as last drawn, the right button pressed and
+// released (the state's `menu` says which context menu opened); focus_scene: true focuses the
+// Scene view of the bound character (the window stays where it is, e.g. behind another tab);
+// keys: [{key: "a".."z" | "delete", ctrl, shift}] pressed and released in order.
+bool poseInputHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
+    if (!mcpTestHooks()) {
+        call->fail("pose.input: unknown key (valid: entity, path, index, play, tab).");
+        return false;
+    }
+    if (!hook.is_object()) {
+        call->fail("pose.input: {right_click: {card: index} | {template: name}, focus_scene, keys}.");
+        return false;
+    }
+    ImGuiIO& io = ImGui::GetIO();
+    if (hook.contains("right_click")) {
+        const Json& target = hook["right_click"];
+        ImVec2 at;
+        bool found = false;
+        if (target.is_object() && target.contains("card") && target["card"].is_number_integer()) {
+            found = window->cardCenter(target["card"].get<int>(), at);
+        } else if (target.is_object() && target.contains("template") && target["template"].is_string()) {
+            found = window->templateCardCenter(target["template"].get<std::string>(), at);
+        } else {
+            call->fail("pose.input.right_click: {card: index} or {template: name}.");
+            return false;
+        }
+        if (!found) {
+            call->fail("pose.input.right_click: that card is not on screen (show its tab first).");
+            return false;
+        }
+        io.AddMousePosEvent(at.x, at.y);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+        io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+        out["right_click"] = Json::array({at.x - ImGui::GetMainViewport()->Pos.x, at.y - ImGui::GetMainViewport()->Pos.y});
+    }
+    if (hook.value("focus_scene", false)) {
+        PoseEditSession& session = window->getSession();
+        if (!session.bound()) {
+            call->fail("pose.input.focus_scene: bind a character first.");
+            return false;
+        }
+        ImGui::SetWindowFocus(sceneTabName(call->ctx().project(), session.sceneId()).c_str());
+        out["focused"] = "scene";
+    }
+    if (hook.contains("keys")) {
+        if (!hook["keys"].is_array()) {
+            call->fail("pose.input.keys: [{key, ctrl, shift}].");
+            return false;
+        }
+        for (const Json& press : hook["keys"]) {
+            const std::string name = press.is_object() ? press.value("key", std::string()) : std::string();
+            ImGuiKey key = ImGuiKey_None;
+            if (name.size() == 1 && name[0] >= 'a' && name[0] <= 'z') key = static_cast<ImGuiKey>(ImGuiKey_A + (name[0] - 'a'));
+            else if (name == "delete") key = ImGuiKey_Delete;
+            if (key == ImGuiKey_None) {
+                call->fail("pose.input.keys[].key: a..z or delete.");
+                return false;
+            }
+            const bool ctrl = press.value("ctrl", false);
+            const bool shift = press.value("shift", false);
+            if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, true);
+            if (shift) io.AddKeyEvent(ImGuiMod_Shift, true);
+            io.AddKeyEvent(key, true);
+            io.AddKeyEvent(key, false);
+            if (shift) io.AddKeyEvent(ImGuiMod_Shift, false);
+            if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        }
+        out["keys"] = hook["keys"].size();
+    }
+    return true;
+}
+
 // focus_window pose_animation's `pose` object: {entity, path, index, play}, applied in that order
 bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& hookResult) {
     const Json& args = call->args();
@@ -1244,7 +1319,7 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
     for (auto it = pose.begin(); it != pose.end(); ++it) {
         const std::string& key = it.key();
         if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab" && key != "viewport" &&
-                key != "templates") {
+                key != "templates" && key != "input") {
             call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
             return false;
         }
@@ -1315,6 +1390,9 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
     if (pose.contains("templates") && !poseTemplatesHook(call, window, pose["templates"], hookResult)) {
         return false;
     }
+    if (pose.contains("input") && !poseInputHook(call, window, pose["input"], hookResult)) {
+        return false;
+    }
     return true;
 }
 
@@ -1326,7 +1404,8 @@ Json poseWindowState(const CallPtr& call) {
                  {"pose_count", state.poseCount}, {"primary", state.primary}, {"selection", state.selection},
                  {"mode", state.mode}, {"time", state.time}, {"length", state.length}, {"playing", state.playing},
                  {"tab", state.tab}, {"scene_keys", state.sceneKeys}, {"editable", state.editable},
-                 {"layout", state.layout}, {"thumbnail_height", state.thumbnailHeight}};
+                 {"layout", state.layout}, {"thumbnail_height", state.thumbnailHeight},
+                 {"menu", state.menu.empty() ? Json() : Json(state.menu)}};
     if (state.entity != NULL_ENTITY) {
         if (SceneProject* sp = call->ctx().project()->getScene(state.sceneId)) {
             if (sp->scene && sp->scene->isEntityCreated(state.entity)) data["entity"] = McpRefs::entityJson(sp, state.entity);
@@ -1405,7 +1484,8 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = McpActivityWindow::WINDOW_NAME;
     } else if (window == "pose_animation") {
         PoseAnimationWindow* pw = app.getPoseAnimationWindow();
-        pw->requestFocus();
+        // real input (test hook) goes where the editor's focus is: the window is not fronted
+        if (!(args.contains("pose") && args["pose"].is_object() && args["pose"].contains("input"))) pw->requestFocus();
         imguiName = PoseAnimationWindow::WINDOW_NAME;
         if (args.contains("pose") && !focusPoseAnimation(call, pw, hookResult)) return;
     } else {
@@ -1416,9 +1496,11 @@ void focusWindowTool(const CallPtr& call) {
         call->fail("pose: only for window \"pose_animation\".");
         return;
     }
-    // A window opened just now exists after its next draw
-    call->afterFrames(1, [call, imguiName, window, hookResult]() {
-        if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
+    // A window opened just now exists after its next draw (real input given to the pose window
+    // keeps the focus where its click puts it: focusing would close the menu it opened)
+    const bool keepFocus = window == "pose_animation" && args.contains("pose") && args["pose"].is_object() && args["pose"].contains("input");
+    call->afterFrames(1, [call, imguiName, window, hookResult, keepFocus]() {
+        if (window != "game" && !keepFocus) ImGui::SetWindowFocus(imguiName.c_str());
         call->afterFrames(2, [call, imguiName, window, hookResult]() {
             ImGuiWindow* w = ImGui::FindWindowByName(imguiName.c_str());
             const bool shown = w && w->WasActive && !w->Hidden;

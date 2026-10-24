@@ -42,6 +42,7 @@ public:
 }
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
+std::function<void(size_t)> editor::CommandHistory::beforeStep = nullptr;
 
 editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
 }
@@ -87,6 +88,9 @@ void editor::CommandHistory::addCommandNoMerge(Command* cmd){
 
 void editor::CommandHistory::undo(){
     if (index > undoFloor()){
+        if (beforeStep){
+            beforeStep(sceneId);
+        }
         const bool structural = list[index-1]->affectsStructure();
         list[index-1]->undo();
         index--;
@@ -103,6 +107,9 @@ void editor::CommandHistory::undo(){
 
 void editor::CommandHistory::redo(){
     if (index < list.size()){
+        if (beforeStep){
+            beforeStep(sceneId);
+        }
         index++;
         list[index-1]->execute();
 

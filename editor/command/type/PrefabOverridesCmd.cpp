@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabOverridesCmd.h"
+#include "pose/PoseEditSession.h"
 
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -151,6 +152,8 @@ editor::PrefabOverridesCmd* editor::PrefabOverridesCmd::applyAll(Project* projec
         return nullptr;
     }
     const std::filesystem::path rootPath = component->path;
+    // a posed character's bones are no overrides: back to rest before they are listed
+    PoseEditSession::suspendActiveFor(sceneId, {root});
     const std::vector<PrefabOverrideEntry> entries = project->getPrefabOverrideEntries(sceneId, root);
     // Added GameObjects first: each reads where it is when made
     std::vector<std::unique_ptr<Command>> steps;

@@ -1384,7 +1384,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 float origX = mouseLeftStartPos.x;
                 float origY = mouseLeftStartPos.y;
                 toEngineCanvas(sceneId, origX, origY);
-                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, io.KeyCtrl || io.KeySuper, io.KeyShift);
+                // Cmd (macOS) snaps a pose handle's ring turn like Ctrl; the transform gizmo keeps Ctrl alone
+                const bool snapModifier = sceneProject->sceneRender->isPoseDragging() ? (io.KeyCtrl || io.KeySuper) : io.KeyCtrl;
+                sceneProject->sceneRender->mouseDragEvent(x, y, origX, origY, project, sceneId, project->getSelectedEntities(editSceneId), disableSelection, snapModifier, io.KeyShift);
             }
         }
 

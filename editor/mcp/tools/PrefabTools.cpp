@@ -32,6 +32,7 @@
 #include "command/type/RemoveEntityFromPrefabCmd.h"
 #include "command/type/ReplacePrefabCmd.h"
 #include "command/type/UnpackPrefabCmd.h"
+#include "pose/PoseEditSession.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -640,6 +641,8 @@ void createPrefabTool(const CallPtr& call) {
     std::vector<Entity> exportEntities = tops;
     const std::vector<Entity> virtualChildren = ProjectUtils::getVirtualChildren(registry, tops);
     exportEntities.insert(exportEntities.end(), virtualChildren.begin(), virtualChildren.end());
+    // a posed character's prefab gets its rest bones (the pose comes back on the next frame)
+    PoseEditSession::suspendActiveFor(sceneId, exportEntities);
     YAML::Node payload = exportEntities.size() == 1
         ? Stream::encodeEntity(tops[0], registry, project, scene)
         : Stream::encodeEntitySelection(exportEntities, registry, project, scene);
@@ -815,6 +818,8 @@ void createPrefabVariantTool(const CallPtr& call) {
     }
     const fs::path base = rootPrefabPath(project, scene, root);
     if (relative.empty()) relative = CreatePrefabVariantAssetCmd::defaultPath(project, base);
+    // a posed character's prefab gets its rest bones
+    PoseEditSession::suspendActiveFor(scene->id, {root});
     std::vector<std::pair<fs::path, YAML::Node>> items = {{relative, Stream::encodeEntity(root, scene->scene, project, scene)}};
     if (!runCommand(CommandHandle::get(scene->id), new CreatePrefabCmd(project, scene->id, items, true))) {
         const std::string why = problemsSince(since);

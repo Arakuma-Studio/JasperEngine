@@ -22,6 +22,7 @@
 #include "pose/PoseSampler.h"
 #include "pose/PoseTween.h"
 #include "util/EntityPayload.h"
+#include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -527,6 +528,12 @@ void editor::PoseAnimationWindow::prepareForProjectSwitch(){
     mappingInfo.reset();
     clipboard.reset();
     statusLine.clear();
+    // the next project's templates (its own user templates) are read again
+    templateEntries.clear();
+    templatesLoaded = false;
+    templateStamp.clear();
+    templateCheckTime = 0.0;
+    templateRig.reset();
 }
 
 // ---- state (MCP) ----
@@ -567,7 +574,42 @@ editor::PoseAnimationWindow::State editor::PoseAnimationWindow::getState(){
     if (windowOpen && templatesDrawnFrame >= ImGui::GetFrameCount() - 1){
         state.templates = templatesShown;
     }
+    if (windowOpen && menuShownFrame >= ImGui::GetFrameCount() - 1){
+        state.menu = menuShown;
+    }
     return state;
+}
+
+void editor::PoseAnimationWindow::noteCardSpot(int index, const std::string& name){
+    // the item just drawn (the card's invisible button), when it is on screen
+    if (!ImGui::IsItemVisible()) return;
+    const int frame = ImGui::GetFrameCount();
+    cardSpots.erase(std::remove_if(cardSpots.begin(), cardSpots.end(), [&](const CardSpot& spot){
+        return spot.frame < frame - 1 || (spot.index == index && spot.name == name);
+    }), cardSpots.end());
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    cardSpots.push_back({frame, index, name, ImVec2((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f)});
+}
+
+bool editor::PoseAnimationWindow::cardCenter(int index, ImVec2& out) const{
+    for (const CardSpot& spot : cardSpots){
+        if (spot.index == index && spot.name.empty() && spot.frame >= ImGui::GetFrameCount() - 1){
+            out = spot.centre;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool editor::PoseAnimationWindow::templateCardCenter(const std::string& name, ImVec2& out) const{
+    for (const CardSpot& spot : cardSpots){
+        if (spot.index < 0 && spot.name == name && spot.frame >= ImGui::GetFrameCount() - 1){
+            out = spot.centre;
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---- transport ----
@@ -751,15 +793,17 @@ void editor::PoseAnimationWindow::actionGlobalEdit(){
 // ---- shortcuts ----
 
 bool editor::PoseAnimationWindow::ownsUndo(bool sceneViewFocused) const{
-    if (!windowOpen || !windowVisible) return false;
-    if (windowFocused) return true;
+    if (!windowOpen) return false;
+    // the window's own focus counts while it shows; a posing Scene view's keys also behind a tab
+    if (windowFocused && windowVisible) return true;
     return sceneViewFocused && sceneKeysRouted();
 }
 
 bool editor::PoseAnimationWindow::sceneKeysRouted() const{
-    // the Scene view poses only while the window shows (not behind another tab) and the user works
-    // on the character: it is selected (or one of its bones), or a phase 5 handle is in use
-    if (!windowOpen || !windowVisible || !session.bound() || session.mode() != PoseEditSession::Mode::Posing) return false;
+    // the Scene view poses while the user works on the character: it is selected (or one of its
+    // bones), or a phase 5 handle is in use. Also with the window behind another tab of its dock:
+    // the handles are live then, and the keys agree with them (final review ruling)
+    if (!windowOpen || !session.bound() || session.mode() != PoseEditSession::Mode::Posing) return false;
     if (project->getSelectedSceneId() != session.sceneId()) return false;
     if (session.viewportHandleEngaged()) return true;
     const std::vector<Entity> picked = project->getSelectedEntities(session.sceneId());
@@ -821,7 +865,8 @@ void editor::PoseAnimationWindow::handleShortcuts(bool fromSceneView){
     }
     if (keyRepeat(false, ImGuiKey_Comma)) actionStepFrame(-1);
     if (keyRepeat(false, ImGuiKey_Period)) actionStepFrame(1);
-    if (keyChord(false, false, ImGuiKey_F2)) actionRename(primary);
+    // the rename popup opens with the window: not from a Scene view while it is behind a tab
+    if (keyChord(false, false, ImGuiKey_F2) && windowVisible) actionRename(primary);
     if (keyChord(true, false, ImGuiKey_D)) actionDuplicate(false, false);
     if (keyChord(true, true, ImGuiKey_D)) actionDuplicate(false, true);
     if (keyChord(false, false, ImGuiKey_M)) actionMirror();
@@ -1067,7 +1112,7 @@ void editor::PoseAnimationWindow::drawAnimationField(bool inlineRow){
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
             std::vector<std::string> files = Util::getStringsFromPayload(payload);
             for (const std::string& file : files){
-                if (fs::u8path(file).extension() == ".poseanim"){
+                if (Util::isPoseAnimationFile(file)){
                     std::string error;
                     if (!openAnimation(file, &error)) setStatus(error, true);
                     break;
@@ -1455,6 +1500,7 @@ void editor::PoseAnimationWindow::drawCard(int index, const ImVec2& pos, float c
     ImGui::SetCursorScreenPos(pos);
     ImGui::PushID(index);
     ImGui::InvisibleButton("##card", ImVec2(cardWidth, cardHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+    noteCardSpot(index, "");
     const bool hovered = ImGui::IsItemHovered();
     if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
         pressedCard = index;
@@ -1467,7 +1513,8 @@ void editor::PoseAnimationWindow::drawCard(int index, const ImVec2& pos, float c
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)){
         if (!selected) actionSelect(index, false, false);
         contextPose = index;
-        ImGui::OpenPopup("##PoseCardMenu");
+        // opened by drawCardMenu: OpenPopup here would be in the card's ID scope, BeginPopup is not
+        cardMenuRequested = true;
     }
     if (hovered && !draggingCards){
         ImGui::SetItemTooltip("%s\nClick: select  Shift: range  Ctrl/Cmd: toggle\nDrag: reorder  Double-click / F2: rename\nRight-click: more",
@@ -1586,7 +1633,13 @@ void editor::PoseAnimationWindow::drawChip(int index, const ImVec2& pos, float c
 }
 
 void editor::PoseAnimationWindow::drawCardMenu(){
+    if (cardMenuRequested){
+        cardMenuRequested = false;
+        ImGui::OpenPopup("##PoseCardMenu");
+    }
     if (!ImGui::BeginPopup("##PoseCardMenu")) return;
+    menuShownFrame = ImGui::GetFrameCount();
+    menuShown = "card";
     const int count = static_cast<int>(selection().size());
     if (ImGui::MenuItem(poseui::poseCountLabel("Duplicate", count).c_str(), "Ctrl+D")) actionDuplicate(false, false);
     if (ImGui::MenuItem(poseui::poseCountLabel("Duplicate", count).append(" at End").c_str())) actionDuplicate(true, false);
@@ -2317,8 +2370,7 @@ void editor::PoseAnimationWindow::openMappingPopup(uint32_t sceneId, Entity enti
     mappingFilter[0] = '\0';
     // the sidecar's overrides as they are
     if (ModelComponent* model = sceneProject->scene->findComponent<ModelComponent>(entity)){
-        fs::path sidecar = project->resolveAssetPath(model->filename);
-        sidecar += ".humanoid";
+        const fs::path sidecar = project->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
         std::string text;
         std::error_code ec;
         if (fs::exists(sidecar, ec) && ProjectChecks::readFile(sidecar, text)){
@@ -2337,8 +2389,7 @@ void editor::PoseAnimationWindow::applyMapping(){
     if (!sceneProject || !sceneProject->scene) return;
     ModelComponent* model = sceneProject->scene->findComponent<ModelComponent>(mappingEntity);
     if (!model) return;
-    fs::path sidecar = project->resolveAssetPath(model->filename);
-    sidecar += ".humanoid";
+    const fs::path sidecar = project->resolveAssetPath(FileUtils::pathFromUtf8(pose::humanoidSidecarPath(model->filename)));
     pose::HumanoidOverrides overrides;
     overrides.bones = mappingOverrides;
     const std::string text = pose::writeHumanoidOverrides(overrides);
@@ -2491,7 +2542,7 @@ void editor::PoseAnimationWindow::collectOpenCandidates(){
     if (!fs::is_directory(assets, ec)) return;
     for (fs::recursive_directory_iterator it(assets, fs::directory_options::skip_permission_denied, ec), end; it != end; it.increment(ec)){
         if (ec) break;
-        if (it->is_regular_file(ec) && it->path().extension() == ".poseanim"){
+        if (it->is_regular_file(ec) && Util::isPoseAnimationFile(it->path().string())){
             openCandidates.push_back(ProjectChecks::projectRelative(root, it->path()));
         }
         if (openCandidates.size() > 2000) break;
