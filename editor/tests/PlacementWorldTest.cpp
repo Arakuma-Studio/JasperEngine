@@ -192,7 +192,8 @@ TEST(PlacementWorldSettle, SphereRollsOffRamp) {
     EXPECT_EQ(world.getState(ball).shape, PlacementShapeKind::SPHERE);
 
     bool touchedRamp = false;
-    for (int i = 0; i < 360; i++) {
+    // 20 degrees, slowed by rolling resistance (0.2): about 1 m/s^2, off in 4 s
+    for (int i = 0; i < 480; i++) {
         world.step();
         const PlacementBodyState state = world.getState(ball);
         touchedRamp = touchedRamp || std::find(state.restingOn.begin(), state.restingOn.end(), ramp) != state.restingOn.end();
@@ -1758,6 +1759,102 @@ TEST(PlacementWorldReview, SimplificationErrorIsAbsolute) {
     const std::vector<float> full = heights(1e9f);
     const std::vector<float> simplified = heights(500);
     for (size_t i = 0; i < full.size(); i++) EXPECT_NEAR(simplified[i], full[i], 0.012f) << i;
+}
+
+// The fixture's pencil (Plates.scene): a 2 cm, 12-sided cylinder scaled 0.35 across, so 7 mm
+// thick, lying on a 20 cm slab. Jolt's default 1 mm hull tolerance cut its section lopsided
+// (30% of its volume and its centre of mass 2 mm off), and it sank through the slab.
+TEST(PlacementWorldReview, ThinScaledCylinderRestsOnTheSlab) {
+    TestScene t;
+    const Entity slab = t.box(Vector3(1, 1, 1), Vector3(0, -0.1f, 0));
+    t.setScale(slab, Vector3(12, 0.2f, 12));
+    const Entity group = t.entity(Vector3(0, 0, 0));
+    Primitive& pencil = t.primitive(Vector3(0.6f, 0.3f, -0.2f), group);
+    pencil.createCylinder(0.01f, 0.18f, 12, 18);
+    t.setScale(pencil.getEntity(), Vector3(0.35f, 1, 0.35f));
+    t.setRotation(pencil.getEntity(), Quaternion(0.70710677f, 0, 0, 0.70710677f));
+    t.resolve();
+
+    PlacementWorldSettings settings;
+    PlacementWorld world(&t.scene, settings);
+    ASSERT_TRUE(world.addMover(pencil.getEntity()));
+    AABB region = world.getMoversBounds();
+    region = AABB(region.getMinimum() - Vector3(2, 2, 2), region.getMaximum() + Vector3(2, 2, 2));
+    settings.killY = region.getMinimum().y - 50.0f;
+    world.setSettings(settings);
+    world.ensureContext(region);
+    ASSERT_GT(stepUntilAsleep(world, 1200), 0);
+    const PlacementBodyState state = world.getState(pencil.getEntity());
+    EXPECT_FALSE(state.fellOut);
+    EXPECT_NEAR(state.pose.position.y, 0.0035f, 1e-3f);
+    EXPECT_NEAR(world.getMoversBounds().getMinimum().y, 0.0f, 1e-3f);
+    EXPECT_EQ(state.restingOn, std::vector<Entity>{slab});
+}
+
+// The fixture's six 12 mm plates (Plates.scene), dropped tilted into a pile: with the Balanced
+// preset's 8 / 2 solver iterations the pile sank 6 mm into itself; thin bodies get more
+TEST(PlacementWorldReview, ThinPlatesPileWithoutSinking) {
+    TestScene t;
+    const Entity slab = t.box(Vector3(1, 1, 1), Vector3(0, -0.1f, 0));
+    t.setScale(slab, Vector3(12, 0.2f, 12));
+    const Entity group = t.entity(Vector3(0, 0, 0));
+    const float poses[6][7] = {{-0.05f, 0.4f, 0, 1, 0, 0, 0},
+                               {0, 0.65f, 0.04f, 0.96186835f, 0.07857748f, 0.25500378f, -0.06006758f},
+                               {0.05f, 0.9f, 0, 0.78045887f, -0.13537884f, 0.5958951f, 0.13215727f},
+                               {-0.05f, 1.15f, 0.04f, 0.9811203f, 0.17068131f, 0.09033051f, 0.010551917f},
+                               {0, 1.4f, 0, 0.49928352f, 0.11380611f, 0.8579609f, -0.04083237f},
+                               {0.05f, 1.65f, 0.04f, 0.17505363f, -0.20864053f, 0.9621182f, 0.012403287f}};
+    std::vector<Entity> plates;
+    for (const auto& p : poses) {
+        plates.push_back(t.box(Vector3(1, 1, 1), Vector3(p[0], p[1], p[2]), group));
+        t.setScale(plates.back(), Vector3(0.5f, 0.012f, 0.35f));
+        t.setRotation(plates.back(), Quaternion(p[3], p[4], p[5], p[6]));
+    }
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    for (Entity e : plates) ASSERT_TRUE(world.addMover(e));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 1200), 0);
+    EXPECT_LT(world.getMaxPenetration(), 1e-3f);
+    for (const PlacementBodyState& state : world.getStates()) {
+        EXPECT_LT(state.maxPenetration, 1e-3f) << state.entity;
+        EXPECT_GT(state.pose.position.y, 0.0055f) << state.entity;   // none sunk into the slab
+    }
+    (void)slab;
+}
+
+// Rolling resistance: a ball comes to rest on a 5 degree slope, and still rolls down 30 degrees
+TEST(PlacementWorldReview, BallsStopOnGentleSlopesAndRollDownSteepOnes) {
+    for (const float degrees : {5.0f, 30.0f}) {
+        TestScene t;
+        const Entity slope = t.box(Vector3(12, 0.2f, 4), Vector3(0, 0, 0));
+        t.setRotation(slope, axisAngle(Vector3(0, 0, 1), degrees * DEG));
+        // just above the slope's surface, 2 m up its length
+        const float angle = degrees * DEG;
+        const Vector3 normal(-std::sin(angle), std::cos(angle), 0);
+        const Vector3 along(std::cos(angle), std::sin(angle), 0);
+        const Entity ball = t.sphere(0.2f, along * 2.0f + normal * (0.1f + 0.21f));
+        t.resolve();
+
+        PlacementWorld world(&t.scene, PlacementWorldSettings());
+        ASSERT_TRUE(world.addMover(ball));
+        world.ensureContext(everywhere);
+        const Vector3 start = world.getState(ball).pose.position;
+        if (degrees < 10.0f) {
+            ASSERT_GT(stepUntilAsleep(world, 1200), 0) << degrees;
+            const PlacementBodyState state = world.getState(ball);
+            EXPECT_EQ(state.restingOn, std::vector<Entity>{slope});
+            EXPECT_LT((state.pose.position - start).length(), 0.3f);
+        } else {
+            for (int i = 0; i < 180; i++) world.step();
+            const PlacementBodyState state = world.getState(ball);
+            EXPECT_FALSE(state.asleep);
+            // g (sin 30 - 0.2) / 1.4 = 2.1 m/s^2 down the slope: over 2 m in 1.5 s
+            EXPECT_LT(state.pose.position.x, start.x - 1.7f);
+            EXPECT_GT(state.angularVelocity.length(), 10.0f);   // rolling, not sliding
+        }
+    }
 }
 
 // A world made before any Scene, so before anything else set Jolt up, in a process of its own

@@ -307,7 +307,8 @@ JPH::JobSystemThreadPool& JoltShapeBuilder::sharedPhysicsJobSystem(){
     return *instance;
 }
 
-JPH::ShapeRefC JoltShapeBuilder::buildConvexHullShape(const std::vector<Vector3>& points, std::string* error, float maxConvexRadius){
+JPH::ShapeRefC JoltShapeBuilder::buildConvexHullShape(const std::vector<Vector3>& points, std::string* error, float maxConvexRadius,
+                                                      float hullTolerance){
     JPH::Array<JPH::Vec3> jvertices;
     jvertices.reserve(points.size());
     for (const Vector3& point : points){
@@ -315,6 +316,7 @@ JPH::ShapeRefC JoltShapeBuilder::buildConvexHullShape(const std::vector<Vector3>
     }
 
     JPH::ConvexHullShapeSettings shape_settings(jvertices, maxConvexRadius);
+    shape_settings.mHullTolerance = hullTolerance;
     JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
     if (!shape_result.IsValid()){
         setError(error, "Cannot create convex hull shape: " + std::string(shape_result.GetError().c_str()));
