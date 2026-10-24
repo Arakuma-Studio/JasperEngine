@@ -140,6 +140,7 @@ namespace {
         Scene* scene = out.sceneProject->scene;
         out.entity = scene->createEntity();
         scene->addComponent<Transform>(out.entity);
+        out.sceneProject->entities.push_back(out.entity);   // a GameObject of the scene (saved)
         AnimationPlayerComponent component;
         component.clips = entries;
         scene->addComponent<AnimationPlayerComponent>(out.entity, component);
@@ -741,4 +742,44 @@ TEST_F(AnimationClipAssets, AChangedModelDropsItsSubClips) {
 
     setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
     AnimationClipPool::invalidate(gltf.generic_string());
+}
+
+// The same through real files (Stream encodes the player since T2a): save a scene, close it,
+// rename its clip, open it again: the reference resolves by GUID (the scene opens modified with
+// the new path), and the closed scene's file was never rewritten
+TEST_F(AnimationClipAssets, ASavedSceneOpensWithARenamedClip) {
+    const std::string dir = folder("sceneroundtrip");
+    std::shared_ptr<AnimationClipDocument> document = createClip(dir + "/dash.anim");
+    ASSERT_TRUE(document);
+    const std::string guid = document->data().guid;
+    PlayerScene scene = playerScene({entry(dir + "/dash.anim", guid)});
+    const uint32_t sceneId = scene.sceneProject->id;
+    const fs::path sceneFile = root() / dir / "Level.scene";
+    ASSERT_TRUE(project()->saveSceneToPath(sceneId, sceneFile));
+    const std::string saved = readAll(sceneFile);
+    ASSERT_NE(saved.find(dir + "/dash.anim"), std::string::npos) << saved;
+    ASSERT_NE(saved.find(guid), std::string::npos) << "the GUID is in the file";
+    project()->getScene(sceneId)->isModified = false;
+    project()->closeScene(sceneId, true);
+    ASSERT_FALSE(project()->getScene(sceneId) && project()->getScene(sceneId)->scene) << "closed";
+
+    ASSERT_TRUE(history()->addCommand(new RenameFileCmd(project(), "dash.anim", "sprint.anim", (root() / dir).string())));
+    EXPECT_EQ(readAll(sceneFile), saved) << "no closed file is rewritten";
+
+    project()->openScene(sceneFile, false);
+    SceneProject* opened = nullptr;
+    for (SceneProject& candidate : project()->getScenes()) {
+        if (candidate.scene && (root() / candidate.filepath).lexically_normal() == sceneFile.lexically_normal()) opened = &candidate;
+    }
+    ASSERT_TRUE(opened) << "the scene opened";
+    auto players = opened->scene->getComponentArray<AnimationPlayerComponent>();
+    ASSERT_EQ(players->size(), 1u);
+    const AnimationPlayerComponent& player = players->getComponentFromIndex(0);
+    ASSERT_EQ(player.clips.size(), 1u);
+    EXPECT_EQ(player.clips[0].clip, dir + "/sprint.anim");
+    EXPECT_EQ(player.clips[0].guid, guid);
+    EXPECT_TRUE(opened->isModified) << "saved with the repaired path next time";
+    std::string error;
+    EXPECT_TRUE(AnimationClipPool::getOrLoad(project()->resolveAssetPath(player.clips[0].clip).string(), &error)) << error;
+    opened->isModified = false;
 }

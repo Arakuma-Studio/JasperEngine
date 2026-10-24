@@ -52,6 +52,7 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "pose/ModelRig.h"
 #include "pose/PoseAnimatorRuntime.h"
+#include "animation/ModelSubClips.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreateEntityCmd.h"
@@ -665,10 +666,9 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
         }
     });
 
-    // Animation Player clips (animation clips spec 9.R8/R26): an .anim path, or the model part of
-    // a sub-clip ("<model>#<clip>"), follows a rename or move; a deletion (the transform clears
-    // the path) keeps the entry, so the Inspector shows it Missing and undoing the delete relinks
-    // it (the .anim also by its GUID)
+    // Animation Player clips: the .anim path (its GUID stays), or the model part of
+    // "<model>#<clip>" (R26). A reference the transform empties (its file deleted) is kept: the
+    // Inspector shows it missing, and undoing the delete relinks it (R8).
     visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
         bool playerChanged = false;
         for (AnimationPlayerClip& entry : player.clips) {
@@ -676,13 +676,19 @@ bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const 
                 continue;
             }
             anim::SubClipReference reference;
-            const bool subClip = anim::parseSubClipReference(entry.clip, reference);
-            std::string path = subClip ? reference.model : entry.clip;
-            if (!transform(path) || path.empty()) {
+            if (anim::parseSubClipReference(entry.clip, reference)) {
+                std::string model = reference.model;
+                if (transform(model) && !model.empty() && model != reference.model) {
+                    entry.clip = anim::formatSubClipReference(model, reference.clip);
+                    playerChanged = true;
+                }
                 continue;
             }
-            entry.clip = subClip ? anim::formatSubClipReference(path, reference.clip) : path;
-            playerChanged = true;
+            std::string path = entry.clip;
+            if (transform(path) && !path.empty() && path != entry.clip) {
+                entry.clip = path;
+                playerChanged = true;
+            }
         }
         if (playerChanged) {
             player.needsLoad = true;
@@ -824,6 +830,18 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
         addFile(resources.sounds, sound.filename);
+    });
+
+    // Animation Player clips (AnimationClipPool); a model sub-clip is built once its model is
+    // loaded, so the model is preloaded too
+    visitComponents(registry->getComponentArray<AnimationPlayerComponent>(), [&](AnimationPlayerComponent& player) {
+        for (const AnimationPlayerClip& entry : player.clips) {
+            anim::SubClipReference reference;
+            if (anim::parseSubClipReference(entry.clip, reference)) {
+                addFile(resources.models, reference.model);
+            }
+            addFile(resources.clips, entry.clip);
+        }
     });
 
     // UIDocumentComponent: nothing to preload. RmlUi reads a document and its stylesheets when
@@ -4954,7 +4972,7 @@ void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAM
     updateSceneCppScripts(sceneProject);
     updateScenePrefabs(sceneProject);
 
-    // Animation Player clips follow their GUIDs: a hint a rename left stale is repaired (the
+    // Animation Player clips follow their GUIDs (R8): a hint a rename left stale is repaired (the
     // scene is then modified, as for prefab references)
     if (resolveRegistryClipRefs(sceneProject->scene)) {
         sceneProject->prefabRefsChanged = true;

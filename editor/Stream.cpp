@@ -11,6 +11,8 @@
 #include "Catalog.h"
 #include "util/YamlNumbers.h"
 #include "lattice/LatticeTypes.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/ModelSubClips.h"
 #include "Factory.h"
 #include "pool/SoundPool.h"
 #include "pool/ShaderPool.h"
@@ -4678,6 +4680,11 @@ YAML::Node editor::Stream::encodeComponents(const Entity entity, const EntityReg
         compNode[Catalog::getComponentName(ComponentType::PoseAnimatorComponent, true)] = encodePoseAnimatorComponent(animator);
     }
 
+    if (signature.test(registry->getComponentId<AnimationPlayerComponent>())) {
+        const AnimationPlayerComponent& player = registry->getComponent<AnimationPlayerComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::AnimationPlayerComponent, true)] = encodeAnimationPlayerComponent(player);
+    }
+
     if (signature.test(registry->getComponentId<CameraComponent>())) {
         const CameraComponent& camera = registry->getComponent<CameraComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::CameraComponent, true)] = encodeCameraComponent(camera);
@@ -5208,6 +5215,17 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             registry->addComponent<PoseAnimatorComponent>(entity, std::move(animator));
         }else{
             registry->getComponent<PoseAnimatorComponent>(entity) = std::move(animator);
+        }
+    }
+
+    compName = Catalog::getComponentName(ComponentType::AnimationPlayerComponent, true);
+    if (compNode[compName]) {
+        AnimationPlayerComponent* existing = registry->findComponent<AnimationPlayerComponent>(entity);
+        AnimationPlayerComponent player = decodeAnimationPlayerComponent(compNode[compName], existing);
+        if (!signature.test(registry->getComponentId<AnimationPlayerComponent>())){
+            registry->addComponent<AnimationPlayerComponent>(entity, std::move(player));
+        }else{
+            registry->getComponent<AnimationPlayerComponent>(entity) = std::move(player);
         }
     }
 
@@ -7172,6 +7190,89 @@ PoseAnimatorComponent editor::Stream::decodePoseAnimatorComponent(const YAML::No
     }
 
     return animator;
+}
+
+YAML::Node editor::Stream::encodeAnimationPlayerComponent(const AnimationPlayerComponent& player) {
+    YAML::Node node;
+    node["enabled"] = YamlNumbers::text(player.enabled);
+    // written when empty too: decoding over a player with clips must clear them
+    YAML::Node clipsNode(YAML::NodeType::Sequence);
+    for (const AnimationPlayerClip& entry : player.clips) {
+        YAML::Node entryNode;
+        entryNode["clip"] = entry.clip;
+        if (!entry.guid.empty()) entryNode["guid"] = entry.guid;
+        if (!entry.name.empty()) entryNode["name"] = entry.name;
+        if (entry.wrap != ClipWrapMode::Default) entryNode["wrap"] = anim::wrapName(entry.wrap);
+        clipsNode.push_back(entryNode);
+    }
+    node["clips"] = clipsNode;
+    node["defaultClip"] = player.defaultClip;
+    node["playAutomatically"] = YamlNumbers::text(player.playAutomatically);
+    encodeFinite(node, "speed", player.speed);
+    encodeFinite(node, "defaultFadeTime", player.defaultFadeTime);
+    return node;
+}
+
+AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer) {
+    // the old one's runtime (states, rest values, bindings) stays: paste and play-stop restore
+    // decode over an existing component; a changed clip list reloads it (needsLoad)
+    AnimationPlayerComponent player;
+    if (oldPlayer) {
+        player = *oldPlayer;
+    }
+    // callbacks are the running game's (scripts subscribe again): a snapshot or a copy restored
+    // over the component must not bring back a released Lua function
+    player.onEvent.clear();
+    player.onFinish.clear();
+
+    // a missing key is the default, not the old value
+    const AnimationPlayerComponent defaults;
+    auto given = [&node](const char* key) {
+        const YAML::Node value = node[key];
+        return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
+    };
+    player.enabled = given("enabled") ? YamlNumbers::as<bool>(node["enabled"]) : defaults.enabled;
+
+    std::vector<AnimationPlayerClip> clips;
+    const YAML::Node clipsNode = node["clips"];
+    if (clipsNode && clipsNode.IsSequence()) {
+        for (const YAML::Node& entryNode : clipsNode) {
+            AnimationPlayerClip entry;
+            if (entryNode.IsScalar()) {
+                // a plain path: {clip}
+                entry.clip = entryNode.Scalar();
+            } else if (entryNode.IsMap()) {
+                auto text = [&entryNode](const char* key) {
+                    const YAML::Node value = entryNode[key];
+                    return value && value.IsScalar() ? value.Scalar() : std::string();
+                };
+                entry.clip = text("clip");
+                entry.guid = text("guid");
+                entry.name = text("name");
+                const std::string wrap = text("wrap");
+                if (!wrap.empty() && !anim::wrapFromName(wrap, entry.wrap)) {
+                    Out::warning("Animation Player clip \"%s\": unknown wrap \"%s\" (default, once, loop, ping_pong, clamp_forever), using default",
+                                 entry.clip.c_str(), wrap.c_str());
+                    entry.wrap = ClipWrapMode::Default;
+                }
+            } else {
+                continue;
+            }
+            clips.push_back(std::move(entry));
+        }
+    }
+    player.clips = std::move(clips);
+
+    player.defaultClip = given("defaultClip") ? node["defaultClip"].as<std::string>() : std::string();
+    player.playAutomatically = given("playAutomatically") ? YamlNumbers::as<bool>(node["playAutomatically"]) : defaults.playAutomatically;
+    player.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
+    player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
+
+    if (oldPlayer && oldPlayer->clips != player.clips) {
+        player.needsLoad = true;
+    }
+
+    return player;
 }
 
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {
