@@ -1515,7 +1515,9 @@ WorldTools in `McpServer::registerAllTools`, listed in `McpTools.h`, `CMakeLists
 the Gizmos popup's "Show all lattices"), `docs/mcp/guide/lattice.md` (new) and its row in
 `docs/mcp/guide/README.md`, one line in `editor/mcp/McpInstructions.cpp`, the README feature bullet,
 `docs/mcp/TOOLS.md` (regenerated), `tools/mcp/tests/test_lattice.py` (new, + `golden/lattice_show_all.png`),
-`tools/mcp/tests/test_docs.py` (`lattice` in DOCS), budget trims (below).
+`tools/mcp/tests/test_docs.py` (`lattice` in DOCS), `tools/mcp/tests/test_lattice_bake.py`
+(`test_mcp_bake`: the bake through edit_lattice, no inspector click), budget trims (below),
+`editor/mcp/tools/LatticeShared.h` (new, `targetsPending`).
 
 `edit_lattice` (§10.2), decisions:
 - **Order in a call**: `create`, then `resolution`, `interpolation`, `outside`, `fade_distance`, then
@@ -1567,6 +1569,15 @@ the Gizmos popup's "Show all lattices"), `docs/mcp/guide/lattice.md` (new) and i
   counted), `missing_lattice` (a target's binding to a deleted entity / non-lattice), `no_mesh` (a
   target reaching no mesh; says to bind with `include_children: true` when its children have
   meshes), `no_targets`, `disabled`, `zero_scale`.
+- **Targets not built yet**: a sprite, tilemap or polygon changed by an earlier call builds its
+  geometry in the next frame, and a model may still be loading, so their bounds are not known yet.
+  `create` (and `create_entity type: "lattice"` with `targets`) waits for them first
+  (`lattice_mcp::targetsPending` in `LatticeShared.h`: the components' `needUpdate*` flags and
+  `ModelLoadCmd::isLoadPending`, through `McpCall::waitUntil`, at most 5 s, then fits to what there
+  is). Without it a sprite created in the previous call got a 2x2x2 cage of 0.01 units.
+- **Bake**: `canBake` first (its reason is the error, at `ops[i].target`: a generated mesh, nothing
+  bakeable), then `bake`; its error is the op's error, `path` and `note` are returned. The default
+  target is the lattice's only target (else an error naming them).
 - `create_entity type: "lattice"` runs `LatticeEditorOps::createLattice` (targets resolved, world
   matrices refreshed first) and then the usual steps (`parent` through `MoveEntityOrderCmd` keeping
   the fitted world pose, components, values, transform shortcuts), all one undo step; `select: false`

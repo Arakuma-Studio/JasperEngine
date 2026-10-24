@@ -4,6 +4,7 @@
 // W1: hierarchy and GameObjects: tree, find, create, delete, duplicate, rename, move,
 // active/tag/layer, selection, copy/cut/paste
 #include "McpTools.h"
+#include "LatticeShared.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -495,7 +496,13 @@ void findEntitiesTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ create_entity
 
+void createEntityRun(const CallPtr& call, bool waited);
+
 void createEntityTool(const CallPtr& call) {
+    createEntityRun(call, false);
+}
+
+void createEntityRun(const CallPtr& call, bool waited) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
     SceneProject* scene = sceneArg(call);
@@ -562,6 +569,12 @@ void createEntityTool(const CallPtr& call) {
                 call->fail("targets: \"" + scene->scene->getEntityName(target) + "\" has no Transform, so it cannot be deformed.");
                 return;
             }
+        }
+        // geometry made or changed by the previous calls is built in the next frame: fit to it then
+        if (!waited && lattice_mcp::targetsPending(project, sceneId, targets)) {
+            call->waitUntil([project, sceneId, targets]() { return !lattice_mcp::targetsPending(project, sceneId, targets); },
+                            lattice_mcp::TARGETS_WAIT_MS, [call](bool) { createEntityRun(call, true); });
+            return;
         }
     }
     std::vector<ComponentType> extraComponents;

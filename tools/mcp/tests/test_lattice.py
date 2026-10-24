@@ -185,6 +185,7 @@ async def test_create_around_model(ed: Editor):
     # create_entity type lattice with targets: the same fit and binding (the editor command)
     other = (await ed.call("create_entity", scene=sid, type="model", name="Ball2", model="assets/models/uv_sphere.gltf",
                            position=[0, 1, 0], scale=[1, 2, 1]))["entity_id"]
+    before_sel = [e["id"] for e in (await ed.call("get_selection", scene=sid))["entities"]]
     made2 = await ed.call("create_entity", scene=sid, type="lattice", name="Ball2Cage", targets=[other], select=False)
     lat2 = made2["entity_id"]
     ed.check_eq([b["id"] for b in made2["bound"]], [other], "create_entity binds the target")
@@ -192,7 +193,7 @@ async def test_create_around_model(ed: Editor):
     check_close(ed, t2["position"], t["position"], "same centre as edit_lattice create", tol=1e-5)
     check_close(ed, t2["scale"], t["scale"], "same size as edit_lattice create", tol=1e-5)
     sel = await ed.call("get_selection", scene=sid)
-    ed.check_eq([e["id"] for e in sel["entities"]], [lat], "select: false keeps the selection")
+    ed.check_eq([e["id"] for e in sel["entities"]], before_sel, "select: false keeps the selection")
     await undo(ed)
     ed.check(not await exists(ed, lat2), "create_entity lattice is one undo step")
     await ed.call("delete_entities", scene=sid, entity=other)
@@ -226,7 +227,8 @@ async def test_create_around_sprite(ed: Editor):
     ed.check_eq(made["resolution"][:2], [3, 3])
     ed.check_eq(made["targets"][0]["entity"]["id"], sprite)
     t = await comp(ed, made["lattice"]["id"], "transform", "position", "scale", scene=sid)
-    check_close(ed, t["position"][:2], [100, 80], "centred on the sprite", tol=0.5)
+    # the sprite's pivot is its bottom-left corner: the cage is centred on the drawn quad
+    check_close(ed, t["position"][:2], [100 + 64, 80 + 32], "centred on the sprite", tol=0.5)
     check_close(ed, t["scale"][:2], [128 * 1.02, 64 * 1.02], "fitted to the sprite", tol=0.5)
     # lattice tracks: an action for the lattice, as morph tracks are for a mesh
     tracks = await ed.call("create_entity", scene=sid, type="lattice_tracks", parent=made["lattice"]["id"])
@@ -252,6 +254,7 @@ async def test_lattice_fallback(ed: Editor):
     read = await el(ed)
     ed.check_eq(read["lattice"]["id"], s["cage"], "the scene's only lattice")
     second = await cage(ed, "Second", position=(10, 0, 0))
+    await ed.call("select_entities", scene=s["scene"], entities=[])
     await el_error(ed, contains=["pass lattice", "BallCage", "Second"])
     await el_error(ed, lattice=s["ball"], contains=["is not a lattice", "lattices:"])
     await el_error(ed, lattice=s["cage"], create={}, contains="not both")
@@ -691,7 +694,8 @@ async def test_lua_in_play(ed: Editor):
         ed.check_eq(a["moved_points"], 1, f"the script moved one point: {a}")
         pa = point_offsets(a)[idx([3, 3, 3], 1, 2, 1)]
         check_close(ed, pa[1:], [0.3, 0], "the script's offset, read during play")
-        ed.check(a["samples"][0]["deformed"][1] > 1.3, f"sampled during play: {a['samples']}")
+        # cubic: the top centre follows its point part way (B-spline), so up but less than 0.3 local
+        ed.check(1.1 < a["samples"][0]["deformed"][1] < 1.6, f"sampled during play: {a['samples']}")
         await ed.call("wait", frames=10)
         b = await el(ed, lattice=lat, detail="points")
         pb = point_offsets(b)[idx([3, 3, 3], 1, 2, 1)]
@@ -749,16 +753,16 @@ async def test_show_all_lattices_screenshot(ed: Editor):
     sid = made["scene"]["id"]
     await ed.call("create_entity", scene=sid, type="directional_light", name="Sun", rotation={"euler": [-50, 30, 0]})
     post = (await ed.call("create_entity", scene=sid, type="model", name="Post", model="assets/models/uv_sphere.gltf",
-                          position=[0, 1, 0], scale=[0.6, 2, 0.6]))["entity_id"]
+                          position=[0, 1, 0], scale=[1.2, 2, 1.2]))["entity_id"]
     bent = await ed.call("edit_lattice", scene=sid, create={"targets": [post], "name": "PostCage", "resolution": [3, 4, 3]},
-                         ops=[{"op": "preset", "name": "bend", "axis": "y", "toward": "x", "amount": 70}])
+                         ops=[{"op": "preset", "name": "bend", "axis": "y", "toward": "x", "amount": 90}])
     ed.check_eq(bent["warnings"], [], f"{bent['warnings']}")
-    other = await ed.call("create_entity", scene=sid, type="lattice", name="Spare", position=[-1.6, 0.6, 0], scale=[1, 1.2, 1])
+    other = await ed.call("create_entity", scene=sid, type="lattice", name="Spare", position=[-1.8, 0.7, 0], scale=[1, 1.4, 1])
     await ed.call("edit_lattice", scene=sid, lattice=other["entity_id"],
                   ops=[{"op": "preset", "name": "twist", "amount": 40}])
     await ed.call("select_entities", scene=sid, entities=[])
-    cam = {"scene": sid, "position": [0.3, 1.6, 6.5], "target": [0, 1.1, 0],
-           "display": {"show_grid_3d": False, "show_all_lattices": True}}
+    cam = {"scene": sid, "position": [-0.2, 1.5, 5.2], "target": [-0.3, 0.9, 0],
+           "display": {"show_grid_3d": False, "hide_light_icons": True, "show_all_lattices": True}}
     got = await ed.call("set_scene_camera", cam)
     ed.check(got["display"]["show_all_lattices"] is True, f"the flag reads back: {got.get('display')}")
     shot = await ed.screenshot("scene", path=ed.scratch.root / "lattice_show_all.png" if ed.scratch else None,

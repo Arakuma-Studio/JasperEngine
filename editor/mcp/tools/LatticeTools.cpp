@@ -7,6 +7,7 @@
 // a prefab override and shown live exactly like a person's. Reads (summary, points, samples,
 // warnings) use the C++ solver, the math the GPU runs.
 #include "McpTools.h"
+#include "LatticeShared.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -18,10 +19,15 @@
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeModifierComponent.h"
 #include "component/MeshComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "lattice/LatticeEditorOps.h"
@@ -39,6 +45,27 @@
 #include <vector>
 
 namespace jasperengine::editor::mcp {
+
+bool lattice_mcp::targetsPending(Project* project, uint32_t sceneId, const std::vector<Entity>& targets) {
+    SceneProject* sp = project ? project->getScene(sceneId) : nullptr;
+    if (!sp || !sp->scene) return false;
+    Scene* scene = sp->scene;
+    auto pending = [scene, sceneId](Entity entity) {
+        if (!scene->isEntityCreated(entity)) return false;
+        if (SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity); sprite && sprite->needUpdateSprite) return true;
+        if (TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity); tilemap && tilemap->needUpdateTilemap) return true;
+        if (PolygonComponent* polygon = scene->findComponent<PolygonComponent>(entity); polygon && polygon->needUpdatePolygon) return true;
+        if (ModelComponent* model = scene->findComponent<ModelComponent>(entity); model && model->needUpdateModel) return true;
+        return ModelLoadCmd::isLoadPending(sceneId, entity);
+    };
+    for (Entity target : targets) {
+        if (pending(target)) return true;
+        for (Entity entity : sp->entities) {
+            if (entity != target && scene->isEntityCreated(entity) && scene->isParentOf(target, entity) && pending(entity)) return true;
+        }
+    }
+    return false;
+}
 
 namespace {
 
@@ -995,6 +1022,10 @@ bool opBake(Session& s, const Json& op, const std::string& where, Json& result, 
         target = targets[0];
     }
     std::string path, note, why;
+    // canBake gives the inspector's reason (a generated mesh, no bakeable binding...) before any work
+    if (!LatticeEditorOps::canBake(s.scene(), target, &why)) {
+        return opFailed(error, where + ".target", label(s.scene(), target) + " cannot be baked: " + why);
+    }
     if (!LatticeEditorOps::bake(s.project, s.sceneId, target, &path, &note, &why)) return opFailed(error, where, why);
     result["target"] = McpRefs::entityJson(s.sp, target);
     result["path"] = path;
@@ -1170,7 +1201,13 @@ Json describe(const Session& s, const LatticeView& view, bool points, const std:
     return data;
 }
 
+void editLatticeRun(const CallPtr& call, bool waited);
+
 void editLatticeTool(const CallPtr& call) {
+    editLatticeRun(call, false);
+}
+
+void editLatticeRun(const CallPtr& call, bool waited) {
     const Json& args = call->args();
     Session s;
     s.call = call;
@@ -1222,6 +1259,20 @@ void editLatticeTool(const CallPtr& call) {
     if (has(args, "create") && has(args, "lattice")) {
         call->fail("Pass lattice (edit an existing one) or create (make a new one), not both.");
         return;
+    }
+    // targets made or changed by the previous calls may not have built their geometry yet (it
+    // happens in the next frame): fit to them once they have
+    if (!waited && has(args, "create") && args["create"].is_object() && has(args["create"], "targets")) {
+        std::vector<Entity> targets;
+        std::string ignored;
+        if (McpRefs::resolveEntities(s.sp, args["create"]["targets"], targets, ignored) &&
+            lattice_mcp::targetsPending(s.project, s.sceneId, targets)) {
+            Project* project = s.project;
+            const uint32_t sceneId = s.sceneId;
+            call->waitUntil([project, sceneId, targets]() { return !lattice_mcp::targetsPending(project, sceneId, targets); },
+                            lattice_mcp::TARGETS_WAIT_MS, [call](bool) { editLatticeRun(call, true); });
+            return;
+        }
     }
 
     UndoStep step(s.sceneId);
