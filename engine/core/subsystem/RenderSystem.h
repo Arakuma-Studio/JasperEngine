@@ -571,6 +571,10 @@ namespace jasperengine{
 		static TextureRender emptyCubeGray;
 
 		static bool emptyTexturesCreated;
+		// the RenderSystems drawing with the static textures above (their bindings hold the
+		// handles), and whether this one is one of them: the last to go destroys them
+		static int emptyTextureUsers;
+		bool usesEmptyTextures = false;
 		
 		bool hasLights;
 		bool hasShadows;
@@ -1427,6 +1431,7 @@ namespace jasperengine{
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
 
 		void createEmptyTextures();
+		static void destroyEmptyTextures();
 		int checkLightsAndShadow();
 		bool loadLights(int numLights);
 		// the camera part of the lighting (frame block, legacy block) and the shadow uniforms of target for camera
