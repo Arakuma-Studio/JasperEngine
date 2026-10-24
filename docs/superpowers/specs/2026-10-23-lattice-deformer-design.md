@@ -1350,3 +1350,84 @@ Integrator notes:
 - `LatticeEditorOps::falloff()` is initialised from the preferences on first use.
 - SceneRender finds its project scene id by searching the project's scenes and prefab stages
   for itself (cached), so no Project.cpp change was needed.
+
+### 12.x WP-MCP (edit_lattice, create_entity lattice, show_all_lattices, guide, tests)
+
+Files: `editor/mcp/tools/LatticeTools.cpp` (new, `registerLatticeTools`, registered after
+WorldTools in `McpServer::registerAllTools`, listed in `McpTools.h`, `CMakeLists.txt`,
+`tools/mcp/gen_tool_docs.py` MODULES ("Lattices (free-form deformation)") and `docs/mcp/DESIGN.md`),
+`editor/mcp/tools/EntityTools.cpp` (types `lattice`, `lattice_tracks`, argument `targets`),
+`editor/mcp/tools/ViewTools.cpp` (`show_all_lattices` display flag = `SceneDisplaySettings::showAllLattices`,
+the Gizmos popup's "Show all lattices"), `docs/mcp/guide/lattice.md` (new) and its row in
+`docs/mcp/guide/README.md`, one line in `editor/mcp/McpInstructions.cpp`, the README feature bullet,
+`docs/mcp/TOOLS.md` (regenerated), `tools/mcp/tests/test_lattice.py` (new, + `golden/lattice_show_all.png`),
+`tools/mcp/tests/test_docs.py` (`lattice` in DOCS), budget trims (below).
+
+`edit_lattice` (§10.2), decisions:
+- **Order in a call**: `create`, then `resolution`, `interpolation`, `outside`, `fade_distance`, then
+  `ops` in order (each op sees the state the previous one left: selectors on current positions,
+  world matrices recomputed with `McpValues::refreshTransforms` before each op while stopped), then
+  the read. One undo step: `CommandHistory::mark()` before, `groupSince()` after; any error undoes
+  what the call pushed (`position() > mark`) and the message says the call was rolled back. Errors
+  are prefixed with their argument path (`ops[2].select.face: "middle" is not a face. Use one of:
+  +x, -x, ...`), unknown keys of an op / selector / point are errors listing the valid keys.
+- **Edits only through `LatticeEditorOps`**: set = `setOffsets`, move = `transformPoints` (pivot and
+  transform in lattice local space; a world-space move is converted: `T = t(-pL) Minv W M t(pL)`),
+  reset = `resetPoints`, preset = `applyPreset`, mirror = `mirror`, fit = `fitTo`, bind/unbind,
+  pose save/apply/delete, bake = `bake` (path and note returned), `resolution` = `setResolution`,
+  `create` = `createLattice` (+ `fitTo` for `fit_padding`, `setResolution` for `resolution`).
+  **Deviation**: `interpolation`, `outside`, `fade_distance` are plain properties, set as the
+  inspector sets them (`McpValues::appendChangeCommands` -> PropertyCmd in the same undo step):
+  `LatticeEditorOps` has no setter for them and they do not touch offsets.
+- **Lattice fallback**: `lattice`, else the scene's single selected entity when it is a lattice,
+  else the scene's only lattice; otherwise an error listing the scene's lattices. `create` and
+  `lattice` together are refused. `create` without targets: a unit cage at the origin (100 units in
+  2D/UI scenes, `createLattice`'s rule).
+- **Play**: a call with edits is refused while the target scene plays, with terrain's message
+  ("Scene N is playing; stop play mode before editing it."); a call without edits is a read and is
+  allowed in play (it reads `McpRefs::runtimeScene`, i.e. offsets a script or animation writes).
+- **Defaults**: `select` all; preset `axis` y, `toward` the next axis (x->y->z->x, so bend/shear never
+  hit the ops' `toward == axis` refusal), `amount` required (its meaning per preset is in the error),
+  `mode` add, `seed` 1; mirror `from` "+"; fit `targets` = the lattice's targets, `padding` 0.02;
+  bind: unset settings keep the existing binding's (re-binding changes only what is given),
+  `include_children` keeps the modifier's value, else on for a target without a mesh of its own;
+  bake `target` = the only target; `pivot` center (centroid of the selected points).
+- **Selectors** (`parseSelect`): `all`, `exterior`, `interior` (an error when the resolution has no
+  interior), `selected` (the Scene view's point selection, `getSelectedPoints`), faces `+x..-z` and
+  aliases right/left/top/bottom/front (+z)/back (-z), a bare point list, or an object whose keys
+  intersect (`face`, `i`/`j`/`k` index or `[lo, hi]`, `points`, `box`, `sphere`; box/sphere world,
+  on current positions, through `selectInWorldBox/Sphere`). A selection that matches nothing is an
+  error giving the cage's world span.
+- **Read**: `scene_id`, `lattice`, `resolution`, `interpolation`, `outside`, `fade_distance`,
+  `enabled`, `targets` (`entity`, `stage`, `weight`, `meshes` reached, `mask`/`submesh` when set),
+  `moved_points`, `point_count`, `max_offset` (`local`, `world` = through the model's linear part),
+  `poses` (names), `warnings` (objects `{kind, message, ...}`), `ops` (per op: `points` affected,
+  `bound` for create, `pose`, bake `target`/`path`/`note`), `notes` (targets `create` left unbound),
+  `points` with `detail: "points"` (moved points: `ijk`, `index`, `offset`, `world` position),
+  `samples` for `sample` (at most 4096 points): `point`, `deformed` (`lattice::deformWorldPoint` with
+  the padded grid of offsets + dynamic offsets, weight 1, this lattice only) and `stretch`
+  (`det(lattice::worldJacobian)`).
+- **Warnings**: `folded_cells` (`findFoldedCells`; up to 16 cells listed by lower corner, the count,
+  the fix hint), `too_many_lattices` (a mesh this lattice reaches counted as §2.1 stacks: own
+  bindings then ancestors with includeChildren; deleted, non-lattice and disabled lattices not
+  counted), `missing_lattice` (a target's binding to a deleted entity / non-lattice), `no_mesh` (a
+  target reaching no mesh; says to bind with `include_children: true` when its children have
+  meshes), `no_targets`, `disabled`, `zero_scale`.
+- `create_entity type: "lattice"` runs `LatticeEditorOps::createLattice` (targets resolved, world
+  matrices refreshed first) and then the usual steps (`parent` through `MoveEntityOrderCmd` keeping
+  the fitted world pose, components, values, transform shortcuts), all one undo step; `select: false`
+  restores the selection createLattice changed. Results add `bound` and `notes`. `targets` on
+  another type is refused. `lattice_tracks` = `CreateEntityCmd(LATTICE_TRACKS)` (action target =
+  `parent`), as `morph_tracks`.
+
+Budget: the definitions measure 100579 characters on the baseline binary and are back under the
+100637 limit of `test_html_ui_tools.py::test_budget` with edit_lattice (~2060) and the
+create_entity additions paid by: whole-number schema bounds written as integers (`schema::number`),
+`quat()` as `{type: [array, object]}` + its description instead of an `anyOf` of both shapes, no
+per-tool descriptions for what the instructions' Addressing now says once (`parent` omitted = scene
+root, `max_width` 0 = full size, the played scene by default for runtime tools, "Component name."),
+`set_properties`/`set_script_properties` pointing at the guide's value shapes, the material
+values list pointing at jasper://docs/shaders for the render-state fields, and tighter wording in
+play, wait, eval_lua, get_entity, prefab tools, list_shaders, run_build, build_project and a few
+others. No WorldTools description was edited (its sizes moved only through the shared helpers).
+The instructions stay <= 16384 bytes (the lattice line paid by tighter Play/Build lines).

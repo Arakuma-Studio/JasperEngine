@@ -59,7 +59,9 @@ SceneProject* sceneArg(const CallPtr& call) {
 }
 
 Json componentsArgSchema(const std::string& description) {
-    return {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", description}};
+    Json schema = {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}};
+    if (!description.empty()) schema["description"] = description;
+    return schema;
 }
 
 bool wildcardMatch(const std::string& pattern, const std::string& text) {
@@ -843,7 +845,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"detail", withDefault(stringEnum("", {"summary", "values", "full", "yaml"}), "values")},
-            {"components", componentsArgSchema("Only these components.")},
+            {"components", componentsArgSchema("")},
             {"properties", array(string(""), "Only these properties (names or globs).")},
             {"runtime", withDefault(boolean("While playing: read the running scene."), false)}
         }, {"entity"});
@@ -867,7 +869,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"changes", array(anyObject("{component, property, value|insert|remove, index?}"), "Edits, in order.")},
+            {"changes", array(anyObject("{component, property, value|insert|remove, index?}"), "")},
             {"values", anyObject("{component: {property: value}}")}
         });
         tool.handler = setPropertiesTool;
@@ -904,7 +906,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"component", componentsArgSchema("Component name(s).")},
+            {"component", componentsArgSchema("")},
             {"values", anyObject("{component: {property: value}}")}
         }, {"component"});
         tool.handler = addComponentTool;
@@ -919,7 +921,7 @@ void registerComponentTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", entities()},
-            {"component", componentsArgSchema("Component name(s).")}
+            {"component", componentsArgSchema("")}
         }, {"component"});
         tool.annotations.destructive = true;
         tool.handler = removeComponentTool;

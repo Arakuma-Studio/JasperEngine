@@ -3026,10 +3026,10 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "import_files";
         tool.title = "Import Files";
         tool.description =
-            "Copy files/folders from absolute local paths into a project folder (created if missing), like dropping "
-            "them on the Project window; assets go under the assets dir. Remote: URLs in sources, fonts "
-            "[\"Inter:400,700\"] (Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), "
-            "from_document (import every remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
+            "Copy files/folders from absolute local paths into a project folder (made if missing), as a drop on "
+            "the Project window (assets under the assets dir). Remote: URLs in sources, fonts [\"Inter:400,700\"] "
+            "(Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), from_document (import every "
+            "remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg).";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
             {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},
@@ -3280,7 +3280,7 @@ void registerAssetTools(McpRegistry& registry) {
             "and background (default transparent); gradient: color -> color2, checker alternates them. Colors "
             "[r,g,b(,a)] 0-1 or \"#RRGGBB(AA)\".";
         tool.inputSchema = object({
-            {"path", assetPath("A .png inside the assets dir, e.g. \"assets/sprites/coin.png\" (then a texture path).")},
+            {"path", assetPath("A .png in the assets dir (\"assets/sprites/coin.png\"), then a texture path.")},
             {"width", withDefault(integer("", 1, 2048), 64)},
             {"height", withDefault(integer("", 1, 2048), 64)},
             {"shape", withDefault(stringEnum("", {"rect", "rounded_rect", "circle", "ellipse", "triangle", "diamond", "gradient", "checker"}), "rect")},

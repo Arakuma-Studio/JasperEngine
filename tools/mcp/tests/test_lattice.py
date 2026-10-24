@@ -204,8 +204,7 @@ async def test_create_around_model(ed: Editor):
     made3 = await ed.call("create_entity", scene=sid, type="lattice", name="Held", targets=[ball, empty], parent=holder)
     ed.check_eq([b["id"] for b in made3["bound"]], [ball], "only the mesh target is bound")
     ed.check("no mesh" in made3["notes"][0], f"note for the target without a mesh: {made3}")
-    world = (await ed.call("get_entity", scene=sid, entity=made3["entity_id"], components=["transform"],
-                           properties=["worldPosition"]))["components"]["transform"]["worldPosition"]
+    world = (await ed.call("get_entity", scene=sid, entity=made3["entity_id"], detail="summary"))["world"]["position"]
     check_close(ed, world, [0, 1, 0], "the fit is kept under the parent (world)", tol=1e-3)
     await undo(ed)
     ed.check(not await exists(ed, made3["entity_id"]), "parented create undone in one step")
@@ -814,6 +813,11 @@ async def test_guide_names_exist(ed: Editor):
     known.update(k.strip() for k in msg.split("Keys:")[1].strip().rstrip(".").split(","))
     msg = await el_error(ed, lattice=lat, ops=[{"op": "set", "points": [{"zz_unknown": 1}]}], contains="Keys:")
     known.update(k.strip() for k in msg.split("Keys:")[1].strip().rstrip(".").split(","))
+    for key in ("stage", "mask"):
+        msg = await el_error(ed, lattice=lat, ops=[{"op": "bind", "target": lat, key: "zz"}], contains="Use one of:")
+        known.update(k.strip() for k in msg.split("Use one of:")[1].strip().rstrip(".").split(","))
+    camera = await ed.call("set_scene_camera", scene=s["scene"])
+    known.update(camera["display"].keys())
     read = await el(ed, lattice=lat, sample=[[0, 40, 0]], detail="points")
     def keys(value):
         if isinstance(value, dict):

@@ -96,13 +96,11 @@ Json vec2(const std::string& description) { return fixedVector(2, description); 
 Json vec3(const std::string& description) { return fixedVector(3, description); }
 Json vec4(const std::string& description) { return fixedVector(4, description); }
 
+// The two shapes in words (McpValues validates them): an anyOf of both costs ~200 characters more
 Json quat(const std::string& description) {
     return {
-        {"description", description.empty() ? "Rotation: [x,y,z,w] or {\"euler\":[x,y,z]} degrees." : description},
-        {"anyOf", Json::array({
-            fixedVector(4, ""),
-            {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "")}}}, {"required", {"euler"}}}
-        })}
+        {"type", {"array", "object"}},
+        {"description", description.empty() ? "[x,y,z,w] or {\"euler\":[x,y,z]} degrees." : description}
     };
 }
 

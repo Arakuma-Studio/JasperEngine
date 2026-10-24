@@ -1881,10 +1881,10 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "create_prefab";
         tool.title = "Create Prefab";
         tool.description =
-            "Unity's Create Prefab: saves the GameObject (with children) as a new .prefab and makes it that "
-            "prefab's instance root (same id). Several entities: a prefab each, <directory>/<name>.prefab. An "
-            "instance root becomes an original prefab (nested instances stay; variants: create_prefab_variant); "
-            "an instance member is refused (unpack_prefab first). Never overwrites.";
+            "Create Prefab: saves the GameObject (with children) as a new .prefab (never overwrites) and makes "
+            "it the instance root (same id). Several entities: one each, <directory>/<name>.prefab. An instance "
+            "root becomes an original prefab (variants: create_prefab_variant); an instance member is refused "
+            "(unpack_prefab first).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -1939,8 +1939,8 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "replace_prefab";
         tool.title = "Replace Prefab";
         tool.description =
-            "Unity's Replace Prefab Asset: an outermost (or added) instance root, or a Missing Prefab root, becomes "
-            "an instance of another prefab, keeping id, parent, name and pose. Overrides move to GameObjects matched "
+            "Replace Prefab Asset: an outermost (or added) instance root or a Missing Prefab root becomes an "
+            "instance of another prefab, keeping id, parent, name, pose. Overrides move to GameObjects matched "
             "by name path (name), sibling-index path (hierarchy) or root only (none); dropped ones are logged.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
@@ -1961,9 +1961,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "unpack_prefab";
         tool.title = "Unpack Prefab";
         tool.description =
-            "Unity's Unpack: the outermost instance holding entity stops following its prefab (GameObjects, ids, "
-            "values stay). One level by default: nested instances stay, a variant instance becomes its base's. "
-            "completely: plain GameObjects all the way down. Missing Prefab roots become plain GameObjects.";
+            "Unpack: the outermost instance holding entity stops following its prefab (GameObjects, ids, values "
+            "stay). One level by default (nested instances stay; a variant instance becomes its base's); "
+            "completely: plain GameObjects all the way down. Missing Prefab roots become plain.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("Any GameObject of the instance.")},
@@ -1980,9 +1980,9 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "add_to_prefab";
         tool.title = "Add GameObject to Prefab";
         tool.description =
-            "Unity's Apply of an added GameObject: moves it (under parent) into that instance's prefab, so every "
-            "instance gets it. target: a prefab of the nested/variant chain (one of parent's apply_targets); an "
-            "outer one gets it as an override of its nested instance. Written when the scene is saved.";
+            "Apply an added GameObject: moves it (under parent) into that instance's prefab, so every instance "
+            "gets it. target: one of parent's apply_targets (an outer prefab gets it as an override of its "
+            "nested instance). Written when the scene is saved.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("GameObject to add (with children).")},
@@ -2035,20 +2035,19 @@ void registerPrefabTools(McpRegistry& registry) {
         registry.addTool(std::move(tool));
     }
     {
-        const Json properties = array(string(""), "Only these properties.");
-        const Json state = array(stringEnum("", STATE_NAMES), "Only these state fields.");
+        const Json properties = array(string(""), "");
+        const Json state = array(stringEnum("", STATE_NAMES), "");
         const Json removedName = string("Removed GameObject: name in prefab.");
         const Json removedId = integer("Removed GameObject: file id in prefab.");
         ToolDef tool;
         tool.name = "prefab_overrides";
         tool.title = "Apply / Revert Prefab Overrides";
         tool.description =
-            "Apply (into the prefab asset; instances follow) or revert instance overrides. Select with all=true "
-            "+ entity (Apply/Revert All of its outermost instance), entity [+ kind, component, properties, "
-            "state], or overrides (get_prefab_info.overrides entries; removed GameObjects by name or "
-            "registry_entity). target: one of the entry's apply_targets (default innermost = Apply to Prefab; "
-            "outer = Apply as Override; a base clears the overrides between). The .prefab is written when a "
-            "scene using it is saved.";
+            "Apply (into the asset; instances follow) or revert instance overrides, chosen by all=true + entity "
+            "(Apply/Revert All of its outermost instance), entity [+ kind, component, properties, state], or "
+            "overrides (get_prefab_info.overrides entries; removed GameObjects by name or registry_entity). "
+            "target: one of the entry's apply_targets (default the innermost; an outer one applies it as an "
+            "override there). Written when a scene using the prefab is saved.";
         tool.inputSchema = object({
             {"action", stringEnum("", {"apply", "revert"})},
             {"scene", sceneRef()},
@@ -2073,11 +2072,10 @@ void registerPrefabTools(McpRegistry& registry) {
         tool.name = "prefab_mode";
         tool.title = "Prefab Mode";
         tool.description =
-            "Unity's Prefab Mode. open: prefab (isolation) or entity (its instance's prefab, in context; stacks "
-            "inside a stage); returns the stage's scene_id for scene/GameObject/component tools and undo (paths "
-            "from the prefab root). Edits change the asset; nested instances record overrides. Auto Save "
-            "(default on) writes ~0.35 s after an edit; save writes now. close keeps depth stages (unsaved ones "
-            "per unsaved). status lists stages.";
+            "Prefab Mode. open: prefab (isolation) or entity (its prefab in context; stacks inside a stage); "
+            "returns the stage's scene_id for the scene/GameObject/component tools and undo (paths from the "
+            "prefab root). Edits change the asset; nested instances record overrides. auto_save (default on) "
+            "writes ~0.35 s after an edit; save writes now. close keeps depth stages. status lists stages.";
         tool.inputSchema = object({
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},
             {"prefab", assetPath("open: .prefab; with entity: another level of its chain.")},

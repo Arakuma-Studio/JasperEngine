@@ -1171,8 +1171,8 @@ void registerEntityTools(McpRegistry& registry) {
             "Find GameObjects matching all given filters (globs: * ?, case-insensitive).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"name", string("Name glob.")},
-            {"path", string("Path glob.")},
+            {"name", string("")},
+            {"path", string("")},
             {"component", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Required component(s)."}}},
             {"tag", string("")},
             {"layer", {{"type", {"integer", "string"}}, {"description", "0-31 or name."}}},
@@ -1208,7 +1208,7 @@ void registerEntityTools(McpRegistry& registry) {
             {"scale", vec3("")},
             {"model", assetPath("type model: .gltf/.glb/.obj.")},
             {"targets", entities("type lattice: fit around, bind.")},
-            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}, {"description", "Extra components."}}},
+            {"components", {{"type", {"string", "array"}}, {"items", {{"type", "string"}}}}},
             {"values", anyObject("")},
             {"changes", array(anyObject(""), "")},
             {"select", withDefault(boolean(""), true)}

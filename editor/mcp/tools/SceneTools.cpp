@@ -1468,10 +1468,10 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "get_scene_settings";
         tool.title = "Get Scene Settings";
         tool.description =
-            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, fixed resolution, "
-            "default shaders, post_process, post_processing): the fields away from their defaults; detail adds type, "
-            "default, options, help. Without names also scene_inputs_in_use (what the last frame made for "
-            "scene-reading shaders).";
+            "Scene settings (Inspector > Scene: lighting, shadows, gravity, LOD, SSAO, SSR, default shaders, "
+            "post_process, post_processing...): the fields away from their defaults; detail adds type, default, "
+            "options, help. Without names also scene_inputs_in_use (made by the last frame for scene-reading "
+            "shaders).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"names", array(string(""), "Default: all.")},
