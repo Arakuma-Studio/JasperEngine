@@ -3230,6 +3230,15 @@
 		4A534E47616B44D9669E4127 /* PoseRealisation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47E5073D8D758390C4 /* PoseRealisation.cpp */; };
 		4A534E47998B7511FBE9F8E2 /* PoseMetrics.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D99278DD57537FE0 /* PoseMetrics.h */; };
 		4A534E47390C11960F93373E /* PoseRealisation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47137B26983B17AF0F /* PoseRealisation.h */; };
+		4A534E4745A765E384590F28 /* ConvexDecomposition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F9DE9057FF5FF543 /* ConvexDecomposition.cpp */; };
+		4A534E4718301FEAB94DBDC8 /* ConvexDecomposition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47F9DE9057FF5FF543 /* ConvexDecomposition.cpp */; };
+		4A534E47E0DF68AB3F402355 /* JoltShapeBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470EA76A9B0E80B057 /* JoltShapeBuilder.cpp */; };
+		4A534E4797D7DDCAB6E5A8BE /* JoltShapeBuilder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470EA76A9B0E80B057 /* JoltShapeBuilder.cpp */; };
+		4A534E472397D7682998198F /* PlacementWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A720C70C80E8B9A3 /* PlacementWorld.cpp */; };
+		4A534E473566903A2A2E0F2A /* PlacementWorld.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47A720C70C80E8B9A3 /* PlacementWorld.cpp */; };
+		4A534E47FD5A5834D770DCE2 /* ConvexDecomposition.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479BD98871AB1E19BF /* ConvexDecomposition.h */; };
+		4A534E47525EFB8A61951A97 /* JoltShapeBuilder.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4755BA1970032D0AD7 /* JoltShapeBuilder.h */; };
+		4A534E47FD63A9EE84FC1B50 /* PlacementWorld.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F4315372D4C86A17 /* PlacementWorld.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -6550,6 +6559,12 @@
 		4A534E47E5073D8D758390C4 /* PoseRealisation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PoseRealisation.cpp; sourceTree = "<group>"; };
 		4A534E47D99278DD57537FE0 /* PoseMetrics.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseMetrics.h; sourceTree = "<group>"; };
 		4A534E47137B26983B17AF0F /* PoseRealisation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PoseRealisation.h; sourceTree = "<group>"; };
+		4A534E47F9DE9057FF5FF543 /* ConvexDecomposition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ConvexDecomposition.cpp; sourceTree = "<group>"; };
+		4A534E470EA76A9B0E80B057 /* JoltShapeBuilder.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = JoltShapeBuilder.cpp; sourceTree = "<group>"; };
+		4A534E47A720C70C80E8B9A3 /* PlacementWorld.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PlacementWorld.cpp; sourceTree = "<group>"; };
+		4A534E479BD98871AB1E19BF /* ConvexDecomposition.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ConvexDecomposition.h; sourceTree = "<group>"; };
+		4A534E4755BA1970032D0AD7 /* JoltShapeBuilder.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JoltShapeBuilder.h; sourceTree = "<group>"; };
+		4A534E47F4315372D4C86A17 /* PlacementWorld.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlacementWorld.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -7792,6 +7807,19 @@
 			path = pose;
 			sourceTree = "<group>";
 		};
+		4A534E472AD0C1A658CC6825 /* physics */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E47F9DE9057FF5FF543 /* ConvexDecomposition.cpp */,
+				4A534E470EA76A9B0E80B057 /* JoltShapeBuilder.cpp */,
+				4A534E47A720C70C80E8B9A3 /* PlacementWorld.cpp */,
+				4A534E479BD98871AB1E19BF /* ConvexDecomposition.h */,
+				4A534E4755BA1970032D0AD7 /* JoltShapeBuilder.h */,
+				4A534E47F4315372D4C86A17 /* PlacementWorld.h */,
+			);
+			path = physics;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -7830,6 +7858,7 @@
 				7162FC2E25962A0E0075B97D /* util */,
 				4A534E47405DB6D11FA4F0E1 /* SceneSettings.cpp */,
 				4A534E476D14045E1B1B86B5 /* pose */,
+				4A534E472AD0C1A658CC6825 /* physics */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -11702,6 +11731,9 @@
 				4A534E4771B456FDED53E3A8 /* PostColorLut.h in Headers */,
 				4A534E47998B7511FBE9F8E2 /* PoseMetrics.h in Headers */,
 				4A534E47390C11960F93373E /* PoseRealisation.h in Headers */,
+				4A534E47FD5A5834D770DCE2 /* ConvexDecomposition.h in Headers */,
+				4A534E47525EFB8A61951A97 /* JoltShapeBuilder.h in Headers */,
+				4A534E47FD63A9EE84FC1B50 /* PlacementWorld.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -13725,6 +13757,9 @@
 				4A534E47CD3DFF17685DA2AF /* PostColorLut.cpp in Sources */,
 				4A534E47C16736C45BC267A2 /* PoseMetrics.cpp in Sources */,
 				4A534E47F56786BCAF0B9E22 /* PoseRealisation.cpp in Sources */,
+				4A534E4745A765E384590F28 /* ConvexDecomposition.cpp in Sources */,
+				4A534E47E0DF68AB3F402355 /* JoltShapeBuilder.cpp in Sources */,
+				4A534E472397D7682998198F /* PlacementWorld.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -14127,6 +14162,9 @@
 				4A534E471A9458876F7C30C2 /* PostColorLut.cpp in Sources */,
 				4A534E4797E1A9EA1C229DC0 /* PoseMetrics.cpp in Sources */,
 				4A534E47616B44D9669E4127 /* PoseRealisation.cpp in Sources */,
+				4A534E4718301FEAB94DBDC8 /* ConvexDecomposition.cpp in Sources */,
+				4A534E4797D7DDCAB6E5A8BE /* JoltShapeBuilder.cpp in Sources */,
+				4A534E473566903A2A2E0F2A /* PlacementWorld.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
