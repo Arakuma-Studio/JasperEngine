@@ -488,9 +488,10 @@ bool editor::AssetDatabase::readIdentity(const std::string& relative, AssetType 
 
     const std::string metaRelative = AssetTypes::metaPathFor(relative).generic_string();
     std::error_code ec;
-    // (a case-insensitive file system may hold the meta under another case: asked then)
-    const bool walked = walkMetas && (walkMetas->count(metaRelative) > 0 || !caseInsensitive);
-    if (walked ? walkMetas->count(metaRelative) == 0 : !fs::is_regular_file(projectPath / metaRelative, ec)) {
+    // a meta open()'s walk found needs no check; any other is asked for (written since the
+    // walk, or under another case on a case-insensitive file system)
+    const bool walked = walkMetas && walkMetas->count(metaRelative) > 0;
+    if (!walked && !fs::is_regular_file(projectPath / metaRelative, ec)) {
         entry.hasMeta = false;
         return false;
     }
