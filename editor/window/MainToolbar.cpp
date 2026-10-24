@@ -314,9 +314,11 @@ void editor::MainToolbar::drawTools(float rowHeight) {
                           "Hold Space to drop, Shift-drag a selected object to snap, Esc to cancel.\n"
                           "3D scenes, not in Play mode.");
     ImGui::SameLine();
-    if (ImGui::Button(ICON_FA_CARET_DOWN "##PhysicsPanel", ImVec2(Theme::dpi(14.0f), rowHeight))) {
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, ImGui::GetStyle().FramePadding.y));
+    if (ImGui::Button(ICON_FA_CARET_DOWN "##PhysicsPanel", ImVec2(Theme::dpi(16.0f), rowHeight))) {
         Backend::getApp().getPhysicsPlacementWindow()->open();
     }
+    ImGui::PopStyleVar();
     ImGui::SetItemTooltip("Physics Placement settings");
     ImGui::PopStyleVar();
 

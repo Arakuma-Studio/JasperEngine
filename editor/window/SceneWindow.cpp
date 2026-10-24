@@ -1674,6 +1674,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
     }
 
+    // Esc cancels a physics gesture or its settle, also in the middle of a drag (the press on
+    // the canvas keeps an item active, which the shortcuts below wait out)
+    if (physics && project->getSelectedSceneId() == sceneId && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        physics->cancelGesture((uint32_t)sceneId);
+    }
+
     if (!ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused()){
         if (project->getSelectedSceneId() == sceneId){
             if (!walkingMode){
@@ -1703,15 +1709,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 // Tool shortcuts (Q/W/E/R/T, X, G) live in the main toolbar.
 
                 // Physics: hold Space to drop (its release is seen anywhere, see
-                // PhysicsPlacementWindow), Esc cancels a gesture or its settle
+                // PhysicsPlacementWindow)
                 if (physicsActive) {
-                    const ImGuiIO& keyIo = ImGui::GetIO();
-                    if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !keyIo.WantTextInput && !keyIo.KeyCtrl && !keyIo.KeyAlt && !keyIo.KeySuper) {
+                    if (ImGui::IsKeyPressed(ImGuiKey_Space, false) && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt && !io.KeySuper) {
                         physics->beginGesture((uint32_t)sceneId, PlacementGesture::Drop, PhysicsInput::Space);
                     }
-                }
-                if (physics && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
-                    physics->cancelGesture((uint32_t)sceneId);
                 }
 
                 // F key: Focus camera on selected entities
