@@ -28,12 +28,12 @@ namespace fs = std::filesystem;
 namespace {
 
     // a reference's "#A,B" feature suffix is not part of the fork
-    std::string forkBase(const std::string& name) {
+    std::string shaderForkBase(const std::string& name) {
         const size_t hash = name.find('#');
         return hash == std::string::npos ? name : name.substr(0, hash);
     }
 
-    bool readText(const fs::path& path, std::string& content) {
+    bool readShaderText(const fs::path& path, std::string& content) {
         std::ifstream file(path, std::ios::binary);
         if (!file.is_open()) return false;
         std::ostringstream stream;
@@ -55,7 +55,7 @@ bool reload::shaderSourcesReach(Project* project, const std::string& base, int s
     auto reader = [&](const std::string& relativePath, std::string& content) {
         const fs::path path = fragmentOnly ? Project::findShaderFile(assetsRoot, projectRoot, relativePath)
                                            : Project::findShaderFile(projectRoot, assetsRoot, relativePath);
-        if (path.empty() || !readText(path, content)) return false;
+        if (path.empty() || !readShaderText(path, content)) return false;
         if (changed.count(fs::path(relativePath).lexically_normal().generic_string())) reached = true;
         return true;
     };
@@ -119,8 +119,8 @@ void reload::reloadShaders(Context& ctx, const std::vector<fs::path>& files) {
                 // a compile error keeps every program bound (R11)
                 if (!ok) return false;
                 std::set<std::string> bases;
-                for (const Built& item : *built) bases.insert(forkBase(item.use.base));
-                project->invalidateCustomShaders([bases](const std::string& fork) { return bases.count(forkBase(fork)) > 0; });
+                for (const Built& item : *built) bases.insert(shaderForkBase(item.use.base));
+                project->invalidateCustomShaders([bases](const std::string& fork) { return bases.count(shaderForkBase(fork)) > 0; });
                 // the scene's next draw finds the new programs built: no fallback frame
                 for (const Built& item : *built) ShaderBuilder::primeCache(item.key, item.data);
                 return true;
@@ -131,7 +131,7 @@ void reload::reloadShaders(Context& ctx, const std::vector<fs::path>& files) {
 
 namespace {
 
-    std::string shortMessage(std::string text, size_t max) {
+    std::string shortShaderMessage(std::string text, size_t max) {
         for (char& ch : text) {
             if (ch == '\n' || ch == '\r' || ch == '\t') ch = ' ';
         }
@@ -163,7 +163,7 @@ Json reload::shaderProblems(Project* project, const Json& results, const std::ve
         size_t placed = 0;
         for (const Json& error : errors) {
             if (error.value("severity", std::string("error")) != "error") continue;
-            const std::string message = shortMessage(error.value("message", std::string()), 300);
+            const std::string message = shortShaderMessage(error.value("message", std::string()), 300);
             if (message.find("compilation terminated") != std::string::npos) continue;
             placed++;
             // glslang names the file (an include, or the stage file) when it can
@@ -182,7 +182,7 @@ Json reload::shaderProblems(Project* project, const Json& results, const std::ve
         // no file:line at all: the log (not when every error was already reported)
         if (placed == 0) {
             problems.push_back({{"path", path}, {"message", "Shader " + base + " does not compile: " +
-                                                                shortMessage(result.value("log", std::string("unknown error")), 400)}});
+                                                                shortShaderMessage(result.value("log", std::string("unknown error")), 400)}});
         }
     }
     return problems;

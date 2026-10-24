@@ -24,13 +24,13 @@ namespace {
     using Clock = std::chrono::steady_clock;
 
     // R22: adoption per frame, and the texels uploaded per frame
-    constexpr double ADOPT_BUDGET_MS = 2.0;
-    constexpr uint64_t TEXEL_BUDGET = 16ull * 1024 * 1024;
+    constexpr double RELOAD_ADOPT_BUDGET_MS = 2.0;
+    constexpr uint64_t RELOAD_TEXEL_BUDGET = 16ull * 1024 * 1024;
     // a failure is tried once more after this (a file still being written, R11)
-    constexpr std::chrono::milliseconds RETRY_DELAY{500};
-    constexpr size_t RECORDS_MAX = 1000;
+    constexpr std::chrono::milliseconds RELOAD_RETRY_DELAY{500};
+    constexpr size_t RELOAD_RECORDS_MAX = 1000;
     // problems and UI reloads the watcher found that no MCP call took yet
-    constexpr size_t LATE_MAX = 200;
+    constexpr size_t RELOAD_LATE_MAX = 200;
 
     // FNV-1a of a file's bytes (0 when it cannot be read): told apart only for racy stamps
     uint64_t contentHashOf(const fs::path& path) {
@@ -49,16 +49,16 @@ namespace {
         return hash;
     }
 
-    double msSince(Clock::time_point start) {
+    double reloadMsSince(Clock::time_point start) {
         return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
     }
 
-    std::string key(const fs::path& path) {
+    std::string appliedKey(const fs::path& path) {
         return watch::pathToUtf8(path.lexically_normal());
     }
 
     // "12 textures", "1 shader", "3 UI files"
-    std::string countOf(size_t count, const std::string& kind) {
+    std::string reloadCountOf(size_t count, const std::string& kind) {
         std::string noun = kind;
         if (kind == "audio") noun = "audio clip";
         else if (kind == "ui") noun = "UI file";
@@ -227,7 +227,7 @@ void HotReloadService::refresh() {
 // ------------------------------------------------------------------ apply
 
 bool HotReloadService::isCurrent(const FileChange& change) const {
-    auto it = applied.find(key(change.path));
+    auto it = applied.find(appliedKey(change.path));
     if (it == applied.end()) return false;
     if (change.sequence != 0 && change.sequence <= it->second.sequence) return true;
     watch::PathStat now;
@@ -240,10 +240,10 @@ bool HotReloadService::isCurrent(const FileChange& change) const {
 
 void HotReloadService::stamp(const fs::path& path, const Seen* seen, uint64_t sequence) {
     if (!seen) {
-        applied.erase(key(path));
+        applied.erase(appliedKey(path));
         return;
     }
-    Applied& entry = applied[key(path)];
+    Applied& entry = applied[appliedKey(path)];
     entry.stat = seen->stat;
     entry.racy = watch::isRacyStamp(seen->stat.mtimeNs);
     entry.contentHash = entry.racy ? seen->contentHash : 0;
@@ -271,7 +271,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     for (const FileChange& change : set.changes) {
         if (change.kind == FileChangeKind::Rescan) continue;
         if (change.sequence >= journalCursor) journalCursor = change.sequence + 1;
-        const std::string k = key(change.path);
+        const std::string k = appliedKey(change.path);
         auto it = at.find(k);
         if (it != at.end() && change.kind != FileChangeKind::Moved && changes[it->second].kind != FileChangeKind::Moved) {
             FileChange merged = change;
@@ -346,18 +346,18 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     for (const auto* map : {&external, &editorWritten}) {
         for (const auto& [kind, list] : *map) {
             for (const fs::path& path : list) {
-                if (seenBefore.count(key(path))) continue;
+                if (seenBefore.count(appliedKey(path))) continue;
                 Seen seen;
                 if (!watch::statPath(path, seen.stat)) continue;
                 // written a moment ago: a save in the same tick would keep the stat
                 if (!seen.stat.directory && watch::isRacyStamp(seen.stat.mtimeNs)) seen.contentHash = contentHashOf(path);
-                seenBefore[key(path)] = seen;
+                seenBefore[appliedKey(path)] = seen;
             }
         }
     }
     std::map<std::string, uint64_t> sequenceOf;
     for (const FileChange& change : changes) {
-        uint64_t& sequence = sequenceOf[key(change.path)];
+        uint64_t& sequence = sequenceOf[appliedKey(change.path)];
         sequence = std::max(sequence, change.sequence);
     }
 
@@ -396,8 +396,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     for (const auto* map : {&external, &editorWritten}) {
         for (const auto& [kind, list] : *map) {
             for (const fs::path& path : list) {
-                auto seen = seenBefore.find(key(path));
-                stamp(path, seen != seenBefore.end() ? &seen->second : nullptr, sequenceOf[key(path)]);
+                auto seen = seenBefore.find(appliedKey(path));
+                stamp(path, seen != seenBefore.end() ? &seen->second : nullptr, sequenceOf[appliedKey(path)]);
             }
         }
     }
@@ -413,7 +413,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         for (const Json& problem : result.problems) addLateProblem(problem);
         if (!result.uiReloaded.empty()) {
             lateUi.push_back({std::chrono::steady_clock::now(), result.uiReloaded});
-            while (lateUi.size() > LATE_MAX) lateUi.pop_front();
+            while (lateUi.size() > RELOAD_LATE_MAX) lateUi.pop_front();
         }
     }
     currentBatch = 0;
@@ -487,8 +487,8 @@ bool HotReloadService::update() {
             continue;
         }
         // the rest waits for the next frame (R22)
-        if (msSince(start) >= ADOPT_BUDGET_MS) break;
-        if (texels > 0 && texels + job.texelBytes > TEXEL_BUDGET) break;
+        if (reloadMsSince(start) >= RELOAD_ADOPT_BUDGET_MS) break;
+        if (texels > 0 && texels + job.texelBytes > RELOAD_TEXEL_BUDGET) break;
         std::string error;
         bool ok = false;
         try {
@@ -503,20 +503,20 @@ bool HotReloadService::update() {
             // left out on purpose (a model whose hierarchy changed): a warning, kept as it was
             std::shared_ptr<Job> done = *it;
             it = jobs.erase(it);
-            finishJob(*done, false, error, msSince(done->started), true);
+            finishJob(*done, false, error, reloadMsSince(done->started), true);
             continue;
         }
         if (!ok && !job.retried) {
             // a partial write: once more, a little later
             job.retried = true;
             job.waitingRetry = true;
-            job.retryAt = Clock::now() + RETRY_DELAY;
+            job.retryAt = Clock::now() + RELOAD_RETRY_DELAY;
             ++it;
             continue;
         }
         std::shared_ptr<Job> done = *it;
         it = jobs.erase(it);
-        finishJob(*done, ok, error, msSince(done->started));
+        finishJob(*done, ok, error, reloadMsSince(done->started));
         adopted = true;
     }
 
@@ -557,7 +557,7 @@ void HotReloadService::finishJob(Job& job, bool ok, const std::string& error, do
         // a shader reports its compile errors with their lines itself
         if (job.kind != "shader") addLateProblem({{"path", record.path}, {"message", "Reload failed: " + error + " (the previous version is kept)."}});
         // a later save of the same bytes would not be tried again otherwise
-        applied.erase(key(job.path));
+        applied.erase(appliedKey(job.path));
     }
     auto batch = batches.find(job.batch);
     if (batch != batches.end()) {
@@ -584,7 +584,7 @@ void HotReloadService::pushRecord(Record record) {
     record.serial = nextSerial++;
     if (record.ok) reloads++;
     records.push_back(std::move(record));
-    while (records.size() > RECORDS_MAX) records.pop_front();
+    while (records.size() > RELOAD_RECORDS_MAX) records.pop_front();
 }
 
 void HotReloadService::closeBatchIfDone(uint64_t id) {
@@ -611,7 +611,7 @@ void HotReloadService::writeBatchLine(const Batch& batch) {
     std::vector<std::pair<std::string, size_t>> kinds(byKind.begin(), byKind.end());
     std::stable_sort(kinds.begin(), kinds.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
     std::string text;
-    for (const auto& [kind, count] : kinds) text += (text.empty() ? "" : ", ") + countOf(count, kind);
+    for (const auto& [kind, count] : kinds) text += (text.empty() ? "" : ", ") + reloadCountOf(count, kind);
     Out::info("[Hot Reload] Reloaded %zu files: %s", ok.size(), text.c_str());
 }
 
@@ -654,7 +654,7 @@ void HotReloadService::addLateProblem(const Json& problem) {
     late.problem = problem;
     if (project) late.existed = watch::statPath(project->getProjectPath() / watch::pathFromUtf8(problem.value("path", std::string())), late.stat, false);
     // no MCP client takes them: the oldest go
-    if (lateProblems.size() >= LATE_MAX) lateProblems.pop_front();
+    if (lateProblems.size() >= RELOAD_LATE_MAX) lateProblems.pop_front();
     lateProblems.push_back(std::move(late));
 }
 
