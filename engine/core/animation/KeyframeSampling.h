@@ -21,8 +21,11 @@
 //     determinism); a stale cursor costs time, never correctness. The cursor walk needs
 //     sorted times (every AnimationClip track); without a cursor locateKey scans from key 0
 //     like keyframeUpdate did, which entity tracks (times not guaranteed sorted) rely on.
-//   * sampleTrack returns exactly the first key at or before its time and exactly the last
-//     key at or after its time (no interpolation round-off at the ends).
+//   * sampleTrack returns exactly the first key at or before its time (and for a NaN time) and
+//     exactly the last key at or after its time (no interpolation round-off at the ends); it
+//     binary-searches when no cursor is given, and with one walks a few keys from the hint
+//     before falling back to a binary search. locateKey with a NaN time gives index 0, with or
+//     without a cursor.
 //   * Hermite (cubic spline) is used when the segment's tangents are given (both non-null);
 //     rotations are normalized with the zero-norm guard (the nearer key), slerp otherwise.
 //   * samples are the raw track values: relative tracks are combined with their rest by the

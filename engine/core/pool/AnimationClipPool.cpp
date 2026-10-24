@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipPool.h"
+#include "AnimationClipPoolTesting.h"
 
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
@@ -17,10 +18,6 @@ using namespace jasperengine;
 
 namespace{
 
-    struct PoolEntry{
-        std::shared_ptr<const AnimationClip> clip;
-    };
-
     // the sub-clips of one model: clip part as written ("Walk", "0") -> animation index, and
     // each index's name (what the builder is given)
     struct ModelAliases{
@@ -30,14 +27,19 @@ namespace{
 
     struct PoolState{
         std::mutex mutex;
-        std::map<std::string, PoolEntry> entries;
-        // never decrease, survive invalidate and clear (players compare them)
+        std::map<std::string, std::shared_ptr<const AnimationClip>> entries;
+        // a key's generation, drawn from one pool-wide counter that only grows: two versions of
+        // any keys never share a number, so a sub-clip alias that moves to another index entry
+        // after a reimport still reads as changed. Survive invalidate and clear.
         std::map<std::string, uint64_t> generations;
-        // bumped by every invalidate of the key: a load that started before it is not cached
+        uint64_t generationCounter = 0;
+        // bumped by every invalidate of the key ("<model key>#" for a model's alias table): a load
+        // that started before it is not cached
         std::map<std::string, uint64_t> epochs;
         uint64_t clearEpoch = 0;
         std::map<std::string, ModelAliases> models;   // by model key
         uint64_t revision = 0;
+        AnimationClipPoolTestHooks hooks;
     };
 
     // never destroyed: players may release clips during static destruction
@@ -56,24 +58,39 @@ namespace{
         return modelKey + "#" + std::to_string(index);
     }
 
-    // with the mutex held: the entry key of `path` (sub-clip aliases resolved), empty when a
-    // sub-clip alias is not known yet
-    std::string entryKeyLocked(PoolState& pool, const std::string& path, bool& subClip){
-        anim::SubClipReference reference;
-        subClip = anim::parseSubClipReference(path, reference);
-        if (!subClip) return pathKey(path);
-        std::string modelKey = pathKey(reference.model);
-        auto model = pool.models.find(modelKey);
-        if (model == pool.models.end()) return std::string();
-        auto alias = model->second.indices.find(reference.clip);
-        if (alias == model->second.indices.end()) return std::string();
-        return subClipKey(modelKey, alias->second);
+    std::string aliasEpochKey(const std::string& modelKey){
+        return modelKey + "#";
     }
 
-    void bumpLocked(PoolState& pool, const std::string& key){
-        pool.epochs[key]++;
-        auto generation = pool.generations.find(key);
-        if (generation != pool.generations.end()) generation->second++;
+    // A reference normalized without the lock (the path work allocates and asks System for the
+    // asset root): a .anim key, or a model key + the clip part to resolve under the lock
+    struct Reference{
+        bool subClip = false;
+        std::string key;        // .anim: the entry key; sub-clip: the model key
+        std::string clip;       // sub-clip: the part after '#'
+    };
+
+    Reference reference(const std::string& path){
+        Reference out;
+        anim::SubClipReference parsed;
+        if (anim::parseSubClipReference(path, parsed)){
+            out.subClip = true;
+            out.key = pathKey(parsed.model);
+            out.clip = parsed.clip;
+        }else{
+            out.key = pathKey(path);
+        }
+        return out;
+    }
+
+    // with the mutex held: the entry key, empty when a sub-clip alias is not known yet
+    std::string entryKeyLocked(PoolState& pool, const Reference& ref){
+        if (!ref.subClip) return ref.key;
+        auto model = pool.models.find(ref.key);
+        if (model == pool.models.end()) return std::string();
+        auto alias = model->second.indices.find(ref.clip);
+        if (alias == model->second.indices.end()) return std::string();
+        return subClipKey(ref.key, alias->second);
     }
 
     uint64_t epochLocked(PoolState& pool, const std::string& key){
@@ -81,21 +98,58 @@ namespace{
         return it == pool.epochs.end() ? 0 : it->second;
     }
 
-    // Caches `clip` under `key` unless the key was invalidated (or the pool cleared) since the
-    // load started; a clip cached meanwhile by another load wins. With the mutex held.
-    std::shared_ptr<const AnimationClip> insertLocked(PoolState& pool, const std::string& key, uint64_t epoch, uint64_t clearEpoch,
-                                                      std::shared_ptr<const AnimationClip> clip){
+    // An invalidate of `key`: in-flight loads of it are not cached, a generation it had moves on
+    void bumpLocked(PoolState& pool, const std::string& key){
+        pool.epochs[key]++;
+        auto generation = pool.generations.find(key);
+        if (generation != pool.generations.end()) generation->second = ++pool.generationCounter;
+    }
+
+    // What a load saw when it started; it may cache its result only if none of it changed
+    struct LoadStamp{
+        uint64_t epoch = 0;
+        uint64_t clearEpoch = 0;
+        std::string aliasKey;       // sub-clips: the model's alias table epoch too
+        uint64_t aliasEpoch = 0;
+    };
+
+    LoadStamp stampLocked(PoolState& pool, const std::string& key, const std::string& aliasKey = std::string()){
+        LoadStamp stamp;
+        stamp.epoch = epochLocked(pool, key);
+        stamp.clearEpoch = pool.clearEpoch;
+        stamp.aliasKey = aliasKey;
+        if (!aliasKey.empty()) stamp.aliasEpoch = epochLocked(pool, aliasKey);
+        return stamp;
+    }
+
+    bool stampValidLocked(PoolState& pool, const std::string& key, const LoadStamp& stamp){
+        return epochLocked(pool, key) == stamp.epoch && pool.clearEpoch == stamp.clearEpoch &&
+               (stamp.aliasKey.empty() || epochLocked(pool, stamp.aliasKey) == stamp.aliasEpoch);
+    }
+
+    // Caches `clip` under `key` unless something it was loaded from was invalidated (or the pool
+    // cleared) since the load started; a clip cached meanwhile by another load wins.
+    std::shared_ptr<const AnimationClip> insert(PoolState& pool, const std::string& key, const LoadStamp& stamp,
+                                                std::shared_ptr<const AnimationClip> clip){
+        std::function<void(const std::string&)> beforeInsert;
+        {
+            std::lock_guard<std::mutex> lock(pool.mutex);
+            beforeInsert = pool.hooks.beforeInsert;
+        }
+        if (beforeInsert) beforeInsert(key);
+
+        std::lock_guard<std::mutex> lock(pool.mutex);
         auto existing = pool.entries.find(key);
-        if (existing != pool.entries.end()) return existing->second.clip;
-        if (epochLocked(pool, key) != epoch || pool.clearEpoch != clearEpoch) return clip;
-        pool.entries[key].clip = clip;
-        pool.generations[key]++;
+        if (existing != pool.entries.end()) return existing->second;
+        if (!stampValidLocked(pool, key, stamp)) return clip;
+        pool.entries[key] = clip;
+        pool.generations[key] = ++pool.generationCounter;
         pool.revision++;
         return clip;
     }
 
     void dropModelLocked(PoolState& pool, const std::string& modelKey){
-        std::string prefix = modelKey + "#";
+        std::string prefix = aliasEpochKey(modelKey);
         for (auto it = pool.entries.lower_bound(prefix); it != pool.entries.end() && it->first.compare(0, prefix.size(), prefix) == 0;){
             bumpLocked(pool, it->first);
             it = pool.entries.erase(it);
@@ -104,45 +158,61 @@ namespace{
         for (auto it = pool.epochs.lower_bound(prefix); it != pool.epochs.end() && it->first.compare(0, prefix.size(), prefix) == 0; ++it){
             it->second++;
         }
-        // in-flight alias table fills
+        // in-flight alias table fills and every sub-clip load that resolved through the table
         pool.epochs[prefix]++;
         pool.models.erase(modelKey);
         pool.revision++;
     }
 
-    std::shared_ptr<const AnimationClip> loadFile(const std::string& path, std::string* error, std::vector<ClipWarning>* warnings){
-        Data data;
-        if (data.open(path.c_str()) != FileErrors::FILEDATA_OK){
-            if (error) *error = "cannot read " + path;
-            return nullptr;
+    std::shared_ptr<const AnimationClip> loadFile(const std::string& path, std::string* error){
+        // the parser reports problems as results; this is the last guard of a loader thread
+        try{
+            Data data;
+            if (data.open(path.c_str()) != FileErrors::FILEDATA_OK){
+                if (error) *error = "cannot read " + path;
+                return nullptr;
+            }
+            std::string text(reinterpret_cast<const char*>(data.getMemPtr()), data.length());
+            anim::ClipParseResult parsed = anim::parseClip(text);
+            if (!parsed.ok()){
+                if (error) *error = parsed.error.toString();
+                return nullptr;
+            }
+            return AnimationClip::build(parsed);
+        }catch (const std::exception& e){
+            if (error) *error = std::string("cannot load ") + path + ": " + e.what();
+        }catch (...){
+            if (error) *error = "cannot load " + path;
         }
-        std::string text(reinterpret_cast<const char*>(data.getMemPtr()), data.length());
-        anim::ClipParseResult parsed = anim::parseClip(text);
-        if (!parsed.ok()){
-            if (error) *error = parsed.error.toString();
-            return nullptr;
-        }
-        if (warnings) *warnings = parsed.warnings;
-        return AnimationClip::build(*parsed.data, parsed.warnings, nullptr);
+        return nullptr;
     }
 
+    std::shared_ptr<const AnimationClip> cachedLocked(PoolState& pool, const std::string& key, std::vector<ClipWarning>* warnings){
+        auto it = pool.entries.find(key);
+        if (it == pool.entries.end()) return nullptr;
+        if (warnings) *warnings = it->second->getWarnings();
+        return it->second;
+    }
+
+}
+
+void jasperengine::setAnimationClipPoolTestHooks(const AnimationClipPoolTestHooks& hooks){
+    PoolState& pool = state();
+    std::lock_guard<std::mutex> lock(pool.mutex);
+    pool.hooks = hooks;
 }
 
 std::string AnimationClipPool::getKey(const std::string& path){
-    anim::SubClipReference reference;
-    if (anim::parseSubClipReference(path, reference)){
-        return anim::formatSubClipReference(pathKey(reference.model), reference.clip);
-    }
-    return pathKey(path);
+    Reference ref = reference(path);
+    return ref.subClip ? anim::formatSubClipReference(ref.key, ref.clip) : ref.key;
 }
 
 std::shared_ptr<const AnimationClip> AnimationClipPool::get(const std::string& path){
+    Reference ref = reference(path);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
-    bool subClip = false;
-    std::string key = entryKeyLocked(pool, path, subClip);
-    auto it = key.empty() ? pool.entries.end() : pool.entries.find(key);
-    return it == pool.entries.end() ? nullptr : it->second.clip;
+    std::string key = entryKeyLocked(pool, ref);
+    return key.empty() ? nullptr : cachedLocked(pool, key, nullptr);
 }
 
 std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::string& path, std::string* error,
@@ -153,37 +223,35 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
         if (error) *error = "no clip path";
         return nullptr;
     }
+    Reference ref = reference(path);
 
-    anim::SubClipReference reference;
-    if (!anim::parseSubClipReference(path, reference)){
-        std::string key = pathKey(path);
-        uint64_t epoch = 0, clearEpoch = 0;
+    if (!ref.subClip){
+        LoadStamp stamp;
         {
             std::lock_guard<std::mutex> lock(pool.mutex);
-            auto it = pool.entries.find(key);
-            if (it != pool.entries.end()){
-                if (warnings) *warnings = it->second.clip->getWarnings();
-                return it->second.clip;
-            }
-            epoch = epochLocked(pool, key);
-            clearEpoch = pool.clearEpoch;
+            if (std::shared_ptr<const AnimationClip> cached = cachedLocked(pool, ref.key, warnings)) return cached;
+            stamp = stampLocked(pool, ref.key);
         }
         // read and build without the lock (lock order: never held while loading)
-        std::shared_ptr<const AnimationClip> clip = loadFile(path, error, warnings);
+        std::shared_ptr<const AnimationClip> clip = loadFile(path, error);
         if (!clip) return nullptr;
-        std::lock_guard<std::mutex> lock(pool.mutex);
-        std::shared_ptr<const AnimationClip> cached = insertLocked(pool, key, epoch, clearEpoch, clip);
-        if (cached != clip && warnings) *warnings = cached->getWarnings();
+        std::shared_ptr<const AnimationClip> cached = insert(pool, ref.key, stamp, clip);
+        if (warnings) *warnings = cached->getWarnings();
         return cached;
     }
 
-    // a model sub-clip: the model's alias table first (filled once per model), then the entry
-    // of the animation index (the builders are T1c's ModelSubClips)
-    std::string modelKey = pathKey(reference.model);
-    std::string aliasEpochKey = modelKey + "#";
+    // A model sub-clip: the model's alias table first (filled once per model), then the entry
+    // of the animation index (the builders are T1c's ModelSubClips). Everything resolved
+    // through a table is stamped with the table's epoch, so an invalidateModel (a reimport that
+    // may reorder animations) during the load keeps the result out of the cache.
+    anim::SubClipReference parsed;
+    anim::parseSubClipReference(path, parsed);
+    const std::string& modelKey = ref.key;
+    std::string aliasKey = aliasEpochKey(modelKey);
     ModelAliases aliases;
     bool known = false;
-    uint64_t epoch = 0, clearEpoch = 0;
+    LoadStamp tableStamp;
+    AnimationClipPoolTestHooks hooks;
     {
         std::lock_guard<std::mutex> lock(pool.mutex);
         auto model = pool.models.find(modelKey);
@@ -191,12 +259,14 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
             aliases = model->second;
             known = true;
         }
-        epoch = epochLocked(pool, aliasEpochKey);
-        clearEpoch = pool.clearEpoch;
+        tableStamp = stampLocked(pool, aliasKey);
+        hooks = pool.hooks;
     }
     if (!known){
         std::vector<anim::ModelClipInfo> infos;
-        if (!anim::listModelFileClips(reference.model, infos, error)) return nullptr;
+        bool listed = hooks.listModelClips ? hooks.listModelClips(parsed.model, infos, error)
+                                           : anim::listModelFileClips(parsed.model, infos, error);
+        if (!listed) return nullptr;
         for (const anim::ModelClipInfo& info : infos){
             if (info.index < 0) continue;
             if ((size_t)info.index >= aliases.names.size()) aliases.names.resize(info.index + 1);
@@ -208,46 +278,48 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
             if (info.index >= 0) aliases.indices.emplace(std::to_string(info.index), info.index);
         }
         std::lock_guard<std::mutex> lock(pool.mutex);
-        if (epochLocked(pool, aliasEpochKey) == epoch && pool.clearEpoch == clearEpoch){
+        if (stampValidLocked(pool, aliasKey, tableStamp)){
             pool.models.emplace(modelKey, aliases);
         }
     }
-    auto alias = aliases.indices.find(reference.clip);
+    auto alias = aliases.indices.find(ref.clip);
     if (alias == aliases.indices.end()){
-        if (error) *error = "no animation \"" + reference.clip + "\" in " + reference.model;
+        if (error) *error = "no animation \"" + ref.clip + "\" in " + parsed.model;
         return nullptr;
     }
     int index = alias->second;
     std::string key = subClipKey(modelKey, index);
+    LoadStamp stamp;
     {
         std::lock_guard<std::mutex> lock(pool.mutex);
-        auto it = pool.entries.find(key);
-        if (it != pool.entries.end()){
-            if (warnings) *warnings = it->second.clip->getWarnings();
-            return it->second.clip;
+        // only an entry made from the same table version counts as a hit
+        if (stampValidLocked(pool, aliasKey, tableStamp)){
+            if (std::shared_ptr<const AnimationClip> cached = cachedLocked(pool, key, warnings)) return cached;
         }
-        epoch = epochLocked(pool, key);
-        clearEpoch = pool.clearEpoch;
+        stamp = stampLocked(pool, key, aliasKey);
+        // the table this load resolved through, not a newer one
+        stamp.aliasEpoch = tableStamp.epoch;
+        if (pool.clearEpoch != tableStamp.clearEpoch) stamp.clearEpoch = tableStamp.clearEpoch;
     }
+    // the builder resolves the reference by name: the index's own name, unique within a model
     ClipData data;
     std::vector<ClipWarning> buildWarnings;
     std::string name = (size_t)index < aliases.names.size() ? aliases.names[index] : std::to_string(index);
-    if (!anim::buildModelSubClip(anim::formatSubClipReference(reference.model, name), data, buildWarnings, error)){
-        return nullptr;
-    }
+    std::string build = anim::formatSubClipReference(parsed.model, name);
+    bool built = hooks.buildSubClip ? hooks.buildSubClip(build, data, buildWarnings, error)
+                                    : anim::buildModelSubClip(build, data, buildWarnings, error);
+    if (!built) return nullptr;
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data, buildWarnings, nullptr);
-    if (warnings) *warnings = clip->getWarnings();
-    std::lock_guard<std::mutex> lock(pool.mutex);
-    std::shared_ptr<const AnimationClip> cached = insertLocked(pool, key, epoch, clearEpoch, clip);
-    if (cached != clip && warnings) *warnings = cached->getWarnings();
+    std::shared_ptr<const AnimationClip> cached = insert(pool, key, stamp, clip);
+    if (warnings) *warnings = cached->getWarnings();
     return cached;
 }
 
 uint64_t AnimationClipPool::getGeneration(const std::string& path){
+    Reference ref = reference(path);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
-    bool subClip = false;
-    std::string key = entryKeyLocked(pool, path, subClip);
+    std::string key = entryKeyLocked(pool, ref);
     if (key.empty()) return 0;
     auto it = pool.generations.find(key);
     return it == pool.generations.end() ? 0 : it->second;
@@ -265,10 +337,10 @@ void AnimationClipPool::invalidate(const std::string& path){
         invalidateModel(path);
         return;
     }
+    Reference ref = reference(path);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
-    bool subClip = false;
-    std::string key = entryKeyLocked(pool, path, subClip);
+    std::string key = entryKeyLocked(pool, ref);
     if (key.empty()) return;
     bumpLocked(pool, key);
     pool.entries.erase(key);
@@ -276,9 +348,10 @@ void AnimationClipPool::invalidate(const std::string& path){
 }
 
 void AnimationClipPool::invalidateModel(const std::string& modelPath){
+    std::string modelKey = pathKey(modelPath);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
-    dropModelLocked(pool, pathKey(modelPath));
+    dropModelLocked(pool, modelKey);
 }
 
 void AnimationClipPool::clear(){
@@ -286,7 +359,7 @@ void AnimationClipPool::clear(){
     std::lock_guard<std::mutex> lock(pool.mutex);
     for (const auto& entry : pool.entries){
         auto generation = pool.generations.find(entry.first);
-        if (generation != pool.generations.end()) generation->second++;
+        if (generation != pool.generations.end()) generation->second = ++pool.generationCounter;
     }
     pool.entries.clear();
     pool.models.clear();
@@ -300,7 +373,7 @@ void AnimationClipPool::clearUnused(){
     std::lock_guard<std::mutex> lock(pool.mutex);
     bool changed = false;
     for (auto it = pool.entries.begin(); it != pool.entries.end();){
-        if (it->second.clip.use_count() <= 1){
+        if (it->second.use_count() <= 1){
             it = pool.entries.erase(it);
             changed = true;
         }else{
@@ -309,7 +382,7 @@ void AnimationClipPool::clearUnused(){
     }
     // alias tables of models with no clip left (the model may change before its next use)
     for (auto it = pool.models.begin(); it != pool.models.end();){
-        std::string prefix = it->first + "#";
+        std::string prefix = aliasEpochKey(it->first);
         auto entry = pool.entries.lower_bound(prefix);
         bool used = entry != pool.entries.end() && entry->first.compare(0, prefix.size(), prefix) == 0;
         if (!used){
@@ -323,12 +396,12 @@ void AnimationClipPool::clearUnused(){
 }
 
 void AnimationClipPool::releaseUnused(const std::string& path){
+    Reference ref = reference(path);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
-    bool subClip = false;
-    std::string key = entryKeyLocked(pool, path, subClip);
+    std::string key = entryKeyLocked(pool, ref);
     auto it = key.empty() ? pool.entries.end() : pool.entries.find(key);
-    if (it != pool.entries.end() && it->second.clip.use_count() <= 1){
+    if (it != pool.entries.end() && it->second.use_count() <= 1){
         pool.entries.erase(it);
         pool.revision++;
     }
