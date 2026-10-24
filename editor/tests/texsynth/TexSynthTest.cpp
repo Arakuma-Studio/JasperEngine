@@ -437,8 +437,7 @@ TEST(TexSynth, UnsampleableExamplesAreNeverCopiedAndMapIdsStayOriginal) {
     for (int y = 0; y < 32; y++)
         for (int x = 0; x < 32; x++) {
             const SourceCoord c = inpainted.coordinates.coords[y * 32 + x];
-            if (x < 10 && y < 10) ASSERT_EQ(c.example, 1);
-            else ASSERT_EQ(c.example, 0);
+            ASSERT_EQ(c.example, (x < 10 && y < 10) ? 1 : 0);
         }
     EXPECT_EQ(inpainted.primary.channels, 4);   // RGBA + RGB examples: the union
 }
