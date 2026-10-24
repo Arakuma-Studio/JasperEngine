@@ -46,6 +46,16 @@ namespace {
         return std::max(scale.x, std::max(scale.y, scale.z));
     }
 
+#ifdef JASPERENGINE_PHYSICS_3D
+    // Jolt's default convex radius, or half the thinnest extent when that is thinner: a box
+    // must be thicker than its radius (a cylinder at least as thick), so a thin plate or disc
+    // would otherwise fail to build
+    float fittingConvexRadius(float thinnestHalfExtent, bool strictlyInside){
+        const bool fits = strictlyInside ? thinnestHalfExtent > JPH::cDefaultConvexRadius : thinnestHalfExtent >= JPH::cDefaultConvexRadius;
+        return fits ? JPH::cDefaultConvexRadius : std::max(0.0f, 0.5f * thinnestHalfExtent);
+    }
+#endif
+
     void setError(std::string* error, const std::string& message){
         if (error) *error = message;
     }
@@ -63,7 +73,7 @@ std::vector<JoltShapeBuilder::MeshSourceView> JoltShapeBuilder::collectMeshSourc
     std::map<std::string, Buffer*> buffers;
     if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;
     if (mesh->indices.getSize() > 0) buffers["indices"] = &mesh->indices;
-    for (int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
+    for (unsigned int i = 0; i < mesh->numExternalBuffers; i++) buffers[mesh->eBuffers[i].getName()] = &mesh->eBuffers[i];
 
     MeshSourceView view;
     for (auto const& buf : buffers){
@@ -177,50 +187,54 @@ bool JoltShapeBuilder::appendTriangles(Scene* scene, Entity bodyEntity, Entity m
     }
 
     for (Entity sourceEntity : sourceEntities){
-        const Matrix4 toBody = meshToBodyMatrix(scene, bodyEntity, sourceEntity);
-        std::map<VertexRange, uint32_t> vertexBases;
-
-        for (MeshSourceView& view : collectMeshSourceViews(scene->findComponent<MeshComponent>(sourceEntity))){
-            const VertexRange range = vertexRange(view);
-            const int verticesize = int(view.vertexAttr.getCount());
-
-            auto base = vertexBases.find(range);
-            if (base == vertexBases.end()){
-                base = vertexBases.emplace(range, (uint32_t)vertices.size()).first;
-                for (int i = 0; i < verticesize; i++){
-                    vertices.push_back(toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i));
-                }
-            }
-
-            // Indices are local to their submesh, rebase onto its vertices
-            const uint32_t vertexBase = base->second;
-
-            if (!view.indexBuffer){
-                // No index buffer means a plain triangle list
-                for (int i = 0; i + 2 < verticesize; i += 3){
-                    indices.push_back(vertexBase + i);
-                    indices.push_back(vertexBase + i + 1);
-                    indices.push_back(vertexBase + i + 2);
-                }
-                continue;
-            }
-
-            int numIdxTriangles = int(view.indexAttr.getCount() / 3);
-            for (int i = 0; i < numIdxTriangles; i++){
-                for (int j = 0; j < 3; j++){
-                    uint32_t indice = 0;
-                    if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_INT){
-                        indice = view.indexBuffer->getUInt32(&view.indexAttr, (3 * i) + j);
-                    }else if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_SHORT){
-                        indice = view.indexBuffer->getUInt16(&view.indexAttr, (3 * i) + j);
-                    }
-                    indices.push_back(vertexBase + indice);
-                }
-            }
-        }
+        appendMeshTriangles(scene->findComponent<MeshComponent>(sourceEntity), meshToBodyMatrix(scene, bodyEntity, sourceEntity), vertices, indices);
     }
 
     return true;
+}
+
+void JoltShapeBuilder::appendMeshTriangles(MeshComponent* mesh, const Matrix4& toBody,
+                                           std::vector<Vector3>& vertices, std::vector<uint32_t>& indices){
+    std::map<VertexRange, uint32_t> vertexBases;
+
+    for (MeshSourceView& view : collectMeshSourceViews(mesh)){
+        const VertexRange range = vertexRange(view);
+        const int verticesize = int(view.vertexAttr.getCount());
+
+        auto base = vertexBases.find(range);
+        if (base == vertexBases.end()){
+            base = vertexBases.emplace(range, (uint32_t)vertices.size()).first;
+            for (int i = 0; i < verticesize; i++){
+                vertices.push_back(toBody * view.vertexBuffer->getVector3(&view.vertexAttr, i));
+            }
+        }
+
+        // Indices are local to their submesh, rebase onto its vertices
+        const uint32_t vertexBase = base->second;
+
+        if (!view.indexBuffer){
+            // No index buffer means a plain triangle list
+            for (int i = 0; i + 2 < verticesize; i += 3){
+                indices.push_back(vertexBase + i);
+                indices.push_back(vertexBase + i + 1);
+                indices.push_back(vertexBase + i + 2);
+            }
+            continue;
+        }
+
+        int numIdxTriangles = int(view.indexAttr.getCount() / 3);
+        for (int i = 0; i < numIdxTriangles; i++){
+            for (int j = 0; j < 3; j++){
+                uint32_t indice = 0;
+                if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_INT){
+                    indice = view.indexBuffer->getUInt32(&view.indexAttr, (3 * i) + j);
+                }else if (view.indexAttr.getDataType() == AttributeDataType::UNSIGNED_SHORT){
+                    indice = view.indexBuffer->getUInt16(&view.indexAttr, (3 * i) + j);
+                }
+                indices.push_back(vertexBase + indice);
+            }
+        }
+    }
 }
 
 bool JoltShapeBuilder::isGeometryLoading(Scene* scene, Entity entity){
@@ -272,23 +286,24 @@ JPH::JobSystemThreadPool& JoltShapeBuilder::sharedPhysicsJobSystem(){
     return *instance;
 }
 
-JPH::ShapeRefC JoltShapeBuilder::buildConvexHullShape(const std::vector<Vector3>& points, std::string* error){
-    (void)error;
+JPH::ShapeRefC JoltShapeBuilder::buildConvexHullShape(const std::vector<Vector3>& points, std::string* error, float maxConvexRadius){
     JPH::Array<JPH::Vec3> jvertices;
     jvertices.reserve(points.size());
     for (const Vector3& point : points){
         jvertices.push_back(JPH::Vec3(point.x, point.y, point.z));
     }
 
-    JPH::ConvexHullShapeSettings shape_settings(jvertices);
+    JPH::ConvexHullShapeSettings shape_settings(jvertices, maxConvexRadius);
     JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-    if (!shape_result.IsValid()) return NULL;
+    if (!shape_result.IsValid()){
+        setError(error, "Cannot create convex hull shape: " + std::string(shape_result.GetError().c_str()));
+        return NULL;
+    }
     return shape_result.Get();
 }
 
 JPH::ShapeRefC JoltShapeBuilder::buildMeshShape(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& indices,
                                                 std::string* error){
-    (void)error;
     JPH::VertexList jvertices;
     jvertices.reserve(vertices.size());
     for (const Vector3& vertex : vertices){
@@ -303,7 +318,10 @@ JPH::ShapeRefC JoltShapeBuilder::buildMeshShape(const std::vector<Vector3>& vert
 
     JPH::MeshShapeSettings shape_settings(jvertices, jindices);
     JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
-    if (!shape_result.IsValid()) return NULL;
+    if (!shape_result.IsValid()){
+        setError(error, "Cannot create mesh shape: " + std::string(shape_result.GetError().c_str()));
+        return NULL;
+    }
     return shape_result.Get();
 }
 
@@ -363,7 +381,8 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
     const Vector3 absEntityScale = absScale(entityScale);
 
     if (shapeData.type == Collider3DType::BOX){
-        JPH::BoxShapeSettings shape_settings(JPH::Vec3(shapeData.width * absEntityScale.x / 2.0f, shapeData.height * absEntityScale.y / 2.0f, shapeData.depth * absEntityScale.z / 2.0f));
+        const JPH::Vec3 halfExtent(shapeData.width * absEntityScale.x / 2.0f, shapeData.height * absEntityScale.y / 2.0f, shapeData.depth * absEntityScale.z / 2.0f);
+        JPH::BoxShapeSettings shape_settings(halfExtent, fittingConvexRadius(halfExtent.ReduceMin(), true));
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return NULL;
         return shape_result.Get();
@@ -384,7 +403,9 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
         if (!shape_result.IsValid()) return NULL;
         return shape_result.Get();
     }else if (shapeData.type == Collider3DType::CYLINDER){
-        JPH::CylinderShapeSettings shape_settings(shapeData.halfHeight * absEntityScale.y, shapeData.radius * maxScaleXZ(absEntityScale));
+        const float halfHeight = shapeData.halfHeight * absEntityScale.y;
+        const float radius = shapeData.radius * maxScaleXZ(absEntityScale);
+        JPH::CylinderShapeSettings shape_settings(halfHeight, radius, fittingConvexRadius(std::min(halfHeight, radius), false));
         JPH::ShapeSettings::ShapeResult shape_result = shape_settings.Create();
         if (!shape_result.IsValid()) return NULL;
         return shape_result.Get();

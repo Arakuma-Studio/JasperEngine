@@ -44,6 +44,12 @@ namespace jasperengine::physicstest {
         return installed;
     }
 
+    // TextureDataPool keys a texture's pixels by id: every test heightmap needs its own
+    inline int nextHeightmapId() {
+        static int counter = 0;
+        return ++counter;
+    }
+
     class TestScene {
     public:
         const bool systemInstalled = installTestSystem();
@@ -157,8 +163,7 @@ namespace jasperengine::physicstest {
             TerrainComponent terrain;
             terrain.terrainSize = terrainSize;
             terrain.maxHeight = maxHeight;
-            static int counter = 0;
-            terrain.heightMap.setData("physics-test-heightmap-" + std::to_string(++counter),
+            terrain.heightMap.setData("physics-test-heightmap-" + std::to_string(nextHeightmapId()),
                                       TextureData(mapSize, mapSize, static_cast<unsigned int>(data.size()),
                                                   sixteenBit ? ColorFormat::RED16 : ColorFormat::RED, 1, data.data()));
             terrain.heightMapLoaded = true;

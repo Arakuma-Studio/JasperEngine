@@ -19,6 +19,7 @@
 #include "Jolt/Jolt.h"
 #include "Jolt/Core/JobSystemThreadPool.h"
 #include "Jolt/Core/TempAllocator.h"
+#include "Jolt/Physics/PhysicsSettings.h"
 #include "Jolt/Physics/Collision/Shape/Shape.h"
 #endif
 
@@ -72,6 +73,9 @@ namespace jasperengine {
         // index buffer are plain triangle lists. False when meshEntity has no mesh geometry.
         static bool appendTriangles(Scene* scene, Entity bodyEntity, Entity meshEntity,
                                     std::vector<Vector3>& vertices, std::vector<uint32_t>& indices);
+        // The triangles of one mesh component, its vertices brought through toBody
+        static void appendMeshTriangles(MeshComponent* mesh, const Matrix4& toBody,
+                                        std::vector<Vector3>& vertices, std::vector<uint32_t>& indices);
 
         // Hull, mesh and heightfield shapes read their geometry from an entity, and that
         // geometry can land several frames after Scene::load: models are parsed on a worker
@@ -93,7 +97,8 @@ namespace jasperengine {
         static JPH::JobSystemThreadPool& sharedPhysicsJobSystem();
 
         // The builders return null and set *error (when there is something to say) on failure.
-        static JPH::ShapeRefC buildConvexHullShape(const std::vector<Vector3>& points, std::string* error);
+        static JPH::ShapeRefC buildConvexHullShape(const std::vector<Vector3>& points, std::string* error,
+                                                   float maxConvexRadius = JPH::cDefaultConvexRadius);
         static JPH::ShapeRefC buildMeshShape(const std::vector<Vector3>& vertices, const std::vector<uint32_t>& indices,
                                              std::string* error);
         // The rendered terrain surface (MeshSystem::sampleTerrainSurface) in terrain-local space,

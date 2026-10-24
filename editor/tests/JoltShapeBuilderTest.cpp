@@ -99,6 +99,24 @@ TEST(ScenePhysics, RawHullOnRawMesh) {
     EXPECT_NEAR(t.transform(body).position.y, 0.25f, 0.03f);
 }
 
+// Plates and discs thinner than Jolt's 5 cm convex radius build (they used to fail): a thin
+// cylinder coin lands on a 6 cm box plate
+TEST(ScenePhysics, ThinBoxAndCylinder) {
+    TestScene t;
+    const Entity plate = t.entity(Vector3(0, -0.03f, 0));
+    Collider3D& plateCollider = t.collider(plate, Collider3DType::BOX);
+    plateCollider.width = 4; plateCollider.height = 0.06f; plateCollider.depth = 4;
+
+    const Entity coin = t.entity(Vector3(0.1f, 1.0f, 0));
+    Collider3D& coinCollider = t.collider(coin, Collider3DType::CYLINDER, BodyType::DYNAMIC);
+    coinCollider.radius = 0.3f; coinCollider.halfHeight = 0.02f;
+
+    runScene(t, 240);
+    print("coin-on-plate", t, coin);
+    EXPECT_NEAR(t.transform(coin).position.y, 0.02f, 0.03f);
+    EXPECT_GT(t.transform(coin).position.y, -0.01f);   // on the plate (Jolt's 2 cm slop), not through it
+}
+
 // A box falls on a flat-topped terrain heightfield
 TEST(ScenePhysics, BoxOnHeightfield) {
     TestScene t;
