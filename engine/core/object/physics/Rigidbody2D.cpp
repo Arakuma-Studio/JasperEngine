@@ -640,8 +640,10 @@ void Rigidbody2D::setPosition(Vector2 position){
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, {position.x / pointsToMeterScale, position.y / pointsToMeterScale}, bTransform.q);
     b2Body_SetAwake(body.body, true);
+    // jumps, not interpolated
+    body.previousTransform.p = b2Body_GetPosition(body.body);
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, position, getAngle());
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, body, (float)Engine::getInterpolationAlpha());
 }
 
 float Rigidbody2D::getAngle() const{
@@ -658,8 +660,9 @@ void Rigidbody2D::setAngle(float angle){
     b2Transform bTransform = b2Body_GetTransform(body.body);
     b2Body_SetTransform(body.body, bTransform.p, b2MakeRot(Angle::defaultToRad(angle)));
     b2Body_SetAwake(body.body, true);
+    body.previousTransform.q = b2Body_GetRotation(body.body);
 
-    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, getPosition(), angle);
+    scene->getSystem<PhysicsSystem>()->updateTransformFromRigidbody2D(entity, body, (float)Engine::getInterpolationAlpha());
 }
 
 void Rigidbody2D::setLinearVelocity(Vector2 linearVelocity){

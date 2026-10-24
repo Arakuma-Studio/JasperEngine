@@ -259,6 +259,7 @@ namespace jasperengine {
 
         static uint64_t lastTime;
         static double updateTimeCount;
+        static int fixedStepsLeft;
         
         static double deltatime;
         static double maxDeltatime;
@@ -386,6 +387,9 @@ namespace jasperengine {
         // fixed-update step the current rendered frame is. Useful for visual interpolation of
         // physics-driven entities to remove temporal aliasing.
         static double getInterpolationAlpha();
+
+        // Fixed steps still to run in this frame, the current one included (1 outside the fixed phase)
+        static int getFixedStepsLeft();
 
         static void setMouseCursor(CursorType type);
         static CursorType getMouseCursor();

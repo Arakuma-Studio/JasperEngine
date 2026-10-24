@@ -115,6 +115,18 @@ namespace jasperengine{
         bool newBody = true;
         Vector3 loadedScale = Vector3::UNIT_SCALE;
 
+        // Runtime state of the body sync (PhysicsSystem), not saved
+        // kinematic, moving to its Transform with MoveKinematic over the frame's fixed steps
+        bool followingTransform = false;
+        // pose before the last step, drawn towards the current one
+        Vector3 previousPosition;
+        Quaternion previousRotation;
+        // world pose physics and the Transform last agreed on (written to the Transform, or
+        // the body put at it): a Transform still there was moved by nobody else since
+        bool hasSyncedPose = false;
+        Vector3 syncedPosition;
+        Quaternion syncedRotation;
+
         // Collision filter bits (Rigidbody::setBitsFilter), kept across body reloads. Two
         // bodies collide when each one's category meets the other's mask and the Layer
         // Collision Matrix lets their GameObject layers collide.

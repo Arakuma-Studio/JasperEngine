@@ -55,6 +55,45 @@ namespace {
         }
     }
 
+    // still the pose physics and the Transform last agreed on: not moved by a script, an
+    // animation or the editor since
+    template<typename T>
+    bool isSynced(const Transform& transform, const T& body){
+        return body.hasSyncedPose && transform.worldPosition == body.syncedPosition && transform.worldRotation == body.syncedRotation;
+    }
+
+    template<typename T>
+    void setSynced(T& body, const Vector3& position, const Quaternion& rotation){
+        body.hasSyncedPose = true;
+        body.syncedPosition = position;
+        body.syncedRotation = rotation;
+    }
+
+    // Writes a world pose as the local one, and the world one too as RenderSystem derives it
+    // back from it (also returned in position and rotation): the next fixed step of the
+    // frame, before any transform update, syncs the body from the world pose.
+    void setTransformWorldPose(Scene* scene, Transform& transform, Vector3& position, Quaternion& rotation){
+        Vector3 localPosition = position;
+        Quaternion localRotation = rotation;
+
+        Transform* parent = (transform.parent != NULL_ENTITY) ? scene->findComponent<Transform>(transform.parent) : NULL;
+        if (parent){
+            localPosition = parent->modelMatrix.inverse() * position;
+            localRotation = parent->worldRotation.inverse() * rotation;
+            position = parent->modelMatrix * localPosition;
+            rotation = parent->worldRotation * localRotation;
+        }
+
+        if (transform.position != localPosition || transform.rotation != localRotation ||
+                transform.worldPosition != position || transform.worldRotation != rotation){
+            transform.position = localPosition;
+            transform.rotation = localRotation;
+            transform.worldPosition = position;
+            transform.worldRotation = rotation;
+            transform.needUpdate = true;
+        }
+    }
+
 #ifdef JASPERENGINE_PHYSICS_3D
     // Jolt's global allocator/factory/type registration is process-wide; run once
     // (the old per-constructor path re-created and leaked a Factory per scene).
@@ -301,6 +340,7 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
     SceneSettings settingsDefaults;
     this->gravity2D = settingsDefaults.gravity2D;
     this->gravity3D = settingsDefaults.gravity3D;
+    this->interpolation = settingsDefaults.physicsInterpolation;
 #ifdef JASPERENGINE_PHYSICS_2D
     this->pointsToMeterScale2D = 64.0;
 
@@ -449,6 +489,14 @@ void PhysicsSystem::setGravity(float x, float y){
 
 void PhysicsSystem::setGravity(float x, float y, float z){
     setGravity(Vector3(x, y, z));
+}
+
+void PhysicsSystem::setInterpolation(bool interpolation){
+    this->interpolation = interpolation;
+}
+
+bool PhysicsSystem::isInterpolation() const{
+    return interpolation;
 }
 
 void PhysicsSystem::clearSubscriptions(){
@@ -741,46 +789,60 @@ void PhysicsSystem::syncLayerCollisionMatrix3D(){
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Vector2 position, float angle){
+void PhysicsSystem::updateTransformFromRigidbody2D(Entity entity, Rigidbody2DComponent& body, float alpha){
     Transform* transform = scene->findComponent<Transform>(entity);
-    if (!transform){
+    if (!transform || !b2Body_IsValid(body.body)){
         return;
+    }
+
+    b2Transform bTransform = b2Body_GetTransform(body.body);
+    if (interpolation && alpha < 1.0f){
+        const b2Transform& previous = body.previousTransform;
+        bTransform.p = previous.p + (bTransform.p - previous.p) * alpha;
+        if (previous.q.c != bTransform.q.c || previous.q.s != bTransform.q.s){
+            bTransform.q = b2NLerp(previous.q, bTransform.q, alpha);
+        }
     }
 
     // Box2D does not own Z, it is kept from the current world position
-    Vector3 worldPosition = Vector3(position.x, position.y, transform->worldPosition.z);
+    Vector3 position(bTransform.p.x * pointsToMeterScale2D, bTransform.p.y * pointsToMeterScale2D, transform->worldPosition.z);
+    Quaternion rotation(Angle::radToDefault(b2Rot_GetAngle(bTransform.q)), Vector3(0, 0, 1));
 
-    updateTransformFromRigidbody(entity, worldPosition, Quaternion(angle, Vector3(0, 0, 1)));
+    setTransformWorldPose(scene, *transform, position, rotation);
+    setSynced(body, position, rotation);
 }
 #endif
 
-void PhysicsSystem::updateTransformFromRigidbody(Entity entity, Vector3 position, Quaternion rotation){
+#ifdef JASPERENGINE_PHYSICS_3D
+void PhysicsSystem::updateTransformFromRigidbody(Entity entity, RigidbodyComponent& body, float alpha){
     Transform* transform = scene->findComponent<Transform>(entity);
-    if (!transform){
+    if (!transform || body.body.IsInvalid()){
         return;
     }
 
-    transform->worldPosition = position;
-    transform->worldRotation = rotation;
-
-    Transform* transformParent = NULL;
-    if (transform->parent != NULL_ENTITY){
-        transformParent = scene->findComponent<Transform>(transform->parent);
+    JPH::RVec3 jPosition;
+    JPH::Quat jRotation;
+    getBodyInterface3D().GetPositionAndRotation(body.body, jPosition, jRotation);
+    if (std::isnan(jPosition.GetX()) || std::isnan(jPosition.GetY()) || std::isnan(jPosition.GetZ())){
+        return;
     }
 
-    if (transformParent){
-        transform->position = transformParent->modelMatrix.inverse() * position;
-        transform->rotation = transformParent->worldRotation.inverse() * rotation;
-    }else{
-        transform->position = position;
-        transform->rotation = rotation;
+    Vector3 position(jPosition.GetX(), jPosition.GetY(), jPosition.GetZ());
+    Quaternion rotation(jRotation.GetW(), jRotation.GetX(), jRotation.GetY(), jRotation.GetZ());
+    if (interpolation && alpha < 1.0f){
+        position = body.previousPosition.lerp(position, alpha);
+        if (body.previousRotation != rotation){
+            rotation = Quaternion::slerp(alpha, body.previousRotation, rotation);
+        }
     }
 
-    transform->needUpdate = true;
+    setTransformWorldPose(scene, *transform, position, rotation);
+    setSynced(body, position, rotation);
 }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
-void PhysicsSystem::updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body){
+void PhysicsSystem::updateRigidbody2DPosition(Signature signature, Entity entity, Rigidbody2DComponent& body, float stepTime){
     if (signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         if (b2Body_IsValid(body.body)){
@@ -793,18 +855,42 @@ void PhysicsSystem::updateRigidbody2DPosition(Signature signature, Entity entity
             float bNewAngle = Angle::defaultToRad(transform.worldRotation.getRoll());
 
             b2Transform bTransform = b2Body_GetTransform(body.body);
+            float bAngle = b2Rot_GetAngle(bTransform.q);
+            // a Transform still where physics left it (written back or drawn interpolated)
+            // leaves the body where it is
+            bool moved = (body.newBody || !isSynced(transform, body)) && (bTransform.p != bNewPosition || bAngle != bNewAngle);
 
-            if (bTransform.p != bNewPosition || b2Rot_GetAngle(bTransform.q) != bNewAngle){
-                b2Body_SetTransform(body.body, bNewPosition, b2MakeRot(bNewAngle));
+            if (moved && stepTime > 0.0f && body.type == BodyType::KINEMATIC && !body.newBody){
+                // a velocity carries and pushes other bodies, spread over the steps left in the frame
+                float duration = stepTime * Engine::getFixedStepsLeft();
+                b2Body_SetLinearVelocity(body.body, (bNewPosition - bTransform.p) * (1.0f / duration));
+                b2Body_SetAngularVelocity(body.body, b2UnwindAngle(bNewAngle - bAngle) / duration);
                 b2Body_SetAwake(body.body, true);
+                body.followingTransform = true;
+                // on its way: each step of the frame aims at the Transform again
+                body.hasSyncedPose = false;
+            }else{
+                if (moved){
+                    b2Body_SetTransform(body.body, bNewPosition, b2MakeRot(bNewAngle));
+                    b2Body_SetAwake(body.body, true);
+                    setSynced(body, transform.worldPosition, transform.worldRotation);
+                }
+                if (body.followingTransform){
+                    b2Body_SetLinearVelocity(body.body, b2Vec2_zero);
+                    b2Body_SetAngularVelocity(body.body, 0.0f);
+                    body.followingTransform = false;
+                }
             }
+
+            // drawn from here towards where the step ends
+            body.previousTransform = b2Body_GetTransform(body.body);
         }
     }
 }
 #endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
-void PhysicsSystem::updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body){
+void PhysicsSystem::updateRigidbodyPosition(Signature signature, Entity entity, RigidbodyComponent& body, float stepTime){
     if (signature.test(scene->getComponentId<Transform>())){
         Transform& transform = scene->getComponent<Transform>(entity);
         if (!body.body.IsInvalid()){
@@ -821,10 +907,34 @@ void PhysicsSystem::updateRigidbodyPosition(Signature signature, Entity entity, 
             JPH::Vec3 jPosition;
             JPH::Quat jQuat;
             body_interface.GetPositionAndRotation(body.body, jPosition, jQuat);
+            // a Transform still where physics left it (written back or drawn interpolated)
+            // leaves the body where it is
+            bool moved = (body.newBody || !isSynced(transform, body)) && (jPosition != jNewPosition || jQuat != jNewQuat);
 
-            if (jPosition != jNewPosition || jQuat != jNewQuat){
-                body_interface.SetPositionAndRotation(body.body, jNewPosition, jNewQuat, JPH::EActivation::Activate);
+            if (moved && stepTime > 0.0f && body.type == BodyType::KINEMATIC && !body.newBody){
+                // a velocity carries and pushes other bodies, spread over the steps left in the frame
+                float fraction = 1.0f / Engine::getFixedStepsLeft();
+                JPH::Vec3 stepPosition = jPosition + (jNewPosition - jPosition) * fraction;
+                JPH::Quat stepRotation = jQuat.SLERP(jNewQuat, fraction).Normalized();
+                body_interface.MoveKinematic(body.body, stepPosition, stepRotation, stepTime);
+                body.followingTransform = true;
+                // on its way: each step of the frame aims at the Transform again
+                body.hasSyncedPose = false;
+            }else{
+                if (moved){
+                    body_interface.SetPositionAndRotation(body.body, jNewPosition, jNewQuat, JPH::EActivation::Activate);
+                    setSynced(body, transform.worldPosition, transform.worldRotation);
+                }
+                if (body.followingTransform){
+                    body_interface.SetLinearAndAngularVelocity(body.body, JPH::Vec3::sZero(), JPH::Vec3::sZero());
+                    body.followingTransform = false;
+                }
             }
+
+            // drawn from here towards where the step ends
+            body_interface.GetPositionAndRotation(body.body, jPosition, jQuat);
+            body.previousPosition = Vector3(jPosition.GetX(), jPosition.GetY(), jPosition.GetZ());
+            body.previousRotation = Quaternion(jQuat.GetW(), jQuat.GetX(), jQuat.GetY(), jQuat.GetZ());
         }
     }
 }
@@ -3003,7 +3113,7 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
 
             if (simulate){
-                updateRigidbody2DPosition(signature, entity, body);
+                updateRigidbody2DPosition(signature, entity, body, fixedStep);
 
                 body.newBody = false;
             }
@@ -3055,33 +3165,20 @@ void PhysicsSystem::fixedUpdate(double dt){
             const b2BodyMoveEvent* event = events.moveEvents + i;
 
             Entity entity = reinterpret_cast<uintptr_t>(event->userData);
-            Signature signature = scene->getSignature(entity);
-
-            b2Transform bTransform = event->transform;
-            if (signature.test(scene->getComponentId<Transform>())){
-                Transform& transform = scene->getComponent<Transform>(entity);
-
-                Vector3 nPosition = Vector3(bTransform.p.x * pointsToMeterScale2D, bTransform.p.y * pointsToMeterScale2D, transform.worldPosition.z);
-                Quaternion nRotation = Quaternion(Angle::radToDefault(b2Rot_GetAngle(bTransform.q)), Vector3(0, 0, 1));
-
-                if (transform.parent != NULL_ENTITY){
-                    Transform* transformParent = scene->findComponent<Transform>(transform.parent);
-                    if (transformParent){
-                        nPosition = transformParent->modelMatrix.inverse() * nPosition;
-                        nRotation = transformParent->worldRotation.inverse() * nRotation;
-                    }
-                }
-
-                if (transform.position != nPosition){
-                    transform.position = nPosition;
-                    transform.needUpdate = true;
-                }
-
-                if (transform.rotation != nRotation){
-                    transform.rotation = nRotation;
-                    transform.needUpdate = true;
-                }
+            Rigidbody2DComponent* body = scene->findComponent<Rigidbody2DComponent>(entity);
+            if (!body){
+                continue;
             }
+
+            // a following body is on its way to its Transform, the last step of the frame puts it there
+            if (body->followingTransform){
+                if (Engine::getFixedStepsLeft() == 1){
+                    updateRigidbody2DPosition(scene->getSignature(entity), entity, *body);
+                }
+                continue;
+            }
+
+            updateTransformFromRigidbody2D(entity, *body, 1.0f);
         }
 
         Box2DAux::manageEvents(scene, world2D);
@@ -3114,7 +3211,7 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
 
             if (simulate){
-                updateRigidbodyPosition(signature, entity, body);
+                updateRigidbodyPosition(signature, entity, body, fixedStep);
 
                 body.newBody = false;
             }
@@ -3168,39 +3265,56 @@ void PhysicsSystem::fixedUpdate(double dt){
 	for (int i = 0; i < bodies3d->size(); i++){
 		RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
 		Entity entity = bodies3d->getEntity(i);
-		Signature signature = scene->getSignature(entity);
 
-        if (!body.body.IsInvalid()){
-            JPH::BodyInterface &body_interface = world3D.GetBodyInterfaceNoLock();
-            JPH::RVec3 position = body_interface.GetPosition(body.body);
-            JPH::Quat rotation = body_interface.GetRotation(body.body);
-            if (signature.test(scene->getComponentId<Transform>())){
-                Transform& transform = scene->getComponent<Transform>(entity);
+        // out of the world (disabled, inactive) it did not step and leaves its Transform alone
+        if (body.body.IsInvalid() || !getBodyInterface3D().IsAdded(body.body)){
+            continue;
+        }
 
-                if (!std::isnan(position.GetX()) && !std::isnan(position.GetY()) && !std::isnan(position.GetZ())){
-                    Vector3 nPosition = Vector3(position.GetX(), position.GetY(), position.GetZ());
-                    Quaternion nRotation = Quaternion(rotation.GetW(), rotation.GetX(), rotation.GetY(), rotation.GetZ());
-
-                    if (transform.parent != NULL_ENTITY){
-                        Transform* transformParent = scene->findComponent<Transform>(transform.parent);
-                        if (transformParent){
-                            nPosition = transformParent->modelMatrix.inverse() * nPosition;
-                            nRotation = transformParent->worldRotation.inverse() * nRotation;
-                        }
-                    }
-
-                    if (transform.position != nPosition){
-                        transform.position = nPosition;
-                        transform.needUpdate = true;
-                    }
-
-                    if (transform.rotation != nRotation){
-                        transform.rotation = nRotation;
-                        transform.needUpdate = true;
-                    }
-                }
-
+        // a following body is on its way to its Transform, the last step of the frame puts it there
+        if (body.followingTransform){
+            if (Engine::getFixedStepsLeft() == 1){
+                updateRigidbodyPosition(scene->getSignature(entity), entity, body);
             }
+            continue;
+        }
+
+        updateTransformFromRigidbody(entity, body, 1.0f);
+    }
+#endif
+}
+
+void PhysicsSystem::interpolate(double alpha){
+    if (paused || !interpolation){
+        return;
+    }
+
+    // only bodies whose Transform is still where physics left it: one a script, an animation
+    // or the editor moved since keeps that pose, the next step puts the body there
+#ifdef JASPERENGINE_PHYSICS_2D
+    auto bodies2d = scene->getComponentArray<Rigidbody2DComponent>();
+    for (size_t i = 0; i < bodies2d->size(); i++){
+        Rigidbody2DComponent& body = bodies2d->getComponentFromIndex(i);
+        Entity entity = bodies2d->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+
+        if (body.type != BodyType::STATIC && b2Body_IsValid(body.body) && b2Body_IsEnabled(body.body) &&
+                transform && isSynced(*transform, body)){
+            updateTransformFromRigidbody2D(entity, body, (float)alpha);
+        }
+    }
+#endif
+
+#ifdef JASPERENGINE_PHYSICS_3D
+    auto bodies3d = scene->getComponentArray<RigidbodyComponent>();
+    for (size_t i = 0; i < bodies3d->size(); i++){
+        RigidbodyComponent& body = bodies3d->getComponentFromIndex(i);
+        Entity entity = bodies3d->getEntity(i);
+        Transform* transform = scene->findComponent<Transform>(entity);
+
+        if (body.type != BodyType::STATIC && !body.body.IsInvalid() && getBodyInterface3D().IsAdded(body.body) &&
+                transform && isSynced(*transform, body)){
+            updateTransformFromRigidbody(entity, body, (float)alpha);
         }
     }
 #endif

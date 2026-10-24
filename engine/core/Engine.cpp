@@ -82,6 +82,7 @@ bool Engine::uiEventReceived = false;
 
 uint64_t Engine::lastTime = 0;
 double Engine::updateTimeCount = 0;
+int Engine::fixedStepsLeft = 1;
 
 double Engine::deltatime = 0;
 float Engine::framerate = 0;
@@ -507,6 +508,10 @@ void Engine::setUpdateTime(float updateTime){
 
 float Engine::getUpdateTime(){
     return (float)Engine::updateTime;
+}
+
+int Engine::getFixedStepsLeft(){
+    return fixedStepsLeft;
 }
 
 double Engine::getInterpolationAlpha(){
@@ -1280,6 +1285,12 @@ void Engine::systemDraw(){
 
             int fixedLoops = 0;
             while (updateTimeCount >= updateTime && fixedLoops < MAX_UPDATES_PER_FRAME) {
+                // counted like this loop, so its last step sees 1
+                fixedStepsLeft = 0;
+                for (double remaining = updateTimeCount; remaining >= updateTime && fixedLoops + fixedStepsLeft < MAX_UPDATES_PER_FRAME; remaining -= updateTime) {
+                    fixedStepsLeft++;
+                }
+
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
@@ -1288,10 +1299,18 @@ void Engine::systemDraw(){
                 fixedLoops++;
             }
 
+            fixedStepsLeft = 1;
+
             if (fixedLoops >= MAX_UPDATES_PER_FRAME) {
                 Log::warn("Dropping fixed-update steps - more than %i per frame", MAX_UPDATES_PER_FRAME);
                 // Discard remaining backlog so we don't fall further behind next frame.
                 updateTimeCount = 0.0;
+            }
+
+            // bodies drawn between their last two steps, as far as the time left over
+            double alpha = getInterpolationAlpha();
+            for (int i = 0; i < scenes.size(); i++) {
+                scenes[i]->getSystem<PhysicsSystem>()->interpolate(alpha);
             }
         }
 
