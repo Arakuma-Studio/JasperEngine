@@ -17,6 +17,8 @@
 #pragma once
 
 #include "ecs/Entity.h"
+#include "component/MeshComponent.h"
+#include "math/AABB.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -146,8 +148,11 @@ namespace jasperengine::editor{
         bool ownsEntity(uint32_t sceneId, Entity entity) const;
         // Phase 5 sets this while one of its handles is hovered or dragged: the Scene view's
         // keys and undo then go to the pose window
-        void setViewportHandleActive(bool active) { handleActive = active; }
-        bool viewportHandleActive() const { return handleActive; }
+        void setViewportHandleEngaged(bool engaged) { handleActive = engaged; }
+        bool viewportHandleEngaged() const { return handleActive; }
+        // the first name of the same flag (kept for source compatibility)
+        void setViewportHandleActive(bool active) { setViewportHandleEngaged(active); }
+        bool viewportHandleActive() const { return viewportHandleEngaged(); }
         // The Scene view routes keys to the pose window (set by the window each frame; the
         // Scene view shows a "Pose keys" hint while it is true)
         void setKeyRouting(bool routing) { keyRoutingOn = routing; }
@@ -167,6 +172,16 @@ namespace jasperengine::editor{
             Matrix4 localMatrix;
             Matrix4 modelMatrix;
             Matrix4 normalMatrix;
+        };
+
+        // a skinned mesh of the model as the scene had it: the skinning matrices and the posed
+        // bounds the render system derives from the bones (the scene file stores them too)
+        struct SavedMesh{
+            Entity entity = NULL_ENTITY;
+            HybridArray<Matrix4, MAX_BONES> bonesMatrix;
+            AABB skinnedAABB;
+            AABB worldAABB;
+            bool needUpdateAABB = false;
         };
 
         Project* projectPtr = nullptr;
@@ -202,6 +217,7 @@ namespace jasperengine::editor{
         bool sidecarExists = false;
         float sidecarCheck = 0.0f;
         std::vector<SavedBone> savedBones;
+        std::vector<SavedMesh> savedMeshes;
 
         OnionSettings onionSettings;
         ViewSettings viewSettings;

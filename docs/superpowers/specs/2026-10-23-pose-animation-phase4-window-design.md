@@ -86,7 +86,11 @@ Additions (implementation; the members above are unchanged, these are extra):
     document edits). The window disables its edit controls; phase 5 must disable its handles too.
   - `ownsEntity(sceneId, entity)`: the bound model or one of its bones. The Inspector keeps bone transforms
     read-only while posing.
-  - `setViewportHandleActive(bool)`: phase 5 sets it while a handle is hovered or dragged.
+  - `setViewportHandleEngaged(bool)` / `viewportHandleEngaged()` (also under the first names
+    `setViewportHandleActive` / `viewportHandleActive`): phase 5 sets it while a handle is hovered or dragged;
+    it is part of the Scene view's key routing condition.
+  - Bone restores also put back the skinned meshes' `bonesMatrix`, `skinnedAABB` and `worldAABB`, which
+    the scene file stores: a scene saved while posing is byte-identical to one saved without posing.
   - `keyRouting()`: the Scene view's keys and undo go to the window. True only while the window is
     shown, the session poses, and either the scene selection is the model or its bones, or a phase 5
     handle is active. While it is true the window shows a "Pose keys" hint over the Scene view.

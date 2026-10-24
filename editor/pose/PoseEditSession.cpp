@@ -210,6 +210,7 @@ void editor::PoseEditSession::dropBinding(){
     rigPtr.reset();
     rigInfoPtr.reset();
     savedBones.clear();
+    savedMeshes.clear();
     applied = false;
     gate = poseui::BoneWriteGate();
     sidecarFile.clear();
@@ -772,6 +773,22 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
                                   transform.worldRotation, transform.worldScale, transform.localMatrix, transform.modelMatrix,
                                   transform.normalMatrix});
         }
+        // and the skinned meshes' matrices and bounds the bones drive, so a scene saved right
+        // after restoreBones() is byte for byte the scene without posing
+        savedMeshes.clear();
+        std::vector<Entity> meshes;
+        if (const ModelComponent* model = scenePtr->findComponent<ModelComponent>(modelEntity)){
+            meshes.push_back(modelEntity);
+            for (const ModelSkinBinding& binding : model->skinBindings) meshes.push_back(binding.mesh);
+            for (const auto& node : model->meshNodesMapping) meshes.push_back(node.second);
+        }
+        for (Entity entity : meshes){
+            if (entity == NULL_ENTITY || !scenePtr->isEntityCreated(entity)) continue;
+            if (std::any_of(savedMeshes.begin(), savedMeshes.end(), [entity](const SavedMesh& m){ return m.entity == entity; })) continue;
+            if (const MeshComponent* mesh = scenePtr->findComponent<MeshComponent>(entity)){
+                savedMeshes.push_back({entity, mesh->bonesMatrix, mesh->skinnedAABB, mesh->worldAABB, mesh->needUpdateAABB});
+            }
+        }
         applied = true;
     }
     // every skeleton bone: slots from the pose, the others at rest (as the rig's FK has them)
@@ -826,10 +843,20 @@ void editor::PoseEditSession::restoreBones(){
             transform->normalMatrix = saved.normalMatrix;
             transform->needUpdate = true;
         }
+        for (const SavedMesh& saved : savedMeshes){
+            if (!scenePtr->isEntityCreated(saved.entity)) continue;
+            MeshComponent* mesh = scenePtr->findComponent<MeshComponent>(saved.entity);
+            if (!mesh) continue;
+            mesh->bonesMatrix = saved.bonesMatrix;
+            mesh->skinnedAABB = saved.skinnedAABB;
+            mesh->worldAABB = saved.worldAABB;
+            mesh->needUpdateAABB = saved.needUpdateAABB;
+        }
         if (SceneProject* sceneProject = projectPtr ? projectPtr->getScene(sceneIdValue) : nullptr){
             sceneProject->needUpdateRender = true;
         }
     }
     savedBones.clear();
+    savedMeshes.clear();
     shown = rigPtr ? rigPtr->restPose() : pose::HumanPose();
 }

@@ -752,7 +752,7 @@ bool editor::PoseAnimationWindow::sceneKeysRouted() const{
     // on the character: it is selected (or one of its bones), or a phase 5 handle is in use
     if (!windowOpen || !windowVisible || !session.bound() || session.mode() != PoseEditSession::Mode::Posing) return false;
     if (project->getSelectedSceneId() != session.sceneId()) return false;
-    if (session.viewportHandleActive()) return true;
+    if (session.viewportHandleEngaged()) return true;
     const std::vector<Entity> picked = project->getSelectedEntities(session.sceneId());
     if (picked.empty()) return false;
     for (Entity entity : picked){

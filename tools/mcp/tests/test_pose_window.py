@@ -58,6 +58,15 @@ def close(a, b, tol=1e-4) -> bool:
     return same or flipped
 
 
+def same_as_unposed(ed: Editor, text: str, what: str) -> None:
+    """The scene file is byte for byte the one saved before any posing (bones, skinning matrices, bounds)."""
+    if text == S["unposed_scene"]:
+        return
+    import difflib
+    diff = "".join(list(difflib.unified_diff(S["unposed_scene"].splitlines(True), text.splitlines(True), n=1))[:40])
+    ed.check(False, f"{what}: the scene file differs from the unposed save:\n{diff}")
+
+
 def saved_rotation(text: str, name: str):
     """The transform rotation of the GameObject `name` in a scene file's text."""
     match = re.search(r"name: " + re.escape(name) + r"\n\s+components:\n\s+transform:\n\s+position: \[[^\]]*\]\n\s+rotation: \[([^\]]*)\]",
@@ -147,12 +156,22 @@ async def test_edits_show_in_the_window(ed: Editor):
 
 
 async def test_save_while_posing_writes_rest(ed: Editor):
+    # the scene saved without posing (play mode leaves the session idle, bones at rest): a save
+    # while posing must write exactly this, byte for byte (bones, skinning matrices, bounds)
+    await ed.call("play", action="start")
+    await ed.call("play", action="stop")
+    ed.check_eq((await state(ed))["mode"], "idle", "idle after play mode")
+    await ed.call("wait", seconds=0.3)
+    await ed.call("save_scene", scene="Main Scene")
+    S["unposed_scene"] = (ed.project / SCENE_FILE).read_text(encoding="utf-8")
     await focus(ed, index=0)
+    await ed.call("wait", seconds=0.3)
     ed.check(not close(await bone_rotation(ed), S["rest"]), "posed before the save")
     await ed.call("save_scene", scene="Main Scene")
     text = (ed.project / SCENE_FILE).read_text(encoding="utf-8")
     saved = saved_rotation(text, THIGH)
     ed.check(close(saved, S["rest"]), f"the scene file has the rest rotation: {saved} vs {S['rest']}")
+    same_as_unposed(ed, text, "saved while posing")
     await ed.call("wait", seconds=0.3)
     ed.check(not close(await bone_rotation(ed), S["rest"]), "posing resumes after the save")
     ed.check_eq((await state(ed))["mode"], "posing", "still posing")
@@ -188,8 +207,10 @@ async def test_save_while_previewing_writes_rest(ed: Editor):
     ed.check_eq(st["mode"], "previewing", "previewing")
     await ed.call("wait", seconds=0.2)
     await ed.call("save_scene", scene="Main Scene")
-    saved = saved_rotation((ed.project / SCENE_FILE).read_text(encoding="utf-8"), THIGH)
+    text = (ed.project / SCENE_FILE).read_text(encoding="utf-8")
+    saved = saved_rotation(text, THIGH)
     ed.check(close(saved, S["rest"]), f"the scene file has the rest rotation: {saved} vs {S['rest']}")
+    same_as_unposed(ed, text, "saved while previewing")
     await ed.call("wait", seconds=0.3)
     st = await state(ed)
     ed.check(st["mode"] == "previewing" and st["playing"] and st["editable"], f"the preview goes on after the save: {st}")
