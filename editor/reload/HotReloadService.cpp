@@ -211,17 +211,26 @@ void HotReloadService::refresh() {
 
 // ------------------------------------------------------------------ apply
 
-bool HotReloadService::isCurrent(const fs::path& path) const {
-    auto it = applied.find(key(path));
+bool HotReloadService::isCurrent(const FileChange& change) const {
+    auto it = applied.find(key(change.path));
     if (it == applied.end()) return false;
+    if (change.sequence != 0 && change.sequence <= it->second.sequence) return true;
     watch::PathStat now;
-    return watch::statPath(path, now) && now.sameContent(it->second) && now.identity == it->second.identity;
+    if (!watch::statPath(change.path, now) || !now.sameContent(it->second.stat) || now.identity != it->second.stat.identity) return false;
+    // a save in the same timestamp tick as the one reloaded has the same stat: only the
+    // editor's own write (it knows what it wrote) is taken as that one
+    return !it->second.racy || change.origin == ChangeOrigin::Editor;
 }
 
-void HotReloadService::stamp(const fs::path& path) {
-    watch::PathStat now;
-    if (watch::statPath(path, now)) applied[key(path)] = now;
-    else applied.erase(key(path));
+void HotReloadService::stamp(const fs::path& path, const watch::PathStat* seen, uint64_t sequence) {
+    if (!seen) {
+        applied.erase(key(path));
+        return;
+    }
+    Applied& entry = applied[key(path)];
+    entry.stat = *seen;
+    entry.racy = watch::isRacyStamp(seen->mtimeNs);
+    entry.sequence = std::max(entry.sequence, sequence);
 }
 
 std::string HotReloadService::relative(const fs::path& path) const {
@@ -287,7 +296,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (kind.empty()) continue;
         // reloaded already (by the watcher, a tool's own sync, another call's pick-up): reported,
         // not done again (the shared applied-stamp table, R29)
-        if (!options.force && !options.full && isCurrent(change.path) && kind != "scene" && kind != "project") {
+        if (!options.force && !options.full && isCurrent(change) && kind != "scene" && kind != "project") {
             // still reloading (the watcher started it a moment ago): pending, so the caller waits
             if (!idleFor({change.path})) {
                 if (change.origin == ChangeOrigin::External) result.pending.push_back(relPath);
@@ -312,6 +321,23 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         }
         external[kind].push_back(change.path);
         if (kind != "ui" && reload::isHtmlUiFile(watch::pathToUtf8(change.path))) external["ui"].push_back(change.path);
+    }
+
+    // What each file to reload is now, before a handler reads it, and the journal change it is
+    // reloaded for (0: a path without one)
+    std::map<std::string, std::pair<watch::PathStat, bool>> seenBefore;
+    for (const auto* map : {&external, &editorWritten}) {
+        for (const auto& [kind, list] : *map) {
+            for (const fs::path& path : list) {
+                auto& seen = seenBefore[key(path)];
+                if (!seen.second) seen.second = watch::statPath(path, seen.first);
+            }
+        }
+    }
+    std::map<std::string, uint64_t> sequenceOf;
+    for (const FileChange& change : changes) {
+        uint64_t& sequence = sequenceOf[key(change.path)];
+        sequence = std::max(sequence, change.sequence);
     }
 
     auto files = [](std::map<std::string, std::vector<fs::path>>& map, const char* kind) -> std::vector<fs::path>& { return map[kind]; };
@@ -340,13 +366,18 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
     reload::reloadModels(ctx, files(external, "model"));
     reload::reloadAudio(ctx, files(external, "audio"));
     reload::reloadFonts(ctx, files(external, "font"));
-    reload::reloadHtmlUi(ctx, both("ui"));
+    // another program's changes not reloaded yet (the dedupe above): the documents' own stamps
+    // cannot tell a save in the same timestamp tick from the one they read
+    reload::reloadHtmlUi(ctx, both("ui"), files(external, "ui"));
     reload::noteOpenDocuments(ctx, openDocuments, externallyChangedScenes, projectFileChanged);
     reload::applyAssetChanges(ctx, changes);
 
     for (const auto* map : {&external, &editorWritten}) {
         for (const auto& [kind, list] : *map) {
-            for (const fs::path& path : list) stamp(path);
+            for (const fs::path& path : list) {
+                auto seen = seenBefore.find(key(path));
+                stamp(path, seen != seenBefore.end() && seen->second.second ? &seen->second.first : nullptr, sequenceOf[key(path)]);
+            }
         }
     }
     for (const std::shared_ptr<Job>& job : jobs) {

@@ -229,8 +229,14 @@ namespace jasperengine::editor {
         uint64_t nextSerial = 1;
         uint64_t reloads = 0;
 
-        // what apply() last reloaded each path from (the shared applied-stamp table, R29)
-        std::map<std::string, watch::PathStat> applied;
+        // what apply() last reloaded each path from (the shared applied-stamp table, R29): the
+        // stat, whether it was racy (watch::isRacyStamp), and the last journal change applied
+        struct Applied {
+            watch::PathStat stat;
+            bool racy = false;
+            uint64_t sequence = 0;
+        };
+        std::map<std::string, Applied> applied;
 
         std::set<uint32_t> externallyChangedScenes;
         bool projectFileChanged = false;
@@ -256,8 +262,14 @@ namespace jasperengine::editor {
 
         void onWatcherBatch(std::span<const FileChange> batch);
         static std::future<AdoptFn> launch(WorkFn work);
-        bool isCurrent(const std::filesystem::path& path) const;
-        void stamp(const std::filesystem::path& path);
+        // Reloaded already: the same journal change (the watcher's delivery, then a call's
+        // pick-up of it), or a file whose stat is the one reloaded from, unless that stamp was
+        // racy and another program made the change
+        bool isCurrent(const FileChange& change) const;
+        // `seen`: the stat taken before the handlers read the file (nullptr: gone). A save that
+        // lands while they read leaves the file different from the stamp, so its own change
+        // reloads (stamping after the read took it as reloaded)
+        void stamp(const std::filesystem::path& path, const watch::PathStat* seen, uint64_t sequence);
         void finishJob(Job& job, bool ok, const std::string& error, double ms, bool warning = false);
         void closeBatchIfDone(uint64_t id);
         void writeBatchLine(const Batch& batch);

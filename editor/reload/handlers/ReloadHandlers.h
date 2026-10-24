@@ -57,9 +57,13 @@ namespace jasperengine::editor::reload {
     // Open code editor buffers of `files` (all buffers when `all`)
     void reloadCodeEditorBuffers(Context& ctx, const std::vector<std::filesystem::path>& files, bool all);
     // HTML UI documents reading a changed file (html/css, images, fonts, json/lottie, effects)
-    void reloadHtmlUi(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // `changedSince`: files of `files` known to have changed since the documents read them
+    // (another program's change the service decided to reload): their stamps are not trusted
+    void reloadHtmlUi(Context& ctx, const std::vector<std::filesystem::path>& files,
+                      const std::vector<std::filesystem::path>& changedSince = {});
     // The documents of every open scene reading `changed`: {reloaded, current, problems}
-    Json syncHtmlUi(Project* project, const std::vector<std::filesystem::path>& changed);
+    Json syncHtmlUi(Project* project, const std::vector<std::filesystem::path>& changed,
+                    const std::vector<std::filesystem::path>& changedSince = {});
     bool isHtmlUiFile(const std::string& path);
 
     // Added / removed / renamed files and changed prefabs: the asset database (prefab GUIDs

@@ -127,6 +127,11 @@ bool watch::statPath(const fs::path& path, PathStat& out, bool identity) {
 #endif
 }
 
+bool watch::isRacyStamp(int64_t mtimeNs) {
+    const int64_t now = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    return now - mtimeNs < std::chrono::duration_cast<std::chrono::nanoseconds>(RACY_STAMP_WINDOW).count();
+}
+
 bool watch::isExcludedName(const std::string& name) {
     if (name.empty() || name[0] == '.') return true;   // .jasperengine, .git, .vscode, .trash, .#lock...
     const std::string lower = lowered(name);

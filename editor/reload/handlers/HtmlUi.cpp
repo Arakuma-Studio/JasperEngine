@@ -34,7 +34,7 @@ bool reload::isHtmlUiFile(const std::string& path) {
     return ext == ".json" || ext == ".lottie" || ext == ".frag" || ext == ".glsl";
 }
 
-Json reload::syncHtmlUi(Project* project, const std::vector<fs::path>& changed) {
+Json reload::syncHtmlUi(Project* project, const std::vector<fs::path>& changed, const std::vector<fs::path>& changedSince) {
     Json reloadedOut = Json::array();
     Json problems = Json::array();
     int current = 0;
@@ -54,6 +54,12 @@ Json reload::syncHtmlUi(Project* project, const std::vector<fs::path>& changed) 
         if (!assetPath.empty() && changedAssets.insert(assetPath).second) assetPaths.push_back(assetPath);
     }
     if (assetPaths.empty()) return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
+    std::vector<std::string> forgotten;
+    for (const fs::path& path : changedSince) {
+        const fs::path rel = path.lexically_normal().lexically_relative(assets);
+        if (rel.empty() || rel == "." || *rel.begin() == ".." || rel.is_absolute()) continue;
+        forgotten.push_back(jasperengine::normalizeHtmlUIPath(FileUtils::genericPathToUtf8(rel)));
+    }
 
     std::set<std::string> problemKeys;
     auto addProblem = [&](const ProjectChecks::Finding& finding) {
@@ -101,6 +107,8 @@ Json reload::syncHtmlUi(Project* project, const std::vector<fs::path>& changed) 
         }
         if (documents.empty()) continue;
 
+        // a save in the same timestamp tick as the one a document read keeps its time and size
+        if (!forgotten.empty()) system->forgetFileStamps(forgotten);
         const std::vector<UIDocumentSystem::Reloaded> reloaded = system->reloadChangedFiles(assetPaths);
         if (!reloaded.empty()) sceneProject->needUpdateRender = true;
         for (const UIDocumentSystem::Reloaded& entry : reloaded) {
@@ -152,10 +160,10 @@ Json reload::syncHtmlUi(Project* project, const std::vector<fs::path>& changed) 
     return {{"reloaded", reloadedOut}, {"current", current}, {"problems", problems}};
 }
 
-void reload::reloadHtmlUi(Context& ctx, const std::vector<fs::path>& files) {
+void reload::reloadHtmlUi(Context& ctx, const std::vector<fs::path>& files, const std::vector<fs::path>& changedSince) {
     if (files.empty()) return;
     const auto start = std::chrono::steady_clock::now();
-    const Json ui = syncHtmlUi(&ctx.project, files);
+    const Json ui = syncHtmlUi(&ctx.project, files, changedSince);
     for (const Json& item : ui["reloaded"]) ctx.result.uiReloaded.push_back(item);
     ctx.result.uiCurrent += ui.value("current", 0);
     for (const Json& problem : ui["problems"]) ctx.result.problems.push_back(problem);

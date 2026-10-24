@@ -119,6 +119,27 @@ TEST_F(HotReloadServiceTests, TextureFailureKeepsTheOldOneAndRetriesOnce) {
     EXPECT_EQ(static_cast<unsigned char*>(texture.getData().getData())[1], 255);
 }
 
+namespace {
+
+    // the journal change `sequence` of `file` (what the watcher delivers and McpAutoSync passes on)
+    ChangeSet journalChange(const fs::path& file, uint64_t sequence) {
+        ChangeSet set = ChangeSet::fromPaths({file});
+        set.changes[0].sequence = sequence;
+        return set;
+    }
+
+    void setMtime(const fs::path& file, fs::file_time_type time) {
+        std::error_code ec;
+        fs::last_write_time(file, time, ec);
+        ASSERT_FALSE(ec) << ec.message();
+    }
+
+    unsigned char firstTexel(Texture& texture) {
+        return static_cast<unsigned char*>(texture.getData().getData())[0];
+    }
+
+}
+
 TEST_F(HotReloadServiceTests, AppliedOnceThenCurrent) {
     const fs::path file = project.getProjectPath() / "assets" / "hr" / "once.png";
     writeSolidPng(file, 10, 20, 30);
@@ -126,16 +147,80 @@ TEST_F(HotReloadServiceTests, AppliedOnceThenCurrent) {
     ASSERT_TRUE(texture.load());
     writeSolidPng(file, 40, 50, 60);
     const uint64_t before = service.reloadCount();
-    service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
+    service.apply(journalChange(file, 7), ApplyOptions());
     settle();
     EXPECT_EQ(service.reloadCount(), before + 1);
-    // the same bytes again (the watcher's batch after an MCP call's sync): reported, not redone
-    ApplyResult again = service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
+    // the same journal change again (an MCP call's pick-up of what the watcher reloaded, just
+    // after the save): reported, not redone
+    ApplyResult again = service.apply(journalChange(file, 7), ApplyOptions());
     EXPECT_TRUE(again.pending.empty());
     ASSERT_EQ(again.reloaded.size(), 1u);
     EXPECT_EQ(again.reloaded[0]["path"], "assets/hr/once.png");
     settle();
     EXPECT_EQ(service.reloadCount(), before + 1);
+}
+
+TEST_F(HotReloadServiceTests, SettledStampSaysCurrent) {
+    const fs::path file = project.getProjectPath() / "assets" / "hr" / "settled.png";
+    writeSolidPng(file, 10, 20, 30);
+    Texture texture(file.string());
+    ASSERT_TRUE(texture.load());
+    writeSolidPng(file, 40, 50, 60);
+    setMtime(file, fs::file_time_type::clock::now() - std::chrono::seconds(10));
+    const uint64_t before = service.reloadCount();
+    service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
+    settle();
+    EXPECT_EQ(service.reloadCount(), before + 1);
+    // the file as reloaded, stamped long after its write: a path with no journal change is current
+    service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
+    settle();
+    EXPECT_EQ(service.reloadCount(), before + 1);
+}
+
+// Two saves in one timestamp tick keep the mtime and the size: a stamp taken that close to the
+// write does not say the second one is the first (test_rapid_saves_during_play's burst)
+TEST_F(HotReloadServiceTests, RacyStampIsNotTrusted) {
+    const fs::path file = project.getProjectPath() / "assets" / "hr" / "racy.png";
+    writeSolidPng(file, 10, 20, 30);
+    Texture texture(file.string());
+    ASSERT_TRUE(texture.load());
+
+    const fs::file_time_type tick = fs::file_time_type::clock::now();
+    writeSolidPng(file, 40, 50, 60);
+    setMtime(file, tick);
+    service.apply(journalChange(file, 11), ApplyOptions());
+    settle();
+    ASSERT_TRUE(texture.load());
+    EXPECT_EQ(firstTexel(texture), 40);
+
+    // the next save, same size, same tick, read later through a path (no journal change) and
+    // through the watcher's next journal change
+    const uintmax_t size = fs::file_size(file);
+    writeSolidPng(file, 70, 80, 90);
+    setMtime(file, tick);
+    ASSERT_EQ(fs::file_size(file), size) << "the same stat (time and size) as the save reloaded";
+    const uint64_t before = service.reloadCount();
+    service.apply(ChangeSet::fromPaths({file}), ApplyOptions());
+    settle();
+    EXPECT_EQ(service.reloadCount(), before + 1) << "a racy stamp is not current";
+    ASSERT_TRUE(texture.load());
+    EXPECT_EQ(firstTexel(texture), 70);
+
+    writeSolidPng(file, 100, 110, 120);
+    setMtime(file, tick);
+    ASSERT_EQ(fs::file_size(file), size);
+    service.apply(journalChange(file, 12), ApplyOptions());
+    settle();
+    EXPECT_EQ(service.reloadCount(), before + 2) << "a new journal change of a racy stamp reloads";
+    ASSERT_TRUE(texture.load());
+    EXPECT_EQ(firstTexel(texture), 100);
+
+    // the editor's own write is the one it reloaded (it knows what it wrote)
+    ChangeSet own = ChangeSet::fromPaths({file});
+    own.changes[0].origin = ChangeOrigin::Editor;
+    service.apply(own, ApplyOptions());
+    settle();
+    EXPECT_EQ(service.reloadCount(), before + 2);
 }
 
 TEST_F(HotReloadServiceTests, ShaderIncludeReachesOnlyItsForks) {

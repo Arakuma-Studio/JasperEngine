@@ -41,6 +41,9 @@ namespace jasperengine::watch {
 
     private:
         fs::path root;
+        // what FSEvents names paths by: the root with its symlinks resolved (/var/folders/...
+        // is reported as /private/var/folders/...)
+        fs::path realRoot;
         WatchSink* sink = nullptr;
         FSEventStreamRef stream = nullptr;
         dispatch_queue_t queue = nullptr;
@@ -49,6 +52,8 @@ namespace jasperengine::watch {
         static void callback(ConstFSEventStreamRef, void* info, size_t count, void* paths, const FSEventStreamEventFlags* flags,
                              const FSEventStreamEventId*);
         void handle(size_t count, const char* const* paths, const FSEventStreamEventFlags* flags);
+        // an event path in the root's own spelling
+        fs::path underRoot(const fs::path& path) const;
     };
 
 }
@@ -59,8 +64,11 @@ bool FsEventsBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::stri
     stop();
     root = rootIn.lexically_normal();
     sink = &sinkIn;
+    std::error_code ec;
+    realRoot = fs::weakly_canonical(root, ec).lexically_normal();
+    if (ec || realRoot.empty()) realRoot = root;
 
-    CFStringRef path = CFStringCreateWithCString(nullptr, root.c_str(), kCFStringEncodingUTF8);
+    CFStringRef path = CFStringCreateWithCString(nullptr, realRoot.c_str(), kCFStringEncodingUTF8);
     if (!path) {
         error = "the project path is not valid UTF-8";
         return false;
@@ -122,7 +130,7 @@ void FsEventsBackend::handle(size_t count, const char* const* paths, const FSEve
     std::vector<RawEvent> events;
     bool rootChanged = false;
     for (size_t i = 0; i < count; i++) {
-        const fs::path path = fs::path(paths[i]).lexically_normal();
+        const fs::path path = underRoot(fs::path(paths[i]).lexically_normal());
         const FSEventStreamEventFlags flag = flags[i];
         if (flag & kFSEventStreamEventFlagRootChanged) {
             rootChanged = true;
@@ -143,6 +151,13 @@ void FsEventsBackend::handle(size_t count, const char* const* paths, const FSEve
     }
     if (!events.empty() && !suppressForTesting) sink->onRawEvents(std::move(events));
     if (rootChanged) sink->onBackendFailed("the project folder was moved or deleted");
+}
+
+fs::path FsEventsBackend::underRoot(const fs::path& path) const {
+    if (realRoot == root) return path;
+    const fs::path rel = path.lexically_relative(realRoot);
+    if (rel.empty() || rel.is_absolute() || *rel.begin() == "..") return path;
+    return rel == "." ? root : (root / rel).lexically_normal();
 }
 
 bool FsEventsBackend::flush(std::chrono::milliseconds timeout) {

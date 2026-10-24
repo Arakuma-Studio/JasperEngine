@@ -137,10 +137,12 @@ namespace jasperengine::editor::mcp {
             char kind = 'm';       // a(dded), m(odified), r(emoved)
             int64_t when = 0;      // mtime, or (removed) the mtime of the nearest existing folder
             bool report = true;    // false: a tool's own write, picked up silently
+            uint64_t sequence = 0; // the file watcher's journal change (0: found by a scan)
         };
         struct Pending {
             char kind = 'm';
             bool report = true;
+            uint64_t sequence = 0;
         };
 
         int writingCalls = 0;                      // callStarted() without afterCall yet
@@ -184,7 +186,7 @@ namespace jasperengine::editor::mcp {
         bool insideSkippedDir(const std::string& rel) const;
         void restamp(const std::string& rel);
 
-        static void merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report);
+        static void merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report, uint64_t sequence = 0);
         // syncFiles' problems as reported ({path, line?, message} + the UI keys when present)
         static Json compactProblems(const Json& problems);
         // ui_reloaded (when not empty) and ui_current (when > 0)

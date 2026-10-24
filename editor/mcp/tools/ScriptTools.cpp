@@ -374,7 +374,12 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
     options.rebuildModels = sync.rebuildModels;
     // a tool's own writes reload what reads them, quietly
     options.quiet = !sync.external;
-    const ApplyResult applied = HotReloadService::get().apply(ChangeSet::fromPaths(std::vector<fs::path>(changed.begin(), changed.end())), options);
+    ChangeSet set = ChangeSet::fromPaths(std::vector<fs::path>(changed.begin(), changed.end()));
+    for (FileChange& change : set.changes) {
+        auto it = sync.sequences.find(change.path);
+        if (it != sync.sequences.end()) change.sequence = it->second;
+    }
+    const ApplyResult applied = HotReloadService::get().apply(set, options);
 
     Json allNotes = notes;
     for (const Json& note : applied.notes) allNotes.push_back(note);

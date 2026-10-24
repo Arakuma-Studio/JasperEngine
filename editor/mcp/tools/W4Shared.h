@@ -13,6 +13,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -83,6 +84,9 @@ namespace jasperengine::editor::mcp {
             bool force = false;          // reload even what is current (sync_files paths)
             bool rebuildModels = false;  // sync_files rebuild_models
             bool external = false;       // changes another program made (Console lines); else a tool's own writes
+            // the file watcher's journal change of a path (McpAutoSync's pick-up): what the
+            // watcher reloaded for that change is current, whatever the stat says
+            std::map<fs::path, uint64_t> sequences;
         };
         Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changed, bool full, const SyncOptions& options = {});
         // HTML UI documents using changed files (.html/.htm/.css and the images, svg, fonts,

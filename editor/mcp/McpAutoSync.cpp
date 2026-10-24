@@ -499,14 +499,15 @@ void McpAutoSync::restamp(const std::string& rel) {
     mapFor(rel)[rel] = {st.mtime, st.size};
 }
 
-void McpAutoSync::merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report) {
+void McpAutoSync::merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report, uint64_t sequence) {
     auto it = into.find(rel);
     if (it == into.end()) {
-        into[rel] = {kind, report};
+        into[rel] = {kind, report, sequence};
         return;
     }
     Pending& p = it->second;
     p.report = p.report || report;
+    p.sequence = std::max(p.sequence, sequence);
     if (p.kind == 'a' && kind == 'r') {
         into.erase(it);   // came and went
     } else if (p.kind == 'a') {
@@ -559,12 +560,15 @@ void McpAutoSync::addUiReport(Json& report, const Json& reloaded, int current) {
 Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes) {
     std::vector<fs::path> paths;
     std::set<std::string> reportable;
+    w4::SyncOptions sync;
     for (const Change& change : changes) {
         paths.push_back((root / fs::path(change.rel)).lexically_normal());
         if (change.report) reportable.insert(change.rel);
+        // the journal change: what the watcher reloaded for it already is not done again
+        if (change.sequence != 0) sync.sequences[paths.back()] = change.sequence;
     }
     // quiet: the call's result reports it (the Console lines are the watcher's)
-    Json result = w4::syncFiles(ctx, paths, false);
+    Json result = w4::syncFiles(ctx, paths, false, sync);
     if (reportable.empty()) return nullptr;
 
     Json changed = Json::array(), added = Json::array(), removed = Json::array();
@@ -630,7 +634,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     std::map<std::string, Pending> merged;
     for (auto& [rel, pending] : pendingExternal) merge(merged, rel, pending.kind, pending.report);
     pendingExternal.clear();
-    for (const Change& change : found) merge(merged, change.rel, change.kind, true);
+    for (const Change& change : found) merge(merged, change.rel, change.kind, true, change.sequence);
 
     const bool playing = ctx.isPlaying();
     if (playing) {
@@ -641,6 +645,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         // HTML UI files are not deferred: the documents (the running ones and the edit-time
         // ones) reload now. Images go to the documents now and to the scene textures after Play.
         std::vector<fs::path> uiPaths, imagePaths;
+        w4::SyncOptions uiSync;
         bool otherDeferred = false;
         for (const auto& [rel, pending] : merged) {
             const fs::path path = (root / FileUtils::pathFromUtf8(rel)).lexically_normal();
@@ -649,6 +654,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
+                if (pending.sequence != 0) uiSync.sequences[path] = pending.sequence;
                 continue;
             }
             if (Util::isImageFile(rel)) imagePaths.push_back(path);
@@ -658,12 +664,13 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         Json uiProblems = Json::array(), uiReloaded = Json::array();
         int uiCurrent = 0;
         if (!uiPaths.empty()) {
-            const Json synced = w4::syncFiles(ctx, uiPaths, false);
+            const Json synced = w4::syncFiles(ctx, uiPaths, false, uiSync);
             uiProblems = synced.value("problems", Json::array());
             uiReloaded = synced.value("ui_reloaded", Json::array());
             uiCurrent = synced.value("ui_current", 0);
         }
-        if (!imagePaths.empty()) {
+        // (the watcher's own reload of an image reloads the documents showing it)
+        if (!imagePaths.empty() && source != "watcher") {
             const Json synced = w4::syncHtmlUi(ctx, imagePaths);
             for (const Json& problem : synced["problems"]) uiProblems.push_back(problem);
             for (const Json& item : synced["reloaded"]) uiReloaded.push_back(item);
@@ -719,7 +726,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     }
 
     std::vector<Change> changes;
-    for (const auto& [rel, pending] : merged) changes.push_back({rel, pending.kind, 0, pending.report});
+    for (const auto& [rel, pending] : merged) changes.push_back({rel, pending.kind, 0, pending.report, pending.sequence});
     HotReloadService& reloads = HotReloadService::get();
     const uint64_t serial = reloads.lastSerial();
     Json report = process(ctx, changes);
@@ -802,7 +809,7 @@ bool McpAutoSync::takeJournal(std::vector<Change>& found) {
             if (rel.empty() || rel.is_absolute()) return;
             const std::string key = FileUtils::genericPathToUtf8(rel);
             if (key == "." || key.rfind("..", 0) == 0 || insideSkippedDir(key) || !tracks(key) || isHandled(key)) return;
-            taken.push_back({key, kind, change.mtimeNs});
+            taken.push_back({key, kind, change.mtimeNs, true, change.sequence});
         };
         switch (change.kind) {
             case FileChangeKind::Added: add(change.path, 'a'); break;

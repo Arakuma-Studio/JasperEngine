@@ -64,6 +64,16 @@ namespace jasperengine {
         // open on Windows, part of the stat on POSIX).
         JASPERENGINE_API bool statPath(const std::filesystem::path& path, PathStat& out, bool identity = true);
 
+        // A stamp taken this close to the file's mtime cannot tell the write it saw from a later
+        // one in the same timestamp tick (ext4's coarse clock ticks every 1-10 ms, NTFS updates
+        // the time every ~16 ms): two saves 1 ms apart can have the same mtime and size. Such a
+        // stamp is "racy" (as git calls its index entries) and is not trusted to say a file is
+        // unchanged. Shorter than the coalescer's quiet window, so the watcher's own stamps are
+        // not racy.
+        constexpr std::chrono::milliseconds RACY_STAMP_WINDOW{100};
+        // `mtimeNs` (ns since the Unix epoch) is within RACY_STAMP_WINDOW of now (or ahead of it)
+        JASPERENGINE_API bool isRacyStamp(int64_t mtimeNs);
+
         // The watch exclusions (S05 R2, the rule McpAutoSync used): a name starting with '.',
         // and build, node_modules and trash in any case. Applied to every component.
         JASPERENGINE_API bool isExcludedName(const std::string& name);
