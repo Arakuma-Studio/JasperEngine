@@ -10,6 +10,7 @@
 #include "io/FileData.h"
 #include "io/Data.h"
 #include "io/ResourcePack.h"
+#include "pool/AnimationClipPool.h"
 #include "pool/ModelPool.h"
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
@@ -184,9 +185,9 @@ std::string MeshSystem::getImportedModelPath(const std::string& filename){
     return (std::filesystem::path(importPath) / source.lexically_relative(assets)).generic_string() + ".glb";
 }
 
-static std::recursive_mutex& getPooledGLTFMutex(){
-    static std::recursive_mutex mutex;
-    return mutex;
+std::recursive_mutex& MeshSystem::getPooledGLTFMutex(){
+    static std::recursive_mutex* mutex = new std::recursive_mutex();
+    return *mutex;
 }
 
 // Name of a converted or baked copy of an accessor's data appended to a (pooled) glTF model:
@@ -1085,6 +1086,21 @@ bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model
     return loader.LoadASCIIFromFile(model, err, warn, filename);
 }
 
+bool MeshSystem::parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err){
+    tinygltf::TinyGLTF loader;
+    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes});
+    loader.SetImagesAsIs(true); // never decoded: the caller reads nodes and animations only
+
+    std::string error;
+    std::string warn;
+    const bool loaded = loadGLTFFile(loader, &model, &error, &warn, filename);
+    if (!loaded || !error.empty()){
+        if (err) *err = error.empty() ? "cannot load model " + filename : error;
+        return false;
+    }
+    return true;
+}
+
 bool MeshSystem::readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *) {
     Data filedata;
 
@@ -1594,6 +1610,8 @@ void MeshSystem::invalidateModelFile(const std::string& filename){
         }
     }
     ModelPool::invalidate(poolKey);
+    // the sub-clips built from the old parse (spec 9.R13)
+    AnimationClipPool::invalidateModel(filename);
 }
 
 void MeshSystem::releasePreloadedModel(const std::string& filename){
@@ -4744,9 +4762,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
     // Building child entities mutates the ECS, so off-thread previews keep the flat path.
     const bool canUseChildEntities = !mergeMeshNodes && !Engine::isAsyncThread();
+    // Under an Animation Player the sub-clip paths address one entity per glTF node (spec 9.R3).
+    // A reload that keeps its entities keeps their layout: the editor reloads to switch it.
+    const bool forceNodeHierarchy = canUseChildEntities && !skipEntities && isNodeHierarchyForced(entity);
     const bool useNodeHierarchy = canUseChildEntities &&
         (!model.nodesIdMapping.empty() || (!skipEntities &&
-            (!model.gltfModel->animations.empty() || model.gltfModel->skins.size() > 1)));
+            (!model.gltfModel->animations.empty() || model.gltfModel->skins.size() > 1 || forceNodeHierarchy)));
     const bool useChildEntities = canUseChildEntities &&
         (meshNodes.size() > 1 || useNodeHierarchy);
 
@@ -5559,10 +5580,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     // Animation tracks are also model-generated entities, so the off-thread thumbnail worker skips
     // building them for the same reason as the skeleton above (a static preview never plays them).
+    // Not either when an Animation Player plays the file's animations as sub-clips (spec 9.R15).
     if (!skipEntities && !Engine::isAsyncThread()) {
         model.animations.clear();
 
-        for (size_t i = 0; i < model.gltfModel->animations.size(); i++) {
+        const size_t animationCount = model.animationEntities ? model.gltfModel->animations.size() : 0;
+        for (size_t i = 0; i < animationCount; i++) {
             const tinygltf::Animation &animation = model.gltfModel->animations[i];
 
             Entity anim;
@@ -6203,6 +6226,38 @@ bool MeshSystem::hasInstancedMesh(Entity entity) const{
     return signature.test(scene->getComponentId<InstancedMeshComponent>());
 }
 
+bool MeshSystem::isNodeHierarchyForced(Entity entity) const{
+    // the entity and its Transform ancestors (bounded: a broken parent loop ends the walk)
+    Entity current = entity;
+    for (int depth = 0; current != NULL_ENTITY && depth < 65536; depth++){
+        if (!scene->isEntityCreated(current)){
+            break;
+        }
+        if (scene->findComponent<AnimationPlayerComponent>(current)){
+            return true;
+        }
+        const Transform* transform = scene->findComponent<Transform>(current);
+        if (!transform){
+            break;
+        }
+        current = transform->parent;
+    }
+    return false;
+}
+
+bool MeshSystem::needsNodeHierarchyReload(Entity entity) const{
+    const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+    // not loaded yet: its first load builds the forced layout itself
+    if (!model || model->filename.empty() || model->loadedFilename.empty()){
+        return false;
+    }
+    // merged static models animate only at the root; OBJ files have no nodes
+    if (model->mergeStaticMeshes || FileData::getFilePathExtension(model->filename) == "obj"){
+        return false;
+    }
+    return model->nodesIdMapping.empty() && isNodeHierarchyForced(entity);
+}
+
 void MeshSystem::clearBoneMapping(ModelComponent& model){
     if (model.nodesIdMapping.empty()) {
         for (auto const& bone : model.bonesIdMapping){
@@ -6439,6 +6494,9 @@ bool MeshSystem::createOrUpdateModel(Entity entity, ModelComponent& model, MeshC
             }
 
             std::string ext = FileData::getFilePathExtension(model.filename);
+            // Entities that exist (a decoded scene) are kept, with their layout. Animation entities
+            // count only when the model makes them (animationEntities): one that does not keeps its
+            // bones and mesh nodes, so it still skips, and a merged one rebuilds without them.
             bool skipEntities = !model.filename.empty() && (!model.bonesIdMapping.empty() || !model.animations.empty() || !model.meshNodesMapping.empty());
             bool asyncLoading = Engine::isAsyncLoading();
             bool ret = false;

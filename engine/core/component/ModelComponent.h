@@ -58,6 +58,11 @@ namespace jasperengine{
         // same-entity features such as InstancedMeshComponent.
         bool mergeStaticMeshes = false;
 
+        // The loader makes one entity per glTF animation (an AnimationComponent with its tracks,
+        // in `animations`). False when an Animation Player plays the model's sub-clips instead
+        // (Inspector "Use Animation Player", animation clips spec 9.R15): loads and reloads skip them.
+        bool animationEntities = true;
+
         std::string loadedFilename;
         bool loadedMergeStaticMeshes = false;
         bool needUpdateModel = true;

@@ -39,8 +39,9 @@
 //   loaded through the asset-relative component path.
 // - Sub-clip branch (implemented by T1a around T1c's builders): the alias table comes from
 //   anim::listModelFileClips(model), the clip from anim::buildModelSubClip("<model>#<name>")
-//   with the name of the resolved index; until T1c implements them every sub-clip getOrLoad
-//   fails with their error.
+//   with the name of the resolved index. The builders read the pooled tinygltf model under the
+//   pooled-glTF mutex (MeshSystem::getPooledGLTFMutex), never under the pool mutex.
+//   MeshSystem::invalidateModelFile calls invalidateModel (the editor's model reload, R13).
 
 #ifndef ANIMATION_CLIP_POOL_H
 #define ANIMATION_CLIP_POOL_H
