@@ -1581,8 +1581,10 @@ void getPostProcessingStatusTool(const CallPtr& call) {
     }
     std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
     const PostProcessingSettings& settings = scene->scene->getPostProcessing();
-    // what the renderer applies now (the settings' tiers before its first frame)
-    const PostProcessingTiers tiers = render ? render->getActivePostProcessingTiers() : RenderSystem::getPostProcessingTiers(settings);
+    // what applies: the running game's renderer, else what the settings draw on the next frame
+    // (an idle editor renders on demand, so its last tiers can be older than the settings)
+    const bool playing = scene->playState == ScenePlayState::PLAYING || scene->playState == ScenePlayState::PAUSED;
+    const PostProcessingTiers tiers = (render && playing) ? render->getActivePostProcessingTiers() : RenderSystem::getPostProcessingTiers(settings);
     Json features = Json::array();
     const int count = ShaderPool::getShaderPropertyCount(ShaderType::BLIT);
     for (int bit = 0; bit < count && bit < 32; bit++) {
@@ -1595,8 +1597,7 @@ void getPostProcessingStatusTool(const CallPtr& call) {
                           {"full_resolution", pass.fullResolution}});
     }
     const DynamicResolutionStatus status = render ? render->getDynamicResolutionStatus() : DynamicResolutionStatus();
-    const float applied = render ? render->getAppliedRenderScale() : tiers.renderScale;
-    const bool playing = scene->playState == ScenePlayState::PLAYING || scene->playState == ScenePlayState::PAUSED;
+    const float applied = (render && playing) ? render->getAppliedRenderScale() : tiers.renderScale;
     Json out = {{"scene_id", scene->id}, {"playing", playing}, {"tail_color", tiers.tailColor}, {"uber", tiers.uber},
                 {"uber_features", features}, {"render_scale", McpValues::number(tiers.renderScale)},
                 {"render_scale_applied", McpValues::number(applied)}, {"passes", passes}, {"passes_estimate", true},

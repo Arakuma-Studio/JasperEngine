@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 import harness
+import yaml
 from harness import Editor
 
 CI = True
@@ -174,24 +175,36 @@ async def test_inspect_color_lut(ed: Editor):
 
 
 async def test_resave_identical(ed: Editor):
-    """AC18: every scene of every tools/fixtures project opens and saves to the same bytes."""
-    ed.require_tools("list_scenes", "open_scene", "save_scene")
+    """AC18: every scene of every tools/fixtures project opens and saves with its postProcessing
+    unchanged and no S13 key, and a second open and save gives the same bytes. (The fixtures are
+    partly hand-written: their first save writes the editor's full form, before and after S13.)"""
+    ed.require_tools("list_scenes", "open_scene", "save_scene", "close_scene")
     projects = sorted(p.parent for p in (harness.REPO / "tools" / "fixtures").glob("*/project.yaml"))
     ed.check(len(projects) >= 5, f"fixture projects: {projects}")
     checked = 0
     for source in projects:
         async with Editor(source, label=source.name) as fixture:
             scenes = [s for s in (await fixture.call("list_scenes"))["scenes"] if s.get("path")]
+            # an unsaved scene stays open while each fixture scene is closed and opened again
+            await fixture.call("create_scene", name="Keeper", type="3d")
             for scene in scenes:
                 path = fixture.project / scene["path"]
-                before = path.read_bytes()
+                original = yaml.safe_load(path.read_text())
                 opened = await fixture.call("open_scene", scene=scene["path"])
                 await fixture.call("save_scene", scene=opened["scene"]["id"])
-                after = path.read_bytes()
-                if after != before:
+                first = path.read_bytes()
+                saved = yaml.safe_load(first)
+                before_pp = (original.get("scene") or {}).get("postProcessing")
+                after_pp = (saved.get("scene") or {}).get("postProcessing")
+                # (an S13 key written for a default would show here: the saved struct is the old one)
+                ed.check(after_pp == before_pp, f"{source.name}/{scene['path']}: postProcessing {before_pp} -> {after_pp}")
+                await fixture.call("close_scene", scene=opened["scene"]["id"], unsaved="discard")
+                opened = await fixture.call("open_scene", scene=scene["path"])
+                await fixture.call("save_scene", scene=opened["scene"]["id"])
+                second = path.read_bytes()
+                if second != first:
                     fixture.keep = True
-                    (Path(tempfile.gettempdir()) / f"resave-{source.name}-{path.name}").write_bytes(after)
-                ed.check(after == before, f"{source.name}/{scene['path']} re-saves byte-identically "
-                                          f"({len(before)} -> {len(after)} bytes)")
+                    (Path(tempfile.gettempdir()) / f"resave-{source.name}-{path.name}").write_bytes(second)
+                ed.check(second == first, f"{source.name}/{scene['path']} re-saves byte-identically ({len(first)} -> {len(second)} bytes)")
                 checked += 1
-    print(f"{checked} fixture scenes re-saved byte-identically")
+    print(f"{checked} fixture scenes re-saved byte-identically, postProcessing unchanged")

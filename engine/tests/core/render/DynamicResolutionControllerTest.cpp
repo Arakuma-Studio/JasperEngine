@@ -136,7 +136,7 @@ TEST(DynamicResolutionController, DisconnectedLeverHoldsAndLearnsNothing)
     }
     EXPECT_FLOAT_EQ(c.getScale(), cfg.maxScale) << "must not move a lever that is not connected";
     EXPECT_TRUE(c.getStats().scaleDisconnected);
-    EXPECT_FALSE(c.getStats().responseFitvalid) << "disconnected frames must not feed the fit";
+    EXPECT_FALSE(c.getStats().responseFitValid) << "disconnected frames must not feed the fit";
     EXPECT_FALSE(c.getStats().scalingIneffective)
         << "'no post-processed view' is not the same finding as 'scaling does not help here'";
 
@@ -147,7 +147,7 @@ TEST(DynamicResolutionController, DisconnectedLeverHoldsAndLearnsNothing)
     EXPECT_FALSE(c.getStats().scaleDisconnected);
 }
 
-TEST(DynamicResolutionController, ResponseFitUsesappliedScaleNotRequested)
+TEST(DynamicResolutionController, ResponseFitUsesAppliedScaleNotRequested)
 {
     // The pipeline snaps the internal extent to even pixels and only splits
     // when TAA is active, so the applied ratio is not the requested scale. The
@@ -173,7 +173,7 @@ TEST(DynamicResolutionController, ResponseFitUsesappliedScaleNotRequested)
         s.appliedScale = applied;
         c.update(s, DT);
     }
-    ASSERT_TRUE(c.getStats().responseFitvalid);
+    ASSERT_TRUE(c.getStats().responseFitValid);
     EXPECT_NEAR(c.getStats().estimatedUnscalableMs, model.unscalable, 1.5f)
         << "fitted U = " << c.getStats().estimatedUnscalableMs
         << " — the fit modelled the requested scale, not the rendered one";
@@ -536,7 +536,7 @@ TEST(DynamicResolutionController, ResistsOscillationUnderNoisyMeasurements)
         << "noisy loop settled at " << settled << " ms";
 }
 
-TEST(DynamicResolutionController, unscalableHintConvergesFasterThanBlindLoop)
+TEST(DynamicResolutionController, UnscalableHintConvergesFasterThanBlindLoop)
 {
     // Without the hint the ratio law under-corrects by the unscalable residual
     // and has to walk in; with it, the first correction is nearly exact. Both
@@ -668,7 +668,7 @@ TEST(DynamicResolutionController, FillBoundContentStillDropsWhenTargetUnreachabl
     EXPECT_TRUE(c.getStats().saturatedLow);
 }
 
-TEST(DynamicResolutionController, ResponseFitRecoversTheunscalableComponent)
+TEST(DynamicResolutionController, ResponseFitRecoversTheUnscalableComponent)
 {
     const SyntheticGpu model{8.0f, 16.0f}; // U = 8 ms
     DynamicResolutionConfig cfg = responseConfig();
@@ -678,7 +678,7 @@ TEST(DynamicResolutionController, ResponseFitRecoversTheunscalableComponent)
     c.reset(cfg.maxScale);
 
     runClosedLoop(c, model, 1500);
-    ASSERT_TRUE(c.getStats().responseFitvalid);
+    ASSERT_TRUE(c.getStats().responseFitValid);
     EXPECT_NEAR(c.getStats().estimatedUnscalableMs, model.unscalable, 1.5f)
         << "fitted U = " << c.getStats().estimatedUnscalableMs;
     EXPECT_NEAR(c.getStats().estimatedFullRangeSavingMs,
