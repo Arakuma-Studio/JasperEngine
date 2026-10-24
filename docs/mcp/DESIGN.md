@@ -33,20 +33,54 @@ windows, Project, command histories). Two transports, same server:
    Client config: `{"command": "jasperengine-editor", "args": ["mcp", "--project", "..."]}`.
 2. **Streamable HTTP**: `http://127.0.0.1:<port>/mcp`, for attaching an agent to an editor a
    human already has open. Enabled by `--mcp-port N` on the normal editor command line or
-   by Editor Settings > MCP (enable + port, default 47615), persisted in AppSettings.
-   Bind 127.0.0.1 only; reject requests whose `Origin` is not localhost (DNS rebinding);
-   optional bearer token. POST /mcp answers `application/json` (one JSON-RPC response) or
-   `text/event-stream` when the request wants progress notifications; GET /mcp → 405;
-   DELETE /mcp ends the session. `Mcp-Session-Id` header issued at initialize.
-   Hand-written minimal HTTP/1.1 over BSD sockets / Winsock (no new dependency).
+   by the MCP Server window (Window > MCP: Serve over HTTP + port, default 47615), persisted
+   in AppSettings. Bind 127.0.0.1 only; reject requests whose `Origin` or `Host` is not
+   localhost (DNS rebinding). Every request needs `Authorization: Bearer <token>` (401 and
+   `WWW-Authenticate: Bearer` otherwise, compared in constant time): settings.yaml
+   `mcp.http_token`, 64 random hex digits made the first time HTTP is enabled; the MCP Server
+   window shows and copies it, copies the `claude mcp add` connect command and makes a new
+   one (applies to the next request). POST /mcp answers `application/json` (one JSON-RPC
+   response) or `text/event-stream` when the request wants progress notifications (2026-07-28:
+   once the first one comes; an answer before any goes as JSON);
+   GET /mcp → 405; DELETE /mcp ends an initialize-era session. Hand-written minimal
+   HTTP/1.1 over BSD sockets / Winsock (no new dependency).
 
-Protocol: JSON-RPC 2.0, MCP versions `2025-11-25`, `2025-06-18`, `2025-03-26`,
-`2024-11-05` (negotiate: echo the client's if supported, else the newest). Capabilities:
-`tools`, `resources`, `prompts`, `logging`. Methods: `initialize`, `notifications/initialized`,
-`ping`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`,
-`resources/read`, `prompts/list`, `prompts/get`, `logging/setLevel`,
-`notifications/cancelled`, `notifications/progress` (server → client).
-`initialize` returns `instructions` (the agent guide, see below).
+   **Read-only mode**: the MCP Server window's "Allow changes" switch (settings.yaml
+   `mcp.allow_changes`, default on). Off, HTTP clients only get the tools annotated
+   `readOnlyHint` in `tools/list` and `tools/call` (`batch` is not one, and every nested call
+   of a batch is gated the same way: `McpCall::changesGated`), checked again when a queued
+   call runs. stdio clients are not affected: they launched the editor themselves (and the
+   spec has stdio take credentials from the environment, so stdio has no token either).
+
+Protocol: JSON-RPC 2.0, dual-era.
+
+- **2026-07-28** (stateless): no `initialize`; every request names the version in
+  `params._meta["io.modelcontextprotocol/protocolVersion"]` and carries
+  `io.modelcontextprotocol/clientCapabilities` (else -32602, HTTP 400); an unknown version
+  is `UnsupportedProtocolVersion` (-32022, `data.supported` / `data.requested`, HTTP 400).
+  `server/discover` returns `supportedVersions` (2026-07-28 first), `capabilities`
+  (`tools`, `resources`, `prompts`), `_meta["io.modelcontextprotocol/serverInfo"]` and
+  `instructions`. Every result has `resultType: "complete"` and the serverInfo `_meta`; the
+  cacheable ones (`server/discover`, `tools/list`, `prompts/list`, `resources/list`,
+  `resources/templates/list`, `resources/read`) `ttlMs: 0, cacheScope: "private"` (the tool
+  list changes with "Allow changes"). An unknown method (`initialize`, `logging/setLevel`
+  included) is -32601 with HTTP 404; a missing resource is -32602. Over HTTP there is no
+  session (no `Mcp-Session-Id` minted or echoed; each request gets a stateless McpSession of
+  its own), the `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` (`params.name` of
+  `tools/call` / `prompts/get`, `params.uri` of `resources/read`; `=?base64?…?=` decoded)
+  headers must mirror the body (`HeaderMismatch` -32020, HTTP 400:
+  `McpTransportHttp::checkModernHeaders`), and closing the connection before the answer
+  cancels the request. Over stdio the same requests are told apart by their `_meta`, and
+  `notifications/cancelled` cancels.
+- **2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05** (initialize handshake; negotiate: echo
+  the client's if supported, else the newest). Capabilities: `tools`, `resources`, `prompts`,
+  `logging`. Methods: `initialize`, `notifications/initialized`, `ping`, `tools/list`,
+  `tools/call`, `resources/list`, `resources/templates/list`, `resources/read`,
+  `prompts/list`, `prompts/get`, `logging/setLevel`, `notifications/cancelled`,
+  `notifications/progress` (server → client). HTTP: `Mcp-Session-Id` issued at initialize
+  and required afterwards; an `MCP-Protocol-Version` header that is none of these is 400.
+
+`initialize` and `server/discover` return `instructions` (the agent guide, see below).
 
 ## Code layout (`editor/mcp/`)
 

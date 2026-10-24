@@ -75,6 +75,7 @@ GameViewSettings AppSettings::gameViewSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
+bool AppSettings::mcpHttpAllowChanges = true;
 bool AppSettings::htmlUiAutoImport = true;
 bool AppSettings::htmlUiVerboseDiagnostics = false;
 
@@ -261,6 +262,7 @@ bool AppSettings::loadSettings() {
             if (mcpNode["http_enabled"]) mcpHttpEnabled = mcpNode["http_enabled"].as<bool>();
             if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
+            if (mcpNode["allow_changes"]) mcpHttpAllowChanges = mcpNode["allow_changes"].as<bool>();
         }
 
         if (settingsData["html_ui"]) {
@@ -395,6 +397,7 @@ bool AppSettings::saveSettings() {
         mcpNode["http_enabled"] = mcpHttpEnabled;
         mcpNode["http_port"] = mcpHttpPort;
         if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
+        mcpNode["allow_changes"] = mcpHttpAllowChanges;
         settingsData["mcp"] = mcpNode;
 
         YAML::Node htmlUiNode;
@@ -675,6 +678,20 @@ std::string AppSettings::getMcpHttpToken() {
 void AppSettings::setMcpHttp(bool enabled, int port) {
     mcpHttpEnabled = enabled;
     mcpHttpPort = port;
+    saveSettings();
+}
+
+void AppSettings::setMcpHttpToken(const std::string& token) {
+    mcpHttpToken = token;
+    saveSettings();
+}
+
+bool AppSettings::getMcpHttpAllowChanges() {
+    return mcpHttpAllowChanges;
+}
+
+void AppSettings::setMcpHttpAllowChanges(bool allow) {
+    mcpHttpAllowChanges = allow;
     saveSettings();
 }
 

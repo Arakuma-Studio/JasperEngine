@@ -5,7 +5,7 @@
     tools/mcp/run-tests.sh -j 4                 # 4 test files at a time (one editor each)
     tools/mcp/run-tests.sh tests/test_protocol.py
     tools/mcp/run-tests.sh --fake tools/mcp/tests/test_protocol.py   # fake-server protocol checks
-    tools/mcp/run-tests.sh --url http://127.0.0.1:47615/mcp   # against an editor already running
+    JASPER_MCP_TOKEN=<token> tools/mcp/run-tests.sh --url http://127.0.0.1:47615/mcp   # against an editor already running
 
 A test is a module-level `async def test_xxx(ed)` (ed: harness.Editor) or `async def test_xxx()`.
 Tests of a file run in source order and share one editor, started on a fresh scratch copy of the

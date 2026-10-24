@@ -11,12 +11,13 @@ Run with:  uv run --no-project --with mcp --with pyyaml python <script>
 
     async with Editor(create=True) as ed: ...        # a new empty project
     async with Editor(project="/path/proj") as ed: ...   # a copy of that project
-    async with Editor(url="http://127.0.0.1:47615/mcp") as ed: ...   # attach over HTTP
+    async with Editor(url="http://127.0.0.1:47615/mcp", token="...") as ed: ...   # attach over HTTP
 
 Each stdio Editor gets a scratch directory (temp) holding:
     project/             the copied (or created) project
     home/                $HOME of the editor
-    settings.yaml        editor settings (the editor reads/writes it in its cwd)
+    settings.yaml        editor settings (the editor reads/writes it in its cwd); its
+                         mcp.http_token is HTTP_TOKEN, so `--http-port` editors take that token
     editor.stderr.log    everything the editor wrote to stderr (stdout is the protocol)
 The scratch directory is deleted on success and kept (path printed) on failure,
 or always kept with keep=True / JASPER_KEEP_SCRATCH=1.
@@ -29,6 +30,7 @@ Environment:
     JASPER_FAKE=1    use tools/mcp/fake_server.py instead of the editor (harness self-test)
     JASPER_KEEP_SCRATCH=1   keep scratch directories
     JASPER_MCP_URL   when set, Editor() with no project/url attaches to this URL instead
+    JASPER_MCP_TOKEN bearer token for url mode (the editor's MCP window copies it)
 """
 
 from __future__ import annotations
@@ -57,6 +59,10 @@ from mcp.shared.exceptions import MCPError
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
+
+# The bearer token of the editors the harness starts (settings.yaml mcp.http_token): HTTP
+# requires one, and an editor with none would make a random one
+HTTP_TOKEN = "jasper-harness-http-token"
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +251,7 @@ class Scratch:
             shutil.copytree(src, proj, symlinks=True, ignore=shutil.ignore_patterns(".git"))
         settings: dict[str, Any] = {
             "window": {"width": 1600, "height": 900, "maximized": True},
+            "mcp": {"http_token": HTTP_TOKEN},
         }
         if not create:
             settings["last_project_path"] = str(proj)
@@ -350,7 +357,7 @@ class Editor:
     project   project dir or project.yaml to copy (default: JASPER_FIXTURE / build/fixture-unity)
     create    start with a new empty project (`mcp --create <scratch>/project --name <name>`)
     url       attach to a running editor over Streamable HTTP instead of launching one
-    token     bearer token for url mode
+    token     bearer token for url mode (default JASPER_MCP_TOKEN)
     scratch_prefix  name prefix of the scratch directory (e.g. non-ASCII, to test such paths)
     xvfb      "editor"  (default) pass --headless with DISPLAY unset: the editor spawns its Xvfb
               "harness" the harness spawns `Xvfb -displayfd` and sets DISPLAY
