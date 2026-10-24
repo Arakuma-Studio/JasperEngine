@@ -23,6 +23,13 @@
 #include <sstream>
 #include <unordered_set>
 
+// One stat per file on Linux (std::filesystem asks twice: time, then size); the time is built
+// as libstdc++'s last_write_time builds it, so the cache compares equal either way
+#if defined(__linux__) && defined(__GLIBCXX__) && __cplusplus > 201703L
+#define JASPER_ASSETDB_POSIX_STAT 1
+#include <sys/stat.h>
+#endif
+
 using namespace jasperengine;
 namespace fs = std::filesystem;
 using Json = nlohmann::json;
@@ -390,6 +397,19 @@ bool editor::AssetDatabase::fileExists(const std::string& relative) const {
 void editor::AssetDatabase::statFile(const std::string& relative, fs::file_time_type& time, uint64_t& size) const {
     std::error_code ec;
     const fs::path full = projectPath / relative;
+#ifdef JASPER_ASSETDB_POSIX_STAT
+    struct stat st;
+    if (::stat(full.c_str(), &st) != 0) {
+        time = {};
+        size = 0;
+        return;
+    }
+    const auto sinceEpoch = std::chrono::seconds(st.st_mtim.tv_sec) + std::chrono::nanoseconds(st.st_mtim.tv_nsec);
+    time = fs::file_time_type::clock::from_sys(
+        std::chrono::system_clock::time_point(std::chrono::duration_cast<std::chrono::system_clock::duration>(sinceEpoch)));
+    size = static_cast<uint64_t>(st.st_size);
+    return;
+#endif
     time = fs::last_write_time(full, ec);
     if (ec) {
         time = {};
