@@ -12,12 +12,17 @@
 #include "component/Joint3DComponent.h"
 #include "component/ModelComponent.h"
 #include "physics/ConvexDecomposition.h"
+#include "physics/JoltShapeBuilder.h"
 #include "physics/PlacementWorld.h"
 #include "subsystem/MeshSystem.h"
+
+#include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <vector>
@@ -302,7 +307,9 @@ TEST(PlacementWorldControl, DeepOverlapLiftedOutThenSettled) {
         settings.pushNeighbours = c.other == 2;
         PlacementWorld world(&t.scene, settings);
         ASSERT_TRUE(world.addMover(b));
-        if (c.other == 1) ASSERT_TRUE(world.addMover(a));
+        if (c.other == 1) {
+            ASSERT_TRUE(world.addMover(a));
+        }
         AABB region = world.getMoversBounds();
         region = AABB(region.getMinimum() - Vector3(2, 2, 2), region.getMaximum() + Vector3(2, 2, 2));
         settings.killY = region.getMinimum().y - 50.0f;
@@ -1428,6 +1435,343 @@ TEST(PlacementWorldReadBack, SameCallsSameHash) {
     const uint64_t second = run(0.0f);
     EXPECT_EQ(first, second);
     EXPECT_NE(first, run(0.01f));
+}
+
+#endif
+
+// ---- review fixes ---------------------------------------------------------------------------
+
+#ifdef JASPERENGINE_PHYSICS_3D
+
+namespace {
+
+    // A plank 2 x 0.2 x 0.2 turned 90 degrees about Y under a parent scaled (4, 1, 1): the
+    // renderer's modelMatrix makes it 0.8 m along x and 2 m along z (not 8 m by 0.2 m)
+    Entity stretchedPlank(TestScene& t, const Vector3& at) {
+        const Entity parent = t.entity(at);
+        t.setScale(parent, Vector3(4, 1, 1));
+        const Entity plank = t.box(Vector3(2, 0.2f, 0.2f), Vector3(0, 0, 0), parent);
+        t.setRotation(plank, axisAngle(Vector3(0, 1, 0), 90.0f * DEG));
+        return parent;
+    }
+
+}
+
+TEST(PlacementWorldReview, NonUniformParentScaleWithARotatedChild) {
+    TestScene t;
+    const Entity mover = stretchedPlank(t, Vector3(0, 3, 0));
+    const Entity context = stretchedPlank(t, Vector3(10, 0, 0));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    ASSERT_TRUE(world.addMover(mover));
+    const Vector3 size = world.getMoversBounds().getSize();
+    EXPECT_NEAR(size.x, 0.8f, 1e-3f);
+    EXPECT_NEAR(size.y, 0.2f, 1e-3f);
+    EXPECT_NEAR(size.z, 2.0f, 1e-3f);
+
+    world.ensureContext(everywhere);
+    PlacementRayHit hit;
+    EXPECT_TRUE(world.raycast(Ray(Vector3(10.35f, 5, 0.9f), Vector3(0, -10, 0)), hit));
+    EXPECT_NEAR(hit.point.y, 0.1f, 1e-3f);
+    EXPECT_FALSE(world.raycast(Ray(Vector3(10.0f, 5, 3.0f), Vector3(0, -10, 0)), hit));
+    (void)context;
+
+    // instanced boxes follow the same map
+    TestScene field;
+    const Entity parent = field.entity(Vector3(0, 0, 0));
+    field.setScale(parent, Vector3(4, 1, 1));
+    const Entity instancedEntity = field.box(Vector3(2, 0.2f, 0.2f), Vector3(0, 0, 0), parent);
+    InstancedMeshComponent instanced;
+    InstanceData turned;
+    turned.rotation = axisAngle(Vector3(0, 1, 0), 90.0f * DEG);
+    instanced.instances = {turned};
+    field.scene.addComponent<InstancedMeshComponent>(instancedEntity, instanced);
+    field.resolve();
+    PlacementWorld fieldWorld(&field.scene, PlacementWorldSettings());
+    fieldWorld.ensureContext(everywhere);
+    EXPECT_TRUE(fieldWorld.raycast(Ray(Vector3(0.35f, 5, 0.9f), Vector3(0, -10, 0)), hit));
+    EXPECT_FALSE(fieldWorld.raycast(Ray(Vector3(0.0f, 5, 3.0f), Vector3(0, -10, 0)), hit));
+}
+
+TEST(PlacementWorldReview, MirroredContextStillHolds) {
+    TestScene t;
+    const Entity floor = floorBox(t);
+    t.setScale(floor, Vector3(-1, 1, 1));
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0.5f, 1.5f, 0.3f));
+    // a terrain mirrored along x: its high side goes from +x to -x
+    const Entity terrain = t.terrain(33, 20.0f, 4.0f, Vector3(40, 0, 0), [](float u, float) { return 0.2f + 0.6f * u; });
+    t.setScale(terrain, Vector3(-1, 1, 1));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    ASSERT_TRUE(world.addMover(crate));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 1200), 0);
+    EXPECT_NEAR(world.getState(crate).pose.position.y, 0.5f, 1e-3f);
+
+    TerrainComponent& component = t.scene.getComponent<TerrainComponent>(terrain);
+    for (const float worldX : {35.0f, 44.0f}) {
+        float height = 0.0f;
+        Vector3 normal;
+        t.scene.getSystem<MeshSystem>()->sampleTerrainSurface(component, (worldX - 40.0f) / -1.0f, 1.0f, height, normal);
+        PlacementRayHit hit;
+        ASSERT_TRUE(world.raycast(Ray(Vector3(worldX, 10, 1.0f), Vector3(0, -20, 0)), hit));
+        EXPECT_NEAR(hit.point.y, height, 2e-3f) << worldX;
+    }
+}
+
+TEST(PlacementWorldReview, DeletedEntitiesAreHarmless) {
+    TestScene t;
+    floorBox(t);
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 0.5f, 0));
+    const Entity pebble = t.box(Vector3(0.3f, 0.3f, 0.3f), Vector3(1.5f, 0.15f, 0));
+    t.resolve();
+
+    PlacementWorldSettings settings;
+    settings.pushNeighbours = true;
+    PlacementWorld world(&t.scene, settings);
+    ASSERT_TRUE(world.addMover(crate));
+    world.ensureContext(everywhere);
+    ASSERT_EQ(world.getNeighbours(), std::vector<Entity>{pebble});
+    world.setTarget(crate, {Vector3(0, 1, 0), Quaternion()});
+    world.step();
+
+    t.scene.destroyEntity(crate);
+    t.scene.destroyEntity(pebble);
+    EXPECT_NO_THROW({
+        world.refreshShapes();
+        world.getState(crate);
+        world.getStates();
+        world.teleport(crate, {Vector3(0, 2, 0), Quaternion()});
+        world.setTarget(crate, {Vector3(0, 2, 0), Quaternion()});
+        world.hasTarget(crate);
+        world.clearTarget(crate);
+        world.step();
+        world.stateHash();
+        world.getMoversBounds();
+        world.getDynamicBounds();
+        std::vector<Vector3> lines;
+        world.collectShapeLines(lines, false, 1000);
+        world.ensureContext(everywhere);
+        world.addContextEntity(crate);
+        PlacementRayHit hit;
+        world.raycast(Ray(Vector3(0, 5, 0), Vector3(0, -10, 0)), hit, {crate, pebble});
+        std::string why;
+        EXPECT_FALSE(world.addMover(crate, &why));
+        world.removeMover(crate);
+        world.stopAll();
+        world.wakeAll();
+        world.step();
+    });
+    // refreshShapes dropped the gone bodies
+    EXPECT_TRUE(world.getMovers().empty());
+    EXPECT_TRUE(world.getNeighbours().empty());
+}
+
+TEST(PlacementWorldReview, NeighboursNeverNest) {
+    TestScene t;
+    floorBox(t);
+    const Entity table = t.box(Vector3(1.2f, 0.1f, 0.8f), Vector3(0, 0.75f, 0));
+    const Entity vase = t.box(Vector3(0.2f, 0.4f, 0.2f), Vector3(-0.3f, 0.25f, 0), table);
+    const Entity cup = t.box(Vector3(0.1f, 0.12f, 0.1f), Vector3(0.3f, 0.11f, 0), table);
+    t.resolve();
+
+    PlacementWorldSettings settings;
+    settings.pushNeighbours = true;
+    PlacementWorld world(&t.scene, settings);
+    ASSERT_TRUE(world.addMover(vase));
+    world.ensureContext(everywhere);
+    EXPECT_EQ(world.getNeighbours(), std::vector<Entity>{cup});
+    world.removeMover(vase);
+    world.ensureContext(everywhere);
+    // the table (with its vase and cup) is one neighbour now, the cup no longer one of its own
+    EXPECT_EQ(world.getNeighbours(), std::vector<Entity>{table});
+    EXPECT_EQ(world.getStates().size(), 1u);
+}
+
+TEST(PlacementWorldReview, RefreshShapesKeepsWhatRestsWhere) {
+    TestScene t;
+    const Entity floor = floorBox(t);
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 0.5f, 0));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    ASSERT_TRUE(world.addMover(crate));
+    world.ensureContext(everywhere);
+    ASSERT_GT(stepUntilAsleep(world, 600), 0);
+    for (int i = 0; i < 60; i++) world.step();
+    ASSERT_EQ(world.getState(crate).restingOn, std::vector<Entity>{floor});
+    world.refreshShapes();
+    for (int i = 0; i < 10; i++) world.step();
+    EXPECT_EQ(world.getState(crate).restingOn, std::vector<Entity>{floor});
+    EXPECT_NEAR(world.getState(crate).pose.position.y, 0.5f, 1e-3f);
+}
+
+// Under gravity, however weak, a body touching nothing never counts as asleep, nor is let sleep
+// by Jolt: it falls until it rests on the floor. Without gravity it may rest in the air.
+TEST(PlacementWorldReview, NothingSleepsInMidAirUnderGravity) {
+    for (const float g : {-0.3f, -9.81f}) {
+        TestScene t;
+        const Entity floor = floorBox(t);
+        const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 5, 0));
+        t.resolve();
+        PlacementWorld world(&t.scene, PlacementWorldSettings());
+        world.setGravity(Vector3(0, g, 0));
+        ASSERT_TRUE(world.addMover(crate));
+        world.ensureContext(everywhere);
+        int steps = 0;
+        for (; steps < 6000 && !world.allAsleep(); steps++) {
+            world.step();
+            const PlacementBodyState state = world.getState(crate);
+            if (state.pose.position.y > 0.51f) {
+                ASSERT_FALSE(state.asleep) << "g " << g << " step " << steps << " y " << state.pose.position.y;
+            }
+        }
+        ASSERT_TRUE(world.allAsleep()) << g;
+        const PlacementBodyState state = world.getState(crate);
+        EXPECT_NEAR(state.pose.position.y, 0.5f, 1e-3f) << g;
+        EXPECT_EQ(state.restingOn, std::vector<Entity>{floor}) << g;
+    }
+
+    // weightless, a still body sleeps where it is
+    TestScene t;
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 5, 0));
+    t.resolve();
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    world.setGravity(Vector3(0, 0, 0));
+    ASSERT_TRUE(world.addMover(crate));
+    ASSERT_GT(stepUntilAsleep(world, 120), 0);
+    EXPECT_NEAR(world.getState(crate).pose.position.y, 5.0f, 1e-5f);
+}
+
+// Simplified context strays at most 1 cm from the surface however large the mesh (it was 1% of
+// the mesh's size, 40 cm on a 40 m rock)
+TEST(PlacementWorldReview, SimplificationErrorIsAbsolute) {
+    auto heights = [](float simplifyAbove) {
+        TestScene t;
+        Primitive& rock = t.primitive(Vector3(0, 0, 0));
+        rock.createSphere(1.0f, 96, 48);
+        t.setScale(rock.getEntity(), Vector3(20, 20, 20));
+        t.resolve();
+        PlacementWorldSettings settings;
+        settings.meshSimplifyAbove = simplifyAbove;
+        PlacementWorld world(&t.scene, settings);
+        world.ensureContext(AABB(-30, -30, -30, 30, 30, 30));
+        std::vector<float> out;
+        for (int i = 0; i < 20; i++) {
+            PlacementRayHit hit;
+            const float x = -12.0f + 1.2f * i, z = 9.0f - 0.9f * i;
+            out.push_back(world.raycast(Ray(Vector3(x, 40, z), Vector3(0, -80, 0)), hit) ? hit.point.y : -1.0f);
+        }
+        return out;
+    };
+    const std::vector<float> full = heights(1e9f);
+    const std::vector<float> simplified = heights(500);
+    for (size_t i = 0; i < full.size(); i++) EXPECT_NEAR(simplified[i], full[i], 0.012f) << i;
+}
+
+// Run on its own in a fresh process (below): a world made before any Scene, so before anything
+// else set Jolt up
+TEST(PlacementWorldReview, FirstInAFreshProcess) {
+    if (!std::getenv("PLACEMENT_WORLD_FRESH_PROCESS")) GTEST_SKIP() << "run by WorldBeforeAnySceneInAFreshProcess";
+    PlacementWorld world(nullptr, PlacementWorldSettings());
+    world.step();
+    EXPECT_EQ(world.getStepCount(), 1u);
+    EXPECT_TRUE(world.allAsleep());
+}
+
+TEST(PlacementWorldReview, WorldBeforeAnySceneInAFreshProcess) {
+    const std::string command = "PLACEMENT_WORLD_FRESH_PROCESS=1 /proc/" + std::to_string(::getpid()) +
+                                "/exe --gtest_filter=PlacementWorldReview.FirstInAFreshProcess > /dev/null 2>&1";
+    EXPECT_EQ(std::system(command.c_str()), 0);
+}
+
+TEST(PlacementWorldReview, OverflowingContactBuffersAreReported) {
+    TestScene t;
+    std::vector<Entity> pile;
+    for (int i = 0; i < 300; i++) pile.push_back(t.box(Vector3(0.2f, 0.2f, 0.2f), Vector3(0.0001f * i, 0, 0)));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    world.setGravity(Vector3(0, 0, 0));
+    for (Entity e : pile) ASSERT_TRUE(world.addMover(e));
+    EXPECT_FALSE(world.contactsOverflowed());
+    world.step();
+    EXPECT_TRUE(world.contactsOverflowed());
+    world.clearFlags();
+    EXPECT_FALSE(world.contactsOverflowed());
+}
+
+TEST(PlacementWorldReview, CancelledDecompositionsAreAskedForAgain) {
+    if (!ConvexDecompositionCache::available()) GTEST_SKIP() << "no convex decomposition in this build";
+    TestScene t;
+    const Entity ring = t.torus(0.5f, 0.15f, Vector3(0, 0, 0));
+    t.resolve();
+
+    ConvexDecompositionCache cache("");
+    PlacementWorldSettings settings;
+    settings.decompositionCache = &cache;
+    {
+        PlacementWorld world(&t.scene, settings);
+        ASSERT_TRUE(world.addMover(ring));
+        ASSERT_TRUE(world.hasPendingDecompositions());
+        cache.cancelAll();
+        EXPECT_FALSE(world.hasPendingDecompositions());
+    }
+    PlacementWorld again(&t.scene, settings);
+    ASSERT_TRUE(again.addMover(ring));
+    EXPECT_TRUE(again.hasPendingDecompositions());
+    EXPECT_TRUE(again.getState(ring).decompositionPending);
+    cache.cancelAll();
+}
+
+TEST(PlacementWorldReview, BodyLimitLeavesTheRestForLater) {
+    TestScene t;
+    for (int i = 0; i < 4096; i++) t.box(Vector3(0.5f, 0.5f, 0.5f), Vector3(float(i % 64), 0, float(i / 64)));
+    const Entity crate = t.box(Vector3(1, 1, 1), Vector3(0, 5, 0));
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    ASSERT_TRUE(world.addMover(crate));
+    world.ensureContext(everywhere);
+    EXPECT_EQ(world.getContextBodyCount(), 4095u);
+    PlacementRayHit hit;
+    // the last box (63, 0, 63) found no room
+    EXPECT_FALSE(world.raycast(Ray(Vector3(63, 5, 63), Vector3(0, -10, 0)), hit, {crate}));
+    world.removeMover(crate);
+    world.ensureContext(everywhere);
+    EXPECT_EQ(world.getContextBodyCount(), 4096u);
+    EXPECT_TRUE(world.raycast(Ray(Vector3(63, 5, 63), Vector3(0, -10, 0)), hit));
+}
+
+TEST(PlacementWorldReview, LargeTerrainsAreResampled) {
+    TestScene t;
+    const Entity terrain = t.terrain(4097, 400.0f, 20.0f, Vector3(0, 0, 0), [](float u, float v) {
+        return 0.5f + 0.2f * std::sin(6.0f * u) * std::cos(5.0f * v);
+    }, true);
+    t.resolve();
+
+    PlacementWorld world(&t.scene, PlacementWorldSettings());
+    const auto begin = std::chrono::steady_clock::now();
+    world.ensureContext(everywhere);
+    const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - begin).count();
+    std::printf("[placement] 4097^2 terrain context in %.2f s\n", seconds);
+    EXPECT_EQ(world.getContextBodyCount(), 1u);
+    TerrainComponent& component = t.scene.getComponent<TerrainComponent>(terrain);
+    // resampled to 1025 x 1025 (it was 4097 x 4097, a stall); a small heightmap keeps one per texel
+    EXPECT_EQ(JoltShapeBuilder::defaultHeightFieldSamples(component), 1025u);
+    const Entity small = t.terrain(33, 10.0f, 1.0f, Vector3(500, 0, 0), [](float, float) { return 0.5f; });
+    EXPECT_EQ(JoltShapeBuilder::defaultHeightFieldSamples(t.scene.getComponent<TerrainComponent>(small)), 33u);
+    for (int i = 0; i < 20; i++) {
+        const float x = -190.0f + 19.0f * i, z = 150.0f - 15.0f * i;
+        float height = 0.0f;
+        Vector3 normal;
+        t.scene.getSystem<MeshSystem>()->sampleTerrainSurface(component, x, z, height, normal);
+        PlacementRayHit hit;
+        ASSERT_TRUE(world.raycast(Ray(Vector3(x, 50, z), Vector3(0, -100, 0)), hit));
+        EXPECT_NEAR(hit.point.y, height, 0.02f) << x << ", " << z;
+    }
 }
 
 #endif

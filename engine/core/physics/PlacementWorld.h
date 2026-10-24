@@ -170,8 +170,10 @@ namespace jasperengine {
         const std::vector<Entity>& getNeighbours() const;
         AABB getContextRegion() const;   // union of every region passed to ensureContext, with the neighbours' support
 
-        // Rebuilds every mover's (and neighbour's) shape: a decomposition that finished since is
-        // picked up. Poses and velocities are kept.
+        // Picks up the decompositions that finished since: a mover or neighbour with one now
+        // cached gets its new shape (pose and velocities kept, woken so its contacts are found
+        // again); the others keep theirs, and their contacts. Bodies whose entity is gone leave
+        // the world.
         void refreshShapes();
         bool hasPendingDecompositions() const;
 
@@ -212,7 +214,7 @@ namespace jasperengine {
         // Penetration recovery speed multiplier for Separate (1 = default).
         void setSeparationBoost(float factor);
         void wakeAll();
-        void clearFlags();   // resets teleported
+        void clearFlags();   // resets teleported and contactsOverflowed
 
         // One fixed step of settings.fixedStep seconds. A free dynamic body sunk deep in context
         // that would push it down (half into a floor slab) is lifted onto the surface above it.
@@ -220,8 +222,12 @@ namespace jasperengine {
         uint32_t getStepCount() const;
         double getSimulatedSeconds() const;
 
-        // Every dynamic body (movers and neighbours) asleep or fallen out.
+        // Every dynamic body (movers and neighbours) asleep or fallen out. Under gravity a body
+        // touching nothing is falling and never asleep.
         bool allAsleep() const;
+        // A step ran out of Jolt's contact or body-pair buffers (too many bodies touching at
+        // once) since the last clearFlags(): some contacts were dropped, results may be wrong.
+        bool contactsOverflowed() const;
         // Deepest current penetration between any two bodies, m.
         float getMaxPenetration() const;
 

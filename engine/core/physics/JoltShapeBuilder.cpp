@@ -151,6 +151,20 @@ Matrix4 JoltShapeBuilder::meshToBodyMatrix(Scene* scene, Entity bodyEntity, Enti
            meshTransform->modelMatrix;
 }
 
+Matrix4 JoltShapeBuilder::entityLinearMatrix(Scene* scene, Entity entity){
+    Transform* transform = scene->findComponent<Transform>(entity);
+    if (!transform) return Matrix4();
+    Matrix4 linear = transform->worldRotation.inverse().getRotationMatrix() * transform->modelMatrix;
+    for (int r = 0; r < 3; r++) linear.set(3, r, 0.0f);
+    return linear;
+}
+
+float JoltShapeBuilder::linearDeterminant(const Matrix4& m){
+    return m.get(0, 0) * (m.get(1, 1) * m.get(2, 2) - m.get(2, 1) * m.get(1, 2)) -
+           m.get(1, 0) * (m.get(0, 1) * m.get(2, 2) - m.get(2, 1) * m.get(0, 2)) +
+           m.get(2, 0) * (m.get(0, 1) * m.get(1, 2) - m.get(1, 1) * m.get(0, 2));
+}
+
 Vector3 JoltShapeBuilder::entityWorldScale(Scene* scene, Entity entity){
     Transform* transform = scene->findComponent<Transform>(entity);
     return transform ? transform->worldScale : Vector3::UNIT_SCALE;
@@ -196,6 +210,9 @@ bool JoltShapeBuilder::appendTriangles(Scene* scene, Entity bodyEntity, Entity m
 void JoltShapeBuilder::appendMeshTriangles(MeshComponent* mesh, const Matrix4& toBody,
                                            std::vector<Vector3>& vertices, std::vector<uint32_t>& indices){
     std::map<VertexRange, uint32_t> vertexBases;
+    // a mirroring map turns the triangles inside out: wound back so they face out again
+    const bool mirrored = linearDeterminant(toBody) < 0.0f;
+    const size_t firstIndex = indices.size();
 
     for (MeshSourceView& view : collectMeshSourceViews(mesh)){
         const VertexRange range = vertexRange(view);
@@ -234,6 +251,10 @@ void JoltShapeBuilder::appendMeshTriangles(MeshComponent* mesh, const Matrix4& t
                 indices.push_back(vertexBase + indice);
             }
         }
+    }
+
+    if (mirrored){
+        for (size_t t = firstIndex; t + 2 < indices.size(); t += 3) std::swap(indices[t + 1], indices[t + 2]);
     }
 }
 
@@ -330,7 +351,8 @@ unsigned int JoltShapeBuilder::defaultHeightFieldSamples(const TerrainComponent&
         return 4;
     }
     TextureData& textureData = terrain.heightMap.getData();
-    return (unsigned int)std::max(4, std::min(textureData.getWidth(), textureData.getHeight()));
+    const int texels = std::min(textureData.getWidth(), textureData.getHeight());
+    return (unsigned int)std::max(4, std::min(texels, (int)MAX_HEIGHTFIELD_SAMPLES));
 }
 
 JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComponent& terrain, const Vector3& scale,
@@ -351,11 +373,16 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
     const float halfSize = terrain.terrainSize * 0.5f;
     const float spacing = terrain.terrainSize / float(samplesSize - 1);
 
+    // A negative scale mirrors the terrain: sample i then sits where the mirrored surface is,
+    // as the collider's own axes stay positive
+    const float mirrorX = scale.x < 0.0f ? -1.0f : 1.0f;
+    const float mirrorZ = scale.z < 0.0f ? -1.0f : 1.0f;
+
     std::vector<float> samples(samplesSize * samplesSize);
     for (unsigned int y = 0; y < samplesSize; y++){
-        const float localZ = (y == samplesSize - 1) ? halfSize : (-halfSize + spacing * y);
+        const float localZ = mirrorZ * ((y == samplesSize - 1) ? halfSize : (-halfSize + spacing * y));
         for (unsigned int x = 0; x < samplesSize; x++){
-            const float localX = (x == samplesSize - 1) ? halfSize : (-halfSize + spacing * x);
+            const float localX = mirrorX * ((x == samplesSize - 1) ? halfSize : (-halfSize + spacing * x));
             float height = 0.0f;
             Vector3 normal;
             meshSystem->sampleTerrainSurface(terrain, localX, localZ, height, normal);
@@ -446,6 +473,10 @@ JPH::ShapeRefC JoltShapeBuilder::buildColliderShape(Scene* scene, Entity entity,
             int indicesize = int(shapeData.numIndices / 3);
             for (int i = 0; i < (indicesize * 3); i++){
                 indices.push_back(shapeData.indices[i]);
+            }
+            // mirrored by the scale: wound back so the triangles face out again
+            if (entityScale.x * entityScale.y * entityScale.z < 0.0f){
+                for (size_t t = 0; t + 2 < indices.size(); t += 3) std::swap(indices[t + 1], indices[t + 2]);
             }
         }else if (source == Collider3DSource::ENTITY_MESH){
             Entity meshEntity = shapeData.sourceEntity == NULL_ENTITY ? entity : shapeData.sourceEntity;
