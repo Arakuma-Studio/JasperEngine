@@ -89,7 +89,7 @@ b2ShapeId Rigidbody2D::getBox2DShape(size_t index) const{
     if (body.colliders.validIndex(index)){
         return body.colliders[index].shape;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return b2_nullShapeId;
@@ -101,7 +101,7 @@ b2ChainId Rigidbody2D::getBox2DChain(size_t index) const{
     if (body.colliders.validIndex(index)){
         return body.colliders[index].chain;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return b2_nullChainId;
@@ -205,7 +205,7 @@ int Rigidbody2D::createPolygonCollider(std::vector<Vector2> vertices){
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
         if (!shape.vertices.validIndex(i)){
-            Log::warn("Polygon shape vertices truncated from %zu to %zu", shape.numVertices, i);
+            Log::warn("Polygon shape vertices truncated from %d to %zu", shape.numVertices, i);
             shape.numVertices = i;
             break;
         }
@@ -266,7 +266,7 @@ int Rigidbody2D::createChainCollider(std::vector<Vector2> vertices, bool loop){
     shape.numVertices = vertices.size();
     for (size_t i = 0; i < shape.numVertices; i++){
         if (!shape.vertices.validIndex(i)){
-            Log::warn("Chain shape vertices truncated from %zu to %zu", shape.numVertices, i);
+            Log::warn("Chain shape vertices truncated from %d to %zu", shape.numVertices, i);
             shape.numVertices = i;
             break;
         }
@@ -314,7 +314,7 @@ std::vector<Contact2D> Rigidbody2D::getColliderContacts(size_t index){
             contacts.push_back(Contact2D(scene, contactData[i]));
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return contacts;
@@ -332,7 +332,7 @@ Collider2DType Rigidbody2D::getColliderType(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].type;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
         throw std::runtime_error("Cannot find shape");
     }
 }
@@ -355,12 +355,12 @@ void Rigidbody2D::setColliderDensity(size_t index, float density){
     if (index < body.numColliders){
         body.colliders[index].density = density;
         if (body.colliders[index].type == Collider2DType::CHAIN){
-            Log::error("Cannot set density of chain shape %i", index);
+            Log::error("Cannot set density of chain shape %zu", index);
         }else if (b2Shape_IsValid(body.colliders[index].shape)){
             b2Shape_SetDensity(body.colliders[index].shape, density, true);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -375,7 +375,7 @@ void Rigidbody2D::setColliderFriction(size_t index, float friction){
             b2Chain_SetFriction(body.colliders[index].chain, friction);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -390,7 +390,7 @@ void Rigidbody2D::setColliderRestitution(size_t index, float restitution){
             b2Chain_SetRestitution(body.colliders[index].chain, restitution);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -403,13 +403,13 @@ void Rigidbody2D::setColliderSensor(size_t index, bool sensor){
 
     if (index < body.numColliders){
         if (body.colliders[index].type == Collider2DType::CHAIN){
-            Log::error("Cannot set sensor of chain shape %i", index);
+            Log::error("Cannot set sensor of chain shape %zu", index);
         }else if (body.colliders[index].sensor != sensor){
             body.colliders[index].sensor = sensor;
             body.needUpdateColliders = true;
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -423,7 +423,7 @@ bool Rigidbody2D::isColliderSensor(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].sensor;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return false;
@@ -452,12 +452,12 @@ void Rigidbody2D::setColliderEnableHitEvents(size_t index, bool hitEvents){
     if (index < body.numColliders){
         body.colliders[index].enableHitEvents = hitEvents;
         if (body.colliders[index].type == Collider2DType::CHAIN){
-            Log::error("Cannot set hit events of chain shape %i", index);
+            Log::error("Cannot set hit events of chain shape %zu", index);
         }else if (b2Shape_IsValid(body.colliders[index].shape)){
             b2Shape_EnableHitEvents(body.colliders[index].shape, hitEvents);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -467,12 +467,12 @@ void Rigidbody2D::setColliderContactEvents(size_t index, bool contactEvents){
     if (index < body.numColliders){
         body.colliders[index].contactEvents = contactEvents;
         if (body.colliders[index].type == Collider2DType::CHAIN){
-            Log::error("Cannot set shape contact events of chain shape %i", index);
+            Log::error("Cannot set shape contact events of chain shape %zu", index);
         }else if (b2Shape_IsValid(body.colliders[index].shape)){
             b2Shape_EnableContactEvents(body.colliders[index].shape, contactEvents);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -482,12 +482,12 @@ void Rigidbody2D::setColliderPreSolveEvents(size_t index, bool preSolveEvent){
     if (index < body.numColliders){
         body.colliders[index].preSolveEvents = preSolveEvent;
         if (body.colliders[index].type == Collider2DType::CHAIN){
-            Log::error("Cannot set presolve events of chain shape %i", index);
+            Log::error("Cannot set presolve events of chain shape %zu", index);
         }else if (b2Shape_IsValid(body.colliders[index].shape)){
             b2Shape_EnablePreSolveEvents(body.colliders[index].shape, preSolveEvent);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -497,12 +497,12 @@ void Rigidbody2D::setColliderSensorEvents(size_t index, bool sensorEvents){
     if (index < body.numColliders){
         body.colliders[index].sensorEvents = sensorEvents;
         if (body.colliders[index].type == Collider2DType::CHAIN){
-            Log::error("Cannot set sensor events of chain shape %i", index);
+            Log::error("Cannot set sensor events of chain shape %zu", index);
         }else if (b2Shape_IsValid(body.colliders[index].shape)){
             b2Shape_EnableSensorEvents(body.colliders[index].shape, sensorEvents || body.colliders[index].sensor);
         }
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 }
 
@@ -526,7 +526,7 @@ float Rigidbody2D::getColliderDensity(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].density;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return -1;
@@ -538,7 +538,7 @@ float Rigidbody2D::getColliderFriction(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].friction;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return -1;
@@ -550,7 +550,7 @@ float Rigidbody2D::getColliderRestitution(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].restitution;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return -1;
@@ -578,7 +578,7 @@ bool Rigidbody2D::isColliderEnableHitEvents(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].enableHitEvents;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return false;
@@ -590,7 +590,7 @@ bool Rigidbody2D::isColliderContactEvents(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].contactEvents;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return false;
@@ -602,7 +602,7 @@ bool Rigidbody2D::isColliderPreSolveEvents(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].preSolveEvents;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return false;
@@ -614,7 +614,7 @@ bool Rigidbody2D::isColliderSensorEvents(size_t index) const{
     if (index < body.numColliders){
         return body.colliders[index].sensorEvents || body.colliders[index].sensor;
     }else{
-        Log::error("Cannot find shape %i of body", index);
+        Log::error("Cannot find shape %zu of body", index);
     }
 
     return false;
@@ -849,7 +849,7 @@ void Rigidbody2D::setBitsFilter(size_t colliderIndex, uint16_t categoryBits, uin
             b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", colliderIndex);
+        Log::error("Cannot find shape %zu of body", colliderIndex);
     }
 }
 
@@ -878,7 +878,7 @@ void Rigidbody2D::setCategoryBitsFilter(size_t colliderIndex, uint16_t categoryB
             b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", colliderIndex);
+        Log::error("Cannot find shape %zu of body", colliderIndex);
     }
 }
 
@@ -895,7 +895,7 @@ void Rigidbody2D::setMaskBitsFilter(size_t colliderIndex, uint16_t maskBits){
             b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", colliderIndex);
+        Log::error("Cannot find shape %zu of body", colliderIndex);
     }
 }
 
@@ -912,7 +912,7 @@ void Rigidbody2D::setGroupIndexFilter(size_t colliderIndex, int16_t groupIndex){
             b2Shape_SetFilter(body.colliders[colliderIndex].shape, filter);
         }
     }else{
-        Log::error("Cannot find shape %i of body", colliderIndex);
+        Log::error("Cannot find shape %zu of body", colliderIndex);
     }
 }
 
@@ -934,7 +934,7 @@ uint16_t Rigidbody2D::getCategoryBitsFilter(size_t colliderIndex) const{
     if (body.colliders.validIndex(colliderIndex)){
         return body.colliders[colliderIndex].categoryBits;
     }else{
-        Log::error("Cannot find shape %i of body", colliderIndex);
+        Log::error("Cannot find shape %zu of body", colliderIndex);
     }
 
     return 0;
@@ -946,7 +946,7 @@ uint16_t Rigidbody2D::getMaskBitsFilter(size_t colliderIndex) const{
     if (body.colliders.validIndex(colliderIndex)){
         return body.colliders[colliderIndex].maskBits;
     }else{
-        Log::error("Cannot find shape %i of body", colliderIndex);
+        Log::error("Cannot find shape %zu of body", colliderIndex);
     }
 
     return 0;
@@ -958,7 +958,7 @@ int16_t Rigidbody2D::getGroupIndexFilter(size_t colliderIndex) const{
     if (body.colliders.validIndex(colliderIndex)){
         return body.colliders[colliderIndex].groupIndex;
     }else{
-        Log::error("Cannot find shape %i of body", colliderIndex);
+        Log::error("Cannot find shape %zu of body", colliderIndex);
     }
 
     return -1;

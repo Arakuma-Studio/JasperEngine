@@ -884,6 +884,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
+    m_playerLogging = project->getPlayerLogging();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
     m_windowModeIndex = findWindowModeIndex(project->getWindowMode());
     m_windowWidth = (int)project->getWindowWidth();
@@ -1301,6 +1302,39 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             }
             ImGui::Checkbox("##AsyncLoading", &loading.asyncLoading);
             endSettingsRow("Exported games load resources on worker threads. The editor always does.");
+
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Logging") && beginSettingsTable("##PlayerLoggingTable")) {
+            const PlayerLoggingSettings defaults;
+            if (projectBeginSettingsRow("Log Level", m_playerLogging.level != defaults.level)) {
+                m_playerLogging.level = defaults.level;
+            }
+            static const char* const levelNames[] = {"trace", "debug", "info", "warn", "error", "off"};
+            static const char* const levelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Off"};
+            int levelIndex = 2;
+            for (int i = 0; i < IM_ARRAYSIZE(levelNames); i++) {
+                if (m_playerLogging.level == levelNames[i]) levelIndex = i;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::Combo("##PlayerLogLevel", &levelIndex, levelLabels, IM_ARRAYSIZE(levelLabels))) {
+                m_playerLogging.level = levelNames[levelIndex];
+            }
+            endSettingsRow("The lowest level the built game logs (the console, logcat, the browser console). "
+                "JASPER_LOG_LEVEL and --log-level override it when the game starts.");
+
+            if (projectBeginSettingsRow("Log File", m_playerLogging.fileLog != defaults.fileLog)) {
+                m_playerLogging.fileLog = defaults.fileLog;
+            }
+            ImGui::Checkbox("##PlayerLogFile", &m_playerLogging.fileLog);
+            endSettingsRow("Desktop games also write logs/player.log in their user data folder (1 MB, the previous one kept).");
+
+            if (projectBeginSettingsRow("Capture Backtrace on Errors", m_playerLogging.backtrace != defaults.backtrace)) {
+                m_playerLogging.backtrace = defaults.backtrace;
+            }
+            ImGui::Checkbox("##PlayerLogBacktrace", &m_playerLogging.backtrace);
+            endSettingsRow("Errors record their call stack (written to the log file). Debug builds always do.");
 
             ImGui::EndTable();
         }
@@ -2044,6 +2078,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
+    m_project->setPlayerLogging(m_playerLogging);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
     m_project->setWindowMode(windowModeValues[m_windowModeIndex]);
     m_project->setWindowSize(m_windowWidth, m_windowHeight);

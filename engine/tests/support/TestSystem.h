@@ -54,6 +54,9 @@ namespace jasperengine { namespace test {
         bool isUserDataLoaded() override;
 
         void platformLog(const int type, const char* fmt, va_list args) override;
+        // the engine's log reaches platformLog through a PlatformSink; the readers below
+        // flush the logger first, so what was logged before them is there
+        void installLogSinks() override;
 
         // recorded for the input tests (phase 1): the base clipboard is kept
         void showVirtualKeyboard(std::wstring text = L"") override;

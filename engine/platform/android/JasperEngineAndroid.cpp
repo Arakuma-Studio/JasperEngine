@@ -217,22 +217,6 @@ FILE* JasperEngineAndroid::platformFopen(const char* fname, const char* mode) {
     return funopen(asset, android_read, android_write, android_seek, android_close);
 }
 
-void JasperEngineAndroid::platformLog(const int type, const char *fmt, va_list args){
-    int priority = ANDROID_LOG_VERBOSE;
-
-    if (type == D_LOG_VERBOSE){
-        priority = ANDROID_LOG_VERBOSE;
-    }else if (type == D_LOG_DEBUG){
-        priority = ANDROID_LOG_DEBUG;
-    }else if (type == D_LOG_WARN){
-        priority = ANDROID_LOG_WARN;
-    }else if (type == D_LOG_ERROR){
-        priority = ANDROID_LOG_ERROR;
-    }
-
-    __android_log_vprint(priority, "JasperEngine", fmt, args);
-}
-
 bool JasperEngineAndroid::getBoolForKey(const char *key, bool defaultValue){
     JniData& jniData = NativeEngine::getInstance()->getJniData();
     JNIEnv* env = NativeEngine::getInstance()->getJniEnv();

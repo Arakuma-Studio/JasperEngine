@@ -2571,6 +2571,11 @@ bool editor::Exporter::copyEngine() {
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_2D ") + (project->isPhysics2DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_PHYSICS_3D ") + (project->isPhysics3DEnabled() ? "ON" : "OFF") + ")";
         projectSettings += indent + std::string("set(JASPERENGINE_RUNTIME_SHADERS ") + (project->isRuntimeShadersEnabled() ? "ON" : "OFF") + ")";
+        // Player > Logging
+        const PlayerLoggingSettings& logging = project->getPlayerLogging();
+        projectSettings += indent + "set(JASPERENGINE_LOG_LEVEL \"" + logging.level + "\")";
+        projectSettings += indent + std::string("set(JASPERENGINE_LOG_FILE ") + (logging.fileLog ? "ON" : "OFF") + ")";
+        projectSettings += indent + std::string("set(JASPERENGINE_LOG_BACKTRACE ") + (logging.backtrace ? "ON" : "OFF") + ")";
         cmakeContent.replace(projectSettingsPos, projectSettingsMarker.size(), projectSettings);
     } else {
         Out::warning("Exported CMakeLists.txt is missing the project settings marker; using platform defaults");

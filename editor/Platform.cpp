@@ -103,33 +103,3 @@ void editor::Platform::quit(){
     });
 }
 
-void editor::Platform::platformLog(const int type, const char *fmt, va_list args){
-    // Sized to the message: a Lua print or a traceback can be longer than any fixed buffer
-    char stackBuf[4096];
-    va_list sizeArgs;
-    va_copy(sizeArgs, args);
-    const int size = vsnprintf(stackBuf, sizeof(stackBuf), fmt, sizeArgs);
-    va_end(sizeArgs);
-    std::string heapBuf;
-    const char* buf = stackBuf;
-    if (size >= static_cast<int>(sizeof(stackBuf))) {
-        heapBuf.resize(static_cast<size_t>(size) + 1);
-        vsnprintf(&heapBuf[0], heapBuf.size(), fmt, args);
-        heapBuf.resize(static_cast<size_t>(size));
-        buf = heapBuf.c_str();
-    } else if (size < 0) {
-        stackBuf[0] = '\0';
-    }
-
-    switch (type) {
-        case D_LOG_WARN:
-            editor::Out::warning(buf);
-            break;
-        case D_LOG_ERROR:
-            editor::Out::error(buf);
-            break;
-        default:
-            editor::Out::info(buf);
-            break;
-    }
-}

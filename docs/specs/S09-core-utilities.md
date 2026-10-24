@@ -540,3 +540,60 @@ Land S09 early in wave 1 so the others build on it.
 - **The inline MemorySink adds a lock on every enabled log call in the editor.** Default: accept it; it is ≤ 200 ns with the arena and keeps MCP read-after-log exact. Games disable it unless something reads it.
 - **Lua timers without `owner`** can call into destroyed scripts. Default: Play-session lifetime, plus the documented pitfall. An auto-owner (the "currently running script") is not added because it is too implicit.
 - **Open question: should `Game` timers also stop while a scene is individually paused (`pauseEngineScene`)?** Default: no. The clock is engine-global, and a per-scene scheduler can come later.
+
+## Deviations (implementation record)
+
+- **R32 vs R37, the shipped game's default level.** Player > Logging defaults to Info, today's
+  behaviour (R37), not Warn in release builds (R32): Warn would silence every `Log::print` and Lua
+  `print` of existing games, and the `Engine ready:` line `tools/smoke-test.sh` waits for. A project
+  chooses Warn in Project Settings > Player > Logging (or `--log-level`, `JASPER_LOG_LEVEL`).
+- **R13, a record logged from inside a sink on the drain thread** is queued with that sink
+  excluded instead of written synchronously to the other sinks: writing it at once would put it
+  before older records of the same batch in the sinks after the producing one (AC3's per-sink id
+  order) and needs those sinks' locks while one is held. No recursion, no deadlock, the producing
+  sink never sees it. A record logged from inside an Inline sink is delivered to the other Inline
+  sinks at once and queued for the Async ones, the same way.
+- **R6 PlatformSink.** The engine cannot tell portably whether a `System` overrides
+  `platformLog`, so a new virtual `System::installLogSinks()` decides the game's sinks: the
+  default installs the platform's (`installPlatformLogSinks`), an override adds a `PlatformSink`
+  (the test `TestSystem` does). `platformLog` stays virtual and keeps today's default output.
+- **R6 console sink in the editor.** The editor style is Inline, not Async: the editor's CLI
+  commands print their own results with `std::cout` (JSON documents, reports) and redirect fds 1/2
+  around quiet phases, and their log lines must stay in order with that, as they did. It also keeps
+  today's stream split (errors and build output on stderr, the rest on stdout). The game style is
+  Async and sends Warn and above to stderr as specified.
+- **R9, build output** (category `build`) is never rate limited: a compiler's lines share long path
+  prefixes and come in bursts, and `BuildTools` parses every one of them.
+- **R12, drain latency.** Info and below wake the drain thread at most every 20 ms (and whenever
+  the queue is a quarter full); Warn and above wake it at once. This is what keeps R28's drain CPU
+  budget at a steady trickle; file lines still reach the OS well within 100 ms.
+- **R23 TimerHandle** is `{Scheduler*, 64-bit id}` (id = 40-bit generation, 24-bit slot), so
+  `cancel()`/`active()` need no global table and work for every scheduler instance.
+- **R33 set_log_level `sink: "mcp"`** without a category sets the notification level of every
+  connected MCP session (the sink's level follows the lowest session level).
+- **R32 / Apple exports.** Like the other Player settings that reach a game through the exported
+  CMake (VSync, window), Player > Logging is not injected into the Xcode workspace; iOS builds use
+  the defaults (and `--log-level` does not exist there).
+- **AC10, AC11, AC18 are automated** rather than manual checks. AC10:
+  `tools/test-projects/core-utilities` built for the web (`WEB_PROJECT=core-utilities tools/build.sh
+  web`) and `GATE=core-utilities tools/build.sh web-gate`, whose baseline lists the console lines
+  with their levels in order (C++ and Lua warnings and errors, a Lua `Timer.after(0.1)` and a
+  coroutine, no pthreads); CI runs it. AC11: the same project as an APK
+  (`ANDROID_PROJECT=core-utilities tools/build.sh android`) on a headless emulator,
+  `tools/android-emulator-test.sh` (KVM hosts) checking `W/JasperEngine: [render] ...` and the other
+  lines with their priorities. AC18: `tools/mcp/tests/test_logging_ui.py` drives Preferences >
+  Logging and the Console through MCP (`focus_window` opens Preferences pages and reports and drives
+  the Console view; `preferences.logging.*` settings), screenshots in
+  `build/test-results/logging-ui/`, and restarts the editor to check the levels persist. AC21 is
+  verified with GCC (`-Wformat=2` over the engine and editor sources); MSVC and Clang are covered by
+  CI.
+- **Web builds relink when project files change.** emcc packs `project/assets` and `project/lua` at
+  link time (`--preload-file`), which ninja did not track, so an edited Lua script shipped the old
+  bundle until something else relinked. `engine/CMakeLists.txt` now lists those files as the
+  target's `LINK_DEPENDS` (globbed with `CONFIGURE_DEPENDS`).
+- **Tests** live in S02's targets: `engine/tests/core/log/`, `engine/tests/core/util/`
+  (`jasperengine-core-tests`, the per-thread count of S06's
+  `support/AllocationCounter.h`, which counts at `malloc` on Linux), `editor/tests/OutTest.cpp` and `editor/tests/util/CrashHandlerTest.cpp` with
+  the `je_log_crash_helper` executable (`jasperengine-editor-tests`), and
+  `tools/mcp/tests/test_core_utilities.py`. Benchmarks are the `*Bench` suites, with
+  `JASPER_TEST_PERF_SLACK`.

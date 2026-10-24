@@ -9,6 +9,7 @@
 // SceneSettings.cpp shows up here without code.
 
 #include "InspectorWindow.h"
+#include "log/LogFormatCheck.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -265,7 +266,7 @@ namespace {
         ImGui::EndTooltip();
     }
 
-    std::string formatFloat(float value, const char* format = "%.2f") {
+    JE_PRINTF_FORMAT(2, 0) std::string formatFloat(float value, const char* format = "%.2f") {
         char text[32];
         std::snprintf(text, sizeof(text), format, value);
         return text;

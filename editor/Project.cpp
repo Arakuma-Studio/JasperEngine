@@ -4,6 +4,8 @@
 #include "Project.h"
 #include "asset/AssetRefSchema.h"
 #include "asset/AssetFileWrite.h"
+#include "util/CrashHook.h"
+#include "util/Scheduler.h"
 #include "io/AtomicFile.h"
 #include "Factory.h"
 #include "Workspace.h"
@@ -1029,6 +1031,14 @@ void editor::Project::setVSyncEnabled(bool enabled){
 
 bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
+}
+
+void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
+    playerLogging = settings;
+}
+
+const editor::PlayerLoggingSettings& editor::Project::getPlayerLogging() const{
+    return playerLogging;
 }
 
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
@@ -3898,6 +3908,7 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setThreadingSettings(ThreadingProjectSettings());
     windowMode = defaultWindowMode;
@@ -6840,7 +6851,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         PrefabManager::clearAll();
         ObjectManager::clearAll();
         clearPlayPrefabTemplates();
-        jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+        Scheduler::game().clear();
+        jasperengine::CrashHook::set(nullptr);
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
             sceneProject->playState = ScenePlayState::STOPPED;
@@ -7401,7 +7413,7 @@ void editor::Project::start(uint32_t sceneId) {
         return;
     }
 
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = 
+    jasperengine::CrashHook::set(
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {
             // Log the scene and entity context
             SceneProject* sceneProject = getScene(sceneId);
@@ -7434,7 +7446,7 @@ void editor::Project::start(uint32_t sceneId) {
                     stop(sceneId);
                 }
             });
-        };
+        });
 
     auto session = std::make_shared<PlaySession>();
     session->mainSceneId = sceneId;
@@ -7589,10 +7601,12 @@ void editor::Project::stop(uint32_t sceneId) {
         Engine::onShutdown.call();
         Engine::pauseGameEvents(true);
         Engine::clearAllSubscriptions(true);
+        // the play's timers and coroutines (Lua's Timer): none runs after Stop
+        Scheduler::game().clear();
     }
 
     // Clear crash handler when stopping
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+    jasperengine::CrashHook::set(nullptr);
 
     // Request cancellation without blocking; the stop job waits for the build to end
     generator.cancelBuild();
@@ -7629,6 +7643,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // and timers the scripts' onShutdown made
+            Scheduler::game().clear();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {

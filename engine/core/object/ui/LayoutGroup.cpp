@@ -114,7 +114,7 @@ void LayoutGroup::setBoxExpand(size_t id, bool expand){
 
         container.boxes[id].expand = expand;
     }else{
-        Log::error("Cannot find a box container with id %lu", id);
+        Log::error("Cannot find a box container with id %zu", id);
     }
 }
 
@@ -124,7 +124,7 @@ bool LayoutGroup::isBoxExpand(size_t id) const{
 
         return container.boxes[id].expand;
     }else{
-        Log::error("Cannot find a box container with id %lu", id);
+        Log::error("Cannot find a box container with id %zu", id);
         throw std::out_of_range("box container is out of range");
     }
 }

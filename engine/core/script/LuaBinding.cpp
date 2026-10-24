@@ -3,6 +3,8 @@
 
 #include <unordered_map>
 #include "LuaBinding.h"
+#include "log/Logger.h"
+#include "util/SubscriptionOwnerIndex.h"
 #include "shader/ShaderManifest.h"
 #include "asset/AssetMap.h"
 #include "math/Vector3.h"
@@ -82,6 +84,7 @@
 #include <atomic>
 #include <cctype>
 #include <csignal>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -343,7 +346,7 @@ int LuaBinding::pcallWithTraceback(lua_State* L, int nargs, int nresults){
 void LuaBinding::luaCallback(int nargs, int nresults, int msgh){
     int status = lua_pcall(luastate, nargs, nresults, msgh);
     if (status != 0){
-        Log::error("Lua Error: %s", getLuaStackErrorString(luastate, -1).c_str());
+        logLuaError("Lua Error: %s", getLuaStackErrorString(luastate, -1).c_str());
         lua_pop(luastate, 1);
     }
 }
@@ -506,7 +509,12 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
     lua_pushvalue(L, tagIndex);
     lua_pushvalue(L, closureIndex);
 
-    if (pcallWithTraceback(L, 3, 0) != LUA_OK) {
+    // the subscription belongs to the script (its table), explicit tag or not: releasing the
+    // script removes it (SubscriptionOwnerIndex::releaseOwner)
+    const uint64_t previousOwner = SubscriptionOwnerIndex::setRegistrationOwner(ownerKeyOf(lua_topointer(L, selfIndex)));
+    const int status = pcallWithTraceback(L, 3, 0);
+    SubscriptionOwnerIndex::setRegistrationOwner(previousOwner);
+    if (status != LUA_OK) {
         return lua_error(L);
     }
 
@@ -633,12 +641,12 @@ void LuaBinding::init(){
 
     if (luaL_loadbuffer(L,(const char*)filedata.getMemPtr(),filedata.length(), luafile.c_str()) == 0){
         if(pcallWithTraceback(L, 0, LUA_MULTRET) != 0){
-            Log::error("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
+            logLuaError("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
             lua_close(L);
         }
     }else{
-        Log::error("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
+        logLuaError("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
         lua_pop(L, 1);
         lua_close(L);
     }
@@ -666,9 +674,12 @@ void LuaBinding::registerClasses(lua_State *L){
 #endif //DISABLE_LUA_BINDINGS
 }
 
-// Lua's print, through Log::print instead of stdout: the editor's Console shows it (Play
-// and edit time alike), and a game's platform log (logcat, the terminal) gets it
+// Lua's print, through the logger (category lua, with the chunk and line it was called from)
+// instead of stdout: the editor's Console shows it (Play and edit time alike), and a game's
+// platform log (logcat, the terminal) gets it. Rate limited like every record.
 static int luaPrint(lua_State* L){
+    LogCategory& category = logCategoryLua();
+    if (!Logger::shouldLog(LogLevel::Info, category)) return 0;
     int n = lua_gettop(L);
     std::string line;
     for (int i = 1; i <= n; i++) {
@@ -678,8 +689,42 @@ static int luaPrint(lua_State* L){
         line.append(s, len);
         lua_pop(L, 1);
     }
-    Log::print("%s", line.c_str());
+    LuaBinding::logFromLua(L, LogLevel::Info, category, line);
     return 0;
+}
+
+void LuaBinding::logLuaError(const char* format, ...){
+    LogCategory& category = logCategoryLua();
+    if (!Logger::shouldLog(LogLevel::Error, category)) return;
+    char buffer[2048];
+    va_list args;
+    va_start(args, format);
+    va_list sizing;
+    va_copy(sizing, args);
+    const int length = std::vsnprintf(buffer, sizeof(buffer), format, sizing);
+    va_end(sizing);
+    std::string text;
+    if (length >= static_cast<int>(sizeof(buffer))) {
+        text.resize(static_cast<size_t>(length) + 1);
+        std::vsnprintf(&text[0], text.size(), format, args);
+        text.resize(static_cast<size_t>(length));
+    } else if (length > 0) {
+        text.assign(buffer, static_cast<size_t>(length));
+    }
+    va_end(args);
+    Logger::write(LogLevel::Error, category, text, nullptr, LogFlagLua | LogFlagNoBacktrace, format);
+}
+
+void LuaBinding::logFromLua(lua_State* L, LogLevel level, const LogCategory& category, std::string_view text){
+    // the calling Lua function's chunk and line (level 1: the caller of this C function)
+    lua_Debug ar{};
+    LogSource source{nullptr, nullptr, 0};
+    if (L && lua_getstack(L, 1, &ar) && lua_getinfo(L, "Sl", &ar) && ar.currentline > 0) {
+        source.file = ar.short_src;
+        source.function = ar.name ? ar.name : "";
+        source.line = static_cast<uint32_t>(ar.currentline);
+    }
+    Logger::write(level, category, text, source.file ? &source : nullptr, LogFlagLua | LogFlagNoBacktrace);
 }
 
 void LuaBinding::registerHelpersFunctions(lua_State *L){
@@ -721,28 +766,13 @@ void LuaBinding::cleanup(){
     }
 }
 
-std::string LuaBinding::getScriptSubscriptionTag(int luaRef){
-    if (!luastate) return "";
-
+void LuaBinding::removeScriptSubscriptions(int luaRef){
+    if (!luastate) return;
     lua_rawgeti(luastate, LUA_REGISTRYINDEX, luaRef);
-    const void* ptr = lua_topointer(luastate, -1);
-    std::string addr;
-    if (ptr) {
-        addr = "_" + std::to_string(reinterpret_cast<std::uintptr_t>(ptr)) + "_";
-    }
+    const void* table = lua_topointer(luastate, -1);
     lua_pop(luastate, 1);
-
-    return addr;
-}
-
-void LuaBinding::removeScriptSubscriptions(Scene* scene, int luaRef){
-    std::string addr = getScriptSubscriptionTag(luaRef);
-    if (addr.empty()) return;
-
-    Engine::removeSubscriptionsByTag(addr);
-    if (scene) {
-        scene->removeSubscriptionsByTag(addr);
-    }
+    // every event subscription (engine, components, physics) and timer of the script
+    if (table) SubscriptionOwnerIndex::releaseOwner(ownerKeyOf(table));
 }
 
 void LuaBinding::releaseLuaRef(int luaRef){
@@ -873,7 +903,7 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 
         int loadStatus = luaL_loadbuffer(L, (const char*)filedata.getMemPtr(), filedata.length(), scriptEntry.path.c_str());
         if (loadStatus != LUA_OK) {
-            Log::error("Failed to load Lua file '%s': %s", scriptEntry.path.c_str(), getLuaStackErrorString(L, -1).c_str());
+            logLuaError("Failed to load Lua file '%s': %s", scriptEntry.path.c_str(), getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
             return false;
         }
@@ -883,7 +913,7 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 
     int status = pcallWithTraceback(L, 0, 1);
     if (status != LUA_OK) {
-        Log::error("Failed to execute Lua module '%s': %s", scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
+        logLuaError("Failed to execute Lua module '%s': %s", scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
         lua_pop(L, 1);
         return false;
     }
@@ -1016,7 +1046,7 @@ void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, c
     if (lua_isfunction(L, -1)) {
         lua_pushvalue(L, -2);
         if (pcallWithTraceback(L, 1, 0) != LUA_OK) {
-            Log::error("Lua %s() failed for '%s': %s", function, scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
+            logLuaError("Lua %s() failed for '%s': %s", function, scriptEntry.className.c_str(), getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
         }
     } else {
@@ -1027,7 +1057,7 @@ void LuaBinding::callLuaScriptFunction(lua_State* L, ScriptEntry& scriptEntry, c
 
 void LuaBinding::releaseLuaScriptInstance(Scene* scene, ScriptEntry& scriptEntry) {
     int ref = static_cast<int>(reinterpret_cast<intptr_t>(scriptEntry.instance));
-    removeScriptSubscriptions(scene, ref);
+    removeScriptSubscriptions(ref);
     releaseLuaRef(ref);
     scriptEntry.instance = nullptr;
     for (auto& prop : scriptEntry.properties) {
