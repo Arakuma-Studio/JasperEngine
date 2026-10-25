@@ -94,6 +94,10 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/Rendering/Shaders/Includes/terrain_material_albedo.glsl` (the colour-slotted hex lattice), adapted with an integer hash | `engine/shaderlib/includes/hex_tiling.glsl` | hex tiling of materials and terrain layers (S11) |
 | `Engine/Modules/Rendering/Shaders/Includes/standard_pbr.glsl` (anisotropic GGX, Charlie visibility, the sheen albedo fit), adapted | `engine/shaderlib/includes/pbr_ext.glsl` | the extended lobes of the built-in Lit (S11) |
 | `Engine/Include/Components/Rendering/LightPhotometry.h` (black body fit, lumen to candela), adapted | `engine/core/util/LightPhotometry.h` | photometric light units and colour temperature (S11) |
+| `Engine/Modules/Rendering/Source/Common/CubeLutFileParser.cpp`, `CubeLutColorDomain.cpp` and the curves and gamut matrices of `Shaders/Includes/cube_lut.glsl` (ported to C++) | `engine/core/util/CubeLut.*` | `.cube` LUT parsing, the input encoding proposal and the scene-stage colour maths (S13) |
+| `Engine/Source/Engine/Rendering/DynamicResolutionController.cpp` and its header (adapted) | `engine/core/render/DynamicResolutionController.*` | the GPU law of dynamic resolution (S13) |
+| `Engine/Modules/Rendering/Shaders/vhs.frag`, `vhs_interference.frag`, `vhs_signal_glitches.frag` (adapted, with the punikonta notice below) | `engine/shaderlib/includes/post_vhs.glsl` | the uber pass's VHS tape (S13) |
+| `CubeLutFileParserTests.cpp` and `Tests/Fixtures/CubeLut/*.cube`, `DynamicResolutionControllerTests.cpp` (ported) | `engine/tests/core/util/CubeLutTest.cpp`, `engine/tests/core/fixtures/cubelut/`, `engine/tests/core/render/DynamicResolutionControllerTest.cpp` | test cases and fixtures (tests only, never shipped) |
 | `Source/Engine/Rendering/ShadowMapRenderFeature.cpp` (`SliceBoundingSphereRadius`, `CascadeLightUp`, `GetCascadeFitTuning`), adapted | `engine/core/render/shadow/CascadeFit.*` | the cascades' bounding-sphere fit, the near-vertical light basis and the fit freeze bands (S10) |
 | `PointShadowAtlasPlanner` (importance ranking, sticky slots, challenge margin and cooldown), adapted | `engine/core/render/shadow/ShadowSlotPlanner.cpp` | shadow slots by importance (S10) |
 | Shader includes `shadow_receiver_plane.glsl`, `shadow_filter.glsl` (`GE_VogelDisk`), `shadow_sampling.glsl` (`GE_PoissonRotation`), `shadow_cascade_blend.glsl`, `shadow_distance_fade.glsl`, `shadow_pcss_decisions.glsl`, adapted with every depth comparison inverted | `engine/shaderlib/includes/shadow_sampling.glsl`, `engine/shaderlib/includes/shadow_pcss_decisions.glsl` | the receiver-plane bias, the Vogel filter, the cascade blend and fade, PCSS (S10) |
@@ -115,3 +119,83 @@ Test assets (never shipped: `engine/tests/` stays out of the editor install and 
 | SpecularTest | `engine/tests/render/assets/khronos/SpecularTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
 | EmissiveStrengthTest | `engine/tests/render/assets/khronos/EmissiveStrengthTest/` | CC-BY-4.0 | Ed Mackey, © 2022 AGI |
 | SheenTestGrid, AnisotropyStrengthTest, IridescenceDielectricSpheres, IridescenceMetallicSpheres, TransmissionTest, IORTestGrid, MetalRoughSpheresNoTextures | `engine/tests/render/assets/khronos/` | CC0-1.0 | Eric Chadwick, Ed Mackey, Khronos, UX3D, Adobe, Krill Gavrilov (their `metadata.json`) |
+The VHS tape of the uber pass (`engine/shaderlib/includes/post_vhs.glsl`, S13) is adapted from
+OpenEngine's port of punikonta's Godot VHS shader ([godot-shader-crt-vhs](https://github.com/punikonta/godot-shader-crt-vhs),
+revision `6ba87f95c152ec023fc07c4f77e87bdd70783afa`, `shaders/vhs.gdshader`):
+
+```
+MIT License
+
+Copyright (c) Marcel Jovic <punikonta@protonmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+The Lens and Filmic film grain and the film damage of the uber pass (`engine/shaderlib/includes/post_film.glsl`,
+S13) are adapted from OpenEngine's film-simulation package (`Packages/film-simulation/Assets/Shaders/
+film_simulation_grain.frag` and `film_simulation_artifacts.frag`); nothing else of that package is used (it holds
+no film-stock colour data). Its licence, reproduced as it is, includes AMD's notice for the FidelityFX Lens 1.1
+(SDK v1.1.3) derived grain:
+
+```
+MIT License
+
+Copyright (c) 2026 GameEngine contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+FidelityFX Lens-derived film grain
+----------------------------------
+
+Copyright (C) 2024 Advanced Micro Devices, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

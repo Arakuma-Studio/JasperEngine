@@ -27,6 +27,7 @@
 #include "command/type/SetMainCameraCmd.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
+#include "util/CubeLut.h"
 #include "util/Util.h"
 #include "shader/ShaderManifest.h"
 #include "window/ProjectWindow.h"
@@ -35,7 +36,9 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -908,7 +911,7 @@ bool postProcessingFieldFromJson(Project* project, const PostProcessingSettings:
         }
         case FT::String:
         case FT::Asset: {
-            if (!value.is_string()) { error = name + " must be a project image path (\"\" none)."; return false; }
+            if (!value.is_string()) { error = name + " must be a project asset path (\"\" none)."; return false; }
             const std::string path = value.get<std::string>();
             // a GUID names the file too (assetPathFromJson resolves it)
             if (!path.empty() && !Guid::isValidText(path) && !fs::exists(project->getProjectPath() / path)) {
@@ -1514,7 +1517,7 @@ void applyPostProcessingPresetTool(const CallPtr& call) {
     }
     const uint32_t sceneId = scene->id;
     std::string error;
-    if (!runSceneCommand(sceneId, new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", preset->settings), error)) {
+    if (!runSceneCommand(sceneId, makePostProcessingCommand(project, sceneId, preset->settings, "Apply " + preset->name + " Preset"), error)) {
         call->fail(error);
         return;
     }
@@ -1525,6 +1528,186 @@ void applyPostProcessingPresetTool(const CallPtr& call) {
              Json{{"scene_id", sceneId}, {"preset", preset->id},
                   {"settings", postProcessingToJson(updated->scene->getPostProcessing(), project)},
                   {"cost", postProcessingCostToJson(cost)}});
+}
+
+// ------------------------------------------------------------------ S13: LUTs, status, debug
+
+const char* lutEncodingId(LutInputEncoding encoding) {
+    const PostProcessingSettings::Field* field = PostProcessingSettings::findField("lutInputEncoding");
+    const int index = (int)encoding;
+    return field && field->enumNames && index >= 0 && index <= (int)LutInputEncoding::DAVINCI_INTERMEDIATE ? field->enumNames[index] : "auto";
+}
+
+void inspectColorLutTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    const std::string requested = call->args().value("path", std::string());
+    std::string stored;
+    std::string error;
+    if (requested.empty()) {
+        call->fail("path is required: a project-relative .cube file or LUT strip image (or its GUID).");
+        return;
+    }
+    if (!McpValues::assetPathFromJson(project, requested, stored, error)) {
+        call->fail(error);
+        return;
+    }
+    const fs::path absolute = project->resolveAssetPath(stored);
+    const std::string relative = McpValues::assetPathToJson(project, stored);
+    if (!fs::exists(absolute)) {
+        call->fail("No file \"" + relative + "\" in the project.");
+        return;
+    }
+    // read fresh (not through the renderer's cache): the file as it is on disk now; a .cube is
+    // parsed here so a bad one reports without logging an engine error
+    CubeLut lut;
+    bool ok = false;
+    if (Util::isColorLutFile(absolute.string())) {
+        std::ifstream in(absolute, std::ios::binary);
+        std::ostringstream text;
+        text << in.rdbuf();
+        ok = parseCubeLut(text.str(), lut, error);
+    } else {
+        ok = loadColorLut(absolute.string(), lut, &error);
+    }
+    Json out = {{"path", relative}, {"ok", ok}, {"error", ok ? Json(nullptr) : Json(error)}};
+    if (!ok) {
+        call->ok("\"" + relative + "\" is not a usable colour LUT: " + error, out);
+        return;
+    }
+    std::string reason;
+    const LutInputEncoding proposed = proposeEncoding(lut, reason);
+    const LutStage stage = stageOf(proposed, lut);
+    out["title"] = lut.title;
+    out["kind"] = lut.fromStrip ? "strip" : "cube";
+    out["size_1d"] = lut.size1D;
+    out["size_3d"] = lut.size3D;
+    out["input_range"] = {McpValues::number(lut.size3D > 0 ? lut.in3D[0] : lut.in1D[0]), McpValues::number(lut.size3D > 0 ? lut.in3D[1] : lut.in1D[1])};
+    if (lut.size1D > 0 && lut.size3D > 0) out["input_range_1d"] = {McpValues::number(lut.in1D[0]), McpValues::number(lut.in1D[1])};
+    out["proposed_encoding"] = lutEncodingId(proposed);
+    out["reason"] = reason;
+    out["stage"] = stage == LutStage::SCENE ? "scene" : "display";
+    std::string text = "\"" + relative + "\"" + (lut.title.empty() ? std::string() : " (\"" + lut.title + "\")") + ": ";
+    if (lut.size1D > 0) text += "1D " + std::to_string(lut.size1D) + (lut.size3D > 0 ? " + " : "");
+    if (lut.size3D > 0) text += "3D " + std::to_string(lut.size3D) + "^3";
+    text += std::string(", proposed encoding ") + lutEncodingId(proposed) + " (" + reason + "), " +
+            (stage == LutStage::SCENE ? "scene stage (before the tone mapping)." : "display stage.");
+    call->ok(text, out);
+}
+
+Json dynamicResolutionToJson(const DynamicResolutionStatus& status) {
+    return Json{{"enabled", status.enabled}, {"running", status.running}, {"idle", status.idle}, {"overridden", status.overridden},
+                {"scale", McpValues::number(status.scale)}, {"min_scale", McpValues::number(status.minScale)},
+                {"max_scale", McpValues::number(status.maxScale)}, {"source", status.source},
+                {"smoothed_ms", McpValues::number(status.smoothedMs)}, {"target_ms", McpValues::number(status.targetMs)},
+                {"saturated_low", status.saturatedLow}, {"ineffective", status.ineffective},
+                {"accepted_changes", status.acceptedChanges}, {"probe_seconds", McpValues::number(status.probeSeconds)}};
+}
+
+// set_post_processing_debug's pins (null: released)
+Json postDebugJson(const RenderSystem& render) {
+    auto pin = [](bool set, double value) { return set ? Json(value) : Json(nullptr); };
+    return Json{{"time_seconds", pin(render.getPostProcessingDebugTime() >= 0.0, render.getPostProcessingDebugTime())},
+                {"force_render_scale", pin(render.getDynamicResolutionOverride() > 0.0f, McpValues::number(render.getDynamicResolutionOverride()))},
+                {"fake_gpu_ms", pin(render.getDynamicResolutionFakeGpuMs() > 0.0f, McpValues::number(render.getDynamicResolutionFakeGpuMs()))}};
+}
+
+void getPostProcessingStatusTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    // while playing, the scene's running copy (its renderer is the game's)
+    SceneProject* scene = McpRefs::runtimeScene(project, sceneArg(call));
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
+    const PostProcessingSettings& settings = scene->scene->getPostProcessing();
+    // what applies: the running game's renderer, else what the settings draw on the next frame
+    // (an idle editor renders on demand, so its last tiers can be older than the settings)
+    const bool playing = scene->playState == ScenePlayState::PLAYING || scene->playState == ScenePlayState::PAUSED;
+    const PostProcessingTiers tiers = (render && playing) ? render->getActivePostProcessingTiers() : RenderSystem::getPostProcessingTiers(settings);
+    Json features = Json::array();
+    const int count = ShaderPool::getShaderPropertyCount(ShaderType::BLIT);
+    for (int bit = 0; bit < count && bit < 32; bit++) {
+        if (tiers.uberFeatures & (1u << bit)) features.push_back(ShaderPool::getShaderPropertyName(ShaderType::BLIT, bit, false));
+    }
+    const PostProcessingCost cost = sceneCost(scene->scene, settings);
+    Json passes = Json::array();
+    for (const PostProcessingCostPass& pass : cost.engine.passes) {
+        passes.push_back({{"label", pass.label}, {"count", pass.count}, {"screens", McpValues::number(pass.area)},
+                          {"full_resolution", pass.fullResolution}});
+    }
+    const DynamicResolutionStatus status = render ? render->getDynamicResolutionStatus() : DynamicResolutionStatus();
+    const float applied = (render && playing) ? render->getAppliedRenderScale() : tiers.renderScale;
+    Json out = {{"scene_id", scene->id}, {"playing", playing}, {"tail_color", tiers.tailColor}, {"uber", tiers.uber},
+                {"uber_features", features}, {"render_scale", McpValues::number(tiers.renderScale)},
+                {"render_scale_applied", McpValues::number(applied)}, {"passes", passes}, {"passes_estimate", true},
+                {"dynamic_resolution", dynamicResolutionToJson(status)}};
+    if (render) out["debug"] = postDebugJson(*render);
+    char text[256];
+    std::snprintf(text, sizeof(text), "\"%s\": %s, uber pass %s, render scale %.2f applied", scene->name.c_str(),
+                  tiers.tailColor ? "in-shader colour" : "no in-shader colour", tiers.uber ? "on" : "off", applied);
+    std::string message = text;
+    if (!features.empty()) message += ", features " + describeUberFeatures(tiers.uberFeatures);
+    if (status.enabled) {
+        std::snprintf(text, sizeof(text), "; dynamic resolution %s (%s, %.2f, %.1f / %.1f ms)", status.running ? "running" : "idle",
+                      status.source, status.scale, status.smoothedMs, status.targetMs);
+        message += text;
+    }
+    call->ok(message + ".", out);
+}
+
+void setPostProcessingDebugTool(const CallPtr& call) {
+    Project* project = call->ctx().project();
+    // while playing, the scene's running copy (its renderer is the game's)
+    SceneProject* scene = McpRefs::runtimeScene(project, sceneArg(call));
+    if (!scene) return;
+    if (!scene->scene) {
+        call->fail(McpRefs::notOpenError(project, *scene));
+        return;
+    }
+    std::shared_ptr<RenderSystem> render = scene->scene->getSystem<RenderSystem>();
+    if (!render) {
+        call->fail("\"" + scene->name + "\" has no renderer.");
+        return;
+    }
+    const Json& args = call->args();
+    // each value: a number pins it, null releases it, absent leaves it
+    auto read = [&](const char* key, double minimum, double maximum, double& out, bool& release) -> bool {
+        release = false;
+        if (!args.contains(key)) return false;
+        if (args[key].is_null()) {
+            release = true;
+            return true;
+        }
+        if (!args[key].is_number()) {
+            call->fail(std::string(key) + " must be a number or null.");
+            return false;
+        }
+        out = args[key].get<double>();
+        if (!(out >= minimum && out <= maximum)) {
+            char text[96];
+            std::snprintf(text, sizeof(text), " must be a number from %g to %g, or null.", minimum, maximum);
+            call->fail(key + std::string(text));
+            return false;
+        }
+        return true;
+    };
+    double time = 0.0, scale = 0.0, gpuMs = 0.0;
+    bool releaseTime = false, releaseScale = false, releaseGpu = false;
+    const bool hasTime = read("time_seconds", 0.0, 1e6, time, releaseTime);
+    if (call->completed()) return;
+    const bool hasScale = read("force_render_scale", 0.5, 1.0, scale, releaseScale);
+    if (call->completed()) return;
+    const bool hasGpu = read("fake_gpu_ms", 0.01, 1000.0, gpuMs, releaseGpu);
+    if (call->completed()) return;
+    if (hasTime) render->setPostProcessingDebugTime(releaseTime ? -1.0 : time);
+    if (hasScale) render->setDynamicResolutionOverride(releaseScale ? 0.0f : (float)scale);
+    if (hasGpu) render->setDynamicResolutionFakeGpuMs(releaseGpu ? 0.0f : (float)gpuMs);
+    scene->needUpdateRender = true;
+    const Json debug = postDebugJson(*render);
+    call->ok("Post-processing debug of \"" + scene->name + "\" (editor only, not saved): " + debug.dump() + ".",
+             Json{{"scene_id", scene->id}, {"debug", debug}});
 }
 
 } // namespace
@@ -1751,8 +1934,8 @@ void registerSceneTools(McpRegistry& registry) {
         tool.name = "list_post_processing_presets";
         tool.title = "List Post-processing Presets";
         tool.description =
-            "Post-processing presets (none, mobile, console, stylised, crt_retro): id, name, description, the "
-            "post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
+            "Post-processing presets (none, mobile, mobile_adaptive, console, stylised, crt_retro, film, vhs): id, name, "
+            "description, the post_processing fields each sets, estimated cost (passes, full-resolution passes, screens, against "
             "Unity URP). current: the scene's preset (null = custom), settings and cost; in play also applied.";
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
@@ -1773,6 +1956,57 @@ void registerSceneTools(McpRegistry& registry) {
         }, {"preset"});
         tool.annotations.idempotent = true;
         tool.handler = applyPostProcessingPresetTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "inspect_color_lut";
+        tool.title = "Inspect Color LUT";
+        tool.description =
+            "Read a colour LUT file (.cube, or an image strip) as post_processing.lut_texture would: ok, error (one line "
+            "with the line number), title, size_1d, size_3d, input_range, proposed_encoding (what lut_input_encoding auto "
+            "picks), reason, stage (display, or scene: before the tone mapping).";
+        tool.inputSchema = object({{"path", assetPath("Project-relative .cube or strip image, or its GUID.")}}, {"path"});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = inspectColorLutTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_post_processing_status";
+        tool.title = "Get Post-processing Status";
+        tool.description =
+            "What the scene's renderer applies now: tail_color, uber, uber_features, render_scale (settings) and "
+            "render_scale_applied, passes (estimate), dynamic_resolution {enabled, running, idle, scale, source gpu|frame, "
+            "smoothed_ms, target_ms, saturated_low, ineffective, accepted_changes, probe_seconds}, debug pins.";
+        tool.inputSchema = object({{"scene", sceneRef()}});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getPostProcessingStatusTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_post_processing_debug";
+        tool.title = "Set Post-processing Debug";
+        tool.description =
+            "Editor-only, unsaved pins for deterministic captures: time_seconds (the uber effects' time: grain, VHS, "
+            "film damage), force_render_scale (0.5..1, in Play), fake_gpu_ms (GPU time fed to dynamic resolution). "
+            "A number pins, null releases, absent keeps. Stop or Pause releases the scale and GPU pins.";
+        auto nullableNumber = [](const std::string& description) {
+            Json value = number(description);
+            value["type"] = Json::array({"number", "null"});
+            return value;
+        };
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"time_seconds", nullableNumber("Seconds, or null: live.")},
+            {"force_render_scale", nullableNumber("0.5..1, or null: the controller's / the settings'.")},
+            {"fake_gpu_ms", nullableNumber("Milliseconds, or null: measured.")}
+        });
+        tool.annotations.idempotent = true;
+        tool.handler = setPostProcessingDebugTool;
         registry.addTool(std::move(tool));
     }
 }

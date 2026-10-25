@@ -563,7 +563,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 13;
+        case ShaderType::BLIT:   return 18;
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -711,6 +711,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 10: return shortName ? "Blm" : "Bloom";
             case 11: return shortName ? "Blr" : "Blur";
             case 12: return shortName ? "Scl" : "Upscale";
+            case 13: return shortName ? "Vhs" : "VHS";
+            case 14: return shortName ? "Hal" : "Halation";
+            case 15: return shortName ? "Fdm" : "Film Damage";
+            case 16: return shortName ? "Gln" : "Film Grain Lens";
+            case 17: return shortName ? "Gfm" : "Film Grain Filmic";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample

@@ -243,9 +243,10 @@ forks: jasper://docs/shaders. A failing shader draws as the built-in one (error 
 Built-in Lit lobes (clear coat, sheen, anisotropy, iridescence, transmission, specular/IOR, hex
 tiling): the material's pbr object, get_material_variant; Lit Quality, light units (set_light_unit)
 and EV100: jasper://docs/materials.
-Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
-post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
-(jasper://docs/post-processing).
+Post-processing (main camera only): apply_post_processing_preset (film, vhs, mobile_adaptive...),
+then set_scene_settings post_processing.<field>; get_post_processing_status reads what applies,
+inspect_color_lut a .cube. Mobile: in-shader colour, low render scale or dynamic resolution, few
+passes (jasper://docs/post-processing).
 Shadows: a light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in shadow
 texels, 1 is right almost always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
 the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).
