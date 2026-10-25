@@ -3188,7 +3188,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"submesh", withDefault(integer("", 0, 1024), 0)},
             {"link", boolean("Default: true with entity.")},
             {"overwrite", withDefault(boolean(""), false)},
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
+            {"allow_data_loss", boolean("")}
         }, {"path"});
         tool.handler = createMaterialTool;
         registry.addTool(std::move(tool));
@@ -3203,7 +3203,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", assetPath("")},
             {"values", anyObject("The fields to change, as create_material's values (null removes).")},
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
+            {"allow_data_loss", boolean("")}
         }, {"path", "values"});
         tool.handler = updateMaterialTool;
         registry.addTool(std::move(tool));
@@ -3257,7 +3257,7 @@ void registerAssetTools(McpRegistry& registry) {
             {"entities", entities()},
             {"submesh", integer("One submesh (default: every submesh).", 0, 1024)},
             {"path", assetPath("A .material file instead of entities.")},
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
+            {"allow_data_loss", boolean("")}
         }, {"preset"});
         tool.allowedWhilePlaying = false;
         tool.handler = applyMaterialPresetTool;

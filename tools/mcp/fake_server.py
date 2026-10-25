@@ -3,9 +3,10 @@
 Speaks the same command line as the editor:
 
     fake_server.py mcp [--project <dir|project.yaml>] [--create <dir> [--name N]] [--headless]
-                       [--http-port N]
+                       [--http-port N] [--broken]
 
-stdio by default; with --http-port it serves Streamable HTTP on 127.0.0.1:N/mcp instead.
+stdio by default; with --http-port it serves Streamable HTTP on 127.0.0.1:N/mcp instead, and
+with --broken as well an HTTP server whose answers are not JSON-RPC (client error handling).
 With --headless and no DISPLAY it spawns `Xvfb -displayfd` like the editor and kills it at exit.
 Writes chatter to stderr (never stdout), and a few tools mimic the editor's:
 editor_status, create_entity, find_entities, undo/redo, batch, screenshot, read_console.
@@ -193,6 +194,30 @@ def build(args: argparse.Namespace) -> MCPServer:
     return server
 
 
+def serve_broken(port: int | None) -> None:
+    """A server that speaks HTTP but not JSON-RPC (the CLI's exit code 4 test, S31 AC5)."""
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    if not port:
+        raise SystemExit("--broken needs --http-port")
+
+    class Broken(BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 - http.server API
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            body = b"<html>this is not JSON-RPC</html>"
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    log(f"serving broken JSON-RPC on http :{port}")
+    ThreadingHTTPServer(("127.0.0.1", port), Broken).serve_forever()
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("mode", choices=["mcp"])
@@ -202,7 +227,13 @@ def main() -> None:
     ap.add_argument("--headless", action="store_true")
     ap.add_argument("--http-port", type=int)
     ap.add_argument("--mcp-port", type=int)
+    ap.add_argument("--broken", action="store_true",
+                    help="with --http-port: answer every POST with HTTP 200 and a body that is not JSON-RPC")
     args = ap.parse_args()
+
+    if args.broken:
+        serve_broken(args.http_port or args.mcp_port)
+        return
 
     if args.create:
         Path(args.create).mkdir(parents=True, exist_ok=True)
