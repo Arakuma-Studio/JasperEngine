@@ -4,6 +4,7 @@
 #ifndef AUDIO_SOURCE_COMPONENT_H
 #define AUDIO_SOURCE_COMPONENT_H
 
+#include "asset/AssetRef.h"
 #include "Engine.h"
 
 #include <memory>
@@ -32,11 +33,13 @@ namespace jasperengine{
         bool enabled = true;
 
         std::shared_ptr<SoLoud::Wav> sample = nullptr;
+        // SoundPool's generation of `sample`: a hot-reloaded file is taken on the next play
+        uint32_t sampleGeneration = 0;
         unsigned int handle = 0; //Soloud handle
 
         AudioSourceState state = AudioSourceState::Stopped;
 
-        std::string filename;
+        AssetRef filename;
         bool loaded = false;
         bool loadFailed = false;
 

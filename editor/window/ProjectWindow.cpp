@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectWindow.h"
+#include "asset/AssetTypes.h"
+#include "window/AssetPanels.h"
+#include "util/PngWriter.h"
+#include "DocumentFile.h"
 #include "util/BidiText.h"
 
 #include "ImageViewerWindow.h"
@@ -19,6 +23,9 @@
 #include "resources/icons/font-icon_png.h"
 #include "resources/icons/html-icon_png.h"
 #include "resources/icons/css-icon_png.h"
+#include "resources/icons/lut-icon_png.h"
+#include "PostProcessingPresets.h"
+#include "util/CubeLut.h"
 
 #include "Out.h"
 #include "util/HtmlUITemplates.h"
@@ -141,7 +148,7 @@ bool editor::ProjectWindow::writeImageThumbnail(const fs::path& sourcePath, cons
     );
 
     fs::create_directories(thumbnailPath.parent_path());
-    const bool written = stbi_write_png(thumbnailPath.string().c_str(), newWidth, newHeight, 4, thumbData.data(), newWidth * 4) != 0;
+    const bool written = writePng(thumbnailPath, newWidth, newHeight, 4, thumbData.data(), newWidth * 4, io::Durability::Cache);
 
     sourceData.releaseImageData();
     return written;
@@ -182,7 +189,6 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     this->isRenaming = false;
     this->renameSelectPending = false;
     this->isCreatingNewDirectory = false;
-    this->timeSinceLastCheck = 0.0f;
     this->windowOpen = true;
     this->focusRequested = false;
     this->windowFocused = false;
@@ -191,16 +197,14 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     memset(this->nameBuffer, 0, sizeof(this->nameBuffer));
     memset(this->searchBuffer, 0, sizeof(this->searchBuffer));
 
-    thumbnailThread = std::thread(&ProjectWindow::thumbnailWorker, this);
 }
 
 editor::ProjectWindow::~ProjectWindow() {
     cancelThumbnailWork();
     stopThumbnailThread = true;
-    thumbnailCondition.notify_one(); // Wake the worker thread to check stop condition
-    if (thumbnailThread.joinable()) {
-        thumbnailThread.join();
-    }
+    // the steps capture this window
+    thumbnails.cancelPending();
+    thumbnails.waitIdle();
 }
 
 bool editor::ProjectWindow::isFocused() const{
@@ -289,7 +293,12 @@ void editor::ProjectWindow::resumeThumbnailWork(){
         std::lock_guard<std::mutex> lock(thumbnailMutex);
         thumbnailWorkSuspended = false;
     }
+    notifyThumbnailWork();
+}
+
+void editor::ProjectWindow::notifyThumbnailWork(){
     thumbnailCondition.notify_all();
+    scheduleThumbnailStep();
 }
 
 void editor::ProjectWindow::handleExternalDragEnter() {
@@ -300,15 +309,41 @@ void editor::ProjectWindow::handleExternalDragLeave() {
     isExternalDragHovering = false;
 }
 
-void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) {
-    std::error_code ec;
-    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
+std::string editor::ProjectWindow::colorLutTooltip(const fs::path& filePath) {
+    // the renderer's cache, by the path the scene stores (assets-relative): parsed once
+    const std::string stored = project->normalizeToAssetsRelative(filePath).generic_string();
+    const std::shared_ptr<const CubeLut> lut = getCachedColorLut(stored);
+    return describeColorLut(lut.get(), getCachedColorLutError(stored)) +
+           "\n\nDouble-click (or right-click > Use as Color Grading LUT): the open scene's Color Grading LUT.";
+}
+
+void editor::ProjectWindow::assignColorLut(const fs::path& filePath) {
+    SceneProject* scene = project->getSelectedScene();
+    if (!scene || !scene->scene || scene->sceneType == SceneType::SCENE_UI) {
+        Out::warning("Open a 2D or 3D scene to grade it with %s.", editor::FileUtils::pathToUtf8(filePath.filename()).c_str());
         return;
     }
+    PostProcessingSettings settings = scene->scene->getPostProcessing();
+    settings.lutTexture = project->normalizeToAssetsRelative(filePath).generic_string();
+    settings.colorGradingEnabled = true;
+    if (settings.lutContribution <= 0.0f)
+        settings.lutContribution = 1.0f;
+    CommandHandle::get(scene->id)->addCommandNoMerge(makePostProcessingCommand(
+        project, scene->id, settings, "Assign Color LUT " + editor::FileUtils::pathToUtf8(filePath.filename())));
+    Out::info("%s grades \"%s\" (Color Grading > LUT Texture).", editor::FileUtils::pathToUtf8(filePath.filename()).c_str(),
+              scene->name.c_str());
+}
 
+void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) {
+    // by extension first: most changed files have no thumbnail (no stat for them)
     FileType type = classifyThumbnailFileType(filePath);
 
     if (type == FileType::NONE) {
+        return;
+    }
+
+    std::error_code ec;
+    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
         return;
     }
 
@@ -387,7 +422,7 @@ void editor::ProjectWindow::processMaterialThumbnails() {
                     pendingMaterialGeneration = 0;
                 }
             }
-            thumbnailCondition.notify_one();
+            notifyThumbnailWork();
             return;
         }
 
@@ -435,7 +470,7 @@ void editor::ProjectWindow::processMaterialThumbnails() {
             }
         }
 
-        thumbnailCondition.notify_one();
+        notifyThumbnailWork();
     }
 }
 
@@ -472,7 +507,7 @@ void editor::ProjectWindow::processModelThumbnails() {
                     pendingModelGeneration = 0;
                 }
             }
-            thumbnailCondition.notify_one();
+            notifyThumbnailWork();
             return;
         }
 
@@ -531,7 +566,7 @@ void editor::ProjectWindow::processModelThumbnails() {
             }
         }
 
-        thumbnailCondition.notify_one();
+        notifyThumbnailWork();
     }
 }
 
@@ -588,9 +623,8 @@ void editor::ProjectWindow::checkPrefabThumbnailStamps() {
     if (changed.empty()) {
         return;
     }
-    // A file changed outside the editor: the loaded prefabs read it again first, so the
-    // thumbnails show what is on disk
-    project->refreshAssetDatabase(true);
+    // (the loaded prefabs read a changed file first: the hot reload applies it to the asset
+    // database before it tells this window)
     for (const fs::path& path : changed) {
         notifyResourceFileChanged(path);
     }
@@ -674,10 +708,7 @@ void editor::ProjectWindow::processPrefabThumbnails() {
         }
         saveStarted = GraphicUtils::saveFramebufferImage(framebuffer, thumbnailPath, false,
             [this, pending, thumbnailPath, stamp]() {
-                {
-                    std::ofstream stampFile(prefabStampPath(thumbnailPath), std::ios::trunc);
-                    stampFile << stamp;
-                }
+                FileUtils::writeFile(prefabStampPath(thumbnailPath), stamp);
                 bool publish = false;
                 {
                     std::lock_guard<std::mutex> thumbnailLock(thumbnailMutex);
@@ -770,6 +801,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.89f, 0.30f, 0.15f, 1.0f));
         case FileType::CSS:
             return ImGui::GetColorU32(ImVec4(0.40f, 0.20f, 0.60f, 1.0f));
+        case FileType::COLOR_LUT:
+            return ImGui::GetColorU32(ImVec4(0.06f, 0.46f, 0.43f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -843,7 +876,9 @@ void editor::ProjectWindow::renderHeader() {
     const float searchW = std::min(Theme::dpi(240.0f), std::max(Theme::dpi(100.0f), barW * 0.35f));
     ImGui::SameLine();
     ImGui::SetCursorScreenPos(ImVec2(barMin.x + barW - padX - gearW - Theme::dpi(4.0f) - searchW, barMin.y + padY));
-    if (UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW)) {
+    const bool searchEdited = UIUtils::searchInput("##ProjectSearch", "Search", searchBuffer, IM_ARRAYSIZE(searchBuffer), false, nullptr, searchW);
+    uiBuilding.searchBox = lastItemRect();
+    if (searchEdited) {
         std::string trimmed = searchBuffer;
         trimmed.erase(0, trimmed.find_first_not_of(" \t"));
         trimmed.erase(trimmed.find_last_not_of(" \t") + 1);
@@ -1101,7 +1136,7 @@ void editor::ProjectWindow::renderPathBreadcrumb(const ImVec2& size) {
             navigateTo = segments[i].second;
         }
         if (!isCurrent && ImGui::BeginDragDropTarget()) {
-            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            if (ImGui::AcceptDragDropPayload("resource_files")) {
                 dropTarget = segments[i].second;
             }
             ImGui::EndDragDropTarget();
@@ -1298,6 +1333,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
             ImVec2 itemMin = ImGui::GetItemRectMin();
             ImVec2 itemMax = ImGui::GetItemRectMax();
+            if (uiBuilding.entries.size() < 200) {
+                uiBuilding.entries.push_back({file.name, lastItemRect()});
+            }
 
             if (hovered) hoveredFile = file.name;
 
@@ -1321,6 +1359,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                         project->openScene(filePath);
                     else if (Util::isPrefabFile(filePath.string()))
                         editor::getEditorHost().openPrefabAsset(filePath);  // Unity: Prefab Mode
+                    else if (file.type == FileType::COLOR_LUT)
+                        assignColorLut(filePath);  // the open scene's Color Grading LUT
                     else
                         codeEditor->openFile(filePath.string(), true);
                 }
@@ -1394,7 +1434,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             // --- Directory as drop target ----------------------------------
             if (file.isDirectory){
                 if (ImGui::BeginDragDropTarget()){
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                    if (ImGui::AcceptDragDropPayload("resource_files")){
                         dropTarget = currentPath / file.name;
                     }
                     ImGui::EndDragDropTarget();
@@ -1539,7 +1579,10 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (notInProject) ImGui::PopStyleVar();
 
                 if (hovered){
-                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                    if (file.type == FileType::COLOR_LUT)
+                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), colorLutTooltip(currentPath / file.name).c_str());
+                    else
+                        ImGui::SetTooltip("%s", file.displayName.c_str());
                 }
 
             }else{
@@ -1624,7 +1667,10 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 }
 
                 if (hovered && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem)){
-                    ImGui::SetTooltip("%s", file.displayName.c_str());
+                    if (file.type == FileType::COLOR_LUT)
+                        ImGui::SetTooltip("%s\n%s", file.displayName.c_str(), colorLutTooltip(currentPath / file.name).c_str());
+                    else
+                        ImGui::SetTooltip("%s", file.displayName.c_str());
                 }
             }
 
@@ -1713,6 +1759,34 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImGui::Separator();
                 }
 
+                // a colour LUT: what its double-click does, for the open scene (S13)
+                if (file.type == FileType::COLOR_LUT) {
+                    const bool assign = ImGui::MenuItem(ICON_FA_PALETTE " Use as Color Grading LUT");
+                    uiBuilding.contextMenu.push_back({"Use as Color Grading LUT", lastItemRect()});
+                    ImGui::SetItemTooltip("The open scene's Post-processing > Color Grading > LUT Texture (one undo step)");
+                    if (assign) {
+                        assignColorLut(currentPath / file.name);
+                    }
+                    ImGui::Separator();
+                }
+
+                if (!file.isDirectory) {
+                    const Guid guid = project->getAssetDatabase().getAssetGuid(currentPath / file.name);
+                    const bool copyGuid = ImGui::MenuItem(ICON_FA_FINGERPRINT " Copy GUID", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Copy GUID", lastItemRect()});
+                    if (copyGuid) {
+                        ImGui::SetClipboardText(guid.str().c_str());
+                    }
+                    const bool findReferences = ImGui::MenuItem(ICON_FA_MAGNIFYING_GLASS " Find References", nullptr, false, !guid.isNull());
+                    uiBuilding.contextMenu.push_back({"Find References", lastItemRect()});
+                    if (findReferences) {
+                        if (AssetReferencesWindow* references = Backend::getApp().getAssetReferencesWindow()) {
+                            references->findReferences((currentPath / file.name).string());
+                        }
+                    }
+                    ImGui::Separator();
+                }
+
                 if (ImGui::MenuItem(ICON_FA_COPY " Copy")) copySelectedFiles(false);
                 if (ImGui::MenuItem(ICON_FA_SCISSORS " Cut")) copySelectedFiles(true);
                 if (ImGui::MenuItem(ICON_FA_PASTE " Paste", nullptr, false, !clipboardFiles.empty())){
@@ -1722,7 +1796,9 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 ImGui::Separator();
 
                 if (ImGui::MenuItem(ICON_FA_TRASH " Delete")) showDeleteConfirmation = true;
-                if (ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2")){
+                const bool rename = ImGui::MenuItem(ICON_FA_I_CURSOR " Rename", "F2");
+                uiBuilding.contextMenu.push_back({"Rename", lastItemRect()});
+                if (rename){
                     startRename(file.name);
                     ImGui::CloseCurrentPopup();
                 }
@@ -1967,6 +2043,15 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
     const ImVec2 nodePos = ImGui::GetCursorScreenPos();
     bool nodeOpen = ImGui::TreeNodeEx("##node", rootFlags, "%s%s", iconGap.c_str(), rootDisplayName.c_str());
     const bool toggledOpen = ImGui::IsItemToggledOpen();
+    if (uiBuilding.tree.size() < 200) {
+        UiTreeNode node;
+        node.path = project->normalizeToProjectRelative(rootPath).generic_string();
+        node.rect = lastItemRect();
+        node.arrowX = nodePos.x + ImGui::GetStyle().FramePadding.x + ImGui::GetFontSize() * 0.5f;
+        node.arrowY = node.rect.y + node.rect.h * 0.5f;
+        node.open = nodeOpen;
+        uiBuilding.tree.push_back(node);
+    }
 
     ImTextureID folderTex = Backend::getImGuiTexture(folderIcon.getRender());
     if (folderTex != ImTextureID{}) {
@@ -1988,7 +2073,7 @@ void editor::ProjectWindow::renderDirectoryTree(const fs::path& rootPath) {
 
     // Handle drag and drop target
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+        if (ImGui::AcceptDragDropPayload("resource_files")) {
             handleInternalDragAndDrop(rootPath);
         }
         ImGui::EndDragDropTarget();
@@ -2025,13 +2110,6 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
 
     requestSort = true;
 
-    // Update last write time
-    ec.clear();
-    lastWriteTime = fs::last_write_time(currentPath, ec);
-    if (ec) {
-        lastWriteTime = {};
-    }
-
     files.clear();
 
     // A search lists matches from this folder and everything below it instead.
@@ -2053,8 +2131,8 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
             continue;
         }
 
-        // Skip project.yaml file
-        if (entry.path().filename() == "project.yaml") {
+        // Skip project.yaml file, and the assets' .meta sidecars (S04: they move with their assets)
+        if (entry.path().filename() == "project.yaml" || AssetTypes::isMetaFile(entry.path())) {
             continue;
         }
 
@@ -2124,6 +2202,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::directory_entry
         }else if (Util::isCssFile(fileEntry.extension)){
             fileEntry.type = FileType::CSS;
             fileEntry.icon = cssIcon.getRender();
+        }else if (Util::isColorLutFile(fileEntry.extension)){
+            fileEntry.type = FileType::COLOR_LUT;
+            fileEntry.icon = lutIcon.getRender();
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
@@ -2161,7 +2242,7 @@ void editor::ProjectWindow::collectSearchResults() {
             it.increment(ec);
             continue;
         }
-        if (fileName != "project.yaml" && lower(fileName).find(needle) != std::string::npos) {
+        if (fileName != "project.yaml" && !AssetTypes::isMetaFile(entry.path()) && lower(fileName).find(needle) != std::string::npos) {
             files.push_back(makeFileEntry(entry, entry.path().lexically_relative(currentPath).generic_string()));
         }
         it.increment(ec);
@@ -2561,13 +2642,16 @@ void editor::ProjectWindow::importExternalPaths(const std::vector<std::string>& 
     scanDirectory(currentPath);
 }
 
-// Converting a video takes seconds to minutes: a worker runs FFmpeg (htmlui/VideoImporter, as
-// import_files does) and reports each file in the Console; the folder is listed again on the
-// main thread when a file is written. An existing output is not replaced.
+// Converting a video takes seconds to minutes: a job of the process channel runs FFmpeg
+// (htmlui/VideoImporter, as import_files does) and reports each file in the Console; the
+// folder is listed again on the main thread when a file is written. An existing output is not
+// replaced. The job captures no window, so its handle is not kept.
 void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir) {
     for (const fs::path& video : videos)
-        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", video.filename().u8string().c_str());
-    std::thread([videos, targetDir]() {
+        Out::info("Converting %s to AV1 + Opus WebM with FFmpeg...", editor::FileUtils::pathToUtf8(video.filename()).c_str());
+    jobs::SubmitOptions options;
+    options.name = "ffmpeg-import";
+    jobs::system().processChannel().submit([videos, targetDir]() {
         for (const fs::path& video : videos) {
             const htmlui::VideoImportResult result = htmlui::VideoImporter::importFile(video, targetDir, false);
             if (result.ok) {
@@ -2589,7 +2673,7 @@ void editor::ProjectWindow::importVideos(const std::vector<fs::path>& videos, co
                 });
             }
         }
-    }).detach();
+    }, options);
 }
 
 void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate) {
@@ -2659,20 +2743,31 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
         }
         thumbnailQueue.push(thumbFile);
     }
-    thumbnailCondition.notify_one();
+    notifyThumbnailWork();
 }
 
-void editor::ProjectWindow::thumbnailWorker() {
-    // warm shared preview resources in background: rendering the material preview
-    // scene once generates the IBL environment maps, which are pooled by texture id
-    // (TexturePool), so the first material preview in Properties opens without lag
-    {
-        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-        while (!stopThumbnailThread && !Engine::isViewLoaded() && std::chrono::steady_clock::now() < deadline) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        }
+void editor::ProjectWindow::scheduleThumbnailStep() {
+    if (!thumbnailStepScheduled.exchange(true))
+        thumbnails.push([this]() { thumbnailStep(); });
+}
+
+// One step of the thumbnail strand (a Background SerialQueue): one request, then the next
+// step is scheduled while work is left. A step never waits: a request that must wait for the
+// main thread (a pending material or model render) is picked up by the step the main thread
+// schedules when it clears that state.
+void editor::ProjectWindow::thumbnailStep() {
+    thumbnailStepScheduled.store(false);
+    if (stopThumbnailThread) {
+        return;
+    }
+
+    // warm shared preview resources once: rendering the material preview scene once
+    // generates the IBL environment maps, which are pooled by texture id (TexturePool), so
+    // the first material preview in Properties opens without lag
+    if (!thumbnailWarmupDone && Engine::isViewLoaded()) {
+        thumbnailWarmupDone = true;
         bool runWarmup = false;
-        if (!stopThumbnailThread && Engine::isViewLoaded()) {
+        {
             std::lock_guard<std::mutex> lock(thumbnailMutex);
             if (!thumbnailWorkSuspended) {
                 thumbnailWorkerBusy = true;
@@ -2696,22 +2791,13 @@ void editor::ProjectWindow::thumbnailWorker() {
         }
     }
 
-    while (!stopThumbnailThread) {
+    {
         ThumbnailRequest thumbFile;
         {
             std::unique_lock<std::mutex> lock(thumbnailMutex);
-            // Wait until there is work or the thread is stopped
-            thumbnailCondition.wait(lock, [this]() {
-                return (!thumbnailWorkSuspended && !thumbnailQueue.empty() &&
-                        !hasPendingMaterialRender && !hasPendingModelRender) || stopThumbnailThread;
-            });
-
-            // If we're stopping, exit
-            if (stopThumbnailThread) {
+            if (thumbnailWorkSuspended || thumbnailQueue.empty() || hasPendingMaterialRender || hasPendingModelRender) {
                 return;
             }
-
-            // Get the next file path
             thumbFile = thumbnailQueue.front();
             thumbnailQueue.pop();
             thumbnailWorkerBusy = true;
@@ -2738,7 +2824,7 @@ void editor::ProjectWindow::thumbnailWorker() {
             }
         } else if (thumbFile.type == FileType::MATERIAL) {
             try {
-                if (YAML::Node materialNode = YAML::LoadFile(thumbFile.path.string())) {
+                if (YAML::Node materialNode = DocumentFiles::read(thumbFile.path, DocumentKind::Material).root) {
                     Material material = Stream::decodeMaterial(materialNode);
                     materialRender.applyMaterial(material);
 
@@ -2851,6 +2937,7 @@ void editor::ProjectWindow::thumbnailWorker() {
         }
         thumbnailCondition.notify_all();
     }
+    scheduleThumbnailStep();
 }
 
 ImTextureID editor::ProjectWindow::getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight) {
@@ -3145,9 +3232,11 @@ void editor::ProjectWindow::cleanupThumbnails() {
             continue;
 
         std::string ext = p.path().extension().string();
-        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext)) {
+        if (Util::isImageFile(ext) || Util::isMaterialFile(ext) || Util::isModelFile(ext) || Util::isPrefabFile(ext)) {
             fs::path thumbnailPath = project->getThumbnailPath(p.path());
             validThumbPaths.insert(thumbnailPath.string());
+            // a prefab's thumbnail keeps its dependency stamp beside it
+            validThumbPaths.insert(prefabStampPath(thumbnailPath).string());
         }
     }
 
@@ -3183,15 +3272,62 @@ void editor::ProjectWindow::refreshCurrentDirectory() {
     scanDirectory(currentPath);
 }
 
+void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) {
+    const fs::path current = currentPath.lexically_normal();
+    auto inCurrent = [&](const fs::path& path) {
+        if (path.empty()) return false;
+        // a search lists everything under the folder
+        if (!searchText.empty()) {
+            std::string rel;
+            return watch::relativeTo(current, path, rel) && !rel.empty();
+        }
+        return path.lexically_normal().parent_path() == current;
+    };
+    bool rescan = false, folders = false, documents = false, prefabs = false;
+    std::vector<fs::path> modified;
+    for (const FileChange& change : changes) {
+        if (change.kind == FileChangeKind::Rescan) {
+            rescan = folders = documents = true;
+            continue;
+        }
+        const bool listing = change.kind != FileChangeKind::Modified;
+        if (listing && (inCurrent(change.path) || inCurrent(change.oldPath))) rescan = true;
+        if (listing && change.directory) folders = true;
+        // the open folder itself went (renamed or removed): scanDirectory falls back
+        std::string rel;
+        if (listing && (watch::relativeTo(change.path, current, rel) || watch::relativeTo(change.oldPath, current, rel))) rescan = true;
+        const std::string name = watch::pathToUtf8(change.path);
+        if (listing && (Util::isSceneFile(name) || Util::isPrefabFile(name))) documents = true;
+        if (change.kind == FileChangeKind::Modified && !change.directory) {
+            modified.push_back(change.path);
+            if (Util::isPrefabFile(name)) prefabs = true;
+        }
+    }
+    if (rescan) {
+        scanDirectory(currentPath);
+    } else {
+        if (folders) dirTreeGeneration++;
+        if (documents) refreshProjectFiles();
+    }
+    for (const fs::path& path : modified) notifyResourceFileChanged(path);
+    // a prefab's thumbnail also shows what it nests
+    if (prefabs || !modified.empty()) checkPrefabThumbnailStamps();
+}
+
+editor::ProjectWindow::UiRect editor::ProjectWindow::lastItemRect() {
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    return {min.x, min.y, max.x - min.x, max.y - min.y};
+}
+
 void editor::ProjectWindow::show() {
+    uiBuilding = UiState();
     if (firstOpen) {
         // Load saved settings (AppSettings is initialized by now)
         iconSize = AppSettings::getResourcesIconSize();
         currentLayout = static_cast<LayoutType>(AppSettings::getResourcesLayout());
         itemViewStyle = static_cast<ItemViewStyle>(AppSettings::getResourcesItemViewStyle());
         leftPanelWidth = AppSettings::getResourcesLeftPanelWidth();
-
-        int iconWidth, iconHeight;
 
         TextureData data;
 
@@ -3239,6 +3375,10 @@ void editor::ProjectWindow::show() {
         cssIcon.setData("editor:resources:css_icon", data);
         cssIcon.load();
 
+        data.loadTextureFromMemory(lut_icon_png, lut_icon_png_len);
+        lutIcon.setData("editor:resources:lut_icon", data);
+        lutIcon.load();
+
         scanDirectory(project->getProjectPath().string());
 
         firstOpen = false;
@@ -3275,24 +3415,6 @@ void editor::ProjectWindow::show() {
                 file.thumbnailPath.clear();
             }
         }
-    }
-
-    timeSinceLastCheck += ImGui::GetIO().DeltaTime;
-    if (timeSinceLastCheck >= 1.0f) {
-        try {
-            auto currentWriteTime = fs::last_write_time(currentPath);
-            if (currentWriteTime != lastWriteTime) {
-                scanDirectory(currentPath);
-            } else {
-                // The project can change without touching this directory
-                refreshProjectFiles();
-                // a prefab saved in place (or one it nests) does not touch it either
-                checkPrefabThumbnailStamps();
-            }
-        } catch (const fs::filesystem_error& e) {
-            // Handle potential filesystem errors silently
-        }
-        timeSinceLastCheck = 0.0f;
     }
 
     if (!windowOpen) {
@@ -3449,7 +3571,6 @@ void editor::ProjectWindow::show() {
 
 
     if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)) {
-        ImGuiDragDropFlags target_flags = ImGuiDragDropFlags_AcceptBeforeDelivery;
         if (const ImGuiPayload* payload = ImGui::GetDragDropPayload()) {
             if (payload->IsDataType("external_files")) highlightDragAndDrop();
         }
@@ -3489,6 +3610,12 @@ void editor::ProjectWindow::show() {
             }
         }
     }
+
+    uiBuilding.drawn = true;
+    uiBuilding.directory = project->normalizeToProjectRelative(currentPath).generic_string();
+    uiBuilding.search = searchText;
+    uiBuilding.selected = lastSelectedFile;
+    uiState = std::move(uiBuilding);
 
     ImGui::End();
 
@@ -3584,8 +3711,7 @@ void editor::ProjectWindow::renameNewLuaScript(const fs::path& file, const std::
     if (text != newLuaScriptText) {
         return;  // edited since: leave it to its author
     }
-    std::ofstream out(file, std::ios::trunc | std::ios::binary);
-    out << newLuaScriptTemplate(name);
+    DocumentFiles::write(file, newLuaScriptTemplate(name));
 }
 
 void editor::ProjectWindow::assetsCreateScript(bool lua) {
@@ -3606,23 +3732,17 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
     }
 
     if (lua) {
-        std::ofstream f(currentPath / (name + ".lua"), std::ios::trunc | std::ios::binary);
-        if (!f) {
-            Backend::getApp().registerAlert("Create Lua Script", "Could not write to " + currentPath.string());
-            return;
-        }
         newLuaScriptFile = name + ".lua";
         newLuaScriptText = newLuaScriptTemplate(name);
-        f << newLuaScriptText;
-        f.close();
-        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
-    } else {
-        std::ofstream h(currentPath / (name + ".h"), std::ios::trunc);
-        std::ofstream c(currentPath / (name + ".cpp"), std::ios::trunc);
-        if (!h || !c) {
-            Backend::getApp().registerAlert("Create C++ Script", "Could not write to " + currentPath.string());
+        const io::WriteResult written = DocumentFiles::write(currentPath / newLuaScriptFile, newLuaScriptText);
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create Lua Script", DocumentFiles::saveFailureMessage(currentPath / newLuaScriptFile, written));
             return;
         }
+        Generator::writeLuaScriptStubs(project->getProjectPath(), project->getProjectInternalPath(), {currentPath / newLuaScriptFile});
+    } else {
+        std::ostringstream h;
+        std::ostringstream c;
         h << "#pragma once\n\n";
         h << "#include \"ScriptBase.h\"\n";
         h << "#include \"Engine.h\"\n";
@@ -3645,6 +3765,14 @@ void editor::ProjectWindow::assetsCreateScript(bool lua) {
         c << "}\n\n";
         c << "void " << name << "::onUpdate() {\n";
         c << "}\n";
+        io::WriteResult written = DocumentFiles::write(currentPath / (name + ".h"), h.str());
+        if (written.ok()) {
+            written = DocumentFiles::write(currentPath / (name + ".cpp"), c.str());
+        }
+        if (!written.ok()) {
+            Backend::getApp().registerAlert("Create C++ Script", DocumentFiles::saveFailureMessage(currentPath, written));
+            return;
+        }
     }
 
     scanDirectory(currentPath);

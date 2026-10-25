@@ -7,12 +7,13 @@
 #include <functional>
 #include <string>
 #include <filesystem>
-#include <future>
 #include <vector>
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
 #include <map>
+
+#include "jobs/JobSystem.h"
 #include "Scene.h"
 #include "registry/TagManager.h"
 #include "Factory.h"
@@ -95,6 +96,22 @@ namespace jasperengine::editor {
         bool asyncLoading = false;
     };
 
+    // Project Settings > Player > Threading (project.yaml `threading:`): baked into the
+    // generated main as Engine::setThreadingSettings. -1 is Auto.
+    struct ThreadingProjectSettings {
+        int workers = -1;                // 1-15
+        int reservedFrameWorkers = -1;   // 0-4
+        int ioThreads = -1;              // 0-4
+        float webPumpBudgetMs = 4.0f;    // single-thread web: Background work per frame
+        bool webMultithreaded = false;   // web export: also a pthreads build (cross-origin isolation)
+
+        bool operator==(const ThreadingProjectSettings& other) const{
+            return workers == other.workers && reservedFrameWorkers == other.reservedFrameWorkers && ioThreads == other.ioThreads
+                && webPumpBudgetMs == other.webPumpBudgetMs && webMultithreaded == other.webMultithreaded;
+        }
+        bool operator!=(const ThreadingProjectSettings& other) const{ return !(*this == other); }
+    };
+
     // Layer Collision Matrix of Project Settings > Physics or Physics 2D: index = layer,
     // bit j set when that layer and layer j collide (kept symmetric)
     using LayerCollisionRows = std::array<uint32_t, MAX_LAYERS>;
@@ -115,8 +132,11 @@ namespace jasperengine::editor {
     };
 
     class Generator {
+        std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
     private:
-        std::future<void> buildFuture;
+        // the build on the process channel, or one running inline in a channel job
+        jobs::Task<void> buildTask;
+        std::atomic<int> inlineBuilds{0};
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
 
@@ -160,6 +180,9 @@ namespace jasperengine::editor {
         // those (absolute paths; a deleted script drops its class).
         static void writeLuaScriptStubs(const fs::path& projectPath, const fs::path& projectInternalPath,
                                         const std::vector<fs::path>& changedFiles = {});
+        // CMake that fails a plugin configure below the compiler floors of the engine build
+        // (engine/cmake/JasperEngineToolchain.cmake), for the generated CMakeLists.txt
+        static std::string getToolchainFloorCheck();
         // Engine API include directories of a project's C++ scripts, relative to <internal>/engine-api
         static const std::vector<std::string>& engineApiIncludeDirs();
         Generator();
@@ -192,13 +215,20 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4);
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings());
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
+        // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
+        // starts with; set before configure()
+        void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        // Configures and builds on the process channel; called from a channel job (the Play
+        // startup), it builds on that thread instead and returns when done.
+        void runBuild(const fs::path& projectPath, const fs::path& buildPath, const std::string& cCompiler, const std::string& cxxCompiler, const std::string& generator, unsigned int parallelJobs);
         bool isBuildInProgress() const;
         void waitForBuildToComplete();
         bool didLastBuildSucceed() const;
-        // Request cancellation asynchronously. Returns a future you can wait on.
-        std::future<void> cancelBuild();
+        // Requests cancellation without blocking: the running process is terminated, a build
+        // not started yet never runs. waitForBuildToComplete() then returns once it ended.
+        void cancelBuild();
     };
 }
 

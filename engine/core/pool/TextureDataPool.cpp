@@ -5,17 +5,20 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "io/FileData.h"
 #include "thread/ResourceProgress.h"
-#include "thread/ThreadPoolManager.h"
+#include "io/AssetIOService.h"
 
+#include <atomic>
 #include <filesystem>
 #include <vector>
 
 using namespace jasperengine;
 
-std::unordered_map<std::string, std::future<std::array<TextureData,6>>> TextureDataPool::pendingBuilds;
+std::unordered_map<std::string, TextureDataPool::PendingTexture> TextureDataPool::pendingBuilds;
 std::mutex TextureDataPool::cacheMutex;
 std::atomic<bool> TextureDataPool::shutdownRequested{false};
+std::atomic<uint32_t> TextureDataPool::replaceEpoch{0};
 
 texturesdata_t& TextureDataPool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization
@@ -23,6 +26,63 @@ texturesdata_t& TextureDataPool::getMap(){
     static texturesdata_t* map = new texturesdata_t();
     return *map;
 };
+
+std::unordered_map<std::string, uint32_t>& TextureDataPool::getGenerations(){
+    static auto* generations = new std::unordered_map<std::string, uint32_t>();
+    return *generations;
+}
+
+std::unordered_map<std::string, TextureSource>& TextureDataPool::getSources(){
+    static auto* sources = new std::unordered_map<std::string, TextureSource>();
+    return *sources;
+}
+
+void TextureDataPool::replace(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data){
+    if (!data){
+        return;
+    }
+    getMap()[id] = std::move(data);
+    getGenerations()[id]++;
+    replaceEpoch.fetch_add(1, std::memory_order_acq_rel);
+}
+
+uint32_t TextureDataPool::generation(const std::string& id){
+    auto& generations = getGenerations();
+    auto it = generations.find(id);
+    return it == generations.end() ? 0 : it->second;
+}
+
+bool TextureDataPool::getSource(const std::string& id, TextureSource& out){
+    auto& sources = getSources();
+    auto it = sources.find(id);
+    if (it == sources.end()){
+        return false;
+    }
+    out = it->second;
+    return true;
+}
+
+std::vector<std::string> TextureDataPool::findIdsUsingFile(const std::string& systemPath){
+    const std::string wanted = std::filesystem::path(systemPath).lexically_normal().generic_string();
+    std::vector<std::string> ids;
+    for (const auto& [id, source] : getSources()){
+        for (size_t f = 0; f < 6; f++){
+            if (source.paths[f].empty()){
+                continue;
+            }
+            const std::string file = TextureData::parseSvgScalePath(source.paths[f], nullptr);
+            if (std::filesystem::path(FileData::getSystemPath(file)).lexically_normal().generic_string() == wanted){
+                ids.push_back(id);
+                break;
+            }
+        }
+    }
+    return ids;
+}
+
+std::array<TextureData,6> TextureDataPool::decode(const std::string& id, const TextureSource& source){
+    return loadTextureInternal(id, source.paths, source.numFaces, source.fixAlphaBorder, false);
+}
 
 bool TextureDataPool::hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces) {
     if (!data) {
@@ -96,6 +156,9 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
     TextureLoadResult result;
     result.id = id;
 
+    // what a hot reload decodes again
+    getSources()[id] = TextureSource{paths, numFaces, fixAlphaBorder};
+
     if (shared.use_count() > 0 && hasTexturePixels(shared, numFaces)) {
         result.state = ResourceLoadState::Finished;
         result.data = shared;
@@ -116,44 +179,28 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
 
         auto it = pendingBuilds.find(id);
         if (it != pendingBuilds.end()) {
-            auto& future = it->second;
-            if (future.valid() && future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                try {
-                    std::array<TextureData,6> data = future.get();
-                    shared = std::make_shared<std::array<TextureData,6>>(data);
-                    pendingBuilds.erase(it);
-
-                    result.state = ResourceLoadState::Finished;
-                    result.data = shared;
-                    return result;
-                } catch (const std::exception& e) {
-                    pendingBuilds.erase(it);
-
-                    result.state = ResourceLoadState::Failed;
-                    result.errorMessage = e.what();
-                    return result;
-                }
-            } else if (future.valid()) {
+            jobs::Task<std::array<TextureData,6>>& task = it->second.task;
+            if (!task.isReady()) {
                 result.state = ResourceLoadState::Loading;
                 return result;
-            } else {
+            }
+            try {
+                shared = std::make_shared<std::array<TextureData,6>>(task.get());
                 pendingBuilds.erase(it);
+
+                result.state = ResourceLoadState::Finished;
+                result.data = shared;
+                return result;
+            } catch (const std::exception& e) {
+                pendingBuilds.erase(it);
+
                 result.state = ResourceLoadState::Failed;
-                result.errorMessage = "Invalid future";
+                result.errorMessage = e.what();
                 return result;
             }
         }
 
-        std::string textureName = std::filesystem::path(paths[0].empty() ? id : paths[0]).filename().string();
-        uint64_t buildId = std::hash<std::string>{}(id);
-
-        ResourceProgress::startBuild(buildId, ResourceType::Texture, textureName);
-
-        pendingBuilds[id] = ThreadPoolManager::getInstance().enqueue(
-            [id, paths, numFaces, fixAlphaBorder]() {
-                return loadTextureInternal(id, paths, numFaces, fixAlphaBorder, true);
-            }
-        );
+        pendingBuilds[id] = startAsyncLoad(id, paths, numFaces, fixAlphaBorder);
 
     } else {
         try {
@@ -172,6 +219,129 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
 
     result.state = ResourceLoadState::Loading;
     return result;
+}
+
+void TextureDataPool::prepareFace(TextureData& face, size_t numFaces, bool fixAlphaBorder) {
+    if (fixAlphaBorder) {
+        face.fixAlphaBorder();
+    }
+
+    if (Engine::getTextureStrategy() == TextureStrategy::FIT) {
+        face.fitPowerOfTwo();
+    } else if (Engine::getTextureStrategy() == TextureStrategy::RESIZE) {
+        face.resizePowerOfTwo();
+    }
+
+    // Cubemap faces must be square; resize to the larger dimension if needed
+    if (numFaces == 6) {
+        face.resizeToSquare();
+    }
+}
+
+TextureDataPool::PendingTexture TextureDataPool::startAsyncLoad(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder) {
+    const std::string textureName = std::filesystem::path(paths[0].empty() ? id : paths[0]).filename().string();
+    const uint64_t buildId = std::hash<std::string>{}(id);
+
+    ResourceProgress::startBuild(buildId, ResourceType::Texture, textureName);
+
+    bool isSingleFileCube = !paths[0].empty();
+    for (int f = 1; f < 6 && isSingleFileCube; f++){
+        if (!paths[f].empty())
+            isSingleFileCube = false;
+    }
+    isSingleFileCube = isSingleFileCube && numFaces == 6;
+    const size_t files = (numFaces == 6 && !isSingleFileCube) ? 6 : 1;
+
+    for (size_t f = 0; f < files; f++) {
+        if (paths[f].empty()) {
+            ResourceProgress::failBuild(buildId);
+            Log::error("Texture is missing texture for face %zu", f);
+            PendingTexture failed;
+            failed.task = jobs::submit([f]() -> std::array<TextureData,6> {
+                throw std::runtime_error("Texture is missing texture for face " + std::to_string(f));
+            });
+            return failed;
+        }
+    }
+
+    // one read per file: a reader thread reads it, a Heavy Background job decodes it; the
+    // faces of one texture share a token, so a cancel covers the whole load
+    jobs::CancelToken token;
+    auto decoded = std::make_shared<std::atomic<int>>(0);
+    std::vector<jobs::Task<std::array<TextureData,6>>> faces;
+    for (size_t f = 0; f < files; f++) {
+        AssetIOService::ReadRequest request;
+        request.path = TextureData::parseSvgScalePath(paths[f]);
+        request.priority = IOPriority::Normal;
+        request.gateClass = jobs::GateClass::Heavy;
+        request.name = "texture-decode";
+        request.cancel = token;
+        const std::string path = paths[f];
+        request.onFailure = [buildId, path](const std::string& error) {
+            ResourceProgress::failBuild(buildId);
+            if (!AssetIOService::isCancellation(error))
+                Log::error("Failed to load texture from file: %s (%s)", path.c_str(), error.c_str());
+        };
+        faces.push_back(AssetIOService::instance().submitRead(request,
+            [path, f, files, numFaces, fixAlphaBorder, isSingleFileCube, buildId, decoded](std::vector<uint8_t>&& bytes) {
+                std::array<TextureData,6> data;
+                if (shutdownRequested.load()) {
+                    ResourceProgress::failBuild(buildId);
+                    throw std::runtime_error("Shutdown requested");
+                }
+                if (isSingleFileCube) {
+                    if (!TextureData::loadCubeMapFromSingleFileData(path.c_str(), bytes.data(), (unsigned int)bytes.size(), data)) {
+                        ResourceProgress::failBuild(buildId);
+                        Log::error("Failed to load cube texture from file: %s", path.c_str());
+                        throw std::runtime_error("Failed to load cube texture from file: " + path);
+                    }
+                } else {
+                    if (!data[f].loadTextureFromFileData(path.c_str(), bytes.data(), (unsigned int)bytes.size())) {
+                        ResourceProgress::failBuild(buildId);
+                        if (numFaces == 1){
+                            Log::error("Failed to load texture from file: %s", path.c_str());
+                            throw std::runtime_error("Failed to load texture from file: " + path);
+                        }
+                        Log::error("Failed to load texture face %zu from file: %s", f, path.c_str());
+                        throw std::runtime_error("Failed to load texture face " + std::to_string(f) + " from file: " + path);
+                    }
+                    prepareFace(data[f], numFaces, fixAlphaBorder);
+                }
+                const int done = decoded->fetch_add(1) + 1;
+                ResourceProgress::updateProgress(buildId, 0.9f * (float)done / (float)files);
+                return data;
+            }));
+    }
+
+    // the faces' results are combined (and a cubemap validated) once all are decoded
+    jobs::SubmitOptions options;
+    options.lane = jobs::Lane::Background;
+    options.name = "texture-combine";
+    options.tags = jobs::Tag::Asset;
+    options.cancel = &token;
+    std::vector<jobs::TaskRef> deps(faces.begin(), faces.end());
+    PendingTexture pending;
+    pending.cancel = token;
+    pending.task = jobs::submit([faces, files, numFaces, buildId]() {
+        std::array<TextureData,6> data;
+        for (size_t f = 0; f < files; f++) {
+            const std::array<TextureData,6>& face = faces[f].get();
+            if (files == 1)
+                data = face;
+            else
+                data[f] = face[f];
+        }
+        std::string validationError = validateTextureFaces(data, numFaces);
+        if (!validationError.empty()) {
+            ResourceProgress::failBuild(buildId);
+            Log::error("%s", validationError.c_str());
+            throw std::runtime_error(validationError);
+        }
+        ResourceProgress::updateProgress(buildId, 1.0f);
+        ResourceProgress::completeBuild(buildId);
+        return data;
+    }, options, deps);
+    return pending;
 }
 
 std::array<TextureData,6> TextureDataPool::loadTextureInternal(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder, bool trackProgress) {
@@ -248,20 +418,7 @@ std::array<TextureData,6> TextureDataPool::loadTextureInternal(const std::string
             }
         }
 
-        if (fixAlphaBorder) {
-            data[f].fixAlphaBorder();
-        }
-
-        if (Engine::getTextureStrategy() == TextureStrategy::FIT) {
-            data[f].fitPowerOfTwo();
-        } else if (Engine::getTextureStrategy() == TextureStrategy::RESIZE) {
-            data[f].resizePowerOfTwo();
-        }
-
-        // Cubemap faces must be square; resize to the larger dimension if needed
-        if (numFaces == 6) {
-            data[f].resizeToSquare();
-        }
+        prepareFace(data[f], numFaces, fixAlphaBorder);
 
         if (trackProgress) {
             if (shutdownRequested.load()) {
@@ -352,16 +509,23 @@ std::string TextureDataPool::validateTextureFaces(std::array<TextureData,6>& dat
     return "";
 }
 
+void TextureDataPool::quiescePending(bool cancel) {
+    for (auto& [id, pending] : pendingBuilds) {
+        if (cancel) {
+            // the queued reads go, a decode in progress sees the token
+            pending.cancel.cancel();
+            if (pending.task.cancel())
+                ResourceProgress::failBuild(std::hash<std::string>{}(id));
+        }
+        pending.task.wait();
+    }
+    pendingBuilds.clear();
+}
+
 void TextureDataPool::requestShutdown() {
     std::lock_guard<std::mutex> lock(cacheMutex);
     shutdownRequested = true;
-
-    for (auto& [id, future] : pendingBuilds) {
-        if (future.valid()) {
-            future.wait();
-        }
-    }
-    pendingBuilds.clear();
+    quiescePending(true);
 }
 
 void TextureDataPool::cancelShutdown() {
@@ -375,11 +539,13 @@ void TextureDataPool::remove(const std::string& id){
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto pendingIt = pendingBuilds.find(id);
         if (pendingIt != pendingBuilds.end()) {
-            // Erasing a packaged_task future does not cancel its work. Wait so
-            // the old load cannot overlap a replacement request with this id.
-            if (pendingIt->second.valid()) {
-                pendingIt->second.wait();
+            // a load not started never runs; a running one is waited for, so it cannot
+            // overlap a replacement request with this id
+            pendingIt->second.cancel.cancel();
+            if (pendingIt->second.task.cancel()) {
+                ResourceProgress::failBuild(std::hash<std::string>{}(id));
             }
+            pendingIt->second.task.wait();
             pendingBuilds.erase(pendingIt);
             removedPending = true;
         }
@@ -401,12 +567,7 @@ void TextureDataPool::remove(const std::string& id){
 void TextureDataPool::clear(){
     {
 		std::lock_guard<std::mutex> lock(cacheMutex);
-		for (auto& [id, future] : pendingBuilds) {
-			if (future.valid()) {
-				future.wait();
-			}
-		}
-		pendingBuilds.clear();
+		quiescePending(false);
 	}
 	getMap().clear();
 }
@@ -417,12 +578,7 @@ void TextureDataPool::clearUnused(){
     // being registered under the same id during the wait.
     {
 		std::lock_guard<std::mutex> lock(cacheMutex);
-		for (auto& [id, future] : pendingBuilds) {
-			if (future.valid()) {
-				future.wait();
-			}
-		}
-		pendingBuilds.clear();
+		quiescePending(false);
 	}
 
 	std::vector<std::string> ids;

@@ -42,7 +42,6 @@ namespace jasperengine::editor{
 
         void quit() override;
 
-        void platformLog(const int type, const char *fmt, va_list args) override;
     };
 
 }

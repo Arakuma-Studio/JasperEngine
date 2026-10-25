@@ -16,6 +16,7 @@ import time
 from harness import Editor, skip
 
 # the harness owns the Xvfb so xdotool can press keys in the editor window
+CI = True
 EDITOR = {"create": True, "name": "Busy Test", "xvfb": "harness"}
 TIMEOUT = 1800
 JOBS = 3

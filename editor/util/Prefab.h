@@ -14,6 +14,7 @@
 
 #include "Scene.h"     // Entity, EntityRegistry, NULL_ENTITY
 #include "Catalog.h"   // ComponentType
+#include "LoadReport.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -103,9 +104,12 @@ struct PrefabInstanceData {
 class Prefab {
 public:
     // Prefab file format, see editor/project/PREFABS.md:
-    // {type: Prefab, version: 3, guid, nextEntity, root, members: [...]}
-    // 2: header, wrapper-root model; 3: the prefab's root GameObject is `root`
-    static constexpr int FILE_VERSION = 3;
+    // {type: Prefab, version: 4, guid, nextEntity, root, members: [...]}
+    // 2: header, wrapper-root model; 3: the prefab's root GameObject is `root`; 4: light shadow
+    // biases in shadow texels (StreamMigrations, prefab 3 -> 4)
+    static constexpr int FILE_VERSION = 4;
+    // the first version with the root-GameObject layout of today (`root`, members as written)
+    static constexpr int ROOT_LAYOUT_VERSION = 3;
 
     struct FileHeader {
         int version = 1;                  // 1: a file written before the header
@@ -197,6 +201,11 @@ public:
     // Read from a file older than FILE_VERSION: written again the next time a scene using it
     // is saved, even if nothing changed
     bool needsUpgrade = false;
+    // What the asset's file load could not read (docs/data-safety.md): with dropped issues
+    // outstanding, its saves are gated (Project::savePrefabToDisk)
+    LoadReport loadReport;
+    // SHA-1 of the file's bytes as last loaded or saved by this session
+    std::string diskSha1;
     uint32_t nextInstanceId = 1;
 
     uint32_t getInstanceId(uint32_t sceneId, Entity entity) const;

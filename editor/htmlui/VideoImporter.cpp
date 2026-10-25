@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "VideoImporter.h"
+#include "util/FileUtils.h"
+#include "io/AtomicFile.h"
 
 #include "htmlui/media/VideoFormats.h"
 #include "util/CommandRunner.h"
 #include "util/ShellEnv.h"
+#include "util/FileUtils.h"
 
 #include <chrono>
 #include <cstdio>
@@ -40,7 +43,7 @@ namespace {
     }
 
     std::string pathString(const fs::path& path){
-        return path.u8string();
+        return jasperengine::editor::FileUtils::pathToUtf8(path);
     }
 
     hc::Diagnostic diagnostic(hc::DiagCode code, hc::Severity severity, const std::string& file, const std::string& message, const std::string& fix){
@@ -67,7 +70,7 @@ namespace {
 
     bool isExecutable(const std::string& path){
         std::error_code ec;
-        return !path.empty() && fs::is_regular_file(fs::u8path(path), ec);
+        return !path.empty() && fs::is_regular_file(jasperengine::editor::FileUtils::pathFromUtf8(path), ec);
     }
 
 }
@@ -153,9 +156,9 @@ bool VideoImporter::isHdrInput(const std::string& ffmpeg, const fs::path& input)
     if (ffmpeg.empty())
         return false;
 #ifdef _WIN32
-    const fs::path ffprobe = fs::u8path(ffmpeg).parent_path() / "ffprobe.exe";
+    const fs::path ffprobe = jasperengine::editor::FileUtils::pathFromUtf8(ffmpeg).parent_path() / "ffprobe.exe";
 #else
-    const fs::path ffprobe = fs::u8path(ffmpeg).parent_path() / "ffprobe";
+    const fs::path ffprobe = jasperengine::editor::FileUtils::pathFromUtf8(ffmpeg).parent_path() / "ffprobe";
 #endif
     if (!isExecutable(pathString(ffprobe)))
         return false;
@@ -190,7 +193,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
             result.message = pathString(result.output.filename()) + " already exists";
             return result;
         }
-        fs::copy_file(input, result.output, fs::copy_options::overwrite_existing, ec);
+        FileUtils::copyFileAtomic(input, result.output, ec);
         result.ok = !ec;
         result.copied = !ec;
         result.message = ec ? "could not copy " + name + ": " + ec.message() : name + " is AV1/Opus WebM: copied";
@@ -214,7 +217,7 @@ VideoImportResult VideoImporter::importFile(const fs::path& input, const fs::pat
         // copied as it is; the engine will not play it until it is converted
         const fs::path copy = targetDir / input.filename();
         if (!fs::exists(copy, ec) || overwrite)
-            fs::copy_file(input, copy, fs::copy_options::overwrite_existing, ec);
+            FileUtils::copyFileAtomic(input, copy, ec);
         result.output = copy;
         result.copied = !ec;
         result.ok = false;
@@ -299,10 +302,9 @@ ImportedResource RemoteVideoImporter::run(const std::string& url, const std::str
                                                           std::to_string(std::random_device{}()));
     fs::create_directories(scratch / "out", ec);
     const fs::path downloaded = scratch / (name + "." + sniffed.extension());
-    {
-        std::ofstream out(downloaded, std::ios::binary);
-        out.write(body.data(), (std::streamsize)body.size());
-    }
+    io::AtomicWriteOptions options;
+    options.durability = io::Durability::Cache;
+    io::writeFileAtomic(downloaded, body, options);
     importer.progress("[HTML UI] " + url + ": " + sniffed.name() + (VideoImporter::isPlayable(downloaded) ? "" : ", converting with FFmpeg"));
     const VideoImportResult converted = VideoImporter::importFile(downloaded, scratch / "out", true);
 

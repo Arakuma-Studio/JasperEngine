@@ -29,7 +29,7 @@ namespace {
         return isAsciiAlnum(c) || c == '_';
     }
 
-    void replaceAll(std::string& text, const std::string& from, const std::string& to){
+    void examplesReplaceAll(std::string& text, const std::string& from, const std::string& to){
         if (from.empty())
             return;
         size_t pos = 0;
@@ -57,7 +57,7 @@ namespace {
         }
     }
 
-    bool endsWith(const std::string& text, const std::string& suffix){
+    bool examplesEndsWith(const std::string& text, const std::string& suffix){
         return text.size() >= suffix.size() && text.compare(text.size() - suffix.size(), suffix.size(), suffix) == 0;
     }
 
@@ -295,20 +295,20 @@ bool editor::HtmlUiExamples::instantiate(const std::string& name, const std::str
     const std::string assetsDir = stem + "_assets/";
 
     std::string htmlText(htmlFile->data);
-    replaceAll(htmlText, "href=\"" + cssName + "\"", "href=\"" + stem + ".css\"");
-    replaceAll(htmlText, "\"assets/", "\"" + assetsDir);
-    replaceAll(htmlText, "'assets/", "'" + assetsDir);
+    examplesReplaceAll(htmlText, "href=\"" + cssName + "\"", "href=\"" + stem + ".css\"");
+    examplesReplaceAll(htmlText, "\"assets/", "\"" + assetsDir);
+    examplesReplaceAll(htmlText, "'assets/", "'" + assetsDir);
     if (name == kBlank){
         const std::string title = titleName(stem);
-        replaceAll(htmlText, "<title>Blank</title>", "<title>" + title + "</title>");
-        replaceAll(htmlText, ">Blank</h1>", ">" + title + "</h1>");
+        examplesReplaceAll(htmlText, "<title>Blank</title>", "<title>" + title + "</title>");
+        examplesReplaceAll(htmlText, ">Blank</h1>", ">" + title + "</h1>");
     }
     out.files.emplace_back(html, htmlText);
 
     std::string cssText(cssFile->data);
-    replaceAll(cssText, "url(assets/", "url(" + assetsDir);
-    replaceAll(cssText, "url(\"assets/", "url(\"" + assetsDir);
-    replaceAll(cssText, "url('assets/", "url('" + assetsDir);
+    examplesReplaceAll(cssText, "url(assets/", "url(" + assetsDir);
+    examplesReplaceAll(cssText, "url(\"assets/", "url(\"" + assetsDir);
+    examplesReplaceAll(cssText, "url('assets/", "url('" + assetsDir);
     out.files.emplace_back(joinRelative(dir, stem + ".css"), cssText);
 
     const std::string assetsPrefix = name + "/assets/";
@@ -324,13 +324,13 @@ bool editor::HtmlUiExamples::instantiate(const std::string& name, const std::str
             out = Instance();
             return false;
         }
-        const std::string templateClass = luaName.size() > 4 && endsWith(luaName, ".lua") ? luaName.substr(0, luaName.size() - 4) : luaName;
+        const std::string templateClass = luaName.size() > 4 && examplesEndsWith(luaName, ".lua") ? luaName.substr(0, luaName.size() - 4) : luaName;
         out.luaClass = pascalName(stem) + "UI";
         out.luaPath = joinRelative(luaDir, out.luaClass + ".lua");
         std::string luaText(luaFile->data);
         replaceWord(luaText, templateClass, out.luaClass);
-        replaceAll(luaText, "\"assets/", "\"" + assetsDir);
-        replaceAll(luaText, "'assets/", "'" + assetsDir);
+        examplesReplaceAll(luaText, "\"assets/", "\"" + assetsDir);
+        examplesReplaceAll(luaText, "'assets/", "'" + assetsDir);
         out.files.emplace_back(out.luaPath, luaText);
     }
     return true;

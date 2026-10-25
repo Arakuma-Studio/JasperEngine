@@ -1091,7 +1091,6 @@ bool editor::Project::applyAddedComponent(uint32_t sceneId, Entity entity, Compo
     if (!canApplyPrefabOverrides()) {
         return false;
     }
-    Scene* scene = sceneProject->scene;
     const Entity instanceRoot = ref.instance->rootEntity;
     if (isNestedRootApplyTarget(sceneId, ref, target)) {
         Prefab* nested = getPrefab(target);
@@ -1315,7 +1314,9 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
             kept.push_back(entity);
         }
     }
-    sceneProject->selectedEntities = kept;
+    SelectionState keptSelection;
+    keptSelection.entities = kept;
+    setSelection(sceneProject->id, keptSelection, SelectionCause::Forced);
     sceneProject->isModified = wasModified;
     sceneProject->needUpdateRender = true;
     sceneProject->structureVersion++;

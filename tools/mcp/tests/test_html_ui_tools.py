@@ -53,7 +53,23 @@ INSPECT_UI_BEFORE_P5 = 1806
 LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
           "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
           "list_ui_effects": 900, "set_ui_effect_time": 500}
-TOTAL_LIMIT = 99800 + 837
+# S03 (data safety, R37/R38): +1479 for get_load_report (225), discard_scene_backup (146),
+# list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
+# S04 (asset identity, measured with tools/mcp/tool_budget.py): +2603 for retarget_asset_references
+# (598), resolve_asset (522), find_references (434), list_missing_assets (319),
+# clear_asset_references (311), get_asset_dependencies (293), import_files' overwrite and
+# build_project's allow_missing_assets
+# S06 (jobs & memory, merged after S04's measurement): +914 measured on the merge
+# S09 (logging, events, scheduler, merged after S04): +2633 measured on the merge
+# S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
+# undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
+# focus_window's undo_history / play_mode_changes panels (35); 2170 measured on the merge with S04
+# S13 (post FX): +1555 measured (inspect_color_lut 446, get_post_processing_status 403,
+# set_post_processing_debug 675, the presets' list in list_post_processing_presets)
+# S10 (shadows) and S12 (atmosphere), merged after S13's measurement: +2295 measured on the merge
+# S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
+# and editor_status' file_watcher and frame_ms
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295 + 395
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

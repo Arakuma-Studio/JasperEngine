@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "reload/HotReloadService.h"
+#include "asset/AssetRefSchema.h"
+#include "asset/AssetFileWrite.h"
+#include "util/CrashHook.h"
+#include "util/Scheduler.h"
+#include "io/AtomicFile.h"
 #include "Factory.h"
 #include "Workspace.h"
 #include "registry/PhysicsLayers.h"
@@ -40,9 +46,15 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "htmlui/anim/AnimEngine.h"
 #include "command/CommandHandle.h"
+#include "command/PlayChangeReview.h"
+#include "command/UndoTimeline.h"
+#include "command/type/SelectionCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "Stream.h"
+#include "StreamPreserved.h"
+#include "DocumentFile.h"
+#include "StreamSchema.h"
 #include "util/FileDialogs.h"
 #include "util/SHA1.h"
 #include "util/GraphicUtils.h"
@@ -152,6 +164,11 @@ static bool scriptPropertyValuesEqual(ScriptPropertyType type, const ScriptPrope
             const PrefabAsset* b = std::get_if<PrefabAsset>(&rhs);
             return a && b && a->getGuid() == b->getGuid() && a->getPath() == b->getPath();
         }
+        case ScriptPropertyType::Asset: {
+            const AssetRef* a = std::get_if<AssetRef>(&lhs);
+            const AssetRef* b = std::get_if<AssetRef>(&rhs);
+            return a && b && *a == *b;
+        }
     }
 
     return false;
@@ -220,8 +237,74 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
+bool editor::Project::recordSelectionInUndo = true;
+
 editor::Project::Project(){
     resetConfigs();
+    installUndoHooks();
+}
+
+editor::Project::~Project(){
+    // the jobs capture the project (the asset walk its database)
+    waitForAssetScan();
+    playStartupTask.wait();
+    playStopTask.wait();
+    sceneSaveTask.wait();
+    // the hooks point here: an editor or tool with a later Project installs its own
+    if (UndoTimeline::getProjectHistory() == &projectHistory){
+        UndoTimeline::setProjectHistory(nullptr);
+        UndoTimeline::selectedScene = nullptr;
+        UndoTimeline::historyName = nullptr;
+        CommandHistory::selectionHooks = CommandHistory::SelectionHooks();
+        CommandHistory::beforeMutation = nullptr;
+    }
+}
+
+void editor::Project::installUndoHooks(){
+    UndoTimeline::setProjectHistory(&projectHistory);
+    UndoTimeline::selectedScene = [this]() { return getSelectedSceneId(); };
+    UndoTimeline::historyName = [this](uint32_t sceneId) -> std::string {
+        if (sceneId == NULL_PROJECT_SCENE){
+            return "Project";
+        }
+        const SceneProject* sceneProject = getScene(sceneId);
+        return "Scene '" + (sceneProject ? sceneProject->name : std::to_string(sceneId)) + "'";
+    };
+    CommandHistory::selectionHooks.read = [this](size_t sceneId, SelectionState& state) {
+        const uint32_t id = (uint32_t)sceneId;
+        if (id == NULL_PROJECT_SCENE || !getScene(id) || isPlayRuntimeScene(id)){
+            return false;
+        }
+        state = getSelection(id);
+        return true;
+    };
+    CommandHistory::selectionHooks.restore = [this](size_t sceneId, const SelectionState& state) {
+        SceneProject* sceneProject = getScene((uint32_t)sceneId);
+        if (!sceneProject || !sceneProject->scene){
+            return;
+        }
+        // the GameObjects that exist again
+        SelectionState existing;
+        for (Entity entity : state.entities){
+            if (sceneProject->scene->isEntityCreated(entity)){
+                existing.entities.push_back(entity);
+            }
+        }
+        existing.active = existing.entities.empty() ? NULL_ENTITY : existing.entities.back();
+        setSelection((uint32_t)sceneId, existing, SelectionCause::Restore);
+    };
+    // Play start/stop swaps the scene for its snapshot: no edit may land meanwhile
+    CommandHistory::beforeMutation = [this](std::string& whyNot) {
+        for (const SceneProject& sceneProject : scenes){
+            switch (sceneProject.playState){
+                case ScenePlayState::SAVING: whyNot = "saving before Play"; return false;
+                case ScenePlayState::LOADING: whyNot = "Play mode is starting"; return false;
+                case ScenePlayState::CANCELLING: whyNot = "Play mode is stopping"; return false;
+                default: break;
+            }
+        }
+        return true;
+    };
 }
 
 fs::path editor::Project::normalizeToProjectRelative(const fs::path& path) const {
@@ -325,332 +408,20 @@ bool editor::Project::remapRelativeString(const fs::path& oldRelative, const fs:
     return true;
 }
 
-bool editor::Project::remapScriptEntryPaths(ScriptEntry& scriptEntry, const fs::path& oldRelative,
-                                            const fs::path& newRelative) {
-    bool changed = false;
-
-    if (!scriptEntry.path.empty()) {
-        std::string updatedPath;
-        if (remapRelativeString(oldRelative, newRelative, scriptEntry.path, updatedPath)) {
-            scriptEntry.path = updatedPath;
-            changed = true;
-        }
-    }
-
-    if (!scriptEntry.headerPath.empty()) {
-        std::string updatedHeaderPath;
-        if (remapRelativeString(oldRelative, newRelative, scriptEntry.headerPath, updatedHeaderPath)) {
-            scriptEntry.headerPath = updatedHeaderPath;
-            changed = true;
-        }
-    }
-
-    return changed;
-}
-
-bool editor::Project::remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldPath,
-                                                 const fs::path& newPath) {
-    if (!registry) {
-        return false;
-    }
-
-    const fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    const fs::path newRelative = normalizeToProjectRelative(newPath);
-    const fs::path oldLuaRelative = normalizeToLuaRelative(oldPath);
-    const fs::path newLuaRelative = normalizeToLuaRelative(newPath);
-
-    auto scriptsArray = registry->getComponentArray<ScriptComponent>();
-    bool changed = false;
-
-    for (size_t i = 0; i < scriptsArray->size(); ++i) {
-        ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
-        for (auto& scriptEntry : scriptComponent.scripts) {
-            const bool isLua = scriptEntry.type == ScriptType::LUA;
-            changed |= remapScriptEntryPaths(scriptEntry,
-                                             isLua ? oldLuaRelative : oldRelative,
-                                             isLua ? newLuaRelative : newRelative);
-        }
-    }
-
-    return changed;
-}
-
-bool editor::Project::cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedPath) {
-    if (!registry) {
-        return false;
-    }
-
-    const fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    const fs::path deletedLuaRelative = normalizeToLuaRelative(deletedPath);
-
-    auto scriptsArray = registry->getComponentArray<ScriptComponent>();
-    bool changed = false;
-
-    for (size_t i = 0; i < scriptsArray->size(); ++i) {
-        ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
-        const size_t originalSize = scriptComponent.scripts.size();
-
-        scriptComponent.scripts.erase(
-            std::remove_if(scriptComponent.scripts.begin(), scriptComponent.scripts.end(),
-                [&deletedRelative, &deletedLuaRelative](const ScriptEntry& scriptEntry) {
-                    if (scriptEntry.type == ScriptType::LUA) {
-                        return matchesRelativeString(deletedLuaRelative, scriptEntry.path);
-                    }
-                    return matchesRelativeString(deletedRelative, scriptEntry.path) ||
-                           matchesRelativeString(deletedRelative, scriptEntry.headerPath);
-                }),
-            scriptComponent.scripts.end());
-
-        changed |= (scriptComponent.scripts.size() != originalSize);
-    }
-
-    return changed;
-}
-
-static bool transformTexturePaths(Texture& texture, const std::function<bool(std::string&)>& transform) {
-    // Framebuffer and camera-linked textures carry an id instead of a file path.
-    if (texture.isFramebuffer()) {
-        return false;
-    }
-
-    // Per-face paths only exist on cubemaps, incomplete ones included
-    bool hasFacePaths = false;
-    for (size_t face = 1; face < 6; face++) {
-        if (!texture.getPath(face).empty()) {
-            hasFacePaths = true;
-            break;
-        }
-    }
-
-    if (hasFacePaths) {
-        bool changed = false;
-        for (size_t face = 0; face < 6; face++) {
-            std::string path = texture.getPath(face);
-            if (path.empty() || !transform(path)) {
-                continue;
-            }
-            // One missing face leaves the whole cubemap unloadable
-            if (path.empty()) {
-                texture = Texture();
-                return true;
-            }
-            texture.setCubePath(face, path);
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    std::string path = texture.getPath(0);
-    if (path.empty() || !transform(path)) {
-        return false;
-    }
-
-    // setPath("") would instead leave the texture waiting for a load that cannot happen
-    if (path.empty()) {
-        texture = Texture();
-        return true;
-    }
-
-    if (texture.isCubeMap()) {
-        // Single-file cubemap: setPath() would turn it into a 2D texture.
-        texture.setCubeMap(path);
-        return true;
-    }
-
-    const float svgScale = texture.getSvgScale();
-    texture.setPath(path);
-    texture.setSvgScale(svgScale);
-
-    return true;
-}
-
-static bool visitTexturePaths(Texture& texture, const std::function<bool(std::string&)>& transform) {
-    Texture updated(texture);
-    if (!transformTexturePaths(updated, transform)) {
-        return false;
-    }
-
-    // Renders keep drawing the old GPU texture until the new one exists, so the new path loads
-    // before the old texture is released. Kept in the pool, it would show for a reused name.
-    if (TexturePool::get(texture.getId())) {
-        const bool asyncLoading = Engine::isAsyncLoading();
-        Engine::setAsyncLoading(false);
-        updated.getRender();
-        Engine::setAsyncLoading(asyncLoading);
-    }
-
-    texture.destroy();
-    texture = updated;
-    return true;
-}
-
 bool editor::Project::visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform) {
     if (!registry) {
         return false;
     }
-
-    bool changed = false;
-
-    auto visitComponents = [&](auto* componentArray, auto&& visitComponent) {
-        for (size_t i = 0; i < componentArray->size(); i++) {
-            visitComponent(componentArray->getComponentFromIndex(i));
+    // the fields relative to the assets directory (textures, models, audio, fonts, documents)
+    return AssetRefSchema::forEachAssetRef(*registry, [&](AssetRef& ref, const AssetRefSite& site) {
+        if (site.base != AssetPathBase::Assets || ref.path.empty()) {
+            return;
         }
-    };
-
-    visitComponents(registry->getComponentArray<MeshComponent>(), [&](MeshComponent& mesh) {
-        for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
-            Material& material = mesh.submeshes[s].material;
-            bool submeshChanged = visitTexturePaths(material.baseColorTexture, transform);
-            submeshChanged |= visitTexturePaths(material.emissiveTexture, transform);
-            submeshChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
-            submeshChanged |= visitTexturePaths(material.occlusionTexture, transform);
-            submeshChanged |= visitTexturePaths(material.normalTexture, transform);
-            for (auto& shaderTexture : material.shaderTextures) {
-                submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
-            }
-            if (MaterialPass* pass = material.extraPass.editIfSet()) {
-                for (auto& shaderTexture : pass->shaderTextures) {
-                    submeshChanged |= visitTexturePaths(shaderTexture.second, transform);
-                }
-            }
-
-            if (submeshChanged) {
-                mesh.submeshes[s].needUpdateTexture = true;
-                changed = true;
-            }
+        std::string path = ref.path;
+        if (transform(path)) {
+            ref.path = path;
         }
     });
-
-    // shader library textures of the components without a material
-    auto visitShaderTextures = [&](std::vector<std::pair<std::string, Texture>>& textures, bool& needReload) {
-        bool texturesChanged = false;
-        for (auto& shaderTexture : textures) {
-            texturesChanged |= visitTexturePaths(shaderTexture.second, transform);
-        }
-        if (texturesChanged) {
-            needReload = true;
-            changed = true;
-        }
-    };
-    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) { visitShaderTextures(ui.shaderTextures, ui.needReload); });
-    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) { visitShaderTextures(points.shaderTextures, points.needReload); });
-    visitComponents(registry->getComponentArray<LineRendererComponent>(), [&](LineRendererComponent& lines) { visitShaderTextures(lines.shaderTextures, lines.needReload); });
-    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) { visitShaderTextures(sky.shaderTextures, sky.needReload); });
-
-    visitComponents(registry->getComponentArray<UIComponent>(), [&](UIComponent& ui) {
-        if (visitTexturePaths(ui.texture, transform)) {
-            ui.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<ButtonComponent>(), [&](ButtonComponent& button) {
-        bool buttonChanged = visitTexturePaths(button.textureNormal, transform);
-        buttonChanged |= visitTexturePaths(button.textureHovered, transform);
-        buttonChanged |= visitTexturePaths(button.texturePressed, transform);
-        buttonChanged |= visitTexturePaths(button.textureDisabled, transform);
-
-        if (buttonChanged) {
-            button.needUpdateButton = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<SkyboxComponent>(), [&](SkyboxComponent& sky) {
-        if (visitTexturePaths(sky.texture, transform)) {
-            sky.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<TerrainComponent>(), [&](TerrainComponent& terrain) {
-        bool heightMapChanged = visitTexturePaths(terrain.heightMap, transform);
-        bool terrainChanged = heightMapChanged;
-        for (Texture& blendMap : terrain.blendMaps) {
-            terrainChanged |= visitTexturePaths(blendMap, transform);
-        }
-        for (TerrainSurfaceLayer& layer : terrain.surfaceLayers) {
-            forEachTerrainLayerTexture(layer, [&](Texture& texture) {
-                terrainChanged |= visitTexturePaths(texture, transform);
-            });
-        }
-
-        for (TerrainFoliageLayer& layer : terrain.foliageLayers) {
-            if (visitTexturePaths(layer.densityMap, transform) ||
-                (!layer.meshPath.empty() && transform(layer.meshPath))) {
-                terrain.needUpdateFoliage = true;
-                changed = true;
-            }
-        }
-
-        // The node tree and the physics heightfield are built from the map, so they follow it
-        if (heightMapChanged) {
-            terrain.heightMapLoaded = false;
-            terrain.needUpdateTerrain = true;
-        }
-
-        if (terrainChanged) {
-            terrain.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<LightComponent>(), [&](LightComponent& light) {
-        if (visitTexturePaths(light.spotMask, transform)) {
-            light.needUpdateShadowCamera = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<PointsComponent>(), [&](PointsComponent& points) {
-        if (visitTexturePaths(points.texture, transform)) {
-            points.needUpdateTexture = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<ReflectionProbeComponent>(), [&](ReflectionProbeComponent& probe) {
-        if (visitTexturePaths(probe.texture, transform)) {
-            probe.needUpdate = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<ModelComponent>(), [&](ModelComponent& model) {
-        if (!model.filename.empty() && transform(model.filename)) {
-            model.needUpdateModel = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<AudioSourceComponent>(), [&](AudioSourceComponent& sound) {
-        if (!sound.filename.empty() && transform(sound.filename)) {
-            sound.loaded = false;
-            sound.loadFailed = false;
-            sound.needUpdate = true;
-            changed = true;
-        }
-    });
-
-    visitComponents(registry->getComponentArray<TextComponent>(), [&](TextComponent& text) {
-        for (std::string& font : text.font) {
-            if (!font.empty() && transform(font)) {
-                text.needReloadAtlas = true;
-                changed = true;
-            }
-        }
-    });
-
-    // the document itself; references inside its HTML/CSS are not rewritten (phase 4)
-    visitComponents(registry->getComponentArray<UIDocumentComponent>(), [&](UIDocumentComponent& document) {
-        if (!document.filename.empty() && transform(document.filename)) {
-            document.needReload = true;
-            changed = true;
-        }
-    });
-
-    return changed;
 }
 
 SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* registry) {
@@ -788,21 +559,15 @@ bool editor::Project::visitLuaPathsInRegistry(EntityRegistry* registry, const st
     if (!registry) {
         return false;
     }
-
-    auto scriptsArray = registry->getComponentArray<ScriptComponent>();
-    bool changed = false;
-
-    for (size_t i = 0; i < scriptsArray->size(); i++) {
-        ScriptComponent& scriptComponent = scriptsArray->getComponentFromIndex(i);
-        for (auto& scriptEntry : scriptComponent.scripts) {
-            if (scriptEntry.type != ScriptType::LUA) {
-                continue;
-            }
-            changed |= transform(scriptEntry.path);
+    return AssetRefSchema::forEachAssetRef(*registry, [&](AssetRef& ref, const AssetRefSite& site) {
+        if (site.base != AssetPathBase::Lua || ref.path.empty()) {
+            return;
         }
-    }
-
-    return changed;
+        std::string path = ref.path;
+        if (transform(path)) {
+            ref.path = path;
+        }
+    });
 }
 
 bool editor::Project::detachChildSceneFromParents(uint32_t childSceneId, const std::set<uint32_t>& skippedSceneIds) {
@@ -861,11 +626,6 @@ void editor::Project::linkMaterialFile(uint32_t sceneId, Entity entity, unsigned
     MaterialLinkKey key{sceneId, entity, submeshIndex};
     MaterialLinkEntry entry;
     entry.filePath = fs::path(filePath).lexically_normal().generic_string();
-
-    fs::path absolutePath = projectPath / entry.filePath;
-    std::error_code ec;
-    entry.lastWriteTime = fs::last_write_time(absolutePath, ec);
-
     materialFileLinks[key] = entry;
 }
 
@@ -984,73 +744,16 @@ void editor::Project::purgeReferencesToScene(uint32_t sceneId) {
     }
 }
 
-void editor::Project::remapMaterialFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
+bool editor::Project::moveSceneFileHints(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
     if (projectPath.empty()) {
-        return;
+        return false;
     }
 
     fs::path oldRelative = normalizeToProjectRelative(oldPath);
     fs::path newRelative = normalizeToProjectRelative(newPath);
 
     if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    std::vector<std::pair<MaterialLinkKey, MaterialLinkEntry>> remappedEntries;
-
-    for (auto it = materialFileLinks.begin(); it != materialFileLinks.end();) {
-        std::string updatedFilePath;
-        if (!remapRelativeString(oldRelative, newRelative, it->second.filePath, updatedFilePath)) {
-            ++it;
-            continue;
-        }
-
-        MaterialLinkEntry updatedEntry = it->second;
-        const std::string oldFilePath = updatedEntry.filePath;
-        updatedEntry.filePath = updatedFilePath;
-
-        std::error_code ec;
-        updatedEntry.lastWriteTime = fs::last_write_time(projectPath / updatedEntry.filePath, ec);
-
-        const MaterialLinkKey key = it->first;
-        const uint32_t sceneId = std::get<0>(key);
-        const Entity entity = std::get<1>(key);
-        const unsigned int submeshIndex = std::get<2>(key);
-
-        SceneProject* sceneProject = getScene(sceneId);
-        if (sceneProject && sceneProject->scene) {
-            MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
-            if (mesh && submeshIndex < mesh->numSubmeshes) {
-                Material& material = mesh->submeshes[submeshIndex].material;
-                std::string updatedMaterialName;
-                if (remapRelativeString(oldRelative, newRelative, material.name, updatedMaterialName)) {
-                    material.name = updatedMaterialName;
-                    mesh->submeshes[submeshIndex].needUpdateTexture = true;
-                    sceneProject->needUpdateRender = true;
-                    sceneProject->isModified = true;
-                }
-            }
-        }
-
-        remappedEntries.emplace_back(key, updatedEntry);
-        it = materialFileLinks.erase(it);
-    }
-
-    for (auto& [key, entry] : remappedEntries) {
-        materialFileLinks[key] = entry;
-    }
-}
-
-void editor::Project::remapSceneFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    fs::path newRelative = normalizeToProjectRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
+        return false;
     }
 
     bool changed = false;
@@ -1077,452 +780,7 @@ void editor::Project::remapSceneFilePath(const std::filesystem::path& oldPath, c
     if (changed) {
         saveProject();
     }
-}
-
-void editor::Project::remapScriptFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty() || oldPath.empty() || newPath.empty()) {
-        return;
-    }
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-
-        if (remapScriptPathsInRegistry(sceneProject.scene, oldPath, newPath)) {
-            sceneProject.isModified = true;
-            updateSceneCppScripts(&sceneProject);
-        }
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!remapScriptPathsInRegistry(prefab.registry.get(), oldPath, newPath)) {
-            continue;
-        }
-        prefab.isModified = true;
-        savePrefabToDisk(prefabPath);
-    }
-}
-
-void editor::Project::cleanupMaterialFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    for (auto it = materialFileLinks.begin(); it != materialFileLinks.end();) {
-        if (matchesRelativeString(deletedRelative, it->second.filePath)) {
-            it = materialFileLinks.erase(it);
-        } else {
-            ++it;
-        }
-    }
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-
-        auto meshes = sceneProject.scene->getComponentArray<MeshComponent>();
-        bool sceneChanged = false;
-
-        for (size_t i = 0; i < meshes->size(); ++i) {
-            Entity entity = meshes->getEntity(i);
-            MeshComponent& mesh = meshes->getComponentFromIndex(i);
-
-            for (unsigned int submeshIndex = 0; submeshIndex < mesh.numSubmeshes; ++submeshIndex) {
-                Material& material = mesh.submeshes[submeshIndex].material;
-                if (!matchesRelativeString(deletedRelative, material.name)) {
-                    continue;
-                }
-
-                material.name.clear();
-                mesh.submeshes[submeshIndex].needUpdateTexture = true;
-                sceneProject.needUpdateRender = true;
-                sceneProject.isModified = true;
-                sceneChanged = true;
-
-                unlinkMaterialFile(sceneProject.id, entity, submeshIndex);
-            }
-        }
-
-        if (sceneChanged) {
-            sceneProject.needUpdateRender = true;
-        }
-    }
-}
-
-void editor::Project::cleanupSceneFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    // A scene kept listed while its file was missing has no SceneProject for the
-    // Scenes dialog to offer, so deleting the file is the only way to drop it.
-    bool changed = clearUnresolvedScene(deletedRelative);
-
-    std::vector<uint32_t> scenesToRemove;
-    std::set<uint32_t> removedChildSceneIds;
-
-    for (auto& sceneProject : scenes) {
-        if (sceneProject.filepath.empty()) {
-            continue;
-        }
-
-        if (matchesRelativePath(deletedRelative, sceneProject.filepath)) {
-            removedChildSceneIds.insert(sceneProject.id);
-            if (sceneProject.opened) {
-                sceneProject.filepath.clear();
-                sceneProject.isModified = true;
-                sceneProject.needUpdateRender = true;
-            } else {
-                scenesToRemove.push_back(sceneProject.id);
-            }
-            changed = true;
-        }
-    }
-
-    for (uint32_t childSceneId : removedChildSceneIds) {
-        if (detachChildSceneFromParents(childSceneId, removedChildSceneIds)) {
-            changed = true;
-        }
-    }
-
-    for (uint32_t sceneId : scenesToRemove) {
-        auto it = std::find_if(scenes.begin(), scenes.end(),
-            [sceneId](const SceneProject& s) { return s.id == sceneId; });
-        if (it != scenes.end()) {
-            deleteSceneProject(&(*it));
-            cleanupPrefabsForScene(sceneId);
-            removeTab(TabType::SCENE, it->filepath.string());
-            markParentScenesNeedUpdate(sceneId);
-            editor::getEditorHost().clearSceneWindowState(sceneId);
-            scenes.erase(it);
-        }
-    }
-
-    if (changed) {
-        saveProject();
-    }
-}
-
-void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty() || deletedPath.empty()) {
-        return;
-    }
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-
-        if (cleanupScriptPathsInRegistry(sceneProject.scene, deletedPath)) {
-            sceneProject.isModified = true;
-            updateSceneCppScripts(&sceneProject);
-        }
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!cleanupScriptPathsInRegistry(prefab.registry.get(), deletedPath)) {
-            continue;
-        }
-        prefab.isModified = true;
-        savePrefabToDisk(prefabPath);
-    }
-}
-
-// the images the scene's settings name: its post-process passes' textures and the
-// post-processing LUT strip (phase 4)
-static bool visitSceneSettingsAssetPaths(Scene* scene, const std::function<bool(std::string&)>& transform) {
-    std::vector<PostProcessPass> passes = scene->getPostProcessPasses();
-    bool passesChanged = false;
-    for (PostProcessPass& pass : passes) {
-        for (auto& texture : pass.textures) {
-            passesChanged |= visitTexturePaths(texture.second, transform);
-        }
-    }
-    if (passesChanged) {
-        scene->setPostProcessPasses(passes);
-    }
-
-    // the LUT is a plain path (assets-relative), read by the renderer when it changes
-    PostProcessingSettings postProcessing = scene->getPostProcessing();
-    bool lutChanged = false;
-    if (!postProcessing.lutTexture.empty()) {
-        std::string lut = postProcessing.lutTexture;
-        if (transform(lut) && lut != postProcessing.lutTexture) {
-            postProcessing.lutTexture = lut;
-            scene->setPostProcessing(postProcessing);
-            lutChanged = true;
-        }
-    }
-    return passesChanged || lutChanged;
-}
-
-void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene)
-            continue;
-        const bool settingsChanged = visitSceneSettingsAssetPaths(sceneProject.scene, transform);
-        if (!visitAssetPathsInRegistry(sceneProject.scene, transform) && !settingsChanged) {
-            continue;
-        }
-
-        sceneProject.isModified = true;
-        sceneProject.needUpdateRender = true;
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!prefab.registry || !visitAssetPathsInRegistry(prefab.registry.get(), transform)) {
-            continue;
-        }
-
-        prefab.isModified = true;
-        savePrefabToDisk(prefabPath);
-    }
-
-    visitAssetPathsInMaterialFiles(transform);
-}
-
-void editor::Project::remapAssetFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    // A file that left the assets directory cannot be referenced, so it counts as deleted
-    if (!isInsideAssetsPath(newPath)) {
-        cleanupAssetFilePath(oldPath);
-        return;
-    }
-
-    fs::path oldRelative = normalizeToAssetsRelative(oldPath);
-    fs::path newRelative = normalizeToAssetsRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    applyAssetPathChange([&](std::string& assetPath) -> bool {
-        std::string updated;
-        if (!remapRelativeString(oldRelative, newRelative, assetPath, updated)) {
-            return false;
-        }
-        assetPath = updated;
-        return true;
-    });
-}
-
-void editor::Project::cleanupAssetFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToAssetsRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    applyAssetPathChange([&](std::string& assetPath) -> bool {
-        if (!matchesRelativeString(deletedRelative, assetPath)) {
-            return false;
-        }
-        assetPath.clear();
-        return true;
-    });
-}
-
-void editor::Project::applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform) {
-    // customShader lives on every renderable component type (a mesh also has its depth
-    // fork); visit each array in a registry, apply the transform, and flag a shader
-    // reload on the entities that changed.
-    auto applyToRegistry = [&](EntityRegistry* registry) -> bool {
-        bool changed = false;
-        auto applyToArray = [&](auto arr, auto shaderField) {
-            for (size_t i = 0; i < arr->size(); ++i) {
-                std::string& customShader = arr->getComponentFromIndex(i).*shaderField;
-                if (customShader.empty())
-                    continue;
-                if (transform(customShader)) {
-                    Catalog::updateEntity(registry, arr->getEntity(i), UpdateFlags_Shader_Reload);
-                    changed = true;
-                }
-            }
-        };
-        applyToArray(registry->getComponentArray<MeshComponent>(), &MeshComponent::customShader);
-        applyToArray(registry->getComponentArray<MeshComponent>(), &MeshComponent::customDepthShader);
-        applyToArray(registry->getComponentArray<UIComponent>(), &UIComponent::customShader);
-        applyToArray(registry->getComponentArray<PointsComponent>(), &PointsComponent::customShader);
-        applyToArray(registry->getComponentArray<LineRendererComponent>(), &LineRendererComponent::customShader);
-        applyToArray(registry->getComponentArray<SkyboxComponent>(), &SkyboxComponent::customShader);
-        // a submesh material's own shader and its extra pass's (mesh reload)
-        auto meshes = registry->getComponentArray<MeshComponent>();
-        for (size_t i = 0; i < meshes->size(); ++i) {
-            MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            bool meshChanged = false;
-            for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
-                meshChanged |= applyToMaterialShaders(mesh.submeshes[s].material, transform);
-            }
-            if (meshChanged) {
-                Catalog::updateEntity(registry, meshes->getEntity(i), UpdateFlags_Mesh_Reload);
-                changed = true;
-            }
-        }
-        return changed;
-    };
-
-    // scene-level default shaders reference the same files; the setter flags the reload
-    auto applyToSceneDefaults = [&](Scene* scene) -> bool {
-        bool changed = false;
-        for (ShaderType type : {ShaderType::MESH, ShaderType::UI, ShaderType::SKYBOX, ShaderType::POINTS, ShaderType::LINES}) {
-            std::string defaultShader = scene->getDefaultCustomShader(type);
-            if (!defaultShader.empty() && transform(defaultShader)) {
-                scene->setDefaultCustomShader(type, defaultShader);
-                changed = true;
-            }
-        }
-        return changed;
-    };
-
-    for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
-        SceneProject& sceneProject = *sceneProjectPtr;
-        if (!sceneProject.scene) {
-            continue;
-        }
-        bool changed = applyToRegistry(sceneProject.scene);
-        changed |= applyToSceneDefaults(sceneProject.scene);
-        if (changed) {
-            sceneProject.isModified = true;
-            sceneProject.needUpdateRender = true;
-        }
-    }
-
-    for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!prefab.registry) {
-            continue;
-        }
-        if (applyToRegistry(prefab.registry.get())) {
-            prefab.isModified = true;
-            savePrefabToDisk(prefabPath);
-        }
-    }
-
-    // .material files (their linked submeshes were remapped above as well)
-    visitMaterialFiles([&](Material& material) {
-        return applyToMaterialShaders(material, transform);
-    });
-}
-
-// The fork references of a material (its shader and its extra pass's); library references
-// and empty ones name no file
-bool editor::Project::applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform) {
-    bool changed = false;
-    MaterialPass* pass = material.extraPass.editIfSet();
-    for (std::string* shader : {&material.shader, pass ? &pass->shader : nullptr}) {
-        if (!shader || shader->empty() || ShaderReference::isLibrary(*shader)) {
-            continue;
-        }
-        changed |= transform(*shader);
-    }
     return changed;
-}
-
-// The project-relative files a fork path can name (findShaderFile): itself, and under the
-// assets directory; whether they exist or not (a rename or delete has already happened)
-std::vector<std::string> editor::Project::shaderFileCandidates(const std::string& relative) const {
-    std::vector<std::string> candidates;
-    if (relative.empty()) {
-        return candidates;
-    }
-    candidates.push_back(relative);
-    const fs::path assetsRelative = normalizeToProjectRelative(getAssetsPath());
-    if (!assetsRelative.empty() && assetsRelative != "." && *assetsRelative.begin() != "..") {
-        candidates.push_back((assetsRelative / relative).lexically_normal().generic_string());
-    }
-    return candidates;
-}
-
-void editor::Project::remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    fs::path newRelative = normalizeToProjectRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    // customShader resolves to a .vert and a .frag entry point; remap each path against the
-    // rename and rebuild the value. A single-file rename of a shared-base pair naturally
-    // becomes the separate-file form; a directory rename remaps both via child match.
-    // (an assets-relative entry point is matched at its project-relative path too, see
-    // findShaderFile; the remapped value is project-relative)
-    applyCustomShaderPathChange([&](std::string& customShader) -> bool {
-        Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
-        std::string newVert = paths.vert;
-        std::string newFrag = paths.frag;
-        bool changed = false;
-        std::string updated;
-        for (const std::string& candidate : shaderFileCandidates(paths.vert)) {
-            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
-                newVert = updated;
-                changed = true;
-                break;
-            }
-        }
-        for (const std::string& candidate : shaderFileCandidates(paths.frag)) {
-            if (remapRelativeString(oldRelative, newRelative, candidate, updated)) {
-                newFrag = updated;
-                changed = true;
-                break;
-            }
-        }
-        if (changed) {
-            customShader = Util::makeCustomShader(newVert, newFrag);
-        }
-        return changed;
-    });
-}
-
-void editor::Project::cleanupShaderFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    // A custom shader needs both its .vert and .frag; deleting either entry point (or the
-    // containing folder) leaves the reference dangling, so reset it to built-in. Match the
-    // deleted path against each resolved entry point (handles shared-base and separate forms).
-    applyCustomShaderPathChange([&](std::string& customShader) -> bool {
-        Util::CustomShaderPaths paths = Util::resolveCustomShaderPaths(customShader);
-        for (const std::string& entry : {paths.vert, paths.frag}) {
-            for (const std::string& candidate : shaderFileCandidates(entry)) {
-                if (matchesRelativeString(deletedRelative, candidate)) {
-                    customShader.clear();
-                    return true;
-                }
-            }
-        }
-        return false;
-    });
 }
 
 std::vector<editor::SceneProject*> editor::Project::getHtmlUIScenes() {
@@ -1552,135 +810,34 @@ std::vector<editor::SceneProject*> editor::Project::getHtmlUIScenes() {
     return result;
 }
 
-editor::HtmlUIWatcher& editor::Project::getHtmlUIWatcher() {
-    return htmlUIWatcher;
+std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
+    std::set<std::string> files;
+    for (const auto& [key, entry] : materialFileLinks) {
+        files.insert(entry.filePath);
+    }
+    return std::vector<std::string>(files.begin(), files.end());
 }
 
-void editor::Project::notifyHtmlUIFileSaved(const std::filesystem::path& path) {
-    (void)path;
-    htmlUIWatcher.requestCheck();
-}
+void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, const Material& fileMaterial) {
+    const std::string filePath = fs::path(relativePath).lexically_normal().generic_string();
+    Material updatedMaterial = fileMaterial;
+    updatedMaterial.name = filePath;
 
-void editor::Project::refreshLinkedMaterials(bool force) {
-    if (materialFileLinks.empty()) {
-        return;
-    }
-
-    // Throttle: only check every materialRefreshIntervalSec seconds
-    auto now = std::chrono::steady_clock::now();
-    double elapsed = std::chrono::duration<double>(now - lastMaterialRefreshTime).count();
-    if (!force && elapsed < materialRefreshIntervalSec) {
-        return;
-    }
-    lastMaterialRefreshTime = now;
-
-    if (projectPath.empty() || !fs::exists(projectPath)) {
-        materialFileLinks.clear();
-        return;
-    }
-
-    // Collect changed files and stale entries
-    struct ChangedFile {
-        std::string filePath;
-        Material updatedMaterial;
-    };
-    std::unordered_map<std::string, ChangedFile> changedFiles;
-    std::vector<MaterialLinkKey> staleKeys;
-
-    for (auto& [key, linkEntry] : materialFileLinks) {
-        uint32_t keySceneId = std::get<0>(key);
-        Entity keyEntity = std::get<1>(key);
-        unsigned int keySubmeshIndex = std::get<2>(key);
-
-        // Find the scene
-        SceneProject* sceneProject = nullptr;
-        for (auto& sp : scenes) {
-            if (sp.id == keySceneId) {
-                sceneProject = &sp;
-                break;
-            }
-        }
-        if (!sceneProject || !sceneProject->scene) {
-            staleKeys.push_back(key);
-            continue;
-        }
-
-        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(keyEntity);
+    for (auto it = materialFileLinks.begin(); it != materialFileLinks.end();) {
+        const auto [keySceneId, keyEntity, keySubmeshIndex] = it->first;
+        SceneProject* sceneProject = getScene(keySceneId);
+        MeshComponent* mesh = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<MeshComponent>(keyEntity) : nullptr;
         if (!mesh || keySubmeshIndex >= mesh->numSubmeshes) {
-            staleKeys.push_back(key);
+            it = materialFileLinks.erase(it);
             continue;
         }
-
-        // If the material name no longer matches the linked file (e.g. after undo), remove the link
-        std::string currentName = fs::path(mesh->submeshes[keySubmeshIndex].material.name).lexically_normal().generic_string();
-        if (currentName != linkEntry.filePath) {
-            staleKeys.push_back(key);
+        // the material no longer names the linked file (an undo, say): the link is gone
+        const std::string currentName = fs::path(mesh->submeshes[keySubmeshIndex].material.name).lexically_normal().generic_string();
+        if (currentName != it->second.filePath) {
+            it = materialFileLinks.erase(it);
             continue;
         }
-
-        fs::path absolutePath = projectPath / linkEntry.filePath;
-        if (!fs::exists(absolutePath)) {
-            staleKeys.push_back(key);
-            continue;
-        }
-
-        std::error_code ec;
-        auto writeTime = fs::last_write_time(absolutePath, ec);
-        if (ec) {
-            continue;
-        }
-
-        if (writeTime != linkEntry.lastWriteTime) {
-            linkEntry.lastWriteTime = writeTime;
-
-            // Only load the file once per unique path
-            if (changedFiles.find(linkEntry.filePath) == changedFiles.end()) {
-                try {
-                    YAML::Node materialNode = YAML::LoadFile(absolutePath.string());
-                    Material updatedMaterial = Stream::decodeMaterial(materialNode);
-                    updatedMaterial.name = linkEntry.filePath;
-                    changedFiles[linkEntry.filePath] = {linkEntry.filePath, updatedMaterial};
-                } catch (const std::exception& e) {
-                    Out::error("Error reloading linked material file '%s': %s", absolutePath.string().c_str(), e.what());
-                }
-            }
-        }
-    }
-
-    // Remove stale entries
-    for (const auto& key : staleKeys) {
-        materialFileLinks.erase(key);
-    }
-
-    // Apply changes
-    for (auto& [key, linkEntry] : materialFileLinks) {
-        uint32_t keySceneId = std::get<0>(key);
-        Entity keyEntity = std::get<1>(key);
-        unsigned int keySubmeshIndex = std::get<2>(key);
-
-        auto changedIt = changedFiles.find(linkEntry.filePath);
-        if (changedIt == changedFiles.end()) {
-            continue;
-        }
-
-        SceneProject* sceneProject = nullptr;
-        for (auto& sp : scenes) {
-            if (sp.id == keySceneId) {
-                sceneProject = &sp;
-                break;
-            }
-        }
-        if (!sceneProject || !sceneProject->scene) {
-            continue;
-        }
-
-        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(keyEntity);
-        if (!mesh || keySubmeshIndex >= mesh->numSubmeshes) {
-            continue;
-        }
-
-        const Material& updatedMaterial = changedIt->second.updatedMaterial;
-        if (mesh->submeshes[keySubmeshIndex].material != updatedMaterial) {
+        if (it->second.filePath == filePath && mesh->submeshes[keySubmeshIndex].material != updatedMaterial) {
             // a new shader, features or render state reload the mesh, parameters its uniforms
             const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(mesh->submeshes[keySubmeshIndex].material, updatedMaterial);
             mesh->submeshes[keySubmeshIndex].material = updatedMaterial;
@@ -1689,6 +846,7 @@ void editor::Project::refreshLinkedMaterials(bool force) {
             sceneProject->needUpdateRender = true;
             sceneProject->isModified = true;
         }
+        ++it;
     }
 }
 
@@ -1833,6 +991,23 @@ bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
 }
 
+void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality){
+    atmosphereQuality = quality;
+    Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
+}
+
+const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() const{
+    return atmosphereQuality;
+}
+
+void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
+    playerLogging = settings;
+}
+
+const editor::PlayerLoggingSettings& editor::Project::getPlayerLogging() const{
+    return playerLogging;
+}
+
 bool editor::Project::isValidHtmlUiMsaaSamples(int samples){
     return samples == 1 || samples == 2 || samples == 4 || samples == 8;
 }
@@ -1849,6 +1024,34 @@ void editor::Project::setHtmlUiMsaaSamples(int samples){
 
 int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
+}
+
+void editor::Project::setShadowTier(int platform, ShadowTier tier){
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return;
+    shadowTiers[platform] = tier;
+    // the editor renders with the tiers at once (RenderSystem resolves them every update)
+    ShadowTiers::setPlatformTier(platform, tier);
+}
+
+ShadowTier editor::Project::getShadowTier(int platform) const{
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return ShadowTier::HIGH;
+    return shadowTiers[platform];
+}
+
+const char* editor::Project::getShadowTierPlatformName(int platform){
+    // Engine::Platform order
+    static const char* const names[ShadowTiers::PLATFORM_COUNT] = {"macos", "ios", "web", "android", "linux", "windows"};
+    return (platform >= 0 && platform < ShadowTiers::PLATFORM_COUNT) ? names[platform] : "";
+}
+
+int editor::Project::findShadowTierPlatform(const std::string& name){
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        if (name == getShadowTierPlatformName(platform))
+            return platform;
+    }
+    return -1;
 }
 
 void editor::Project::setWindowMode(WindowMode windowMode){
@@ -2077,6 +1280,22 @@ static std::filesystem::path normalizeAgainstRoot(const std::filesystem::path& r
     return relativePath.lexically_normal();
 }
 
+void editor::Project::openAssetDatabase() {
+    waitForAssetScan();
+    assetIndex.close();
+    fs::path relativeAssets = normalizeToProjectRelative(getAssetsPath());
+    if (relativeAssets == ".") {
+        relativeAssets.clear();
+    }
+    assetDatabase.open(projectPath, relativeAssets);
+    // the dependency index builds in the background; documents with unsaved edits answer from memory
+    assetIndex.setOverlayProvider([this](std::unordered_map<Guid, std::vector<DepEdge>>& edges) {
+        collectMemoryEdges(edges);
+    });
+    assetIndex.open(&assetDatabase, projectPath, getAssetRoots());
+    AssetMap::setResolver(&assetResolver);
+}
+
 std::filesystem::path editor::Project::getAssetsPath() const{
     return resolveRootDir(projectPath, assetsDir);
 }
@@ -2180,20 +1399,16 @@ static bool holdsOnlyAssets(const std::filesystem::path& directory){
 
 bool editor::Project::visitAssetPathsInMaterialFiles(const std::function<bool(std::string&)>& transform){
     return visitMaterialFiles([&](Material& material) {
-        bool materialChanged = visitTexturePaths(material.baseColorTexture, transform);
-        materialChanged |= visitTexturePaths(material.emissiveTexture, transform);
-        materialChanged |= visitTexturePaths(material.metallicRoughnessTexture, transform);
-        materialChanged |= visitTexturePaths(material.occlusionTexture, transform);
-        materialChanged |= visitTexturePaths(material.normalTexture, transform);
-        for (auto& shaderTexture : material.shaderTextures){
-            materialChanged |= visitTexturePaths(shaderTexture.second, transform);
-        }
-        if (MaterialPass* pass = material.extraPass.editIfSet()){
-            for (auto& shaderTexture : pass->shaderTextures){
-                materialChanged |= visitTexturePaths(shaderTexture.second, transform);
+        // the textures (paths relative to the assets directory)
+        return AssetRefSchema::forEachMaterialRef(material, std::string(), [&](AssetRef& ref, const AssetRefSite& site) {
+            if (site.base != AssetPathBase::Assets || ref.path.empty()) {
+                return;
             }
-        }
-        return materialChanged;
+            std::string path = ref.path;
+            if (transform(path)) {
+                ref.path = path;
+            }
+        });
     });
 }
 
@@ -2221,7 +1436,7 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
 
         Material material;
         try {
-            material = Stream::decodeMaterial(YAML::LoadFile(entry.path().string()));
+            material = Stream::decodeMaterial(DocumentFiles::read(entry.path(), DocumentKind::Material).root);
         } catch (const std::exception& e) {
             Out::warning("Could not read material %s: %s", entry.path().string().c_str(), e.what());
             continue;
@@ -2231,12 +1446,10 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
             continue;
         }
 
-        std::ofstream file(entry.path());
-        if (!file){
-            Out::error("Failed to write material: %s", entry.path().string().c_str());
+        // a material this editor could not read completely is left as it is (the gate)
+        if (writeMaterialFile(normalizeToProjectRelative(entry.path()), material) != SaveResult::Saved){
             continue;
         }
-        file << YAML::Dump(Stream::encodeMaterial(material));
         changed = true;
     }
 
@@ -2320,7 +1533,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
         }
 
         fs::create_directories(destination.parent_path(), moveEc);
-        fs::rename(source, destination, moveEc);
+        io::renameWithRetry(source, destination, moveEc);
         if (moveEc){
             // A root on another volume rejects rename, so the file is copied and only then dropped.
             std::error_code copyEc;
@@ -2340,6 +1553,17 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
         }
 
         completedMoves.emplace_back(source, destination);
+        // the asset's meta goes with it, so it keeps its GUID (S04)
+        const fs::path sourceMeta = AssetTypes::metaPathFor(source);
+        const fs::path destinationMeta = AssetTypes::metaPathFor(destination);
+        if (fs::is_regular_file(sourceMeta, moveEc) && !fs::exists(destinationMeta, moveEc)){
+            std::string metaError;
+            if (assetio::renameFile(sourceMeta, destinationMeta, &metaError)){
+                completedMoves.emplace_back(sourceMeta, destinationMeta);
+            } else {
+                Out::warning("Could not move %s: %s", sourceMeta.string().c_str(), metaError.c_str());
+            }
+        }
         return true;
     };
 
@@ -2358,7 +1582,7 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
                 continue;
             }
 
-            fs::rename(destination, source, undoEc);
+            io::renameWithRetry(destination, source, undoEc);
             if (!undoEc){
                 continue;
             }
@@ -2573,6 +1797,9 @@ void editor::Project::changeAssetRoots(const std::filesystem::path& newAssetsDir
 
     unloadTemporaryScenes();
 
+    // the scan follows the new roots (data files are assets only in the assets directory)
+    openAssetDatabase();
+
     saveProjectFile();
 }
 
@@ -2768,6 +1995,26 @@ const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
     return loadingSettings;
 }
 
+const editor::ThreadingProjectSettings& editor::Project::getThreadingSettings() const{
+    return threadingSettings;
+}
+
+ThreadingSettings editor::Project::toEngineThreading(const ThreadingProjectSettings& settings){
+    ThreadingSettings engine;
+    engine.workers = settings.workers;
+    engine.reservedFrameWorkers = settings.reservedFrameWorkers;
+    engine.ioThreads = settings.ioThreads;
+    engine.webPumpBudgetMs = settings.webPumpBudgetMs;
+    return engine;
+}
+
+void editor::Project::setThreadingSettings(const ThreadingProjectSettings& settings){
+    threadingSettings = settings;
+    Engine::setThreadingSettings(toEngineThreading(settings));
+    // the standalone build's main.cpp bakes them in
+    markGeneratedSourcesDirty();
+}
+
 editor::TerrainEditorSettings& editor::Project::getTerrainEditorSettings(){
     return terrainEditorSettings;
 }
@@ -2900,7 +2147,7 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
         fullPath = getProjectPath() / fullPath;
     }
 
-    YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
+    YAML::Node sceneNode = DocumentFiles::read(fullPath, DocumentKind::Scene).root;
     Stream::decodeSceneProject(runtime.get(), sceneNode, true);
     runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
     Stream::decodeSceneProjectEntities(this, runtime.get(), sceneNode);
@@ -3173,10 +2420,31 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
+    // the atmosphere's passes: the scene's first Fog and Volumetric Clouds (RenderSystem's)
+    {
+        const FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
+        const bool heightFog = fog && fog->type == FogType::HEIGHT;
+        const bool clouds = scene->getComponentArray<VolumetricCloudsComponent>()->size() > 0;
+        for (ShaderType type : AtmosphereRenderer::passShaderTypes(heightFog, heightFog && fog->volumetric, clouds))
+            keys.insert(ShaderPool::getShaderKey(type, 0));
+    }
+
     // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
             insertKeys(variant.first, variant.second, 0);
+    }
+
+    // a light casting 3D shadows copies the static shadow cache back and clears slots with the
+    // shadow cache's program (RenderSystem::renderShadowMaps)
+    {
+        auto lights = scene->getComponentArray<LightComponent>();
+        for (int i = 0; i < (int)lights->size(); i++) {
+            if (lights->getComponentFromIndex(i).shadows) {
+                keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW_CACHE, 0));
+                break;
+            }
+        }
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d
@@ -3240,7 +2508,7 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
         } else {
             try {
                 Prefab loaded;
-                loaded.loadRegistry(YAML::LoadFile((getProjectPath() / info.prefabPath).string()));
+                loaded.loadRegistry(DocumentFiles::read(getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
                 content.entities = loaded.registryEntities;
                 content.registry = loaded.registry.get();
                 fileRegistries.push_back(std::move(loaded.registry));
@@ -3254,7 +2522,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
 
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
-                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
+                                         scriptsSetShadowQuality());
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -3275,6 +2544,12 @@ bool editor::Project::scriptsSetLightCapacity() const {
     // Scene.maxLightsPerObject (Lua) or Scene::setMaxLightsPerObject (C++): the one way the
     // light capacity tier of the lit variants changes at runtime
     return scriptsMention("axLightsPerObject");
+}
+
+bool editor::Project::scriptsSetShadowQuality() const {
+    // scene.shadowQuality (Lua) or Scene::setShadowQuality (C++): the shadow tier, and with it
+    // the High filters' variant bit, can change at runtime
+    return scriptsMention("hadowQuality");
 }
 
 bool editor::Project::scriptsSetPostProcessing() const {
@@ -3317,23 +2592,30 @@ void editor::Project::buildStandaloneShaderCache() {
 }
 
 void editor::Project::invalidateCustomShaders() {
+    invalidateCustomShaders([](const std::string&) { return true; });
+}
+
+void editor::Project::invalidateCustomShaders(const std::function<bool(const std::string& fork)>& which) {
     // Drop the editor's compiled cache for forked shaders, free their GPU handles, and
     // flag every renderable that uses one so RenderSystem recompiles it on the next draw.
-    editor::ShaderBuilder::invalidateCustomShaders();
-    ShaderPool::destroyCustomShaders();
+    editor::ShaderBuilder::invalidateCustomShaders(which);
+    ShaderPool::destroyCustomShaders(which);
     // fork manifests are read again from the edited files
-    ShaderManifests::clearForks();
+    ShaderManifests::clearForks(which);
 
+    auto fork = [&which](const std::string& shader) {
+        return !shader.empty() && !ShaderReference::isLibrary(shader) && which(shader);
+    };
     for (auto& sceneProject : getScenes()) {
         if (!sceneProject.scene)
             continue;
         Scene* scene = sceneProject.scene;
         // a component rides on a fork either via its own customShader or the scene default
-        bool sceneMesh = !scene->getDefaultMeshShader().empty();
-        bool sceneUI = !scene->getDefaultUIShader().empty();
-        bool scenePoints = !scene->getDefaultPointsShader().empty();
-        bool sceneLines = !scene->getDefaultLinesShader().empty();
-        bool sceneSky = !scene->getDefaultSkyShader().empty();
+        bool sceneMesh = fork(scene->getDefaultMeshShader());
+        bool sceneUI = fork(scene->getDefaultUIShader());
+        bool scenePoints = fork(scene->getDefaultPointsShader());
+        bool sceneLines = fork(scene->getDefaultLinesShader());
+        bool sceneSky = fork(scene->getDefaultSkyShader());
 
         // needReload is only consumed while the scene draws, and the idle loop skips
         // scenes that are not flagged, so the redraw has to be requested here. Saving a
@@ -3350,25 +2632,26 @@ void editor::Project::invalidateCustomShaders() {
                 // a material or its extra pass can name a fork too (library shaders do not change)
                 bool materialFork = false;
                 for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
-                    const std::string& shader = mesh->submeshes[s].material.shader;
-                    const std::string& pass = mesh->submeshes[s].material.extraPass->shader;
-                    materialFork = materialFork || (!shader.empty() && !ShaderReference::isLibrary(shader));
-                    materialFork = materialFork || (!pass.empty() && !ShaderReference::isLibrary(pass));
+                    materialFork = materialFork || fork(mesh->submeshes[s].material.shader);
+                    materialFork = materialFork || fork(mesh->submeshes[s].material.extraPass->shader);
                 }
-                flagReload(mesh->needReload, sceneMesh || materialFork || !mesh->customShader.empty() || !mesh->customDepthShader.empty());
+                flagReload(mesh->needReload, sceneMesh || materialFork || fork(mesh->customShader) || fork(mesh->customDepthShader));
             }
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
-                flagReload(ui->needReload, sceneUI || !ui->customShader.empty());
+                flagReload(ui->needReload, sceneUI || fork(ui->customShader));
             if (PointsComponent* pts = scene->findComponent<PointsComponent>(entity))
-                flagReload(pts->needReload, scenePoints || !pts->customShader.empty());
+                flagReload(pts->needReload, scenePoints || fork(pts->customShader));
             if (LineRendererComponent* ln = scene->findComponent<LineRendererComponent>(entity))
-                flagReload(ln->needReload, sceneLines || !ln->customShader.empty());
+                flagReload(ln->needReload, sceneLines || fork(ln->customShader));
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
-                flagReload(sky->needReload, sceneSky || !sky->customShader.empty());
+                flagReload(sky->needReload, sceneSky || fork(sky->customShader));
         }
 
         // post-process passes hold their shader directly, so the chain is rebuilt whole
-        if (!scene->getPostProcessPasses().empty()) {
+        bool postFork = false;
+        for (const PostProcessPass& pass : scene->getPostProcessPasses())
+            postFork = postFork || fork(pass.shader);
+        if (postFork) {
             scene->getSystem<RenderSystem>()->needReloadPostProcess();
             sceneProject.needUpdateRender = true;
         }
@@ -3468,7 +2751,20 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         }
 
         editor::getEditorHost().reportLoadingProgress("Loading scenes...");
-        YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
+        // The report collects what the decode cannot read; it lives on the scene and gates
+        // saves that would drop it (docs/data-safety.md)
+        LoadReport loadReport;
+        const fs::path shownPath = fullPath.lexically_relative(getProjectPath());
+        loadReport.documentPath = FileUtils::pathToUtf8(shownPath.empty() ? fullPath : shownPath);
+        // a crash backup of this file: restored, discarded or kept (R17-R19)
+        std::string restoredBytes;
+        const bool restoring = loadSceneData && opened && !shownPath.empty() && resolveSceneRecovery(shownPath.lexically_normal(), restoredBytes);
+        std::unique_ptr<ScopedLoadReport> reportScope = std::make_unique<ScopedLoadReport>(loadReport);
+        DocumentFile document = restoring ? DocumentFiles::fromBytes(std::move(restoredBytes), loadReport.documentPath, DocumentKind::Scene) :
+                DocumentFiles::read(fullPath, DocumentKind::Scene);
+        // the file's bytes are what a later backup and save build on, even when restoring
+        const std::string diskSha1 = restoring ? lastRecovery.backup.baseSha1 : document.sha1;
+        YAML::Node sceneNode = document.root;
 
         if (isNewScene) {
             scenes.emplace_back();
@@ -3501,6 +2797,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         }
 
         Stream::decodeSceneProject(targetScene, sceneNode, loadSceneData);
+        targetScene->diskSha1 = diskSha1;
         // the build's prefab list of a closed scene follows the prefabs' GUIDs too
         resolveScenePrefabInfos(*targetScene);
 
@@ -3536,6 +2833,11 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
 
             loadSceneProjectData(targetScene, sceneNode);
         }
+        reportScope.reset();
+        if (loadSceneData) {
+            targetScene->loadReport = std::move(loadReport);
+            logLoadReport(targetScene->loadReport);
+        }
 
         if (opened){
             // Sync linked materials with latest file contents on disk
@@ -3554,12 +2856,9 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                     if (!fs::exists(materialPath) || fs::is_directory(materialPath)) continue;
 
                     try {
-                        YAML::Node materialNode = YAML::LoadFile(materialPath.string());
+                        YAML::Node materialNode = DocumentFiles::read(materialPath, DocumentKind::Material).root;
                         Material fileMaterial = Stream::decodeMaterial(materialNode);
-                        fileMaterial.name = normalizedPath;
-
-                        std::error_code ec;
-                        materialFileLinks[MaterialLinkKey{targetScene->id, entity, submeshIndex}].lastWriteTime = fs::last_write_time(materialPath, ec);
+                        fileMaterial.name = AssetRef(normalizedPath, material.name.guid);
 
                         if (material != fileMaterial) {
                             const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(material, fileMaterial);
@@ -3582,7 +2881,7 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
         targetScene->needUpdateRender = opened;
         // A prefab its file names by an old path (moved since, found by GUID) is saved
         // with the new one
-        targetScene->isModified = loadSceneData && targetScene->prefabRefsChanged;
+        targetScene->isModified = loadSceneData && (targetScene->prefabRefsChanged || restoring);
         targetScene->opened = opened;
 
         if (opened) {
@@ -3600,6 +2899,10 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
             } else {
                 Out::warning("Scene has no ID, assigning ID %u", targetScene->id);
             }
+        }
+
+        for (LoadIssue& issue : targetScene->loadReport.issues) {
+            issue.sceneId = targetScene->id;
         }
 
         if (opened && !isNewScene) {
@@ -3626,6 +2929,51 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
     }
 
     return false;
+}
+
+uint32_t editor::Project::loadUntitledScene(const std::string& text, const std::string& displayName) {
+    SceneProject* targetScene = nullptr;
+    try {
+        LoadReport loadReport;
+        loadReport.documentPath = displayName;
+        std::unique_ptr<ScopedLoadReport> reportScope = std::make_unique<ScopedLoadReport>(loadReport);
+        DocumentFile document = DocumentFiles::fromBytes(text, displayName, DocumentKind::Scene);
+
+        scenes.emplace_back();
+        targetScene = &scenes.back();
+        Stream::decodeSceneProject(targetScene, document.root, true);
+        targetScene->sceneRender = createSceneRender(targetScene->sceneType, targetScene->scene);
+        if (!targetScene->sceneRender) {
+            throw std::runtime_error("no usable scene data");
+        }
+        loadSceneProjectData(targetScene, document.root);
+        reportScope.reset();
+        targetScene->loadReport = std::move(loadReport);
+        logLoadReport(targetScene->loadReport);
+
+        // never written: no path, a transient id unless the backup's is free
+        SceneProject* existing = getScene(targetScene->id);
+        if (targetScene->id == NULL_PROJECT_SCENE || (existing && existing != targetScene)) {
+            targetScene->id = allocateSceneId();
+        }
+        targetScene->filepath.clear();
+        targetScene->transientId = true;
+        targetScene->opened = true;
+        targetScene->isVisible = true;
+        targetScene->needUpdateRender = true;
+        targetScene->isModified = true;
+        const uint32_t id = targetScene->id;
+        setSelectedSceneId(id);
+        editor::getEditorHost().addNewSceneToDock(id);
+        Out::info("Restored the untitled scene \"%s\" from its auto-saved copy; save it to keep it.", targetScene->name.c_str());
+        return id;
+    } catch (const std::exception& e) {
+        Out::error("Could not restore the untitled scene %s: %s", displayName.c_str(), e.what());
+        if (targetScene) {
+            discardHalfLoadedScene(targetScene, true);
+        }
+    }
+    return NULL_PROJECT_SCENE;
 }
 
 // A scene loadScene() appended goes away; one already in the project is put back the
@@ -3726,6 +3074,50 @@ void editor::Project::openSceneInternal(fs::path filepath, uint32_t sceneToClose
     );
 }
 
+bool editor::Project::reloadSceneFromDisk(uint32_t sceneId, std::string* error) {
+    auto fail = [error](const std::string& message) {
+        if (error) *error = message;
+        return false;
+    };
+    if (isAnyScenePlaying()) return fail("A scene is playing: stop it to reload a file from disk.");
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || sceneProject->filepath.empty()) return fail("The scene has no file to reload.");
+    fs::path fullPath = sceneProject->filepath;
+    if (fullPath.is_relative()) fullPath = getProjectPath() / fullPath;
+
+    if (getPrefabStage(sceneId)) {
+        // Prefab Mode: the stage is left without saving and opened on the file again
+        const fs::path prefab = fullPath;
+        const size_t depth = getPrefabStageDepth(sceneId);
+        closePrefabStages(depth > 0 ? depth - 1 : 0, [this, prefab](bool closed) {
+            if (closed) openPrefabStage(prefab);
+        }, 2);
+        return true;
+    }
+
+    // read it first: a file that does not parse leaves the open copy as it is
+    try {
+        DocumentFiles::read(fullPath, DocumentKind::Scene);
+    } catch (const std::exception& e) {
+        return fail(std::string("Cannot reload ") + sceneProject->name + ": " + e.what());
+    }
+    const bool selected = selectedScene == sceneId;
+    editor::getEditorHost().clearSceneWindowState(sceneId);
+    deleteSceneProject(sceneProject);
+    // the steps were made on the copy the file replaces (S24 R23, as when a scene closes)
+    CommandHandle::remove(sceneId);
+    if (!loadScene(fullPath, true, false)) return fail("Cannot reload " + fullPath.filename().string() + ": it did not load (see the Console).");
+    sceneProject = getScene(sceneId);
+    if (sceneProject) {
+        sceneProject->isModified = false;
+        sceneProject->needUpdateRender = true;
+    }
+    if (selected) setSelectedSceneId(sceneId);
+    markParentScenesNeedUpdate(sceneId);
+    Out::info("Reloaded \"%s\" from disk", fullPath.filename().string().c_str());
+    return true;
+}
+
 void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     auto it = std::find_if(scenes.begin(), scenes.end(),
         [sceneId](const SceneProject& scene) { return scene.id == sceneId; });
@@ -3757,6 +3149,11 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     // Debounced writes still need the live scene to encode the material from
     editor::getEditorHost().flushSceneMaterialWrites(sceneId);
 
+    // closed with changes not saved: they were discarded, and so is their backup (R16)
+    if (it->isModified) {
+        deleteSceneBackup(*it, it->filepath);
+    }
+
     deleteSceneProject(&(*it));
 
     cleanupPrefabsForScene(sceneId);
@@ -3787,6 +3184,8 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     } else {
         it->opened = false;
         it->expandedInline = false;
+        // a closed scene keeps no history (S24 R23)
+        CommandHandle::remove(sceneId);
     }
 
     editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -4123,14 +3522,22 @@ bool editor::Project::closeSceneNow(uint32_t sceneId, UnsavedChoice unsaved, std
     return true;
 }
 
-bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntitled, std::string* error) {
+bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntitled, std::string* error,
+        DegradedSavePolicy policy, SaveResult* outcome) {
     NonInteractiveScope scope(nonInteractiveDepth);
     std::string message;
     if (isPrefabStage(sceneId)) {
+        // decided here: an API save never meets the editor's modal
+        if (policy == DegradedSavePolicy::Refuse && isPrefabStageDegraded(sceneId)) {
+            if (outcome) *outcome = SaveResult::RefusedDegraded;
+            return failWith(error, "The prefab of the stage did not load completely; saving it would permanently remove values "
+                                   "this editor could not read");
+        }
         const uint64_t logId = Out::lastLogId();
-        if (!savePrefabStage(sceneId)) {
+        if (!savePrefabStage(sceneId, policy)) {
             return failWithLogged(error, logId, "The prefab of the stage could not be saved");
         }
+        if (outcome) *outcome = SaveResult::Saved;
         return true;
     }
     if (isPlayRuntimeScene(sceneId)) {
@@ -4180,9 +3587,16 @@ bool editor::Project::saveSceneNow(uint32_t sceneId, const fs::path& pathIfUntit
     }
 
     const uint64_t logId = Out::lastLogId();
-    if (!saveSceneToPath(sceneId, target)) {
+    SaveResult result = SaveResult::Failed;
+    if (!saveSceneToPath(sceneId, target, true, policy, &result)) {
+        if (outcome) *outcome = result;
+        if (result == SaveResult::RefusedDegraded) {
+            return failWith(error, "\"" + normalizeToProjectRelative(target).generic_string() + "\" did not load completely; saving it would "
+                                   "permanently remove " + std::to_string(sceneProject->loadReport.dropped()) + " value(s) this editor could not read");
+        }
         return failWithLogged(error, logId, "Failed to save scene " + target.generic_string());
     }
+    if (outcome) *outcome = SaveResult::Saved;
 
     // what Save does next: the child scenes with changes of their own
     std::vector<uint32_t> involvedIds;
@@ -4273,6 +3687,10 @@ void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAM
     sceneProject->defaultCamera = createDefaultCamera(sceneProject->sceneType, sceneProject->scene);
 
     Stream::decodeSceneProjectEntities(this, sceneProject, sceneNode);
+    // references by GUID (S04 R10): a hint that changed is saved with the new path
+    if (resolveSceneAssetRefs(*sceneProject, true)) {
+        sceneProject->prefabRefsChanged = true;
+    }
 
     for (Entity entity : sceneProject->entities) {
         MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entity);
@@ -4314,10 +3732,19 @@ bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
             fullPath = getProjectPath() / fullPath;
         }
 
-        YAML::Node sceneNode = YAML::LoadFile(fullPath.string());
+        LoadReport loadReport;
+        loadReport.documentPath = FileUtils::pathToUtf8(childScene->filepath);
+        {
+            ScopedLoadReport reportScope(loadReport, childScene->id);
+            DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Scene);
+            YAML::Node sceneNode = document.root;
 
-        Stream::decodeSceneProject(childScene, sceneNode, true);
-        loadSceneProjectData(childScene, sceneNode);
+            Stream::decodeSceneProject(childScene, sceneNode, true);
+            loadSceneProjectData(childScene, sceneNode);
+            childScene->diskSha1 = document.sha1;
+        }
+        childScene->loadReport = std::move(loadReport);
+        logLoadReport(childScene->loadReport);
 
         childScene->expandedInline = true;
         childScene->needUpdateRender = true;
@@ -4555,7 +3982,13 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    setAtmosphereQuality(defaultAtmosphereQuality);
+    playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        setShadowTier(platform, ShadowTiers::defaultTier(platform));
+    }
+    setThreadingSettings(ThreadingProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
     windowHeight = defaultWindowHeight;
@@ -4592,13 +4025,18 @@ void editor::Project::resetConfigs() {
     loadingSettings = {};
     terrainEditorSettings = {};
     simulateTouch = false;
+    // nothing reloads into a project that is going (S05)
+    HotReloadService::get().stopWatching();
     projectPath.clear();
+    AssetMap::setResolver(nullptr);
+    waitForAssetScan();
+    assetIndex.close();
     assetDatabase.close();
     pendingAssetChanges.clear();
     materialFileLinks.clear();
     tabs.clear();
-    lastMaterialRefreshTime = std::chrono::steady_clock::time_point{};
     projectHistory.clear();
+    PlayChangeReview::get().discardAll();
 
     editor::getEditorHost().updateWindowTitle(name);
 
@@ -4834,7 +4272,15 @@ std::vector<Entity> editor::Project::getPlayCreatedEntities(const SceneProject* 
 void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
 
-    const std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    // Stop's restore: only what was alive before Play stays. GameObjects an edit made while
+    // playing are tracked, yet go too (their steps go with the play session; Play Mode
+    // Changes can make them again)
+    std::set<Entity> keep = getPlayKeptEntities(sceneProject);
+    if (!sceneProject->playStateEntities.empty()) {
+        for (Entity entity : sceneProject->entities) {
+            if (!sceneProject->playStateEntities.count(entity)) keep.erase(entity);
+        }
+    }
 
     for (Entity entity : scene->getEntityList()) {
         // an owner's removal can destroy other entities in this list
@@ -4842,6 +4288,8 @@ void editor::Project::destroyPlayCreatedEntities(SceneProject* sceneProject) {
             scene->destroyEntity(entity);
         }
     }
+    sceneProject->entities.erase(std::remove_if(sceneProject->entities.begin(), sceneProject->entities.end(),
+        [scene](Entity entity) { return !scene->isEntityCreated(entity); }), sceneProject->entities.end());
 }
 
 bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
@@ -5007,6 +4455,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
             }
         }
 
+        // Play Mode Changes: what was edited while playing, read before the snapshot puts the
+        // edit-time scene back (runtime copies have no history)
+        if (!entry.ownedRuntime) {
+            PlayChangeReview::get().capture(this, sceneProject);
+        }
+
         // Restore snapshot if present
         const bool restoredFromSnapshot = restorePlaySnapshot(sceneProject);
 
@@ -5014,6 +4468,12 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         if (!entry.ownedRuntime) {
             // the edit-time scene itself played (runtime copies have no history)
             CommandHandle::get(sceneProject->id)->endPlaySession(restoredFromSnapshot);
+            if (restoredFromSnapshot) {
+                PlayChangeReview::get().afterRestore(this, sceneProject);
+            } else {
+                // nothing was rolled back: the play edits stayed
+                PlayChangeReview::get().discard(sceneProject->id);
+            }
         }
 
         Entity cameraEntity = sceneProject->scene->getCamera();
@@ -5087,6 +4547,10 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         if (modelLoaded && !projectPath.empty()) {
             saveWorkspaceFile();
         }
+        // the outgoing session ended cleanly (R16): its backups and its lock go
+        if (modelLoaded) {
+            endProjectSession();
+        }
 
         editor::getEditorHost().prepareForProjectSwitch();
 
@@ -5114,6 +4578,12 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             }
             Out::info("Created project directory: \"%s\"", projectPath.string().c_str());
 
+            // a new project is locked like an opened one (R10); the editor's own temporary
+            // project is not (each editor remakes it)
+            if (!isEditorTempProject() && !takeProjectLock(projectPath)) {
+                return false;
+            }
+
             // Inherit the compiler chosen in a previous session so new temp projects
             // don't silently fall back to the Default toolchain every time. Drop a
             // stale compiler path that no longer exists on disk.
@@ -5131,7 +4601,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             }
 
             modelLoaded = true;
-            assetDatabase.open(projectPath);
+            openAssetDatabase();
+            if (watchFiles) HotReloadService::get().startWatching(*this);
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -5168,8 +4639,22 @@ bool editor::Project::saveProject(bool userCalled, std::function<void()> callbac
     return saveret;
 }
 
-bool editor::Project::saveProjectFile() {
+bool editor::Project::saveProjectFile(DegradedSavePolicy policy, SaveResult* outcome) {
+    if (outcome) {
+        *outcome = SaveResult::Failed;
+    }
     if (projectPath.empty()) {
+        return false;
+    }
+
+    // project.yaml read with values this editor could not keep (a newer format): not written
+    // over unless the loss was accepted
+    if (projectLoadReport.dropped() > 0 && policy == DegradedSavePolicy::Refuse) {
+        Out::warning("project.yaml not saved: it did not load completely and saving it would remove %zu value(s) "
+                     "this editor could not read (save_project allow_data_loss writes it anyway).", projectLoadReport.dropped());
+        if (outcome) {
+            *outcome = SaveResult::RefusedDegraded;
+        }
         return false;
     }
 
@@ -5190,22 +4675,24 @@ bool editor::Project::saveProjectFile() {
 
     try {
         std::filesystem::path projectFile = projectPath / "project.yaml";
-        std::ofstream fout(projectFile.string());
-        if (!fout) {
-            Out::error("Failed to open project file for writing: %s", projectFile.string().c_str());
+        YAML::Node root = Stream::encodeProject(this);
+        // the keys of the file this editor does not know stay (R28)
+        DocumentFiles::overlayUnknownRootKeys(root, projectFile, RootKind::Project);
+        const io::WriteResult written = DocumentFiles::write(projectFile, DocumentFiles::text(root));
+        if (!written.ok()) {
+            const std::string message = DocumentFiles::saveFailureMessage("project.yaml", written);
+            Out::error(message);
+            alertUser("Error", message);
             return false;
         }
-
-        // Trailing newline: git reports a file without one as changed as soon as
-        // anything is appended to it
-        fout << YAML::Dump(Stream::encodeProject(this)) << "\n";
-        fout.close();
-
-        if (!fout) {
-            Out::error("Failed to write project file: %s", projectFile.string().c_str());
-            return false;
+        if (projectLoadReport.dropped() > 0) {
+            Out::warning("Saved project.yaml without %zu value(s) this editor could not read.", projectLoadReport.dropped());
+            projectLoadReport.clearDropped();
         }
 
+        if (outcome) {
+            *outcome = SaveResult::Saved;
+        }
         return true;
     } catch (const std::exception& e) {
         Out::error("Failed to save project file: \"%s\"", e.what());
@@ -5402,7 +4889,13 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
 
     // The asset files (and their GUIDs) are under the new root now
     if (oldPath != path) {
-        assetDatabase.open(projectPath);
+        openAssetDatabase();
+        if (watchFiles) HotReloadService::get().startWatching(*this);
+    }
+
+    // the temporary project saved somewhere of its own is locked there (R10)
+    if (wasTemp && oldPath != path && !isEditorTempProject()) {
+        takeProjectLock(projectPath);
     }
 
     if (!saveProjectFile()) {
@@ -5442,12 +4935,27 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
 
         // Load and parse project file
         editor::getEditorHost().reportLoadingProgress("Loading project...");
-        YAML::Node projectNode = YAML::LoadFile(projectFile.string());
+        LoadReport projectReport;
+        projectReport.documentPath = "project.yaml";
+        std::unique_ptr<ScopedLoadReport> projectReportScope = std::make_unique<ScopedLoadReport>(projectReport);
+        YAML::Node projectNode = DocumentFiles::read(projectFile, DocumentKind::Project).root;
+
+        // One editor per project (R10): another live editor holding it stops the load
+        // unless the user (or --ignore-lock) says otherwise
+        const std::filesystem::path previousProject = projectPath;
+        if (!takeProjectLock(path)) {
+            return false;
+        }
 
         // The workspace is written from the live model, which resetConfigs() is about
         // to drop, so the outgoing project is flushed first
         if (modelLoaded && !projectPath.empty()) {
             saveWorkspaceFile();
+        }
+        // the outgoing session ended cleanly: its backups go (R16)
+        if (!previousProject.empty() && previousProject != path) {
+            SceneBackups::removeOwnedBy(previousProject, io::currentProcessId());
+            autosaveScenes.clear();
         }
 
         editor::getEditorHost().prepareForProjectSwitch();
@@ -5465,7 +4973,15 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
         // upgrade of files written before them) and references resolve through it
         editor::getEditorHost().reportLoadingProgress("Scanning assets...");
-        assetDatabase.open(projectPath);
+        // the assets directory decides which data files are assets
+        if (projectNode["assetsDir"]) {
+            setAssetsDir(projectNode["assetsDir"].as<std::string>());
+        }
+        openAssetDatabase();
+        // what changes on disk from now on reloads (S05)
+        if (watchFiles) HotReloadService::get().startWatching(*this);
+        // the temps of saves a crash interrupted, found by that walk (R12)
+        sweepOrphanedTemporaryFiles();
 
         // Per-user state comes from .jasperengine/user/, falling back to the copy an older
         // editor left in project.yaml
@@ -5475,6 +4991,9 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         workspaceMigrationPending = workspace.hasAdoptedLegacyState();
 
         Stream::decodeProject(this, projectNode, workspace);
+        projectReportScope.reset();
+        projectLoadReport = std::move(projectReport);
+        logLoadReport(projectLoadReport);
         setUnresolvedSceneStates(workspace.statesForUnresolvedScenes(this));
 
         // unlike the other settings it applies while editing too, textures are shared with Play
@@ -5519,6 +5038,9 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
             Out::warning("This project's editor state could not be written to \"%s\"; project.yaml still holds the only copy",
                          Workspace::getUserDirectory(projectPath).string().c_str());
         }
+
+        // untitled scenes a crashed session was editing, offered once (R17)
+        offerUntitledBackups();
 
         Out::info("Project loaded successfully: \"%s\"", projectPath.string().c_str());
         return true;
@@ -5599,7 +5121,35 @@ void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> call
         return;
     }
 
+    refusedSaves.erase(sceneId);
     if (!sceneProject->filepath.empty()) {
+        if (isSceneSaveGated(sceneProject)) {
+            // never through the default alerts: the host decides (a modal in the editor,
+            // Refuse when headless)
+            DegradedSaveRequest request;
+            request.documentName = sceneProject->filepath.filename().string();
+            request.path = sceneProject->filepath;
+            for (const LoadIssue& issue : sceneProject->loadReport.issues) {
+                if (issue.fate == LoadIssueFate::Dropped) {
+                    request.dropped.push_back(issue);
+                }
+            }
+            request.saveAnyway = [this, sceneId, finishWithChildren]() {
+                if (SceneProject* scene = getScene(sceneId)) {
+                    saveSceneToPathAsync(sceneId, scene->filepath, finishWithChildren, DegradedSavePolicy::SaveAnyway);
+                }
+            };
+            request.saveAs = [sceneId]() {
+                editor::getEditorHost().registerSaveSceneDialog(sceneId);
+            };
+            if (editor::getEditorHost().confirmDegradedSave(request) == DegradedSavePolicy::SaveAnyway) {
+                saveSceneToPathAsync(sceneId, sceneProject->filepath, finishWithChildren, DegradedSavePolicy::SaveAnyway);
+            } else {
+                refusedSaves.insert(sceneId);
+                if (callback) callback(false);
+            }
+            return;
+        }
         saveSceneToPathAsync(sceneId, sceneProject->filepath, finishWithChildren);
     } else {
         editor::getEditorHost().registerSaveSceneDialog(sceneId, [finishWithChildren]() {
@@ -5611,11 +5161,18 @@ void editor::Project::saveScene(uint32_t sceneId, std::function<void(bool)> call
 void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, std::function<void(bool)> callback) {
     auto ids = std::make_shared<std::vector<uint32_t>>(std::move(sceneIds));
     auto index = std::make_shared<size_t>(0);
+    auto anyRefused = std::make_shared<bool>(false);
     auto saveNext = std::make_shared<std::function<void(bool)>>();
-    *saveNext = [this, ids, index, callback, saveNext](bool previousSuccess) {
+    *saveNext = [this, ids, index, anyRefused, callback, saveNext](bool previousSuccess) {
         if (!previousSuccess) {
-            if (callback) callback(false);
-            return;
+            // a document the save gate refused does not stop the others (Save All asks about
+            // each degraded one, after saving the clean ones)
+            const uint32_t previous = *index > 0 ? (*ids)[*index - 1] : NULL_PROJECT_SCENE;
+            if (previous == NULL_PROJECT_SCENE || !refusedSaves.count(previous)) {
+                if (callback) callback(false);
+                return;
+            }
+            *anyRefused = true;
         }
 
         while (*index < ids->size()) {
@@ -5626,7 +5183,7 @@ void editor::Project::saveSceneListSequentially(std::vector<uint32_t> sceneIds, 
             }
         }
 
-        if (callback) callback(true);
+        if (callback) callback(!*anyRefused);
     };
 
     (*saveNext)(true);
@@ -5648,8 +5205,36 @@ void editor::Project::saveModifiedChildScenes(uint32_t sceneId, std::function<vo
     saveSceneListSequentially(std::move(childIds), std::move(callback));
 }
 
-bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews) {
+bool editor::Project::isSceneSaveGated(const SceneProject* sceneProject, const fs::path& path) const {
+    if (!sceneProject || sceneProject->filepath.empty() || sceneProject->loadReport.dropped() == 0) {
+        return false;
+    }
+    // Save As to another file is never gated: the original keeps the data
+    fs::path target = path.empty() ? sceneProject->filepath : path;
+    if (target.is_relative()) {
+        target = getProjectPath() / target;
+    }
+    return target.lexically_normal() == (getProjectPath() / sceneProject->filepath).lexically_normal();
+}
+
+bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews,
+        DegradedSavePolicy policy, SaveResult* outcome) {
+    if (outcome) {
+        *outcome = SaveResult::Failed;
+    }
     if (!sceneProject || path.empty()) {
+        return false;
+    }
+
+    // A file that did not load completely is not written over unless the loss was accepted
+    const bool ownFile = isSceneSaveGated(sceneProject, path);
+    if (ownFile && policy == DegradedSavePolicy::Refuse) {
+        Out::warning("Not saved: \"%s\" did not load completely and saving it would remove %zu value(s) this editor could not read. "
+                     "Save Anyway (allow_data_loss) or Save As keeps the original.",
+                     sceneProject->filepath.filename().string().c_str(), sceneProject->loadReport.dropped());
+        if (outcome) {
+            *outcome = SaveResult::RefusedDegraded;
+        }
         return false;
     }
 
@@ -5668,6 +5253,7 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         Out::error("Scene filepath must be relative to project path: %s", path.string().c_str());
         return false;
     }
+    const fs::path previousPath = sceneProject->filepath;
 
     // Its prefabs with changes, and the ones read from a file of an older version (upgraded)
     for (const auto& [filepath, prefab] : prefabAssets) {
@@ -5692,16 +5278,49 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
     shaderKeys.insert(sceneProject->shaderKeys.begin(), sceneProject->shaderKeys.end());
     sceneProject->shaderKeys = std::move(shaderKeys);
 
+    // paths assigned since the last save get their assets' GUIDs (S04); a background save
+    // had it done on the main thread (resolving may reload what a moved path feeds)
+    if (sceneProject->playState != ScenePlayState::SAVING) {
+        resolveSceneAssetRefs(*sceneProject, false);
+    }
+
     try {
         YAML::Node root = Stream::encodeSceneProject(this, sceneProject);
-        std::ofstream fout(fullPath.string());
-        if (!fout) {
-            Out::error("Failed to open scene file for writing: %s", fullPath.string().c_str());
+        const Guid guid = prepareDocumentIdentity(root, relPath);
+        const std::string text = DocumentFiles::text(root);
+        const io::WriteResult written = DocumentFiles::write(fullPath, text);
+        if (!written.ok()) {
+            const std::string message = DocumentFiles::saveFailureMessage(relPath, written);
+            Out::error(message);
+            editor::getEditorHost().enqueueMainThreadTask([this, message]() {
+                alertUser("Error", message);
+            });
             return false;
         }
-
-        fout << YAML::Dump(root) << "\n";
-        fout.close();
+        assetDatabase.registerAsset(relPath, guid.str());
+        assetIndex.updateReferrer(relPath.generic_string());
+        sceneProject->diskSha1 = DocumentFiles::sha1(text);
+        const size_t lost = sceneProject->loadReport.dropped();
+        if (lost > 0) {
+            if (ownFile) {
+                std::string list;
+                for (const LoadIssue& issue : sceneProject->loadReport.issues) {
+                    if (issue.fate == LoadIssueFate::Dropped) {
+                        list += "\n  " + issue.describe();
+                    }
+                }
+                Out::warning("Saved \"%s\" without %zu value(s) this editor could not read:%s",
+                             relPath.generic_string().c_str(), lost, list.c_str());
+            } else if (!previousPath.empty()) {
+                Out::warning("The original %s still holds %zu value(s) this save did not keep.",
+                             previousPath.filename().string().c_str(), lost);
+            }
+            // the file written no longer has them
+            sceneProject->loadReport.clearDropped();
+        }
+        sceneProject->loadReport.documentPath = FileUtils::pathToUtf8(relPath);
+        // the file has these changes now: the backup protects nothing more (R16)
+        deleteSceneBackup(*sceneProject, previousPath);
 
         // Every id this file carries has reached disk and can no longer be reclaimed
         sceneProject->transientId = false;
@@ -5730,18 +5349,23 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         return false;
     }
 
+    if (outcome) {
+        *outcome = SaveResult::Saved;
+    }
     return true;
 }
 
-bool editor::Project::saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews) {
-    if (!writeSceneToPath(sceneId, path, stopTransientPreviews)) {
+bool editor::Project::saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews,
+        DegradedSavePolicy policy, SaveResult* outcome) {
+    if (!writeSceneToPath(sceneId, path, stopTransientPreviews, policy, outcome)) {
         return false;
     }
 
     return saveProject();
 }
 
-bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews) {
+bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews,
+        DegradedSavePolicy policy, SaveResult* outcome) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         return false;
@@ -5753,7 +5377,7 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
     }
 
     std::string oldFilepath = sceneProject->filepath.string();
-    if (!saveSceneFile(sceneProject, path, stopTransientPreviews)) {
+    if (!saveSceneFile(sceneProject, path, stopTransientPreviews, policy, outcome)) {
         return false;
     }
 
@@ -5838,7 +5462,8 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
+    generator.setAtmosphereQuality(atmosphereQuality);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -5877,7 +5502,8 @@ void editor::Project::markGeneratedSourcesDirty() {
     generatedSourcesDirty.store(true);
 }
 
-void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback) {
+void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback,
+        DegradedSavePolicy policy) {
     SceneProject* sceneProject = getScene(sceneId);
     if (!sceneProject) {
         if (callback) callback(false);
@@ -5891,14 +5517,23 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
     }
 
     editor::getEditorHost().stopTransientPreviews();
+    resolveSceneAssetRefs(*sceneProject, false);
+    for (auto& [prefabPath, prefab] : prefabAssets) {
+        if (prefab.registry && prefab.instances.count(sceneId) && (prefab.isModified || prefab.needsUpgrade)) {
+            resolveRegistryAssetRefs(prefab.registry.get(), false);
+        }
+    }
 
     sceneProject->playState = ScenePlayState::SAVING;
     fs::path savePath = path;
 
-    std::thread([this, sceneId, savePath, callback = std::move(callback)]() mutable {
+    // a long disk write: the io-write channel (one write at a time, in order)
+    jobs::SubmitOptions saveOptions;
+    saveOptions.name = "scene-save";
+    sceneSaveTask = jobs::system().ioWriteChannel().submit([this, sceneId, savePath, policy, callback = std::move(callback)]() mutable {
         bool success = false;
         try {
-            success = writeSceneToPath(sceneId, savePath, false);
+            success = writeSceneToPath(sceneId, savePath, false, policy);
         } catch (const std::exception& e) {
             Out::error("Failed to save scene in background: %s", e.what());
         }
@@ -5916,7 +5551,7 @@ void editor::Project::saveSceneToPathAsync(uint32_t sceneId, const std::filesyst
 
             if (callback) callback(success);
         });
-    }).detach();
+    }, saveOptions);
 }
 
 void editor::Project::saveAllScenes(std::function<void(bool)> callback) {
@@ -6901,7 +6536,11 @@ fs::path editor::Project::getThumbnailPath(const fs::path& originalPath) const {
         relativePath = resolvedPath.lexically_relative(projectPath.lexically_normal());
     }
 
-    std::string hashInput = relativePath.empty() ? resolvedPath.generic_string() : relativePath.generic_string();
+    // keyed by the asset's GUID and its content fingerprint (S04 R18): a rename or a move keeps
+    // the thumbnail, an edit makes a new one; a file without a GUID by its path
+    const Guid guid = relativePath.empty() ? Guid() : assetDatabase.getAssetGuid(relativePath);
+    std::string hashInput = !guid.isNull() ? "guid:" + guid.str()
+                          : relativePath.empty() ? resolvedPath.generic_string() : relativePath.generic_string();
 
     std::error_code ec;
     const auto fileSize = fs::file_size(resolvedPath, ec);
@@ -6933,27 +6572,88 @@ void editor::Project::markSelectionChanged(SceneProject* sceneProject){
     }
 }
 
-void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
-    // Ctrl-click deselect reaches the selection only through here.
-    markSelectionChanged(getScene(sceneId));
-    getScene(sceneId)->selectedEntities = selectedEntities;
+void editor::Project::setSelection(uint32_t sceneId, const SelectionState& state, SelectionCause cause){
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject){
+        return;
+    }
+    // the active GameObject last; no copy when the state already is that way, and none at
+    // all when nothing changes (a click on what is selected)
+    const bool ordered = state.active == NULL_ENTITY || (!state.entities.empty() && state.entities.back() == state.active) ||
+        std::find(state.entities.begin(), state.entities.end(), state.active) == state.entities.end();
+    if (ordered && sceneProject->selectedEntities == state.entities){
+        return;
+    }
+    std::vector<Entity> entities = state.entities;
+    if (!ordered){
+        entities.erase(std::find(entities.begin(), entities.end(), state.active));
+        entities.push_back(state.active);
+        if (sceneProject->selectedEntities == entities){
+            return;
+        }
+    }
+
+    const bool record = cause == SelectionCause::User && recordSelectionInUndo && !CommandHistory::isApplying() &&
+        !isPlayRuntimeScene(sceneId) && !UndoTimeline::canRedo(sceneId);
+    if (record){
+        SelectionState after;
+        after.entities = std::move(entities);
+        after.active = after.entities.empty() ? NULL_ENTITY : after.entities.back();
+        // its execute writes the selection; a refused push still selects
+        if (CommandHandle::get(sceneId)->addCommand(new SelectionCmd(this, sceneId, getSelection(sceneId), after, selectionGesture))){
+            return;
+        }
+        entities = after.entities;
+    }
+
+    markSelectionChanged(sceneProject);
+    sceneProject->selectedEntities = std::move(entities);
 }
 
-void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    // The selection outline/gizmo is rendered, so a selection change needs a redraw.
-    markSelectionChanged(getScene(sceneId));
-    std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
+editor::SelectionState editor::Project::getSelection(uint32_t sceneId) const{
+    SelectionState state;
+    if (const SceneProject* sceneProject = getScene(sceneId)){
+        state.entities = sceneProject->selectedEntities;
+        state.active = state.entities.empty() ? NULL_ENTITY : state.entities.back();
+    }
+    return state;
+}
 
-    entities.clear();
-    if (selectedEntity != NULL_ENTITY){
-        entities.push_back(selectedEntity);
+void editor::Project::beginSelectionGesture(){
+    selectionGesture++;
+    selectionGestureHeld = true;
+}
+
+void editor::Project::endSelectionGesture(){
+    selectionGestureHeld = false;
+    selectionGesture++;
+}
+
+void editor::Project::nextSelectionFrame(){
+    if (!selectionGestureHeld){
+        selectionGesture++;
     }
 }
 
+void editor::Project::replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities){
+    // Ctrl-click deselect reaches the selection only through here.
+    SelectionState state;
+    state.entities = std::move(selectedEntities);
+    setSelection(sceneId, state);
+}
+
+void editor::Project::setSelectedEntity(uint32_t sceneId, Entity selectedEntity){
+    SelectionState state;
+    if (selectedEntity != NULL_ENTITY){
+        state.entities.push_back(selectedEntity);
+    }
+    setSelection(sceneId, state);
+}
+
 void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    markSelectionChanged(getScene(sceneId));
-    std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
-    Scene* scene = getScene(sceneId)->scene;
+    SceneProject* sceneProject = getScene(sceneId);
+    std::vector<Entity> entities = sceneProject->selectedEntities;
+    Scene* scene = sceneProject->scene;
     auto transforms = scene->getComponentArray<Transform>();
 
     if (selectedEntity != NULL_ENTITY){
@@ -6985,6 +6685,10 @@ void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity)
         }),
         entities.end()
     );
+
+    SelectionState state;
+    state.entities = std::move(entities);
+    setSelection(sceneId, state);
 }
 
 bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
@@ -6998,22 +6702,25 @@ bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
 }
 
 void editor::Project::deselectDestroyedEntities(SceneProject* sceneProject){
-    std::vector<Entity>& selected = sceneProject->selectedEntities;
-    auto destroyed = std::remove_if(selected.begin(), selected.end(), [sceneProject](Entity entity) {
+    const std::vector<Entity>& selected = sceneProject->selectedEntities;
+    auto destroyed = std::find_if(selected.begin(), selected.end(), [sceneProject](Entity entity) {
         return !sceneProject->scene->isEntityCreated(entity);
     });
-    if (destroyed != selected.end()){
-        selected.erase(destroyed, selected.end());
-        markSelectionChanged(sceneProject);
+    if (destroyed == selected.end()){
+        return;
     }
+    SelectionState state;
+    for (Entity entity : selected){
+        if (sceneProject->scene->isEntityCreated(entity)){
+            state.entities.push_back(entity);
+        }
+    }
+    // not a step of its own: what destroyed them is
+    setSelection(sceneProject->id, state, SelectionCause::Forced);
 }
 
 void editor::Project::clearSelectedEntities(uint32_t sceneId){
-    SceneProject* sceneProject = getScene(sceneId);
-    if (!sceneProject->selectedEntities.empty()){
-        markSelectionChanged(sceneProject);
-    }
-    sceneProject->selectedEntities.clear();
+    setSelection(sceneId, SelectionState());
 }
 
 void editor::Project::clearAllSelections(uint32_t sceneId){
@@ -7319,7 +7026,8 @@ void editor::Project::failPlayStartup(const std::shared_ptr<PlaySession>& sessio
         PrefabManager::clearAll();
         ObjectManager::clearAll();
         clearPlayPrefabTemplates();
-        jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+        Scheduler::game().clear();
+        jasperengine::CrashHook::set(nullptr);
 
         if (SceneProject* sceneProject = getScene(sceneId)) {
             sceneProject->playState = ScenePlayState::STOPPED;
@@ -7380,7 +7088,19 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
             if (currentSceneProject.opened || (isInvolvedScene && currentSceneProject.scene)) {
                 updateAllScriptsProperties(currentSceneProject.id);
 
+                if (isInvolvedScene) {
+                    warnPreservedNotInBuild(currentSceneProject);
+                }
                 if (currentSceneProject.isModified && !currentSceneProject.filepath.empty()) {
+                    if (isSceneSaveGated(&currentSceneProject)) {
+                        // Play saves modified scenes first: never by dropping what a file holds
+                        failPlayStartup(session, sceneId, "\"" + currentSceneProject.filepath.filename().string() +
+                            "\" did not load completely and Play would save it without " +
+                            std::to_string(currentSceneProject.loadReport.dropped()) + " value(s). Save it first (Save Anyway or Save As).",
+                            "Cannot Play", "\"" + currentSceneProject.filepath.filename().string() + "\" did not load completely. "
+                            "Save it first: Save Anyway drops what this editor could not read, Save As keeps the original.");
+                        return;
+                    }
                     if (!saveSceneForPlayStartup(&currentSceneProject)) {
                         failPlayStartup(session, sceneId, "Failed to save modified scene before play startup");
                         return;
@@ -7483,7 +7203,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
+        generator.setAtmosphereQuality(atmosphereQuality);
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }
@@ -7868,7 +7589,7 @@ void editor::Project::start(uint32_t sceneId) {
         return;
     }
 
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = 
+    jasperengine::CrashHook::set(
         [this, sceneId](const std::string& tag, const std::string& errorInfo) {
             // Log the scene and entity context
             SceneProject* sceneProject = getScene(sceneId);
@@ -7901,7 +7622,7 @@ void editor::Project::start(uint32_t sceneId) {
                     stop(sceneId);
                 }
             });
-        };
+        });
 
     auto session = std::make_shared<PlaySession>();
     session->mainSceneId = sceneId;
@@ -7924,6 +7645,8 @@ void editor::Project::start(uint32_t sceneId) {
     // Play starts from the project's layer collision matrices, whatever an earlier Play's
     // scripts did to them
     applyLayerCollisionMatrices();
+    // a review left from the last Play of this scene goes with the new one
+    PlayChangeReview::get().discard(sceneId);
     CommandHandle::get(sceneId)->beginPlaySession();
     editor::getEditorHost().saveAllCodeEditors();
     editor::getEditorHost().requestScenePlayFocus(sceneId);
@@ -7931,10 +7654,13 @@ void editor::Project::start(uint32_t sceneId) {
     // Read on the UI thread: the startup thread must not race the settings dialog
     const LocalBuildSettings buildSettings = AppSettings::getBuildSettings(getProjectPath() / "project.yaml");
 
-    std::thread startupThread([this, session, sceneId, buildSettings]() {
+    // waits on the C++ build and the library load: the process channel; the project holds
+    // the task, so closing it waits for the startup instead of leaving it on a freed project
+    jobs::SubmitOptions startupOptions;
+    startupOptions.name = "play-startup";
+    playStartupTask = jobs::system().processChannel().submit([this, session, sceneId, buildSettings]() {
         runPlayStartup(session, sceneId, buildSettings);
-    });
-    startupThread.detach();
+    }, startupOptions);
 }
 
 void editor::Project::pause(uint32_t sceneId) {
@@ -8053,18 +7779,20 @@ void editor::Project::stop(uint32_t sceneId) {
         Engine::onShutdown.call();
         Engine::pauseGameEvents(true);
         Engine::clearAllSubscriptions(true);
+        // the play's timers and coroutines (Lua's Timer): none runs after Stop
+        Scheduler::game().clear();
     }
 
     // Clear crash handler when stopping
-    jasperengine::FunctionSubscribeGlobal::getCrashHandler() = nullptr;
+    jasperengine::CrashHook::set(nullptr);
 
-    // Request cancellation asynchronously (returns a future we can wait on later if needed)
-    auto cancelFuture = generator.cancelBuild();
+    // Request cancellation without blocking; the stop job waits for the build to end
+    generator.cancelBuild();
 
-    std::thread finalizeStopThread([this, session, sceneId, startupSucceededAtStop, cancelFuture = std::move(cancelFuture)]() mutable {
-        if (cancelFuture.valid()) {
-            cancelFuture.wait();
-        }
+    // waits on processes (the build, the startup job), so it runs on the process channel
+    jobs::SubmitOptions stopOptions;
+    stopOptions.name = "play-stop";
+    playStopTask = jobs::system().processChannel().submit([this, session, sceneId, startupSucceededAtStop]() mutable {
         generator.waitForBuildToComplete();
 
         // Wait for the connect/startup thread to finish to avoid races
@@ -8093,6 +7821,8 @@ void editor::Project::stop(uint32_t sceneId) {
 
             // anime: every animation of the play, and its script callbacks, before the scripts go
             AnimEngine::instance().reset();
+            // and timers the scripts' onShutdown made
+            Scheduler::game().clear();
 
             const bool libraryConnected = conector.isLibraryConnected();
             if (libraryConnected) {
@@ -8138,8 +7868,7 @@ void editor::Project::stop(uint32_t sceneId) {
                 if (activePlaySession == session) activePlaySession.reset();
             }
         });
-    });
-    finalizeStopThread.detach();
+    }, stopOptions);
 }
 
 void editor::Project::stopActivePlay() {

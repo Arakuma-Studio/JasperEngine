@@ -28,6 +28,9 @@ from pathlib import Path
 import harness
 from harness import Editor, find_key
 
+CI = True
+EDITOR = {"create": True, "name": "Scene Inputs Editor CI"}
+
 TIMEOUT = 600
 
 SCENE = "scenes/SceneInputsEditor.scene"

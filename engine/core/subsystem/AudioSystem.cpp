@@ -86,6 +86,7 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
         }
 
         audio.sample = result.data;
+        audio.sampleGeneration = SoundPool::generation(audio.filename);
         if (!audio.sample) {
             return false;
         }
@@ -332,6 +333,16 @@ void AudioSystem::update(double dt){
             }
             if (pendingStart){
                 audio.startTrigger = false;
+
+                // the file was hot reloaded: this play takes the new sample (one still
+                // playing finishes on the old, which its other sources hold)
+                if (audio.state != AudioSourceState::Paused && audio.sampleGeneration != SoundPool::generation(audio.filename)) {
+                    if (std::shared_ptr<SoLoud::Wav> fresh = SoundPool::get(audio.filename)) {
+                        audio.sample = fresh;
+                        audio.sampleGeneration = SoundPool::generation(audio.filename);
+                        audio.length = audio.sample->getLength();
+                    }
+                }
 
                 if (audio.state != AudioSourceState::Paused || audio.handle == 0) {
                     if (!init()) {

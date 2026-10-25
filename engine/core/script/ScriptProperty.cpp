@@ -6,6 +6,7 @@
 #include "LuaBinding.h"
 #include "lua.hpp"
 #include "LuaBridge.h"
+#include "asset/AssetMap.h"
 
 namespace jasperengine {
 
@@ -61,6 +62,13 @@ namespace jasperengine {
                         *static_cast<PrefabAsset*>(memberPtr) = std::get<PrefabAsset>(value);
                     } else {
                         *static_cast<PrefabAsset*>(memberPtr) = PrefabAsset();
+                    }
+                    break;
+                case ScriptPropertyType::Asset:
+                    if (std::holds_alternative<AssetRef>(value)) {
+                        *static_cast<AssetRef*>(memberPtr) = std::get<AssetRef>(value);
+                    } else {
+                        *static_cast<AssetRef*>(memberPtr) = AssetRef();
                     }
                     break;
             }
@@ -150,6 +158,13 @@ namespace jasperengine {
                         lua_pushnil(L);
                     }
                     break;
+                case ScriptPropertyType::Asset:
+                    if (std::holds_alternative<AssetRef>(value) && std::get<AssetRef>(value).isSet()) {
+                        pushOrNil(ScriptAssetRef(std::get<AssetRef>(value)));
+                    } else {
+                        lua_pushnil(L);
+                    }
+                    break;
             }
 
             lua_setfield(L, -2, name.c_str()); // instance[name] = value
@@ -188,6 +203,9 @@ namespace jasperengine {
                     break;
                 case ScriptPropertyType::Prefab:
                     value = *static_cast<PrefabAsset*>(memberPtr);
+                    break;
+                case ScriptPropertyType::Asset:
+                    value = *static_cast<AssetRef*>(memberPtr);
                     break;
             }
         } else if (luaRef != 0 && !name.empty()) {
@@ -258,6 +276,20 @@ namespace jasperengine {
                         auto result = luabridge::Stack<PrefabAsset>::get(L, -1);
                         if (result) {
                             value = result.value();
+                        }
+                    }
+                    break;
+                }
+                case ScriptPropertyType::Asset: {
+                    // nil, an AssetRef, or a GUID / path string
+                    if (lua_isnil(L, -1)) {
+                        value = AssetRef();
+                    } else if (lua_type(L, -1) == LUA_TSTRING) {
+                        value = ScriptAssetRef::make(lua_tostring(L, -1)).getRef();
+                    } else {
+                        auto result = luabridge::Stack<ScriptAssetRef>::get(L, -1);
+                        if (result) {
+                            value = result.value().getRef();
                         }
                     }
                     break;

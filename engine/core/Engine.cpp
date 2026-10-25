@@ -4,6 +4,8 @@
 #include "manager/ObjectManager.h"
 #include "Engine.h"
 #include "Log.h"
+#include "log/Logger.h"
+#include "util/Scheduler.h"
 #include "Scene.h"
 #include "Input.h"
 #include "render/SystemRender.h"
@@ -32,11 +34,14 @@
 #include "pool/ModelPool.h"
 #include "pool/MeshLodPool.h"
 #include "shader/RuntimeShaderCompiler.h"
-#ifndef NO_THREAD_SUPPORT
-    #include "thread/ThreadPoolManager.h"
-#endif
+#include "io/AssetIOService.h"
+#include "jobs/JobSystem.h"
+#include "memory/Arena.h"
 
 #include "sokol_time.h"
+#if defined(__APPLE__)
+    #include <TargetConditionals.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -69,6 +74,9 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+bool Engine::atmosphereQualityOverridden = false;
+AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
 bool Engine::callMouseInTouchEvent = false;
@@ -80,6 +88,8 @@ bool Engine::ignoreEventsHandledByUI = true;
 bool Engine::uiEventReceived = false;
 
 uint64_t Engine::lastTime = 0;
+double Engine::framePeriod = 0.0;
+double Engine::frameCpuTime = 0.0;
 double Engine::updateTimeCount = 0;
 
 double Engine::deltatime = 0;
@@ -104,6 +114,7 @@ bool Engine::clampNextDelta = false;
 
 std::atomic<bool> Engine::viewLoaded = false;
 std::atomic<bool> Engine::paused = false;
+bool Engine::gameEventsPaused = false;
 std::atomic<bool> Engine::asyncLoading = false;
 bool Engine::frameRunning = false;
 
@@ -362,7 +373,20 @@ Scene* Engine::getLastScene(){
     return scenes.empty() ? nullptr : scenes.back();
 }
 
+bool Engine::advanceGameClocks(Scheduler& scheduler, double frameTime) {
+    if (paused || simulationHeld || gameEventsPaused) return false;
+    scheduler.advance(TimeDomain::Game, frameTime * timeScale);
+    scheduler.advance(TimeDomain::Unscaled, frameTime);
+    scheduler.advance(TimeDomain::Frames, 1.0);
+    return true;
+}
+
+bool Engine::areGameEventsPaused() {
+    return gameEventsPaused;
+}
+
 void Engine::pauseGameEvents(bool pause) {
+    gameEventsPaused = pause;
     // Pause ALL subscriptions for game events
     // Don't pause drawing and lifecycle events
     onUpdate.setEnabled(!pause);
@@ -575,6 +599,45 @@ Platform Engine::getPlatform(){
 #endif
 }
 
+void Engine::setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web){
+    atmosphereQualityDefaults[0] = desktop;
+    atmosphereQualityDefaults[1] = mobile;
+    atmosphereQualityDefaults[2] = web;
+}
+
+AtmosphereQuality Engine::getAtmosphereQualityDefault(Platform platform){
+    switch (platform){
+        case Platform::iOS:
+        case Platform::Android:
+            return atmosphereQualityDefaults[1];
+        case Platform::Web:
+            return atmosphereQualityDefaults[2];
+        default:
+            return atmosphereQualityDefaults[0];
+    }
+}
+
+AtmosphereQuality Engine::getAtmosphereQualityDefault(){
+    return getAtmosphereQualityDefault(getPlatform());
+}
+
+void Engine::setAtmosphereQuality(AtmosphereQuality quality){
+    atmosphereQualityOverride = quality;
+    atmosphereQualityOverridden = true;
+}
+
+AtmosphereQuality Engine::getAtmosphereQuality(){
+    return atmosphereQualityOverridden ? atmosphereQualityOverride : getAtmosphereQualityDefault();
+}
+
+void Engine::resetAtmosphereQuality(){
+    atmosphereQualityOverridden = false;
+}
+
+bool Engine::isAtmosphereQualityOverridden(){
+    return atmosphereQualityOverridden;
+}
+
 GraphicBackend Engine::getGraphicBackend(){
 #if defined(SOKOL_GLCORE)
     return GraphicBackend::GLCORE;
@@ -608,6 +671,14 @@ float Engine::getFramerate(){
     return framerate;
 }
 
+double Engine::getFramePeriod(){
+    return framePeriod;
+}
+
+double Engine::getFrameCpuTime(){
+    return frameCpuTime;
+}
+
 float Engine::getDeltatime(){
     return deltatime;
 }
@@ -621,6 +692,10 @@ void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
     currentFrameStats.triangles += triangles;
+}
+
+uint32_t Engine::getPendingDrawCalls(){
+    return currentFrameStats.drawCalls;
 }
 
 const Engine::FrameStats& Engine::getFrameStats(){
@@ -683,23 +758,14 @@ bool Engine::isSimulationHeld(){
     return simulationHeld;
 }
 
+// Honoured everywhere: without threads (single-thread web) the job system runs the loads
+// from its per-frame pump, so they still complete over several frames.
 void Engine::setAsyncLoading(bool enable){
-    #ifndef NO_THREAD_SUPPORT
-        asyncLoading = enable;
-    #else
-        if (enable){
-            Log::warn("Threads are not available");
-        }
-        asyncLoading = false;
-    #endif
+    asyncLoading = enable;
 }
 
 bool Engine::isAsyncLoading(){
-    #ifndef NO_THREAD_SUPPORT
-        return asyncLoading;
-    #else
-        return false;
-    #endif
+    return asyncLoading;
 }
 
 void Engine::startAsyncThread(){
@@ -742,18 +808,46 @@ bool Engine::isViewLoaded(){
 }
 
 void Engine::setMaxResourceLoadingThreads(size_t maxThreads) {
-    #ifndef NO_THREAD_SUPPORT
-        ThreadPoolManager::shutdown();
-        ThreadPoolManager::initialize(maxThreads);
-    #endif
+    // live: the gate's counters change, the pool is never rebuilt
+    jobs::system().getGate().setMaxOverride((int)std::min<size_t>(maxThreads, 64));
 }
 
 size_t Engine::getQueuedResourceCount() {
-    #ifndef NO_THREAD_SUPPORT
-        return ThreadPoolManager::getInstance().getQueueSize();
-    #else
+    if (!jobs::hasSystem())
         return 0;
-    #endif
+    return jobs::system().getAssetJobCount();
+}
+
+namespace{
+    ThreadingSettings& threadingSettingsStorage(){
+        static ThreadingSettings settings;
+        return settings;
+    }
+
+    jobs::Config jobConfigFor(const ThreadingSettings& settings){
+        jobs::Config config;
+        config.workers = settings.workers;
+        config.reserveForFrame = settings.reservedFrameWorkers;
+        return config;
+    }
+
+    // the job system and the asset readers, with the settings known now
+    void startJobs(){
+        const ThreadingSettings& settings = threadingSettingsStorage();
+        jobs::initialize(jobConfigFor(settings));
+        if (!AssetIOService::instance().isRunning())
+            AssetIOService::instance().start(settings.ioThreads);
+    }
+}
+
+void Engine::setThreadingSettings(const ThreadingSettings& settings) {
+    threadingSettingsStorage() = settings;
+    // a running system takes the reserve live (initialize) and warns about the worker count
+    startJobs();
+}
+
+const ThreadingSettings& Engine::getThreadingSettings() {
+    return threadingSettingsStorage();
 }
 
 void Engine::setFramebuffer(Framebuffer* framebuffer){
@@ -1052,13 +1146,68 @@ void Engine::calculateCanvas(){
                       Engine::canvasWidth, Engine::canvasHeight, unusedViewRect);
 }
 
-void Engine::systemInit(int argc, char* argv[], System* system){
-    #ifndef NO_THREAD_SUPPORT
-        size_t maxThreads = std::max(1u, std::thread::hardware_concurrency() - 1);
-        ThreadPoolManager::initialize(maxThreads);
+namespace {
+    // the game started the logger (an editor starts its own before the engine)
+    bool engineOwnsLogger = false;
+    // frames systemDraw ran, stamped on log records
+    uint64_t drawnFrames = 0;
+
+    // A game's logger: the project's Player > Logging settings (injected by the Exporter as
+    // JASPERENGINE_LOG_*), then JASPER_LOG_LEVEL, then --log-level on the command line
+    void startGameLogger(System* system, const std::vector<std::string>& args){
+        Logger::Config config;
+    #if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
+        config.queueBytes = 256 * 1024;
+    #else
+        config.queueBytes = 1024 * 1024;
     #endif
+    #ifdef JASPERENGINE_LOG_BACKTRACE
+        config.backtraceOnError = JASPERENGINE_LOG_BACKTRACE != 0;
+    #endif
+    #ifndef NDEBUG
+        // debug builds always do
+        config.backtraceOnError = true;
+    #endif
+        Logger::init(config);
+        engineOwnsLogger = true;
+    #ifdef JASPERENGINE_LOG_LEVEL
+        Logger::applyLevelSpec(JASPERENGINE_LOG_LEVEL);
+    #endif
+        if (const char* level = std::getenv("JASPER_LOG_LEVEL")) {
+            std::string error;
+            if (level[0] != '\0' && !Logger::applyLevelSpec(level, &error)) {
+                fprintf(stderr, "JASPER_LOG_LEVEL: %s\n", error.c_str());
+            }
+        }
+        for (size_t i = 0; i < args.size(); i++) {
+            std::string spec;
+            if (args[i] == "--log-level" && i + 1 < args.size()) {
+                spec = args[i + 1];
+            } else if (args[i].rfind("--log-level=", 0) == 0) {
+                spec = args[i].substr(12);
+            } else {
+                continue;
+            }
+            std::string error;
+            if (!Logger::applyLevelSpec(spec, &error)) {
+                fprintf(stderr, "--log-level: %s\n", error.c_str());
+            }
+        }
+        system->installLogSinks();
+    }
+}
+
+void Engine::systemInit(int argc, char* argv[], System* system){
+    jobs::markMainThread();
 
     System::setSystemInstance(system);
+
+    if (!Logger::isInitialized()) {
+        startGameLogger(system, std::vector<std::string>(argv, argv + argc));
+    }
+    Logger::setThreadName("main");
+    // the game's timers run on this thread (Engine::systemDraw)
+    Scheduler::game().setOwnerThread();
 
     Engine::setCanvasSize(1000,480);
 
@@ -1082,6 +1231,10 @@ void Engine::systemInit(int argc, char* argv[], System* system){
     #ifndef NO_CPP_INIT
     getOnInit().call();
     #endif
+
+    // after the game's init, which sets the project's threading settings first; anything
+    // that ran jobs earlier started them with the defaults
+    startJobs();
 }
 
 void Engine::systemViewLoaded(){
@@ -1219,9 +1372,13 @@ void Engine::signalReadyOnce(){
 void Engine::systemDraw(){
     const int MAX_UPDATES_PER_FRAME = 100;
 
+    Logger::setFrame(++drawnFrames);
+
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
+    const uint64_t frameStart = lastTime;
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
+    framePeriod = rawDelta;
 
     // Cap the delta exposed to gameplay (Engine::getDeltatime) and the update loop.
     // Anything bigger than maxDeltatime gets clamped; the simulation effectively
@@ -1241,12 +1398,30 @@ void Engine::systemDraw(){
     // stops with the updates: a held simulation or a paused app
     HtmlUIClock::advance((paused || simulationHeld) ? 0.0 : frameTime);
 
+    // timers: what other threads posted, then the real clock (runs paused or loading too)
+    Scheduler& scheduler = Scheduler::game();
+    scheduler.processPosted();
+    scheduler.advance(TimeDomain::Real, rawDelta);
+    scheduler.process(TimeDomain::Real);
+
     // the input of this frame is over: no low surrogate will follow a pending high one
     flushCharInput();
     // held gamepad directions repeat on the UI clock
     updateGamepadNavigation();
 
     drawSemaphore.acquire();
+
+    // memory the last-but-one frame allocated per frame goes back now
+    memory::frameArena().beginFrame();
+    // job results posted for the main thread, then (single-thread mode) the queued jobs:
+    // everything urgent, Background work for the pump budget
+    jobs::drainMainQueue();
+    if (jobs::hasSystem()){
+        jobs::JobSystem& jobSystem = jobs::system();
+        if (jobSystem.isSingleThreaded())
+            jobSystem.pump(threadingSettingsStorage().webPumpBudgetMs);
+        jobSystem.sampleFrame();
+    }
 
     // async uploads of the last frame, while the scenes that queued them still exist
     SystemRender::executeQueue();
@@ -1268,6 +1443,8 @@ void Engine::systemDraw(){
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
+        // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
+        const bool gameClocks = advanceGameClocks(scheduler, frameTime);
 
         // 1) Fixed-timestep phase (deterministic). Runs zero or more times per frame.
         //    Used for physics, networking, and any subsystem overriding fixedUpdate().
@@ -1279,6 +1456,10 @@ void Engine::systemDraw(){
                 Engine::onFixedUpdate.call();
                 for (int i = 0; i < scenes.size(); i++) {
                     scenes[i]->fixedUpdate(updateTime);
+                }
+                if (gameClocks) {
+                    scheduler.advance(TimeDomain::FixedSteps, 1.0);
+                    scheduler.process(TimeDomain::FixedSteps);
                 }
                 updateTimeCount -= updateTime;
                 fixedLoops++;
@@ -1296,6 +1477,12 @@ void Engine::systemDraw(){
         Engine::onUpdate.call();
         for (int i = 0; i < scenes.size(); i++) {
             scenes[i]->update(frameDelta);
+        }
+        // timers and coroutines run after the update, before the post-update (as Unity's)
+        if (gameClocks) {
+            scheduler.process(TimeDomain::Game);
+            scheduler.process(TimeDomain::Unscaled);
+            scheduler.process(TimeDomain::Frames);
         }
         Engine::onPostUpdate.call();
 
@@ -1316,6 +1503,7 @@ void Engine::systemDraw(){
     endCompositeFramebuffer();
 
     SystemRender::commit();
+    frameCpuTime = stm_sec(stm_since(frameStart));
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -1376,6 +1564,8 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.disableFog = layer.disableFog;
         desc.disableFaceCulling = layer.disableFaceCulling;
         desc.postProcessing = layer.postProcessing;
+        desc.disableClouds = layer.disableClouds;
+        desc.atmosphereQuality = layer.atmosphereQuality;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
@@ -1420,20 +1610,28 @@ void Engine::systemViewDestroyed(){
     clearPools();
 
     drawSemaphore.release();
-
-    #ifndef NO_THREAD_SUPPORT
-        ThreadPoolManager::shutdown();
-    #endif
 }
 
 void Engine::systemShutdown(){
     Engine::onShutdown.call();
 
-    // anime's Lua references go while the Lua state still exists
+    // anime's and the timers' Lua references go while the Lua state still exists
     AnimEngine::instance().reset();
+    Scheduler::game().clear();
     LuaBinding::cleanup();
 
     removeAllSceneLayers(true);
+
+    // the readers submit decode jobs, so they stop first; queued submit() jobs end
+    // Cancelled, enqueueDetached() jobs run, every thread joins
+    AssetIOService::instance().stop();
+    jobs::shutdown();
+
+    // what the game logged (the workers' last lines too) reaches its sinks before the process goes
+    if (engineOwnsLogger) {
+        engineOwnsLogger = false;
+        Logger::shutdown();
+    }
 }
 
 void Engine::systemPause(){

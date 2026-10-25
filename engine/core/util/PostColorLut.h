@@ -6,7 +6,9 @@
 
 #include "SceneSettings.h"
 #include "math/Vector3.h"
+#include "util/CubeLut.h"
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace jasperengine{
@@ -26,15 +28,17 @@ namespace jasperengine{
     //  - display (the uber pass): a texel's coordinate is a display-encoded colour, the LUT
     //    holds the grade of it.
     //
-    // The pipeline (one order everywhere): exposure (stops), tone mapping curve (linear
-    // display 0..1), white balance (temperature, tint: an LMS diagonal), display encoding
-    // (pow 1/2.2, the engine's), contrast around 0.5, lift / gain then gamma per channel,
-    // saturation (Rec. 709 luma), monochrome (grayscale or sepia, mixed by its intensity), the
-    // user's LUT strip (mixed by its contribution), clamp 0..1.
+    // The pipeline (one order everywhere): exposure (stops), a scene-stage user LUT (mixed by
+    // its contribution), tone mapping curve (linear display 0..1), white balance (temperature,
+    // tint: an LMS diagonal), display encoding (pow 1/2.2, the engine's), contrast around 0.5,
+    // lift / gain then gamma per channel, saturation (Rec. 709 luma), monochrome (grayscale or
+    // sepia, mixed by its intensity), a display-stage user LUT (mixed by its contribution),
+    // clamp 0..1. The user LUT (lutTexture: a .cube, or a PNG strip converted to a CubeLut) sits
+    // at one of the two stages (stageOf, CubeLut.h); only grading on uses it.
     class JASPERENGINE_API PostColorLut{
     public:
-        // the user's LUT strip (an image N*N x N, Unity's layout: green from the bottom row up),
-        // as RGB8 rows from the top; empty when none
+        // a LUT strip image (N*N x N, Unity's layout: green from the bottom row up), as RGB8
+        // rows from the top; empty when none. stripToCubeLut makes the CubeLut grade samples
         struct Strip{
             int size = 0;          // N
             int width = 0;         // N * N
@@ -49,21 +53,35 @@ namespace jasperengine{
 
         // the linear display colour of the curve (0..1) of a linear scene colour
         static Vector3 toneMap(TonemapMode mode, const Vector3& color);
-        // the grade of a linear display colour, display-encoded out
-        static Vector3 grade(const PostProcessingSettings& settings, const Strip* strip, const Vector3& linearDisplay);
+        // the grade of a linear display colour, display-encoded out; lut is the settings'
+        // lutTexture, loaded (null: none), which applies here when it is a display-stage LUT
+        static Vector3 grade(const PostProcessingSettings& settings, const CubeLut* lut, const Vector3& linearDisplay);
 
-        // whether the settings grade at all (white balance ... user LUT, or monochrome)
+        // the stage the settings' user LUT applies at; false when none applies (grading off,
+        // no lutTexture, contribution 0, or no loaded LUT)
+        static bool getLutStage(const PostProcessingSettings& settings, const CubeLut* lut, LutStage& stage);
+
+        // whether the settings grade at all (white balance ... a display-stage LUT, or
+        // monochrome); without the loaded LUT a set lutTexture counts as a display LUT
         static bool hasGrade(const PostProcessingSettings& settings);
-        // whether they change the curve (exposure or a tone mapping curve)
+        static bool hasGrade(const PostProcessingSettings& settings, const CubeLut* lut);
+        // whether they change the curve (exposure, a tone mapping curve or a scene-stage LUT);
+        // without the loaded LUT only exposure and the curve count
         static bool hasCurve(const PostProcessingSettings& settings);
+        static bool hasCurve(const PostProcessingSettings& settings, const CubeLut* lut);
 
         // bakes a strip of side n for that stage into rgba (n * n * n * 4 bytes); shaper is the
-        // shaper domain's k (ALL and CURVE)
-        static void bake(const PostProcessingSettings& settings, const Strip* strip, Stage stage, int n, std::vector<uint8_t>& rgba,
+        // shaper domain's k (ALL and CURVE). A scene-stage lut goes into ALL and CURVE, a
+        // display-stage one into ALL and GRADE
+        static void bake(const PostProcessingSettings& settings, const CubeLut* lut, Stage stage, int n, std::vector<uint8_t>& rgba,
                          float shaper = 1.0f);
 
-        // loads a LUT strip image (height N, width N * N); false with a logged error otherwise
-        static bool loadStrip(const std::string& path, Strip& strip);
+        // loads a LUT strip image (height N, width N * N); false with a logged error otherwise,
+        // also returned in error
+        static bool loadStrip(const std::string& path, Strip& strip, std::string* error = nullptr);
+        // a strip as the 3D CubeLut of side N it holds (fromStrip, sRGB display colour); an
+        // empty LUT for an empty or malformed strip
+        static void stripToCubeLut(const Strip& strip, CubeLut& lut);
     };
 
 }

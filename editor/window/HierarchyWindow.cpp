@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "window/dialog/DataSafetyDialogs.h"
+#include "StreamPreserved.h"
 
 #include "App.h"
 #include "Backend.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
+#include "command/PlayChangeReview.h"
 #include "command/CommandHandle.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "command/type/AddChildSceneCmd.h"
@@ -483,6 +486,9 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Effects", "Particle System", ICON_FA_FIRE, T::PARTICLE_SYSTEM, "Particle System", CREATE_IN_WORLD},
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
+        {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
+        {"Effects", "Local Volumetric Fog", ICON_FA_SMOG, T::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog", CREATE_IN_3D},
+        {"Effects", "Volumetric Clouds", ICON_FA_CLOUD, T::VOLUMETRIC_CLOUDS, "Volumetric Clouds", CREATE_IN_3D},
 
         {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
         {"Light", "Point Light", ICON_FA_LIGHTBULB, T::POINT_LIGHT, "Point Light", CREATE_IN_3D},
@@ -510,7 +516,6 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Physics", "Joint 2D", ICON_FA_LINK, T::JOINT2D, "Joint 2D", CREATE_IN_2D},
 
         {"Rendering", "Skybox", ICON_FA_CLOUD, T::SKYBOX, "Skybox", CREATE_IN_3D},
-        {"Rendering", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D},
 
         {"Tween", "Position Tween", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, T::POSITION_TWEEN, "Position Tween", CREATE_IN_ALL},
         {"Tween", "Rotation Tween", ICON_FA_ROTATE, T::ROTATION_TWEEN, "Rotation Tween", CREATE_IN_ALL},
@@ -1477,7 +1482,6 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     bool nodeHovered = ImGui::IsItemHovered();
-    bool nodeActive = ImGui::IsItemActive();
     bool nodeRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
     const ImGuiID nodeItemId = ImGui::GetItemID();
     if (!renamingNode) {
@@ -1959,6 +1963,19 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                     CommandHandle::get(sceneId)->addCommandNoMerge(new DeleteEntityCmd(project, sceneId, targets));
                 }
                 entityDeleted = true;
+            }
+
+            // Play Mode Changes: what scripts change here is offered at Stop too
+            SceneProject* playingScene = project->getScene(sceneId);
+            if (!entityDeleted && playingScene && !node.isPlayCreated && !project->isPlayRuntimeScene(sceneId) &&
+                (playingScene->playState == ScenePlayState::PLAYING || playingScene->playState == ScenePlayState::PAUSED)) {
+                ImGui::Separator();
+                if (ImGui::MenuItem(ICON_FA_THUMBTACK "  Keep Values After Play (all components)")) {
+                    for (Entity target : targets) {
+                        PlayChangeReview::get().markGameObject(sceneId, target);
+                    }
+                }
+                ImGui::SetItemTooltip("At Stop, Play Mode Changes offers to keep every component's values as they are then");
             }
 
             // Create children of this GameObject
@@ -2736,6 +2753,29 @@ void editor::HierarchyWindow::rebuildEntityTree(SceneProject* sceneProject, Tree
     markPrefabRows(root);
 }
 
+void editor::HierarchyWindow::showPartialLoadBanner(const SceneProject& sceneProject) {
+    const size_t dropped = sceneProject.loadReport.dropped();
+    if (dropped == 0) {
+        return;
+    }
+    const size_t kept = sceneProject.loadReport.outstandingPreserved(findPreservedStore(sceneProject.scene));
+    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
+    ImGui::TextWrapped("This scene did not load completely: %zu value%s dropped, %zu kept. Auto Save is off for this scene.",
+                       dropped, dropped == 1 ? "" : "s", kept);
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Details##PartialLoad")) {
+        for (const LoadIssue& issue : sceneProject.loadReport.issues) {
+            if (issue.fate == LoadIssueFate::Dropped) {
+                Out::error(issue.consoleLine());
+            }
+        }
+        DataSafetyDialogs::showFileInConsole(sceneProject.filepath.filename().string());
+    }
+    ImGui::SetItemTooltip("Show this scene's load issues in the Console");
+    ImGui::Separator();
+}
+
 void editor::HierarchyWindow::show(){
     windowFocused = false;
     if (!windowOpen) {
@@ -2773,6 +2813,8 @@ void editor::HierarchyWindow::show(){
         focusedThisFrame = false;
     }
     windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+    showPartialLoadBanner(*sceneProject);
 
     // A rename started for a scene that is no longer shown has nothing to edit
     if (renameTarget != RenameTarget::None && renameSceneId != sceneProject->id) {

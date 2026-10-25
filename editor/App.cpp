@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "asset/AssetRefEditor.h"
+#include "util/Scheduler.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -12,13 +14,19 @@
 
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
+#include "command/UndoTimeline.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
 #include "command/type/RemoveChildSceneCmd.h"
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
+#include "window/JobsMemoryWindow.h"
+#include "window/PlayModeChangesWindow.h"
+#include "window/UndoHistoryWindow.h"
+#include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
+#include "reload/HotReloadService.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -102,13 +110,20 @@ ImFont* editor::App::codeFont = nullptr;
 ImFont* editor::App::boldFont = nullptr;
 
 editor::App::App(){
+    scheduler().setOwnerThread();
     mainThreadId = std::this_thread::get_id();
     inspectorWindow = new InspectorWindow(&project);
     consoleWindow = new ConsoleWindow();
     playInput = new PlayInput(&project);
     sceneWindow = new SceneWindow(&project);
     gameWindow = new GameWindow(&project, playInput);
+    // the open project's files changing on disk reload (S05)
+    project.setWatchFiles(true);
     mainToolbar = new MainToolbar(&project);
+    statusBar = new StatusBar([this]() {
+        editorSettingsWindow.open(&project);
+        editorSettingsWindow.showPage("Asset Pipeline");
+    });
     inspectorWindow->setSceneWindow(sceneWindow);
     hierarchyWindow = new HierarchyWindow(&project, sceneWindow);
     codeEditor = new CodeEditor(&project);
@@ -118,6 +133,20 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    missingAssetsWindow = new MissingAssetsWindow(&project);
+    assetReferencesWindow = new AssetReferencesWindow(&project);
+    jobsMemoryWindow = new JobsMemoryWindow();
+    undoHistoryWindow = new UndoHistoryWindow(&project);
+    playModeChangesWindow = new PlayModeChangesWindow(&project);
+    // Stop found edits that can be kept: the window opens, or after an agent's Stop the
+    // Console says where they are (S24 R30)
+    PlayChangeReview::get().onPending = [this](uint32_t sceneId, size_t rows) {
+        if (PlayChangeReview::get().isQuietStop()) {
+            Out::info("%zu play-mode change%s can be kept: Window > General > Play Mode Changes", rows, rows == 1 ? "" : "s");
+            return;
+        }
+        playModeChangesWindow->openFor(sceneId);
+    };
 
     isInitialized = false;
     dockspaceNeedsRebuild = false;
@@ -247,6 +276,12 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimation,
     ToggleTerrain,
     ToggleMcpActivity,
+    ToggleMissingAssets,
+    MigrateAssetReferences,
+    ToggleAssetReferences,
+    ToggleJobsMemory,
+    ToggleUndoHistory,
+    TogglePlayModeChanges,
     FocusScene,
     FocusGame,
     StepFrame,
@@ -424,19 +459,32 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     // Project settings are not tracked by the scene and script dirty flags.
     bool canSaveAll = !isProjectBusy && !saveDialogInProgress;
 
+    // One timeline whatever window had focus (S24 R21): only a text field or the Code editor
+    // keep their own undo, and then the items say plain Undo/Redo
     bool canUndo = false;
     bool canRedo = false;
-    if (!textInput) {
-        if (lastFocusedWindow == LastFocusedWindow::Resources) {
-            canUndo = project.getProjectCommandHistory()->canUndo();
-            canRedo = project.getProjectCommandHistory()->canRedo();
-        } else if (lastFocusedWindow == LastFocusedWindow::Code) {
+    std::string undoLabel = "Undo";
+    std::string redoLabel = "Redo";
+    switch (undoTarget()) {
+        case UndoTimeline::Target::TextField:
+            break;
+        case UndoTimeline::Target::CodeEditor:
             canUndo = codeEditor->canUndoLastFocused();
             canRedo = codeEditor->canRedoLastFocused();
-        } else if (hasSelectedScene) {
-            canUndo = CommandHandle::get(selectedSceneId)->canUndo();
-            canRedo = CommandHandle::get(selectedSceneId)->canRedo();
-        }
+            break;
+        case UndoTimeline::Target::Timeline:
+            if (hasSelectedScene) {
+                canUndo = UndoTimeline::canUndo(selectedSceneId);
+                canRedo = UndoTimeline::canRedo(selectedSceneId);
+                undoLabel = UndoTimeline::undoLabel(selectedSceneId);
+                redoLabel = UndoTimeline::redoLabel(selectedSceneId);
+            } else {
+                canUndo = UndoTimeline::canUndo(NULL_PROJECT_SCENE);
+                canRedo = UndoTimeline::canRedo(NULL_PROJECT_SCENE);
+                undoLabel = UndoTimeline::undoLabel(NULL_PROJECT_SCENE);
+                redoLabel = UndoTimeline::redoLabel(NULL_PROJECT_SCENE);
+            }
+            break;
     }
 
     // Single-key shortcuts (F, F2) must not steal keys from text fields, the code
@@ -496,11 +544,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     }));
 
     menu.menus.push_back(menuSubmenu("Edit", {
-        menuShortcut(AppMenuCommand::Undo, "Undo", "Ctrl+Z", canUndo),
+        menuShortcut(AppMenuCommand::Undo, undoLabel, "Ctrl+Z", canUndo),
 #if defined(__APPLE__)
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Shift+Z", canRedo),
+        menuShortcut(AppMenuCommand::Redo, redoLabel, "Ctrl+Shift+Z", canRedo),
 #else
-        menuShortcut(AppMenuCommand::Redo, "Redo", "Ctrl+Y", canRedo),
+        menuShortcut(AppMenuCommand::Redo, redoLabel, "Ctrl+Y", canRedo),
 #endif
         menuSeparator(),
         menuShortcut(AppMenuCommand::SelectAll, "Select All", "Ctrl+A", canSelectAll()),
@@ -542,7 +590,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::AssetsDelete, "Delete", assetSelected),
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
-        menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
+        menuShortcut(AppMenuCommand::AssetsRefresh, "Refresh", "Ctrl+R"),
+        menuSubmenu("Asset Database", {
+            menuCommand(AppMenuCommand::ToggleMissingAssets, "Missing Assets..."),
+            menuCommand(AppMenuCommand::MigrateAssetReferences, "Migrate References", !isProjectBusy)
+        }),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
         menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
@@ -563,12 +615,21 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleInspector, windowMenuLabel(InspectorWindow::WINDOW_NAME), "Ctrl+3"),
             menuShortcut(AppMenuCommand::ToggleHierarchy, windowMenuLabel(HierarchyWindow::WINDOW_NAME), "Ctrl+4"),
             menuShortcut(AppMenuCommand::ToggleProject, windowMenuLabel(ProjectWindow::WINDOW_NAME), "Ctrl+5"),
-            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C")
+            menuShortcut(AppMenuCommand::ToggleConsole, windowMenuLabel(ConsoleWindow::WINDOW_NAME), "Ctrl+Shift+C"),
+            menuCommand(AppMenuCommand::ToggleUndoHistory, windowMenuLabel(UndoHistoryWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::TogglePlayModeChanges, windowMenuLabel(PlayModeChangesWindow::WINDOW_NAME))
         }),
         menuSubmenu("Animation", {
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("Assets", {
+            menuCommand(AppMenuCommand::ToggleMissingAssets, windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::ToggleAssetReferences, windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+        }),
+        menuSubmenu("Analysis", {
+            menuCommand(AppMenuCommand::ToggleJobsMemory, windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+        }),
         menuSubmenu("MCP", {
             menuCommand(AppMenuCommand::ToggleMcpActivity, windowMenuLabel(mcp::McpActivityWindow::WINDOW_NAME))
         }),
@@ -675,24 +736,10 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             exit();
             break;
         case AppMenuCommand::Undo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                project.getProjectCommandHistory()->undo();
-                projectWindow->refreshCurrentDirectory();
-            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                codeEditor->undoLastFocused();
-            } else if (project.getSelectedScene()) {
-                CommandHandle::get(project.getSelectedSceneId())->undo();
-            }
+            undoRedo(true);
             break;
         case AppMenuCommand::Redo:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) {
-                project.getProjectCommandHistory()->redo();
-                projectWindow->refreshCurrentDirectory();
-            } else if (lastFocusedWindow == LastFocusedWindow::Code) {
-                codeEditor->redoLastFocused();
-            } else if (project.getSelectedScene()) {
-                CommandHandle::get(project.getSelectedSceneId())->redo();
-            }
+            undoRedo(false);
             break;
         case AppMenuCommand::RenameSelection:
             if (!hierarchyWindow->renameSelected()) inspectorWindow->focusNameInput();
@@ -735,8 +782,26 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
             break;
+        case AppMenuCommand::ToggleJobsMemory:
+            showEditorWindow(jobsMemoryWindow);
+            break;
+        case AppMenuCommand::ToggleUndoHistory:
+            showEditorWindow(undoHistoryWindow);
+            break;
+        case AppMenuCommand::TogglePlayModeChanges:
+            showEditorWindow(playModeChangesWindow);
+            break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
+            break;
+        case AppMenuCommand::ToggleMissingAssets:
+            showEditorWindow(missingAssetsWindow);
+            break;
+        case AppMenuCommand::ToggleAssetReferences:
+            showEditorWindow(assetReferencesWindow);
+            break;
+        case AppMenuCommand::MigrateAssetReferences:
+            migrateAssetReferences();
             break;
         case AppMenuCommand::FocusGame:
             gameWindow->requestFocus();
@@ -880,6 +945,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             projectWindow->assetsImport();
             break;
         case AppMenuCommand::AssetsRefresh:
+            // what changed on disk (the journal with Auto Refresh off), then the open folder
+            HotReloadService::get().refresh();
             projectWindow->assetsRefresh();
             break;
         case AppMenuCommand::About:
@@ -970,6 +1037,70 @@ void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
     }
 }
 
+editor::UndoTimeline::Target editor::App::undoTarget() const{
+    UndoTimeline::FocusedWindow focused = UndoTimeline::FocusedWindow::None;
+    switch (lastFocusedWindow) {
+        case LastFocusedWindow::None: focused = UndoTimeline::FocusedWindow::None; break;
+        case LastFocusedWindow::AnySceneWindow: focused = UndoTimeline::FocusedWindow::Scene; break;
+        case LastFocusedWindow::Resources: focused = UndoTimeline::FocusedWindow::Resources; break;
+        case LastFocusedWindow::Code: focused = UndoTimeline::FocusedWindow::Code; break;
+    }
+    return UndoTimeline::resolveTarget(ImGui::GetIO().WantTextInput, codeEditor->isFocused(), focused);
+}
+
+void editor::App::undoRedo(bool undo){
+    switch (undoTarget()) {
+        case UndoTimeline::Target::TextField:
+            return;
+        case UndoTimeline::Target::CodeEditor:
+            if (undo) codeEditor->undoLastFocused();
+            else codeEditor->redoLastFocused();
+            return;
+        case UndoTimeline::Target::Timeline:
+            break;
+    }
+    const bool dragging = CommandHistory::anyInteractiveOpen();
+    std::string why;
+    const uint32_t sceneId = project.getSelectedScene() ? project.getSelectedSceneId() : NULL_PROJECT_SCENE;
+    const bool done = undo ? UndoTimeline::undo(sceneId, &why) : UndoTimeline::redo(sceneId, &why);
+    if (dragging) {
+        // the cancelled drag's widget lets go of the mouse
+        ImGui::ClearActiveID();
+    }
+    if (!done && why.rfind("Busy", 0) == 0) {
+        Out::warning(why);
+    }
+}
+
+void editor::App::handleInteractiveEdits(bool popupOpen){
+    ImGuiIO& io = ImGui::GetIO();
+    // Esc puts a drag's values back; a text field keeps Esc for its own revert. First: ImGui
+    // lets go of the dragged widget on Esc itself, which must not read as a drag that ended
+    if (CommandHistory::anyInteractiveOpen() && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        for (CommandHistory* history : std::vector<CommandHistory*>(CommandHistory::all())) {
+            history->cancelInteractive();
+        }
+        ImGui::ClearActiveID();
+        return;
+    }
+    // the widget let go last frame: its drag is one step
+    const ImGuiID active = ImGui::GetActiveID();
+    if (widgetEdit.isOpen() && active != widgetEditItem) {
+        widgetEdit.commit();
+    }
+    if (active == 0) {
+        // no widget can hold a command the history dropped
+        CommandHistory::flushReleased();
+    }
+    if (!CommandHistory::anyInteractiveOpen()) {
+        return;
+    }
+    // A menu or popup opening, or the editor window losing focus, ends the drag as it is
+    if (popupOpen || io.AppFocusLost) {
+        CommandHistory::commitInteractiveEdits();
+    }
+}
+
 void editor::App::showMenu(){
     PlatformMenuModel menu = buildMenuModel();
     const float nativeMenuHeight = Backend::setMainMenu(
@@ -1057,6 +1188,16 @@ void editor::App::showFooter(){
         if (queuedResources > 0) {
             indicators.emplace_back(std::string(ICON_FA_SPINNER " Loading resources: ") + std::to_string(queuedResources), busyCol);
         }
+        // S04 R27: the Missing Assets badge, a click opens the panel
+        size_t missingIndicator = SIZE_MAX;
+        if (project.getAssetIndex().isReady()) {
+            const size_t missing = project.getMissingAssets().count();
+            if (missing > 0) {
+                missingIndicator = indicators.size();
+                indicators.emplace_back(std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(missing) +
+                                        (missing == 1 ? " missing asset" : " missing assets"), Theme::Colors::WarningText);
+            }
+        }
         if (selectedScene) {
             indicators.emplace_back(std::string(ICON_FA_CUBE " ") + selectedScene->name, dimCol);
             const size_t selectionCount = selectedScene->selectedEntities.size();
@@ -1132,6 +1273,15 @@ void editor::App::showFooter(){
         for (size_t i = 0; i < indicators.size(); i++) {
             if (i > 0) ImGui::SameLine(0.0f, gap);
             ImGui::TextColored(indicators[i].second, "%s", indicators[i].first.c_str());
+            if (i == missingIndicator) {
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::SetTooltip("Open Window > Assets > Missing Assets");
+                }
+                if (ImGui::IsItemClicked()) {
+                    showEditorWindow(missingAssetsWindow);
+                }
+            }
         }
     }
     ImGui::End();
@@ -1141,6 +1291,46 @@ void editor::App::showFooter(){
 
     // Reserve space from the viewport work area so dockspace doesn't overlap
     viewport->WorkSize.y -= footerHeight;
+}
+
+// Assets > Asset Database > Migrate References (S04 R35): every scene, prefab, material and
+// project.yaml written with the GUIDs of what it references. A document with unsaved edits is
+// left to its next save, which writes them too.
+void editor::App::migrateAssetReferences(){
+    project.getAssetIndex().waitUntilReady();
+    std::vector<std::string> files;
+    project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (info.type == AssetType::Scene || info.type == AssetType::Prefab || info.type == AssetType::Material) {
+            files.push_back(info.path);
+        }
+    });
+    std::sort(files.begin(), files.end());
+    files.push_back("project.yaml");
+    size_t written = 0;
+    size_t skipped = 0;
+    for (const std::string& file : files) {
+        bool unsaved = false;
+        for (SceneProject* sceneProject : project.getScenesAndPrefabStages()) {
+            const PrefabStage* stage = project.getPrefabStage(sceneProject->id);
+            const fs::path path = stage ? stage->assetPath : sceneProject->filepath;
+            unsaved |= sceneProject->scene && sceneProject->isModified && !path.empty() &&
+                       project.normalizeToProjectRelative(path).generic_string() == file;
+        }
+        if (unsaved) {
+            skipped++;
+            continue;
+        }
+        bool changed = false;
+        std::string error;
+        if (!AssetRefEditor::migrateFile(project, file, changed, error)) {
+            Out::error("%s", error.c_str());
+        } else if (changed) {
+            written++;
+        }
+    }
+    project.refreshAssetDatabase(true);
+    Out::info("Migrate References: %zu file(s) written%s", written,
+              skipped ? (", " + std::to_string(skipped) + " with unsaved edits get the GUIDs when saved").c_str() : "");
 }
 
 void editor::App::showAlert(){
@@ -1327,6 +1517,8 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderSetNodeSize(dock_id_left, ImVec2(viewport.x - rightWidth, viewport.y - bottomHeight));
     ImGui::DockBuilderDockWindow(ProjectWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
+    ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -1352,6 +1544,8 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(ProjectWindow::WINDOW_NAME, 0);
     stampPanelDockOrder(ConsoleWindow::WINDOW_NAME, 1);
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
+    stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 3);
+    stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 4);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -1879,7 +2073,7 @@ void editor::App::show(){
 
     EntityClipboard::update();
 
-    pollHtmlUI();
+    pollExternalChanges();
 
     // Scripts ran in engineRender, so drop what they destroyed before any window reads the selection
     for (SceneProject& sceneProject : project.getScenes()) {
@@ -1892,7 +2086,8 @@ void editor::App::show(){
     project.syncPlayRuntimeSelections();
 
     if (!ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
-        if (projectWindow->isFocused()) {
+        // the Jobs & Memory panel shows the threading settings: its undo is the project's
+        if (projectWindow->isFocused() || jobsMemoryWindow->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
@@ -1901,7 +2096,11 @@ void editor::App::show(){
         }
     }
 
+    // the selection changes of one frame are one undo step
+    project.nextSelectionFrame();
+
     ImGuiIO& io = ImGui::GetIO();
+    handleInteractiveEdits(ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     bool isUndo = !io.WantTextInput && (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift);
     bool isRedo = !io.WantTextInput && ((io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Y)) || (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && io.KeyShift));
 
@@ -1935,6 +2134,7 @@ void editor::App::show(){
                 executeMenuCommand({static_cast<uint32_t>(menuCommand), std::move(payload)});
             };
             if (chord(true, true, false, ImGuiKey_B)) run(AppMenuCommand::ExportProject);
+            if (chord(true, false, false, ImGuiKey_R)) run(AppMenuCommand::AssetsRefresh);
             if (chord(true, true, false, ImGuiKey_N)) {
                 const auto& entries = HierarchyWindow::getCreateMenuEntries();
                 for (size_t i = 0; i < entries.size(); i++) {
@@ -1969,16 +2169,13 @@ void editor::App::show(){
         // space to keys events
     }
 
-    if (!popupOpen && !projectWindow->isFocused() && !codeEditor->isFocused()){
-        uint32_t sceneId = project.getSelectedSceneId();
+    // Ctrl+Z / Ctrl+Y: the timeline from any window but a text field or the Code editor,
+    // which keep their own undo (S24 R21)
+    if (!popupOpen && (isUndo || isRedo) && undoTarget() == UndoTimeline::Target::Timeline) {
+        undoRedo(isUndo);
+    }
 
-        // Update the Undo and Redo button logic:
-        if (isUndo) {
-            CommandHandle::get(sceneId)->undo();
-        }
-        if (isRedo) {
-            CommandHandle::get(sceneId)->redo();
-        }
+    if (!popupOpen && !projectWindow->isFocused() && !jobsMemoryWindow->isFocused() && !codeEditor->isFocused()){
 
         if (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace)) deleteSelection();
 
@@ -2008,21 +2205,11 @@ void editor::App::show(){
         }
     }
 
-    if (!popupOpen && projectWindow->isFocused()) {
-        if (isUndo) {
-            project.getProjectCommandHistory()->undo();
-            projectWindow->refreshCurrentDirectory();
-        }
-        if (isRedo) {
-            project.getProjectCommandHistory()->redo();
-            projectWindow->refreshCurrentDirectory();
-        }
-    }
-
     dockspace_id = ImGui::GetID("MyDockspace");
 
     showMenu();
     mainToolbar->show();
+    statusBar->show();
     showFooter();
 
     isInitialized = true;
@@ -2041,6 +2228,7 @@ void editor::App::show(){
 
     sceneSaveDialog.show();
     projectSaveDialog.show();
+    dataSafetyDialogs.show(project);
     exportWindow.show();
     if (exportWindow.consumePlayerSettingsRequest()) projectSettingsWindow.open(&project, "Player");
     if (inspectorWindow->consumeTagsAndLayersRequest()) projectSettingsWindow.open(&project, "Tags and Layers");
@@ -2062,6 +2250,11 @@ void editor::App::show(){
     terrainEditWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
+    missingAssetsWindow->show();
+    assetReferencesWindow->show();
+    jobsMemoryWindow->show();
+    undoHistoryWindow->show();
+    playModeChangesWindow->show();
     codeEditor->show();
     gameWindow->show();
     // Prefab Mode's tab docks with the scene tabs the first time a stage shows
@@ -2249,6 +2442,31 @@ void editor::App::engineInit(int argc, char** argv) {
         // a prefab stage's Auto Save writes after its changes
         project.notePrefabStageChange((uint32_t)sceneId);
     };
+    // A drag on a widget is one undo step (S24 R11): its first command opens the edit; a
+    // command the history drops waits until no widget may still point at it
+    CommandHistory::deferReleases = true;
+    CommandHistory::beforeRecord = [this](CommandHistory& history){
+        if (UndoOriginScope::current().kind != UndoOriginKind::User || !ImGui::GetCurrentContext()) {
+            return;
+        }
+        const ImGuiID active = ImGui::GetActiveID();
+        if (active == 0 || (widgetEdit.isOpen() && widgetEditItem == active)) {
+            return;
+        }
+        widgetEdit.commit();
+        widgetEdit = history.beginInteractive(std::string());
+        widgetEditItem = active;
+    };
+    // The Edit menu labels and the Undo History panel follow every history change; the loop
+    // idles otherwise. An undo or redo of an asset step refreshes the Project window.
+    UndoTimeline::onChanged = [this](){
+        requestRedraw();
+    };
+    UndoTimeline::onProjectChanged = [this](){
+        if (projectWindow) {
+            projectWindow->refreshCurrentDirectory();
+        }
+    };
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse
@@ -2308,7 +2526,19 @@ void editor::App::loadStartupProject() {
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
         // `jasperengine-editor mcp --project/--create`: no fallback to the last project
+        project.setIgnoreProjectLock(mcpOptions.ignoreLock);
         if (!loadMcpStartupProject(mcpOptions)) {
+            if (project.wasProjectLocked()) {
+                // another editor writes this project: an agent here would overwrite its work
+                std::fprintf(stderr, "[mcp] project_locked: %s Pass --ignore-lock to open it anyway.\n",
+                             project.getProjectLockMessage().c_str());
+                std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
+                startupExitCode = 3;
+                // the main loop exits after the next frame (consumeBenchmarkExit): closing
+                // before the first frame leaves the render queue waiting on shutdown, and that
+                // frame wants a project (the empty temporary one, as when a load fails)
+                benchmarkExit = true;
+            }
             project.createTempProject("MyJasperEngineProject");
         }
         projectLoading = false;
@@ -2339,8 +2569,10 @@ bool editor::App::loadMcpStartupProject(const mcp::McpLaunchOptions& options) {
             Out::info("Opened project for the MCP client: \"%s\"", options.project.string().c_str());
             return true;
         }
-        std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
-                     options.project.string().c_str(), error.c_str());
+        if (!project.wasProjectLocked()) {
+            std::fprintf(stderr, "[mcp] could not open the project at %s: %s; an empty temporary project is open instead\n",
+                         options.project.string().c_str(), error.c_str());
+        }
         return false;
     }
 
@@ -2472,12 +2704,19 @@ void editor::App::processProjectChange() {
     requestRedraw();
 }
 
-// Every loop iteration, idle ones too (engineRender only runs on drawn frames): HTML UI hot
-// reload, and the document animations due now wake the loop up
-void editor::App::pollHtmlUI(){
-    // (held while an MCP call that may write files runs: its sync reloads them once)
-    bool wake = !project.getHtmlUIWatcher().update(&project, mcp::McpAutoSync::get().writingCallInFlight()).empty();
+// Every loop iteration, idle ones too (engineRender only runs on drawn frames): the file
+// watcher's changes and the reloads they started (S05), HTML UI imports, and the document
+// animations due now wake the loop up
+void editor::App::pollExternalChanges(){
+    HotReloadService& reloads = HotReloadService::get();
+    // an MCP call that may write files holds the watcher's batches: its own sync reloads
+    // them once (R30)
+    reloads.setPaused(mcp::McpAutoSync::get().writingCallInFlight());
+    bool wake = FileWatchService::get().pump(PUMP_BUDGET_MS);
+    wake = reloads.update() || wake;
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
+    // the asset database's walk a watcher batch started (S04 refresh, no poll)
+    project.updateAssetScan();
 
     const auto now = std::chrono::steady_clock::now();
     for (const auto& pair : htmlUIRedrawTimes) {
@@ -2521,13 +2760,25 @@ void editor::App::engineRender(){
         return;
     }
 
+
     processMainThreadTasks();
-    project.refreshLinkedMaterials();
-    project.refreshAssetDatabase();
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput);
+    // scene Auto Save (backups only), never in the middle of a drag or a field being typed
+    project.tickAutosave(ImGui::GetIO().DeltaTime, ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
+        || ImGui::GetIO().WantTextInput);
+    // the title says when the scene shown did not load completely (its tab does too)
+    {
+        const SceneProject* shown = project.getSelectedScene();
+        const std::string suffix = shown && shown->loadReport.dropped() > 0 ?
+            " - " + (shown->filepath.empty() ? shown->name : shown->filepath.filename().string()) + " (Partial Load)" : std::string();
+        if (suffix != windowTitleSuffix) {
+            windowTitleSuffix = suffix;
+            Backend::updateWindowTitle((windowTitleProject.empty() ? project.getName() : windowTitleProject) + windowTitleSuffix);
+        }
+    }
     renderedSceneThisFrame = false;
     const uint32_t selectedSceneId = project.getSelectedSceneId();
 
@@ -2795,6 +3046,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     // the runtime manages its own layers while it plays
     sceneRender->setChildSceneLayers({});
+    // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
+    if (sceneProject.scene)
+        sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
@@ -2930,6 +3184,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
 
     std::vector<Engine::ViewLayer> layers;
     layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    layers.back().atmosphereQuality = gameWindow->getSettings().atmosphereQuality;
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);
@@ -3005,8 +3260,15 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
         childScene->getSystem<RenderSystem>()->update(0);
     }
     sceneRender->updateRenderSystem();
+    // the Game view's atmosphere: the scene's fog and clouds whatever the Scene view's toggles
+    // show, at its Preview Atmosphere Quality
+    RenderSystem* renderSystem = sceneProject.scene->getSystem<RenderSystem>().get();
+    renderSystem->setDisableFog(false);
+    renderSystem->setDisableClouds(false);
+    renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     Engine::systemDraw();
+    renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
@@ -3179,22 +3441,37 @@ void editor::App::finishBenchmark() {
 
 void editor::App::enqueueMainThreadTask(std::function<void()> task) {
     if (!task) return;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        mainThreadTasks.push(std::move(task));
-    }
+    scheduler().post(std::move(task));
     // Wake an idle backend loop so cross-thread work runs promptly.
     std::lock_guard<std::mutex> lock(wakeMutex);
     if (wakeCallback) wakeCallback();
 }
 
 bool editor::App::hasPendingMainThreadTasks() {
-    std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-    return !mainThreadTasks.empty();
+    return scheduler().hasPosted();
+}
+
+double editor::App::idleWaitSeconds(double maxSeconds) const {
+    const double next = scheduler().nextDueRealTime();
+    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
 // last request: enough for ImGui to auto-resize a window whose content just grew.
+void editor::App::recordFrameTime(double ms) {
+    if (frameTimes.size() < 100000) frameTimes.push_back(static_cast<float>(ms));
+}
+
+nlohmann::json editor::App::takeFrameStats() {
+    std::vector<float> times;
+    times.swap(frameTimes);
+    if (times.empty()) return {{"median", 0}, {"p99", 0}, {"max", 0}, {"frames", 0}};
+    std::sort(times.begin(), times.end());
+    auto round1 = [](float v) { return std::round(v * 10.0f) / 10.0f; };
+    const size_t p99 = std::min(times.size() - 1, static_cast<size_t>(std::ceil(times.size() * 0.99)) - 1);
+    return {{"median", round1(times[times.size() / 2])}, {"p99", round1(times[p99])}, {"max", round1(times.back())}, {"frames", times.size()}};
+}
+
 void editor::App::requestRedraw() {
     redrawRequested = true;
 }
@@ -3221,10 +3498,13 @@ void editor::App::setWakeCallback(std::function<void()> cb) {
 }
 
 void editor::App::shutdownBackgroundWork() {
+    // a clean quit: this session's crash backups and the project lock go
+    project.endProjectSession();
     loadingPump = nullptr;
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    HotReloadService::get().stopWatching();
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
 }
@@ -3271,6 +3551,8 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    // the watcher stops before the project goes (S05 D2)
+    HotReloadService::get().stopWatching();
     imageViewerWindow->closeAll();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;
@@ -3370,7 +3652,8 @@ void editor::App::updateResourcesPath(){
 }
 
 void editor::App::updateWindowTitle(const std::string& projectName) {
-    Backend::updateWindowTitle(projectName);
+    windowTitleProject = projectName;
+    Backend::updateWindowTitle(projectName + windowTitleSuffix);
 }
 
 void editor::App::stopTransientPreviews() {
@@ -3457,6 +3740,31 @@ void editor::App::openPrefabAsset(const std::filesystem::path& path, uint32_t co
     enqueueMainThreadTask([this, path, contextSceneId, contextRoot, inContext]() {
         project.openPrefabStage(path, contextSceneId, contextRoot, inContext);
     });
+}
+
+// An editor serving an MCP client on stdio has nobody to answer a modal: it decides like a
+// headless host (Refuse, Keep, no) and the agent passes allow_data_loss / recovery / --ignore-lock
+editor::DegradedSavePolicy editor::App::confirmDegradedSave(const DegradedSaveRequest& request) {
+    // the modal's Save Anyway runs the save again; this attempt writes nothing
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestDegradedSave(request);
+    }
+    return DegradedSavePolicy::Refuse;
+}
+
+editor::RecoveryChoice editor::App::resolveSceneRecovery(const SceneBackupInfo& backup) {
+    // the saved file opens now; the modal's Restore reloads the scene from the backup
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestRecovery(backup);
+    }
+    return RecoveryChoice::Keep;
+}
+
+bool editor::App::confirmOpenLockedProject(const ProjectLockInfo& info) {
+    if (!mcp::mcpLaunchOptions().stdio) {
+        dataSafetyDialogs.requestLockedProject(info);
+    }
+    return false;
 }
 
 void editor::App::registerSaveSceneDialog(uint32_t sceneId, std::function<void()> callback) {
@@ -3597,7 +3905,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v33";
+    // v34: (the S12 branch only: mesh bit 5 as a height fog bit; S10 has it as 'Shq')
+    // v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
+    //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
+    //      atmosphere pass types after S10's SHADOW_CACHE.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -3647,6 +3959,10 @@ bool editor::App::popSaveDialogQueueItem() {
 
 editor::AnimationWindow* editor::App::getAnimationWindow() const{
     return animationWindow;
+}
+
+editor::JobsMemoryWindow* editor::App::getJobsMemoryWindow() const{
+    return jobsMemoryWindow;
 }
 
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
@@ -3813,26 +4129,18 @@ void editor::App::processNextSaveDialog() {
 void editor::App::processMainThreadTasks() {
     if (projectLoading) return;
 
-    std::queue<std::function<void()>> tasks;
-    {
-        std::lock_guard<std::mutex> lock(mainThreadTaskMutex);
-        std::swap(tasks, mainThreadTasks);
+    // FIFO, one failing task neither drops the ones behind it (an MCP call waiting for its
+    // turn would never be answered) nor takes the editor down (Scheduler logs it)
+    Scheduler& tasks = scheduler();
+    tasks.processPosted();
+    const auto now = std::chrono::steady_clock::now();
+    if (lastSchedulerTime != std::chrono::steady_clock::time_point{}) {
+        tasks.advance(TimeDomain::Real, std::chrono::duration<double>(now - lastSchedulerTime).count());
     }
-
-    while (!tasks.empty()) {
-        auto task = std::move(tasks.front());
-        tasks.pop();
-        if (!task) continue;
-        // One failing task must not drop the ones queued behind it (an MCP call waiting
-        // for its turn would never be answered) nor take the editor down
-        try {
-            task();
-        } catch (const std::exception& e) {
-            Out::error("A main-thread task failed: %s", e.what());
-        } catch (...) {
-            Out::error("A main-thread task failed with an unknown error.");
-        }
-    }
+    lastSchedulerTime = now;
+    tasks.process(TimeDomain::Real);
+    tasks.advance(TimeDomain::Frames, 1.0);
+    tasks.process(TimeDomain::Frames);
 }
 
 bool editor::App::isMainThread() const {
@@ -3860,6 +4168,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     mcpActivityWindow->setOpen(visibility.mcp);
     gameWindow->setOpen(visibility.game);
+    undoHistoryWindow->setOpen(visibility.undoHistory);
 }
 
 void editor::App::persistPanelVisibilitySettings() {
@@ -3872,6 +4181,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.mcp = mcpActivityWindow->isOpen();
     visibility.game = gameWindow->isOpen();
+    visibility.undoHistory = undoHistoryWindow->isOpen();
 
     if (visibility != AppSettings::getPanelVisibility()) {
         AppSettings::setPanelVisibility(visibility);

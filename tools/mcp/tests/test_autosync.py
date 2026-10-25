@@ -373,7 +373,9 @@ async def test_large_project_incremental():
             files = auto["files"]
             print(f"{files} files, {auto['checked']} checked per scan: {describe(m)}")
             ed.check(files >= 25000, f"files tracked: {files}")
-            ed.check(not auto["complete"] and auto["checked"] < files, f"large projects are scanned incrementally: {auto!r}")
+            # the file watcher's journal (S05) needs no scan; the stat scan (watcher off) is incremental
+            ed.check(auto.get("source") == "watcher" or (not auto["complete"] and auto["checked"] < files),
+                     f"large projects are scanned incrementally: {auto!r}")
             ed.check(p90(m["read_cpu"]) < 5.0, f"large project scan too slow (CPU ms): {sorted(m['read_cpu'])!r}")
             ed.check(p90(m["write_cpu"]) < 8.0, f"large project scan + settle too slow (CPU ms): {sorted(m['write_cpu'])!r}")
 
@@ -411,6 +413,8 @@ NON_TOOL_WORDS = {
     "external_changes",         # the field results carry after files changed on disk
     "scene_inputs",             # list_shaders / get_entity fields of shaders reading the scene
     "cost_note",
+    "degraded_document",        # the error code of a save that would drop data (docs/data-safety.md)
+    "project_locked",           # the error of `mcp --project` on a project another editor has open
 }
 
 

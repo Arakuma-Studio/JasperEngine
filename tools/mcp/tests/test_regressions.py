@@ -5,6 +5,7 @@ Runs in a new empty project with a 3D scene of its own.
 
 from harness import Editor
 
+CI = True
 EDITOR = {"create": True, "name": "Regressions"}
 TIMEOUT = 900
 

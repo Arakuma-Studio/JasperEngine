@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenameFileCmd.h"
+#include "util/FileUtils.h"
 
 #include "util/Util.h"
+#include "asset/AssetOps.h"
+#include "Out.h"
 
 using namespace jasperengine;
 
@@ -14,78 +17,25 @@ editor::RenameFileCmd::RenameFileCmd(Project* project, std::string oldName, std:
     this->directory = fs::path(directory);
 }
 
-void editor::RenameFileCmd::moveThumbnail(const fs::path& oldThumbnail, const fs::path& renamedFile){
-    if (!project || oldThumbnail.empty()) {
-        return;
-    }
-
-    std::error_code ec;
-    // Nothing to move when the file never had a cached thumbnail.
-    if (!fs::exists(oldThumbnail, ec) || ec) {
-        return;
-    }
-
-    fs::path newThumbnail = project->getThumbnailPath(renamedFile);
-    if (newThumbnail.empty() || newThumbnail == oldThumbnail) {
-        return;
-    }
-
-    fs::create_directories(newThumbnail.parent_path(), ec);
-    fs::rename(oldThumbnail, newThumbnail, ec);
-}
-
-void editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
-    if (fs::exists(sourceFs)) {
-        bool isDir = fs::is_directory(sourceFs);
-        // Resolve the thumbnail path before the rename, while the source still exists.
-        fs::path oldThumbnail = project ? project->getThumbnailPath(sourceFs) : fs::path();
-        fs::rename(sourceFs, destFs);
-        if (project) {
-            moveThumbnail(oldThumbnail, destFs);
-            std::string extension = sourceFs.extension().string();
-            if (isDir || Util::isMaterialFile(extension)) {
-                project->remapMaterialFilePath(sourceFs, destFs);
-            }
-            if (isDir || Util::isSceneFile(extension)) {
-                project->remapSceneFilePath(sourceFs, destFs);
-            }
-            // either name: a file renamed to or from .prefab starts or stops being one
-            if (isDir || Util::isPrefabFile(extension) || Util::isPrefabFile(destFs.extension().string())) {
-                project->remapPrefabFilePath(sourceFs, destFs);
-            }
-            if (isDir || Util::isScriptFile(extension)) {
-                project->remapScriptFilePath(sourceFs, destFs);
-            }
-            if (isDir || Util::isAssetFile(extension)) {
-                project->remapAssetFilePath(sourceFs, destFs);
-            }
-            if (isDir || Util::isShaderFile(extension)) {
-                project->remapShaderFilePath(sourceFs, destFs);
-                project->invalidateCustomShaders();
-            }
-        }
-    }
-}
-
-bool editor::RenameFileCmd::execute(){
-    fs::path sourceFs = directory / oldFilename;
-    fs::path destFs = directory / newFilename;
-    try {
-        renameFile(sourceFs, destFs);
-    } catch (const fs::filesystem_error& e) {
-        printf("Error: Renaming %s: %s\n", sourceFs.string().c_str(), e.what());
+bool editor::RenameFileCmd::renameFile(const fs::path& sourceFs, const fs::path& destFs){
+    if (!project) {
         return false;
     }
-
+    const AssetOps::Result result = AssetOps::move(*project, sourceFs, destFs);
+    if (!result.ok) {
+        Out::error("Couldn't rename \"%s\": %s", sourceFs.filename().string().c_str(), result.error.c_str());
+        return false;
+    }
+    for (const AssetOps::TextReference& broken : result.textReferencesBroken) {
+        Out::warning("%s:%u still refers to %s", broken.referrer.c_str(), broken.line, broken.target.c_str());
+    }
     return true;
 }
 
+bool editor::RenameFileCmd::execute(){
+    return renameFile(directory / oldFilename, directory / newFilename);
+}
+
 void editor::RenameFileCmd::undo(){
-    fs::path sourceFs = directory / newFilename;
-    fs::path destFs = directory / oldFilename;
-    try {
-        renameFile(sourceFs, destFs);
-    } catch (const fs::filesystem_error& e) {
-        printf("Error: Undo renaming %s: %s\n", sourceFs.string().c_str(), e.what());
-    }
+    renameFile(directory / newFilename, directory / oldFilename);
 }

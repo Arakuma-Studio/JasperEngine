@@ -34,7 +34,7 @@ flags = ['-O3']
 if args.sanitize:
     flags = ['-O1', '-g', '-DCORE_CHECK_ONLY', '-fsanitize=address,undefined', '-fno-omit-frame-pointer']
 binary = args.output / 'entity_lookup'
-subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++17', *flags,
+subprocess.run([os.environ.get('CXX', 'g++'), '-std=c++20', *flags,
                 f'-I{ROOT / "engine/core"}', f'-I{ROOT / "engine/core/ecs"}',
                 str(cpp), '-o', str(binary)], check=True)
 output = subprocess.check_output([str(binary)], text=True)

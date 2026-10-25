@@ -4,6 +4,18 @@
 #ifndef JASPERENGINE_EXPORT_H
 #define JASPERENGINE_EXPORT_H
 
+// Every engine and Play plugin translation unit gets here (through JasperEngine.h), so a build
+// at an older standard fails with this one message. MSVC keeps __cplusplus at 199711L unless
+// /Zc:__cplusplus is given; _MSVC_LANG is always right.
+#ifdef __cplusplus
+    #if defined(_MSVC_LANG)
+        #define JASPERENGINE_CPLUSPLUS _MSVC_LANG
+    #else
+        #define JASPERENGINE_CPLUSPLUS __cplusplus
+    #endif
+    static_assert(JASPERENGINE_CPLUSPLUS >= 202002L, "JasperEngine requires C++20");
+#endif
+
 #if defined(_WIN32)
     #ifdef JASPERENGINE_SHARED
         #ifdef JASPERENGINE_EXPORTS

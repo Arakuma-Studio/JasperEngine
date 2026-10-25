@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(jasperengine-editor)
 
+# Build options of our own targets (docs/testing.md), shared with the standalone engine tree:
+# sanitizers (before any target: they apply to the whole tree), warnings (on here; off in
+# engine/, which exported games build), warnings as errors, unity builds
+option(JASPERENGINE_WARNINGS "Warnings on the engine, editor and test targets" ON)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperSanitizers.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperWarnings.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperUnityBuild.cmake)
+
 # Same as CI (.github/workflows/ci.yml): git describe --tags --match 'v[0-9]*' --always --dirty.
 # Only version tags count, so the doriax-base fork-point tag never names a build.
 # CI passes JASPERENGINE_EDITOR_VERSION explicitly; local builds ask git here.
@@ -120,6 +128,10 @@ endif()
 set(IMGUI_DIR libs/imgui)
 set(EDITOR_DIR editor)
 set(JASPERENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/engine)
+
+# The compiler floors (the engine checks them again for its standalone builds)
+include(${JASPERENGINE_ROOT}/cmake/JasperEngineToolchain.cmake)
+jasperengine_check_cxx_toolchain()
 
 # Warnings from vendored code are not ours to fix and only hide our own
 if(MSVC)
@@ -438,6 +450,7 @@ include_directories (${JASPERENGINE_ROOT}/core/buffer)
 include_directories (${JASPERENGINE_ROOT}/core/component)
 include_directories (${JASPERENGINE_ROOT}/core/ecs)
 include_directories (${JASPERENGINE_ROOT}/core/io)
+include_directories (${JASPERENGINE_ROOT}/core/io/watch)
 include_directories (${JASPERENGINE_ROOT}/core/manager)
 include_directories (${JASPERENGINE_ROOT}/core/math)
 include_directories (${JASPERENGINE_ROOT}/core/object)
@@ -488,8 +501,23 @@ if(GRAPHIC_BACKEND STREQUAL "vulkan")
     target_link_libraries(jasperengine PUBLIC Vulkan::Vulkan)
 endif()
 
+# The engine directory set the standard for its own targets; the editor's, and the
+# libraries below (which pick a standard of their own when none is set), use it too
+set(CMAKE_CXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_OBJCXX_STANDARD ${JASPERENGINE_CXX_STANDARD})
+set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Zc:__cplusplus>)
+endif()
+
 add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
+jasperengine_apply_cxx_standard(nfd yaml-cpp)
+# The standards the project setting offers (editor/util/CxxStandards.h) and the compiler floors
+# the Play plugin checks (Generator::getToolchainFloorCheck), from the engine's definitions
+get_directory_property(JASPERENGINE_CXX_STANDARDS DIRECTORY ${JASPERENGINE_ROOT} DEFINITION JASPERENGINE_CXX_STANDARDS)
+string(REPLACE ";" "," JASPERENGINE_CXX_STANDARD_LIST "${JASPERENGINE_CXX_STANDARDS}")
 
 foreach(lib IN ITEMS nfd yaml-cpp)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
@@ -549,6 +577,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrides.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
+    ${EDITOR_DIR}/project/ProjectAssets.cpp
+    ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
     ${EDITOR_DIR}/Catalog.cpp
@@ -557,11 +587,18 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/Generator.cpp
     ${EDITOR_DIR}/Stream.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
+    ${EDITOR_DIR}/StreamMigrations.cpp
+    ${EDITOR_DIR}/StreamSchema.cpp
+    ${EDITOR_DIR}/StreamPreserved.cpp
+    ${EDITOR_DIR}/LoadReport.cpp
+    ${EDITOR_DIR}/DocumentFile.cpp
+    ${EDITOR_DIR}/SceneBackup.cpp
     ${EDITOR_DIR}/PrefabStage.cpp
     ${EDITOR_DIR}/Workspace.cpp
     ${EDITOR_DIR}/Exporter.cpp
 
     ${EDITOR_DIR}/mcp/McpActivityWindow.cpp
+    ${EDITOR_DIR}/window/JobsMemoryWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
@@ -574,21 +611,26 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
     ${EDITOR_DIR}/mcp/McpValues.cpp
+    ${EDITOR_DIR}/mcp/McpUndo.cpp
     ${EDITOR_DIR}/mcp/McpShaderValues.cpp
     ${EDITOR_DIR}/mcp/McpLaunch.cpp
     ${EDITOR_DIR}/mcp/EngineApiContext.cpp
     ${EDITOR_DIR}/mcp/TerrainMaps.cpp
     ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
+    ${EDITOR_DIR}/mcp/McpDataSafety.cpp
     ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
     ${EDITOR_DIR}/mcp/tools/ComponentTools.cpp
     ${EDITOR_DIR}/mcp/tools/PrefabTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlayTools.cpp
     ${EDITOR_DIR}/mcp/tools/ViewTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AtmosphereTools.cpp
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
@@ -604,14 +646,38 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
+    ${EDITOR_DIR}/reload/HotReloadService.cpp
+    ${EDITOR_DIR}/window/StatusBar.cpp
+    ${EDITOR_DIR}/reload/handlers/Assets.cpp
+    ${EDITOR_DIR}/reload/handlers/Audio.cpp
+    ${EDITOR_DIR}/reload/handlers/Common.cpp
+    ${EDITOR_DIR}/reload/handlers/Fonts.cpp
+    ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
+    ${EDITOR_DIR}/reload/handlers/Materials.cpp
+    ${EDITOR_DIR}/reload/handlers/Models.cpp
+    ${EDITOR_DIR}/reload/handlers/Scripts.cpp
+    ${EDITOR_DIR}/reload/handlers/Shaders.cpp
+    ${EDITOR_DIR}/reload/handlers/Textures.cpp
+    ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
+    ${EDITOR_DIR}/asset/AssetFileWrite.cpp
+    ${EDITOR_DIR}/asset/AssetIndex.cpp
+    ${EDITOR_DIR}/asset/AssetOps.cpp
+    ${EDITOR_DIR}/asset/AssetRefEditor.cpp
+    ${EDITOR_DIR}/asset/AssetMeta.cpp
+    ${EDITOR_DIR}/asset/AssetRefSchema.cpp
+    ${EDITOR_DIR}/asset/AssetTypes.cpp
+    ${EDITOR_DIR}/asset/ContentHash.cpp
+    ${EDITOR_DIR}/asset/DepEdge.cpp
+    ${EDITOR_DIR}/asset/MissingAssetTracker.cpp
+    ${EDITOR_DIR}/asset/ModelSubAssets.cpp
+    ${EDITOR_DIR}/asset/TextReferences.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
-    ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
@@ -649,23 +715,29 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorWindow.cpp
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
+    ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
+    ${EDITOR_DIR}/window/PlayModeChangesWindow.cpp
+    ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
+    ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
+    ${EDITOR_DIR}/window/AssetPanels.cpp
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp
     ${EDITOR_DIR}/window/LoadingWindow.cpp
     ${EDITOR_DIR}/window/dialog/SceneSaveDialog.cpp
+    ${EDITOR_DIR}/window/dialog/DataSafetyDialogs.cpp
     ${EDITOR_DIR}/window/dialog/ComponentAddDialog.cpp
     ${EDITOR_DIR}/window/dialog/ProjectSaveDialog.cpp
     ${EDITOR_DIR}/window/dialog/ScriptCreateDialog.cpp
@@ -702,15 +774,22 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/command/CommandHandle.cpp
     ${EDITOR_DIR}/command/CommandHistory.cpp
+    ${EDITOR_DIR}/command/CommandGroup.cpp
+    ${EDITOR_DIR}/command/CommandNames.cpp
+    ${EDITOR_DIR}/command/UndoOrigin.cpp
+    ${EDITOR_DIR}/command/UndoTimeline.cpp
+    ${EDITOR_DIR}/command/PlayChangeReview.cpp
     ${EDITOR_DIR}/command/type/AddChildSceneCmd.cpp
     ${EDITOR_DIR}/command/type/AddComponentCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveComponentCmd.cpp
+    ${EDITOR_DIR}/command/type/RemovePreservedComponentCmd.cpp
     ${EDITOR_DIR}/command/type/CreateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/CreateTrackKeyCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteEntityCmd.cpp
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentValuesCmd.cpp
+    ${EDITOR_DIR}/command/type/AtmospherePresetCmd.cpp
     ${EDITOR_DIR}/command/type/MoveEntityOrderCmd.cpp
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp
@@ -723,9 +802,13 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ModelLoadCmd.cpp
     ${EDITOR_DIR}/command/type/ModelClearCmd.cpp
     ${EDITOR_DIR}/command/type/SceneNameCmd.cpp
+    ${EDITOR_DIR}/command/type/AssetRefCmds.cpp
+    ${EDITOR_DIR}/command/type/SelectionCmd.cpp
+    ${EDITOR_DIR}/command/type/SetAssetMetaCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp
     ${EDITOR_DIR}/command/type/RenameFileCmd.cpp
     ${EDITOR_DIR}/command/type/CreateDirCmd.cpp
+    ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp
     ${EDITOR_DIR}/command/type/CreateMaterialFileCmd.cpp
@@ -754,6 +837,14 @@ if(WIN32)
     list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/util/MsBuildProgress.cpp)
 endif()
 
+# Unity build: these sources keep generic file-local helpers (lower, trim, Target, sceneArg, ...) in
+# anonymous namespaces, one helper set per file, so they never share a unity unit
+set(JASPERENGINE_EDITOR_UNITY_SKIP ${JASPERENGINE_EDITOR_SOURCES})
+list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mcp/tools)/")
+jasperengine_skip_unity_build(
+    REASON "the HTML UI importers and the MCP tools: per-file helper sets with the same names"
+    SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
+
 function(configure_jasperengine_editor_target target_name)
     add_dependencies(${target_name} generate_api_suggestions)
 
@@ -765,6 +856,14 @@ function(configure_jasperengine_editor_target target_name)
 
     target_include_directories(${target_name} PRIVATE
         ${GENERATED_DIR}
+    )
+
+    target_compile_definitions(${target_name} PRIVATE
+        "JASPERENGINE_CXX_STANDARD_LIST=${JASPERENGINE_CXX_STANDARD_LIST}"
+        "JASPERENGINE_CXX_FLOOR_GNU=\"${JASPERENGINE_CXX_FLOOR_GNU}\""
+        "JASPERENGINE_CXX_FLOOR_CLANG=\"${JASPERENGINE_CXX_FLOOR_Clang}\""
+        "JASPERENGINE_CXX_FLOOR_APPLECLANG=\"${JASPERENGINE_CXX_FLOOR_AppleClang}\""
+        "JASPERENGINE_CXX_FLOOR_MSVC=\"${JASPERENGINE_CXX_FLOOR_MSVC}\""
     )
 
     target_link_libraries(
@@ -801,6 +900,14 @@ function(configure_jasperengine_editor_target target_name)
     if(X11_FOUND)
         target_compile_definitions(${target_name} PRIVATE JASPERENGINE_HAS_X11_CLIPBOARD)
     endif()
+
+    jasperengine_skip_unity_build(
+        REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+        SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
+                ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
+    jasperengine_target_warnings(${target_name})
+    jasperengine_target_unity_build(${target_name})
+    jasperengine_stage_asan_runtime(${target_name})
 
     set_target_properties(
         ${target_name}
@@ -934,8 +1041,16 @@ set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 # jasperengine-htmlui-editor-tests: the HTML UI importers (editor/htmlui) against a local HTTP
 # fixture server, built with the editor (tools/build.sh htmlui-editor-tests, Linux)
 option(JASPERENGINE_HTMLUI_EDITOR_TESTS "Build jasperengine-htmlui-editor-tests (HTML UI importer tests)" OFF)
+# googletest targets of the editor tree (engine/cmake/JasperTesting.cmake, docs/testing.md);
+# JASPERENGINE_TESTS (engine/CMakeLists.txt) builds jasperengine-editor-tests (editor/tests)
+if(JASPERENGINE_TESTS OR JASPERENGINE_HTMLUI_EDITOR_TESTS)
+    include(${JASPERENGINE_ROOT}/cmake/JasperTesting.cmake)
+endif()
 if(JASPERENGINE_HTMLUI_EDITOR_TESTS)
     include(${EDITOR_DIR}/htmlui/tests/HtmlUiEditorTests.cmake)
+endif()
+if(JASPERENGINE_TESTS)
+    include(${EDITOR_DIR}/tests/EditorTests.cmake)
 endif()
 
 # Windows GUI-subsystem executables do not behave like normal CLI programs
@@ -1004,8 +1119,43 @@ else()
             REGEX "/engine/tests$" EXCLUDE
             # RmlUi's own test suites: built standalone by tools/htmlui/run-rmlui-tests.sh, never by a project
             REGEX "/engine/libs/rmlui/Tests$" EXCLUDE
+            # the repository's presets (build directories, tests, sanitizers): not a project's
+            REGEX "/engine/CMakePresets.json$" EXCLUDE
     )
 endif()
+
+# Third-party notices next to the editor binary, so every package (the zips, the AppImage, the
+# dmg's Resources) carries them: NOTICE.md, LICENSE and licenses/<library>-LICENSE for each shipped
+# library, as tools/ci/check-notices.py lists them (and checks an install for: --installed)
+if(APPLE)
+    set(JASPERENGINE_NOTICES_DESTINATION bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources)
+else()
+    set(JASPERENGINE_NOTICES_DESTINATION bin)
+endif()
+set(JASPERENGINE_CHECK_NOTICES ${CMAKE_CURRENT_SOURCE_DIR}/tools/ci/check-notices.py)
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${JASPERENGINE_CHECK_NOTICES} --install-manifest
+    OUTPUT_VARIABLE JASPERENGINE_LICENSE_MANIFEST
+    RESULT_VARIABLE JASPERENGINE_LICENSE_MANIFEST_RESULT
+)
+if(NOT JASPERENGINE_LICENSE_MANIFEST_RESULT EQUAL 0)
+    message(FATAL_ERROR "tools/ci/check-notices.py --install-manifest failed (${JASPERENGINE_LICENSE_MANIFEST_RESULT})")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${JASPERENGINE_CHECK_NOTICES})
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/NOTICE.md ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+        DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}
+        CONFIGURATIONS Release MinSizeRel
+)
+string(REPLACE "\n" ";" JASPERENGINE_LICENSE_MANIFEST "${JASPERENGINE_LICENSE_MANIFEST}")
+foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
+    if(entry MATCHES "^(.+)\\|(.+)$")
+        install(FILES "${CMAKE_MATCH_1}"
+                DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}/licenses
+                RENAME "${CMAKE_MATCH_2}"
+                CONFIGURATIONS Release MinSizeRel
+        )
+    endif()
+endforeach()
 
 # Desktop integration: a launcher entry plus the themed icons the launcher,
 # taskbar and alt-tab switcher look up by the "jasperengine-editor" icon name.
@@ -1028,3 +1178,5 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         )
     endforeach()
 endif()
+
+jasperengine_check_cxx_standards()
