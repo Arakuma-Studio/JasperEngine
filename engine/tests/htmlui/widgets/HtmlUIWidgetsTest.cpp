@@ -12,6 +12,8 @@
 #include "htmlui/widgets/HeightIndex.h"
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "htmlui/widgets/WidgetsRuntime.h"
+#include "HtmlUIClock.h"
+#include <filesystem>
 #include "htmlui/compat/DocumentLoader.h"
 #include <RmlUi/Core/ElementDocument.h>
 
@@ -562,4 +564,89 @@ TEST_F(HtmlUIWidgets, MarkdownElements){
     EXPECT_EQ(set.querySelector("code").getTextContent(), "code");
     EXPECT_FALSE(set.querySelector("script").isValid());
     EXPECT_NE(luaString("html").find("<em>a</em>"), std::string::npos) << luaString("html");
+}
+
+// The server_browser example's flow with a stand-in for its script (the MCP example test's steps):
+// select a row, filter the model, select again, Down and Enter, the header's rich tooltip and a
+// row's data-bound title
+TEST_F(HtmlUIWidgets, ServerBrowserExampleFlow){
+    namespace fs = std::filesystem;
+    const fs::path library = fs::path(JASPER_HTMLUI_TEST_SOURCE_DIR) / ".." / ".." / ".." / "docs" / "mcp" / "guide" / "html-ui-examples";
+    TestSystem::get().setAssetPath(library.lexically_normal().string());
+    struct Restore { ~Restore(){ TestSystem::get().setAssetPath(""); } } restore;
+    HtmlUIClock::setFixedTime(100.0);
+    ASSERT_EQ(lua(R"(
+        all = {}
+        local regions = { "EU", "NA", "Asia" }
+        for i = 1, 300 do
+            all[i] = { id = i, name = "Server " .. i, map = "Harbor", region = regions[i % 3 + 1], players = i % 9, max = 8,
+                       ping = 12 + (i * 37) % 220 }
+            all[i].tip = all[i].name .. ": " .. all[i].players .. " players"
+        end
+        local function visible(region)
+            local list = {}
+            for _, s in ipairs(all) do if region == "" or s.region == region then list[#list + 1] = s end end
+            return list
+        end
+        joined = nil
+        model = doc:createDataModel("browser", { servers = visible(""), shown = 300, region = "",
+            selected = { id = 0, name = "", map = "", region = "", players = 0, max = 0, ping = 0, tip = "" },
+            filter = function(event, region) model.region = region; model.servers = visible(region); model.shown = #model.servers end,
+            join = function() end })
+    )"), "");
+    load("server_browser/server_browser.html");
+    ASSERT_EQ(lua(R"(
+        local t = doc:getElementById("servers")
+        t:addEventListener("select", function(e) local id = tonumber(e.detail.keys[1]); model.selected = id and all[id] or model.selected end)
+        t:addEventListener("activate", function(e) joined = tonumber(e.detail.key) end)
+    )"), "");
+    for (int i = 0; i < 3; i++)
+        update();
+    UIItemsView table = view("servers");
+    ASSERT_EQ(table.getCount(), 300);
+    auto clickRow = [&](int index){
+        const UIRect rect = table.getRow(index).getBoundingClientRect();
+        context()->ProcessMouseMove((int)(rect.x + 40.0f), (int)(rect.y + rect.height * 0.5f), 0);
+        context()->ProcessMouseButtonDown(0, 0);
+        context()->ProcessMouseButtonUp(0, 0);
+        update();
+        update();
+    };
+    clickRow(2);
+    EXPECT_EQ(luaString("model.selected.id"), "2");
+    // the EU chip
+    UIElement chip = document->getElementById("region-eu");
+    const UIRect chipRect = chip.getBoundingClientRect();
+    context()->ProcessMouseMove((int)(chipRect.x + 5.0f), (int)(chipRect.y + 5.0f), 0);
+    context()->ProcessMouseButtonDown(0, 0);
+    context()->ProcessMouseButtonUp(0, 0);
+    for (int i = 0; i < 3; i++)
+        update();
+    EXPECT_EQ(table.getCount(), 100);
+    clickRow(2);
+    key(Rml::Input::KI_DOWN);
+    key(Rml::Input::KI_RETURN);
+    EXPECT_EQ(table.getActiveIndex(), 3);
+    EXPECT_NE(luaString("joined"), "nil");
+
+    // the Ping header's rich tooltip, then a row's title
+    UIElement head = document->querySelector(".ping-head");
+    ASSERT_TRUE(head.isValid());
+    const UIRect headRect = head.getBoundingClientRect();
+    context()->ProcessMouseMove((int)(headRect.x + 3.0f), (int)(headRect.y + 3.0f), 0);
+    for (double t = 100.1; t < 101.2; t += 0.1){
+        HtmlUIClock::setFixedTime(t);
+        update();
+    }
+    EXPECT_TRUE(document->getTooltip().visible);
+    EXPECT_NE(document->getTooltip().text.find("round trip"), std::string::npos) << document->getTooltip().text;
+    const UIRect nameRect = table.getRow(4).querySelector(".name").getBoundingClientRect();
+    context()->ProcessMouseMove((int)(nameRect.x + 3.0f), (int)(nameRect.y + 3.0f), 0);
+    for (double t = 101.3; t < 102.5; t += 0.1){
+        HtmlUIClock::setFixedTime(t);
+        update();
+    }
+    EXPECT_TRUE(document->getTooltip().visible);
+    EXPECT_NE(document->getTooltip().text.find("players"), std::string::npos) << document->getTooltip().text;
+    HtmlUIClock::reset();
 }

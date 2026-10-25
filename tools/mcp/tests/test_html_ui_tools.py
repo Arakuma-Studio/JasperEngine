@@ -1150,7 +1150,7 @@ async def test_examples_resources(ed: Editor):
     index = got.contents[0].text
     examples = [e for e in MANIFEST["examples"] if e["example"]]
     ed.check_eq(len(examples), 13, "thirteen examples (phase 6 added video_menu, S17 server_browser, chat_log, quest_log)")
-    ed.check(index.startswith("# HTML/CSS UI examples\n\n10 complete"), index[:200])
+    ed.check(index.startswith("# HTML/CSS UI examples\n\n13 complete"), index[:200])
     for e in MANIFEST["examples"]:
         ed.check(f"## {e['name']}: {e['title']}" in index, f"{e['name']} in the index")
         section = index.split(f"## {e['name']}: ", 1)[1].split("\n## ", 1)[0]
