@@ -72,7 +72,7 @@ void reload::reloadShaders(Context& ctx, const std::vector<fs::path>& files) {
         const std::string relative = rel(ctx.project, path);
         std::vector<ProjectChecks::ShaderUse> forks = ProjectChecks::shaderForksUsingFiles(project, {relative});
         if (forks.empty()) continue;   // nothing uses it
-        std::vector<uint64_t> keys;
+        std::vector<ShaderKey> keys;
         for (ProjectChecks::ShaderUse& fork : forks) keys.push_back(ProjectChecks::prepareShaderCheck(project, fork));
         ctx.result.shadersInvalidated = true;
 
@@ -83,7 +83,7 @@ void reload::reloadShaders(Context& ctx, const std::vector<fs::path>& files) {
         ctx.service.startJob("shader", path, [project, forks, keys, changed, relative]() -> HotReloadService::AdoptFn {
             struct Built {
                 ProjectChecks::ShaderUse use;
-                uint64_t key = 0;
+                ShaderKey key;
                 ShaderData data;
                 ProjectChecks::ShaderCheck check;
             };
