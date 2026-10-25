@@ -138,6 +138,10 @@ bool AppSettings::assetAutoRefresh = true;
 std::string AppSettings::assetWatcher = "auto";
 float AppSettings::assetPollingInterval = 1.0f;
 bool AppSettings::assetLogReloads = true;
+std::string AppSettings::scriptChangesWhilePlaying = "reload";
+bool AppSettings::reloadCppDuringPlay = false;
+std::string AppSettings::externalScriptEditor = "builtin";
+std::string AppSettings::externalScriptEditorCommand;
 int AppSettings::undoMaxSteps = AppSettings::defaultUndoMaxSteps;
 int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
 bool AppSettings::undoRecordSelection = true;
@@ -369,6 +373,14 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (assetNode["log_reloads"]) assetLogReloads = assetNode["log_reloads"].as<bool>();
         }
 
+        if (settingsData["scripting"]) {
+            auto scriptingNode = settingsData["scripting"];
+            if (scriptingNode["changes_while_playing"]) setScriptChangesWhilePlaying(scriptingNode["changes_while_playing"].as<std::string>());
+            if (scriptingNode["reload_cpp_during_play"]) reloadCppDuringPlay = scriptingNode["reload_cpp_during_play"].as<bool>();
+            if (scriptingNode["external_script_editor"]) setExternalScriptEditor(scriptingNode["external_script_editor"].as<std::string>());
+            if (scriptingNode["external_script_editor_command"]) externalScriptEditorCommand = scriptingNode["external_script_editor_command"].as<std::string>();
+        }
+
         if (settingsData["html_ui"]) {
             auto htmlUiNode = settingsData["html_ui"];
             if (htmlUiNode["auto_import"]) htmlUiAutoImport = htmlUiNode["auto_import"].as<bool>();
@@ -544,6 +556,13 @@ bool AppSettings::saveSettings() {
         assetNode["polling_interval"] = assetPollingInterval;
         assetNode["log_reloads"] = assetLogReloads;
         settingsData["asset_pipeline"] = assetNode;
+
+        YAML::Node scriptingNode;
+        scriptingNode["changes_while_playing"] = scriptChangesWhilePlaying;
+        scriptingNode["reload_cpp_during_play"] = reloadCppDuringPlay;
+        scriptingNode["external_script_editor"] = externalScriptEditor;
+        if (!externalScriptEditorCommand.empty()) scriptingNode["external_script_editor_command"] = externalScriptEditorCommand;
+        settingsData["scripting"] = scriptingNode;
 
         YAML::Node htmlUiNode;
         htmlUiNode["auto_import"] = htmlUiAutoImport;
@@ -863,6 +882,41 @@ bool AppSettings::getLogReloads() {
 
 void AppSettings::setLogReloads(bool enabled) {
     assetLogReloads = enabled;
+}
+
+std::string AppSettings::getScriptChangesWhilePlaying() {
+    return scriptChangesWhilePlaying;
+}
+
+void AppSettings::setScriptChangesWhilePlaying(const std::string& policy) {
+    if (policy == "reload" || policy == "after_stop" || policy == "stop_and_reload") scriptChangesWhilePlaying = policy;
+}
+
+bool AppSettings::getReloadCppDuringPlay() {
+    return reloadCppDuringPlay;
+}
+
+void AppSettings::setReloadCppDuringPlay(bool enabled) {
+    reloadCppDuringPlay = enabled;
+}
+
+std::string AppSettings::getExternalScriptEditor() {
+    return externalScriptEditor;
+}
+
+void AppSettings::setExternalScriptEditor(const std::string& id) {
+    static const char* const known[] = {"builtin", "vscode", "visualstudio", "rider", "clion", "xcode", "sublime", "zed", "system", "custom"};
+    for (const char* name : known) {
+        if (id == name) externalScriptEditor = id;
+    }
+}
+
+std::string AppSettings::getExternalScriptEditorCommand() {
+    return externalScriptEditorCommand;
+}
+
+void AppSettings::setExternalScriptEditorCommand(const std::string& command) {
+    externalScriptEditorCommand = command;
 }
 
 int AppSettings::getUndoMaxSteps() {

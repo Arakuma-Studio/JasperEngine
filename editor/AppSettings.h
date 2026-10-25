@@ -154,6 +154,11 @@ private:
     static float assetPollingInterval;        // seconds, 0.25..10
     static bool assetLogReloads;
     static bool htmlUiVerboseDiagnostics;
+    // Scripting (S23)
+    static std::string scriptChangesWhilePlaying;   // reload, after_stop, stop_and_reload
+    static bool reloadCppDuringPlay;
+    static std::string externalScriptEditor;        // builtin, vscode, visualstudio, rider, clion, xcode, sublime, zed, system, custom
+    static std::string externalScriptEditorCommand; // the custom one: {file} {line} {column} {project}
 
     // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
     // together (MB, 0 = unlimited), standalone selection changes as steps, and the Play Mode
@@ -279,6 +284,21 @@ public:
     static void setPollingInterval(float seconds);
     static bool getLogReloads();
     static void setLogReloads(bool enabled);
+
+    // Scripting (S23 R8, R10): what a script saved while a scene plays does ("reload": Reload
+    // And Continue Playing, the default; "after_stop": Reload After Stopping Play;
+    // "stop_and_reload": Stop Playing And Reload), and whether C++ scripts reload too
+    // (default off). Editor-wide.
+    static std::string getScriptChangesWhilePlaying();
+    static void setScriptChangesWhilePlaying(const std::string& policy);
+    static bool getReloadCppDuringPlay();
+    static void setReloadCppDuringPlay(bool enabled);
+    // External Tools > External Script Editor (S23 R28): where Console locations and "Open in
+    // External Editor" go (default the built-in Code Editor), and the Custom command template
+    static std::string getExternalScriptEditor();
+    static void setExternalScriptEditor(const std::string& id);
+    static std::string getExternalScriptEditorCommand();
+    static void setExternalScriptEditorCommand(const std::string& command);
 
     static bool getHtmlUiAutoImport();
     static void setHtmlUiAutoImport(bool enabled);
