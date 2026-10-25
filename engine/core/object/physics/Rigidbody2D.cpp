@@ -119,6 +119,7 @@ void Rigidbody2D::load(){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     body.needReloadBody = true;
     body.needUpdateColliders = true;
+    markChanged<Rigidbody2DComponent>();
 
     scene->getSystem<PhysicsSystem>()->loadRigidbody2D(entity);
 }
@@ -280,6 +281,7 @@ void Rigidbody2D::removeAllColliders(){
     Rigidbody2DComponent& body = getComponent<Rigidbody2DComponent>();
     body.numColliders = 0;
     body.needUpdateColliders = true;
+    markChanged<Rigidbody2DComponent>();
 }
 
 std::vector<Contact2D> Rigidbody2D::getBodyContacts(){
@@ -407,6 +409,7 @@ void Rigidbody2D::setColliderSensor(size_t index, bool sensor){
         }else if (body.colliders[index].sensor != sensor){
             body.colliders[index].sensor = sensor;
             body.needUpdateColliders = true;
+            markChanged<Rigidbody2DComponent>();
         }
     }else{
         Log::error("Cannot find shape %zu of body", index);

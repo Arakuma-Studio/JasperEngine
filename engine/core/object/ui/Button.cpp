@@ -100,6 +100,7 @@ void Button::setLabelFont(const std::string& font){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     getLabelObject().setFont(font);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 std::string Button::getLabelFont() const{
@@ -118,6 +119,7 @@ void Button::setLabelFontSize(unsigned int fontSize){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     getLabelObject().setFontSize(fontSize);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 unsigned int Button::getLabelFontSize() const{
@@ -135,6 +137,7 @@ void Button::setTextureNormal(const std::string& path){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.textureNormal.setPath(path);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 
     setTexture(path);
 }
@@ -143,18 +146,21 @@ void Button::setTextureHovered(const std::string& path){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.textureHovered.setPath(path);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 void Button::setTexturePressed(const std::string& path){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.texturePressed.setPath(path);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 void Button::setTextureDisabled(const std::string& path){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.textureDisabled.setPath(path);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 void Button::setColorNormal(Vector4 color){
@@ -165,6 +171,7 @@ void Button::setColorNormal(Vector4 color){
         btcomp.colorHovered = btcomp.colorNormal;
     }
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 
     setColor(color);
 }
@@ -186,6 +193,7 @@ void Button::setColorHovered(Vector4 color){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.colorHovered = Color::sRGBToLinear(color);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 void Button::setColorHovered(const float red, const float green, const float blue, const float alpha){
@@ -205,6 +213,7 @@ void Button::setColorPressed(Vector4 color){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.colorPressed = Color::sRGBToLinear(color);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 void Button::setColorPressed(const float red, const float green, const float blue, const float alpha){
@@ -224,6 +233,7 @@ void Button::setColorDisabled(Vector4 color){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.colorDisabled = Color::sRGBToLinear(color);
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 void Button::setColorDisabled(const float red, const float green, const float blue, const float alpha){
@@ -243,6 +253,7 @@ void Button::setDisabled(bool disabled){
     ButtonComponent& btcomp = getComponent<ButtonComponent>();
     btcomp.disabled = disabled;
     btcomp.needUpdateButton = true;
+    markChanged<ButtonComponent>();
 }
 
 bool Button::getDisabled() const{

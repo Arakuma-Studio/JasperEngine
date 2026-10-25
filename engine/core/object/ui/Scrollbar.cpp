@@ -54,6 +54,7 @@ void Scrollbar::setType(ScrollbarType type){
 
     scrollcomp.type = type;
     scrollcomp.needUpdateScrollbar = true;
+    markChanged<ScrollbarComponent>();
 }
 
 ScrollbarType Scrollbar::getType() const{
@@ -67,6 +68,7 @@ void Scrollbar::setBarSize(float size){
 
     scrollcomp.barSize = size;
     scrollcomp.needUpdateScrollbar = true;
+    markChanged<ScrollbarComponent>();
 }
 
 float Scrollbar::getBarSize() const{
@@ -80,6 +82,7 @@ void Scrollbar::setStep(float step){
 
     scrollcomp.step = step;
     scrollcomp.needUpdateScrollbar = true;
+    markChanged<ScrollbarComponent>();
 }
 
 float Scrollbar::getStep() const{
@@ -152,4 +155,5 @@ void Scrollbar::setBarMargin(int marginLeft, int marginRight, int marginTop, int
     scrollcomp.barMarginTop = marginTop;
     scrollcomp.barMarginBottom = marginBottom;
     scrollcomp.needUpdateScrollbar = true;
+    markChanged<ScrollbarComponent>();
 }
