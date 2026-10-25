@@ -103,6 +103,10 @@ namespace jasperengine::editor{
         // sub-clips come from: a changed one goes through filesChanged (pool, sub-clip documents,
         // players)
         static void checkDiskChanges(Project* project = nullptr);
+        // A file or directory was renamed or moved by the editor (Project::remapClipFilePath): the
+        // documents of it (or under it, or of a moved model's sub-clips) follow it: path(),
+        // absolutePath() and the registry key change, the data stays, listeners get Reloaded
+        static void filesMoved(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         // Forgets every open document (the project closed)
         static void closeAll();
         // Called after a WriteFilesCmd of a document ran, was undone or redone (the MCP server
@@ -132,7 +136,11 @@ namespace jasperengine::editor{
         bool exists() const { return onDisk; }
 
         // The single edit path. An edit that changes nothing writes nothing (true, no undo step).
-        // `warnings` (optional) receives what normalize() changed.
+        // `warnings` (optional) receives what normalize() changed. A file changed on disk since it
+        // was read (the poll had not seen it yet) is reloaded instead and the commit fails ("make
+        // the edit again"): an edit made on old content never overwrites a newer file. An outside
+        // change also ends a merge: the next edit with the same merge key is a new undo step.
+        // Listeners must not commit from inside a notification (defer it to the next frame).
         bool commit(const ClipData& newData, const std::string& undoName, const std::string& mergeKey,
                      std::string* error, std::vector<ClipWarning>* warnings = nullptr);
 
@@ -160,12 +168,17 @@ namespace jasperengine::editor{
         bool readOnly = false;
         bool onDisk = false;
         bool committing = false;            // inside commit(): reloads are this document's own edit
+        uint64_t mergeEpoch = 0;            // bumped by outside reloads and moves: part of the merge key
         int64_t stampTime = 0;              // file mtime (ns) and size when last read
         uint64_t stampSize = 0;
         std::map<int, Listener> listeners;
         int nextListener = 1;
 
         AnimationClipDocument() = default;
+        // what a reload found
+        enum class ReloadResult { Unchanged, Changed, Kept, Removed, Busy };
+        ReloadResult reload();
+        ReloadResult reloadContent();
         bool load(std::string* error);
         void notify(Change change);
         void takeStamp();

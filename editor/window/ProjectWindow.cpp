@@ -2530,10 +2530,6 @@ void editor::ProjectWindow::handleRename(){
                         }
                         codeEditor->handleFileRename(oldPath, newPath);
                         imageViewerWindow->handleFileRename(oldPath, newPath);
-                        // the Inspector keeps showing the renamed asset
-                        if (renamed && project->getInspectedAsset() == oldPath.lexically_normal()) {
-                            project->setInspectedAsset(newPath.lexically_normal());
-                        }
                         scanDirectory(currentPath);
                         isRenaming = false;
                         ImGui::CloseCurrentPopup();

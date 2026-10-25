@@ -419,7 +419,11 @@ bool editor::Project::resolveClipReference(AnimationPlayerClip& entry, bool mayI
         return false;
     }
 
-    const fs::path hint = entry.clip.empty() ? fs::path() : normalizeToProjectRelative(resolveAssetPath(entry.clip));
+    fs::path hint = entry.clip.empty() ? fs::path() : normalizeToProjectRelative(resolveAssetPath(entry.clip));
+    // a path outside the project is never imported (nor given a GUID)
+    if (!hint.empty() && (hint.is_absolute() || *hint.begin() == "..")) {
+        hint.clear();
+    }
     std::error_code ec;
     const bool hintExists = !hint.empty() && fs::is_regular_file(projectPath / hint, ec);
 
@@ -542,10 +546,12 @@ void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, co
         return;
     }
     std::error_code ec;
-    // a directory's tracked files moved with remapPrefabFilePath
-    if (!fs::is_directory(newPath, ec)) {
+    // a directory's tracked files moved with remapPrefabFilePath; a model is not tracked
+    if (!fs::is_directory(newPath, ec) && (Util::isAnimationClipFile(oldPath.string()) || Util::isAnimationClipFile(newPath.string()))) {
         applyAssetChanges(assetDatabase.moveAssets(oldPath, newPath));
     }
+    // open documents (clips, a model's sub-clips) go with their files
+    AnimationClipDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
     AnimationClipDocument::filesChanged({oldPath.lexically_normal(), newPath.lexically_normal()}, this);
 }
 

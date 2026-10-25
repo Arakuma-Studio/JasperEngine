@@ -481,6 +481,11 @@ TEST_F(AnimationClipAssets, RenameUpdatesOpenScenesAndKeepsTheGuid) {
     const std::string guid = document->data().guid;
     PlayerScene scene = playerScene({entry(dir + "/run.anim", guid)});
     scene.player().needsLoad = false;
+    project()->setInspectedAsset(document->absolutePath());
+    std::vector<AnimationClipDocument::Change> changes;
+    const int listener = document->addListener([&](AnimationClipDocument&, AnimationClipDocument::Change change) {
+        changes.push_back(change);
+    });
 
     ASSERT_TRUE(history()->addCommand(new RenameFileCmd(project(), "run.anim", "sprint.anim", (root() / dir).string())));
     const fs::path renamed = root() / dir / "sprint.anim";
@@ -490,15 +495,32 @@ TEST_F(AnimationClipAssets, RenameUpdatesOpenScenesAndKeepsTheGuid) {
     EXPECT_TRUE(scene.sceneProject->isModified);
     EXPECT_EQ(project()->getAssetDatabase().getPath(guid), fs::path(dir + "/sprint.anim"));
     EXPECT_EQ(anim::readClipGuid(readAll(renamed)), guid) << "the file keeps its GUID";
-    EXPECT_FALSE(document->exists()) << "the document of the old path is Removed";
+    // the open document follows the file (the Animation window and the Inspector keep it)
+    EXPECT_TRUE(document->exists());
+    EXPECT_EQ(document->path(), dir + "/sprint.anim");
+    EXPECT_EQ(document->absolutePath(), renamed.lexically_normal());
+    ASSERT_FALSE(changes.empty());
+    EXPECT_EQ(changes.back(), AnimationClipDocument::Change::Reloaded);
     std::string error;
-    std::shared_ptr<AnimationClipDocument> moved = AnimationClipDocument::open(project(), dir + "/sprint.anim", &error);
-    ASSERT_TRUE(moved) << error;
-    EXPECT_EQ(moved->data().guid, guid);
+    EXPECT_EQ(AnimationClipDocument::open(project(), dir + "/sprint.anim", &error), document) << error;
+    EXPECT_EQ(project()->getInspectedAsset(), renamed.lexically_normal()) << "the inspected asset follows";
+    // and edits keep working at the new path
+    ClipData edited = document->data();
+    edited.tracks[0].keys.back().value[1] = 7.0f;
+    ASSERT_TRUE(document->commit(edited, "Edit", "", &error)) << error;
+    ASSERT_TRUE(history()->undo());
 
     ASSERT_TRUE(history()->undo());
     EXPECT_EQ(scene.player().clips[0].clip, dir + "/run.anim");
     EXPECT_EQ(project()->getAssetDatabase().getPath(guid), fs::path(dir + "/run.anim"));
+    EXPECT_EQ(document->path(), dir + "/run.anim");
+    EXPECT_EQ(project()->getInspectedAsset(), (root() / dir / "run.anim").lexically_normal());
+    document->removeListener(listener);
+
+    // deleting it clears the Inspector's asset
+    ASSERT_TRUE(history()->addCommand(new DeleteFileCmd(project(), {document->absolutePath()}, project()->getProjectPath())));
+    EXPECT_TRUE(project()->getInspectedAsset().empty());
+    ASSERT_TRUE(history()->undo());
 }
 
 // spec 9.R8: rename a clip while the scene using it is closed, open the scene: the reference
@@ -585,6 +607,11 @@ TEST_F(AnimationClipAssets, DeleteKeepsTheReferencesAndUndoRelinksThem) {
     EXPECT_TRUE(scene.player().needsLoad) << "relinked";
     EXPECT_TRUE(document->exists());
     EXPECT_TRUE(AnimationClipPool::getOrLoad(file.string(), &error)) << error;
+    // the entry is a user of the GUID again, and its resolved path loads
+    EXPECT_EQ(findClipUsers(project(), guid).size(), 1u);
+    AnimationPlayerClip resolved = scene.player().clips[0];
+    EXPECT_FALSE(project()->resolveClipReference(resolved)) << "nothing to repair";
+    EXPECT_TRUE(AnimationClipPool::getOrLoad(project()->resolveAssetPath(resolved.clip).string(), &error)) << error;
 }
 
 TEST_F(AnimationClipAssets, ACopyIsANewAssetWithANewGuid) {
@@ -861,4 +888,249 @@ TEST_F(AnimationClipAssets, AnOverwrittenModelRebuildsItsSubClips) {
     ASSERT_TRUE(third) << error;
     EXPECT_FLOAT_EQ(lastKeyY(third->toData()), 5.0f);
     AnimationClipPool::invalidate(gltf.generic_string());
+}
+
+// ---- review round 1 ----------------------------------------------------------------------
+
+// A model and the clip previewing it moved together (one CopyFileCmd, either order): the clip's
+// hint names the moved model, and the undo puts the clip's own bytes back
+TEST_F(AnimationClipAssets, AModelAndItsClipMovedTogetherUndoInBothOrders) {
+    for (bool modelFirst : {true, false}) {
+        const std::string dir = folder(modelFirst ? "pairmove1" : "pairmove2");
+        fs::create_directories(root() / dir / "a");
+        fs::create_directories(root() / dir / "b");
+        writeAll(root() / dir / "a" / "hero.gltf", "{\"asset\": {\"version\": \"2.0\"}}\n");
+        ClipData data = positionClip();
+        data.previewModel = dir + "/a/hero.gltf";
+        std::shared_ptr<AnimationClipDocument> document = createClip(dir + "/a/walk.anim", data);
+        ASSERT_TRUE(document);
+        const std::string before = readAll(document->absolutePath());
+
+        std::vector<std::string> files = {(root() / dir / "a" / "hero.gltf").string(), (root() / dir / "a" / "walk.anim").string()};
+        if (!modelFirst) std::swap(files[0], files[1]);
+        ASSERT_TRUE(history()->addCommand(new CopyFileCmd(project(), files, (root() / dir / "b").string(), false)));
+        const fs::path movedClip = root() / dir / "b" / "walk.anim";
+        ASSERT_TRUE(fs::exists(movedClip));
+        anim::ClipParseResult parsed = anim::parseClip(readAll(movedClip));
+        ASSERT_TRUE(parsed.ok());
+        EXPECT_EQ(parsed.data->previewModel, dir + "/b/hero.gltf") << (modelFirst ? "model first" : "clip first");
+        EXPECT_EQ(document->data().previewModel, dir + "/b/hero.gltf") << "the open document followed and reloaded";
+
+        ASSERT_TRUE(history()->undo());
+        EXPECT_EQ(readAll(root() / dir / "a" / "walk.anim"), before) << (modelFirst ? "model first" : "clip first");
+        EXPECT_TRUE(fs::exists(root() / dir / "a" / "hero.gltf"));
+    }
+}
+
+// A clip edited outside the history after the rename keeps what it holds when the rename is undone
+TEST_F(AnimationClipAssets, AHintEditedSinceTheRenameIsKept) {
+    const std::string dir = folder("hintkept");
+    writeAll(root() / dir / "hero.gltf", "{\"asset\": {\"version\": \"2.0\"}}\n");
+    ClipData data = positionClip();
+    data.previewModel = dir + "/hero.gltf";
+    std::shared_ptr<AnimationClipDocument> document = createClip(dir + "/walk.anim", data);
+    ASSERT_TRUE(document);
+    ASSERT_TRUE(history()->addCommand(new RenameFileCmd(project(), "hero.gltf", "knight.gltf", (root() / dir).string())));
+    ClipData outside = document->data();
+    outside.previewModel = dir + "/other.gltf";
+    writeAll(document->absolutePath(), anim::writeClip(outside));
+    const std::string edited = readAll(document->absolutePath());
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(readAll(document->absolutePath()), edited) << "not overwritten by the undo";
+    EXPECT_TRUE(fs::exists(root() / dir / "hero.gltf"));
+}
+
+// A broken write reported through filesChanged (auto-sync, sync_files) keeps the last valid clip
+// for the players, as the poll and an open document do
+TEST_F(AnimationClipAssets, ABrokenClipKeepsTheLastValidOneForThePlayers) {
+    const std::string dir = folder("broken");
+    std::shared_ptr<AnimationClipDocument> document = createClip(dir + "/idle.anim");
+    ASSERT_TRUE(document);
+    const fs::path file = document->absolutePath();
+    const std::string guid = document->data().guid;
+    PlayerScene scene = playerScene({entry(dir + "/idle.anim", guid)});
+    std::string error;
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(file.string(), &error)) << error;
+    const uint64_t generation = AnimationClipPool::getGeneration(file.string());
+
+    for (bool documentOpen : {true, false}) {
+        scene.player().needsLoad = false;
+        writeAll(file, documentOpen ? "{ broken" : "{ broken again");
+        if (!documentOpen) AnimationClipDocument::closeAll();
+        AnimationClipDocument::filesChanged({file}, project());
+        EXPECT_TRUE(AnimationClipPool::get(file.string())) << (documentOpen ? "document open" : "no document");
+        EXPECT_EQ(AnimationClipPool::getGeneration(file.string()), generation);
+        EXPECT_FALSE(scene.player().needsLoad);
+    }
+    // fixed again: the players reload it
+    ClipData fixed = positionClip(4.0f);
+    fixed.guid = guid;
+    writeAll(file, anim::writeClip(fixed));
+    AnimationClipDocument::filesChanged({file}, project());
+    EXPECT_TRUE(scene.player().needsLoad);
+    EXPECT_FALSE(AnimationClipPool::get(file.string()));
+}
+
+// A commit made before the poll saw an outside edit does not overwrite it; an outside change also
+// ends a drag's merge, so undoing the next drag keeps the outside edit
+TEST_F(AnimationClipAssets, ACommitNeverOverwritesAnUnseenOutsideEdit) {
+    const std::string dir = folder("unseen");
+    std::shared_ptr<AnimationClipDocument> document = createClip(dir + "/wave.anim");
+    ASSERT_TRUE(document);
+    const fs::path file = document->absolutePath();
+    std::string error;
+    ClipData data = document->data();
+    data.tracks[0].keys.back().value[1] = 2.0f;
+    ASSERT_TRUE(document->commit(data, "Drag", "drag#1", &error)) << error;
+    const size_t steps = history()->position();
+
+    // another program adds a track; nobody told the document yet
+    ClipData outside = document->data();
+    ClipTrackData second = outside.tracks[0];
+    second.path = "Leg";
+    outside.tracks.push_back(second);
+    writeAll(file, anim::writeClip(outside) + "\n");
+    std::error_code ec;
+    fs::last_write_time(file, fs::last_write_time(file, ec) + std::chrono::seconds(2), ec);
+
+    data.tracks[0].keys.back().value[1] = 3.0f;
+    EXPECT_FALSE(document->commit(data, "Drag", "drag#1", &error));
+    EXPECT_NE(error.find("changed on disk"), std::string::npos) << error;
+    ASSERT_EQ(document->data().tracks.size(), 2u) << "reloaded";
+    EXPECT_EQ(history()->position(), steps);
+
+    // the edit made again on the new content: a step of its own (not merged into the drag)
+    ClipData again = document->data();
+    again.tracks[0].keys.back().value[1] = 3.0f;
+    ASSERT_TRUE(document->commit(again, "Drag", "drag#1", &error)) << error;
+    EXPECT_EQ(history()->position(), steps + 1);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(document->data().tracks.size(), 2u) << "the outside edit survives the undo";
+    ASSERT_TRUE(history()->undo());
+    EXPECT_FLOAT_EQ(lastKeyY(document->data()), 1.0f);
+}
+
+TEST_F(AnimationClipAssets, AFailedWriteReportsItsReason) {
+    const std::string dir = folder("writefail");
+    writeAll(root() / dir / "file.txt", "a file, not a folder");
+    std::string error;
+    EXPECT_FALSE(AnimationClipDocument::create(project(), dir + "/file.txt/clip.anim", positionClip(), "Create", &error));
+    EXPECT_NE(error.find("writing"), std::string::npos) << error;
+    // a later create at a good path works (the failed one left no document behind)
+    EXPECT_TRUE(createClip(dir + "/clip.anim"));
+}
+
+// A saved scene opened again with nothing to repair is not modified; the play-startup form of the
+// resolver never imports a file the database does not know
+TEST_F(AnimationClipAssets, NothingToRepairLeavesTheSceneUnmodified) {
+    const std::string dir = folder("unmodified");
+    std::shared_ptr<AnimationClipDocument> document = createClip(dir + "/stay.anim");
+    ASSERT_TRUE(document);
+    PlayerScene scene = playerScene({entry(dir + "/stay.anim", document->data().guid)});
+    const uint32_t sceneId = scene.sceneProject->id;
+    const fs::path sceneFile = root() / dir / "Stay.scene";
+    ASSERT_TRUE(project()->saveSceneToPath(sceneId, sceneFile));
+    project()->getScene(sceneId)->isModified = false;
+    project()->closeScene(sceneId, true);
+    project()->openScene(sceneFile, false);
+    SceneProject* opened = nullptr;
+    for (SceneProject& candidate : project()->getScenes()) {
+        if (candidate.scene && (root() / candidate.filepath).lexically_normal() == sceneFile.lexically_normal()) opened = &candidate;
+    }
+    ASSERT_TRUE(opened);
+    EXPECT_FALSE(opened->isModified);
+
+    // made outside, the database has not seen it: the read-only resolver leaves it alone
+    ClipData outside = positionClip();
+    outside.guid = anim::generateClipGuid();
+    writeAll(root() / dir / "outside.anim", anim::writeClip(outside));
+    Scene registry;
+    const Entity entity = registry.createEntity();
+    AnimationPlayerComponent stored;
+    stored.clips = {entry(dir + "/outside.anim")};
+    registry.addComponent<AnimationPlayerComponent>(entity, stored);
+    EXPECT_FALSE(project()->resolveRegistryClipRefs(&registry, false));
+    EXPECT_TRUE(registry.getComponent<AnimationPlayerComponent>(entity).clips[0].guid.empty());
+    EXPECT_TRUE(project()->getAssetDatabase().getPath(outside.guid).empty()) << "not imported";
+    // a path outside the project is never imported either
+    AnimationPlayerClip far = entry((fs::temp_directory_path() / "far-away.anim").string());
+    EXPECT_FALSE(project()->resolveClipReference(far));
+    EXPECT_TRUE(far.guid.empty());
+}
+
+// Prefab assets: their players are clip users, follow an outside move in memory, and a clip
+// rename never rewrites the prefab file (the GUID finds the clip when it is read)
+TEST_F(AnimationClipAssets, PrefabAssetsUseClipsByGuid) {
+    const std::string dir = folder("prefabasset");
+    std::shared_ptr<AnimationClipDocument> document = createClip(dir + "/jog.anim");
+    ASSERT_TRUE(document);
+    const std::string guid = document->data().guid;
+    PlayerScene scene = playerScene({entry(dir + "/jog.anim", guid)});
+    const uint32_t sceneId = scene.sceneProject->id;
+    const fs::path prefabFile = fs::path(dir) / "Runner.prefab";
+    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project(), sceneId, prefabFile,
+        Stream::encodeEntity(scene.entity, scene.sceneProject->scene, project(), scene.sceneProject)));
+    ASSERT_TRUE(project()->isPrefabInstanceRoot(sceneId, scene.entity));
+    size_t prefabUsers = 0;
+    for (const ClipUser& user : findClipUsers(project(), guid)) {
+        if (user.prefabAsset) {
+            prefabUsers++;
+            EXPECT_EQ(user.prefabPath, prefabFile.generic_string());
+        }
+    }
+    EXPECT_EQ(prefabUsers, 1u);
+
+    const std::string prefabBytes = readAll(root() / prefabFile);
+    ASSERT_TRUE(history()->addCommand(new RenameFileCmd(project(), "jog.anim", "trot.anim", (root() / dir).string())));
+    EXPECT_EQ(readAll(root() / prefabFile), prefabBytes) << "the prefab file is not rewritten";
+    auto prefabEntry = [&]() {
+        std::string clip;
+        project()->forEachPrefabAsset([&](const fs::path& path, Prefab& prefab) {
+            if (path.generic_string() != prefabFile.generic_string()) return;
+            auto players = prefab.registry->getComponentArray<AnimationPlayerComponent>();
+            if (players->size() > 0) clip = players->getComponentFromIndex(0).clips.at(0).clip;
+        });
+        return clip;
+    };
+    EXPECT_EQ(prefabEntry(), dir + "/trot.anim") << "in memory";
+    ASSERT_TRUE(history()->undo());
+
+    // moved outside the editor: the refresh relinks the prefab asset's player by GUID
+    fs::create_directories(root() / dir / "moves");
+    fs::rename(root() / dir / "jog.anim", root() / dir / "moves" / "jog.anim");
+    project()->refreshAssetDatabase(true);
+    EXPECT_EQ(prefabEntry(), dir + "/moves/jog.anim");
+    EXPECT_EQ(readAll(root() / prefabFile), prefabBytes);
+    scene.sceneProject->isModified = false;
+}
+
+// A clip rewritten outside with another clip's GUID (JSON copied from it) stays the same asset
+TEST_F(AnimationClipAssets, AClipRewrittenWithAnotherClipsGuidKeepsItsOwn) {
+    const std::string dir = folder("guidcopy");
+    std::shared_ptr<AnimationClipDocument> first = createClip(dir + "/one.anim");
+    std::shared_ptr<AnimationClipDocument> second = createClip(dir + "/two.anim");
+    ASSERT_TRUE(first && second);
+    const std::string secondGuid = second->data().guid;
+    writeAll(second->absolutePath(), readAll(first->absolutePath()) + "\n");
+    project()->refreshAssetDatabase(true);
+    EXPECT_EQ(project()->getAssetDatabase().getPath(secondGuid), fs::path(dir + "/two.anim"));
+    EXPECT_EQ(AssetDatabase::readGuid(second->absolutePath()), secondGuid);
+    EXPECT_EQ(project()->getAssetDatabase().getPath(first->data().guid), fs::path(dir + "/one.anim"));
+}
+
+// Sub-clip users by name and by index are the same animation
+TEST_F(AnimationClipAssets, SubClipUsersByNameAndIndex) {
+    const std::string dir = folder("subusers");
+    const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" /
+                             "assets" / "models" / "hero_animated.gltf";
+    fs::copy_file(fixture, root() / dir / "hero.gltf", fs::copy_options::overwrite_existing);
+    std::vector<anim::ModelClipInfo> clips;
+    std::string error;
+    ASSERT_TRUE(anim::listModelFileClips(project()->normalizeToAssetsRelative(root() / dir / "hero.gltf").generic_string(), clips, &error)) << error;
+    ASSERT_FALSE(clips.empty());
+    const std::string model = dir + "/hero.gltf";
+    PlayerScene scene = playerScene({entry(model + "#" + clips[0].name), entry(model + "#" + std::to_string(clips[0].index))});
+    EXPECT_EQ(findClipUsers(project(), model + "#" + clips[0].name).size(), 2u);
+    EXPECT_EQ(findClipUsers(project(), model + "#" + std::to_string(clips[0].index)).size(), 2u);
+    scene.sceneProject->isModified = false;
 }
