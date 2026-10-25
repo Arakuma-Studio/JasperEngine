@@ -42,6 +42,22 @@ normals, joint indices and weights (normalised), the inverse bind matrices (inve
 inverse of each bone's rest world matrix from the node TRS), the hierarchy (the mesh node beside
 the root bone), the rest-pose skinning (identity) and the ground contact.
 
+### `hero_animated.gltf` (written by `make_animated_hero.py`)
+
+The hero (same nodes, mesh and skin) with five glTF animations for the animation clips tests' model
+sub-clips (`hero_animated.gltf#Walk`): `Walk` (LINEAR), `Idle` (CUBICSPLINE translation and
+rotation, LINEAR head scale), an unnamed one (STEP, sub-clip `Animation 2`, also moving the scene
+root node `Hero`) and two named `Wave` (sub-clips `Wave` and `Wave 2`). Not in `Main Scene.scene`.
+
+```bash
+python3 -I tools/fixtures/pose-animation/make_animated_hero.py            # rewrite it
+python3 -I tools/fixtures/pose-animation/make_animated_hero.py --check    # validate it
+```
+
+`--check` runs make_humanoids.py's validation on it, validates the animations (names, samplers,
+accessor types and counts, increasing times, unit rotations, target nodes) and compares the bytes
+with a fresh generation.
+
 `project.yaml` and `Main Scene.scene` are made by the editor through MCP with `make_scene.py`
 (a new project, `editor.assets_dir` = `assets`, `set_model` both models, the light turned to the
 front, `create_entity` the ground and the camera, `set_main_camera`, `save_scene`), so they are in

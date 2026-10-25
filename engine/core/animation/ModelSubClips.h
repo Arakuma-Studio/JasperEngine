@@ -61,6 +61,11 @@ namespace jasperengine::anim{
         size_t channels = 0;
     };
 
+    // The sub-clip names of animations whose own (glTF/FBX) names are `animationNames`, in
+    // order: the naming invariant above. A generated "<name> <k>" that another animation already
+    // has as its own name moves on to the next k (names stay unique). get_asset_info uses it too.
+    JASPERENGINE_API std::vector<std::string> subClipNames(const std::vector<std::string>& animationNames);
+
     // from a parsed model (no file access)
     JASPERENGINE_API std::vector<ModelClipInfo> listModelClips(const tinygltf::Model& model);
     // the animation index a reference's clip part names (a name, or a number), -1 when none

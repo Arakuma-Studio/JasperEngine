@@ -17,6 +17,7 @@
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
+#include "animation/ModelSubClips.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/type/CopyFileCmd.h"
@@ -371,6 +372,14 @@ Json gltfSummary(const Json& gltf) {
     Json animations = Json::array();
     if (gltf.contains("animations") && gltf["animations"].is_array()) {
         const Json accessors = gltf.value("accessors", Json::array());
+        // the sub-clip names ("<model>#<name>" references, the loader's animation entity names):
+        // "Animation <i>" when unnamed, "<name> <k>" for a later duplicate (spec 9.R11)
+        std::vector<std::string> ownNames;
+        for (const Json& animation : gltf["animations"]) {
+            ownNames.push_back(animation.is_object() && animation.contains("name") && animation["name"].is_string()
+                                   ? animation["name"].get<std::string>() : std::string());
+        }
+        const std::vector<std::string> clipNames = jasperengine::anim::subClipNames(ownNames);
         for (size_t i = 0; i < gltf["animations"].size() && i < 100; i++) {
             const Json& animation = gltf["animations"][i];
             double duration = 0.0;
@@ -383,7 +392,7 @@ Json gltfSummary(const Json& gltf) {
                     }
                 }
             }
-            animations.push_back({{"name", animation.value("name", "animation " + std::to_string(i))},
+            animations.push_back({{"name", clipNames[i]},
                                   {"channels", animation.contains("channels") ? animation["channels"].size() : 0},
                                   {"duration_seconds", std::round(duration * 1000.0) / 1000.0}});
         }
