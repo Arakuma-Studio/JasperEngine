@@ -3,6 +3,7 @@
 
 #include "PoseEditSession.h"
 
+#include "animation/PreviewOwner.h"
 #include "Project.h"
 #include "Scene.h"
 #include "component/ModelComponent.h"
@@ -293,6 +294,7 @@ void editor::PoseEditSession::dropBinding(){
     savedBones.clear();
     savedMeshes.clear();
     applied = false;
+    PreviewOwner::releaseFor(this);
     gate = poseui::BoneWriteGate();
     sidecarFile.clear();
     handleActive = false;
@@ -845,6 +847,9 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
     const std::vector<Entity>& entities = rigInfoPtr->boneEntities;
     const pose::Skeleton& skeleton = rigPtr->skeleton();
     if (!applied){
+        // the model's one edit-mode pose owner (animation clips 9.R7): a clip preview on it or
+        // above it restores its snapshot first, so the bones saved below are the scene's
+        PreviewOwner::acquireFor(this, sceneIdValue, modelEntity, scenePtr, "Pose Animation", [this](){ goIdle(); });
         // the bones as the scene has them, put back by restoreBones()
         savedBones.clear();
         for (Entity entity : entities){
@@ -911,6 +916,7 @@ void editor::PoseEditSession::restoreBones(){
         if (sceneProject->playState == ScenePlayState::SAVING) return;
     }
     applied = false;
+    PreviewOwner::releaseFor(this);
     if (scenePtr){
         // The local TRS as saved. The world matrices too, unless the model (or a parent) moved
         // while posing: then they follow from the parents as they are now (parents first), the
