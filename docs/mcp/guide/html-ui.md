@@ -1626,7 +1626,14 @@ Read-only, edit mode and play. Returns:
   `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
   `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
   `memoryBytes`, `poster` (showing it), `error`, and with `controls` their rectangles
-  (`controls: {visible, bar, play, timeline, mute}`, for `send_input` clicks).
+  (`controls: {visible, bar, play, timeline, mute}`, for `send_input` clicks);
+- a virtual view's entry has `widget`: `kind`, `count`, `first`/`last` (the items shown,
+  0-based), `pool` and `pool_bound` (row elements), `overscan`, `lanes`, `selection`, `selected`,
+  `selected_keys`, `active`, `scrollTop`, `totalHeight`, `source` (`model:<name>` or `lua`),
+  `sort`; its text line reads `list[0..12 of 10000, pool 22]`;
+- `tooltip` (`{visible, source, text, rect, side}`) and `drag` (`{active, source, target, types,
+  allowed, effect, programmatic}`) of the document, and with `"reload": true` the last hot reload's
+  report (`mode`, the counts, `fallbackReason`, `ms`, `causes`).
 
 Use it to answer "why is this element there / this size / this colour" before editing CSS.
 
@@ -1638,7 +1645,9 @@ container amber). A failed check is not a tool error. Checks: `exists`, `count` 
 `min`, `max`), `visible` (`unobstructed`: nothing of another document covers it), `text_fits`
 (`single_line`, `allow_scroll`), `no_overlap` (`with`), `within_parent` (`container`),
 `within_viewport`, `contrast` (`min_ratio`, default WCAG AA; `background` where the page is
-transparent), `min_size` (`width`, `height`). Zero matches fail. `viewports` repeats the checks
+transparent), `min_size` (`width`, `height`), `virtual_window` (a view's rows within `max_pool`,
+default its own bound), `tooltip` (the selector's tooltip is showing; `text`: it contains that),
+`selected` (a view's selection: `count`, `min`, `max`). Zero matches fail. `viewports` repeats the checks
 at other sizes. Typical sets:
 
 | Screen | Checks |
@@ -1649,6 +1658,15 @@ at other sizes. Typical sets:
 | Dialog, modal, pause | `visible` + `unobstructed` after opening it, `within_viewport`, `min_size` of its buttons |
 | Settings, forms | `text_fits` of labels, `within_parent` of rows, `min_size` of controls |
 | Toasts, lists | `no_overlap`, `within_viewport` with the most entries shown |
+
+### `ui_widget`
+
+Drives a virtual view of a playing document (runtime only, not undoable): `{"selector": "#servers",
+"action": "scroll_to" | "select" | "activate" | "expand" | "collapse" | "sort", "index": 0-based
+| "key": "...", "column": "ping", "direction": "asc" | "desc", "align": "start" | "center" | "end"
+| "nearest"}`. `activate` and `sort` fire the view's events, so the script reacts as to a player;
+it returns the items shown and the selection. Hover with `send_input` (`target`, then
+`frames_after`) to show a tooltip; drag with `to_target` for drag and drop.
 
 ### UI screenshots
 

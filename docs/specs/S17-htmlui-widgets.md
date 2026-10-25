@@ -506,3 +506,56 @@ doc.onReload = function(report) print(report.updated, report.fallbackReason) end
   footnotes or HTML passthrough.
 - **Touch long-press vs. scroll** on draggable rows. *Default:* 400 ms press without 8 px of
   movement starts a drag. Otherwise the press scrolls.
+
+## Deviations
+
+- **The live patch diffs compiled RML, not the HTML tree (R27).** The previous compile's RML and
+  the new one are read back as `RmlNode` trees (`compat/TreeReconcile.*`, pure and unit-tested)
+  and reconciled per OE's rules (id, tag + same classes, tag + class superset, tag; texts by
+  position). The live elements are found by `data-htmlui-loc`; the authored set is recorded by an
+  `Rml::Plugin` during each document parse (`OnDocumentOpen` .. `OnDocumentLoad`), so data-view
+  copies, `cloneNode` copies and script-made nodes are runtime nodes.
+- **Restyle only when the sheets changed (R31).** A patch rebinds the document to the new
+  compile; it rebuilds the style sheet container only when the two compiles wrote different
+  sheets (inline styles keyed by renumbered locs, a changed `<style>` or linked file). Rebuilding it
+  for a markup-only edit cost 4 ms of a 2,000-element patch for nothing. Changes of files the patch
+  does not read again (a font, a `<script src>` Lua file, an SVG, a Lottie file) rebuild the
+  document; a `<markdown src>` file is compiled into the RML and patches.
+- **Fork patch names (R35).** P7-D is `DataModel::InsertRowAlias` / `SetRowAlias` (an alias of a
+  row element re-pointed at another item, resolved through a `#row` address entry), not
+  `SetRowIndex`: one alias serves `item` and `i` alike. Besides P7-L and P7-D the branch adds P7-T
+  (an inert `<template>` in RML documents), P7-C (`Context::CancelDrag`, `IsDragging`, a prevented
+  `dragstart` starts no drag) and P7-H (touch long-press drag inside scroll containers), all in
+  `docs/html-ui/FORK.md`.
+- **The table header is sticky (R11).** It uses the fork's `position: sticky` (moved at each scroll
+  without a layout) instead of a transform: a transformed header painted under the rows.
+- **Tooltips are positioned by code (R17).** The UA sheet cannot use `position: fixed` (not in
+  the fork's compat output); the engine sets the tooltip's position, `z-index` and
+  `pointer-events` inline on an element appended to the source document's body.
+- **Engine classes are for CSS (R20, R22).** `htmlui-*` classes (drop feedback, ghost, rows,
+  header) follow the compat rule that scripts do not see engine classes (`classList`, `className`);
+  rows also get `selected`, `odd`/`even`, `expanded`, `has-children`, which scripts see.
+- **Indices.** Lua and C++ `UIItemsView` indices are 1-based; MCP (`inspect_ui` `widget`,
+  `ui_widget`) and `data-for`'s `i` are 0-based, as the rest of the MCP tools.
+- **Lua bindings live in `script/binding/HtmlUIWidgetsLua.cpp` (R42),** registered next to
+  `HtmlUIClassesLua.cpp` by `LuaBinding`, to keep that file's size in check. `doc.tooltip` is an
+  instance property (`UIDocumentTooltip`).
+- **A provider tree caches its structure.** `children(key)` (nil for the roots) and
+  `hasChildren(key)` are asked once per key until `refresh()`, which keeps an expand within R34's
+  budget with Lua callbacks.
+- **`check --ui` (R42, AC15)** reports the compile's widget code HTMLUI-HTML-0030 (a view without
+  its `<template>`). 0029 (no definite height) and 0031 (a `data-for` of more than 500 elements)
+  need a layout or a data model, so they are runtime diagnostics: the Console, the document's
+  messages and `inspect_ui` diagnostics; 0032 is a note, which `check` does not list. Tests:
+  `test_html_ui_checks.py::test_cli_ui_widget_codes`, `HtmlUIWidgets.AnchorEndAndRuntimeDiagnostics`,
+  `HtmlUIWidgets.MarkdownElements`.
+- **Test names.** AC5's gamepad case is `HtmlUIWidgets.GamepadNavigation` (there is no
+  `TestInputGamepad` suite); AC6's column resize by `send_input` is
+  `test_html_ui_widgets.py::test_column_resize_by_drag` (and `HtmlUIWidgets.Table` in C++); R32's
+  TEXTURE documents are `TextureModeTest.WidgetsThroughWorldPointer`.
+- **No changelog file exists in the repository;** the behaviour changes (`dragover` repeating,
+  visible `title` tooltips, `onReload` instead of `onLoad` on patches) are in
+  `docs/mcp/guide/html-ui.md` "Changes for existing documents".
+- **Inline Markdown is an `.html` feature.** The compile captures the raw text between `<markdown>`
+  and `</markdown>`; an `.rml` document's RmlUi parser reads that content as RML, so `.rml`
+  documents use `src=` or `el:setMarkdown`.
