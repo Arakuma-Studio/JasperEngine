@@ -161,10 +161,12 @@ namespace jasperengine::editor{
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
-        // While the scene is closed: the write time of the file cppScripts were read from
-        // (Project::collectClosedSceneCppScripts), so an unchanged file is not read again
+        // While the scene is closed: the write time and size of the file cppScripts were read
+        // from (Project::collectClosedSceneCppScripts), so an unchanged file is not read again.
+        // Forgotten when the scene closes: what it had in memory is not its file's.
         bool cppScriptsRead = false;
         fs::file_time_type cppScriptsReadStamp{};
+        std::uintmax_t cppScriptsReadSize = 0;
         std::vector<PrefabSceneInfo> prefabs;
         // FBX model path -> the import its saved model parts were built from
         std::map<std::string, std::string> imports;
@@ -1322,12 +1324,16 @@ namespace jasperengine::editor{
         void remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void cleanupMaterialFilePath(const std::filesystem::path& deletedPath);
         void cleanupSceneFilePath(const std::filesystem::path& deletedPath);
-        // A scene file the project lists is deletedPath or under it (a folder)
-        bool hasSceneFileUnder(const std::filesystem::path& deletedPath) const;
+        // Deleting deletedPath (a file or a folder) would take a scene out of the project: a
+        // closed scene's file (cleanupSceneFilePath erases its entry) or the played scene's.
+        // An open scene's file only loses its path.
+        bool deletionRemovesScene(const std::filesystem::path& deletedPath) const;
         // While Play runs (or starts or stops) no scene leaves the project: the session finds the
-        // played scene by id and runs it in place. True, with a warning and an alert naming
-        // `what`, when that refuses it now.
-        bool refuseSceneRemovalWhilePlaying(const std::string& what) const;
+        // played scene by id and runs it in place. True when that refuses it now: the reason is
+        // logged, put in *reason and, with alert (and not inside a non-interactive call), shown.
+        bool refuseSceneRemovalWhilePlaying(const std::string& what, std::string* reason = nullptr, bool alert = true);
+        // The same for deleting files (the Project window, DeleteFileCmd, MCP)
+        bool refuseDeletionWhilePlaying(const std::vector<std::filesystem::path>& paths, std::string* reason = nullptr, bool alert = true);
         void cleanupPrefabFilePath(const std::filesystem::path& deletedPath);
         void cleanupScriptFilePath(const std::filesystem::path& deletedPath);
         void cleanupAssetFilePath(const std::filesystem::path& deletedPath);

@@ -1238,27 +1238,47 @@ void editor::Project::cleanupSceneFilePath(const std::filesystem::path& deletedP
     }
 }
 
-bool editor::Project::hasSceneFileUnder(const std::filesystem::path& deletedPath) const {
+bool editor::Project::deletionRemovesScene(const std::filesystem::path& deletedPath) const {
     const fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
     if (deletedRelative.empty()) {
         return false;
     }
+    const uint32_t playedSceneId = getPlaySessionSceneId();
     for (const auto& sceneProject : scenes) {
-        if (!sceneProject.filepath.empty() && matchesRelativePath(deletedRelative, sceneProject.filepath)) {
+        if (!sceneProject.filepath.empty() && matchesRelativePath(deletedRelative, sceneProject.filepath) &&
+            (!sceneProject.opened || sceneProject.id == playedSceneId)) {
             return true;
         }
     }
     return false;
 }
 
-bool editor::Project::refuseSceneRemovalWhilePlaying(const std::string& what) const {
+bool editor::Project::refuseSceneRemovalWhilePlaying(const std::string& what, std::string* reason, bool alert) {
     if (!isAnyScenePlaying()) {
         return false;
     }
     const std::string message = "Cannot " + what + " while a scene is playing: stop Play mode first.";
     Out::warning("%s", message.c_str());
-    editor::getEditorHost().registerAlert("Scene is playing", message);
+    if (reason) {
+        *reason = message;
+    }
+    if (alert) {
+        alertUser("Scene is playing", message);
+    }
     return true;
+}
+
+bool editor::Project::refuseDeletionWhilePlaying(const std::vector<std::filesystem::path>& paths, std::string* reason, bool alert) {
+    if (!isAnyScenePlaying()) {
+        return false;
+    }
+    for (const fs::path& path : paths) {
+        if (deletionRemovesScene(path)) {
+            return refuseSceneRemovalWhilePlaying("delete " + FileUtils::pathToUtf8(path.filename()) +
+                                                  " (a scene would leave the project)", reason, alert);
+        }
+    }
+    return false;
 }
 
 void editor::Project::cleanupScriptFilePath(const std::filesystem::path& deletedPath) {
@@ -4469,6 +4489,9 @@ void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
     } else {
         it->opened = false;
         it->expandedInline = false;
+        // closed: its scripts are its file's again (an unsaved edit may have changed them)
+        it->cppScripts.clear();
+        it->cppScriptsRead = false;
     }
 
     editor::getEditorHost().clearSceneWindowState(sceneId);
@@ -8116,9 +8139,11 @@ bool editor::Project::collectClosedSceneCppScripts(SceneProject& sceneProject) {
     if (fullPath.is_relative()) {
         fullPath = getProjectPath() / fullPath;
     }
+    // the size too: a copy that keeps the time, or two writes within the clock's tick
     std::error_code ec;
     const fs::file_time_type stamp = fs::last_write_time(fullPath, ec);
-    if (ec || (sceneProject.cppScriptsRead && stamp == sceneProject.cppScriptsReadStamp)) {
+    const std::uintmax_t size = ec ? 0 : fs::file_size(fullPath, ec);
+    if (ec || (sceneProject.cppScriptsRead && stamp == sceneProject.cppScriptsReadStamp && size == sceneProject.cppScriptsReadSize)) {
         return false;
     }
 
@@ -8126,6 +8151,7 @@ bool editor::Project::collectClosedSceneCppScripts(SceneProject& sceneProject) {
     // a file that does not decode warns once per version too
     sceneProject.cppScriptsRead = true;
     sceneProject.cppScriptsReadStamp = stamp;
+    sceneProject.cppScriptsReadSize = size;
     std::unique_ptr<SceneProject> probe;
     try {
         probe.reset(createRuntimeCloneFromSource(&sceneProject));

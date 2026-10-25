@@ -1896,15 +1896,20 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         if (ImGui::Button("Yes", ImVec2(buttonWidth, 0))){
             std::vector<fs::path> pathsToDelete;
             for (const auto& fileName : selectedFiles){
-                fs::path filePath = currentPath / fileName;
-                pathsToDelete.push_back(filePath);
-                codeEditor->closeFile(filePath.string());
-                imageViewerWindow->closeFile(filePath);
+                pathsToDelete.push_back(currentPath / fileName);
             }
 
-            project->getProjectCommandHistory()->addCommand(new DeleteFileCmd(project, pathsToDelete, project->getProjectPath()));
-            selectedFiles.clear();
-            scanDirectory(currentPath);
+            // refused while a scene plays (a scene would leave the project): before any tab closes
+            if (!project->refuseDeletionWhilePlaying(pathsToDelete)){
+                for (const fs::path& filePath : pathsToDelete){
+                    codeEditor->closeFile(filePath.string());
+                    imageViewerWindow->closeFile(filePath);
+                }
+
+                project->getProjectCommandHistory()->addCommand(new DeleteFileCmd(project, pathsToDelete, project->getProjectPath()));
+                selectedFiles.clear();
+                scanDirectory(currentPath);
+            }
             showDeleteConfirmation = false;
             ImGui::CloseCurrentPopup();
         }
