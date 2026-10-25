@@ -1,7 +1,7 @@
 """Shader library phase 4, review fixes of the editor side (sl/p4-fix-editor):
 
-- renaming, moving or deleting the post-processing LUT image rewrites (or clears) lut_texture, as
-  it does for the user passes' textures;
+- renaming or moving the post-processing LUT image rewrites lut_texture, as it does for the user
+  passes' textures; deleting it keeps the reference, Missing until the delete is undone (S04 R15);
 - get_scene_settings post_process gives a pass's textures as material shader textures are given
   (sampler settings and cube maps survive a read-modify-write);
 - set_scene_settings refuses out-of-range Vector3 fields (instead of clamping them), takes enums by
@@ -92,8 +92,18 @@ async def test_lut_follows_rename_and_delete(ed: Editor):
     text = (ed.project / "scenes/ReviewFixes.scene").read_text()
     ed.check("amber.png" in text and "warm.png" not in text, "the scene saves the new LUT path")
 
+    # S04 R15: a delete never clears a reference; the LUT is Missing (Missing Assets lists it), and
+    # undoing the delete makes it resolve again
     await ed.call("delete_asset", paths=["assets/luts/amber.png"])
-    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "", "a deleted LUT image is cleared")
+    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "assets/luts/amber.png", "a deleted LUT stays referenced")
+    missing = [g for g in (await ed.call("list_missing_assets"))["missing"] if g["last_path"] == "assets/luts/amber.png"]
+    ed.check(missing and any("lutTexture" in r.get("field", "") for r in missing[0]["referrers"]),
+             f"Missing Assets lists the scene's LUT: {missing!r}")
+    await ed.call("undo", scope="project")
+    ed.check((ed.project / "assets/luts/amber.png").is_file(), "undo brings the LUT image back")
+    ed.check(not [g for g in (await ed.call("list_missing_assets"))["missing"] if g["last_path"] == "assets/luts/amber.png"],
+             "the LUT resolves again after the delete is undone")
+    ed.check_eq(await pp(ed, sid, "post_processing.lut_texture"), "assets/luts/amber.png")
     await ed.call("set_scene_settings", scene=sid, settings={"post_processing": None})
 
 
