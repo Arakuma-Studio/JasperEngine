@@ -9,6 +9,10 @@
 
 #include <gtest/gtest.h>
 
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -300,6 +304,26 @@ TEST(MarkdownParser, LinkTextNestedTenThousandDeepIsParsedFlat)
 // held to a figure; the ratio of two runs taken back to back is what holds.
 TEST(MarkdownParser, HostileInputsParseInLinearTime)
 {
+#if defined(__GLIBC__)
+    // glibc maps the big blocks of a full-size parse from the system and gives them back on every
+    // run (its mmap and trim thresholds adapt only up to 32 MB), so each run pays page faults the
+    // quarter-size runs do not: up to 10 times the time for 2 times the text, with a parser that
+    // is linear. The allocator keeps its memory for this test, which measures the parser.
+    struct KeepHeap {
+        KeepHeap()
+        {
+            mallopt(M_MMAP_THRESHOLD, 512 * 1024 * 1024);
+            mallopt(M_TRIM_THRESHOLD, 1024 * 1024 * 1024);
+        }
+        ~KeepHeap()
+        {
+            // the default values back (128 KB each; set, they no longer adapt)
+            mallopt(M_MMAP_THRESHOLD, 128 * 1024);
+            mallopt(M_TRIM_THRESHOLD, 128 * 1024);
+            malloc_trim(0);
+        }
+    } keepHeap;
+#endif
     constexpr double kMaxScaling = 8.0;
     // Times below this are too short for a ratio to mean anything.
     constexpr double kNoiseFloorMs = 2.0;

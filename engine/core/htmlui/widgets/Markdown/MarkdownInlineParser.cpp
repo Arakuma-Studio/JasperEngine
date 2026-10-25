@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -83,6 +84,37 @@ struct BracketOpener
     bool Active = true;
     // '![': an image's alternative text.
     bool Image = false;
+};
+
+// The nodes and open brackets of a block, in chunks of 1024: a hostile text makes hundreds of
+// thousands, and one array of them past the allocator's mmap threshold (32 MB with glibc, less
+// before it adapts) is mapped and faulted in again on every parse, which made the time grow
+// several times faster than the text.
+template<typename T>
+class ChunkedStack
+{
+public:
+    T& operator[](size_t index) { return m_Chunks[index >> kShift][index & kMask]; }
+    const T& operator[](size_t index) const { return m_Chunks[index >> kShift][index & kMask]; }
+    size_t size() const { return m_Size; }
+    bool empty() const { return m_Size == 0; }
+    T& back() { return (*this)[m_Size - 1]; }
+    void push_back(const T& value)
+    {
+        if ((m_Size >> kShift) == m_Chunks.size())
+            m_Chunks.push_back(std::make_unique<T[]>(kChunk));
+        (*this)[m_Size] = value;
+        ++m_Size;
+    }
+    // (the chunks stay for the next push)
+    void pop_back() { --m_Size; }
+
+private:
+    static constexpr size_t kShift = 10;
+    static constexpr size_t kChunk = size_t(1) << kShift;
+    static constexpr size_t kMask = kChunk - 1;
+    std::vector<std::unique_ptr<T[]>> m_Chunks;
+    size_t m_Size = 0;
 };
 
 // A matched emphasis pair: the nodes strictly between Opener and Closer take the look.
@@ -455,8 +487,8 @@ private:
         // Brackets are pushed active and only ever deactivated all at once, so the active ones
         // are the top of the stack: stopping at the first inactive one deactivates each
         // bracket once in the whole parse, not once per link.
-        for (auto earlier = m_Brackets.rbegin(); earlier != m_Brackets.rend() && earlier->Active; ++earlier)
-            earlier->Active = false;
+        for (size_t earlier = m_Brackets.size(); earlier > 0 && m_Brackets[earlier - 1].Active; --earlier)
+            m_Brackets[earlier - 1].Active = false;
         m_At = tail->End;
     }
 
@@ -756,9 +788,9 @@ private:
     std::string m_Pool;
     // Where the text not yet ended as a node starts in m_Pool.
     size_t m_PendingStart = 0;
-    std::vector<InlineNode> m_Nodes;
+    ChunkedStack<InlineNode> m_Nodes;
     size_t m_LastDelimiter = kNoNode;
-    std::vector<BracketOpener> m_Brackets;
+    ChunkedStack<BracketOpener> m_Brackets;
     std::vector<EmphasisPair> m_Strong;
     std::vector<EmphasisPair> m_Emphasis;
     std::vector<LinkNodes> m_Links;
