@@ -21,6 +21,22 @@ namespace jasperengine::editor::mcp {
 
 namespace {
 
+// An editor that still runs. A killed editor its parent has not reaped yet is a zombie, which
+// kill(pid, 0) still finds: on Linux its /proc state says so (state Z), and it serves nothing
+bool editorAlive(int pid) {
+    if (!io::isProcessRunning(pid)) return false;
+#ifdef __linux__
+    std::ifstream stat("/proc/" + std::to_string(pid) + "/stat");
+    std::string line;
+    if (std::getline(stat, line)) {
+        // "<pid> (<comm>) <state> ...": comm may hold spaces and parentheses, the last ')' ends it
+        const size_t close = line.rfind(')');
+        if (close != std::string::npos && close + 2 < line.size() && line[close + 2] == 'Z') return false;
+    }
+#endif
+    return true;
+}
+
 std::string utcNow() {
     const std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::tm tm{};
@@ -119,7 +135,7 @@ std::vector<InstanceInfo> liveInstances() {
         InstanceInfo info;
         const Json json = Json::parse(text.str(), nullptr, false);
         if (!InstanceInfo::fromJson(json, info)) continue;   // being written, or not ours
-        if (!io::isProcessRunning(info.pid)) {
+        if (!editorAlive(info.pid)) {
             std::error_code removeError;
             fs::remove(path, removeError);
             continue;
