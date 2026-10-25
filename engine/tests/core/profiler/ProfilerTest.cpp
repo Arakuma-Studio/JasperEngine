@@ -350,7 +350,7 @@ TEST(ProfilerBench, ScopePair){
             sink = sink + std::chrono::steady_clock::now().time_since_epoch().count();
         }
     });
-    std::printf("[bench] profiler scope pair %.1f ns recording (the two clock reads %.1f ns), %.2f ns off\n", ns, clockNs, offNs);
+    std::printf("[bench] profiler scope pair %.1f ns recording (two steady_clock reads: %.1f ns), %.2f ns off\n", ns, clockNs, offNs);
     const double slack = testsupport::perfSlack();
     if (slack > 0.0){
         EXPECT_LE(ns, 50.0 * slack);

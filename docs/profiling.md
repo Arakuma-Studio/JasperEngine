@@ -61,8 +61,8 @@ name), `JE_PROFILE_THREAD(name)`, `JE_PROFILE_COUNTER(name, value)` and
 RenderTargets, ShadowMaps, PostFX, Meshes, Uniforms, UI, Particles, Terrain, Editor, Other). Lua
 has the `Profiler` table (`docs/mcp/guide/lua-api.md` 2.14).
 
-A scope costs one relaxed atomic load and a branch while nothing records, and two clock reads
-and two writes into the thread's own ring while it records; job workers name themselves
+A scope costs one relaxed atomic load and a branch while nothing records, and two reads of the
+CPU's counter (rdtsc, cntvct_el0) and two writes into the thread's own ring while it records; job workers name themselves
 ("Job Worker #3") and every job is a scope named by its label.
 
 ## Builds
