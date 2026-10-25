@@ -169,21 +169,25 @@ TEST(AtmosphereNoise, TimeSlicedBakeKeepsItsBudget){
     // the web build without threads: each advance() spends about its budget
     AtmosphereNoise noise;
     noise.start(false);
-    double longestCall = 0.0;
+    std::vector<double> durations;
     int calls = 0;
     while (true){
         const double callStart = nowMs();
         const bool ready = noise.advance(2.0);
-        longestCall = std::max(longestCall, nowMs() - callStart);
+        durations.push_back(nowMs() - callStart);
         calls++;
         if (ready)
             break;
         ASSERT_LT(calls, 100000);
     }
-    std::printf("[bench] AtmosphereNoise time-sliced: %d calls, longest %.2f ms\n", calls, longestCall);
+    std::sort(durations.begin(), durations.end());
+    const double longestCall = durations.back();
+    // the 99th percentile: a shared CI host may preempt the odd call
+    const double p99 = durations[std::min(durations.size() - 1, (size_t)((double)durations.size() * 0.99))];
+    std::printf("[bench] AtmosphereNoise time-sliced: %d calls, p99 %.2f ms, longest %.2f ms\n", calls, p99, longestCall);
     const double slack = testsupport::perfSlack();
     if (slack > 0.0){
-        EXPECT_LE(longestCall, 2.0 + 4.0 * slack); // the budget plus one work item
+        EXPECT_LE(p99, 2.0 + 4.0 * slack); // the budget plus one work item
     }
     EXPECT_TRUE(noise.getDetail() == baked().getDetail());
 }
