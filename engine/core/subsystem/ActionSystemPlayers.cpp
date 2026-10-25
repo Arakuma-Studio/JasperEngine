@@ -586,6 +586,16 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
     const uint64_t revision = scene->hierarchyRevision();
 
+    // duplicate state names play under their " 2" alias (spec 3.2, R40): said once per player
+    // and clip list
+    if (runtime.duplicateStateNames != runtime.warnedDuplicateStateNames){
+        runtime.warnedDuplicateStateNames = runtime.duplicateStateNames;
+        if (!runtime.duplicateStateNames.empty()){
+            Log::warn("Animation Player '%s': duplicate state names: %s (rename the clip entries to use their own names)",
+                      scene->getEntityName(entity).c_str(), runtime.duplicateStateNames.c_str());
+        }
+    }
+
     // models under the root: wait for their loads, rebind after a reload (R10). Collected again
     // whenever the bindings are resolved again (the hierarchy under the root changed)
     if (!runtime.modelsCollected){

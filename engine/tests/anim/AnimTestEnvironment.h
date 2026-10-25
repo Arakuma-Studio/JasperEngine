@@ -9,6 +9,7 @@
 #define ANIM_TEST_ENVIRONMENT_H
 
 #include <string>
+#include <vector>
 
 namespace animtest {
 
@@ -16,6 +17,8 @@ namespace animtest {
     const std::string& assetDir();
     // writes `text` to assetDir()/relativePath (directories created); returns the absolute path
     std::string writeAsset(const std::string& relativePath, const std::string& text);
+    // the warnings logged (Log::warn) since the last call, oldest first; clears them
+    std::vector<std::string> takeWarnings();
 
 }
 

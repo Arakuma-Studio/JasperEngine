@@ -156,6 +156,60 @@ TEST_F(Player, PlaysAutomaticallyAndSamplesTheClip){
     EXPECT_NEAR(x(arm), 1.0f, 1e-5f);
 }
 
+// R40: an authored list with duplicate state names plays the later ones as "<name> 2" and says
+// so once per player (again only when the list changes)
+TEST_F(Player, DuplicateStateNamesWarnOncePerPlayer){
+    AnimationPlayer object = player({{"walk", slide("Arm", 10)}});
+    AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
+    AnimationPlayerClip copy = component.clips[0];
+    component.clips.push_back(copy);
+    component.needsLoad = true;
+    auto duplicateWarnings = [](){
+        size_t count = 0;
+        for (const std::string& warning : animtest::takeWarnings()){
+            if (warning.find("duplicate state names") != std::string::npos){
+                EXPECT_NE(warning.find("Animation Player 'Hero'"), std::string::npos) << warning;
+                EXPECT_NE(warning.find("'walk' (clip 2) plays as 'walk 2'"), std::string::npos) << warning;
+                count++;
+            }
+        }
+        return count;
+    };
+    animtest::takeWarnings();
+    step(0.0);
+    EXPECT_EQ(duplicateWarnings(), 1u);
+    step(0.1, 5);
+    EXPECT_EQ(duplicateWarnings(), 0u) << "once per player";
+    EXPECT_EQ(object.getClipName(1), "walk 2");
+    object.play("walk 2");
+    step(0.5);
+    EXPECT_TRUE(object.isPlaying("walk 2"));
+
+    // an edit of the list that keeps the duplicate: said again for the new list; none left: quiet
+    component.clips.push_back(copy);
+    component.needsLoad = true;
+    step(0.0);
+    EXPECT_EQ(duplicateWarnings(), 1u);
+    component.clips.resize(1);
+    component.needsLoad = true;
+    step(0.0, 3);
+    EXPECT_EQ(duplicateWarnings(), 0u);
+
+    // another player with duplicates says it for itself
+    Entity other = child(root, "Other");
+    AnimationPlayer second(&scene, other);
+    AnimationPlayerComponent& secondComponent = scene.getComponent<AnimationPlayerComponent>(other);
+    secondComponent.clips = {copy, copy};
+    secondComponent.needsLoad = true;
+    step(0.0);
+    std::vector<std::string> warnings = animtest::takeWarnings();
+    size_t forOther = 0;
+    for (const std::string& warning : warnings){
+        if (warning.find("Animation Player 'Other': duplicate state names") != std::string::npos) forOther++;
+    }
+    EXPECT_EQ(forOther, 1u);
+}
+
 TEST_F(Player, DefaultClipAndNoAutoplay){
     AnimationPlayer object = player({{"idle", slide("Arm", 1)}, {"walk", slide("Arm", 10)}}, true);
     object.setDefaultClip("walk");

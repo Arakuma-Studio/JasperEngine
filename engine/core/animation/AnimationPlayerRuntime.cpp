@@ -146,6 +146,14 @@ anim::AnimationPlayerRuntime& anim::playerRuntime(AnimationPlayerComponent& play
         // bindings while the entry names the same clip
         std::vector<std::string> names = playerStateNames(player.clips);
         std::vector<PlayerStateRuntime> states(player.clips.size());
+        runtime.duplicateStateNames.clear();
+        for (size_t i = 0; i < player.clips.size(); i++){
+            const std::string base = defaultStateName(player.clips[i]);
+            if (names[i] != base){
+                if (!runtime.duplicateStateNames.empty()) runtime.duplicateStateNames += ", ";
+                runtime.duplicateStateNames += "'" + base + "' (clip " + std::to_string(i + 1) + ") plays as '" + names[i] + "'";
+            }
+        }
         for (size_t i = 0; i < player.clips.size(); i++){
             PlayerStateRuntime& state = states[i];
             int old = runtime.findState(names[i]);

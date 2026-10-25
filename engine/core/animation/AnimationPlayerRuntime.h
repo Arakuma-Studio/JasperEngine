@@ -167,6 +167,11 @@ namespace jasperengine::anim{
         std::vector<std::string> warnedHandlers;
         // state names a call named that the clip list does not have (warned once each)
         std::vector<std::string> warnedStates;
+        // the clip list's duplicate state names as aliased (spec 3.2, R40: "'Walk' (clip 3) plays
+        // as 'Walk 2'", empty when none) and the last list warned about: one warning per player
+        // and clip list
+        std::string duplicateStateNames;
+        std::string warnedDuplicateStateNames;
         // seconds the player ran (the 4 Hz unresolved-path throttle)
         float clock = 0.0f;
         // EntityRegistry::hierarchyRevision() the models under the root were collected at

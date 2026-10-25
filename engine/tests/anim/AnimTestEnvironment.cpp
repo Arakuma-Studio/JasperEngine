@@ -8,9 +8,13 @@
 #include "Engine.h"
 #include "System.h"
 
+#include <cstdarg>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <random>
+#include <vector>
 
 using namespace jasperengine;
 
@@ -24,11 +28,26 @@ namespace {
         return dir.lexically_normal().generic_string();
     }
 
+    std::mutex warningsMutex;
+    std::vector<std::string> warnings;
+
     class AnimTestSystem : public System {
     public:
         int getScreenWidth() override { return 640; }
         int getScreenHeight() override { return 360; }
         std::string getAssetPath() override { return animtest::assetDir(); }
+        void platformLog(const int type, const char* fmt, va_list args) override {
+            if (type == D_LOG_WARN){
+                va_list copy;
+                va_copy(copy, args);
+                char text[1024];
+                std::vsnprintf(text, sizeof(text), fmt, copy);
+                va_end(copy);
+                std::lock_guard<std::mutex> lock(warningsMutex);
+                warnings.push_back(text);
+            }
+            System::platformLog(type, fmt, args);
+        }
     };
 
     class EngineEnvironment : public ::testing::Environment {
@@ -67,4 +86,11 @@ std::string animtest::writeAsset(const std::string& relativePath, const std::str
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     file << text;
     return path.lexically_normal().generic_string();
+}
+
+std::vector<std::string> animtest::takeWarnings(){
+    std::lock_guard<std::mutex> lock(warningsMutex);
+    std::vector<std::string> out;
+    out.swap(warnings);
+    return out;
 }
