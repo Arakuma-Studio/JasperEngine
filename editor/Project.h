@@ -927,7 +927,9 @@ namespace jasperengine::editor{
         static bool applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform);
         // Runs an asset transform over every scene, prefab and material file,
         // marking what changed.
-        void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
+        // savePrefabAssets false: loaded prefab assets change in memory only (an .anim rename: their
+        // files keep the GUID that finds the clip, spec 9.R8), else they are saved as for any asset
+        void applyAssetPathChange(const std::function<bool(std::string&)>& transform, bool savePrefabAssets = true);
         // Applies a transform to the customShader of every renderable component (Mesh/UI/
         // Points/Lines/Sky) and the scene defaults across all scenes and prefabs, and to the
         // fork shader of every submesh material and extra pass there and in .material files,
@@ -1000,6 +1002,10 @@ namespace jasperengine::editor{
         void setInspectedAsset(const std::filesystem::path& absolutePath);
         void clearInspectedAsset();
         const std::filesystem::path& getInspectedAsset() const;
+        // the inspected asset follows a rename or move of it (or of a folder holding it), and is
+        // cleared when it (or its folder) is deleted; the file commands call these (T2b)
+        void remapInspectedAsset(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        void cleanupInspectedAsset(const std::filesystem::path& deletedPath);
 
         // The C++ scripts the build compiles: every scene's and the build prefabs'
         std::vector<SceneScriptSource> getBuildCppScripts() const { return collectAllSceneCppScripts(); }

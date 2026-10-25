@@ -29,7 +29,8 @@ namespace jasperengine::editor{
 
         // Relocates the cached thumbnail so a rename doesn't force it to regenerate.
         void moveThumbnail(const fs::path& oldThumbnail, const fs::path& renamedFile);
-        void renameFile(const fs::path& source, const fs::path& destination);
+        // false when there was no source to rename
+        bool renameFile(const fs::path& source, const fs::path& destination);
 
     public:
         RenameFileCmd(Project* project, std::string oldName, std::string newName, std::string directory);

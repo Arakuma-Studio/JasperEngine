@@ -86,6 +86,7 @@ bool editor::DeleteFileCmd::execute(){
             project->cleanupShaderFilePath(deletedPath);
             // clip references stay (Missing); documents, the pool and the players learn
             project->cleanupClipFilePath(deletedPath);
+            project->cleanupInspectedAsset(deletedPath);
         }
         if (deletedShaderSource)
             project->invalidateCustomShaders();

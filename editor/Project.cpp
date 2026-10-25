@@ -1337,7 +1337,7 @@ static bool visitSceneSettingsAssetPaths(Scene* scene, const std::function<bool(
     return passesChanged || lutChanged;
 }
 
-void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform) {
+void editor::Project::applyAssetPathChange(const std::function<bool(std::string&)>& transform, bool savePrefabAssets) {
     for (SceneProject* sceneProjectPtr : getScenesAndPrefabStages()) {
         SceneProject& sceneProject = *sceneProjectPtr;
         if (!sceneProject.scene)
@@ -1352,7 +1352,7 @@ void editor::Project::applyAssetPathChange(const std::function<bool(std::string&
     }
 
     for (auto& [prefabPath, prefab] : prefabAssets) {
-        if (!prefab.registry || !visitAssetPathsInRegistry(prefab.registry.get(), transform)) {
+        if (!prefab.registry || !visitAssetPathsInRegistry(prefab.registry.get(), transform) || !savePrefabAssets) {
             continue;
         }
 
@@ -1381,6 +1381,11 @@ void editor::Project::remapAssetFilePath(const std::filesystem::path& oldPath, c
         return;
     }
 
+    // An .anim is found by its GUID (spec 9.R8): a loaded prefab asset using it follows in memory,
+    // its file is not rewritten (it resolves when read). Anything else saves the prefab assets
+    // it changes, as before.
+    std::error_code ec;
+    const bool clipFile = !fs::is_directory(newPath, ec) && Util::isAnimationClipFile(oldPath.string());
     applyAssetPathChange([&](std::string& assetPath) -> bool {
         std::string updated;
         if (!remapRelativeString(oldRelative, newRelative, assetPath, updated)) {
@@ -1388,7 +1393,7 @@ void editor::Project::remapAssetFilePath(const std::filesystem::path& oldPath, c
         }
         assetPath = updated;
         return true;
-    });
+    }, !clipFile);
 }
 
 void editor::Project::cleanupAssetFilePath(const std::filesystem::path& deletedPath) {
@@ -5251,6 +5256,8 @@ void editor::Project::resetConfigs() {
     // pose animation and clip documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
+    // the Inspector's asset was a file of the old project
+    inspectedAsset.clear();
     PoseRigProvider::clear();
     // and the offscreen renderers render_pose_animation keeps of its models
     PoseSheetRenderer::clearShared();
@@ -9130,6 +9137,27 @@ void editor::Project::setInspectedAsset(const std::filesystem::path& absolutePat
 
 void editor::Project::clearInspectedAsset(){
     inspectedAsset.clear();
+}
+
+void editor::Project::remapInspectedAsset(const std::filesystem::path& oldPath, const std::filesystem::path& newPath){
+    if (inspectedAsset.empty()) {
+        return;
+    }
+    const std::filesystem::path relative = inspectedAsset.lexically_normal().lexically_relative(oldPath.lexically_normal());
+    if (relative.empty() || *relative.begin() == "..") {
+        return;
+    }
+    inspectedAsset = relative == "." ? newPath.lexically_normal() : (newPath / relative).lexically_normal();
+}
+
+void editor::Project::cleanupInspectedAsset(const std::filesystem::path& deletedPath){
+    if (inspectedAsset.empty()) {
+        return;
+    }
+    const std::filesystem::path relative = inspectedAsset.lexically_normal().lexically_relative(deletedPath.lexically_normal());
+    if (!relative.empty() && *relative.begin() != "..") {
+        inspectedAsset.clear();
+    }
 }
 
 const std::filesystem::path& editor::Project::getInspectedAsset() const{
