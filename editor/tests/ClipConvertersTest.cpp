@@ -1289,6 +1289,10 @@ TEST_F(ClipConverters_, ConvertLoopingAnimationWithALateFrame) {
         // the first cycle before the late frame shows the scene value there (the warning); the
         // update reaching the cycle's end samples the end before it wraps
         if ((at < 0.4 + 1e-4) || sampled >= cycle - 1e-5f) continue;
+        // a few 1e-8 s before the late frame's start (float noise of the wrapped time): the frame
+        // has not started for the entity Animation, while the clip's stepped key there counts the
+        // time as its own (within the clip time resolution, 1e-6 s): not a comparable instant
+        if (std::fabs(std::fmod(at, (double)cycle) - 0.4) < 1e-5) continue;
         sampleClip(scene, hero, clip, (float)at, session);
         expectSamePose(poseOf(scene, arm), armPose, "Arm at " + std::to_string(at), 1e-3f);
         expectSamePose(poseOf(scene, leg), legPose, "Leg at " + std::to_string(at), 1e-3f);
@@ -1440,10 +1444,20 @@ TEST_F(ClipConverters_, BakeToClipSteppedAndOnALegacyModelSampleLikeTheEntityBak
         }
         std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data);
         anim::ClipPreviewSession session;
+        // between the key times, and exactly at them (the clip's rounded key times and the entity
+        // tracks' own): a stepped key shows its own value at its time in both samplers
+        std::vector<float> times;
         for (int i = 0; i < 120; i++) {
-            // between the key times: exactly at a stepped key the entity sampler shows the key
-            // before, the clip sampler the key itself (a sampler boundary, reported to T1a)
-            const float t = entityBake.length * ((float)i + 0.37f) / 120.0f;
+            times.push_back(entityBake.length * ((float)i + 0.37f) / 120.0f);
+            times.push_back(entityBake.length * (float)i / 120.0f);
+        }
+        for (const ClipTrackData& track : data.tracks) {
+            for (const ClipKey& key : track.keys) times.push_back(key.time);
+        }
+        for (const ActionFrame& frame : scene->getComponent<AnimationComponent>(entityBake.animation).actions) {
+            for (float time : scene->getComponent<KeyframeTracksComponent>(frame.action).times) times.push_back(frame.startTime + time);
+        }
+        for (const float t : times) {
             sampleEntityAnimation(scene, entityBake.animation, t);
             std::vector<Pose> expected;
             for (Entity bone : bones) expected.push_back(poseOf(scene, bone));
@@ -1586,4 +1600,42 @@ TEST_F(ClipConverters_, ValidationHandlerScan) {
     scene->addComponent<ScriptComponent>(hero, scripts);
     const std::vector<std::string> functions = ClipValidation::scriptFunctions(project(), project()->getScene(sceneId), hero);
     EXPECT_EQ(functions, std::vector<std::string>{"onReal"});
+}
+
+// Handlers inherited through a metatable count as found: a base table of the same script
+// (setmetatable(T, {__index = Base}), T = setmetatable({}, Base)) and a base a require returns
+TEST_F(ClipConverters_, ValidationHandlersInheritedThroughAMetatable) {
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    writeAll(project()->resolveLuaPath("scripts/base_actor.lua"),
+             "-- a base class\nlocal BaseActor = {}\nBaseActor.__index = BaseActor\n"
+             "function BaseActor:onFootstep(side)\nend\nfunction BaseActor.onLand()\nend\nreturn BaseActor\n");
+    writeAll(project()->resolveLuaPath("scripts/inherit.lua"),
+             "local Base = require(\"scripts.base_actor\")\nlocal Mid = {}\nMid.__index = Mid\n"
+             "function Mid:onCrouch()\nend\nsetmetatable(Mid, {__index = Base})\n"
+             "local Inherit = setmetatable({}, Mid)\nfunction Inherit:onJump()\nend\n"
+             "local Unrelated = {}\nfunction Unrelated:onOther()\nend\nreturn Inherit\n");
+    ScriptComponent scripts;
+    ScriptEntry entry;
+    entry.type = ScriptType::LUA;
+    entry.path = "scripts/inherit.lua";
+    entry.className = "Inherit";
+    entry.enabled = true;
+    scripts.scripts = {entry};
+    scene->addComponent<ScriptComponent>(hero, scripts);
+    const std::vector<std::string> functions = ClipValidation::scriptFunctions(project(), project()->getScene(sceneId), hero);
+    EXPECT_EQ(functions, (std::vector<std::string>{"onCrouch", "onFootstep", "onJump", "onLand"}));
+
+    ClipData data;
+    ClipEventData footstep;
+    footstep.time = 0.5f;
+    footstep.function = "onFootstep";
+    ClipEventData other = footstep;
+    other.function = "onOther";
+    data.events = {footstep, other};
+    const ClipValidationReport report = ClipValidation::validateInScene(project(), project()->getScene(sceneId), data, hero);
+    ASSERT_EQ(report.events.size(), 2u);
+    EXPECT_EQ(report.events[0].status, EventHandlerStatus::Found);
+    EXPECT_EQ(report.events[1].status, EventHandlerStatus::NotFound);
 }

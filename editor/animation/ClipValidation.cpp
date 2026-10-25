@@ -276,6 +276,182 @@ namespace {
         }
     }
 
+    bool isLuaIdentifierChar(char c){
+        return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+    }
+
+    size_t skipLuaSpace(const std::string& text, size_t i){
+        while (i < text.size() && std::isspace(static_cast<unsigned char>(text[i]))) i++;
+        return i;
+    }
+
+    // the identifier starting at `i` (empty when none)
+    std::string luaIdentifierAt(const std::string& text, size_t i){
+        size_t end = i;
+        while (end < text.size() && isLuaIdentifierChar(text[end])) end++;
+        if (end == i || std::isdigit(static_cast<unsigned char>(text[i]))) return std::string();
+        return text.substr(i, end - i);
+    }
+
+    // `name` in `name = <at>` / `local name = <at>` (single '='), empty when `at` is not assigned
+    std::string luaAssignedTo(const std::string& text, size_t at){
+        size_t back = at;
+        while (back > 0 && std::isspace(static_cast<unsigned char>(text[back - 1]))) back--;
+        if (back == 0 || text[back - 1] != '=') return std::string();
+        back--;
+        if (back > 0 && (text[back - 1] == '=' || text[back - 1] == '~' || text[back - 1] == '<' || text[back - 1] == '>')){
+            return std::string();
+        }
+        while (back > 0 && std::isspace(static_cast<unsigned char>(text[back - 1]))) back--;
+        const size_t end = back;
+        while (back > 0 && isLuaIdentifierChar(text[back - 1])) back--;
+        if (back > 0 && (text[back - 1] == '.' || text[back - 1] == ':')) return std::string();
+        return text.substr(back, end - back);
+    }
+
+    // the index just past the bracket matching the one at `open` ('{' or '(')
+    size_t luaMatchingClose(const std::string& text, size_t open){
+        const char opening = text[open];
+        const char closing = opening == '{' ? '}' : ')';
+        int depth = 0;
+        for (size_t i = open; i < text.size(); i++){
+            if (text[i] == '"' || text[i] == '\''){
+                const char quote = text[i];
+                for (i++; i < text.size() && text[i] != quote; i++){
+                    if (text[i] == '\\') i++;
+                }
+                continue;
+            }
+            if (text[i] == opening) depth++;
+            if (text[i] == closing && --depth == 0) return i + 1;
+        }
+        return text.size();
+    }
+
+    // The tables `owner` (empty: any table) inherits methods from through a metatable:
+    // `setmetatable(owner, {__index = Base})`, `setmetatable(owner, Base)` and
+    // `owner = setmetatable({...}, {__index = Base} | Base)`. `text` has no comments.
+    std::vector<std::string> luaBaseTables(const std::string& text, const std::string& owner){
+        std::vector<std::string> bases;
+        const std::string keyword = "setmetatable";
+        size_t at = 0;
+        while ((at = text.find(keyword, at)) != std::string::npos){
+            const size_t start = at;
+            at += keyword.size();
+            if ((start > 0 && isLuaIdentifierChar(text[start - 1])) || (at < text.size() && isLuaIdentifierChar(text[at]))) continue;
+            size_t i = skipLuaSpace(text, at);
+            if (i >= text.size() || text[i] != '(') continue;
+            i = skipLuaSpace(text, i + 1);
+            // the first argument: the table getting the metatable
+            std::string table;
+            if (i < text.size() && text[i] == '{'){
+                i = luaMatchingClose(text, i);
+                table = luaAssignedTo(text, start);
+            }else{
+                table = luaIdentifierAt(text, i);
+                i += table.size();
+            }
+            if (table.empty() || (!owner.empty() && table != owner)) continue;
+            i = skipLuaSpace(text, i);
+            if (i >= text.size() || text[i] != ',') continue;
+            i = skipLuaSpace(text, i + 1);
+            std::string base;
+            if (i < text.size() && text[i] == '{'){
+                // {__index = Base, ...}
+                const size_t end = luaMatchingClose(text, i);
+                const std::string fields = text.substr(i, end - i);
+                size_t index = fields.find("__index");
+                while (index != std::string::npos && index > 0 && isLuaIdentifierChar(fields[index - 1])){
+                    index = fields.find("__index", index + 1);
+                }
+                if (index != std::string::npos){
+                    size_t j = skipLuaSpace(fields, index + 7);
+                    if (j < fields.size() && fields[j] == '='){
+                        base = luaIdentifierAt(fields, skipLuaSpace(fields, j + 1));
+                    }
+                }
+            }else{
+                base = luaIdentifierAt(text, i);
+            }
+            if (!base.empty() && base != table && std::find(bases.begin(), bases.end(), base) == bases.end()){
+                bases.push_back(base);
+            }
+        }
+        return bases;
+    }
+
+    // the module `name = require("a.b")` (or `require "a.b"`) loads, empty when `name` is not
+    // assigned a require in `text`
+    std::string luaRequiredModule(const std::string& text, const std::string& name){
+        const std::string keyword = "require";
+        size_t at = 0;
+        while ((at = text.find(keyword, at)) != std::string::npos){
+            const size_t start = at;
+            at += keyword.size();
+            if ((start > 0 && isLuaIdentifierChar(text[start - 1])) || (at < text.size() && isLuaIdentifierChar(text[at]))) continue;
+            if (luaAssignedTo(text, start) != name) continue;
+            size_t i = skipLuaSpace(text, at);
+            if (i < text.size() && text[i] == '(') i = skipLuaSpace(text, i + 1);
+            if (i >= text.size() || (text[i] != '"' && text[i] != '\'')) continue;
+            const size_t end = text.find(text[i], i + 1);
+            if (end == std::string::npos) continue;
+            return text.substr(i + 1, end - i - 1);
+        }
+        return std::string();
+    }
+
+    // the table a module script returns (`return Name` as its last statement), empty when none
+    std::string luaReturnedTable(const std::string& text){
+        size_t at = text.rfind("return");
+        while (at != std::string::npos){
+            const bool wordStart = at == 0 || !isLuaIdentifierChar(text[at - 1]);
+            const bool wordEnd = at + 6 >= text.size() || !isLuaIdentifierChar(text[at + 6]);
+            if (wordStart && wordEnd){
+                const size_t i = skipLuaSpace(text, at + 6);
+                const std::string name = luaIdentifierAt(text, i);
+                return skipLuaSpace(text, i + name.size()) >= text.size() ? name : std::string();
+            }
+            if (at == 0) break;
+            at = text.rfind("return", at - 1);
+        }
+        return std::string();
+    }
+
+    bool readText(const std::filesystem::path& file, std::string& out){
+        std::ifstream in(file, std::ios::binary);
+        if (!in) return false;
+        out.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        return true;
+    }
+
+    // The methods a script defines on `owner` and on the tables it inherits from through a
+    // metatable: a base table defined in the same script, or one a `require` of the project's
+    // Lua folder returns (as the engine's module loader finds it: "a.b" is a/b.lua or lua/a/b.lua)
+    void collectLuaMethods(Project* project, const std::filesystem::path& file, const std::string& source, const std::string& owner,
+                           std::set<std::string>& out, std::set<std::string>& visited, int depth){
+        if (depth > 8 || !visited.insert(file.generic_string() + "\n" + owner).second) return;
+        parseLuaFunctions(source, owner, out);
+        const std::string text = stripLuaComments(source);
+        for (const std::string& base : luaBaseTables(text, owner)){
+            const std::string module = luaRequiredModule(text, base);
+            if (module.empty()){
+                collectLuaMethods(project, file, source, base, out, visited, depth + 1);
+                continue;
+            }
+            if (!project) continue;
+            std::string relative = module;
+            std::replace(relative.begin(), relative.end(), '.', '/');
+            relative += ".lua";
+            for (const std::string& candidate : {relative, "lua/" + relative}){
+                const std::filesystem::path path = project->resolveLuaPath(std::filesystem::u8path(candidate));
+                std::string moduleSource;
+                if (!readText(path, moduleSource)) continue;
+                collectLuaMethods(project, path, moduleSource, luaReturnedTable(stripLuaComments(moduleSource)), out, visited, depth + 1);
+                break;
+            }
+        }
+    }
+
     // the paths of `paths` nearest to `path` (descendantPaths of the root, read once per report)
     std::vector<std::string> nearestIn(const std::vector<std::pair<std::string, Entity>>& paths, const std::string& path, size_t max){
         std::vector<std::string> out;
@@ -556,14 +732,17 @@ std::vector<std::string> ClipValidation::scriptFunctions(Project* project, Scene
         if (entry.type != ScriptType::LUA || entry.path.empty() || !entry.enabled) continue;
         std::filesystem::path file = project ? project->resolveLuaPath(std::filesystem::u8path(entry.path))
                                              : std::filesystem::u8path(entry.path);
-        std::ifstream in(file, std::ios::binary);
-        if (!in) continue;
-        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        // methods of the script's own table (named like its class); a script whose table is
-        // named otherwise: methods of any table
+        std::string text;
+        if (!readText(file, text)) continue;
+        // methods of the script's own table (named like its class) and of the tables it inherits
+        // from through a metatable; a script whose table is named otherwise: methods of any table
         std::set<std::string> own;
-        parseLuaFunctions(text, entry.className, own);
-        if (own.empty()) parseLuaFunctions(text, std::string(), own);
+        std::set<std::string> visited;
+        collectLuaMethods(project, file, text, entry.className, own, visited, 0);
+        if (own.empty()){
+            visited.clear();
+            collectLuaMethods(project, file, text, std::string(), own, visited, 0);
+        }
         found.insert(own.begin(), own.end());
     }
     return std::vector<std::string>(found.begin(), found.end());
