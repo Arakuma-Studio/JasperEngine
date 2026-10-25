@@ -513,7 +513,8 @@ one line pointing here.
   clips antialias the curve differently from a stencil mask: with the analytic clip under the
   batching toggle, R7's "max channel difference <= 1 between batching on and off" could not hold
   on any rounded clip. The project settings call these setters (`UIDocumentSystem::
-  setHtmlUiRenderOptions`), the names stay D1's. `JASPER_HTMLUI_S16_OFF=1` turns all three off
+  setHtmlUiRenderOptions`), the names stay D1's. GPU text effects and distance text (R16
+  `geometricPrecision`, R17) are part of the text layer: off with transform-aware text. `JASPER_HTMLUI_S16_OFF=1` turns all three off
   for a whole `jasperengine-htmlui-tests` run (AC1).
 - **No `MSDF_GLYPH` instance mode.** Distance glyphs are `QUAD` instances (or meshes, unbatched)
   whose texture is an MTSDF page: the texture's kind (`HtmlUITexture::Sample`) and its effect

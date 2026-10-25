@@ -42,6 +42,11 @@ namespace {
     std::atomic<bool> transformAwareText{true};
     std::atomic<bool> gpuTextEffects{true};
     std::atomic<bool> synchronousDistanceGlyphs{false};
+
+    // GPU text effects are the text layer of D1: off with transform-aware text, as before S16
+    bool gpuEffects(){
+        return gpuTextEffects && transformAwareText;
+    }
     std::atomic<size_t> baseBudgetMiB{0};
     std::atomic<size_t> distanceBudgetMiB{0};
 
@@ -1105,7 +1110,7 @@ void RmlFontEngine::finishDistanceGlyphsForTesting(){
 
 bool RmlFontEngine::distanceEffectOf(const FaceHandle& handle, const Rml::FontEffect& effect, std::array<float, 3>& parameters) const{
     Rml::FontEffect::DistanceEffect distance;
-    if (!gpuTextEffects || !effect.GetDistanceEffect(distance))
+    if (!gpuEffects() || !effect.GetDistanceEffect(distance))
         return false;
     // within the distance the glyphs hold: 0.3 em (R17)
     const float reach = distance.dilation + 3.0f * distance.sigma;
@@ -1178,13 +1183,13 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     }
 
     // the base text from distance glyphs: asked for (distance_field) or a GPU-blurred shadow
-    const bool shadowBlur = gpu && gpuTextEffects && text_shaping_context.shadow_blur > 0.0f;
-    const bool distanceText = gpu && (text_shaping_context.distance_field || shadowBlur);
+    const bool shadowBlur = gpu && gpuEffects() && text_shaping_context.shadow_blur > 0.0f;
+    const bool distanceText = gpu && ((transformAwareText && text_shaping_context.distance_field) || shadowBlur);
     // each effect's way: from distance glyphs (GPU) when they are all there and within reach
     std::vector<std::array<float, 3>> effectParameters;
     std::vector<bool> effectOnGpu;
     bool distanceReady = true;
-    if (gpu && (distanceText || (effects && gpuTextEffects))){
+    if (gpu && (distanceText || (effects && gpuEffects()))){
         for (const ShapedGlyph& glyph : shaped){
             if (!requestDistanceGlyph(*handle, glyph.face, glyph.glyphIndex).ready)
                 distanceReady = false;
@@ -1420,7 +1425,7 @@ bool RmlFontEngine::PrepareDistanceGlyphs(Rml::FontFaceHandle face_handle, Rml::
 
 bool RmlFontEngine::SupportsGpuTextShadow(Rml::FontFaceHandle face_handle, float blur_radius){
     const FaceHandle* handle = toHandle(face_handle);
-    if (!handle || !gpuTextEffects || !currentManager || !RmlRenderer::forRenderManager(currentManager))
+    if (!handle || !gpuEffects() || !currentManager || !RmlRenderer::forRenderManager(currentManager))
         return false;
     // 3 sigma of the blur (sigma = radius / 2) within the distance range
     return 1.5f * std::max(blur_radius, 0.0f) <= RmlFontMsdf::reachEm * (float)handle->size;
