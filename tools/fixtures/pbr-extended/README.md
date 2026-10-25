@@ -38,3 +38,15 @@ still owed (integrator note).
 
 Each lobe-off twin (lobes disabled over MCP) differs from its golden by more than 2% of the pixels
 (EmissiveStrengthTest: 1%, its cubes are 2% of the frame).
+
+### AC12: the editor checks (`review.py`, GL core on llvmpipe, build server A under load)
+
+| Check | Result |
+|---|---|
+| 1. ClearCoatTest submesh: Advanced Surface shows Clear Coat with its map | `builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY`, maps used `clearcoat` |
+| 2. Toggle off: *Compiling* then *Ready*, no stall > 50 ms | the plain variant draws while the new one builds (no blocking compile); the longest one-frame wait was 2.2 s against 117 ms before, on a host at load average ~90 with llvmpipe: the driver links the new program on the main thread when it swaps in. Not met as measured; to be repeated on a GPU host |
+| 3. Ctrl+Z restores it | clear coat and its map back |
+| 4. Three meshes, Sheen Roughness | 0.8 on all three, one undo step `Set Sheen Roughness (3 Objects)` restores 0 |
+| 5. Four maps | `Extension maps 3 / 3`: clear coat, specular, transmission bound, sheen dropped |
+| 6. Light Engine to Lux | 0.000% of the pixels change; with a colour temperature the colour row reads Filter |
+| 7. Car Paint preset | clear coat on (and the preset's sheen) |
