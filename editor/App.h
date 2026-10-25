@@ -57,6 +57,8 @@ namespace jasperengine::editor::mcp {
 namespace jasperengine::editor{
 
     class JobsMemoryWindow;
+    class ProfilerWindow;
+    class FrameDebuggerWindow;
     class UndoHistoryWindow;
     class PlayModeChangesWindow;
 
@@ -161,6 +163,25 @@ namespace jasperengine::editor{
         std::vector<uint64_t> benchmarkTris;
         std::chrono::steady_clock::time_point benchmarkWaitStart{};
         std::chrono::steady_clock::time_point benchmarkMeasureStart{};
+        // --gpu-passes: the GPU time of every pass of the measured frames (S15); --profile-capture
+        // <path>: a .jetrace.json of them
+        bool benchmarkGpuPasses = false;
+        std::filesystem::path benchmarkCapturePath;
+        uint32_t benchmarkCaptureId = 0;
+        std::vector<double> benchmarkCpuMs;
+        std::vector<double> benchmarkGpuFrameMs;
+        struct BenchmarkPass {
+            std::string label;
+            std::vector<double> frameMs;    // the label's passes summed, per measured frame
+            std::vector<double> counts;
+        };
+        std::vector<BenchmarkPass> benchmarkGpuPassList;
+        uint64_t benchmarkFirstFrame = 0;
+        uint64_t benchmarkLastFrame = 0;
+        uint64_t benchmarkGpuCollected = 0;
+        int benchmarkDrainFrames = 0;
+        std::chrono::steady_clock::time_point continuousFramesUntil{};
+        void collectBenchmarkGpuFrame();
 
         ImGuiID dockspace_id;
         ImGuiID dock_id_middle_top;
@@ -181,6 +202,8 @@ namespace jasperengine::editor{
         MissingAssetsWindow* missingAssetsWindow;
         AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
+        ProfilerWindow* profilerWindow;
+        FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
         PlayModeChangesWindow* playModeChangesWindow;
         PlayInput* playInput;
@@ -385,6 +408,10 @@ namespace jasperengine::editor{
         // One frame, without waking the loop: for animation that runs while idle.
         void requestFrame();
         bool consumeFrameRequest();
+        // Every view redraws every frame for `seconds` from now, or while a profiler capture
+        // runs (the profiler's captures, the Frame Debugger, an agent waiting for GPU times)
+        void requestContinuousFrames(double seconds);
+        bool wantsContinuousFrames() const;
         // Wakes the backend loop from another thread (enqueueMainThreadTask calls it)
         void setWakeCallback(std::function<void()> cb);
 
@@ -419,6 +446,8 @@ namespace jasperengine::editor{
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
+        ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
+        FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
         UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }
         PlayModeChangesWindow* getPlayModeChangesWindow() const { return playModeChangesWindow; }
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it

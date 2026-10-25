@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "SokolCmdQueue.h"
+#include "SokolPassPreview.h"
 #include "SokolPipelineCache.h"
 
 using namespace jasperengine;
@@ -109,6 +110,7 @@ void SokolCmdQueue::execute_commands()
 				break;
 			case SokolRenderCommand::TYPE::END_PASS:
 				sg_end_pass();
+				SokolPassPreview::afterEndPass();
 				break;
 			case SokolRenderCommand::TYPE::CUSTOM:
 				command.custom.custom_cb(command.custom.custom_data);

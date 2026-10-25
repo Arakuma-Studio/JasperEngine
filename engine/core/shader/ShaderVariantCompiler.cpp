@@ -605,6 +605,12 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
     }else if (shaderType == ShaderType::VOLUMETRIC_COMPOSITE){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "volumetric_composite.frag";
+    }else if (shaderType == ShaderType::PASS_PREVIEW){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "pass_preview.frag";
+        if (properties & (1 << 0)) args.defines.push_back({"PREVIEW_ARRAY", "1"});   // 'Arr'
+        if (properties & (1 << 1)) args.defines.push_back({"PREVIEW_CUBE", "1"});    // 'Cub'
+        if (properties & (1 << 2)) args.defines.push_back({"PREVIEW_3D", "1"});      // 'Tx3'
     }else{
         return false;
     }

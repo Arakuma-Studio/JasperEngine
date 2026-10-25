@@ -27,5 +27,6 @@ namespace jasperengine::editor::mcp {
     void registerHtmlUiTools(McpRegistry& registry);
     void registerUiEffectTools(McpRegistry& registry);
     void registerAtmosphereTools(McpRegistry& registry);
+    void registerProfilerTools(McpRegistry& registry);
 
 }

@@ -3,9 +3,11 @@
 
 #include "SystemRender.h"
 
+#include "sokol/SokolPassPreview.h"
 #include "sokol/SokolSystem.h"
 #include "Engine.h"
 #include "Log.h"
+
 
 #include <string>
 
@@ -93,4 +95,89 @@ void SystemRender::addQueueCommand(void (*custom_cb)(void* custom_data), void* c
     }else{
         custom_cb(custom_data);
     }
+}
+void SystemRender::setViewTag(uint32_t tag){
+    SokolSystem::setViewTag(tag);
+}
+
+uint32_t SystemRender::getViewTag(){
+    return SokolSystem::getViewTag();
+}
+
+RenderStats SystemRender::getRenderStats(uint32_t viewTag){
+    RenderStats stats = SokolSystem::getRenderStats(viewTag);
+    if (viewTag == FRAME_STATS_FRAME){
+        const Engine::FrameStats& frame = Engine::getFrameStats();
+        stats.drawCalls = frame.drawCalls;
+        stats.instances = frame.instances;
+        stats.triangles = frame.triangles;
+    }else{
+        const PassList list = SokolSystem::getPassList(viewTag, false);
+        for (const PassRecord& pass : list.passes){
+            stats.drawCalls += pass.draws;
+            stats.instances += pass.instances;
+            stats.triangles += pass.triangles;
+        }
+    }
+    return stats;
+}
+
+PassList SystemRender::getPassList(uint32_t viewTag, bool resolvedOnly){
+    return SokolSystem::getPassList(viewTag, resolvedOnly);
+}
+
+std::vector<uint32_t> SystemRender::getRecordedViewTags(){
+    return SokolSystem::getRecordedViewTags();
+}
+
+void SystemRender::setDrawListEnabled(bool enabled){
+    SokolSystem::setDrawListEnabled(enabled);
+}
+
+void SystemRender::acquireGpuTiming(){
+    SokolSystem::acquireGpuTiming();
+}
+
+void SystemRender::releaseGpuTiming(){
+    SokolSystem::releaseGpuTiming();
+}
+
+void SystemRender::leaseGpuTiming(double seconds){
+    SokolSystem::leaseGpuTiming(seconds);
+}
+
+GpuTimingState SystemRender::getGpuTimingState(){
+    return SokolSystem::getGpuTimingState();
+}
+
+BackendFrameCounters SystemRender::getBackendFrameCounters(){
+    return SokolSystem::getBackendFrameCounters();
+}
+
+const char* SystemRender::getBackendName(){
+    return SokolSystem::getBackendName();
+}
+
+std::string SystemRender::getDeviceName(){
+    return SokolSystem::getDeviceName();
+}
+
+void SystemRender::requestPassPreview(const PassPreviewRequest& request){
+    SokolPassPreview::request(request);
+}
+
+void SystemRender::cancelPassPreview(){
+    SokolPassPreview::cancel();
+}
+
+PassPreviewResult SystemRender::getPassPreview(){
+    return SokolPassPreview::result();
+}
+
+TextureRender* SystemRender::getPassPreviewTexture(){
+    return SokolPassPreview::texture();
+}
+
+void SystemRender::setVulkanHostQueryReset(bool enabled){
+    SokolSystem::setVulkanHostQueryReset(enabled);
 }

@@ -263,6 +263,10 @@ static void printMainUsage(const std::string& commandName) {
         << "  " << commandName << " ui-effects [options]     List the HTML UI effects (--json, --validate, --project <dir>).\n"
         << "  " << commandName << " mcp [options]            Run the editor as an MCP server on stdio.\n"
         << "  " << commandName << " --mcp-port <port>        Open the editor with the MCP server on HTTP.\n\n"
+        << "Profiler (with the editor, mcp or --mcp-port):\n"
+        << "  --profile                  Record from the start (Window > Analysis > Profiler).\n"
+        << "  --profile-capture <path>   Capture frames once the scenes are loaded, write a .jetrace.json.\n"
+        << "  --profile-frames <n>       Frames of that capture (1 to 600). Default: 300.\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 
@@ -304,8 +308,11 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
+        << "      --gpu-passes       Time every GPU pass of the measured frames: \"gpu\" in the JSON, with\n"
+        << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
+        << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"
         << "  -h, --help             Show this help.\n\n"
-        << "--project and --out are absolute or relative to the current directory.\n"
+        << "--project, --out and --profile-capture are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";
 }
 
@@ -2798,6 +2805,55 @@ int CommandLine::runHelpCommand(int argc, char** argv, const char* executableNam
     std::cerr << commandName << ": unknown argument '" << argument << "'\n\n";
     printMainUsage(commandName);
     return 2;
+}
+
+// ---- the profiler's options, for the engine (S15 R38)
+
+namespace {
+    std::vector<std::string>& profilerFlags(){
+        static std::vector<std::string> flags;
+        return flags;
+    }
+}
+
+bool CommandLine::takeProfilerFlags(std::vector<char*>& args){
+    std::vector<std::string>& taken = profilerFlags();
+    for (size_t i = 1; i < args.size();){
+        const std::string arg = args[i];
+        const bool record = arg == "--profile";
+        const bool capture = arg == "--profile-capture" || arg.rfind("--profile-capture=", 0) == 0;
+        const bool frames = arg == "--profile-frames" || arg.rfind("--profile-frames=", 0) == 0;
+        if (!record && !capture && !frames){
+            i++;
+            continue;
+        }
+        size_t used = 1;
+        std::string value;
+        if (!record){
+            const size_t equals = arg.find('=');
+            if (equals != std::string::npos){
+                value = arg.substr(equals + 1);
+            }else if (i + 1 < args.size()){
+                value = args[i + 1];
+                used = 2;
+            }else{
+                std::cerr << arg << " needs a value\n";
+                return false;
+            }
+        }
+        if (record)
+            taken.push_back("--profile");
+        else if (capture)
+            taken.push_back("--profile-capture=" + absoluteArgPath(value).string());
+        else
+            taken.push_back("--profile-frames=" + value);
+        args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i + used));
+    }
+    return true;
+}
+
+const std::vector<std::string>& CommandLine::takenProfilerFlags(){
+    return profilerFlags();
 }
 
 }
