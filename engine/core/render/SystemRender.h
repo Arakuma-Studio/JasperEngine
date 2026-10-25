@@ -49,7 +49,7 @@ namespace jasperengine{
         // the live GPU resources, in the render thread's order (JASPERENGINE_FRAME_STATS=1;
         // nothing otherwise); with a view id, "Frame stats (frame N, view V): ..." for a second view
         // the editor drew and committed in that frame (Engine::drawView)
-        static const uint32_t FRAME_STATS_FRAME = 0xFFFFFFFFu;
+        static constexpr uint32_t FRAME_STATS_FRAME = 0xFFFFFFFFu;
         static void logFrameStats(uint64_t frame, uint32_t view = FRAME_STATS_FRAME);
 
         // ---- diagnostics (spec S15): what the editor and MCP read, never sokol directly
