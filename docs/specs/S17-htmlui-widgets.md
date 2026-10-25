@@ -536,7 +536,7 @@ doc.onReload = function(report) print(report.updated, report.fallbackReason) end
   header) follow the compat rule that scripts do not see engine classes (`classList`, `className`);
   rows also get `selected`, `odd`/`even`, `expanded`, `has-children`, which scripts see.
 - **Indices.** Lua and C++ `UIItemsView` indices are 1-based; MCP (`inspect_ui` `widget`,
-  `ui_widget`) and `data-for`'s `i` are 0-based, as the rest of the MCP tools.
+  `edit_ui_view`) and `data-for`'s `i` are 0-based, as the rest of the MCP tools.
 - **Lua bindings live in `script/binding/HtmlUIWidgetsLua.cpp` (R42),** registered next to
   `HtmlUIClassesLua.cpp` by `LuaBinding`, to keep that file's size in check. `doc.tooltip` is an
   instance property (`UIDocumentTooltip`).
