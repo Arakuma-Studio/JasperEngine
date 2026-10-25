@@ -52,6 +52,11 @@ namespace {
             size_t segment = (size_t)index - 1;
             if (segment < easings.size() && easings[segment] != EaseType::LINEAR){
                 interpolation = Ease::getFunction(easings[segment])(interpolation);
+                // (FX) the one change since: a stepped key shows its own value from 1e-6 s before it
+                if (easings[segment] == EaseType::STEP && nextTime > previousTime && currentTime < nextTime &&
+                        nextTime - currentTime <= 1e-6f + std::fabs(nextTime) * FLT_EPSILON){
+                    interpolation = 1;
+                }
             }
         }
     }
@@ -595,4 +600,52 @@ TEST(KeyframeSampling, NaNTimesAndBinarySearch){
     anim::TrackSample nan;
     ASSERT_TRUE(anim::sampleTrack(t, NAN, nan));
     EXPECT_EQ(nan.vector.x, 0.0f);
+}
+
+// Stepped keys (Unity's rule): at exactly a key's time both samplers show that key's own value,
+// the entity tracks and the clip alike; between keys the value of the key the segment starts at
+TEST(KeyframeSampling, SteppedKeysShowTheirOwnValueAtTheirTime){
+    Scene scene;
+    Entity target = scene.createEntity();
+    scene.addComponent<Transform>(target, Transform());
+
+    std::vector<float> times = {0.0f, 0.5f, 1.0f, 1.5f};
+    std::vector<Vector3> values = {Vector3(1, 0, 0), Vector3(2, 0, 0), Vector3(3, 0, 0), Vector3(4, 0, 0)};
+    TranslateTracks move(&scene, times, values);
+    move.setEasings({EaseType::STEP, EaseType::STEP, EaseType::STEP});
+    move.setTarget(target);
+    move.start();
+
+    ClipTrackData position = track(ClipChannel::Position, {
+        key(0, {1, 0, 0}, EaseType::STEP), key(0.5f, {2, 0, 0}, EaseType::STEP),
+        key(1, {3, 0, 0}, EaseType::STEP), key(1.5f, {4, 0, 0})});
+    ClipData clip;
+    clip.tracks = {position};
+    std::shared_ptr<const AnimationClip> built = AnimationClip::build(clip);
+    ASSERT_EQ(built->getTracks().size(), 1u);
+
+    // 0.125 s updates land exactly on every key time (the first update starts the action at 0)
+    const float expected[] = {1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4};
+    for (int i = 0; i < 13; i++){
+        step(scene, 0.125);
+        const float elapsed = 0.125f * i;
+        anim::TrackSample sample;
+        ASSERT_TRUE(anim::sampleTrack(built->getTracks()[0], elapsed, sample));
+        EXPECT_EQ(sample.vector.x, expected[i]) << "clip at t " << elapsed;
+        EXPECT_EQ(scene.getComponent<Transform>(target).position.x, expected[i]) << "entity track at t " << elapsed;
+        // a cursor coming from either side lands on the same value
+        anim::KeyCursor cursor;
+        cursor.index = (size_t)(i % 4);
+        ASSERT_TRUE(anim::sampleTrack(built->getTracks()[0], elapsed, sample, &cursor));
+        EXPECT_EQ(sample.vector.x, expected[i]) << "clip with a cursor at t " << elapsed;
+    }
+
+    // an .anim key time is the entity key's float rounded to 1e-6 s: at either form of the
+    // time the key shows its own value (1/3 s stored as 0.333333)
+    const EaseType step[] = {EaseType::STEP};
+    const float entityTimes[] = {0.0f, 1.0f / 3.0f};
+    const float clipTimes[] = {0.0f, 0.333333f};
+    EXPECT_EQ(anim::locateKey(entityTimes, 2, step, 1, 0.333333f).interpolation, 1.0f);
+    EXPECT_EQ(anim::locateKey(clipTimes, 2, step, 1, 1.0f / 3.0f).interpolation, 1.0f);
+    EXPECT_EQ(anim::locateKey(entityTimes, 2, step, 1, 0.3333f).interpolation, 0.0f) << "earlier: the start key";
 }

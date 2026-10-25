@@ -101,6 +101,13 @@ anim::KeyLocation anim::locateKey(const float* times, size_t keyCount, const Eas
         size_t segment = index - 1;
         if (easings && segment < easingCount && easings[segment] != EaseType::LINEAR){
             at.interpolation = applyEase(easings[segment], at.interpolation);
+            // a stepped key shows its own value at its time (Unity's rule), also when the time
+            // differs from it by the clip time resolution (1e-6 s: .anim times are rounded to it,
+            // entity tracks keep the unrounded float), so entity tracks and clips agree there
+            if (easings[segment] == EaseType::STEP && nextTime > previousTime && time < nextTime &&
+                    nextTime - time <= 1e-6f + std::fabs(nextTime) * FLT_EPSILON){
+                at.interpolation = 1.0f;
+            }
         }
     }
     return at;

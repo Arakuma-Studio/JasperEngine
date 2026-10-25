@@ -17,6 +17,9 @@
 //     time is >= `time` (the last key past the end), `interpolation` the 0..1 position in the
 //     segment (index - 1 .. index), clamped to 1 and shaped by easings[index - 1] (missing or
 //     LINEAR: linear). At or before the first key index is 0 (the samplers return key 0).
+//   * stepped keys (Unity's rule, both samplers): a STEP segment holds its start key's value
+//     and its end key shows its own value at its time, from 1e-6 s before it (the clip time
+//     resolution: an .anim key time is the entity key's float rounded to 1e-6).
 //   * a cursor is only a hint (a search start): results never depend on it (spec 3.3
 //     determinism); a stale cursor costs time, never correctness. The cursor walk needs
 //     sorted times (every AnimationClip track); without a cursor locateKey scans from key 0
