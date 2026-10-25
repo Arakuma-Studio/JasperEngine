@@ -245,7 +245,8 @@ editor::Project::Project(){
 }
 
 editor::Project::~Project(){
-    // the jobs capture the project
+    // the jobs capture the project (the asset walk its database)
+    waitForAssetScan();
     playStartupTask.wait();
     playStopTask.wait();
     sceneSaveTask.wait();
