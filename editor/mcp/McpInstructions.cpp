@@ -34,8 +34,8 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
   scene. While playing, runtime-state tools resolve to the playing scene.
 - entity: numeric id, a path of names from the scene root ("Player/Gun"; "Enemy#2": the 2nd
-  earlier sibling of that name) or a name unique in the scene; {"id"|"name"|"path"} objects
-  work too. Ambiguous names fail with the matching paths. Prefer ids within a session.
+  earlier sibling of that name) or a name unique in the scene. Ambiguous names fail with the
+  matching paths. Prefer ids.
   `entities` (array) instead of `entity` applies a tool to several GameObjects. parent
   omitted = scene root; max_width 0 = full size.
 - component: lowercase catalog names (transform, mesh, sprite, rigidbody2d, ...); unknown
@@ -44,7 +44,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 - values: vectors [x,y,z] (or {x,y,z}); quaternions [x,y,z,w] or {"euler":[x,y,z]} degrees;
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
-  another scene (cross-scene references); Prefab script properties by .prefab path.
+  another scene; Prefab script properties by .prefab path.
 - assets: project-relative paths ("assets/sprites/ship.png") or GUIDs. A move rewrites no
   referrer; see find_references, list_missing_assets, retarget_asset_references.
 
@@ -52,7 +52,7 @@ Build Settings = export; Scenes in Build = the scene list in project.yaml.
 1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
    touch.
 2. Edit scenes, prefabs and settings with tools, never by hand-editing .scene/.prefab/
-   project.yaml (the editor would overwrite you). Group many edits in one `batch` call
+   project.yaml. Group many edits in one `batch` call
    (undo_group: one undo step, see Undo). Edit code with your own tools (see Code).
 3. Save the scenes you changed.
 4. Play the start scene; a C++ project builds first (seconds to minutes).
@@ -76,14 +76,12 @@ your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and 
 folder (Lua API stubs). Your edits are picked up before your next tool call; that
 call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
 fix those problems first. During play they wait until play stops.
-Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
-(C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine
+Validate without playing: check_script, check_shader, compile_scripts (C++). Through tools: create_script (engine
 template, optional attach), attach_script / detach_script, set_script_properties. write_file /
 read_file / search_files are for clients without file access; sync_files forces a full rescan.
 
 ## Project layout
-project.yaml (name, canvas size, scenes, start scene, script dirs, C++ standard, standalone
-prefabs), *.scene, *.prefab, assets/ (assetsDir), Lua scripts (luaDir), ProjectBuild.cmake.
+project.yaml (settings, scenes, start scene), *.scene, *.prefab, assets/ (assetsDir), Lua scripts (luaDir), ProjectBuild.cmake.
 A .scene belongs to the project only while project.yaml lists it (Scenes in Build): add a
 scene created outside the editor before opening, playing or building it.
 .jasperengine/ and the root CMakeLists.txt are generated on every play/build: never edit them.
@@ -176,11 +174,9 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
-- Atmosphere (jasper://docs/atmosphere): a Fog of type "height" is physically based height fog
-  (volumetric: true adds light shafts and Local Volumetric Fog volumes near the camera);
-  create_entity volumetric_clouds adds clouds. apply_atmosphere_preset sets a look
-  (list_atmosphere_presets); get_atmosphere_info says what ran (tier, passes, resolution).
-  Atmosphere Quality is per platform (project settings quality.atmosphere_quality_*).
+- Atmosphere (jasper://docs/atmosphere): Fog type "height" (volumetric: true for light shafts
+  and Local Volumetric Fog), create_entity volumetric_clouds, apply_atmosphere_preset;
+  get_atmosphere_info says what ran.
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
@@ -235,10 +231,9 @@ post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice).
-Shadows: a light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in shadow
-texels, 1 is right almost always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
-the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).
-Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/shadows).
+Shadows: the light's shadow fields (biases in shadow texels: keep 1), the scene's
+shadows_quality and shadow_distance, staticShadowCaster on meshes that never move; verify with
+get_shadow_stats (jasper://docs/shadows).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
@@ -250,13 +245,10 @@ start scene correct.
 R"JE(
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
-(template: blank, main_menu, hud, inventory, settings, shop...) adds the GameObject and writes
-assets/ui/<name>.html, its .css and Lua. Edit them yourself; fix what external_changes reports.
-inspect_ui (tree, boxes in canvas px = send_input coords, styles, at) and assert_ui (text_fits,
-no_overlap, within_viewport...) check layouts; import_files (fonts, icons, videos, from_document)
-brings remote resources; effect(<name>, ...) draws GPU effects and simulations (list_ui_effects,
-set_ui_effect_time).
-Edit mode runs no Lua. First read jasper://docs/html-ui.
+(templates) writes assets/ui/<name>.html, .css and Lua; edit them yourself. inspect_ui (boxes in
+canvas px = send_input coords) and assert_ui check layouts; import_files brings fonts, icons and
+videos; effect(<name>, ...) draws GPU effects (list_ui_effects). Edit mode runs no Lua. First read
+jasper://docs/html-ui.
 
 ## Pitfalls
 - Edits made while playing are rolled back when play stops (as in Unity), then offered back
