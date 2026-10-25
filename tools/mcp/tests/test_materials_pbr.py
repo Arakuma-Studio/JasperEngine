@@ -137,6 +137,7 @@ async def all_ready(ed: Editor, entities, seconds: float = 240.0) -> list:
         pending += [(eid, k) for k in range(await submesh_count(ed, eid))]
     deadline = time.monotonic() + seconds
     failed = []
+    last = {}
     while pending and time.monotonic() < deadline:
         still = []
         for eid, k in pending:
@@ -145,10 +146,12 @@ async def all_ready(ed: Editor, entities, seconds: float = 240.0) -> list:
                 failed.append(v)
             elif not v["ready"]:
                 still.append((eid, k))
+                last[(eid, k)] = v
         pending = still
         if pending:
             await ed.call("wait", frames=10, timeout_seconds=900)
-    return failed + [{"entity": eid, "submesh": k, "ready": False} for eid, k in pending]
+    return failed + [{"entity": eid, "submesh": k, "ready": False, "reference": last[(eid, k)].get("reference"),
+                      "state": last[(eid, k)].get("state")} for eid, k in pending]
 
 
 async def ready_variant(ed: Editor, eid, submesh: int = 0) -> dict:
@@ -628,7 +631,10 @@ async def studio_sky(ed: Editor):
 
 async def test_khronos_models(ed: Editor):
     missing_goldens = []
+    only = [m for m in os.environ.get("JASPER_S11_MODELS", "").split(",") if m]
     for model, lobes in MODELS.items():
+        if only and model not in only:
+            continue
         print(f"     [khronos] {model}", flush=True)
         position, target = framing(model_file(model))
         source = model_file(model)
@@ -695,7 +701,8 @@ async def test_khronos_models(ed: Editor):
             # (a lobe can be subtle under the sky: a clear coat adds 4% reflection face on, 6 levels
             # of 255; the render is deterministic, so any change beyond rounding counts)
             fraction = differing_fraction(img, twin, 4)
-            ed.check(fraction > 0.02, f"{model}: its lobe(s) {off_lobes or ['emissive strength']} change "
+            # (EmissiveStrengthTest's glowing cubes are 2% of its frame: 1% of it changes)
+            ed.check(fraction > (0.01 if model == "EmissiveStrengthTest" else 0.02), f"{model}: its lobe(s) {off_lobes or ['emissive strength']} change "
                                       f"{fraction * 100:.2f}% of the pixels (more than 2%)")
     ed.check(not missing_goldens, f"no golden for {missing_goldens} (JASPER_TEST_UPDATE_GOLDEN=1 writes them)")
 

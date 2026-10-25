@@ -689,3 +689,10 @@ with other streams:
     file each); `tools/fixtures/pbr-extended-export` is checked in. Its terrain uses an 8-bit
     height map: a generated 16-bit one is `R16`, which GLES3/WebGL2 cannot sample (a terrain
     limitation outside S11).
+15. **No mesh property bit, no cache version bump.** S10 took bit 5 (`Shq`) and S12 claims it too;
+    S11 needs none: the lobes, hex tiling and Lit Quality travel as `builtin:lit#<defines>`
+    custom-shader references (`lit_<codes>` basenames), so no existing shader key or cached
+    program changes (the zero-cost hash list proves the defaults preprocess as before). The
+    collector's environment bits for Lit Quality and the mobile tier are 23 and 24 (S10's
+    `shadowsHQ` is 22). The hash list was regenerated once, from oe-port's shader library after
+    S10 had changed the built-in Lit.
