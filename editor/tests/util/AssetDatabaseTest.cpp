@@ -172,7 +172,7 @@ TEST(AssetDatabaseGuid, InFileIdentityRoundTripsInBothStyles){
     TempDir dir;
     const Guid current = Guid::parse(guidA);
     const std::vector<Guid> former = {Guid::parse(guidB)};
-    for (const std::string text : {std::string("name: A\n"), std::string("{name: A, entities: [{name: child}]}\n"),
+    for (const std::string& text : {std::string("name: A\n"), std::string("{name: A, entities: [{name: child}]}\n"),
                                    "{name: A, guid: " + guidB + ", formerGuids: [" + guidB + "]}\n"}){
         dir.write("x.prefab", text);
         Guid read;
