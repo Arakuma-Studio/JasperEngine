@@ -827,48 +827,43 @@ void registerSynthesisTools(McpRegistry& registry) {
         "companions (normal, roughness...) get the same arrangement. Without output nothing is written: a preview with images and "
         "metrics; the same arguments + the returned seed + output write exactly that (one undo step, PNGs with a recipe). Read "
         "hint. Guide: jasper://docs/texture-synthesis.";
-    // nested objects: the handler refuses unknown keys itself (saves tools/list bytes)
-    auto loose = [](Json o) {
-        o.erase("additionalProperties");
-        return o;
-    };
     const Json pathOrObject = [&] {
         Json j;
         j["anyOf"] = Json::array({Json{{"type", "string"}},
-                                  loose(object({{"path", string("")}, {"sample_mask", string("White may be copied.")},
+                                  object({{"path", string("")}, {"sample_mask", string("White may be copied.")},
                                                 {"guide", string("guided.")}, {"sampleable", boolean("")}},
-                                               {"path"}))});
+                                               {"path"})});
         return j;
     }();
     Json companionItem;
     companionItem["anyOf"] = Json::array({Json{{"type", "string"}},
-                                          loose(object({{"path", string("")}, {"paths", array(Json{{"type", "string"}}, "One per example.")},
-                                                        {"name", string("")}, {"output", string("")}}))});
+                                          object({{"path", string("")}, {"paths", array(Json{{"type", "string"}}, "One per example.")},
+                                                        {"name", string("")}, {"output", string("")}})});
     Json companions;
     companions["description"] = "auto: the maps next to each example (rock_albedo.png -> rock_normal.png...).";
     companions["default"] = "auto";
     companions["anyOf"] = Json::array({stringEnum("", {"auto", "none"}), array(companionItem, "")});
     Json size;
     size["description"] = "Default 1024; guided: the target guide's. Not for make_tileable/inpaint.";
-    size["anyOf"] = Json::array({integer("", 1, 8192), loose(object({{"width", integer("")}, {"height", integer("")}}, {"width", "height"}))});
+    size["anyOf"] = Json::array({integer("", 1, 8192), object({{"width", integer("")}, {"height", integer("")}}, {"width", "height"})});
     tool.inputSchema = object({
         {"mode", withDefault(stringEnum("", {"extend", "tileable", "make_tileable", "inpaint", "guided"}), "tileable")},
         {"examples", array(pathOrObject, "Image paths (albedo).")},
         {"companions", companions},
-        {"mask", loose(object({{"path", string("White = regenerate. Omitted: the example's transparent pixels.")},
+        {"mask", object({{"path", string("White = regenerate. Omitted: the example's transparent pixels.")},
                                {"channel", withDefault(stringEnum("", {"luma", "r", "g", "b", "a"}), "luma")},
-                               {"invert", boolean("")}}))},
+                               {"invert", boolean("")}})},
         {"target_guide", string("guided.")},
         {"size", size},
         {"quality", withDefault(stringEnum("draft ~2x faster, high ~2x slower.", {"draft", "balanced", "high"}), "balanced")},
-        {"params", loose(object({{"nearest_neighbors", integer("", 1, 256)}, {"random_sample_locations", integer("", 1, 1024)},
+        {"params", object({{"nearest_neighbors", integer("", 1, 256)}, {"random_sample_locations", integer("", 1, 1024)},
                            {"cauchy_dispersion", number("Low: hard patch edges.", 0.0001, 1)}, {"backtrack_percent", number("", 0, 0.95)},
-                           {"backtrack_stages", integer("", 0, 10)}, {"guide_alpha", number("", 0, 1)}, {"guide_decay", boolean("")}}))},
+                           {"backtrack_stages", integer("", 0, 10)}, {"guide_alpha", number("", 0, 1)}, {"guide_decay", boolean("")}})},
         {"border", withDefault(number("make_tileable band per edge.", 0.0001, 0.5), 0.125)},
         {"seed", [] {
              Json j;
              j["description"] = "0..2^53, or a decimal string up to 2^64-1. Default random (returned).";
-             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}, {"pattern", "^[0-9]{1,20}$"}}});
+             j["anyOf"] = Json::array({Json{{"type", "integer"}, {"minimum", 0}}, Json{{"type", "string"}}});   // (the handler checks the digits)
              return j;
          }()},
         {"output", string("A .png in the assets dir; omitted = preview only.")},

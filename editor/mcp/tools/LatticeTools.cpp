@@ -1476,7 +1476,7 @@ void registerLatticeTools(McpRegistry& registry) {
         {"fade_distance", number("")},
         {"ops", array(Json{{"type", "object"}, {"properties", {{"op", stringEnum("", {"set", "move", "reset", "preset", "mirror",
                                                                                          "fit", "bind", "unbind", "follow", "pose", "bake"})}}},
-                           {"required", {"op"}}}, "")},
+                           {"required", {"op"}}, {"additionalProperties", true}}, "")},   // each op names its own keys
         {"sample", array(Json{{"type", "array"}}, "")},
         {"detail", stringEnum("", {"summary", "points"})}
     });

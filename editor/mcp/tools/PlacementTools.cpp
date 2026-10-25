@@ -1132,11 +1132,6 @@ void registerPlacementTools(McpRegistry& registry) {
         "distribute them; then they settle. Generated colliders, nothing added to the scene. Preview by default (nothing "
         "changes); the same arguments with apply: true commit exactly the preview (same state_hash, one undo step). Read hint "
         "and warnings. Guide: jasper://docs/physics.";
-    // nested objects: the handler refuses unknown keys itself (saves tools/list bytes)
-    auto loose = [](Json o) {
-        o.erase("additionalProperties");
-        return o;
-    };
     Json context;
     context["description"] = "auto: what is around the movers.";
     context["default"] = "auto";
@@ -1144,15 +1139,15 @@ void registerPlacementTools(McpRegistry& registry) {
     Json screenshot;
     screenshot["description"] = "Scene view image framed on the movers.";
     screenshot["anyOf"] = Json::array({Json{{"type", "boolean"}},
-                                       loose(object({{"max_width", integer("", 0, 4096)}, {"frame", boolean("")}}))});
+                                       object({{"max_width", integer("", 0, 4096)}, {"frame", boolean("")}})});
     tool.inputSchema = object({
         {"scene", sceneRef()},
         {"entities", entities("The movers.")},
         {"use_selection", withDefault(boolean("Instead of entities."), false)},
         {"mode", withDefault(stringEnum("", {"drop", "separate", "move", "snap", "gather", "distribute"}), "drop")},
-        {"target", loose(object({{"position", vec3("Group centre goal.")}, {"delta", vec3("Or an offset.")}, {"rotation", any("[x,y,z,w] or {\"euler\":[x,y,z]}, about the centre.")},
-                                 {"space", withDefault(stringEnum("local: the first mover's parent.", {"world", "local"}), "world")}}))},
-        {"ray", loose(object({{"origin", vec3("")}, {"direction", vec3("")}, {"screen", vec2("Or a Scene view pixel.")}}))},
+        {"target", object({{"position", vec3("Group centre goal.")}, {"delta", vec3("Or an offset.")}, {"rotation", any("[x,y,z,w] or {\"euler\":[x,y,z]}, about the centre.")},
+                                 {"space", withDefault(stringEnum("local: the first mover's parent.", {"world", "local"}), "world")}})},
+        {"ray", object({{"origin", vec3("")}, {"direction", vec3("")}, {"screen", vec2("Or a Scene view pixel.")}})},
         {"axis", stringEnum("distribute.", {"x", "y", "z"})},
         {"amount", withDefault(number("gather: 1 = to the centre.", 0, 1), 1)},
         {"gravity", withDefault(vec3(""), Json::array({0, -9.81, 0}))},
@@ -1163,7 +1158,7 @@ void registerPlacementTools(McpRegistry& registry) {
         {"push_neighbours", withDefault(boolean("Loose objects in the way move too."), false)},
         {"colliders", withDefault(stringEnum("", {"auto", "authored", "generated", "both"}), "auto")},
         {"decompose", withDefault(stringEnum("always: waits for them.", {"never", "cached", "always"}), "cached")},
-        {"jitter", loose(object({{"position", number("m.")}, {"rotation_deg", number("")}}))},
+        {"jitter", object({{"position", number("m.")}, {"rotation_deg", number("")}})},
         {"seed", withDefault(integer("", 0, 4294967295LL), 1)},
         {"max_seconds", withDefault(number("Simulated.", 0.01, 120), 10)},
         {"feel", withDefault(stringEnum("", {"precise", "balanced", "fast"}), "balanced")},
