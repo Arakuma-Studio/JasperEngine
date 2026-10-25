@@ -21,6 +21,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace jasperengine {
@@ -355,6 +356,14 @@ namespace jasperengine {
         float rasterScale = 1.0f;
         bool renderText = true;
         bool warnedOverflow = false;
+        // a glyph that found no room because every page of the budget was drawn in this frame or
+        // the last: not kept, its handle bumped at the next frame (its text made again, when the
+        // least recently used page can go), and that frame asked for
+        bool placeDeferred = false;                         // set by place
+        std::unordered_set<FaceHandle*> deferredHandles;
+        uint64_t deferredFrame = 0;
+        void deferGlyph(const FaceHandle& handle);
+        void retryDeferredGlyphs();
 
         Rml::FontMetrics emptyMetrics = {};
     };

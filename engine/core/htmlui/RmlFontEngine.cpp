@@ -858,6 +858,18 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
         }
     }
 
+    // every page held back by "drawn in this frame or the last": one that was not drawn in this
+    // frame can go in the next, the glyph waits for it
+    placeDeferred = false;
+    if (width + 1 <= pageSize && height + 1 <= pageSize){
+        const uint64_t frame = SystemRender::getFrameCount();
+        for (const std::unique_ptr<Page>& page : list){
+            if (page->bytes() > 0 && page->lastUsed() < frame)
+                placeDeferred = true;
+        }
+        if (placeDeferred)
+            return false;
+    }
     if (!warnedOverflow){
         warnedOverflow = true;
         Log::error("[HTML UI] a glyph of '%s' at %d px does not fit in the font atlas (%u MiB, pages of %dx%d): it is not drawn",
@@ -935,6 +947,11 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getGlyph(const FaceHandle& handl
         entry.page = page;
         entry.x = x;
         entry.y = y;
+    }else if (placeDeferred){
+        glyphs.erase(key);
+        deferGlyph(handle);
+        static const GlyphEntry none;
+        return none;
     }
     // (place may have cleared pages: the entry is looked up again)
     return glyphs[key];
@@ -979,6 +996,11 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getEffectGlyph(const FaceHandle&
         entry.page = page;
         entry.x = x;
         entry.y = y;
+    }else if (placeDeferred){
+        glyphs.erase(key);
+        deferGlyph(handle);
+        static const GlyphEntry none;
+        return none;
     }
     return glyphs[key];
 }
@@ -1451,6 +1473,23 @@ void RmlFontEngine::beginContextFrame(const Rml::RenderManager& renderManager){
     currentManager = &renderManager;
     managerCounters[&renderManager] = FrameCounters();
     collectDistanceGlyphs(false);
+    retryDeferredGlyphs();
+}
+
+void RmlFontEngine::deferGlyph(const FaceHandle& handle){
+    deferredHandles.insert(const_cast<FaceHandle*>(&handle));
+    deferredFrame = SystemRender::getFrameCount();
+    // the next frame makes the text again (RenderManager is not const to the context that owns it)
+    if (currentManager)
+        const_cast<Rml::RenderManager*>(currentManager)->RequestRender();
+}
+
+void RmlFontEngine::retryDeferredGlyphs(){
+    if (deferredHandles.empty() || SystemRender::getFrameCount() <= deferredFrame)
+        return;
+    for (FaceHandle* handle : deferredHandles)
+        bump(handle);
+    deferredHandles.clear();
 }
 
 RmlFontEngine::FrameCounters RmlFontEngine::takeContextFrame(const Rml::RenderManager& renderManager){
@@ -1555,6 +1594,7 @@ void RmlFontEngine::ReleaseFontResources(){
     // the pages hold their users: they go first
     clearGlyphs();
     handles.clear();
+    deferredHandles.clear();
     retiredHandles.clear();
     widths.clear();
     // RmlUi::ReleaseRenderManagers comes through here: a later manager may reuse an address
@@ -1570,6 +1610,7 @@ void RmlFontEngine::retireHandles(){
         retiredHandles.push_back(std::move(entry.second));
     }
     handles.clear();
+    deferredHandles.clear();
     widths.clear();
     bumpEpoch();
 }
