@@ -118,8 +118,17 @@ namespace {
             return false;
         }
 
+        // one spelling per index ("00" would alias "0" under another override name), and no
+        // value that wraps around
+        if (text[pos] == '0' && pos + 1 < text.size() && std::isdigit(static_cast<unsigned char>(text[pos + 1]))) {
+            return false;
+        }
         size_t parsedValue = 0;
+        size_t digits = 0;
         while (pos < text.size() && std::isdigit(static_cast<unsigned char>(text[pos]))) {
+            if (++digits > 9) {
+                return false;
+            }
             parsedValue = parsedValue * 10 + static_cast<size_t>(text[pos] - '0');
             pos++;
         }

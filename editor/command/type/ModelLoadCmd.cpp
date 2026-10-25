@@ -467,9 +467,14 @@ bool editor::ModelLoadCmd::execute(){
 
     const bool sameModelFile = MeshSystem::getModelFilenameKey(model.filename) == MeshSystem::getModelFilenameKey(modelPath);
 
+    // A model on or under an Animation Player loads in the node-hierarchy layout (animation clips
+    // spec 9.R3): one in another layout is rebuilt by this reload, the one step that switches it
+    // (its arrangement is put back by node name below).
+    const bool switchesLayout = sameModelFile && scene->getSystem<MeshSystem>()->needsNodeHierarchyReload(entity);
+
     // Only a reload that would throw away a local arrangement keeps the mesh children and
     // refreshes their geometry in place. Everything else rebuilds, so node changes still apply.
-    reuseHierarchy = sameModelFile && !mergeStaticMeshesChanged
+    reuseHierarchy = sameModelFile && !mergeStaticMeshesChanged && !switchesLayout
         && model.nodesIdMapping.empty() && ProjectUtils::hasCustomMeshParenting(scene, entity);
 
     reusedEntities.clear();

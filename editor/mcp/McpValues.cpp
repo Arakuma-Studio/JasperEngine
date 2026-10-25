@@ -128,6 +128,12 @@ bool isPlayerClipProperty(ComponentType component, const std::string& propertyNa
            endsWith(propertyName, "].clip");
 }
 
+// clips[N].guid: read-only over MCP (derived from the file or the AssetDatabase)
+bool isPlayerGuidProperty(ComponentType component, const std::string& propertyName) {
+    return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 6, "clips[") == 0 &&
+           endsWith(propertyName, "].guid");
+}
+
 // clips[N].wrap: a ClipWrapMode (Catalog: Custom, one byte), set and read by its file name
 bool isPlayerWrapProperty(ComponentType component, const std::string& propertyName) {
     return component == ComponentType::AnimationPlayerComponent && propertyName.compare(0, 6, "clips[") == 0 &&
@@ -1456,9 +1462,11 @@ Json playerClipsToJson(Project* project, const std::vector<AnimationPlayerClip>&
 }
 
 // The clip list an edit through the component's encoding left (clips set, an entry inserted,
-// removed or set, a field of one): every entry whose clip is not one the player holds now is
-// checked and stored as clips[N].clip is (its GUID from the file), the wraps checked; the
-// entries as they were stay untouched (a missing clip stays missing)
+// removed or set, a field of one). An entry naming a clip the player holds now, in its stored or
+// its project-relative (read) form, is that entry: its stored text and GUID stay and it is not
+// checked again (a missing clip stays missing, R8). Any other entry is checked and stored as
+// clips[N].clip is. GUIDs never come from the caller: the held entry's, else the file's. Wraps
+// are checked.
 bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* current, YAML::Node value, std::string& error) {
     const YAML::Node& constValue = value;
     const YAML::Node clips = constValue["clips"];
@@ -1480,15 +1488,16 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
         } else if (item.IsMap()) {
             for (auto it = item.begin(); it != item.end(); ++it) {
                 const std::string key = it->first.as<std::string>();
+                // guid: as get_entity shows it, so a list read back is taken; its value is ignored
                 if (key != "clip" && key != "guid" && key != "name" && key != "wrap") {
-                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap}).";
+                    error = at + ": unknown key \"" + key + "\" (an entry is {clip, name, wrap}; its guid follows the clip).";
                     return false;
                 }
                 if (!it->second.IsScalar() && !it->second.IsNull()) {
                     error = at + "." + key + " must be a string.";
                     return false;
                 }
-                entry[key] = it->second.IsScalar() ? it->second.Scalar() : std::string();
+                if (key != "guid") entry[key] = it->second.IsScalar() ? it->second.Scalar() : std::string();
             }
         } else {
             error = at + " must be {clip, name, wrap} or a clip path" + std::string(CLIP_PATH_EXAMPLE) + ".";
@@ -1499,24 +1508,25 @@ bool normalizePlayerClips(Project* project, const AnimationPlayerComponent* curr
         const AnimationPlayerClip* same = nullptr;
         if (current) {
             for (const AnimationPlayerClip& held : current->clips) {
-                if (held.clip == clip) {
+                if (held.clip == clip || (!held.clip.empty() && clipPathToJson(project, held.clip) == clip)) {
                     same = &held;
                     break;
                 }
             }
         }
+        std::string guid;
         if (same) {
-            if (!same->guid.empty()) entry["guid"] = same->guid;
+            entry["clip"] = same->clip;
+            guid = same->guid;
         } else {
-            std::string stored, guid, why;
+            std::string stored, why;
             if (!clipPathFromJson(project, clip, stored, guid, why)) {
                 error = at + "." + why;
                 return false;
             }
             entry["clip"] = stored;
-            if (guid.empty()) entry.remove("guid");
-            else entry["guid"] = guid;
         }
+        if (!guid.empty()) entry["guid"] = guid;
         if (constEntry["wrap"]) {
             ClipWrapMode wrap = ClipWrapMode::Default;
             const std::string name = constEntry["wrap"].Scalar();
@@ -2162,7 +2172,8 @@ Json McpValues::readYamlProperty(ReadContext& ctx, const std::string& name, bool
 Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const PropertyData& property, bool readDefault) {
     void* ref = readDefault ? property.def : property.ref;
     if (property.type == PropertyType::Custom) {
-        if (readDefault) return nullptr;
+        // an Animation Player entry's wrap has a default ("default"), like an enum
+        if (readDefault) return ref && isPlayerWrapProperty(ctx.component, name) ? Json(anim::wrapName(*static_cast<ClipWrapMode*>(ref))) : Json(nullptr);
         if (ref && name == "shaderUniforms") {
             return shaderUniformsToJson(*static_cast<ShaderUniformValues*>(ref));
         }
@@ -2266,6 +2277,14 @@ Json McpValues::toJson(Project* project, const std::string& propertyName, const 
     ctx.hasComponent = false;
     // without a component the enum name tables are unknown: Enum reads as its int
     ctx.component = ComponentType::PrefabComponent;
+    return readProperty(ctx, propertyName, property);
+}
+
+Json McpValues::toJson(Project* project, ComponentType component, const std::string& propertyName, const PropertyData& property) {
+    ReadContext ctx;
+    ctx.project = project;
+    ctx.hasComponent = false;
+    ctx.component = component;
     return readProperty(ctx, propertyName, property);
 }
 
@@ -2407,8 +2426,14 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 auto* multi = new MultiPropertyCmd();
                 multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, stored, onChanged);
                 multi->addPropertyCmd<std::string>(project, sceneId, entity, component,
-                                                   propertyName.substr(0, propertyName.size() - 5) + ".guid", guid, onChanged);
+                                                   propertyName.substr(0, propertyName.size() - 5) + ".guid", guid);
                 return multi;
+            }
+            if (isPlayerGuidProperty(component, propertyName)) {
+                // a GUID wins over the path when the scene loads: it only ever comes from the file
+                error = propertyName + " is read-only: set " + propertyName.substr(0, propertyName.size() - 5) +
+                        ".clip, its GUID follows the file.";
+                return nullptr;
             }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // a foliage layer's FBX mesh loads from its import, created here the first time
@@ -2446,6 +2471,12 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         }
         case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");
+            // as the scene file reads it back (Stream clamps a negative fade to none)
+            if (component == ComponentType::AnimationPlayerComponent && propertyName == "defaultFadeTime" &&
+                    !(value.get<double>() >= 0.0)) {
+                error = "defaultFadeTime is in seconds and must be 0 or more (0.25 by default).";
+                return nullptr;
+            }
             // a material's Stochastic Tiling values, in their ranges
             const size_t field = propertyName.rfind(".material.");
             if (field != std::string::npos) {

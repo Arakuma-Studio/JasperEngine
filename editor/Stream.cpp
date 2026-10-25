@@ -31,6 +31,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <set>
 #include <stdexcept>
 
@@ -7237,7 +7238,18 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
         const YAML::Node value = node[key];
         return value && !value.IsNull() && !(value.IsScalar() && value.Scalar().empty());
     };
-    player.enabled = given("enabled") ? YamlNumbers::as<bool>(node["enabled"]) : defaults.enabled;
+    // a value of the wrong shape is the default (one bad key never fails the scene's load)
+    auto boolean = [&node, &given](const char* key, bool fallback) {
+        if (!given(key) || !node[key].IsScalar()) return fallback;
+        bool value = fallback;
+        if (YamlNumbers::readPlain(node[key].Scalar(), value)) return value;
+        try {
+            return node[key].as<bool>();
+        } catch (const YAML::Exception&) {
+            return fallback;
+        }
+    };
+    player.enabled = boolean("enabled", defaults.enabled);
 
     std::vector<AnimationPlayerClip> clips;
     const YAML::Node clipsNode = node["clips"];
@@ -7247,7 +7259,7 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
             if (entryNode.IsScalar()) {
                 // a plain path: {clip}
                 entry.clip = entryNode.Scalar();
-            } else if (entryNode.IsMap()) {
+            } else if (entryNode.IsMap() && (!entryNode["clip"] || entryNode["clip"].IsScalar() || entryNode["clip"].IsNull())) {
                 auto text = [&entryNode](const char* key) {
                     const YAML::Node value = entryNode[key];
                     return value && value.IsScalar() ? value.Scalar() : std::string();
@@ -7257,11 +7269,18 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
                 entry.name = text("name");
                 const std::string wrap = text("wrap");
                 if (!wrap.empty() && !anim::wrapFromName(wrap, entry.wrap)) {
-                    Out::warning("Animation Player clip \"%s\": unknown wrap \"%s\" (default, once, loop, ping_pong, clamp_forever), using default",
-                                 entry.clip.c_str(), wrap.c_str());
+                    // once per (clip, wrap): paste, undo, prefab diffs and play startup decode it again
+                    static std::mutex warnedMutex;
+                    static std::set<std::string> warned;
+                    std::lock_guard<std::mutex> lock(warnedMutex);
+                    if (warned.insert(entry.clip + "\n" + wrap).second) {
+                        Out::warning("Animation Player clip \"%s\": unknown wrap \"%s\" (default, once, loop, ping_pong, clamp_forever), using default",
+                                     entry.clip.c_str(), wrap.c_str());
+                    }
                     entry.wrap = ClipWrapMode::Default;
                 }
             } else {
+                // a list, or a map whose clip is not a path
                 continue;
             }
             clips.push_back(std::move(entry));
@@ -7269,8 +7288,8 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     }
     player.clips = std::move(clips);
 
-    player.defaultClip = given("defaultClip") ? node["defaultClip"].as<std::string>() : std::string();
-    player.playAutomatically = given("playAutomatically") ? YamlNumbers::as<bool>(node["playAutomatically"]) : defaults.playAutomatically;
+    player.defaultClip = given("defaultClip") && node["defaultClip"].IsScalar() ? node["defaultClip"].Scalar() : std::string();
+    player.playAutomatically = boolean("playAutomatically", defaults.playAutomatically);
     player.speed = given("speed") ? decodeFinite(node["speed"], defaults.speed) : defaults.speed;
     player.defaultFadeTime = given("defaultFadeTime") ? std::max(0.0f, decodeFinite(node["defaultFadeTime"], defaults.defaultFadeTime)) : defaults.defaultFadeTime;
 

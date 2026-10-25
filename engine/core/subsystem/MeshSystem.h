@@ -231,7 +231,22 @@ namespace jasperengine{
         // Drops a preloaded model and its images from the pools, unless a scene uses them
         static void releasePreloadedModel(const std::string& filename);
         // Drops the cached parse and images of a file that changed on disk, even while in use
+        // (and the file's sub-clips in AnimationClipPool)
         static void invalidateModelFile(const std::string& filename);
+
+        // Loads of a pooled tinygltf::Model take turns under this mutex: loadGLTF appends
+        // synthetic buffers to it, so a reader of the shared model (the sub-clip builder) holds it too
+        static std::recursive_mutex& getPooledGLTFMutex();
+        // Parses a glTF/GLB/FBX (its import) into `model` without decoding images and without
+        // ModelPool, on any thread
+        static bool parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err);
+
+        // Animation clips spec 9.R3: a model on or under an entity with an Animation Player loads in
+        // the node-hierarchy layout (one entity per glTF node: the paths sub-clips address)
+        bool isNodeHierarchyForced(Entity entity) const;
+        // The model is forced into the node-hierarchy layout but loaded in another one: reloading
+        // its file (the editor's ModelLoadCmd) rebuilds it
+        bool needsNodeHierarchyReload(Entity entity) const;
 
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.
