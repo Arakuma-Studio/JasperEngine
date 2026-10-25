@@ -10,6 +10,7 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
+#include "animation/ClipEditorUtil.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/ModelSubClips.h"
 #include "component/AnimationPlayerComponent.h"
@@ -311,7 +312,7 @@ namespace{
     // and tangents' width; a new key splits the segment it falls in and keeps its ease)
     void setKeyAt(ClipTrackData& track, float time, const std::vector<float>& given){
         // a rotation on the side of the key it replaces (or follows): no Hermite flip
-        const std::vector<float> value = anim::alignedRotationKeyValue(track, time, given);
+        const std::vector<float> value = clipui::alignedRotationKeyValue(track, time, given);
         for (ClipKey& key : track.keys){
             if (std::fabs(key.time - time) <= anim::ANIM_TIME_EPSILON){
                 key.value = value;
@@ -1506,7 +1507,7 @@ bool AnimationClipController::setKeyValue(const KeyRef& key, const std::vector<f
     ClipKey& edited = track.keys[key.key];
     // the same rotation on the old value's side: its stored tangents stay valid (no Hermite flip)
     std::vector<float> aligned = value;
-    if (track.channel == ClipChannel::Rotation) anim::alignRotationSign(aligned, edited.value);
+    if (track.channel == ClipChannel::Rotation) anim::alignQuaternionKey(aligned, edited.value);
     edited.value = aligned;
     if (edited.hasTangents() && edited.inTangent.size() != value.size()){
         edited.inTangent.assign(value.size(), 0.0f);
@@ -1652,7 +1653,7 @@ bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vec
         }
         std::vector<float> dragged = entry.value;
         // (on the base value's side: its tangents stay valid, no Hermite flip)
-        if (data.tracks[ref.track].channel == ClipChannel::Rotation) anim::alignRotationSign(dragged, key.value);
+        if (data.tracks[ref.track].channel == ClipChannel::Rotation) anim::alignQuaternionKey(dragged, key.value);
         key.value = dragged;
         if (data.tracks[ref.track].channel == ClipChannel::Rotation){
             float length = 0.0f;

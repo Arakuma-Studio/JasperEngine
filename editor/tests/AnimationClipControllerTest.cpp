@@ -43,6 +43,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "util/EntityClipboard.h"
 #include "window/InspectorWindowClips.h"
+#include "animation/ClipEditorUtil.h"
 
 #include "imgui.h"
 #include "component/ModelComponent.h"
@@ -1860,7 +1861,7 @@ TEST_F(AnimationClipControllerTest, HermiteRotationEditsKeepTheKeySideAndDoNotFl
 
     // the helper the edit paths share
     std::vector<float> flipped = {0, 0.6f, 0, 0.8f};
-    anim::alignRotationSign(flipped, {0, -0.6f, 0, -0.8f});
+    anim::alignQuaternionKey(flipped, {0, -0.6f, 0, -0.8f});
     EXPECT_EQ(flipped, (std::vector<float>{0, -0.6f, 0, -0.8f}));
-    EXPECT_EQ(anim::alignedRotationKeyValue(turn, 1.0f, {0, 0.6f, 0, 0.8f}), (std::vector<float>{0, -0.6f, 0, -0.8f}));
+    EXPECT_EQ(clipui::alignedRotationKeyValue(turn, 1.0f, {0, 0.6f, 0, 0.8f}), (std::vector<float>{0, -0.6f, 0, -0.8f}));
 }

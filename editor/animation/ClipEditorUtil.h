@@ -8,6 +8,7 @@
 #pragma once
 
 #include "animation/AnimationClip.h"
+#include "animation/AnimationClipIO.h"
 #include "ecs/Entity.h"
 #include "registry/EntityRegistry.h"
 
@@ -17,6 +18,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor::clipui{
 
@@ -84,6 +86,24 @@ namespace jasperengine::editor::clipui{
         if (frames) std::snprintf(text, sizeof(text), "frame %ld (%.3f s)", frame, time);
         else std::snprintf(text, sizeof(text), "%.3f s (frame %ld)", time, frame);
         return text;
+    }
+
+    // The value a key written at `time` into `track` gets (Record, K, Add Key, paste): a rotation
+    // on the side of the key it replaces there, else of the key before `time` (the first key when
+    // none is), by anim::alignQuaternionKey, so a Hermite segment never flips. Other channels:
+    // `value` as it is.
+    inline std::vector<float> alignedRotationKeyValue(const ClipTrackData& track, float time, std::vector<float> value){
+        if (track.channel != ClipChannel::Rotation || track.keys.empty()) return value;
+        const ClipKey* reference = &track.keys.front();
+        for (const ClipKey& key : track.keys){
+            if (std::fabs(key.time - time) <= anim::ANIM_TIME_EPSILON){
+                reference = &key;
+                break;
+            }
+            if (key.time < time) reference = &key;
+        }
+        anim::alignQuaternionKey(value, reference->value);
+        return value;
     }
 
     // the bytes of a file; false when it can't be opened

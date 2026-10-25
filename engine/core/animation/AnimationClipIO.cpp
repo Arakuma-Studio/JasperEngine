@@ -574,7 +574,7 @@ namespace{
         // first (its sign is free: no stored tangent depends on it), so its segments don't flip
         if (track.channel == ClipChannel::Rotation){
             for (size_t k = 1; k < track.keys.size(); k++){
-                if (!track.keys[k].hasTangents()) anim::alignRotationSign(track.keys[k].value, track.keys[k - 1].value);
+                if (!track.keys[k].hasTangents()) anim::alignQuaternionKey(track.keys[k].value, track.keys[k - 1].value);
             }
         }
         for (size_t k = 0; k < track.keys.size(); k++){
@@ -1503,24 +1503,6 @@ void anim::normalize(ClipData& data, std::vector<ClipWarning>* warnings){
     normalizeClip(data, warnings, nullptr);
 }
 
-void anim::alignRotationSign(std::vector<float>& value, const std::vector<float>& reference){
-    if (value.size() != 4 || reference.size() != 4) return;
-    if (quaternionDot(value, reference) < 0.0f) negate(value);
-}
-
-std::vector<float> anim::alignedRotationKeyValue(const ClipTrackData& track, float time, std::vector<float> value){
-    if (track.channel != ClipChannel::Rotation || track.keys.empty()) return value;
-    const ClipKey* reference = &track.keys.front();
-    for (const ClipKey& key : track.keys){
-        if (std::fabs(key.time - time) <= ANIM_TIME_EPSILON){
-            reference = &key;
-            break;
-        }
-        if (key.time < time) reference = &key;
-    }
-    alignRotationSign(value, reference->value);
-    return value;
-}
 
 std::string anim::writeClip(const ClipData& input){
     ClipData data = input;
