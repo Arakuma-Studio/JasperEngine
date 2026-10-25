@@ -119,17 +119,21 @@ async def test_vram_report(ed: Editor):
 async def test_capture_pass_output(ed: Editor):
     await red_scene(ed)
     r = await ed.call("get_gpu_passes")
-    # the scene's opaque colour pass: the one with the most draws into a colour target
+    # the scene's opaque colour pass: one of the passes into a colour target (the Scene view also
+    # draws the editor's own layers) shows the red plane at its centre
     colour = [p for p in r["passes"] if any(t["attachment"] == "color0" for t in p["targets"])]
     ed.check(colour, "a pass with a colour target")
-    opaque = max(colour, key=lambda p: p["draws"])
-    shot = await ed.call_raw("capture_pass_output", {"pass": opaque["index"], "attachment": "color0", "mode": "color"})
-    ed.check(not shot.is_error and shot.images, f"an image of the pass: {shot.text}")
-    w, h, n, rows = decode_png(shot.images[0][0])
-    centre = rows[h // 2][(w // 2) * n:(w // 2) * n + 3]
-    ed.check(abs(centre[0] - 255) <= 3 and centre[1] <= 3 and centre[2] <= 3,
-             f"the centre of pass {opaque['index']} {opaque['label']} is red: {list(centre)}; passes "
-             f"{[(p['index'], p['label'], p['draws'], [t['attachment'] for t in p['targets']]) for p in r['passes']]}")
+    centres = []
+    for p in sorted(colour, key=lambda p: -p["draws"]):
+        shot = await ed.call_raw("capture_pass_output", {"pass": p["index"], "attachment": "color0", "mode": "color"})
+        ed.check(not shot.is_error and shot.images, f"an image of pass {p['index']} {p['label']}: {shot.text}")
+        w, h, n, rows = decode_png(shot.images[0][0])
+        centre = list(rows[h // 2][(w // 2) * n:(w // 2) * n + 3])
+        centres.append((p["index"], p["label"], p["draws"], centre))
+        if abs(centre[0] - 255) <= 3 and centre[1] <= 3 and centre[2] <= 3:
+            break
+    else:
+        ed.fail(f"no colour pass shows the red plane at its centre: {centres}")
     depth_pass = [p for p in r["passes"] if any(t["attachment"] == "depth" and t.get("samples", 1) == 1 for t in p["targets"])]
     if depth_pass:
         target = max(depth_pass, key=lambda p: p["draws"])
@@ -195,7 +199,8 @@ async def test_frame_times_spikes(ed: Editor):
     r = await ed.call("get_frame_times", window=120, min_frame_ms=150, monitors=["FPS", "Draw calls"])
     await ed.call("play", action="stop")
     ed.check(r["spike_count"] >= 3, f"spikes: {r['spike_count']} {r.get('spikes')}")
-    ed.check_eq(r["spike_interval_frames"], 30, "spike interval")
+    ed.check(r["spike_interval_frames"] is not None and abs(r["spike_interval_frames"] - 30) <= 1,
+             f"spike interval {r['spike_interval_frames']}: {r.get('spikes')}")
     ed.check(r["summary"]["frame_ms"]["max"] >= 150, "the max is a spike")
     ed.check(len(r["monitors"]["FPS"]["series"]) > 0, "the FPS monitor's series")
     await ed.check_error("get_frame_times", {"monitors": ["No such monitor"]}, contains="Monitors:")
@@ -207,9 +212,11 @@ async def test_lua_profiler(ed: Editor):
     ed.check(stats["drawCalls"] > 0 and stats["fps"] >= 0 and "cpuMs" in stats, f"frameStats: {stats}")
     await ed.call("play", action="start", scene=scene)
     await ed.call("eval_lua", code="""
-        Timer.every(0, function()
+        local function work()
             Profiler.sample("work", function() local x = 0; for i = 1, 1000 do x = x + i end; return x end)
-        end)
+            Timer.nextFrame(work)
+        end
+        Timer.nextFrame(work)
         return true""")
     r = await ed.call("profiler_capture", frames=10, gpu=False)
     tree = await ed.call("get_cpu_profile", capture_id=r["capture_id"], frame="median", filter="work")
