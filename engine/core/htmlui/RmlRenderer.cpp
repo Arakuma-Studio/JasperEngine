@@ -1019,6 +1019,7 @@ void RmlRenderer::SetScissorRegion(Rml::Rectanglei region){
 }
 
 void RmlRenderer::SetTransform(const Rml::Matrix4f* newTransform){
+    transformSet = newTransform != nullptr;
     if (recording){
         // RmlUi's matrix lives only during the call
         Command& command = recordCommand(CommandType::TRANSFORM);
@@ -1470,6 +1471,7 @@ void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector
         HtmlUITexture* texture = toTexture(textureHandle);
         if (texture && (texture->dead || !texture->render || !texture->render->isCreated()))
             return;
+        translation = snapTextTranslation(translation, texture);
         Command& command = recordCommand(CommandType::GEOMETRY);
         command.a = handle;
         command.b = reinterpret_cast<uintptr_t>(texture);
@@ -1477,7 +1479,16 @@ void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector
         command.y = translation.y;
         return;
     }
-    renderGeometryNow(handle, translation, textureHandle);
+    renderGeometryNow(handle, snapTextTranslation(translation, toTexture(textureHandle)), textureHandle);
+}
+
+Rml::Vector2f RmlRenderer::snapTextTranslation(Rml::Vector2f translation, const HtmlUITexture* texture) const{
+    if (!texture || !texture->atlas || texture->sample == HtmlUITexture::Sample::MSDF || transformSet)
+        return translation;
+    const Rml::Vector2f pixel = getPixelScale();
+    if (pixel.x == 1.0f && pixel.y == 1.0f)
+        return translation;
+    return Rml::Vector2f(std::round(translation.x * pixel.x) / pixel.x, std::round(translation.y * pixel.y) / pixel.y);
 }
 
 void RmlRenderer::drawRecordedGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector2f translation, HtmlUITexture* texture){
@@ -2718,6 +2729,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
 
     contextSize = Rml::Vector2i(std::max(size.x, 1), std::max(size.y, 1));
     framed = true;
+    transformSet = false;
     frameNumber = SystemRender::getFrameCount();
     // the effects' per-frame state (phase 5; once per sokol frame) and what their draws read once
     htmlui::EffectRuntime::get().beginFrame();

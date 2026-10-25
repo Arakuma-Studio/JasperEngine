@@ -683,6 +683,10 @@ namespace jasperengine {
         bool batching = false;               // this frame replays batched
         double lastGatherMs = 0.0;
         bool primitivesFrame = false;        // this frame draws SDF primitives and analytic clips (isSdfPrimitives)
+        bool transformSet = false;           // RmlUi's current transform is not the identity (SetTransform)
+        // a glyph atlas draw's translation on whole target pixels: the font engine places glyphs on
+        // whole target pixels of the string's origin (S16 R14, a fractional pixel ratio)
+        Rml::Vector2f snapTextTranslation(Rml::Vector2f translation, const HtmlUITexture* texture) const;
 
         bool recording = false;
         int recordLayers = 0;              // the layer depth at record time (PushLayer's handle)
