@@ -35,6 +35,7 @@
 		53303921959B25A4BD7E23AD /* DebuggerSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D8AB6DCC5FACA688 /* DebuggerSink.cpp */; };
 		533039213FC27C26D02F8CCA /* AppleLogSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392180D5383E44EF7928 /* AppleLogSink.cpp */; };
 		533039216E36144EFCCE2AD1 /* CrashHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216109011E1A94CCC1 /* CrashHook.cpp */; };
+		37AB867D2EF2B8BDB4C61E6B /* CubeLut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1DCFA5673710366CC9200A2 /* CubeLut.cpp */; };
 		533039210FBC5DE5AEDEE493 /* Scheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392157EE817230985136 /* Scheduler.cpp */; };
 		533039217995488BCF6CB6FC /* SubscriptionOwnerIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921A87265200F07B6E2 /* SubscriptionOwnerIndex.cpp */; };
 		53303921EB2FAA931E22F83E /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216521ECDD878DDF6B /* Logger.cpp */; };
@@ -51,6 +52,7 @@
 		53303921C12D3344D0F16B53 /* DebuggerSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D8AB6DCC5FACA688 /* DebuggerSink.cpp */; };
 		53303921AA0C0A3F7CA7A6FB /* AppleLogSink.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392180D5383E44EF7928 /* AppleLogSink.cpp */; };
 		533039218B446530848CC27A /* CrashHook.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216109011E1A94CCC1 /* CrashHook.cpp */; };
+		5091E72022310AE9046C70D5 /* CubeLut.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B1DCFA5673710366CC9200A2 /* CubeLut.cpp */; };
 		53303921DFF847D57C105983 /* Scheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5330392157EE817230985136 /* Scheduler.cpp */; };
 		533039213F18666690EE79DE /* SubscriptionOwnerIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921A87265200F07B6E2 /* SubscriptionOwnerIndex.cpp */; };
 		17145B362FF7FC3B00543CB7 /* Light2DComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 17145B342FF7FC3B00543CB7 /* Light2DComponent.h */; };
@@ -501,6 +503,7 @@
 		713D829A2E76C00100567F9F /* ResourcePack.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3A2E76C0010075B97D /* ResourcePack.cpp */; };
 		713D829B259D307F00567F9F /* BufferRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4125962A0E0075B97D /* BufferRender.cpp */; };
 		713D829C259D307F00567F9F /* CameraRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4225962A0E0075B97D /* CameraRender.cpp */; };
+		D3C70B1DF15F42FA5856A0C2 /* DynamicResolutionController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9295E9B554D58989B45E812F /* DynamicResolutionController.cpp */; };
 		713D829D259D307F00567F9F /* Vector4.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4925962A0E0075B97D /* Vector4.cpp */; };
 		713D829E259D307F00567F9F /* Vector3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4A25962A0E0075B97D /* Vector3.cpp */; };
 		713D829F259D307F00567F9F /* Vector2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4C25962A0E0075B97D /* Vector2.cpp */; };
@@ -614,6 +617,7 @@
 		7162FD2325963AE00075B97D /* TextureRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4025962A0E0075B97D /* TextureRender.cpp */; };
 		7162FD2425963AE00075B97D /* BufferRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4125962A0E0075B97D /* BufferRender.cpp */; };
 		7162FD2525963AE00075B97D /* CameraRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4225962A0E0075B97D /* CameraRender.cpp */; };
+		10C2DB62FBD50ED65C5BF003 /* DynamicResolutionController.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 9295E9B554D58989B45E812F /* DynamicResolutionController.cpp */; };
 		7162FD2A25963AE00075B97D /* Vector4.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4925962A0E0075B97D /* Vector4.cpp */; };
 		7162FD2B25963AE00075B97D /* Vector3.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4A25962A0E0075B97D /* Vector3.cpp */; };
 		7162FD2D25963AE00075B97D /* Vector2.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4C25962A0E0075B97D /* Vector2.cpp */; };
@@ -3650,6 +3654,7 @@
 		5330392180D5383E44EF7928 /* AppleLogSink.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AppleLogSink.cpp; sourceTree = "<group>"; };
 		53303921627928F8915EEBF7 /* CrashHook.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CrashHook.h; sourceTree = "<group>"; };
 		533039216109011E1A94CCC1 /* CrashHook.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CrashHook.cpp; sourceTree = "<group>"; };
+		B1DCFA5673710366CC9200A2 /* CubeLut.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CubeLut.cpp; sourceTree = "<group>"; };
 		5330392125EA1C3EFE77B589 /* Scheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Scheduler.h; sourceTree = "<group>"; };
 		5330392157EE817230985136 /* Scheduler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Scheduler.cpp; sourceTree = "<group>"; };
 		53303921CA259DF6A3BB8199 /* Signal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Signal.h; sourceTree = "<group>"; };
@@ -4307,6 +4312,7 @@
 		7162FC4025962A0E0075B97D /* TextureRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureRender.cpp; sourceTree = "<group>"; };
 		7162FC4125962A0E0075B97D /* BufferRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BufferRender.cpp; sourceTree = "<group>"; };
 		7162FC4225962A0E0075B97D /* CameraRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CameraRender.cpp; sourceTree = "<group>"; };
+		9295E9B554D58989B45E812F /* DynamicResolutionController.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DynamicResolutionController.cpp; sourceTree = "<group>"; };
 		7162FC4325962A0E0075B97D /* Render.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Render.h; sourceTree = "<group>"; };
 		7162FC4525962A0E0075B97D /* MeshComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MeshComponent.h; sourceTree = "<group>"; };
 		7162FC4625962A0E0075B97D /* CameraComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraComponent.h; sourceTree = "<group>"; };
@@ -7861,6 +7867,7 @@
 				71AD5E742EAECC69004951AB /* CrashGuard.h */,
 				53303921627928F8915EEBF7 /* CrashHook.h */,
 				533039216109011E1A94CCC1 /* CrashHook.cpp */,
+				B1DCFA5673710366CC9200A2 /* CubeLut.cpp */,
 				5330392125EA1C3EFE77B589 /* Scheduler.h */,
 				5330392157EE817230985136 /* Scheduler.cpp */,
 				53303921CA259DF6A3BB8199 /* Signal.h */,
@@ -7938,6 +7945,7 @@
 				7162FC3D25962A0E0075B97D /* ObjectRender.h */,
 				7162FC4325962A0E0075B97D /* Render.h */,
 				7162FC4225962A0E0075B97D /* CameraRender.cpp */,
+				9295E9B554D58989B45E812F /* DynamicResolutionController.cpp */,
 				7162FC3A25962A0E0075B97D /* CameraRender.h */,
 				7162FC3925962A0E0075B97D /* ShaderRender.cpp */,
 				7162FC3C25962A0E0075B97D /* ShaderRender.h */,
@@ -13410,6 +13418,7 @@
 				53303921959B25A4BD7E23AD /* DebuggerSink.cpp in Sources */,
 				533039213FC27C26D02F8CCA /* AppleLogSink.cpp in Sources */,
 				533039216E36144EFCCE2AD1 /* CrashHook.cpp in Sources */,
+				37AB867D2EF2B8BDB4C61E6B /* CubeLut.cpp in Sources */,
 				533039210FBC5DE5AEDEE493 /* Scheduler.cpp in Sources */,
 				533039217995488BCF6CB6FC /* SubscriptionOwnerIndex.cpp in Sources */,
 				71ABBD3C279116E1001CE3AF /* UniqueToken.cpp in Sources */,
@@ -13459,6 +13468,7 @@
 				713D82EB259D333100567F9F /* Buffer.cpp in Sources */,
 				71451BD8270CA17F00712643 /* ColorTween.cpp in Sources */,
 				713D829C259D307F00567F9F /* CameraRender.cpp in Sources */,
+				D3C70B1DF15F42FA5856A0C2 /* DynamicResolutionController.cpp in Sources */,
 				71FCE4C028E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				71451BE5270CA17F00712643 /* Action.cpp in Sources */,
 				71165BC0282981BE00CF79C1 /* Base64.cpp in Sources */,
@@ -13825,6 +13835,7 @@
 				53303921C12D3344D0F16B53 /* DebuggerSink.cpp in Sources */,
 				53303921AA0C0A3F7CA7A6FB /* AppleLogSink.cpp in Sources */,
 				533039218B446530848CC27A /* CrashHook.cpp in Sources */,
+				5091E72022310AE9046C70D5 /* CubeLut.cpp in Sources */,
 				53303921DFF847D57C105983 /* Scheduler.cpp in Sources */,
 				533039213F18666690EE79DE /* SubscriptionOwnerIndex.cpp in Sources */,
 				71ABBD3B279116E1001CE3AF /* UniqueToken.cpp in Sources */,
@@ -13882,6 +13893,7 @@
 				7162FD2425963AE00075B97D /* BufferRender.cpp in Sources */,
 				7128D10025C2354A00965B51 /* SystemRender.cpp in Sources */,
 				7162FD2525963AE00075B97D /* CameraRender.cpp in Sources */,
+				10C2DB62FBD50ED65C5BF003 /* DynamicResolutionController.cpp in Sources */,
 				7105A56228B305B20092EA05 /* GameObjectClassesLua.cpp in Sources */,
 				7162FD2A25963AE00075B97D /* Vector4.cpp in Sources */,
 				7162FD2B25963AE00075B97D /* Vector3.cpp in Sources */,

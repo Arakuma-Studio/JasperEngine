@@ -39,6 +39,7 @@
 #include <cctype>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <unordered_set>
@@ -876,7 +877,8 @@ const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEff
     static const std::vector<std::string> fields = {
         "fxaaEnabled", "chromaticAberrationEnabled", "pixelateEnabled", "crtEnabled", "edgeDetectEnabled",
         "filmGrainEnabled", "sharpenEnabled", "bloomEnabled", "blurEnabled",
-        "colorGradingEnabled", "monochromeEnabled", "vignetteEnabled", "ditherEnabled", "renderScale"
+        "colorGradingEnabled", "monochromeEnabled", "vignetteEnabled", "ditherEnabled", "renderScale",
+        "vhsEnabled", "halationEnabled", "filmDamageEnabled", "filmGrainType", "dynamicResolutionEnabled"
     };
     return fields;
 }
@@ -884,7 +886,7 @@ const std::vector<std::string>& editor::ShaderVariantCollector::getScriptableEff
 std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const PostProcessingSettings& settings, bool scriptsSetPostProcessing,
                                                                          const std::vector<std::string>& namedFields){
     std::set<uint32_t> features;
-    auto add = [&features](const PostProcessingSettings& candidate){
+    std::function<void(const PostProcessingSettings&)> add = [&features](const PostProcessingSettings& candidate){
         const PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(candidate);
         if (tiers.uber && tiers.uberFeatures != 0)
             features.insert(tiers.uberFeatures);
@@ -898,10 +900,12 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
     const std::vector<std::string>& candidates = namedFields.empty() ? getScriptableEffectFields() : namedFields;
     for (const std::string& name : candidates){
         const PostProcessingSettings::Field* field = PostProcessingSettings::findField(name);
-        // the bool switches, and the render scale (below 1 runs the uber pass: its upscale)
+        // the bool switches, and the render scale (below 1 runs the uber pass: its upscale); the
+        // grain type is not a switch, every type is added below
         if (field && (field->type == PostProcessingSettings::FieldType::Bool || name == "renderScale"))
             switches.push_back(field);
     }
+    const bool grainTypes = std::find(candidates.begin(), candidates.end(), "filmGrainType") != candidates.end();
     auto flipped = [&](uint32_t mask){
         PostProcessingSettings candidate = settings;
         for (size_t i = 0; i < switches.size(); i++){
@@ -921,8 +925,23 @@ std::set<uint32_t> editor::ShaderVariantCollector::plausibleUberFeatures(const P
         if (candidate.bloomEnabled && candidate.bloomIntensity <= 0.0f) candidate.bloomIntensity = defaults.bloomIntensity;
         if (candidate.chromaticAberrationEnabled && candidate.chromaticAberrationIntensity <= 0.0f)
             candidate.chromaticAberrationIntensity = defaults.chromaticAberrationIntensity;
+        if (candidate.filmGrainEnabled && candidate.filmGrainIntensity <= 0.0f) candidate.filmGrainIntensity = defaults.filmGrainIntensity;
+        if (candidate.vhsEnabled && candidate.vhsIntensity <= 0.0f) candidate.vhsIntensity = defaults.vhsIntensity;
+        if (candidate.halationEnabled && candidate.halationIntensity <= 0.0f) candidate.halationIntensity = defaults.halationIntensity;
         return candidate;
     };
+    // a script setting filmGrainType may pick any type: each candidate with each of them
+    if (grainTypes){
+        auto addAll = add;
+        add = [addAll](const PostProcessingSettings& candidate){
+            for (FilmGrainType type : {FilmGrainType::CLASSIC, FilmGrainType::LENS, FilmGrainType::FILMIC}){
+                PostProcessingSettings typed = candidate;
+                typed.filmGrainType = type;
+                addAll(typed);
+            }
+        };
+        add(settings);
+    }
     if (!namedFields.empty() && switches.size() <= 4){
         // every combination of the few switches the scripts name
         for (uint32_t mask = 1; mask < (1u << switches.size()); mask++)
@@ -994,14 +1013,20 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     // and the ones its scripts plausibly switch to; the bloom and blur chain's programs with them
     bool bloom = false;
     bool blur = false;
+    bool halation = false;
     for (uint32_t features : plausibleUberFeatures(scene->getPostProcessing(), scriptsSetPostProcessing, scriptPostProcessingFields)){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, features));
         bloom = bloom || (features & UBER_BLOOM);
         blur = blur || (features & UBER_BLUR);
+        // halation without bloom runs its own prefilter and down pass (S13)
+        halation = halation || ((features & UBER_HALATION) && !(features & UBER_BLOOM));
     }
     // ShaderType::BLOOM bits: 'Pre' 1, 'Thr' 2, 'Ups' 4, 'Mix' 8 (RenderSystem::loadBloomProgram)
-    if (bloom || blur){
+    if (bloom || blur || halation){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 0));
+    }
+    if (halation){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u | 2u));
     }
     if (bloom){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u | 2u));
