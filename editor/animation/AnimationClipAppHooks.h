@@ -75,6 +75,10 @@ namespace jasperengine::editor{
         // drives the window's clip mode for tests; fills `out` (returned as the result's
         // `viewport_input`), false + `error` on bad input
         std::function<bool(Project* project, const nlohmann::json& hook, nlohmann::json& out, std::string& error)> windowTestHook;
+        // once per editor frame (App::engineRender, `frame` = ImGui::GetFrameCount()): the clip
+        // controller's update(dt, frame), so previews play and deferred stops finish whether
+        // or not the Animation window is open (set by AnimationClipController)
+        std::function<void(Project* project, double dt, int frame)> frame;
     };
 
     // the editor-wide hooks (set once at startup by the tasks that own them)

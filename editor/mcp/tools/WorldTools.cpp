@@ -2658,7 +2658,9 @@ bool parseKeys(Channel channel, const Json& value, std::vector<Key>& keys, std::
         }
         const Json& v = item["value"];
         bool ok = true;
-        if (channel == Channel::Rotation) ok = McpValues::parseQuaternion(v, key.quat);
+        // a key read back from a result carries {euler, quat}: euler (the field agents edit) wins,
+        // the quat is only read when it is alone
+        if (channel == Channel::Rotation) ok = McpValues::parseQuaternion(v.is_object() && v.contains("euler") ? Json{{"euler", v["euler"]}} : v, key.quat);
         else if (channel == Channel::Morph) {
             ok = v.is_array();
             for (const Json& w : v) {
@@ -3342,9 +3344,9 @@ void getAnimationTool(const CallPtr& call) {
                    "Create one with edit_animation {target} (scene) or {clip, create: {}} (a shared clip file).");
         return;
     }
-    std::string text = std::to_string(list.size()) + " animation(s) for \"" + scene->getEntityName(target.entity) + "\"";
+    std::string text = std::to_string(list.size()) + " animation(s) for \"" + scene->getEntityName(target.entity) + "\".";
     for (const Json& player : players) {
-        text += "; Animation Player on \"" + player["entity"].value("name", std::string()) + "\": " + std::to_string(player["states"].size()) + " clip(s)";
+        text += " Animation Player on \"" + player["entity"].value("name", std::string()) + "\": " + std::to_string(player["states"].size()) + " clip(s)";
         for (const Json& state : player["states"]) {
             text += "\n  " + state["name"].get<std::string>() + ": " + state["clip"].get<std::string>() + (state.contains("missing") ? " (missing)" : "");
         }
@@ -3354,7 +3356,7 @@ void getAnimationTool(const CallPtr& call) {
             }
         }
     }
-    call->ok(text + ".", Json{{"entity", entityJson(target, target.entity)}, {"players", players}, {"animations", list}});
+    call->ok(text, Json{{"entity", entityJson(target, target.entity)}, {"players", players}, {"animations", list}});
 }
 
 void previewAnimationTool(const CallPtr& call) {
@@ -4747,7 +4749,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("edit_animation", "Edit Animation",
         "Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the GameObject whose "
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
-        "(bindings); one project undo step. Without clip: an entity Animation (creates one under target), tweens, "
+        "(bindings); a project undo step (from an Animation: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation "
         "(quaternion or euler; > 180 degrees needs middle keys), morph weights or lattice points; the same "
         "path|target+channel replaces or merges; relative: offsets from the pose when it starts. "
@@ -4755,7 +4757,7 @@ void registerWorldTools(McpRegistry& registry) {
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
-            {"create", object({{"from", any("")}})},
+            {"create", object({{"from", any("")}, {"remove_tracks", boolean("")}})},
             {"root", entityRef("")},
             {"animation", entityRef("")},
             {"target", entityRef("Required to create.")},
@@ -4816,7 +4818,7 @@ void registerWorldTools(McpRegistry& registry) {
     add("preview_animation", "Preview Animation",
         "Edit-mode preview (Animation window): play, pause, seek (time), stop (restores the authored "
         "state; always stop when done). animation: an Animation, or a GameObject whose Animation Player plays "
-        "state (default its default clip; returns bound transforms). Selects it; wait_ms lets it play first.",
+        "state (default its default clip; returns bound transforms). Selects it; wait_ms lets it play first (it loops).",
         object({
             {"scene", sceneRef()},
             {"animation", entityRef()},

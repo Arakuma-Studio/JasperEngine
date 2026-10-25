@@ -561,13 +561,21 @@ void McpAutoSync::addUiReport(Json& report, const Json& reloaded, int current) {
 }
 
 Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, std::vector<std::string>& shaderFiles) {
-    std::vector<fs::path> paths;
+    std::vector<fs::path> paths, models;
     std::set<std::string> reportable;
     for (const Change& change : changes) {
-        paths.push_back((root / FileUtils::pathFromUtf8(change.rel)).lexically_normal());
+        const fs::path path = (root / FileUtils::pathFromUtf8(change.rel)).lexically_normal();
+        // a model picked up (not reported): only what is already loaded from it is dropped (its
+        // sub-clips, their documents and players). The full sync would also queue its thumbnail,
+        // which converts an FBX nothing loaded yet.
+        (!change.report && isModelSourceFile(change.rel) ? models : paths).push_back(path);
         if (change.report) reportable.insert(change.rel);
     }
-    Json result = w4::syncFiles(ctx, paths, false);
+    if (!models.empty()) {
+        AnimationClipDocument::filesChanged(models, ctx.project());
+        filesSynced(ctx, models, false);
+    }
+    Json result = paths.empty() ? Json{{"problems", Json::array()}} : w4::syncFiles(ctx, paths, false);
     if (reportable.empty()) return nullptr;
 
     Json changed = Json::array(), added = Json::array(), removed = Json::array();

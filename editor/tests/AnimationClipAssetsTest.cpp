@@ -1134,3 +1134,43 @@ TEST_F(AnimationClipAssets, SubClipUsersByNameAndIndex) {
     EXPECT_EQ(findClipUsers(project(), model + "#" + std::to_string(clips[0].index)).size(), 2u);
     scene.sceneProject->isModified = false;
 }
+
+// ---- review round 2 ----------------------------------------------------------------------
+
+// A database opened read-only (CLI check, headless analysis) gives GUIDs in memory only: no clip,
+// no prefab and no cache is written. In either mode a clip that does not parse is never touched.
+TEST_F(AnimationClipAssets, AReadOnlyDatabaseWritesNoFile) {
+    const fs::path dir = fs::temp_directory_path() / ("jasper-clip-readonly-" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    const std::string clip = anim::writeClip(positionClip());   // no "guid"
+    const std::string broken = "{\n  \"format\": \"jasperengine.anim\",\n  \"version\": 1,\n  oops\n}\n";
+    const std::string prefab = "type: Prefab\nversion: 3\nroot: 1\nmembers: []\n";   // no guid either
+    writeAll(dir / "clips" / "walk.anim", clip);
+    writeAll(dir / "clips" / "broken.anim", broken);
+    writeAll(dir / "Thing.prefab", prefab);
+
+    AssetDatabase readOnly;
+    readOnly.setReadOnly(true);
+    readOnly.open(dir);
+    EXPECT_TRUE(anim::isClipGuid(readOnly.getGuid(dir / "clips" / "walk.anim"))) << "a GUID in memory";
+    EXPECT_FALSE(readOnly.getGuid(dir / "Thing.prefab").empty());
+    writeAll(dir / "clips" / "new.anim", clip);
+    readOnly.refresh();
+    EXPECT_FALSE(readOnly.getGuid(dir / "clips" / "new.anim").empty());
+    EXPECT_EQ(readAll(dir / "clips" / "walk.anim"), clip);
+    EXPECT_EQ(readAll(dir / "clips" / "new.anim"), clip);
+    EXPECT_EQ(readAll(dir / "clips" / "broken.anim"), broken);
+    EXPECT_EQ(readAll(dir / "Thing.prefab"), prefab);
+    EXPECT_FALSE(fs::exists(dir / ".jasperengine" / "assetdb.yaml")) << "no cache written";
+    readOnly.close();
+
+    // a normal database upgrades the good clip, never the broken one (its error keeps its line)
+    AssetDatabase writable;
+    writable.open(dir);
+    EXPECT_EQ(anim::readClipGuid(readAll(dir / "clips" / "walk.anim")), writable.getGuid(dir / "clips" / "walk.anim"));
+    EXPECT_EQ(readAll(dir / "clips" / "broken.anim"), broken);
+    EXPECT_FALSE(AssetDatabase::writeGuid(dir / "clips" / "broken.anim", AssetDatabase::generateGuid()));
+    EXPECT_EQ(readAll(dir / "clips" / "broken.anim"), broken);
+    writable.close();
+    fs::remove_all(dir);
+}
