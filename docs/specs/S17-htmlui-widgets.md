@@ -559,3 +559,12 @@ doc.onReload = function(report) print(report.updated, report.fallbackReason) end
 - **Inline Markdown is an `.html` feature.** The compile captures the raw text between `<markdown>`
   and `</markdown>`; an `.rml` document's RmlUi parser reads that content as RML, so `.rml`
   documents use `src=` or `el:setMarkdown`.
+- **No Chromium references for AC7.** `tools/htmlui/render-reference.mjs` runs on a developer
+  host with the pinned headless shell, never in CI or Docker; Chromium also has no `<markdown>`
+  or `<table-view>`, so a reference would be of the HTML they compile to. The goldens are the
+  engine's (glcore and Vulkan from one set), each test probing the pixels its fixture defines.
+- **AC13's mobile check is not recorded.** No reference phone was available; the gates ran on the
+  benchmark host E (`docs/html-ui/s17-acceptance.md`) and the Android build ran on the emulator
+  (SwiftShader: no frame-time meaning).
+- **`ui_widget` is in an `html_ui` tool group (S31, merged after the spec).** New tools go into a
+  non-core group; `tool_groups {"enable": ["html_ui"]}` lists it, a call by name works either way.
