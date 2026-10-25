@@ -424,6 +424,10 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeFogComponent(const FogComponent& fog);
         static FogComponent decodeFogComponent(const YAML::Node& node, const FogComponent* oldFog = nullptr);
+        static YAML::Node encodeLocalVolumetricFogComponent(const LocalVolumetricFogComponent& volume);
+        static LocalVolumetricFogComponent decodeLocalVolumetricFogComponent(const YAML::Node& node, const LocalVolumetricFogComponent* oldVolume = nullptr);
+        static YAML::Node encodeVolumetricCloudsComponent(const VolumetricCloudsComponent& clouds);
+        static VolumetricCloudsComponent decodeVolumetricCloudsComponent(const YAML::Node& node, const VolumetricCloudsComponent* oldClouds = nullptr);
 
         static YAML::Node encodeMirrorComponent(const MirrorComponent& mirror);
         static MirrorComponent decodeMirrorComponent(const YAML::Node& node, const MirrorComponent* oldMirror = nullptr);

@@ -1094,6 +1094,15 @@ bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
 }
 
+void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality){
+    atmosphereQuality = quality;
+    Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
+}
+
+const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() const{
+    return atmosphereQuality;
+}
+
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
     playerLogging = settings;
 }
@@ -2516,6 +2525,15 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
 
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
+
+    // the atmosphere's passes: the scene's first Fog and Volumetric Clouds (RenderSystem's)
+    {
+        const FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
+        const bool heightFog = fog && fog->type == FogType::HEIGHT;
+        const bool clouds = scene->getComponentArray<VolumetricCloudsComponent>()->size() > 0;
+        for (ShaderType type : AtmosphereRenderer::passShaderTypes(heightFog, heightFog && fog->volumetric, clouds))
+            keys.insert(ShaderPool::getShaderKey(type, 0));
+    }
 
     // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
@@ -4021,6 +4039,7 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    setAtmosphereQuality(defaultAtmosphereQuality);
     playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
@@ -5495,6 +5514,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.setAtmosphereQuality(atmosphereQuality);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
 }
 
@@ -7235,6 +7255,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+        generator.setAtmosphereQuality(atmosphereQuality);
         generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
