@@ -45,7 +45,9 @@
 //   anim::listModelFileClips(model), the clip from anim::buildModelSubClip("<model>#<name>")
 //   with the name of the resolved index. The builders read the pooled tinygltf model under the
 //   pooled-glTF mutex (MeshSystem::getPooledGLTFMutex), never under the pool mutex.
-//   MeshSystem::invalidateModelFile calls invalidateModel (the editor's model reload, R13).
+//   MeshSystem::invalidateModelFile calls invalidateModel (the editor's model reload, R13). For a
+//   changed model file editors call MeshSystem::invalidateModelFile, not invalidate/invalidateModel
+//   alone: the builders prefer the pooled parse, which only invalidateModelFile drops.
 
 #ifndef ANIMATION_CLIP_POOL_H
 #define ANIMATION_CLIP_POOL_H

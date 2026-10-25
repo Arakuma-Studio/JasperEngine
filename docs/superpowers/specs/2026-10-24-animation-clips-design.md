@@ -531,3 +531,9 @@ clip test files, then merge to pose-animation/main.
 - **Minors R35–R54 adopted as proposed**, except R50: Record and the curves view's vertical drag stay in v1 (T3c, last);
   cut from v1: `cullWhenHidden`, "Re-sync from source" (the `source` key is still written), the Inspector Retarget
   button (Retarget lives in the window's row menu). Explicit v1 non-goals per R49.
+- **R1b Ended once states hold (coordinator decision after the T1b review, I4):** when a `once` state reaches its end it
+  fires `onFinish`, stops advancing and firing events, reports `isPlaying(name) == false`, and keeps contributing its
+  last pose at its current weight (a "held" state) until a fade brings that weight to 0 (crossFade/play-with-fade/blend
+  to another state, or `stop`), at which point it is removed and rewound. So `onFinish → crossFade("idle")` blends from
+  the end pose with no dip toward rest, and with nothing else playing the last pose stays (Unity keeps the pose).
+  `play(name)` of a held state restarts it from 0; `stop(name)` releases it immediately (pose kept, nothing written).

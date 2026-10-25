@@ -5,6 +5,7 @@
 
 #include "command/Command.h"
 #include "Project.h"
+#include "animation/PlayerModelLayout.h"
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -29,6 +30,11 @@ namespace jasperengine::editor{
         Entity oldParent;
 
         bool wasModified;
+
+        // A model moved on or under an Animation Player reloads in the node hierarchy (animation
+        // clips spec 9.R3), in this same step
+        PlayerModelLayout::Reloads layoutReloads;
+        bool executed = false;
 
     public:
         MoveEntityOrderCmd(Project* project, uint32_t sceneId, Entity source, Entity target, InsertionType type);
