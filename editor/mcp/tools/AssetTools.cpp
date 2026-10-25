@@ -1523,6 +1523,7 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
 
     // from_document: the URLs it imported, then (rewrite) each replaced in the file by its path relative to the file
     std::string rewriteNote;
+    bool rewritten = false;
     if (!state->document.empty()) {
         const importers::ImportResult& result = state->documentResult;
         addFiles(result);
@@ -1550,8 +1551,13 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
                     if (replaceAll(content, url, to) > 0) replacements.push_back({{"from", url}, {"to", to}});
                 }
                 if (!replacements.empty()) {
-                    if (writeFilesUndoable(ctx, {{file, content}}, error)) {
+                    // the downloads and the manifest reload with the rewrite: the document once
+                    jasperengine::htmlui::compat::ImportManifest::reload();
+                    std::vector<fs::path> downloads = changed;
+                    downloads.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
+                    if (writeFilesUndoable(ctx, {{file, content}}, error, downloads)) {
                         data["rewritten"] = {{"file", state->document}, {"replacements", replacements}};
+                        rewritten = true;
                     } else {
                         rewriteNote = " Rewriting " + state->document + " failed: " + error;
                     }
@@ -1561,9 +1567,11 @@ void finishRemoteImport(const CallPtr& call, const std::shared_ptr<RemoteImport>
     }
     if (written > 0) {
         // the runtime resolves remote URLs through the manifest (a document that keeps them: rewrite false)
-        jasperengine::htmlui::compat::ImportManifest::reload();
-        changed.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
-        syncFiles(ctx, changed, false);
+        if (!rewritten) {
+            jasperengine::htmlui::compat::ImportManifest::reload();
+            changed.push_back(project->getAssetsPath() / FileUtils::pathFromUtf8(jasperengine::htmlui::compat::ImportManifest::kPath));
+            syncFiles(ctx, changed, false);
+        }
         if (ProjectWindow* window = ctx.projectWindow()) window->refreshCurrentDirectory();
     }
     data["remote"] = remote;
