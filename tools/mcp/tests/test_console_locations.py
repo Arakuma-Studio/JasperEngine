@@ -84,7 +84,7 @@ async def test_custom_external_editor_gets_whole_paths(ed: Editor):
     recorder.write_text('#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done > "$(dirname "$0")/args.txt"\n')
     recorder.chmod(recorder.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     template = f'"{recorder}" "{{file}}:{{line}}" {{project}}'
-    status = await ed.call("script_status", external_script_editor="custom", external_script_editor_command=template)
+    status = await ed.call("set_script_settings", external_script_editor="custom", external_script_editor_command=template)
     ed.check_eq(status["settings"]["external_script_editor"], "custom", "the preference is set")
     try:
         target = "scripts/With Space.lua"
@@ -102,4 +102,4 @@ async def test_custom_external_editor_gets_whole_paths(ed: Editor):
                  f"{{file}}:{{line}} is one argument with the absolute path: {args}")
         ed.check_eq(os.path.realpath(args[1]), os.path.realpath(str(ed.project)), "{project} is the project folder")
     finally:
-        await ed.call("script_status", external_script_editor="builtin", external_script_editor_command="")
+        await ed.call("set_script_settings", external_script_editor="builtin", external_script_editor_command="")

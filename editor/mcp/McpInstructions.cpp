@@ -89,8 +89,8 @@ grep and git its scripts, shaders and .material files with your own tools. Engin
 folder (Lua API stubs). Your file edits are reloaded before your next call, whose result
 carries `external_changes` {changed, reloaded, problems: [{path, line, message}]}: fix those
 problems first. During play a saved Lua script reloads in place, keeping its instances
-(external_changes.script_reload; a broken file keeps the old code: kept_old); C++ waits for
-Stop unless script_status reload_cpp_during_play. Open scenes and prefabs are not
+(external_changes.script_reload; a file that fails keeps its old code running); C++ waits for
+Stop unless set_script_settings reload_cpp_during_play. Open scenes and prefabs are not
 reloaded from disk: edit them with the tools.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
 (C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine

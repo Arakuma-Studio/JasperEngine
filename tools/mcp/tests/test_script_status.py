@@ -1,4 +1,4 @@
-"""The script compile status (S23 R17, R40; AC11): script_status (the toolbar badge's model).
+"""The script compile status (S23 R17, R40; AC11): get_script_status (the toolbar badge's model).
 
 A project without C++ scripts is "none"; adding / touching a .cpp makes it "stale"; a rebuild
 goes "building" (fraction a number or null) then "up_to_date"; a bad edit ends "failed" with
@@ -48,7 +48,7 @@ void Spinner::onUpdate() {
 async def status_until(ed: Editor, states: set[str], seconds: float, seen: list[str]) -> dict:
     deadline = time.monotonic() + seconds
     while True:
-        status = await ed.call("script_status")
+        status = await ed.call("get_script_status")
         state = status["cpp"]["state"]
         if not seen or seen[-1] != state:
             seen.append(state)
@@ -63,7 +63,7 @@ async def status_until(ed: Editor, states: set[str], seconds: float, seen: list[
 async def test_cpp_status_states(ed: Editor):
     if not (shutil.which("cmake") and (shutil.which("c++") or shutil.which("g++") or shutil.which("clang++"))):
         skip("no C++ toolchain (cmake + compiler) on PATH")
-    status = await ed.call("script_status")
+    status = await ed.call("get_script_status")
     ed.check_eq(status["cpp"]["state"], "none", f"no C++ scripts: {status['cpp']}")
     ed.check_eq(status["lua"]["state"], "ok", "Lua ok")
     ed.check(status["summary"], "a one-line summary (the badge tooltip)")
@@ -97,7 +97,7 @@ async def test_cpp_status_states(ed: Editor):
     # a bad edit: failed, findings with file and line
     path.write_text(SOURCE.replace("speed += 0.0f;", "speed += notDeclaredAnywhere;"))
     r = await ed.call("reload_scripts", language="cpp", timeout_seconds=1500, timeout=1600)
-    status = await ed.call("script_status")
+    status = await ed.call("get_script_status")
     ed.check_eq(status["cpp"]["state"], "failed", f"a compile error: {status['cpp']}")
     located = [f for f in status["cpp"]["findings"] if f.get("file", "").endswith("Spinner.cpp") and f.get("line") == 10]
     ed.check(located, f"the error carries Spinner.cpp:10: {status['cpp']['findings']}")
@@ -112,31 +112,31 @@ async def test_cpp_status_states(ed: Editor):
     # fixed: up to date again
     path.write_text(SOURCE)
     await ed.call("reload_scripts", language="cpp", timeout_seconds=1500, timeout=1600)
-    status = await ed.call("script_status")
+    status = await ed.call("get_script_status")
     ed.check_eq(status["cpp"]["state"], "up_to_date", f"fixed: {status['cpp']}")
     ed.check_eq(status["cpp"]["findings"], [], "no findings left")
 
 
 async def test_settings_round_trip(ed: Editor):
-    status = await ed.call("script_status", changes_while_playing="after_stop", reload_cpp_during_play=True)
+    status = await ed.call("set_script_settings", changes_while_playing="after_stop", reload_cpp_during_play=True)
     ed.check_eq(status["settings"]["changes_while_playing"], "after_stop", "policy set")
     ed.check_eq(status["settings"]["reload_cpp_during_play"], True, "C++ reload set")
-    status = await ed.call("script_status", changes_while_playing="reload", reload_cpp_during_play=False)
+    status = await ed.call("set_script_settings", changes_while_playing="reload", reload_cpp_during_play=False)
     ed.check_eq(status["settings"]["changes_while_playing"], "reload", "policy back")
     ed.check_eq(status["settings"]["reload_cpp_during_play"], False, "C++ reload back")
-    bad = await ed.call("script_status", expect_error=True, changes_while_playing="sometimes")
+    bad = await ed.call("set_script_settings", expect_error=True, changes_while_playing="sometimes")
     ed.check_in("stop_and_reload", bad, "lists the policies")
 
 
 async def test_scripting_tool_group(ed: Editor):
     """The S23 tools are the "scripting" group (S31): hidden from the default listing, listed once
     enabled, callable by name either way"""
-    names = ("reload_scripts", "script_status", "list_editor_menus", "run_editor_menu", "evaluate_expression",
+    names = ("reload_scripts", "get_script_status", "set_script_settings", "list_editor_menus", "run_editor_menu", "eval_expression",
              "list_graph_kinds", "list_graph_node_types", "get_graph", "validate_graph", "edit_graph")
     default = {t.name for t in await ed.tools(groups=None)}
     for name in names:
         ed.check(name not in default, f"{name} is hidden until scripting is enabled")
-    value = await ed.call("evaluate_expression", expression="2^3^2")
+    value = await ed.call("eval_expression", expression="2^3^2")
     ed.check_eq(value["value"], 512, "a hidden group's tool is still callable")
     await ed.call("tool_groups", enable=["scripting"])
     try:

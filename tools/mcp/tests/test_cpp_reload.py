@@ -116,7 +116,7 @@ async def play(ed: Editor, scene) -> dict:
 async def test_cpp_reload_keeps_state(ed: Editor):
     toolchain()
     s = await setup(ed)
-    await ed.call("script_status", reload_cpp_during_play=True, changes_while_playing="reload")
+    await ed.call("set_script_settings", reload_cpp_during_play=True, changes_while_playing="reload")
     await ed.console_since(None, limit=1)
     r = await play(ed, s["scene"])
     ed.check(not r.is_error, f"play starts: {r.text[:800]}")
@@ -147,7 +147,7 @@ async def test_cpp_reload_keeps_state(ed: Editor):
     r = await ed.call("reload_scripts", language="cpp", timeout_seconds=1200, timeout=1300)
     kept = [x for x in r["kept_old"] if x["language"] == "cpp"]
     ed.check(kept, f"kept the old library: {r}")
-    status = await ed.call("script_status")
+    status = await ed.call("get_script_status")
     ed.check_eq(status["cpp"]["state"], "failed", f"the badge: {status['cpp']}")
     ed.check_eq(status["cpp"]["using_last_good_build"], True, "using the last good build")
     ed.check(any(f.get("file", "").endswith("Mover.cpp") and f.get("line") for f in status["cpp"]["findings"]),
@@ -165,7 +165,7 @@ async def test_cpp_reload_keeps_state(ed: Editor):
     stopped = await ed.call("play", action="stop")
     ed.check_eq(stopped["state"], "stopped", "Stop")
     await ed.check_alive()
-    await ed.call("script_status", reload_cpp_during_play=False)
+    await ed.call("set_script_settings", reload_cpp_during_play=False)
 
 
 async def test_fingerprint_refused(ed: Editor):
@@ -181,8 +181,8 @@ async def test_fingerprint_refused(ed: Editor):
         refused = [m for m in messages if "Refused script library" in m]
         ed2.check(refused and "iteratorDebugLevel" in refused[0], f"the refusal names the field: {refused or messages[-20:]}")
         ed2.check(not any("Mover constructed" in m for m in messages), "no script code ran")
-        status = await ed2.call("script_status")
-        ed2.check_eq(status["fingerprint"]["ok"], False, "script_status reports the refusal")
+        status = await ed2.call("get_script_status")
+        ed2.check_eq(status["fingerprint"]["ok"], False, "get_script_status reports the refusal")
         ed2.check(any(m["field"] == "iteratorDebugLevel" and m["severity"] == "hard" for m in status["fingerprint"]["mismatches"]),
                   f"mismatches: {status['fingerprint']}")
 

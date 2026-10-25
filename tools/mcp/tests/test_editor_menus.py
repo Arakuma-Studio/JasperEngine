@@ -209,7 +209,7 @@ async def test_cpp_menu_item(ed: Editor):
     await ed.call("undo", scope="timeline", scene=s["scene"])
     found = await ed.call("find_entities", scene=s["scene"], name="CppMarker")
     ed.check_eq(len(found["entities"]), 0, "undo removes it")
-    status = await ed.call("script_status")
+    status = await ed.call("get_script_status")
     ed.check(status["editor_cpp"]["state"] in ("up_to_date", "none"), f"the editor scripts row: {status['editor_cpp']}")
     # the game's build does not compile the editor script
     exported = ed.scratch.root / "export-menus-cpp"

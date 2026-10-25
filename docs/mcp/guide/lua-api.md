@@ -1272,7 +1272,7 @@ Rigidbody wrappers by index.
 ## 7. Hot reload and editor scripts
 
 Saving a script while the game plays reloads it in place (Preferences > Scripting > Script
-Changes While Playing, MCP `script_status changes_while_playing`). Every live instance keeps
+Changes While Playing, MCP `set_script_settings changes_while_playing`). Every live instance keeps
 its table and fields. Its functions become the new ones, and events registered by name are
 registered again. `init` does not run again, and anonymous callbacks and timers created by the
 old code are dropped. A file that does not compile or fails at load keeps the old code running

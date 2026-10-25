@@ -1,8 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Scripting & extensibility tools (S23 R44): reload_scripts, script_status, the project's
-// editor menus (list_editor_menus, run_editor_menu) and evaluate_expression.
+// Scripting & extensibility tools (S23 R44): reload_scripts, get_script_status /
+// set_script_settings, the project's editor menus (list_editor_menus, run_editor_menu) and
+// eval_expression.
 
 #include "McpTools.h"
 
@@ -65,7 +66,7 @@ void reloadScriptsTool(const CallPtr& call) {
         if (cpp && !ScriptReloadService::cppReloadEnabled()) {
             if (language == "cpp") {
                 call->fail("C++ reload during Play is off: turn on Preferences > Scripting > Reload C++ Scripts During Play "
-                           "(script_status reload_cpp_during_play: true), or stop Play.");
+                           "(set_script_settings reload_cpp_during_play: true), or stop Play.");
                 return;
             }
             notes.push_back("C++ scripts are not reloaded during Play (Preferences > Scripting > Reload C++ Scripts During Play is off).");
@@ -114,9 +115,22 @@ void reloadScriptsTool(const CallPtr& call) {
     }, timeoutMs, finish);
 }
 
-// ------------------------------------------------------------------ script_status
+// ------------------------------------------------------------------ get_script_status, set_script_settings
 
-void scriptStatusTool(const CallPtr& call) {
+Json scriptSettingsJson() {
+    return {{"changes_while_playing", AppSettings::getScriptChangesWhilePlaying()},
+            {"reload_cpp_during_play", AppSettings::getReloadCppDuringPlay()},
+            {"external_script_editor", AppSettings::getExternalScriptEditor()},
+            {"external_script_editor_command", AppSettings::getExternalScriptEditorCommand()}};
+}
+
+void getScriptStatusTool(const CallPtr& call) {
+    Json status = ScriptStatus::get().toJson();
+    status["settings"] = scriptSettingsJson();
+    call->ok(status["summary"].get<std::string>(), status);
+}
+
+void setScriptSettingsTool(const CallPtr& call) {
     const Json& args = call->args();
     // the Preferences > Scripting settings, when given
     bool changed = false;
@@ -153,12 +167,8 @@ void scriptStatusTool(const CallPtr& call) {
         changed = true;
     }
     if (changed) AppSettings::saveSettings();
-    Json status = ScriptStatus::get().toJson();
-    status["settings"] = {{"changes_while_playing", AppSettings::getScriptChangesWhilePlaying()},
-                          {"reload_cpp_during_play", AppSettings::getReloadCppDuringPlay()},
-                          {"external_script_editor", AppSettings::getExternalScriptEditor()},
-                          {"external_script_editor_command", AppSettings::getExternalScriptEditorCommand()}};
-    call->ok(status["summary"].get<std::string>(), status);
+    const Json settings = scriptSettingsJson();
+    call->ok("Scripting settings: " + settings.dump(), Json{{"settings", settings}});
 }
 
 // ------------------------------------------------------------------ editor menus
@@ -240,9 +250,9 @@ void runEditorMenuTool(const CallPtr& call) {
     });
 }
 
-// ------------------------------------------------------------------ evaluate_expression
+// ------------------------------------------------------------------ eval_expression
 
-void evaluateExpressionTool(const CallPtr& call) {
+void evalExpressionTool(const CallPtr& call) {
     const Json& args = call->args();
     const std::string expression = args.value("expression", std::string());
     NumericContext context;
@@ -294,14 +304,25 @@ void registerScriptingTools(McpRegistry& registry) {
     }
     {
         ToolDef tool;
-        tool.name = "script_status";
-        tool.title = "Script Status";
+        tool.name = "get_script_status";
+        tool.title = "Get Script Status";
         tool.description =
             "The toolbar badge's state: lua (ok, reloading, error), cpp (none, stale, building + fraction, up_to_date, "
-            "failed + using_last_good_build, refused), editor_cpp, findings [{file, line, message}], and the last C++ "
-            "library's toolchain fingerprint {ok, mismatches [{field, editor, library, severity}]}. Also sets Preferences > "
-            "Scripting: changes_while_playing, reload_cpp_during_play (off by default), and the External Script Editor "
-            "(custom: a command with {file} {line} {column} {project}).";
+            "failed + using_last_good_build, refused), editor_cpp, findings [{file, line, message}], the last C++ "
+            "library's toolchain fingerprint {ok, mismatches [{field, editor, library, severity}]}, and settings.";
+        tool.inputSchema = object({});
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getScriptStatusTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "set_script_settings";
+        tool.title = "Set Script Settings";
+        tool.description =
+            "Preferences > Scripting: changes_while_playing, reload_cpp_during_play (off by default); External Tools > "
+            "External Script Editor (custom: a command with {file} {line} {column} {project}). Returns settings.";
         tool.inputSchema = object({
             {"changes_while_playing", stringEnum("Script Changes While Playing.", {"reload", "after_stop", "stop_and_reload"})},
             {"reload_cpp_during_play", boolean("Reload C++ Scripts During Play.")},
@@ -309,7 +330,7 @@ void registerScriptingTools(McpRegistry& registry) {
             {"external_script_editor_command", string("custom's command.")}
         });
         tool.activity = ToolActivity::Control;
-        tool.handler = scriptStatusTool;
+        tool.handler = setScriptSettingsTool;
         registry.addTool(std::move(tool));
     }
     {
@@ -348,8 +369,8 @@ void registerScriptingTools(McpRegistry& registry) {
     }
     {
         ToolDef tool;
-        tool.name = "evaluate_expression";
-        tool.title = "Evaluate Expression";
+        tool.name = "eval_expression";
+        tool.title = "Eval Expression";
         tool.description =
             "What a numeric field makes of typed text: math (2^3^2, sqrt, min, clamp, lerp, pi), units on fields that have "
             "one (25cm, 90deg, 250ms, 12px), +=/-=/*=/= on current, L(a,b)/R(a,b) over object_count. {value} or "
@@ -364,7 +385,7 @@ void registerScriptingTools(McpRegistry& registry) {
             {"seed", withDefault(integer("R()"), 0)}
         }, {"expression"});
         tool.annotations.readOnly = true;
-        tool.handler = evaluateExpressionTool;
+        tool.handler = evalExpressionTool;
         registry.addTool(std::move(tool));
     }
 }

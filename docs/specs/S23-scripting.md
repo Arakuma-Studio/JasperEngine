@@ -679,7 +679,7 @@ Recorded by the S23 implementation.
   next to the item and are not bound, because S25 owns the shortcut map. The Scene view's
   context menu opens on a short right click (no drag), since that view had no context menu.
 - **S31 (agent tooling) has not landed.** The new tools are registered with the existing
-  registry and budget (`tools/mcp/tool_budget.py`). `script_status` also sets the Preferences
+  registry and budget (`tools/mcp/tool_budget.py`). `set_script_settings` sets the Preferences
   > Scripting values and the External Script Editor (with its custom command). Tests and agents
   need that without a Preferences tool.
 - **AC12 tool.** `Editor.call("set_transform")` replaces `set_component_property`, which does

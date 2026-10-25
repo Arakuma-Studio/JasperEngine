@@ -3,7 +3,7 @@
 A Counter script adds 1 per frame. Saved while the game plays, its new code (adds 10, has
 onReload) runs in the same instance: the count is kept, onReload runs once, init does not run
 again. A syntax error keeps the old code running (reload_scripts kept_old with the line,
-script_status lua error); fixing it reloads. With Reload After Stopping Play the change waits
+get_script_status lua error); fixing it reloads. With Reload After Stopping Play the change waits
 (external_changes.deferred). A change written by another program reaches the game through the
 file watcher within the budget (save to new code <= 300 ms, from the [Script Reload] line).
 """
@@ -87,7 +87,7 @@ async def rising_by(ed: Editor) -> int:
 
 async def start(ed: Editor, policy: str = "reload"):
     s = await setup(ed)
-    status = await ed.call("script_status", changes_while_playing=policy)
+    status = await ed.call("set_script_settings", changes_while_playing=policy)
     ed.check_eq(status["settings"]["changes_while_playing"], policy, "the policy is set")
     await ed.call("write_file", path=s["path"], content=COUNTER.format(add=1, extra=""))
     started = await ed.call("play", action="start", scene=s["scene"])
@@ -129,7 +129,7 @@ async def test_broken_file_keeps_the_old_code(ed: Editor):
     kept = [x for x in r["kept_old"] if x["path"].endswith("Counter.lua")]
     ed.check(kept, f"kept_old lists Counter.lua: {r}")
     ed.check_eq(kept[0].get("line"), 3, f"the error's line: {kept[0]}")
-    status = await ed.call("script_status")
+    status = await ed.call("get_script_status")
     ed.check_eq(status["lua"]["state"], "error", f"the Lua status: {status['lua']}")
     ed.check(any(f.get("line") == 3 for f in status["lua"]["findings"]), f"findings carry the line: {status['lua']}")
     step = await rising_by(ed)
@@ -141,7 +141,7 @@ async def test_broken_file_keeps_the_old_code(ed: Editor):
     await ed.call("write_file", path=s["path"], content=COUNTER.format(add=10, extra=ON_RELOAD))
     r = await ed.call("reload_scripts", paths=[s["path"]], language="lua")
     ed.check([x for x in r["reloaded"] if x["path"].endswith("Counter.lua")], f"fixed: reloaded {r}")
-    status = await ed.call("script_status")
+    status = await ed.call("get_script_status")
     ed.check_eq(status["lua"]["state"], "ok", "the Lua status is ok again")
     await ed.call("play", action="stop")
 
@@ -175,7 +175,8 @@ async def test_external_save_reloads_within_the_budget(ed: Editor):
 async def test_reload_after_stopping_play_defers(ed: Editor):
     s = await start(ed, policy="after_stop")
     path = ed.project / s["path"]
-    path.write_text(COUNTER.format(add=10, extra=""))
+    # content no earlier call wrote (an editor write's echo is not a change)
+    path.write_text(COUNTER.format(add=7, extra="-- edited while playing\n"))
     deferred = None
     seen = []
     for _ in range(20):
@@ -188,9 +189,14 @@ async def test_reload_after_stopping_play_defers(ed: Editor):
             if deferred:
                 break
         await asyncio.sleep(0.2)
-    ed.check(deferred, f"external_changes.deferred says the script waits for Play to stop: {seen}")
+    if not deferred:
+        synced = await ed.call_raw("sync_files", {"paths": [s["path"]], "full": False})
+        status = await ed.call_raw("editor_status")
+        ed.fail(f"external_changes.deferred says the script waits for Play to stop: seen {seen}; sync_files "
+                f"{synced.text[:600]} {synced.structured}; file_watcher {(status.structured or {}).get('file_watcher')}; "
+                f"settings {(await ed.call('get_script_status'))['settings']}")
     ed.check_eq((await rising_by(ed)) % 1, 0, "the old code runs")
     step = await rising_by(ed)
-    ed.check(step < 10 * 4, f"still the old code (rose by {step})")
+    ed.check(step < 7 * 4, f"still the old code: +1 per frame, not +7 (rose by {step})")
     await ed.call("play", action="stop")
-    await ed.call("script_status", changes_while_playing="reload")
+    await ed.call("set_script_settings", changes_while_playing="reload")

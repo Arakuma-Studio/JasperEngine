@@ -4,7 +4,7 @@
 #pragma once
 
 // The scripts' compile and reload state the toolbar badge shows (ScriptStatusBadge) and MCP
-// script_status / editor_status.scripts report: one row for Lua, one for the C++ scripts and
+// get_script_status / editor_status.scripts report: one row for Lua, one for the C++ scripts and
 // one for the C++ editor scripts. Set on the main thread; a build on a worker posts through
 // Generator's ThreadSafeSignal and is applied by update().
 
@@ -95,7 +95,7 @@ namespace jasperengine::editor {
         static const char* cppStateName(CppScriptState state);    // none, stale, building, up_to_date, failed, refused
         // "Lua: 2 errors · C++: build failed — using last good build"
         std::string summary() const;
-        // script_status and editor_status.scripts: {lua, cpp, editor_cpp, fingerprint, summary}
+        // get_script_status and editor_status.scripts: {lua, cpp, editor_cpp, fingerprint, summary}
         mcp::Json toJson() const;
 
     private:

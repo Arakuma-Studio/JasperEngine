@@ -109,7 +109,7 @@ The toolbar badge to the right of the Play controls shows the scripts' state at 
 
 Hover the badge for a one-line summary. Click it for the per-language rows, the first errors
 as links, and **Rebuild C++**, **Cancel Build** and **Show in Console**. When a new failure
-happens, the Console comes to the front once. MCP `script_status` returns the same model, and
+happens, the Console comes to the front once. MCP `get_script_status` returns the same model, and
 `editor_status.scripts` includes it.
 
 ## Editor scripts: your own menus, context items and toolbar buttons
@@ -199,7 +199,7 @@ expression when you type into it (Ctrl+click or double-click a drag field):
 With several objects selected, `+=` and the ramps apply to each object from the value it had.
 Integer fields round the result. A unit on a field without units (`5cm` on a plain number) is
 an error. Errors show as a tooltip at the position they were found, and the field keeps its
-value. The field's tooltip lists the accepted suffixes. MCP `evaluate_expression` uses the
+value. The field's tooltip lists the accepted suffixes. MCP `eval_expression` uses the
 same evaluator.
 
 ## Console: jump to the source
