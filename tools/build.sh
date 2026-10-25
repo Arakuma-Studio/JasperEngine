@@ -394,7 +394,24 @@ htmlui-tests)
         exit \$status
     "
     ;;
-htmlui-mcp-tests)
+htmlui-editor-tests)
+    BT="${BUILD_TYPE:-Release}"
+    run bash -euo pipefail -c "
+        cmake --preset linux-release -B $OUT/editor -DCMAKE_BUILD_TYPE=$BT -DJASPERENGINE_HTMLUI_EDITOR_TESTS=ON \
+            $OPTION_FLAGS -DJASPERENGINE_WERROR=$WERROR_VALUE -DCMAKE_INSTALL_PREFIX=$OUT/editor-install $CCACHE_FLAGS
+        cmake --build $OUT/editor --target jasperengine-editor jasperengine-htmlui-editor-tests $JOBS_FLAG
+        [[ '${RUN:-1}' == 0 ]] && exit 0
+        set -f  # a --gtest_filter pattern is not a glob
+        rm -f $RESULTS/htmlui-editor.xml
+        status=0
+        xvfb-run -a -s '-screen 0 1600x900x24' $OUT/editor/jasperengine-htmlui-editor-tests \
+            --gtest_output=xml:$RESULTS/htmlui-editor.xml ${HTMLUI_TEST_ARGS:-} || status=1
+        # the live Google Fonts test skips without HTMLUI_LIVE_NETWORK=1
+        $GTEST_GATE --xml $RESULTS/htmlui-editor.xml --max-skipped 1 || status=1
+        exit \$status
+    "
+    ;;
+mcp-tests)
     SUITE="${MCP_SUITE:-ci}"
     [[ "$SUITE" == ci || "$SUITE" == all ]] || { echo "MCP_SUITE must be ci or all" >&2; exit 1; }
     [[ "$SUITE" == all && -z "${JASPER_FIXTURE:-}" ]] && { echo "MCP_SUITE=all needs JASPER_FIXTURE (the fixture project)" >&2; exit 1; }
