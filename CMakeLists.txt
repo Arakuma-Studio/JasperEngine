@@ -450,6 +450,7 @@ include_directories (${JASPERENGINE_ROOT}/core/buffer)
 include_directories (${JASPERENGINE_ROOT}/core/component)
 include_directories (${JASPERENGINE_ROOT}/core/ecs)
 include_directories (${JASPERENGINE_ROOT}/core/io)
+include_directories (${JASPERENGINE_ROOT}/core/io/watch)
 include_directories (${JASPERENGINE_ROOT}/core/manager)
 include_directories (${JASPERENGINE_ROOT}/core/math)
 include_directories (${JASPERENGINE_ROOT}/core/object)
@@ -645,6 +646,18 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
+    ${EDITOR_DIR}/reload/HotReloadService.cpp
+    ${EDITOR_DIR}/window/StatusBar.cpp
+    ${EDITOR_DIR}/reload/handlers/Assets.cpp
+    ${EDITOR_DIR}/reload/handlers/Audio.cpp
+    ${EDITOR_DIR}/reload/handlers/Common.cpp
+    ${EDITOR_DIR}/reload/handlers/Fonts.cpp
+    ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
+    ${EDITOR_DIR}/reload/handlers/Materials.cpp
+    ${EDITOR_DIR}/reload/handlers/Models.cpp
+    ${EDITOR_DIR}/reload/handlers/Scripts.cpp
+    ${EDITOR_DIR}/reload/handlers/Shaders.cpp
+    ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/asset/AssetFileWrite.cpp
@@ -665,7 +678,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
-    ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
@@ -711,6 +723,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
+    ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp

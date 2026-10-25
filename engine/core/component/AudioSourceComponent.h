@@ -33,6 +33,8 @@ namespace jasperengine{
         bool enabled = true;
 
         std::shared_ptr<SoLoud::Wav> sample = nullptr;
+        // SoundPool's generation of `sample`: a hot-reloaded file is taken on the next play
+        uint32_t sampleGeneration = 0;
         unsigned int handle = 0; //Soloud handle
 
         AudioSourceState state = AudioSourceState::Stopped;

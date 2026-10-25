@@ -4,6 +4,7 @@
 #include "AssetFileWrite.h"
 
 #include "io/AtomicFile.h"
+#include "io/watch/FileWatchService.h"
 
 #include <fstream>
 #include <sstream>
@@ -51,10 +52,13 @@ bool assetio::renameFile(const fs::path& from, const fs::path& to, std::string* 
         fs::create_directories(to.parent_path(), ec);
     }
     ec.clear();
+    // the editor's own move: the file watcher does not report it back (S05 R10)
+    ScopedExpectedWrite expected(to);
     if (!io::renameWithRetry(from, to, ec)) {
         if (error) *error = ec.message();
         return false;
     }
+    expected.reportedMoved(from, to);
     return true;
 }
 

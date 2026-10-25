@@ -144,6 +144,10 @@ bool EditorFrame::run(EditorFrameState& state){
         renderer->present();
     }
     renderer->purgeTextures();
+    // a frame that drew (the editor window, or only its views: headless, minimized)
+    if (frameReady || renderRequested){
+        app->recordFrameTime((frameMonotonicSeconds() - frameStart) * 1000.0);
+    }
 
     if (!state.focused || state.minimized){
         const int sleepMs = static_cast<int>(
