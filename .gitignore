@@ -78,3 +78,7 @@ $RECYCLE.BIN/
 # Python bytecode from importing tools/*.py
 __pycache__/
 .claude/
+
+# the core tests write their resource pack (TestPack.h) into the working directory, the checkout
+/resources.pak
+/resources.pak.tmp*
