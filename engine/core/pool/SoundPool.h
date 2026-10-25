@@ -40,6 +40,7 @@ namespace jasperengine{
         static std::unordered_set<std::string> failedBuilds;
         static std::mutex cacheMutex;
         static std::atomic<bool> shutdownRequested;
+        static std::unordered_map<std::string, uint32_t>& getGenerations();
 
         static std::shared_ptr<SoLoud::Wav> loadSoundInternal(const std::string& id, const std::string& filename, bool trackProgress);
         // decodes the file's bytes (on a Background job for async loads)
@@ -59,6 +60,16 @@ namespace jasperengine{
         static void cancelShutdown();
 
         static void remove(const std::string& id);
+
+        // The loaded sample of `id` (nullptr when none)
+        static std::shared_ptr<SoLoud::Wav> get(const std::string& id);
+        // Hot reload (S05 R13): the entry becomes `sound` and its generation goes up. Voices
+        // playing the old sample finish on it (their sources hold it); new plays take this
+        // one (AudioSystem compares the generation). Main thread.
+        static void replace(const std::string& id, std::shared_ptr<SoLoud::Wav> sound);
+        static uint32_t generation(const std::string& id);
+        // Decodes `filename` as loadFromFile would; any thread. Throws with the reason.
+        static std::shared_ptr<SoLoud::Wav> decode(const std::string& id, const std::string& filename);
 
         // necessary for engine shutdown
         static void clear();

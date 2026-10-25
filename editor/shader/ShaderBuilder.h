@@ -10,6 +10,7 @@
 #include "jobs/JobSystem.h"
 #include <atomic>
 #include <vector>
+#include <functional>
 #include <set>
 #include <unordered_map>
 #include <mutex>
@@ -53,6 +54,13 @@ namespace jasperengine::editor {
         // Drops cached builds and dependency snapshots for all custom variants so the
         // next get() recompiles. Called after source mutations and project switches.
         static void invalidateCustomShaders();
+        // Only the forks `which` names (by custom shader name): a hot reload recompiles the
+        // forks whose files changed and leaves the others bound (S05 R11)
+        static void invalidateCustomShaders(const std::function<bool(const std::string& fork)>& which);
+        // A build made ahead (a hot reload compiles before it swaps) for the next buildShader
+        static void primeCache(ShaderKey shaderKey, const ShaderData& data);
+        // The next build of `fork` reads its files again
+        static void dropSourceSnapshot(const std::string& fork);
 
         static void requestShutdown();
 

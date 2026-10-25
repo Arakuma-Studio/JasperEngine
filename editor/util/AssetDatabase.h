@@ -294,6 +294,9 @@ namespace jasperengine::editor {
         void insert(Entry entry);
         void erase(const std::string& relative);
         void reindexRedirects();
+        // The same for the one entry just inserted at `relative` (refresh's loops, which rebuild
+        // the whole index once at the end: a checkout of 10,000 files is not 10,000 rebuilds)
+        void indexRedirectsOf(const std::string& relative);
         bool guidInUse(const Guid& guid) const;
         Guid freshGuid(const std::string& preferred = std::string()) const;
 

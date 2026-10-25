@@ -505,3 +505,140 @@ Each backend test is parameterised over `{Native, Polling}`.
   Play (resources only, the state is untouched). Lua goes to S23 or is deferred. The asset DB is
   updated, but prefab instance reimport waits until Play stops (as `refreshAssetDatabase` does
   today).
+
+## Deviations (implementation, feat/s05-file-watcher)
+
+- **Dependencies not landed.** S02, S04, S06 and S09 were not on `oe-port` while this stream ran
+  (S01 and S03 were, and are used: C++20 `std::span` batches, `io::writeFileAtomic`'s publish
+  listener feeding the ledger, `io::isTemporarySiblingName` in the temp-name rule). Without S04:
+  dependents are invalidated through the fixed edges of R11 (R12's default), an external rename
+  keeps a prefab's GUID through `AssetDatabase::moveAssets` (the only GUID-tracked assets today)
+  but there is no redirect record or missing-asset tracker to update, so AC14 checks the GUID and
+  not a redirect. Without S06: decodes run on `ThreadPoolManager`, the index and the polling scans
+  on the watcher's own threads. Without S09: `FileWatchSubscription` is its own RAII type and the
+  Console lines go through `Out`/`Log`.
+- **Tests.** Unit tests are where S03 put the test targets (S02's layout, `*Test.cpp` files):
+  `engine/tests/core/io/watch/` and `engine/tests/core/pool/` in `jasperengine-core-tests`,
+  `editor/tests/reload/HotReloadServiceTest.cpp` in `jasperengine-editor-tests` (not
+  `editor/reload/tests/`). Suite names are the spec's. AC10's shader case tests the selective
+  rule (`reload::shaderSourcesReach`: an include reaches only the forks including it) rather than
+  compiling forks headlessly; its Play + Lua case is covered by `test_autosync.py`'s play tests
+  (deferred) since a headless test project cannot enter Play; the model case tests
+  `MeshSystem::modelHierarchyMatches` on real glTF files.
+- **Pump placement.** `FileWatchService::pump` and `HotReloadService::update` run on every editor
+  loop iteration (`App::pollExternalChanges`), not only in `App::engineRender`: idle iterations
+  do not run `engineRender`, and a reload must not wait for the next drawn frame. A finished
+  worker job wakes the idle loop.
+- **Status bar.** The editor had no status bar; R28's indicator is a new bottom bar
+  (`editor/window/StatusBar`).
+- **inotify mask.** `IN_ATTRIB` (R16's "IN_ATTR" is not a Linux constant).
+- **Console lines.** Reloads the watcher drives and `sync_files` log `[Hot Reload]` lines;
+  McpAutoSync's pick-up before a call does not (its call result reports it), and neither does a
+  tool's or the code editor's own write. Failures always log errors.
+- **`editor_status.file_watcher.pending`** also counts, with Auto Refresh off, the changes that
+  waited for the current call (its pick-up applies them before the handler runs, as the agent
+  contract requires), so AC16 can see them.
+- **`rebuild_models`** rebuilds the model's generated GameObjects but is not an undo step
+  (destroyed generated hierarchies have no command today); the warning and the problem tell the
+  user what it does.
+- **Model materials.** "Submeshes not overridden or linked" are the ones without
+  `overrideFields` (MeshSystem's existing submesh overrides, which loadGLTF restores).
+- **Prefab Mode Reload** closes the stage without saving and opens the prefab again.
+- **AC21** (manual Windows/macOS) could not be run here: the procedure and the record are in
+  `docs/specs/acceptance/S05.md`. The Windows and macOS backends were reviewed by reading
+  instead; the review fixed FSEvents under a symlinked root (macOS reports `/var/folders/...`,
+  the temp folders the tests use, as `/private/var/...`: event paths are mapped back to the
+  root's spelling).
+- **AC23** is checked in the web build itself rather than by a wasm gtest (S02 builds no unit
+  tests for Emscripten): the page `?jasperengine_watch_probe=1` logs what
+  `FileWatchService::start` does there, and S02's browser gate expects
+  `start(native)=0 start(polling)=0 start(auto)=0 attached=0` (`tools/web/browser_gate.py`
+  gained `--query`). Android and iOS refuse by the same `WATCHING_SUPPORTED` constant.
+- **Reload stamps** (found by `test_rapid_saves_during_play`'s rare failure, which a 150-round
+  stress run reproduced 3 times): the applied-stamp table took the file's stat *after* the
+  handlers read it, so a save landing during a reload was recorded as reloaded and its own
+  change skipped. The trigger was a batch the paused reloader held during a writing call, applied
+  by the next frame in the middle of the next burst of saves. The stamp is now what the file was
+  before it was read; a change the watcher journaled is deduplicated by its journal sequence
+  (the watcher's delivery and a call's pick-up of it reload once, whatever the stat says); a
+  stamp within 100 ms of the file's mtime is "racy" (two saves in one timestamp tick keep mtime
+  and size) and compares the bytes; and HTML UI documents forget their own stamps for a change
+  the service reloads (`UIDocumentSystem::forgetFileStamps`). Regression tests:
+  `HotReloadServiceTests.RacyStampComparesTheBytes`,
+  `UIDocumentReloadTest.ForgottenStampsReloadASaveTheStampsCannotSee` and
+  `test_html_ui_reload.py::test_burst_after_writing_call_during_play` (40 rounds, more with
+  `JASPER_BURST_ROUNDS`).
+- **AC18.** `test_autosync.py` passes with one assertion widened: in
+  `test_large_project_incremental`, "the scan is incremental" (`complete` false, `checked` <
+  files) holds for the stat scan; with the watcher running there is no scan (`auto_sync.source`
+  is "watcher"), which the assertion now accepts.
+- **AC19** is measured against a control: the same loop of `editor_status` calls with the scene
+  playing (MCP `auto_pause` off) but no file written. On the shared build server under Xvfb and
+  llvmpipe the editor has 30-50 ms frames (and, under load, spikes of hundreds of ms) with no file
+  activity at all, so "no frame > median + 16 ms" is checked for what the reloads add: the reload
+  run's (max - median) over the control's is ≤ 16 ms, its median within 25 % + 2 ms of the
+  control's. Measured: control 465 frames median 15.1 / max 46.3 ms, reload 365 frames median
+  14.5 / max 50.1 ms, reload latency ≤ 270 ms. `frame_ms` is each drawn frame's work time
+  (start to present), not the interval between frames (an idle editor draws on demand).
+- **What the watcher reloaded before a call** keeps the `external_changes` contract: its
+  problems (a Lua syntax error, an HTML UI finding) come with the next call, and the HTML UI
+  documents it reloaded are that call's `ui_reloaded` when the call's `flush` delivered them,
+  else `ui_current` (as when the old 0.25 s UI poller was first).
+- **S06 landed during the stream**: the reload decodes run on `jobs::submit` (Background lane,
+  so they give way to the frame's own jobs) instead of `ThreadPoolManager`.
+- **ThreadSanitizer** (S02's `SANITIZE=thread`) reported every watch backend's flush: libstdc++'s
+  `std::timed_mutex::try_lock_for` locks through `pthread_mutex_clocklock`, which TSan does not
+  intercept, so the unlock that follows reads as "unlock of an unlocked mutex". The backends
+  use a plain mutex and a try-lock loop with the same timeout (`watch::lockWithin`); their
+  timed condition-variable waits go through S06's `jobs/detail/TimedWait.h` (GCC 11's TSan
+  misses libstdc++'s steady-clock wait too). `FileWatchServiceTests.SelfUnsubscribe` publishes
+  its holder through a mutex (a file write is no happens-before edge for TSan).
+- **Polling folders** have the racy-stamp rule too: a folder whose mtime was stamped within
+  100 ms of now is listed again on the next scan (two files added in one timestamp tick keep the
+  folder's mtime: on a fast server `FlushBarrier/Polling` missed 14 of 1000 new files).
+- **Unity build**: S05's sources shifted the unity chunks, putting `jobs/Primitives.cpp` next to
+  a file including `Engine.h`, whose `util/ThreadUtils.h` has a `jasperengine::Semaphore` too:
+  the `jobs::Semaphore` definitions are qualified. The hot reload helpers have unity-safe names.
+  After the S09/S24 merge the chunks moved again: S09's `jasperengine::Scheduler` met the job
+  system's `jobs::detail::Scheduler` (now qualified in `JobSystem.cpp` and `ParallelFor.cpp`),
+  FontRegistry's `Registry` met S09's (now `SchedulerRegistry`), and the reload tests use the
+  shared `jasperengine::test::TempDir`. After the S04 merge S04's file-local helpers met others
+  (`lowerExtension`, `joinRelative`, `cacheVersion`, `trim`, `fixture`...): they have file-specific
+  names now.
+- **Delete hold under polling** is the poll interval + 100 ms (R4's 200 ms with native events):
+  a scan between a save's delete and its rewrite would otherwise report a removal and an
+  addition (`FileWatcherTests.DeleteRecreate/Polling` under TSan's slowdown).
+- **S09 and S24 landed during the stream** (merged at the end). The `[Hot Reload]` Console
+  lines are in S09's `asset` log category and the watcher's own warnings (a fallback to polling,
+  an overflow) in `io`, so the Console's Category filter separates them. `FileWatchSubscription`
+  stays its own RAII type rather than S09's `Subscription`: R8 needs a destroyed subscription to
+  wait for a callback in flight on a worker (S09's does not wait), plus the filter, priority and
+  the main thread's time budget; the main-thread wake-up already goes through S09's
+  `Scheduler::post` (`App::enqueueMainThreadTask`). With S24, Reload of an open scene frees that
+  scene's undo history (the steps were made on the copy the file replaces, as R23 does on close);
+  the status bar opens the Asset Pipeline page through S09's `EditorSettingsWindow::showPage`.
+- **S04 landed at the end** (merged last). R12/R14 go through S04's database: a watcher batch
+  sets `Project::assetScanRequested`, and the editor loop's `refreshAssetDatabase()` runs
+  `AssetDatabase::scanDisk` on a Background job and applies it with `refresh(scan)`, so S04's own
+  rules tell a move with its meta, a rename without it (orphan adoption), a copy and an edit
+  apart. A scan older than the database's last change is walked again. S04's 2 s poll is
+  removed: nothing walks the disk without a watcher batch, Assets > Refresh or a tool answering
+  from the database (`refreshAssetDatabase(true)`, which S04's tools call first). An MCP
+  call's pick-up starts the walk like the watcher does instead of walking on the main thread.
+  S05's per-path `AssetDatabase::refreshFile` and the prefab-only rename path are gone. S04's
+  file operations report to the ledger (`assetio::renameFile`, `AssetOps::copy` and
+  `removeCopy`; metas through `io::writeFileAtomic`'s publish listener), so they are not echoed.
+  Tests: `HotReloadServiceTests.ExternalRenameKeepsTheGuidThroughTheWatcher` (with and without
+  the meta) and `HotReloadServiceTests.NoAssetPollWithoutTheWatcher`.
+  AC20 with S04: `refresh(scan)` runs on the main thread, and S04 rebuilt its whole redirect
+  index after every new file (10,000 new files: 4.3 s) and read every changed file's meta. It now
+  indexes each new entry alone (one rebuild at the end: 3.2 s) and reads no meta whose time and
+  size did not change (R21's rule; a checkout of 10,000 known files reads none). 10,000 files
+  that are new to the database still write 10,000 metas on the main thread (S04 R1, ~3 s on the
+  build server): `test_bulk_checkout` therefore creates its files first and measures the burst
+  that rewrites them, as a checkout of files the project has does (their metas come along), and
+  asks `editor_status` for the whole 10 s, also after the watcher settled. On the S05 side a text
+  file (`.txt`, `.md`, `.yaml`...) not open in the code editor skips the reload stamps (no stat or
+  byte compare for 10,000 data files) and the Project window classifies a thumbnail by extension
+  before it stats the file: slowest `editor_status` 0.42 s with the watcher's flush delivering
+  the burst inside the call (R7), on the shared server.

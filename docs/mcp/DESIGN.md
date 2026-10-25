@@ -63,15 +63,17 @@ editor/mcp/
   McpValues.{h,cpp}       JSON <-> engine property values, PropertyCmd building
   McpUndo.{h,cpp}         agent undo attribution: folding a call's steps, undo history JSON
   McpSchema.{h,cpp}       JSON Schema builders (object, vec3, entityRef...)
+  McpToolGroups.{h,cpp}   the tool groups tools/list hides until a session enables them
   McpInstructions.cpp     const char* mcpServerInstructions(): the agent guide text
   McpActivityWindow.{h,cpp}  editor panel: server status, connected clients, call log
   McpJobs.{h,cpp}         long operations (export, build, compile, play startup) as jobs
   McpLaunch.{h,cpp}       `jasperengine-editor mcp` command line, stdio fd setup, --headless Xvfb
-  McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call
+  McpAutoSync.{h,cpp}     picks up files the agent edited on disk before every tools/call (the watcher's journal)
   EngineApiContext.{h,cpp}, TerrainMaps.{h,cpp}   helpers of the docs and terrain tools
   tools/
     McpTools.h            the register functions; W4Shared.h, PlayViewCommon.h, HtmlUiShared.h: helpers shared by modules
-    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, get_undo_history, editor_status, respond_dialog
+    McpTools.cpp          buildToolRegistry: the module table (docs section, group), no App needed
+    CoreTools.cpp         batch, get_job, cancel_job, undo/redo, get_undo_history, editor_status, respond_dialog, tool_groups
     ProjectTools.cpp      project lifecycle and settings
     SceneTools.cpp        scenes and scene settings
     EntityTools.cpp       hierarchy, GameObjects, selection and clipboard
@@ -89,8 +91,10 @@ editor/mcp/
 ```
 
 Every `tools/*.cpp` defines one function, e.g. `void registerSceneTools(McpRegistry&)`;
-`McpServer` calls them all in a fixed order (Core first, then the rest; a later module may
-replace a tool by registering the same name). Every file above is listed in `CMakeLists.txt`.
+`buildToolRegistry` (`tools/McpTools.cpp`) calls them all in the fixed order of its module
+table (Core first, then the rest; a later module may replace a tool by registering the same
+name) and stamps each tool's module and default group. The server calls it at start, the
+`jasperengine-editor call` CLI offline. Every file above is listed in `CMakeLists.txt`.
 
 ## Registry API
 
@@ -107,6 +111,9 @@ struct ToolDef {
     Json outputSchema;         // optional
     ToolAnnotations annotations;
     bool allowedWhilePlaying = true;   // registry refuses the call during play if false
+    ToolActivity activity = ToolActivity::Auto;  // busy policy
+    std::string group;         // McpToolGroups.cpp; empty = core (always listed)
+    std::string module;        // docs section, stamped by buildToolRegistry
     std::function<void(CallPtr)> handler;  // runs on the MAIN thread
 };
 
@@ -209,13 +216,20 @@ Reads return the same shapes. Writes build typed `PropertyCmd<T>`s inside a
 
 ## Tool conventions
 
+[conventions.md](conventions.md) is the rule book (names, schemas, groups, budget, docs and
+coverage gates); in short:
+
 - Prefer fewer, more powerful tools with excellent descriptions and schemas over many
   narrow ones. A tool description says what it does, what it returns, and the common
-  mistakes. Target well under 150 tools in total.
+  mistakes. The default listing (`core`) stays within 150 tools and 100,000 characters;
+  other tools sit in groups (`McpToolGroups.cpp`) that tools/list shows once a session
+  enables them (`tool_groups`), and every tool stays callable by name.
+- `buildToolRegistry` (`tools/McpTools.cpp`) builds the registry without an `App`, so the
+  CLI lists and validates tools offline exactly as the server serves them.
 - Edits through commands (undoable); file writes refresh the Project window, the asset
   database and open code editor buffers.
 - Every tool has a test in `tools/mcp/tests/` run through the harness against a real
-  editor under Xvfb.
+  editor under Xvfb (`test_tool_coverage.py`).
 
 ## Code lives on disk: agents edit it with their own tools
 
@@ -235,63 +249,62 @@ for clients without file access (remote HTTP).
 top-level tools/call (not for calls nested in `batch`, nor before `sync_files`, which does
 the same work and reports it itself):
 
-- **Scan**: stat-based against a cached map (mtime + size) of the project's tracked files
-  (Lua, C++ `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`,
-  `.material`, HTML UI `.html/.htm/.css`; assets: images (`.svg` included), fonts `.ttf/.otf`,
-  `.json/.lottie`) and folders (mtime: an added, removed or renamed entry), skipping
-  hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
-  `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its
-  in-memory terrain (`terrain_maps/terrain_edit_*.png`, written asynchronously after a
-  sculpt) are not tracked: the editor owns them. Files changed
-  this session, folders and code files (HTML UI included) are checked whole on every call (up to
-  2000 of each); assets rotate within a ~2 ms budget, resuming where the last scan stopped. The
-  baseline is taken (in `McpServer::tick`) when a project opens.
-- **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp; the same as
-  `sync_files` with paths): clean code editor buffers reloaded, script properties re-parsed,
-  Lua syntax checked, materials refreshed, shader forks invalidated, textures reloaded, HTML UI
-  documents reloaded, asset database and Project window refreshed. Shader forks using a changed
-  shader file are then compiled (`w4::checkShadersAsync`; the call waits for it through
-  `waitUntil`) so their errors are reported with the call.
+- **What changed**: the file watcher's journal (`FileWatchService::journalSince` after
+  `flush(250 ms)`, S05 R29; `source: "watcher"`), its external changes to tracked files since
+  the last call. The editor's own writes (origin Editor) and changes stamped inside a writing
+  call's run are left out. When the watcher is off, degraded, fell behind its 65,536-entry
+  journal or the flush timed out, the stat scan (`source: "scan"`): stat-based against a cached
+  map (mtime + size) of the project's tracked files (Lua, C++
+  `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`, `.material`, HTML UI
+  `.html/.htm/.css`; assets: images (`.svg` included), fonts `.ttf/.otf`, `.json/.lottie`) and
+  folders (mtime: an added, removed or renamed entry), skipping hidden folders
+  (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`. `.scene`, `.prefab`,
+  `project.yaml` and the terrain maps the editor writes from its in-memory terrain
+  (`terrain_maps/terrain_edit_*.png`) are not tracked: the editor owns them. Files changed this
+  session, folders and code files (HTML UI included) are checked whole on every call (up to
+  2000 of each); assets rotate within a ~2 ms budget. The baseline is taken (in
+  `McpServer::tick`) when a project opens.
+- **Pick-up**: changed paths go through `w4::syncFiles` (ScriptTools.cpp), which is
+  `HotReloadService::apply` (editor/reload, the one reload funnel of the watcher, `sync_files`,
+  Assets > Refresh and the code editor's saves): clean code editor buffers reloaded, script
+  properties re-parsed, Lua syntax checked, textures, materials, models, audio and fonts decoded
+  on workers and swapped in, the shader forks whose sources or includes hold a changed file
+  compiled before they swap, HTML UI documents reloaded, asset database and Project window
+  updated. The call waits (`waitUntil`, 10 s at most) for the reloads it started; their
+  failures (the previous version kept) and the forks' compile errors are reported with the call.
+  A path the watcher reloaded before the call is current (the applied-stamp table): reported,
+  with its `reloaded` entry, not reloaded again.
 - **HTML UI**: UI documents reload live, before the tool runs, in edit mode and during play
-  (`w4::syncHtmlUi`: `UIDocumentSystem::reloadChangedFiles` of every open scene, prefab stage and
-  running Play scene), sharing the per-document stamps with the editor's own poller
-  (`HtmlUIWatcher`, 0.25 s): whichever sees an edit first reloads it, the other finds it current,
-  so a change is reloaded once. A CSS-only change restyles in place (elements and listeners
-  kept); any other change rebuilds the document (`onLoad` again). The diagnostics located in the
-  changed files, from the documents' (re)load, or from `ProjectChecks::checkUiFiles` for a changed
-  `.html/.css` no live document uses (the same code as `check --ui`), become `problems`.
+  (`UIDocumentSystem::reloadChangedFiles` of every open scene, prefab stage and running Play
+  scene, whose per-document stamps make a change reload once, whoever sees it first). A CSS-only
+  change restyles in place (elements and listeners kept); any other change rebuilds the document
+  (`onLoad` again). The diagnostics located in the changed files, from the documents' (re)load,
+  or from `ProjectChecks::checkUiFiles` for a changed `.html/.css` no live document uses (the
+  same code as `check --ui`), become `problems`.
 - **Report**: the call's result gets `structuredContent.external_changes` = `{changed,
-  added?, removed?, changed_count?, problems: [{path, line, message}], script_properties?,
-  reloaded_buffers?, ui_reloaded?, ui_current?, deferred?}` and one text content item; nothing
-  when nothing changed. UI problems also carry `col`, `severity`, `code` and `suggestion` (the
-  text prints a warning as `path:line: warning: message [code]`); `ui_reloaded` =
+  added?, removed?, changed_count?, source, reloaded: [{path, kind, ms}], pending: [path],
+  problems: [{path, line, message}], script_properties?, reloaded_buffers?, ui_reloaded?,
+  ui_current?, deferred?}` and one text content item; nothing when nothing changed. UI problems
+  also carry `col`, `severity`, `code` and `suggestion`; `ui_reloaded` =
   `[{scene, entity: {id, name, path}, html, stylesheet_only}]`, `ui_current` = how many documents
-  reading a changed file the poller had already reloaded (text: `Reloaded UI: assets/ui/menu.html
-  in "Menu" (styles only); 1 document(s) were already current.`).
-- **Not the agent's changes**: `syncFiles` (the funnel of `write_file`, `create_script`,
-  the material and asset tools, `code_editor` save, undo of file writes) restamps what it
-  handled (`McpAutoSync::filesSynced`). After a call that may write files (not read-only, or
-  with `save_path`), a settle scan posted to the main thread attributes changes stamped
-  inside the call's time window to the tool, which handled them (`fork_shader`, screenshots
-  saved into the project, terrain maps): their stamps are taken, nothing is re-run (a texture
-  reload would undo a terrain tool's in-memory edit). Older ones are reported by the next
-  call. Limitation: an external edit made *while* a writing call runs is taken as the tool's
-  (neither picked up nor reported; `sync_files` or the editor's own poll catch it).
+  reading a changed file were already reloaded.
+- **Not the agent's changes**: the editor's writes go through the atomic writer, whose publishes
+  feed the watcher's self-write ledger: delivered as the editor's own, their echoes dropped
+  (`editor_status.file_watcher.echoes_suppressed`). `syncFiles` (the funnel of `write_file`,
+  `create_script`, the material and asset tools, `code_editor` save, undo of file writes)
+  restamps what it handled (`McpAutoSync::filesSynced`). After a call that may write files (not
+  read-only, or with `save_path`), the settle scan stays as a safety net: changes stamped inside
+  the call's time window are the tool's (absorbed, not re-run: a texture reload would undo a
+  terrain tool's in-memory edit). While such a call runs the hot reload holds the watcher's
+  batches, so the call's writes reload once, with its sync.
 - **Play**: the editor does not re-parse scripts during play (Play restores the scene from a
-  snapshot when it stops; `CodeEditor::checkExternalScriptChanges` waits too). Changes found
-  then are reported with `deferred` (Lua syntax still checked) and picked up by the first
-  call after play stops. HTML UI files are not deferred: `.html/.htm/.css`, fonts and
-  `.json/.lottie` go through the pick-up at once (the running and the edit-time documents
-  reload); a changed image reaches the documents at once and the scene textures after play;
-  `deferred` is set only when non-UI files wait.
-- **The editor's own 1 s poll** (`CodeEditor::checkFileChanges` for open buffers,
-  `checkExternalScriptChanges` for attached scripts) keeps running for humans. Buffers are
-  reloaded through the same `checkFileChanges` (one shared `lastWriteTime`, so never twice);
-  after a sync `CodeEditor::markScriptFilesCurrent` updates the script watch so it does not
-  re-parse the same file again; if the poll was first, the re-parse finds no property change.
-- Cost: `editor_status.auto_sync` = `{files, dirs, checked, complete, scan_ms, settle_ms,
-  scan_cpu_ms, settle_cpu_ms}`; ~0.1 ms per call (0.25 ms with the settle) on the fixture
-  project (`tools/mcp/tests/test_autosync.py` measures it, and a 25k-file project).
+  snapshot when it stops; S23 will register a hook for Lua in Play). Script changes found then
+  are reported with `deferred` (Lua syntax still checked) and picked up after play stops.
+  Textures, materials, shaders, models, audio, fonts and HTML UI reload at once.
+- Cost: `editor_status.auto_sync` = `{source, files, dirs, checked, complete, scan_ms, settle_ms,
+  scan_cpu_ms, settle_cpu_ms}`; `editor_status.file_watcher` = the watcher's counts and the
+  last reload; `editor_status.frame_ms` = the frame times since the previous `editor_status`
+  (`tools/mcp/tests/test_autosync.py` and `test_hot_reload.py` measure them).
 
 ## Agent guide (instructions)
 
@@ -299,8 +312,10 @@ the same work and reports it itself):
 (`McpInstructions.cpp`): how the engine maps to Unity, scene/entity addressing, the loop
 (inspect → edit → save → play → screenshot → read console → fix), working on code with the
 agent's own tools, play and time control, Lua and C++ scripting conventions, 2D/3D and UI,
-physics, prefabs, the shader library and forking, shipping. It is sent every session: keep it
-tight (at most 16 KB, 16,384 bytes); deeper references are the `jasper://docs/...` resources
-(`docs/mcp/guide/*.md`): move detail there rather than growing the guide.
-`test_autosync.py::test_instructions_name_real_tools` checks the size and that every tool and
-parameter name it mentions exists.
+physics, prefabs, the shader library and forking, shipping. It is sent every session, so it
+holds the workflow and a short digest per area; the detail is in the `jasper://docs/...`
+resources (`docs/mcp/guide/*.md`) the digests name. Its limits are the `guide` entry of
+`tools/mcp/budget.json` (16,384 bytes in all, 1,500 per `##` section), gated by
+`tool_budget.py --check` ([conventions.md](conventions.md), "The agent guide").
+`test_autosync.py::test_instructions_name_real_tools` checks that every tool and parameter name
+it mentions exists.

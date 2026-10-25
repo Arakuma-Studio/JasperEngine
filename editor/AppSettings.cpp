@@ -133,7 +133,12 @@ GameViewSettings AppSettings::gameViewSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
+std::string AppSettings::mcpToolGroups;
 bool AppSettings::htmlUiAutoImport = true;
+bool AppSettings::assetAutoRefresh = true;
+std::string AppSettings::assetWatcher = "auto";
+float AppSettings::assetPollingInterval = 1.0f;
+bool AppSettings::assetLogReloads = true;
 int AppSettings::undoMaxSteps = AppSettings::defaultUndoMaxSteps;
 int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
 bool AppSettings::undoRecordSelection = true;
@@ -355,6 +360,24 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (mcpNode["http_enabled"]) mcpHttpEnabled = mcpNode["http_enabled"].as<bool>();
             if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
+            // "a,b", "all" or a list of group names
+            if (mcpNode["tool_groups"]) {
+                const YAML::Node groups = mcpNode["tool_groups"];
+                mcpToolGroups.clear();
+                if (groups.IsSequence()) {
+                    for (const auto& item : groups) mcpToolGroups += (mcpToolGroups.empty() ? "" : ",") + item.as<std::string>();
+                } else {
+                    mcpToolGroups = groups.as<std::string>();
+                }
+            }
+        }
+
+        if (settingsData["asset_pipeline"]) {
+            auto assetNode = settingsData["asset_pipeline"];
+            if (assetNode["auto_refresh"]) assetAutoRefresh = assetNode["auto_refresh"].as<bool>();
+            if (assetNode["watcher"]) setFileWatcher(assetNode["watcher"].as<std::string>());
+            if (assetNode["polling_interval"]) setPollingInterval(assetNode["polling_interval"].as<float>());
+            if (assetNode["log_reloads"]) assetLogReloads = assetNode["log_reloads"].as<bool>();
         }
 
         if (settingsData["html_ui"]) {
@@ -524,7 +547,15 @@ bool AppSettings::saveSettings() {
         mcpNode["http_enabled"] = mcpHttpEnabled;
         mcpNode["http_port"] = mcpHttpPort;
         if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
+        if (!mcpToolGroups.empty()) mcpNode["tool_groups"] = mcpToolGroups;
         settingsData["mcp"] = mcpNode;
+
+        YAML::Node assetNode;
+        assetNode["auto_refresh"] = assetAutoRefresh;
+        assetNode["watcher"] = assetWatcher;
+        assetNode["polling_interval"] = assetPollingInterval;
+        assetNode["log_reloads"] = assetLogReloads;
+        settingsData["asset_pipeline"] = assetNode;
 
         YAML::Node htmlUiNode;
         htmlUiNode["auto_import"] = htmlUiAutoImport;
@@ -813,6 +844,39 @@ void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
 }
 
+bool AppSettings::getAutoRefresh() {
+    return assetAutoRefresh;
+}
+
+void AppSettings::setAutoRefresh(bool enabled) {
+    assetAutoRefresh = enabled;
+}
+
+std::string AppSettings::getFileWatcher() {
+    return assetWatcher;
+}
+
+void AppSettings::setFileWatcher(const std::string& kind) {
+    // "off" is a command-line choice (--file-watcher), not a preference
+    if (kind == "auto" || kind == "native" || kind == "polling") assetWatcher = kind;
+}
+
+float AppSettings::getPollingInterval() {
+    return assetPollingInterval;
+}
+
+void AppSettings::setPollingInterval(float seconds) {
+    assetPollingInterval = std::clamp(seconds, 0.25f, 10.0f);
+}
+
+bool AppSettings::getLogReloads() {
+    return assetLogReloads;
+}
+
+void AppSettings::setLogReloads(bool enabled) {
+    assetLogReloads = enabled;
+}
+
 int AppSettings::getUndoMaxSteps() {
     return undoMaxSteps;
 }
@@ -930,6 +994,14 @@ int AppSettings::getMcpHttpPort() {
 
 std::string AppSettings::getMcpHttpToken() {
     return mcpHttpToken;
+}
+
+std::string AppSettings::getMcpToolGroups() {
+    return mcpToolGroups;
+}
+
+std::filesystem::path AppSettings::getUserConfigDirectory() {
+    return userConfigDirectory();
 }
 
 void AppSettings::setMcpHttp(bool enabled, int port) {

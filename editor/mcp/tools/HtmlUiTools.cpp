@@ -1882,7 +1882,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             "first load's diagnostics.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
+            {"parent", entityRef()},
             {"name", string("Default: from the file name.")},
             {"html", assetPath(".html in the assets dir.")},
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},

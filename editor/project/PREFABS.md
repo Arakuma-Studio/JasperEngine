@@ -100,11 +100,17 @@ project opens, and cached in `.jasperengine/assetdb/index.json` (a deletable cac
   reference written before GUIDs, by path only, still finds the file after it moves). A
   GUID found in two files stays with the file the cache says had it, else the older one;
   the other file gets a new random GUID written into it.
-- **Refresh** (`Project::refreshAssetDatabase`, every 2 s from `App::engineRender`, not
-  while playing): external changes. A new file with an unknown GUID is added; with the
-  GUID of a file that is gone, it is that file moved; with the GUID of a file that is still
-  there, it is a copy and gets a new GUID. A gone file is removed. A file edited so that its
-  GUID line disappeared gets it back.
+- **External changes** come from the file watcher (`Project::applyFileChanges`, through the
+  hot reload, docs/hot-reload.md). A batch asks for a walk of the disk (`AssetDatabase::scanDisk`
+  on a Background job, applied by `refresh(scan)` on the main thread; no poll), so S04's rules
+  decide what happened: a move that carried its meta or its in-file GUID keeps the GUID, a file
+  renamed without its meta adopts the orphan meta (R5), a copy gets a new GUID, an edit is
+  Modified. While a scene plays they wait, and a full **Refresh**
+  (`Project::refreshAssetDatabase(true)`: Assets > Refresh, `sync_files` full, a tool that
+  answers from the database) runs when Play stops. The refresh: A new file with an unknown
+  GUID is added; with the GUID of a file that is gone, it is that file moved; with the GUID of
+  a file that is still there, it is a copy and gets a new GUID. A gone file is removed. A file
+  edited so that its GUID line disappeared gets it back.
 - **Editor file operations** keep it up to date, all through `AssetOps`
   (`editor/asset/AssetOps.cpp`: `RenameFileCmd`, `CopyFileCmd`, `DeleteFileCmd`, MCP
   `move_asset` / `delete_asset`), which hands the database's changes to

@@ -36,7 +36,7 @@ using Json = nlohmann::json;
 
 namespace {
 
-    constexpr int cacheVersion = 1;
+    constexpr int databaseCacheVersion = 1;
 
     // A top-level key line: a key at column 0, which in block style YAML is a key of the
     // document's own map (a block scalar's lines are indented)
@@ -128,7 +128,7 @@ namespace {
         return fs::exists(other, ec) && fs::equivalent(projectPath, other, ec);
     }
 
-    std::string lower(std::string text) {
+    std::string lowerDatabaseKey(std::string text) {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return text;
     }
@@ -382,7 +382,7 @@ fs::path editor::AssetDatabase::toRelative(const fs::path& path) const {
 }
 
 std::string editor::AssetDatabase::relativeKeyOf(const std::string& relative) const {
-    return caseInsensitive ? lower(relative) : relative;
+    return caseInsensitive ? lowerDatabaseKey(relative) : relative;
 }
 
 std::string editor::AssetDatabase::key(const fs::path& path) const {
@@ -473,6 +473,22 @@ void editor::AssetDatabase::reindexRedirects() {
     for (const RedirectConflict& conflict : conflicts) {
         Out::warning("GUID %s is the GUID of %s and a former GUID of %s: references resolve to %s",
             conflict.guid.str().c_str(), conflict.livePath.c_str(), conflict.formerOwnerPath.c_str(), conflict.livePath.c_str());
+    }
+    version++;
+}
+
+void editor::AssetDatabase::indexRedirectsOf(const std::string& relative) {
+    auto it = byPath.find(relativeKeyOf(relative));
+    if (it == byPath.end()) {
+        return;
+    }
+    for (const Guid& former : it->second.formerGuids) {
+        if (!byGuid.count(former)) {
+            byFormer[former] = it->first;
+        }
+    }
+    for (const SubAsset& sub : it->second.subAssets) {
+        bySubAsset[sub.guid] = {it->first, sub.key};
     }
     version++;
 }
@@ -808,12 +824,12 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::adoptOrphans(s
         fs::file_time_type time;
         uint64_t size = 0;
         statFile(relative, time, size);
-        const std::string extension = lower(fs::path(relative).extension().string());
+        const std::string extension = lowerDatabaseKey(fs::path(relative).extension().string());
         const std::string name = fs::path(relative).filename().string();
         bool fileHashed = false;
         uint64_t fileHash = 0;
         for (const auto& [metaKey, orphan] : orphans) {
-            if (lower(fs::path(orphan.assetPath).extension().string()) != extension) {
+            if (lowerDatabaseKey(fs::path(orphan.assetPath).extension().string()) != extension) {
                 continue;
             }
             auto last = orphanLast.find(relativeKeyOf(orphan.assetPath));
@@ -908,7 +924,7 @@ void editor::AssetDatabase::loadCache(std::map<std::string, Entry>& cached) cons
     std::string text;
     if (assetio::readFile(cacheFile(), text)) {
         Json root = Json::parse(text, nullptr, false);
-        if (root.is_object() && root.value("version", 0) == cacheVersion && root.contains("assets") && root["assets"].is_array()) {
+        if (root.is_object() && root.value("version", 0) == databaseCacheVersion && root.contains("assets") && root["assets"].is_array()) {
             for (const Json& item : root["assets"]) {
                 if (!item.is_object() || !item.contains("p") || !item.contains("g")) continue;
                 Entry entry;
@@ -1043,7 +1059,7 @@ void editor::AssetDatabase::writeCache(const CacheSnapshot& snapshot) {
         assets.push_back(item);
     }
     Json root;
-    root["version"] = cacheVersion;
+    root["version"] = databaseCacheVersion;
     root["caseInsensitive"] = snapshot.caseInsensitive;
     root["assets"] = assets;
     std::string error;
@@ -1329,6 +1345,22 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
             continue;
         }
         dirty = true;
+        if (sidecar && metaSame && known.hasMeta) {
+            // only the content changed: the identity is in the meta, which did not (R21's rule:
+            // a meta is read when its size or time changed), so a checkout reads no metas
+            Entry updated = known;
+            updated.writeTime = time;
+            updated.size = size;
+            updated.hasContentHash = false;
+            if (refreshSubAssets(updated, &known)) {
+                writeIdentity(updated);
+                statFile(AssetTypes::metaPathFor(relative).generic_string(), updated.metaWriteTime, updated.metaSize);
+            }
+            changes.push_back({Change::Type::Modified, updated.guid.str(), relative, {}});
+            insert(std::move(updated));
+            queueHash(relative);
+            continue;
+        }
         Entry updated;
         const bool identified = readIdentity(relative, type, updated, nullptr);
         if (!identified) {
@@ -1430,14 +1462,14 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
             if (entry.hasMeta) statFile(AssetTypes::metaPathFor(relative).generic_string(), entry.metaWriteTime, entry.metaSize);
             changes.push_back({Change::Type::Added, entry.guid.str(), relative, {}});
             insert(std::move(entry));
-            reindexRedirects();
+            indexRedirectsOf(relative);
             queueHash(relative);
             continue;
         }
         if (refreshSubAssets(entry, nullptr)) writeIdentity(entry);
         changes.push_back({Change::Type::Added, entry.guid.str(), relative, {}});
         insert(std::move(entry));
-        reindexRedirects();
+        indexRedirectsOf(relative);
         queueHash(relative);
     }
 
@@ -1455,7 +1487,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         Entry entry = identify(relative, type, legacyGuid(relative));
         changes.push_back({Change::Type::Added, entry.guid.str(), relative, {}});
         insert(std::move(entry));
-        reindexRedirects();
+        indexRedirectsOf(relative);
         queueHash(relative);
     }
 

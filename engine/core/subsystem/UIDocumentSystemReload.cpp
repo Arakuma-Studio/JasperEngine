@@ -44,9 +44,12 @@ namespace jasperengine{
             bool exists = false;
             long long time = 0;
             unsigned long long size = 0;
+            // forgetFileStamps: the editor knows the file changed since (a save in the same
+            // timestamp tick has the same time and size), so this stamp never says "unchanged"
+            bool stale = false;
 
             bool operator==(const Stamp& other) const{
-                return exists == other.exists && time == other.time && size == other.size;
+                return exists == other.exists && time == other.time && size == other.size && !stale && !other.stale;
             }
             bool operator!=(const Stamp& other) const{
                 return !(*this == other);
@@ -606,6 +609,20 @@ uint32_t UIDocumentSystem::getLoadCount(Entity entity) const{
         return 0;
     auto it = reloadState->documents.find(entity);
     return (it != reloadState->documents.end()) ? it->second.loadCount : 0;
+}
+
+void UIDocumentSystem::forgetFileStamps(const std::vector<std::string>& files){
+    if (!reloadState)
+        return;
+    std::set<std::string> forgotten;
+    for (const std::string& file : files)
+        forgotten.insert(normalizeHtmlUIPath(file));
+    for (auto& [entity, record] : reloadState->documents){
+        for (auto& [path, stamp] : record.stamps){
+            if (forgotten.count(path))
+                stamp.stale = true;
+        }
+    }
 }
 
 std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(const std::vector<std::string>& files, double settleSeconds){

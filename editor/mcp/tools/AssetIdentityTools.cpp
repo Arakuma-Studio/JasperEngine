@@ -49,7 +49,7 @@ AssetDatabase::Resolution resolveArg(Project* project, const std::string& asset,
     return found;
 }
 
-Json assetJson(Project* project, const Guid& guid, const std::string& fallbackPath) {
+Json identityAssetJson(Project* project, const Guid& guid, const std::string& fallbackPath) {
     AssetDatabase::AssetInfo info;
     if (!guid.isNull() && project->getAssetDatabase().getInfo(guid, info)) {
         return Json{{"path", info.path}, {"guid", info.guid.str()}, {"type", assetTypeName(info.type)}};
@@ -70,13 +70,13 @@ std::string fieldOf(const std::string& locator, const std::string& component) {
     return field;
 }
 
-Json edgeJson(Project* project, const DepEdge& edge, bool withTarget) {
+Json identityEdgeJson(Project* project, const DepEdge& edge, bool withTarget) {
     const AssetIndex& index = project->getAssetIndex();
     Json item;
     item["referrer"] = edge.referrer == AssetIndex::projectReferrer()
         ? Json{{"path", "project.yaml"}, {"guid", nullptr}, {"type", "project"}}
-        : assetJson(project, edge.referrer, index.referrerPath(edge.referrer));
-    if (withTarget) item["target"] = assetJson(project, edge.target, edge.targetPath);
+        : identityAssetJson(project, edge.referrer, index.referrerPath(edge.referrer));
+    if (withTarget) item["target"] = identityAssetJson(project, edge.target, edge.targetPath);
     if (edge.entity != 0) item["entity"] = Json{{"id", edge.entity}, {"path", edge.entityPath}};
     if (!edge.component.empty()) item["component"] = edge.component;
     item["field"] = edge.line ? "line " + std::to_string(edge.line) : fieldOf(edge.field, edge.component);
@@ -112,7 +112,7 @@ void whenIndexed(const CallPtr& call, std::function<void()> then) {
     });
 }
 
-bool runProjectCommand(const CallPtr& call, Command* command) {
+bool identityRunProjectCommand(const CallPtr& call, Command* command) {
     command->setNoMerge();
     const bool ok = call->ctx().project()->getProjectCommandHistory()->addCommand(command);
     if (ProjectWindow* window = call->ctx().projectWindow()) window->refreshCurrentDirectory();
@@ -165,13 +165,13 @@ void findReferencesTool(const CallPtr& call) {
         const std::string path = found.found() ? found.path : project->normalizeToProjectRelative(asset).generic_string();
         Json list = Json::array();
         for (const DepEdge& edge : project->getAssetIndex().referencesTo(guid, Guid::isValidText(asset) && !found.found() ? std::string() : path, transitive, limit)) {
-            list.push_back(edgeJson(project, edge, transitive));
+            list.push_back(identityEdgeJson(project, edge, transitive));
         }
         std::string text = std::to_string(list.size()) + " reference(s) to " + path + ":";
         for (const Json& item : list) {
             text += "\n" + item["referrer"]["path"].get<std::string>() + " " + item["locator"].get<std::string>();
         }
-        call->ok(text, Json{{"asset", assetJson(project, guid, path)}, {"references", list}, {"truncated", list.size() >= limit}});
+        call->ok(text, Json{{"asset", identityAssetJson(project, guid, path)}, {"references", list}, {"truncated", list.size() >= limit}});
     });
 }
 
@@ -195,7 +195,7 @@ void getAssetDependenciesTool(const CallPtr& call) {
         }
         Json list = Json::array();
         for (const DepEdge& edge : project->getAssetIndex().dependenciesOf(referrer, depth)) {
-            list.push_back(edgeJson(project, edge, true));
+            list.push_back(identityEdgeJson(project, edge, true));
         }
         std::string text = std::to_string(list.size()) + " dependenc" + (list.size() == 1 ? "y" : "ies") + ":";
         for (const Json& item : list) {
@@ -266,7 +266,7 @@ void listMissingAssetsTool(const CallPtr& call) {
 
 // The referrers of a missing group the call names (all of them, or the listed locators: a
 // locator, or "<owner>|<locator>")
-bool groupTargets(const CallPtr& call, const std::string& from, std::vector<AssetRefTarget>& targets) {
+bool identityGroupTargets(const CallPtr& call, const std::string& from, std::vector<AssetRefTarget>& targets) {
     Project* project = call->ctx().project();
     MissingAssetTracker& tracker = project->getMissingAssets();
     tracker.update(project->getAssetDatabase(), project->getAssetIndex(), true);
@@ -316,7 +316,7 @@ void retargetAssetReferencesTool(const CallPtr& call) {
                 call->fail("A redirect retargets every reference; give referrers with mode rewrite.");
                 return;
             }
-            if (!runProjectCommand(call, new AddFormerGuidCmd(project, target.path, Guid::parse(from), report))) {
+            if (!identityRunProjectCommand(call, new AddFormerGuidCmd(project, target.path, Guid::parse(from), report))) {
                 call->fail("Couldn't retarget: " + report->error);
                 return;
             }
@@ -326,8 +326,8 @@ void retargetAssetReferencesTool(const CallPtr& call) {
             return;
         }
         std::vector<AssetRefTarget> targets;
-        if (!groupTargets(call, from, targets)) return;
-        if (!runProjectCommand(call, new RetargetAssetRefsCmd(project, targets, AssetRef(target.path, target.guid), report))) {
+        if (!identityGroupTargets(call, from, targets)) return;
+        if (!identityRunProjectCommand(call, new RetargetAssetRefsCmd(project, targets, AssetRef(target.path, target.guid), report))) {
             call->fail("Couldn't retarget: " + report->error);
             return;
         }
@@ -342,9 +342,9 @@ void clearAssetReferencesTool(const CallPtr& call) {
         Project* project = call->ctx().project();
         const std::string guid = call->args().value("guid", "");
         std::vector<AssetRefTarget> targets;
-        if (!groupTargets(call, guid, targets)) return;
+        if (!identityGroupTargets(call, guid, targets)) return;
         auto report = std::make_shared<AssetRefCmdReport>();
-        if (!runProjectCommand(call, new RetargetAssetRefsCmd(project, targets, AssetRef(), report))) {
+        if (!identityRunProjectCommand(call, new RetargetAssetRefsCmd(project, targets, AssetRef(), report))) {
             call->fail("Couldn't clear: " + report->error);
             return;
         }
