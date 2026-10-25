@@ -1941,6 +1941,8 @@ OVERRIDES[('Mesh', 'getMaterial')] = {
 # Properties whose getter returns a LuaRef: (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     ('Mesh', 'material'): ('Material', True),
+    # AnimationEvent.args builds a 1-based table of the event's arguments
+    ('AnimationEvent', 'args'): ('(number|string|boolean)[]', True),
 }
 
 for _phys, _vec in (('Physics', 'Vector3'), ('Physics2D', 'Vector2')):

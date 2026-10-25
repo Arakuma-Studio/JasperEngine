@@ -1013,6 +1013,20 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const std::string&)>>("FunctionSubscribe_V_S")
+        .addFunction("__call", &FunctionSubscribe<void(const std::string&)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const std::string&)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const std::string&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const std::string&)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<FunctionSubscribe<void(const AnimationEvent&)>>("FunctionSubscribe_V_AE")
+        .addFunction("__call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
+        .addFunction("call", &FunctionSubscribe<void(const AnimationEvent&)>::call)
+        .addFunction("add", (bool (FunctionSubscribe<void(const AnimationEvent&)>::*)(const std::string&, lua_State*))&FunctionSubscribe<void(const AnimationEvent&)>::add)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<float(float)>>("FunctionSubscribe_F_F")
         .addFunction("__call", &FunctionSubscribe<float(float)>::call)
         .addFunction("call", &FunctionSubscribe<float(float)>::call)

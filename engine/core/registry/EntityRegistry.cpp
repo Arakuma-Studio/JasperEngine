@@ -88,6 +88,9 @@ EntityRegistry::~EntityRegistry(){
 }
 
 void EntityRegistry::sortComponentsByTransform(Signature entitySignature){
+    // after a reorder of the Transform array (moveChildToIndex, the editor's block moves)
+    hierarchyRev++;
+
     // Mesh component
     if (entitySignature.test(getComponentId<MeshComponent>())){
         auto meshes = componentManager.getComponentArray<MeshComponent>();
@@ -184,7 +187,7 @@ void EntityRegistry::moveChildAux(Entity entity, bool increase, bool stopIfFound
     }
 }
 
-void EntityRegistry::changeTransformChildren(Entity entity){
+bool EntityRegistry::changeTransformChildren(Entity entity){
     // Get the parent of the entity being removed before it's deleted
     Transform* removedTransform = findComponent<Transform>(entity);
     Entity newParent = NULL_ENTITY;
@@ -192,6 +195,7 @@ void EntityRegistry::changeTransformChildren(Entity entity){
         newParent = removedTransform->parent;
     }
 
+    bool hadChildren = false;
     auto transformArray = getComponentArray<Transform>();
     for (size_t i = 0; i < transformArray->size(); i++) {
         Transform& childTransform = transformArray->getComponentFromIndex(i);
@@ -199,8 +203,23 @@ void EntityRegistry::changeTransformChildren(Entity entity){
             childTransform.parent = newParent;
             childTransform.needUpdate = true;
             childTransform.needUpdateChildVisibility = true;
+            hadChildren = true;
         }
     }
+    return hadChildren;
+}
+
+bool EntityRegistry::isInHierarchy(Entity entity){
+    if (!entityManager.isCreated(entity) || !entityManager.getSignature(entity).test(getComponentId<Transform>())){
+        return false;
+    }
+    auto transforms = componentManager.getComponentArray<Transform>();
+    const size_t index = transforms->getIndex(entity);
+    if (transforms->getComponentFromIndex(index).parent != NULL_ENTITY){
+        return true;
+    }
+    // children follow their parent in the array (its branch)
+    return index + 1 < transforms->size() && transforms->getComponentFromIndex(index + 1).parent == entity;
 }
 
 Entity EntityRegistry::createEntity() {
@@ -222,10 +241,16 @@ bool EntityRegistry::isEntityCreated(Entity entity) const {
 }
 
 bool EntityRegistry::recreateEntity(Entity entity) {
+    // undo of a delete: the entity's place in the hierarchy comes back
+    hierarchyRev++;
+    nameRev++;
     return entityManager.recreateEntity(entity);
 }
 
 void EntityRegistry::destroyEntity(Entity entity) {
+    if (isInHierarchy(entity)) {
+        hierarchyRev++;
+    }
     onEntityDestroyed(entity, entityManager.getSignature(entity));
 
     componentManager.entityDestroyed(entity);
@@ -238,6 +263,12 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
             destroyEntity(entities[0]);
         }
         return;
+    }
+    for (Entity entity : entities) {
+        if (isInHierarchy(entity)) {
+            hierarchyRev++;
+            break;
+        }
     }
     for (Entity entity : entities) {
         // a callback can destroy others of the list (a model its nodes)
@@ -266,6 +297,12 @@ Signature EntityRegistry::getSignature(Entity entity) const {
 }
 
 void EntityRegistry::setEntityName(Entity entity, const std::string& name) {
+    // only a name under a parent is part of a path (a root's or a lone entity's never is)
+    if (entityManager.isCreated(entity) && entityManager.getSignature(entity).test(getComponentId<Transform>()) &&
+        componentManager.getComponent<Transform>(entity).parent != NULL_ENTITY && entityManager.getName(entity) != name) {
+        hierarchyRev++;
+        nameRev++;
+    }
     entityManager.setName(entity, name);
 }
 
@@ -472,7 +509,13 @@ uint64_t EntityRegistry::hierarchyRevision() const {
     return hierarchyRev;
 }
 
+uint64_t EntityRegistry::nameRevision() const {
+    return nameRev;
+}
+
 void EntityRegistry::clear() {
+    hierarchyRev++;
+    nameRev++;
     std::vector<Entity> entities = getEntityList();
     for (Entity entity : entities) {
         // An owner's removal callbacks can destroy other entities in this snapshot.
@@ -494,6 +537,7 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
         }
 
         transformChild.needUpdate = true;
+        hierarchyRev++;
 
         if (parent == NULL_ENTITY){
             size_t newIndex = findBranchLastIndex(findOldestParent(child)) + 1;

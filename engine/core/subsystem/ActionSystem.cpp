@@ -1621,6 +1621,9 @@ void ActionSystem::clearPoseBlend(){
             it = latticeBlend.erase(it);
         }else{
             it->second.active = false;
+            if (!it->second.hasRest.empty()){
+                std::fill(it->second.hasRest.begin(), it->second.hasRest.end(), 0);
+            }
             ++it;
         }
     }
@@ -1631,12 +1634,28 @@ void ActionSystem::flushPoseBlend(){
         Entity target = entry.first;
         TransformBlendAccum& accum = entry.second;
 
-        if (!scene->isEntityCreated(target))
-            continue;
-
+        // one lookup: a destroyed entity has no components
         Transform* transform = scene->findComponent<Transform>(target);
         if (!transform)
             continue;
+
+        // an Animation Player's rest fills the weight the contributors leave (spec 9.R1)
+        if (accum.hasRestPosition && accum.positionWeight > 0.0f && accum.positionWeight < 1.0f){
+            accum.positionSum = accum.positionSum + accum.restPosition * (1.0f - accum.positionWeight);
+            accum.positionWeight = 1.0f;
+        }
+        if (accum.hasRestScale && accum.scaleWeight > 0.0f && accum.scaleWeight < 1.0f){
+            accum.scaleSum = accum.scaleSum + accum.restScale * (1.0f - accum.scaleWeight);
+            accum.scaleWeight = 1.0f;
+        }
+        if (accum.hasRestRotation && accum.rotationWeight > 0.0f && accum.rotationWeight < 1.0f){
+            Quaternion rest = accum.restRotation;
+            if (accum.hasRotationRef && accum.rotationRef.dot(rest) < 0.0f){
+                rest = -rest;
+            }
+            accum.rotationSum = accum.rotationSum + rest * (1.0f - accum.rotationWeight);
+            accum.rotationWeight = 1.0f;
+        }
 
         bool changed = false;
         if (accum.positionWeight > 0.0f){
@@ -1678,7 +1697,11 @@ void ActionSystem::flushPoseBlend(){
 
         for (int i = 0; i < MAX_MORPHTARGETS; i++){
             if (accum.weights[i] > 0.0f){
-                mesh->morphWeights[i] = accum.sums[i] / accum.weights[i];
+                if (accum.hasRest[i] && accum.weights[i] < 1.0f){
+                    mesh->morphWeights[i] = accum.sums[i] + accum.rest[i] * (1.0f - accum.weights[i]);
+                }else{
+                    mesh->morphWeights[i] = accum.sums[i] / accum.weights[i];
+                }
             }
         }
     }
@@ -1700,7 +1723,9 @@ void ActionSystem::flushPoseBlend(){
         bool changed = false;
         for (size_t i = 0; i < count; i++){
             if (accum.weights[i] > 0.0f){
-                Vector3 value = accum.sums[i] / accum.weights[i];
+                Vector3 value = (i < accum.hasRest.size() && accum.hasRest[i] && accum.weights[i] < 1.0f) ?
+                                accum.sums[i] + accum.rest[i] * (1.0f - accum.weights[i]) :
+                                accum.sums[i] / accum.weights[i];
                 if (latticecomp->offsets.size() < pointCount){
                     latticecomp->offsets.resize(pointCount, Vector3(0, 0, 0));
                 }
@@ -2205,6 +2230,7 @@ void ActionSystem::update(double dt){
     }
 
     clearPoseBlend();
+    poseBlendScope = true;
 
     //Animations actions
     auto animations = scene->getComponentArray<AnimationComponent>();
@@ -2251,6 +2277,7 @@ void ActionSystem::update(double dt){
 
     // Write the blended (weighted-average) pose to each animated target.
     flushPoseBlend();
+    poseBlendScope = false;
 
     // clip events and onFinish, after the pose is written
     dispatchPlayerCallbacks();
