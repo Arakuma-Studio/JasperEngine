@@ -116,7 +116,8 @@ async def test_fork_rename_remaps_material_and_pass_shaders(ed: Editor):
     ed.check_eq((got[M + "shader"], got[P + "shader"]), (moved, moved), "a deleted fork stays referenced")
     ed.check_eq(material_file.read_text(), material_text, "the .material file keeps the deleted fork")
     listed = (await ed.call("list_missing_assets"))["missing"]
-    missing = {r["owner"] for g in listed if "review_moved/ReviewFork" in g["last_path"] for r in g["referrers"]}
+    # (the .material file still names the fork's first path: R13 rewrote nothing; the GUID is missing)
+    missing = {r["owner"] for g in listed if "ReviewFork" in g["last_path"] for r in g["referrers"]}
     ed.check(any(o.endswith("ReviewFork.material") for o in missing), f"Missing Assets lists the .material file: {listed!r:.3000}")
     await ed.call("undo", scope="project")
     got = await props(ed, eid, M + "shader", P + "shader")
