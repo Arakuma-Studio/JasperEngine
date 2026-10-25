@@ -125,7 +125,7 @@
              {"type": "within_viewport", "selector": ".browser"},
              {"type": "no_overlap", "selector": ".chip"},
              {"type": "text_fits", "selector": ".chip"},
-             {"type": "min_size", "selector": ".chip, .refresh"},
+             {"type": "min_size", "selector": ".chip, .refresh", "width": 40, "height": 26},
              {"type": "within_parent", "selector": ".servers .htmlui-row", "container": ".servers"}]},
  {"name": "chat_log", "title": "Chat log", "example": true,
   "description": "A team chat: Markdown messages of any height in a list that sticks to its end, a composer and teammates writing on game time.",

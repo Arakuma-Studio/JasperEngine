@@ -320,6 +320,7 @@ namespace jasperengine::htmlui {
         bool measuring = false;
         float lastScrollTop = 0.0f;
         bool atEnd = false;
+        float lastMaxScroll = 0.0f;   // the scroll range at the last update (anchor="end")
         bool heightChecked = false;
         bool indefiniteHeight = false;
         bool boundary = false;

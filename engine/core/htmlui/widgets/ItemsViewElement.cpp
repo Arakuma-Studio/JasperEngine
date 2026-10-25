@@ -1028,6 +1028,12 @@ void ItemsViewElement::OnUpdate(){
     measureRows();
 
     // a scroll asked for before the view was laid out, or stick-to-end (R12)
+    // R12: a view stuck to its end stays there while its rows grow (appended, or measured taller)
+    const float maxScrollNow = GetScrollHeight() - GetClientHeight();
+    if (anchorEnd && atEnd && pendingScrollIndex < 0 && maxScrollNow > lastMaxScroll + 0.5f && GetScrollTop() < maxScrollNow - 1.0f)
+        SetScrollTop(maxScrollNow);
+    lastMaxScroll = maxScrollNow;
+
     // (after the sizer took its new height: a scroll to rows past the old end waits for the layout)
     const bool sizerLaidOut = !sizer || sizer->GetBox().GetSize().y + 0.5f >= heights.total() - (kind == Kind::Grid ? gap : 0.0f);
     if (pendingScrollIndex >= 0 && (GetScrollHeight() > 0.0f || itemCount == 0) && (sizerLaidOut || pendingWaits >= 3)){
