@@ -268,6 +268,9 @@ static void printMainUsage(const std::string& commandName) {
         << "  --profile                  Record from the start (Window > Analysis > Profiler).\n"
         << "  --profile-capture <path>   Capture frames once the scenes are loaded, write a .jetrace.json.\n"
         << "  --profile-frames <n>       Frames of that capture (1 to 600). Default: 300.\n\n"
+        << "With any of them (and the env JASPER_FILE_WATCHER; the flag wins):\n"
+        << "  --file-watcher=auto|native|polling|off   How the editor finds files changed on disk (default: the\n"
+        << "                                           Asset Pipeline preference, auto).\n\n"
         << "Run a subcommand with --help for its options.\n";
 }
 

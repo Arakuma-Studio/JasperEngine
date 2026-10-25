@@ -732,6 +732,7 @@ include_directories(core/buffer)
 include_directories(core/component)
 include_directories(core/ecs)
 include_directories(core/io)
+include_directories(core/io/watch)
 include_directories(core/manager)
 include_directories(core/math)
 include_directories(core/object)
@@ -1003,6 +1004,18 @@ set(JASPERENGINE_SRCS
     core/io/File.cpp
     core/io/FileData.cpp
     core/io/ResourcePack.cpp
+    core/io/watch/ExpectedWriteLedger.cpp
+    core/io/watch/FileChangeCoalescer.cpp
+    core/io/watch/FileIdentity.cpp
+    core/io/watch/FileWatchService.cpp
+    core/io/watch/FileWatcher.cpp
+    core/io/watch/ProjectFileIndex.cpp
+    core/io/watch/SharedFileReader.cpp
+    core/io/watch/backends/FsEventsBackend.cpp
+    core/io/watch/backends/InotifyBackend.cpp
+    core/io/watch/backends/NullBackend.cpp
+    core/io/watch/backends/PollingBackend.cpp
+    core/io/watch/backends/RdcwBackend.cpp
     core/manager/ObjectManager.cpp
     core/manager/PrefabAsset.cpp
     core/manager/PrefabManager.cpp
@@ -1250,6 +1263,11 @@ endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)
+
+# the file watcher's FSEvents backend (core/io/watch/backends/FsEventsBackend.cpp)
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    target_link_libraries(jasperengine PUBLIC "-framework CoreServices")
+endif()
 
 # the logger's backtraces (core/log/Backtrace.cpp): DbgHelp symbols on Windows, dladdr elsewhere
 if(WIN32)

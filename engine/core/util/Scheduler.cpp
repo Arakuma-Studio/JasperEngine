@@ -35,13 +35,13 @@ namespace je_scheduler {
         return ((generation & kHandleGenerationMask) << kSlotBits) | slot;
     }
 
-    struct Registry {
+    struct SchedulerRegistry {
         std::mutex mutex;
         std::vector<Scheduler*> schedulers;
     };
 
-    Registry& schedulerRegistry() {
-        static Registry* instance = new Registry();
+    SchedulerRegistry& schedulerRegistry() {
+        static SchedulerRegistry* instance = new SchedulerRegistry();
         return *instance;
     }
 
@@ -138,14 +138,14 @@ size_t TimerGroup::size() const {
 
 Scheduler::Scheduler(const char* name): schedulerName(name), ownerThread(std::this_thread::get_id()) {
     for (auto& chunk : chunks) chunk.store(nullptr, std::memory_order_relaxed);
-    Registry& r = schedulerRegistry();
+    SchedulerRegistry& r = schedulerRegistry();
     std::lock_guard<std::mutex> lock(r.mutex);
     r.schedulers.push_back(this);
 }
 
 Scheduler::~Scheduler() {
     {
-        Registry& r = schedulerRegistry();
+        SchedulerRegistry& r = schedulerRegistry();
         std::lock_guard<std::mutex> lock(r.mutex);
         r.schedulers.erase(std::remove(r.schedulers.begin(), r.schedulers.end(), this), r.schedulers.end());
     }
@@ -162,7 +162,7 @@ Scheduler& Scheduler::game() {
 size_t Scheduler::cancelOwnerEverywhere(uint64_t ownerKey) {
     std::vector<Scheduler*> schedulers;
     {
-        Registry& r = schedulerRegistry();
+        SchedulerRegistry& r = schedulerRegistry();
         std::lock_guard<std::mutex> lock(r.mutex);
         schedulers = r.schedulers;
     }

@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetTypes.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 
@@ -187,6 +188,8 @@ Result AssetOps::copy(Project& project, const fs::path& from, const fs::path& to
             fs::remove(AssetTypes::metaPathFor(to), ignored);
             return result;
         }
+        // the editor's own copy: the file watcher does not report it back (S05 R10)
+        FileUtils::reportWritten(target);
         addWrittenTree(result, project, target);
     }
     result.changes = project.getAssetDatabase().importAssets(to, true, copyGuids);
@@ -203,6 +206,7 @@ Result AssetOps::removeCopy(Project& project, const fs::path& path) {
     const bool shaders = isShaderOrDirectory(path);
     for (const auto& [source, target] : withMeta(path, path)) {
         fs::remove_all(source, ec);
+        FileUtils::reportRemoved(source);
     }
     result.changes = project.getAssetDatabase().removeAssets(path);
     finish(project, result);

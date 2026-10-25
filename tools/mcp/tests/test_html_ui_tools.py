@@ -67,11 +67,13 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # S13 (post FX): +1555 measured (inspect_color_lut 446, get_post_processing_status 403,
 # set_post_processing_debug 675, the presets' list in list_post_processing_presets)
 # S10 (shadows) and S12 (atmosphere), merged after S13's measurement: +2295 measured on the merge
+# S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
+# and editor_status' file_watcher and frame_ms
 # S15 (profiling): +4700 measured with tool_budget.py on the merge with oe-port e92501e14 (118986):
 # capture_pass_output 1005, get_cpu_profile 663, get_gpu_passes 638, profiler_capture 629,
 # get_frame_times 623, get_render_stats 490, get_vram_report 475, focus_window's profiler and
 # frame_debugger windows and profiler.load (177); the profiling group once S31 lands
-TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295 + 4700
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295 + 395 + 4700
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

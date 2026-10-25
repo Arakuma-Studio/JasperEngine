@@ -164,6 +164,10 @@ bool EditorFrame::run(EditorFrameState& state){
         renderer->present();
     }
     renderer->purgeTextures();
+    // a frame that drew (the editor window, or only its views: headless, minimized)
+    if (frameReady || renderRequested){
+        app->recordFrameTime((frameMonotonicSeconds() - frameStart) * 1000.0);
+    }
 
     // a benchmark measures the frames as fast as they go, focused or not (a headless X server
     // gives no window the focus)
