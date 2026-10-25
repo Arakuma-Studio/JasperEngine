@@ -482,3 +482,31 @@ per-file header, so we add the OE copyright line to each copied file.
 14. **AC18**: the fixtures are partly hand-written, so a first save writes the editor's full form
     (before and after S13); the test checks that the saved `postProcessing` equals the file's and
     that a second open and save gives the same bytes.
+
+## Record (implementation)
+
+Run on build server B unless noted; the benchmarks on the benchmark server E.
+
+- AC1-AC10: `jasperengine-core-tests` `CubeLut.*`, `PostColorLut.*`, `DynamicResolutionController.*`
+  (OE's tests ported plus the frame law's), `PostProcessingTiers.*`: pass (754 core tests, the
+  one failure on the loaded server B being `CubeLutBench.Bake32`'s 10 ms budget, see AC22).
+- AC11: `jasperengine-editor-tests` `UberVariants.CompileForEveryBackend` (GLSL 410, GLSL 300 es,
+  HLSL 5, MSL macOS / iOS, SPIR-V): pass (319 editor tests).
+- AC12: `UberBudget.SampleCounts`: VHS 9 texture reads (base 1), halation 3 (2 more), film damage
+  and the grain types 1 (none more); every bit on: 6 textures, 6 samplers, 320 parameter bytes.
+- AC13-AC15: `test_post_fx_golden.py` (11 goldens incl. the pre-S13 `defaults.png` matched at
+  tolerance 0; pass counts: halation with bloom +0, alone +2, VHS / damage / grain types +0).
+  Vulkan and GLES3: the exported fixture's halation, display and log `.cube` frames match GL's
+  (`tools/smoke-test.sh`, SMOKE_BACKEND=vulkan / gles3, pngdiff tolerance 24, 1 %).
+- AC16, AC18: `test_post_fx_settings.py`; AC17: `test_dynamic_resolution.py` (40 ms: min scale
+  after 0.70 s; 5 ms: max after about 5 s; a pinned 0.5 halves the uber source; edit mode idle).
+- AC19: `test_post_fx_inspector_ui.py` (Project window menu, one named step, screenshots).
+- AC20, AC21: `tools/smoke-test.sh tools/fixtures/post-processing` with `SMOKE_GAME_RUNS` of the S13
+  cases: the script case logs its values, the export ships `luts/*.jlut` (13 KB for 13^3) and
+  `licenses/post-fx-LICENSE.txt` and no `.cube`; `CubeLut.JlutRoundTrip`: 65^3 cooks to about 210 KB
+  and bakes within 2/255 of the `.cube`.
+- AC22 (server E): parse 65^3 11.9 ms, 32^3 bake 8.4 ms (display) / 7.6 ms (scene), `.jlut` load
+  0.08 ms, controller tick 0.00001 ms.
+- Android: `tools/test-projects/post-fx` on the emulator (server C): the uber pass with VHS, Lens
+  grain, damage and halation's chain, dynamic resolution running on the frame law (it settled at
+  0.6 on SwiftShader). Web: `GATE=post-fx tools/build.sh web-gate` and the sample project's gate pass.
