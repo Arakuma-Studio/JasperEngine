@@ -77,12 +77,14 @@ namespace {
         return count;
     }
 
-    // Scenes whose nearest-filtered image has a texel boundary exactly at pixel centres: either
-    // texel is right, and the folded translation (batched) and the shader's (unbatched) round the
-    // tie differently. The scene, why, and how many pixels may differ.
-    struct TieScene { const char* id; const char* why; size_t pixels; };
+    // Scenes the folded translation (batched: added on the CPU) and the element's transform
+    // (unbatched: in the shader) round differently: a nearest-filtered texel boundary exactly at
+    // pixel centres (either texel is right), a large blur's analytic Gaussian under a backdrop
+    // blur. The scene, why, how many pixels may differ by more than 1 and by how much at most.
+    struct TieScene { const char* id; const char* why; size_t pixels; int largest; };
     const TieScene tieScenes[] = {
-        {"paint/object-position", "#f: object-fit cover scales the 48x24 pixelated image by 2.5, row 57.5 / 2.5 = 23 is a tie", 120},
+        {"paint/object-position", "#f: object-fit cover scales the 48x24 pixelated image by 2.5, row 57.5 / 2.5 = 23 is a tie", 120, 255},
+        {"integration/fixed-modal-backdrop", "the translate(-50%, -50%) modal's 30 px shadow tail under the overlay's backdrop blur", 400, 3},
     };
 
 }
@@ -110,9 +112,9 @@ TEST(RenderBatch, EquivalenceAllGoldenScenes){
             int x = 0, y = 0;
             const int difference = largestDifference(batched[i].image, unbatched[i].image, x, y);
             compared++;
-            size_t tiePixels = 0;
-            for (const TieScene& tie : tieScenes) if (fixture.id() == tie.id) tiePixels = tie.pixels;
-            if (difference > 1 && tiePixels > 0 && differingPixels(batched[i].image, unbatched[i].image) <= tiePixels) continue;
+            const TieScene* tie = nullptr;
+            for (const TieScene& scene : tieScenes) if (fixture.id() == scene.id) tie = &scene;
+            if (difference > 1 && tie && difference <= tie->largest && differingPixels(batched[i].image, unbatched[i].image) <= tie->pixels) continue;
             if (difference > 1){
                 const std::string base = browserArtifactDirectory() + "/" + fixture.area + "/" + fixture.name + "." + std::to_string(i);
                 compat::savePng(base + ".batched.png", batched[i].image);
