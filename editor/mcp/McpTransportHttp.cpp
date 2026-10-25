@@ -757,10 +757,11 @@ void McpTransportHttp::serveConnection(intptr_t clientFd) {
 
         Json out;
         bool isResponse = false;
-        // Up to 2025-11-25 the stream opens at once, as it always did. 2026-07-28 waits for the
-        // first message: answered before any notification (every protocol error, with its
-        // HTTP status), it goes as plain JSON
-        const bool streamNow = sse && !modern;
+        // Every protocol waits for the first message (S31): answered before any notification
+        // (every protocol error, with its HTTP status), it goes as plain JSON; a notification
+        // first opens the stream
+        const bool sse = acceptsSse;
+        const bool streamNow = false;
         if (!streamNow && !waitNext(out, isResponse)) return;
         if (!streamNow && (!sse || isResponse)) {
             while (!isResponse) {
