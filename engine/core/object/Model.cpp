@@ -165,23 +165,28 @@ Animation Model::findAnimation(const std::string& name){
 void Model::playAnimation(int index, float fadeTime){
     ModelComponent& model = getComponent<ModelComponent>();
 
-    // with an Animation Player the index is one of its states
+    // with an Animation Player an index is one of its states first (as a name is); an index past
+    // its states is the entity animation of that index, which the player's states make room for
     if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
         std::vector<std::string> names = anim::playerStateNames(player->clips);
-        if (index < 0 || index >= (int)names.size()){
-            Log::error("Playing non-existent animation: the Animation Player of '%s' has no state %i", getName().c_str(), index);
+        if (index >= 0 && index < (int)names.size()){
+            anim::playState(*player, names[(size_t)index], fadeTime, getName());
+            fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
             return;
         }
-        anim::playState(*player, names[(size_t)index], fadeTime, getName());
-        fadeOutModelAnimations(scene, model, NULL_ENTITY, fadeTime);
-        return;
+        if (index < 0 || index >= (int)model.animations.size()){
+            Log::error("Playing non-existent animation: '%s' has no Animation Player state or animation %i", getName().c_str(), index);
+            return;
+        }
+        anim::fadeOutStates(*player, fadeTime);
     }
 
     playModelEntityAnimation(scene, model, index, fadeTime);
 }
 
 void Model::playAnimation(int index){
-    if (AnimationPlayerComponent* player = findModelPlayer(scene, entity)){
+    AnimationPlayerComponent* player = findModelPlayer(scene, entity);
+    if (player && index >= 0 && index < (int)player->clips.size()){
         playAnimation(index, player->defaultFadeTime);
         return;
     }
