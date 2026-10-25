@@ -396,6 +396,8 @@ void AtmosphereRenderer::updateHorizon(){
 void AtmosphereRenderer::fillHeightFog(height_fog_t& block, const CameraComponent& camera, const Transform& cameraTransform,
                                        const Rect& viewport, unsigned int targetHeight, bool flipped, float volumetricDistance) const{
     clearHeightFog(block);
+    // colour mode -1: the scene fog is not a height fog (the fogged meshes take the distance fog)
+    block.color_colorMode.w = -1.0f;
 
     // the camera's own clip space (no target flip) and the fragment -> camera ndc mapping of
     // the pass (RenderSystem::fillSceneInputs' screenParams, as ndc)
@@ -591,54 +593,6 @@ void AtmosphereRenderer::renderDenoise(Framebuffer& source, Framebuffer& target,
     notePass(label);
 }
 
-void AtmosphereRenderer::fillSunShadow(const CameraComponent& camera, const Transform& cameraTransform){
-    sun_shadow_t& block = sunShadow;
-    for (int c = 0; c < ATMOSPHERE_SHADOW_CASCADES; c++){
-        block.lightViewProjection[c].identity();
-        block.atlasRect[c] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-        block.split[c] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-    }
-    block.cameraPosition_cascades = Vector4(cameraTransform.worldPosition, 0.0f);
-    block.cameraForward_bias = Vector4(cameraForward(camera), 0.0f);
-    if (!fog->lightShafts || !rs->hasShadows)
-        return;
-
-    // the main light as the frame block picks it (RenderSystem::fillFrameBlock): the brightest
-    // active directional light
-    Scene* scene = rs->scene;
-    auto lights = scene->getComponentArray<LightComponent>();
-    int mainIndex = -1;
-    float brightest = 0.0f;
-    for (size_t i = 0; i < lights->size(); i++){
-        const LightComponent& light = lights->getComponentFromIndex(i);
-        if (light.type != LightType::DIRECTIONAL || light.intensity <= 0.0f || !rs->isLightActive(lights->getEntity(i), light))
-            continue;
-        const float brightness = light.intensity * (0.2126f * light.color.x + 0.7152f * light.color.y + 0.0722f * light.color.z);
-        if (brightness > brightest){
-            brightest = brightness;
-            mainIndex = (int)i;
-        }
-    }
-    if (mainIndex < 0)
-        return;
-    const LightComponent& light = lights->getComponentFromIndex(mainIndex);
-    if (!light.shadows || light.shadowMapIndex < 0)
-        return;
-    const RenderSystem::CameraShadows& shadows = rs->ps();
-    const int cascades = std::min((int)rs->lightCascades(shadows, mainIndex, light), ATMOSPHERE_SHADOW_CASCADES);
-    for (int c = 0; c < cascades; c++){
-        const int slot = light.shadowMapIndex + c;
-        if (slot >= MAX_SHADOW_ATLAS_SLOTS)
-            break;
-        block.lightViewProjection[c] = shadows.vs_shadows.lightViewProjectionMatrix[slot];
-        block.atlasRect[c] = shadows.fs_shadows.atlasRect[slot];
-        const Vector4& info = shadows.fs_shadows.bias_texSize_nearFar[slot];
-        block.split[c] = Vector4(info.z, info.w, 0.0f, 0.0f);
-    }
-    block.cameraPosition_cascades.w = (float)cascades;
-    block.cameraForward_bias.w = light.shadowBias;
-}
-
 void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier){
     AtmosphereViewTargets& targets = rs->rv().atmosphere;
     Framebuffer& depth = targets.depth[tier.fogDivisor == 2 ? 0 : 1];
@@ -652,7 +606,11 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
                            fog->volumetricDistance);
     const bool orthographic = camera.type != CameraType::CAMERA_PERSPECTIVE;
     block.camera = Vector4(cameraForward(camera), orthographic ? 1.0f : 0.0f);
-    block.depthInfo = Vector4(camera.farClip, camera.nearClip, floatFormat ? 0.0f : 1.0f, (fog->lightShafts && sunShadow.cameraPosition_cascades.w > 0.0f) ? 1.0f : 0.0f);
+    // light shafts: the main directional light's cascades of this camera pass (S10's
+    // u_fs_shadow_data, includes/shadow_sampling.glsl sampleDirectionalShadow1)
+    const fs_shadow_data_t& shadowData = rs->ps().fs_shadow_data;
+    const bool shafts = fog->lightShafts && rs->hasShadows && shadowData.header.x >= -0.5f;
+    block.depthInfo = Vector4(camera.farClip, camera.nearClip, floatFormat ? 0.0f : 1.0f, shafts ? 1.0f : 0.0f);
 
     // the volumes: in view, within the volumetric distance, the nearest first, capped by the tier
     std::vector<int> selected;
@@ -723,7 +681,7 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
     if (program.render.beginDraw(offscreenState(floatFormat))){
         ShaderData& data = program.shader->shaderData;
         TextureRender* atlas = &RenderSystem::emptyShadowDepth;
-        if (sunShadow.cameraPosition_cascades.w > 0.0f){
+        if (shafts){
             const RenderSystem::CameraShadows& shadows = rs->ps();
             if (shadows.projectiveAtlas)
                 atlas = &shadows.projectiveAtlas->getDepthTexture();
@@ -736,7 +694,7 @@ void AtmosphereRenderer::renderFog(const CameraComponent& camera, const Transfor
         bindTexture(program.render, data, "u_blueNoise", &blueNoise);
         applyBlock(program.render, data, "u_fs_volumetricFog", sizeof(block), &block);
         applyBlock(program.render, data, "u_fs_heightFog", sizeof(passFog), &passFog);
-        applyBlock(program.render, data, "u_fs_sunShadow", sizeof(sunShadow), &sunShadow);
+        applyBlock(program.render, data, "u_fs_shadow_data", sizeof(shadowData), &shadowData);
         program.render.draw(0, 3, 1);
     }
     passRender.endRenderPass();
@@ -1000,7 +958,6 @@ float AtmosphereRenderer::renderPassTargets(PassPlan& plan, const CameraComponen
             targets.used[1] = true;
             renderDepth(targets.depth[level], sceneDepth, tier.fogDivisor, camera);
             depthReady[level] = true;
-            fillSunShadow(camera, cameraTransform);
             renderFog(camera, cameraTransform, tier);
             renderDenoise(targets.fog[0], targets.fog[1], targets.depth[level], PASS_LABELS[2]);
             marched = std::max(fog->volumetricDistance, 0.0f);

@@ -601,7 +601,9 @@ std::string editor::Factory::formatShadowQuality(ShadowQuality quality) {
         case ShadowQuality::LOW: return "ShadowQuality::LOW";
         case ShadowQuality::MEDIUM: return "ShadowQuality::MEDIUM";
         case ShadowQuality::HIGH: return "ShadowQuality::HIGH";
-        default: return "ShadowQuality::LOW";
+        case ShadowQuality::AUTO: return "ShadowQuality::AUTO";
+        case ShadowQuality::ULTRA: return "ShadowQuality::ULTRA";
+        default: return "ShadowQuality::AUTO";
     }
 }
 
@@ -1127,6 +1129,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     code << ind << "mesh.castShadows = " << formatBool(mesh.castShadows) << ";\n";
     code << ind << "mesh.receiveShadows = " << formatBool(mesh.receiveShadows) << ";\n";
     code << ind << "mesh.shadowsBillboard = " << formatBool(mesh.shadowsBillboard) << ";\n";
+    if (mesh.staticShadowCaster)
+        code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
     code << ind << "mesh.renderInReflectionProbes = " << formatBool(mesh.renderInReflectionProbes) << ";\n";
@@ -1784,6 +1788,18 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
     code << ind << "light.shadowCameraNearFar.x = " << formatFloat(light.shadowCameraNearFar.x) << ";\n";
     code << ind << "light.shadowCameraNearFar.y = " << formatFloat(light.shadowCameraNearFar.y) << ";\n";
     code << ind << "light.numShadowCascades = " << formatUInt(light.numShadowCascades) << ";\n";
+    code << ind << "light.softShadows = " << formatBool(light.softShadows) << ";\n";
+    code << ind << "light.shadowStrength = " << formatFloat(light.shadowStrength) << ";\n";
+    code << ind << "light.shadowNormalBias = " << formatFloat(light.shadowNormalBias) << ";\n";
+    code << ind << "light.cascadeSplitMode = " << (light.cascadeSplitMode == CascadeSplitMode::MANUAL ? "CascadeSplitMode::MANUAL" : "CascadeSplitMode::AUTO") << ";\n";
+    code << ind << "light.cascadeSplits = " << formatVector3(light.cascadeSplits) << ";\n";
+    code << ind << "light.shadowDistance = " << formatFloat(light.shadowDistance) << ";\n";
+    code << ind << "light.shadowAngularDiameter = " << formatFloat(light.shadowAngularDiameter) << ";\n";
+    code << ind << "light.shadowSourceRadius = " << formatFloat(light.shadowSourceRadius) << ";\n";
+    if (light.shadowUpdateMode == ShadowUpdateMode::EVERY_FRAME)
+        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::EVERY_FRAME;\n";
+    else if (light.shadowUpdateMode == ShadowUpdateMode::ON_DEMAND)
+        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::ON_DEMAND;\n";
     if (light.volumetricIntensity != LightComponent().volumetricIntensity)
         code << ind << "light.volumetricIntensity = " << formatFloat(light.volumetricIntensity) << ";\n";
     if (light.shading == LightShading::PIXEL)
@@ -3161,6 +3177,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << "\n";
     out << ind2 << "scene->setBackgroundColor(" << formatVector4(scene->getBackgroundColor()) << ");\n";
     out << ind2 << "scene->setShadowQuality(" << formatShadowQuality(scene->getShadowQuality()) << ");\n";
+    if (scene->getShadowDistance() != SceneSettings().shadowDistance)
+        out << ind2 << "scene->setShadowDistance(" << formatFloat(scene->getShadowDistance()) << ");\n";
+    if (scene->getShadowFadeFraction() != SceneSettings().shadowFadeFraction)
+        out << ind2 << "scene->setShadowFadeFraction(" << formatFloat(scene->getShadowFadeFraction()) << ");\n";
+    if (scene->isShadowCascadeBlend() != SceneSettings().shadowCascadeBlend)
+        out << ind2 << "scene->setShadowCascadeBlend(" << formatBool(scene->isShadowCascadeBlend()) << ");\n";
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";

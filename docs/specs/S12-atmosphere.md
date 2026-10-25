@@ -557,9 +557,16 @@ The `gpuMs` value is present when S15 timings exist.
   (reverse subtract) for the part of the correction below zero, then premultiplied. The block's
   `start_handoff_maxDist_inscatter.y` is `start_volumetric_maxDist_inscatter.y`: the distance the
   pass marched.
-- **Sun shadow block (§6.4).** S10 has not landed: `shaderlib/includes/sun_shadow.glsl` declares
-  `u_fs_sunShadow` (cascade matrices, atlas rects, split distances, bias), filled from the camera's
-  current shadow uniforms, with S10's `sampleDirectionalShadow1` signature, for S10 to adopt.
+- **Sun shadow (§6.4).** The light shafts sample S10's interface: the volumetric fog includes
+  `includes/shadow_sampling.glsl` and calls `sampleDirectionalShadow1(worldPos)` on the camera
+  pass's `u_fs_shadow_data` and projective atlas (its cascades, depth bias and distance fade);
+  the S12 stand-in block `u_fs_sunShadow` is gone.
+- **Height fog without a variant bit (§6.2, R17).** S10 took mesh bit 5 ('Shq') and the 32-bit
+  mesh key has no other free bit, so the fogged mesh variants ('Fog', for MESH) compile the height
+  fog in (`HAS_HEIGHT_FOG`) and `includes/fog.glsl` picks it at run time from `u_fs_heightFog`
+  (colour mode -1: a distance fog). A distance fog keeps its own math (AC1 goldens, exact on
+  glcore); its fogged meshes pay one uniform branch per fragment. With the 64-bit shader keys
+  (origin/main) a bit could gate it again. Shader cache v35.
 - **Pass timings (AC10).** S15 has not landed: passes are labelled, `get_atmosphere_info` lists
   them, and `tools/performance/atmosphere_bench.py` measures frame time with each feature on and
   off (it reads `gpuMs` once S15 provides it). The perf-lab run on the reference hardware is

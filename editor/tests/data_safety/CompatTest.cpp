@@ -86,6 +86,20 @@ namespace {
         return keys;
     }
 
+    // The lines the scene 1 -> 2 migration rewrites (S10: the shadow quality Low is Auto, a
+    // light's shadow bias in texels) left out of both texts
+    std::string withoutShadowMigration(const std::string& text) {
+        std::istringstream in(text);
+        std::string line, out;
+        while (std::getline(in, line)) {
+            const size_t start = line.find_first_not_of(' ');
+            if (start != std::string::npos && (line.compare(start, 14, "shadowQuality:") == 0 || line.compare(start, 11, "shadowBias:") == 0))
+                continue;
+            out += line + "\n";
+        }
+        return out;
+    }
+
     // The input's lines without the format version line
     std::string withoutVersionLine(const std::string& text) {
         std::istringstream in(text);
@@ -122,10 +136,11 @@ TEST(Compat, CorpusRoundTrip) {
         const bool editorWritten = original.find("\nmaxValues:") != std::string::npos &&
                                    original.find("prefabInstance") == std::string::npos && original.find("\n      prefab:") == std::string::npos;
         if (editorWritten) {
-            const std::string difference = firstDifference(withoutShaderKeys(withoutVersionLine(first)), withoutShaderKeys(withoutVersionLine(original)));
+            const std::string difference = firstDifference(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))),
+                                                           withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
-            EXPECT_EQ(first.rfind("formatVersion: 1\n", 0), 0u);
+            EXPECT_EQ(first.rfind("formatVersion: 2\n", 0), 0u);
         }
     }
 

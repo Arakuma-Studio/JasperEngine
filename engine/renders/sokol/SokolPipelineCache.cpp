@@ -203,8 +203,13 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
         desc.sample_count = state.target.sampleCount > 0 ? state.target.sampleCount : 1;
     }
 
-    desc.colors[0].write_mask = toColorMask(state.writeMask);
-    setBlend(desc.colors[0].blend, state.blend);
+    if (state.target.colorless && !state.target.swapchain){
+        desc.color_count = 0;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE;
+    }else{
+        desc.colors[0].write_mask = toColorMask(state.writeMask);
+        setBlend(desc.colors[0].blend, state.blend);
+    }
 
     desc.depth.compare = toCompare(state.depthCompare);
     desc.depth.write_enabled = state.depthWrite;

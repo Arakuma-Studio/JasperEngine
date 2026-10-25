@@ -42,10 +42,12 @@
 #define MAX_SHADOWCASCADES 4
 #endif
 
-// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map
-// (a spot light, or a single directional cascade) and maps 1:1 to a v_lightProjPos
-// vertex varying, so the slot count is bounded by GPU vertex-output limits: keep the
-// grid small (a 6x6 / 36-slot grid overflows the varyings and breaks shader compiles).
+// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map (a spot
+// light, or a single directional cascade) of its own resolution, packed into the atlas by
+// ShadowSlotPlanner. Shaders compute the shadow coordinates in the fragment stage, but forks
+// written before that still write one v_lightProjPos vertex varying per slot (and every slot
+// costs 9 fragment uniform vectors), so keep the count small: a 6x6 / 36-slot count overflows
+// the varyings and breaks such shaders.
 #ifndef SHADOW_ATLAS_COLS
 #define SHADOW_ATLAS_COLS 3
 #endif
@@ -58,9 +60,9 @@
 #define MAX_SHADOW_ATLAS_SLOTS (SHADOW_ATLAS_COLS * SHADOW_ATLAS_ROWS)
 #endif
 
-// Point shadow atlas (omnidirectional). Each shadow-casting point light consumes
-// SHADOW_CUBE_FACES consecutive slots (one per cube face) and is sampled only in the
-// fragment shader, so this atlas is bounded by texture size rather than varyings.
+// Point shadow atlas (omnidirectional), a depth atlas like the projective one. Each
+// shadow-casting point light consumes SHADOW_CUBE_FACES consecutive slots (one per cube face)
+// and is sampled only in the fragment shader, so this atlas is bounded by texture size.
 #ifndef SHADOW_POINT_ATLAS_COLS
 #define SHADOW_POINT_ATLAS_COLS 6
 #endif
@@ -438,6 +440,8 @@ namespace jasperengine {
         static void beginFrameStats();
         static void addDrawStats(uint32_t instances, uint64_t triangles);
         static const FrameStats& getFrameStats();
+        // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
+        static uint32_t getPendingDrawCalls();
 
         // Upper bound (in seconds) for the value returned by getDeltatime() and used by the update loop. Default 0.25.
         static float getMaxDeltatime();

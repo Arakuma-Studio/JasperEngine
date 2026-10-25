@@ -545,6 +545,17 @@ namespace {
         makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         // read by RenderSystem when it picks each mesh's lights
         makeFastProperty<LightComponent, LightShading, &LightComponent::shading>("shading", PropertyType::Enum, UpdateFlags_None),
+        // shadows (docs/rendering/shadows.md): what the maps depend on reaches RenderSystem
+        // through the light's settings hash every frame, the rest is read by the receivers
+        makeFastProperty<LightComponent, bool, &LightComponent::softShadows>("softShadows", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowStrength>("shadowStrength", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowNormalBias>("shadowNormalBias", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, CascadeSplitMode, &LightComponent::cascadeSplitMode>("cascadeSplitMode", PropertyType::Enum, UpdateFlags_LightShadowCamera),
+        makeFastProperty<LightComponent, Vector3, &LightComponent::cascadeSplits>("cascadeSplits", PropertyType::Vector3, UpdateFlags_LightShadowCamera),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowDistance>("shadowDistance", PropertyType::Float, UpdateFlags_LightShadowCamera),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowAngularDiameter>("shadowAngularDiameter", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowSourceRadius>("shadowSourceRadius", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, ShadowUpdateMode, &LightComponent::shadowUpdateMode>("shadowUpdateMode", PropertyType::Enum, UpdateFlags_None),
         makeFastProperty<LightComponent, float, &LightComponent::volumetricIntensity>("volumetricIntensity", PropertyType::Float, UpdateFlags_None),
     };
 
@@ -783,6 +794,8 @@ namespace {
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveIBL>("receiveIBL", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::castShadows>("castShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveShadows>("receiveShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
+        // which shadow layer it is cached in (RenderSystem's caster registry reads it every frame)
+        makeFastProperty<MeshComponent, bool, &MeshComponent::staticShadowCaster>("staticShadowCaster", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<MeshComponent, bool, &MeshComponent::lodEnabled>("lodEnabled", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, float, &MeshComponent::lodBias>("lodBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<MeshComponent, bool, &MeshComponent::renderInReflectionProbes>("renderInReflectionProbes", PropertyType::Bool, UpdateFlags_Reflection_Probe_Recapture_All),

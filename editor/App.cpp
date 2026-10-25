@@ -3871,9 +3871,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    // v34: atmosphere (S12): mesh bit 5 ('Pcf' long retired) is the height fog's 'Hfg', so a
-    //      cached mesh variant with it set from before is stale; the atmosphere pass types.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v34";
+    // v34: (the S12 branch only: mesh bit 5 as a height fog bit; S10 has it as 'Shq')
+    // v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
+    //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
+    //      atmosphere pass types after S10's SHADOW_CACHE.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v35";
 }
 
 void editor::App::pushTabNotificationStyle(){

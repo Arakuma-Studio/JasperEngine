@@ -684,6 +684,10 @@ void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
     currentFrameStats.triangles += triangles;
 }
 
+uint32_t Engine::getPendingDrawCalls(){
+    return currentFrameStats.drawCalls;
+}
+
 const Engine::FrameStats& Engine::getFrameStats(){
     return frameStats;
 }

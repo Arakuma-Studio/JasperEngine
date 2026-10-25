@@ -14,6 +14,8 @@
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
+#include "render/shadow/ShadowTypes.h"
+#include "render/shadow/ShadowTiers.h"
 
 using namespace jasperengine;
 
@@ -112,6 +114,11 @@ namespace luabridge
     template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
     template<> struct Stack<ShadowCaster2DShape> : EnumWrapper<ShadowCaster2DShape>{};
     template<> struct Stack<ShadowQuality> : EnumWrapper<ShadowQuality>{};
+    // 3D shadows (S10)
+    template<> struct Stack<ShadowType> : EnumWrapper<ShadowType>{};
+    template<> struct Stack<ShadowUpdateMode> : EnumWrapper<ShadowUpdateMode>{};
+    template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
+    template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};

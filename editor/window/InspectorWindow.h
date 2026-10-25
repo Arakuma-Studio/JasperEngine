@@ -99,6 +99,8 @@ namespace jasperengine::editor{
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
+        // the split bar drag's undo step, merged while the handle is held
+        Command* splitBarCmd = nullptr;
 
         bool windowOpen;
         bool focusRequested;
@@ -490,6 +492,11 @@ namespace jasperengine::editor{
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the light's Shadows section (InspectorShadows.cpp), and its pieces
+        void drawLightShadows(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawShadowSplitBar(SceneProject* sceneProject, std::vector<Entity> entities, const LightComponent& light);
+        // the scene's Shadows settings (Quality, distance, fade, blend, the effective tier)
+        void drawSceneShadows(SceneProject* sceneProject);
         void drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

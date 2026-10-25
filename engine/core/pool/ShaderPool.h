@@ -112,9 +112,11 @@ namespace jasperengine{
         // the variant bit of the post-processing colour (USE_POST_COLOR, includes/post_color.glsl:
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
-        // the height fog's mesh variant bit ('Hfg' = HAS_HEIGHT_FOG, with the fog bit 'Fog')
-        static uint32_t getHeightFogProperty();
         static uint32_t getPostColorProperty(ShaderType shaderType);
+        // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
+        // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
+        // variant that receives shadows when the shadow tier is High or above
+        static uint32_t getShadowsHQProperty();
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint32_t getPropertiesFromKey(ShaderKey key);

@@ -1129,6 +1129,34 @@ int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
 }
 
+void editor::Project::setShadowTier(int platform, ShadowTier tier){
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return;
+    shadowTiers[platform] = tier;
+    // the editor renders with the tiers at once (RenderSystem resolves them every update)
+    ShadowTiers::setPlatformTier(platform, tier);
+}
+
+ShadowTier editor::Project::getShadowTier(int platform) const{
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return ShadowTier::HIGH;
+    return shadowTiers[platform];
+}
+
+const char* editor::Project::getShadowTierPlatformName(int platform){
+    // Engine::Platform order
+    static const char* const names[ShadowTiers::PLATFORM_COUNT] = {"macos", "ios", "web", "android", "linux", "windows"};
+    return (platform >= 0 && platform < ShadowTiers::PLATFORM_COUNT) ? names[platform] : "";
+}
+
+int editor::Project::findShadowTierPlatform(const std::string& name){
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        if (name == getShadowTierPlatformName(platform))
+            return platform;
+    }
+    return -1;
+}
+
 void editor::Project::setWindowMode(WindowMode windowMode){
     this->windowMode = windowMode;
 }
@@ -2510,6 +2538,18 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
             insertKeys(variant.first, variant.second, 0);
     }
 
+    // a light casting 3D shadows copies the static shadow cache back and clears slots with the
+    // shadow cache's program (RenderSystem::renderShadowMaps)
+    {
+        auto lights = scene->getComponentArray<LightComponent>();
+        for (int i = 0; i < (int)lights->size(); i++) {
+            if (lights->getComponentFromIndex(i).shadows) {
+                keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW_CACHE, 0));
+                break;
+            }
+        }
+    }
+
     // 2D lights with shadows render occluder segments through the shadow2d
     // pass. The runtime additionally gates on an enabled ShadowCaster2D existing
     // (RenderSystem::loadLights2D), but scripts can spawn occluders at runtime,
@@ -2585,7 +2625,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
 
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
-                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
+                                         scriptsSetShadowQuality());
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -2606,6 +2647,12 @@ bool editor::Project::scriptsSetLightCapacity() const {
     // Scene.maxLightsPerObject (Lua) or Scene::setMaxLightsPerObject (C++): the one way the
     // light capacity tier of the lit variants changes at runtime
     return scriptsMention("axLightsPerObject");
+}
+
+bool editor::Project::scriptsSetShadowQuality() const {
+    // scene.shadowQuality (Lua) or Scene::setShadowQuality (C++): the shadow tier, and with it
+    // the High filters' variant bit, can change at runtime
+    return scriptsMention("hadowQuality");
 }
 
 bool editor::Project::scriptsSetPostProcessing() const {
@@ -3992,6 +4039,9 @@ void editor::Project::resetConfigs() {
     setAtmosphereQuality(defaultAtmosphereQuality);
     playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        setShadowTier(platform, ShadowTiers::defaultTier(platform));
+    }
     setThreadingSettings(ThreadingProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;

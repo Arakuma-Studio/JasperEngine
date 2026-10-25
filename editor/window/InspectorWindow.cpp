@@ -621,11 +621,26 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 }
             }
             if constexpr (std::is_same_v<T, ShadowQuality>) {
-                const char* qualityNames[] = { "None", "Low", "Medium", "High" };
-                int currentItem = static_cast<int>(value);
-                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
-                if (changed) {
-                    value = static_cast<ShadowQuality>(currentItem);
+                if (propertyName == "shadows_quality") {
+                    // the 3D quality tiers, in Unity's order
+                    static const ShadowQuality qualityValues[] = { ShadowQuality::AUTO, ShadowQuality::NONE, ShadowQuality::LOW,
+                                                                   ShadowQuality::MEDIUM, ShadowQuality::HIGH, ShadowQuality::ULTRA };
+                    const char* qualityNames[] = { "Auto", "Hard Only", "Low", "Medium", "High", "Ultra" };
+                    int currentItem = 0;
+                    for (int q = 0; q < IM_ARRAYSIZE(qualityValues); q++) {
+                        if (qualityValues[q] == value) currentItem = q;
+                    }
+                    changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
+                    if (changed) {
+                        value = qualityValues[currentItem];
+                    }
+                } else {
+                    const char* qualityNames[] = { "None", "Low", "Medium", "High" };
+                    int currentItem = std::clamp(static_cast<int>(value), 0, 3);
+                    changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
+                    if (changed) {
+                        value = static_cast<ShadowQuality>(currentItem);
+                    }
                 }
             }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
@@ -6802,6 +6817,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
+    RowSettings staticCasterSettings;
+    staticCasterSettings.help = "Cache this mesh's shadows with the other static casters: they are redrawn only when one of them changes, "
+                                "while dynamic casters move over them. Mark what does not move (level geometry). A static caster that "
+                                "does change still shadows correctly, it only costs a redraw of the static layer.";
+    propertyRow(RowPropertyType::Bool, cpType, "staticShadowCaster", "Static Shadow Caster", sceneProject, entities, staticCasterSettings);
 
     RowSettings cullingSettings;
     cullingSettings.enumEntries = &entriesCullingMode;
@@ -9033,51 +9053,7 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Enum, cpType, "shading", "Shading", sceneProject, entities, settingsShading);
     endTable();
 
-    ImGui::SeparatorText("Shadow settings");
-
-    RowSettings settingsBias;
-    settingsBias.stepSize = 0.000001f;
-    settingsBias.secondColSize = 6 * ImGui::GetFontSize();
-    settingsBias.format = "%.6f";
-
-    RowSettings settingsMapRes;
-    settingsMapRes.sliderValues = &po2Values;
-
-    RowSettings settingsCascade;
-    settingsCascade.sliderValues = &cascadeValues;
-
-    beginTable(cpType, getLabelSize("Map Resolution"), "shadow_settings_table");
-    propertyRow(RowPropertyType::Bool, cpType, "shadows", "Enabled", sceneProject, entities);
-    propertyRow(RowPropertyType::Float, cpType, "shadowBias", "Bias", sceneProject, entities, settingsBias);
-    propertyRow(RowPropertyType::UIntSlider, cpType, "mapResolution", "Map Resolution", sceneProject, entities, settingsMapRes);
-    propertyRow(RowPropertyType::UIntSlider, cpType, "numShadowCascades", "Num Cascades", sceneProject, entities, settingsCascade);
-
-    propertyHeader("Shadow Camera");
-    if (ImGui::Button(ICON_FA_GEAR)){
-        ImGui::OpenPopup("menusettings_shadow_camera");
-    }
-
-    ImGui::SetNextWindowSizeConstraints(ImVec2(14 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::BeginPopup("menusettings_shadow_camera")){
-        ImGui::Text("Shadow camera settings");
-        ImGui::Separator();
-
-        RowSettings settingsFloat;
-        settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-
-        beginTable(cpType, getLabelSize("Camera Near"), "shadow_camera_popup");
-
-        propertyRow(RowPropertyType::Bool, cpType, "automaticShadowCamera", "Automatic", sceneProject, entities);
-        ImGui::BeginDisabled(light.automaticShadowCamera);
-        propertyRow(RowPropertyType::Float, cpType, "shadowCameraNear", "Camera Near", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "shadowCameraFar", "Camera Far", sceneProject, entities, settingsFloat);
-        ImGui::EndDisabled();
-
-        endTable();
-
-        ImGui::EndPopup();
-    }
-    endTable();
+    drawLightShadows(cpType, sceneProject, entities);
 }
 
 void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -15087,21 +15063,7 @@ void editor::InspectorWindow::show(){
                 }
 
                 ImGui::SeparatorText("Shadows");
-
-                if (ImGui::BeginTable("scene_shadow_settings_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, shadowQualityLabelColWidth);
-                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                    drawScenePropertyRow<ShadowQuality>(sceneProject, "shadows_quality", "Filter Quality", ScenePropertyInputType::Combo, shadowQualityComboWidth, 0.0f, 1.0f,
-                        "Smoothness of shadow edges (PCF size):\n"
-                        "- None: 1 sample, hard edges\n"
-                        "- Low: 3x3 samples\n"
-                        "- Medium: 5x5 samples\n"
-                        "- High: 7x7 samples\n"
-                        "Higher values cost more per shadowed pixel.");
-
-                    ImGui::EndTable();
-                }
+                drawSceneShadows(sceneProject);
 
                 ImGui::SeparatorText("Mesh Detail (LOD)");
 
@@ -15364,3 +15326,8 @@ void editor::InspectorWindow::show(){
         setOpen(false);
     }
 }
+
+// the rows InspectorShadows.cpp draws
+template void editor::InspectorWindow::drawScenePropertyRow<float>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<bool>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<ShadowQuality>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);

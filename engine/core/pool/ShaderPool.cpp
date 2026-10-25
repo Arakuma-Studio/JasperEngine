@@ -134,6 +134,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::UI_EFFECT;
         return true;
     }
+    if (typeToken == "shadowcache") {
+        shaderType = ShaderType::SHADOW_CACHE;
+        return true;
+    }
     if (typeToken == "atmospheredepth") {
         shaderType = ShaderType::ATMOSPHERE_DEPTH;
         return true;
@@ -513,6 +517,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_GRADIENT: return lowerCase ? "htmluigradient" : "HTML UI Gradient";
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
+        case ShaderType::SHADOW_CACHE: return lowerCase ? "shadowcache" : "Shadow Cache";
         case ShaderType::ATMOSPHERE_DEPTH: return lowerCase ? "atmospheredepth" : "Atmosphere Depth";
         case ShaderType::VOLUMETRIC_FOG: return lowerCase ? "volumetricfog" : "Volumetric Fog";
         case ShaderType::ATMOSPHERE_DENOISE: return lowerCase ? "atmospheredenoise" : "Atmosphere Denoise";
@@ -523,7 +528,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
     }
 }
 
-uint32_t ShaderPool::getHeightFogProperty(){
+uint32_t ShaderPool::getShadowsHQProperty(){
     return 1u << 5;
 }
 
@@ -559,6 +564,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::HTMLUI_POST: return 7;
         // Flt (filter form), Stp and Sct (phase 6: a stateful effect's step and scatter forms)
         case ShaderType::UI_EFFECT: return 3;
+        case ShaderType::SHADOW_CACHE: return 1;
         default:                 return 0;
     }
 }
@@ -571,8 +577,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 2:  return shortName ? "Uv2" : "UV2";
             case 3:  return shortName ? "Puc" : "Punctual";
             case 4:  return shortName ? "Shw" : "Shadow";
-            // bit 5 was 'Pcf' until the PCF filter became uniform-driven; reused for the height fog
-            case 5:  return shortName ? "Hfg" : "Height Fog";
+            case 5:  return shortName ? "Shq" : "Shadows HQ";
             case 6:  return shortName ? "Nor" : "Normals";
             case 7:  return shortName ? "Nmp" : "Normal Map";
             case 8:  return shortName ? "Tan" : "Tangents";
@@ -655,6 +660,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 4: return shortName ? "Blr" : "Blur";
             case 5: return shortName ? "Unp" : "Unpremultiply";
             case 6: return shortName ? "Yuv" : "YUV";
+        }
+    } else if (shaderType == ShaderType::SHADOW_CACHE) {
+        switch (bit) {
+            case 0: return shortName ? "Vis" : "Atlas View";
         }
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {
@@ -1283,8 +1292,8 @@ ShaderKey ShaderPool::getStorageKey(ShaderKey key) {
 }
 
 uint32_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
-    // Derived from the property-name table so a retired bit is excluded automatically: it
-    // has no short name ("?").
+    // Derived from the property-name table so a retired bit is excluded automatically: it has
+    // no short name ("?").
     uint32_t mask = 0;
     int propCount = getShaderPropertyCount(shaderType);
     for (int i = 0; i < propCount; i++) {
@@ -1298,6 +1307,9 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     ShaderType type = getShaderTypeFromKey(key);
     uint16_t customId = getCustomIdFromKey(key);
     uint32_t properties = getPropertiesFromKey(key) & getValidPropertyMask(type);
+    // the high-quality shadow filters only exist in a variant that receives shadows
+    if (type == ShaderType::MESH && !(properties & (1u << 4)))
+        properties &= ~getShadowsHQProperty();
     return getShaderKey(type, properties, customId);
 }
 
@@ -1316,8 +1328,8 @@ uint32_t ShaderPool::getMeshProperties(
     prop |= uv2              ? (1 <<  2) : 0;
     prop |= punctual         ? (1 <<  3) : 0;
     prop |= shadows          ? (1 <<  4) : 0;
-    // bit 5 was USE_SHADOWS_PCF until the PCF filter became uniform-driven; it is the height
-    // fog's now ('Hfg', getHeightFogProperty), set by the variant with the fog bit
+    // bit 5 ('Shq', USE_SHADOWS_HQ): set after, by the render system's shadow tier
+    // (getShadowsHQProperty)
     prop |= normals          ? (1 <<  6) : 0;
     prop |= normalMap        ? (1 <<  7) : 0;
     prop |= tangents         ? (1 <<  8) : 0;

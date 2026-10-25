@@ -544,6 +544,8 @@ const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
+const EnumMap<ShadowTier> shadowTiers[] = {
+    {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
 const EnumMap<AndroidOrientation> androidOrientations[] = {
@@ -1291,6 +1293,24 @@ const std::vector<Setting>& settingsTable() {
                     return false;
                 }
                 if (apply) ctx.project()->setHtmlUiMsaaSamples(static_cast<int>(v));
+                return true;
+            };
+            add(s);
+        }
+        // graphics.shadow_tier.<platform>: the shadow quality tier a scene of Quality Auto renders with
+        for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+            Setting s;
+            s.key = std::string("graphics.shadow_tier.") + Project::getShadowTierPlatformName(platform);
+            s.type = "enum";
+            s.values = enumNames(shadowTiers);
+            s.description = std::string("Shadow quality tier of ") + Project::getShadowTierPlatformName(platform) +
+                            " builds (and of the editor on it) for scenes whose shadow Quality is Auto: low, medium, high, ultra "
+                            "(default " + ShadowTiers::getName(ShadowTiers::defaultTier(platform)) + "; docs/rendering/shadows.md).";
+            s.get = [platform](McpContext& ctx) { return Json(enumName(shadowTiers, ctx.project()->getShadowTier(platform))); };
+            s.set = [platform](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                ShadowTier tier;
+                if (!parseEnum(shadowTiers, value, tier, error)) return false;
+                if (apply) ctx.project()->setShadowTier(platform, tier);
                 return true;
             };
             add(s);

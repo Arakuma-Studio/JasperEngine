@@ -1,12 +1,15 @@
-type: Prefab
-version: 4
-guid: 0f6d6c3c-0d0e-4bd5-9d9c-6b1d2b1f0a44
-nextEntity: 1002
-root: 1001
-members:
+id: 1
+name: Main Scene
+scene:
+  backgroundColor: [0.16, 0.18, 0.24, 1]
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+sceneType: scene_3d
+mainCamera: 0
+entities:
   - type: Entity
     entity: 1001
-    name: Crate
+    name: Game
     components:
       transform:
         position: [0, 0, 0]
@@ -23,3 +26,9 @@ members:
         billboard: false
         fakeBillboard: false
         cylindricalBillboard: false
+      script:
+        scripts:
+          - type: lua
+            path: Shadows.lua
+            className: Shadows
+            enabled: true

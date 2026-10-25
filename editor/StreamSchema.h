@@ -17,6 +17,8 @@
 #include "Project.h"
 #include "Generator.h"
 #include "window/TerrainEditWindow.h"
+#include "render/shadow/ShadowTiers.h"
+#include "render/shadow/ShadowTypes.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -180,6 +182,9 @@ namespace jasperengine::editor {
         static const EnumTable<ScrollbarType>& scrollbarType();
         static const EnumTable<ShadowCaster2DShape>& shadowCaster2DShape();
         static const EnumTable<ShadowQuality>& shadowQuality();
+        static const EnumTable<ShadowUpdateMode>& shadowUpdateMode();
+        static const EnumTable<CascadeSplitMode>& cascadeSplitMode();
+        static const EnumTable<ShadowTier>& shadowTier();
         static const EnumTable<TerrainBrushFalloff>& terrainBrushFalloff();
         static const EnumTable<TerrainBrushMode>& terrainBrushMode();
         static const EnumTable<TerrainBrushShape>& terrainBrushShape();

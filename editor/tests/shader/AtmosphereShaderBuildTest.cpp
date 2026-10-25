@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// AC11 (docs/specs/S12-atmosphere.md): every atmosphere program and the height fog's mesh
-// variants compile for every backend (GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS and iOS,
+// AC11 (docs/specs/S12-atmosphere.md): every atmosphere program and the fogged mesh variants
+// (which carry the height fog) compile for every backend (GLSL 410, GLSL 300 es, HLSL 5, MSL 2.1 macOS and iOS,
 // SPIR-V) with the engine's own shader compiler, and the HLSL build of the marches stays
 // within the 10 s budget. An editor test: the editor's build has every back end (a standalone
 // engine build only its own API's).
@@ -28,16 +28,16 @@ namespace {
         std::vector<ShaderKey> keys;
         for (ShaderType type : ATMOSPHERE_TYPES)
             keys.push_back(ShaderPool::getShaderKey(type, 0));
-        const uint32_t hfg = ShaderPool::getHeightFogProperty();
-        // a lit PBR mesh (punctual, shadows, normals, fog, IBL) and an unlit one, with the height fog
+        // a lit PBR mesh (punctual, shadows, normals, fog, IBL) and an unlit one: the fog carries the height fog
         const uint32_t lit = ShaderPool::getMeshProperties(false, true, false, true, true, true, false, false, false, false, false,
                                                            true, false, false, false, false, false, false, true, false, false, false, false,
                                                            false, false, false, false, false, 8);
         const uint32_t unlit = ShaderPool::getMeshProperties(true, true, false, false, false, false, false, false, false, false, false,
                                                              true, false, false, false, false, false, false, false, false, false, false, false,
                                                              false, false, false, false, false, 8);
-        keys.push_back(ShaderPool::getShaderKey(ShaderType::MESH, lit | hfg));
-        keys.push_back(ShaderPool::getShaderKey(ShaderType::MESH, unlit | hfg));
+        keys.push_back(ShaderPool::getShaderKey(ShaderType::MESH, lit));
+        keys.push_back(ShaderPool::getShaderKey(ShaderType::MESH, lit | ShaderPool::getShadowsHQProperty()));
+        keys.push_back(ShaderPool::getShaderKey(ShaderType::MESH, unlit));
         return keys;
     }
 }

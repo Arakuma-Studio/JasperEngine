@@ -59,6 +59,10 @@ namespace jasperengine {
         // at most once per frame (sokol); the next draw that samples the texture sees the data
         void updateTexture(const void* data, size_t size);
 
+        // a second view of source's image with a nearest, non-comparison sampler (the raw depths
+        // of a shadow atlas); source must outlive it
+        bool createAliasView(const TextureRender& source, const char* label);
+
         void destroyTexture();
 
         uint32_t getGLHandler() const;

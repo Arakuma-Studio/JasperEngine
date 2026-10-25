@@ -1,4 +1,4 @@
-// Height fog (Fog type Height, variant bit 'Hfg' = HAS_HEIGHT_FOG): the medium, its lighting
+// Height fog (Fog type Height; HAS_HEIGHT_FOG in the fogged mesh variants): the medium, its lighting
 // and the fog of any part of a view ray, shared by the fogged shaders (includes/fog.glsl), the
 // sky composite, the volumetric fog march and the clouds' aerial perspective, so they agree
 // where they meet. engine/core/render/AtmosphereMath.{h,cpp} mirrors it one to one.
@@ -25,7 +25,7 @@
 uniform u_fs_heightFog {
     mat4 invViewProjection;           // camera clip space -> world (the camera's own matrices, no target flip)
     vec4 screenToNdc;                 // camera ndc.xy = gl_FragCoord.xy * xy + zw (y up)
-    vec4 color_colorMode;             // rgb linear fog colour, w 0 Color / 1 Sky
+    vec4 color_colorMode;             // rgb linear fog colour, w 0 Color / 1 Sky (-1: the scene fog is not a height fog)
     vec4 extinction_base_H_maxOpacity; // x sigma, y base height, z scale height H, w max opacity
     vec4 start_volumetric_maxDist_inscatter; // x start distance, y the distance the volumetric fog of
                                       // this pass marches (0: none), z max fog distance, w directional

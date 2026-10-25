@@ -48,7 +48,8 @@ uniform u_fs_volumetricFog {
 #include "includes/depth_util.glsl"
 #include "includes/atmosphere.glsl"
 #include "includes/height_fog.glsl"
-#include "includes/sun_shadow.glsl"
+// S10's shadow interface: u_fs_shadow_data and the projective atlas, sampleDirectionalShadow1
+#include "includes/shadow_sampling.glsl"
 
 // the density factor of volume v at a world point (0 outside, 1 past its blend distance)
 float volumeDensity(int v, vec3 p){

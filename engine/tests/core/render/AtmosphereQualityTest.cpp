@@ -164,27 +164,15 @@ TEST(Atmosphere, LegacyFogKeysUnchanged){
     inputs.baseColorTexture = true;
     inputs.normalTexture = true;
     const SubmeshShaderVariant distance = RenderSystem::getSubmeshShaderVariant(environment, inputs);
-    // the distance fog's bit, never the height fog's
+    // the fog's bit; a height fog adds no bit (the fogged variants evaluate it: u_fs_heightFog)
     EXPECT_NE(distance.properties & (1u << 12), 0u);
-    EXPECT_EQ(distance.properties & ShaderPool::getHeightFogProperty(), 0u);
+    // bit 5 is S10's 'Shq'
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5), "Shq");
 
     // the atmosphere's environment fields at their defaults change nothing
     MeshShaderEnvironment same = environment;
-    same.heightFog = false;
     same.atmosphereDepth = false;
     EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(same, inputs).properties, distance.properties);
-
-    // a height fog is the same variant plus 'Hfg'
-    MeshShaderEnvironment height = environment;
-    height.heightFog = true;
-    const SubmeshShaderVariant heightVariant = RenderSystem::getSubmeshShaderVariant(height, inputs);
-    EXPECT_EQ(heightVariant.properties, distance.properties | ShaderPool::getHeightFogProperty());
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5), "Hfg");
-
-    // without the fog bit there is no height fog bit
-    MeshShaderEnvironment noFog = height;
-    noFog.fog = false;
-    EXPECT_EQ(RenderSystem::getSubmeshShaderVariant(noFog, inputs).properties & ShaderPool::getHeightFogProperty(), 0u);
 
     // the atmosphere's depth pre-pass asks every mesh for a depth program
     MeshShaderEnvironment depth = environment;

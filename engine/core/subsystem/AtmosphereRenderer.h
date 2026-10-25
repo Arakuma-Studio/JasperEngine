@@ -40,7 +40,7 @@ namespace jasperengine{
     typedef struct height_fog_t {
         Matrix4 invViewProjection;            // camera clip -> world, the camera's own matrices
         Vector4 screenToNdc;                  // camera ndc.xy = gl_FragCoord.xy * xy + zw
-        Vector4 color_colorMode;              // rgb linear colour, w 0 Color / 1 Sky
+        Vector4 color_colorMode = Vector4(0.0f, 0.0f, 0.0f, -1.0f); // rgb linear colour, w 0 Color / 1 Sky / -1 not a height fog
         Vector4 extinction_base_H_maxOpacity;
         Vector4 start_volumetric_maxDist_inscatter;
         Vector4 sunDir_anisotropy;            // xyz towards the main light
@@ -49,17 +49,6 @@ namespace jasperengine{
     } height_fog_t;
     static_assert(sizeof(height_fog_t) == 14 * 16, "height_fog_t is the 14 vectors of u_fs_heightFog");
 
-    constexpr int ATMOSPHERE_SHADOW_CASCADES = 4;
-
-    // u_fs_sunShadow (shaderlib/includes/sun_shadow.glsl)
-    typedef struct sun_shadow_t {
-        Matrix4 lightViewProjection[ATMOSPHERE_SHADOW_CASCADES];
-        Vector4 atlasRect[ATMOSPHERE_SHADOW_CASCADES];
-        Vector4 split[ATMOSPHERE_SHADOW_CASCADES];
-        Vector4 cameraPosition_cascades;      // w cascades, 0 = no shadow
-        Vector4 cameraForward_bias;
-    } sun_shadow_t;
-    static_assert(sizeof(sun_shadow_t) == (ATMOSPHERE_SHADOW_CASCADES * 6 + 2) * 16, "sun_shadow_t layout");
 
     // u_fs_atmosphereDepth (shaderlib/atmosphere_depth.frag)
     typedef struct atmosphere_depth_t {
@@ -217,7 +206,7 @@ namespace jasperengine{
         // once per update(): the scene's fog, clouds and volumes, the noise bake
         void update(double dt);
 
-        // the scene fog is a height fog (the mesh variants' 'Hfg' bit); the meshes need depth
+        // the scene fog is a height fog (u_fs_heightFog says so to the fogged meshes); the meshes need depth
         // programs for the atmosphere's depth pre-pass
         bool hasHeightFog() const { return heightFogActive; }
         bool needsDepthPrograms() const { return depthPrograms; }
@@ -315,7 +304,6 @@ namespace jasperengine{
         TextureRender* passSceneDepth = nullptr;
         int fogDepthLevel = 0;
         height_fog_t passFog;
-        sun_shadow_t sunShadow;
         volumetric_fog_t fogBlock;
         clouds_t cloudsBlock;
         // what this frame's passes of the view being drawn ran
@@ -331,7 +319,6 @@ namespace jasperengine{
         bool cloudsReady();
         TextureRender* weatherTexture();
         void updateHorizon();
-        void fillSunShadow(const CameraComponent& camera, const Transform& cameraTransform);
         void fillClouds(clouds_t& block, const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier,
                         bool skyMap, float cameraAltitudeFade);
         void renderDepth(Framebuffer& target, TextureRender* sceneDepth, int factor, const CameraComponent& camera);
