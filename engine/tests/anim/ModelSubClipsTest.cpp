@@ -19,6 +19,7 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/BoneComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/ModelComponent.h"
 #include "component/RotateTracksComponent.h"
@@ -29,9 +30,11 @@
 #include "pool/ModelPool.h"
 #include "subsystem/MeshSystem.h"
 
+#include "json.hpp"
 #include "tiny_gltf.h"
 
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -242,6 +245,9 @@ TEST(ModelSubClips, FindsClipsByNameThenByIndex){
     EXPECT_EQ(anim::findModelClip(gltf.model, "1"), 2);
     EXPECT_EQ(anim::findModelClip(gltf.model, "3"), 3);
     EXPECT_EQ(anim::findModelClip(gltf.model, "0"), 0);
+    // one spelling per index, the one the pool's alias table knows
+    EXPECT_EQ(anim::findModelClip(gltf.model, "03"), -1);
+    EXPECT_EQ(anim::findModelClip(gltf.model, "00"), -1);
     EXPECT_EQ(anim::findModelClip(gltf.model, "4"), -1);
     EXPECT_EQ(anim::findModelClip(gltf.model, "-1"), -1);
     EXPECT_EQ(anim::findModelClip(gltf.model, ""), -1);
@@ -300,6 +306,7 @@ TEST(ModelSubClips, AnimatedHeroClipsBindEveryTrackAndMatchTheLoader){
 
     ASSERT_EQ(component.animations.size(), heroClips.size()) << "animationEntities defaults to true";
     size_t compared = 0;
+    size_t tangentKeys = 0;
     for (size_t i = 0; i < heroClips.size(); i++){
         std::vector<ClipWarning> warnings;
         ClipData clip = buildClip(path + "#" + heroClips[i], &warnings);
@@ -343,6 +350,38 @@ TEST(ModelSubClips, AnimatedHeroClipsBindEveryTrackAndMatchTheLoader){
                 }
                 ASSERT_EQ(key.value.size(), expected.size());
                 for (size_t c = 0; c < expected.size(); c++) EXPECT_NEAR(key.value[c], expected[c], 1e-6f) << track->path;
+                // CUBICSPLINE tangents (the fixture's are non-zero): the loader's, x y z (w)
+                std::vector<float> in, out;
+                if (channel == ClipChannel::Rotation){
+                    const RotateTracksComponent& rotate = scene.getComponent<RotateTracksComponent>(frame.action);
+                    if (k < rotate.inTangents.size()){
+                        const Quaternion& a = rotate.inTangents[k];
+                        const Quaternion& b = rotate.outTangents[k];
+                        in = {a.x, a.y, a.z, a.w};
+                        out = {b.x, b.y, b.z, b.w};
+                    }
+                }else{
+                    const std::vector<Vector3>& ins = channel == ClipChannel::Scale ? scene.getComponent<ScaleTracksComponent>(frame.action).inTangents
+                                                                                    : scene.getComponent<TranslateTracksComponent>(frame.action).inTangents;
+                    const std::vector<Vector3>& outs = channel == ClipChannel::Scale ? scene.getComponent<ScaleTracksComponent>(frame.action).outTangents
+                                                                                     : scene.getComponent<TranslateTracksComponent>(frame.action).outTangents;
+                    if (k < ins.size()){
+                        in = {ins[k].x, ins[k].y, ins[k].z};
+                        out = {outs[k].x, outs[k].y, outs[k].z};
+                    }
+                }
+                EXPECT_EQ(key.inTangent.size(), in.size()) << track->path << " key " << k;
+                for (size_t c = 0; c < in.size() && c < key.inTangent.size(); c++){
+                    EXPECT_NEAR(key.inTangent[c], in[c], 1e-6f) << track->path << " key " << k;
+                    EXPECT_NEAR(key.outTangent[c], out[c], 1e-6f) << track->path << " key " << k;
+                }
+                if (!in.empty()){
+                    tangentKeys++;
+                    bool nonZero = false;
+                    for (float v : in) nonZero = nonZero || v != 0.0f;
+                    for (float v : out) nonZero = nonZero || v != 0.0f;
+                    EXPECT_TRUE(nonZero) << track->path << " key " << k << ": the fixture's tangents are not all zero";
+                }
                 // the entity tracks: STEP easings per segment, tangents for CUBICSPLINE
                 bool step = k < keyframes.easings.size() && keyframes.easings[k] == EaseType::STEP;
                 EXPECT_EQ(key.ease == EaseType::STEP, step && k + 1 < track->keys.size()) << track->path << " key " << k;
@@ -351,6 +390,7 @@ TEST(ModelSubClips, AnimatedHeroClipsBindEveryTrackAndMatchTheLoader){
         }
     }
     EXPECT_EQ(compared, 15u) << "every channel of the five animations";
+    EXPECT_EQ(tangentKeys, 6u) << "Idle's two CUBICSPLINE channels, 3 keys each";
 }
 
 TEST(ModelSubClips, BuilderKeepsInterpolationsAndLayouts){
@@ -615,58 +655,229 @@ TEST(ModelSubClips, AnimationEntitiesFlagSkipsTheLoaderAnimations){
     EXPECT_EQ(scene.getEntityName(made.animations[4]), "Wave");
 }
 
-// Builds on threads (the shader variant probe and play startup load off the main thread): from a
-// file nobody pooled, then from the pooled parse while the main thread loads that model into scenes
+// Builds on threads (the shader variant probe and play startup load off the main thread): from
+// private parses, then from the pooled parse while the main thread pools it. Each round pools a
+// fresh copy in the flat layout (skipEntities: loadGLTF's reload of saved entities), whose first
+// load reserves room for synthetic buffers in the shared model, moving its buffers while the
+// builders read them: they take turns on the pooled-glTF mutex.
 TEST(ModelSubClips, ConcurrentBuildsAgree){
     const std::string path = copyFixture("hero_animated.gltf");
     std::vector<std::string> expected;
     for (const std::string& name : heroClips) expected.push_back(anim::writeClip(buildClip(path + "#" + name)));
 
-    for (bool pooled : {false, true}){
+    auto buildMatches = [&](const std::string& model, size_t clip){
+        ClipData data;
+        std::vector<ClipWarning> warnings;
+        std::string error;
+        std::vector<anim::ModelClipInfo> infos;
+        if (!anim::buildModelSubClip(model + "#" + heroClips[clip], data, warnings, &error)) return false;
+        if (data.source.path != model) return false;
+        data.source.path = path;   // the copies differ only by their name
+        return anim::writeClip(data) == expected[clip] && warnings.empty() &&
+               anim::listModelFileClips(model, infos, &error) && infos.size() == heroClips.size();
+    };
+
+    {
         std::atomic<int> failures{0};
-        std::atomic<bool> done{false};
         std::vector<std::thread> threads;
-        std::unique_ptr<Scene> keeper;
-        std::unique_ptr<Model> holder;
-        if (pooled){
-            keeper.reset(new Scene());
-            holder.reset(new Model(keeper.get()));
-            ASSERT_TRUE(keeper->getSystem<MeshSystem>()->loadGLTF(holder->getEntity(), path, false, false, false));
-            ASSERT_TRUE(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(path))) << "the scene pooled the parse";
-        }
         for (int t = 0; t < 6; t++){
             threads.emplace_back([&, t](){
-                for (int i = 0; i < (pooled ? 40 : 6); i++){
-                    size_t clip = (size_t)(t + i) % heroClips.size();
-                    ClipData data;
-                    std::vector<ClipWarning> warnings;
-                    std::string error;
-                    std::vector<anim::ModelClipInfo> infos;
-                    if (!anim::buildModelSubClip(path + "#" + heroClips[clip], data, warnings, &error) ||
-                            anim::writeClip(data) != expected[clip] || !warnings.empty() ||
-                            !anim::listModelFileClips(path, infos, &error) || infos.size() != heroClips.size()){
-                        failures++;
-                    }
+                for (int i = 0; i < 6; i++){
+                    if (!buildMatches(path, (size_t)(t + i) % heroClips.size())) failures++;
                 }
             });
         }
-        // loads of the pooled model next to the builds (they take the same mutex)
-        int loads = 0;
-        if (pooled){
-            std::thread watcher([&](){
-                for (std::thread& thread : threads) thread.join();
-                done = true;
-            });
-            while (!done || loads < 3){
-                Scene scene;
-                Model model(&scene);
-                if (!scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), path, false, false, false)) failures++;
-                loads++;
-            }
-            watcher.join();
-        }else{
-            for (std::thread& thread : threads) thread.join();
-        }
-        EXPECT_EQ(failures.load(), 0) << (pooled ? "pooled, " + std::to_string(loads) + " loads" : "parsed");
+        for (std::thread& thread : threads) thread.join();
+        EXPECT_EQ(failures.load(), 0) << "private parses";
     }
+
+    const int rounds = 12;
+    std::vector<std::string> copies(rounds);
+    std::atomic<int> current{-1};
+    std::atomic<bool> stop{false};
+    std::atomic<int> failures{0};
+    std::atomic<int> pooledBuilds{0};
+    std::vector<std::thread> threads;
+    for (int t = 0; t < 6; t++){
+        threads.emplace_back([&, t](){
+            size_t i = (size_t)t;
+            while (!stop){
+                int round = current.load();
+                if (round < 0){
+                    std::this_thread::yield();
+                    continue;
+                }
+                const std::string& model = copies[round];
+                const bool pooled = (bool)ModelPool::getGLTF(MeshSystem::getModelFilenameKey(model));
+                if (!buildMatches(model, i++ % heroClips.size())) failures++;
+                if (pooled) pooledBuilds++;
+            }
+        });
+    }
+    for (int round = 0; round < rounds; round++){
+        copies[round] = copyFixture("hero_animated.gltf");
+        current = round;
+        // let the builders start on the private parse, then pool the copy under them
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        Scene scene;
+        Model model(&scene);
+        if (!scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), copies[round], false, true, false)) failures++;
+        // a writer that keeps loadGLTF's rule (the pooled model changes only under the mutex) and
+        // whose change a reader without the mutex would see: the buffers are gone for a moment
+        std::shared_ptr<tinygltf::Model> pooled = ModelPool::getGLTF(MeshSystem::getModelFilenameKey(copies[round]));
+        if (!pooled) failures++;
+        for (int cycle = 0; pooled && cycle < 5; cycle++){
+            {
+                std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
+                std::vector<tinygltf::Buffer> buffers;
+                buffers.swap(pooled->buffers);
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                buffers.swap(pooled->buffers);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    }
+    stop = true;
+    for (std::thread& thread : threads) thread.join();
+    EXPECT_EQ(failures.load(), 0);
+    EXPECT_GT(pooledBuilds.load(), 0) << "some builds read the pooled parse";
+}
+
+// The node paths against the entities loadGLTF builds, on a hierarchy that is not trivially
+// ordered: children listed out of index order, three same-named siblings (two of them mesh
+// nodes), an unnamed child whose unnamed parent has a higher index, a node two parents list
+// (the last one wins), a root named like the first one, a node only in a second glTF scene, and a
+// non-joint node named like a bone next to it
+TEST(ModelSubClips, NodePathsMatchTheLoaderOnAnUnorderedHierarchy){
+    nlohmann::json g = nlohmann::json::parse(readFile(fixturePath("hero_animated.gltf")));
+    nlohmann::json& nodes = g["nodes"];
+    const int base = (int)nodes.size();
+    const int hips = 1;
+    ASSERT_EQ(nodes[hips]["name"], "mixamorig:Hips");
+    // a static mesh of the hero's first primitive (no skin)
+    nlohmann::json primitive = g["meshes"][0]["primitives"][0];
+    nlohmann::json attributes = {{"POSITION", primitive["attributes"]["POSITION"]}};
+    nlohmann::json plain = {{"attributes", attributes}, {"indices", primitive["indices"]}};
+    g["meshes"].push_back({{"name", "Plain"}, {"primitives", nlohmann::json::array({plain})}});
+    const int plainMesh = (int)g["meshes"].size() - 1;
+
+    auto add = [&](const nlohmann::json& node){
+        nodes.push_back(node);
+        return (int)nodes.size() - 1;
+    };
+    const int dupA = add({{"name", "Dup"}, {"mesh", plainMesh}, {"translation", nlohmann::json::array({0.1, 0, 0})}});
+    const int dupB = add({{"name", "Dup"}, {"mesh", plainMesh}});
+    const int dupC = add({{"name", "Dup"}});
+    const int shared = add({{"name", "Shared"}});
+    const int lowChild = add(nlohmann::json::object());                      // unnamed
+    const int highParent = add({{"children", nlohmann::json::array({lowChild})}});                  // unnamed root, higher index
+    const int hero2 = add({{"name", "Hero"}, {"children", nlohmann::json::array({dupC, dupB, dupA, shared})}});
+    const int second = add({{"name", "SecondScene"}});
+    const int spine2 = add({{"name", "mixamorig:Spine"}});
+    nodes[hips]["children"].push_back(shared);   // listed by Hips, then by hero2: hero2 wins
+    nodes[hips]["children"].push_back(spine2);
+    g["scenes"][0]["nodes"].push_back(hero2);
+    g["scenes"][0]["nodes"].push_back(highParent);
+    g["scenes"].push_back({{"name", "Other"}, {"nodes", nlohmann::json::array({second})}});
+
+    // one animation moving each of them, on Walk's Hips translation sampler data
+    const nlohmann::json walkSampler = g["animations"][0]["samplers"][0];
+    nlohmann::json channels = nlohmann::json::array();
+    nlohmann::json samplers = nlohmann::json::array();
+    const std::vector<int> targets = {dupA, dupB, dupC, shared, lowChild, highParent, hero2, second, spine2};
+    for (int target : targets){
+        samplers.push_back(walkSampler);
+        nlohmann::json channel;
+        channel["sampler"] = samplers.size() - 1;
+        channel["target"] = {{"node", target}, {"path", "translation"}};
+        channels.push_back(channel);
+    }
+    nlohmann::json cases;
+    cases["name"] = "Cases";
+    cases["channels"] = channels;
+    cases["samplers"] = samplers;
+    g["animations"].push_back(cases);
+    const std::string model = "models/cases" + std::to_string(base) + "/cases.gltf";
+    animtest::writeAsset(model, g.dump(1));
+
+    Scene scene;
+    Model holder(&scene);
+    const Entity root = holder.getEntity();
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, model, false, false, false));
+    const ModelComponent& component = scene.getComponent<ModelComponent>(root);
+    ASSERT_EQ(component.nodesIdMapping.size(), nodes.size());
+    EXPECT_TRUE(component.meshNodesMapping.count(dupA) && component.meshNodesMapping.count(dupB));
+
+    std::vector<std::string> paths = anim::modelNodePaths(*component.gltfModel);
+    ASSERT_EQ(paths.size(), nodes.size());
+    for (const auto& node : component.nodesIdMapping){
+        EXPECT_EQ(resolve(scene, root, paths[node.first]), node.second) << node.first << ": " << paths[node.first];
+    }
+    EXPECT_EQ(paths[dupA], "Hero#1/Dup");
+    EXPECT_EQ(paths[dupB], "Hero#1/Dup#1");
+    EXPECT_EQ(paths[dupC], "Hero#1/Dup#2");
+    EXPECT_EQ(paths[shared], "Hero#1/Shared");
+    EXPECT_EQ(paths[highParent], "Node " + std::to_string(highParent));
+    EXPECT_EQ(paths[lowChild], "Node " + std::to_string(highParent) + "/Node " + std::to_string(lowChild));
+    EXPECT_EQ(paths[second], "SecondScene");
+    EXPECT_EQ(paths[spine2], "Hero/mixamorig:Hips/mixamorig:Spine#1");
+
+    std::vector<ClipWarning> warnings;
+    ClipData clip = buildClip(model + "#Cases", &warnings);
+    EXPECT_TRUE(warnings.empty()) << describe(warnings);
+    ASSERT_EQ(clip.tracks.size(), targets.size());
+    for (int target : targets){
+        int track = clip.findTrack(paths[target], ClipChannel::Position);
+        ASSERT_GE(track, 0) << paths[target];
+        EXPECT_EQ(resolve(scene, root, clip.tracks[track].path), component.nodesIdMapping.at(target)) << paths[target];
+    }
+    // the hero's own bones keep their paths next to the look-alike
+    ClipData walk = buildClip(model + "#Walk");
+    for (const ClipTrackData& track : walk.tracks){
+        Entity bound = resolve(scene, root, track.path);
+        ASSERT_NE(bound, NULL_ENTITY) << track.path;
+        EXPECT_TRUE(scene.findComponent<BoneComponent>(bound)) << track.path;
+    }
+}
+
+// A quantized (non-unit) CUBICSPLINE rotation key is renormalized with its tangents
+TEST(ModelSubClips, RenormalizedRotationKeysScaleTheirTangents){
+    GltfBuilder gltf;
+    gltf.node("Bone");
+    const int animation = gltf.animation("Turn");
+    const int times = gltf.floats({0.0f, 1.0f}, TINYGLTF_TYPE_SCALAR);
+    // per key: in-tangent, value (length 2 for the first key), out-tangent
+    const int values = gltf.floats({0.2f, 0, 0, 0,   0, 0, 0, 2,   0, 0.4f, 0, 0,
+                                    0.1f, 0, 0, 0,   0, 0, 0, 1,   0, 0.1f, 0, 0}, TINYGLTF_TYPE_VEC4);
+    gltf.channel(animation, 0, "rotation", times, values, "CUBICSPLINE");
+    ClipData clip;
+    std::vector<ClipWarning> warnings;
+    std::string error;
+    ASSERT_TRUE(anim::buildSubClip(gltf.model, animation, clip, warnings, &error)) << error;
+    EXPECT_TRUE(warnings.empty()) << describe(warnings);
+    ASSERT_EQ(clip.tracks.size(), 1u);
+    const ClipKey& first = clip.tracks[0].keys[0];
+    EXPECT_NEAR(first.value[3], 1.0f, 1e-6f);
+    EXPECT_NEAR(first.inTangent[0], 0.1f, 1e-6f);
+    EXPECT_NEAR(first.outTangent[1], 0.2f, 1e-6f);
+    const ClipKey& last = clip.tracks[0].keys[1];
+    EXPECT_NEAR(last.inTangent[0], 0.1f, 1e-6f) << "a unit key keeps its tangents";
+}
+
+// mergeStaticMeshes merges only models with more than one mesh node: a single-mesh model with the
+// flag loads like any other, so a player still switches it; the scene root it stands in for
+TEST(ModelSubClips, MergedFlagOnASingleMeshModelStillSwitches){
+    Scene scene;
+    Model model(&scene);
+    const Entity root = model.getEntity();
+    scene.getComponent<ModelComponent>(root).mergeStaticMeshes = true;
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, fixturePath("hero_tpose.gltf"), false, false, false));
+    EXPECT_TRUE(scene.getComponent<ModelComponent>(root).nodesIdMapping.empty());
+    EXPECT_FALSE(scene.getSystem<MeshSystem>()->needsNodeHierarchyReload(root));
+    scene.addComponent<AnimationPlayerComponent>(root, {});
+    EXPECT_TRUE(scene.getSystem<MeshSystem>()->needsNodeHierarchyReload(root));
+
+    Matrix4 sceneRoot;
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->getLegacyRootTransform(root, sceneRoot)) << "a skinned lone mesh";
+    EXPECT_EQ(sceneRoot, Matrix4()) << "the fixture's Hero node is identity";
 }

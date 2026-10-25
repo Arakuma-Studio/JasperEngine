@@ -1088,8 +1088,19 @@ bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model
 
 bool MeshSystem::parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err){
     tinygltf::TinyGLTF loader;
-    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes, nullptr});
-    loader.SetImagesAsIs(true); // never decoded: the caller reads nodes and animations only
+    // External images are never read: the caller wants nodes and animations. A missing image is
+    // only a warning to tinygltf (the image keeps its uri), buffers load as usual.
+    auto noImages = [](const std::string& path, void* userData) -> bool {
+        std::string ext = FileData::getFilePathExtension(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+        static const char* const imageExtensions[] = {"png", "jpg", "jpeg", "webp", "ktx", "ktx2", "basis", "dds", "tga", "bmp", "gif", "hdr", "exr"};
+        for (const char* image : imageExtensions){
+            if (ext == image) return false;
+        }
+        return fileExists(path, userData);
+    };
+    loader.SetFsCallbacks({noImages, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes, nullptr});
+    loader.SetImagesAsIs(true); // never decoded either
 
     std::string error;
     std::string warn;
@@ -6251,11 +6262,65 @@ bool MeshSystem::needsNodeHierarchyReload(Entity entity) const{
     if (!model || model->filename.empty() || model->loadedFilename.empty()){
         return false;
     }
-    // merged static models animate only at the root; OBJ files have no nodes
-    if (model->mergeStaticMeshes || FileData::getFilePathExtension(model->filename) == "obj"){
+    // OBJ files have no nodes
+    std::string ext = FileData::getFilePathExtension(model->filename);
+    std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    if (ext == "obj"){
         return false;
     }
+    // a merged static model (more than one mesh node, as loadGLTF merges) animates only at the root
+    if (model->mergeStaticMeshes){
+        size_t meshNodes = 0;
+        if (model->gltfModel){
+            for (const tinygltf::Node& node : model->gltfModel->nodes){
+                if (node.mesh >= 0) meshNodes++;
+            }
+        }
+        if (!model->gltfModel || meshNodes > 1){
+            return false;
+        }
+    }
     return model->nodesIdMapping.empty() && isNodeHierarchyForced(entity);
+}
+
+bool MeshSystem::getLegacyRootTransform(Entity entity, Matrix4& sceneRoot){
+    ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+    if (!model || !model->gltfModel || !model->nodesIdMapping.empty() || model->gltfModel->nodes.empty()){
+        return false;
+    }
+    const tinygltf::Model& gltf = *model->gltfModel;
+    std::map<int, int> nodesParent;
+    std::vector<int> meshNodes;
+    bool anyNodeSkinned = false;
+    for (size_t i = 0; i < gltf.nodes.size(); i++){
+        nodesParent[static_cast<int>(i)] = -1;
+    }
+    for (size_t i = 0; i < gltf.nodes.size(); i++){
+        if (gltf.nodes[i].mesh >= 0){
+            meshNodes.push_back(static_cast<int>(i));
+            anyNodeSkinned = anyNodeSkinned || gltf.nodes[i].skin >= 0;
+        }
+        for (int child : gltf.nodes[i].children){
+            nodesParent[child] = static_cast<int>(i);
+        }
+    }
+    // loadGLTF's condition for the root transform on the entity (child meshes of a static
+    // multi-mesh model carry their whole global matrix instead)
+    if (meshNodes.empty() || (meshNodes.size() > 1 && !anyNodeSkinned)){
+        return false;
+    }
+    int transformNode = -1;
+    if (!gltf.scenes.empty()){
+        int sceneIdx = gltf.defaultScene >= 0 ? gltf.defaultScene : 0;
+        if (isValidGLTFIndex(sceneIdx, gltf.scenes) && !gltf.scenes[sceneIdx].nodes.empty()){
+            transformNode = gltf.scenes[sceneIdx].nodes[0];
+        }
+    }
+    if (!isValidGLTFIndex(transformNode, gltf.nodes)){
+        transformNode = meshNodes[0];
+    }
+    sceneRoot = getGLTFMeshGlobalMatrix(transformNode, *model, nodesParent);
+    return true;
 }
 
 void MeshSystem::clearBoneMapping(ModelComponent& model){

@@ -3,7 +3,7 @@
 same skeleton, mesh and skin) with five glTF animations, the animation clips tests' model sub-clips:
 
 - "Walk"  LINEAR, 1 s: Hips translation (bob), legs, arm swing and a spine twist
-- "Idle"  CUBICSPLINE, 2 s: Hips translation and Spine1 rotation with tangents; Head scale LINEAR
+- "Idle"  CUBICSPLINE, 2 s: Hips translation and Spine1 rotation with non-zero tangents; Head scale LINEAR
 - (unnamed, sub-clip "Animation 2")  STEP, 1.5 s: LeftHand rotation and the scene root node "Hero"
 - "Wave"  LINEAR, 0.9 s: RightArm rotation
 - "Wave"  (a second animation of the same name, sub-clip "Wave 2") LINEAR, 0.8 s: RightForeArm
@@ -75,13 +75,17 @@ def animations(rest):
         (M + "RightArm", "rotation", "LINEAR", walk_t, [quat(Y, -a) for a in swing]),
         (M + "Spine", "rotation", "LINEAR", walk_t, [quat(Y, a / 5.0) for a in swing]),
     ]
-    zero3, zero4 = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]
     idle_t = [0.0, 1.0, 2.0]
+    # non-zero tangents (value units per second), different in and out, so a test compares them
+    bob = [(0.0, [0.0, -0.01, 0.002], [0.0, -0.02, 0.0]), (-0.01, [0.0, 0.004, 0.0], [0.0, 0.006, -0.001]),
+           (0.0, [0.0, 0.015, 0.0], [0.0, 0.01, 0.0])]
+    breathe = [(0.0, [0.01, 0.0, 0.0, -0.002], [0.02, 0.0, 0.0, 0.0]), (3.0, [0.0, 0.003, 0.0, 0.0], [-0.004, 0.0, 0.0, 0.0]),
+               (0.0, [-0.015, 0.0, 0.001, 0.0], [-0.01, 0.0, 0.0, 0.0])]
     idle = [
         (M + "Hips", "translation", "CUBICSPLINE", idle_t,
-         [[zero3, [hips[0], mh.r6(hips[1] + b), hips[2]], zero3] for b in (0.0, -0.01, 0.0)]),
+         [[a, [hips[0], mh.r6(hips[1] + b), hips[2]], o] for b, a, o in bob]),
         (M + "Spine1", "rotation", "CUBICSPLINE", idle_t,
-         [[zero4, quat(X, a), zero4] for a in (0.0, 3.0, 0.0)]),
+         [[a, quat(X, d), o] for d, a, o in breathe]),
         (M + "Head", "scale", "LINEAR", idle_t, [[s, s, s] for s in (1.0, 1.02, 1.0)]),
     ]
     unnamed = [

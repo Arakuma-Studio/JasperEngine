@@ -7,6 +7,7 @@
 #include "Project.h"
 #include "Catalog.h"
 #include "command/PrefabEditUndo.h"
+#include "animation/PlayerModelLayout.h"
 
 namespace jasperengine::editor {
     class AddComponentCmd : public Command {
@@ -20,6 +21,10 @@ namespace jasperengine::editor {
         // Unity: a component added to a prefab instance's GameObject is an added component
         // override of that instance
         PrefabEditUndo prefabUndo;
+        // An Animation Player reloads the models on or under it that are in another layout than
+        // the node hierarchy (animation clips spec 9.R3), in this same step
+        PlayerModelLayout::Reloads layoutReloads;
+        bool executed = false;
 
     public:
         AddComponentCmd(Project* project, size_t sceneId, Entity entity, ComponentType componentType);

@@ -247,6 +247,11 @@ namespace jasperengine{
         // The model is forced into the node-hierarchy layout but loaded in another one: reloading
         // its file (the editor's ModelLoadCmd) rebuilds it
         bool needsNodeHierarchyReload(Entity entity) const;
+        // A loaded model in the legacy layout whose entity stands in for the glTF scene root (a
+        // lone mesh, or a skin without the node hierarchy): true with that node's global matrix.
+        // The node hierarchy gives the root node an entity of its own, so a switch takes it off
+        // the model entity (local * inverse(sceneRoot)) to keep everything where it was.
+        bool getLegacyRootTransform(Entity entity, Matrix4& sceneRoot);
 
         // Caps the resolution glTF images are decoded to on the CALLING thread (0 = full resolution).
         // Used by the thumbnail worker so previews don't decode/upload full-size 4K maps.

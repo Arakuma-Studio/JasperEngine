@@ -470,7 +470,10 @@ bool editor::ModelLoadCmd::execute(){
     // A model on or under an Animation Player loads in the node-hierarchy layout (animation clips
     // spec 9.R3): one in another layout is rebuilt by this reload, the one step that switches it
     // (its arrangement is put back by node name below).
-    const bool switchesLayout = sameModelFile && scene->getSystem<MeshSystem>()->needsNodeHierarchyReload(entity);
+    if (firstExecution) {
+        switchesLayout = sameModelFile && scene->getSystem<MeshSystem>()->needsNodeHierarchyReload(entity);
+        movesLegacyRoot = switchesLayout && scene->getSystem<MeshSystem>()->getLegacyRootTransform(entity, legacyRoot);
+    }
 
     // Only a reload that would throw away a local arrangement keeps the mesh children and
     // refreshes their geometry in place. Everything else rebuilds, so node changes still apply.
@@ -531,6 +534,17 @@ bool editor::ModelLoadCmd::execute(){
         model.skinBindings.clear();
     }
     model.mergeStaticMeshes = requestedMergeStaticMeshes;
+
+    // The scene root node gets an entity of its own in the node hierarchy, which carries the
+    // matrix the legacy model entity stood in for: taken off the entity, everything stays where
+    // it was (undo puts oldTransform back)
+    if (movesLegacyRoot) {
+        Transform& rootTransform = scene->getComponent<Transform>(entity);
+        const Matrix4 local = Matrix4::translateMatrix(rootTransform.position) *
+            rootTransform.rotation.getRotationMatrix() * Matrix4::scaleMatrix(rootTransform.scale);
+        (local * legacyRoot.inverse()).decompose(rootTransform.position, rootTransform.scale, rootTransform.rotation);
+        rootTransform.needUpdate = true;
+    }
 
     if (tryLoad()){
         finalizeLoad();
