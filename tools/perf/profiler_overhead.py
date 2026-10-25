@@ -7,8 +7,11 @@
         --baseline <editor without the profiler> --project tools/fixtures/post-processing \\
         [--scene <scene>] [--runs 3] [--frames 300] [--warmup 120] [--json out.json]
 
-Four configurations, `--runs` editor processes each, the median of their mean frame time
-(`avgMs`, the measured frames' wall time over their count) compared with the baseline editor:
+Four configurations (`--configs` picks some), `--runs` rounds of one editor process each, in a
+shuffled order per round. Each round gives every configuration's overhead against the baseline
+of the same round (paired: a drift of the machine cancels), from the mean frame time `avgMs`
+(the measured frames' wall time over their count); the report is the mean of those overheads
+with its 95 % confidence interval (Student's t) and the medians:
 
     compiled in, off        the editor as shipped (the profiler idle)       <= 0.5 %
     recording               --profile                                       <= 3 %
@@ -16,14 +19,17 @@ Four configurations, `--runs` editor processes each, the median of their mean fr
 
 The baseline is an editor built without S15 (the commit before it: the editor itself always has
 the profiler, so "compiled out" is that build). Run it on an otherwise idle machine (the benchmark
-server). Exit 1 when a threshold is exceeded; --no-check only prints.
+server; 30+ rounds for the idle configuration's 0.5 %). Exit 1 when a mean overhead is over its
+threshold; --no-check only prints.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import random
 import statistics
 import subprocess
 import sys
@@ -44,6 +50,25 @@ def run(editor: str, args: list[str], project: str, scene: str | None, frames: i
             return json.load(f)
 
 
+T95 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+       12: 2.179, 15: 2.131, 20: 2.086, 25: 2.060, 30: 2.042, 40: 2.021, 60: 2.000, 120: 1.980}
+
+
+def t95(df: int) -> float:
+    for key in sorted(T95):
+        if df <= key:
+            return T95[key]
+    return 1.960
+
+
+def mean_ci(values: list[float]) -> tuple[float, float]:
+    n = len(values)
+    mean = statistics.fmean(values)
+    if n < 2:
+        return mean, float("nan")
+    return mean, t95(n - 1) * statistics.stdev(values) / math.sqrt(n)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--editor", required=True)
@@ -53,28 +78,38 @@ def main() -> int:
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--frames", type=int, default=300)
     ap.add_argument("--warmup", type=int, default=120)
+    ap.add_argument("--configs", default="off,recording,recording_gpu", help="comma list of off, recording, recording_gpu")
+    ap.add_argument("--seed", type=int, default=15)
     ap.add_argument("--json")
     ap.add_argument("--no-check", action="store_true")
     a = ap.parse_args()
 
-    configs = [("baseline", a.baseline, []), ("off", a.editor, []), ("recording", a.editor, ["--profile"]),
-               ("recording_gpu", a.editor, ["--profile", "--gpu-passes"])]
-    results: dict[str, list[float]] = {name: [] for name, _, _ in configs}
-    # interleaved: a drift of the machine spreads over every configuration
+    all_configs = {"baseline": (a.baseline, []), "off": (a.editor, []), "recording": (a.editor, ["--profile"]),
+                   "recording_gpu": (a.editor, ["--profile", "--gpu-passes"])}
+    names = ["baseline"] + [c for c in a.configs.split(",") if c in all_configs and c != "baseline"]
+    results: dict[str, list[float]] = {name: [] for name in names}
+    rng = random.Random(a.seed)
     for _ in range(a.runs):
-        for name, editor, extra in configs:
+        order = names[:]
+        rng.shuffle(order)
+        for name in order:
+            editor, extra = all_configs[name]
             results[name].append(run(editor, extra, a.project, a.scene, a.frames, a.warmup)["avgMs"])
     medians = {name: statistics.median(values) for name, values in results.items()}
-    report = {"runs": a.runs, "frames": a.frames, "avgMs": results, "medianMs": medians, "overheadPercent": {}}
+    report = {"runs": a.runs, "frames": a.frames, "avgMs": results, "medianMs": medians, "overheadPercent": {},
+              "ci95Percent": {}}
     failed = False
-    base = medians["baseline"]
-    print(f"baseline {base:.3f} ms (runs {results['baseline']})")
-    for name in ("off", "recording", "recording_gpu"):
-        overhead = (medians[name] - base) * 100.0 / base if base > 0 else 0.0
-        report["overheadPercent"][name] = overhead
-        ok = overhead <= THRESHOLDS[name]
+    base = results["baseline"]
+    print(f"baseline  mean {statistics.fmean(base):.4f} ms  median {medians['baseline']:.4f} ms  ({a.runs} rounds)")
+    for name in names[1:]:
+        paired = [(v - b) * 100.0 / b for v, b in zip(results[name], base) if b > 0]
+        mean, half = mean_ci(paired)
+        report["overheadPercent"][name] = mean
+        report["ci95Percent"][name] = [mean - half, mean + half]
+        ok = mean <= THRESHOLDS[name]
         failed = failed or not ok
-        print(f"{name:14} {medians[name]:.3f} ms  {overhead:+.2f} %  (<= {THRESHOLDS[name]} %) {'ok' if ok else 'OVER'}  runs {results[name]}")
+        print(f"{name:14} mean {statistics.fmean(results[name]):.4f} ms  overhead {mean:+.3f} % "
+              f"(95 % CI {mean - half:+.3f} .. {mean + half:+.3f}; <= {THRESHOLDS[name]} %) {'ok' if ok else 'OVER'}")
     if a.json:
         with open(a.json, "w") as f:
             json.dump(report, f, indent=1)
