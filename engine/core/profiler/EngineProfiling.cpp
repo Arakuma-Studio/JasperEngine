@@ -16,7 +16,7 @@
 #include "script/LuaBinding.h"
 #include "subsystem/UIDocumentSystem.h"
 
-#include "lua.h"
+#include "lua.hpp"
 
 #include <algorithm>
 #include <cstdio>
