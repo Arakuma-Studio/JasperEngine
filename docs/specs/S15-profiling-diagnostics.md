@@ -619,14 +619,18 @@ alternative to what the text above asks.
   a few frames late); `fake_gpu_ms` still takes precedence, and without a timer (WebGPU, Firefox,
   a device without timestamps) it uses its frame law as before.
 - **AC4 measured** on the benchmark server E (4 dedicated vCPU, llvmpipe under Xvfb,
-  `vblank_mode=0`), `tools/perf/profiler_overhead.py --runs 9 --frames 600` on
-  `tools/fixtures/post-processing`, against oe-port e92501e14 with the same benchmark fix (below):
-  baseline 10.64 ms, profiler idle 10.72 ms (+0.75 %), recording 10.75 ms (+1.03 %), recording
-  with GPU timers 10.71 ms (+0.66 %). Recording and GPU timing are within their 3 % and 3.5 %; the
-  idle figure is over 0.5 % but inside the run-to-run spread (each configuration's nine runs span
-  2-3 %, the idle runs overlap the baseline's, and idle measured above recording with GPU timers),
-  so on this software device AC4's 0.5 % is neither shown nor refuted; a desktop GPU, where the
-  frame is not software rasterisation on the same cores, is the place to repeat it.
+  `vblank_mode=0`, `tools/fixtures/post-processing`, 600 measured frames a run) against oe-port
+  f93897204 with the same benchmark fix (below), with `tools/perf/profiler_overhead.py`: shuffled
+  rounds, each configuration's overhead paired with the same round's baseline, mean and 95 %
+  confidence interval. Recording (+1.03 %) and recording with GPU timers (+0.66 %) are well within
+  3 % and 3.5 % (9 rounds). The idle profiler, after taking the idle costs out (a pass's
+  attachments are queried only while a reader wants them; allocation scopes intern their owner
+  only when something is made; the monitors use handles and skip the driver's memory query): 60
+  rounds +0.32 % [+0.06, +0.57], 60 more +0.48 % [+0.19, +0.76], pooled 120 rounds +0.40 %
+  [+0.21, +0.59]. The mean is within 0.5 %; the interval's top is not, on a device whose frame
+  is software rasterisation on the same four cores (a round's own spread is about 1 %). What is
+  left on the idle path per frame is the scopes' relaxed load and branch, sokol's counters and the
+  pass recorder's per-pass record.
 - **`jasperengine-editor benchmark` is no longer throttled when unfocused**: an X server without a
   window manager focuses no window, and the editor's unfocused frame-period sleep held every
   benchmark at 16.3 ms (60 fps) whatever its work.
