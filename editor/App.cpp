@@ -138,6 +138,7 @@ editor::App::App(){
     animationWindow = new AnimationWindow(&project);
     terrainEditWindow = new TerrainEditWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    systemsWindow = new SystemsWindow(&project);
     missingAssetsWindow = new MissingAssetsWindow(&project);
     assetReferencesWindow = new AssetReferencesWindow(&project);
     jobsMemoryWindow = new JobsMemoryWindow();
@@ -283,6 +284,7 @@ enum class AppMenuCommand : uint32_t {
     ToggleAnimation,
     ToggleTerrain,
     ToggleMcpActivity,
+    ToggleSystems,
     ToggleMissingAssets,
     MigrateAssetReferences,
     ToggleAssetReferences,
@@ -639,6 +641,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSubmenu("Analysis", {
             menuShortcut(AppMenuCommand::ToggleProfiler, windowMenuLabel(ProfilerWindow::WINDOW_NAME), "Ctrl+7"),
             menuCommand(AppMenuCommand::ToggleFrameDebugger, windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::ToggleSystems, windowMenuLabel(SystemsWindow::WINDOW_NAME)),
             menuCommand(AppMenuCommand::ToggleJobsMemory, windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
         }),
         menuSubmenu("MCP", {
@@ -798,6 +801,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleFrameDebugger:
             showEditorWindow(frameDebuggerWindow);
+        case AppMenuCommand::ToggleSystems:
+            showEditorWindow(systemsWindow);
             break;
         case AppMenuCommand::ToggleJobsMemory:
             showEditorWindow(jobsMemoryWindow);
@@ -857,6 +862,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             animationWindow->setOpen(true);
             terrainEditWindow->setOpen(false);
             mcpActivityWindow->setOpen(false);
+            systemsWindow->setOpen(false);
             gameWindow->setOpen(true);
             buildDockspace(true);
             break;
@@ -1546,6 +1552,9 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(ConsoleWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(UndoHistoryWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PlayModeChangesWindow::WINDOW_NAME, dock_id_middle_bottom);
+    // Systems: an eight-column table, wide enough only here (in the Inspector's column the
+    // system names and the Enabled checkboxes were cut off)
+    ImGui::DockBuilderDockWindow(SystemsWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
@@ -1573,6 +1582,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(AnimationWindow::WINDOW_NAME, 2);
     stampPanelDockOrder(UndoHistoryWindow::WINDOW_NAME, 3);
     stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 4);
+    stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 5);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -2278,6 +2288,7 @@ void editor::App::show(){
     terrainEditWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
+    systemsWindow->show();
     missingAssetsWindow->show();
     assetReferencesWindow->show();
     jobsMemoryWindow->show();
@@ -2482,6 +2493,10 @@ void editor::App::engineInit(int argc, char** argv) {
     CommandHistory::onSceneModified = [this](size_t sceneId, bool structural){
         if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){
             sceneProject->needUpdateRender = true;
+            // the next change after a command is newer than the command's (Changed<T>)
+            if (sceneProject->scene){
+                sceneProject->scene->advanceChangeTick();
+            }
             // Only structural commands, so a gizmo drag doesn't rebuild the tree each frame.
             if (structural){
                 sceneProject->structureVersion++;
@@ -4162,6 +4177,10 @@ editor::JobsMemoryWindow* editor::App::getJobsMemoryWindow() const{
 
 editor::TerrainEditWindow* editor::App::getTerrainEditWindow() const{
     return terrainEditWindow;
+}
+
+editor::SystemsWindow* editor::App::getSystemsWindow() const{
+    return systemsWindow;
 }
 
 editor::HierarchyWindow* editor::App::getHierarchyWindow() const{

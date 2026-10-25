@@ -20,6 +20,7 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/SystemsWindow.h"
 #include "window/AssetPanels.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
@@ -203,6 +204,7 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
+        SystemsWindow* systemsWindow;
         MissingAssetsWindow* missingAssetsWindow;
         AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
@@ -457,6 +459,7 @@ namespace jasperengine::editor{
         AnimationWindow* getAnimationWindow() const;
         HierarchyWindow* getHierarchyWindow() const;
         TerrainEditWindow* getTerrainEditWindow() const;
+        SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
         FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }

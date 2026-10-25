@@ -30,7 +30,7 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua scripting and API, C++ scripting, physics,
-shaders, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, Unity glossary).
+shaders, prefabs, assets, HTML/CSS UI, data safety, undo, profiling, ECS, Unity glossary).
 
 ## Unity names -> engine names
 Tools, component names and script APIs use the engine names.

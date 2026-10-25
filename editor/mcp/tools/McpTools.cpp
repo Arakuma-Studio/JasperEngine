@@ -42,6 +42,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
+    {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07
     {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
     {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
 };

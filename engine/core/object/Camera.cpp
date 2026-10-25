@@ -73,6 +73,7 @@ void Camera::setOrtho(float left, float right, float bottom, float top, float ne
     camera.autoResize = false;
 
     camera.needUpdate = true;
+    markChanged<CameraComponent>();
 }
 
 void Camera::setPerspective(float yfov, float aspect, float nearValue, float farValue){
@@ -88,6 +89,7 @@ void Camera::setPerspective(float yfov, float aspect, float nearValue, float far
     camera.autoResize = false;
 
     camera.needUpdate = true;
+    markChanged<CameraComponent>();
 }
 
 void Camera::setAutoResize(bool autoResize){
@@ -97,6 +99,7 @@ void Camera::setAutoResize(bool autoResize){
         camera.autoResize = autoResize;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -113,6 +116,7 @@ void Camera::setNearClip(float nearValue){
         camera.nearClip = nearValue;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -129,6 +133,7 @@ void Camera::setFarClip(float farValue){
         camera.farClip = farValue;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -147,6 +152,7 @@ void Camera::setLeftClip(float left){
         camera.autoResize = false;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -165,6 +171,7 @@ void Camera::setRightClip(float right){
         camera.autoResize = false;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -183,6 +190,7 @@ void Camera::setBottomClip(float bottom){
         camera.autoResize = false;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -201,6 +209,7 @@ void Camera::setTopClip(float top){
         camera.autoResize = false;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -219,6 +228,7 @@ void Camera::setAspect(float aspect){
         camera.autoResize = false;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -235,6 +245,7 @@ void Camera::setYFov(float yfov){
         camera.yfov = Angle::defaultToRad(yfov);
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -257,6 +268,7 @@ void Camera::setType(CameraType type){
         }
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -273,6 +285,7 @@ void Camera::setTarget(Vector3 target){
         camera.target = target;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
     camera.useTarget = true;
 }
@@ -290,6 +303,7 @@ void Camera::disableTarget(){
     CameraComponent& camera = getComponent<CameraComponent>();
     camera.useTarget = false;
     camera.needUpdate = true;
+    markChanged<CameraComponent>();
 }
 
 bool Camera::isUsingTarget() const{
@@ -304,6 +318,7 @@ void Camera::setUp(Vector3 up){
         camera.up = up;
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -379,9 +394,11 @@ void Camera::rotateView(float angle){
             rotation.fromAngleAxis(angle, camera.up);
             transf.rotation = rotation * transf.rotation;
             transf.needUpdate = true;
+            markChanged<Transform>();
         }
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -399,7 +416,9 @@ void Camera::rotatePosition(float angle){
         transf.position = positionCenter + camera.target;
 
         transf.needUpdate = true;
+        markChanged<Transform>();
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -427,9 +446,11 @@ void Camera::elevateView(float angle){
             rotation.fromAngleAxis(angle, camera.right);
             transf.rotation = rotation * transf.rotation;
             transf.needUpdate = true;
+            markChanged<Transform>();
         }
 
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -453,7 +474,9 @@ void Camera::elevatePosition(float angle){
         transf.position = positionCenter + camera.target;
 
         transf.needUpdate = true;
+        markChanged<Transform>();
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -469,7 +492,9 @@ void Camera::walkForward(float distance){
         transf.position = transf.position + (walkVector * distance);
 
         transf.needUpdate = true;
+        markChanged<Transform>();
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -481,6 +506,7 @@ void Camera::zoom(float distance){
         transf.position = transf.position - (camera.direction * distance);
 
         transf.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -493,7 +519,9 @@ void Camera::slide(float distance){
         transf.position = transf.position + (camera.right * distance);
 
         transf.needUpdate = true;
+        markChanged<Transform>();
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -506,7 +534,9 @@ void Camera::slideForward(float distance){
         transf.position = transf.position - (camera.direction * distance);
 
         transf.needUpdate = true;
+        markChanged<Transform>();
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -522,7 +552,9 @@ void Camera::slideUp(float distance){
         transf.position = transf.position + (slideVector * distance);
 
         transf.needUpdate = true;
+        markChanged<Transform>();
         camera.needUpdate = true;
+        markChanged<CameraComponent>();
     }
 }
 
@@ -532,6 +564,7 @@ void Camera::setRenderToTexture(bool renderToTexture){
 	if (camera.renderToTexture != renderToTexture){
 		camera.renderToTexture = renderToTexture;
 		camera.needUpdate = true; // render target orientation can differ (GL)
+		markChanged<CameraComponent>();
 	}
 }
 

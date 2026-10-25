@@ -767,23 +767,56 @@ void Scene::destroy(){
     }
 }
 
-void Scene::draw(){
-    for (auto const& pair : systems){
-        pair.second->draw();
-    }
+void Scene::scheduleSubSystem(const std::string& name, SubSystem* system, const SystemDescriptor& descriptor){
+    SystemDescriptor entry = descriptor;
+    entry.name = name;
+
+    entry.phase = SystemPhase::FixedUpdate;
+    scheduler.add(entry, [system](SystemContext& context){ system->fixedUpdate(context.dt); }, system);
+    entry.phase = SystemPhase::Update;
+    scheduler.add(entry, [system](SystemContext& context){ system->update(context.dt); }, system);
+    entry.phase = SystemPhase::Draw;
+    scheduler.add(entry, [system](SystemContext&){ system->draw(); }, system);
 }
 
+ScheduledSystem& Scene::addSystemFunction(SystemDescriptor descriptor, std::function<void(SystemContext&)> function){
+    return scheduler.add(std::move(descriptor), std::move(function));
+}
+
+SystemScheduler& Scene::getScheduler(){
+    return scheduler;
+}
+
+void Scene::destroyHierarchyNow(Entity entity){
+    ObjectManager::destroyImmediate(this, entity);
+}
+
+void Scene::draw(){
+    scheduler.runPhase(*this, SystemPhase::Draw, 0.0);
+    endFrame();
+}
 
 void Scene::update(double dt){
-    for (auto const& pair : systems){
-        pair.second->update(dt);
-    }
+    scheduler.runPhase(*this, SystemPhase::Update, dt);
+    scheduler.runPhase(*this, SystemPhase::PostUpdate, dt);
 }
 
 void Scene::fixedUpdate(double dt){
-    for (auto const& pair : systems){
-        pair.second->fixedUpdate(dt);
+    scheduler.runPhase(*this, SystemPhase::FixedUpdate, dt);
+}
+
+void Scene::endFrame(){
+    // what every enabled system's gate is past, else what is older than two frames
+    Tick trimmed = frameEndTicks[0];
+    Tick gate;
+    if (scheduler.oldestGate(gate)){
+        trimmed = gate;
     }
+    if (trimmed > 0){
+        trimRemovedComponents(trimmed);
+    }
+    frameEndTicks[0] = frameEndTicks[1];
+    frameEndTicks[1] = getChangeClock().peek();
 }
 
 void Scene::updateCameraSize(){

@@ -303,11 +303,9 @@ void FileWatchService::stop() {
         shared->indexReady = false;
         shared->coalescer.clear();
         shared->state = State::Off;
-        // cursors from before point past the journal: their consumers start over. The ring
-        // keeps its entries: a sequence's slot is (sequence - 1) % JOURNAL_CAPACITY, so clearing
-        // it would leave the next sequences' slots past its end (an out-of-range read in
-        // journalSince after a re-attach)
+        // cursors from before point past the journal: their consumers start over
         shared->oldestSequence = shared->nextSequence;
+        shared->ring.clear();
     }
     {
         std::lock_guard<std::mutex> lock(shared->rawMutex);
@@ -686,8 +684,11 @@ void FileWatchService::processLocked(std::vector<FileChange>& changes) {
 void FileWatchService::emitLocked(FileChange change) {
     Shared& s = *shared;
     change.sequence = s.nextSequence++;
-    if (s.ring.size() < JOURNAL_CAPACITY) s.ring.push_back(change);
-    else s.ring[(change.sequence - 1) % JOURNAL_CAPACITY] = change;
+    // the readers find a change at (sequence - 1) % capacity; after a restart the ring is empty
+    // while the sequence goes on, so the slot can be past its end (a push_back put it at 0)
+    const size_t slot = static_cast<size_t>((change.sequence - 1) % JOURNAL_CAPACITY);
+    if (slot >= s.ring.size()) s.ring.resize(slot + 1);
+    s.ring[slot] = change;
     if (s.nextSequence - s.oldestSequence > JOURNAL_CAPACITY) s.oldestSequence = s.nextSequence - JOURNAL_CAPACITY;
     s.delivered++;
 
