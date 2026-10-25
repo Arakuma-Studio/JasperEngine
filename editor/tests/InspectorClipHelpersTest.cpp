@@ -102,9 +102,9 @@ TEST(InspectorClipHelpers, AMissingPathSuggestsTheNearestNames) {
     missing.nearest = {"Arm/Hand", "Arm/Hand2", ""};
     EXPECT_EQ(inspectorclips::trackProblemText(missing),
               "Arm/Hnd : position: no GameObject at this path (did you mean Arm/Hand, Arm/Hand2 or (root)?)");
-    // the validation's own line wins, and is not suggested twice
-    missing.message = "no 'Hnd' under Arm (did you mean Arm/Hand?)";
-    EXPECT_EQ(inspectorclips::trackProblemText(missing), "Arm/Hnd : position: no 'Hnd' under Arm (did you mean Arm/Hand?)");
+    // ClipValidation's own line (label included, nearest named) is the row
+    missing.message = "Arm/Hnd : position: no GameObject at 'Arm/Hnd': did you mean 'Arm/Hand'?";
+    EXPECT_EQ(inspectorclips::trackProblemText(missing), missing.message);
     EXPECT_EQ(inspectorclips::trackProblemText(track("", ClipChannel::Morph, TrackBindingStatus::MissingComponent)),
               "(root) : morph: the GameObject has nothing this channel animates");
 }
@@ -114,6 +114,8 @@ TEST(InspectorClipHelpers, EventTexts) {
     event.function = "footstep";
     event.status = EventHandlerStatus::NotFound;
     EXPECT_EQ(inspectorclips::eventProblemText(event, 0.5f), "Event footstep at 0.50 s: no script on the root defines footstep()");
+    event.message = "event footstep at 0.5 s: no Lua script on Hero defines footstep()";
+    EXPECT_EQ(inspectorclips::eventProblemText(event, 0.5f), "Event footstep at 0.5 s: no Lua script on Hero defines footstep()");
     EXPECT_EQ(inspectorclips::eventArgsText({AnimationEvent::numberArg(1), AnimationEvent::stringArg("left"), AnimationEvent::boolArg(true)}),
               "1, \"left\", true");
     EXPECT_EQ(inspectorclips::eventArgsText({}), "");

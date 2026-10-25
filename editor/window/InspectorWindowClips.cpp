@@ -21,6 +21,7 @@
 #include "animation/ClipValidation.h"
 #include "animation/ModelSubClips.h"
 #include "command/CommandHandle.h"
+#include "command/type/ClipSceneActions.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "component/AnimationComponent.h"
@@ -119,9 +120,13 @@ bool inspectorclips::trackHasProblem(const TrackReport& track){
 }
 
 std::string inspectorclips::trackProblemText(const TrackReport& track){
+    // the validation's own line (it starts with the track label and names the nearest path)
+    if (!track.message.empty()){
+        return track.message;
+    }
     std::string text = (track.path.empty() ? std::string("(root)") : track.path) + " : " + anim::channelName(track.channel) + ": ";
-    std::string why = track.message;
-    if (why.empty()){
+    std::string why;
+    {
         switch (track.status){
             case TrackBindingStatus::MissingPath: why = "no GameObject at this path"; break;
             case TrackBindingStatus::DuplicateSiblingName: why = "several siblings have this name"; break;
@@ -147,7 +152,10 @@ std::string inspectorclips::trackProblemText(const TrackReport& track){
 
 std::string inspectorclips::eventProblemText(const EventReport& event, float time){
     if (!event.message.empty()){
-        return "Event " + event.function + " at " + formatSeconds(time) + ": " + event.message;
+        // the validation's own line ("event f at 0.5 s: ..."), capitalized for a row
+        std::string text = event.message;
+        text[0] = (char)std::toupper((unsigned char)text[0]);
+        return text;
     }
     return "Event " + event.function + " at " + formatSeconds(time) + ": no script on the root defines " + event.function + "()";
 }
@@ -510,10 +518,7 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
     propertyHeader("Clips", -1, false, false);
     prefabRowProperty.clear();
     ImGui::Text("%zu", clips.size());
-    const char* createLabel = "Create New Clip...##player_clip_create";
-    const float createWidth = hooks.createNewClip ? ImGui::CalcTextSize("Create New Clip...").x + ImGui::GetStyle().FramePadding.x * 2 +
-                                                    ImGui::GetStyle().ItemSpacing.x : 0.0f;
-    if (drawSummaryAddButton(ICON_FA_PLUS " Add Clip##player_clip_add", createWidth)){
+    if (drawSummaryAddButton(ICON_FA_PLUS " Add Clip##player_clip_add")){
         std::vector<AnimationPlayerClip> newClips = clips;
         newClips.push_back(AnimationPlayerClip());
         CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
@@ -547,9 +552,10 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
         ImGui::EndDragDropTarget();
     }
     if (hooks.createNewClip){
-        ImGui::SameLine();
+        // its own row: the Inspector is often too narrow for both buttons on one line
+        propertyHeader("");
         ImGui::BeginDisabled(!stopped);
-        if (ImGui::Button(createLabel)){
+        if (ImGui::Button("Create New Clip...##player_clip_create", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
             hooks.createNewClip(project, sceneProject->id, entity);
         }
         ImGui::EndDisabled();
@@ -801,9 +807,18 @@ void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* scenePro
         size_t shown = 0;
         size_t hidden = 0;
         if (report.legacyModelLayout){
-            ImGui::PushStyleColor(ImGuiCol_Text, warning);
-            ImGui::TextWrapped("A model under this GameObject is loaded without its node hierarchy: reload it to bind the clip's paths.");
-            ImGui::PopStyleColor();
+            // R3: the fix reloads the models in the node hierarchy (one scene step); the
+            // warnings below say why
+            ImGui::BeginDisabled(sceneProject->playState != ScenePlayState::STOPPED);
+            if (ImGui::SmallButton(ICON_FA_ARROWS_ROTATE " Reload Models in Node Hierarchy")){
+                ClipActionResult result;
+                std::string failure;
+                if (!ClipSceneActions::reloadModelsForPlayer(project, sceneProject->id, entity, result, failure)){
+                    playerClipError = failure.empty() ? std::string("The models could not be reloaded") : failure;
+                }
+            }
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("Reload the models under this GameObject with their glTF nodes as GameObjects, so clip paths bind (one undo step)");
         }
         for (const TrackReport& track : report.tracks){
             if (!inspectorclips::trackHasProblem(track) || (report.legacyModelLayout && track.status == TrackBindingStatus::LegacyModelLayout)){
@@ -1258,6 +1273,7 @@ void editor::InspectorWindow::drawModelClipRows(ComponentType cpType, SceneProje
         if (ImGui::Button(ICON_FA_FILM " Use Animation Player##model_use_player", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
             hooks.useAnimationPlayer(project, sceneProject->id, entity);
         }
+        UIProbe::item("model.usePlayer");
         ImGui::EndDisabled();
         ImGui::SetItemTooltip("Play the model's clips with an Animation Player: removes the entity animations (one undo step)");
     }else if (!animationEntities){
@@ -1270,6 +1286,9 @@ void editor::InspectorWindow::drawModelClipRows(ComponentType cpType, SceneProje
         ImGui::PushID(info.index);
         const std::string reference = anim::formatSubClipReference(filename, info.name);
         propertyHeader(info.name, -1, false, false);
+        // the value cell: the length, the buttons right-aligned
+        const float cellStartX = ImGui::GetCursorPosX();
+        const float cellWidth = ImGui::GetContentRegionAvail().x;
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("%s", inspectorclips::formatSeconds(info.duration).c_str());
         ImGui::SetItemTooltip("%s: %zu channels", reference.c_str(), info.channels);
@@ -1279,7 +1298,9 @@ void editor::InspectorWindow::drawModelClipRows(ComponentType cpType, SceneProje
         if (hooks.extractSubClip) buttons += iconButtonWidth(ICON_FA_FILE_EXPORT) + ImGui::GetStyle().ItemSpacing.x;
         if (hooks.openClip) buttons += iconButtonWidth(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE) + ImGui::GetStyle().ItemSpacing.x;
         if (buttons > 0.0f){
-            ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - buttons + ImGui::GetStyle().ItemSpacing.x));
+            ImGui::SameLine();
+            const float x = cellStartX + cellWidth - buttons + ImGui::GetStyle().ItemSpacing.x;
+            if (x > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(x);
         }
         ImGui::BeginDisabled(!stopped);
         bool first = true;
@@ -1339,6 +1360,7 @@ void editor::InspectorWindow::drawAnimationClipButtons(SceneProject* sceneProjec
         if (ImGui::Button(ICON_FA_FILE_EXPORT " Convert to Clip...##animation_convert")){
             hooks.convertToClip(project, sceneProject->id, entity);
         }
+        UIProbe::item("animation.convert");
         ImGui::SetItemTooltip("Write its keyframe tracks to a shared .anim clip played by an Animation Player");
     }
     ImGui::EndDisabled();
