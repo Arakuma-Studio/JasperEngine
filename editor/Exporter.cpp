@@ -1947,8 +1947,17 @@ bool editor::Exporter::checkMissingAssets() {
         Out::warning("Exporting with %zu missing asset reference(s) (Export Anyway)", missingBuildReferences.size());
         return true;
     }
+    // the first ones in the error itself: what an agent or a CI log reads of a failed export
+    constexpr size_t shownReferences = 5;
+    std::string listed;
+    for (size_t i = 0; i < missingBuildReferences.size() && i < shownReferences; i++) {
+        listed += "\n  " + missingBuildReferences[i];
+    }
+    if (missingBuildReferences.size() > shownReferences) {
+        listed += "\n  (" + std::to_string(missingBuildReferences.size() - shownReferences) + " more)";
+    }
     setError(std::to_string(missingBuildReferences.size()) + " reference(s) of the build point at missing assets "
-             "(listed in the Console, and in Window > Assets > Missing Assets). Fix them, or export anyway.");
+             "(listed in the Console, and in Window > Assets > Missing Assets). Fix them, or export anyway." + listed);
     return false;
 }
 
