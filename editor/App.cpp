@@ -1858,6 +1858,9 @@ void editor::App::setup() {
 bool editor::App::canEditSelection(bool duplicate) {
     // Enabled items keep their native key equivalent, stealing it from a focused text field.
     if (ImGui::GetIO().WantTextInput) return false;
+    // the focused Animation window owns Delete / Backspace / Ctrl+D (AnimationClipAppHooks::takesKeys):
+    // covers the scene key block and the native menu key equivalents
+    if (animationClipAppHooks().takesKeys && animationClipAppHooks().takesKeys()) return false;
     if (lastFocusedWindow != LastFocusedWindow::AnySceneWindow || project.isAnyScenePlaying()) return false;
     const uint32_t sceneId = project.getSelectedSceneId();
     uint32_t targetSceneId = sceneId;
@@ -2217,7 +2220,7 @@ void editor::App::show(){
         }
 
         // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
-        if (!io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
+        if (!clipWindowKeys && !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_F2, false)) {
             if (!(hierarchyWindow->isFocused() && hierarchyWindow->renameSelected())) inspectorWindow->focusNameInput();
         }
 

@@ -9,11 +9,14 @@
 //   value column, keys, Add Property, Rebind, shortcuts), AnimationWindowClipEvents.cpp (events
 //   lane and event editor), AnimationWindowClipTestHook.cpp (focus_window `animation` hook),
 //   AnimationWindowClipMode.cpp (the AnimationWindow side: mode switch, hooks).
-// - Extension points (T3c): View::Curves (drawCurves in AnimationWindowClipCurves.cpp) and the
-//   Record toggle slot of the toolbar.
+// - Extension points (T3c): View::Curves (the Dopesheet / Curves toggle at the bottom left; drawCurves
+//   in AnimationWindowClipCurves.cpp) and the Record button after Preview (reserved, disabled).
 // - Every clip edit is one AnimationClipDocument commit on the project history (the controller);
 //   scene steps (Create New Clip, Extract switching the player) are CreateClipCmd composites. The
 //   window never writes a scene's modified flag. Main thread.
+// - Scale: key selection is resolved once per document revision / selection change into a per-track
+//   mask (O(1) lookups); rows draw only the keys in the visible time range (binary search on the
+//   sorted keys); script methods are cached by a stamp of the root's scripts (no file read per frame).
 
 #pragma once
 
@@ -23,11 +26,13 @@
 #include "ecs/Entity.h"
 #include "imgui.h"
 #include "json.hpp"
+#include "math/Vector3.h"
 
 #include <cstdint>
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace jasperengine{
@@ -44,11 +49,19 @@ namespace jasperengine::editor{
         // Dopesheet now; Curves is T3c's (AnimationWindowClipCurves.cpp)
         enum class View{ Dopesheet, Curves };
 
-        // a key by identity (stable across commits, AnimationClipController::findKey)
+        // a key by identity (stable across commits)
         struct KeyId{
             std::string path;
             ClipChannel channel = ClipChannel::Position;
             float time = 0.0f;
+            bool operator==(const KeyId& other) const;
+        };
+
+        // an event by identity (time, function, n-th of the events with both equal)
+        struct EventId{
+            float time = 0.0f;
+            std::string function;
+            int ordinal = 0;
         };
 
         explicit AnimationWindowClip(Project* project);
@@ -78,14 +91,18 @@ namespace jasperengine::editor{
         // the dropdown picked an entity Animation (the window switches to entity mode on it)
         bool takeEntityAnimationRequest(uint32_t& sceneId, Entity& animation);
         // the entity mode's clip dropdown entries for `selected` (R31): its player's states and
-        // Create New Clip...; true when one was picked (the window switches to clip mode)
+        // Create New Clip...; true when one was picked: the window restores its entity preview,
+        // then runEntityModeRequest acts on it and the window switches to clip mode
         bool drawEntityModeEntries(SceneProject* sceneProject, Entity selected);
+        void runEntityModeRequest(SceneProject* sceneProject, Entity selected);
+        // the entries drawEntityModeEntries shows for `selected` (test hook)
+        std::vector<std::string> entityModeEntries(SceneProject* sceneProject, Entity selected) const;
 
         // MCP focus_window {window: "animation", animation: {...}} (AnimationWindowClipTestHook.cpp)
         bool testHook(SceneProject* sceneProject, const nlohmann::json& hook, nlohmann::json& out, std::string& error);
-        nlohmann::json stateJson(SceneProject* sceneProject);
+        // `brief`: no key times or selected keys listed (counts only: large clips)
+        nlohmann::json stateJson(SceneProject* sceneProject, bool brief = false);
         // the hook's keys are known ones; `clipActions` false (entity mode): only the window's
-        // (entity, entity_animation, clip, root)
         static bool checkHookKeys(const nlohmann::json& hook, bool clipActions, std::string& error);
 
     private:
@@ -94,7 +111,8 @@ namespace jasperengine::editor{
             Kind kind = Kind::Track;
             int track = -1;
             int component = -1;     // Component rows: the value component (x/y/z, morph target)
-            std::string label;
+            std::string label;      // the full label "Path : Channel (Missing!)"
+            std::string leaf;       // what the row shows: "Leaf : Channel"
             bool missing = false;
             std::string message;    // the binding problem (tooltip)
         };
@@ -107,7 +125,18 @@ namespace jasperengine::editor{
             ClipKey key;
         };
 
-        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event };
+        struct ScriptCache{
+            std::vector<std::string> functions;
+            uint32_t sceneId = 0;
+            Entity root = NULL_ENTITY;
+            std::string stamp;
+            double checkedAt = -10.0;
+            bool hasCpp = false;
+            uint64_t version = 0;
+        };
+
+        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event, Splitter };
+        enum class EntityModeRequest{ None, State, Create };
 
         Project* project = nullptr;
         View view = View::Dopesheet;
@@ -119,12 +148,20 @@ namespace jasperengine::editor{
         float pixelsPerSecond = 160.0f;
         float scrollX = 0.0f;
         bool showFrames = true;
+        float labelWidth = 320.0f;          // unscaled; the splitter resizes it
         std::set<std::string> expanded;     // "path|channel" of unfolded rows
 
-        // key selection by identity, and the refs of the current revision
+        // key selection by identity, resolved into refs and a per-track mask when the document
+        // revision or the selection changes
         std::vector<KeyId> selection;
+        std::vector<KeyId> resolvedSelection;
+        std::weak_ptr<AnimationClipDocument> resolvedDocument;
         uint64_t selectionRevision = 0;
         std::vector<AnimationClipController::KeyRef> selectedRefs;
+        std::vector<std::vector<char>> selectedMask;
+        std::unordered_map<std::string, int> trackIndex;
+        std::weak_ptr<AnimationClipDocument> indexDocument;
+        uint64_t indexRevision = 0;
 
         // interaction
         Drag drag = Drag::None;
@@ -132,13 +169,23 @@ namespace jasperengine::editor{
         float dragGrabTime = 0.0f;
         float dragAppliedDelta = 0.0f;
         float dragMinTime = 0.0f;           // the earliest dragged key's time (it stops at 0)
+        float dragStartLabelWidth = 0.0f;
         bool dragAdditive = false;
         int contextRow = -1;
         float contextTime = 0.0f;
         int rowMenuTrack = -1;
+        // the keys under the mouse, by identity (valid after a commit in the same frame)
+        std::vector<KeyId> hoveredKeyIds;
+        float hoveredTime = 0.0f;
 
-        // events
+        // events: the selection by identity, its index resolved per revision
         int selectedEvent = -1;
+        bool eventSelected = false;
+        EventId selectedEventId;
+        uint64_t eventRevision = 0;
+        std::weak_ptr<AnimationClipDocument> eventDocument;
+        bool openEventEditor = false;
+        int openEventEditorDelay = 0;       // frames until the test hook's open (after its focus)
         float eventDragBase = 0.0f;
         uint64_t eventDragSerial = 0;
         std::string eventMergeKey;
@@ -149,8 +196,21 @@ namespace jasperengine::editor{
         int rebindTrack = -1;
         bool openRebind = false;
         char rebindSearch[128] = {};
+        // computed when the Rebind popup opens
+        std::vector<std::string> rebindCandidates;
+        std::vector<std::string> rebindReasons;     // why a candidate can't take the track ("" = it can)
+        size_t rebindNearest = 0;
+        size_t rebindSceneUsers = 0;
+        size_t rebindPrefabUsers = 0;
+        bool rebindMissing = false;
         uint64_t valueEditSerial = 0;
         std::string valueMergeKey;
+        // the Euler triple of the rotation field being dragged (kept while active, M13)
+        int eulerEditTrack = -1;
+        Vector3 eulerEdit = Vector3(0, 0, 0);
+
+        // a read-only or target-less clip's "Preview on" for this session (never written)
+        std::string previewOverride;
 
         // the clipboard of Ctrl+C / Ctrl+V
         std::vector<CopiedKey> clipboard;
@@ -160,18 +220,27 @@ namespace jasperengine::editor{
         bool noticeWarning = false;
         double noticeAt = 0.0;
 
-        // the binding report, rebuilt when the clip, the root or the hierarchy change
+        // the binding report, rebuilt when the clip, the root, the hierarchy or the scripts change
         ClipValidationReport report;
         uint64_t reportRevision = ~uint64_t(0);
         Entity reportRoot = NULL_ENTITY;
         uint64_t reportHierarchy = 0;
+        uint64_t reportScripts = 0;
         double reportAt = -1.0;
         std::string reportClip;
+        mutable ScriptCache scriptCache;
 
-        // what the dropdown asked the window to do
+        // what the dropdowns asked the window to do
         bool entityAnimationRequested = false;
         uint32_t requestedScene = 0;
         Entity requestedAnimation = NULL_ENTITY;
+        EntityModeRequest entityModeRequest = EntityModeRequest::None;
+        std::string entityModeState;
+
+        // the CPU time of draw() (test hook: large clips stay responsive)
+        double drawMs = 0.0;
+        double drawMsMax = 0.0;
+        uint64_t drawFrames = 0;
 
         AnimationClipController& controller() const;
         std::shared_ptr<AnimationClipDocument> document() const;
@@ -179,6 +248,9 @@ namespace jasperengine::editor{
         Scene* valueScene() const;
         Entity valueRoot() const;
         void setNotice(const std::string& text, bool warning);
+        float scaledLabelWidth() const;
+        // a player added to the bound GameObject after its selection opens its default state
+        void refreshBinding();
 
         // ---- the sheet (AnimationWindowClipSheet.cpp) ----
         void refreshReport();
@@ -191,6 +263,16 @@ namespace jasperengine::editor{
         float frameRate() const;
         float snapToFrame(float time) const;
         float viewLength() const;
+        // the model a target-less clip previews on: the override, preview.model, or a sub-clip's
+        // own model
+        std::string previewModelOf() const;
+        // an instance of `model` (a model file or a prefab) in `sceneProject`, selection first
+        Entity findModelInstance(SceneProject* sceneProject, const std::string& model) const;
+        // why Preview can't start now ("" when it can)
+        std::string previewBlocker(SceneProject* sceneProject) const;
+        // starts the preview (a target-less clip without preview.model binds an instance of its
+        // preview model first)
+        bool startPreview(SceneProject* sceneProject, std::string* error);
 
         void drawToolbar(SceneProject* sceneProject);
         void drawClipCombo(SceneProject* sceneProject);
@@ -203,13 +285,14 @@ namespace jasperengine::editor{
         void drawKeyContextMenu();
         void drawRowMenu();
         void drawAddPropertyPopup();
+        void openRebindFor(int track);
         void drawRebindPopup();
         void handleShortcuts();
 
         // ---- actions (UI and test hook) ----
         void seek(float time);
-        void togglePreview();
-        void togglePlay();
+        void togglePreview(SceneProject* sceneProject);
+        void togglePlay(SceneProject* sceneProject);
         void stepFrame(int direction);
         void stepKey(int direction);
         bool createNewClip(SceneProject* sceneProject, const std::string& path, std::string* error);
@@ -227,6 +310,7 @@ namespace jasperengine::editor{
         bool duplicateSelected(std::string* error);
         bool setEase(EaseType ease, std::string* error);
         bool addKeysAt(int track, float time, std::string* error);
+        bool keyAt(bool modifiedOnly, std::string* error);
         bool snapKeysToFrames(std::string* error);
         bool setFrameRate(float rate, std::string* error);
         bool setComponentValue(size_t track, int component, float value, bool newEdit, std::string* error);
@@ -236,12 +320,15 @@ namespace jasperengine::editor{
         // ---- events (AnimationWindowClipEvents.cpp) ----
         void drawEventsLane(ImDrawList* drawList, ImVec2 origin, float width, float height, float keyAreaX);
         void drawEventEditor(SceneProject* sceneProject);
-        float eventEditorHeight() const;
+        void selectEvent(int index);
+        void resolveSelectedEvent();
         bool addEvent(float time, const std::string& function, const std::vector<AnimationEventArg>& args, std::string* error);
         bool editEvent(int index, const ClipEventData& event, const std::string& mergeKey, std::string* error);
         bool deleteEvent(int index, std::string* error);
         bool moveEvent(int index, float time, const std::string& mergeKey, std::string* error);
         std::vector<std::string> scriptFunctions() const;
+        // why `event` can't be written ("" when valid): identifier (no Lua keyword), args
+        static std::string eventProblem(const ClipEventData& event);
     };
 
 }

@@ -14,6 +14,7 @@
 // frame.
 
 #include "AnimationWindowClip.h"
+#include "AnimationWindowClipUtil.h"
 
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
@@ -34,7 +35,8 @@ namespace {
         "entity", "entity_animation", "clip", "root", "state", "time", "frame", "preview", "play", "expand", "select", "add",
         "box", "drag", "ease", "delete", "copy", "paste", "duplicate", "key", "add_key", "add_property", "set_value",
         "remove_track", "rebind", "frame_rate", "snap_keys", "time_format", "preview_model", "add_event", "select_event",
-        "event", "drag_event", "delete_event", "create_clip", "extract", "input", "list_paths"};
+        "event", "drag_event", "delete_event", "create_clip", "extract", "input", "list_paths", "event_editor", "entity_play",
+        "entity_mode_entries", "entity_move_frame", "brief"};
 
     Json argJson(const AnimationEventArg& arg){
         if (std::holds_alternative<double>(arg)) return std::get<double>(arg);
@@ -62,7 +64,7 @@ namespace {
 
 }
 
-Json AnimationWindowClip::stateJson(SceneProject* sceneProject){
+Json AnimationWindowClip::stateJson(SceneProject* sceneProject, bool brief){
     (void)sceneProject;
     AnimationClipController& c = controller();
     refreshReport();
@@ -91,6 +93,13 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject){
     out["playing"] = c.isPlaying();
     out["time_format"] = showFrames ? "frames" : "seconds";
     out["takes_keys"] = c.takesKeys();
+    // responsiveness: the CPU time of the clip mode's draw (moving average, worst) and frames
+    out["draw_ms"] = drawMs;
+    out["draw_ms_max"] = drawMsMax;
+    out["draw_frames"] = drawFrames;
+    out["frame_count"] = ImGui::GetFrameCount();
+    out["preview_blocker"] = previewBlocker(project->getSelectedScene());
+    out["preview_on"] = previewModelOf();
     out["undo_to_project"] = c.newestStepIsClipEdit();
     {
         const Entity previewRoot = c.getPreviewRoot();
@@ -114,8 +123,11 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject){
                 entry["path"] = track.path;
                 entry["channel"] = anim::channelName(track.channel);
                 Json times = Json::array();
-                for (const ClipKey& key : track.keys) times.push_back(key.time);
+                if (!brief){
+                    for (const ClipKey& key : track.keys) times.push_back(key.time);
+                }
                 entry["keys"] = times;
+                entry["key_count"] = track.keys.size();
                 entry["value"] = sampledValue((size_t)row.track, c.getTime());
                 entry["pending"] = c.hasPendingValue((size_t)row.track);
                 entry["expanded"] = expanded.count(track.path + "|" + anim::channelName(track.channel)) > 0;
@@ -136,6 +148,7 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject){
             events.push_back({{"time", data.events[i].time}, {"function", data.events[i].function}, {"args", args}, {"handler", handler}});
         }
         out["events"] = events;
+        resolveSelectedEvent();
         out["selected_event"] = selectedEvent;
         out["script_functions"] = scriptFunctions();
         out["bindings"] = {{"resolved", report.resolved}, {"total", report.total}, {"legacy_model_layout", report.legacyModelLayout}};
@@ -143,7 +156,8 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject){
     out["rows"] = rows;
     out["missing"] = missing;
     Json selected = Json::array();
-    if (doc){
+    out["selection_count"] = selectedRefs.size();
+    if (doc && !brief){
         for (const AnimationClipController::KeyRef& ref : selectedRefs){
             const ClipTrackData& track = doc->data().tracks[ref.track];
             selected.push_back({{"track", ref.track}, {"key", ref.key}, {"path", track.path},
@@ -165,7 +179,9 @@ bool AnimationWindowClip::checkHookKeys(const Json& hook, bool clipActions, std:
             error = it.key() + ": unknown key (valid: " + valid + ")";
             return false;
         }
-        const bool windowKey = it.key() == "entity" || it.key() == "entity_animation" || it.key() == "clip" || it.key() == "root";
+        const bool windowKey = it.key() == "entity" || it.key() == "entity_animation" || it.key() == "clip" || it.key() == "root" ||
+                               it.key() == "entity_play" || it.key() == "entity_mode_entries" ||
+                               it.key() == "entity_move_frame" || it.key() == "brief";
         if (!clipActions && !windowKey){
             error = it.key() + ": the window is in entity mode (select a GameObject with an Animation Player, or open a clip)";
             return false;
@@ -176,6 +192,7 @@ bool AnimationWindowClip::checkHookKeys(const Json& hook, bool clipActions, std:
 
 bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook, Json& out, std::string& error){
     AnimationClipController& c = controller();
+    refreshBinding();
     auto fail = [&](const std::string& key, const std::string& message){
         error = key + ": " + message;
         return false;
@@ -225,7 +242,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         if (!hook["preview"].is_boolean()) return fail("preview", "true starts the preview, false stops it");
         if (hook["preview"].get<bool>() != c.isPreviewing()){
             if (hook["preview"].get<bool>()){
-                if (!c.startPreview(&failure)) return fail("preview", failure);
+                if (!startPreview(sceneProject, &failure)) return fail("preview", failure);
             }else{
                 stopPreview();
             }
@@ -234,8 +251,8 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
     if (hook.contains("play")){
         if (!hook["play"].is_boolean()) return fail("play", "true plays, false pauses");
         if (hook["play"].get<bool>() != c.isPlaying()){
-            if (hook["play"].get<bool>() && !c.isPreviewing() && !c.startPreview(&failure)) return fail("play", failure);
-            togglePlay();
+            if (hook["play"].get<bool>() && !c.isPreviewing() && !startPreview(sceneProject, &failure)) return fail("play", failure);
+            togglePlay(sceneProject);
         }
     }
     if (hook.contains("expand")){
@@ -296,11 +313,10 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
     if (hook.contains("key")){
         const std::string mode = hook["key"].is_string() ? hook["key"].get<std::string>() : std::string();
         bool ok = false;
-        if (mode == "all") ok = c.keyAll(c.getTime(), &failure);
-        else if (mode == "modified") ok = c.keyModified(c.getTime(), &failure);
+        if (mode == "all") ok = keyAt(false, &failure);
+        else if (mode == "modified") ok = keyAt(true, &failure);
         else return fail("key", "\"all\" (K) or \"modified\" (Shift+K)");
         if (!ok) return fail("key", failure);
-        c.setLastActionWasClipEdit(true);
     }
     if (hook.contains("add_key")){
         // the context menu's Add Key: {track (-1 / absent: all), time}
@@ -317,6 +333,8 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             return fail("add_property", "{path, channel: position|rotation|scale|morph|lattice}");
         }
         size_t track = 0;
+        // as the Add Property popup: the key lands on the Samples grid
+        c.setTime(snapToFrame(c.getTime()));
         if (!c.addProperty(add["path"].get<std::string>(), channel, &track, &failure)) return fail("add_property", failure);
         c.setLastActionWasClipEdit(true);
         std::shared_ptr<AnimationClipDocument> doc = document();
@@ -376,6 +394,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         if (add.contains("args") && !argsFromJson(add["args"], args, failure)) return fail("add_event", failure);
         const float at = add.contains("time") && add["time"].is_number() ? add["time"].get<float>() : snapToFrame(c.getTime());
         if (!addEvent(at, add.value("function", std::string()), args, &failure)) return fail("add_event", failure);
+        openEventEditorDelay = 4;
     }
     if (hook.contains("select_event")){
         std::shared_ptr<AnimationClipDocument> doc = document();
@@ -383,12 +402,13 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             hook["select_event"].get<int>() >= (int)doc->data().events.size()){
             return fail("select_event", "an event index (-1: none)");
         }
-        selectedEvent = hook["select_event"].get<int>();
+        selectEvent(hook["select_event"].get<int>());
     }
     if (hook.contains("event")){
         // the event editor: {function?, args?, time?} of the selected event
         std::shared_ptr<AnimationClipDocument> doc = document();
         const Json& edit = hook["event"];
+        resolveSelectedEvent();
         if (!doc || selectedEvent < 0 || selectedEvent >= (int)doc->data().events.size()) return fail("event", "no event selected");
         if (!edit.is_object()) return fail("event", "{function?, args?, time?}");
         ClipEventData event = doc->data().events[(size_t)selectedEvent];
@@ -401,6 +421,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         // a drag of the selected event marker by seconds (frame snapped, one merged step)
         std::shared_ptr<AnimationClipDocument> doc = document();
         if (!hook["drag_event"].is_number()) return fail("drag_event", "seconds (number)");
+        resolveSelectedEvent();
         if (!doc || selectedEvent < 0 || selectedEvent >= (int)doc->data().events.size()) return fail("drag_event", "no event selected");
         const float base = doc->data().events[(size_t)selectedEvent].time;
         eventMergeKey = "clipevent#" + std::to_string(++eventDragSerial);
@@ -410,7 +431,13 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             if (!moveEvent(selectedEvent, at, eventMergeKey, &failure)) return fail("drag_event", failure);
         }
     }
-    if (hook.value("delete_event", false) && !deleteEvent(selectedEvent, &failure)) return fail("delete_event", failure);
+    if (hook.value("delete_event", false)){
+        // as Delete with the event selected (nothing selected: nothing deleted)
+        resolveSelectedEvent();
+        if (selectedEvent < 0) return fail("delete_event", "no event selected");
+        if (!deleteEvent(selectedEvent, &failure)) return fail("delete_event", failure);
+    }
+    if (hook.value("event_editor", false)) openEventEditorDelay = 4;
     if (hook.contains("create_clip")){
         // the empty state's Create... / the dropdown's Create New Clip... without the save dialog
         if (!hook["create_clip"].is_string()) return fail("create_clip", "the new .anim path (project-relative)");
@@ -438,6 +465,10 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             else if (name == "d") key = ImGuiKey_D;
             else if (name == "f") key = ImGuiKey_F;
             else if (name == "a") key = ImGuiKey_A;
+            else if (name == "z") key = ImGuiKey_Z;
+            else if (name == "y") key = ImGuiKey_Y;
+            else if (name == "backspace") key = ImGuiKey_Backspace;
+            else if (name == "f2") key = ImGuiKey_F2;
             else return fail("input", "unknown key '" + name + "'");
             const bool ctrl = event.value("ctrl", false), shift = event.value("shift", false), alt = event.value("alt", false);
             if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, true);
@@ -450,7 +481,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, false);
         }
     }
-    out = stateJson(sceneProject);
+    out = stateJson(sceneProject, hook.value("brief", false));
     if (hook.value("list_paths", false)){
         // what Add Property offers: the addressable paths under the bound (or previewed) root
         Json paths = Json::array();

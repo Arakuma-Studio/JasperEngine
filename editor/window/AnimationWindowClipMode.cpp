@@ -22,6 +22,7 @@
 #include "animation/AnimationClipInspectorHooks.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "animation/PreviewOwner.h"
 #include "util/EntityPath.h"
 
 using namespace jasperengine;
@@ -32,6 +33,28 @@ editor::AnimationWindow::~AnimationWindow(){
     hooks.openClip = nullptr;
     hooks.openEntityAnimation = nullptr;
     animationClipAppHooks().windowTestHook = nullptr;
+    // the entity preview's PreviewOwner stop captures this window
+    PreviewOwner::release(previewOwnerToken);
+    previewOwnerToken = 0;
+}
+
+bool editor::AnimationWindow::moveFrameToLane(SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error){
+    Scene* scene = sceneProject ? sceneProject->scene : nullptr;
+    AnimationComponent* anim = scene && selectedEntity != NULL_ENTITY && scene->isEntityCreated(selectedEntity)
+        ? scene->findComponent<AnimationComponent>(selectedEntity) : nullptr;
+    if (!anim || frameIndex >= anim->actions.size()){
+        if (error) *error = "no such frame of the shown Animation";
+        return false;
+    }
+    autoAssignTracks(*anim, sceneProject);
+    // a frame drag released on `lane` at the same time
+    isDraggingFrame = true;
+    draggingFrameIndex = (int)frameIndex;
+    dragStartTime = anim->actions[frameIndex].startTime;
+    dragStartTrack = laneOf(*anim, frameIndex);
+    draggingLane = (int)lane;
+    finishTimelineDrag(scene, sceneProject, true);
+    return true;
 }
 
 void editor::AnimationWindow::installClipHooks(){
@@ -199,6 +222,31 @@ bool editor::AnimationWindow::handleTestHook(const nlohmann::json& hook, nlohman
             return false;
         }
     }
+    if (hook.contains("entity_play")){
+        // the entity mode's preview (play / stop), as its Play and Stop buttons
+        if (!hook["entity_play"].is_boolean()){
+            error = "entity_play: true plays the entity Animation's preview, false stops it";
+            return false;
+        }
+        if (clipModeActive || selectedEntity == NULL_ENTITY){
+            error = "entity_play: the window is not showing an entity Animation";
+            return false;
+        }
+        if (hook["entity_play"].get<bool>()) externalPlay(selectedEntity, selectedSceneId);
+        else externalStop();
+    }
+    if (hook.contains("entity_move_frame")){
+        const nlohmann::json& move = hook["entity_move_frame"];
+        if (clipModeActive || !move.is_object() || !move.contains("index") || !move.contains("lane") ||
+            !move["index"].is_number_integer() || !move["lane"].is_number_integer() || move["lane"].get<int>() < 0){
+            error = "entity_move_frame: {index, lane} of the shown entity Animation";
+            return false;
+        }
+        if (!moveFrameToLane(project->getScene(selectedSceneId), (size_t)move["index"].get<int>(), (uint32_t)move["lane"].get<int>(), &error)){
+            error = "entity_move_frame: " + error;
+            return false;
+        }
+    }
     if (clipModeActive){
         try{
             if (!clipMode->testHook(sceneProject, hook, out, error)) return false;
@@ -216,6 +264,26 @@ bool editor::AnimationWindow::handleTestHook(const nlohmann::json& hook, nlohman
         out["entity_animation"] = selectedEntity != NULL_ENTITY && scene->isEntityCreated(selectedEntity)
             ? nlohmann::json(scene->getEntityName(selectedEntity)) : nlohmann::json();
         out["entity_preview"] = isPreviewing;
+        Scene* shown = project->getScene(selectedSceneId) ? project->getScene(selectedSceneId)->scene : nullptr;
+        nlohmann::json lanes = nlohmann::json::array();
+        nlohmann::json tracks = nlohmann::json::array();
+        if (shown && selectedEntity != NULL_ENTITY && shown->isEntityCreated(selectedEntity)){
+            if (AnimationComponent* anim = shown->findComponent<AnimationComponent>(selectedEntity)){
+                autoAssignTracks(*anim, project->getScene(selectedSceneId));
+                for (size_t i = 0; i < anim->actions.size(); i++){
+                    lanes.push_back(laneOf(*anim, i));
+                    tracks.push_back(anim->actions[i].track);
+                }
+            }
+        }
+        // the lanes shown (view only) and the stored ActionFrame::track values
+        out["entity_lanes"] = lanes;
+        out["entity_tracks"] = tracks;
+    }
+    if (hook.value("entity_mode_entries", false)){
+        // the entity mode dropdown's clip entries for the scene selection (R31)
+        const std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        out["entity_mode_entries"] = selected.empty() ? std::vector<std::string>() : clipMode->entityModeEntries(sceneProject, selected.front());
     }
     return true;
 }

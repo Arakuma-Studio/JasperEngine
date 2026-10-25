@@ -737,6 +737,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipMode.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipTestHook.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipDraw.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindow.cpp
     ${EDITOR_DIR}/window/PoseAnimationWindowTemplates.cpp
     ${EDITOR_DIR}/window/TerrainEditWindow.cpp

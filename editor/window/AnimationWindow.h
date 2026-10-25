@@ -36,6 +36,14 @@ namespace jasperengine::editor{
         // ActionFrame::track except by an explicit move); the dragged frame's lane
         std::vector<uint32_t> viewLanes;
         int draggingLane = -1;
+        // lanes laid out before, by a signature of the frames and the zoom (no O(n^2) per frame)
+        struct LaneCache {
+            uint64_t signature = 0;
+            std::vector<uint32_t> lanes;
+        };
+        std::vector<LaneCache> laneCache;
+        // the test hook's explicit lane move (as a frame drag released on `lane`)
+        bool moveFrameToLane(SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error);
         uint32_t laneOf(const AnimationComponent& anim, size_t frameIndex) const;
 
         // Playback state

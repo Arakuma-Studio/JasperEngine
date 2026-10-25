@@ -46,6 +46,7 @@
 #include "animation/PreviewOwner.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <memory>
 #include <numeric>
@@ -502,16 +503,44 @@ float editor::AnimationWindow::getAnimationDuration(const AnimationComponent& an
 
 void editor::AnimationWindow::autoAssignTracks(const AnimationComponent& anim, SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
-    viewLanes.resize(anim.actions.size());
-    for (size_t i = 0; i < anim.actions.size(); i++) {
-        viewLanes[i] = anim.actions[i].track;
-    }
     // Overlap uses the same logical minimum as a 1x display. Drawing still
     // inflates short blocks by DPI, but packing must not depend on it or the
     // clip's lanes change just from opening the window on another monitor.
     const float minimumLayoutDuration = kLogicalMinTimelineBlockWidth / std::max(pixelsPerSecond, 1.0f);
+    std::vector<float> ends(anim.actions.size());
+    // the layout's inputs: a frames signature (start, effective end, track, action) and the
+    // zoom; an unchanged Animation reuses its lanes (no O(n^2) scan per frame)
+    uint64_t signature = 1469598103934665603ull;
+    auto mixIn = [&signature](uint64_t value) {
+        signature ^= value;
+        signature *= 1099511628211ull;
+    };
+    auto bitsOf = [](float value) {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        return (uint64_t)bits;
+    };
+    mixIn(bitsOf(minimumLayoutDuration));
+    for (size_t i = 0; i < anim.actions.size(); i++) {
+        const ActionFrame& frame = anim.actions[i];
+        ends[i] = frame.startTime + std::max(effectiveFrameDuration(frame, scene), minimumLayoutDuration);
+        mixIn(bitsOf(frame.startTime));
+        mixIn(bitsOf(ends[i]));
+        mixIn(frame.track);
+        mixIn(frame.action);
+    }
+    for (const LaneCache& cached : laneCache) {
+        if (cached.signature == signature && cached.lanes.size() == anim.actions.size()) {
+            viewLanes = cached.lanes;
+            return;
+        }
+    }
+    viewLanes.resize(anim.actions.size());
+    for (size_t i = 0; i < anim.actions.size(); i++) {
+        viewLanes[i] = anim.actions[i].track;
+    }
     auto layoutFrameEnd = [&](const ActionFrame& frame) {
-        return frame.startTime + std::max(effectiveFrameDuration(frame, scene), minimumLayoutDuration);
+        return ends[(size_t)(&frame - anim.actions.data())];
     };
 
     bool hasOverlap = false;
@@ -558,6 +587,8 @@ void editor::AnimationWindow::autoAssignTracks(const AnimationComponent& anim, S
             viewLanes[idx] = (uint32_t)lane;
         }
     }
+    laneCache.push_back({signature, viewLanes});
+    if (laneCache.size() > 8) laneCache.erase(laneCache.begin());
 }
 
 uint32_t editor::AnimationWindow::laneOf(const AnimationComponent& anim, size_t frameIndex) const {
@@ -909,31 +940,36 @@ void editor::AnimationWindow::finishTimelineDrag(Scene* scene, SceneProject* sce
             bool trackChanged = draggingLane >= 0 && (uint32_t)draggingLane != dragStartTrack;
             if (timeChanged || trackChanged) {
                 float finalStartTime = frame.startTime;
-                uint32_t finalTrack = (uint32_t)std::max(0, draggingLane);
 
-                frame.startTime = dragStartTime;
-
-                if (timeChanged && trackChanged) {
+                if (trackChanged) {
+                    // an explicit lane move writes the lanes shown, of every frame whose stored
+                    // track differs, in one step: after it the frame stays where it was dropped
+                    autoAssignTracks(*anim, sceneProject);
+                    std::vector<uint32_t> shownLanes(anim->actions.size());
+                    for (size_t i = 0; i < anim->actions.size(); i++) {
+                        shownLanes[i] = laneOf(*anim, i);
+                    }
+                    frame.startTime = dragStartTime;
                     auto* multiCmd = new MultiPropertyCmd();
-                    multiCmd->addPropertyCmd<float>(
-                        project, sceneProject->id, selectedEntity, ComponentType::AnimationComponent,
-                        "actions[" + std::to_string(draggingFrameIndex) + "].startTime", finalStartTime,
-                        [sceneProject]() { sceneProject->isModified = true; });
-                    multiCmd->addPropertyCmd<uint32_t>(
-                        project, sceneProject->id, selectedEntity, ComponentType::AnimationComponent,
-                        "actions[" + std::to_string(draggingFrameIndex) + "].track", finalTrack,
-                        [sceneProject]() { sceneProject->isModified = true; });
+                    if (timeChanged) {
+                        multiCmd->addPropertyCmd<float>(
+                            project, sceneProject->id, selectedEntity, ComponentType::AnimationComponent,
+                            "actions[" + std::to_string(draggingFrameIndex) + "].startTime", finalStartTime,
+                            [sceneProject]() { sceneProject->isModified = true; });
+                    }
+                    for (size_t i = 0; i < anim->actions.size(); i++) {
+                        if (anim->actions[i].track == shownLanes[i]) continue;
+                        multiCmd->addPropertyCmd<uint32_t>(
+                            project, sceneProject->id, selectedEntity, ComponentType::AnimationComponent,
+                            "actions[" + std::to_string(i) + "].track", shownLanes[i],
+                            [sceneProject]() { sceneProject->isModified = true; });
+                    }
                     CommandHandle::get(sceneProject->id)->addCommand(multiCmd);
                 } else if (timeChanged) {
+                    frame.startTime = dragStartTime;
                     auto* cmd = new PropertyCmd<float>(
                         project, sceneProject->id, selectedEntity, ComponentType::AnimationComponent,
                         "actions[" + std::to_string(draggingFrameIndex) + "].startTime", finalStartTime,
-                        [sceneProject]() { sceneProject->isModified = true; });
-                    CommandHandle::get(sceneProject->id)->addCommand(cmd);
-                } else {
-                    auto* cmd = new PropertyCmd<uint32_t>(
-                        project, sceneProject->id, selectedEntity, ComponentType::AnimationComponent,
-                        "actions[" + std::to_string(draggingFrameIndex) + "].track", finalTrack,
                         [sceneProject]() { sceneProject->isModified = true; });
                     CommandHandle::get(sceneProject->id)->addCommand(cmd);
                 }
@@ -1746,6 +1782,8 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
         // the selected GameObject's clips (its Animation Player's states) and Create New Clip...
         const std::vector<Entity> sceneSelection = project->getSelectedEntities(sceneProject->id);
         if (!sceneSelection.empty() && clipMode->drawEntityModeEntries(sceneProject, sceneSelection.front())) {
+            stopTransientPreviews();
+            clipMode->runEntityModeRequest(sceneProject, sceneSelection.front());
             clipModeActive = true;
         }
         for (int i = 0; i < (int)animations->size(); i++) {
@@ -2941,7 +2979,9 @@ void editor::AnimationWindow::show() {
         if (isPreviewing) {
             restorePreviewScene();
         }
-        drawClipMode(sceneProject);
+        if (isWindowVisible) {
+            drawClipMode(sceneProject);
+        }
         ImGui::End();
         if (wasOpen && !windowOpen) {
             setOpen(false);
