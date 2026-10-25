@@ -369,8 +369,6 @@ async def test_cli_anims():
         r = run_check(project, "--anims")
         check("assets/anim/broken.anim:5:" in r.stdout and ": error: " in r.stdout, f"text output: {r.stdout}")
         check("anims 4 clips" in r.stderr, f"summary counts the clips: {r.stderr}")
-        code, data = run_json(project)
-        check("anims" in data["checked"], f"the default set checks clips: {data['checked']}")
 
         # --files: only the named clips, no reference scan
         code, data = run_json(project, "--files", "assets/anim/good.anim")
@@ -384,6 +382,11 @@ async def test_cli_anims():
         r = run_check(project, "--hook", stdin=json.dumps(hook))
         check_eq(r.returncode, 2, f"a broken clip exits 2 in hook mode: {r.stderr}")
         check("assets/anim/broken.anim:5:" in r.stderr, r.stderr)
+
+        # the default set includes the clips (last: loading the project for the shader check
+        # gives clips without a GUID one, see the T4 report)
+        code, data = run_json(project)
+        check("anims" in data["checked"], f"the default set checks clips: {data['checked']}")
 
 
 # ---------------------------------------------------------------------------- CLI: shaders

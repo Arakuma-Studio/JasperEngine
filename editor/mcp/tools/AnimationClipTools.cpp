@@ -37,10 +37,7 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
-#if __has_include("command/type/ClipSceneActions.h")
 #include "command/type/ClipSceneActions.h"
-#define JASPER_CLIP_SCENE_ACTIONS 1
-#endif
 
 #include <algorithm>
 #include <chrono>
@@ -315,9 +312,17 @@ const char* statusName(TrackBindingStatus status) {
 // {root, resolved, total, missing: [{path, channel, status, nearest, message}], ...}
 Json bindingsJson(SceneProject* scene, const ClipValidationReport& report) {
     Json missing = Json::array();
+    Json ambiguous = Json::array();
     for (const TrackReport& track : report.tracks) {
         if (track.status == TrackBindingStatus::Ok || track.status == TrackBindingStatus::NotSampled ||
             track.status == TrackBindingStatus::Unchecked) continue;
+        if (track.status == TrackBindingStatus::DuplicateSiblingName) {
+            // bound (to the first match), but the path should say which sibling: "Name#N"
+            Json item = {{"path", track.path}, {"channel", anim::channelName(track.channel)}};
+            if (!track.message.empty()) item["message"] = track.message;
+            ambiguous.push_back(item);
+            continue;
+        }
         Json item = {{"path", track.path}, {"channel", anim::channelName(track.channel)}, {"status", statusName(track.status)},
                      {"nearest", track.nearest}};
         if (!track.badPoints.empty()) item["points"] = track.badPoints;
@@ -333,7 +338,16 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report) {
     }) && !report.tracks.empty();
     Json out = {{"root", scene ? McpRefs::entityJson(scene, report.root) : Json(nullptr)}, {"resolved", report.resolved},
                 {"total", report.total}, {"missing", missing}, {"missing_handlers", handlers}};
-    if (report.legacyModelLayout) out["legacy_model_layout"] = true;
+    if (!ambiguous.empty()) out["ambiguous"] = ambiguous;
+    if (report.legacyModelLayout || !report.legacyModels.empty()) {
+        // models loaded without their node hierarchy: adding (or keeping) an Animation Player on
+        // the root reloads them in it (ClipSceneActions::reloadModelsForPlayer, the Inspector's fix)
+        Json models = Json::array();
+        for (Entity model : report.legacyModels) models.push_back(scene ? McpRefs::entityJson(scene, model) : Json(model));
+        out["legacy_models"] = models;
+        out["legacy_fix"] = "add the root's Animation Player (add_component animationplayer; one it already has: remove_component, "
+                            "then add_component with its clips): its models reload with their node hierarchy in that scene step, then the paths bind";
+    }
     if (unchecked) out["unchecked"] = true;
     if (!report.warnings.empty()) out["warnings"] = warningsJson(report.warnings);
     return out;
@@ -349,6 +363,16 @@ std::string bindingsText(const Json& bindings) {
         if (!m["nearest"].empty()) text += " (did you mean \"" + m["nearest"][0].get<std::string>() + "\"?)";
     }
     for (const Json& f : bindings["missing_handlers"]) text += "\n  event " + f.get<std::string>() + ": no script method or onEvent";
+    if (bindings.contains("ambiguous")) {
+        for (const Json& a : bindings["ambiguous"]) {
+            text += "\n  " + a["path"].get<std::string>() + " : " + a["channel"].get<std::string>() +
+                    " bound to the first of several same-named siblings (write Name#N)";
+        }
+    }
+    if (bindings.contains("legacy_models")) {
+        text += "\n  " + std::to_string(bindings["legacy_models"].size()) + " model(s) without their node hierarchy: " +
+                bindings["legacy_fix"].get<std::string>();
+    }
     return text;
 }
 
@@ -864,7 +888,6 @@ bool resolveRoot(Project* project, const Json& args, const char* key, SceneProje
 
 // ------------------------------------------------------------------ create {from}
 
-#ifdef JASPER_CLIP_SCENE_ACTIONS
 // create {from: <entity Animation>}: the converted clip with this call's edits, written by one
 // scene step that also gives the root an Animation Player listing it (9.R4)
 bool createFromEntity(const CallPtr& call, EditContext& ctx, const Json& from, const std::string& relative, const fs::path& absolute,
@@ -944,7 +967,6 @@ bool createFromEntity(const CallPtr& call, EditContext& ctx, const Json& from, c
     text = " (one scene undo step: the file and the Animation Player of \"" + scene->scene->getEntityName(root) + "\"; undo scope scene)";
     return true;
 }
-#endif
 
 } // namespace
 
@@ -1058,7 +1080,6 @@ void editClip(const CallPtr& call) {
             if (data.previewModel.empty()) data.previewModel = parsed.model;
             ctx.changes.push_back("extracted " + modelRelative + " (" + std::to_string(data.tracks.size()) + " track(s))");
         } else {
-#ifdef JASPER_CLIP_SCENE_ACTIONS
             std::string text;
             Json out;
             if (!createFromEntity(call, ctx, from, relative, absolute, text, out)) return;
@@ -1075,10 +1096,6 @@ void editClip(const CallPtr& call) {
             if (!bindings.is_null()) summary += "\n" + bindingsText(bindings);
             call->ok(summary, out);
             return;
-#else
-            call->fail("create.from with an entity Animation is not available in this build.");
-            return;
-#endif
         }
     } else if (creating) {
         ctx.changes.push_back("created " + relative);

@@ -42,10 +42,6 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
-#if __has_include("command/type/ClipSceneActions.h")
-#define JASPER_BAKE_TO_CLIP 1
-#endif
-
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -1351,7 +1347,6 @@ bool readBakeClip(Project* project, const Json& bake, bool& toClip, std::string&
     return true;
 }
 
-#ifdef JASPER_BAKE_TO_CLIP
 // Bake to Animation Clip: the shared .anim and the model's Animation Player entry, one scene step
 bool bakeClip(Project* project, SceneProject* scene, Entity model, PoseAnimationDocument& document, const std::string& name,
               const std::string& clipPath, Json& out, std::string& text, std::string& error) {
@@ -1363,7 +1358,6 @@ bool bakeClip(Project* project, SceneProject* scene, Entity model, PoseAnimation
            scene->scene->getEntityName(model) + "\"; undo scope scene)";
     return true;
 }
-#endif
 
 // bake without path: the animation the model's Pose Animator plays, as its Inspector Bake button does
 void bakeAnimatorTool(const CallPtr& call) {
@@ -1403,7 +1397,6 @@ void bakeAnimatorTool(const CallPtr& call) {
     // the component stores it relative to the assets folder: shown project-relative, as the tools take it
     const std::string source = projectRel(project, project->resolveAssetPath(fs::u8path(animator->animation)).lexically_normal());
     if (toClip) {
-#ifdef JASPER_BAKE_TO_CLIP
         std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, source, &error);
         Json baked;
         std::string text;
@@ -1412,9 +1405,6 @@ void bakeAnimatorTool(const CallPtr& call) {
             return;
         }
         call->ok(text, Json{{"bake", baked}});
-#else
-        call->fail("bake.clip is not available in this build.");
-#endif
         return;
     }
     PoseBakeResult result;
@@ -1628,7 +1618,6 @@ void editPoseAnimationTool(const CallPtr& call) {
     for (const Json& pose : full["poses"]) text += "\n" + poseLine(pose);
 
     if (bakeModel != NULL_ENTITY && bakeToClip) {
-#ifdef JASPER_BAKE_TO_CLIP
         Json baked;
         std::string line;
         if (!bakeClip(project, bakeScene, bakeModel, *document, bakeName, bakeClipPath, baked, line, error)) {
@@ -1639,10 +1628,6 @@ void editPoseAnimationTool(const CallPtr& call) {
         }
         out["bake"] = baked;
         text += "\n" + line;
-#else
-        call->fail("bake.clip is not available in this build.");
-        return;
-#endif
     } else if (bakeModel != NULL_ENTITY) {
         PoseBakeResult result;
         if (!PoseBaker::bake(project, bakeScene->id, bakeModel, *document, bakeName, result, error)) {

@@ -156,8 +156,9 @@ async def test_times_sampling(ed: Editor):
     ed.check_eq(samples["times"], [0, 0.25, 0.5, 0.75, 1.25], "the times")
     pos = next(t for t in samples["tracks"] if t["channel"] == "position")
     ys = [v[1] for v in pos["values"]]
-    # 0 -> 2 with quad_out over [0, 0.5], then linear back to 0; loop: 1.25 samples 0.25
-    expected = [0, 2 * quad_out(0.5), 2, 1, 2 * quad_out(0.5)]
+    # a key's ease shapes the segment that starts at it: 0 -> 2 linear over [0, 0.5], then back to
+    # 0 with quad_out (the key at 0.5); loop: 1.25 samples 0.25
+    expected = [0, 1, 2, 2 - 2 * quad_out(0.5), 1]
     ed.check(approx(ys, expected, 1e-4), f"sampled y {ys}, hand-computed {expected}")
     rot = next(t for t in samples["tracks"] if t["channel"] == "rotation")
     ed.check(approx(rot["values"][2]["euler"][1], 45, 0.05), f"rotation at 0.5 s is halfway (slerp): {rot['values'][2]}")

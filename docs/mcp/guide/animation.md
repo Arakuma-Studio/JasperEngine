@@ -99,8 +99,11 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   for Hero on Robot reports `mixamorig:Spine` → nearest `Spine`. Without `root`, edit_animation
   reports against the first Animation Player that uses the clip.
 - `status`: `missing_path`, `missing_component` (no Transform, no morph targets, no Lattice),
-  `lattice_index_out_of_range`, `morph_index_out_of_range`, `duplicate_sibling_name` (bound,
-  but give `#N`), `legacy_model_layout` (reload the model under a player), `unaddressable_name`.
+  `lattice_index_out_of_range`, `morph_index_out_of_range`, `legacy_model_layout`,
+  `unaddressable_name`. Tracks bound to the first of several same-named siblings are listed in
+  `ambiguous` (write `Name#N`). `legacy_models` lists models loaded without their node
+  hierarchy (their bones can't bind): adding the root's Animation Player reloads them (one scene
+  step; `legacy_fix` says how).
 - Missing paths are not errors: shared clips may target rigs that are not loaded. At runtime an
   unresolved track is skipped; renames and reparents rebind live.
 - With `root`, a track may give `target` (a GameObject ref) instead of `path`: it is turned into

@@ -288,7 +288,7 @@ async def test_cli_usage_ui():
     check_eq(r.returncode, 0, "check --help")
     check("--ui" in r.stdout, f"check --help documents --ui: {r.stdout}")
     check("Default: --lua --shaders --ui --textures" in r.stdout, f"the new default is documented: {r.stdout}")
-    check("Lua, shaders, C++, UI and textures" in r.stdout, f"--all covers UI and textures: {r.stdout}")
+    check("Lua, shaders, C++, UI, textures and clips" in r.stdout, f"--all covers UI, textures and clips: {r.stdout}")
     for flag in ("-h", "--help"):
         r = editor_cli("ui-support", flag)
         check_eq(r.returncode, 0, f"ui-support {flag}: {r.stderr}")
@@ -324,7 +324,7 @@ async def test_cli_default_includes_ui():
 
         r = run_check(project)
         check_eq(r.returncode, 0, r.stderr)
-        check(re.search(r"\(lua \d+ files?, shaders \d+ forks?, ui 2 files(, textures \d+ recipes?)?\)", r.stderr), f"summary names ui files: {r.stderr}")
+        check(re.search(r"\(lua \d+ files?, shaders \d+ forks?, ui 2 files(, textures \d+ recipes?)?(, anims \d+ clips?)?\)", r.stderr), f"summary names ui files: {r.stderr}")
 
 
 # ---------------------------------------------------------------------------- 3. findings
