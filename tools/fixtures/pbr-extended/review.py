@@ -93,7 +93,7 @@ async def main(out: Path) -> None:
         coated = None
         for eid in meshes:
             v = await ready(ed, eid)
-            if "PBR_CLEARCOAT" in v.get("defines", []) and v.get("extensionMaps", {}).get("used", 0) > 0:
+            if "PBR_CLEARCOAT" in v.get("defines", []) and len(v.get("extensionMaps", {}).get("used", [])) > 0:
                 coated = eid
                 break
         record("1 clear coat with maps", coated is not None,
@@ -160,7 +160,7 @@ async def main(out: Path) -> None:
         await ed.call("set_properties", entity=ball, values={"mesh": values})
         v = await ready(ed, ball)
         maps = v["extensionMaps"]
-        record("5 four maps, three bound", maps["used"] == 3 and len(maps["dropped"]) == 1, f"{maps}")
+        record("5 four maps, three bound", len(maps["used"]) == 3 and len(maps["dropped"]) == 1, f"{maps}")
         await ed.call("select_entities", entities=[ball])
         await ed.call("focus_window", window="inspector")
         await save_shot(ed, out, "5-inspector-maps", "editor")
