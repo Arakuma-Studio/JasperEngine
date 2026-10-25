@@ -86,7 +86,9 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 - Writing the file yourself is fine (`write_file`, or your own tools: auto-sync reloads it and
   reports problems in `external_changes.problems` with line and JSON path); `write_file` refuses
   text that can't be read as a clip and returns the warnings. `check --anims` checks every clip
-  from the CLI. Prefer `edit_animation`: it validates paths against a root and is undoable.
+  from the CLI, and the entries of the scenes' and prefabs' players (prefab-instance overrides
+  too): missing files, missing models, model clip names the model doesn't have. Prefer
+  `edit_animation`: it validates paths against a root and is undoable.
 
 ## Binding paths and the root
 
@@ -108,7 +110,8 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   `ambiguous` (write `Name#N`). `legacy_models` lists models loaded without their node
   hierarchy (their bones can't bind): `add_component {entity: <root>, component:
   "animationplayer"}` adds the player, or with one already there reloads the models, its
-  settings kept (one scene step; `legacy_fix` says it).
+  settings kept (one scene step, also with other components in the call: `reloaded`;
+  `legacy_fix` says it).
 - Missing paths are not errors: shared clips may target rigs that are not loaded. At runtime an
   unresolved track is skipped; renames and reparents rebind live.
 - With `root`, a track may give `target` (a GameObject ref) instead of `path`: it is turned into
@@ -127,6 +130,8 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 
 - `ease` is the easing of the segment that starts at the key: `linear` (default), `step`, or
   `<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>` (`quad_out`).
+  A `step` segment holds its first key's value; at exactly the next key's time the value is that
+  key's (Unity; entity Animations too).
 - Lattice `points`: `{"<flat index>": [x, y, z]}` or `[[index, [x, y, z]], ...]` offsets;
   `[[[i, j, k], [x, y, z]], ...]` grid coordinates (index `i + rx*(j + ry*k)`), `"current"` (the
   cage's current offsets) and a pose name need the cage: pass `root`. `"rest"` holds every point
@@ -168,14 +173,17 @@ end
 ```
 
 An event with no subscriber and no method logs a warning once in play mode; `bindings`
-(`missing_handlers`) reports it at edit time against the root's Lua scripts.
+(`missing_handlers`) reports it at edit time against the root's Lua scripts (methods inherited
+through `setmetatable(T, {__index = Base})` / `setmetatable({}, Base)` count, with `Base` in the
+script or from `require`).
 
 ## The Animation Player
 
 Component `animationplayer` (Add Component > Animation > Animation Player). Properties:
 `clips` (list of `{clip, name, wrap}`: `clip` an `.anim` path or a model clip
 `"assets/models/hero.gltf#Walk"`, `name` the state name, default the file stem or animation
-name; `wrap` `default` (the clip's), `once`, `loop`, `ping_pong`, `clamp_forever`),
+name, a later duplicate plays as "walk 2" (a warning once per player); `wrap` `default` (the
+clip's), `once`, `loop`, `ping_pong`, `clamp_forever`),
 `defaultClip` (state name; empty = the first), `playAutomatically` (true: the default clip plays
 when the game starts), `speed` (multiplies every state), `defaultFadeTime` (0.25 s), `enabled`.
 
@@ -199,7 +207,8 @@ Playback (Unity legacy semantics), from Lua (`GameObject(...):getAnimationPlayer
 - Blending: channels are weighted and the remainder up to weight 1 is the rest pose (the scene
   value), so fading in from rest does not snap. Negative speeds play backwards.
 - `Model:playAnimation(name[, fade])` and `stopAnimations()` use the model's Animation Player
-  when it has one (else its entity animations).
+  when it has one (else its entity animations, by the same names: the second of two glTF
+  animations named "Wave" is "Wave 2").
 - `preview_animation` drives the editor preview of a player's clip: `state` picks the clip
   (default: the default clip), `action` play / pause / seek / stop, `wait_ms` lets it play. The
   preview loops the clip whatever its wrap; Play mode follows the wrap.
@@ -288,4 +297,5 @@ the actions end), `autoplay`, `speed` set the Animation. One scene undo step per
 - `onEvent = function(name, args)`: the callback gets one `event` (`event.functionName`,
   `event.args`).
 - Forgetting `preview_animation stop`: the scene keeps showing the previewed pose until then
-  (saves and Play restore it).
+  (saves and Play restore it). `set_properties` during the preview writes the scene value (kept
+  after the preview, also when equal to the previewed one).

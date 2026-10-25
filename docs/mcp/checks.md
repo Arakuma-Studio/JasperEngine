@@ -19,7 +19,7 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
-| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file) or a model clip whose model is missing (see below). Pure parsing, no engine start. |
+| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file), a model clip whose model is missing or has no animation of that name (see below). Pure parsing, no engine start. |
 | `--all` | All six. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--all`: `--lua --shaders --ui --textures --anims` (C++ only when asked, since it builds). |
 | `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). An `.anim` is checked as a clip (its references from scenes are checked on whole-project runs only). Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
@@ -212,9 +212,12 @@ Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does n
   `.scene` and `.prefab` files: a `.anim` that does not exist is an error, or a warning when the
   entry's GUID finds the clip somewhere else (moved outside the editor: the editor resolves it and
   updates the path when the scene is opened and saved); a model clip (`models/hero.gltf#Walk`)
-  whose model file is missing is an error. The animation names inside models are not checked here
-  (`get_animation {clip}` in the editor reads them; the check parses no model), and clip entries
-  inside a scene's prefab-instance overrides are not scanned (the prefab file's own entries are).
+  whose model file is missing is an error, and so is one whose animation name (or index) the
+  model doesn't have: the names are the ones the Inspector shows (`"Wave 2"` for the second
+  `"Wave"`, `"Animation 2"` for an unnamed one), read from the `.gltf` JSON or the `.glb` JSON
+  chunk, for an `.fbx` from the `.glb` the editor imported it to (an FBX not imported yet is not
+  checked). The entries of a scene's prefab-instance overrides (and of GameObjects added to an
+  instance) are checked like the others.
 - With `--files`, only the named `.anim` files (no reference scan). Binding paths against a
   hierarchy are an editor check: `edit_animation`/`get_animation` with `root`.
 

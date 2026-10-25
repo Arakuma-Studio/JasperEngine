@@ -34,12 +34,17 @@ AI agents edit the same files through the MCP tools `edit_animation`, `get_anima
      menu, makes `New Animation.anim` in the current folder and starts renaming it. Drag it onto a
      GameObject in the Scene view or the Hierarchy: that adds an Animation Player (or reuses the one
      there) with the clip in one undo step.
+   - Drop `.anim` files anywhere on the **Animation window**: they join the Animation Player of the
+     GameObject the window shows (or of the selected one; a player is added when it has none), all in
+     one scene undo step, and the first one opens as its state. A clip the player lists already is
+     just opened. With nothing selected the clip opens on its own (you edit the file).
 3. **Add properties.** **+ Add Property** opens a searchable tree of the bound GameObject's
    hierarchy. Pick **Position**, **Rotation** or **Scale** of any child, **Blend Shapes** of a mesh
    with morph targets, or **Lattice** of a lattice cage. The new row gets a key at the playhead
    that holds the current value. A row reads `Name : Channel` (for example
    `mixamorig:Spine : Rotation`). Hover a row to see its full path, and open its foldout to see
-   x/y/z, the blend shape names or the lattice point count.
+   x/y/z, the blend shape names (that mesh's own: two meshes of a model can name their targets
+   differently) or the lattice point count.
 4. **Key it, one of two ways:**
    - **Record** (the red circle, or `R`): the timeline turns red (the curves view gets a red
      frame). Moving the bound GameObject or its children keys the clip at the playhead, on the
@@ -137,7 +142,9 @@ The window remembers the label column width and the Dopesheet/Curves choice in t
   - **Name**: the state name. The default is the file name without `.anim` (or the model clip's
     name). If two entries end up with the same name (two `walk.anim` files in different folders),
     the later one plays as "walk 2", "walk 3"... The saved list keeps what you typed. The row's
-    label shows the name the state uses, and so does the hint of an empty Name field;
+    label shows the name the state uses, and so does the hint of an empty Name field; when the
+    player runs (play mode, a preview) the Console warns once per player which entries play under
+    such a name;
   - **Wrap**: Default (the clip's own, for example "Default (Loop)"), Once, Loop, Ping Pong or Clamp
     Forever. Use it to loop a model clip, which itself plays once.
 - **Play Automatically**, **Speed** (multiplies every state; negative plays backwards) and **Default
@@ -310,9 +317,9 @@ on **+ Add Clip** and choose the animation.
   instead of every key of every model instance.
 
 Duplicate glTF names: the Model section labels the second entity animation row "Wave 2", matching
-the model clip name. But the entity animation itself is still named "Wave", so without a player,
-`Model:playAnimation("Wave")` plays the first one and "Wave 2" is not found. With a player, its
-states are "Wave" and "Wave 2".
+the model clip name. The entity animations themselves are both named "Wave", but without a player
+`Model:playAnimation` and `Model:findAnimation` take the same names: "Wave" is the first one and
+"Wave 2" the second. With a player, its states are "Wave" and "Wave 2".
 
 ## Converting an entity Animation, and baking a pose animation
 
@@ -330,7 +337,8 @@ the Animation) and asks whether to remove the converted track GameObjects (**Yes
 Unless you remove them, the converted tracks also stay in the entity Animation, which then writes
 the same channels whenever it plays.
 
-**Bake** in the Pose Animation window opens a menu:
+**Bake** in the Pose Animation window, and in the Inspector's Pose Animator section (it bakes the
+animation the Pose Animator plays, under the file's name), opens a menu:
 - **Bake to Animation Clip** writes `<name>.anim` next to the pose animation (the name comes from the
   field next to the button, by default the file name). The clip holds the mapped bones' rotations
   and the hips' position, and is listed in the character's Animation Player. Baking again rewrites
@@ -356,8 +364,11 @@ the same channels whenever it plays.
   `Name#1` for the second one, or rename one.
 - **An event does nothing.** The handler must be a method on a Lua script of the player's own
   GameObject (not a child), named exactly like the event's function, or subscribe with `onEvent`.
-  The callback gets one `event` value, not `(name, args)`. Methods that a script inherits through a
-  metatable work at runtime, but the edit-time check reports them as not found.
+  The callback gets one `event` value, not `(name, args)`. Methods a script inherits through a
+  metatable count as found when the check can see the base table: `setmetatable(Hero, {__index =
+  Base})`, `Hero = setmetatable({}, Base)`, with `Base` in the same script or
+  `local Base = require("scripts.base")` (other ways of making classes are reported as not found,
+  though they work at runtime).
 - **A `once` clip doesn't snap back.** It holds its last pose (Unity does too). Use `stop`, crossfade
   to another state, or set the wrap to loop.
 - **The preview loops a `once` clip.** The window's Play always loops. Play mode follows the wrap.
@@ -378,7 +389,13 @@ the same channels whenever it plays.
   never recorded, even while you are dragging something else.
 - **An edit during the preview.** With the preview on and Record off, an edit (an Inspector row, a
   Blend Shapes slider, a lattice point) changes only what you edited; the previewed values of the
-  other components or points are not saved into the scene.
+  other components or points are not saved into the scene. What you set on purpose is kept even
+  when it equals the previewed value: an Inspector field, `set_properties` of a property, a lattice
+  point set by index. A Scene view gizmo drag (or any whole-Transform write) that leaves a value as
+  the preview shows it keeps the value from before the preview.
+- **Blend shape weights after a reload.** A new model starts with its file's default weights.
+  Weights you set (0 too) are saved with the scene or prefab and kept whenever the model reloads;
+  loading another model file into the Model gives that file's defaults.
 - **Two animations write the same bones.** A model with both entity animations and an Animation
   Player has two writers. Use **Use Animation Player** to keep only the player, or call
   `Model:playAnimation`, which fades out the other side.
@@ -438,13 +455,15 @@ Channels and values:
 | channel | value |
 |---|---|
 | `position`, `scale` | `[x, y, z]`, local |
-| `rotation` | a quaternion `[x, y, z, w]`, or `{"euler": [x, y, z]}` in degrees (read, written back as a quaternion). Between two Euler keys more than 180 degrees apart on an axis, add a middle key (the loader warns) |
+| `rotation` | a quaternion `[x, y, z, w]`, or `{"euler": [x, y, z]}` in degrees (read, written back as a quaternion). Between two Euler keys more than 180 degrees apart on an axis, add a middle key (the loader warns). Keys are written on the side of the key before them (the same rotation); a track with tangents keeps its signs, since its curve depends on them |
 | `morph` | `[w0, w1, ...]`, one weight per morph target. Shorter arrays mean 0 for the rest; at most 8 targets |
 | `lattice` | `{"points": [[flatIndex, [x, y, z]], ...]}` offsets of the cage points. A point a key omits holds 0 (warning). The path is the cage GameObject |
 
 - A key is `[time, value]` or `[time, value, ease]`. `ease` is the easing of the segment that
   starts at that key: `linear` (default), `step`, or
-  `<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>`. The object form
+  `<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>`. A `step` segment
+  holds its first key's value; at exactly the next key's time the value is that key's own (Unity's
+  rule, the same in entity Animations). The object form
   `{"time", "value", "ease", "in", "out"}` carries Hermite tangents (glTF CUBICSPLINE, value units
   per second). Tangents win over an ease, and a track in which only some keys have tangents gives
   the others linear ones (warning).
@@ -487,6 +506,9 @@ With the Animation window focused (and no text field active):
 | , / . | previous / next frame | F | frame the selection (Curves: values too) |
 | Alt+, / Alt+. | previous / next key | A | frame all |
 | R | Record on / off | Ctrl/Cmd+Z, Ctrl/Cmd+Y | undo / redo (clip edits: project history, see [Undo](#undo)) |
+
+On macOS the `Ctrl` shortcuts are `Cmd` (as everywhere in the editor); `Control` with a key is not a
+window shortcut there.
 
 Mouse: `Ctrl`+wheel (or the wheel over the ruler) zooms time at the mouse, `Shift`+wheel and the
 middle button pan, and dragging in the ruler scrubs. While the window has focus with a clip (or
