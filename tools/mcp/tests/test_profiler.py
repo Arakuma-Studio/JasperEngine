@@ -137,12 +137,18 @@ async def test_capture_pass_output(ed: Editor):
         ed.fail(f"no colour pass shows the red plane: {centres}")
     depth_pass = [p for p in r["passes"] if any(t["attachment"] == "depth" and t.get("samples", 1) == 1 for t in p["targets"])]
     if depth_pass:
-        target = max(depth_pass, key=lambda p: p["draws"])
-        d = await ed.call_raw("capture_pass_output", {"pass": target["index"], "attachment": "depth"})
-        ed.check(not d.is_error and d.images, f"a depth image: {d.text}")
-        w, h, n, rows = decode_png(d.images[0][0])
-        values = {rows[y][x * n] for y in range(0, h, max(1, h // 16)) for x in range(0, w, max(1, w // 16))}
-        ed.check(len(values) > 1, "the depth image is not uniform")
+        # the scene's pass holds the plane and the box at two depths (an editor layer's may be empty)
+        uniform = []
+        for target in sorted(depth_pass, key=lambda p: -p["draws"]):
+            d = await ed.call_raw("capture_pass_output", {"pass": target["index"], "attachment": "depth"})
+            ed.check(not d.is_error and d.images, f"a depth image: {d.text}")
+            w, h, n, rows = decode_png(d.images[0][0])
+            values = {rows[y][x * n] for y in range(0, h, max(1, h // 16)) for x in range(0, w, max(1, w // 16))}
+            if len(values) > 1:
+                break
+            uniform.append((target["index"], target["label"], target["draws"]))
+        else:
+            ed.fail(f"every depth image is uniform: {uniform}")
     swap = [p for p in r["passes"] if any(t["attachment"] == "swapchain" for t in p["targets"])]
     if swap:
         s = await ed.call("capture_pass_output", **{"pass": swap[0]["index"]})
@@ -184,14 +190,15 @@ async def test_profiler_capture(ed: Editor):
 
 
 async def test_frame_times_spikes(ed: Editor):
-    """A script that busy-waits every 30th frame (AC11: 50 ms; here 1 s, so a slow software-rendered
-    frame of a loaded build server, up to a few hundred ms, is never taken for a spike)."""
+    """A script that busy-waits every 30th frame (AC11: 50 ms; here 1-2 s of wall clock, os.time's
+    resolution, so a slow software-rendered frame of a loaded build server, up to a few hundred ms,
+    is never taken for a spike; os.clock is the process's CPU time, which its other threads speed up)."""
     scene = await red_scene(ed)
     await ed.call("play", action="start", scene=scene)
     await ed.call("eval_lua", code="""
         local function spike()
-            local t = os.clock()
-            while os.clock() - t < 1.0 do end
+            local t = os.time()
+            while os.time() - t < 2 do end
             Timer.afterFrames(30, spike)
         end
         Timer.afterFrames(30, spike)
