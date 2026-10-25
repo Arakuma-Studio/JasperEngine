@@ -442,3 +442,20 @@ S03's tests (`engine/tests/core/io`, `editor/tests/data_safety`) run in the same
   124 passed, 0 failed, 1 skipped. `tools/smoke-test.sh tools/fixtures/post-processing`: PASS.
 - The unit job's lints: `check_raw_writes.py --self-test` and the tree pass, `check_stream_keys.py`
   (58 tables) passes; notices, presets and actionlint pass.
+
+### S16 (HTML UI rendering cost and text)
+
+- `tools/build.sh htmlui-tests` (glcore and `HTMLUI_BACKEND=vulkan`, without the perf suites and
+  `EffectLifecycleTest.Hundred*`, run on their own): 3,258 ran, 74 skipped; the only failures are
+  `HtmlUITemplates.CreatesDocumentAndStyleSheetWithFreeNames` (fails on oe-port too) and the
+  `CompatPerf`/`CompatCssPerf` timings on a loaded host (they pass with `JASPER_HTMLUI_PERF_SLACK=3`,
+  as CI runs them). `BrowserParity` (the 277 Chromium references, unchanged) and the batching
+  equivalence pass.
+- `JASPER_HTMLUI_S16_OFF=1` against the goldens before S16 (AC1): see the spec's Deviations.
+- `HTMLUI_TEST_ARGS=--gtest_filter=HtmlUIRenderPerf.*` on the benchmark host: 8 passed
+  (`docs/html-ui/render-benchmark.md`).
+- `WERROR=1 tools/build.sh linux`, `tools/build.sh htmlui-editor-tests`, the editor unit tests,
+  `tools/build.sh web` + `web-gate`, `tools/build.sh android`, `tools/smoke-test.sh
+  tools/fixtures/post-processing`, `tools/htmlui/run-rmlui-tests.sh --docker`: pass.
+- MCP: `test_ui_render_stats.py`, `test_html_ui_render.py`, `test_html_ui_tools.py`,
+  `test_html_ui_editor.py` pass.
