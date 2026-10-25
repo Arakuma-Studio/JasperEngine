@@ -349,6 +349,7 @@ TEST(RmlRendererTest, WaitsForShaders){
 
 TEST(RmlRendererTest, GeometryStorage){
     JASPER_REQUIRE_GPU();
+    S16On s16;
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 

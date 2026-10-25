@@ -53,6 +53,26 @@ namespace jasperengine { namespace test {
         ClassicReplay& operator=(const ClassicReplay&) = delete;
     };
 
+    // S16 on for a scope, whatever the run's switches (JASPER_HTMLUI_S16_OFF=1, AC1): the tests of
+    // S16's own features
+    struct S16On {
+        bool batching = RmlRenderer::isBatching();
+        bool primitives = RmlRenderer::isSdfPrimitives();
+        bool transformAware = RmlFontEngine::isTransformAwareText();
+        S16On(){
+            RmlRenderer::setBatchingForTesting(true);
+            RmlRenderer::setSdfPrimitivesForTesting(true);
+            RmlFontEngine::setTransformAwareTextForTesting(true);
+        }
+        ~S16On(){
+            RmlRenderer::setBatchingForTesting(batching);
+            RmlRenderer::setSdfPrimitivesForTesting(primitives);
+            RmlFontEngine::setTransformAwareTextForTesting(transformAware);
+        }
+        S16On(const S16On&) = delete;
+        S16On& operator=(const S16On&) = delete;
+    };
+
     // what Engine::systemDraw does before a frame that the tests need: the runtime shader
     // compiler compiles one waiting variant per frame on the main thread
     inline void beginTestFrame(){

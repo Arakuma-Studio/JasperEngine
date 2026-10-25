@@ -1483,7 +1483,8 @@ void RmlRenderer::RenderGeometry(Rml::CompiledGeometryHandle handle, Rml::Vector
 }
 
 Rml::Vector2f RmlRenderer::snapTextTranslation(Rml::Vector2f translation, const HtmlUITexture* texture) const{
-    if (!texture || !texture->atlas || texture->sample == HtmlUITexture::Sample::MSDF || transformSet)
+    // (part of transform-aware text, D1: off with it)
+    if (!texture || !texture->atlas || texture->sample == HtmlUITexture::Sample::MSDF || transformSet || !RmlFontEngine::isTransformAwareText())
         return translation;
     const Rml::Vector2f pixel = getPixelScale();
     if (pixel.x == 1.0f && pixel.y == 1.0f)

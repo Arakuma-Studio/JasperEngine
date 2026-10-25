@@ -106,6 +106,7 @@ namespace {
 
 TEST(TextSharpness, ScaledLabelMatchesItsFontSize){
     JASPER_REQUIRE_GPU();
+    S16On s16;
     const std::string body = std::string("<div class=\"label\">") + label + "</div>";
     InkBox scaledInk, referenceInk;
     const double reference = acutanceOf(width, height, 0, 0, documentOf(".label { font-size: 32px; }", body), 0.0f, &referenceInk);
@@ -123,6 +124,7 @@ TEST(TextSharpness, ScaledLabelMatchesItsFontSize){
 
 TEST(TextSharpness, FractionalPixelRatioIsSharp){
     JASPER_REQUIRE_GPU();
+    S16On s16;
     const std::string rml = documentOf("", std::string("<div class=\"label\">") + label + "</div>");
     // the same document at 1.37 target pixels per document pixel, and at 1
     const double one = acutanceOf(400, 160, 400, 160, rml, 1.0f);
@@ -133,6 +135,7 @@ TEST(TextSharpness, FractionalPixelRatioIsSharp){
 
 TEST(TextSharpness, AnimatingScaleDrawsDistanceGlyphs){
     JASPER_REQUIRE_GPU();
+    S16On s16;
     const std::string body = std::string("<div id=\"a\" class=\"label\" style=\"transform: scale(0.5)\">") + label + "</div>";
     RenderTestContext test(width, height);
     ASSERT_TRUE(test.isValid());
@@ -173,6 +176,7 @@ TEST(TextSharpness, AnimatingScaleDrawsDistanceGlyphs){
 
 TEST(TextSharpness, SettleRegeneratesOnce){
     JASPER_REQUIRE_GPU();
+    S16On s16;
     // 40 labels popping in from scale(0.5) to scale(1) over 300 ms (18 frames at 60 Hz)
     std::string body;
     for (int i = 0; i < 40; i++){
@@ -226,6 +230,7 @@ TEST(TextSharpness, SettleRegeneratesOnce){
 
 TEST(TextSharpness, TextRenderingProperty){
     JASPER_REQUIRE_GPU();
+    S16On s16;
     const std::string text = std::string(label) + "</div>";
     const double reference = acutanceOf(width, height, 0, 0, documentOf(".label { font-size: 32px; }", "<div class=\"label\">" + text));
     ASSERT_GT(reference, 0.0);
