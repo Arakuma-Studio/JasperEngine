@@ -4,6 +4,8 @@
 #include "ModelSubClips.h"
 
 #include "animation/AnimationClipIO.h"
+#include "io/File.h"
+#include "io/FileData.h"
 #include "pool/ModelPool.h"
 #include "subsystem/MeshSystem.h"
 
@@ -244,7 +246,16 @@ namespace{
         tinygltf::Model parsed;
         std::string parseError;
         if (!MeshSystem::parseGLTFFile(modelPath, parsed, &parseError)){
-            if (error) *error = "cannot load " + modelPath + ": " + parseError;
+            if (error){
+                File imported;
+                if (lower(FileData::getFilePathExtension(modelPath)) == "fbx" &&
+                        imported.open(MeshSystem::getImportedModelPath(modelPath).c_str()) != FileErrors::FILEDATA_OK){
+                    *error = "cannot load " + modelPath + ": the FBX is not imported yet (the editor makes its .glb "
+                             "when it imports the file)";
+                }else{
+                    *error = "cannot load " + modelPath + ": " + parseError;
+                }
+            }
             return false;
         }
         return read(parsed);
@@ -345,8 +356,9 @@ int anim::findModelClip(const tinygltf::Model& model, const std::string& clip){
     for (size_t i = 0; i < names.size(); i++){
         if (names[i] == clip) return (int)i;
     }
-    // a number is an index only when no animation has that name
-    if (clip.size() > 9) return -1;
+    // a number is an index only when no animation has that name; one form per index (the pool's
+    // alias table knows "2", not "02")
+    if (clip.size() > 9 || (clip.size() > 1 && clip[0] == '0')) return -1;
     for (char c : clip){
         if (!std::isdigit((unsigned char)c)) return -1;
     }
@@ -476,7 +488,10 @@ bool anim::buildSubClip(const tinygltf::Model& model, int animationIndex, ClipDa
                 float length = std::sqrt(key.value[0] * key.value[0] + key.value[1] * key.value[1] +
                                          key.value[2] * key.value[2] + key.value[3] * key.value[3]);
                 if (length > 0.0f && std::isfinite(length) && std::fabs(length - 1.0f) > 1e-5f){
+                    // the tangents scale with the key (as normalize does)
                     for (float& v : key.value) v /= length;
+                    for (float& v : key.inTangent) v /= length;
+                    for (float& v : key.outTangent) v /= length;
                 }
             }
             track.keys.push_back(std::move(key));

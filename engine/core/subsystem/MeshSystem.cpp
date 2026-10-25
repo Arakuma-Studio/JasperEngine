@@ -1088,8 +1088,19 @@ bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model
 
 bool MeshSystem::parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err){
     tinygltf::TinyGLTF loader;
-    loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes, nullptr});
-    loader.SetImagesAsIs(true); // never decoded: the caller reads nodes and animations only
+    // External images are never read: the caller wants nodes and animations. A missing image is
+    // only a warning to tinygltf (the image keeps its uri), buffers load as usual.
+    auto noImages = [](const std::string& path, void* userData) -> bool {
+        std::string ext = FileData::getFilePathExtension(path);
+        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+        static const char* const imageExtensions[] = {"png", "jpg", "jpeg", "webp", "ktx", "ktx2", "basis", "dds", "tga", "bmp", "gif", "hdr", "exr"};
+        for (const char* image : imageExtensions){
+            if (ext == image) return false;
+        }
+        return fileExists(path, userData);
+    };
+    loader.SetFsCallbacks({noImages, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &getFileSizeInBytes, nullptr});
+    loader.SetImagesAsIs(true); // never decoded either
 
     std::string error;
     std::string warn;

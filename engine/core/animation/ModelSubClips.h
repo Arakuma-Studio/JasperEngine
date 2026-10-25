@@ -15,8 +15,10 @@
 // - Invariants:
 //   * a reference splits at the first '#' that follows a ".gltf", ".glb" or ".fbx" extension
 //     (case-insensitive): model file names may contain '#'.
-//   * names are exactly loadGLTF's animation entity names: the glTF name, "Animation <i>" when
-//     empty (i 0-based); the k-th later duplicate of a name is "<name> <k>" (k from 2).
+//   * names: the glTF name, "Animation <i>" when empty (i 0-based, as loadGLTF names its
+//     animation entities); the k-th later duplicate of a name is "<name> <k>" (k from 2), where
+//     the loader's entities keep the duplicate name. Everything that lists a model's clips
+//     (Inspector, get_asset_info, MCP) uses subClipNames.
 //   * canonical reference form: formatSubClipReference writes the name (never the index); when
 //     reading, a clip part that equals a name means that animation, and a number is an index only
 //     when no animation has that name.
