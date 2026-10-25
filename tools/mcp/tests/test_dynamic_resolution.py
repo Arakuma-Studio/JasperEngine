@@ -56,12 +56,9 @@ def log_length(ed: Editor) -> int:
 async def test_dynamic_resolution_in_play(ed: Editor):
     ed.require_tools("create_scene", "create_entity", "set_scene_settings", "play", "wait", "get_post_processing_status",
                      "set_post_processing_debug")
-    # the project's start scene: Play runs it (a scene made here would not be the one playing)
-    scenes = (await ed.call("list_scenes"))["scenes"]
-    start = [s for s in scenes if s.get("start_scene")]
-    ed.check(start, f"a start scene: {scenes}")
-    sid = start[0]["id"]
-    await ed.call("select_scene", scene=sid)
+    # the new project's own scene (selected): Play runs it
+    listed = await ed.call("list_scenes")
+    sid = listed["selected_scene_id"]
     await ed.call("create_entity", scene=sid, name="Ball", type="sphere")
 
     # off by default: nothing runs, the settings' scale applies
