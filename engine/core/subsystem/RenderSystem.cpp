@@ -4816,6 +4816,7 @@ void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
 }
 
 bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelines, InstancedMeshComponent* instmesh, TerrainComponent* terrain){
+    bool builtinStandIn = false;
 
     if (!Engine::isViewLoaded()) 
         return false;
@@ -5077,7 +5078,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 if (plain->isCreated()){
                     mesh.submeshes[i].customShaderId = 0;
                     mesh.submeshes[i].shader = plain;
-                    mesh.needVariantReload = true;
+                    builtinStandIn = true;
                 }
             }
             if (!mesh.submeshes[i].shader->isCreated())
@@ -5701,8 +5702,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     trimSmoothNormals(mesh);
 
     mesh.needReload = false;
-    // loaded with the current environment
-    mesh.needVariantReload = false;
+    // loaded with the current environment; a plain variant standing in for a built-in Lit one
+    // still building reloads once that one is ready
+    mesh.needVariantReload = builtinStandIn;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
     mesh.loadCalled = true;
