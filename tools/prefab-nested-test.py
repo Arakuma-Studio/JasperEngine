@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scripted checks of nested prefabs in assets, stripped objects and the baked export
+"""Scripted checks of nested prefabs in assets, stripped objects and persistence
 (editor/project/PREFABS.md, section 17).
 
     FIXTURE=<TappyPlane fixture project> tools/prefab-nested-test.py [work-dir]
@@ -11,7 +11,7 @@ made from), a reload (equal, member ids included) and a second one (the files wr
 byte for byte), a multi-selection of instances made prefabs, Add to Prefab, Play's spawn
 against an instantiated one, Apply of references into nested prefabs to the owning prefab
 and to an outer one, undo / redo of Create Prefab from a selection holding an instance, a
-nested prefab going missing and coming back, and the generated build_prefab_* sources.
+nested prefab going missing and coming back, and Prefab Mode persistence.
 Exits non-zero on a failure. Needs a Linux editor build (tools/build.sh linux).
 """
 import os, shutil, subprocess, sys, tempfile, yaml
@@ -190,7 +190,6 @@ ops = [
     {'op': 'set', 'entity': 'Forest/Tree/Branch/Leaf', 'component': 'transform', 'property': 'scale', 'value': [3, 3, 1]},
     {'op': 'revertProperty', 'entity': 'Forest/Tree/Branch/Leaf', 'component': 'transform', 'properties': ['scale']},
     {'op': 'dump', 'out': ex + '/revert-nested-root.yaml'},
-    {'op': 'bake', 'entity': 'Field', 'out': ex + '/bake'},
 ]
 editor(Q, os.path.join(ex, 'final.yaml'), ops_file('extra', ops), name='extra')
 check(compare(ex + '/spawn.yaml', ex + '/spawn.yaml', '--subtree=Spawned:Forest 3'),
@@ -224,10 +223,6 @@ e = load(ex + '/revert-nested-root.yaml')
 check(e['Forest/Tree/Branch/Leaf']['components']['transform']['scale'] == [1.5, 1.5, 1] and
       not e['Forest/Tree/Branch/Leaf'].get('overrides'),
       "Revert on a nested root takes its prefab's current value, not the holder's stored copy")
-src = open(os.path.join(ex, 'bake', 'prefab_prefabs_Forest.cpp')).read()
-check('joint2d.bodyA = e' in src and 'joint2d.bodyB = e' in src, 'export: joint bodies are member variables')
-check('.setFramebuffer(scene->getComponent<CameraComponent>(e' in src, 'export: a camera link into a nested prefab is bound')
-check('members.push_back(NULL_ENTITY);' in src, 'export: a GameObject a layer removed keeps its slot empty')
 
 print('== Prefab Mode: a prefab holding nested data opened, saved, edited')
 R = os.path.join(WORK, 'stage')

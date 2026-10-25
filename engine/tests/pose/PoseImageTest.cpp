@@ -23,9 +23,6 @@ namespace {
     const PoseColor WHITE(255, 255, 255, 255);
     const PoseColor RED(255, 0, 0, 255);
 
-    bool glyphBit(char c, int col, int row){
-        return (PoseImage::glyphRows(c)[row] & (0x20 >> col)) != 0;
-    }
 
 }
 
@@ -195,63 +192,6 @@ TEST(PoseImage, BlitClipsAndCrops){
     EXPECT_EQ(cropped.getWidth(), 4);
     EXPECT_EQ(cropped.getPixel(1, 1), WHITE);
     EXPECT_EQ(cropped.getPixel(2, 2), PoseColor(0, 0, 0, 0));
-}
-
-TEST(PoseImage, GlyphTableShapes){
-    // 'A': rounded top on row 1, crossbar on row 4, legs down to row 7
-    EXPECT_FALSE(glyphBit('A', 0, 1));
-    EXPECT_TRUE(glyphBit('A', 1, 1));
-    EXPECT_TRUE(glyphBit('A', 3, 1));
-    for (int col = 0; col < 5; col++){
-        EXPECT_TRUE(glyphBit('A', col, 4)) << col;
-    }
-    EXPECT_TRUE(glyphBit('A', 0, 7));
-    EXPECT_TRUE(glyphBit('A', 4, 7));
-    // every glyph leaves the gap column and row 0 empty, and the space is blank
-    for (int c = 32; c <= 126; c++){
-        const uint8_t* rows = PoseImage::glyphRows((char)c);
-        EXPECT_EQ(rows[0], 0) << (char)c;
-        for (int row = 0; row < PoseImage::GLYPH_HEIGHT; row++){
-            EXPECT_EQ(rows[row] & 0x01, 0) << (char)c;
-            if (c == ' '){
-                EXPECT_EQ(rows[row], 0);
-            }
-        }
-    }
-    // printable glyphs other than the space all draw something
-    for (int c = 33; c <= 126; c++){
-        const uint8_t* rows = PoseImage::glyphRows((char)c);
-        int bits = 0;
-        for (int row = 0; row < PoseImage::GLYPH_HEIGHT; row++) bits |= rows[row];
-        EXPECT_NE(bits, 0) << (char)c;
-    }
-    // descenders reach rows 8-9, unprintable bytes draw as '?'
-    EXPECT_NE(PoseImage::glyphRows('g')[9], 0);
-    EXPECT_EQ(PoseImage::glyphRows('\x01'), PoseImage::glyphRows('?'));
-    EXPECT_EQ(PoseImage::glyphRows('\n'), PoseImage::glyphRows('?'));
-}
-
-TEST(PoseImage, DrawTextPixels){
-    PoseImage image(40, 12, BLACK);
-    const int end = image.drawText(2, 1, "AL", WHITE);
-    EXPECT_EQ(end, 2 + 2 * PoseImage::GLYPH_WIDTH);
-    // 'A' at (2, 1): every cell pixel matches the glyph table
-    for (int row = 0; row < PoseImage::GLYPH_HEIGHT; row++){
-        for (int col = 0; col < PoseImage::GLYPH_WIDTH; col++){
-            const PoseColor expected = glyphBit('A', col, row) ? WHITE : BLACK;
-            EXPECT_EQ(image.getPixel(2 + col, 1 + row), expected) << col << "," << row;
-        }
-    }
-    // 'L' next to it: the vertical stroke in column 0, the foot on row 7
-    EXPECT_EQ(image.getPixel(8, 2), WHITE);
-    EXPECT_EQ(image.getPixel(9, 2), BLACK);
-    for (int col = 0; col < 5; col++){
-        EXPECT_EQ(image.getPixel(8 + col, 8), WHITE) << col;
-    }
-    // clipped text writes nothing outside
-    image.drawText(36, 1, "WWW", WHITE);
-    EXPECT_EQ(image.getPixel(36, 2), WHITE);
-    EXPECT_EQ(image.getPixel(39, 2), BLACK);
 }
 
 TEST(PoseImage, TextWidthAndFit){

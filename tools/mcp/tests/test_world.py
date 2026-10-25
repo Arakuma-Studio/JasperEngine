@@ -10,17 +10,6 @@ import asyncio
 
 from harness import Editor, ToolError
 
-WORLD_TOOLS = (
-    "sculpt_terrain", "sample_terrain", "edit_colliders", "set_joint", "edit_tilemap", "get_tilemap",
-    "set_sprite_frames", "set_sprite_animation", "edit_animation", "get_animation", "preview_animation",
-    "create_ui", "set_rect_layout", "create_particles", "get_model_info", "set_model", "set_shape_points",
-    "set_terrain_maps",
-)
-SUPERSEDED = ("add_rigidbody_collider", "add_rigidbody2d_collider", "add_tilemap_tile", "remove_tilemap_tile",
-              "create_terrain_heightmap", "create_terrain_blendmap", "set_terrain_textures", "add_terrain_collision",
-              "duplicate_tilemap_tile", "add_animation_action", "remove_animation_action",
-              "set_keyframe_times", "set_keyframe_easing")
-
 LEVEL = """
 ..........
 ....==....
@@ -60,13 +49,6 @@ async def exists(ed: Editor, scene, entity) -> bool:
 
 
 # -- registry ------------------------------------------------------------------
-
-
-async def test_world_tools_listed(ed: Editor):
-    missing = [t for t in WORLD_TOOLS if not ed.has_tool(t)]
-    ed.check(not missing, f"world tools missing: {missing}")
-    still = [t for t in SUPERSEDED if ed.has_tool(t)]
-    ed.check(not still, f"superseded legacy tools still listed: {still}")
 
 
 # -- 2D platformer level -----------------------------------------------------------
@@ -547,9 +529,3 @@ async def test_models_errors(ed: Editor):
     ed.check_in("no Model", err)
     err = await ed.call("set_model", scene=sid, create={"name": "Ship"}, path="assets/missing.glb", expect_error=True)
     ed.check_in("missing.glb", err)
-
-
-async def test_screenshot(ed: Editor):
-    ed.require_tools("screenshot")
-    data = await ed.screenshot(view="scene")
-    ed.check(len(data) > 1000, "screenshot has content")

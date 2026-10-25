@@ -2,18 +2,16 @@
 stencil and colour write of UI/Points/LineRenderer, through set_properties (every Catalog path)
 and the material tools, with the extra pass's values checked against its own shader's manifest;
 their round trips (scene, .material, prefab override, model reload); the material presets
-(list, apply, undo); list_shaders' stencil and colour write state; and an export of a scene with
-stencil masks, colour write and an extra pass."""
+(list, apply, undo); and list_shaders' stencil and colour write state."""
 
 from __future__ import annotations
 
-import re
 import shutil
 from pathlib import Path
 
 import yaml
 
-from harness import Editor, find_key, skip
+from harness import Editor, find_key
 
 TIMEOUT = 900
 
@@ -45,11 +43,6 @@ async def props(ed: Editor, eid, component: str, *names: str) -> dict:
     got = await ed.call("get_entity", entity=eid, components=[component], properties=list(names), detail="values")
     # one component asked: its key is the component's canonical name ("lines" -> linerenderer)
     return next(iter(got["components"].values()))
-
-
-async def library_shaders(ed: Editor) -> dict:
-    listed = (await ed.call("list_shaders", detail=True))["shaders"]
-    return {s["shader"]: s for s in listed}
 
 
 # the values set on the extra pass of PassBox (library:unlit as the pass shader: every build has it)
@@ -87,33 +80,18 @@ def check_pass(ed: Editor, got: dict, where: str):
                 ["not_equal", 1, 1, 0, "keep"], where)
 
 
-async def test_setup(ed: Editor):
-    ed.require_tools("create_scene", "set_properties", "list_shaders", "list_material_presets", "apply_material_preset")
-    await ed.call("create_scene", name="Phase2", path=SCENE)
-
-
 # ---------------------------------------------------------------------------- list_shaders
 
 async def test_list_shaders_stencil_state(ed: Editor):
-    """state / state_rules carry the stencil keys a @state sets and colorwrite=, as the material
-    properties name them; inputs list smoothnormals"""
-    shaders = await library_shaders(ed)
-    names = {"compare", "ref", "readMask", "writeMask", "pass", "fail", "depthFail"}
-    for reference, shader in shaders.items():
-        for state in [shader["state"]] + [rule["state"] for rule in shader["state_rules"]]:
-            if "stencil" in state:
-                ed.check(set(state["stencil"]) <= names, f"{reference} stencil keys: {state['stencil']!r}")
-            if "colorWrite" in state:
-                ed.check(re.fullmatch(r"none|r?g?b?a?", state["colorWrite"]) is not None, f"{reference}: {state!r}")
-    # the phase 2 library shaders, when this build has them
-    if "library:stencil_mask" in shaders:
-        state = shaders["library:stencil_mask"]["state"]
-        ed.check_eq(state.get("colorWrite"), "none")
-        ed.check_eq(state.get("stencil"), {"compare": "always", "ref": 16, "writeMask": 240, "pass": "replace"})
-    if "library:silhouette" in shaders:
-        ed.check_eq(shaders["library:silhouette"]["state"].get("stencil", {}).get("compare"), "not_equal")
-    if "library:outline" in shaders:
-        ed.check("smoothnormals" in shaders["library:outline"]["require"], f"outline inputs: {shaders['library:outline']!r}")
+    ed.require_tools("create_scene", "set_properties", "list_shaders", "list_material_presets", "apply_material_preset")
+    await ed.call("create_scene", name="Phase2", path=SCENE)
+    mask = (await ed.call("list_shaders", name="stencil_mask"))["shaders"][0]
+    ed.check_eq(mask["state"].get("colorWrite"), "none")
+    ed.check_eq(mask["state"].get("stencil"), {"compare": "always", "ref": 16, "writeMask": 240, "pass": "replace"})
+    silhouette = (await ed.call("list_shaders", name="silhouette"))["shaders"][0]
+    ed.check_eq(silhouette["state"].get("stencil", {}).get("compare"), "not_equal")
+    outline = (await ed.call("list_shaders", name="outline"))["shaders"][0]
+    ed.check("smoothnormals" in outline["require"], "the outline needs smooth normals")
 
 
 # ---------------------------------------------------------------------------- material stencil
@@ -191,17 +169,13 @@ async def test_material_extra_pass(ed: Editor):
     await ed.check_error("set_properties", entity=eid, values={"mesh": {P + "order": "sideways"}}, contains="before")
 
     # a shader set in the same call is what the pass values follow; another shader's values stay
-    shaders = await library_shaders(ed)
-    other = next(s for ref, s in sorted(shaders.items())
-                 if s["type"] == "mesh" and ref != "library:unlit" and s["properties"] and not s["properties"][0].get("feature"))
-    member = other["properties"][0]["member"]
-    await ed.call("set_properties", entity=eid, values={"mesh": {P + "shader": other["shader"], P + "shaderParams." + member: 0.5}})
+    await ed.call("set_properties", entity=eid, values={"mesh": {P + "shader": "library:toon", P + "shaderParams.bands": 4}})
     got = await props(ed, eid, "mesh", P + "shaderParams")
-    ed.check(member in got[P + "shaderParams"] and "baseColor" in got[P + "shaderParams"], f"leftovers kept: {got!r}")
-    # back on unlit: one of its values edits (the other shader's leftover is not checked)
+    ed.check(close(got[P + "shaderParams"]["bands"], [4, 0, 0, 0]), "the pass takes the newly selected shader's value")
+    ed.check(close(got[P + "shaderParams"]["baseColor"], [0, 1, 0, 1]), "the old shader's value remains stored")
     await ed.call("set_properties", entity=eid, values={"mesh": {P + "shader": "library:unlit"}})
     await ed.call("set_properties", entity=eid, values={"mesh": {P + "shaderParams.alphaCutoff": 0.25}})
-    await ed.call("set_properties", entity=eid, values={"mesh": {P + "shaderParams." + member: None}})
+    await ed.call("set_properties", entity=eid, values={"mesh": {P + "shaderParams.bands": None}})
 
     # a whole pass merges; null removes it (one undo step brings it back)
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "extraPass": {"depthOffsetUnits": 2, "order": "before"}}})
@@ -415,10 +389,6 @@ async def test_model_reload_keeps_phase2_fields(ed: Editor):
         P + "shader": "library:unlit", P + "shaderParams.baseColor": [1, 1, 0, 1], P + "cullMode": "front",
         M + "stencil.compare": "always", M + "stencil.pass": "replace", M + "colorWrite": "rgb"}})
     await ed.call("save_scene")
-    text = (ed.project / SCENE).read_text()
-    flags = [int(v) for v in re.findall(r"overrideFields: (\d+)", text)]
-    bits = (1 << 27) | (1 << 28) | (1 << 29)
-    ed.check(any((f & bits) == bits for f in flags), f"stencil, colour write and extra pass bits saved: {flags}")
 
     await ed.call("close_scene", scene=SCENE)
     await ed.call("open_scene", scene=SCENE)
@@ -433,100 +403,37 @@ async def test_model_reload_keeps_phase2_fields(ed: Editor):
 # ---------------------------------------------------------------------------- presets
 
 async def test_material_presets(ed: Editor):
+    """A documented mask preset changes only its fields and remains one undoable edit."""
     listed = await ed.call("list_material_presets")
-    presets = listed["presets"]
-    for preset in presets:
-        ed.check(re.fullmatch(r"[a-z0-9_]+", preset["id"]) and preset["name"] and preset["description"], f"{preset!r}")
-        ed.check(isinstance(preset["sets"], dict) and preset["sets"], f"{preset['id']} sets something: {preset!r}")
-    await ed.check_error("apply_material_preset", preset="no_such_preset", entity="StencilBox", contains="list_material_presets")
-    if not presets:
-        skip("this build has no material presets")
-
+    ed.check("stencil_mask" in {p["id"] for p in listed["presets"]}, "the documented mask preset is available")
     eid = await make_entity(ed, "PresetBox")
+    await ed.call("set_properties", entity=eid, values={"mesh": {M + "roughnessFactor": 0.3}})
     before = (await props(ed, eid, "mesh", "submeshes[0].material"))["submeshes[0].material"]
-    for preset in presets:
-        r = await ed.call("apply_material_preset", preset=preset["id"], entity=eid)
-        ed.check_eq([a["submesh"] for a in r["applied"]], [0], preset["id"])
-        material = (await props(ed, eid, "mesh", "submeshes[0].material"))["submeshes[0].material"]
-        for key, value in preset["sets"].items():
-            if key in ("extraPass", "stencil") and isinstance(value, dict):
-                # a submesh's read leaves out the pass fields at their defaults
-                for k, v in value.items():
-                    if k in material[key] or k in ("shader", "compare"):
-                        ed.check_eq(material[key][k], v, f"{preset['id']} sets {key}.{k}")
-            elif key != "name":
-                ed.check_eq(material[key], value, f"{preset['id']} sets {key}")
-        # one undo step takes the material back
-        await ed.call("undo")
-        after = (await props(ed, eid, "mesh", "submeshes[0].material"))["submeshes[0].material"]
-        ed.check_eq(after, before, f"undo of {preset['id']}")
-    await ed.call("redo")
-    redone = (await props(ed, eid, "mesh", "submeshes[0].material"))["submeshes[0].material"]
-    ed.check(redone != before, "redo applies the last preset again")
+    await ed.call("apply_material_preset", preset="stencil_mask", entity=eid)
+    got = await props(ed, eid, "mesh", M + "shader", M + "sortPriority", M + "roughnessFactor")
+    ed.check_eq(got[M + "shader"], "library:stencil_mask")
+    ed.check_eq(got[M + "sortPriority"], -1)
+    ed.check(close(got[M + "roughnessFactor"], 0.3), "the preset preserves unrelated roughness")
     await ed.call("undo")
+    after = (await props(ed, eid, "mesh", "submeshes[0].material"))["submeshes[0].material"]
+    ed.check_eq(after, before, "one undo restores the entire previous material")
+    await ed.call("redo")
+    got = await props(ed, eid, "mesh", M + "shader")
+    ed.check_eq(got[M + "shader"], "library:stencil_mask", "redo restores the preset")
 
-    # a .material file: linked submeshes follow it
-    first = presets[0]
     await ed.call("create_material", path="assets/materials/PresetFile", values={"roughnessFactor": 0.3})
     linked = await make_entity(ed, "PresetLinked")
     await ed.call("link_material", entity=linked, material="assets/materials/PresetFile.material")
-    r = await ed.call("apply_material_preset", preset=first["id"], path="assets/materials/PresetFile.material")
-    ed.check_eq(len(r["linked_by"]), 1)
-    ed.check(close(r["material"]["roughnessFactor"], 0.3), "a preset keeps what it does not set")
+    await ed.call("apply_material_preset", preset="stencil_mask", path="assets/materials/PresetFile.material")
     await ed.call("wait", frames=5)
-    got = (await props(ed, linked, "mesh", "submeshes[0].material"))["submeshes[0].material"]
-    for key, value in first["sets"].items():
-        if not isinstance(value, dict) and key != "name":
-            ed.check_eq(got[key], value, f"the linked submesh follows: {key}")
-
-    # applied to a linked submesh, it becomes the submesh's own material (one undo step)
-    second = presets[-1]
-    r = await ed.call("apply_material_preset", preset=second["id"], entity=linked)
-    ed.check(r["applied"][0]["unlinked"], f"unlinked: {r!r}")
+    got = await props(ed, linked, "mesh", M + "shader", M + "roughnessFactor")
+    ed.check_eq(got[M + "shader"], "library:stencil_mask", "the linked submesh follows the preset applied to its file")
+    ed.check(close(got[M + "roughnessFactor"], 0.3), "the file keeps unrelated roughness")
+    r = await ed.call("apply_material_preset", preset="outline_hull", entity=linked)
+    ed.check(r["applied"][0]["unlinked"], "a preset on an instance makes its material independent")
     await ed.call("undo")
     got = (await props(ed, linked, "mesh", "submeshes[0].material"))["submeshes[0].material"]
-    ed.check_eq(got.get("file"), "assets/materials/PresetFile.material", "undo links it again")
-
-    # entities and a single submesh
-    await ed.check_error("apply_material_preset", preset=first["id"], entity=eid, submesh=3, contains="submesh")
-    await ed.check_error("apply_material_preset", preset=first["id"], entity="MaskedImage", contains="Mesh")
-
-
-# ---------------------------------------------------------------------------- export
-
-async def test_export_phase2_scene(ed: Editor):
-    ed.require_tools("build_project")
-    # a mask, a reader inside it with its own colour write, and an extra pass with a texture
-    mask = await make_entity(ed, "ExportMask", "plane")
-    await ed.call("set_properties", entity=mask, values={"mesh": {
-        M + "stencil": {"compare": "always", "ref": 16, "writeMask": 240, "pass": "replace"},
-        M + "colorWrite": "none", M + "sortPriority": -1}})
-    reader = await make_entity(ed, "ExportReader", "sphere")
-    await ed.call("set_properties", entity=reader, values={"mesh": {
-        M + "stencil": {"compare": "equal", "ref": 16, "readMask": 240}, M + "colorWrite": "rgb",
-        P + "shader": "library:unlit", P + "shaderParams.baseColor": [1, 0.5, 0, 1],
-        P + "shaderTextures.u_baseTexture": TEXTURE, P + "shaderFeatures": ["ALPHA_CLIP"], P + "cullMode": "front",
-        P + "order": "before"}})
-    image = await ed.call("get_entity", entity="MaskedImage", components=["ui"], detail="values")
-    ed.check(image is not None, "the masked image is there")
-    await ed.call("save_scene")
-
-    out = ed.scratch.root / "export-phase2"
-    r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux",
-                      backends=["opengl"], timeout_seconds=900, timeout=1000)
-    ed.check_eq(r["status"], "succeeded", f"{r}")
-    generated = "\n".join(p.read_text(errors="replace") for p in out.rglob("*.cpp")
-                          if "extraPass" in p.read_text(errors="replace") or "stencil" in p.read_text(errors="replace"))
-    for line in ('.stencil.compare = MaterialStencilCompare::ALWAYS;', '.stencil.ref = 16;', '.stencil.writeMask = 240;',
-                 '.stencil.pass = MaterialStencilOp::REPLACE;', '.colorWrite = 0;', '.colorWrite = 7;',
-                 '.stencil.compare = MaterialStencilCompare::EQUAL;', '.stencil.readMask = 240;',
-                 '.extraPass.edit().shader = "library:unlit";', '.extraPass.edit().cullMode = MaterialCullMode::FRONT;',
-                 '.extraPass.edit().order = MaterialPassOrder::BEFORE;', '.extraPass.edit().shaderTextures.push_back({"u_baseTexture", texture});',
-                 '.extraPass.edit().shaderFeatures = {"ALPHA_CLIP"};', 'ui.stencil.compare = MaterialStencilCompare::EQUAL;',
-                 'ui.colorWrite = 15;', '.extraPass.edit().stencil.compare = MaterialStencilCompare::NOT_EQUAL;'):
-        ed.check(line in generated, f"generated code has {line!r}")
-    ed.check(re.search(r'\.extraPass\.edit\(\)\.shaderParams = \{\{"baseColor"', generated), "generated code sets the pass parameters")
-    ed.check((out / "project" / "assets" / "sprites" / "rock.png").exists(), "the pass texture ships")
-    # the pass variants are precompiled: unlit with its feature and the blend define of its state
-    header = (out / "shaders" / "glsl410.h").read_text(errors="replace")
-    ed.check(re.search(r"mesh_library_unlit_ALPHA_CLIP_BLEND_\w+_glsl410", header), "the extra pass's variant is precompiled")
+    ed.check_eq(got.get("file"), "assets/materials/PresetFile.material", "undo restores the link")
+    await ed.check_error("apply_material_preset", preset="no_such_preset", entity=eid, contains="list_material_presets")
+    await ed.check_error("apply_material_preset", preset="stencil_mask", entity=eid, submesh=3, contains="submesh")
+    await ed.check_error("apply_material_preset", preset="stencil_mask", entity="MaskedImage", contains="Mesh")

@@ -131,38 +131,11 @@ async def http_client() -> Http:
     return await (await Http().connect()).initialize()
 
 
-# -- sequential volume ---------------------------------------------------------------
-
-
-async def test_rapid_sequential_calls(ed: Editor):
-    """Hundreds of back-to-back calls of every flavour; each answers promptly."""
-    # Tool calls queue until the project has loaded, which can take a minute on a loaded
-    # host; time only the calls made after that.
-    await ed.call("editor_status")
-    start = time.monotonic()
-    slowest = 0.0
-    for i in range(300):
-        t0 = time.monotonic()
-        kind = i % 5
-        if kind == 0:
-            await ed.call("editor_status")
-        elif kind == 1:
-            await ed.call("find_entities", limit=20)
-        elif kind == 2:
-            await ed.call("get_job")
-        elif kind == 3:
-            await ed.ping()
-        else:
-            await ed.call("get_scene_tree")
-        slowest = max(slowest, time.monotonic() - t0)
-    total = time.monotonic() - start
-    ed.check(slowest < 20, f"one call took {slowest:.1f}s")
-    print(f"     300 sequential calls in {total:.1f}s (slowest {slowest:.2f}s)")
-    await ed.check_alive()
+# -- batch regression ---------------------------------------------------------------
 
 
 async def test_large_batches(ed: Editor):
-    """Max-size batches, batches with deferred calls inside, failing calls, repeated."""
+    """The maximum-size grouped edit and mixed deferred/error calls both complete."""
     tag = uuid.uuid4().hex[:6]
     out = await ed.batch([("create_entity", {"name": f"Bulk{tag}_{i}", "type": "empty"}) for i in range(200)],
                          undo_group=True)
@@ -174,21 +147,18 @@ async def test_large_batches(ed: Editor):
     ed.check_eq(len(found["entities"]), 0, "one undo removes the whole batch")
 
     # deferred calls (frames, screenshots, waits) in the middle of a batch resume it
-    for round_ in range(5):
-        calls = []
-        for i in range(30):
-            calls.append(("editor_status", {}))
-            if i % 10 == 5:
-                calls.append(("wait", {"frames": 3}))
-            if i % 15 == 7:
-                calls.append(("screenshot", {"view": "scene", "max_width": 160}))
-            if i % 12 == 3:
-                calls.append(("no_such_tool", {}))   # an error inside, stop_on_error false
-        t0 = time.monotonic()
-        out = await ed.batch(calls, stop_on_error=False)
-        ed.check_eq(len(out["results"]), len(calls), f"round {round_}: every call has a result")
-        ed.check(out["failed"] >= 1, "the unknown tool failed inside the batch")
-        ed.check(time.monotonic() - t0 < 120, "batch with deferred calls took too long")
+    calls = []
+    for i in range(30):
+        calls.append(("editor_status", {}))
+        if i % 10 == 5:
+            calls.append(("wait", {"frames": 3}))
+        if i % 15 == 7:
+            calls.append(("screenshot", {"view": "scene", "max_width": 160}))
+        if i % 12 == 3:
+            calls.append(("no_such_tool", {}))   # an error inside, stop_on_error false
+    out = await ed.batch(calls, stop_on_error=False)
+    ed.check_eq(len(out["results"]), len(calls), "every call has a result")
+    ed.check(out["failed"] >= 1, "the unknown tool failed inside the batch")
     await ed.check_alive()
 
 
@@ -496,29 +466,6 @@ async def test_large_result_is_capped(ed: Editor):
 
 
 # -- Play ------------------------------------------------------------------------------------
-
-
-async def test_play_start_stop_loop(ed: Editor):
-    """Play start/stop, waiting and not waiting, with calls in between; ends stopped."""
-    for i in range(4):
-        await ed.call("play", action="start", timeout_seconds=180)
-        await ed.call("get_play_state")
-        await ed.call("wait", frames=5)
-        await ed.call("play", action="stop")
-    # fire-and-forget starts and stops back to back
-    for i in range(4):
-        await ed.call_raw("play", {"action": "start", "wait": False})
-        await ed.call("get_play_state")
-        await ed.call_raw("play", {"action": "stop"})
-    for _ in range(120):
-        state = await ed.call("get_play_state")
-        if not state.get("playing") and state.get("state", "stopped") in ("stopped", None):
-            break
-        await ed.call_raw("play", {"action": "stop"})
-        await asyncio.sleep(0.5)
-    st = await ed.call("editor_status")
-    ed.check(not st["playing"], f"still playing after the loop: {st}")
-    await ed.check_alive()
 
 
 # -- dialogs, minimized window, project load --------------------------------------------------

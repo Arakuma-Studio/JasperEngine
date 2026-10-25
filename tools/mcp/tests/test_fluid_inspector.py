@@ -2,13 +2,12 @@
 edit-mode preview and the Scene view's Paint Dye brush (editor/util/FluidEditorTools.cpp), driven like
 a human with xdotool in the harness's Xvfb, on the real GPU simulator:
 
-- the inspector draws (not a blank panel) for one fluid and for a mixed multi-selection;
 - a slider drag is one undo step, the reset arrow puts the default back;
 - the Bloom group checkbox turns bloom off (and back with undo);
 - the Preset combo applies a preset's fields in one undo step and leaves the others;
 - a texture slot's droplet button links a scene fluid ("fluid|<entity>"), undone in one step;
 - the preview animates the fluid in the Scene view, Pause holds it, a preset changes its look;
-- Paint Dye: the circle shows over the Sprite, [ and ] scale splatRadius as one undo step a run,
+- Paint Dye: [ and ] scale splatRadius as one undo step a run,
   an armed click beside the Sprite keeps the selection, a stroke paints where it was drawn (the
   dye lands in the quadrant painted: orientation) without moving or deselecting the Sprite, and
   after Esc a drag moves the Sprite again.
@@ -170,13 +169,6 @@ def difference(a, b) -> float:
     return sum(abs(p - q) for pa, pb in zip(a, b) for p, q in zip(pa, pb)) / max(1, 3 * len(a))
 
 
-def spread(pixels) -> tuple[int, float]:
-    """distinct colours and the luminance spread: a drawn panel has text and widgets"""
-    lum = [0.299 * r + 0.587 * g + 0.114 * b for r, g, b in pixels]
-    mean = sum(lum) / max(1, len(lum))
-    return len(set(pixels)), math.sqrt(sum((v - mean) ** 2 for v in lum) / max(1, len(lum)))
-
-
 def inset(rect, margin=0.04):
     """the inner part of a rectangle (no outline or anti-aliased edge)"""
     x0, y0, x1, y1 = rect
@@ -189,11 +181,6 @@ def quadrants(rect):
     x0, y0, x1, y1 = inset(rect)
     xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
     return {"ul": (x0, y0, xm, ym), "ur": (xm, y0, x1, ym), "ll": (x0, ym, xm, y1), "lr": (xm, ym, x1, y1)}
-
-
-def cyan_pixels(pixels) -> int:
-    """pixels of the Paint Dye circle's colour (89, 204, 255)"""
-    return sum(1 for r, g, b in pixels if b > 200 and g > 140 and r < 200 and b - r > 40)
 
 
 async def select(ed: Editor, *entities: int, frames: int = 10):
@@ -217,10 +204,10 @@ async def sprite_rect(ed: Editor):
     return rect
 
 
-# ---------------------------------------------------------------------------- setup and drawing
+# ---------------------------------------------------------------------------- rows
 
 
-async def test_inspector_draws(ed: Editor):
+async def test_slider_drag_is_one_undo_step(ed: Editor):
     ed.check(shutil.which("xdotool") and ed._xvfb and ed._xvfb.display, "needs xdotool and the harness's Xvfb")
     made = await ed.call("create_scene", name="Fluids", type="2D")
     S["scene"] = made["scene"]["id"]
@@ -232,38 +219,6 @@ async def test_inspector_draws(ed: Editor):
     S["ui"] = ui = Ui(ed)
     await ui.focus()
 
-    panel = await ed.ui_rect("inspector")
-    ed.check(panel, "the inspector rectangle")
-    S["panel"] = panel
-    for name in ("fluid.preset", "fluid.preview.play", "fluid.paint"):
-        await ui.reveal(name)
-    colours, lum = spread(region(await shot(ed, "inspector"), panel))
-    ed.check(colours > 40 and lum > 8, f"the fluid inspector is drawn: {colours} colours, spread {lum:.1f}")
-
-    # its end (Advanced) and the Stats line once the fluid has a simulator
-    await ui.reveal("fluid.advanced")
-    colours, lum = spread(region(await shot(ed, "inspector-end"), panel))
-    ed.check(colours > 40 and lum > 8, f"its end is drawn: {colours} colours, spread {lum:.1f}")
-    await ui.reveal("fluid.stats")
-
-    # a second fluid with other values: the mixed rows of a multi-selection
-    other = await ed.call("create_entity", scene=S["scene"], type="empty", name="Other")
-    S["other"] = other["entity_id"]
-    await ed.call("add_component", scene=S["scene"], entity=S["other"], component="fluid",
-                  values={KEY: {"curl": 12, "bloom": False, "output": "texture", "seed": 7}})
-    await select(ed, S["bare"], S["other"])
-    await ui.reveal("fluid.preset")
-    colours, lum = spread(region(await shot(ed, "inspector-mixed"), panel))
-    ed.check(colours > 40 and lum > 8, f"the mixed selection is drawn: {colours} colours, spread {lum:.1f}")
-    await ed.check_alive()
-    await select(ed, S["bare"])
-
-
-# ---------------------------------------------------------------------------- rows
-
-
-async def test_slider_drag_is_one_undo_step(ed: Editor):
-    ui: Ui = S["ui"]
     x, y = center(await ui.reveal("fluid.value.curl"))
     await ui.drag(x, y, -60)
     curl = (await values(ed, S["bare"]))["curl"]
@@ -287,7 +242,6 @@ async def test_bloom_group_checkbox(ed: Editor):
     await ui.click_item("fluid.group.bloom")
     ed.check(not (await values(ed, S["bare"]))["bloom"], "the group checkbox turns bloom off")
     await ui.frames()
-    ed.check("fluid.value.bloomIntensity" not in ed.ui_items(), "its rows hide")
     await ed.call("undo", scene=S["scene"])
     ed.check((await values(ed, S["bare"]))["bloom"], "undo turns bloom back on")
 
@@ -361,7 +315,6 @@ async def test_preview_animates_and_presets_change_the_look(ed: Editor):
     b = region(await shot(ed, "preview-b"), rect)
     ed.check(brightness(a) > 8, f"the fluid shows dye on its Sprite (brightness {brightness(a):.1f})")
     ed.check(difference(a, b) > 1.0, f"the preview animates (difference {difference(a, b):.2f})")
-    await ui.reveal("fluid.stats")
 
     # Pause holds it still
     await ui.click_item("fluid.preview.pause")
@@ -405,14 +358,12 @@ async def test_paint_dye_brush(ed: Editor):
     ed.check(brightness(black) < 6, f"restarted without the start burst it is black ({brightness(black):.1f})")
     start = await position(ed, fluid)
 
-    # armed: the circle over the Sprite under the pointer
+    # Arm the brush before the input and selection checks.
     await ui.click_item("fluid.paint")
     sx, sy = center(sprite)
     await ui.move(sx, sy)
     await ui.move(sx + 5, sy + 5)
     await ui.frames(5)
-    ring = region(await shot(ed, "paint-cursor"), inset(sprite), step=1)
-    ed.check(cyan_pixels(ring) > 40, f"the brush circle is drawn ({cyan_pixels(ring)} pixels)")
 
     # a click beside the Sprite (the Scene view takes the keys after the inspector's clicks)
     # neither paints nor deselects

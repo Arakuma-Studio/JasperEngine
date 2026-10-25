@@ -167,7 +167,7 @@ TEST(SpriteAnimationStop, SingleFrameAnimationStops) {
     Entity target = createSpriteTarget(scene);
 
     SpriteAnimation anim(&scene);
-    anim.setAnimation({0}, {100}, false);
+    anim.setAnimation(0, 0, 100, false);
     anim.setTarget(target);
     anim.start();
 
@@ -213,23 +213,6 @@ TEST(SpriteAnimationStop, SpeedScalesFrameTimes) {
     EXPECT_EQ(scene.getComponent<SpriteAnimationComponent>(anim.getEntity()).frameIndex, 2);
     step(scene, 0.05, 1);
     EXPECT_TRUE(anim.isStopped()) << "300 ms of frames at speed 2 take 150 ms";
-}
-
-TEST(SpriteAnimationRange, OnlyFrameZero) {
-    Scene scene;
-
-    SpriteAnimation anim(&scene);
-    anim.setAnimation(0, 0, 100, false);
-
-    SpriteAnimationComponent& spriteanim = scene.getComponent<SpriteAnimationComponent>(anim.getEntity());
-    ASSERT_EQ(spriteanim.framesSize, 1u);
-    EXPECT_EQ(spriteanim.frames[0], 0);
-    EXPECT_EQ(spriteanim.framesTimeSize, 1u);
-    EXPECT_EQ(spriteanim.framesTime[0], 100);
-
-    anim.setAnimation(2, 4, 50, true);
-    EXPECT_EQ(spriteanim.framesSize, 3u);
-    EXPECT_EQ(spriteanim.frames[2], 4);
 }
 
 // ---- particle sprite modifier

@@ -4,4 +4,4 @@
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
-exec "$UV" run --quiet --no-project --with mcp --with pyyaml python "$HERE/run_tests.py" "$@"
+exec "$UV" run --quiet --no-project --with mcp --with pyyaml --with jsonschema python "$HERE/run_tests.py" "$@"

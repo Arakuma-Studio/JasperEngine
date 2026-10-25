@@ -11,13 +11,15 @@ endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # googletest from the repository's yaml-cpp test tree (as engine/tests/htmlui)
-set(JASPER_EDITOR_GTEST_DIR "${CMAKE_SOURCE_DIR}/libs/yaml-cpp/test/gtest-1.11.0")
-set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
-set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
-set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
-add_subdirectory(${JASPER_EDITOR_GTEST_DIR} ${CMAKE_BINARY_DIR}/gtest-editor EXCLUDE_FROM_ALL)
-target_compile_options(gtest PRIVATE -w)
-target_compile_options(gtest_main PRIVATE -w)
+if(NOT TARGET gtest)
+    set(JASPER_EDITOR_GTEST_DIR "${CMAKE_SOURCE_DIR}/libs/yaml-cpp/test/gtest-1.11.0")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${JASPER_EDITOR_GTEST_DIR} ${CMAKE_BINARY_DIR}/gtest-editor EXCLUDE_FROM_ALL)
+    target_compile_options(gtest PRIVATE -w)
+    target_compile_options(gtest_main PRIVATE -w)
+endif()
 
 # The editor's sources (the importers reach CommandRunner, Out, Project, ...), without its main();
 # the same command lines as jasperengine-editor's, so ccache shares the objects

@@ -5,61 +5,14 @@ script; its state is "ready" → space/click → "playing" → crash into the gr
 Tests run in order and share one editor.
 """
 
-import struct
-import zlib
 
 from harness import Editor, skip
+from htmlui_pixels import decode_png
 
 TIMEOUT = 900
 
 
 # -- helpers -----------------------------------------------------------------
-
-
-def decode_png(data: bytes):
-    """(width, height, channels, byte rows) for the 8-bit RGB/RGBA PNGs the editor writes."""
-    assert data.startswith(b"\x89PNG\r\n\x1a\n"), "not a PNG"
-    pos = 8
-    width = height = 0
-    color_type = 2
-    idat = b""
-    while pos < len(data):
-        length = struct.unpack(">I", data[pos:pos + 4])[0]
-        kind = data[pos + 4:pos + 8]
-        chunk = data[pos + 8:pos + 8 + length]
-        if kind == b"IHDR":
-            width, height, depth, color_type = struct.unpack(">IIBB", chunk[:10])
-            assert depth == 8, f"bit depth {depth}"
-        elif kind == b"IDAT":
-            idat += chunk
-        pos += 12 + length
-    channels = {2: 3, 6: 4}[color_type]
-    raw = zlib.decompress(idat)
-    stride = width * channels
-    rows = []
-    prev = bytearray(stride)
-    i = 0
-    for _ in range(height):
-        f = raw[i]
-        line = bytearray(raw[i + 1:i + 1 + stride])
-        i += 1 + stride
-        for x in range(stride):
-            a = line[x - channels] if x >= channels else 0
-            b = prev[x]
-            c = prev[x - channels] if x >= channels else 0
-            if f == 1:
-                line[x] = (line[x] + a) & 255
-            elif f == 2:
-                line[x] = (line[x] + b) & 255
-            elif f == 3:
-                line[x] = (line[x] + (a + b) // 2) & 255
-            elif f == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        rows.append(line)
-        prev = line
-    return width, height, channels, rows
 
 
 def check_image(ed: Editor, result, label: str, min_colours: int = 8):

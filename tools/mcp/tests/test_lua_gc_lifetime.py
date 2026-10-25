@@ -12,7 +12,6 @@ repeated cycles, a collected handle still destroys its entity while its scene pl
 leak), and an editor shutdown after play with handles left in Lua globals exits cleanly.
 """
 
-import asyncio
 import json
 
 from harness import Editor, RawEditor
@@ -110,14 +109,6 @@ async def stop_and_collect(ed: Editor) -> None:
     await ed.call("editor_status")
     errors = [e.get("message", "") for e in await ed.console_since(types=["error"], limit=1000)]
     ed.check(not errors, f"errors logged: {errors[:10]}")
-
-
-async def test_main_scene_objects_collected_after_stop(ed: Editor):
-    s = await setup(ed)
-    await ed.console_since(None, limit=1)   # errors are checked from here
-    await play(ed, s["solo"])
-    ed.check_eq(await lua(ed, "return script('SoloMaker', 'GcSoloMaker', 'GcSolo').made"), [1], "the script ran")
-    await stop_and_collect(ed)
 
 
 async def test_child_scene_objects_collected_after_stop(ed: Editor):

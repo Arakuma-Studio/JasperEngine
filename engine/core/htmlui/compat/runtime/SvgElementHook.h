@@ -42,9 +42,6 @@ namespace jasperengine::htmlui::compat {
         // the preprocessed SVG for a source (cached by content and overrides)
         static std::shared_ptr<const SvgResult> preprocess(const std::string& source, SvgUse use, const SvgPaintOverrides& overrides);
 
-        // tests
-        static size_t cacheSize();
-        static size_t processCount();   // SvgPreprocess::process calls (cache misses)
         static void clearCache();
     };
 

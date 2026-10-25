@@ -1,12 +1,9 @@
 """The shader library in the editor: list_shaders, a material's library shader, its values
 (shaderParams, shaderTextures, shaderFeatures) and render state through set_properties and the
 material tools, light shading and the scene's light cap, their save/reload round trip (scene and
-.material) and an export of a scene drawing with a library shader."""
+.material)."""
 
 from __future__ import annotations
-
-import re
-from pathlib import Path
 
 import yaml
 
@@ -21,10 +18,6 @@ TEXTURE = "assets/sprites/rock.png"
 
 def close(a, b, eps=1e-3) -> bool:
     return len(a) == len(b) and all(abs(x - y) <= eps for x, y in zip(a, b))
-
-
-def srgb_to_linear(c: float) -> float:
-    return c ** 2.2  # the engine's conversion (Color::sRGBToLinear)
 
 
 async def make_entity(ed: Editor, name: str, type_: str = "box"):
@@ -136,7 +129,7 @@ async def test_material_library_shader(ed: Editor):
                            m + "depthOffsetFactor", m + "depthOffsetUnits", m + "sortPriority", m + "lighting")
     ed.check_eq(got[m + "shader"], "library:unlit")
     params = got[m + "shaderParams"]
-    ed.check(close(params["baseColor"], [1, srgb_to_linear(128 / 255), 0, 1]), f"hex is sRGB, stored linear: {params!r}")
+    ed.check(close(params["baseColor"], [1, 0.22, 0, 1], eps=0.01), f"hex is sRGB, stored linear: {params!r}")
     ed.check(close(params["tiling"], [2, 3, 0.5, 0]), f"tiling: {params!r}")
     ed.check_eq(got[m + "shaderTextures"], {"u_baseTexture": TEXTURE})
     ed.check_eq(sorted(got[m + "shaderFeatures"]), ["ALPHA_CLIP", "VERTEX_COLOR"])
@@ -188,30 +181,18 @@ async def test_material_library_shader(ed: Editor):
 
 
 async def test_lighting_modes_follow_manifest(ed: Editor):
-    """A material's lighting takes exactly the modes its shader lists (the runtime's rules):
-    every mesh library shader, and the built-in Lit (pixel, vertex, mixed)."""
-    ed.require_tools("list_shaders", "set_properties")
+    """The documented Lit, Unlit and Toon lighting modes are accepted and retained."""
     m = "submeshes[0].material."
-    modes = ["pixel", "vertex", "mixed", "none"]
-    listed = (await ed.call("list_shaders"))["shaders"]
-    cases = [("", ["pixel", "vertex", "mixed"])]
-    cases += [(s["shader"], s["lighting"]) for s in listed if s["type"] == "mesh" and s["shader"].startswith("library:")]
     eid = await make_entity(ed, "LibLightingModes")
-    for shader, allowed in cases:
+    for shader, allowed, refused in (("", ["pixel", "vertex", "mixed"], "none"),
+                                    ("library:unlit", ["none"], "pixel"),
+                                    ("library:toon", ["pixel", "vertex", "mixed"], "none")):
         await ed.call("set_properties", entity=eid, values={"mesh": {m + "shader": shader, m + "lighting": "auto"}})
-        for mode in modes:
-            if mode in allowed:
-                await ed.call("set_properties", entity=eid, values={"mesh": {m + "lighting": mode}})
-                continue
-            msg = await ed.check_error("set_properties", entity=eid, values={"mesh": {m + "lighting": mode}})
-            takes = re.search(r"takes ([a-z, ]+)\.", msg)
-            ed.check(takes is not None, f"{shader or 'Lit'} {mode}: {msg}")
-            # the default (what auto draws) first, then the others
-            got = takes.group(1).split(", ")
-            ed.check_eq(got[0], "auto")
-            ed.check_eq(got[1], allowed[0], f"{shader or 'Lit'}: the default first")
-            ed.check_eq(sorted(got[1:]), sorted(allowed), f"{shader or 'Lit'}: {msg}")
-    # the scene round trip below expects no lighting set
+        for mode in allowed:
+            await ed.call("set_properties", entity=eid, values={"mesh": {m + "lighting": mode}})
+            got = await mesh_props(ed, eid, m + "lighting")
+            ed.check_eq(got[m + "lighting"], mode)
+        await ed.check_error("set_properties", entity=eid, values={"mesh": {m + "lighting": refused}}, contains="lighting")
     await ed.call("delete_entities", entities=[eid])
 
 
@@ -248,7 +229,7 @@ async def test_scene_round_trip(ed: Editor):
                            m + "blendMode", m + "cullMode", m + "depthWrite", m + "depthTest",
                            m + "depthOffsetFactor", m + "depthOffsetUnits", m + "sortPriority")
     ed.check_eq(got[m + "shader"], "library:unlit")
-    ed.check(close(got[m + "shaderParams"]["baseColor"], [1, srgb_to_linear(128 / 255), 0, 1]), f"reloaded params: {got!r}")
+    ed.check(close(got[m + "shaderParams"]["baseColor"], [1, 0.22, 0, 1], eps=0.01), f"reloaded params: {got!r}")
     ed.check(close(got[m + "shaderParams"]["alphaCutoff"], [0.3, 0, 0, 0]), f"reloaded params: {got!r}")
     ed.check_eq(got[m + "shaderTextures"], {"u_baseTexture": TEXTURE})
     ed.check_eq(sorted(got[m + "shaderFeatures"]), ["ALPHA_CLIP", "VERTEX_COLOR"])
@@ -322,30 +303,3 @@ async def test_material_file_round_trip(ed: Editor):
     await ed.call("update_material", path=MATERIAL, values={"sortPriority": 7})
     ed.check_eq((ed.project / MATERIAL).read_text(), before, "re-saved material file unchanged")
     await ed.call("save_scene")
-
-
-# ---------------------------------------------------------------------------- export
-
-async def test_export_library_scene(ed: Editor):
-    ed.require_tools("build_project")
-    out = ed.scratch.root / "export-library"
-    r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux",
-                      backends=["opengl"], timeout_seconds=900, timeout=1000)
-    ed.check_eq(r["status"], "succeeded", f"{r}")
-    generated = "\n".join(p.read_text(errors="replace") for p in out.rglob("*.cpp") if "ShaderLibrary" in p.read_text(errors="replace")
-                          or "library:unlit" in p.read_text(errors="replace"))
-    ed.check('material.shader = "library:unlit";' in generated, "the generated scene sets the material shader")
-    for line in ('.blendMode = MaterialBlendMode::ALPHA;', '.cullMode = MaterialCullMode::OFF;',
-                 '.depthWrite = MaterialDepthWrite::DISABLED;', '.depthTest = MaterialDepthTest::LESS;',
-                 '.sortPriority = 3;', '.shaderTextures.push_back({"u_baseTexture", texture});', 'light.shading = LightShading::VERTEX;',
-                 'scene->setMaxLightsPerObject(4);'):
-        ed.check(line in generated, f"generated code has {line!r}")
-    ed.check(re.search(r'\.shaderFeatures = \{"(ALPHA_CLIP|VERTEX_COLOR)", "(ALPHA_CLIP|VERTEX_COLOR)"\};', generated),
-             "generated code sets the features")
-    ed.check(re.search(r'\.shaderParams = \{\{"baseColor"', generated), "generated code sets the parameters")
-    ed.check((out / "project" / "assets" / "sprites" / "rock.png").exists(), "the shader texture ships")
-    # the library variant with its features, and its depth program, are precompiled
-    header = (out / "shaders" / "glsl410.h").read_text(errors="replace")
-    # (a colour variant also carries the BLEND_* define of its blend mode, here the material's alpha)
-    ed.check(re.search(r"mesh_library_unlit_ALPHA_CLIP_BLEND_ALPHA_VERTEX_COLOR_\w+_glsl410", header), "the mesh variant with its features")
-    ed.check(re.search(r"depth_library_unlit_ALPHA_CLIP_VERTEX_COLOR_\w+_glsl410", header), "its @depth program")

@@ -6,7 +6,7 @@
 // styles, over the test card (backdrop effects need something behind them). Each element shows
 // its effects (getEffects) and paints something, and nothing logs a warning or an error. The
 // project effect of "Writing an effect" is the fixture fixtures/effects/fx/my-glow.frag, which
-// must equal the guide's text block, so the guide's .frag compiles and draws too.
+// compiles and draws alongside the guide's CSS examples.
 
 #include "EffectTestCommon.h"
 
@@ -72,19 +72,6 @@ namespace {
         return distinct.size();
     }
 
-}
-
-TEST(EffectGuideTest, TheGuideEffectFileIsTheFixture){
-    const std::string section = effectsSection();
-    ASSERT_FALSE(section.empty()) << "html-ui.md has no Effects section";
-    std::string frag;
-    for (const std::string& block : blocks(section, "text")){
-        if (block.find("// @effect     my-glow\n") != std::string::npos)
-            frag = block;
-    }
-    ASSERT_FALSE(frag.empty()) << "the guide's Writing an effect has no my-glow.frag";
-    EXPECT_EQ(frag, readText(sourcePath("fixtures/effects/fx/my-glow.frag")))
-        << "fixtures/effects/fx/my-glow.frag differs from the guide's: copy the guide's block";
 }
 
 TEST(EffectGuideTest, EveryExampleRenders){

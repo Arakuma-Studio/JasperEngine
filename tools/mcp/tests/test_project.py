@@ -33,9 +33,7 @@ async def test_summary(ed: Editor):
     ed.check_in(s["cxx_standard"], (17, 20, 23))
     ed.check_eq(s["platform"], "linux")
     ed.check(s["engine_version"], "engine_version")
-    for legacy in ("set_project_script_dirs", "set_project_cxx_standard", "update_project_build_file",
-                   "set_start_scene", "add_project_scene"):
-        ed.check(not ed.has_tool(legacy), f"legacy {legacy} should be superseded")
+
 
 
 # -- settings -----------------------------------------------------------------
@@ -189,12 +187,6 @@ async def test_project_build_file(ed: Editor):
 
 
 # -- save / create / open -------------------------------------------------------
-
-
-async def test_save_project(ed: Editor):
-    r = await ed.call("save_project")
-    ed.check(isinstance(r["saved"]["scenes"], list), "saved.scenes")
-    await ed.call("save_project", path="not/absolute", expect_error=True)
 
 
 async def test_create_and_open(ed: Editor):

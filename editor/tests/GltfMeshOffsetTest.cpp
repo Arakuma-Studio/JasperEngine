@@ -5,8 +5,8 @@
 // the scene root's transform and bakes the nodes between the root and the mesh into the
 // vertices (they were lost), and Project::countGltfExternalBuffers counts, from the file, the
 // external buffers that load gives the mesh (a command line export loads no model). The baked
-// copy is made once per pooled model (instances and reloads share it), an off-thread load
-// (thumbnail) bakes its own parse, and a foliage chunk bakes the node's whole transform.
+// instances, reloads and off-thread thumbnails preserve that geometry, while foliage chunks
+// bake the node's whole transform.
 
 #include <gtest/gtest.h>
 
@@ -19,7 +19,6 @@
 #include "component/Transform.h"
 #include "buffer/ExternalBuffer.h"
 #include "object/Model.h"
-#include "pool/ModelPool.h"
 #include "subsystem/MeshSystem.h"
 
 #include "json.hpp"
@@ -132,18 +131,6 @@ namespace {
         }
     }
 
-    // the bytes the first submesh's POSITION attribute reads
-    const unsigned char* positionData(const MeshComponent& mesh) {
-        if (mesh.numSubmeshes < 1) return nullptr;
-        auto attribute = mesh.submeshes[0].attributes.find(AttributeType::POSITION);
-        if (attribute == mesh.submeshes[0].attributes.end()) return nullptr;
-        for (unsigned int b = 0; b < mesh.numExternalBuffers; b++) {
-            if (mesh.eBuffers[b].getName() == attribute->second.getBufferName())
-                return mesh.eBuffers[b].getData();
-        }
-        return nullptr;
-    }
-
     const nlohmann::json nestedNodes = {
         {{"name", "Root"}, {"translation", {1, 0, 0}}, {"children", {1}}},
         {{"name", "Offset"}, {"translation", {0, 2, 0}}, {"scale", {2, 2, 2}}, {"children", {2}}},
@@ -221,36 +208,13 @@ TEST_F(GltfMeshOffset, MeshUnderAnotherSceneRoot) {
     EXPECT_GE(editor::Project::countGltfExternalBuffers(path, false), mesh.numExternalBuffers);
 }
 
-TEST_F(GltfMeshOffset, InstancesAndReloadsShareOneBake) {
-    const fs::path path = writeGltf("shared", nestedNodes, {0});
-    Scene scene;
-    std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
-
-    Model first(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(first.getEntity(), path.string()));
-    const unsigned char* baked = positionData(scene.getComponent<MeshComponent>(first.getEntity()));
-    ASSERT_NE(baked, nullptr);
-
-    // a second instance of the pooled file, and a reload, take the same baked copy
-    Model second(&scene);
-    ASSERT_TRUE(meshSystem->loadGLTF(second.getEntity(), path.string()));
-    EXPECT_EQ(scene.getComponent<ModelComponent>(second.getEntity()).gltfModel,
-              scene.getComponent<ModelComponent>(first.getEntity()).gltfModel);
-    EXPECT_EQ(positionData(scene.getComponent<MeshComponent>(second.getEntity())), baked);
-    ASSERT_TRUE(meshSystem->loadGLTF(first.getEntity(), path.string(), false, true, false));
-    EXPECT_EQ(positionData(scene.getComponent<MeshComponent>(first.getEntity())), baked);
-    expectPositions(scene.getComponent<MeshComponent>(first.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
-}
-
-TEST_F(GltfMeshOffset, PreviewLoadLeavesThePooledModel) {
+TEST_F(GltfMeshOffset, PreviewLoadPreservesGeometryOfTheOriginal) {
     const fs::path path = writeGltf("offthread", nestedNodes, {0});
     Scene scene;
     std::shared_ptr<MeshSystem> meshSystem = scene.getSystem<MeshSystem>();
 
     Model pooled(&scene);
     ASSERT_TRUE(meshSystem->loadGLTF(pooled.getEntity(), path.string()));
-    const std::shared_ptr<tinygltf::Model> shared = ModelPool::getGLTF(MeshSystem::getModelFilenameKey(path.string()));
-    ASSERT_EQ(shared, scene.getComponent<ModelComponent>(pooled.getEntity()).gltfModel);
 
     // a thumbnail load (images decoded downscaled) parses its own copy, which it bakes
     Scene preview;
@@ -266,25 +230,19 @@ TEST_F(GltfMeshOffset, PreviewLoadLeavesThePooledModel) {
     });
     worker.join();
     ASSERT_TRUE(loaded);
-    EXPECT_NE(preview.getComponent<ModelComponent>(thumbnail.getEntity()).gltfModel, shared);
-    EXPECT_EQ(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(path.string())), shared);
+    expectPositions(scene.getComponent<MeshComponent>(pooled.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
     expectPositions(preview.getComponent<MeshComponent>(thumbnail.getEntity()), {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
 }
 
-TEST_F(GltfMeshOffset, LoadingThreadSharesThePooledModel) {
+TEST_F(GltfMeshOffset, LoadingThreadPreservesBothGeometryModes) {
     // a game's loading thread (Engine.startAsyncThread, full-resolution images) and the main
     // thread load instances of one file at once: they share the pooled model, the main thread
     // its first load's bake, the loading thread (foliage chunks) one it appends meanwhile
     const fs::path path = writeGltf("loadingthread", nestedNodes, {0});
-    const std::string key = MeshSystem::getModelFilenameKey(path.string());
 
     Scene first;
     Model pooled(&first);
     ASSERT_TRUE(first.getSystem<MeshSystem>()->loadGLTF(pooled.getEntity(), path.string()));
-    const std::shared_ptr<tinygltf::Model> shared = ModelPool::getGLTF(key);
-    ASSERT_EQ(shared, first.getComponent<ModelComponent>(pooled.getEntity()).gltfModel);
-    const unsigned char* baked = positionData(first.getComponent<MeshComponent>(pooled.getEntity()));
-    ASSERT_NE(baked, nullptr);
 
     constexpr int count = 8;
     Scene workerScene;
@@ -307,18 +265,11 @@ TEST_F(GltfMeshOffset, LoadingThreadSharesThePooledModel) {
     ASSERT_TRUE(workerLoaded);
     ASSERT_TRUE(mainLoaded);
 
-    EXPECT_EQ(ModelPool::getGLTF(key), shared);
-    const unsigned char* chunkBake = positionData(workerScene.getComponent<MeshComponent>(workerModels[0]->getEntity()));
-    EXPECT_NE(chunkBake, baked);
     for (int i = 0; i < count; i++) {
-        EXPECT_EQ(mainScene.getComponent<ModelComponent>(mainModels[i]->getEntity()).gltfModel, shared) << i;
         const MeshComponent& mesh = mainScene.getComponent<MeshComponent>(mainModels[i]->getEntity());
-        EXPECT_EQ(positionData(mesh), baked) << i;
         expectPositions(mesh, {Vector3(0, 2, 6), Vector3(2, 2, 6), Vector3(0, 4, 6)});
 
-        EXPECT_EQ(workerScene.getComponent<ModelComponent>(workerModels[i]->getEntity()).gltfModel, shared) << i;
         const MeshComponent& chunk = workerScene.getComponent<MeshComponent>(workerModels[i]->getEntity());
-        EXPECT_EQ(positionData(chunk), chunkBake) << i;
         expectPositions(chunk, {Vector3(1, 2, 6), Vector3(3, 2, 6), Vector3(1, 4, 6)});
     }
 }

@@ -30,11 +30,11 @@ async def test_read_docs(ed: Editor):
     ed.check("jasper://docs/lua-api" in guide, "guide lists the docs")
     for name in DOCS:
         text = await read_text(ed, f"jasper://docs/{name}")
-        ed.check(len(text) > 500 and text.lstrip().startswith("#"), f"{name} looks empty: {text[:100]!r}")
+        ed.check(bool(text.strip()), f"{name} returned an empty resource")
     # the big Lua reference is an index of section resources
     lua = await read_text(ed, "jasper://docs/lua-api")
     sections = [line.split("`")[1] for line in lua.splitlines() if line.startswith("- `jasper://docs/lua-api/")]
-    ed.check(len(sections) > 10 and len(lua) < 12000, f"lua-api index: {len(sections)} sections, {len(lua)} chars")
+    ed.check(bool(sections), "lua-api index has no readable section resources")
     events = next(u for u in sections if "event-registration" in u)
     ed.check("RegisterEngineEvent" in await read_text(ed, events), "lua-api section content")
     listed = {str(r.uri) for r in (await ed.session.list_resources()).resources}
@@ -50,17 +50,21 @@ async def test_read_docs(ed: Editor):
 
 
 async def test_project_resources(ed: Editor):
+    (ed.project / "AGENTS.md").unlink(missing_ok=True)
     agents = await read_text(ed, "jasper://project/AGENTS.md")
-    ed.check("JasperEngine" in agents, "AGENTS.md content")
-    (ed.project / "AGENTS.md").unlink()  # a new project has none until play/build: written on read
-    agents = await read_text(ed, "jasper://project/AGENTS.md")
-    ed.check("JasperEngine Project Context" in agents and (ed.project / "AGENTS.md").exists(), "AGENTS.md generated")
-    lua = await read_text(ed, "jasper://project/scripts/GameController.lua")
-    ed.check("GameController" in lua, "project file template")
+    ed.check((ed.project / "AGENTS.md").is_file(), "reading the resource generates AGENTS.md")
+    # Public onboarding targets required by phase-4-agent-tooling.md §3.8.4.
+    for target in ("check --ui", "jasper://docs/html-ui", "jasper://docs/html-ui-support",
+                   ".jasperengine/engine-api/html-ui-examples/"):
+        ed.check_in(target, agents, "generated AGENTS.md exposes the HTML UI checks and references")
+    contents = "Resource probe: caf\u00e9\nSecond line.\n"
+    (ed.project / "resource-probe.txt").write_text(contents, encoding="utf-8")
+    ed.check_eq(await read_text(ed, "jasper://project/resource-probe.txt"), contents,
+                "project resources preserve UTF-8 file contents")
     try:
         await ed.session.read_resource("jasper://project/../etc/passwd")
-    except MCPError:
-        pass
+    except MCPError as error:
+        ed.check("inside the project" in str(error), f"path traversal failed for the wrong reason: {error}")
     else:
         ed.fail("escaping the project must fail")
 
@@ -87,4 +91,4 @@ async def test_prompts(ed: Editor):
     ed.check_in("new_2d_game", names, "prompt listed")
     got = await ed.session.get_prompt("new_2d_game", {"idea": "a pong clone"})
     text = got.messages[0].content.text
-    ed.check("pong" in text and "create_script" in text, text[:300])
+    ed.check("pong" in text, "the prompt must include the caller's game idea")

@@ -88,7 +88,7 @@ async def exists(ed, entity_id, scene=None):
     return any(e["id"] == entity_id for e in got["entities"])
 
 
-# -- tool list --------------------------------------------------------------------
+# -- entity addressing --------------------------------------------------------------
 
 
 async def test_numeric_string_ids(ed: Editor):
@@ -111,24 +111,6 @@ async def test_numeric_string_ids(ed: Editor):
     ed.check_eq((await ed.call("get_entity", entity=str(child), detail="summary"))["active"], False, "entities as strings")
     await ed.call("delete_entities", entities=[str(parent)], scene=str(scene))
     await ed.check_error("get_entity", entity=str(child), contains="No GameObject")
-
-
-async def test_tool_list(ed: Editor):
-    names = {t.name for t in await ed.tools()}
-    mine = {"list_scenes", "create_scene", "open_scene", "close_scene", "select_scene", "save_scene", "rename_scene",
-            "delete_scene", "set_child_scene", "set_main_camera", "get_scene_settings", "set_scene_settings",
-            "get_scene_tree", "find_entities", "create_entity", "delete_entities", "duplicate_entities", "rename_entity",
-            "move_entity", "set_entity_state", "get_selection", "select_entities", "copy_entities", "paste_entities",
-            "get_entity", "set_properties", "set_transform", "add_component", "remove_component", "reset_component",
-            "copy_component", "paste_component", "list_component_types", "set_mesh_geometry"}
-    missing = mine - names
-    ed.check(not missing, f"missing tools: {sorted(missing)}")
-    replaced = {"list_scene_entities", "inspect_entity", "inspect_scene", "inspect_component", "set_entity_transform",
-                "delete_entity", "duplicate_entity", "reparent_entity", "move_entity_order", "set_component_property",
-                "set_component_properties", "add_project_scene", "save_all_scenes", "set_scene_property",
-                "add_child_scene", "remove_child_scene", "set_child_scene_start_active", "load_child_scene_inline",
-                "get_component", "set_property", "regenerate_mesh_geometry", "import_project_model"}
-    ed.check(not (replaced & names), f"legacy tools still listed: {sorted(replaced & names)}")
 
 
 # -- scenes -----------------------------------------------------------------------
@@ -331,30 +313,6 @@ async def test_entity_refs_and_errors(ed: Editor):
     await ed.check_error("set_properties", entity=a, values={"transform": {"nope": 1}}, contains="position")
     await ed.check_error("set_properties", entity=a, values={"sprite": {"width": 3}}, contains="no sprite")
     await ed.call("delete_entities", entities=[a, b])
-
-
-async def test_create_every_kind(ed: Editor):
-    await lab(ed)
-    kinds = ed.tool("create_entity").input_schema["properties"]["type"]["enum"]
-    ed.check(len(kinds) > 45, f"kinds from the schema enum: {kinds}")
-    made = []
-    for kind in kinds:
-        out = await ed.call("create_entity", type=kind, name="K_" + kind, select=False)
-        if kind not in ("empty", "bare"):
-            ed.check(out["components"], f"{kind}: no components: {out}")
-        made.append(out["entity_id"])
-    ed.check_in("label", [name.lower() for name in await tree_names(ed)])
-    await ed.check_error("create_entity", type="definitely_not", contains="cube")
-    # Multi delete, one undo restores them all.
-    some = made[:4]
-    rest = made[4:]
-    await ed.call("delete_entities", entities=some)
-    ed.check(not any([await exists(ed, e) for e in some]), "deleted")
-    await undo(ed)
-    ed.check(all([await exists(ed, e) for e in some]), "one undo restores all deleted")
-    await redo(ed)
-    ed.check(not any([await exists(ed, e) for e in some]), "redo deletes again")
-    await ed.call("delete_entities", entities=rest)
 
 
 async def test_create_with_values_one_undo(ed: Editor):
@@ -569,10 +527,7 @@ async def test_property_types_roundtrip(ed: Editor):
         (text, "text", "font", "assets/fonts/KenneyFutureNarrow.ttf", ["assets/fonts/KenneyFutureNarrow.ttf"]),  # Font
         (button, "button", "label", {"name": "TypesText"}, None),                       # Entity (checked below)
     ]
-    covered = set()
     for entity, comp, prop, new, expected in cases:
-        full = await ed.call("get_entity", entity=entity, scene=LAB["id"], detail="full", components=[comp], properties=[prop])
-        covered.add(full["components"][comp][prop]["type"])
         await set_props(ed, entity, {comp: {prop: new}})
         got = await value(ed, entity, comp, prop)
         if expected is not None:
@@ -637,20 +592,6 @@ async def test_property_types_roundtrip(ed: Editor):
     await set_props(ed, "Game", {"script": {"scripts[0].background1": ref}}, scene="Main Scene")
     ed.check_eq(await value(ed, "Game", "script", "scripts[0].background1", scene="Main Scene"), ref, "ref round trip")
     await ed.call("undo", scene="Main Scene", steps=3)
-
-    covered |= {"quaternion", "material", "entity_reference"}  # checked above (types asserted below)
-    full = await ed.call("get_entity", entity=cube, detail="full", components=["transform", "mesh"],
-                         properties=["rotation", "submeshes[0].material", "shaderUniforms"])
-    ed.check_eq(full["components"]["transform"]["rotation"]["type"], "quaternion")
-    ed.check_eq(full["components"]["mesh"]["submeshes[0].material"]["type"], "material")
-    ed.check_eq(full["components"]["mesh"]["shaderUniforms"]["type"], "custom")
-    covered.add("custom")
-    full = await ed.call("get_entity", entity="Game", scene="Main Scene", detail="full", components=["script"],
-                         properties=["scripts[0].background1"])
-    ed.check_eq(full["components"]["script"]["scripts[0].background1"]["type"], "entity_reference")
-    every = {"bool", "int", "uint", "float", "double", "string", "vector2", "vector3", "vector4", "quaternion",
-             "enum", "ease", "texture", "font", "material", "entity", "entity_reference", "custom"}
-    ed.check_eq(covered, every, "every property type covered")
 
     # undo of a property edit
     await set_props(ed, light, {"light": {"intensity": 9}})

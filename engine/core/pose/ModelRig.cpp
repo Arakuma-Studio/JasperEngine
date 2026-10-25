@@ -307,12 +307,6 @@ bool PoseRigCache::find(const std::string& modelPath, const std::string& sidecar
     return false;
 }
 
-bool PoseRigCache::get(const std::string& modelPath, const std::string& sidecarStamp, const Skeleton& skeleton,
-                       const HumanoidOverrides& overrides, const std::function<std::shared_ptr<PoseSkin>()>& skinFactory,
-                       ModelRigInfo& out, std::string* error){
-    return get(modelPath, sidecarStamp, nullptr, skeleton, overrides, skinFactory, out, error);
-}
-
 bool PoseRigCache::get(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
                        const Skeleton& skeleton, const HumanoidOverrides& overrides,
                        const std::function<std::shared_ptr<PoseSkin>()>& skinFactory, ModelRigInfo& out, std::string* error){
@@ -357,11 +351,6 @@ void PoseRigCache::prune(){
 void PoseRigCache::clear(){
     std::lock_guard<std::mutex> lock(mutex);
     entries.clear();
-}
-
-size_t PoseRigCache::size() const{
-    std::lock_guard<std::mutex> lock(mutex);
-    return entries.size();
 }
 
 bool pose::buildModelRig(Scene* scene, Entity model, ModelRigInfo& out, std::vector<Entity>& boneEntities,

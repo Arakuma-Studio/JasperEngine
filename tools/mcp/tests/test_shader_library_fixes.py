@@ -7,8 +7,6 @@ parameters, defaults and features follow the shader the submesh draws with."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import yaml
 
 from harness import Editor, find_key
@@ -40,14 +38,11 @@ async def props(ed: Editor, eid, component: str, *names: str) -> dict:
     return got["components"][component]
 
 
-async def test_setup(ed: Editor):
-    ed.require_tools("create_scene", "set_properties", "list_shaders")
-    await ed.call("create_scene", name="ShaderLibraryFixes", path=SCENE)
-
-
 # ---------------------------------------------------------------------------- list_shaders
 
 async def test_list_shaders_rejects_unknown_type(ed: Editor):
+    ed.require_tools("create_scene", "set_properties", "list_shaders")
+    await ed.call("create_scene", name="ShaderLibraryFixes", path=SCENE)
     msg = await ed.check_error("list_shaders", type="sprite", contains="mesh, ui, points, lines, sky")
     ed.check("sprite" in msg, f"names the bad type: {msg}")
     sky = await ed.call("list_shaders", type="sky")
@@ -232,8 +227,3 @@ async def test_lua_colour_alpha_and_drawn_shader(ed: Editor):
     ed.check(close(got[M + "shaderParams"]["shadowColor"], [0, 0, 1, 1]), f"stored: {got!r}")
     for name in ("LuaLib", "LuaParticles", "LuaDrawn"):
         await ed.call("delete_entities", entities=[name])
-
-
-async def test_save_scene(ed: Editor):
-    await ed.call("save_scene")
-    ed.check((ed.project / SCENE).exists(), "scene saved")

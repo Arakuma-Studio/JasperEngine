@@ -1,1 +1,0 @@
-compat/css/current-color.css:4:40: warning: 'border-style: dashed' is drawn solid until the fork has BorderStyle (fix: use solid, or draw the pattern with an image) [HTMLUI-CSS-0006]

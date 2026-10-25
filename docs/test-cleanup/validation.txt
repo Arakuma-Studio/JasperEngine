@@ -1,0 +1,478 @@
+TEST CLEANUP VALIDATION RECORD
+
+VALIDATION STATUS: all available native and alternate-fixture HTML validation
+is complete. Final verification covers every one of 3,019 current GPU case
+IDs and all 668 CPU IDs; the two base CPU skips were also exercised under
+their supported OFF/live-network configuration. The official default MCP
+attempt has 394 verified missing-fixture failures and no other failure.
+Only the genuinely unavailable fixture/platform/opt-in gates remain
+unexecuted; Git delivery is recorded in the final completion message.
+All relative paths are rooted at the repository checkout. Local environment
+and logs are ignored build artifacts, not committed fixture dependencies.
+
+Environment
+
+Ubuntu 24.04.4, GCC 13.3, 4 vCPU, about 7.6GiB RAM. Release/Ninja/C++17,
+Linux glcore, runtime shaders enabled. Native GPU tests use Xvfb plus
+LIBGL_ALWAYS_SOFTWARE=1 and LP_NUM_THREADS=2. The MCP venv is
+build/test-cleanup/venv/bin and supplies Python 3.12, mcp 2.3.0, pyyaml,
+jsonschema, pillow, CMake 3.31.10 and Ruff. System build/X11/GL/DBus/media
+dependencies were installed on the host; this does not change repository
+dependency declarations except the explicit existing-jsonschema requirement
+in tools/mcp/run-tests.sh. Prefix the venv directory to PATH for subprocesses
+that invoke CMake. An absolute Python executable alone is insufficient.
+
+The original tests were archived and run from build/test-cleanup/baseline
+at the initial revision. Original binaries and libjasperengine.so were
+preserved in build/test-cleanup/original-binaries before final source sync.
+Final incremental validation reuses the original build trees with current
+source synchronized into that worktree. This avoids unnecessary third-party
+recompilation. An initial incremental link exposed old PoseRuntimeTest.o
+references to removed inspection methods because copied source timestamps
+predated the original object compilation. All changed inputs were resynced
+and touched to force conservative recompilation. This stale-build probe is
+not an independently established production failure. The corrected rebuild
+completed successfully; both shared editor and standalone HTML UI/native
+configurations link. Integrated CPU results are recorded below.
+
+Baseline gates
+
+Original editor native target:
+  build/test-cleanup/baseline-build/jasperengine-editor-tests
+  --gtest_output=json:<repository>/build/test-cleanup/editor-baseline.json
+  PASS: 357 completed, 1 skipped, 0 failed; wall 52.791634127s.
+  Skip:ConvexDecomposition.BuildsWithoutDecompositionStillCache is the
+  inverse of the enabled convex-decomposition configuration.
+
+Original HTML UI editor/importer target:
+  build/test-cleanup/baseline-build/jasperengine-htmlui-editor-tests
+  --gtest_output=json:<repository>/build/test-cleanup/htmlui-editor-baseline.json
+  PASS: 76 completed, 1 skipped, 0 failed; wall 6.418848590s.
+  Skip:GoogleFonts.LiveNetwork remains opt-in.
+
+Original pose native target:
+  build/test-cleanup/baseline-build/jasperengine-pose-tests
+  --gtest_output=json:<repository>/build/test-cleanup/pose-baseline.json
+  PASS: 230/230; wall 8.769072106s.
+
+Original texture native target:
+  build/test-cleanup/baseline-build/jasperengine-texsynth-tests
+  --gtest_output=json:<repository>/build/test-cleanup/texsynth-baseline.json
+  PASS: 29/29; wall 2.393964837s.
+
+Original lattice native target:
+  build/test-cleanup/baseline-build/jasperengine-lattice-tests
+  --gtest_output=json:<repository>/build/test-cleanup/lattice-baseline.json
+  PASS: 37/37; GTest reported 8ms. No reliable speed claim at this scale.
+
+Original HTML UI native target, recorded command:
+  LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2 xvfb-run -a -s
+  '-screen 0 1600x900x24'
+  <repository>/build/test-cleanup/baseline-htmlui/tests/htmlui/jasperengine-htmlui-tests
+  --gtest_output=json:<repository>/build/test-cleanup/htmlui-baseline.json
+  PASS: 3,335 completed, 75 skipped, 0 failed across 3,410 instantiated cases;
+  measured process wall 1,557.432490781s. GTest body time 1,557.210s.
+  Logs:htmlui-baseline.log, htmlui-baseline.json, htmlui-baseline-time.json.
+  Qualification:the original standalone product failed compilation at
+  PlacementWorld.cpp:198 because isEditorOverlay exists only in editor
+  builds. Both original and final builds received the same compile guard;
+  no original baseline test was changed. This is recorded in
+  baseline-build-repair.txt, rather than described as an unmodified green
+  product baseline.
+
+Original full MCP runner, real editor, two file workers:
+  dbus-run-session with original tools/mcp/run_tests.py -j 2 and
+  JASPER_EDITOR=<repository>/build/test-cleanup/baseline-build/jasperengine-editor.
+  FAIL: 370 passed, 562 failed,3 skipped in 1,325.5s across 935 cases.
+  Log:baseline-mcp-native.log. Default build/fixture-unity is missing;
+  fixture-dependent failures are retained as unvalidated contracts.
+  Two retained non-fixture cases (test_build_info and
+  test_cancel_desktop_build) also failed because CMake was absent from the
+  child editor's PATH. Those are infrastructure failures, not deletion
+  verdicts or independently established product bugs. The initial no-native
+  attempt (11 passed, 924 failed) was also an infrastructure probe, not a
+  correctness baseline. The original command is summarized from preserved
+  runner configuration here; the final full command array/environment is
+  preserved exactly in performance.json and mcp-final-time.json.
+
+Focused real-editor validation
+
+These test sources are the rewritten checkout tests. Unless marked final
+integrated, the editor binary was the original production build using the
+same retained public API. They do not establish that final production seam
+cleanup links/runs; the integrated CPU target results below establish
+those targets. The completed full GPU run plus rebuilt affected-source
+replays now validate all current GPU cases, as detailed below.
+
+  JASPER_EDITOR=<repository>/build/test-cleanup/baseline-build/jasperengine-editor
+  /usr/bin/time -p build/test-cleanup/venv/bin/python tools/mcp/run_tests.py
+  tools/mcp/tests/test_lattice_shaders.py
+  PASS repeated 3 times: 1/1 each; runner 2.1/2.2/2.5s, process 2.20/2.26/2.59s.
+
+The following commands used this exact prefix:
+  dbus-run-session -- env
+  JASPER_EDITOR=<repository>/build/test-cleanup/baseline-build/jasperengine-editor
+  /usr/bin/time -p build/test-cleanup/venv/bin/python tools/mcp/run_tests.py
+
+Suffixes and outcomes:
+  tools/mcp/tests/test_lattice_ux.py tools/mcp/tests/test_lattice_anim.py
+  tools/mcp/tests/test_lattice_data.py
+  tools/mcp/tests/test_post_processing_review_fixes.py
+  tools/mcp/tests/test_post_processing_presets.py
+  Initial 24 passed, 1 failed in 145.6s. The failing persistence case compared
+  bytes after intentionally seeking a preview that mutates serialized track
+  progress. Exact reload/resave byte comparison moved before that separate
+  preview action; preview restoration remains asserted. No product edit.
+
+  tools/mcp/tests/test_lattice_anim.py
+  PASS 7/7, 47.1s after the above correction.
+
+  tools/mcp/tests/test_lattice_bake.py
+  PASS 4/4, 72.8s. Uses public MCP for genuine mesh/geometry artifacts;
+  removed incidental editor button-coordinate dependence.
+
+  tools/mcp/tests/test_lattice_scene.py
+  tools/mcp/tests/test_lattice_review_editor.py
+  PASS 8/8, 69.4s. Surviving point-input cases locate semantic image roles
+  and assert public selected_count. Five other fixed-coordinate review
+  cases were deleted even though earlier versions passed.
+
+Pose commands recorded by the workstream:
+  dbus-run-session -- env
+  JASPER_EDITOR=<repository>/build/test-cleanup/baseline-build/jasperengine-editor
+  build/test-cleanup/venv/bin/python tools/mcp/run_tests.py -j 1
+  tools/mcp/tests/test_pose_templates.py
+  PASS 4/4, 12.2s.
+
+  dbus-run-session -- env
+  JASPER_EDITOR=<repository>/build/test-cleanup/baseline-build/jasperengine-editor
+  build/test-cleanup/venv/bin/python tools/mcp/run_tests.py -j 1
+  -k test_bind_and_open -k test_add_component -k test_scene_round_trip
+  -k test_export_preserves_pose_assets
+  tools/mcp/tests/test_pose_window.py tools/mcp/tests/test_pose_runtime.py
+  PASS 4/4, 28.2s.
+
+Real protocol target:
+  tools/mcp/tests/test_protocol.py through the native runner under D-Bus,
+  correct fixture and editor environment.
+  Original 16/16 passed 20.9s; rewritten 13/13 passed 23.0s on the loaded host.
+  Log:protocol-final-before-native-sync.log. Case consolidation adds unique
+  real wire/security assertions; no direct performance percentage claimed.
+  Final integrated protocol plus hierarchy controls: 15 passed, 0 failed,
+  0 skipped, 110.3s, using an explicitly supplied compatible project and the
+  rebuilt native editor. Log:protocol-scene-final-native.log. Full final
+  official MCP attempt is recorded separately below.
+
+HTML subgroup recorded invocation from /tmp/run-clean-html-subset.py:
+  PATH=<repository>/build/test-cleanup/venv/bin:$PATH
+  JASPER_EDITOR=<repository>/build/test-cleanup/baseline-build/jasperengine-editor
+  JASPER_FIXTURE=<repository>/tools/fixtures/scene-inputs JASPER_XVFB=editor
+  dbus-run-session -- <repository>/build/test-cleanup/venv/bin/python
+  <repository>/tools/mcp/run_tests.py --keep -j 1
+  <all sorted tools/mcp/tests/test_html_ui_*.py paths>
+  Initial 118 passed, 13 failed, 6 skipped,1,587.3s.
+  This is an explicitly supplied alternate compatible fixture; it does not
+  recreate the unavailable default project. Logs:html-mcp-native-final.log.
+  Four corrected fixture cases now pass 4/4, 7.4s in html-mcp-four-fixes.log.
+  The font-history defect is now independently reproduced: missing left/
+  top glyph gutters allowed page-edge linear CLAMP bleed. Old native font
+  fails 9 of 10 example repeats. The existing lower public GPU OpacityText
+  owner rejects the old font 3/3 and accepts the repaired font 3/3, without
+  inspecting atlas coordinates or increasing tolerances. Main/Pause's
+  font-only second starts consolidate into that lower owner; other eight
+  second starts preserve distinct state-reset contracts. Owned-scene
+  teardown prevents unrelated animated context work. Final aggregate:
+  137 unique IDs, 134 PASS, 0 FAIL, 3 original opt-in Desktop-player SKIPs.
+  The stronger two-start precursor passed 10/10 in 1,916.6s; final consolidated
+  Main/Pause passed 2/2 in 275.1s (Main 226.9s, Pause 47.2s); remaining 124 target
+  passed 121/failed 0/skipped 3 in 352.4s; LSP 3/3 passed 13.5s. Eight unchanged
+  reset owners use their stronger precursor results. Mixed/repeated groups
+  are not summed as a controlled suite timing. All actual case IDs/times/
+  source logs are recorded in html-final-aggregate.json.
+  Real saved screenshots:build/test-cleanup/e2e-artifacts/html-ui-child-edit.png
+  and html-ui-child-play.png.
+
+Initial native MCP startup without a D-Bus session failed NFD_Init before
+test bodies. dbus-run-session solved it without a repository workaround.
+Those runs are not counted as product failures or useful regression proof.
+
+Performance and regression-detection probes
+
+  build/test-cleanup/venv/bin/python tools/mcp/selftest.py
+  PASS 30/30; original selftest 43/43. Three alternating original/final pairs
+  all exit 0. Full raw arrays and paired conditions are in performance.json.
+
+  Final small targets built in build/test-cleanup/final-build:
+  jasperengine-texsynth-tests:PASS 24/24, wall 1.233051788s.
+  jasperengine-lattice-tests:PASS 36/36, wall 0.036035611s.
+  Three paired texture repeats all pass; tiny lattice timing is too noisy.
+
+  /tmp/clean-tests-queue-isolated/editor-tests-final filtered to the five
+  specified queue/cache/concavity cases, original production objects and
+  isolated rewritten PlacementWorldTest.cpp object.
+  Baseline 5/5 pass 48.459s; three final runs 5/5 each 11.147/11.783/11.835s.
+  Unchanged RingOverPeg fixture remains an expensive comparison anchor.
+  This is a focused A/B probe; the final integrated editor target now
+  passes 320 cases with 1 configuration skip, including retained owners.
+
+  /tmp/pose-seam-final filtered to
+  PoseLoopSeam.ContinuousAcrossEveryWrapForEveryPreset.
+  Three alternating ABI-matched original/final runs pass. Median 2.147s to
+  1.650s. Exact compiler/link and probe commands are preserved in ignored
+  /tmp/pose-seam-build-commands.json and /tmp/pose-seam-paired-times.json.
+
+  LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2 xvfb-run -a -s
+  '-screen 0 1600x900x24' /tmp/effect-lifecycle-{baseline,final}
+  --gtest_filter=EffectLifecycleTest.HundredCyclesOfEveryStatefulEffect
+  --gtest_output=json:/tmp/effect-lifecycle-{baseline,final}-{0,1,2}.json
+  Three alternating pairs, each using a three-cycle probe of all 18 effects,
+  pass. Same 82.5MiB state pressure and positive simulation-step assertions.
+  Median 5.813340794s to 4.184257502s. This is not a full 100-cycle timing.
+  Inherited initial probes mixed renderer ABIs and crashed; discarded and
+  rebuilt with consistent original headers before any accepted timing.
+
+Intentional mutations:
+  JASPER_EDITOR='python3 /tmp/clean-lattice-drop-output.py'
+  build/test-cleanup/venv/bin/python tools/mcp/run_tests.py
+  tools/mcp/tests/test_lattice_shaders.py
+  EXPECTED FAIL:actual compilation succeeds, then one output is removed;
+  the retained test rejects 119 artifacts instead of 120.
+
+  Lattice displacement mutation:EXPECTED FAIL in two real output cases;
+  production source restored and target rebuilt. lattice-mutation.json/log.
+
+  Pose previous-cycle-settling mutation:EXPECTED FAIL for the retained loop
+  seam; isolated build only. /tmp/pose-seam-mutation.json/log.
+
+  EffectStatePool::trim link-wrap mutation (no-op):EXPECTED FAIL, exit 1,
+  pooledImages 95 versus expected 0 in the lifecycle contract. No production
+  source mutation. /tmp/effect-lifecycle-trim-mutation.json/log/build.json.
+
+Prefab helper evidence:
+  tools/prefab-dump-compare.py --subtree=A:B:equal authored subtrees pass 0;
+  --subtree=MissingA:MissingB and --subtree=A:MissingB fail 1 for missing
+  roots; original missing/missing erroneously passed 0. An authored changed
+  child position fails 1 and identifies the transform field.
+  Evidence:/tmp/clean-tests-prefab-validation.json. Full nested/variant
+  editor workflows still require the supplied project fixture.
+
+Static and integration checks
+
+Recorded PASS checks before final edits:
+  python3 -m compileall -q tools/mcp/tests/test_lattice*.py
+  tools/mcp/tests/test_pose*.py tools/mcp/tests/test_shader*.py
+  tools/mcp/tests/test_scene_inputs*.py tools/mcp/tests/test_post_process*.py
+  tools/mcp/tests/test_post_processing*.py
+  Ruff F401,F821,F822,F823 over MCP tests, Python compileall, bash -n for
+  affected shell scripts, and git diff --check.
+  Thirty changed compatibility TUs and changed production/test TUs passed
+  compiler -fsyntax-only checks under extracted real build flags; these
+  do not replace the final full build/link gates.
+
+Current final configuration command:
+  build/test-cleanup/venv/bin/cmake -S build/test-cleanup/baseline
+  -B build/test-cleanup/baseline-build -DJASPERENGINE_EDITOR_TESTS=ON
+  -DJASPERENGINE_HTMLUI_EDITOR_TESTS=ON -DJASPERENGINE_TEXSYNTH_TESTS=ON
+  -DJASPERENGINE_POSE_TESTS=ON -DJASPERENGINE_LATTICE_TESTS=ON
+  PASS; final-shadow-configure.log. Combined target reuse no longer collides.
+
+Current final build command:
+  build/test-cleanup/venv/bin/cmake --build build/test-cleanup/baseline-build
+  --target jasperengine-editor jasperengine-editor-tests
+  jasperengine-htmlui-editor-tests jasperengine-texsynth-tests
+  jasperengine-pose-tests jasperengine-lattice-tests -j 3
+  PASS: final-shadow-build.log (815 actions after incoming integration and
+  conservative forced rebuild). The standalone final HTML UI configuration
+  also links; final-htmlui-build.log (297 actions), final-htmlui-rebuild.log
+  and final-font-test-build.log retain incremental verification output.
+
+Integrated final CPU targets:
+  python3 build/test-cleanup/run_native_final.py cpu
+  PASS: five targets, 668 cases, 666 passed, 2 configuration/opt-in skips,
+  0 failed; sequential process wall 45.851018576s. Each exact command array
+  and final GTest JSON is embedded in performance.json or recorded in
+  native-final-cpu-times.json. Individual results:
+    jasperengine-editor-tests: 320 pass, 1 skip, 32.825221441s.
+    jasperengine-htmlui-editor-tests: 67 pass, 1 skip, 4.330720781s.
+    jasperengine-texsynth-tests: 24 pass, 0 skip, 1.005790828s.
+    jasperengine-pose-tests: 219 pass, 0 skip, 7.658530099s.
+    jasperengine-lattice-tests: 36 pass, 0 skip, 0.028587055s.
+  These are final integrated production/test binaries, including incoming
+  ed4072f88377fefe61a055908ec22f1253caf6b5. Different host load and incoming
+  production optimizations prevent a controlled aggregate speedup claim.
+
+Final full official MCP attempt:
+  python3 build/test-cleanup/run_mcp_final.py
+  Exact child command:
+    dbus-run-session --
+    /var/lib/orquester/workspaces/jaspersito/clean-tests/build/test-cleanup/venv/bin/python
+    /var/lib/orquester/workspaces/jaspersito/clean-tests/tools/mcp/run_tests.py
+    --keep -j 2
+  Child environment:PATH prepends repository build/test-cleanup/venv/bin
+  and build/test-cleanup/tools/luals/bin; native final JASPER_EDITOR is
+  build/test-cleanup/baseline-build/jasperengine-editor; JASPER_XVFB=editor,
+  LP_NUM_THREADS=2; JASPER_FAKE and JASPER_FIXTURE removed.
+  FAIL (exit 1): 283 passed, 394 failed, 1 skipped; 781.845948549s process wall.
+  Every 394 failure was verified as missing default build/fixture-unity;
+  no CMake/PATH, tool installation or other failure remains. Missing
+  fixture contracts are retained and not claimed validated. This is not a
+  green whole-suite result or a valid before/after percentage comparison.
+  Evidence:mcp-final.log, mcp-final-time.json and per-case scratch logs.
+
+Final protocol/hierarchy explicit-project and HTML LSP targets:
+  protocol-scene-final-native.log: 15 passed, 0 failed, 0 skipped, 110.3s.
+  html-lsp-final-native.log: 3 passed, 0 failed, 0 skipped, 13.5s. Installed
+  clangd 18.1.3 and LuaLS 3.19.1 resolve the earlier missing-tool skips.
+
+Final native GPU target:
+  python3 build/test-cleanup/run_native_final.py gpu
+  Raw complete GTest JSON: 3,031 cases, 3,027 PASS, 4 known fixture/golden
+  failures, 0 SKIP; 1,375.610s runner-reported elapsed. External process wall
+  timing is unavailable: the outer timing wrapper returned 143 and did not
+  write native-final-gpu-times.json. No clean wrapper exit or external wall
+  time is invented from the complete JSON/log.
+  After correcting all four owners and pruning 12 additional private font
+  executions, the rebuilt target lists 3,019 cases. A 64-case affected replay
+  passed (25.557s GTest); the final 93-case retained-font/affected replay passed
+  (17.151s GTest), including all four corrected owners. The current-case
+  union in native-gpu-final-verification.json has 3,019 actual PASS results,
+  zero missing results, zero current failures and zero skips. This is explicitly
+  a full run plus focused replays, not a fabricated single all-green GTest
+  run. All tracked engine/editor source and fixture bytes match the shadow
+  build (source fingerprint mismatch count 0).
+  Slowest complete-run cases: CostTable 544.179s; Grid 266.375s;
+  full 100-cycle lifecycle 160.371s; Stateful 42.144s; fog 26.550s;
+  particles 23.059s; reaction_diffusion 22.118s; boids 21.838s. Baseline GTest
+  elapsed 1,557.210s is a raw observation under different load/production
+  revision; no controlled aggregate speedup percentage is claimed.
+
+Not executed / remaining prerequisites
+
+Default TappyPlane build/fixture-unity is ignored and absent; fixture-bound
+MCP gameplay and full standalone smoke cannot be declared green. No valid
+contract was removed solely because this fixture was unavailable. Slow
+desktop-player, live network and external tooling cases retain their
+existing opt-in/prerequisite behavior. Windows/macOS/iOS/Android/Web CI
+builds and Vulkan runtime checks require unavailable platform toolchains
+or environments and are not represented as Linux OpenGL validation.
+
+The actual cleanup commit hash, final remote status and push result belong
+in the final completion message, avoiding a self-referential commit hash
+embedded in its own file. This record does not invent a successful push.
+
+Runtime parameter audit generation:
+  python3 build/test-cleanup/write_runtime_audit.py
+  PASS: 2,196 original parameter/typed runtime instances map to exactly one
+  primary owner each; zero missing/ambiguous owners, 73 explicit unsupported
+  Taffy overrides. Nonparameterized cases are not duplicated. All 1,522 active
+  Taffy fixture IDs have matching committed Chromium entries. This generator
+  is an ignored report tool, not a new regression test or CI gate. Baseline
+  per-case timings are embedded; final native JSON timings populate when
+  available. Re-run after the final primary audit and final target results.
+  Optional explicit final path: --final htmlui=<path-to-GTest-JSON>.
+
+Incoming remote changes:
+  ed4072f88377fefe61a055908ec22f1253caf6b5 integrated. Read-only review of
+  five production CPU files and thirteen manual performance-tooling files
+  found no new default-runner definitions/gates. Source-range overflow
+  assertions were added to the existing public TextShaperTest owner; its TU
+  syntax check passed. All five rebuilt CPU targets pass; the final full
+  MCP attempt has only verified missing-fixture failures. Current GPU case
+  verification is complete through the full run plus focused replays, and
+  the HTML subgroup completes 134 PASS/0 FAIL/3 original opt-in SKIP.
+  Upstream benchmark measurements/624-test claims are not cleanup results.
+
+Independently reproduced font defect and corrected native fixtures
+
+  Production repair: RmlFontEngine::place reserves transparent 1px gutters
+  on all four sides of a glyph. At a page edge, old left/top sampling could
+  clamp a glyph texel and make visible pixels depend on earlier packing.
+  Existing public owner: RmlRendererP1GoldenTest.OpacityText, strengthened
+  with history-invariance at real RmlUi document/GPU readback boundary.
+
+  LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2 xvfb-run -a -s
+  '-screen 0 1600x900x24' /tmp/font-history-owner-{old,new}
+  --gtest_filter=RmlRendererP1GoldenTest.OpacityText
+  --gtest_output=json:/tmp/font-history-owner-{old,new}-{0,1,2}.json
+  EXPECTED old-library failures 3/3: max channel difference 26 exceeds the
+  unchanged 24-channel/zero-bad-pixel gate. Repaired library passes 3/3 with
+  difference 0. Original literal opacity/gradient probes and opacity golden
+  remain. Evidence:/tmp/clean-tests-font-history-validation.json. These
+  repeats establish regression detection, not a speed comparison.
+
+  LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2 xvfb-run -a -s
+  '-screen 0 1600x900x24' /tmp/font-native-fixes-new
+  --gtest_filter=UIDocumentReloadTest.FontChangeReloadsTheDocument:IntegrationTest.TextureDocumentDrawsClipsLayersAndFilters
+  --gtest_output=json:/tmp/font-native-fixes-repeat-{0,1,2}.json
+  PASS:both corrected-source cases in each of 3 runs (6 executions).
+  Font reload authors contrasting white text so the existing nonempty-glyph
+  guard observes glyphs. Texture integration removes private filter/layer/
+  pass-counter lower bounds and preserves clipping, blur, alpha, text and
+  image outcomes. One golden/p1/texture_effects.png correction changes
+  exactly 76 text pixels inside (141,168)-(195,181), with every clip/nontext
+  pixel and every tolerance unchanged. This is an independently justified
+  consequence of the proved font repair, not generic rebaselining.
+  Evidence:/tmp/clean-tests-font-native-validation.json embeds every changed
+  pixel and the three passing command/results.
+
+  LIBGL_ALWAYS_SOFTWARE=1 LP_NUM_THREADS=2 xvfb-run -a -s
+  '-screen 0 1600x900x24' /tmp/lattice-native-fixes/htmlui-tests
+  --gtest_filter=LatticeRenderTest.BoundsHoldBeforeSkinningOffsetsOfAScaledMesh:LatticeRuntimeTest.CopiedSpriteKeepsItsLatticeGrid
+  --gtest_output=json:/tmp/lattice-native-fixes/repeat-final-{0,1,2}.json
+  PASS:both cases in each of 3 runs (6 executions), 0.2541/0.2459/0.2798s.
+  Clone oracle: a visible checker is demonstrably curved before cloning;
+  actual first four visible clone frames retain those pixels. Bounds oracle:
+  independently authored analytic shear/rotation extrema lie within the
+  public world AABB; no bone-cache capacity/matrix inspection determines
+  expected positions. No lattice production change was made for these
+  fixture repairs.
+
+  Clone mutation: /tmp/lattice-native-fixes/htmlui-tests-mutated with
+  --gtest_filter=LatticeRuntimeTest.CopiedSpriteKeepsItsLatticeGrid
+  EXPECTED FAIL (exit 1): dropping EntityCloner grid preservation changes the
+  first visible clone frame. Evidence:mutation-summary/results/log.
+  Bounds mutation: /tmp/lattice-native-fixes/htmlui-tests-bounds-mutated with
+  --gtest_filter=LatticeRenderTest.BoundsHoldBeforeSkinningOffsetsOfAScaledMesh
+  EXPECTED FAIL (exit 1): dropping before-skinning nonuniform-scale bounds
+  compensation violates independently authored extrema. Evidence:
+  /tmp/lattice-native-fixes/bounds-mutation-summary.json and results/log.
+  All mutations use isolated binaries/objects; delivered production source
+  is not mutated. These owners are also included in the rebuilt 93-case
+  final replay; all current GPU cases have actual passing results.
+
+Final strict font cleanup and supported-configuration proof
+
+  A final strict audit reduces 18 retained font source executions to 6:
+  literal metrics/kerning, default primary family, separate-manager raster
+  density, copied-memory font lifetime and public load failure/index rules.
+  Removed private quad/page/cache-count executions and unused global density
+  override/page-count APIs; actual per-manager production configuration stays.
+  Existing GPU OpacityText also owns trailing-newline no-tofu rendering.
+  No new replacement testcase or FontTools repository dependency was added.
+  Rebuilt editor and standalone targets link with current ABI. The final
+ 93-case replay above passes every retained font/affected owner.
+
+  GoogleFonts.LiveNetwork explicit opt-in:PASS 1/1, 726ms GTest elapsed,
+  google-fonts-live-final.json/log. Its baseline/default skip stays truthful.
+  Actual decomposition-OFF library, current authored hull/error test:
+  /tmp/convex-off-validation/convex-off-final
+  --gtest_filter=ConvexDecomposition.BuildsWithoutDecompositionStillCache
+  --gtest_output=json:/tmp/convex-off-validation/results-off-final.json
+  PASS 1/1 in 0.002563458s. Under ON, this inverse-configuration case correctly
+  SKIPs (exit 0); the rebuilt ON target's 22 Convex cases pass 21 with that one
+  expected skip (4.485s). Both supported configurations were actually used;
+  authored cached hull payload survives disk readback when decomposition
+  is unavailable. No incidental callback-completion count substitutes for
+  the persistence/error outcome.
+
+  docs-final-native-corrected.log: 5/5 PASS, 4.5s. Generated resource checks
+  author their own UTF-8 bytes, retain the four onboarding keys and traversal
+  rejection, and no longer depend on a TappyPlane script or exact headings.
+
+  Primary report generation strips 330 unscoped seconds fields and 63 timing
+  fields instead of relabeling unknown values as measurements. Five scoped
+  measured_performance series retain their original provenance. Actual
+  source-qualified execution_observations come from preserved baseline/final
+  GTest JSON, full MCP logs, final resource replay and explicit-fixture HTML
+  per-case result maps. Runtime-parameter reporting applies later affected
+  replays over the raw full result, while prose preserves initial failures.

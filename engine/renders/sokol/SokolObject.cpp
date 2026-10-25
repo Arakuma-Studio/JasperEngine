@@ -439,10 +439,6 @@ void SokolObject::setBlendState(const BlendState& state){
     blendState = state;
 }
 
-sg_pipeline_desc SokolObject::describePipeline(PipelineType pipType) const{
-    return makePipelineDesc(pipType);
-}
-
 sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
     sg_pipeline_desc desc = pipeline_desc;
 

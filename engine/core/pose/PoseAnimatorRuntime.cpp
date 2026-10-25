@@ -212,7 +212,6 @@ std::shared_ptr<const PoseAnimationBuild> PoseBuildCache::get(const std::string&
     std::shared_ptr<const PoseAnimationBuild> made = build(data, *rig, error);
     if (!made) return nullptr;
     std::lock_guard<std::mutex> lock(mutex);
-    builds++;
     // another thread built the same meanwhile: theirs is shared
     if (std::shared_ptr<const PoseAnimationBuild> found = findLocked(path, source, rig)) return found;
     entries.push_back({path, source, rig, made});
@@ -229,15 +228,7 @@ void PoseBuildCache::clear(){
     entries.clear();
 }
 
-size_t PoseBuildCache::size() const{
-    std::lock_guard<std::mutex> lock(mutex);
-    return entries.size();
-}
 
-uint64_t PoseBuildCache::buildCount() const{
-    std::lock_guard<std::mutex> lock(mutex);
-    return builds;
-}
 
 const std::vector<HumanPose>& PoseAnimatorRuntime::keys() const{
     static const std::vector<HumanPose> none;

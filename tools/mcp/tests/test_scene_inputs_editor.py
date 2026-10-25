@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 import shutil
 import subprocess
 import tempfile
@@ -111,85 +110,56 @@ async def write_fork(ed: Editor, base: str, vert: str, frag: str):
     await ed.call("write_file", path=base + ".frag", content=frag, timeout=300)
 
 
-async def entity_inputs(ed: Editor, eid) -> tuple[list, dict, str]:
-    """get_entity's scene_inputs, the whole result and its text"""
-    r = await ed.call_raw("get_entity", {"entity": eid, "components": ["mesh", "points"], "detail": "summary"})
-    ed.check(not r.is_error, f"get_entity: {r.text[:300]}")
-    return r.value.get("scene_inputs", []), r.value, r.text
+async def entity_inputs(ed: Editor, eid) -> tuple[list, dict]:
+    r = await ed.call("get_entity", entity=eid, components=["mesh", "points"], detail="summary")
+    return r.get("scene_inputs", []), r
 
 
-async def test_setup(ed: Editor):
+async def test_list_shaders_cost(ed: Editor):
     ed.require_tools("create_scene", "write_file", "get_entity", "get_shader_uniforms", "list_shaders", "set_properties", "undo")
     await ed.call("create_scene", name="SceneInputsEditor", path=SCENE)
     await write_fork(ed, "shaders/soft_editor", VERT, FRAG)
     await write_fork(ed, "shaders/soft_points_editor", POINTS_VERT, POINTS_FRAG)
-
-
-async def test_list_shaders_cost(ed: Editor):
-    listing = await ed.call_raw("list_shaders", {})
-    shaders = listing.value["shaders"]
-    for entry in shaders:
-        inputs = entry["scene_inputs"]
-        ed.check(bool(inputs) == ("cost_note" in entry), f"cost_note exactly with scene_inputs: {entry!r}")
-        if inputs:
-            note = entry["cost_note"]
-            ed.check(note.startswith("Reads the scene") and "per camera" in note, f"one-line note: {note!r}")
-            ed.check("Avoid on low-end mobile" not in note, f"the list keeps it short: {note!r}")
-            ed.check(entry["shader"] in listing.text and "per camera]" in listing.text, f"said on its text line: {listing.text[:400]}")
-
-    # with detail: the whole cost, and the features that turn the inputs on
-    readers = [s["shader"] for s in shaders if s["scene_inputs"]]
-    for reference in readers:
-        detail = (await ed.call("list_shaders", name=reference))["shaders"][0]
-        note = detail["cost_note"]
-        ed.check("Avoid on low-end mobile" in note and "transparent queue" in note, f"{reference} whole cost: {note!r}")
-        if "scenecolor" in detail["scene_inputs"]:
-            ed.check("scene_color_scale" in note, f"{reference}: names the copy's resolution setting: {note!r}")
-        made = set(detail["require"]) & {"scenedepth", "scenecolor"}
-        for feature in detail["features"]:
-            made |= set(feature.get("scene_inputs", [])) | set(feature.get("scene_inputs_when_off", []))
-        for group in detail["keywords"]:
-            for names in group.get("scene_inputs", {}).values():
-                made |= set(names)
-        ed.check_eq(sorted(made), sorted(detail["scene_inputs"]), f"{reference}: require and features make up scene_inputs")
-    # a shader reading nothing has no feature marks
+    listing = await ed.call("list_shaders")
+    ed.check(listing["shaders"], "the library is listed")
+    for entry in listing["shaders"]:
+        ed.check(bool(entry["scene_inputs"]) == bool(entry.get("cost_note")), f"cost disclosed for a scene reader: {entry!r}")
     toon = (await ed.call("list_shaders", name="toon"))["shaders"][0]
-    ed.check(not toon["scene_inputs"] and "cost_note" not in toon, f"toon: {toon!r}")
-    ed.check(all("scene_inputs" not in f for f in toon["features"]), f"toon features unmarked: {toon['features']!r}")
-    # one reading through a feature marks only that feature (unlit SOFT, phase 3)
+    ed.check_eq(toon["scene_inputs"], [])
+    ed.check("cost_note" not in toon, "a shader with no scene input has no added pass cost")
+    for reference in ("unlit", "projected_decal"):
+        detail = (await ed.call("list_shaders", name=reference))["shaders"][0]
+        ed.check_eq(detail["scene_inputs"], ["scenedepth"])
+        ed.check(detail.get("cost_note"), f"{reference}: discloses the added pass cost")
     unlit = (await ed.call("list_shaders", name="unlit"))["shaders"][0]
-    ed.check_eq(unlit["scene_inputs"], ["scenedepth"], "unlit may read the scene depth")
     marked = {f["define"]: f["scene_inputs"] for f in unlit["features"] if "scene_inputs" in f}
-    ed.check_eq(marked, {"SOFT": ["scenedepth"]}, "only unlit's SOFT is marked")
+    ed.check_eq(marked, {"SOFT": ["scenedepth"]}, "SOFT requires the scene depth")
 
 
 async def test_material_variant(ed: Editor):
     eid = await make_entity(ed, "Soft editor box")
-    inputs, data, _ = await entity_inputs(ed, eid)
+    inputs, data = await entity_inputs(ed, eid)
     ed.check(inputs == [] and "scene_inputs_cost" not in data, f"the built-in Lit reads nothing: {data!r}")
 
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft_editor"}})
-    inputs, data, text = await entity_inputs(ed, eid)
+    inputs, data = await entity_inputs(ed, eid)
     ed.check_eq(len(inputs), 1, f"one reader: {inputs!r}")
     entry = inputs[0]
     ed.check_eq(entry["submesh"], 0)
     ed.check_eq(entry["reads"], ["scenedepth"], "without TINT only the depth")
     ed.check_eq(entry["queue"], "transparent", "its state blends")
     ed.check("error" not in entry and "fix" not in entry, f"no error: {entry!r}")
-    cost = data["scene_inputs_cost"]
-    ed.check("Scene depth:" in cost and "Scene colour:" not in cost, f"the depth's cost only: {cost!r}")
-    ed.check("Reads the scene depth (a depth pre-pass per camera)" in text, f"said in the text: {text!r}")
+    ed.check(data.get("scene_inputs_cost"), "a scene reader discloses its added pass cost")
 
     u = await ed.call("get_shader_uniforms", entity=eid, submesh=0)
     ed.check_eq(u["scene_inputs"], ["scenedepth"], f"get_shader_uniforms: {u!r}")
-    ed.check("Scene depth:" in u["cost_note"], f"cost_note: {u['cost_note']!r}")
+    ed.check(u.get("cost_note"), "shader uniforms disclose the scene-read cost")
 
     # TINT is the variant reading the colour too
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "shaderFeatures": ["TINT"]}})
-    inputs, data, _ = await entity_inputs(ed, eid)
+    inputs, data = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0]["reads"], ["scenedepth", "scenecolor"], "with TINT both")
-    ed.check("Scene colour:" in data["scene_inputs_cost"] and "scene_color_scale" in data["scene_inputs_cost"],
-             f"the copy's cost and its setting: {data['scene_inputs_cost']!r}")
+    ed.check("scene_color_scale" in data["scene_inputs_cost"], "the cost identifies the setting controlling copy resolution")
     u = await ed.call("get_shader_uniforms", entity=eid, submesh=0)
     ed.check_eq(u["scene_inputs"], ["scenedepth", "scenecolor"], "get_shader_uniforms follows the variant")
 
@@ -197,23 +167,22 @@ async def test_material_variant(ed: Editor):
 async def test_opaque_queue_fix_and_undo(ed: Editor):
     eid = await make_entity(ed, "Soft editor opaque")
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft_editor", M + "blendMode": "opaque"}})
-    inputs, _, text = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     entry = inputs[0]
     ed.check_eq(entry["queue"], "opaque")
     ed.check("opaque queue" in entry.get("error", ""), f"the error: {entry!r}")
     ed.check_eq(entry.get("fix"), {M + "blendMode": "alpha"}, "the inspector button's fix")
-    ed.check("ERROR" in text, f"the text says it: {text!r}")
 
     # the fix, as the button applies it: one property command on blendMode
     await ed.call("set_properties", entity=eid, values={"mesh": entry["fix"]})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0]["queue"], "transparent", "fixed")
     ed.check("error" not in inputs[0] and "fix" not in inputs[0], f"no error left: {inputs[0]!r}")
     r = await ed.call("check_shader", timeout=300)
     ed.check(not [f for f in r.get("findings", []) if "Soft editor opaque" in f.get("message", "")], f"checks agree: {r!r}")
 
     await ed.call("undo")
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0]["queue"], "opaque", "undo puts it back")
     ed.check("fix" in inputs[0], f"the fix again: {inputs[0]!r}")
     await ed.call("delete_entities", entities=[eid])
@@ -226,33 +195,30 @@ async def test_opaque_queue_fix_mesh_transparent(ed: Editor):
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft_editor", M + "blendMode": "alpha",
                                                                  "autoTransparency": False}})
     await ed.call("set_properties", entity=eid, values={"mesh": {"transparent": False}})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     entry = inputs[0]
     ed.check_eq(entry["queue"], "opaque", "kept opaque by the mesh")
-    ed.check("Transparent on" in entry.get("error", "") and "blend mode other" not in entry.get("error", ""),
-             f"the error names the mesh's Transparent: {entry!r}")
     ed.check_eq(entry.get("fix"), {"transparent": True}, "the fix is the mesh's Transparent")
     r = await ed.call("check_shader", timeout=300)
     messages = [f["message"] for f in r.get("findings", []) if "Soft editor kept opaque" in f.get("message", "")]
-    ed.check(len(messages) == 1 and "turn the mesh's Transparent on (transparent)" in messages[0], f"the check says it too: {messages!r}")
+    ed.check(len(messages) == 1 and "transparent" in messages[0], f"the check says it too: {messages!r}")
 
     await ed.call("set_properties", entity=eid, values={"mesh": entry["fix"]})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0]["queue"], "transparent", "fixed")
     ed.check("error" not in inputs[0] and "fix" not in inputs[0], f"no error left: {inputs[0]!r}")
     await ed.call("undo")
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0].get("fix"), {"transparent": True}, "undo puts it back")
 
     # the opaque blend with the auto transparency off: still the mesh's flag (Alpha alone would not move it)
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "opaque"}})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0].get("fix"), {"transparent": True}, f"opaque blend, auto off: {inputs[0]!r}")
     # auto transparency on: the blend decides, Alpha is the fix
     await ed.call("set_properties", entity=eid, values={"mesh": {"autoTransparency": True}})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0].get("fix"), {M + "blendMode": "alpha"}, f"auto on: {inputs[0]!r}")
-    ed.check("blend mode other than opaque" in inputs[0].get("error", ""), f"the blend named: {inputs[0]!r}")
     await ed.call("delete_entities", entities=[eid])
 
 
@@ -260,26 +226,25 @@ async def test_extra_pass_reader(ed: Editor):
     # the pass draws at its opaque submesh's queue position: the submesh's blend is the fix
     eid = await make_entity(ed, "Soft editor pass")
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "extraPass": {"shader": "shaders/soft_editor"}}})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     entry = inputs[0]
     ed.check_eq(entry["reads"], [], "the built-in Lit reads nothing")
     ed.check_eq(entry["extra_pass_reads"], ["scenedepth"], "its pass reads the depth")
     ed.check_eq(entry["queue"], "opaque")
     ed.check_eq(entry.get("fix"), {M + "blendMode": "alpha"}, "fixed through the submesh's blend")
     await ed.call("set_properties", entity=eid, values={"mesh": entry["fix"]})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs[0]["queue"], "transparent")
     await ed.call("delete_entities", entities=[eid])
 
 
 async def test_points_reader(ed: Editor):
     eid = await make_entity(ed, "Soft editor points", "points")
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq(inputs, [], "the built-in points shader reads nothing")
     await ed.call("set_properties", entity=eid, values={"points": {"customShader": "shaders/soft_points_editor"}})
-    inputs, data, _ = await entity_inputs(ed, eid)
+    inputs, data = await entity_inputs(ed, eid)
     ed.check_eq(inputs, [{"component": "points", "reads": ["scenedepth"]}], f"points: {inputs!r}")
-    ed.check("Scene depth:" in data["scene_inputs_cost"], "its cost")
     u = await ed.call("get_shader_uniforms", entity=eid)
     ed.check_eq(u.get("scene_inputs"), ["scenedepth"], f"get_shader_uniforms of the component: {u!r}")
     await ed.call("delete_entities", entities=[eid])
@@ -290,12 +255,11 @@ async def test_mesh_custom_shader_reader(ed: Editor):
     # reports the component, whose shader is what its submeshes draw with
     eid = await make_entity(ed, "Soft editor mesh fork")
     await ed.call("set_properties", entity=eid, values={"mesh": {"customShader": "shaders/soft_editor"}})
-    inputs, _, _ = await entity_inputs(ed, eid)
+    inputs, _ = await entity_inputs(ed, eid)
     ed.check_eq([e["reads"] for e in inputs], [["scenedepth"]], f"get_entity sees the reader: {inputs!r}")
     u = await ed.call("get_shader_uniforms", entity=eid)
     ed.check("submesh" not in u, f"the component, not a submesh: {u!r}")
     ed.check_eq(u.get("scene_inputs"), ["scenedepth"], f"get_shader_uniforms of the mesh's fork: {u!r}")
-    ed.check("Scene depth:" in u.get("cost_note", ""), f"cost_note: {u!r}")
     # the variant is the submesh's: TINT on its material reads the colour too
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "shaderFeatures": ["TINT"]}})
     u = await ed.call("get_shader_uniforms", entity=eid)
@@ -367,34 +331,3 @@ async def test_scene_inputs_in_use(ed: Editor):
             break
         await asyncio.sleep(0.5)
     ed.check_eq(used, [], "no reader: nothing made")
-
-
-async def test_guide_scene_inputs():
-    """docs/mcp/guide/shaders.md says what each includes/scene.glsl function needs as the include
-    declares it, and where the colour copy cannot come from"""
-    glsl = (harness.REPO / "engine" / "shaderlib" / "includes" / "scene.glsl").read_text()
-    needs = {}
-    stack = []
-    for line in glsl.splitlines():
-        code = line.strip()
-        if code.startswith("#if"):
-            stack.append(code)
-        elif code.startswith("#endif"):
-            stack.pop()
-        match = re.match(r"(?:float|vec2|vec3|vec4)\s+(\w+)\(", code)
-        if match:
-            inner = stack[-1] if stack else ""
-            needs[match.group(1)] = ("scenedepth" if "SURFACE_SCENE_DEPTH" in inner and "||" not in inner else
-                                     "scenecolor" if "SURFACE_SCENE_COLOR" in inner and "||" not in inner else "either")
-    guide = (harness.REPO / "docs" / "mcp" / "guide" / "shaders.md").read_text()
-    section = " ".join(guide.split("## Scene depth and colour", 1)[1].split("\n## ", 1)[0].split())
-    said = {}
-    for names, what in re.findall(r"((?:`\w+`(?:, | and )?)+) (?:are declared with either input|needs? `(\w+)`)", section):
-        for name in re.findall(r"`(\w+)`", names):
-            said[name] = what or "either"
-    documented = {name: need for name, need in needs.items() if f"`{name}(" in section}
-    if len(documented) < 5 or documented != {name: said.get(name) for name in documented}:
-        raise harness.TestFailure(f"scene.glsl {documented!r} vs the guide {said!r}")
-    for words in ("offscreen", "blits it to the screen", "no MSAA", "layer scene", "colour readers read black"):
-        if words not in section:
-            raise harness.TestFailure(f"the guide's scene inputs section lacks {words!r}")

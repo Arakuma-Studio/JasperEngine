@@ -51,14 +51,11 @@ def stencil(compare, ref, read, write, pass_="keep", fail="keep", depth_fail="ke
             "depthFail": depth_fail}
 
 
-async def test_setup(ed: Editor):
-    ed.require_tools("create_scene", "set_properties", "apply_material_preset", "move_asset", "delete_asset", "fork_shader")
-    await ed.call("create_scene", name="Phase2Review", path=SCENE)
-
-
 # ---------------------------------------------------------------------------- D1: fork remaps
 
 async def test_fork_rename_remaps_material_and_pass_shaders(ed: Editor):
+    ed.require_tools("create_scene", "set_properties", "apply_material_preset", "move_asset", "delete_asset", "fork_shader")
+    await ed.call("create_scene", name="Phase2Review", path=SCENE)
     """A fork used as a submesh material's shader and as its extra pass's, in the scene, a prefab
     and a .material file: moving its folder remaps all of them; deleting it clears them"""
     eid = await make_entity(ed, "ForkUser")

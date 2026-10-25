@@ -2,14 +2,14 @@
 """Taffy's browser-generated layout fixtures as engine box-parity fixtures (phase-3 spec 5.3).
 
     tools/htmlui/import-taffy-fixtures.py import [--taffy DIR]
-        Copies the fixture HTML of Taffy's suites grid, flex, block, blockflex, blockgrid,
+        Copies supported fixture HTML of Taffy's suites grid, flex, block, blockflex, blockgrid,
         gridflex, leaf and float (pinned commit, MIT) into engine/tests/htmlui/fixtures/taffy/<suite>/,
         each with Taffy's <script>/<link> replaced by a link to ../base.css: Taffy's
         test_base_style.css with its embedded Ahem WOFF2 replaced by the local
         engine/tests/htmlui/fonts/Ahem.ttf (the 15px ::-webkit-scrollbar rule stays: Chromium draws
         space-taking scrollbars, the engine's UA sheet gives its scrollbars Chromium's 15px).
-        Writes base.css, LICENSE-taffy.txt, README.txt and excluded.txt (fixtures that are not
-        compared, with the reason). known-failures.txt is left alone.
+        Excluded upstream fixtures are not copied. Writes base.css, LICENSE-taffy.txt, README.txt
+        and excluded.txt (upstream exclusions with reasons). known-failures.txt is left alone.
 
     tools/htmlui/import-taffy-fixtures.py known-failures RESULTS [--merge]
         Writes engine/tests/htmlui/fixtures/taffy/known-failures.txt from a BoxParityTest results
@@ -150,10 +150,11 @@ def do_import(args):
             if scripts != 1 or links != 1:
                 fail(f'{suite}/{name}.html: expected one test_helper.js <script> and one test_base_style.css <link>')
             text = expand_static_script(text)
-            write(os.path.join(target_dir, name + '.html'), text)
             reason = exclusion(name, text)
             if reason:
                 excluded.append((f'{suite}/{name}', reason))
+                continue
+            write(os.path.join(target_dir, name + '.html'), text)
         counts[suite] = len(names)
 
     write(os.path.join(OUT, 'base.css'), base_css(taffy))
@@ -162,7 +163,7 @@ def do_import(args):
               'engine/tests/htmlui/fixtures/taffy/<suite>/ and base.css are copied from its test_fixtures/ and\n'
               'scripts/gentest/test_base_style.css under this license.\n\n' + f.read())
 
-    lines = ['# Taffy fixtures that are not compared (BoxParityTest skips them and says why), written by',
+    lines = ['# Unsupported upstream Taffy fixtures that are not copied or instantiated, written by',
              '# tools/htmlui/import-taffy-fixtures.py import. One per line: <suite>/<name> reason=<class> # <why>.',
              '# Classes: taffy-invalid (spec 5.3), rtl-excluded, writing-mode-excluded (phase-3 spec 2.2), needs-script (none left:',
              '# the two track-list scripts are evaluated into the fixtures).', '']
@@ -173,17 +174,17 @@ def do_import(args):
     total = sum(counts.values())
     readme = [f'Taffy layout fixtures (phase-3 spec 5.3): {TAFFY_URL} commit {TAFFY_COMMIT}, MIT (LICENSE-taffy.txt).',
               'Imported by tools/htmlui/import-taffy-fixtures.py import; do not edit the fixtures, re-import.', '',
-              'Suites: ' + ', '.join(f'{suite} {counts[suite]}' for suite in SUITES) + f' ({total} fixtures), '
-              f'{len(excluded)} excluded (excluded.txt).', '',
-              'Each fixture is Taffy\'s HTML with its test_helper.js <script> removed and its stylesheet link',
+              'Upstream suites: ' + ', '.join(f'{suite} {counts[suite]}' for suite in SUITES) + f' ({total} fixtures).',
+              f'{total - len(excluded)} supported fixtures copied; {len(excluded)} excluded upstream fixtures are not copied (excluded.txt).', '',
+              'Each retained fixture is Taffy\'s HTML with its test_helper.js <script> removed and its stylesheet link',
               'pointing at base.css (Taffy\'s test_base_style.css on the local Ahem.ttf). The references are',
               'Chromium\'s border boxes of #test-root and every element under it, relative to #test-root, in',
               'golden/browser/taffy/<suite>.boxes.json (node tools/htmlui/render-reference.mjs --fixtures taffy',
               '--boxes-only); BoxParityTest loads each fixture through the compat layer at 1024x768 and compares',
               'the boxes within 1 px. known-failures.txt lists the fixtures the fork does not pass yet (owner and',
-              'reason class); excluded.txt the fixtures that are not compared.', '']
+              'reason class); excluded.txt records upstream fixtures omitted from the local corpus.', '']
     write(os.path.join(OUT, 'README.txt'), '\n'.join(readme))
-    print(f'imported {total} fixtures ({", ".join(f"{s} {counts[s]}" for s in SUITES)}), {len(excluded)} excluded')
+    print(f'imported {total - len(excluded)} supported fixtures from {total} upstream fixtures ({", ".join(f"{s} {counts[s]}" for s in SUITES)}), {len(excluded)} not copied')
 
 
 # --- known failures ----------------------------------------------------------------------------

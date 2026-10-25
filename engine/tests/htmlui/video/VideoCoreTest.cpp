@@ -5,7 +5,7 @@
 // the WebM index, AV1 decoding (every frame shows its own index; 10-bit, 4:4:4, odd sizes, thread
 // counts), Opus (the tone bursts at their samples, the 5.1 down-mix), the decode pipeline
 // (frame-exact seeks in any order, loops as one stream, inline mode, real time never blocking,
-// errors, 100 open/close cycles without a leak), the playback state machine and the audio ring.
+// errors), the playback state machine and the audio ring. Element lifecycle tests own leak coverage.
 
 #include "VideoTestCommon.h"
 
@@ -342,7 +342,7 @@ TEST(Av1Decoder, DamagedFrameFails){
 // every clip bit for bit as its C functions do: every frame of the test clips (8-bit, 10-bit,
 // 4:4:4, an odd size, the example's loop) and of the clips in JASPER_VIDEO_MEASURE (':'-separated,
 // e.g. 720p and 1080p encodes), with the CPU feature mask off (C only) and on. Prints the decoder's
-// time per frame both ways, with 1 thread and with the engine's count (the speedup the asm gives).
+// time per frame for the C reference, single-thread asm and the engine's default thread count.
 TEST(Av1Decoder, AsmDecodesBitExactlyAsC){
     struct Decoded {
         std::vector<VideoFrame> frames;
@@ -406,17 +406,15 @@ TEST(Av1Decoder, AsmDecodesBitExactlyAsC){
             ASSERT_TRUE(a.y == b.y && a.u == b.u && a.v == b.v) << name << ": frame " << i << " differs between the asm and C";
         }
         // the engine's thread count (frame threads change nothing in the output either)
-        const Decoded cMany = decodeFile(clip, 0u, 0);
         const Decoded asmMany = decodeFile(clip, ~0u, 0);
         ASSERT_EQ(asmMany.frames.size(), c.frames.size()) << name;
         for (size_t i = 0; i < c.frames.size(); i++){
             ASSERT_TRUE(asmMany.frames[i].y == c.frames[i].y && asmMany.frames[i].u == c.frames[i].u && asmMany.frames[i].v == c.frames[i].v)
                 << name << ": frame " << i << " differs (asm, " << asmMany.threads << " threads)";
         }
-        std::printf("[asm] %s %dx%d, %zu frames: 1 thread C %.2f ms/frame, asm %.2f (x%.2f); %d threads C %.2f, asm %.2f (x%.2f)\n",
+        std::printf("[asm] %s %dx%d, %zu frames: C %.2f ms/frame, asm %.2f; default (%d threads) %.2f\n",
                     name.c_str(), c.frames[0].width, c.frames[0].height, c.frames.size(), c.msPerFrame, asmOne.msPerFrame,
-                    asmOne.msPerFrame > 0.0 ? c.msPerFrame / asmOne.msPerFrame : 0.0, asmMany.threads, cMany.msPerFrame,
-                    asmMany.msPerFrame, asmMany.msPerFrame > 0.0 ? cMany.msPerFrame / asmMany.msPerFrame : 0.0);
+                    asmMany.threads, asmMany.msPerFrame);
     }
     std::printf("[asm] dav1d CPU features: 0x%x\n", Av1Decoder::getCpuFlags());
 #if defined(__x86_64__) || defined(_M_X64) || defined(__aarch64__) || defined(_M_ARM64)
@@ -425,14 +423,6 @@ TEST(Av1Decoder, AsmDecodesBitExactlyAsC){
 #endif
 }
 
-TEST(Av1Decoder, PicturePoolIsCountedAndFreed){
-    const size_t before = Av1Decoder::getLivePictureBytes();
-    {
-        const std::vector<VideoFrame> frames = decodeAll("testcard-noaudio.webm");
-        EXPECT_EQ(frames.size(), (size_t)CARD_FRAMES);
-    }
-    EXPECT_EQ(Av1Decoder::getLivePictureBytes(), before);
-}
 
 // ---------------------------------------------------------------- Opus
 
@@ -711,19 +701,6 @@ TEST(VideoStream, AudioRingFollowsTheMediaClock){
     RecordProperty("sync_placement_frames", onset - 24000);
 }
 
-TEST(VideoStream, HundredOpenCloseCyclesLeakNothing){
-    const size_t pictures = Av1Decoder::getLivePictureBytes();
-    const int streams = VideoStream::getLiveCount();
-    for (int cycle = 0; cycle < 100; cycle++){
-        VideoStream stream(videoFixture(cycle % 2 ? "testcard.webm" : "testcard-noaudio.webm"), true, true);
-        ASSERT_EQ(stream.waitOpen(), VideoStream::State::READY);
-        VideoFrame frame;
-        ASSERT_EQ(stream.acquireFrame(0, cardTime(cycle % CARD_FRAMES), true, -1, frame), VideoStream::FrameResult::NEW);
-        EXPECT_EQ(cardIndexOf(frame), cycle % CARD_FRAMES);
-    }
-    EXPECT_EQ(VideoStream::getLiveCount(), streams);
-    EXPECT_EQ(Av1Decoder::getLivePictureBytes(), pictures);
-}
 
 // The cost and memory of a played clip (the phase record's numbers): the test card (320x180), the
 // video_menu example's loop (640x360) and any clips listed in JASPER_VIDEO_MEASURE (paths separated

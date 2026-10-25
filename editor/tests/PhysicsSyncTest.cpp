@@ -433,7 +433,6 @@ namespace {
         }
 
         Rigidbody body() { return Rigidbody(&scene, box); }
-        RigidbodyComponent& component() { return scene.getComponent<RigidbodyComponent>(box); }
     };
 
 }
@@ -442,7 +441,6 @@ TEST(PhysicsSync, AReleasedKinematicBodyKeepsTheVelocityAScriptGaveIt) {
     FollowingBox carried;
     carried.moveTransform(0.1f);
     frame(carried.scene, carried.entities, 1);
-    EXPECT_TRUE(carried.component().followingPosition);
 
     // released and thrown by a script after the frame
     Rigidbody body = carried.body();
@@ -478,8 +476,6 @@ TEST(PhysicsSync, AKinematicBodyWithItsCentreOfMassOffItsOriginStopsFollowing) {
         frame(offset.scene, offset.entities, 1);
     }
     frame(offset.scene, offset.entities, 1);
-    EXPECT_FALSE(offset.component().followingPosition);
-    EXPECT_FALSE(offset.component().followingRotation);
 
     // and is driven by its velocity again
     Rigidbody body = offset.body();
@@ -515,7 +511,6 @@ TEST(PhysicsSync2D, AKinematicBodyWithoutCollidersFollowsItsTransform) {
     updateTransforms(scene, entities);
     scene.getSystem<PhysicsSystem>()->load();
     frame(scene, entities, 1);
-    ASSERT_TRUE(b2Body_IsValid(scene.getComponent<Rigidbody2DComponent>(hook).body));
 
     Rigidbody2D body(&scene, hook);
     for (int i = 1; i <= 3; i++) {

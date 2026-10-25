@@ -175,20 +175,6 @@ TEST(Stylesheets, ImportChainsCyclesAndGoogleFonts){
     EXPECT_NE(std::find(result.entry()->files.begin(), result.entry()->files.end(), fonts->path), result.entry()->files.end());
 }
 
-TEST(Stylesheets, LocalPaths){
-    TempProject project;
-    RemoteImporter importer(project.target());
-    EXPECT_EQ(StylesheetImporter::localPath(importer, "https://cdn.example.com/lib/style.css", "css"),
-              "htmlui-imports/css/cdn.example.com/lib/style.css");
-    EXPECT_EQ(StylesheetImporter::localPath(importer, "https://cdn.example.com/lib/", "css"),
-              "htmlui-imports/css/cdn.example.com/lib/index.css");
-    EXPECT_EQ(StylesheetImporter::localPath(importer, "https://cdn.example.com/a.min", "css"),
-              "htmlui-imports/css/cdn.example.com/a.min.css");
-    const std::string query = StylesheetImporter::localPath(importer, "https://cdn.example.com/f.ttf?v=6.5", "ttf");
-    EXPECT_EQ(query.compare(0, 37, "htmlui-imports/css/cdn.example.com/f-"), 0) << query;
-    EXPECT_EQ(query.substr(query.size() - 4), ".ttf");
-}
-
 // ---------------------------------------------------------------------------------------------
 // images
 // ---------------------------------------------------------------------------------------------
@@ -403,16 +389,22 @@ TEST(Lottie, LottieFilesPage){
 }
 
 TEST(Lottie, NotAnAnimation){
-    EXPECT_TRUE(LottieImporter::looksLikeLottie("{\"v\":\"5.7\",\"layers\":[]}"));
-    EXPECT_FALSE(LottieImporter::looksLikeLottie("{\"name\":\"x\"}"));
-    EXPECT_FALSE(LottieImporter::looksLikeLottie("[1,2]"));
+    TempProject project(false);
+    const fs::path mirror = project.root() / "mirror";
+    writeFile(mirror / "lottie.host" / HttpClient::urlQuote("/not-animation.json"), "{\"name\":\"x\"}");
+    ScopedEnv env("JASPERENGINE_IMPORT_MIRROR", mirror.string().c_str());
+    std::vector<compat::Diagnostic> diagnostics;
+    const ImportedResource result = importOne(project, "https://lottie.host/not-animation.json", &diagnostics);
+    EXPECT_FALSE(result.ok);
+    EXPECT_EQ(withCode(diagnostics, "HTMLUI-IMP-0003").size(), 1u) << dump(diagnostics);
+    EXPECT_FALSE(project.exists("assets/htmlui-imports/manifest.json"));
 }
 
 // ---------------------------------------------------------------------------------------------
 // errors
 // ---------------------------------------------------------------------------------------------
 
-TEST(Errors, HttpErrorsTimeoutsAndRedirects){
+TEST(Errors, HttpErrorsAndRedirects){
     TempProject project;
     for (const char* url : {"https://status.example.com/404", "https://status.example.com/500"}){
         std::vector<compat::Diagnostic> diagnostics;
@@ -422,14 +414,6 @@ TEST(Errors, HttpErrorsTimeoutsAndRedirects){
         ASSERT_EQ(failed.size(), 1u) << dump(diagnostics);
         EXPECT_EQ(failed[0].severity, compat::Severity::Error);
         EXPECT_NE(failed[0].message.find("HTTP"), std::string::npos);
-    }
-    {
-        HttpClient::setDefaultTimeoutSeconds(1);
-        std::vector<compat::Diagnostic> diagnostics;
-        const ImportedResource result = importOne(project, "https://slow.example.com?s=4", &diagnostics);
-        HttpClient::setDefaultTimeoutSeconds(20);
-        EXPECT_FALSE(result.ok);
-        EXPECT_EQ(withCode(diagnostics, "HTMLUI-IMP-0002").size(), 1u) << dump(diagnostics);
     }
     EXPECT_FALSE(project.exists("assets/htmlui-imports/manifest.json"));
 

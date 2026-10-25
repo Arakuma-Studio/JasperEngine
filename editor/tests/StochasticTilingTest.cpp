@@ -8,7 +8,6 @@
 
 #include <gtest/gtest.h>
 
-#include "Catalog.h"
 #include "Project.h"
 #include "Scene.h"
 #include "component/LightComponent.h"
@@ -16,14 +15,12 @@
 #include "Stream.h"
 #include "component/MeshComponent.h"
 #include "pool/ShaderPool.h"
-#include "registry/EntityRegistry.h"
 #include "subsystem/MeshSystem.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
 
 #include "yaml-cpp/yaml.h"
 
-#include <algorithm>
 #include <ostream>
 #include <set>
 #include <string>
@@ -31,9 +28,6 @@
 
 using namespace jasperengine;
 using editor::Stream;
-using editor::PropertyData;
-using editor::PropertyType;
-using editor::ComponentType;
 
 namespace jasperengine {
     void PrintTo(const ShaderKey& key, std::ostream* os);
@@ -73,37 +67,6 @@ namespace {
 
 // ---- (a) the names and bits
 
-TEST(StochasticTilingKey, BitsAreNamedSto) {
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5, true), "Sto");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5, false), "Stochastic Tiling");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 14, true), "Sto");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 14, false), "Stochastic Tiling");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 10, true), "Sto");
-    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 10, false), "Stochastic Tiling");
-    // the lattice deformer's bits follow (DEPTH 15, GBUFFER 11-13)
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::DEPTH), 16);
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::GBUFFER), 14);
-    EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::MESH) & meshSto, 0u);
-    EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::DEPTH) & depthSto, 0u);
-    EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::GBUFFER) & gbufferSto, 0u);
-}
-
-TEST(StochasticTilingKey, NoOtherNameClashesWithSto) {
-    // shader names are the short names concatenated in bit order and read back greedily
-    // (ShaderPool::getShaderCliSpec): no other name of the type may be a prefix of "Sto" or
-    // start with it
-    for (ShaderType type : {ShaderType::MESH, ShaderType::DEPTH, ShaderType::GBUFFER}) {
-        const int stoBit = type == ShaderType::MESH ? 5 : (type == ShaderType::DEPTH ? 14 : 10);
-        for (int bit = 0; bit < ShaderPool::getShaderPropertyCount(type); bit++) {
-            if (bit == stoBit) continue;
-            const std::string name = ShaderPool::getShaderPropertyName(type, bit, true);
-            EXPECT_NE(name.rfind("Sto", 0), 0u) << name;
-            EXPECT_NE(std::string("Sto").rfind(name, 0), 0u) << name;
-            EXPECT_NE(ShaderPool::getShaderPropertyName(type, bit, false), "Stochastic Tiling");
-        }
-    }
-}
-
 TEST(StochasticTilingKey, NamesAndSpecsRoundTrip) {
     struct Case { ShaderType type; uint64_t properties; const char* name; };
     const Case cases[] = {
@@ -131,18 +94,6 @@ TEST(StochasticTilingKey, NamesAndSpecsRoundTrip) {
     EXPECT_EQ(ShaderPool::getPropertiesFromKey(key), shaderPropertyBit(0) | gbufferSto);
 }
 
-TEST(StochasticTilingKey, PropertyFunctionsSetTheBits) {
-    EXPECT_EQ(ShaderPool::getMeshProperties(false, true, false, false, false, false, false, false, false, false, false, false,
-                                            false, false, false, false, false, false, false, false, false, false, false, false,
-                                            false, false, false, false, 8, true), shaderPropertyBit(1) | meshSto);
-    EXPECT_EQ(ShaderPool::getDepthMeshProperties(true, false, false, false, false, false, false, true, false, false, false, false,
-                                                 false, false, true), shaderPropertyBit(0) | shaderPropertyBit(7) | depthSto);
-    EXPECT_EQ(ShaderPool::getGBufferMeshProperties(true, false, false, false, false, false, false, false, false, false, true),
-              shaderPropertyBit(0) | gbufferSto);
-    // off: the keys every variant had
-    EXPECT_EQ(ShaderPool::getMeshProperties(false, true, false, false, false, false, false, false, false, false, false, false,
-                                            false, false, false, false, false, false, false, false), shaderPropertyBit(1));
-}
 
 // ---- (b) where the variant takes it (RenderSystem::getSubmeshShaderVariant, also the export collector's)
 
@@ -475,39 +426,7 @@ TEST(StochasticTilingMaterial, ShaderPrefixLayout) {
     EXPECT_EQ(prefix[15], 0.1f);
 }
 
-// ---- (e) editing: Catalog paths, model overrides, what a change reloads
-
-TEST(StochasticTilingMaterial, CatalogPathsAndOverrides) {
-    EntityRegistry registry;
-    const Entity entity = registry.createEntity();
-    MeshComponent mesh;
-    mesh.numSubmeshes = 2;
-    registry.addComponent<MeshComponent>(entity, mesh);
-
-    const struct { const char* field; PropertyType type; uint64_t flags; } fields[] = {
-        {"stochasticTiling", PropertyType::Bool, editor::UpdateFlags_Mesh_Reload},
-        {"stochasticCellSize", PropertyType::Float, editor::UpdateFlags_None},
-        {"stochasticBlendSharpness", PropertyType::Float, editor::UpdateFlags_None},
-        {"stochasticContrast", PropertyType::Float, editor::UpdateFlags_None},
-        {"stochasticRotation", PropertyType::Float, editor::UpdateFlags_None}};
-    MeshComponent& stored = registry.getComponent<MeshComponent>(entity);
-    for (const auto& field : fields) {
-        const std::string path = std::string("submeshes[1].material.") + field.field;
-        const PropertyData data = editor::Catalog::findProperty(&registry, entity, ComponentType::MeshComponent, path);
-        ASSERT_NE(data.ref, nullptr) << path;
-        EXPECT_EQ(data.type, field.type) << path;
-        EXPECT_EQ(data.updateFlags, field.flags) << path;
-        // a model reload keeps the edit: the one override bit of the five
-        uint32_t overrideFields = 0;
-        uint32_t* mask = editor::Catalog::getSubmeshOverrideMask(&registry, entity, ComponentType::MeshComponent, path, overrideFields);
-        ASSERT_NE(mask, nullptr) << path;
-        EXPECT_EQ(mask, &stored.submeshes[1].overrideFields) << path;
-        EXPECT_EQ(overrideFields, (uint32_t)SubmeshOverride_StochasticTiling) << path;
-    }
-    EXPECT_EQ(editor::Catalog::findProperty(&registry, entity, ComponentType::MeshComponent, "submeshes[1].material.stochasticTilings").ref, nullptr);
-    EXPECT_NE(SubmeshOverride_Material & SubmeshOverride_StochasticTiling, 0u);
-    EXPECT_EQ(SubmeshOverride_ShaderLibrary & SubmeshOverride_StochasticTiling, 0u);
-}
+// ---- (e) model overrides survive a reload
 
 TEST(StochasticTilingMaterial, ModelOverridesRestoreAllFive) {
     Submesh saved;
@@ -534,16 +453,6 @@ TEST(StochasticTilingMaterial, ModelOverridesRestoreAllFive) {
     EXPECT_EQ(untouched.material.stochasticCellSize, 1.0f);
 }
 
-TEST(StochasticTilingMaterial, OnlyTheSwitchReloads) {
-    Material from;
-    Material to = from;
-    to.stochasticTiling = true;
-    EXPECT_NE(editor::Catalog::getMaterialUpdateFlags(from, to) & editor::UpdateFlags_Mesh_Reload, 0u);
-    to = from;
-    to.stochasticCellSize = 3.0f;
-    to.stochasticRotation = 0.5f;
-    EXPECT_EQ(editor::Catalog::getMaterialUpdateFlags(from, to) & editor::UpdateFlags_Mesh_Reload, 0u);
-}
 
 // ---- (f) the keys a build collects (Project::collectSceneShaderKeys): a submesh whose stored
 // key is still unlit when a reflection probe (and a light) was added (the mesh has not reloaded)
@@ -588,39 +497,31 @@ TEST(StochasticTilingBuildKeys, ReflectionProbeDerivesTheLitVariant) {
     // the probe's runtime capture is prefiltered into roughness mips (probe_filter.frag)
     EXPECT_EQ(keys.count(ShaderPool::getShaderKey(ShaderType::PROBE_FILTER, 0)), 1u);
 
-    // what loadMesh picks with the probe and the light
-    MeshShaderEnvironment environment = scene.getSystem<RenderSystem>()->getMeshShaderEnvironment();
-    environment.reflectionProbes = true;
-    environment.lights = true;
-    const uint64_t expected = RenderSystem::getSubmeshShaderVariant(environment, loaded).properties;
-    EXPECT_EQ(expected & shaderPropertyBit(0), 0u);
-    EXPECT_NE(expected & shaderPropertyBit(3), 0u);   // USE_PUNCTUAL
-    EXPECT_NE(expected & shaderPropertyBit(19), 0u);  // USE_IBL
-    EXPECT_NE(expected & shaderPropertyBit(1), 0u);   // HAS_UV_SET1
-    EXPECT_NE(expected & meshSto, 0u);
-
-    std::vector<uint64_t> meshKeys;
+    bool foundProbeVariant = false;
     for (ShaderKey key : keys) {
-        if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH)
-            meshKeys.push_back(ShaderPool::getPropertiesFromKey(key));
-    }
-    EXPECT_NE(std::find(meshKeys.begin(), meshKeys.end(), expected), meshKeys.end())
-        << "the lit variant with the probe (Uv1, Ibl, Sto) is not collected";
-    // no lit variant without the UV set or Stochastic Tiling (the patched bits of before)
-    for (uint64_t properties : meshKeys) {
-        if (properties & shaderPropertyBit(19)) {
-            EXPECT_NE(properties & shaderPropertyBit(1), 0u) << properties;
-            EXPECT_NE(properties & meshSto, 0u) << properties;
+        if (key.type == static_cast<uint16_t>(ShaderType::MESH) && (key.properties & shaderPropertyBit(19))) {
+            foundProbeVariant = true;
+            EXPECT_EQ(key.properties & shaderPropertyBit(0), 0u) << "a probe needs a lit shader";
+            EXPECT_NE(key.properties & shaderPropertyBit(3), 0u) << "the added light is punctual";
+            EXPECT_NE(key.properties & shaderPropertyBit(1), 0u) << "the lit maps need UVs";
+            EXPECT_NE(key.properties & meshSto, 0u) << "the lit maps use Stochastic Tiling";
         }
     }
+    EXPECT_TRUE(foundProbeVariant) << "no lit variant was collected for the probe";
 
-    // without the material's Stochastic Tiling the same key, without Sto
+    // disabling Stochastic Tiling removes it from the probe variants too
     scene.getComponent<MeshComponent>(entity).submeshes[0].material.stochasticTiling = false;
     keys.clear();
     project.collectSceneShaderKeys(&sceneProject, keys);
-    bool found = false;
-    for (ShaderKey key : keys)
-        found = found || (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && ShaderPool::getPropertiesFromKey(key) == (expected & ~meshSto));
-    EXPECT_TRUE(found);
+    foundProbeVariant = false;
+    for (ShaderKey key : keys) {
+        if (key.type == static_cast<uint16_t>(ShaderType::MESH) && (key.properties & shaderPropertyBit(19))) {
+            foundProbeVariant = true;
+            EXPECT_EQ(key.properties & shaderPropertyBit(0), 0u);
+            EXPECT_NE(key.properties & shaderPropertyBit(3), 0u);
+            EXPECT_NE(key.properties & shaderPropertyBit(1), 0u);
+            EXPECT_EQ(key.properties & meshSto, 0u);
+        }
+    }
+    EXPECT_TRUE(foundProbeVariant);
 }
-

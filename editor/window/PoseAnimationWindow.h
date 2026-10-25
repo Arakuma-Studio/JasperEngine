@@ -100,8 +100,6 @@ namespace jasperengine::editor{
         // Delete (project templates only, one undo step) and Show in Project
         bool deleteTemplate(const std::string& name, std::string* error);
         bool showTemplateInProject(const std::string& name, std::string* error);
-        // the category combo ("" = all) and the search field
-        void setTemplateFilter(const std::string& category, const std::string& search);
 
         // What the Templates tab showed in its last draw (MCP state)
         struct TemplatesState{
@@ -141,11 +139,6 @@ namespace jasperengine::editor{
             std::string menu;                   // the context menu open: "card", "template:<name>" or ""
         };
         State getState();
-
-        // The screen centre of a strip card (pose index) or a Templates card (template name) as
-        // drawn on screen in the last frame; false when it was not (MCP test hook input)
-        bool cardCenter(int index, ImVec2& out) const;
-        bool templateCardCenter(const std::string& name, ImVec2& out) const;
 
         // selects one pose and poses it (a strip click; also used by MCP)
         void selectPose(int index);
@@ -197,15 +190,6 @@ namespace jasperengine::editor{
         char renameBuffer[128] = {};
         int contextPose = -1;
         bool cardMenuRequested = false;         // a card's right-click: drawCardMenu opens the menu
-        // the cards on screen in the last draw (frame, name or index, centre)
-        struct CardSpot{
-            int frame = -1;
-            int index = -1;
-            std::string name;
-            ImVec2 centre;
-        };
-        std::vector<CardSpot> cardSpots;
-        void noteCardSpot(int index, const std::string& name);
         // the context menu drawn last (MCP state): "card" or "template:<name>", in frame menuShownFrame
         std::string menuShown;
         int menuShownFrame = -1;

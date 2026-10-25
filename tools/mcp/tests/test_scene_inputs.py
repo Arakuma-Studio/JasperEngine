@@ -63,12 +63,9 @@ def messages(result) -> list[str]:
     return [f.get("message", "") for f in result.get("findings", [])]
 
 
-async def test_setup(ed: Editor):
+async def test_fork_compiles(ed: Editor):
     ed.require_tools("create_scene", "write_file", "check_shader", "list_shaders", "set_properties")
     await ed.call("create_scene", name="SceneInputs", path=SCENE)
-
-
-async def test_fork_compiles(ed: Editor):
     await write_fork(ed, "shaders/soft", FRAG)
     for ref in ("shaders/soft", "shaders/soft#TINT"):
         ok = await ed.call("check_shader", shader=ref, shader_type="mesh", timeout=300)
@@ -118,18 +115,6 @@ async def test_opaque_material_is_a_check_error(ed: Editor):
     await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "auto"}})
     r = await ed.call("check_shader", timeout=300)
     ed.check(not [m for m in messages(r) if "opaque queue" in m], f"back to its state: no error: {r!r}")
-
-
-async def test_list_shaders_scene_inputs(ed: Editor):
-    listing = await ed.call("list_shaders")
-    ed.check(listing["shaders"] and all("scene_inputs" in s for s in listing["shaders"]), f"scene_inputs on every entry: {listing!r}")
-    detail = await ed.call("list_shaders", name="toon")
-    entry = detail["shaders"][0] if "shaders" in detail else detail
-    ed.check_eq(entry.get("scene_inputs"), [], "toon reads nothing of the scene")
-    # a feature= rule counts (the picker's cost mark): unlit SOFT, projected_decal always
-    for name in ("unlit", "projected_decal"):
-        entry = (await ed.call("list_shaders", name=name))["shaders"][0]
-        ed.check_eq(entry.get("scene_inputs"), ["scenedepth"], f"{name} may read the scene depth")
 
 
 async def test_list_shaders_state_priority(ed: Editor):

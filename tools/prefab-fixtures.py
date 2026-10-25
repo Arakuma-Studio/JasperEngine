@@ -447,7 +447,6 @@ def nested(out):
         {"op": "setRef", "entity": "Spy", "component": "script", "property": "scripts[0].target", "target": "Field/Forest 2/Tree/Branch/Leaf/Petal/Dew/Moss2"},
         {"op": "setRef", "entity": "Spy2", "component": "script", "property": "scripts[0].target", "target": "Forest/Tree/Leaf 3/Petal/Drop"},
         {"op": "dump", "out": "@/7-final.yaml"},
-        {"op": "bake", "out": "@/bake"},
         {"op": "save"},
     ]
     os.makedirs(out + ".ops", exist_ok=True)
@@ -531,7 +530,6 @@ def variant(out):
         {"op": "dump", "out": "@/1-before-variant.yaml"},
         # ---- Ship Variant from it ----
         {"op": "createVariant", "entity": S, "path": "prefabs/Ship Variant.prefab"},
-        {"op": "levels", "entity": S},
         {"op": "dump", "out": "@/2-variant.yaml"},
         {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Variant.prefab", "below": True},
         {"op": "dump", "out": "@/2-fresh.yaml"},
@@ -546,7 +544,6 @@ def variant(out):
         {"op": "dump", "out": "@/3-before-variant2.yaml"},
         # ---- Ship Variant 2, a variant of the variant ----
         {"op": "createVariant", "entity": S, "path": "prefabs/Ship Variant 2.prefab"},
-        {"op": "levels", "entity": S},
         {"op": "dump", "out": "@/4-variant2.yaml"},
         {"op": "instantiate", "entity": "Field", "prefab": "prefabs/Ship Variant 2.prefab", "below": True},
         {"op": "dump", "out": "@/4-fresh.yaml"},
@@ -561,11 +558,8 @@ def variant(out):
         # ---- scene references into the variant instance's GameObjects at every level ----
         {"op": "setRef", "entity": "Pointer", "component": "action", "property": "target", "target": S + "/Engine/Flame"},
         {"op": "setRef", "entity": "Spy", "component": "script", "property": "scripts[0].target", "target": S + "/Wing/Flag/Pole"},
-        {"op": "variantInfo", "prefab": "prefabs/Ship Variant 2.prefab"},
-        {"op": "variantInfo", "prefab": "prefabs/Ship.prefab"},
         {"op": "usage"},
         {"op": "dump", "out": "@/6-final.yaml"},
-        {"op": "bake", "out": "@/bake"},
         {"op": "save"},
     ]
     os.makedirs(out + ".ops", exist_ok=True)

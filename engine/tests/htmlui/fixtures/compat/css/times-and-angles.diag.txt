@@ -1,1 +1,0 @@
-compat/css/times-and-angles.css:6:6: warning: 'transition-duration' without transition or transition-property in the rule or a base rule is dropped (fix: write the transition shorthand in this rule) [HTMLUI-CSS-0018]

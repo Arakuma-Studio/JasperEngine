@@ -1138,8 +1138,8 @@ The handler is `importFilesTool` (`:1202`) and its registration is at `:2353-236
   run jasperengine-editor import-ui": until this section is implemented `import_files` copies
   local files only ("No downloads"), so naming it sent an agent to a tool that refused (changed
   by p2-integrate). Add "MCP import_files from_document" to both suggestions, and regenerate the
-  `.diag.txt` goldens that hold them (`fixtures/compat/css/{background-url,import,font-face}`,
-  `fixtures/compat/html/{images,styles_links}`, `compat_url_test.cpp`).
+  focused emitted-code/source-location checks in `compat_url_test.cpp`. The former generated
+  `.diag.txt` snapshots were removed during the behavioral test cleanup.
 - New `fonts` (string array) uses `importGoogleFonts`.
 - New `icons` (string array, `lucide:<name>` or a bare name) uses `importLucideIcons`.
 - New `from_document` (project-relative `.html`/`.css`) uses `importDocumentReferences`. The URLs

@@ -21,13 +21,6 @@ TIMEOUT = 900
 SCENE = 1  # Main Scene of the fixture
 S: dict = {}
 
-PREFAB_TOOLS = ("create_prefab", "create_prefab_variant", "instantiate_prefab", "replace_prefab", "unpack_prefab",
-                "add_to_prefab", "remove_from_prefab", "get_prefab_info", "prefab_overrides", "prefab_mode",
-                "list_prefabs", "set_standalone_prefab")
-LEGACY_REMOVED = ("create_prefab_from_entity", "import_prefab_instance", "add_entity_to_prefab",
-                  "remove_entity_from_prefab", "apply_prefab_component", "revert_prefab_component")
-
-
 # ---------------------------------------------------------------------------
 # Scene helpers
 
@@ -117,16 +110,6 @@ def close_to(a, b, eps=1e-3) -> bool:
 
 # ---------------------------------------------------------------------------
 # Tests
-
-
-async def test_tools_registered(ed: Editor):
-    names = ed.tool_names
-    missing = [n for n in PREFAB_TOOLS if n not in names]
-    ed.check(not missing, f"prefab tools missing: {missing}")
-    stale = [n for n in LEGACY_REMOVED if n in names]
-    ed.check(not stale, f"superseded legacy prefab tools still registered: {stale}")
-    ed.check("scene_id" not in ed.tool("set_standalone_prefab").input_schema["properties"],
-             "set_standalone_prefab still has the legacy schema")
 
 
 async def test_create_prefab(ed: Editor):

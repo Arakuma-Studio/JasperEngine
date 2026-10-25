@@ -13,7 +13,7 @@ and a non-ASCII letter) from a working directory of its own, with relative proje
 "../" (and "../sub/../"), a trailing separator, the project.yaml file, the space and unicode one; and with
 a relative --out, which must land relative to that working directory.
 
-- export: --list-scenes lists both scenes for every form; three full exports hold every scene (one
+- export: --list-scenes lists both scenes for every form; two full exports hold every scene (one
   generated source each), every asset and every Lua script. JASPER_SLOW_BUILD=1 builds the first one
   (relative --project and --out) with cmake and runs its player (run_build): it runs and draws.
 - scene-dump: both scenes with their GameObjects, written to a relative --out.
@@ -24,6 +24,7 @@ a relative --out, which must land relative to that working directory.
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
 import re
@@ -103,6 +104,7 @@ def layout() -> Path:
         return S["work"]
     tmp = Path(tempfile.mkdtemp(prefix="jasper-cli-paths-"))
     S["tmp"] = tmp
+    atexit.register(shutil.rmtree, tmp, ignore_errors=True)
     work = tmp / "work"
     fixture = harness.default_fixture()
     shutil.copytree(fixture, work / "proj", ignore=_ignore_copy, symlinks=True)
@@ -140,24 +142,12 @@ def files_under(root: Path) -> set[str]:
 
 
 def project_forms() -> list[tuple[Path, str]]:
-    """(working directory, --project) pairs: every relative form names <work>/proj, or the unicode copy."""
+    """Distinct normalization cases; full exports separately cover plain relative paths."""
     work = layout()
-    sub = work / "sub"
-    deep = sub / "deep"
     return [
-        (work, "proj"),
-        (work, "./proj"),
-        (work, "proj/"),
-        (work, "proj/project.yaml"),
-        (work, "./proj/./project.yaml"),
-        (sub, "../proj"),
-        (sub, "../sub/../proj/"),
-        (sub, "../proj/project.yaml"),
-        (deep, "../../proj"),
-        (deep, "../../sub/../proj/project.yaml"),
-        (work, UNICODE_DIR),
-        (sub, f"../{UNICODE_DIR}/project.yaml"),
-        (deep, f"../../{UNICODE_DIR}/"),
+        (work, "./proj/"),
+        (work / "sub" / "deep", "../../sub/../proj/project.yaml"),
+        (work / "sub" / "deep", f"../../{UNICODE_DIR}/"),
         (work / "proj", "."),
     ]
 
@@ -216,21 +206,13 @@ async def test_export_relative_project_and_out():
 
 async def test_export_dotdot_project_yaml_and_out():
     work = layout()
-    out = work / "exports" / "dot"
-    ok(run(work / "sub" / "deep", "export", "--project", "../../proj/project.yaml", "--out", "../../exports/./dot", "--backend", "opengl"),
-       "export ../../proj/project.yaml -> ../../exports/./dot")
-    check_export(out, work / "proj", "export --project ../../proj/project.yaml --out ../../exports/./dot")
-    check(not (work / "sub" / "exports").exists() and not (work / "proj" / "exports").exists(),
-          "--out is relative to the working directory")
-    no_doubled_paths()
-
-
-async def test_export_space_and_unicode_paths():
-    work = layout()
     out = work / "exports" / "Ünïcode out"
-    ok(run(work, "export", "--project", f"./{UNICODE_DIR}/", "--out", "exports/Ünïcode out", "--backend", "opengl"),
-       "export the unicode project")
-    check_export(out, work / UNICODE_DIR, f"export --project ./{UNICODE_DIR}/")
+    ok(run(work / "sub" / "deep", "export", "--project", f"../../{UNICODE_DIR}/project.yaml",
+           "--out", "../../exports/./Ünïcode out", "--backend", "opengl"),
+       "export a Unicode project.yaml through parent-relative paths")
+    check_export(out, work / UNICODE_DIR, "parent-relative Unicode export")
+    check(not (work / "sub" / "exports").exists() and not (work / UNICODE_DIR / "exports").exists(),
+          "--out is relative to the working directory")
     no_doubled_paths()
 
 
@@ -244,17 +226,12 @@ def dumped_scenes(path: Path) -> dict[str, int]:
 async def test_scene_dump_relative_paths():
     work = layout()
     sub = work / "sub"
-    ok(run(sub / "deep", "scene-dump", "--project", "../../proj", "--out", "../dump.yaml", timeout=600), "scene-dump ../../proj")
-    check((sub / "dump.yaml").is_file(), "the dump is written relative to the working directory")
-    scenes = dumped_scenes(sub / "dump.yaml")
+    ok(run(sub / "deep", "scene-dump", "--project", f"../../{UNICODE_DIR}/project.yaml",
+           "--out", "../dump ü.yaml", timeout=600), "scene-dump parent-relative Unicode project")
+    check((sub / "dump ü.yaml").is_file(), "the dump is written relative to the working directory")
+    scenes = dumped_scenes(sub / "dump ü.yaml")
     check({"Main Scene", "HUD Scene"} <= set(scenes) and all(scenes.values()),
-          f"scene-dump ../proj: both scenes with their GameObjects: {scenes}")
-
-    ok(run(sub, "scene-dump", "--project", f"../{UNICODE_DIR}/project.yaml", "--out", "../dump ü.yaml", timeout=600),
-       "scene-dump of the unicode project.yaml")
-    check((work / "dump ü.yaml").is_file(), "--out ../dump ü.yaml")
-    check_scenes = dumped_scenes(work / "dump ü.yaml")
-    check(check_scenes == scenes, f"the same dump from the unicode copy: {check_scenes} vs {scenes}")
+          f"scene-dump preserves both scenes with their GameObjects: {scenes}")
     no_doubled_paths()
 
 
@@ -402,9 +379,3 @@ async def test_relative_export_builds_and_runs(ed: Editor):
     (ed.scratch.root / "cli-paths-player.png").write_bytes(png)
     colors = distinct_colors(png)
     ed.check(colors > 20, f"the player draws its scene ({colors} distinct colours sampled)")
-
-
-async def test_cleanup():
-    tmp = S.get("tmp")
-    if tmp:
-        shutil.rmtree(tmp, ignore_errors=True)

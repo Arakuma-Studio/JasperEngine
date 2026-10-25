@@ -124,6 +124,10 @@ def main():
         sys.exit(__doc__)
     a, b = load(args[0]), load(args[1])
     if pair:
+        for label, scenes, root in ((args[0], a, pair[0]), (args[1], b, pair[1])):
+            if not any(root in entities for entities in scenes.values()):
+                print("subtree %s is missing from %s" % (root, label))
+                sys.exit(1)
         ignored = ignored | DERIVED_FIELDS
         a = {scene: subtree(entities, pair[0]) for scene, entities in a.items()}
         b = {scene: subtree(entities, pair[1]) for scene, entities in b.items()}

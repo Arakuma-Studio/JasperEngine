@@ -91,9 +91,6 @@ namespace jasperengine::pose {
                                                       std::string* error);
         void prune();
         void clear();
-        size_t size() const;
-        // the builds made since start (tests)
-        uint64_t buildCount() const;
 
         // the build of `data` on `rig`, not cached
         static std::shared_ptr<const PoseAnimationBuild> build(const PoseAnimationData& data, const PoseRig& rig, std::string* error);
@@ -111,7 +108,6 @@ namespace jasperengine::pose {
                                                              const std::shared_ptr<const PoseRig>& rig) const;
         mutable std::mutex mutex;
         std::vector<Entry> entries;
-        uint64_t builds = 0;
     };
 
     class JASPERENGINE_API PoseAnimatorRuntime {
