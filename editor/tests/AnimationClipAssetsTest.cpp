@@ -34,7 +34,9 @@
 
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -409,32 +411,15 @@ TEST_F(AnimationClipAssets, SubClipDocumentsAreReadOnly) {
     EXPECT_FALSE(AnimationClipDocument::open(project(), dir + "/hero.gltf#Walk", &error));
     EXPECT_NE(error.find("does not exist"), std::string::npos) << error;
 
-    // the first fixture model with animations, seen inside the project through a link (a .gltf
-    // keeps its .bin next to it)
-    std::error_code ec;
-    const fs::path fixtures = fs::weakly_canonical(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures", ec);
-    fs::create_directory_symlink(fixtures, root() / dir / "fixtures", ec);
-    std::string model;
+    // the pose fixture's animated hero (T1c; buffers embedded)
+    const fs::path fixture = fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" /
+                             "assets" / "models" / "hero_animated.gltf";
+    ASSERT_TRUE(fs::is_regular_file(fixture)) << fixture;
+    fs::copy_file(fixture, root() / dir / "hero_animated.gltf", fs::copy_options::overwrite_existing);
+    const std::string model = dir + "/hero_animated.gltf";
     std::vector<anim::ModelClipInfo> clips;
-    for (fs::recursive_directory_iterator it(fixtures, ec), end; !ec && it != end; it.increment(ec)) {
-        const fs::path candidate = it->path();
-        if (!it->is_regular_file(ec) || !Util::isModelFile(candidate.string())) continue;
-        const std::string inProject = dir + "/fixtures/" + candidate.lexically_relative(fixtures).generic_string();
-        std::vector<anim::ModelClipInfo> found;
-        std::string listError;
-        if (anim::listModelFileClips(project()->normalizeToAssetsRelative(root() / inProject).generic_string(), found, &listError) &&
-            !found.empty()) {
-            model = inProject;
-            clips = found;
-            break;
-        }
-        error = listError;
-    }
-    if (model.empty()) {
-        // the sub-clip builder (T1c) is not there yet, or no fixture has an animation
-        fs::remove(root() / dir / "fixtures", ec);
-        GTEST_SKIP() << "no model sub-clips to open: " << error;
-    }
+    ASSERT_TRUE(anim::listModelFileClips(project()->normalizeToAssetsRelative(root() / model).generic_string(), clips, &error)) << error;
+    ASSERT_FALSE(clips.empty());
     std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project(), model + "#" + clips[0].name, &error);
     ASSERT_TRUE(document) << error;
     EXPECT_TRUE(document->isReadOnly());
@@ -443,7 +428,7 @@ TEST_F(AnimationClipAssets, SubClipDocumentsAreReadOnly) {
     EXPECT_NE(error.find("read-only"), std::string::npos) << error;
     // by index: the same document (the canonical form is the name)
     EXPECT_EQ(AnimationClipDocument::open(project(), model + "#" + std::to_string(clips[0].index), &error), document);
-    fs::remove(root() / dir / "fixtures", ec);
+    EXPECT_FALSE(document->data().tracks.empty());
 }
 
 // ---- the asset database ------------------------------------------------------------------
@@ -806,4 +791,74 @@ TEST_F(AnimationClipAssets, RevertingAClipOverrideReloadsThePlayer) {
         EXPECT_TRUE(scene.player().needsLoad) << (properties.empty() ? "whole component" : "clips");
     }
     scene.sceneProject->isModified = false;
+}
+
+namespace {
+
+    std::string base64(const std::vector<uint8_t>& bytes) {
+        static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string out;
+        for (size_t i = 0; i < bytes.size(); i += 3) {
+            const uint32_t n = (uint32_t(bytes[i]) << 16) | (i + 1 < bytes.size() ? uint32_t(bytes[i + 1]) << 8 : 0) |
+                               (i + 2 < bytes.size() ? uint32_t(bytes[i + 2]) : 0);
+            out += table[(n >> 18) & 63];
+            out += table[(n >> 12) & 63];
+            out += i + 1 < bytes.size() ? table[(n >> 6) & 63] : '=';
+            out += i + 2 < bytes.size() ? table[n & 63] : '=';
+        }
+        return out;
+    }
+
+    // A one-node glTF whose animation "Move" lifts "Box" to y in one second (buffer in a data URI)
+    std::string movingBoxGltf(float y) {
+        const float data[8] = {0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, y, 0.0f};
+        std::vector<uint8_t> bytes(sizeof(data));
+        std::memcpy(bytes.data(), data, sizeof(data));
+        return std::string("{\"asset\": {\"version\": \"2.0\"}, \"scene\": 0, \"scenes\": [{\"nodes\": [0]}], \"nodes\": [{\"name\": \"Box\"}],") +
+               "\"buffers\": [{\"byteLength\": 32, \"uri\": \"data:application/octet-stream;base64," + base64(bytes) + "\"}]," +
+               "\"bufferViews\": [{\"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 8}, {\"buffer\": 0, \"byteOffset\": 8, \"byteLength\": 24}]," +
+               "\"accessors\": [{\"bufferView\": 0, \"componentType\": 5126, \"count\": 2, \"type\": \"SCALAR\", \"min\": [0], \"max\": [1]}," +
+               "{\"bufferView\": 1, \"componentType\": 5126, \"count\": 2, \"type\": \"VEC3\"}]," +
+               "\"animations\": [{\"name\": \"Move\", \"samplers\": [{\"input\": 0, \"output\": 1, \"interpolation\": \"LINEAR\"}]," +
+               "\"channels\": [{\"sampler\": 0, \"target\": {\"node\": 0, \"path\": \"translation\"}}]}]}\n";
+    }
+
+}
+
+// A .gltf overwritten on disk with a changed animation: its sub-clip (document and pool) is built
+// again from the new file, not from the pooled parse of the old one (MeshSystem::invalidateModelFile)
+TEST_F(AnimationClipAssets, AnOverwrittenModelRebuildsItsSubClips) {
+    const std::string dir = folder("overwrite");
+    const fs::path gltf = root() / dir / "mover.gltf";
+    writeAll(gltf, movingBoxGltf(1.0f));
+    std::string error;
+    std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project(), dir + "/mover.gltf#Move", &error);
+    ASSERT_TRUE(document) << error;
+    ASSERT_TRUE(document->isReadOnly());
+    ASSERT_EQ(document->data().tracks.size(), 1u);
+    EXPECT_EQ(document->data().tracks[0].path, "Box");
+    EXPECT_FLOAT_EQ(lastKeyY(document->data()), 1.0f);
+    const std::string reference = gltf.generic_string() + "#Move";
+    std::shared_ptr<const AnimationClip> first = AnimationClipPool::getOrLoad(reference, &error);
+    ASSERT_TRUE(first) << error;
+    EXPECT_FLOAT_EQ(lastKeyY(first->toData()), 1.0f);
+
+    // auto-sync / sync_files report the path
+    writeAll(gltf, movingBoxGltf(3.0f));
+    AnimationClipDocument::filesChanged({gltf}, project());
+    EXPECT_FLOAT_EQ(lastKeyY(document->data()), 3.0f) << "the document rebuilt from the new file";
+    std::shared_ptr<const AnimationClip> second = AnimationClipPool::getOrLoad(reference, &error);
+    ASSERT_TRUE(second) << error;
+    EXPECT_FLOAT_EQ(lastKeyY(second->toData()), 3.0f) << "the pool rebuilt from the new file";
+
+    // the editor's poll (a later write time)
+    writeAll(gltf, movingBoxGltf(5.0f));
+    std::error_code ec;
+    fs::last_write_time(gltf, fs::last_write_time(gltf, ec) + std::chrono::seconds(2), ec);
+    AnimationClipDocument::checkDiskChanges(project());
+    EXPECT_FLOAT_EQ(lastKeyY(document->data()), 5.0f);
+    std::shared_ptr<const AnimationClip> third = AnimationClipPool::getOrLoad(reference, &error);
+    ASSERT_TRUE(third) << error;
+    EXPECT_FLOAT_EQ(lastKeyY(third->toData()), 5.0f);
+    AnimationClipPool::invalidate(gltf.generic_string());
 }

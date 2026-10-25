@@ -9,6 +9,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/WriteFilesCmd.h"
 #include "pool/AnimationClipPool.h"
+#include "subsystem/MeshSystem.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
@@ -674,7 +675,11 @@ void AnimationClipDocument::reloadFromDisk(){
     std::vector<ClipWarning> newWarnings;
     std::string newText;
     if (readOnly){
-        // the model changed: the sub-clip is built again
+        // the model changed: the sub-clip is built again, from a new parse of the file (the
+        // pooled tinygltf parse and the pool's sub-clips of it are dropped first)
+        if (stampChanged()){
+            MeshSystem::invalidateModelFile(statPath.generic_string());
+        }
         std::string buildError;
         if (!anim::buildModelSubClip(subClipReference, data, newWarnings, &buildError)){
             warnings = {{"", "the model's animation can't be read (" + buildError + "): showing its last valid content"}};
@@ -791,6 +796,15 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
             paths.insert(paths.end(), models.begin(), models.end());
         }
     }
+    // a changed model: its pooled parse goes first (MeshSystem::invalidateModelFile drops it
+    // and its "<model>#*" sub-clips), so the documents below and the players rebuild from the file
+    std::set<std::string> modelsDropped;
+    for (const fs::path& path : paths){
+        const fs::path normal = path.lexically_normal();
+        if (Util::isModelFile(normal.string()) && modelsDropped.insert(keyOf(normal)).second){
+            MeshSystem::invalidateModelFile(normal.generic_string());
+        }
+    }
 
     std::vector<std::shared_ptr<AnimationClipDocument>> changed;
     for (const auto& entry : reg.documents){
@@ -826,8 +840,7 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
         if ((!clipFile && !modelFile && !directory) || covered.count(keyOf(normal))){
             continue;
         }
-        // (a model path drops its "<model>#*" sub-clips)
-        if (clipFile || modelFile){
+        if (clipFile){
             AnimationClipPool::invalidate(normal.generic_string());
         }
         markPlayers(project, normal);
@@ -856,6 +869,10 @@ void AnimationClipDocument::checkDiskChanges(Project* project){
             }
         }
     });
+    // and of the open sub-clip documents (their .bin buffers: the document watches the .gltf only)
+    for (const auto& entry : registry().documents){
+        if (entry.second->readOnly) used.insert(keyOf(entry.second->statPath));
+    }
     std::map<std::string, ModelStamp>& watched = watchedModels();
     std::vector<fs::path> changed;
     for (auto it = watched.begin(); it != watched.end();){
