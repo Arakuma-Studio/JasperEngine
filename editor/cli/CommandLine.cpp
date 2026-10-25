@@ -309,6 +309,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
+        << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
         << "  -h, --help             Show this help.\n\n"

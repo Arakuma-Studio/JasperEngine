@@ -26,6 +26,7 @@
 #include "subsystem/UIDocumentSystem.h"
 #include <memory>
 #include <algorithm>
+#include <chrono>
 #include <array>
 #include <cmath>
 #include <map>
@@ -12313,7 +12314,12 @@ void RenderSystem::update(double dt){
                 destroyMesh(entity, mesh);
             }
             if (!mesh.loadCalled){
+                static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
+                const auto l0 = std::chrono::steady_clock::now();
                 loadMesh(entity, mesh, pipelines, instmesh, terrain);
+                const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - l0).count();
+                if (timing && ms > 5.0)
+                    Log::print("[shader-timing] loadMesh %s: %.1f ms", scene->getEntityName(entity).c_str(), ms);
             }
             if (mesh.needUpdateAABB || transform.needUpdate){
                 // Bones cancel out this mesh's model matrix, so the shader draws at

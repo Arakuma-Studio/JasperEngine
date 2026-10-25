@@ -18,7 +18,7 @@ compilation off, so a variant the export did not precompile is a missing shader 
   Hex                a hex tiled floor and a hex tiled terrain
   PBX_SCENE=<name> in the game's environment loads that scene instead of Lobes (SceneSelect.lua).
 
-    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/fixtures/pbr-extended/generate.py [dir] [--export-only]
+    uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/fixtures/pbr-extended/generate.py [dir] [--export-only | --benchmarks-only]
 
 (JASPER_EDITOR selects the editor; it needs an S11 build.) Textures come from
 tools/fixtures/shader-library/assets/textures, the model from engine/tests/render/assets/khronos.
@@ -329,10 +329,12 @@ def copy_project(project: Path, out: Path, files) -> None:
 
 async def main(args) -> None:
     export_only = "--export-only" in args
-    args = [a for a in args if a != "--export-only"]
+    benchmarks_only = "--benchmarks-only" in args
+    args = [a for a in args if a not in ("--export-only", "--benchmarks-only")]
     if not export_only:
         await build_benchmarks(Path(args[0]) if args else REPO / "build" / "pbr-extended")
-    await build_export(EXPORT)
+    if not benchmarks_only:
+        await build_export(EXPORT)
 
 
 if __name__ == "__main__":

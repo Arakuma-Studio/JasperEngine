@@ -156,6 +156,7 @@ namespace jasperengine::editor{
         // scene setting overrides: -1 keeps the scene's value
         int benchmarkMeshLod = -1;
         int benchmarkDepthPrepass = -1;
+        int benchmarkLitQuality = -1;   // --lit-quality: 0 standard, 1 high
         int benchmarkPhase = 0;
         int benchmarkPhaseFrames = 0;
         std::vector<float> benchmarkFps;

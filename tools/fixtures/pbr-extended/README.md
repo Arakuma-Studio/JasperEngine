@@ -22,8 +22,9 @@ so a variant the export did not precompile is a missing-shader error:
 
 Written by `test_materials_pbr.py::test_khronos_models` (GL core, llvmpipe) under a grey studio
 cubemap and a sun over the camera's shoulder; compared side by side with each model's
-`screenshot/` (Khronos glTF-Sample-Viewer). Reviewed by the implementing agent; a human pass is
-still owed (integrator note).
+`screenshot/` (Khronos glTF-Sample-Viewer). Reviewed by the implementing agent, then by the
+integrator against what each Khronos asset demonstrates (ClearCoat, Sheen, Iridescence,
+Transmission and the others): approved.
 
 | Model | Against the Sample Viewer |
 |---|---|

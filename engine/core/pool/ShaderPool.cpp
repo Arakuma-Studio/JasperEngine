@@ -13,6 +13,7 @@
 #include "shader/ShaderManifest.h"
 #include "texture/MaterialPbr.h"
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <algorithm>
@@ -794,9 +795,19 @@ std::shared_ptr<ShaderRender> ShaderPool::get(ShaderType shaderType, uint32_t pr
             return shared;
         }
         if (shaderBuilderFn) {
+            static const bool timing = std::getenv("JASPER_SHADER_TIMING") != nullptr;
+            const auto t0 = std::chrono::steady_clock::now();
             ShaderBuildResult result = shaderBuilderFn(shaderKey);
+            const auto t1 = std::chrono::steady_clock::now();
+            if (timing && std::chrono::duration<double, std::milli>(t1 - t0).count() > 5.0)
+                Log::print("[shader-timing] builder %s: %.1f ms (state %d)", getShaderStr(shaderType, properties, customId).c_str(),
+                          std::chrono::duration<double, std::milli>(t1 - t0).count(), (int)result.state);
             if (result.state == ResourceLoadState::Finished) {
+                const auto c0 = std::chrono::steady_clock::now();
                 shared->createShader(result.data);
+                if (timing)
+                    Log::print("[shader-timing] create %s: %.1f ms", getShaderStr(shaderType, properties, customId).c_str(),
+                              std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - c0).count());
                 failedShaders().erase(shaderKey);
             } else if (result.state == ResourceLoadState::Loading) {
                 // Shader is still building, do nothing
