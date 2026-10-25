@@ -42,6 +42,7 @@ MODULES: list[tuple[str, str]] = [
     ("DocsTools", "Docs"),
     ("BuildTools", "Build and export"),
     ("WorldTools", "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models"),
+    ("AtmosphereTools", "Atmosphere: fog and clouds"),
     ("HtmlUiTools", "HTML/CSS UI"),
     ("UIEffectTools", "HTML/CSS UI"),
 ]

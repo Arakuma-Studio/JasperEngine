@@ -536,6 +536,8 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<BoneComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SkyboxComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<FogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<LocalVolumetricFogComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<VolumetricCloudsComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<MirrorComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LayoutGroupComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

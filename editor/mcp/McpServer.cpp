@@ -116,6 +116,7 @@ void McpServer::registerAllTools() {
     registerWorldTools(reg);
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
+    registerAtmosphereTools(reg);
 }
 
 void McpServer::stop() {

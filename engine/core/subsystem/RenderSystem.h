@@ -5,6 +5,7 @@
 #define RENDERSYSTEM_H
 
 #include "SubSystem.h"
+#include "AtmosphereRenderer.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
@@ -355,6 +356,9 @@ namespace jasperengine{
 		// the post-processing colour (phase 4, USE_POST_COLOR): one global bit, see
 		// RenderSystem::getPostProcessingTiers
 		bool postColor = false;
+		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
+		// fog, volumetric clouds)
+		bool atmosphereDepth = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -453,6 +457,7 @@ namespace jasperengine{
 	};
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
+		friend class AtmosphereRenderer;
 	private:
 		enum class TransparentRenderType{
 			MESH,
@@ -559,9 +564,6 @@ namespace jasperengine{
 		// see ViewDesc). Defaults to false and is never set at runtime, so exported games
 		// are unaffected.
 		bool disableFaceCulling = false;
-
-		// editor-only, draws as if the scene had no fog
-		bool disableFog = false;
 
 		// Editor-only override that suppresses the scene's fixed game resolution
 		// (edit-mode viewports render native; play mode re-enables it). Defaults
@@ -967,6 +969,12 @@ namespace jasperengine{
 			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
 			// always for the frame's own view)
 			bool postProcessing = true;
+			// the atmosphere's targets of the view (volumetric fog, clouds) and what it ran
+			AtmosphereViewTargets atmosphere;
+			// editor: the view draws without the volumetric clouds, and at this atmosphere
+			// quality (the Game view's preview; -1 the project's)
+			bool disableClouds = false;
+			int atmosphereQuality = -1;
 
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
@@ -1315,6 +1323,17 @@ namespace jasperengine{
 		fs_lighting_t legacyLightingBlock;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
+		// the height fog of the camera pass being drawn (u_fs_heightFog), and the atmosphere:
+		// volumetric fog, clouds and their composites (AtmosphereRenderer)
+		height_fog_t passHeightFog;
+		AtmosphereRenderer atmosphere;
+#ifdef JASPERENGINE_EDITOR
+		std::unordered_map<uint32_t, AtmosphereInfo> keptAtmosphereInfo;
+#endif
+		// the scene fog is a height fog (its fogged meshes evaluate it: u_fs_heightFog)
+		bool heightFogActive = false;
+		// the variant state the meshes loaded with (needReloadMeshVariants on a change)
+		bool atmosphereDepthPrograms = false;
 
 		// SSAO: per-frame fullscreen passes for the main camera. The depth pre-pass
 		// renders camera-space packed depth, then the ssao + blur fullscreen passes
@@ -2038,7 +2057,22 @@ namespace jasperengine{
 		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
 
+		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
+		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
+		// ViewDesc::disableFog
 		void setDisableFog(bool disableFog);
+		// editor-only: the frame's own view draws without the volumetric clouds (the Scene
+		// view's Clouds toggle), and at this atmosphere quality (the Game view's preview while
+		// playing; -1 the project's)
+		void setDisableClouds(bool disableClouds);
+		void setPreviewAtmosphereQuality(int quality);
+		// what the atmosphere ran in the last frame of a view (0: the frame's own)
+		const AtmosphereInfo& getAtmosphereInfo(uint32_t viewId = 0);
+#ifdef JASPERENGINE_EDITOR
+		// the frame's own view drew for an editor view (the Game view drawn as the frame):
+		// what its atmosphere ran counts for that view too (getAtmosphereInfo(viewId))
+		void keepAtmosphereInfo(uint32_t viewId);
+#endif
 
 		// Editor-only override (see member declaration). No reload needed: the
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
@@ -2256,6 +2290,9 @@ namespace jasperengine{
 			bool postProcessing = true;
 			// the view camera's passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
+			// draws without the volumetric clouds; at this atmosphere quality (-1 the project's)
+			bool disableClouds = false;
+			int atmosphereQuality = -1;
 			// canvas an auto-resize camera covers in this view (0: as the camera is)
 			float canvasWidth = 0.0f;
 			float canvasHeight = 0.0f;

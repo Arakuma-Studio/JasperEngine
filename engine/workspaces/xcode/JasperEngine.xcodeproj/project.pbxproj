@@ -74,7 +74,11 @@
 		175DCCB3300FA1C2008C19EC /* ReflectionProbeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCB2300FA1C2008C19EC /* ReflectionProbeComponent.h */; };
 		175DCCB6300FA1F2008C19EC /* ReflectionProbe.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCB4300FA1F2008C19EC /* ReflectionProbe.h */; };
 		175DCCB7300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */; };
+		15CFD6E14E8C4522FE74222E /* VolumetricClouds.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 359D537D44F66E2EA44635D4 /* VolumetricClouds.cpp */; };
+		6BA8350F44CF24DA61BAECEC /* LocalVolumetricFog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B099C8893626E0CCA13077BE /* LocalVolumetricFog.cpp */; };
 		175DCCB8300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */; };
+		4A9684AF768263DF37FE2640 /* VolumetricClouds.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 359D537D44F66E2EA44635D4 /* VolumetricClouds.cpp */; };
+		0B2166F095777F981FA7B974 /* LocalVolumetricFog.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B099C8893626E0CCA13077BE /* LocalVolumetricFog.cpp */; };
 		175DCCBB300FA22F008C19EC /* Export.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCB9300FA22F008C19EC /* Export.h */; };
 		175DCCBC300FA22F008C19EC /* SceneSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCBA300FA22F008C19EC /* SceneSettings.h */; };
 		175DCCBE3022C5A2008C19EC /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */; };
@@ -489,6 +493,10 @@
 		713D8297259D307F00567F9F /* FileData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3625962A0E0075B97D /* FileData.cpp */; };
 		713D8298259D307F00567F9F /* ShaderRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3925962A0E0075B97D /* ShaderRender.cpp */; };
 		713D8299259D307F00567F9F /* ObjectRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3E25962A0E0075B97D /* ObjectRender.cpp */; };
+		CCEAA03B93C832ABDA6DD1DD /* AtmosphereQuality.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6B00EB793D96E996A27F3B2E /* AtmosphereQuality.cpp */; };
+		7A64A1971B7F06C13547C822 /* AtmospherePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 950B0E4A5CFD10CA4C22D75B /* AtmospherePresets.cpp */; };
+		370E97CA413288FF67F9A9DB /* AtmosphereNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 80FB957EAA0F76E172B5F046 /* AtmosphereNoise.cpp */; };
+		5BFF6212CA64E6DE0250B173 /* AtmosphereMath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 34B21611DF7384D1FAFCD8E3 /* AtmosphereMath.cpp */; };
 		713D829A259D307F00567F9F /* TextureRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4025962A0E0075B97D /* TextureRender.cpp */; };
 		713D829A2E76C00100567F9F /* ResourcePack.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3A2E76C0010075B97D /* ResourcePack.cpp */; };
 		713D829B259D307F00567F9F /* BufferRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4125962A0E0075B97D /* BufferRender.cpp */; };
@@ -506,6 +514,7 @@
 		713D82A9259D307F00567F9F /* GameObject.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC6625962A0E0075B97D /* GameObject.cpp */; };
 		713D82AB259D307F00567F9F /* Texture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC6C25962A0E0075B97D /* Texture.cpp */; };
 		713D82AD259D307F00567F9F /* RenderSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC7025962A0E0075B97D /* RenderSystem.cpp */; };
+		3E94CF8B51086BC5F6CFF98D /* AtmosphereRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3EE6D137C8456E9A9B88598D /* AtmosphereRenderer.cpp */; };
 		713D82AE259D307F00567F9F /* Engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC7225962A0E0075B97D /* Engine.cpp */; };
 		713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC7D25962A0E0075B97D /* InterleavedBuffer.cpp */; };
 		713D82B0259D307F00567F9F /* Attribute.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC8125962A0E0075B97D /* Attribute.cpp */; };
@@ -598,6 +607,10 @@
 		7162FD1A25963AE00075B97D /* FileData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3625962A0E0075B97D /* FileData.cpp */; };
 		7162FD1C25963AE00075B97D /* ShaderRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3925962A0E0075B97D /* ShaderRender.cpp */; };
 		7162FD2125963AE00075B97D /* ObjectRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC3E25962A0E0075B97D /* ObjectRender.cpp */; };
+		15CF3784A4A93C46E3330289 /* AtmosphereQuality.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 6B00EB793D96E996A27F3B2E /* AtmosphereQuality.cpp */; };
+		7ACF4001E8BCCA0185E62889 /* AtmospherePresets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 950B0E4A5CFD10CA4C22D75B /* AtmospherePresets.cpp */; };
+		CF890935BEC30E9977AE7802 /* AtmosphereNoise.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 80FB957EAA0F76E172B5F046 /* AtmosphereNoise.cpp */; };
+		F35C0F307D96E2D72EEB551C /* AtmosphereMath.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 34B21611DF7384D1FAFCD8E3 /* AtmosphereMath.cpp */; };
 		7162FD2325963AE00075B97D /* TextureRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4025962A0E0075B97D /* TextureRender.cpp */; };
 		7162FD2425963AE00075B97D /* BufferRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4125962A0E0075B97D /* BufferRender.cpp */; };
 		7162FD2525963AE00075B97D /* CameraRender.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC4225962A0E0075B97D /* CameraRender.cpp */; };
@@ -615,6 +628,7 @@
 		7162FD4525963AE00075B97D /* GameObject.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC6625962A0E0075B97D /* GameObject.cpp */; };
 		7162FD4A25963AE00075B97D /* Texture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC6C25962A0E0075B97D /* Texture.cpp */; };
 		7162FD4D25963AE00075B97D /* RenderSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC7025962A0E0075B97D /* RenderSystem.cpp */; };
+		954B9329FE039F23BBBD2DBC /* AtmosphereRenderer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3EE6D137C8456E9A9B88598D /* AtmosphereRenderer.cpp */; };
 		7162FD4F25963AE00075B97D /* Engine.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC7225962A0E0075B97D /* Engine.cpp */; };
 		7162FD5825963AE00075B97D /* InterleavedBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC7D25962A0E0075B97D /* InterleavedBuffer.cpp */; };
 		7162FD5925963AE00075B97D /* Buffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC7E25962A0E0075B97D /* Buffer.cpp */; };
@@ -3659,6 +3673,8 @@
 		175DCCB2300FA1C2008C19EC /* ReflectionProbeComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ReflectionProbeComponent.h; sourceTree = "<group>"; };
 		175DCCB4300FA1F2008C19EC /* ReflectionProbe.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ReflectionProbe.h; sourceTree = "<group>"; };
 		175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ReflectionProbe.cpp; sourceTree = "<group>"; };
+		359D537D44F66E2EA44635D4 /* VolumetricClouds.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = VolumetricClouds.cpp; sourceTree = "<group>"; };
+		B099C8893626E0CCA13077BE /* LocalVolumetricFog.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = LocalVolumetricFog.cpp; sourceTree = "<group>"; };
 		175DCCB9300FA22F008C19EC /* Export.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Export.h; sourceTree = "<group>"; };
 		175DCCBA300FA22F008C19EC /* SceneSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneSettings.h; sourceTree = "<group>"; };
 		175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ComponentManager.cpp; sourceTree = "<group>"; };
@@ -4283,6 +4299,10 @@
 		7162FC3C25962A0E0075B97D /* ShaderRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ShaderRender.h; sourceTree = "<group>"; };
 		7162FC3D25962A0E0075B97D /* ObjectRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ObjectRender.h; sourceTree = "<group>"; };
 		7162FC3E25962A0E0075B97D /* ObjectRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ObjectRender.cpp; sourceTree = "<group>"; };
+		6B00EB793D96E996A27F3B2E /* AtmosphereQuality.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AtmosphereQuality.cpp; sourceTree = "<group>"; };
+		950B0E4A5CFD10CA4C22D75B /* AtmospherePresets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AtmospherePresets.cpp; sourceTree = "<group>"; };
+		80FB957EAA0F76E172B5F046 /* AtmosphereNoise.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AtmosphereNoise.cpp; sourceTree = "<group>"; };
+		34B21611DF7384D1FAFCD8E3 /* AtmosphereMath.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AtmosphereMath.cpp; sourceTree = "<group>"; };
 		7162FC3F25962A0E0075B97D /* BufferRender.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BufferRender.h; sourceTree = "<group>"; };
 		7162FC4025962A0E0075B97D /* TextureRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TextureRender.cpp; sourceTree = "<group>"; };
 		7162FC4125962A0E0075B97D /* BufferRender.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BufferRender.cpp; sourceTree = "<group>"; };
@@ -4319,6 +4339,7 @@
 		7162FC6C25962A0E0075B97D /* Texture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Texture.cpp; sourceTree = "<group>"; };
 		7162FC6D25962A0E0075B97D /* Texture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Texture.h; sourceTree = "<group>"; };
 		7162FC7025962A0E0075B97D /* RenderSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystem.cpp; sourceTree = "<group>"; };
+		3EE6D137C8456E9A9B88598D /* AtmosphereRenderer.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AtmosphereRenderer.cpp; sourceTree = "<group>"; };
 		7162FC7125962A0E0075B97D /* RenderSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RenderSystem.h; sourceTree = "<group>"; };
 		7162FC7225962A0E0075B97D /* Engine.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Engine.cpp; sourceTree = "<group>"; };
 		7162FC7A25962A0E0075B97D /* JasperEngine.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JasperEngine.h; sourceTree = "<group>"; };
@@ -7910,6 +7931,10 @@
 				71CC839926B8C4FD00EEBB93 /* FramebufferRender.cpp */,
 				71CC839826B8C4FC00EEBB93 /* FramebufferRender.h */,
 				7162FC3E25962A0E0075B97D /* ObjectRender.cpp */,
+				6B00EB793D96E996A27F3B2E /* AtmosphereQuality.cpp */,
+				950B0E4A5CFD10CA4C22D75B /* AtmospherePresets.cpp */,
+				80FB957EAA0F76E172B5F046 /* AtmosphereNoise.cpp */,
+				34B21611DF7384D1FAFCD8E3 /* AtmosphereMath.cpp */,
 				7162FC3D25962A0E0075B97D /* ObjectRender.h */,
 				7162FC4325962A0E0075B97D /* Render.h */,
 				7162FC4225962A0E0075B97D /* CameraRender.cpp */,
@@ -8092,6 +8117,7 @@
 				71E824922A9C242B00C8E6F2 /* PhysicsSystem.cpp */,
 				71E824932A9C242B00C8E6F2 /* PhysicsSystem.h */,
 				7162FC7025962A0E0075B97D /* RenderSystem.cpp */,
+				3EE6D137C8456E9A9B88598D /* AtmosphereRenderer.cpp */,
 				7162FC7125962A0E0075B97D /* RenderSystem.h */,
 				71ABBD22277A31E6001CE3AF /* UISystem.cpp */,
 				71ABBD21277A31E6001CE3AF /* UISystem.h */,
@@ -8323,6 +8349,8 @@
 				7170A3D32818A8A30003E965 /* Fog.cpp */,
 				175DCCB4300FA1F2008C19EC /* ReflectionProbe.h */,
 				175DCCB5300FA1F2008C19EC /* ReflectionProbe.cpp */,
+				359D537D44F66E2EA44635D4 /* VolumetricClouds.cpp */,
+				B099C8893626E0CCA13077BE /* LocalVolumetricFog.cpp */,
 				7170A3D02818A8A30003E965 /* Skybox.h */,
 				7170A3D22818A8A30003E965 /* Skybox.cpp */,
 			);
@@ -13340,6 +13368,8 @@
 				7105A56928B305B20092EA05 /* ECSClassesLua.cpp in Sources */,
 				71451BDD270CA17F00712643 /* RotationTween.cpp in Sources */,
 				175DCCB8300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */,
+				4A9684AF768263DF37FE2640 /* VolumetricClouds.cpp in Sources */,
+				0B2166F095777F981FA7B974 /* LocalVolumetricFog.cpp in Sources */,
 				71ABBD0F277A313C001CE3AF /* AlphaTween.cpp in Sources */,
 				1776226E3058741F00F220CC /* ShaderUniforms.cpp in Sources */,
 				17A1C0A53058741F00F220CC /* ShaderManifest.cpp in Sources */,
@@ -13418,6 +13448,10 @@
 				717AD98F29211976007D7DB5 /* LayoutGroup.cpp in Sources */,
 				713D8298259D307F00567F9F /* ShaderRender.cpp in Sources */,
 				713D8299259D307F00567F9F /* ObjectRender.cpp in Sources */,
+				CCEAA03B93C832ABDA6DD1DD /* AtmosphereQuality.cpp in Sources */,
+				7A64A1971B7F06C13547C822 /* AtmospherePresets.cpp in Sources */,
+				370E97CA413288FF67F9A9DB /* AtmosphereNoise.cpp in Sources */,
+				5BFF6212CA64E6DE0250B173 /* AtmosphereMath.cpp in Sources */,
 				71C33FB62A315877007A5822 /* Mesh.cpp in Sources */,
 				71CC839C26B8C4FD00EEBB93 /* FramebufferRender.cpp in Sources */,
 				713D829A259D307F00567F9F /* TextureRender.cpp in Sources */,
@@ -13471,6 +13505,7 @@
 				71451BE0270CA17F00712643 /* PositionTween.cpp in Sources */,
 				71ABBD4527A879D4001CE3AF /* Button.cpp in Sources */,
 				713D82AD259D307F00567F9F /* RenderSystem.cpp in Sources */,
+				3E94CF8B51086BC5F6CFF98D /* AtmosphereRenderer.cpp in Sources */,
 				713D82AE259D307F00567F9F /* Engine.cpp in Sources */,
 				71ABBD1D277A31BA001CE3AF /* Text.cpp in Sources */,
 				71ABBD4A27A87A2E001CE3AF /* MeshSystem.cpp in Sources */,
@@ -13749,6 +13784,8 @@
 				7105A56828B305B20092EA05 /* ECSClassesLua.cpp in Sources */,
 				71451BDC270CA17F00712643 /* RotationTween.cpp in Sources */,
 				175DCCB7300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */,
+				15CFD6E14E8C4522FE74222E /* VolumetricClouds.cpp in Sources */,
+				6BA8350F44CF24DA61BAECEC /* LocalVolumetricFog.cpp in Sources */,
 				71ABBD0E277A313C001CE3AF /* AlphaTween.cpp in Sources */,
 				1776226D3058741F00F220CC /* ShaderUniforms.cpp in Sources */,
 				17A1C0A43058741F00F220CC /* ShaderManifest.cpp in Sources */,
@@ -13834,6 +13871,10 @@
 				7162FD1C25963AE00075B97D /* ShaderRender.cpp in Sources */,
 				71451BD7270CA17F00712643 /* ColorTween.cpp in Sources */,
 				7162FD2125963AE00075B97D /* ObjectRender.cpp in Sources */,
+				15CF3784A4A93C46E3330289 /* AtmosphereQuality.cpp in Sources */,
+				7ACF4001E8BCCA0185E62889 /* AtmospherePresets.cpp in Sources */,
+				CF890935BEC30E9977AE7802 /* AtmosphereNoise.cpp in Sources */,
+				F35C0F307D96E2D72EEB551C /* AtmosphereMath.cpp in Sources */,
 				71FCE4BF28E0FA01003C5217 /* LuaFunctionBase.cpp in Sources */,
 				71451BE4270CA17F00712643 /* Action.cpp in Sources */,
 				71165BBF282981BE00CF79C1 /* Base64.cpp in Sources */,
@@ -13901,6 +13942,7 @@
 				71E54501284D5BB700C68FAB /* TranslateTracks.cpp in Sources */,
 				71EA6DA92AE20B8C00CA9A75 /* Contact3D.cpp in Sources */,
 				7162FD4D25963AE00075B97D /* RenderSystem.cpp in Sources */,
+				954B9329FE039F23BBBD2DBC /* AtmosphereRenderer.cpp in Sources */,
 				71E54503284D5BB700C68FAB /* ScaleTracks.cpp in Sources */,
 				7170A3D52818A8A30003E965 /* Bone.cpp in Sources */,
 				7162FD4F25963AE00075B97D /* Engine.cpp in Sources */,

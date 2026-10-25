@@ -65,6 +65,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PrefabComponent>();
     registerComponent<ReflectionProbeComponent>();
     registerComponent<UIDocumentComponent>();
+    registerComponent<LocalVolumetricFogComponent>();
+    registerComponent<VolumetricCloudsComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

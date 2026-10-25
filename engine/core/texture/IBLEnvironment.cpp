@@ -259,7 +259,8 @@ namespace {
 
 }
 
-bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6>& faces, TextureRender& irradianceMap, TextureRender& prefilteredMap){
+bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6>& faces, TextureRender& irradianceMap, TextureRender& prefilteredMap,
+                              HorizonRing* horizonRing){
 
     // ---- build a linear float mip chain of the environment ----
     std::vector<CubeLevel> chain(SPECULAR_MIPS);
@@ -272,6 +273,29 @@ bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6
     }
     for (int level = 1; level < SPECULAR_MIPS; level++){
         downsampleLevel(chain[level - 1], chain[level]);
+    }
+
+    // ---- the horizon ring: 0 to 5 degrees of elevation, per azimuth sector ----
+    if (horizonRing){
+        const CubeLevel& ringSource = chain[2]; // 32 texels a face: about 2.8 degrees a texel
+        const int azimuthSamples = 8;
+        const int elevationSamples = 4;
+        for (int k = 0; k < HORIZON_AZIMUTHS; k++){
+            float sum[3] = {0.0f, 0.0f, 0.0f};
+            for (int a = 0; a < azimuthSamples; a++){
+                const float azimuth = 2.0f * IBL_PI * ((float)k + ((float)a + 0.5f) / (float)azimuthSamples - 0.5f) / (float)HORIZON_AZIMUTHS;
+                for (int e = 0; e < elevationSamples; e++){
+                    const float elevation = (5.0f * IBL_PI / 180.0f) * ((float)e + 0.5f) / (float)elevationSamples;
+                    Vec3f dir = {sinf(azimuth) * cosf(elevation), sinf(elevation), cosf(azimuth) * cosf(elevation)};
+                    float color[3];
+                    sampleCube(ringSource, dir, color);
+                    for (int c = 0; c < 3; c++)
+                        sum[c] += color[c];
+                }
+            }
+            const float count = (float)(azimuthSamples * elevationSamples);
+            (*horizonRing)[k] = Vector3(sum[0] / count, sum[1] / count, sum[2] / count);
+        }
     }
 
     // ---- lambertian (irradiance) map: cosine convolution divided by PI ----

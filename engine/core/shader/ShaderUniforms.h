@@ -98,6 +98,8 @@ namespace jasperengine{
         // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
         int slotFSBlurredScene = -1;
         std::pair<int, int> slotBlurredScene = {-1, -1};
+        // the height fog of the pass (includes/height_fog.glsl, the fogged mesh variants)
+        int slotFSHeightFog = -1;
 
         void clear(){
             slotVSFrame = -1;
@@ -116,6 +118,7 @@ namespace jasperengine{
             slotEnvironment = {-1, -1};
             slotFSBlurredScene = -1;
             slotBlurredScene = {-1, -1};
+            slotFSHeightFog = -1;
         }
         // the shader declares a scene input (its draws get the pass's, RenderSystem::applySceneInputs)
         bool readsScene() const{
