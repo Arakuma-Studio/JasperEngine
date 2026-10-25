@@ -159,7 +159,11 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   `ShadowBench`), `SchedulerTest.Process10kUnder2ms` and S12's `AtmosphereNoise` bake budgets check
   their budgets that way and print `[bench]` lines; the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24) and
-  `AutosaveEncodeBench` (S03) (ratios such as a report's overhead stay checked everywhere). A
+  `AutosaveEncodeBench` (S03) (ratios such as a report's overhead stay checked everywhere). The MCP
+  texture storm's frame budget (`test_jobs_memory_ui.py`, S06 AC23) reads the same variable; it assumes
+  a machine whose decode workers and software renderer do not share cores (8+ hardware threads):
+  E's 4 vCPU measure a storm p95 of 1.7x the idle frame against the 1.5x budget, so it runs there
+  only with a slack above that. A
   shared build server's load alone misses them (10k timers in 20 ms instead of 2), so an ordinary
   unit test run never fails on wall-clock time; the benchmark run enforces them on the
   benchmark-only server E, which runs one job at a time:

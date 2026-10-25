@@ -327,6 +327,9 @@ if(API_BACKEND STREQUAL "linux" OR API_BACKEND STREQUAL "win")
 endif()
 
 add_definitions("-DJASPERENGINE_EDITOR")
+# ImGui reports the items it draws through its test-engine hooks (editor/util/UiItemLocator.cpp,
+# MCP locate_ui_item); they run only while a lookup records
+add_definitions("-DIMGUI_ENABLE_TEST_ENGINE")
 add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
 add_definitions("-DNO_LUA_INIT")
@@ -692,6 +695,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
     ${EDITOR_DIR}/util/TerrainErosion.cpp
     ${EDITOR_DIR}/util/UIUtils.cpp
+    ${EDITOR_DIR}/util/UiItemLocator.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
