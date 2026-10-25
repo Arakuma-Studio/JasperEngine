@@ -220,7 +220,7 @@ frame), smoothed_ms, target_ms, saturated_low, ineffective, accepted_changes, pr
 `render_scale_applied`. `set_post_processing_debug` (editor only, not saved) pins
 `time_seconds` (the time grain, VHS and film damage animate with), `force_render_scale` (0.5-1,
 in Play) and `fake_gpu_ms` (a GPU time the controller reads): a number pins, `null` releases;
-Play's end releases the scale and the GPU time.
+Stop (or Pause) releases the scale and the GPU time.
 
 ## Custom passes
 

@@ -5185,19 +5185,10 @@ void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
     primaryView.postProcessing = !disablePostProcessing;
 }
 
-void RenderSystem::setDisableDynamicResolution(bool disableDynamicResolution){
-    // leaving Play: what its scripts and tests pinned ends with it (the next Play starts clean)
-    if (disableDynamicResolution && !this->disableDynamicResolution){
-        dynamicResolutionOverride = 0.0f;
-        dynamicResolutionFakeGpuMs = 0.0f;
-    }
-    this->disableDynamicResolution = disableDynamicResolution;
-}
-
 float RenderSystem::getAppliedRenderScale() const{
     // a pinned scale applies where dynamic resolution may run (Play and the game, never the
     // editor's edit mode)
-    if (dynamicResolutionOverride > 0.0f && !disableDynamicResolution)
+    if (dynamicResolutionOverride > 0.0f && !Engine::areGameEventsPaused())
         return dynamicResolutionOverride;
     return dynamicResolutionRunning ? dynamicResolutionScale : postTiers.renderScale;
 }
@@ -5207,7 +5198,7 @@ DynamicResolutionStatus RenderSystem::getDynamicResolutionStatus() const{
     status.enabled = scene && scene->getPostProcessing().dynamicResolutionEnabled;
     status.running = dynamicResolutionRunning;
     status.idle = dynamicResolutionRunning ? "" : (status.enabled ? dynamicResolutionIdle : "off");
-    status.overridden = dynamicResolutionOverride > 0.0f && !disableDynamicResolution;
+    status.overridden = dynamicResolutionOverride > 0.0f && !Engine::areGameEventsPaused();
     status.scale = getAppliedRenderScale();
     status.maxScale = postTiers.renderScale;
     status.minScale = status.maxScale;
@@ -5242,9 +5233,17 @@ void RenderSystem::updateDynamicResolution(){
     const PostProcessingSettings& settings = scene->getPostProcessing();
     // the frame's own view of the main scene, post-processed, with the uber pass drawing at a
     // render scale (fixed resolution draws at its own size)
+    // the editor's edit mode (and its Pause) pauses the game's events; an exported game never
+    // does. Leaving Play (or pausing it) releases what its scripts and tests pinned
+    const bool editPaused = Engine::areGameEventsPaused();
+    if (editPaused && !dynamicResolutionEditPaused){
+        dynamicResolutionOverride = 0.0f;
+        dynamicResolutionFakeGpuMs = 0.0f;
+    }
+    dynamicResolutionEditPaused = editPaused;
     if (!postTiers.dynamicResolution || !postTiers.uber)
         dynamicResolutionIdle = "off";
-    else if (disableDynamicResolution)
+    else if (editPaused)
         dynamicResolutionIdle = "edit mode";
     else if (Engine::getMainScene() != scene)
         dynamicResolutionIdle = "not the main scene";

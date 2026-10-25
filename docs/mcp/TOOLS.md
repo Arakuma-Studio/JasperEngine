@@ -542,7 +542,7 @@ Set the scene's main camera (the game renders through it) to a GameObject with a
 
 Hints: idempotent
 
-Editor-only, unsaved pins for deterministic captures: time_seconds (the uber effects' time: grain, VHS, film damage), force_render_scale (0.5..1, in Play), fake_gpu_ms (GPU time fed to dynamic resolution). A number pins, null releases, absent keeps. Play's end releases the scale and GPU pins.
+Editor-only, unsaved pins for deterministic captures: time_seconds (the uber effects' time: grain, VHS, film damage), force_render_scale (0.5..1, in Play), fake_gpu_ms (GPU time fed to dynamic resolution). A number pins, null releases, absent keeps. Stop or Pause releases the scale and GPU pins.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|

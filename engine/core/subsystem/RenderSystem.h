@@ -570,11 +570,6 @@ namespace jasperengine{
 		// to false and is never set at runtime, so exported games are unaffected.
 		bool disableFixedResolution = false;
 
-		// Editor-only override that keeps dynamic resolution off (edit mode: the controller runs
-		// in Play and in exported games only). Like disableFixedResolution it defaults to false:
-		// the editor's views of a scene set it every frame (SceneRender), a Play copy's renderer
-		// keeps the game's behaviour
-		bool disableDynamicResolution = false;
 
 		static uint32_t pixelsWhite[64];
 		static uint32_t pixelsBlack[64];
@@ -1368,6 +1363,9 @@ namespace jasperengine{
 		// scale there (getAppliedRenderScale) and is never written to the settings
 		DynamicResolutionController dynamicResolution;
 		bool dynamicResolutionRunning = false;
+		// the game's events were paused at the last tick: the editor's edit mode (and Pause), where
+		// the controller does not run and a pinned scale does not apply
+		bool dynamicResolutionEditPaused = false;
 		// why the controller did not run this frame ("" when it did), DynamicResolutionStatus::idle
 		const char* dynamicResolutionIdle = "off";
 		float dynamicResolutionScale = 1.0f;
@@ -1930,7 +1928,6 @@ namespace jasperengine{
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
 		// already baked either way.
 		void setDisableFixedResolution(bool disableFixedResolution);
-		void setDisableDynamicResolution(bool disableDynamicResolution);
 
 		// Dynamic resolution (S13, PostProcessingSettings::dynamicResolution*): the render scale
 		// the post-processed main camera draws at (the controller's while it runs, the pinned

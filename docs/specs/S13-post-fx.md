@@ -450,9 +450,11 @@ per-file header, so we add the OE copyright line to each copied file.
 5. **GPU law input**: S15 has not landed, so no backend reports GPU time yet; the controller takes
    `DynamicResolutionSample::gpuMs` when given (today only `set_post_processing_debug.fake_gpu_ms`)
    and the frame law otherwise. Wiring S15's timer queries is filling that one field.
-6. **`force_render_scale` / `setDynamicResolutionOverride` apply only where dynamic resolution may
-   run** (Play, exported games), never in edit mode, and Play's end releases the pinned scale and
-   the fake GPU time (a script's pin must not leak into the editor or the next Play).
+6. **Edit mode is the engine's paused game events** (`Engine::areGameEventsPaused()`: the editor's
+   edit mode and Pause; an exported game never pauses them), not a flag the editor's views set, so
+   a Play copy of a scene runs the controller whichever view shows it. `force_render_scale` /
+   `setDynamicResolutionOverride` apply only while the game runs, and Stop or Pause releases the
+   pinned scale and the fake GPU time (a script's pin must not leak into the editor or the next Play).
 7. **Named undo steps (S24)**: presets, group toggles and the LUT assignment are one
    `CommandGroup` labelled "Apply Film Preset (Main)", "Turn On Stylised (Main)", "Assign Color LUT
    ..."; single fields keep `ScenePropertyCmd`'s "Set Vhs Enabled (Main)".
@@ -472,4 +474,11 @@ per-file header, so we add the OE copyright line to each copied file.
     about 210 KB).
 12. **A scene-stage LUT scales colours brighter than its input range into it and back** (ACEScct
     ends near linear 222, LogC3 near 55) instead of clamping each channel, which turned a very bright
-    saturated colour white; an identity log LUT is then neutral at every texel (AC5).
+    saturated colour white; an identity log LUT is then neutral at every texel below the bake's top
+    (AC5: the top texels stand for unbounded light, where float precision cannot keep a channel a
+    million times smaller than another).
+13. **Doc thumbnails** of the new effects are in `docs/mcp/guide/img/post-fx/` (from the goldens):
+    `img/effects/` is generated from the HTML UI effects' manifests.
+14. **AC18**: the fixtures are partly hand-written, so a first save writes the editor's full form
+    (before and after S13); the test checks that the saved `postProcessing` equals the file's and
+    that a second open and save gives the same bytes.
