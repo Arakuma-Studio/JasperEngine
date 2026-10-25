@@ -562,3 +562,22 @@ one line pointing here.
   blurred `text-shadow` drawn through a layer.
 - **S15's render-stats tool** does not exist yet (S15 has not landed); `HtmlUIRenderStats::
   forEachField` is what it can report.
+- **R21 B1 draws (reported, not gated).** The examples do not reach "<= 30 % of the baseline and
+  <= 40": measured on the benchmark host (`docs/html-ui/render-benchmark.md`) most of their draws
+  are not runs but their effects' passes (backdrop blurs, filters, gradients, layer composites),
+  which S16 leaves as they are, and the runs left are mostly split by textures (icons, images,
+  effect variants: one texture per instanced draw, D3). `HtmlUIRenderPerf.B1Examples` prints the
+  target per example and why each run started (`RmlRenderer::getLastRunBreaks`), and gates "no
+  more draws than the baseline" and the engine time. Follow-up: a few texture slots per
+  `HTMLUI_PRIM` draw (a per-instance slot and kind) would merge the texture splits.
+- **R22 B2 (the replay gated).** "<= 50 % of the baseline" holds for the replay (0.385 -> 0.108 ms
+  on the benchmark host), the part S16 changes; the whole engine time is mostly RmlUi's update and
+  paint traversal (`Context::Render`, 2.4 ms for 500 cards, the same both ways). The test gates the
+  replay at 50 % and the engine time at the baseline + 5 %. Follow-up: culling elements outside the
+  clip in the paint traversal (fork).
+- **R22 gathering** counts an instance as the 4 vertices it replaces, on warm frames with the run
+  cache dropped (`RmlRenderer::clearRunCacheForTesting`).
+- **Wall frame times on a software rasterizer** (llvmpipe, the CI and benchmark hosts) are higher
+  with S16: llvmpipe pays per instance (B3 text-wall: 104 ms instanced, 31 ms as vertex runs, 30 ms
+  baseline). They are not a criterion (R22 excludes the backend, R24 needs GPU pass timings) and
+  are reported in `docs/html-ui/render-benchmark.md`.
