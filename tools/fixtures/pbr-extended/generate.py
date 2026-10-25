@@ -24,6 +24,7 @@ compilation off, so a variant the export did not precompile is a missing shader 
 tools/fixtures/shader-library/assets/textures, the model from engine/tests/render/assets/khronos.
 """
 import asyncio
+import json
 import math
 import shutil
 import struct
@@ -80,6 +81,29 @@ def png(width: int, height: int, pixel) -> bytes:
 
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)) +
             chunk(b"IDAT", zlib.compress(bytes(raw))) + chunk(b"IEND", b""))
+
+
+def unpack_glb(glb: Path, gltf: Path) -> None:
+    """a .glb as a .gltf with its buffer and images in files beside it: the textures a scene
+    keeps of the model are then paths, which a scene file round-trips (embedded images are ids)"""
+    data = glb.read_bytes()
+    json_length = struct.unpack_from("<I", data, 12)[0]
+    doc = json.loads(data[20:20 + json_length])
+    bin_start = 20 + json_length
+    bin_length = struct.unpack_from("<I", data, bin_start)[0]
+    blob = data[bin_start + 8:bin_start + 8 + bin_length]
+    for i, image in enumerate(doc.get("images", [])):
+        if "bufferView" in image:
+            view = doc["bufferViews"][image.pop("bufferView")]
+            start = view.get("byteOffset", 0)
+            ext = ".jpg" if image.get("mimeType") == "image/jpeg" else ".png"
+            name = f"{gltf.stem}_image{i}{ext}"
+            (gltf.parent / name).write_bytes(blob[start:start + view["byteLength"]])
+            image.pop("mimeType", None)
+            image["uri"] = name
+    doc["buffers"][0]["uri"] = gltf.stem + ".bin"
+    (gltf.parent / (gltf.stem + ".bin")).write_bytes(blob)
+    gltf.write_text(json.dumps(doc, indent=1))
 
 
 def scene_id(made):
@@ -230,7 +254,7 @@ async def build_export(out: Path) -> None:
         (textures / "clearcoat_normal.png").write_bytes(png(64, 64, lambda x, y: (128 + (24 if x % 16 < 8 else -24), 128, 240, 255)))
         model = ed.project / "assets" / "models" / "ClearCoatTest"
         model.mkdir(parents=True, exist_ok=True)
-        shutil.copy(KHRONOS / "ClearCoatTest" / "glTF-Binary" / "ClearCoatTest.glb", model / "ClearCoatTest.glb")
+        unpack_glb(KHRONOS / "ClearCoatTest" / "glTF-Binary" / "ClearCoatTest.glb", model / "ClearCoatTest.gltf")
         shutil.copy(KHRONOS / "ClearCoatTest" / "LICENSE.md", model / "LICENSE.md")
         await ed.call("sync_files")
 
@@ -247,7 +271,7 @@ async def build_export(out: Path) -> None:
             await ed.call("set_properties", scene=lobes, entity=made["entity_id"], values={"mesh": values})
             x += 2.1
         await ed.call("create_entity", scene=lobes, type="model", name="ClearCoatTest", select=False,
-                      model="assets/models/ClearCoatTest/ClearCoatTest.glb", position=[0, -1.8, -2], scale=[0.5, 0.5, 0.5])
+                      model="assets/models/ClearCoatTest/ClearCoatTest.gltf", position=[0, -1.8, -2], scale=[0.5, 0.5, 0.5])
         sun_id = await sun(ed, lobes)
         await ed.call("set_light_unit", scene=lobes, entity=sun_id, unit="lux")
         await ed.call("set_properties", scene=lobes, entity=sun_id, values={"light": {"useColorTemperature": True, "colorTemperature": 5500}})
