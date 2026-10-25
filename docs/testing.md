@@ -172,7 +172,7 @@ GRAPHIC_BACKEND=vulkan UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=RenderGpu.
 The post FX goldens (`tools/mcp/tests/test_post_fx_golden.py`, S13) live in
 `tools/mcp/tests/golden/post_fx/` and are rewritten with `JASPER_POST_FX_UPDATE_GOLDEN=1`, except
 `defaults.png`: the post-processing fixture with every field at its default, captured by that test
-on the editor before S13 (oe-port `cf75a9d69`), which the S13 editor must match exactly. Re-capture
+on the editor before S13 (oe-port `8d78ae763`, after S10 and S12), which the S13 editor must match exactly. Re-capture
 it only from an editor without S13's changes.
 
 ## No silent green
