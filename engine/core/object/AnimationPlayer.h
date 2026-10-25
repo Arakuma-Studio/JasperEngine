@@ -6,15 +6,11 @@
 //   Unity's legacy Animation API over an AnimationPlayerComponent, and AnimationState, the
 //   handle getState() returns. The C++ side of the editor (MCP, Inspector live rows, Model
 //   integration) uses the same calls.
-// - Owner: T0 (API, the constructor and the authored-field accessors: clip list, speed,
-//   defaultClip, defaultFadeTime, playAutomatically, enabled, callbacks); T1b implements the
-//   playback calls and the state views, binds it to Lua and adds Model:playAnimation /
-//   GameObject getAnimationPlayer integration.
 // - The constructor ADDS the component when the entity has none (PoseAnimator precedent). The
-//   Lua `object:getAnimationPlayer()` (T1b) must not construct one blindly: it returns nil when
+//   Lua `object:getAnimationPlayer()` does not construct one blindly: it returns nil when
 //   the GameObject has no Animation Player (Unity), and `hasAnimationPlayer()` tells.
 // - Thread-safety: main thread (ECS).
-// - Semantics (T1b implements, tests cover):
+// - Semantics (tests cover them):
 //   * play(name): instant, stops the other states (rewinding them) and plays name from 0 at
 //     weight 1 (from its length when the effective speed is negative); play(name, fade) with
 //     fade > 0 = crossFade(name, fade); crossFade(name) uses defaultFadeTime.

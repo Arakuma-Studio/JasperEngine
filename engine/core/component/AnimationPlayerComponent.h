@@ -5,8 +5,8 @@
 // - Purpose: Unity's legacy Animation component ("Animation Player", Lua AnimationPlayer): a list
 //   of clips (.anim files or model sub-clips) the root plays with fades, crossfades, blends,
 //   queues and wrap modes, binding tracks by path relative to its entity.
-// - Owner: T0 (fields); T1b the runtime (anim::AnimationPlayerRuntime) and the system that drives
-//   it (ActionSystem players), T2a the editor plumbing (Catalog, Stream, Factory...).
+// - The runtime (anim::AnimationPlayerRuntime) is driven by ActionSystem's players; the editor
+//   plumbing (Catalog, Stream, Factory...) covers the authored fields.
 // - Thread-safety: an ECS component (main thread). Decoding a scene off the main thread fills
 //   the authored fields only: nothing loads or resolves until the system update.
 // - Invariants:

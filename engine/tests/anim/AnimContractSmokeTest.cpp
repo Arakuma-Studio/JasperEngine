@@ -263,9 +263,9 @@ TEST(AnimContract, KeyframeSampling){
     std::vector<anim::TrackSample> samples;
     anim::sampleClipTracks(*clip, 0.25f, samples);
     EXPECT_EQ(samples.size(), clip->getTracks().size());
-    std::vector<size_t> crossed;
+    std::vector<anim::CrossedEvent> crossed;
     anim::collectCrossedEvents(*clip, ClipWrapMode::Once, 0.0f, 0.25f, true, crossed);
-    for (size_t index : crossed) EXPECT_LT(index, clip->getEvents().size());
+    for (const anim::CrossedEvent& event : crossed) EXPECT_LT(event.index, clip->getEvents().size());
 }
 
 TEST(AnimContract, ClipBinding){

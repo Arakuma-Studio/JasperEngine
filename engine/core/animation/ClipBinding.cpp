@@ -215,18 +215,6 @@ bool anim::relativePath(EntityRegistry* registry, Entity root, Entity entity, st
     return true;
 }
 
-bool anim::hasDuplicateSiblingName(EntityRegistry* registry, Entity entity){
-    if (!registry || entity == NULL_ENTITY || !registry->isEntityCreated(entity)) return false;
-    if (!registry->findComponent<Transform>(entity)) return false;
-    const std::string name = registry->getEntityName(entity);
-    int count = 0;
-    forEachChild(registry, parentOf(registry, entity), [&](Entity child){
-        if (registry->getEntityName(child) == name) count++;
-        return count < 2;
-    });
-    return count > 1;
-}
-
 std::vector<std::pair<std::string, Entity>> anim::descendantPaths(EntityRegistry* registry, Entity root){
     std::vector<std::pair<std::string, Entity>> paths;
     if (!registry || root == NULL_ENTITY || !registry->isEntityCreated(root)) return paths;
