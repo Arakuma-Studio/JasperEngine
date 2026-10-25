@@ -140,6 +140,11 @@ namespace jasperengine::editor::mcp {
         // activity entry of its own. done runs when the nested call completes.
         void runNested(const CallPtr& parent, const std::string& tool, const Json& args,
                        std::function<void(const ToolResult&)> done);
+        // Runs a tool for the editor itself (an editor script's menu item clicked by the user):
+        // the same gates as a top-level call, its undo steps attributed to `client`, no
+        // activity entry. done runs when it completes.
+        void runLocal(const std::string& tool, const Json& args, const std::string& client,
+                      std::function<void(const ToolResult&)> done);
 
         struct Deferred {
             CallPtr call;

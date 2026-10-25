@@ -4,6 +4,7 @@
 #include "Project.h"
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
+#include "util/EditorScripts.h"
 #include "script/ScriptBase.h"
 #include "reload/HotReloadService.h"
 #include "asset/AssetRefSchema.h"
@@ -4606,6 +4607,8 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             modelLoaded = true;
             openAssetDatabase();
             if (watchFiles) HotReloadService::get().startWatching(*this);
+        // the project's editor menus (a text scan of its Editor folders: no project code runs)
+        EditorScripts::get().scan(this);
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -4894,6 +4897,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     if (oldPath != path) {
         openAssetDatabase();
         if (watchFiles) HotReloadService::get().startWatching(*this);
+        // the project's editor menus (a text scan of its Editor folders: no project code runs)
+        EditorScripts::get().scan(this);
     }
 
     // the temporary project saved somewhere of its own is locked there (R10)
@@ -4983,6 +4988,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         openAssetDatabase();
         // what changes on disk from now on reloads (S05)
         if (watchFiles) HotReloadService::get().startWatching(*this);
+        // the project's editor menus (a text scan of its Editor folders: no project code runs)
+        EditorScripts::get().scan(this);
         // the temps of saves a crash interrupted, found by that walk (R12)
         sweepOrphanedTemporaryFiles();
 

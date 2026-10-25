@@ -8,6 +8,7 @@
 // one for the C++ editor scripts. Set on the main thread; a build on a worker posts through
 // Generator's ThreadSafeSignal and is applied by update().
 
+#include "mcp/McpJson.h"
 #include "util/Signal.h"
 #include "script/ToolchainFingerprint.h"
 
@@ -94,6 +95,8 @@ namespace jasperengine::editor {
         static const char* cppStateName(CppScriptState state);    // none, stale, building, up_to_date, failed, refused
         // "Lua: 2 errors · C++: build failed — using last good build"
         std::string summary() const;
+        // script_status and editor_status.scripts: {lua, cpp, editor_cpp, fingerprint, summary}
+        mcp::Json toJson() const;
 
     private:
         ScriptStatus() = default;

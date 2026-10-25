@@ -6,6 +6,7 @@
 #include "util/EditorFingerprint.h"
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
+#include "util/EditorScripts.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
 
@@ -315,7 +316,11 @@ enum class AppMenuCommand : uint32_t {
     About,
     Documentation,
     KeyboardShortcuts,
-    ReportIssue
+    ReportIssue,
+    ScriptsReload,        // S23 commands: scripts.reload, scripts.rebuildCpp, scripts.cancelBuild
+    ScriptsRebuildCpp,
+    ScriptsCancelBuild,
+    ScriptMenu            // payload: an editor script's menu item id (EditorScripts)
 };
 
 editor::PlatformMenuItem menuCommand(AppMenuCommand command,
@@ -441,6 +446,68 @@ std::vector<editor::PlatformMenuItem> gameObjectMenuItems(editor::SceneProject* 
 }
 
 } // namespace
+
+namespace {
+
+    // An editor script's item at its path in a menu's items (submenus made as needed), after a
+    // separator from the editor's own items
+    void insertScriptMenuItem(std::vector<editor::PlatformMenuItem>& items, const std::vector<std::string>& parts, size_t at,
+                              const editor::EditorMenuItem& script, bool& separated) {
+        if (at + 1 >= parts.size()) {
+            if (!separated && !items.empty() && items.back().type != editor::PlatformMenuItemType::Separator) items.push_back(menuSeparator());
+            separated = true;
+            editor::PlatformMenuItem item = menuPayloadCommand(AppMenuCommand::ScriptMenu, parts.back(), script.id,
+                                                               editor::EditorScripts::get().isEnabled(script));
+            item.shortcut = script.shortcut;
+            items.push_back(std::move(item));
+            return;
+        }
+        for (editor::PlatformMenuItem& item : items) {
+            if (item.type == editor::PlatformMenuItemType::Submenu && item.label == parts[at]) {
+                bool inner = true;
+                insertScriptMenuItem(item.children, parts, at + 1, script, inner);
+                return;
+            }
+        }
+        if (!separated && !items.empty() && items.back().type != editor::PlatformMenuItemType::Separator) items.push_back(menuSeparator());
+        separated = true;
+        std::vector<editor::PlatformMenuItem> children;
+        bool inner = true;
+        insertScriptMenuItem(children, parts, at + 1, script, inner);
+        items.push_back(menuSubmenu(parts[at], std::move(children)));
+    }
+
+    std::vector<std::string> splitMenuPath(const std::string& path) {
+        std::vector<std::string> parts;
+        size_t start = 0;
+        while (start <= path.size()) {
+            const size_t slash = path.find('/', start);
+            const std::string part = path.substr(start, slash == std::string::npos ? std::string::npos : slash - start);
+            if (!part.empty()) parts.push_back(part);
+            if (slash == std::string::npos) break;
+            start = slash + 1;
+        }
+        return parts;
+    }
+
+}
+
+// The project's editor-script menu items (Tools/..., GameObject/..., Assets/...) in the main
+// menu: an existing top-level menu, or a new one before Window
+void editor::App::addScriptMenus(PlatformMenuModel& menu){
+    std::map<std::string, bool> separated;
+    for (const EditorMenuItem* script : EditorScripts::get().itemsFor("main")) {
+        const std::vector<std::string> parts = splitMenuPath(script->path);
+        if (parts.size() < 2) continue;
+        auto top = std::find_if(menu.menus.begin(), menu.menus.end(), [&](const PlatformMenuItem& item) { return item.label == parts[0]; });
+        if (top == menu.menus.end()) {
+            auto window = std::find_if(menu.menus.begin(), menu.menus.end(), [](const PlatformMenuItem& item) { return item.label == "Window"; });
+            top = menu.menus.insert(window, menuSubmenu(parts[0], {}));
+            separated[parts[0]] = true;
+        }
+        insertScriptMenuItem(top->children, parts, 1, *script, separated[parts[0]]);
+    }
+}
 
 editor::PlatformMenuModel editor::App::buildMenuModel(){
     SceneProject* selectedScene = project.getSelectedScene();
@@ -599,6 +666,11 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuCommand(AppMenuCommand::ToggleMissingAssets, "Missing Assets..."),
             menuCommand(AppMenuCommand::MigrateAssetReferences, "Migrate References", !isProjectBusy)
         }),
+        menuSubmenu("Scripts", {
+            menuCommand(AppMenuCommand::ScriptsReload, "Reload Scripts", project.isAnyScenePlaying()),
+            menuCommand(AppMenuCommand::ScriptsRebuildCpp, "Rebuild C++ Scripts", !ScriptReloadService::get().isCppBuilding()),
+            menuCommand(AppMenuCommand::ScriptsCancelBuild, "Cancel Script Build", ScriptReloadService::get().isCppBuilding())
+        }),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
         menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
@@ -652,6 +724,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::KeyboardShortcuts, "Keyboard Shortcuts"),
         menuCommand(AppMenuCommand::ReportIssue, "Report an Issue...")
     }));
+    addScriptMenus(menu);
     return menu;
 }
 
@@ -956,6 +1029,30 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::About:
             aboutWindow.open();
             break;
+        case AppMenuCommand::ScriptsReload:
+            ScriptReloadService::get().requestReload({}, true, ScriptReloadService::cppReloadEnabled());
+            break;
+        case AppMenuCommand::ScriptsRebuildCpp: {
+            std::string message;
+            if (!ScriptReloadService::get().rebuildCpp(message)) Out::warning("Rebuild C++ Scripts: %s", message.c_str());
+            break;
+        }
+        case AppMenuCommand::ScriptsCancelBuild:
+            ScriptReloadService::get().cancelCppBuild();
+            break;
+        case AppMenuCommand::ScriptMenu: {
+            EditorMenuRunContext context;
+            context.sceneId = project.getSelectedSceneId();
+            for (Entity entity : project.getSelectedEntities(context.sceneId)) context.selection.push_back(entity);
+            if (projectWindow) {
+                for (const fs::path& path : projectWindow->getSelectedFiles()) {
+                    const fs::path rel = path.lexically_relative(project.getProjectPath());
+                    context.assets.push_back(rel.generic_string());
+                }
+            }
+            EditorScripts::get().runFromMenu(command.payload, context);
+            break;
+        }
         case AppMenuCommand::DuplicateSelection:
             duplicateSelection();
             break;
@@ -1013,6 +1110,8 @@ void editor::App::showImGuiMenuItems(const std::vector<PlatformMenuItem>& items)
             ImGui::Separator();
         } else if (item.type == PlatformMenuItemType::Submenu) {
             if (ImGui::BeginMenu(item.label.c_str(), item.enabled)) {
+                // editor scripts' ---@validate run when a menu with their items opens
+                if (ImGui::IsWindowAppearing()) validateScriptMenus(item);
                 showImGuiMenuItems(item.children);
                 ImGui::EndMenu();
             }
@@ -1025,6 +1124,26 @@ void editor::App::showImGuiMenuItems(const std::vector<PlatformMenuItem>& items)
     }
 }
 
+void editor::App::validateScriptMenus(const PlatformMenuItem& menu){
+    bool hasScripts = false;
+    std::function<void(const PlatformMenuItem&)> scan = [&](const PlatformMenuItem& item) {
+        if (item.command.id == static_cast<uint32_t>(AppMenuCommand::ScriptMenu)) hasScripts = true;
+        for (const PlatformMenuItem& child : item.children) scan(child);
+    };
+    scan(menu);
+    if (!hasScripts) return;
+    EditorMenuRunContext context;
+    context.sceneId = project.getSelectedSceneId();
+    for (Entity entity : project.getSelectedEntities(context.sceneId)) context.selection.push_back(entity);
+    std::function<void(const PlatformMenuItem&)> validate = [&](const PlatformMenuItem& item) {
+        if (item.command.id == static_cast<uint32_t>(AppMenuCommand::ScriptMenu)) {
+            if (const EditorMenuItem* script = EditorScripts::get().find(item.command.payload)) EditorScripts::get().menuOpened(script->path, context);
+        }
+        for (const PlatformMenuItem& child : item.children) validate(child);
+    };
+    validate(menu);
+}
+
 void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
     if (ImGui::BeginMainMenuBar()) {
         for (const PlatformMenuItem& topLevel : menu.menus) {
@@ -1033,6 +1152,7 @@ void editor::App::showImGuiMenu(const PlatformMenuModel& menu){
                 if (topLevel.label == "Edit" && ImGui::IsWindowAppearing()) {
                     EntityClipboard::refresh();
                 }
+                if (ImGui::IsWindowAppearing()) validateScriptMenus(topLevel);
                 showImGuiMenuItems(topLevel.children);
                 ImGui::EndMenu();
             }

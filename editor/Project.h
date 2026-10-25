@@ -1106,6 +1106,8 @@ namespace jasperengine::editor{
         void collectRequiredShaderKeys(const SceneProject* sceneProject, std::set<ShaderKey>& shaderKeys) const;
 
         std::string getName() const;
+        // The C++ scripts library's name (the project name as an identifier)
+        const std::string& getLibName() const { return libName; }
         void setName(std::string name);
 
         void setCanvasSize(unsigned int width, unsigned int height);
@@ -2224,6 +2226,8 @@ namespace jasperengine::editor{
         // Every frame while it builds, at the frame boundary: the new library is checked,
         // loaded next to the old one and swapped in once the build ends
         void updateCppReload();
+        // Cancel Build: the reload's build stops (the old library keeps running)
+        void cancelCppReload() { if (cppReload.running) generator.cancelBuild(); }
 
         bool isAnyScenePlaying() const;
         bool isPlaySessionActive() const;

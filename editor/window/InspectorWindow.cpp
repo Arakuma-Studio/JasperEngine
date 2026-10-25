@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorWindow.h"
+#include "util/EditorScripts.h"
 #include "command/PlayChangeReview.h"
 #include "command/type/RemovePreservedComponentCmd.h"
 #include "StreamPreserved.h"
@@ -1831,6 +1832,20 @@ void editor::InspectorWindow::handleComponentMenu(const char* popupId, SceneProj
         }
 
         ImGui::EndDisabled();
+
+        // the project's editor scripts: CONTEXT/<Component>/... items (S23)
+        {
+            EditorMenuRunContext scriptContext;
+            scriptContext.sceneId = sceneProject->id;
+            for (Entity entity : entities) scriptContext.selection.push_back(entity);
+            // the component as CONTEXT/<name>/ names it: Mesh, MeshComponent or its display name
+            std::vector<std::string> names;
+            for (const std::string& name : {Catalog::getComponentName(cpType, true), Catalog::getComponentName(cpType),
+                                            Catalog::getComponentDisplayName(cpType)}) {
+                if (std::find(names.begin(), names.end(), name) == names.end()) names.push_back(name);
+            }
+            for (const std::string& name : names) EditorScripts::get().drawContextItems("component", name, scriptContext);
+        }
 
         // Copying only reads, so a running scene's values can be copied to paste after Stop
         const bool canCopy = cpType != ComponentType::PrefabComponent && !entities.empty();

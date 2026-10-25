@@ -91,6 +91,13 @@ namespace jasperengine::editor {
         // C++ reload ended (Project calls this from its frame-boundary swap or a failed build)
         void cppReloadFinished(const Record& record);
 
+        // Rebuild C++ (the badge, Assets > Scripts, reload_scripts language cpp): in edit mode
+        // a build of the scripts (the status shows its errors), while playing a reload when
+        // Reload C++ Scripts During Play is on. False and why when nothing starts.
+        bool rebuildCpp(std::string& message);
+        void cancelCppBuild();
+        bool isCppBuilding() const;
+
         static constexpr int LUA_DEBOUNCE_MS = 150;
         static constexpr int CPP_DEBOUNCE_MS = 1000;
 
@@ -124,6 +131,7 @@ namespace jasperengine::editor {
         std::unique_ptr<jobs::Task<Checked>> luaCheck;
         std::filesystem::path luaCheckPath;
         bool cppBuildRunning = false;
+        std::shared_ptr<class Generator> editBuild;   // an edit-mode Rebuild C++
         std::map<std::filesystem::path, std::vector<ScriptFinding>> luaErrors;   // scripts that kept their old code
         std::deque<Record> records;
         uint64_t nextSerial = 1;

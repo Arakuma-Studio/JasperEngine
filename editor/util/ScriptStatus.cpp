@@ -210,3 +210,43 @@ std::string ScriptStatus::summary() const {
     if (current.editorCpp == CppScriptState::Failed) text += " \xC2\xB7 C++ editor scripts: build failed";
     return text;
 }
+
+namespace {
+
+    jasperengine::editor::mcp::Json rowJson(const char* state, const ScriptStatusRow& row){
+        using jasperengine::editor::mcp::Json;
+        Json findings = Json::array();
+        for (const ScriptFinding& finding : row.findings) {
+            Json item = {{"file", finding.file}, {"message", finding.message}};
+            if (finding.line > 0) item["line"] = finding.line;
+            if (finding.column > 0) item["column"] = finding.column;
+            findings.push_back(std::move(item));
+        }
+        Json out = {{"state", state}, {"findings", findings}};
+        if (!row.message.empty()) out["message"] = row.message;
+        if (row.fraction >= 0.0f) out["fraction"] = std::round(row.fraction * 1000.0f) / 1000.0f;
+        else if (std::string(state) == "building") out["fraction"] = nullptr;
+        if (row.lastTime.time_since_epoch().count() != 0) {
+            out["last_seconds_ago"] = std::round(std::chrono::duration<double>(std::chrono::system_clock::now() - row.lastTime).count());
+            out["last_duration_seconds"] = std::round(row.lastSeconds * 100.0) / 100.0;
+        }
+        if (row.softWarning) out["warning"] = true;
+        return out;
+    }
+
+}
+
+jasperengine::editor::mcp::Json ScriptStatus::toJson() const {
+    using jasperengine::editor::mcp::Json;
+    Json mismatches = Json::array();
+    for (const FingerprintMismatch& mismatch : current.fingerprintMismatches) {
+        mismatches.push_back({{"field", mismatch.field}, {"editor", mismatch.editor}, {"library", mismatch.library},
+                              {"severity", mismatch.hard ? "hard" : "soft"}, {"hint", mismatch.hint}});
+    }
+    Json fingerprint = {{"checked", current.fingerprintChecked}, {"ok", current.fingerprintOk}, {"mismatches", mismatches}};
+    Json cpp = rowJson(cppStateName(current.cpp), current.cppRow);
+    cpp["using_last_good_build"] = current.cpp == CppScriptState::Failed && current.cppRow.hasLastGood;
+    return {{"lua", rowJson(luaStateName(current.lua), current.luaRow)}, {"cpp", cpp},
+            {"editor_cpp", rowJson(cppStateName(current.editorCpp), current.editorCppRow)},
+            {"fingerprint", fingerprint}, {"summary", summary()}};
+}

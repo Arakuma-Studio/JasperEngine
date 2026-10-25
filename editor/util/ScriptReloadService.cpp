@@ -4,6 +4,7 @@
 #include "ScriptReloadService.h"
 
 #include "AppSettings.h"
+#include "Generator.h"
 #include "EditorHost.h"
 #include "Out.h"
 #include "Project.h"
@@ -390,8 +391,58 @@ void ScriptReloadService::cppReloadFinished(const Record& record){
     addRecord(record);
 }
 
+bool ScriptReloadService::rebuildCpp(std::string& message){
+    if (!project) {
+        message = "no project";
+        return false;
+    }
+    if (project->isAnyScenePlaying()) {
+        if (!cppReloadEnabled()) {
+            message = "a scene is playing: turn on Preferences > Scripting > Reload C++ Scripts During Play, or stop Play";
+            return false;
+        }
+        if (!project->hasCppPlayLibrary()) {
+            message = "this Play loaded no C++ scripts";
+            return false;
+        }
+        requestReload({}, false, true);
+        message = "rebuilding the C++ scripts during Play";
+        return true;
+    }
+    if (isCppBuilding()) {
+        message = "a C++ build is running";
+        return false;
+    }
+    ProjectChecks::CppBuildPlan plan;
+    switch (ProjectChecks::prepareCppBuild(project, plan, message)) {
+        case ProjectChecks::CppPrepare::Ready: break;
+        case ProjectChecks::CppPrepare::NothingToBuild:
+            message = "no C++ script to build";
+            ScriptStatus::get().setHasCppScripts(false);
+            return false;
+        default:
+            ScriptStatus::get().setCpp(CppScriptState::Failed, {{"", 0, 0, message}}, message);
+            return false;
+    }
+    editBuild = std::make_shared<Generator>();
+    ProjectChecks::startCppBuild(project, *editBuild, plan);
+    message = "building " + std::to_string(plan.scripts.size()) + " C++ script(s)";
+    return true;
+}
+
+void ScriptReloadService::cancelCppBuild(){
+    if (editBuild) editBuild->cancelBuild();
+    if (project && cppBuildRunning) project->cancelCppReload();
+    pendingCpp.clear();
+}
+
+bool ScriptReloadService::isCppBuilding() const {
+    return (editBuild && editBuild->isBuildInProgress()) || cppBuildRunning;
+}
+
 void ScriptReloadService::update(){
     if (!project) return;
+    if (editBuild && !editBuild->isBuildInProgress()) editBuild.reset();
     if (!project->isAnyScenePlaying()) {
         if (!pendingLua.empty() || !pendingCpp.empty() || luaCheck) playEnded();
         return;

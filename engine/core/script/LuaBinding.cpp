@@ -1004,6 +1004,12 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
     return true;
 }
 
+void LuaBinding::registerMathClassesIn(lua_State* L) {
+#ifndef DISABLE_LUA_BINDINGS
+    registerMathClasses(L);
+#endif
+}
+
 void LuaBinding::setScriptChunk(lua_State* L, const std::string& path, int index) {
     lua_pushvalue(L, index);
     const int ref = luaL_ref(L, LUA_REGISTRYINDEX);

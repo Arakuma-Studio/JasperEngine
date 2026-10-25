@@ -136,6 +136,10 @@ namespace jasperengine {
         // Logs text with the calling Lua function's chunk and line as its source
         static void logFromLua(lua_State* L, LogLevel level, const LogCategory& category, std::string_view text);
 
+        // The math classes (Vector2/3/4, Quaternion, Matrix..., Color) in another state: the
+        // editor's sandboxed editor-script state
+        static void registerMathClassesIn(lua_State* L);
+
         // ---- for the hot reload during Play (LuaReload.cpp)
 
         // The compiled chunk of a script path becomes the function at `index`: instances made

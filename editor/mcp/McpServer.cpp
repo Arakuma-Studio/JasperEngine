@@ -117,6 +117,8 @@ void McpServer::registerAllTools() {
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
     registerAtmosphereTools(reg);
+    registerScriptingTools(reg);
+    registerGraphTools(reg);
 }
 
 void McpServer::stop() {
@@ -1050,6 +1052,18 @@ void McpServer::runNested(const CallPtr& parent, const std::string& tool, const 
     });
     call->setParent(parent);
     call->setClient(parent->client(), parent->requestId());
+    execute(call, *def);
+}
+
+void McpServer::runLocal(const std::string& tool, const Json& args, const std::string& client,
+                         std::function<void(const ToolResult&)> done) {
+    const ToolDef* def = reg.findTool(tool);
+    if (!def || !started) {
+        done(ToolResult::error(def ? "The MCP server is not running." : "Unknown tool: " + tool + "."));
+        return;
+    }
+    auto call = std::make_shared<McpCall>(*this, tool, args, [done](McpCall&, const ToolResult& result) { done(result); });
+    call->setClient(client, std::string());
     execute(call, *def);
 }
 
