@@ -631,3 +631,8 @@ alternative to what the text above asks.
 - **`jasperengine-editor benchmark` is no longer throttled when unfocused**: an X server without a
   window manager focuses no window, and the editor's unfocused frame-period sleep held every
   benchmark at 16.3 ms (60 fps) whatever its work.
+- **AC12's smoke run**: `SMOKE_EXPORT_ARGS=--development-build SMOKE_READY_SETTLE=60
+  SMOKE_GAME_ARGS="--profile-capture=/src/build/smoke/capture.jetrace.json --profile-frames=30"
+  tools/smoke-test.sh tools/fixtures/post-processing`, then `tools/ci/check_profiler_smoke.py
+  --capture build/smoke/capture.jetrace.json build/smoke/game.log` (the path is the container's;
+  llvmpipe draws the recorded frames slowly, so the game needs the longer settle).
