@@ -5,6 +5,7 @@
 #include "Out.h"
 #include "cli/CommandLine.h"
 #include "mcp/McpLaunch.h"
+#include "reload/HotReloadService.h"
 #include "util/ShellEnv.h"
 
 #include <cstdio>
@@ -114,13 +115,50 @@ bool takeLogLevelFlag(std::vector<char*>& args) {
     return true;
 }
 
+// --file-watcher=auto|native|polling|off (or "--file-watcher <kind>") and the env
+// JASPER_FILE_WATCHER, the flag winning (S05 R33): removed before a command reads its arguments.
+// False for a value that is none of them.
+bool takeFileWatcherFlag(std::vector<char*>& args) {
+    WatchBackendKind kind = WatchBackendKind::Auto;
+    if (const char* env = std::getenv("JASPER_FILE_WATCHER"); env && *env) {
+        if (!parseWatchBackendKind(env, kind)) {
+            std::fprintf(stderr, "JASPER_FILE_WATCHER must be auto, native, polling or off (got \"%s\")\n", env);
+            return false;
+        }
+        editor::HotReloadService::setWatcherOverride(kind);
+    }
+    for (size_t i = 1; i < args.size();) {
+        const std::string arg = args[i];
+        std::string value;
+        size_t consumed = 0;
+        if (arg.rfind("--file-watcher=", 0) == 0) {
+            value = arg.substr(15);
+            consumed = 1;
+        } else if (arg == "--file-watcher" && i + 1 < args.size()) {
+            value = args[i + 1];
+            consumed = 2;
+        }
+        if (consumed == 0) {
+            i++;
+            continue;
+        }
+        if (!parseWatchBackendKind(value, kind)) {
+            std::fprintf(stderr, "--file-watcher must be auto, native, polling or off (got \"%s\")\n", value.c_str());
+            return false;
+        }
+        editor::HotReloadService::setWatcherOverride(kind);
+        args.erase(args.begin() + static_cast<long>(i), args.begin() + static_cast<long>(i + consumed));
+    }
+    return true;
+}
+
 }
 
 int main(int argc, char* argv[]) {
     // before anything logs: the in-memory store and the terminal until a Console window exists
     editor::Out::startLogging();
     std::vector<char*> args(argv, argv + argc);
-    if (!takeLogLevelFlag(args)) {
+    if (!takeLogLevelFlag(args) || !takeFileWatcherFlag(args)) {
         editor::Out::stopLogging();
         return 2;
     }

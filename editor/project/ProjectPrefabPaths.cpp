@@ -150,49 +150,67 @@ void editor::Project::refreshAssetDatabase(bool force) {
     if (!assetDatabase.isOpen() || isAnyScenePlaying()) {
         return;
     }
-    const auto now = std::chrono::steady_clock::now();
     std::vector<AssetDatabase::Change> found;
     if (force) {
-        // a tool about to answer from the database: the disk as it is now
+        // the disk as it is now
         waitForAssetScan();
-        lastAssetRefreshTime = now;
+        assetScanRequested = false;
         found = assetDatabase.refresh();
     } else if (assetScan.isValid()) {
-        // the poll (R23): the walk runs as a Background job, its result is applied here
+        // the walk runs as a Background job (R23), its result is applied here
         if (!assetScan.isReady()) {
             return;
         }
         jobs::Task<AssetDatabase::DiskScan> done = std::move(assetScan);
         assetScan = jobs::Task<AssetDatabase::DiskScan>();
         if (done.status() != jobs::TaskStatus::Completed) {
-            return;   // cancelled (shutdown): the next poll looks again
+            return;   // cancelled (shutdown)
         }
-        found = assetDatabase.refresh(done.get());
-    } else {
-        // every 2 s, and never busier than a fifth of the time (a large project's walk is long)
-        const auto interval = std::max<std::chrono::steady_clock::duration>(std::chrono::seconds(2), lastAssetScanDuration * 5);
-        if (now - lastAssetRefreshTime >= interval) {
-            lastAssetRefreshTime = now;
-            const AssetDatabase* database = &assetDatabase;
-            std::chrono::steady_clock::duration* duration = &lastAssetScanDuration;
-            jobs::SubmitOptions options;
-            options.lane = jobs::Lane::Background;
-            options.name = "asset-poll-walk";
-            assetScan = jobs::submit([database, duration] {
-                const auto start = std::chrono::steady_clock::now();
-                AssetDatabase::DiskScan scan = database->scanDisk();
-                *duration = std::chrono::steady_clock::now() - start;   // read after the task is ready
-                return scan;
-            }, options);
+        const AssetDatabase::DiskScan& scan = done.get();
+        if (scan.valid && scan.version != assetDatabase.getVersion()) {
+            // the editor changed the database during the walk (refresh ignores such a scan)
+            assetScanRequested = true;
+        } else {
+            found = assetDatabase.refresh(scan);
         }
-        if (pendingAssetChanges.empty()) {
-            return;
-        }
+    } else if (assetScanRequested) {
+        // the file watcher saw a change (applyFileChanges): one walk for every batch since
+        assetScanRequested = false;
+        const AssetDatabase* database = &assetDatabase;
+        jobs::SubmitOptions options;
+        options.lane = jobs::Lane::Background;
+        options.name = "asset-refresh-walk";
+        assetScan = jobs::submit([database] { return database->scanDisk(); }, options);
+        // the idle editor loop wakes to apply it (a continuation: the walk is ready by then)
+        options.name = "asset-refresh-wake";
+        assetScan.then([]() { editor::getEditorHost().enqueueMainThreadTask([]() {}); }, options);
+        return;
+    } else if (pendingAssetChanges.empty()) {
+        return;
     }
     std::vector<AssetDatabase::Change> changes = std::move(pendingAssetChanges);
     pendingAssetChanges.clear();
     changes.insert(changes.end(), found.begin(), found.end());
     onAssetFilesChanged(changes);
+}
+
+bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges) {
+    if (!assetDatabase.isOpen() || projectPath.empty()) {
+        return true;
+    }
+    if (isAnyScenePlaying()) {
+        return false;
+    }
+    if (fileChanges.empty()) {
+        return true;
+    }
+    // S04's refresh tells the cases apart (a move that carried its meta, a file renamed
+    // without it, a copy, an edit): a batch asks for a walk of the disk, not per-path updates.
+    // The walk is a Background job (an MCP call's pick-up too: a tool answering from the
+    // database refreshes it first)
+    assetScanRequested = true;
+    updateAssetScan();
+    return true;
 }
 
 void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool copy, std::map<std::string, std::string>* copyGuids) {
