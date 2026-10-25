@@ -125,6 +125,8 @@ TEST(RmlRendererTest, GeometryLifetime){
 
 TEST(RmlRendererTest, GeometryLifetimeThroughContext){
     JASPER_REQUIRE_GPU();
+    // (the boxes as meshes: SDF primitives make no geometry)
+    ClassicReplay classic;
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
@@ -436,6 +438,8 @@ TEST(RmlRendererTest, GeometryStorage){
 
 TEST(RmlRendererTest, NoLeaksAfterContextDestroy){
     JASPER_REQUIRE_GPU();
+    // (the geometry pages and transient buffers of the unbatched replay)
+    ClassicReplay classic;
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
     ASSERT_NE(test.load("render/images.rml"), nullptr);

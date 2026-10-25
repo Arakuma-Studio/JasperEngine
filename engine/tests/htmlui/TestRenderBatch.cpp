@@ -38,6 +38,18 @@ namespace {
         }
     };
 
+    // SDF primitives on or off for a scope: off, quad lists are vertex runs (what the vertex tests
+    // count); on, they are instances
+    struct PrimitivesMode {
+        bool previous;
+        explicit PrimitivesMode(bool on): previous(RmlRenderer::isSdfPrimitives()){
+            RmlRenderer::setSdfPrimitivesForTesting(on);
+        }
+        ~PrimitivesMode(){
+            RmlRenderer::setSdfPrimitivesForTesting(previous);
+        }
+    };
+
     struct Quad {
         Rml::Mesh mesh;
         Rml::CompiledGeometryHandle handle = 0;
@@ -126,6 +138,7 @@ namespace {
 
 TEST(RenderBatch, MergesConsecutiveGeometry){
     JASPER_REQUIRE_GPU();
+    PrimitivesMode vertexRuns(false);
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
@@ -152,6 +165,7 @@ TEST(RenderBatch, MergesConsecutiveGeometry){
 
 TEST(RenderBatch, UntexturedJoinsWhiteTexels){
     JASPER_REQUIRE_GPU();
+    PrimitivesMode vertexRuns(false);
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
@@ -200,6 +214,7 @@ TEST(RenderBatch, UntexturedJoinsWhiteTexels){
 
 TEST(RenderBatch, RunCacheHitAndInvalidation){
     JASPER_REQUIRE_GPU();
+    PrimitivesMode vertexRuns(false);
     RenderTestContext test;
     ASSERT_TRUE(test.isValid());
 
@@ -261,6 +276,7 @@ TEST(RenderBatch, RunCacheHitAndInvalidation){
 
 TEST(RenderBatch, NoMergeAcrossLayersFiltersShadersOrStencil){
     JASPER_REQUIRE_GPU();
+    PrimitivesMode vertexRuns(false);
     RenderTestContext test(320, 180);
     ASSERT_TRUE(test.isValid());
 
@@ -324,6 +340,7 @@ TEST(RenderBatch, NoMergeAcrossLayersFiltersShadersOrStencil){
 
 TEST(RenderBatch, ScissorElisionMergesAcrossScissors){
     JASPER_REQUIRE_GPU();
+    PrimitivesMode vertexRuns(false);
     RenderTestContext test(320, 180);
     ASSERT_TRUE(test.isValid());
 
@@ -348,6 +365,7 @@ TEST(RenderBatch, ScissorElisionMergesAcrossScissors){
 
 TEST(RenderBatch, LargeGeometryDrawsOnItsOwn){
     JASPER_REQUIRE_GPU();
+    PrimitivesMode vertexRuns(false);
     RenderTestContext test(320, 180);
     ASSERT_TRUE(test.isValid());
 
@@ -370,4 +388,44 @@ TEST(RenderBatch, LargeGeometryDrawsOnItsOwn){
     EXPECT_EQ(pair.batchedStats.verticesGathered, 12u);
     test.renderer.ReleaseGeometry(bigHandle);
     test.renderer.ReleaseGeometry(q.handle);
+}
+
+// with SDF primitives: quad lists (glyphs, images, plain rectangles) and box primitives are
+// instances of one run, whatever textures the untextured ones sit between, and draw the
+// unbatched image
+TEST(RenderBatch, InstancesMergeQuadsAndBoxes){
+    JASPER_REQUIRE_GPU();
+    PrimitivesMode instances(true);
+    RenderTestContext test(320, 180);
+    ASSERT_TRUE(test.isValid());
+
+    Rml::TextureHandle texture = whiteBlockTexture(test.renderer);
+    reinterpret_cast<HtmlUITexture*>(texture)->hasWhiteTexel = false;
+    Quad textured(test.renderer, 0, 0, 16, 16, Rml::ColourbPremultiplied(255, 255, 255, 255), Rml::Vector2f(0.75f, 0.75f), Rml::Vector2f(0.875f, 0.875f));
+    Quad plain(test.renderer, 0, 0, 16, 16, Rml::ColourbPremultiplied(40, 160, 220, 255));
+    Rml::BoxPrimitive box;
+    box.border_box = Rml::Rectanglef::FromPositionSize(Rml::Vector2f(0, 0), Rml::Vector2f(40, 24));
+    box.radii = {Rml::Vector2f(6, 6), Rml::Vector2f(6, 6), Rml::Vector2f(6, 6), Rml::Vector2f(6, 6)};
+    box.border_widths = Rml::Vector4f(2, 2, 2, 2);
+    box.fill = Rml::ColourbPremultiplied(30, 60, 90, 255);
+    box.border_colors = {Rml::ColourbPremultiplied(255, 255, 255, 255), Rml::ColourbPremultiplied(255, 255, 255, 255),
+                         Rml::ColourbPremultiplied(255, 255, 255, 255), Rml::ColourbPremultiplied(255, 255, 255, 255)};
+    auto draw = [&](){
+        for (int i = 0; i < 20; i++){
+            const float x = (float)(i % 5) * 60.0f, y = (float)(i / 5) * 40.0f;
+            test.renderer.RenderPrimitives(Rml::Span<const Rml::BoxPrimitive>(&box, 1), Rml::Vector2f(x + 4, y + 4));
+            test.renderer.RenderGeometry(plain.handle, Rml::Vector2f(x + 8, y + 8), 0);
+            test.renderer.RenderGeometry(textured.handle, Rml::Vector2f(x + 26, y + 8), texture);
+        }
+    };
+    const Pair pair = drawBoth(test, draw);
+    EXPECT_TRUE(sameImages(pair.batched, pair.unbatched, test.targetSize.x));
+    EXPECT_EQ(pair.batchedStats.geometrySubmitted, 60u);
+    EXPECT_EQ(pair.batchedStats.drawCalls, 1u);
+    EXPECT_EQ(pair.batchedStats.instancesDrawn, 60u);
+    EXPECT_EQ(pair.batchedStats.verticesGathered, 60u);
+
+    test.renderer.ReleaseGeometry(textured.handle);
+    test.renderer.ReleaseGeometry(plain.handle);
+    test.renderer.ReleaseTexture(texture);
 }

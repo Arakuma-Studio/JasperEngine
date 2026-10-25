@@ -354,6 +354,7 @@ TEST(RenderRecordTest, AnEmptyFrameClearsTheLayer){
 }
 
 TEST(RenderRecordTest, AContextRemovedBeforeTheFrameEnds){
+    UnbatchedReplay unbatched;
     // a document whose release mid-frame frees geometry (with its meshes), filters, shaders, box
     // shadow textures and effect instances while the frame is recorded
     const char* const rml = R"(<rml><head><style>

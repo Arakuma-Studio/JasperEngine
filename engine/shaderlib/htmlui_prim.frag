@@ -27,22 +27,36 @@ flat in vec4 v_border3;
 
 out vec4 g_finalColor;
 
+// a corner's colour: the side of the line from the outer corner o through the inner corner (along
+// (dx, dy), the widths of the two sides) p is on, antialiased over a pixel's footprint
+vec4 cornerColor(vec2 p, vec2 o, vec2 direction, vec4 first, vec4 second, vec2 dpdx, vec2 dpdy){
+    vec2 n = vec2(direction.y, -direction.x);
+    float len = length(n);
+    if (len <= 0.0)
+        return second;
+    n /= len;
+    float d = dot(p - o, n);
+    float w = max(length(vec2(dot(dpdx, n), dot(dpdy, n))), 1e-4);
+    return mix(second, first, clamp(d / w + 0.5, 0.0, 1.0));
+}
+
 // the border colour of the side p is on: past the inner rectangle's edges, and in a corner on the
-// side of the line from the outer to the inner corner (the meshes' split)
-vec4 borderColor(vec2 p, vec4 outer, vec4 widths){
+// side of the line from the outer to the inner corner (the meshes' split, antialiased as theirs)
+vec4 borderColor(vec2 p, vec4 outer, vec4 widths, vec2 dpdx, vec2 dpdy){
     vec2 o0 = outer.xy;
     vec2 o1 = outer.xy + outer.zw;
     vec2 i0 = o0 + vec2(widths.w, widths.x);
     vec2 i1 = o1 - vec2(widths.y, widths.z);
     bool left = p.x < i0.x, right = p.x > i1.x, top = p.y < i0.y, bottom = p.y > i1.y;
+    // each line's normal points into the first colour's side
     if (top && left)
-        return ((p.x - o0.x) * widths.x > (p.y - o0.y) * widths.w) ? v_border0 : v_border3;
+        return cornerColor(p, o0, vec2(widths.w, widths.x), v_border0, v_border3, dpdx, dpdy);
     if (top && right)
-        return ((o1.x - p.x) * widths.x > (p.y - o0.y) * widths.y) ? v_border0 : v_border1;
+        return cornerColor(p, vec2(o1.x, o0.y), vec2(-widths.y, widths.x), v_border1, v_border0, dpdx, dpdy);
     if (bottom && right)
-        return ((o1.x - p.x) * widths.z > (o1.y - p.y) * widths.y) ? v_border2 : v_border1;
+        return cornerColor(p, o1, vec2(-widths.y, -widths.z), v_border2, v_border1, dpdx, dpdy);
     if (bottom && left)
-        return ((p.x - o0.x) * widths.z > (o1.y - p.y) * widths.w) ? v_border2 : v_border3;
+        return cornerColor(p, vec2(o0.x, o1.y), vec2(widths.w, -widths.z), v_border3, v_border2, dpdx, dpdy);
     if (top)
         return v_border0;
     if (bottom)
@@ -93,7 +107,7 @@ void main() {
             vec4 fillRect, frx, fry;
             innerShape(v_a, v_b, v_c, v_e, fillRect, frx, fry);
             float fill = (fillRect.z > 0.0 && fillRect.w > 0.0) ? htmluiClipShape(p, dpdx, dpdy, fillRect, frx, fry) : 0.0;
-            vec4 border = borderColor(p, v_a, v_d) * max(outer - inner, 0.0);
+            vec4 border = borderColor(p, v_a, v_d, dpdx, dpdy) * max(outer - inner, 0.0);
             color = border + v_color * fill * (1.0 - border.a);
         }
     }else if (mode == 2 || mode == 3){

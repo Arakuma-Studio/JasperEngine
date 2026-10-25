@@ -36,6 +36,23 @@
 
 namespace jasperengine { namespace test {
 
+    // S16 off for a scope (D1): every recorded call its own draw, meshes and shadow textures, every
+    // clip mask in the stencil: what the phase-1 storage, leak and stencil tests count
+    struct ClassicReplay {
+        bool batching = RmlRenderer::isBatching();
+        bool primitives = RmlRenderer::isSdfPrimitives();
+        ClassicReplay(){
+            RmlRenderer::setBatchingForTesting(false);
+            RmlRenderer::setSdfPrimitivesForTesting(false);
+        }
+        ~ClassicReplay(){
+            RmlRenderer::setBatchingForTesting(batching);
+            RmlRenderer::setSdfPrimitivesForTesting(primitives);
+        }
+        ClassicReplay(const ClassicReplay&) = delete;
+        ClassicReplay& operator=(const ClassicReplay&) = delete;
+    };
+
     // what Engine::systemDraw does before a frame that the tests need: the runtime shader
     // compiler compiles one waiting variant per frame on the main thread
     inline void beginTestFrame(){

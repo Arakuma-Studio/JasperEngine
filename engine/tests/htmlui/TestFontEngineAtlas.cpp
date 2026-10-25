@@ -37,11 +37,19 @@ namespace {
         }
     };
 
-    const char* const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    // 62 ASCII letters and digits and the 64 letters of Latin-1 (U+00C0-U+00FF)
+    std::string glyphSet(){
+        std::string text = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+        for (unsigned int c = 0xC0; c <= 0xFF; c++){
+            text += (char)(0xC0 | (c >> 6));
+            text += (char)(0x80 | (c & 0x3F));
+        }
+        return text;
+    }
 
     std::string documentOf(int fontSize){
         return "<rml><head><style>body { margin: 0; font-family: sans-serif; color: #ffffff; } p { font-size: " + std::to_string(fontSize) +
-               "px; line-height: 1; margin: 0; }</style></head><body><p>" + std::string(glyphs) + "</p></body></rml>";
+               "px; line-height: 1; margin: 0; }</style></head><body><p>" + glyphSet() + "</p></body></rml>";
     }
 
     int largestDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
@@ -51,7 +59,8 @@ namespace {
         return a.size() == b.size() ? largest : 255;
     }
 
-    const int sizes[4] = {150, 160, 170, 180};
+    // bitmap sizes (under the 128 device px that draw from distance glyphs), about a page each
+    const int sizes[4] = {96, 104, 112, 120};
 
 }
 

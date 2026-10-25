@@ -39,7 +39,7 @@ namespace {
     };
 
     std::string documentOf(const std::string& css, const std::string& body){
-        return "<rml><head><style>body { margin: 0; } .box { position: absolute; width: 90px; height: 60px; background-color: #3060c0; } " +
+        return "<rml><head><style>body { margin: 0; } div { display: block; } .box { position: absolute; width: 90px; height: 60px; background-color: #3060c0; } " +
                css + "</style></head><body>" + body + "</body></rml>";
     }
 
@@ -133,7 +133,13 @@ TEST(RenderPrimitive, MatchesTheMeshPath){
             ASSERT_TRUE(drawDocument(rml, samples, false, meshes)) << test.name;
             ASSERT_TRUE(drawDocument(rml, samples, true, primitives)) << test.name;
             const std::string label = std::string(test.name) + " at " + std::to_string(samples) + " samples";
-            EXPECT_TRUE(similar(primitives.screen, meshes.screen, label));
+            const ::testing::AssertionResult result = similar(primitives.screen, meshes.screen, label);
+            EXPECT_TRUE(result);
+            if (!result){
+                const std::string base = getOutputDirectory() + "/primitives-" + test.name + "-" + std::to_string(samples);
+                writePng(base + ".sdf.png", primitives.screen, width, height);
+                writePng(base + ".mesh.png", meshes.screen, width, height);
+            }
             EXPECT_GT(primitives.stats.instancesDrawn, 0u) << label;
         }
     }

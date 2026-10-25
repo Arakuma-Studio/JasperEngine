@@ -89,6 +89,9 @@ TEST(RenderBatch, EquivalenceAllGoldenScenes){
             const int difference = largestDifference(batched[i].image, unbatched[i].image, x, y);
             compared++;
             if (difference > 1){
+                const std::string base = browserArtifactDirectory() + "/" + fixture.area + "/" + fixture.name + "." + std::to_string(i);
+                compat::savePng(base + ".batched.png", batched[i].image);
+                compat::savePng(base + ".unbatched.png", unbatched[i].image);
                 failures << "\n  " << fixture.id() << (batched[i].suffix.empty() ? "" : "." + batched[i].suffix) << ": channel difference "
                          << difference << " at (" << x << ", " << y << ")";
             }

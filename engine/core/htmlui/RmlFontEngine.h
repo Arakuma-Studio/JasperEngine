@@ -141,6 +141,10 @@ namespace jasperengine {
         size_t getPendingDistanceGlyphCount() const;
         // waits for the distance glyphs in flight and places them (tests)
         void finishDistanceGlyphsForTesting();
+        // tests: distance glyphs made at once when asked for (the frame waits), so that what a frame
+        // shows does not depend on the background lane's timing (goldens); the engine makes them in
+        // the background
+        static void setSynchronousDistanceGlyphsForTesting(bool synchronous);
 
         // R14/R15 (D1): false keeps text at its render manager's scale whatever its transform,
         // with the scale quantized as before S16; the project's htmlUiTransformAwareText

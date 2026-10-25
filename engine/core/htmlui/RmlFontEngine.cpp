@@ -41,6 +41,7 @@ namespace {
 
     std::atomic<bool> transformAwareText{true};
     std::atomic<bool> gpuTextEffects{true};
+    std::atomic<bool> synchronousDistanceGlyphs{false};
     std::atomic<size_t> baseBudgetMiB{0};
     std::atomic<size_t> distanceBudgetMiB{0};
 
@@ -1034,7 +1035,16 @@ const RmlFontEngine::DistanceEntry& RmlFontEngine::requestDistanceGlyph(const Fa
         return glyph;
     }, jobs::SubmitOptions{jobs::Lane::Background, jobs::GateClass::Default, "htmlui-msdf-glyph"});
     distanceJobs.push_back(std::move(job));
+    if (synchronousDistanceGlyphs){
+        // (tests) at once: waited for and placed, the asking text drawn from it in this frame
+        collectDistanceGlyphs(true);
+        return distanceGlyphs[key];
+    }
     return entry;
+}
+
+void RmlFontEngine::setSynchronousDistanceGlyphsForTesting(bool synchronous){
+    synchronousDistanceGlyphs = synchronous;
 }
 
 void RmlFontEngine::collectDistanceGlyphs(bool wait){
@@ -1069,9 +1079,11 @@ void RmlFontEngine::collectDistanceGlyphs(bool wait){
                     placed.top = glyph.top;
                 }
             }
-            // the text that asked draws again, now from the distance glyph
-            for (FaceHandle* handle : job.waiting)
-                bump(handle);
+            // the text that asked draws again, now from the distance glyph (made at once, it already does)
+            if (!synchronousDistanceGlyphs){
+                for (FaceHandle* handle : job.waiting)
+                    bump(handle);
+            }
         }
         distanceJobs.erase(distanceJobs.begin() + (long)i);
     }
@@ -1144,6 +1156,9 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
     const RmlFontEffects::Set* effects = reinterpret_cast<const RmlFontEffects::Set*>(font_effects_handle);
     int rasterKey = 0;
     const float scale = rasterScaleOf(&render_manager, *handle, text_shaping_context, rasterKey);
+    // the bitmap maps 1:1 onto device pixels at the element's own scale: quads are sized and
+    // snapped by it, not by the quarter-pixel size the glyph was made at (R14)
+    const float drawScale = (transformAwareText && text_shaping_context.raster_scale > 0.0f) ? text_shaping_context.raster_scale : scale;
     // distance glyphs and GPU effects need the engine's renderer (another render interface sees bitmaps)
     const bool gpu = RmlRenderer::forRenderManager(&render_manager) != nullptr;
 
@@ -1281,8 +1296,9 @@ int RmlFontEngine::GenerateString(Rml::RenderManager& render_manager, Rml::FontF
                     dimensions = Rml::Vector2f((float)entry.width, (float)entry.height);
                 }else{
                     // snapped to physical pixels, the bitmap is drawn 1:1 on the target
-                    origin = Rml::Vector2f(std::round(penX * scale + entry.xoff) / scale, std::round(baseline * scale + entry.yoff) / scale);
-                    dimensions = Rml::Vector2f(entry.width / scale, entry.height / scale);
+                    origin = Rml::Vector2f(std::round(penX * drawScale + entry.xoff) / drawScale,
+                                           std::round(baseline * drawScale + entry.yoff) / drawScale);
+                    dimensions = Rml::Vector2f(entry.width / drawScale, entry.height / drawScale);
                     if (effect){
                         // shared-texture effect (shadow): the base glyph moved
                         Rml::Vector2i offset;

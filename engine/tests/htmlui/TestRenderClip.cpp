@@ -34,7 +34,7 @@ namespace {
     };
 
     std::string documentOf(const std::string& css, const std::string& body){
-        return "<rml><head><style>body { margin: 0; } " + css + "</style></head><body>" + body + "</body></rml>";
+        return "<rml><head><style>body { margin: 0; } div { display: block; } " + css + "</style></head><body>" + body + "</body></rml>";
     }
 
     // a rounded overflow container with a child inset by its padding: clear of the curves

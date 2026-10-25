@@ -15,6 +15,13 @@
 
 namespace {
 
+    // distance glyphs are made when asked for in this binary: what a golden shows does not depend on
+    // the background lane's timing
+    [[maybe_unused]] const bool synchronousDistanceGlyphs = [](){
+        jasperengine::RmlFontEngine::setSynchronousDistanceGlyphsForTesting(true);
+        return true;
+    }();
+
     [[maybe_unused]] const bool s16Off = [](){
         const char* value = std::getenv("JASPER_HTMLUI_S16_OFF");
         if (!value || std::strcmp(value, "1") != 0)

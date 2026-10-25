@@ -638,6 +638,8 @@ TEST(RenderP1Test, BackdropCompositeFusedExactly){
 
 TEST(RenderP1Test, NestedClipStencilRefs){
     JASPER_REQUIRE_GPU();
+    // (every mask in the stencil: no elision, no analytic clip)
+    ClassicReplay classic;
     ASSERT_TRUE(HtmlUI::acquire());
     {
         RecordingClipRenderer renderer;
