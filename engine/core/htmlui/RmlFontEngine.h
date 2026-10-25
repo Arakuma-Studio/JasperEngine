@@ -265,6 +265,7 @@ namespace jasperengine {
             bool dirty = false;
             int whiteX = -1, whiteY = -1;
             uint64_t lastUse = 0;           // the frame a string last drew from it
+            uint64_t opened = 0;            // when it was (re)opened: the newest page is the one glyphs fill
             std::shared_ptr<uint64_t> drawFrame = std::make_shared<uint64_t>(0);   // the renderer's last draw
             std::set<FaceHandle*> users;    // handles whose text drew from it since it was cleared
             size_t bytes() const;
@@ -360,6 +361,7 @@ namespace jasperengine {
         // the last: not kept, its handle bumped at the next frame (its text made again, when the
         // least recently used page can go), and that frame asked for
         bool placeDeferred = false;                         // set by place
+        uint64_t pagesOpened = 0;                           // Page::opened's counter
         std::unordered_set<FaceHandle*> deferredHandles;
         uint64_t deferredFrame = 0;
         void deferGlyph(const FaceHandle& handle);

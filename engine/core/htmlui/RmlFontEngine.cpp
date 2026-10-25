@@ -827,63 +827,70 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
         pageIndex = (int)i;
         return true;
     };
-    // the pages drawn in this frame or the last first, then (room for a new page in the budget)
-    // the space left in older pages before a new page opens; with the budget full, a new page in
-    // place of the least recently used ones before that space: a glyph placed in an older page
-    // keeps it from being cleared, which a text that does not fit the pages it uses would need
+    // Glyphs fill the newest page; with room in the budget, then the space left in the others,
+    // then a new page. With the budget full, a new page in place of the least recently used one
+    // (unused in this frame and the last, R13); else, when a page drawn last frame is unused in
+    // this one, the glyph waits a frame for it (deferred); and only then the space left anywhere.
+    // Filling the newest page keeps a document's glyphs on few pages, so the pages of what is no
+    // longer drawn become free to clear, instead of every page holding a little of everything.
     const uint64_t frame = SystemRender::getFrameCount();
     const size_t pageBytes = (size_t)pageSize * (size_t)pageSize * (kind == PageKind::BASE ? 1u : 4u);
-    auto recent = [&](size_t i){ return list[i]->lastUsed() + 1 >= frame; };
-    for (size_t i = 0; i < list.size(); i++){
-        if (recent(i) && packInto(i))
-            return true;
-    }
-    if (usedBytes(kind) + pageBytes <= budgetBytes(kind)){
-        for (size_t i = 0; i < list.size(); i++){
-            if (!recent(i) && packInto(i))
-                return true;
-        }
-    }
-    if (width + 1 <= pageSize && height + 1 <= pageSize){
-        // a new page (a parked slot first) within the budget, after clearing the least recently used ones
-        while (usedBytes(kind) + pageBytes > budgetBytes(kind)){
-            if (!evictPage(kind))
-                break;
-        }
-        if (usedBytes(kind) + pageBytes <= budgetBytes(kind)){
-            size_t slot = list.size();
-            for (size_t i = 0; i < list.size(); i++){
-                if (list[i]->bytes() == 0){
-                    slot = i;
-                    break;
-                }
-            }
-            if (slot == list.size())
-                list.emplace_back(new Page(*this, kind));
-            else
-                list[slot]->atlas->reset(pageSize, pageSize);
-            reserveWhiteBlock(*list[slot]);
-            makeSource(*list[slot]);
-            if (packInto(slot))
-                return true;
-        }
-    }
-    for (size_t i = 0; i < list.size(); i++){
-        if (!recent(i) && packInto(i))
-            return true;
-    }
-
-    // every page held back by "drawn in this frame or the last": one that was not drawn in this
-    // frame can go in the next, the glyph waits for it
+    const bool fitsAPage = width + 1 <= pageSize && height + 1 <= pageSize;
     placeDeferred = false;
-    if (width + 1 <= pageSize && height + 1 <= pageSize){
+    size_t newest = list.size();
+    for (size_t i = 0; i < list.size(); i++){
+        if (list[i]->bytes() > 0 && (newest == list.size() || list[i]->opened > list[newest]->opened))
+            newest = i;
+    }
+    if (newest < list.size() && packInto(newest))
+        return true;
+    auto anyPage = [&](){
+        for (size_t i = 0; i < list.size(); i++){
+            if (i != newest && packInto(i))
+                return true;
+        }
+        return false;
+    };
+    auto openPage = [&]() -> bool {
+        if (usedBytes(kind) + pageBytes > budgetBytes(kind))
+            return false;
+        size_t slot = list.size();
+        for (size_t i = 0; i < list.size(); i++){
+            if (list[i]->bytes() == 0){
+                slot = i;
+                break;
+            }
+        }
+        if (slot == list.size())
+            list.emplace_back(new Page(*this, kind));
+        else
+            list[slot]->atlas->reset(pageSize, pageSize);
+        list[slot]->opened = ++pagesOpened;
+        reserveWhiteBlock(*list[slot]);
+        makeSource(*list[slot]);
+        return packInto(slot);
+    };
+    if (usedBytes(kind) + pageBytes <= budgetBytes(kind)){
+        if (anyPage())
+            return true;
+        if (fitsAPage && openPage())
+            return true;
+    }else if (fitsAPage){
+        bool evicted = false;
+        while (usedBytes(kind) + pageBytes > budgetBytes(kind) && evictPage(kind))
+            evicted = true;
+        if (evicted && openPage())
+            return true;
         for (const std::unique_ptr<Page>& page : list){
             if (page->bytes() > 0 && page->lastUsed() < frame)
                 placeDeferred = true;
         }
         if (placeDeferred)
             return false;
+        if (anyPage())
+            return true;
     }
+
     if (!warnedOverflow){
         warnedOverflow = true;
         Log::error("[HTML UI] a glyph of '%s' at %d px does not fit in the font atlas (%u MiB, pages of %dx%d): it is not drawn",

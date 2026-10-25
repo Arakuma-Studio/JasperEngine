@@ -135,19 +135,32 @@ TEST(TestFontEngine, AtlasBudgetEvictsLeastRecentlyUsed){
     EXPECT_GT(fonts.getEvictionCount(), evictionsBefore);
     EXPECT_LE(fonts.getPageCount(), 2u);
 
-    // only the users of a cleared page get a new version: the document shown now keeps its own
-    const Rml::FontFaceHandle shown = fonts.GetFontFaceHandle("sans-serif", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, sizes[3]);
-    const Rml::FontFaceHandle cleared = fonts.GetFontFaceHandle("sans-serif", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, sizes[1]);
-    const int shownVersion = fonts.GetVersion(shown);
-    const int clearedVersion = fonts.GetVersion(cleared);
-    // the first document again: it needs a page, the least recently used one (the second's, drawn three documents ago) goes
+    // only the users of a cleared page get a new version: the first document shown again takes
+    // the place of the least recently used page
+    auto handleOf = [&](int i){
+        return fonts.GetFontFaceHandle("sans-serif", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, sizes[i]);
+    };
+    int versions[4];
+    for (int i = 0; i < 4; i++)
+        versions[i] = fonts.GetVersion(handleOf(i));
+    const uint64_t evictionsBeforeAgain = fonts.getEvictionCount();
     for (Rml::ElementDocument* document : documents)
         document->Hide();
     documents[0]->Show();
     for (int frame = 0; frame < 3; frame++)
         ASSERT_TRUE(test.renderFrame());
-    EXPECT_EQ(fonts.GetVersion(shown), shownVersion);
-    EXPECT_GT(fonts.GetVersion(cleared), clearedVersion);
+    EXPECT_GT(fonts.getEvictionCount(), evictionsBeforeAgain);
+    int bumped = 0;
+    for (int i = 1; i < 4; i++)
+        bumped += fonts.GetVersion(handleOf(i)) > versions[i] ? 1 : 0;
+    // a page holds the glyphs of one or two documents: some handles get a new version, not all
+    EXPECT_GE(bumped, 1);
+    EXPECT_LE(bumped, 2);
+    {
+        std::vector<uint8_t> screen;
+        ASSERT_TRUE(test.readScreen(screen));
+        EXPECT_LE(largestDifference(screen, references[0]), 1) << "document 0 again";
+    }
 
     // more than four evictions within 120 frames: once per context
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "HTMLUI-GEN-0007"), 1u);
