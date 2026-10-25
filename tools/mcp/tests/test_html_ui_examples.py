@@ -93,7 +93,8 @@ SURFACE = {
 
 # Examples whose CSS animations run from the document's load (infinite keyframes) and that make
 # no data model (createDataModel reloads a document): play keeps the document the editor loaded,
-# so their phase at play start depends on the wall time spent in edit mode. The test reloads them
+# so their phase at play start depends on the wall time spent in edit mode. The test rebuilds them (a
+# patch reload keeps running animations, S17)
 # once play is held, which starts them on the fixed UI clock (video_menu: its autoplay video too).
 RESTART_CSS = {"main_menu", "video_menu"}
 
@@ -997,7 +998,7 @@ def _make_tests(name: str) -> None:
                 cursor = await console_cursor(ed)
                 await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
                 if name in RESTART_CSS:
-                    await lua(ed, f"{doc_lua(name)}:reload()")
+                    await lua(ed, f"{doc_lua(name)}:reload{{mode = \"rebuild\"}}")
                 await ed.call("wait", frames=90)
                 await before(ed, name, run == 0)
                 captures.append(await capture(ed, f"{name}.play{run}"))
@@ -1043,7 +1044,7 @@ def _make_tests(name: str) -> None:
         try:
             await ed.call("play", action="start", scene=state["scene"], fixed_fps=60, auto_pause=True)
             if name in RESTART_CSS:
-                await lua(ed, f"{doc_lua(name)}:reload()")
+                await lua(ed, f"{doc_lua(name)}:reload{{mode = \"rebuild\"}}")
             await ed.call("wait", frames=90)
             await before(ed, name, True)
             r = await ed.call("assert_ui", entity=name, checks=entry["checks"], viewports=entry["viewports"])
