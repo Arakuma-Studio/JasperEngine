@@ -1817,7 +1817,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
             {"models", boolean("Data-model values (play).")},
             {"viewport", vec2("Lay out at [w,h] first (restored after).")},
             {"screenshot", boolean("Game view image of the matches, outlined.")},
-            {"render_stats", boolean("Last frame's draw/batching/atlas counters of its context.")},
+            {"render_stats", boolean("Last frame's render counters.")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         });
         tool.annotations.readOnly = true;

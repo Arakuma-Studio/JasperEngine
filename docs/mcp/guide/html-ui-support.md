@@ -1201,7 +1201,7 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `stroke-size` | unsupported | CSS Fill and Stroke 3 (draft) is not supported (Info) (HTMLUI-CSS-0002) | use fill and stroke on the svg root, or attributes inside the SVG file |
 | `stroke-width` | emulated | applied on the svg root |  |
 
-### Properties: tab-index to text-spacing
+### Properties: tab-index to text-shadow
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
@@ -1239,15 +1239,15 @@ A construct that is not native is reported where it is written (`check --ui`, th
 | `text-justify` | native | where justified lines take their space; native with the fork (Justify): auto (spaces, and around CJK characters), none, inter-word, inter-character, distribute (computes to inter-character); ignored without it |  |
 | `text-orientation` | unsupported | vertical text is not supported (Warning) (HTMLUI-CSS-0002) | rotate the element with transform: rotate(90deg), or stack the characters in a column |
 | `text-overflow` | native | ellipsis, clip and strings native |  |
-| `text-rendering` | ignored | font rendering hint; the font engine decides (HTMLUI-CSS-0003) |  |
+| `text-rendering` | native | native (fork S16-F3): optimizeSpeed keeps text a bitmap at the document's scale (stretched under a transform); auto and optimizeLegibility rasterize it at its on-screen scale, from distance fields while that scale animates; geometricPrecision always draws it from distance fields |  |
 | `text-shadow` | native | blur -> glow; a missing color -> the rule color or white (approximated); native with the fork (TextShadow) |  |
-| `text-size-adjust` | ignored | mobile text inflation control; no effect in a game UI (HTMLUI-CSS-0003) |  |
-| `text-spacing` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 
-### Properties: text-spacing-trim to translate
+### Properties: text-size-adjust to translate
 
 | Property | Support | Notes | Instead |
 |---|---|---|---|
+| `text-size-adjust` | ignored | mobile text inflation control; no effect in a game UI (HTMLUI-CSS-0003) |  |
+| `text-spacing` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `text-spacing-trim` | ignored | typographic refinement; ignored (Info) (HTMLUI-CSS-0003) |  |
 | `text-transform` | native | full-width and full-size-kana dropped (Info) |  |
 | `text-underline-offset` | native | decoration details are not supported (Info); native with the fork | draw a custom line with border-bottom (and padding-bottom) or a box-shadow |
@@ -2245,6 +2245,7 @@ Severity "by case": the construct decides (the default is given).
 | `HTMLUI-GEN-0004` | error | **Internal error** (`internal-error`): The compatibility layer failed on this input. This is a bug in the engine; the message has the details. The document may render incompletely. |
 | `HTMLUI-GEN-0005` | warning | **Charset other than UTF-8** (`non-utf8-charset`): The document or stylesheet declares a character encoding other than UTF-8 (<meta charset>, @charset). The engine always decodes UTF-8: save the file as UTF-8 and declare utf-8. |
 | `HTMLUI-GEN-0006` | warning | **RmlUi message** (`rmlui-message`): RmlUi, the engine's layout library, rejected or warned about the converted document or stylesheet. The location is mapped back to your file. Simplify the construct or report the case: converted output should always be accepted. |
+| `HTMLUI-GEN-0007` | warning | **Glyph atlas budget too small** (`glyph-atlas-budget`): The text drawn needs more glyphs than the glyph atlas holds: its least recently used pages keep being cleared and their glyphs made again (more than 4 times in 120 frames). Raise Project Settings > Graphics > HTML UI > Glyph Atlas Budget (graphics.html_ui_glyph_atlas_mib), or use fewer font sizes and fonts at once. |
 
 ### HTML
 

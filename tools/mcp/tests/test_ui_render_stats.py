@@ -90,8 +90,8 @@ async def test_render_stats(ed: Editor):
     for field in FIELDS:
         ed.check(field in got and isinstance(got[field], int), f"render_stats has {field}: {got}")
     ed.check(got["drawCalls"] > 0, f"the document draws: {got}")
-    # 60 cards (shadow, box, dot, text each) in a handful of merged draws
-    ed.check(got["geometrySubmitted"] >= 180, f"every box and text submitted: {got}")
+    # 60 cards (box and shadow in one primitives call, dot, text) in a handful of merged draws
+    ed.check(got["geometrySubmitted"] >= 120, f"every box and text submitted: {got}")
     ed.check(got["drawCalls"] <= 20, f"batched into a few draws: {got}")
     ed.check(got["runsMerged"] >= 1 and got["instancesDrawn"] >= 180, f"merged instanced runs: {got}")
     # the cards are clear of the list's rounded corners: the scissor clips, no stencil

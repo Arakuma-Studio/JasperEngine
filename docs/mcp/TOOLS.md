@@ -2815,6 +2815,7 @@ Inspect a live HTML/CSS UI document: element tree (ref = reusable selector, box 
 | `limit` | integer (1..1000) |  | Default: `200`. |
 | `max_width` | integer (0..4096) |  | Default: `768`. |
 | `models` | boolean |  | Data-model values (play). |
+| `render_stats` | boolean |  | Last frame's render counters. |
 | `scene` | integer or string |  |  |
 | `screenshot` | boolean |  | Game view image of the matches, outlined. |
 | `selector` | string |  | CSS selector (default: whole document). |
