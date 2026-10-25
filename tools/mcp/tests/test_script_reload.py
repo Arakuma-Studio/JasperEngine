@@ -175,7 +175,9 @@ async def test_external_save_reloads_within_the_budget(ed: Editor):
 async def test_reload_after_stopping_play_defers(ed: Editor):
     s = await start(ed, policy="after_stop")
     path = ed.project / s["path"]
-    # content no earlier call wrote (an editor write's echo is not a change)
+    # content no earlier call wrote, after the last call's write window (a file stamped while a
+    # writing tool ran is that tool's, not an external change)
+    await asyncio.sleep(0.05)
     path.write_text(COUNTER.format(add=7, extra="-- edited while playing\n"))
     deferred = None
     seen = []
