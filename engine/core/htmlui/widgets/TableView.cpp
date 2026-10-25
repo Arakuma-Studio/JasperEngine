@@ -94,7 +94,7 @@ void ItemsViewElement::collectColumns(){
         for (int k = 0; k < child->GetNumChildren(); k++){
             Rml::Element* part = child->GetChild(k);
             if (part->GetTagName() == "htmltemplate" || part->GetTagName() == "template"){
-                column.cellRml = templateRml(part);
+                column.cellTemplate = part;
                 break;
             }
         }
@@ -106,6 +106,10 @@ void ItemsViewElement::buildHeader(){
     Rml::XMLAttributes attributes;
     attributes["class"] = Rml::String("htmlui-table-header");
     header = AppendChild(Rml::Factory::InstanceElement(this, "div", "div", attributes));
+    // in the flow above the rows, kept at the view's top while it scrolls (OnUpdate), over the rows
+    header->SetProperty(Rml::PropertyId::Display, Rml::Property(Rml::Style::Display::Block));
+    header->SetProperty(Rml::PropertyId::Position, Rml::Property(Rml::Style::Position::Relative));
+    header->SetProperty(Rml::PropertyId::ZIndex, Rml::Property(1.0f, Rml::Unit::NUMBER));
 
     std::vector<Rml::Element*> sources;
     for (int i = 0; i < GetNumChildren(); i++){

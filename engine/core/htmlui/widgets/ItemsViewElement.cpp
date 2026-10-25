@@ -247,8 +247,6 @@ void ItemsViewElement::ensureStructure(){
             break;
         }
     }
-    rowRml = templateRml(templateElement);
-
     if (kind == Kind::Table){
         collectColumns();
         buildHeader();
@@ -258,21 +256,32 @@ void ItemsViewElement::ensureStructure(){
     attributes["class"] = Rml::String("htmlui-sizer");
     Rml::ElementPtr sizerPtr = Rml::Factory::InstanceElement(this, "div", "div", attributes);
     sizer = AppendChild(std::move(sizerPtr));
+    // the rows' containing block, as tall as every row
+    sizer->SetProperty(Rml::PropertyId::Display, Rml::Property(Rml::Style::Display::Block));
+    sizer->SetProperty(Rml::PropertyId::Position, Rml::Property(Rml::Style::Position::Relative));
     attributes["class"] = Rml::String("htmlui-drop-indicator");
     indicator = sizer->AppendChild(Rml::Factory::InstanceElement(sizer, "div", "div", attributes));
     indicator->SetProperty(Rml::PropertyId::Display, Rml::Property(Rml::Style::Display::None));
+    indicator->SetProperty(Rml::PropertyId::Position, Rml::Property(Rml::Style::Position::Absolute));
 
     heights.reset(0, autoHeight ? (estimatedHeight > 0.0f ? estimatedHeight : 32.0f) : itemHeight + (kind == Kind::Grid ? gap : 0.0f));
     minLineHeight = heights.estimate();
     windowDirty = true;
 }
 
-std::string ItemsViewElement::rowContentRml() const{
+std::string ItemsViewElement::rowContentRml(){
+    if (rowRml.empty() && templateElement)
+        rowRml = templateRml(templateElement);
     if (kind != Kind::Table)
         return rowRml;
-    // a table row: one cell per column
+    // a table row: one cell per column (none while a column's template is not readable yet)
     std::string rml;
-    for (const Column& column : columns){
+    for (Column& column : columns){
+        if (column.cellRml.empty() && column.cellTemplate){
+            column.cellRml = templateRml(column.cellTemplate);
+            if (column.cellRml.empty())
+                return std::string();
+        }
         rml += "<div class=\"htmlui-cell\" data-column=\"";
         rml += Rml::StringUtilities::EncodeRml(column.key);
         rml += "\" style=\"width: " + Rml::ToString(column.width) + "px\">";
@@ -290,7 +299,12 @@ Rml::Element* ItemsViewElement::makeRowElement(){
     attributes["class"] = Rml::String("htmlui-row");
     Rml::ElementPtr row = Rml::Factory::InstanceElement(sizer, "div", "div", attributes);
     Rml::Element* element = sizer->InsertBefore(std::move(row), indicator);
+    // placed in the sizer by the view (positionRow): absolutely, full width but in a grid
     element->SetProperty(Rml::PropertyId::Display, Rml::Property(Rml::Style::Display::None));
+    element->SetProperty(Rml::PropertyId::Position, Rml::Property(Rml::Style::Position::Absolute));
+    element->SetProperty(Rml::PropertyId::Left, px(0.0f));
+    if (kind != Kind::Grid && kind != Kind::Table)
+        element->SetProperty(Rml::PropertyId::Right, px(0.0f));
     createdCounter()++;
     return element;
 }
@@ -399,6 +413,13 @@ void ItemsViewElement::unbindModel(){
 void ItemsViewElement::onModelChanged(){
     modelDirty = true;
     windowDirty = true;
+    if (!structureReady || !model)
+        return;
+    // in the data model's update, before the views of the rows (they are deeper): the rows show
+    // items that exist when their views evaluate (an array that shrank leaves none past its end)
+    inModelUpdate = true;
+    updateWindow(VirtualizationCoordinator::Reason::DataChanged, false);
+    inModelUpdate = false;
 }
 
 void ItemsViewElement::readModelCount(){
@@ -575,18 +596,31 @@ void ItemsViewElement::clearRowContent(Row& row){
         return;
     while (row.element->GetNumChildren() > 0)
         row.element->RemoveChild(row.element->GetChild(0));
+    row.contentMade = false;
+}
+
+// the template's content into a row that has none yet (false while the template is not readable)
+bool ItemsViewElement::makeRowContent(Row& row){
+    if (row.contentMade)
+        return true;
+    const std::string rml = rowContentRml();
+    if (rml.empty()){
+        // the template is not readable yet (an HTML document's compile is bound once it loaded)
+        contentPending = true;
+        return false;
+    }
+    row.element->SetInnerRML(rml);
+    row.contentMade = true;
+    createdCounter()++;
+    return true;
 }
 
 void ItemsViewElement::bindRowContent(Row& row, int item){
     Rml::Element* element = row.element;
-    const bool firstContent = element->GetNumChildren() == 0 && row.item < 0 && row.aliases.empty();
     const bool sameItem = (row.item == item);
 
     if (providerSet){
-        if (firstContent){
-            element->SetInnerRML(rowContentRml());
-            createdCounter()++;
-        }
+        makeRowContent(row);
         if (provider.unbind && row.item >= 0)
             provider.unbind(element, row.item);
         if (provider.bind)
@@ -624,25 +658,23 @@ void ItemsViewElement::bindRowContent(Row& row, int item){
         if (row.aliases.empty()){
             for (size_t i = 0; i < targets.size(); i++)
                 row.aliases.push_back(model->InsertRowAlias(element, names[i], targets[i]));
-            element->SetInnerRML(rowContentRml());
-            createdCounter()++;
         }else{
             for (size_t i = 0; i < targets.size() && i < row.aliases.size(); i++)
                 model->SetRowAlias(row.aliases[i], targets[i]);
         }
+        makeRowContent(row);
         return;
     }
 
     // without P7-D the row's content is made again for another item (its views resolved their
     // addresses when they were made); the row element keeps its identity
-    if (!firstContent && sameItem && kind != Kind::Tree)
+    if (row.contentMade && sameItem && kind != Kind::Tree)
         return;
     clearRowContent(row);
     model->EraseAliases(element);
     for (size_t i = 0; i < targets.size(); i++)
         model->InsertAlias(element, names[i], targets[i]);
-    element->SetInnerRML(rowContentRml());
-    createdCounter()++;
+    makeRowContent(row);
 }
 
 void ItemsViewElement::setRowClasses(Row& row){
@@ -748,6 +780,13 @@ void ItemsViewElement::UnbindSlot(int slot){
         auto mine = keySlots.find(row.key);
         if (mine != keySlots.end() && mine->second == slot)
             keySlots.erase(mine);
+    }
+    // a hidden row's views still evaluate when the model changes: they read an item that exists
+    if (model && row.contentMade){
+        if (!row.aliases.empty() && itemCount > 0 && (kind != Kind::Tree || !nodes.empty()))
+            model->SetRowAlias(row.aliases[0], itemAddress(0));
+        else
+            clearRowContent(row);
     }
     row.item = -1;
     row.key.clear();
@@ -953,8 +992,8 @@ void ItemsViewElement::updateWindow(VirtualizationCoordinator::Reason reason, bo
 
     updateSizer();
     // the views of rows bound now evaluate in this frame, not the next (the data models updated
-    // before the elements)
-    if (model)
+    // before the elements); during the model's own update they evaluate after this view
+    if (model && !inModelUpdate)
         model->Update(false);
 }
 
@@ -973,6 +1012,11 @@ void ItemsViewElement::OnUpdate(){
 
     updates++;
     inUpdate = true;
+    if (contentPending && !rowContentRml().empty()){
+        contentPending = false;
+        rebindAll = true;
+        windowDirty = true;
+    }
     checkHeight();
     measureRows();
 
@@ -987,6 +1031,9 @@ void ItemsViewElement::OnUpdate(){
     if (scrollTop != lastScrollTop){
         lastScrollTop = scrollTop;
         windowDirty = true;
+        // the table's header stays at the top (moved by a transform: no layout)
+        if (header)
+            header->SetProperty("transform", "translateY(" + Rml::ToString(scrollTop) + "px)");
     }
     // a drag from one of the rows keeps the pool whole until it ends (R22)
     const bool allowShrink = !DragDropSession::isDragSourceIn(this);

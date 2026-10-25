@@ -84,6 +84,7 @@ namespace jasperengine::htmlui {
             bool sortable = false;
             bool resizable = false;
             std::string cellRml;   // the column's <template> ("": {{item.<key>}} in model mode, empty in Lua mode)
+            Rml::Element* cellTemplate = nullptr;   // that <template> (its RML is read once the document's compile is bound)
         };
 
         // what inspect_ui reports (R39)
@@ -196,6 +197,7 @@ namespace jasperengine::htmlui {
             int pass = 0;                        // the window update that last bound it
             uint64_t laidOutAfter = 0;           // the update whose layout first lays out its binding
             bool hidden = true;
+            bool contentMade = false;            // the template's content is in the row
             std::vector<int> aliases;            // P7-D handles: item, index (tree: depth, expanded, hasChildren)
         };
 
@@ -213,7 +215,9 @@ namespace jasperengine::htmlui {
         std::string templateRml(Rml::Element* templateElement) const;
         void collectColumns();
         void buildHeader();
-        std::string rowContentRml() const;
+        // the markup of a row's content; the templates are read when first needed (an HTML document's
+        // template content is its compile's, bound once the document has loaded)
+        std::string rowContentRml();
         Rml::Element* makeRowElement();
 
         // data
@@ -223,6 +227,7 @@ namespace jasperengine::htmlui {
         bool modelMode() const { return model != nullptr; }
         Rml::DataAddress itemAddress(int index) const;
         void bindRowContent(Row& row, int item);
+        bool makeRowContent(Row& row);
         void clearRowContent(Row& row);
         void positionRow(Row& row, int slot);
         void setRowClasses(Row& row);
@@ -304,6 +309,8 @@ namespace jasperengine::htmlui {
         int pass = 0;
         uint64_t updates = 0;                    // OnUpdate calls (the layout of update n follows it)
         bool inUpdate = false;
+        bool inModelUpdate = false;              // onModelChanged, inside the data model's update
+        bool contentPending = false;             // rows wait for a readable template
         bool rebindAll = false;
         std::vector<int> refreshSlots;
         bool windowDirty = true;
