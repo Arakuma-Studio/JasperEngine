@@ -23,6 +23,7 @@
 #include "Generator.h"
 #include "Out.h"
 #include "Project.h"
+#include "asset/AssetTypes.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
 #include "command/CommandNames.h"
@@ -174,6 +175,9 @@ bool WriteFilesCmd::restore(size_t i) {
     if (previous[i].existed) return writeFile(items[i].path, previous[i].content);
     // a file it created (or began to): gone again; never a directory that was there
     if (fs::is_regular_file(items[i].path, ec) || fs::is_symlink(items[i].path, ec)) fs::remove(items[i].path, ec);
+    // and the meta the asset database gave it (S04): a created file leaves no orphan behind
+    const fs::path meta = AssetTypes::metaPathFor(items[i].path);
+    if (!previous[i].metaExisted && fs::is_regular_file(meta, ec)) fs::remove(meta, ec);
     return !fs::exists(fs::symlink_status(items[i].path, ec));
 }
 
@@ -194,6 +198,7 @@ bool WriteFilesCmd::execute() {
             Previous prev;
             std::error_code ec;
             prev.existed = fs::is_regular_file(item.path, ec);
+            prev.metaExisted = fs::exists(fs::symlink_status(AssetTypes::metaPathFor(item.path), ec));
             if (prev.existed && !ProjectChecks::readFile(item.path, prev.content)) {
                 fail("can't read " + FileUtils::pathToGenericUtf8(item.path) + " (its content is kept for undo); nothing was written");
                 return false;

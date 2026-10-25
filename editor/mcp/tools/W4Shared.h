@@ -78,6 +78,7 @@ namespace jasperengine::editor::mcp {
         private:
             struct Previous {
                 bool existed = false;
+                bool metaExisted = false;   // its S04 sidecar: one the asset database adds to a file it created goes on undo
                 std::string content;
             };
             std::vector<Item> items;

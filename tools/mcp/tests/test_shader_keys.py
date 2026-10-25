@@ -98,7 +98,10 @@ async def test_build_info_keys_keep_their_text(ed: Editor):
     info = await ed.call("get_build_info", include_shaders=True)
     ed.check(info["shaders"], "the scene's shaders are listed")
     for shader in info["shaders"]:
-        ed.check(re.fullmatch(r"0x[0-9a-f]{1,16}", shader["key"]), f"a 32-bit key is the packed hex: {shader}")
+        # S10's Shadows HQ is MESH bit 33: a key with it is wide (type, then the 64 property bits)
+        wide = "Shq" in shader["name"]
+        ed.check(re.fullmatch(r"0x[0-9a-f]{24}" if wide else r"0x[0-9a-f]{1,16}", shader["key"]),
+                 f"a 32-bit key is the packed hex, a wide one type + properties: {shader}")
     mesh = [s for s in info["shaders"] if s["key"] == hex(packed(MESH, 0x41))]
     ed.check(mesh, f"the legacy key read from the scene is listed as {hex(packed(MESH, 0x41))}: {info['shaders']}")
 

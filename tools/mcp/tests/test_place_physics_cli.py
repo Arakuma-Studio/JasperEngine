@@ -502,18 +502,23 @@ async def test_save_writes_the_scene():
     # a document written before format versions gets its formatVersion on the first save (S03
     # R20/R21), and one written before asset identity its GUID when the project opens (S04):
     # nothing else
+    # (at any level: the project's scene list names its scenes by GUID too)
+    def without_new_identity(old, new):
+        if isinstance(old, dict) and isinstance(new, dict):
+            return {k: without_new_identity(old.get(k), v) for k, v in new.items()
+                    if k in old or k not in ("formatVersion", "guid", "formerGuids")}
+        if isinstance(old, list) and isinstance(new, list) and len(old) == len(new):
+            return [without_new_identity(a, b) for a, b in zip(old, new)]
+        return new
+
     def identity_only(name):
         if not (name.endswith(".scene") or name == "project.yaml"):
             return False
         old, new = yaml.safe_load(others[name]), yaml.safe_load(after_save[name])
-        if not isinstance(old, dict) or not isinstance(new, dict):
-            return False
-        for key in ("formatVersion", "guid", "formerGuids"):
-            if key not in old:
-                new.pop(key, None)
-        return new == old
+        return isinstance(old, dict) and without_new_identity(old, new) == old
     changed = [k for k in changed if not (k in after_save and identity_only(k))]
-    check(not changed, f"--save changed {changed}")
+    check(not changed, f"--save changed {changed}: " +
+          "; ".join(f"{k}: {others[k][:600]!r} -> {after_save.get(k, b'')[:600]!r}" for k in changed))
     # the saved poses are where the next run starts, and they stay put
     again = place(proj, "TableCrate", CRATE_BOXES)
     for path, e in by_path(saved).items():

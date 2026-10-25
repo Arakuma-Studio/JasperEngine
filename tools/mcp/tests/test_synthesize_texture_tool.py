@@ -136,7 +136,8 @@ def write_textures(project: Path) -> None:
 
 
 def files_under(project: Path) -> set[str]:
-    return {p.relative_to(project).as_posix() for p in (project / "assets").rglob("*") if p.is_file()}
+    # (the assets' S04 .meta sidecars aside)
+    return {p.relative_to(project).as_posix() for p in (project / "assets").rglob("*") if p.is_file() and p.suffix != ".meta"}
 
 
 def run_check(project: Path, *args: str) -> tuple[int, dict]:
