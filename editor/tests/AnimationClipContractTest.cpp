@@ -137,8 +137,10 @@ TEST(AnimationClipContract, Converters){
     std::string error;
     // not an entity Animation
     EXPECT_FALSE(ClipConverters::convertEntityAnimation(&scene, entity, NULL_ENTITY, out, report, &error));
+    // (a missing model file is refused too: ClipConvertersTest, which starts the engine the model
+    // lookup needs; this binary may run this test alone)
     std::vector<ClipWarning> warnings;
-    EXPECT_FALSE(ClipConverters::extractModelSubClip("assets/models/missing.gltf#Walk", out, warnings, &error));
+    EXPECT_FALSE(ClipConverters::extractModelSubClip("assets/models/walk.anim", out, warnings, &error));
     UseAnimationPlayerPlan plan;
     EXPECT_FALSE(ClipConverters::planUseAnimationPlayer(&scene, entity, plan, &error));
     BakedChannel channel;

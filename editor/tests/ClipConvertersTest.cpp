@@ -659,6 +659,7 @@ TEST_F(ClipConverters_, ExtractKeepsTheSourceAndSwitchesThePlayer) {
     EXPECT_EQ(data.source.name, "Walk");
     EXPECT_TRUE(anim::isClipGuid(data.guid));
     EXPECT_FALSE(ClipConverters::extractModelSubClip("models/hero.gltf#Nope", data, warnings, &error));
+    EXPECT_FALSE(ClipConverters::extractModelSubClip("assets/models/missing.gltf#Walk", data, warnings, &error));
     EXPECT_FALSE(ClipConverters::extractModelSubClip("models/hero.gltf", data, warnings, &error));
 
     // the file alone: a project step
