@@ -655,6 +655,39 @@ TEST(ModelSubClips, AnimationEntitiesFlagSkipsTheLoaderAnimations){
     EXPECT_EQ(scene.getEntityName(made.animations[4]), "Wave");
 }
 
+// Model:findAnimation / playAnimation without a player: the loader's entities of two animations
+// named "Wave" are both "Wave", reachable as "Wave" and "Wave 2" (the sub-clip names the
+// Inspector shows); unique names and the first duplicate find what they found before
+TEST(ModelSubClips, ModelFindsDuplicateAnimationNamesByTheirSubClipNames){
+    Scene scene;
+    Model model(&scene);
+    ASSERT_TRUE(model.loadModel(fixturePath("hero_animated.gltf")));
+    const ModelComponent& component = scene.getComponent<ModelComponent>(model.getEntity());
+    ASSERT_EQ(component.animations.size(), 5u);
+    ASSERT_EQ(scene.getEntityName(component.animations[3]), "Wave");
+    ASSERT_EQ(scene.getEntityName(component.animations[4]), "Wave");
+    const std::vector<Entity> animations = component.animations;
+
+    EXPECT_EQ(model.findAnimation("Walk").getEntity(), animations[0]);
+    EXPECT_EQ(model.findAnimation("Animation 2").getEntity(), animations[2]);
+    EXPECT_EQ(model.findAnimation("Wave").getEntity(), animations[3]);
+    EXPECT_EQ(model.findAnimation("Wave 2").getEntity(), animations[4]);
+    EXPECT_THROW(model.findAnimation("Wave 3"), std::out_of_range);
+
+    auto started = [&](Entity animation){
+        const ActionComponent& action = scene.getComponent<ActionComponent>(animation);
+        return action.startTrigger || action.state == ActionState::Running;
+    };
+    model.playAnimation("Wave 2", 0.0f);
+    EXPECT_TRUE(started(animations[4]));
+    EXPECT_FALSE(started(animations[3]));
+    model.stopAnimations(0.0f);
+    scene.getComponent<ActionComponent>(animations[4]).startTrigger = false;
+    model.playAnimation("Wave");
+    EXPECT_TRUE(started(animations[3]));
+    EXPECT_FALSE(started(animations[4]));
+}
+
 // Builds on threads (the shader variant probe and play startup load off the main thread): from
 // private parses, then from the pooled parse while the main thread pools it. Each round pools a
 // fresh copy in the flat layout (skipEntities: loadGLTF's reload of saved entities), whose first
