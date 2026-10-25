@@ -384,6 +384,8 @@ TEST_F(LuaReloadTest, Bench200Instances) {
     EXPECT_EQ(report.instances, 200);
     // R33: 2 ms + 15 us per instance on the main thread; AC7: <= 5 ms on the CI runner
     std::printf("[bench] Lua reload of 200 instances: %.3f ms (budget 5)\n", ms);
-    if (testsupport::perfSlack() > 0.0) EXPECT_LE(ms, 5.0 * testsupport::perfSlack());
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(ms, 5.0 * testsupport::perfSlack());
+    }
     ASSERT_EQ(lua("reloadBench = nil"), "");
 }

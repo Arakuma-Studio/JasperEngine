@@ -207,7 +207,9 @@ TEST(ToolchainFingerprint, ScanMarkerAt50MegabytesWithinBudget) {
     EXPECT_TRUE(compare(fp, *found).empty());
     // R34: <= 20 ms for 64 MB (the file is in the page cache: written just now)
     std::printf("[bench] fingerprint marker scan of 64 MB: %.2f ms (budget 20)\n", ms);
-    if (testsupport::perfSlack() > 0.0) EXPECT_LE(ms, 20.0 * testsupport::perfSlack());
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LE(ms, 20.0 * testsupport::perfSlack());
+    }
 
     // a marker cut by the 8 MB chunk boundary is still found
     const std::filesystem::path straddling = dir.path() / "straddling.so";
