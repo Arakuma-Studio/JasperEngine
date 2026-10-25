@@ -54,7 +54,7 @@ def log_length(ed: Editor) -> int:
 
 
 async def test_dynamic_resolution_in_play(ed: Editor):
-    ed.require_tools("create_scene", "create_entity", "set_scene_settings", "play", "wait", "get_post_processing_status",
+    ed.require_tools("configure_game_view", "focus_window", "create_entity", "set_scene_settings", "play", "wait", "get_post_processing_status",
                      "set_post_processing_debug")
     # the new project's own scene (selected): Play runs it
     listed = await ed.call("list_scenes")
@@ -82,7 +82,10 @@ async def test_dynamic_resolution_in_play(ed: Editor):
                  f"edit mode keeps scale 1: {got['dynamic_resolution']}")
     await ed.call("set_post_processing_debug", scene=sid, fake_gpu_ms=None)
 
+    # the game draws in the Game view (the frame's own view while playing)
+    await ed.call("configure_game_view", aspect="16:9", scale=1, maximize_on_play=True)
     await ed.call("play", action="start", scene=sid)
+    await ed.call("focus_window", window="game")
     try:
         await ed.call("wait", frames=30)
         got, _ = await wait_for(ed, sid, "running", lambda s: s["dynamic_resolution"]["running"], 5)
