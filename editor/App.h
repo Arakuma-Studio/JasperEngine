@@ -67,7 +67,8 @@ namespace jasperengine::editor{
 
     // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
     struct EditorDialogInfo {
-        std::string kind;                  // "alert", "save_dialog" or "modal"
+        std::string kind;                  // "alert", "save_dialog", "modal", or "progress" (the
+                                           // build progress, which closes by itself)
         std::string title;
         std::string message;
         std::vector<std::string> choices;  // answers App::answerDialog takes; empty: a human must close it

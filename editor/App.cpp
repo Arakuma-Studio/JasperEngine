@@ -5,6 +5,7 @@
 #include "profiler/Profile.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
+#include "thread/ResourceProgress.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -2703,10 +2704,12 @@ bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
         return true;
     }
     if (ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal()) {
-        out.kind = "modal";
         std::string name = modal->Name ? modal->Name : "";
         const size_t idPos = name.find("##");
         if (idPos != std::string::npos) name.resize(idPos);
+        // LoadingWindow's progress of the shader, texture and model builds: no answer, it
+        // closes when they are done
+        out.kind = name == "Loading" && ResourceProgress::hasActiveBuilds() ? "progress" : "modal";
         out.title = name;
         return true;
     }
@@ -2720,7 +2723,9 @@ bool editor::App::answerDialog(const std::string& choice, std::string& error) {
         return false;
     }
     if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
-        if (dialog.choices.empty()) {
+        if (dialog.kind == "progress") {
+            error = "The editor is building shaders, textures or models (\"" + dialog.title + "\"): it closes by itself when they are done.";
+        } else if (dialog.choices.empty()) {
             error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
         } else {
             error = "Choice must be one of:";
