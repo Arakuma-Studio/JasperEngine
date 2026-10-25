@@ -216,6 +216,14 @@ namespace jasperengine::editor{
         // project history, whatever window has focus (both ownsUndo forms answer this)
         bool newestStepIsClipEdit() const;
 
+        // ---- additions (T3a review round 2) ----
+
+        // R5b for redo: the newest redoable step (the one undone last) across the project history
+        // and the selected scene's is a clip commit of this controller: Ctrl+Y goes to the project
+        // history (AnimationClipAppHooks::ownsRedo), independently of where Ctrl+Z goes
+        bool newestRedoIsClipEdit() const;
+        bool ownsRedo(const ClipUndoFocus& focus) const;
+
     private:
         struct Snapshot;
         Project* project = nullptr;

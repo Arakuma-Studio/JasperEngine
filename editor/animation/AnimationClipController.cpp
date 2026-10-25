@@ -94,6 +94,12 @@ namespace{
                 }
                 return false;
             };
+            hooks.ownsRedo = [](const ClipUndoFocus& focus){
+                for (auto& entry : controllers()){
+                    if (entry.second->ownsRedo(focus)) return true;
+                }
+                return false;
+            };
             hooks.takesKeys = [](){
                 for (auto& entry : controllers()){
                     if (entry.second->takesKeys()) return true;
@@ -121,6 +127,8 @@ namespace{
         struct Steps{
             std::vector<uint64_t> stamps;   // per position: when that step was done
             std::vector<bool> clip;         // per position: a clip commit of a controller
+            std::vector<uint64_t> undone;   // per position: when that step was undone (0: not undone)
+            uint64_t lastNew = 0;           // when its last new step (not a redo) was made
             size_t last = 0;
         };
         bool installed = false;
@@ -152,17 +160,30 @@ namespace{
             // a new step (or one merged into the last): the redo tail is gone
             steps.stamps.resize(position, 0);
             steps.clip.resize(position, false);
+            steps.undone.resize(position, 0);
             if (position > 0){
                 steps.stamps[position - 1] = ++t.clock;
                 steps.clip[position - 1] = false;
+                steps.undone[position - 1] = 0;
+                steps.lastNew = t.clock;
             }
         }else if (position > steps.last){
             // a redo: the step is done again now (and stays what it was)
             if (steps.stamps.size() < position){
                 steps.stamps.resize(position, 0);
                 steps.clip.resize(position, false);
+                steps.undone.resize(position, 0);
             }
             steps.stamps[position - 1] = ++t.clock;
+            steps.undone[position - 1] = 0;
+        }else if (position < steps.last){
+            // an undo: the step at `position` is the next redo, undone now
+            if (steps.stamps.size() <= position){
+                steps.stamps.resize(position + 1, 0);
+                steps.clip.resize(position + 1, false);
+                steps.undone.resize(position + 1, 0);
+            }
+            steps.undone[position] = ++t.clock;
         }
         steps.last = position;
     }
@@ -182,6 +203,20 @@ namespace{
             if (before) before(id);
             timeline().stepping.insert(id);
         };
+    }
+
+    // the next redoable step of a history: when it was undone (0: none, or before the timeline)
+    // and whether it is a clip commit
+    uint64_t redoStep(size_t id, bool* clip){
+        if (clip) *clip = false;
+        CommandHistory* history = historyOf(id);
+        if (!history || !history->canRedo()) return 0;
+        HistoryTimeline& t = timeline();
+        auto it = t.histories.find(id);
+        const size_t position = history->position();
+        if (it == t.histories.end() || position >= it->second.undone.size()) return 0;
+        if (clip) *clip = it->second.clip[position];
+        return it->second.undone[position];
     }
 
     // the top undoable step of a history: when it was done (0: before the timeline) and whether
@@ -1637,6 +1672,28 @@ bool AnimationClipController::newestStepIsClipEdit() const{
     const uint32_t selected = project->getSelectedSceneId();
     const uint64_t sceneStep = selected != NULL_PROJECT_SCENE ? topStep(selected, nullptr) : 0;
     return projectStep > sceneStep;
+}
+
+bool AnimationClipController::newestRedoIsClipEdit() const{
+    if (!project || historyOf(NULL_PROJECT_SCENE) != project->getProjectCommandHistory()) return false;
+    bool clip = false;
+    const uint64_t projectStep = redoStep(NULL_PROJECT_SCENE, &clip);
+    if (!clip || projectStep == 0) return false;
+    const uint32_t selected = project->getSelectedSceneId();
+    // newer than the scene's next redo and than its last new step (a scene edit made after the
+    // undo is the newest action: Ctrl+Y does not jump back to the clip; scene redos do not count)
+    const uint64_t sceneRedo = selected != NULL_PROJECT_SCENE ? redoStep(selected, nullptr) : 0;
+    uint64_t sceneNew = 0;
+    if (selected != NULL_PROJECT_SCENE){
+        auto steps = timeline().histories.find(selected);
+        if (steps != timeline().histories.end()) sceneNew = steps->second.lastNew;
+    }
+    return projectStep > sceneRedo && projectStep > sceneNew;
+}
+
+bool AnimationClipController::ownsRedo(const ClipUndoFocus& focus) const{
+    (void)focus;
+    return newestRedoIsClipEdit();
 }
 
 const std::vector<ClipWarning>& AnimationClipController::getLastWarnings() const{

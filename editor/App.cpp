@@ -464,6 +464,14 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             canUndo = CommandHandle::get(selectedSceneId)->canUndo();
             canRedo = CommandHandle::get(selectedSceneId)->canRedo();
         }
+        // redo is routed on its own (animation clips R5b)
+        if (redoGoesToProjectHistory() != undoGoesToProjectHistory()) {
+            if (redoGoesToProjectHistory()) {
+                canRedo = project.getProjectCommandHistory()->canRedo();
+            } else if (hasSelectedScene) {
+                canRedo = CommandHandle::get(selectedSceneId)->canRedo();
+            }
+        }
     }
 
     // Single-key shortcuts (F, F2) must not steal keys from text fields, the code
@@ -723,7 +731,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             }
             break;
         case AppMenuCommand::Redo:
-            if (undoGoesToProjectHistory()) {
+            if (redoGoesToProjectHistory()) {
                 project.getProjectCommandHistory()->redo();
                 projectWindow->refreshCurrentDirectory();
             } else if (lastFocusedWindow == LastFocusedWindow::Code) {
@@ -2072,6 +2080,12 @@ void editor::App::show(){
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
+        // redo decided on its own (R5b): a clip commit undone last is redone on the project history
+        clipRedoToProject = false;
+        if (lastFocusedWindow == LastFocusedWindow::AnimationClip || lastFocusedWindow == LastFocusedWindow::AnySceneWindow) {
+            clipRedoToProject = animationClipAppHooks().ownsRedo ? animationClipAppHooks().ownsRedo(clipUndoFocus())
+                                                                 : lastFocusedWindow == LastFocusedWindow::AnimationClip;
+        }
     }
 
     // the Animation window handles its own keys while focused (AnimationClipAppHooks::takesKeys)
@@ -2163,9 +2177,14 @@ void editor::App::show(){
 
     // clip edits of the Animation window are project files too (the window runs its own keys)
     const bool clipKeys = lastFocusedWindow == LastFocusedWindow::AnimationClip;
+    const bool clipRedo = !poseKeys && clipRedoToProject;
     if (!popupOpen && clipKeys) {
         if (isUndo) project.getProjectCommandHistory()->undo();
-        if (isRedo) project.getProjectCommandHistory()->redo();
+        // a scene redo while the window takes the keys (the scene block below is off then)
+        if (isRedo && !clipRedo && clipWindowKeys) CommandHandle::get(project.getSelectedSceneId())->redo();
+    }
+    if (!popupOpen && clipRedo && isRedo) {
+        project.getProjectCommandHistory()->redo();
     }
 
     // Record routing undo from the Scene view keeps the scene's other keys (Delete, Ctrl+D...)
@@ -2177,7 +2196,7 @@ void editor::App::show(){
         if (isUndo && !clipKeys) {
             CommandHandle::get(sceneId)->undo();
         }
-        if (isRedo && !clipKeys) {
+        if (isRedo && !clipRedo) {
             CommandHandle::get(sceneId)->redo();
         }
 
@@ -3691,6 +3710,13 @@ editor::ClipUndoFocus editor::App::clipUndoFocus() const {
         focus.animationWindow = root == ImGui::FindWindowByName(AnimationWindow::WINDOW_NAME);
     }
     return focus;
+}
+
+bool editor::App::redoGoesToProjectHistory() const {
+    if (lastFocusedWindow == LastFocusedWindow::AnimationClip || lastFocusedWindow == LastFocusedWindow::AnySceneWindow) {
+        return clipRedoToProject;
+    }
+    return undoGoesToProjectHistory();
 }
 
 bool editor::App::undoGoesToProjectHistory() const {
