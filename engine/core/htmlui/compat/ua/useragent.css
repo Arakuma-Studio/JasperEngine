@@ -1062,6 +1062,8 @@ table-view .htmlui-row, .htmlui-table-header {
 }
 
 .htmlui-table-header {
+    /* opaque (rows scroll under it) and readable on any page: style it to the game's theme */
+    color: #1e1e1e;
     background-color: #f2f2f2;
     border-bottom: 1px solid #c8c8c8;
 }
@@ -1161,13 +1163,14 @@ markdown {
 
 .markdown-body pre {
     padding: 8px;
-    background-color: #f6f8fa;
+    /* translucent grey: readable on light and dark pages */
+    background-color: rgba(128, 128, 128, 0.18);
     white-space: pre;
     overflow-x: auto;
 }
 
 .markdown-body code {
-    background-color: #f0f0f0;
+    background-color: rgba(128, 128, 128, 0.18);
 }
 
 .markdown-body pre code {
@@ -1178,8 +1181,8 @@ markdown {
     margin-left: 0;
     margin-right: 0;
     padding-left: 12px;
-    border-left: 4px solid #d0d7de;
-    color: #57606a;
+    border-left: 4px solid rgba(128, 128, 128, 0.5);
+    opacity: 0.8;
 }
 
 .markdown-body table {
@@ -1189,7 +1192,7 @@ markdown {
 
 .markdown-body th, .markdown-body td {
     padding: 4px 10px;
-    border: 1px solid #d0d7de;
+    border: 1px solid rgba(128, 128, 128, 0.5);
 }
 
 .markdown-body img {

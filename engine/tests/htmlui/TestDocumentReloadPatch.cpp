@@ -27,7 +27,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -210,6 +213,10 @@ TEST_F(TestDocumentReload, PatchKeepsHandlesListenersAndState){
     EXPECT_GE(report.runtimeKept, 1);
     EXPECT_EQ(report.scriptsRerun, 1);
     EXPECT_EQ(documentSystem(scene).getLoadCount(document.getEntity()), loadsBefore + 1);
+    // R37: one Console line, the full report on the lines after it
+    // (Log::print: type 0)
+    EXPECT_EQ(TestSystem::get().countLogs(0, "[HTML UI] Patched "), 1u);
+    EXPECT_EQ(TestSystem::get().countLogs(0, "\n  runtime nodes kept: "), 1u);
 
     // the same elements, updated where the author changed them
     EXPECT_EQ(luaRun(R"(
@@ -352,4 +359,48 @@ TEST_F(TestDocumentReload, PatchRebuildModeLoadsTheDocumentAgain){
     EXPECT_TRUE(document.getElementById("new").isValid());
     LuaBinding::cleanupLuaScripts(&scene);
     luaRun("runsA, noidClicks, loads, reloads = nil, nil, nil, nil; collectgarbage()");
+}
+
+// R36, AC13: a patch reload of a 2 000-element document, the compile excluded (report.ms):
+// p95 of 20 edits (one text each) <= 15 ms (JASPER_HTMLUI_PERF_SLACK scales it)
+TEST_F(TestDocumentReload, PatchReload2kPerf){
+    auto body = [](int edited){
+        std::string html = "<div id=\"root\">\n";
+        for (int section = 0; section < 100; section++){
+            html += "  <section class=\"s\" id=\"s" + std::to_string(section) + "\">\n    <h2>Section " + std::to_string(section) + "</h2>\n";
+            for (int item = 0; item < 9; item++){
+                const int n = section * 9 + item;
+                html += "    <div class=\"row\"><span class=\"k\">" + std::to_string(n) + "</span> " +
+                        (n == edited ? std::string("edited ") : std::string()) + "item</div>\n";
+            }
+            html += "  </section>\n";
+        }
+        return html + "</div>\n";
+    };
+    write("big.html", page(body(-1), ""));
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("big.html"));
+    start(fixture, document);
+    const size_t elements = document.querySelectorAll("*").size();
+    ASSERT_GE(elements, 2000u);
+
+    std::vector<double> times;
+    for (int edit = 0; edit < 20; edit++){
+        write("big.html", page(body(edit * 37), ""));
+        const UIReloadReport report = reload(fixture, document, "big.html");
+        ASSERT_EQ(report.mode, "patch") << report.fallbackReason;
+        EXPECT_GE(report.updated, 1) << edit;
+        EXPECT_EQ(report.replaced + report.inserted + report.removed, 0) << edit;
+        times.push_back(report.ms);
+    }
+    std::sort(times.begin(), times.end());
+    const double p95 = times[18];
+    std::printf("     [perf] patch reload of %zu elements: median %.2f ms, p95 %.2f ms\n", elements, times[10], p95);
+    double slack = 1.0;
+    if (const char* value = std::getenv("JASPER_HTMLUI_PERF_SLACK"))
+        slack = std::max(1.0, std::atof(value));
+    EXPECT_LE(p95, 15.0 * slack);
+    (void)scene;
+    LuaBinding::cleanupLuaScripts(&scene);
 }

@@ -461,6 +461,8 @@ void ItemsViewElement::setProvider(Provider value){
     core.Reset();
     provider = std::move(value);
     providerSet = true;
+    childrenCache.clear();
+    hasChildrenCache.clear();
     selectedKeys.clear();
     active = -1;
     anchor = -1;
@@ -483,6 +485,8 @@ void ItemsViewElement::clearProvider(){
         DestroyTailSlot();
     provider = Provider();
     providerSet = false;
+    childrenCache.clear();
+    hasChildrenCache.clear();
     itemCount = 0;
     nodes.clear();
     core.Reset();
@@ -510,6 +514,9 @@ void ItemsViewElement::setCount(int count){
 
 void ItemsViewElement::refresh(){
     if (kind == Kind::Tree){
+        // a provider's structure is asked again
+        childrenCache.clear();
+        hasChildrenCache.clear();
         treeDirty = true;
         rebuildTree();
     }
@@ -1021,19 +1028,21 @@ void ItemsViewElement::OnUpdate(){
     measureRows();
 
     // a scroll asked for before the view was laid out, or stick-to-end (R12)
-    if (pendingScrollIndex >= 0 && (GetScrollHeight() > 0.0f || itemCount == 0)){
+    // (after the sizer took its new height: a scroll to rows past the old end waits for the layout)
+    const bool sizerLaidOut = !sizer || sizer->GetBox().GetSize().y + 0.5f >= heights.total() - (kind == Kind::Grid ? gap : 0.0f);
+    if (pendingScrollIndex >= 0 && (GetScrollHeight() > 0.0f || itemCount == 0) && (sizerLaidOut || pendingWaits >= 3)){
         const int index = pendingScrollIndex;
         pendingScrollIndex = -1;
+        pendingWaits = 0;
         scrollToIndex(index, pendingAlign);
+    }else if (pendingScrollIndex >= 0){
+        pendingWaits++;
     }
 
     const float scrollTop = GetScrollTop();
     if (scrollTop != lastScrollTop){
         lastScrollTop = scrollTop;
         windowDirty = true;
-        // the table's header stays at the top (moved by a transform: no layout)
-        if (header)
-            header->SetProperty("transform", "translateY(" + Rml::ToString(scrollTop) + "px)");
     }
     // a drag from one of the rows keeps the pool whole until it ends (R22)
     const bool allowShrink = !DragDropSession::isDragSourceIn(this);

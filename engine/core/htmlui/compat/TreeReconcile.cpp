@@ -648,11 +648,24 @@ namespace {
         // templates: matched through their placeholders' indices
         void templates(const RmlNode& oldRoot, const RmlNode& newRoot, const std::vector<std::vector<RmlNode>>& oldTemplates,
                        const std::vector<std::vector<RmlNode>>& newTemplates){
-            for (const auto& [oldLoc, newLoc] : std::vector<std::pair<int, int>>(plan.locs.begin(), plan.locs.end())){
-                const RmlNode* before = findByLoc(oldRoot, oldLoc);
-                const RmlNode* after = findByLoc(newRoot, newLoc);
-                const std::string* oldIndex = before ? before->attribute(kTemplateIndex) : nullptr;
-                const std::string* newIndex = after ? after->attribute(kTemplateIndex) : nullptr;
+            // the template placeholders of both trees by loc (one walk each: a lookup per matched
+            // loc would walk the tree once per element)
+            std::unordered_map<int, const RmlNode*> oldPlaceholders, newPlaceholders;
+            placeholders(oldRoot, oldPlaceholders);
+            placeholders(newRoot, newPlaceholders);
+            std::vector<std::pair<int, int>> pairs;
+            for (const auto& [oldLoc, before] : oldPlaceholders){
+                auto mapped = plan.locs.find(oldLoc);
+                if (mapped != plan.locs.end())
+                    pairs.emplace_back(oldLoc, mapped->second);
+            }
+            std::sort(pairs.begin(), pairs.end());
+            for (const auto& [oldLoc, newLoc] : pairs){
+                auto after = newPlaceholders.find(newLoc);
+                if (after == newPlaceholders.end())
+                    continue;
+                const std::string* oldIndex = oldPlaceholders[oldLoc]->attribute(kTemplateIndex);
+                const std::string* newIndex = after->second->attribute(kTemplateIndex);
                 if (!oldIndex || !newIndex)
                     continue;
                 const int from = std::atoi(oldIndex->c_str()), to = std::atoi(newIndex->c_str());
@@ -665,14 +678,13 @@ namespace {
             }
         }
 
-        static const RmlNode* findByLoc(const RmlNode& node, int loc){
-            if (node.loc == loc)
-                return &node;
+        static void placeholders(const RmlNode& node, std::unordered_map<int, const RmlNode*>& out){
+            if (node.loc >= 0 && node.attribute(kTemplateIndex))
+                out[node.loc] = &node;
             for (const RmlNode& child : node.children){
-                if (const RmlNode* found = findByLoc(child, loc))
-                    return found;
+                if (child.isElement())
+                    placeholders(child, out);
             }
-            return nullptr;
         }
 
     private:

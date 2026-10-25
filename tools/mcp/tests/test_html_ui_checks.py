@@ -724,6 +724,14 @@ async def test_ui_support_json_and_generated_doc():
     check_eq(support_row(data, "element", "canvas")["code"], "HTMLUI-HTML-0002", "canvas")
     check_eq(support_row(data, "attribute", "on*")["code"], "HTMLUI-HTML-0005", "on*")
     check(support_row(data, "value", "sticky", "position"), "values carry their property")
+    # S17 (AC15): title emulated, draggable mapped to RmlUi's drag, the views and markdown engine elements
+    def global_attribute(name):
+        return next(f for f in data["features"] if f["kind"] == "attribute" and f["name"] == name and f.get("element") == "*")
+    check_eq(global_attribute("title")["support"], "emulated", "title")
+    draggable = global_attribute("draggable")
+    check(draggable["support"] == "rewritten" and draggable["note"].startswith("mapped"), f"draggable: {draggable}")
+    for tag in ("list-view", "grid-view", "tree-view", "table-view", "markdown"):
+        check_eq(support_row(data, "element", tag)["support"], "emulated", tag)
 
     r = gen_support("--check")
     check_eq(r.returncode, 0, f"the committed matrix is current (run tools/mcp/gen_html_ui_support.py):\n{r.stdout[-3000:]}{r.stderr}")

@@ -54,15 +54,26 @@ void ItemsViewElement::flattenChildren(int parentFlat, const std::string& parent
     if (providerSet){
         if (!provider.children)
             return;
-        for (const std::string& key : provider.children(parentKey)){
+        auto childrenOf = [this](const std::string& key) -> const std::vector<std::string>& {
+            auto it = childrenCache.find(key);
+            if (it == childrenCache.end())
+                it = childrenCache.emplace(key, provider.children(key)).first;
+            return it->second;
+        };
+        // (a copy: the recursion below adds to the cache)
+        const std::vector<std::string> keys = childrenOf(parentKey);
+        for (const std::string& key : keys){
             TreeNodeInfo node;
             node.key = key;
             node.depth = depth;
             node.parent = parentFlat;
-            node.hasChildren = provider.hasChildren ? provider.hasChildren(key) : !provider.children(key).empty();
+            auto known = hasChildrenCache.find(key);
+            if (known == hasChildrenCache.end())
+                known = hasChildrenCache.emplace(key, provider.hasChildren ? provider.hasChildren(key) : !childrenOf(key).empty()).first;
+            node.hasChildren = known->second;
             node.expanded = node.hasChildren && expandedKeys.count(key) > 0;
-            nodes.push_back(node);
-            if (node.expanded)
+            nodes.push_back(std::move(node));
+            if (nodes.back().expanded)
                 flattenChildren((int)nodes.size() - 1, key, depth + 1, nullptr);
         }
         return;
@@ -135,6 +146,13 @@ bool ItemsViewElement::isExpanded(const std::string& key) const{
 bool ItemsViewElement::expand(const std::string& key){
     if (kind != Kind::Tree)
         return false;
+    if (!structureReady || (nodes.empty() && !providerSet)){
+        // before the view read its items (a script's onLoad): expanded when it does
+        expandedKeys.insert(key);
+        treeDirty = true;
+        windowDirty = true;
+        return true;
+    }
     const int index = indexOfKey(key);
     if (index < 0 || !nodes[index].hasChildren || nodes[index].expanded)
         return false;

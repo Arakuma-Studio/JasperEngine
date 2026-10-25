@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <optional>
 #include <unordered_map>
 #include <functional>
 #include <vector>
@@ -167,8 +168,11 @@ namespace jasperengine{
         // place (R27-R31), falling back to the rebuild when it cannot; the 2-argument form uses
         // the system's mode (setReloadMode: the editor preference, PATCH by default)
         void reloadDocument(Entity entity, bool preserveState, UIReloadMode mode);
+        // this system's mode (tests, tools); the editor preference is the process-wide default
         void setReloadMode(UIReloadMode mode);
         UIReloadMode getReloadMode() const;
+        static void setDefaultReloadMode(UIReloadMode mode);
+        static UIReloadMode getDefaultReloadMode();
         // the last reload's report of the document (empty mode before one)
         const UIReloadReport& getLastReloadReport(Entity entity) const;
         void reloadStyleSheets(Entity entity);
@@ -361,7 +365,7 @@ namespace jasperengine{
         std::vector<std::string> compatDependencies(Rml::ElementDocument* document) const;
 
         // --- S17 (UIDocumentSystemPatch.cpp) ---
-        UIReloadMode reloadMode = UIReloadMode::PATCH;
+        std::optional<UIReloadMode> reloadMode;   // unset: the default (setDefaultReloadMode)
         std::unordered_map<Entity, UIReloadReport> reloadReports;
         // the live tree patch; false (report.fallbackReason set) when the document needs the rebuild
         bool patchDocument(Entity entity, UIReloadReport& report);

@@ -86,7 +86,7 @@ namespace jasperengine{
         void setProvider(UIItemsProvider provider);
         void clearProvider();
         int getCount() const; void setCount(int count);
-        void refresh();                             // every bound row again
+        void refresh();                             // every bound row again (a provider tree: its children asked again)
         void refreshItems(const std::vector<int>& indices);
 
         // --- scrolling ---

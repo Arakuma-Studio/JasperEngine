@@ -373,7 +373,7 @@ async def test_tools_listed_with_annotations(ed: Editor):
     ed.check_eq(enum[-1], "blank", "blank last")
     kinds = ed.tool("assert_ui").input_schema["properties"]["checks"]["items"]["properties"]["type"]["enum"]
     ed.check_eq(kinds, ["exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport",
-                        "contrast", "min_size"], "assert_ui check types")
+                        "contrast", "min_size", "virtual_window", "tooltip", "selected"], "assert_ui check types")
 
     # allowedWhilePlaying: false is the registry's refusal
     await ed.call("play", action="start", scene=S["scene"])

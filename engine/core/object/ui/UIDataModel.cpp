@@ -83,6 +83,9 @@ namespace {
         if (rmlType == "mousescroll") return "wheel";
         if (rmlType == "change") return "input";
         if (rmlType == "htmlui-change") return "change";
+        // S17: HTML5's drag events (data-event-drop and the like)
+        if (rmlType == "htmlui-dragenter" || rmlType == "htmlui-dragover" || rmlType == "htmlui-dragleave" || rmlType == "htmlui-drop")
+            return rmlType.substr(7);
         return rmlType;
     }
 

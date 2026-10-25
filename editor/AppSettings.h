@@ -154,6 +154,7 @@ private:
     static float assetPollingInterval;        // seconds, 0.25..10
     static bool assetLogReloads;
     static bool htmlUiVerboseDiagnostics;
+    static bool htmlUiPatchReload;   // S17: hot reloads patch .html documents in place (else rebuild them)
 
     // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
     // together (MB, 0 = unlimited), standalone selection changes as steps, and the Play Mode
@@ -284,6 +285,8 @@ public:
     static void setHtmlUiAutoImport(bool enabled);
     static bool getHtmlUiVerboseDiagnostics();
     static void setHtmlUiVerboseDiagnostics(bool enabled);
+    static bool getHtmlUiPatchReload();
+    static void setHtmlUiPatchReload(bool patch);
 
     // Undo settings, applied to CommandHistory/Project when set or loaded (clamped to their ranges)
     static constexpr int minUndoMaxSteps = 50;

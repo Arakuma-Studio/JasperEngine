@@ -108,7 +108,9 @@ void ItemsViewElement::buildHeader(){
     header = AppendChild(Rml::Factory::InstanceElement(this, "div", "div", attributes));
     // in the flow above the rows, kept at the view's top while it scrolls (OnUpdate), over the rows
     header->SetProperty(Rml::PropertyId::Display, Rml::Property(Rml::Style::Display::Block));
-    header->SetProperty(Rml::PropertyId::Position, Rml::Property(Rml::Style::Position::Relative));
+    // sticky at the top of the view (the fork's position: sticky moves it at each scroll, without a layout)
+    header->SetProperty(Rml::PropertyId::Position, Rml::Property(Rml::Style::Position::Sticky));
+    header->SetProperty(Rml::PropertyId::Top, Rml::Property(0.0f, Rml::Unit::PX));
     header->SetProperty(Rml::PropertyId::ZIndex, Rml::Property(1.0f, Rml::Unit::NUMBER));
 
     std::vector<Rml::Element*> sources;

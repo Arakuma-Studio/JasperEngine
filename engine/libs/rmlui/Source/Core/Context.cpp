@@ -34,6 +34,10 @@ static constexpr float UNIT_SCROLL_LENGTH = 80.f;   // [dp]
 static constexpr float SCROLL_INERTIA_DELAY = 0.1f;
 static constexpr float TOUCH_MOVEMENT_DECAY_RATE = 5.0f;
 static constexpr float TOUCH_CLICK_MAX_DISTANCE = DOUBLE_CLICK_MAX_DIST; // [dp]
+// Fork (P7-H): on touch, a draggable element inside a scroll container starts its drag after a press this long
+// that moved at most this far; a touch that moves further first scrolls the container instead.
+static constexpr float TOUCH_LONG_PRESS_TIME = 0.4f;    // [s]
+static constexpr float TOUCH_LONG_PRESS_DISTANCE = 8.f; // [dp]
 
 static void DebugVerifyLocaleSetting()
 {
@@ -928,7 +932,19 @@ bool Context::ProcessTouchStart(const Touch& touch, int key_modifier_state)
 	ProcessMouseMove(static_cast<int>(touch.position.x), static_cast<int>(touch.position.y), key_modifier_state);
 
 	// always assume touch press/release events are handled as left mouse button
-	return ProcessMouseButtonDown(0, key_modifier_state);
+	const bool result = ProcessMouseButtonDown(0, key_modifier_state);
+
+	// Fork (P7-H): inside a scroll container a touch scrolls; a draggable element under it drags after a long press.
+	state->drag_candidate = nullptr;
+	if (drag && !drag_started && state->scroll_container && drag != state->scroll_container &&
+		state->scroll_container->IsPointWithinElement(touch.position))
+	{
+		state->drag_candidate = drag->GetObserverPtr();
+		state->drag_candidate_verbose = drag_verbose;
+		state->start_time = GetSystemInterface()->GetElapsedTime();
+		drag = nullptr;
+	}
+	return result;
 }
 
 bool Context::ProcessTouchMove(const Touch& touch, int key_modifier_state)
@@ -939,13 +955,32 @@ bool Context::ProcessTouchMove(const Touch& touch, int key_modifier_state)
 
 	state->scrolling_last_time = GetSystemInterface()->GetElapsedTime();
 
+	// Fork (P7-H): a long press without moving away makes the waiting element the drag; moving away first lets the
+	// touch scroll.
+	if (state->drag_candidate)
+	{
+		const float long_press_distance = TOUCH_LONG_PRESS_DISTANCE * density_independent_pixel_ratio;
+		const bool moved_away = (touch.position - state->start_position).SquaredMagnitude() > long_press_distance * long_press_distance;
+		const bool long_press = state->scrolling_last_time - state->start_time >= TOUCH_LONG_PRESS_TIME;
+		if (long_press && !moved_away && !drag)
+		{
+			drag = state->drag_candidate.get();
+			drag_verbose = state->drag_candidate_verbose;
+			drag_started = false;
+			state->drag_candidate = nullptr;
+		}
+		else if (moved_away)
+			state->drag_candidate = nullptr;
+	}
+
 	if (state->scroll_container)
 	{
 		const Vector2f delta = touch.position - state->last_position;
 
-		if (drag)
+		if (drag || state->drag_candidate)
 		{
-			// Don't scroll and reset scrolling state when dragging any element (scrollbars and others)
+			// Don't scroll and reset scrolling state when dragging any element (scrollbars and others), or while a
+			// long press may still start one (fork P7-H)
 			state->inertia_position = touch.position;
 			state->last_position = touch.position;
 			state->scrolling_start_time_x = 0;

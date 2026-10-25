@@ -332,12 +332,17 @@ namespace jasperengine::htmlui {
 
         // pending scroll
         int pendingScrollIndex = -1;
+        int pendingWaits = 0;       // updates a pending scroll waited for the layout
         Align pendingAlign = Align::Nearest;
 
         // tree
         std::vector<TreeNodeInfo> nodes;         // flattened, expanded structure
         std::vector<std::vector<int>> nodePaths; // model mode: each node's index path
         std::unordered_set<std::string> expandedKeys;
+        // a provider tree's answers (children by parent key, "" the roots; hasChildren by key), asked
+        // once until refresh() or a new provider: an expand walks the cached structure (R34)
+        std::unordered_map<std::string, std::vector<std::string>> childrenCache;
+        std::unordered_map<std::string, bool> hasChildrenCache;
         bool treeDirty = true;
 
         // table

@@ -391,6 +391,23 @@ TEST(HtmlCssLexer, ExpectsCssProperty) {
     EXPECT_FALSE(HtmlCssLexer::expectsCssProperty(Lang::Html, stateAfter(Lang::Html, {"<style>p { }</style>"})));
 }
 
+// S17 R38: element names after "<", attribute names inside a tag
+TEST(HtmlCssLexer, HtmlNamePosition) {
+    using Pos = HtmlCssLexer::NamePosition;
+    auto at = [](const std::string& line, int column, LexerState state = LexerState()) {
+        return HtmlCssLexer::htmlNamePosition(line, column, state);
+    };
+    EXPECT_EQ(at("<list-v", 1), Pos::Tag);
+    EXPECT_EQ(at("</tree-", 2), Pos::Tag);
+    EXPECT_EQ(at("<list-view drop", 11), Pos::Attribute);
+    EXPECT_EQ(at("<div title=\"a b", 15), Pos::None) << "in a value";
+    EXPECT_EQ(at("<div title=x", 11), Pos::None);
+    EXPECT_EQ(at("plain text", 6), Pos::None);
+    EXPECT_EQ(at("<p>text more", 8), Pos::None);
+    // a tag spanning lines: the next line's words are attribute names
+    EXPECT_EQ(at("  tooltip=\"#t\">", 2, stateAfter(Lang::Html, {"<button"})), Pos::Attribute);
+}
+
 // ---------------------------------------------------------------------------------------------
 // End of HtmlCssLexer
 // ---------------------------------------------------------------------------------------------

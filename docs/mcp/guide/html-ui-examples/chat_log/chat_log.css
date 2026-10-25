@@ -1,0 +1,189 @@
+/* Chat log. Design tokens first: change the look here. */
+:root {
+  --accent: #34d399;
+  --accent-2: #059669;
+  --text: #ecfdf5;
+  --muted: rgba(209, 250, 229, 0.6);
+  --window: rgba(6, 20, 16, 0.95);
+  --bubble: rgba(255, 255, 255, 0.06);
+  --mine: rgba(52, 211, 153, 0.18);
+  --line: rgba(52, 211, 153, 0.2);
+  --radius: 16px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  color: var(--text);
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: radial-gradient(100% 80% at 50% 100%, rgba(5, 150, 105, 0.22), rgba(2, 8, 6, 0.78) 75%);
+}
+
+.chat {
+  width: min(640px, 100%);
+  height: min(620px, calc(100vh - 2.5rem));
+  display: flex;
+  flex-direction: column;
+  background: var(--window);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.titlebar h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.15rem;
+}
+
+.titlebar h2 svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.online {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+/* ---- Messages: flex: 1 in a column of a definite height gives the list its height ---- */
+.messages {
+  flex: 1;
+  min-height: 0;
+  padding: 0.5rem 0;
+}
+
+.message {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.4rem 1.25rem;
+}
+
+.message.mine {
+  flex-direction: row-reverse;
+}
+
+.avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: #03140e;
+  font-weight: 700;
+  border-radius: 50%;
+}
+
+.bubble {
+  max-width: 78%;
+  padding: 0.5rem 0.75rem;
+  background: var(--bubble);
+  border-radius: 12px;
+}
+
+.message.mine .bubble {
+  background: var(--mine);
+}
+
+.author {
+  display: block;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.text {
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+/* the Markdown of a message: compact */
+.text .markdown-body p,
+.text .markdown-body ul,
+.text .markdown-body ol,
+.text .markdown-body pre,
+.text .markdown-body blockquote {
+  margin: 0.2rem 0;
+}
+
+.text .markdown-body ul,
+.text .markdown-body ol {
+  padding-left: 1.2rem;
+}
+
+.text .markdown-body code {
+  padding: 0 0.25rem;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+}
+
+.text .markdown-body pre {
+  padding: 0.4rem 0.6rem;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 6px;
+}
+
+.text .markdown-body a {
+  color: var(--accent);
+}
+
+/* ---- Composer ---- */
+.composer {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.9rem 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.draft {
+  flex: 1;
+  padding: 0.6rem 0.8rem;
+  color: var(--text);
+  font: inherit;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.draft:focus {
+  border-color: var(--accent);
+}
+
+.send {
+  width: 42px;
+  display: grid;
+  place-items: center;
+  color: #03140e;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.send svg {
+  width: 18px;
+  height: 18px;
+}

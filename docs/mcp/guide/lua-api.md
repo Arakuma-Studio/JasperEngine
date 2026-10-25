@@ -1067,7 +1067,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `{severity, code, name, message, suggestion, file, line, column, text}`),
   `setColorScheme("dark"|"light")`, `setReducedMotion(b)` (the `prefers-*` media queries);
   `load(file)`,
-  `reload()`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
+  `reload([{mode = "patch"|"rebuild"}])`, `show()`, `hide()`, `getElementById(id)`, `querySelector(sel)`,
   `querySelectorAll(sel)`, `createElement(tag)`, `createTextNode(text)`,
   `addEventListener(type, fn[, capture|{capture=, once=}])`, `removeEventListener(...)`,
   `createDataModel(name, table)` (returns the model proxy), `getDataModel(name)`,
@@ -1075,7 +1075,12 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `getUIDocumentComponent()` (rw `filename`, `sortOrder`, `enabled`, `interactive`,
   `renderMode` (`UIDocumentRenderMode.SCREEN`/`TEXTURE`, applied at the next load: set
   `needReload = true`), `textureWidth`, `textureHeight`, `inputSurface`, `pixelRatio`,
-  `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`;
+  `needReload`; ro `loaded`; events `onLoad`, `onUnload`); events `onLoad`, `onUnload`,
+  `onReload` (after an in-place patch, with the report); ro `lastReloadReport` (`{mode, file,
+  kept, updated, inserted, removed, replaced, runtimeKept, scriptsRerun, fallbackReason, ms,
+  causes}`, nil before a reload); `tooltip` (`visible`, `source`, `element`, `text`,
+  `show(el)`, `hide()`, `configure{enabled, delay, hopWindow}`); static
+  `UIDocument.markdownToHtml(text)`;
   static `UIDocument.setDebuggerVisible(b)`, `isDebuggerVisible()`, `getLiveLuaRefCount()`.
   Getters load a document that is due, so `init` can query elements.
 - `UIElement` (weak handle; `nil` when a query finds nothing; any use but `isValid()` of a
@@ -1098,6 +1103,25 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
   `setSegment(from, to)`, `setMarker(name)`, `isPlaying()`, `getCurrentFrame()`,
   `getTotalFrames()`, `getDuration()` (events `load`, `error`, `play`, `pause`, `loop`,
   `complete`).
+  Every element: `setMarkdown(text)`, `setTooltip(textOrElementOrFunction[, {placement, delay,
+  arrow, interactive}])`, `clearTooltip()`; ro `itemsView` (a `<list-view>`, `<grid-view>`,
+  `<tree-view>` or `<table-view>`'s `UIItemsView`, else nil).
+- `UIItemsView` (1-based indices): ro `element`, `kind`, `count`; rw `activeIndex`;
+  `setProvider{count, bind = fn(row, i), unbind, key = fn(i), height = fn(i), children =
+  fn(key) (nil: the roots), hasChildren = fn(key)}`, `clearProvider()`, `setCount(n)`, `refresh()`,
+  `refreshItems{...}`, `scrollToIndex(i[, "start"|"center"|"end"|"nearest"])`,
+  `getVisibleRange()` (first, last), `setSelection{...}`, `getSelection()`,
+  `getSelectedKeys()`, `activate(i)`, `keyOf(i)`, `indexOfKey(key)`, `getRow(i)`,
+  `indexOf(el)`, `expand(key)`, `collapse(key)`, `toggle(key)`, `isExpanded(key)`,
+  `getNode(i)` (`{key, depth, expanded, hasChildren, parent}`), `getColumns()`,
+  `setColumnWidth(key, w)`, `sortBy(key[, "asc"|"desc"])`, `getState()`. Events on the view:
+  `select` (`detail = {indices, keys}`), `activate`, `expand`, `collapse` (`detail = {index,
+  key}`), `sort` (`key`, `direction`), `columnresize`.
+- `UIDataTransfer` (`event.dataTransfer` of the drag events, valid until `dragend`):
+  `setData(type, value)` (any Lua value), `getData(type)`, ro `types`, `clearData([type])`,
+  rw `effectAllowed`, `dropEffect`, `setDragImage(elOrNil[, x, y])`, `isValid()`. `UIDrag`:
+  `begin(el[, {data = {type = value}, effectAllowed}])`, `over(el)`, `drop(el)`, `cancel()`,
+  `isActive()`, `getDataTransfer()`.
 - `classList:add(...)`, `remove(...)`, `toggle(name[, force])`, `contains(name)`;
   `style.fontSize` / `style["font-size"]` (computed value; assign the inline style, `""`/nil
   removes; standard CSS values in an `.html` document), `style.cssText`;
@@ -1108,7 +1132,8 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 - `UIEvent` (valid while the listener runs): `type`, `target`, `currentTarget`, `eventPhase`,
   `key`, `code`, `keyCode`, `["repeat"]`, `ctrlKey`, `shiftKey`, `altKey`, `metaKey`,
   `clientX`, `clientY`, `button` (0 left, 1 middle, 2 right), `deltaX`, `deltaY`, `data`,
-  `detail`, `defaultPrevented`; `stopPropagation()`, `stopImmediatePropagation()`,
+  `detail`, `defaultPrevented`, `dataTransfer`, `dropIndex`, `dropPosition` (drag events
+  over a virtual view: `"before"`, `"after"`, `"on"`); `stopPropagation()`, `stopImmediatePropagation()`,
   `preventDefault()`.
 - Data model proxy: fields read/write the model (`model.gold = 1`, `model.items[1].name`,
   `table.insert(model.items, t)`); top-level keys fixed; methods `onChange(name, fn)`,

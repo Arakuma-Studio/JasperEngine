@@ -31,6 +31,7 @@
 #include <RmlUi/Core/Factory.h>
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <unordered_map>
 #include <unordered_set>
@@ -292,6 +293,38 @@ namespace {
             refreshViews(element->GetChild(i), plan);
     }
 
+    // the two compiles give the document the same style sheets (an edit of the markup only): the
+    // live document keeps its sheets and its computed styles
+    bool sameSheets(const CompatDocument& a, const CompatDocument& b){
+        if (a.userAgentPath != b.userAgentPath || a.hints.rcss != b.hints.rcss || a.important.rcss != b.important.rcss ||
+            a.stylesheets.size() != b.stylesheets.size())
+            return false;
+        for (size_t i = 0; i < a.stylesheets.size(); i++){
+            const StylesheetOutput& x = a.stylesheets[i];
+            const StylesheetOutput& y = b.stylesheets[i];
+            // (a file's virtual path names its compile: the same file, the same RCSS)
+            if (x.kind != y.kind || x.sourcePath != y.sourcePath || x.rcss != y.rcss)
+                return false;
+        }
+        return true;
+    }
+
+    // JASPER_HTMLUI_PATCH_PROFILE=1: the time of each step of a patch on the log
+    struct PatchProfile {
+        bool on = std::getenv("JASPER_HTMLUI_PATCH_PROFILE") != nullptr;
+        std::chrono::steady_clock::time_point last = std::chrono::steady_clock::now();
+        std::string text;
+        void step(const char* name){
+            if (!on)
+                return;
+            const auto now = std::chrono::steady_clock::now();
+            char buffer[64];
+            std::snprintf(buffer, sizeof(buffer), " %s %.2f", name, std::chrono::duration<double, std::milli>(now - last).count());
+            text += buffer;
+            last = now;
+        }
+    };
+
     bool parseTemplates(const CompatDocument& compiled, std::vector<std::vector<RmlNode>>& out, std::string& error){
         out.clear();
         for (const HtmlTemplate& entry : compiled.templates){
@@ -330,7 +363,9 @@ bool UIDocumentSystem::patchDocument(Entity entity, UIReloadReport& report){
     }
 
     const auto start = std::chrono::steady_clock::now();
+    PatchProfile profile;
     ReconcilePlan plan = reconcileTrees(oldRoot, newRoot, oldTemplates, newTemplates);
+    profile.step("reconcile");
     if (plan.root.replace){
         report.fallbackReason = "the document root changed (" + plan.root.reason + ")";
         return false;
@@ -342,11 +377,17 @@ bool UIDocumentSystem::patchDocument(Entity entity, UIReloadReport& report){
         Patcher patcher(document, plan);
         patcher.index(document);
         patcher.renumber(document);
+        profile.step("index");
         patcher.apply(plan.root, document);
         report.runtimeKept = patcher.runtimeKept;
-        // bound to the new compile, its sheets (the inline-style rules are by the new numbers)
-        DocumentLoader::restyle(document, fresh, fresh->options);
+        profile.step("apply");
+        // bound to the new compile, its sheets (the inline-style rules are by the new numbers);
+        // the same sheets stay
+        const bool sheets = !sameSheets(*compiled, *fresh);
+        DocumentLoader::rebind(document, fresh, fresh->options, sheets);
+        profile.step(sheets ? "restyle" : "rebind");
         refreshViews(document, plan);
+        profile.step("views");
         return true;
     });
     if (!patched){
@@ -379,6 +420,9 @@ bool UIDocumentSystem::patchDocument(Entity entity, UIReloadReport& report){
     report.replaced = plan.replaced;
     report.causes = plan.causes;
     report.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    profile.step("scripts");
+    if (profile.on)
+        Log::print("[HTML UI] patch profile (ms):%s", profile.text.c_str());
     finishReload(entity, report);
 
     documentContext(entity)->update();

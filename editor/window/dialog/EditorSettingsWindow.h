@@ -46,6 +46,7 @@ namespace jasperengine::editor {
         float m_pollingInterval = 1.0f;   // seconds
         bool m_logReloads = true;
         bool m_htmlUiVerboseDiagnostics = false;
+        bool m_htmlUiPatchReload = true;
         float m_codeEditorFontSize = 0.0f;
         int m_undoMaxSteps = AppSettings::defaultUndoMaxSteps;
         int m_undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;

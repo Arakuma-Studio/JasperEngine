@@ -454,8 +454,12 @@ std::vector<std::string> UIDocumentSystem::getDocumentFiles(Entity entity) const
     return files;
 }
 
+namespace {
+    UIReloadMode defaultReloadMode = UIReloadMode::PATCH;
+}
+
 void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
-    reloadDocument(entity, preserveState, reloadMode);
+    reloadDocument(entity, preserveState, getReloadMode());
 }
 
 void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState, UIReloadMode mode){
@@ -648,7 +652,22 @@ void UIDocumentSystem::finishReload(Entity entity, UIReloadReport report){
         if (!report.fallbackReason.empty())
             line += ": " + report.fallbackReason;
     }
-    Log::print("[HTML UI] %s", line.c_str());
+    // the full report on the lines after the first: the Console lists the first line and shows
+    // the rest in its details pane when the line is clicked
+    std::string full = line;
+    full += "\n  mode: " + report.mode;
+    if (report.mode == "patch"){
+        full += "\n  kept: " + std::to_string(report.kept) + ", updated: " + std::to_string(report.updated) +
+                ", inserted: " + std::to_string(report.inserted) + ", removed: " + std::to_string(report.removed) +
+                ", replaced: " + std::to_string(report.replaced);
+        full += "\n  runtime nodes kept: " + std::to_string(report.runtimeKept) +
+                ", document scripts run again: " + std::to_string(report.scriptsRerun);
+    }
+    if (!report.fallbackReason.empty())
+        full += "\n  why not a patch: " + report.fallbackReason;
+    for (const std::string& cause : report.causes)
+        full += "\n  replaced " + cause;
+    Log::print("[HTML UI] %s", full.c_str());
     if (reloadState){
         auto it = reloadState->documents.find(entity);
         if (it != reloadState->documents.end())
@@ -664,7 +683,15 @@ void UIDocumentSystem::setReloadMode(UIReloadMode mode){
 }
 
 UIReloadMode UIDocumentSystem::getReloadMode() const{
-    return reloadMode;
+    return reloadMode.value_or(defaultReloadMode);
+}
+
+void UIDocumentSystem::setDefaultReloadMode(UIReloadMode mode){
+    defaultReloadMode = mode;
+}
+
+UIReloadMode UIDocumentSystem::getDefaultReloadMode(){
+    return defaultReloadMode;
 }
 
 const UIReloadReport& UIDocumentSystem::getLastReloadReport(Entity entity) const{
@@ -739,6 +766,7 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
     struct Action {
         Entity entity;
         bool full = false;
+        bool rebuild = false;      // S17: a file the live patch does not read again changed (a font, a Lua file, an SVG ...)
         bool styleSheets = false;
         std::vector<std::string> images;
         std::vector<std::string> fonts;
@@ -804,8 +832,15 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
             switch (kind){
                 case ChangeKind::STYLESHEET: action.styleSheets = true; break;
                 case ChangeKind::IMAGE: action.images.push_back(path); break;
-                case ChangeKind::FONT: action.fonts.push_back(path); action.full = true; break;
-                case ChangeKind::FULL: action.full = true; break;
+                case ChangeKind::FONT: action.fonts.push_back(path); action.full = true; action.rebuild = true; break;
+                case ChangeKind::FULL:{
+                    action.full = true;
+                    // the document's own file and a <markdown src> (compiled into its RML) can be patched
+                    const std::string extension = std::filesystem::path(path).extension().string();
+                    if (path != record.filename && extension != ".md" && extension != ".markdown")
+                        action.rebuild = true;
+                    break;
+                }
             }
         }
         if (changed)
@@ -832,7 +867,7 @@ std::vector<UIDocumentSystem::Reloaded> UIDocumentSystem::reloadChangedFiles(con
 
         if (action.full){
             Log::verbose("[HTML UI] reloading document of entity %u (its files changed)", (unsigned int)action.entity);
-            reloadDocument(action.entity, true);
+            reloadDocument(action.entity, true, action.rebuild ? UIReloadMode::REBUILD : getReloadMode());
         }else if (action.styleSheets){
             Rml::ElementDocument* before = getDocument(action.entity);
             reloadStyleSheets(action.entity);

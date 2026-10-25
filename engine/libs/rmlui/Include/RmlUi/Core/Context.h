@@ -371,6 +371,11 @@ private:
 		double scrolling_last_time = 0;
 		double scrolling_start_time_x = 0;
 		double scrolling_start_time_y = 0;
+		// Fork (P7-H): a press on a draggable element inside a scroll container waits for a long press before it
+		// drags; moving away first scrolls the container.
+		ObserverPtr<Element> drag_candidate;
+		bool drag_candidate_verbose = false;
+		double start_time = 0;
 	};
 	SmallUnorderedMap<TouchId, TouchState> touch_states;
 

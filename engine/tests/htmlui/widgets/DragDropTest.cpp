@@ -7,6 +7,8 @@
 
 #include "../TestScriptCommon.h"
 
+#include "HtmlUIClock.h"
+#include "htmlui/widgets/DragDropSession.h"
 #include "object/ui/UIItemsView.h"
 
 #include <RmlUi/Core/Context.h>
@@ -239,4 +241,90 @@ TEST_F(TestScriptEvents, DataTransferInsideAListView){
         assert(drops[1][1] == 3 and drops[1][2] == "before" and drops[1][3] == 1 and drops[1][4] == "s0", tostring(drops[1][2]))
         assert(drops[2][2] == "on" and drops[3][2] == "after")
     )");
+}
+
+TEST_F(TestScriptEvents, DataTransferAutoScrollsNearAViewsEdge){
+    // R21: within 32 px of a scroll container's edge, up to 600 px/s (on HtmlUIClock)
+    HtmlUIClock::setFixedTime(10.0);
+    UIItemsView view = document->getElementById("slots").getItemsView();
+    UIElement list = document->getElementById("slots");
+    const UIRect box = list.getBoundingClientRect();
+    const UIRect from = view.getRow(1).getBoundingClientRect();
+    context()->ProcessMouseMove((int)(from.x + 20.0f), (int)(from.y + 20.0f), 0);
+    context()->ProcessMouseButtonDown(0, 0);
+    move(Rml::Vector2f(from.x + 26.0f, from.y + 20.0f));
+    // 4 px above the bottom edge: (1 - 4 / 32) of the top speed
+    move(Rml::Vector2f(box.x + 50.0f, box.y + box.height - 4.0f));
+    EXPECT_FLOAT_EQ(list.getScrollTop(), 0.0f);
+    for (int frame = 1; frame <= 3; frame++){
+        HtmlUIClock::setFixedTime(10.0 + 0.05 * frame);
+        update();
+    }
+    const float expected = htmlui::DragDropSession::kAutoScrollSpeed * (1.0f - 4.0f / htmlui::DragDropSession::kAutoScrollEdge) * 0.15f;
+    EXPECT_NEAR(list.getScrollTop(), expected, 6.0f);
+    // the middle: no scroll
+    move(Rml::Vector2f(box.x + 50.0f, box.y + box.height * 0.5f));
+    const float stopped = list.getScrollTop();
+    HtmlUIClock::setFixedTime(10.5);
+    update();
+    EXPECT_FLOAT_EQ(list.getScrollTop(), stopped);
+    context()->ProcessKeyDown(Rml::Input::KI_ESCAPE, 0);
+    update();
+    context()->ProcessMouseButtonUp(0, 0);
+    update();
+    HtmlUIClock::reset();
+}
+
+TEST_F(TestScriptEvents, DataTransferTouchLongPressDragsASwipeScrolls){
+    // R32 (fork P7-H): on touch, a draggable row of a scrolling view drags after a 400 ms press that
+    // moved at most 8 px; a touch that moves away first scrolls the view
+    HtmlUIClock::setFixedTime(20.0);
+    EXPECT_LUA(R"(
+        starts = 0
+        doc:getElementById("slots"):addEventListener("dragstart", function() starts = starts + 1 end)
+    )");
+    UIElement list = document->getElementById("slots");
+    UIItemsView view = list.getItemsView();
+    const UIRect row = view.getRow(3).getBoundingClientRect();
+    Rml::Touch touch{7, Rml::Vector2f(row.x + 30.0f, row.y + 20.0f)};
+
+    // a swipe up: the list scrolls, nothing drags
+    context()->ProcessTouchStart(Rml::TouchList{touch}, 0);
+    update();
+    for (int step = 1; step <= 6; step++){
+        HtmlUIClock::setFixedTime(20.0 + 0.02 * step);
+        touch.position.y -= 10.0f;
+        context()->ProcessTouchMove(Rml::TouchList{touch}, 0);
+        update();
+    }
+    EXPECT_GT(list.getScrollTop(), 20.0f);
+    context()->ProcessTouchEnd(Rml::TouchList{touch}, 0);
+    update();
+    EXPECT_EQ(luaString("starts"), "0");
+
+    // a long press, then a move: the row drags and the list does not scroll
+    HtmlUIClock::setFixedTime(30.0);
+    update();
+    const float scrolled = list.getScrollTop();
+    const UIRect again = view.getRow(view.getVisibleRange().first + 1).getBoundingClientRect();
+    touch = Rml::Touch{8, Rml::Vector2f(again.x + 30.0f, again.y + 20.0f)};
+    context()->ProcessTouchStart(Rml::TouchList{touch}, 0);
+    update();
+    HtmlUIClock::setFixedTime(30.2);
+    touch.position.y += 3.0f;
+    context()->ProcessTouchMove(Rml::TouchList{touch}, 0);
+    update();
+    EXPECT_EQ(luaString("starts"), "0") << "not before 400 ms";
+    HtmlUIClock::setFixedTime(30.45);
+    touch.position.y += 3.0f;
+    context()->ProcessTouchMove(Rml::TouchList{touch}, 0);
+    update();
+    touch.position.y += 30.0f;
+    context()->ProcessTouchMove(Rml::TouchList{touch}, 0);
+    update();
+    EXPECT_EQ(luaString("starts"), "1");
+    EXPECT_NEAR(list.getScrollTop(), scrolled, 0.5f) << "a drag does not scroll";
+    context()->ProcessTouchEnd(Rml::TouchList{touch}, 0);
+    update();
+    HtmlUIClock::reset();
 }

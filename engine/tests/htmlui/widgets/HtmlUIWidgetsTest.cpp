@@ -12,6 +12,8 @@
 #include "htmlui/widgets/HeightIndex.h"
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "htmlui/widgets/WidgetsRuntime.h"
+#include "htmlui/compat/DocumentLoader.h"
+#include <RmlUi/Core/ElementDocument.h>
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -450,3 +452,114 @@ TEST_F(HtmlUIWidgets, Grid){
         EXPECT_TRUE(items.count(item)) << "item " << item << " is not shown";
 }
 
+
+// R12, R13: anchor="end" follows appended items only while at the end; a view without a definite
+// height reports HTMLUI-HTML-0029 (and lays out 20 rows), a data-for of more than 500 elements
+// HTMLUI-HTML-0031, each once per element
+TEST_F(HtmlUIWidgets, AnchorEndAndRuntimeDiagnostics){
+    ASSERT_EQ(lua(R"(
+        local rows = {}
+        for k = 1, 600 do rows[k] = k end
+        doc:createDataModel("big", { rows = rows })
+    )"), "");
+    TestSystem::get().clearLogs();
+    load("s17/diagnostics.html");
+    ASSERT_EQ(lua(R"(
+        doc:getElementById("unsized").itemsView:setProvider{ count = 1000, bind = function(row, i) row.textContent = "u" .. i end }
+        doc:getElementById("chat").itemsView:setProvider{ count = 50, bind = function(row, i) row.textContent = "m" .. i end }
+    )"), "");
+    for (int i = 0; i < 3; i++)
+        update();
+
+    // the document's diagnostics (check --ui, inspect_ui), the warning also on the log
+    Rml::ElementDocument* rmlDocument = UIElementAccess::get(document->getBody())->GetOwnerDocument();
+    auto logsWith = [rmlDocument](const std::string& id){
+        size_t count = 0;
+        for (const htmlui::compat::Diagnostic& each : htmlui::compat::DocumentLoader::diagnosticsOf(rmlDocument))
+            count += each.code.id() == id ? 1 : 0;
+        return count;
+    };
+    EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "[HTMLUI-HTML-0029]"), 1u);
+    EXPECT_EQ(logsWith("HTMLUI-HTML-0029"), 1u);
+    EXPECT_EQ(logsWith("HTMLUI-HTML-0031"), 1u);
+    UIItemsView unsized = view("unsized");
+    const std::pair<int, int> range = unsized.getVisibleRange();
+    EXPECT_NEAR(range.second - range.first + 1, 20, 1) << range.first << ".." << range.second;
+
+    // at the end: an append keeps the view at the end
+    UIItemsView chat = view("chat");
+    UIElement chatElement = document->getElementById("chat");
+    chat.scrollToIndex(50, "end");
+    for (int i = 0; i < 2; i++)
+        update();
+    const float maxBefore = chatElement.getScrollHeight() - chatElement.getClientHeight();
+    EXPECT_NEAR(chatElement.getScrollTop(), maxBefore, 1.0f);
+    chat.setCount(60);
+    for (int i = 0; i < 3; i++)
+        update();
+    EXPECT_NEAR(chatElement.getScrollTop(), chatElement.getScrollHeight() - chatElement.getClientHeight(), 1.0f);
+    EXPECT_EQ(chat.getVisibleRange().second, 60);
+
+    // scrolled up: an append leaves it where it is
+    chat.scrollToIndex(10, "start");
+    for (int i = 0; i < 2; i++)
+        update();
+    const float top = chatElement.getScrollTop();
+    chat.setCount(70);
+    for (int i = 0; i < 3; i++)
+        update();
+    EXPECT_NEAR(chatElement.getScrollTop(), top, 0.5f);
+
+    // reported once: more updates and scrolling add none
+    unsized.scrollToIndex(500, "start");
+    for (int i = 0; i < 3; i++)
+        update();
+    EXPECT_EQ(logsWith("HTMLUI-HTML-0029"), 1u);
+    EXPECT_EQ(logsWith("HTMLUI-HTML-0031"), 1u);
+}
+
+// AC10: <markdown> from its raw content (an autolink survives, raw HTML is text and noted with
+// HTMLUI-HTML-0032) and from src, data-markdown following its expression, el:setMarkdown and
+// UIDocument.markdownToHtml
+TEST_F(HtmlUIWidgets, MarkdownElements){
+    ASSERT_EQ(lua(R"(chat = doc:createDataModel("chat", { message = "**hi**" }))"), "");
+    load("s17/markdown.html");
+
+    UIElement inlineMd = document->getElementById("inline");
+    ASSERT_TRUE(inlineMd.isValid());
+    UIElement body = inlineMd.querySelector(".markdown-body");
+    ASSERT_TRUE(body.isValid()) << inlineMd.getInnerHTML();
+    EXPECT_EQ(body.querySelector("h2").getTextContent(), "Notes");
+    UIElement link = body.querySelector("a");
+    ASSERT_TRUE(link.isValid()) << body.getInnerHTML();
+    EXPECT_EQ(link.getAttribute("href"), "https://a.b");
+    EXPECT_FALSE(body.querySelector("b").isValid()) << "raw HTML is not interpreted";
+    EXPECT_NE(body.getTextContent().find("<b>raw</b>"), std::string::npos) << body.getTextContent();
+    EXPECT_TRUE(body.querySelector("ul ul li").isValid()) << "nested list";
+    Rml::ElementDocument* rmlDocument = UIElementAccess::get(document->getBody())->GetOwnerDocument();
+    size_t rawNotes = 0;
+    for (const htmlui::compat::Diagnostic& each : htmlui::compat::DocumentLoader::diagnosticsOf(rmlDocument))
+        rawNotes += each.code.id() == "HTMLUI-HTML-0032" ? 1 : 0;
+    EXPECT_EQ(rawNotes, 1u);
+
+    UIElement file = document->getElementById("file");
+    EXPECT_EQ(file.querySelector("h1").getTextContent(), "Journal");
+    EXPECT_EQ(file.querySelector("em").getTextContent(), "one");
+
+    UIElement bound = document->getElementById("bound");
+    EXPECT_EQ(bound.querySelector("strong").getTextContent(), "hi") << bound.getInnerHTML();
+    ASSERT_EQ(lua(R"(chat.message = "# Title")"), "");
+    update();
+    EXPECT_EQ(bound.querySelector("h1").getTextContent(), "Title") << bound.getInnerHTML();
+    EXPECT_FALSE(bound.querySelector("strong").isValid());
+
+    ASSERT_EQ(lua(R"(
+        doc:getElementById("set"):setMarkdown("`code` <script>x()</script>")
+        html = UIDocument.markdownToHtml("*a*")
+    )"), "");
+    update();
+    UIElement set = document->getElementById("set");
+    EXPECT_EQ(set.querySelector("code").getTextContent(), "code");
+    EXPECT_FALSE(set.querySelector("script").isValid());
+    EXPECT_NE(luaString("html").find("<em>a</em>"), std::string::npos) << luaString("html");
+}

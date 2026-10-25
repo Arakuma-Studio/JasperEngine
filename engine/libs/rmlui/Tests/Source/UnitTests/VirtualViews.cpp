@@ -188,11 +188,14 @@ TEST_CASE("VirtualViews.layout_boundary")
 	const Box partial_text = text->GetBox();
 	const Vector2f partial_text_offset = text->GetAbsoluteOffset();
 	const float partial_scroll_height = view->GetScrollHeight();
-	static_cast<Element*>(document)->DirtyLayout();
+	// an empty element appended at the end of the document: a full layout that moves nothing
+	Element* empty = document->AppendChild(document->CreateElement("div"));
 	TestsShell::RenderLoop();
 	CHECK(text->GetBox() == partial_text);
 	CHECK(text->GetAbsoluteOffset() == partial_text_offset);
 	CHECK(view->GetScrollHeight() == partial_scroll_height);
+	document->RemoveChild(empty);
+	TestsShell::RenderLoop();
 
 	// A change of the boundary itself or outside it lays the document out.
 	const int partial_count = ElementDocument::GetBoundaryLayoutCount();

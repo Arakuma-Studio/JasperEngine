@@ -287,6 +287,17 @@ namespace {
                 ~Rewind(){ if (element.attrs.size() < count) index--; }
             } rewind{element, index, count};
 
+            // S17: data-event-drop & co. are HTML5's drag events, which the engine synthesizes
+            // under its own names (RmlUi's dragover is dragenter, its dragdrop is drop)
+            if (name == "data-event-dragenter" || name == "data-event-dragover" || name == "data-event-dragleave" || name == "data-event-drop"){
+                attribute->name = "data-event-htmlui-" + name.substr(11);
+                if (!inModel){
+                    context.sink.report(codes::BindingAttributeOutsideModel, where,
+                                        "'" + name + "' is read by the engine as a data binding, but no data-model encloses it",
+                                        "put it inside an element with data-model=\"name\", or rename the attribute", "", name);
+                }
+                continue;
+            }
             if (name == "style"){
                 if (!trim(attribute->value).empty()){
                     StyleAttributeSource source;

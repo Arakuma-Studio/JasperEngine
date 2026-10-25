@@ -57,7 +57,7 @@ namespace {
 
     // Order matches PreferencesCategory. Keywords are the page's labels, for the search field.
     const settingsui::Category preferencesCategories[] = {
-        {"General", "", "editor vsync default build directory output auto save autosave backup interval"},
+        {"General", "", "editor vsync default build directory output auto save autosave backup interval html ui hot reload patch rebuild"},
         {"Code Editor", "", "font size"},
         {"Asset Pipeline", "", "auto refresh watcher reload polling interval hot reload log reloads file changes"},
         {"Undo", "", "undo redo history max steps memory limit record selection review play mode changes keep values"},
@@ -214,6 +214,7 @@ void EditorSettingsWindow::open(Project* project) {
     m_pollingInterval = AppSettings::getPollingInterval();
     m_logReloads = AppSettings::getLogReloads();
     m_htmlUiVerboseDiagnostics = AppSettings::getHtmlUiVerboseDiagnostics();
+    m_htmlUiPatchReload = AppSettings::getHtmlUiPatchReload();
     m_codeEditorFontSize = AppSettings::getCodeEditorFontSize();
     m_undoMaxSteps = AppSettings::getUndoMaxSteps();
     m_undoMemoryLimitMB = AppSettings::getUndoMemoryLimitMB();
@@ -444,6 +445,16 @@ void EditorSettingsWindow::drawGeneralSettings() {
             m_htmlUiVerboseDiagnostics = false;
         }
         ImGui::Checkbox("##HtmlUiVerboseDiagnostics", &m_htmlUiVerboseDiagnostics);
+        if (prefsBeginSettingsRow("Hot Reload",
+                             "Patch: a saved .html document is reconciled with the live one (elements, Lua handles, listeners, "
+                             "form values, scroll and focus stay; onReload fires). Rebuild: it loads again (onUnload, onLoad).",
+                             m_htmlUiPatchReload != true)) {
+            m_htmlUiPatchReload = true;
+        }
+        int reloadMode = m_htmlUiPatchReload ? 0 : 1;
+        ImGui::SetNextItemWidth(Theme::dpi(260.0f));
+        if (ImGui::Combo("##HtmlUiHotReload", &reloadMode, "Patch (keep runtime state)\0Rebuild\0"))
+            m_htmlUiPatchReload = reloadMode == 0;
     });
 }
 
@@ -812,6 +823,7 @@ bool EditorSettingsWindow::applySettings() {
     reloads.setLogReloads(m_logReloads);
     if (watcherChanged && m_project && reloads.getProject() == m_project) reloads.startWatching(*m_project);
     AppSettings::setHtmlUiVerboseDiagnostics(m_htmlUiVerboseDiagnostics);
+    AppSettings::setHtmlUiPatchReload(m_htmlUiPatchReload);
     AppSettings::setCodeEditorFontSize(m_codeEditorFontSize);
     AppSettings::setUndo(m_undoMaxSteps, m_undoMemoryLimitMB, m_undoRecordSelection, m_undoReviewPlayChanges);
     AppSettings::setLoggingSettings(m_logging);

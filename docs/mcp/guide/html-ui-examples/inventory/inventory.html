@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <!--
-  Inventory: a window with equipment slots, a 6 x 4 item grid and a tooltip.
+  Inventory: a window with equipment slots, a 6 x 4 item grid and item tooltips.
   Shows: CSS grid, data binding of a list (data-for over the "inventory" model, data-attr-src for
   the item pictures, data-class-* for rarity, data-if, data-event-* callbacks with the slot
-  index), drag and drop (the engine's drag: drag-drop property; dragdrop swaps the entries),
-  a tooltip InventoryUI.lua fills and places next to the hovered slot (getBoundingClientRect),
+  index), HTML5 drag and drop (draggable, dropzone, event.dataTransfer carrying the slot, the
+  ghost the engine draws, the htmlui-drop-allowed class while over a slot that takes the item),
+  rich tooltips (el:setTooltip with a function filling a card for the hovered or focused slot),
   rarity glows with box-shadow, and a weight bar whose width is a data-bound expression.
   Gamepad: the slots are focusable (tabindex="0"): the d-pad moves between them (the tooltip
   follows the focus), A picks an item up and puts it down on another slot, B cancels or closes.
@@ -37,12 +38,10 @@
       </aside>
 
       <div class="grid">
-        <div class="slot" tabindex="0" data-for="item, i : items"
+        <div class="slot" tabindex="0" draggable="true" dropzone="item move" data-for="item, i : items"
              data-class-filled="item.icon != ''" data-class-rare="item.rarity == 'rare'" data-class-epic="item.rarity == 'epic'"
-             data-class-picked="picked == i + 1"
-             data-event-mouseover="hover(i)" data-event-mouseout="unhover()"
-             data-event-focus="hover(i)" data-event-blur="unhover()" data-event-click="select(i)"
-             data-event-dragstart="pick(i)" data-event-dragdrop="drop(i)">
+             data-class-picked="picked == i + 1" data-event-click="select(i)"
+             data-event-dragstart="pick(i)" data-event-drop="drop(i)">
           <img data-if="item.icon != ''" data-attr-src="item.icon" alt="">
           <span class="count" data-if="item.count > 1">{{ item.count }}</span>
         </div>
@@ -57,7 +56,8 @@
     </footer>
   </div>
 
-  <div id="tooltip" class="tooltip" role="tooltip">
+  <!-- the card the slots' tooltips show (InventoryUI.lua fills it; the engine shows a copy) -->
+  <div id="tooltip" class="tooltip" hidden>
     <p id="tooltip-title" class="tooltip-title">Item</p>
     <p id="tooltip-rarity" class="tooltip-rarity">Common</p>
     <p id="tooltip-desc" class="tooltip-desc">Description</p>
