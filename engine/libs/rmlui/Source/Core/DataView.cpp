@@ -48,6 +48,20 @@ void DataViews::OnElementRemove(Element* element)
 {
 	element_view_map.erase(element);
 
+	// Fork (P7-D): a view not yet added (its element was made and removed before the model's next update, as the
+	// engine's live patch does when it moves new elements into place) goes too: added later it would act on an element
+	// that is gone, or again on one that came back with a view of its own.
+	for (auto it = views_to_add.begin(); it != views_to_add.end();)
+	{
+		if ((*it)->GetElement() == element)
+		{
+			views_to_remove.push_back(std::move(*it));
+			it = views_to_add.erase(it);
+		}
+		else
+			++it;
+	}
+
 	for (auto it = views.begin(); it != views.end();)
 	{
 		auto& view = *it;

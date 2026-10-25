@@ -187,17 +187,13 @@ namespace {
             }
         }
 
-        // the node before which the authored node after `cursor` goes: past the nodes scripts
-        // added after `cursor` (they stay after the authored node they followed)
+        // the node before which the authored node after `cursor` goes: past the nodes that are not
+        // authored after `cursor` (or at the start): they stay after the authored node they followed
+        // (a data-for's copies before their template)
         Rml::Element* insertionPoint(Rml::Element* parent, Rml::Element* cursor) const{
-            Rml::Element* next = nullptr;
-            if (!cursor){
-                next = parent->GetNumChildren() > 0 ? parent->GetChild(0) : nullptr;
-            }else{
-                next = cursor->GetNextSibling();
-                while (next && !WidgetsRuntime::isAuthored(next))
-                    next = next->GetNextSibling();
-            }
+            Rml::Element* next = cursor ? cursor->GetNextSibling() : (parent->GetNumChildren() > 0 ? parent->GetChild(0) : nullptr);
+            while (next && !WidgetsRuntime::isAuthored(next))
+                next = next->GetNextSibling();
             return next;
         }
 
