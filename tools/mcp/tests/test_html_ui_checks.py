@@ -403,6 +403,25 @@ MALFORMED_CSS = """.a { color: red;
 """
 
 
+async def test_cli_ui_widget_codes():
+    """S17: check --ui reports the compile's widget codes at their element: a view without its
+    <template> (HTMLUI-HTML-0030, error). The runtime codes (0029 a view without a definite height,
+    0031 a data-for of more than 500 elements) need a layout or a model, and 0032 (HTML in
+    Markdown) is a note: none of them is a check finding."""
+    html = ("<!DOCTYPE html>\n<html>\n<head><title>w</title></head>\n<body>\n"
+            "<list-view items=\"rows\" style=\"height: 100px\"></list-view>\n"
+            "<table-view items=\"rows\" style=\"height: 100px\"><table-column key=\"a\">A</table-column></table-view>\n"
+            "<markdown>\n  Some <b>bold</b> text\n</markdown>\n"
+            "</body>\n</html>\n")
+    with scratch_project() as project:
+        write(project, "assets/ui/widgets.html", html)
+        code, data = run_json(project, "--ui", "--files", "assets/ui/widgets.html")
+    findings = [f for f in data["findings"] if f["path"] == "assets/ui/widgets.html"]
+    check_eq([(f["code"], f["severity"], f["line"]) for f in findings], [("HTMLUI-HTML-0030", "error", 5)],
+             f"the list-view without a template, nothing else: {findings}")
+    check_eq(code, 1, "an error exits 1")
+
+
 async def test_cli_ui_files_and_exclusions():
     with scratch_project() as project:
         write(project, "assets/ui/x.css", ".x { mix-blend-mode: multiply; }\n")
