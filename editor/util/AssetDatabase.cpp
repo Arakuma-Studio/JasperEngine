@@ -570,6 +570,11 @@ bool editor::AssetDatabase::readIdentity(const std::string& relative, AssetType 
 }
 
 bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
+    // read-only: the identity lives in memory (a legacy file's GUID is the one an editor
+    // upgrading it writes, R3)
+    if (readOnly) {
+        return true;
+    }
     const AssetTypeInfo& info = AssetTypes::info(entry.type);
     if (info.identity == AssetIdentity::InFile) {
         Guid current;
@@ -707,7 +712,7 @@ editor::AssetDatabase::Entry editor::AssetDatabase::identify(const std::string& 
         Out::warning("The GUID of %s is kept in memory only", relative.c_str());
     }
     statFile(relative, entry.writeTime, entry.size);
-    if (AssetTypes::info(type).identity == AssetIdentity::Sidecar) {
+    if (AssetTypes::info(type).identity == AssetIdentity::Sidecar && !readOnly) {
         entry.hasMeta = true;
         statFile(AssetTypes::metaPathFor(relative).generic_string(), entry.metaWriteTime, entry.metaSize);
     }
@@ -986,7 +991,7 @@ void editor::AssetDatabase::loadCache(std::map<std::string, Entry>& cached) cons
 }
 
 void editor::AssetDatabase::saveCache() const {
-    if (projectPath.empty()) {
+    if (projectPath.empty() || readOnly) {
         return;
     }
     writeCache(snapshotCache());
@@ -2017,6 +2022,9 @@ void editor::AssetDatabase::saveCacheInBackground() {
     }
     // copied under the lock, serialized and written without it: the main thread is not kept
     // waiting for the file
+    if (readOnly) {
+        return;
+    }
     CacheSnapshot snapshot;
     {
         std::lock_guard<std::recursive_mutex> dbLock(mutex);

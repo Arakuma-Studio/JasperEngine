@@ -1287,6 +1287,7 @@ void editor::Project::openAssetDatabase() {
     if (relativeAssets == ".") {
         relativeAssets.clear();
     }
+    assetDatabase.setReadOnly(readOnlyAssets);
     assetDatabase.open(projectPath, relativeAssets);
     // the dependency index builds in the background; documents with unsaved edits answer from memory
     assetIndex.setOverlayProvider([this](std::unordered_map<Guid, std::vector<DepEdge>>& edges) {

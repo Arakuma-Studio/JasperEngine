@@ -685,6 +685,7 @@ namespace jasperengine::editor{
         std::unique_ptr<io::ScopedFileLock> projectLock;
         bool ignoreProjectLock = false;
         bool skipProjectLock = false;
+        bool readOnlyAssets = false;
         bool projectLockedFailure = false;
         std::string projectLockMessage;
         struct AutosaveScene {
@@ -1320,6 +1321,11 @@ namespace jasperengine::editor{
         void setIgnoreProjectLock(bool ignore);
         // A session that never writes the project (CLI checks and exports): no lock at all
         void setSkipProjectLock(bool skip);
+        // A session that only reads (the CLI's check, a scene dump that saves nothing), next to
+        // an editor that may be upgrading the same files: the asset database writes no
+        // identities (metas, in-file GUIDs) and no cache (AssetDatabase::setReadOnly). Before
+        // loadProject.
+        void setReadOnlyAssets(bool readOnly) { readOnlyAssets = readOnly; }
         // The last loadProject failed because another live editor holds the project
         bool wasProjectLocked() const;
         const std::string& getProjectLockMessage() const;
