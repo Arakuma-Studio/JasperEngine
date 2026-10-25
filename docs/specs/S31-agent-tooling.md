@@ -584,4 +584,5 @@ in `tools/mcp/tests/`.
   `rendering_fx` as §6.4 says, and its guide bullet became an `## Atmosphere` digest the same way;
   so are S13's (`inspect_color_lut`, `get_post_processing_status`, `set_post_processing_debug`),
   with post-processing a `## Post-processing` digest of its own. S10, S12 and S13 had raised
-  `TOTAL_LIMIT` in `test_html_ui_tools.py`; the merges keep budget.json as the only limits.
+  `TOTAL_LIMIT` in `test_html_ui_tools.py` (S05 too, by 395 characters of core parameters); the
+  merges keep budget.json as the only limits.

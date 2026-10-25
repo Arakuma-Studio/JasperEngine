@@ -82,7 +82,7 @@ namespace {
         return scanGltfJson(bytes.substr(20, length), contents);
     }
 
-    std::string trim(const std::string& text) {
+    std::string subAssetTrim(const std::string& text) {
         size_t begin = 0, end = text.size();
         while (begin < end && std::isspace(static_cast<unsigned char>(text[begin]))) begin++;
         while (end > begin && std::isspace(static_cast<unsigned char>(text[end - 1]))) end--;
@@ -99,14 +99,14 @@ namespace {
         for (size_t begin = 0; begin < bytes.size();) {
             size_t end = bytes.find('\n', begin);
             if (end == std::string::npos) end = bytes.size();
-            const std::string line = trim(bytes.substr(begin, end - begin));
+            const std::string line = subAssetTrim(bytes.substr(begin, end - begin));
             begin = end + 1;
             if (line.size() < 2 || line[0] == '#') {
                 continue;
             }
             const size_t space = line.find_first_of(" \t");
             const std::string keyword = line.substr(0, space);
-            const std::string value = space == std::string::npos ? std::string() : trim(line.substr(space));
+            const std::string value = space == std::string::npos ? std::string() : subAssetTrim(line.substr(space));
             if (keyword == "o") {
                 objects.push_back(value);
             } else if (keyword == "g") {

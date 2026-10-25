@@ -194,24 +194,30 @@ Agents edit code with their own tools, not through MCP file tools:
   properties included: the editor writes each script's class from its `properties` table
   (`.jasperengine/engine-api/lua/scripts/<Name>.lua`). See
   [guide/editor-integration.md](guide/editor-integration.md).
-- **Changes are picked up automatically.** Before every tool call the server looks for Lua,
-  C++, shader, `.material`, HTML UI (`.html`, `.htm`, `.css`) and asset files (images and
-  `.svg`, fonts `.ttf`/`.otf`, `.json`/`.lottie`) changed on disk since the last call (a stat
-  scan of the project, skipping hidden folders such as `.jasperengine` and `.git`, `build`,
-  `node_modules` and `trash`). If any changed, the editor reloads clean code editor buffers,
-  re-parses script properties, compiles the shader forks that use a changed shader, refreshes
-  materials, textures and the Project window, and that call's result carries
-  `external_changes: {changed, added, removed, problems: [{path, line, message}]}` and one
-  text line. UI documents that use a changed file reload before the tool runs, in edit mode
-  and while playing (a stylesheet change restyles in place, keeping elements and listeners),
-  once even though the editor's own watcher also sees the change: `external_changes` then
-  lists them in `ui_reloaded`, and their findings (and those of a changed `.html`/`.css` no
-  document uses) as `problems` with `col`, `severity`, `code` and `suggestion`, the same as
-  `jasperengine-editor check --ui`. Other changes made while a scene plays are listed as
-  `deferred` and picked up when play stops. Files the MCP tools write themselves are not reported. `.scene`, `.prefab`,
-  `project.yaml` and the terrain maps the terrain tools write are not watched: edit them with
-  the tools. `sync_files` forces a full
-  rescan; `editor_status.auto_sync` shows the scan's size and cost.
+- **Changes are picked up automatically.** The editor watches the project folder (inotify,
+  ReadDirectoryChangesW, FSEvents, or polling; hidden folders such as `.jasperengine` and `.git`,
+  `build`, `node_modules` and `trash` skipped) and reloads what an edit touches as it lands
+  ([../hot-reload.md](../hot-reload.md)). Before every tool call the server also takes the
+  watcher's changes since the last call (after a flush; when the watcher is off or degraded,
+  a stat scan of the project) for Lua, C++, shader, `.material`, HTML UI (`.html`, `.htm`,
+  `.css`) and asset files (images and `.svg`, fonts `.ttf`/`.otf`, `.json`/`.lottie`). If any
+  changed, the editor reloads clean code editor buffers, re-parses script properties, compiles
+  the shader forks that use a changed shader, reloads materials, textures, models, audio and
+  fonts and refreshes the Project window, waits for those reloads (10 s at most), and that
+  call's result carries `external_changes: {changed, added, removed, source, reloaded,
+  pending, problems: [{path, line, message}]}` and one text line. A reload that failed keeps
+  the previous version and is a problem. A change the watcher reloaded already is reported
+  once and reloaded once. UI documents that use a changed file reload before the tool runs,
+  in edit mode and while playing (a stylesheet change restyles in place, keeping elements and
+  listeners): `external_changes` lists them in `ui_reloaded`, and their findings (and those of
+  a changed `.html`/`.css` no document uses) as `problems` with `col`, `severity`, `code` and
+  `suggestion`, the same as `jasperengine-editor check --ui`. Script changes made while a scene
+  plays are listed as `deferred` and picked up when play stops. Files the MCP tools write
+  themselves are not reported. `.scene`, `.prefab`, `project.yaml` and the terrain maps the
+  terrain tools write are not picked up: edit them with the tools (an open scene changed on
+  disk is never reloaded on its own). `sync_files` forces a full rescan (`wait`,
+  `rebuild_models`, `auto_refresh`); `editor_status.file_watcher` shows the watcher and the
+  reloads, `editor_status.auto_sync` the pick-up's source, size and cost.
 - Validate without playing: `check_script`, `check_shader`, `compile_scripts`, or
   `jasperengine-editor check` from a shell (see [checks.md](checks.md)). As a Claude Code
   PostToolUse hook (or Codex hook), `jasperengine-editor check --project "$CLAUDE_PROJECT_DIR" --hook`

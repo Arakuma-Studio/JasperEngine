@@ -86,10 +86,10 @@ undoes only your own last step. Play-time edits roll back at play stop and are o
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
 grep and git its scripts, shaders and .material files with your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/
-folder (Lua API stubs). Your edits are picked up before your next tool call (script
-properties re-parsed, open buffers reloaded, shader forks recompiled, textures reloaded); that
-call's result then carries `external_changes` {changed, problems: [{path, line, message}]}:
-fix those problems first. During play they wait until play stops.
+folder (Lua API stubs). Your file edits are reloaded before your next call, whose result
+carries `external_changes` {changed, reloaded, problems: [{path, line, message}]}: fix those
+problems first. During play scripts wait until play stops. Open scenes and prefabs are not
+reloaded from disk: edit them with the tools.
 Validate without playing: check_script (Lua syntax, properties), check_shader, compile_scripts
 (C++), or `jasperengine-editor check` from a shell. Through tools: create_script (engine
 template, optional attach), attach_script / detach_script, set_script_properties. write_file /

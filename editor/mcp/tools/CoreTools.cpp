@@ -6,6 +6,7 @@
 #include "McpTools.h"
 
 #include "mcp/McpAutoSync.h"
+#include "reload/HotReloadService.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -549,6 +550,28 @@ void getMemoryStatsTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ editor_status
 
+// The file watcher and the hot reload (S05 R31)
+Json fileWatcherJson() {
+    const FileWatchService::Stats stats = FileWatchService::get().stats();
+    HotReloadService& reloads = HotReloadService::get();
+    return {
+        {"backend", stats.backend.empty() ? Json(nullptr) : Json(stats.backend)},
+        {"state", FileWatchService::stateName(stats.state)},
+        {"auto_refresh", reloads.getAutoRefresh()},
+        {"roots", stats.roots},
+        {"watches", stats.watches},
+        {"events", stats.events},
+        {"coalesced", stats.coalesced},
+        {"echoes_suppressed", stats.echoesSuppressed},
+        {"overflows", stats.overflows},
+        {"pending", stats.pending + reloads.pendingExternalChanges() + McpAutoSync::get().heldAtCallStart()},
+        {"reloading", reloads.reloadingCount()},
+        {"reloads", reloads.reloadCount()},
+        {"last_reload", reloads.lastReloadJson()},
+        {"poll_interval_ms", stats.pollInterval.count()}
+    };
+}
+
 void editorStatusTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
@@ -650,6 +673,8 @@ void editorStatusTool(const CallPtr& call) {
         {"jobs", jobs},
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
+        {"file_watcher", fileWatcherJson()},
+        {"frame_ms", app.takeFrameStats()},
         {"dialog", dialog},
         {"ui", ui},
         {"mcp", {
@@ -909,7 +934,7 @@ void registerCoreTools(McpRegistry& registry) {
         tool.title = "Editor Status";
         tool.description =
             "Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, prefab "
-            "stage), unsaved changes, jobs, pending dialog, MCP sessions. Call it first.";
+            "stage), unsaved changes, jobs, pending dialog, MCP sessions, file watcher, frame times. Call it first.";
         tool.inputSchema = object({});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;

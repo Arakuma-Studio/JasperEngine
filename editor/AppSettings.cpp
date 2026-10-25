@@ -135,6 +135,10 @@ int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
 std::string AppSettings::mcpToolGroups;
 bool AppSettings::htmlUiAutoImport = true;
+bool AppSettings::assetAutoRefresh = true;
+std::string AppSettings::assetWatcher = "auto";
+float AppSettings::assetPollingInterval = 1.0f;
+bool AppSettings::assetLogReloads = true;
 int AppSettings::undoMaxSteps = AppSettings::defaultUndoMaxSteps;
 int AppSettings::undoMemoryLimitMB = AppSettings::defaultUndoMemoryLimitMB;
 bool AppSettings::undoRecordSelection = true;
@@ -368,6 +372,14 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             }
         }
 
+        if (settingsData["asset_pipeline"]) {
+            auto assetNode = settingsData["asset_pipeline"];
+            if (assetNode["auto_refresh"]) assetAutoRefresh = assetNode["auto_refresh"].as<bool>();
+            if (assetNode["watcher"]) setFileWatcher(assetNode["watcher"].as<std::string>());
+            if (assetNode["polling_interval"]) setPollingInterval(assetNode["polling_interval"].as<float>());
+            if (assetNode["log_reloads"]) assetLogReloads = assetNode["log_reloads"].as<bool>();
+        }
+
         if (settingsData["html_ui"]) {
             auto htmlUiNode = settingsData["html_ui"];
             if (htmlUiNode["auto_import"]) htmlUiAutoImport = htmlUiNode["auto_import"].as<bool>();
@@ -537,6 +549,13 @@ bool AppSettings::saveSettings() {
         if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
         if (!mcpToolGroups.empty()) mcpNode["tool_groups"] = mcpToolGroups;
         settingsData["mcp"] = mcpNode;
+
+        YAML::Node assetNode;
+        assetNode["auto_refresh"] = assetAutoRefresh;
+        assetNode["watcher"] = assetWatcher;
+        assetNode["polling_interval"] = assetPollingInterval;
+        assetNode["log_reloads"] = assetLogReloads;
+        settingsData["asset_pipeline"] = assetNode;
 
         YAML::Node htmlUiNode;
         htmlUiNode["auto_import"] = htmlUiAutoImport;
@@ -823,6 +842,39 @@ bool AppSettings::getMultiViewportEnabled() {
 
 void AppSettings::setMultiViewportEnabled(bool enabled) {
     multiViewportEnabled = enabled;
+}
+
+bool AppSettings::getAutoRefresh() {
+    return assetAutoRefresh;
+}
+
+void AppSettings::setAutoRefresh(bool enabled) {
+    assetAutoRefresh = enabled;
+}
+
+std::string AppSettings::getFileWatcher() {
+    return assetWatcher;
+}
+
+void AppSettings::setFileWatcher(const std::string& kind) {
+    // "off" is a command-line choice (--file-watcher), not a preference
+    if (kind == "auto" || kind == "native" || kind == "polling") assetWatcher = kind;
+}
+
+float AppSettings::getPollingInterval() {
+    return assetPollingInterval;
+}
+
+void AppSettings::setPollingInterval(float seconds) {
+    assetPollingInterval = std::clamp(seconds, 0.25f, 10.0f);
+}
+
+bool AppSettings::getLogReloads() {
+    return assetLogReloads;
+}
+
+void AppSettings::setLogReloads(bool enabled) {
+    assetLogReloads = enabled;
 }
 
 int AppSettings::getUndoMaxSteps() {
