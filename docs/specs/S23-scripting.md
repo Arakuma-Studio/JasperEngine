@@ -678,10 +678,9 @@ Recorded by the S23 implementation.
   Scene view) call `EditorScripts::drawContextItems`. Shortcuts in annotations are only displayed
   next to the item and are not bound, because S25 owns the shortcut map. The Scene view's
   context menu opens on a short right click (no drag), since that view had no context menu.
-- **S31 (agent tooling) has not landed.** The new tools are registered with the existing
-  registry and budget (`tools/mcp/tool_budget.py`). `set_script_settings` sets the Preferences
-  > Scripting values and the External Script Editor (with its custom command). Tests and agents
-  need that without a Preferences tool.
+- **Settings tool.** `set_script_settings` sets the Preferences > Scripting values and the
+  External Script Editor (with its custom command). Tests and agents need that without a
+  Preferences tool.
 - **AC12 tool.** `Editor.call("set_transform")` replaces `set_component_property`, which does
   not exist in this tree. `set_transform` is the undoable transform edit.
 - **AC15 test kind.** The `test` graph kind is registered when the editor starts with
@@ -703,3 +702,11 @@ Recorded by the S23 implementation.
   `libs/imgui/JASPER_PATCHES.md`.
 - **R46 `search_engine_api`** reads `engine_api_suggestions.h`, which is now generated from
   `lua-api.json`, so it serves the same data without a second load path.
+- **R44 names and group (S31 landed during S23).** The S31 naming rule (verb_noun) renames
+  `script_status` to the read-only `get_script_status`, and the settings it set move to
+  `set_script_settings`. `evaluate_expression` becomes `eval_expression`. All S23 tools are in
+  the new tool group `scripting` (hidden from the default listing, callable by name).
+  `editor_status.scripts` stays in core.
+- **AC20 test updates.** `test_autosync.py::test_play_deferred_then_picked_up` now sets Reload
+  After Stopping Play first, because the default policy reloads a Lua script in place during
+  Play (R45).
