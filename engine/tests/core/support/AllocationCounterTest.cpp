@@ -25,11 +25,17 @@ TEST(AllocationCounter, CountsTheCallingThreadsAllocations) {
 
 TEST(AllocationCounter, OtherThreadsDoNotCountForTheCaller) {
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "this binary cannot count allocations";
+    // starting a thread allocates on this thread: its state (libstdc++), and under ASan what
+    // the sanitizer's pthread_create interceptor allocates; measured with a body that allocates
+    // nothing
+    testsupport::ThreadAllocationCount start;
+    std::thread([]() {}).join();
+    const uint64_t startCost = start.count();
+
     testsupport::AllocationCountScope process;
     testsupport::ThreadAllocationCount mine;
-    // the body allocates twice (the string and its buffer); starting the thread allocates its
-    // state once on this thread
+    // the body allocates twice (the string and its buffer)
     std::thread([]() { auto value = std::make_unique<std::string>(100, 'z'); }).join();
-    EXPECT_GE(process.count(), 3u);
-    EXPECT_LE(mine.count(), 1u) << "the other thread's allocations counted for the caller";
+    EXPECT_GE(process.count(), startCost + 2u);
+    EXPECT_LE(mine.count(), startCost) << "the other thread's allocations counted for the caller";
 }
