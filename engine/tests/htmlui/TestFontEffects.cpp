@@ -267,7 +267,9 @@ TEST_F(RmlFontEffectsTest, EffectPagePixels){
     }
 }
 
-TEST_F(RmlFontEffectsTest, VersionBumpsOnNewEffectGlyph){
+// S16: effect glyphs go into their pages in place (the renderer uploads the page again): no text is
+// made again for a new effect glyph, the handle's version stays
+TEST_F(RmlFontEffectsTest, EffectGlyphsKeepTheVersion){
     Rml::FontFaceHandle face = handle("sans-serif", 24);
     const Rml::FontEffectsHandle outline = prepare(face, parse("outline(1px black)"));
 
@@ -275,23 +277,16 @@ TEST_F(RmlFontEffectsTest, VersionBumpsOnNewEffectGlyph){
     const int start = engine.GetVersion(face);
     EXPECT_EQ(engine.getEffectPageCount(), 0u);
 
-    // the base glyph exists, the effect glyph is new: one bump
+    // the base glyph exists, the effect glyph is new: it gets a page
     generate(face, outline, "a");
-    EXPECT_EQ(engine.GetVersion(face), start + 1);
     EXPECT_EQ(engine.getEffectPageCount(), 1u);
-    // nothing new
     generate(face, outline, "aaa");
     generate(face, 0, "a");
-    EXPECT_EQ(engine.GetVersion(face), start + 1);
-    // a new glyph: one bump for both its pages
     generate(face, outline, "b");
-    EXPECT_EQ(engine.GetVersion(face), start + 2);
-    // another effect: new effect glyphs
     generate(face, prepare(face, parse("outline(2px black)")), "b");
-    EXPECT_EQ(engine.GetVersion(face), start + 3);
     // a shadow makes no glyphs of its own
     generate(face, prepare(face, parse("shadow(1px 1px black)")), "ab");
-    EXPECT_EQ(engine.GetVersion(face), start + 3);
+    EXPECT_EQ(engine.GetVersion(face), start);
     EXPECT_EQ(engine.getEffectPageCount(), 1u);
 
     // a space has no ink: no effect quad, no failure

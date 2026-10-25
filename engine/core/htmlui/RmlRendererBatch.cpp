@@ -142,6 +142,21 @@ namespace {
         return std::memcmp(ma.data(), mb.data(), sizeof(float) * 16) == 0;
     }
 
+    // a matrix that only moves x and y (z is not drawn): its offset
+    bool translationOf(const Rml::Matrix4f& matrix, Rml::Vector2f& offset){
+        const float* m = matrix.data();
+        // column-major: the 3x3 part and the last row are the identity's
+        const float identity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+        for (int i = 0; i < 16; i++){
+            if (i == 12 || i == 13 || i == 14)
+                continue;
+            if (m[i] != identity[i])
+                return false;
+        }
+        offset = Rml::Vector2f(m[12], m[13]);
+        return true;
+    }
+
     uint64_t mix(uint64_t h, uint64_t v){
         h ^= v + 0x9e3779b97f4a7c15ull + (h << 6) + (h >> 2);
         return h * 0xff51afd7ed558ccdull;
@@ -722,8 +737,14 @@ void RmlRenderer::planRuns(){
     // the replay's state as the plan goes
     int layer = 0;
     int transformIndex = -1;
+    // 0: no transform (or one that only translates, folded into the members' translation)
     uint32_t transformId = 0;
-    AxisMap transformMap = axisMapOf(nullptr);
+    const AxisMap identityMap = axisMapOf(nullptr);
+    AxisMap transformMap = identityMap;
+    struct Shift {
+        bool valid = false;
+        Rml::Vector2f offset;
+    } transformShift;
     bool scissorOn = false;
     Rml::Rectanglei scissor = toTargetRect(frameStartScissor, contextSize, targetSize);
     bool stencil = false;
@@ -731,6 +752,7 @@ void RmlRenderer::planRuns(){
     int scope = -1;          // the current scope, any mode
     BatchRun* run = nullptr;
     uint32_t chunkItemsUsed = 0;
+    uint32_t transformIds = 0;
 
     // the run's chunks: found in the cache or left to gather, with its final texture
     auto flush = [&](){
@@ -785,13 +807,23 @@ void RmlRenderer::planRuns(){
 
     // a geometry's vertices or a quad list's or primitives' instances into the current run (a new
     // one when it does not join it); localBounds: document px before the translation
-    auto add = [&](RunKind kind, const BatchMember& member, const Rml::Rectanglef& localBounds, uint32_t vertices, uint32_t indices){
-        HtmlUITexture* texture = member.texture;
-        const Rml::Vector2f translation = member.translation;
+    auto add = [&](RunKind kind, const BatchMember& source, const Rml::Rectanglef& localBounds, uint32_t vertices, uint32_t indices){
+        HtmlUITexture* texture = source.texture;
 
         // the scissor it is drawn with: clipped away, nothing to draw
-        Rml::Rectanglei own = scissorOn ? scissor : full;
         const int analyticScope = (scope >= 0 && clipScopes[(size_t)scope].mode == ScopeMode::ANALYTIC) ? scope : -1;
+        // a transform that only translates is folded into the translation, so the geometry joins
+        // the runs around it (translateX centring, slides); not under an analytic clip, whose shapes
+        // are in the space before the transform
+        BatchMember member = source;
+        const bool folded = transformShift.valid && analyticScope < 0;
+        if (folded)
+            member.translation += transformShift.offset;
+        const Rml::Vector2f translation = member.translation;
+        const uint32_t runTransformId = folded ? 0u : transformId;
+        const AxisMap& map = folded ? identityMap : transformMap;
+
+        Rml::Rectanglei own = scissorOn ? scissor : full;
         if (scope >= 0 && clipScopes[(size_t)scope].mode == ScopeMode::ELIDED){
             const Rml::Rectanglei clip = clipScopes[(size_t)scope].scissor;
             const Rml::Vector2i p0 = Rml::Math::Max(own.p0, clip.p0);
@@ -802,15 +834,15 @@ void RmlRenderer::planRuns(){
         // R4: inside its scissor (a translate/scale transform), it may share a run with another scissor
         bool free = false;
         RectF bounds;
-        if (transformMap.valid){
-            bounds = mapRect(transformMap, pixel, localBounds.Left() + translation.x, localBounds.Top() + translation.y,
+        if (map.valid){
+            bounds = mapRect(map, pixel, localBounds.Left() + translation.x, localBounds.Top() + translation.y,
                              localBounds.Right() + translation.x, localBounds.Bottom() + translation.y);
             free = insideRect(bounds, own);
         }
 
         auto joins = [&](){
             if (!run || run->kind != kind || run->layer != layer || run->stencil != stencil || (stencil && run->stencilRef != ref) ||
-                run->transformId != transformId || run->scope != analyticScope)
+                run->transformId != runTransformId || run->scope != analyticScope)
                 return false;
             if (texture != run->texture){
                 if (kind == RunKind::INSTANCES){
@@ -847,8 +879,8 @@ void RmlRenderer::planRuns(){
             run->stencil = stencil;
             run->stencilRef = ref;
             run->scope = analyticScope;
-            run->transformId = transformId;
-            run->transform = transformIndex < 0 ? projection : projection * commandMatrices[(size_t)transformIndex];
+            run->transformId = runTransformId;
+            run->transform = (folded || transformIndex < 0) ? projection : projection * commandMatrices[(size_t)transformIndex];
             run->firstChunk = (uint32_t)batchChunks.size();
             run->firstMember = (uint32_t)batchMembers.size();
             replayOps.push_back(ReplayOp{ReplayOp::Kind::RUN, (uint32_t)(batchRuns.size() - 1), -1});
@@ -893,8 +925,16 @@ void RmlRenderer::planRuns(){
         case CommandType::TRANSFORM: {
             const int next = c.flag ? c.i[0] : -1;
             if (!sameMatrix(next < 0 ? nullptr : &commandMatrices[(size_t)next], transformIndex < 0 ? nullptr : &commandMatrices[(size_t)transformIndex])){
-                transformId++;
+                transformId = ++transformIds;
                 transformMap = axisMapOf(next < 0 ? nullptr : &commandMatrices[(size_t)next]);
+                transformShift = Shift();
+                Rml::Vector2f offset;
+                if (next >= 0 && translationOf(commandMatrices[(size_t)next], offset)){
+                    transformShift.valid = true;
+                    transformShift.offset = offset;
+                }else if (next < 0){
+                    transformId = 0;
+                }
             }
             transformIndex = next;
             emit((uint32_t)ci);

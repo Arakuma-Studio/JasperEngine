@@ -544,7 +544,9 @@ TEST_F(RmlFontEngineTest, ReleaseFontResources){
     Rml::FontFaceHandle face = handle("sans-serif", 24);
     generate(face, "release me");
     EXPECT_EQ(engine.getPageCount(), 1u);
-    const int before = engine.GetVersion(face);
+    // (the epoch: what a handle that went with the release reads)
+    const int before = engine.GetVersion(0);
+    EXPECT_GE(engine.GetVersion(face), before);
 
     engine.ReleaseFontResources();
     EXPECT_EQ(engine.getPageCount(), 0u);

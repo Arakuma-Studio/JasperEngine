@@ -71,9 +71,7 @@ void main() {
     // derivatives first, in uniform control flow
     vec2 dpdx = dFdx(p);
     vec2 dpdy = dFdy(p);
-    vec4 texel = texture(sampler2D(u_htmluiTexture, u_htmlui_smp), v_local.zw);
-    vec2 uvTexels = v_local.zw * vec2(textureSize(sampler2D(u_htmluiTexture, u_htmlui_smp), 0));
-    float distanceText = htmluiDistanceText(texel, uvTexels, p);
+    // (the mode is flat: one per primitive, so every branch below is taken by whole pixel quads)
     int mode = int(v_params.x + 0.5);
     vec4 color;
 
@@ -100,22 +98,36 @@ void main() {
         }
     }else if (mode == 2 || mode == 3){
         // a shadow: its shape blurred by sigma (none: the shape's own antialiased edge), outside the
-        // border box (outer), or the shape's outside blurred inside the padding box (inset)
-        // (the blur widened by a pixel's box filter, sigma 1/sqrt(12) px)
-        float shape;
-        if (v_params.y > 0.0)
-            shape = roundedRectShadow(p, v_a, v_b, v_c, sqrt(v_params.y * v_params.y + 0.0833333 * max(dot(dpdx, dpdx), dot(dpdy, dpdy))));
-        else
-            shape = htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c);
+        // border box (outer), or the shape's outside blurred inside the padding box (inset). The
+        // box first: an outer shadow under the border box, or an inset one outside the padding
+        // box, is not drawn (most of an outer shadow's quad)
         float box = htmluiClipShape(p, dpdx, dpdy, v_d, v_e, v_f);
+        float shape = 0.0;
+        if ((mode == 2 && box < 1.0) || (mode == 3 && box > 0.0)){
+            if (v_params.y > 0.0){
+                // (the blur widened by a pixel's box filter, sigma 1/sqrt(12) px); beyond 3 sigma of
+                // the shape's edge the Gaussian is 0 or 1
+                float sigma = sqrt(v_params.y * v_params.y + 0.0833333 * max(dot(dpdx, dpdx), dot(dpdy, dpdy)));
+                float sd = roundedRectSDF(p, v_a, v_b, v_c);
+                if (sd > 3.0 * sigma)
+                    shape = 1.0;
+                else if (sd > -3.0 * sigma)
+                    shape = roundedRectShadow(p, v_a, v_b, v_c, sigma);
+            }else{
+                shape = htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c);
+            }
+        }
         float alpha = (mode == 2) ? shape * (1.0 - box) : (1.0 - shape) * box;
         color = v_color * alpha;
     }else{
         // a quad: the colour, times its texture by kind
         color = v_color;
         if (v_params.z > 0.5){
+            // the UI's textures have one level
+            vec4 texel = textureLod(sampler2D(u_htmluiTexture, u_htmlui_smp), v_local.zw, 0.0);
+            vec2 uvTexels = v_local.zw * vec2(textureSize(sampler2D(u_htmluiTexture, u_htmlui_smp), 0));
             if (clip.params.y > 1.5)
-                color *= distanceText;
+                color *= htmluiDistanceText(texel, uvTexels, p);
             else if (clip.params.y > 0.5)
                 color *= texel.r;
             else

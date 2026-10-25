@@ -17,7 +17,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Benchmarks | the job system's and the allocators' budgets (S06 R23-R26): `je-bench-jobs`, `je-bench-memory`, gated by `tools/perf/check_bench.py` against `tools/perf/bench-thresholds.json` | `docs/jobs-memory.md` (on an otherwise idle machine) | their `--json` files |
 | Smoke test | export, build and run a project, then open it in the editor; screenshots | `tools/smoke-test.sh tools/fixtures/post-processing` | `build/smoke/` |
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
-| Tool checks | the CI scripts' own tests, the notices, the presets | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the CI scripts' own tests, the notices, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -47,6 +47,14 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
 - `tools/build.sh htmlui-tests`: about 3,300 tests, 74 of them skipped on purpose (the gate allows
   exactly those). `HTMLUI_TEST_ARGS` filters, `JASPER_HTMLUI_PERF_SLACK` relaxes the performance
   targets on a loaded host (CI uses 3).
+- The HTML UI rendering suites of S16 (`docs/specs/S16-ui-render-text.md`): `RenderBatch.*`,
+  `RenderClip.*`, `RenderPrimitive.*`, `TextSharpness.*`, `TestFontEngine.AtlasBudget*` and, in
+  Release builds, the benchmark `HtmlUIRenderPerf.*` (`fixtures/bench/`; results in
+  `build/linux/htmlui-render-bench[-vulkan].json`, the table in `docs/html-ui/render-benchmark.md`;
+  its timings are judged on an otherwise idle machine). Changed HTML UI goldens need a row in
+  `docs/html-ui/goldens-S16.md`: `python3 tools/htmlui/check_golden_ledger.py` (tested by
+  `tools/ci/test_check_golden_ledger.py`) fails on a changed golden without one and on any change
+  of a Chromium reference (`golden/browser/**`).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
   `CI = True`; `MCP_SUITE=all` runs every file and needs `JASPER_FIXTURE`, the default fixture
