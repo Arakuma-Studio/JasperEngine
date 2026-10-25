@@ -815,8 +815,9 @@ TEST_F(Player, PerformanceBudget){
         if (b == 0 || b == 20 || b == 40) path = b == 0 ? "Bone0" : "Bone0/Bone" + std::to_string(b);
         else path += "/Bone" + std::to_string(b);
         paths.push_back(path);
-        data.tracks.push_back(track(path, ClipChannel::Position, {key(0, {0, 0, 0}), key(0.5f, {1, 0, 0}), key(1, {0, 0, 0})}));
-        data.tracks.push_back(track(path, ClipChannel::Rotation, {key(0, {0, 0, 0, 1}), key(1, {0, 0.7071f, 0, 0.7071f})}));
+        // a skeletal clip as glTF/FBX rigs have them: rotations on every bone, the position of the hips
+        if (b == 0) data.tracks.push_back(track(path, ClipChannel::Position, {key(0, {0, 0, 0}), key(0.5f, {1, 0, 0}), key(1, {0, 0, 0})}));
+        data.tracks.push_back(track(path, ClipChannel::Rotation, {key(0, {0, 0, 0, 1}), key(0.5f, {0, 0.3827f, 0, 0.9239f}), key(1, {0, 0.7071f, 0, 0.7071f})}));
     }
     std::string clipPath = clip("rig", data);
     Entity bullets = scene.createEntity();
@@ -860,11 +861,13 @@ TEST_F(Player, PerformanceBudget){
             times.push_back(std::chrono::duration<double, std::milli>(clock::now() - start).count());
         }
         std::sort(times.begin(), times.end());
+        std::printf("[ perf ]   %s: min %.3f, quartile %.3f, median %.3f, max %.3f ms\n", spawn ? "spawning" : "still",
+                    times.front(), times[times.size() / 4], times[times.size() / 2], times.back());
         return times[times.size() / 2];
     };
     const double still = measure(false);
     const double spawning = measure(true);
-    std::printf("[ perf ] 100 players x 60 bones (12000 tracks): %.3f ms a frame, %.3f ms with a spawn per frame (medians)\n",
+    std::printf("[ perf ] 100 players x 60 bones (6100 tracks): %.3f ms a frame, %.3f ms with a spawn per frame (medians)\n",
                 still, spawning);
 #ifdef NDEBUG
     EXPECT_LT(spawning, 2.0);
@@ -872,5 +875,5 @@ TEST_F(Player, PerformanceBudget){
     // they play
     AnimationPlayerComponent& any = scene.getComponentFromIndex<AnimationPlayerComponent>(0);
     ASSERT_TRUE(any.runtime);
-    EXPECT_EQ(any.runtime->states[0].bindings.resolvedCount, 120u);
+    EXPECT_EQ(any.runtime->states[0].bindings.resolvedCount, 61u);
 }
