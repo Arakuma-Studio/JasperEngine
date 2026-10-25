@@ -20,7 +20,7 @@ namespace {
 // Seconds without activity before the loop starts idling
 constexpr double IDLE_ENTER_DELAY = 0.5;
 
-double monotonicSeconds(){
+double frameMonotonicSeconds(){
     using Clock = std::chrono::steady_clock;
     return std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
 }
@@ -31,7 +31,7 @@ void EditorFrame::init(Renderer& renderer, App& app, void (*platformNewFrame)())
     this->renderer = &renderer;
     this->app = &app;
     this->platformNewFrame = platformNewFrame;
-    lastActivityTime = monotonicSeconds();
+    lastActivityTime = frameMonotonicSeconds();
 }
 
 std::string EditorFrame::formatWindowTitle(const std::string& projectName){
@@ -43,7 +43,7 @@ std::string EditorFrame::formatWindowTitle(const std::string& projectName){
 bool EditorFrame::isIdle() const{
     if (app && app->isBenchmarkMode())
         return false;
-    return monotonicSeconds() - lastActivityTime > IDLE_ENTER_DELAY;
+    return frameMonotonicSeconds() - lastActivityTime > IDLE_ENTER_DELAY;
 }
 
 // Input, an active widget, a scene redraw or queued cross-thread work keeps the
@@ -81,7 +81,7 @@ bool EditorFrame::run(EditorFrameState& state){
     Backend::setMouseControlSuspended(
         playSessionActive && !project->isMainScenePlaying());
 
-    const double frameStart = monotonicSeconds();
+    const double frameStart = frameMonotonicSeconds();
     const bool idleFrame = !state.forceRedraw && isIdle();
 
     // Unfocused always drops synchronization, so a blocked present can never
@@ -127,7 +127,7 @@ bool EditorFrame::run(EditorFrameState& state){
 
     const bool activity = detectActivity(state.redrawRequested);
     if (activity){
-        lastActivityTime = monotonicSeconds();
+        lastActivityTime = frameMonotonicSeconds();
     }
 
     ImGui::Render();
@@ -144,10 +144,14 @@ bool EditorFrame::run(EditorFrameState& state){
         renderer->present();
     }
     renderer->purgeTextures();
+    // a frame that drew (the editor window, or only its views: headless, minimized)
+    if (frameReady || renderRequested){
+        app->recordFrameTime((frameMonotonicSeconds() - frameStart) * 1000.0);
+    }
 
     if (!state.focused || state.minimized){
         const int sleepMs = static_cast<int>(
-            (state.framePeriod - (monotonicSeconds() - frameStart)) * 1000.0);
+            (state.framePeriod - (frameMonotonicSeconds() - frameStart)) * 1000.0);
         if (sleepMs > 0){
             std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
         }

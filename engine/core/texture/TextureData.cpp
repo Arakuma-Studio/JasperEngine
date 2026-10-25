@@ -311,11 +311,45 @@ bool TextureData::loadTextureFromMemory(unsigned char* data, unsigned int dataLe
     return result;
 }
 
+bool TextureData::loadTextureFromFileData(const char* filename, unsigned char* bytes, unsigned int dataLength){
+    float parsedScale = svgScale;
+    std::string cleanPath = parseSvgScalePath(filename ? filename : "", &parsedScale);
+    svgScale = parsedScale;
+
+    Data filedata;
+    filedata.open(bytes, dataLength, false, false);
+
+    bool result = false;
+    if (hasSvgExtension(cleanPath.c_str())) {
+        if (dataOwned && data)
+            releaseImageData();
+        result = loadSvgTexture(&filedata);
+    } else {
+        result = loadTexture(&filedata);
+    }
+
+    if (!result){
+        Log::error("Texture file not loaded: %s", cleanPath.c_str());
+    }
+
+    return result;
+}
+
 bool TextureData::loadCubeMapFromSingleFile(const char* filename, std::array<TextureData, 6>& data){
     TextureData texture;
     if (!texture.loadTextureFromFile(filename))
         return false;
+    return splitCubeMapCross(texture, data);
+}
 
+bool TextureData::loadCubeMapFromSingleFileData(const char* filename, unsigned char* bytes, unsigned int length, std::array<TextureData, 6>& data){
+    TextureData texture;
+    if (!texture.loadTextureFromFileData(filename, bytes, length))
+        return false;
+    return splitCubeMapCross(texture, data);
+}
+
+bool TextureData::splitCubeMapCross(TextureData& texture, std::array<TextureData, 6>& data){
     int tileW = 0;
     int tileH = 0;
 
@@ -353,6 +387,7 @@ bool TextureData::loadCubeMapFromSingleFile(const char* filename, std::array<Tex
         back[0] = 1; back[1] = 3;
     }else{
         Log::error("Failed to load cubemap: format not supported");
+        texture.releaseImageData();
         return false;
     }
 

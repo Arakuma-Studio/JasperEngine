@@ -9,7 +9,8 @@
 
 #include "Project.h"
 #include "util/Util.h"
-#include "window/CodeEditor.h"
+#include "reload/HotReloadService.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cctype>
@@ -50,6 +51,8 @@ constexpr size_t REPORT_PATHS_MAX = 50;
 // Filesystem timestamps come from a coarse clock that can lag the real time by a tick: a
 // write made just after a call started may be stamped slightly before it.
 constexpr int64_t SETTLE_SLACK_NS = 15'000'000;
+// the writing calls whose run the journal pick-up remembers
+constexpr size_t TOOL_WINDOWS_MAX = 32;
 
 struct FileStat {
     int64_t mtime = 0;
@@ -151,7 +154,7 @@ McpAutoSync& McpAutoSync::get() {
 }
 
 bool McpAutoSync::isTrackedFile(const std::string& path) {
-    if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path)) return true;
+    if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path) || Util::isColorLutFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
     return ext == ".c" || ext == ".inl";
@@ -252,6 +255,7 @@ bool McpAutoSync::ensureRoot(McpContext& ctx, bool* rebased) {
 
 void McpAutoSync::baseline(const fs::path& projectRoot) {
     root = projectRoot;
+    journalCursor = FileWatchService::get().journalHead();
     code.clear();
     assets.clear();
     dirs.clear();
@@ -495,14 +499,15 @@ void McpAutoSync::restamp(const std::string& rel) {
     mapFor(rel)[rel] = {st.mtime, st.size};
 }
 
-void McpAutoSync::merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report) {
+void McpAutoSync::merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report, uint64_t sequence) {
     auto it = into.find(rel);
     if (it == into.end()) {
-        into[rel] = {kind, report};
+        into[rel] = {kind, report, sequence};
         return;
     }
     Pending& p = it->second;
     p.report = p.report || report;
+    p.sequence = std::max(p.sequence, sequence);
     if (p.kind == 'a' && kind == 'r') {
         into.erase(it);   // came and went
     } else if (p.kind == 'a') {
@@ -532,19 +537,38 @@ Json McpAutoSync::compactProblems(const Json& problems) {
     return out;
 }
 
+namespace {
+// one per path, line and message (the watcher and the call may both have checked a file)
+Json uniqueProblems(const Json& problems) {
+    Json out = Json::array();
+    std::set<std::string> seen;
+    for (const Json& problem : problems) {
+        if (seen.insert(problem.value("path", std::string()) + ":" + std::to_string(problem.value("line", 0)) + ":" +
+                        problem.value("message", std::string())).second) {
+            out.push_back(problem);
+        }
+    }
+    return out;
+}
+} // namespace
+
 void McpAutoSync::addUiReport(Json& report, const Json& reloaded, int current) {
     if (!reloaded.empty()) report["ui_reloaded"] = reloaded;
     if (current > 0) report["ui_current"] = current;
 }
 
-Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, std::vector<std::string>& shaderFiles) {
+Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes) {
     std::vector<fs::path> paths;
     std::set<std::string> reportable;
+    w4::SyncOptions sync;
     for (const Change& change : changes) {
         paths.push_back((root / fs::path(change.rel)).lexically_normal());
         if (change.report) reportable.insert(change.rel);
+        // the journal change: what the watcher reloaded for it already is not done again
+        if (change.sequence != 0) sync.sequences[paths.back()] = change.sequence;
     }
-    Json result = w4::syncFiles(ctx, paths, false);
+    // quiet: the call's result reports it (the Console lines are the watcher's)
+    Json result = w4::syncFiles(ctx, paths, false, sync);
     if (reportable.empty()) return nullptr;
 
     Json changed = Json::array(), added = Json::array(), removed = Json::array();
@@ -553,7 +577,6 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, s
         if (changed.size() < REPORT_PATHS_MAX) changed.push_back(change.rel);
         if (change.kind == 'a' && added.size() < REPORT_PATHS_MAX) added.push_back(change.rel);
         if (change.kind == 'r' && removed.size() < REPORT_PATHS_MAX) removed.push_back(change.rel);
-        if (change.kind != 'r' && Util::isShaderFile(change.rel)) shaderFiles.push_back(change.rel);
     }
     Json report = {{"changed", changed}};
     if (reportable.size() > changed.size()) report["changed_count"] = reportable.size();
@@ -575,6 +598,9 @@ Json McpAutoSync::process(McpContext& ctx, const std::vector<Change>& changes, s
     if (!scripts.empty()) report["script_properties"] = scripts;
     const Json reloaded = result.contains("code_editor") ? result["code_editor"].value("reloaded", Json::array()) : Json::array();
     if (!reloaded.empty()) report["reloaded_buffers"] = reloaded;
+    // what the hot reload did (S05 R29): done, and still on a worker (beforeCall waits for those)
+    report["reloaded"] = result.value("reloaded", Json::array());
+    report["pending"] = result.value("pending", Json::array());
     return report;
 }
 
@@ -589,19 +615,26 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     const auto started = std::chrono::steady_clock::now();
     const double cpuStart = threadCpuMs();
     std::vector<Change> found;
-    bool complete = true;
-    scan(found, SCAN_BUDGET_MS, MIN_ITEMS, complete);
+    // the file watcher's journal when it runs; the stat scan when it is off, degraded, behind
+    // (an overflow) or its flush timed out (R29)
+    heldAtCall = 0;
+    const std::string source = takeJournal(found) ? "watcher" : "scan";
+    if (source == "scan") {
+        bool complete = true;
+        scan(found, SCAN_BUDGET_MS, MIN_ITEMS, complete);
+        lastScanChecked = scanChecked;
+        lastComplete = complete;
+    }
+    lastSource = source;
     lastScanMs = msSince(started);
     lastScanCpuMs = threadCpuMs() - cpuStart;
-    lastScanChecked = scanChecked;
-    lastComplete = complete;
 
     // One entry per path: this scan, what the last settle left, and (once Play stopped) what
     // Play deferred
     std::map<std::string, Pending> merged;
     for (auto& [rel, pending] : pendingExternal) merge(merged, rel, pending.kind, pending.report);
     pendingExternal.clear();
-    for (const Change& change : found) merge(merged, change.rel, change.kind, true);
+    for (const Change& change : found) merge(merged, change.rel, change.kind, true, change.sequence);
 
     const bool playing = ctx.isPlaying();
     if (playing) {
@@ -612,14 +645,16 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         // HTML UI files are not deferred: the documents (the running ones and the edit-time
         // ones) reload now. Images go to the documents now and to the scene textures after Play.
         std::vector<fs::path> uiPaths, imagePaths;
+        w4::SyncOptions uiSync;
         bool otherDeferred = false;
         for (const auto& [rel, pending] : merged) {
-            const fs::path path = (root / fs::u8path(rel)).lexically_normal();
+            const fs::path path = (root / FileUtils::pathFromUtf8(rel)).lexically_normal();
             // a project UI effect's .frag (or one that is gone) and the includes effects may read
             // reload their documents now too (phase 5)
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
+                if (pending.sequence != 0) uiSync.sequences[path] = pending.sequence;
                 continue;
             }
             if (Util::isImageFile(rel)) imagePaths.push_back(path);
@@ -629,12 +664,13 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
         Json uiProblems = Json::array(), uiReloaded = Json::array();
         int uiCurrent = 0;
         if (!uiPaths.empty()) {
-            const Json synced = w4::syncFiles(ctx, uiPaths, false);
+            const Json synced = w4::syncFiles(ctx, uiPaths, false, uiSync);
             uiProblems = synced.value("problems", Json::array());
             uiReloaded = synced.value("ui_reloaded", Json::array());
             uiCurrent = synced.value("ui_current", 0);
         }
-        if (!imagePaths.empty()) {
+        // (the watcher's own reload of an image reloads the documents showing it)
+        if (!imagePaths.empty() && source != "watcher") {
             const Json synced = w4::syncHtmlUi(ctx, imagePaths);
             for (const Json& problem : synced["problems"]) uiProblems.push_back(problem);
             for (const Json& item : synced["reloaded"]) uiReloaded.push_back(item);
@@ -660,14 +696,23 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             run(nullptr);
             return;
         }
+        // what the watcher's reloads found (before this call, or in its flush)
+        const HotReloadService::WatcherUi watcherUi = HotReloadService::get().takeWatcherUi(started);
+        for (const Json& item : watcherUi.reloaded) uiReloaded.push_back(item);
+        uiCurrent += watcherUi.current;
+        for (const Json& problem : HotReloadService::get().takeLateProblems()) problems.push_back(compactProblems(Json::array({problem}))[0]);
         Json report = {{"changed", changed}};
         if (!added.empty()) report["added"] = added;
         if (!removed.empty()) report["removed"] = removed;
-        report["problems"] = problems;
+        report["problems"] = uniqueProblems(problems);
         addUiReport(report, uiReloaded, uiCurrent);
+        report["source"] = source;
         if (otherDeferred) {
-            report["deferred"] = "A scene is playing: script properties, shaders, materials and textures are picked up when play stops"
-                                 " (HTML UI documents reloaded now).";
+            report["deferred"] = source == "watcher"
+                ? "A scene is playing: script properties are re-parsed when play stops (textures, materials, shaders, models, audio "
+                  "and HTML UI reload now)."
+                : "A scene is playing: script properties, shaders, materials and textures are picked up when play stops"
+                  " (HTML UI documents reloaded now).";
         }
         run(report);
         return;
@@ -681,73 +726,119 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     }
 
     std::vector<Change> changes;
-    for (const auto& [rel, pending] : merged) changes.push_back({rel, pending.kind, 0, pending.report});
-    std::vector<std::string> shaderFiles;
-    Json report = process(ctx, changes, shaderFiles);
+    for (const auto& [rel, pending] : merged) changes.push_back({rel, pending.kind, 0, pending.report, pending.sequence});
+    HotReloadService& reloads = HotReloadService::get();
+    const uint64_t serial = reloads.lastSerial();
+    Json report = process(ctx, changes);
     if (report.is_null()) {
         run(nullptr);
         return;
     }
+    report["source"] = source;
+    // the HTML UI documents the watcher reloaded: in this call's flush (reloaded for it), or
+    // before (already current)
+    const HotReloadService::WatcherUi watcherUi = reloads.takeWatcherUi(started);
+    if (!watcherUi.reloaded.empty() || watcherUi.current > 0) {
+        Json uiReloaded = report.value("ui_reloaded", Json::array());
+        for (const Json& item : watcherUi.reloaded) uiReloaded.push_back(item);
+        addUiReport(report, uiReloaded, report.value("ui_current", 0) + watcherUi.current);
+    }
 
-    std::vector<ProjectChecks::ShaderUse> forks = shaderFiles.empty() ? std::vector<ProjectChecks::ShaderUse>()
-                                                                     : ProjectChecks::shaderForksUsingFiles(ctx.project(), shaderFiles);
-    if (forks.empty()) {
+    // the reloads it started run on workers: the call waits for them (at most 10 s), as it
+    // waits for the shader forks they compile
+    auto finish = [run, report, serial](bool) mutable {
+        HotReloadService& reloads = HotReloadService::get();
+        Json stillPending = Json::array();
+        for (const Json& path : report["pending"]) {
+            HotReloadService::Record record;
+            const bool done = reloads.lastRecordOf(path.get<std::string>(), record) && record.serial > serial;
+            if (!done) stillPending.push_back(path);
+            else if (record.ok) report["reloaded"].push_back({{"path", record.path}, {"kind", record.kind}, {"ms", std::round(record.ms)}});
+        }
+        report["pending"] = stillPending;
+        // the failures (the old version kept) and the shader forks' compile errors
+        for (const Json& problem : reloads.takeLateProblems()) report["problems"].push_back(compactProblems(Json::array({problem}))[0]);
+        report["problems"] = uniqueProblems(report["problems"]);
         run(report);
+    };
+    std::vector<fs::path> pending;
+    for (const Json& path : report["pending"]) pending.push_back((root / FileUtils::pathFromUtf8(path.get<std::string>())).lexically_normal());
+    if (pending.empty()) {
+        finish(false);
         return;
     }
-    // Compile the forks those files belong to, so their errors come with this call
-    Project* project = ctx.project();
-    w4::checkShadersAsync(call, forks, [run, report, shaderFiles, project](Json results) mutable {
-        Json& problems = report["problems"];
-        // shared by the results: a UI effect's forms (phase 5) report the same error once
-        std::set<std::string> seen;
-        for (const Json& result : results) {
-            if (result.value("ok", false)) continue;
-            const std::string base = result.value("shader", std::string());
-            const Util::CustomShaderPaths paths = project->resolveCustomShaderFiles(base);
-            // Name the changed file of the fork (else its fragment shader)
-            std::string path = paths.frag.empty() ? base : paths.frag;
-            for (const std::string& file : shaderFiles) {
-                if (file == paths.vert || file == paths.frag) {
-                    path = file;
-                    break;
-                }
-            }
-            const Json errors = result.value("errors", Json::array());
-            size_t added = 0;
-            // errors with a place, reported here or by an earlier result (a UI effect's other form)
-            size_t placed = 0;
-            for (const Json& error : errors) {
-                if (error.value("severity", std::string("error")) != "error") continue;
-                const std::string message = shortMessage(error.value("message", std::string()), 300);
-                if (message.find("compilation terminated") != std::string::npos) continue;
-                placed++;
-                // glslang names the file (an include, or the stage file) when it can
-                const std::string source = error.value("source", std::string());
-                const bool namesFile = source.find('.') != std::string::npos || source.find('/') != std::string::npos;
-                const std::string where = namesFile ? source : path;
-                const int line = error.value("line", 0);
-                if (!seen.insert(where + ":" + std::to_string(line) + ":" + message).second) continue;
-                Json problem = {{"path", where}, {"line", line},
-                                {"message", "Shader " + base + " (" + result.value("type", std::string()) + ") does not compile: " + message}};
-                // a UI effect (phase 5): effect-shader-compile, or effect-manifest
-                if (result.contains("code")) problem["code"] = result["code"];
-                problems.push_back(problem);
-                if (++added >= 10) break;
-            }
-            // no file:line at all: the log (not when every error was already reported)
-            if (placed == 0) {
-                problems.push_back({{"path", path}, {"message", "Shader " + base + " does not compile: " +
-                                                                    shortMessage(result.value("log", std::string("unknown error")), 400)}});
-            }
+    call->waitUntil([pending]() { return HotReloadService::get().idleFor(pending); }, 10000, finish);
+}
+
+bool McpAutoSync::takeJournal(std::vector<Change>& found) {
+    FileWatchService& watcher = FileWatchService::get();
+    if (!watcher.isAttached()) return false;
+    const FileWatchService::State state = watcher.stats().state;
+    if (state == FileWatchService::State::Off || state == FileWatchService::State::Degraded) return false;
+    if (!watcher.flush(std::chrono::milliseconds(250))) return false;
+    const std::vector<FileChange> journal = watcher.journalSince(journalCursor);
+    std::vector<Change> taken;
+    // Handled already: the baseline holds what the disk holds (sync_files picked it up before
+    // the watcher delivered it, a writing call's settle stamped it, or it came and went)
+    std::map<std::string, bool> handled;
+    auto isHandled = [&](const std::string& key) {
+        auto known = handled.find(key);
+        if (known != handled.end()) return known->second;
+        const FileMap& map = mapFor(key);
+        auto it = map.find(key);
+        FileStat st;
+        bool same = false;
+        if (!statPath(absolute(key), st) || st.isDir) same = it == map.end();
+        else same = it != map.end() && it->second.mtime == st.mtime && it->second.size == st.size;
+        handled[key] = same;
+        return same;
+    };
+    for (const FileChange& change : journal) {
+        // fell behind the ring: everything may have changed, the scan looks
+        if (change.kind == FileChangeKind::Rescan && change.path == watcher.getRoot()) return false;
+        // the editor's own writes are not external (the tools handled theirs), nor what a
+        // writing call stamped while it ran (a tool writing past the atomic writer)
+        if (change.kind == FileChangeKind::Rescan || change.directory || change.origin == ChangeOrigin::Editor) continue;
+        if (change.kind != FileChangeKind::Removed && std::any_of(toolWindows.begin(), toolWindows.end(), [&](const auto& window) {
+                return change.mtimeNs >= window.first && change.mtimeNs <= window.second;
+            })) {
+            continue;
         }
-        run(report);
-    });
+        auto add = [&](const fs::path& path, char kind) {
+            const fs::path rel = path.lexically_normal().lexically_relative(root.lexically_normal());
+            if (rel.empty() || rel.is_absolute()) return;
+            const std::string key = FileUtils::genericPathToUtf8(rel);
+            if (key == "." || key.rfind("..", 0) == 0 || insideSkippedDir(key) || !tracks(key) || isHandled(key)) return;
+            taken.push_back({key, kind, change.mtimeNs, true, change.sequence});
+        };
+        switch (change.kind) {
+            case FileChangeKind::Added: add(change.path, 'a'); break;
+            case FileChangeKind::Modified: add(change.path, 'm'); break;
+            case FileChangeKind::Removed: add(change.path, 'r'); break;
+            case FileChangeKind::Moved:
+                add(change.oldPath, 'r');
+                add(change.path, 'a');
+                break;
+            case FileChangeKind::Rescan: break;
+        }
+    }
+    // the scan's baseline follows, so its settle (and a later fallback) does not find them again
+    for (const Change& change : taken) {
+        restamp(change.rel);
+        markHot(change.rel);
+    }
+    found.insert(found.end(), taken.begin(), taken.end());
+    // Auto Refresh off: what waited in the journal for this call (editor_status pending)
+    heldAtCall = HotReloadService::get().getAutoRefresh() ? 0 : taken.size();
+    return true;
 }
 
 void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chrono::system_clock::time_point start,
                             std::chrono::system_clock::time_point end) {
     if (writingCalls > 0) writingCalls--;
+    // the journal's safety net: what a writing call stamped inside its run is its own
+    toolWindows.emplace_back(toNs(start) - SETTLE_SLACK_NS, toNs(end) + SETTLE_SLACK_NS / 5);
+    while (toolWindows.size() > TOOL_WINDOWS_MAX) toolWindows.pop_front();
     bool rebased = false;
     if (tool == "sync_files" || !ensureRoot(ctx, &rebased) || rebased) return;
 
@@ -785,7 +876,6 @@ void McpAutoSync::filesSynced(McpContext& ctx, const std::vector<fs::path>& path
         deferred = keep;
         return;
     }
-    std::vector<fs::path> scripts;
     for (const fs::path& path : paths) {
         const fs::path rel = path.lexically_normal().lexically_relative(root.lexically_normal());
         if (rel.empty() || rel.is_absolute()) continue;
@@ -798,12 +888,7 @@ void McpAutoSync::filesSynced(McpContext& ctx, const std::vector<fs::path>& path
             if (Util::isScriptFile(key)) merge(deferred, key, 'm', false);
         } else {
             deferred.erase(key);
-            if (Util::isScriptFile(key)) scripts.push_back(path);
         }
-    }
-    // The code editor's own 1 s watch must not re-parse what was just handled
-    if (!scripts.empty()) {
-        if (CodeEditor* editor = ctx.codeEditor()) editor->markScriptFilesCurrent(scripts);
     }
 }
 
@@ -884,7 +969,7 @@ void McpAutoSync::attach(Json& result, const Json& report) {
 
 Json McpAutoSync::stats() const {
     auto round3 = [](double v) { return std::round(v * 1000.0) / 1000.0; };
-    return {{"files", code.size() + assets.size()}, {"dirs", dirs.size()}, {"checked", lastScanChecked},
+    return {{"source", lastSource}, {"files", code.size() + assets.size()}, {"dirs", dirs.size()}, {"checked", lastScanChecked},
             {"complete", lastComplete}, {"scan_ms", round3(lastScanMs)}, {"settle_ms", round3(lastSettleMs)},
             {"scan_cpu_ms", round3(lastScanCpuMs)}, {"settle_cpu_ms", round3(lastSettleCpuMs)}};
 }

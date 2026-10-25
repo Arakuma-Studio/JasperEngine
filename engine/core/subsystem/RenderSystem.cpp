@@ -3,6 +3,7 @@
 
 #include "RenderSystem.h"
 #include "InstanceSort.h"
+#include "RenderSystemShared.h"
 #include "object/Camera.h"
 #include "math/Quaternion.h"
 #include "Scene.h"
@@ -35,6 +36,7 @@
 #include <cstring>
 
 using namespace jasperengine;
+using namespace jasperengine::rendershared;
 
 namespace {
     constexpr int SPOT_MASK_TILE_SIZE = 256;
@@ -69,32 +71,6 @@ namespace {
             submesh.hasSkinningNormalization ? submesh.normAdjustWeight : mesh.normAdjustWeight,
             0.0f, 0.0f);
         render.applyUniformBlock(slot, sizeof(normAdjust), &normAdjust);
-    }
-
-    // fade distance past which instances can be dropped: only the built-in triangle
-    // shaders shrink them to nothing, and the SSR G-buffer has no fade yet
-    float instanceFadeCullEnd(const InstancedMeshComponent& instmesh, const MeshComponent& mesh, const Scene& scene){
-        if (scene.isSSREnabled() || !scene.getDefaultMeshShader().empty() ||
-            !instmesh.distanceFade || !mesh.customShader.empty() || !mesh.customDepthShader.empty() ||
-            !(instmesh.fadeEnd > instmesh.fadeStart) || !std::isfinite(instmesh.fadeStart) ||
-            !std::isfinite(instmesh.fadeEnd) || instmesh.fadeEnd < 0.0f){
-            return -1.0f;
-        }
-        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
-            const auto primitive = mesh.submeshes[s].primitiveType;
-            if (primitive != PrimitiveType::TRIANGLES && primitive != PrimitiveType::TRIANGLE_STRIP){
-                return -1.0f;
-            }
-        }
-        return instmesh.fadeEnd;
-    }
-
-    // shadow-map texels of error a caster may lose, well inside the PCF blur
-    const float SHADOW_LOD_TEXELS = 2.0f;
-
-    // an instanced mesh with culling off keeps its whole batch, bounds or not
-    bool cullsBatch(const MeshComponent& mesh, const InstancedMeshComponent* instmesh){
-        return mesh.worldAABB != AABB::ZERO && (!instmesh || instmesh->cullInstances);
     }
 
     // getCenter() asserts on null/infinite boxes. New foliage (and any empty
@@ -318,17 +294,6 @@ namespace {
         return state;
     }
 
-    // the same without explicit stencil or colour write (AUTO: the manifest's, else off / all)
-    RenderState resolveRenderState(MaterialBlendMode blendMode, MaterialCullMode cullMode, MaterialDepthWrite depthWrite,
-                                   MaterialDepthTest depthTest, float offsetFactor, float offsetUnits,
-                                   const ShaderManifestState* resolvedState, bool legacyBlended, bool legacyFaceCulling,
-                                   CullingMode legacyCullingMode, WindingOrder windingOrder,
-                                   bool& blended, bool& transparentQueue){
-        return resolveRenderState(blendMode, cullMode, depthWrite, depthTest, offsetFactor, offsetUnits,
-                                  MaterialStencil(), -1, resolvedState, legacyBlended, legacyFaceCulling,
-                                  legacyCullingMode, windingOrder, blended, transparentQueue);
-    }
-
     // the manifest a shader string has, when it has one (built-in and forks without
     // manifest lines: null, the legacy path)
     std::shared_ptr<const ShaderManifest> findManifest(const std::string& shader){
@@ -434,6 +399,7 @@ TextureRender RenderSystem::emptyCubeBlack;
 TextureRender RenderSystem::emptyCubeWhite;
 TextureRender RenderSystem::emptyNormal;
 TextureRender RenderSystem::emptyShadowDepth;
+TextureRender RenderSystem::emptyShadowDepthRaw;
 uint32_t RenderSystem::pixelsGray[64];
 uint32_t RenderSystem::pixelsFlatNormal[64];
 TextureRender RenderSystem::emptyGray;
@@ -445,7 +411,7 @@ bool RenderSystem::emptyTexturesCreated = false;
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 
-RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
+RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
 
@@ -478,19 +444,10 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
     postProcessNeedsDepth = false;
     postProcessNeedsGBuffer = false;
 
-    shadowAtlasSlotResolution = 0;
-    shadowAtlasCols = 0;
-    shadowAtlasRows = 0;
-    shadowAtlasUsedSlots = 0;
-    needUpdateShadowAtlas = true;
-    shadowPointAtlasSlotResolution = 0;
-    needUpdateShadowPointAtlas = true;
     needUpdateShadowBindings = false;
     hasShadowAtlas = false;
     hasShadowPointAtlas = false;
     spotMaskAtlasCreated = false;
-    initShadowAtlasRects();
-    initShadowPointAtlasRects();
 
     shadow2DAtlasWidth = 0;
     hasShadow2DAtlas = false;
@@ -514,6 +471,8 @@ void RenderSystem::load(){
     hasLights = false;
     hasShadows = false;
     hasFog = false;
+    heightFogActive = false;
+    atmosphereDepthPrograms = false;
     hasIBL = false;
     hasReflectionProbes = false;
     hasMultipleCameras = false;
@@ -559,6 +518,8 @@ void RenderSystem::destroy(){
     destroyPostProcess();
     destroyUber();
     destroyBloomPrograms();
+    atmosphere.destroy();
+    primaryView.atmosphere.destroy();
     if (postLinearSampler.isCreated())
         postLinearSampler.destroyTexture();
     rv().postSceneFramebuffer.destroy();
@@ -566,6 +527,7 @@ void RenderSystem::destroy(){
     rv().postSceneHeight = 0;
     rv().bloomTargets.destroy();
     rv().blurTargets.destroy();
+    rv().halationTargets.destroy();
     rv().msaaFramebuffer.destroy();
     rv().msaaWidth = 0;
     rv().msaaHeight = 0;
@@ -610,15 +572,14 @@ void RenderSystem::destroy(){
     passShadows = nullptr;
     cameraShadows.clear();
     primaryView.shadows.release();
-    shadowAtlasFramebuffer.destroyFramebuffer();
-    shadowAtlasSlotResolution = 0;
-    shadowAtlasCols = 0;
-    shadowAtlasRows = 0;
-    shadowAtlasUsedSlots = 0;
-    hasShadowAtlas = false;
-    shadowPointAtlasFramebuffer.destroyFramebuffer();
-    shadowPointAtlasSlotResolution = 0;
-    hasShadowPointAtlas = false;
+    releaseShadowAtlases();
+    shadowPlanner.reset();
+    shadowPlan = ShadowPlan();
+    shadowCasters.clear();
+    shadowRestoreRender.destroy();
+    shadowRestoreShader.reset();
+    shadowRestoreLoaded = false;
+    shadowAtlasDebugTarget.destroyFramebuffer();
     shadow2DAtlasFramebuffer.destroyFramebuffer();
     shadow2DAtlasWidth = 0;
     hasShadow2DAtlas = false;
@@ -659,7 +620,6 @@ void RenderSystem::destroy(){
 
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
-        Transform& transform = transforms->getComponentFromIndex(i);
         Entity entity = transforms->getEntity(i);
         Signature signature = scene->getSignature(entity);
 
@@ -797,8 +757,12 @@ void RenderSystem::createEmptyTextures(){
     if (!emptyShadowDepth.isCreated()){
         emptyShadowDepth.createFramebufferTexture(
             TextureType::TEXTURE_2D, true, true, 1, 1,
-            TextureFilter::NEAREST, TextureFilter::NEAREST,
+            TextureFilter::LINEAR, TextureFilter::LINEAR,
             TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER);
+    }
+    // its raw view, the source of the shadow cache's slot clear and of PCSS without an atlas
+    if (!emptyShadowDepthRaw.isCreated() && emptyShadowDepth.isCreated()){
+        emptyShadowDepthRaw.createAliasView(emptyShadowDepth, "empty|shadowdepth-raw");
     }
 }
 
@@ -840,112 +804,6 @@ int RenderSystem::checkLightsAndShadow(){
         hasLights2D = true;
 
     return numLights;
-}
-
-bool RenderSystem::loadLights(int numLights){
-    int freeProjectiveSlot = 0;
-    int freePointSlot = 0;
-    unsigned int maxProjectiveSlotResolution = 0;
-    unsigned int maxPointSlotResolution = 0;
-
-    auto lights = scene->getComponentArray<LightComponent>();
-    
-    for (int i = 0; i < numLights; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-
-        light.shadowMapIndex = -1;
-        
-        if (light.shadows){
-            if (light.type == LightType::DIRECTIONAL &&
-                (light.numShadowCascades < 1 || light.numShadowCascades > MAX_SHADOWCASCADES)){
-                unsigned int requestedCascades = light.numShadowCascades;
-                light.numShadowCascades = std::clamp(
-                    light.numShadowCascades, 1u, (unsigned int)MAX_SHADOWCASCADES);
-                Log::warn("Shadow cascades clamped from %u to %u", requestedCascades, light.numShadowCascades);
-            }
-
-            if (light.needUpdateShadowMap){
-                needUpdateShadowAtlas = true;
-                needUpdateShadowPointAtlas = true;
-                needUpdateShadowBindings = true;
-                light.needUpdateShadowMap = false;
-            }
-        }
-    }
-
-    for (int i = 0; i < numLights; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-        if (!light.shadows) continue;
-
-        if (light.type == LightType::SPOT){
-            if (freeProjectiveSlot < MAX_SHADOW_ATLAS_SLOTS){
-                light.shadowMapIndex = freeProjectiveSlot;
-                freeProjectiveSlot++;
-                maxProjectiveSlotResolution = std::max(maxProjectiveSlotResolution, light.mapResolution);
-            }
-        }else if (light.type == LightType::DIRECTIONAL){
-            if ((freeProjectiveSlot + light.numShadowCascades) <= MAX_SHADOW_ATLAS_SLOTS){
-                light.shadowMapIndex = freeProjectiveSlot;
-                freeProjectiveSlot += light.numShadowCascades;
-                maxProjectiveSlotResolution = std::max(maxProjectiveSlotResolution, light.mapResolution);
-            }
-        }
-    }
-
-    for (int i = 0; i < numLights; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-        if (!light.shadows || light.type != LightType::POINT) continue;
-
-        if ((freePointSlot + SHADOW_CUBE_FACES) <= MAX_POINT_SHADOW_ATLAS_SLOTS){
-            light.shadowMapIndex = freePointSlot;
-            freePointSlot += SHADOW_CUBE_FACES;
-            maxPointSlotResolution = std::max(maxPointSlotResolution, light.mapResolution);
-        }
-    }
-
-    if (freeProjectiveSlot > 0){
-        if (!ensureShadowAtlas(maxProjectiveSlotResolution, freeProjectiveSlot)){
-            Log::warn("Failed to create projective shadow atlas");
-            for (int i = 0; i < numLights; i++){
-                LightComponent& light = lights->getComponentFromIndex(i);
-                if (light.shadows && light.type != LightType::POINT){
-                    light.shadowMapIndex = -1;
-                }
-            }
-        }
-    }else{
-        if (hasShadowAtlas || shadowAtlasFramebuffer.isCreated()){
-            needUpdateShadowBindings = true;
-        }
-        shadowAtlasFramebuffer.destroyFramebuffer();
-        shadowAtlasSlotResolution = 0;
-        shadowAtlasCols = 0;
-        shadowAtlasRows = 0;
-        shadowAtlasUsedSlots = 0;
-        initShadowAtlasRects();
-        hasShadowAtlas = false;
-    }
-
-    if (freePointSlot > 0){
-        if (!ensureShadowPointAtlas(maxPointSlotResolution)){
-            Log::warn("Failed to create point shadow atlas");
-            for (int i = 0; i < numLights; i++){
-                LightComponent& light = lights->getComponentFromIndex(i);
-                if (light.shadows && light.type == LightType::POINT){
-                    light.shadowMapIndex = -1;
-                }
-            }
-        }
-    }else{
-        if (hasShadowPointAtlas || shadowPointAtlasFramebuffer.isCreated()){
-            needUpdateShadowBindings = true;
-        }
-        shadowPointAtlasFramebuffer.destroyFramebuffer();
-        shadowPointAtlasSlotResolution = 0;
-        hasShadowPointAtlas = false;
-    }
-
-    return true;
 }
 
 void RenderSystem::updateSpotMaskAtlas(int numLights){
@@ -1196,73 +1054,6 @@ Vector4 RenderSystem::lightingViewportInfo(const CameraComponent& camera) const{
         isRenderingFlipped(camera) ? 1.0f : 0.0f);
 }
 
-void RenderSystem::processLights(CameraShadows& view, int numLights, const CameraComponent& camera, const Transform& cameraTransform){
-    auto lights = scene->getComponentArray<LightComponent>();
-
-    // the shadow cameras of the lights holding atlas slots
-    for (int i = 0; i < numLights; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-
-        // shadowMapIndex < 0 means the atlas had no free slot for this light this frame:
-        // the per-object lists pass it on (cone_shadow.z), which the shader treats as "no
-        // shadow". The light keeps its shadow intent and reclaims a slot automatically once
-        // one frees up.
-        if (!light.shadows || light.shadowMapIndex < 0)
-            continue;
-
-        size_t numMaps = 1;
-        if (light.type == LightType::DIRECTIONAL){
-            numMaps = lightCascades(view, i, light);
-        }else if (light.type == LightType::POINT){
-            numMaps = SHADOW_CUBE_FACES;
-        }
-
-        for (int c = 0; c < (int)numMaps; c++){
-            const LightCamera& shadowCamera = lightCamera(view, i, light, c);
-            if (light.type == LightType::POINT){
-                view.fs_point_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
-                    light.shadowBias,
-                    (float)shadowPointAtlasSlotResolution,
-                    shadowCamera.nearFar.x,
-                    shadowCamera.nearFar.y);
-            }else{
-                view.vs_shadows.lightViewProjectionMatrix[light.shadowMapIndex+c] = shadowCamera.lightViewProjectionMatrix;
-
-                float projScale = std::max(std::abs(shadowCamera.lightProjectionMatrix[0][0]),
-                                           std::abs(shadowCamera.lightProjectionMatrix[1][1]));
-                float texelSizeWorld = (projScale > 0.0f) ? 2.0f / (projScale * (float)shadowAtlasSlotResolution) : 0.0f;
-                view.vs_shadows.shadowParams[light.shadowMapIndex+c] = Vector4(light.shadowNormalBias * texelSizeWorld, 0.0, 0.0, 0.0);
-
-                view.fs_shadows.bias_texSize_nearFar[light.shadowMapIndex+c] = Vector4(
-                    light.shadowBias,
-                    (float)shadowAtlasSlotResolution,
-                    shadowCamera.nearFar.x,
-                    shadowCamera.nearFar.y);
-            }
-        }
-    }
-
-    // the camera part of the legacy u_fs_lighting (lights and eyePos.w are per draw); the
-    // frame block of the camera's passes is filled by updatePassFrame
-    view.fs_lighting.eyePos = Vector4(cameraTransform.worldPosition.x, cameraTransform.worldPosition.y, cameraTransform.worldPosition.z, 0.0);
-    view.fs_lighting.cameraDir = Vector4(camera.worldDirection.x, camera.worldDirection.y, camera.worldDirection.z, shadowPCFRadius());
-    view.fs_lighting.globalIllum = Vector4(scene->getGlobalIlluminationColorLinear(), scene->getGlobalIlluminationIntensity());
-    view.fs_lighting.envColor = environmentInfo();
-    view.fs_lighting.viewportInfo = lightingViewportInfo(camera);
-}
-
-float RenderSystem::shadowPCFRadius() const{
-    // PCF tap radius of the 3D shadow filter (kernel = (2*radius+1)^2 taps; uniform-driven,
-    // no shader variant)
-    switch (scene->getShadowQuality()){
-        case ShadowQuality::NONE:   return 0.0f;
-        case ShadowQuality::LOW:    return 1.0f;
-        case ShadowQuality::MEDIUM: return 2.0f;
-        case ShadowQuality::HIGH:   return 3.0f;
-    }
-    return 1.0f;
-}
-
 Vector4 RenderSystem::environmentInfo() const{
     if (hasIBL){
         auto skys = scene->getComponentArray<SkyboxComponent>();
@@ -1283,7 +1074,7 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
     Vector4 fogColorType = fs_fog.color_type;
     Vector4 fogDensityStartEnd = fs_fog.density_start_end;
 #ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && rv().disableFog){
+    if (rv().disableFog){
         // exponential fog of density 0: a factor of 1 everywhere, no fog
         fogColorType = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         fogDensityStartEnd = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1492,7 +1283,7 @@ void RenderSystem::updateSceneLights(){
         sceneLight.position_type = Vector4(position.x, position.y, position.z, type);
         sceneLight.direction_range = Vector4(light.worldDirection.x, light.worldDirection.y, light.worldDirection.z, light.range);
         sceneLight.color_intensity = Vector4(light.color.x, light.color.y, light.color.z, light.intensity);
-        sceneLight.cone_shadow = Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.numShadowCascades);
+        sceneLight.cone_shadow = Vector4(light.innerConeCos, light.outerConeCos, (float)light.shadowMapIndex, (float)light.shadowCascades);
         sceneLight.spot_mask = Vector4(light.worldUp.x, light.worldUp.y, light.worldUp.z, spotMask ? light.spotMaskAspect : 0.0f);
         // the per-object lights block's form (includes/lights.glsl); spot_shadow.w is per draw
         const bool directional = light.type == LightType::DIRECTIONAL;
@@ -1998,9 +1789,11 @@ void RenderSystem::processLights2D(){
     float pcfRadius = 2.0f;
     switch (scene->getShadow2DQuality()){
         case ShadowQuality::NONE:   pcfRadius = 0.0f; break;
+        case ShadowQuality::AUTO:
         case ShadowQuality::LOW:    pcfRadius = 2.0f; break;
         case ShadowQuality::MEDIUM: pcfRadius = 4.0f; break;
-        case ShadowQuality::HIGH:   pcfRadius = 6.0f; break;
+        case ShadowQuality::HIGH:
+        case ShadowQuality::ULTRA:  pcfRadius = 6.0f; break;
     }
 
     // rows without shadows keep shadowMapIndex -1 and never sample the atlas
@@ -2010,16 +1803,16 @@ void RenderSystem::processLights2D(){
 
 bool RenderSystem::loadAndProcessFog(){
 
-    FogComponent* fog = disableFog ? nullptr : scene->findComponentFromIndex<FogComponent>(0);
+    FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
     const bool hadFog = hasFog;
     hasFog = false;
     if (fog){
         hasFog = true;
 
-        int fogTypeI;
-        if (fog->type == FogType::LINEAR){
-            fogTypeI = 0;
-        }else if (fog->type == FogType::EXPONENTIAL){
+        // the height fog reads its own block (u_fs_heightFog, in the fogged mesh variants): this one
+        // stays a linear fog's
+        int fogTypeI = 0;
+        if (fog->type == FogType::EXPONENTIAL){
             fogTypeI = 1;
         }else if (fog->type == FogType::EXPONENTIALSQUARED){
             fogTypeI = 2;
@@ -2096,7 +1889,9 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
         std::shared_ptr<TextureRender> irradiance = std::make_shared<TextureRender>();
         std::shared_ptr<TextureRender> prefiltered = std::make_shared<TextureRender>();
 
-        if (IBLEnvironment::generate(texId, *(texResult.data), *irradiance, *prefiltered)){
+        IBLEnvironment::HorizonRing horizonRing;
+        if (IBLEnvironment::generate(texId, *(texResult.data), *irradiance, *prefiltered, &horizonRing)){
+            AtmosphereRenderer::storeHorizonRing(texId, horizonRing);
             sky.irradianceMap = irradiance;
             sky.prefilteredMap = prefiltered;
             sky.envMapsLoaded = true;
@@ -2472,6 +2267,14 @@ void RenderSystem::renderReflectionProbeCapture(){
         }
     }
 
+    // the face's height fog and atmosphere: analytic fog, the sky fill and the Sky Map clouds
+    // (no volumetric passes off the view's camera)
+    const Rect captureViewport(0.0f, 0.0f, (float)resolution, (float)resolution);
+    AtmosphereRenderer::PassPlan capturePlan = atmosphere.planPass(captureCamera, false, probe->includeSky);
+    if (capturePlan.any())
+        atmosphere.renderPassTargets(capturePlan, captureCamera, captureTransform, nullptr, false, resolution, resolution);
+    atmosphere.fillHeightFog(passHeightFog, captureCamera, captureTransform, captureViewport, resolution, isRenderingFlipped(captureCamera), 0.0f);
+
     // the opaque meshes in the order a camera pass draws them: sortPriority (stencil masks
     // before their readers, occluders before through-walls outlines), then nearest first
     std::vector<OpaqueRenderData>& opaqueRenders = opaqueQueue;
@@ -2498,6 +2301,8 @@ void RenderSystem::renderReflectionProbeCapture(){
     for (const OpaqueRenderData& opaque : opaqueRenders){
         drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, captureCamera, captureTransform, PIP_RTT_INVERT, opaque.instmesh, opaque.terrain, opaque.tilemap, mainTerrainView());
     }
+    if (capturePlan.any())
+        atmosphere.drawComposites(capturePlan, PIP_RTT_INVERT, 1, captureViewport, resolution, isRenderingFlipped(captureCamera), captureCamera, captureTransform);
 
     runtime.capturePass.endRenderPass();
     capturingReflectionProbe = false;
@@ -2516,191 +2321,6 @@ void RenderSystem::renderReflectionProbeCapture(){
         probe->needUpdate = false;
         activeReflectionProbe = NULL_ENTITY;
     }
-}
-
-void RenderSystem::initShadowAtlasRects(){
-    for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
-        if (s >= shadowAtlasUsedSlots || shadowAtlasCols < 1 || shadowAtlasRows < 1){
-            primaryView.shadows.fs_shadows.atlasRect[s] = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-            continue;
-        }
-
-        int col = s % shadowAtlasCols;
-        int row = s / shadowAtlasCols;
-        primaryView.shadows.fs_shadows.atlasRect[s] = Vector4(
-            (float)col / (float)shadowAtlasCols,
-            (float)row / (float)shadowAtlasRows,
-            1.0f / (float)shadowAtlasCols,
-            1.0f / (float)shadowAtlasRows);
-    }
-}
-
-void RenderSystem::initShadowPointAtlasRects(){
-    for (int s = 0; s < MAX_POINT_SHADOW_ATLAS_SLOTS; s++){
-        int col = s % SHADOW_POINT_ATLAS_COLS;
-        int row = s / SHADOW_POINT_ATLAS_COLS;
-        primaryView.shadows.fs_point_shadows.atlasRect[s] = Vector4(
-            (float)col / (float)SHADOW_POINT_ATLAS_COLS,
-            (float)row / (float)SHADOW_POINT_ATLAS_ROWS,
-            1.0f / (float)SHADOW_POINT_ATLAS_COLS,
-            1.0f / (float)SHADOW_POINT_ATLAS_ROWS);
-    }
-}
-
-// Clamps a per-slot shadow resolution so the whole atlas (slotResolution * grid) stays
-// within the GPU's max 2D texture size (sg_query_limits().max_image_size_2d). The atlas
-// is square-tiled, so the limiting dimension is the larger grid axis. Returns the usable
-// per-slot resolution (possibly reduced, logged once when clamped), or 0 when even a
-// 1px slot cannot fit. This keeps shadow allocation succeeding at lower quality instead
-// of failing outright on GPUs with small texture caps (e.g. 4096/8192).
-unsigned int RenderSystem::clampShadowAtlasSlotResolution(unsigned int requestedResolution, int atlasCols, int atlasRows) const{
-    if (requestedResolution < 1 || atlasCols < 1 || atlasRows < 1){
-        return 0;
-    }
-
-    int maxTextureSize = sg_query_limits().max_image_size_2d;
-    if (maxTextureSize < 1){
-        maxTextureSize = 4096;
-    }
-
-    int gridMax = std::max(atlasCols, atlasRows);
-    unsigned int maxSlotResolution = (unsigned int)(maxTextureSize / gridMax);
-    if (maxSlotResolution < 1){
-        Log::warn("Shadow atlas grid %dx%d does not fit in GPU max texture size %d", atlasCols, atlasRows, maxTextureSize);
-        return 0;
-    }
-
-    if (requestedResolution > maxSlotResolution){
-        Log::warn("Shadow atlas slot resolution clamped from %u to %u (GPU max texture %d, %dx%d grid)",
-                  requestedResolution, maxSlotResolution, maxTextureSize, atlasCols, atlasRows);
-        return maxSlotResolution;
-    }
-
-    return requestedResolution;
-}
-
-bool RenderSystem::ensureShadowAtlas(unsigned int slotResolution, int usedSlots){
-    usedSlots = std::clamp(usedSlots, 1, MAX_SHADOW_ATLAS_SLOTS);
-
-    // Smallest grid within the 3x3 capacity; equal-area layouts prefer more
-    // columns so three cascades pack into a 3x1 row.
-    int atlasCols = 1;
-    int atlasRows = usedSlots;
-    int bestArea = MAX_SHADOW_ATLAS_SLOTS + 1;
-    for (int cols = 1; cols <= SHADOW_ATLAS_COLS; cols++){
-        int rows = (usedSlots + cols - 1) / cols;
-        if (rows > SHADOW_ATLAS_ROWS){
-            continue;
-        }
-
-        int area = cols * rows;
-        if (area < bestArea || (area == bestArea && cols > atlasCols)){
-            atlasCols = cols;
-            atlasRows = rows;
-            bestArea = area;
-        }
-    }
-
-    slotResolution = clampShadowAtlasSlotResolution(slotResolution, atlasCols, atlasRows);
-    if (slotResolution < 1){
-        return false;
-    }
-
-    int atlasWidth = (int)slotResolution * atlasCols;
-    int atlasHeight = (int)slotResolution * atlasRows;
-
-    if (shadowAtlasFramebuffer.isCreated() &&
-        shadowAtlasSlotResolution == slotResolution &&
-        shadowAtlasCols == atlasCols &&
-        shadowAtlasRows == atlasRows &&
-        shadowAtlasUsedSlots == usedSlots &&
-        !needUpdateShadowAtlas){
-        if (!hasShadowAtlas){
-            needUpdateShadowBindings = true;
-        }
-        hasShadowAtlas = true;
-        return true;
-    }
-
-    shadowAtlasFramebuffer.destroyFramebuffer();
-    // LINEAR on a comparison sampler is hardware PCF: each tap is bilinearly filtered
-    // over 2x2 comparison results, so every quality level gets softer edges for free.
-    if (!shadowAtlasFramebuffer.createDepthOnlyFramebuffer(
-            atlasWidth, atlasHeight,
-            TextureFilter::LINEAR, TextureFilter::LINEAR,
-            TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
-        shadowAtlasSlotResolution = 0;
-        shadowAtlasCols = 0;
-        shadowAtlasRows = 0;
-        shadowAtlasUsedSlots = 0;
-        initShadowAtlasRects();
-        hasShadowAtlas = false;
-        needUpdateShadowBindings = true;
-        return false;
-    }
-
-    shadowAtlasSlotResolution = slotResolution;
-    shadowAtlasCols = atlasCols;
-    shadowAtlasRows = atlasRows;
-    shadowAtlasUsedSlots = usedSlots;
-    initShadowAtlasRects();
-    needUpdateShadowAtlas = false;
-    hasShadowAtlas = true;
-    needUpdateShadowBindings = true;
-    return true;
-}
-
-bool RenderSystem::ensureShadowPointAtlas(unsigned int slotResolution){
-    slotResolution = clampShadowAtlasSlotResolution(slotResolution, SHADOW_POINT_ATLAS_COLS, SHADOW_POINT_ATLAS_ROWS);
-    if (slotResolution < 1){
-        return false;
-    }
-
-    int atlasWidth = (int)slotResolution * SHADOW_POINT_ATLAS_COLS;
-    int atlasHeight = (int)slotResolution * SHADOW_POINT_ATLAS_ROWS;
-
-    if (shadowPointAtlasFramebuffer.isCreated() && shadowPointAtlasSlotResolution == slotResolution && !needUpdateShadowPointAtlas){
-        if (!hasShadowPointAtlas){
-            needUpdateShadowBindings = true;
-        }
-        hasShadowPointAtlas = true;
-        return true;
-    }
-
-    shadowPointAtlasFramebuffer.destroyFramebuffer();
-    if (!shadowPointAtlasFramebuffer.createFramebuffer(
-            TextureType::TEXTURE_2D, atlasWidth, atlasHeight,
-            TextureFilter::NEAREST, TextureFilter::NEAREST,
-            TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
-        hasShadowPointAtlas = false;
-        return false;
-    }
-
-    shadowPointAtlasSlotResolution = slotResolution;
-    needUpdateShadowPointAtlas = false;
-    hasShadowPointAtlas = true;
-    needUpdateShadowBindings = true;
-    return true;
-}
-
-Rect RenderSystem::getShadowAtlasSlotRect(int slotIndex) const{
-    if (shadowAtlasCols < 1 || slotIndex < 0 || slotIndex >= shadowAtlasUsedSlots){
-        return Rect();
-    }
-
-    int col = slotIndex % shadowAtlasCols;
-    int row = slotIndex / shadowAtlasCols;
-    float x = (float)(col * (int)shadowAtlasSlotResolution);
-    float y = (float)(row * (int)shadowAtlasSlotResolution);
-    return Rect(x, y, (float)shadowAtlasSlotResolution, (float)shadowAtlasSlotResolution);
-}
-
-Rect RenderSystem::getShadowPointAtlasSlotRect(int slotIndex) const{
-    int col = slotIndex % SHADOW_POINT_ATLAS_COLS;
-    int row = slotIndex / SHADOW_POINT_ATLAS_COLS;
-    float x = (float)(col * (int)shadowPointAtlasSlotResolution);
-    float y = (float)(row * (int)shadowPointAtlasSlotResolution);
-    return Rect(x, y, (float)shadowPointAtlasSlotResolution, (float)shadowPointAtlasSlotResolution);
 }
 
 bool RenderSystem::checkPBRFrabebufferUpdate(Material& material){
@@ -2744,9 +2364,11 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.lights = hasLights;
     environment.lightCapacity = getLightCapacity(scene->getMaxLightsPerObject());
     environment.shadows = hasShadows;
+    environment.shadowsHQ = shadowHQVariants;
     environment.ibl = hasIBL;
     environment.reflectionProbes = hasReflectionProbes;
     environment.fog = hasFog;
+    environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
     environment.ssao = scene->isSSAOEnabled();
@@ -3367,11 +2989,15 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
+    // the High and Ultra shadow filters (S10): only a variant receiving shadows has them
+    if (environment.shadowsHQ && p_receiveShadows)
+        variant.properties |= ShaderPool::getShadowsHQProperty();
 
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
     // pass, so its uniforms and build errors show up in the editor.
-    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth;
+    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth
+                        || environment.atmosphereDepth;
     variant.depth = variant.depthPass || inputs.customDepthShader;
     if (variant.depth){
         // a library depth program gets the inputs its manifest requires, as the color pass
@@ -3467,6 +3093,8 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
     if (bindings.slotBlurredScene.first != -1)
         render.addTexture(bindings.slotBlurredScene, ShaderStageType::FRAGMENT, &emptyBlack);
+    // the height fog's block of the pass (a fogged variant of a height fog scene)
+    bindings.slotFSHeightFog = shaderData.getUniformBlockIndexByName("u_fs_heightFog");
 
     // the textures the manifest declares, else (a shader without one) the ones set by name
     auto addTexture = [&](const std::string& uniform, int fallback){
@@ -3599,29 +3227,56 @@ void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transfor
 }
 
 PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings){
+    // the LUT only matters when it applies (its stage decides curve or grade)
+    std::shared_ptr<const CubeLut> lut;
+    if (settings.colorGradingEnabled && !settings.lutTexture.empty() && settings.lutContribution > 0.0f)
+        lut = getCachedColorLut(settings.lutTexture);
+    return getPostProcessingTiers(settings, lut.get());
+}
+
+PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut){
     PostProcessingTiers tiers;
     tiers.renderScale = std::min(std::max(settings.renderScale, 0.5f), 1.0f);
     tiers.msaaSamples = settings.msaaSamples >= 4 ? 4 : (settings.msaaSamples >= 2 ? 2 : 1);
 
     uint32_t features = 0;
-    if (settings.fxaaEnabled) features |= UBER_FXAA;
+    // VHS replaces the scene tap and filters the lines itself: no FXAA or sharpen with it
+    const bool vhs = settings.vhsEnabled && settings.vhsIntensity > 0.0f;
+    if (vhs) features |= UBER_VHS;
+    if (settings.fxaaEnabled && !vhs) features |= UBER_FXAA;
     if (settings.chromaticAberrationEnabled && settings.chromaticAberrationIntensity > 0.0f) features |= UBER_CHROMATIC;
     if (settings.pixelateEnabled && settings.pixelateSize > 1.0f) features |= UBER_PIXELATE;
     if (settings.crtEnabled) features |= UBER_CRT;
     if (settings.edgeDetectEnabled && settings.edgeDetectIntensity > 0.0f) features |= UBER_EDGE;
-    if (settings.filmGrainEnabled && settings.filmGrainIntensity > 0.0f) features |= UBER_GRAIN;
-    if (settings.sharpenEnabled && settings.sharpenIntensity > 0.0f) features |= UBER_SHARPEN;
+    if (settings.filmGrainEnabled && settings.filmGrainIntensity > 0.0f){
+        features |= UBER_GRAIN;
+        if (settings.filmGrainType == FilmGrainType::LENS) features |= UBER_GRAIN_LENS;
+        if (settings.filmGrainType == FilmGrainType::FILMIC) features |= UBER_GRAIN_FILMIC;
+    }
+    if (settings.sharpenEnabled && settings.sharpenIntensity > 0.0f && !vhs) features |= UBER_SHARPEN;
     if (settings.bloomEnabled && settings.bloomIntensity > 0.0f) features |= UBER_BLOOM;
     if (settings.blurEnabled) features |= UBER_BLUR;
+    if (settings.halationEnabled && settings.halationIntensity > 0.0f){
+        features |= UBER_HALATION;
+        tiers.halationChain = !(features & UBER_BLOOM);
+    }
+    // film damage at its neutral values (no hair, scratch or dust, no weave, no mask) is nothing
+    if (settings.filmDamageEnabled && ((settings.filmDamageIntensity > 0.0f && (settings.filmHairAmount > 0.0f ||
+            settings.filmScratchAmount > 0.0f || settings.filmDustAmount > 0.0f)) || settings.filmGateWeave > 0.0f ||
+            settings.filmGateMask != FilmGateMask::NONE))
+        features |= UBER_FILM_DAMAGE;
 
-    const bool curve = PostColorLut::hasCurve(settings);
-    const bool grade = PostColorLut::hasGrade(settings);
+    const bool curve = PostColorLut::hasCurve(settings, lut);
+    const bool grade = PostColorLut::hasGrade(settings, lut);
     const bool vignette = settings.vignetteEnabled && settings.vignetteIntensity > 0.0f;
     const bool dither = settings.ditherEnabled;
 
     // (msaaSamples does not run the uber pass: the multisampled scene target resolves into
-    // whatever offscreen target the camera draws to, see the phase 4 spec's notes 5.2)
-    tiers.uber = features != 0 || tiers.renderScale < 1.0f;
+    // whatever offscreen target the camera draws to, see the phase 4 spec's notes 5.2). Dynamic
+    // resolution keeps it on at any scale, so a scale reaching 1 never changes the tiers, the
+    // in-shader colour's variant or the objects (fixed resolution turns it off)
+    tiers.dynamicResolution = settings.dynamicResolutionEnabled;
+    tiers.uber = features != 0 || tiers.renderScale < 1.0f || tiers.dynamicResolution;
     if (tiers.uber){
         // the grade, vignette and dither move to the uber pass (after the bloom composite and
         // the chromatic aberration, so they are graded once); exposure and the curve stay in
@@ -3657,10 +3312,10 @@ void RenderSystem::bakePostColorLut(TextureRender& texture, int& textureSize, Po
     // the shaper domain's k (the display domain has none)
     float shaper = 1.0f;
     if (stage != PostColorLut::Stage::GRADE){
-        shaper = getPostColorShaper(settings, n);
+        shaper = getPostColorShaper(settings, n, postLut.get());
         postTailShaper = shaper;
     }
-    PostColorLut::bake(settings, postLutStrip.size > 1 ? &postLutStrip : nullptr, stage, n, postLutPixels, shaper);
+    PostColorLut::bake(settings, postLut.get(), stage, n, postLutPixels, shaper);
     texture.updateTexture(postLutPixels.data(), postLutPixels.size());
 }
 
@@ -3670,7 +3325,14 @@ void RenderSystem::applyPostProcessing(){
     postProcessingDirty = false;
 
     const PostProcessingSettings& settings = scene->getPostProcessing();
-    const PostProcessingTiers tiers = getPostProcessingTiers(settings);
+    // the user's LUT, read once per path through the shared cache (a missing or malformed one
+    // is logged and left out); its stage decides whether it changes the curve or the grade
+    const std::string lutPath = (settings.colorGradingEnabled && settings.lutContribution > 0.0f) ? settings.lutTexture.path : std::string();
+    if (lutPath != postLutPath){
+        postLutPath = lutPath;
+        postLut = getCachedColorLut(lutPath);
+    }
+    const PostProcessingTiers tiers = getPostProcessingTiers(settings, postLut.get());
 
     // a new uber variant applies once it is built (or failed): until then the frame keeps the
     // tiers it draws with (its uber variant, its in-shader colour), instead of frames without
@@ -3688,16 +3350,8 @@ void RenderSystem::applyPostProcessing(){
     // chain's programs (their targets go in renderCameraPass)
     if (!tiers.uber && uberLoaded)
         destroyUber();
-    if (!(tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR)))
+    if (!(tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR | UBER_HALATION)))
         destroyBloomPrograms();
-
-    // the user's LUT strip, read once per path (a missing or malformed one is logged and left out)
-    const std::string stripPath = settings.colorGradingEnabled ? settings.lutTexture : std::string();
-    if (stripPath != postLutStripPath){
-        postLutStripPath = stripPath;
-        if (!PostColorLut::loadStrip(stripPath, postLutStrip))
-            postLutStrip = PostColorLut::Strip();
-    }
 
     // the in-shader LUT: exposure, curve and (without the uber pass) the grade
     if (tiers.tailColor){
@@ -3791,12 +3445,14 @@ void RenderSystem::setPassPostColor(const post_color_t& postColor){
     }
 }
 
-float RenderSystem::getPostColorShaper(const PostProcessingSettings& settings, int lutSide){
+float RenderSystem::getPostColorShaper(const PostProcessingSettings& settings, int lutSide, const CubeLut* lut){
     // the shaper s = sqrt(x / (x + k)) puts linear 1 near s = 0.71 (k = 1). Tone mapping NONE
     // clips at x = 2^-exposure: a kink that linear filtering between two texels rounds off
     // (white 245/255 at side 16), so there k moves the clip point onto the texel nearest 0.71.
-    // The curves are smooth there and keep k = 1.
-    if (settings.tonemap != TonemapMode::NONE || lutSide < 2)
+    // The curves are smooth there and keep k = 1, and so does a scene-stage LUT (it moves the
+    // clip point wherever its look puts it)
+    LutStage stage = LutStage::DISPLAY;
+    if (settings.tonemap != TonemapMode::NONE || lutSide < 2 || (PostColorLut::getLutStage(settings, lut, stage) && stage == LutStage::SCENE))
         return 1.0f;
     const float last = (float)(lutSide - 1);
     const float c = std::round(0.70710678f * last) / last;
@@ -3894,6 +3550,8 @@ bool RenderSystem::loadUber(uint32_t features){
     uberSlotLut = shaderData.getTextureIndexByName("u_colorLut");
     uberSlotBloom = shaderData.getTextureIndexByName("u_bloomTexture");
     uberSlotBlur = shaderData.getTextureIndexByName("u_blurTexture");
+    uberSlotHalation = shaderData.getTextureIndexByName("u_halationTexture");
+    uberSlotHalationWide = shaderData.getTextureIndexByName("u_halationWideTexture");
     if (!uberRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW)){
         uberShader.reset();
         uberFeatures = 0;
@@ -3919,6 +3577,8 @@ void RenderSystem::destroyUber(){
     uberSlotLut = {-1, -1};
     uberSlotBloom = {-1, -1};
     uberSlotBlur = {-1, -1};
+    uberSlotHalation = {-1, -1};
+    uberSlotHalationWide = {-1, -1};
 }
 
 bool RenderSystem::ensurePostSceneFramebuffer(unsigned int width, unsigned int height){
@@ -3949,6 +3609,57 @@ TextureRender* RenderSystem::linearSampler(){
                                         TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
     }
     return &postLinearSampler;
+}
+
+namespace{
+    // the film damage's hash (includes/post_film.glsl filmHash11), for what the CPU draws per film frame
+    float filmHash11(float p){
+        p = p * 0.1031f;
+        p -= std::floor(p);
+        p *= p + 33.33f;
+        p *= p + p;
+        return p - std::floor(p);
+    }
+}
+
+void RenderSystem::fillUberFilm(const PostProcessingSettings& settings, double time, float viewportWidth, float viewportHeight){
+    // VHS: its parts, and the tape's time at its speed (wrapped as the uber time is)
+    fs_uber.vhs0 = Vector4(settings.vhsIntensity, settings.vhsWobble, settings.vhsTracking, settings.vhsColorBleed);
+    fs_uber.vhs1 = Vector4(settings.vhsTapeNoise, settings.vhsChromaStreaks, settings.vhsDropouts, settings.vhsScanlines);
+    fs_uber.vhs2 = Vector4(settings.vhsInterference, settings.vhsGlitches, (float)std::fmod(time * settings.vhsSpeed, 1000.0), 0.0f);
+    // halation: a colour picked in sRGB, added in linear light like the bloom
+    const Vector3 tint = Color::sRGBToLinear(settings.halationTint) * settings.halationIntensity;
+    fs_uber.halation = Vector4(tint.x, tint.y, tint.z, settings.halationRadius);
+
+    // the film frame the grain and the damage hold (wrapped where the shaders' hashes stay exact)
+    const float filmFrame = (float)std::fmod(std::floor(time * std::max(settings.filmFrameRate, 1.0f)), 4096.0);
+    fs_uber.film = Vector4(settings.filmGrainSize, settings.filmGrainColored ? 1.0f : 0.0f, filmFrame, settings.filmDustSize);
+    fs_uber.damage = Vector4(settings.filmDamageIntensity, settings.filmHairAmount, settings.filmScratchAmount, settings.filmDustAmount);
+
+    // the gate's weave of this film frame: up to 0.75 / 0.5 output pixels and 0.08 degrees at 1
+    const float weave = settings.filmGateWeave;
+    const float angle = (filmHash11(filmFrame + 73.0f) * 2.0f - 1.0f) * 0.08f * weave * 0.0174532925f; // radians
+    fs_uber.gateWeave = Vector4((filmHash11(filmFrame + 11.0f) * 2.0f - 1.0f) * 0.75f * weave,
+                                (filmHash11(filmFrame + 37.0f) * 2.0f - 1.0f) * 0.5f * weave, std::cos(angle), std::sin(angle));
+
+    // the gate mask: a box inset from the output's edges, of the gate's aspect ratio inside it
+    fs_uber.gateMask = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (settings.filmGateMask != FilmGateMask::NONE){
+        const float inset = std::min(viewportWidth, viewportHeight) * 0.015f;
+        const float availableWidth = std::max(viewportWidth - 2.0f * inset, 1.0f);
+        const float availableHeight = std::max(viewportHeight - 2.0f * inset, 1.0f);
+        float halfWidth = availableWidth * 0.5f;
+        float halfHeight = availableHeight * 0.5f;
+        if (settings.filmGateMask != FilmGateMask::ROUNDED){
+            const float aspect = settings.filmGateMask == FilmGateMask::ACADEMY_137 ? 1.37f :
+                                 (settings.filmGateMask == FilmGateMask::WIDESCREEN_185 ? 1.85f : 2.39f);
+            if (availableWidth / availableHeight > aspect)
+                halfWidth = availableHeight * aspect * 0.5f;
+            else
+                halfHeight = availableWidth / aspect * 0.5f;
+        }
+        fs_uber.gateMask = Vector4(halfWidth, halfHeight, 0.07f * std::min(halfWidth, halfHeight), std::max(settings.filmGateMaskFeather, 0.25f));
+    }
 }
 
 void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
@@ -3993,6 +3704,10 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
             uberRender.addTexture(uberSlotBloom, ShaderStageType::FRAGMENT, uberBloomTexture ? uberBloomTexture : &emptyBlack);
         if (uberSlotBlur.first != -1)
             uberRender.addTexture(uberSlotBlur, ShaderStageType::FRAGMENT, uberBlurTexture ? uberBlurTexture : source);
+        if (uberSlotHalation.first != -1)
+            uberRender.addTexture(uberSlotHalation, ShaderStageType::FRAGMENT, uberHalationTexture ? uberHalationTexture : &emptyBlack);
+        if (uberSlotHalationWide.first != -1)
+            uberRender.addTexture(uberSlotHalationWide, ShaderStageType::FRAGMENT, uberHalationWideTexture ? uberHalationWideTexture : &emptyBlack);
 
         const Vector4 uvScaleOffset = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
         const float sw = (float)std::max(sourceWidth, 1u);
@@ -4006,8 +3721,10 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         fs_uber.outputTexel = Vector4(1.0f / vw, 1.0f / vh, vw, vh);
         fs_uber.effects = Vector4(settings.chromaticAberrationIntensity, settings.pixelateSize, settings.filmGrainIntensity, settings.filmGrainResponse);
         fs_uber.crt = Vector4(settings.crtScanlines, settings.crtMask, settings.crtCurvature, settings.crtVignette);
+        // the effects' time: the frame's, or the one set_post_processing_debug pins
+        const double time = postDebugTime >= 0.0 ? postDebugTime : (double)frameTime;
         fs_uber.edgeSharpenTime = Vector4(settings.edgeDetectThreshold, settings.edgeDetectIntensity, settings.sharpenIntensity,
-                                          (float)std::fmod(frameTime, 1000.0));
+                                          (float)std::fmod(time, 1000.0));
         fs_uber.edgeColorDither = Vector4(settings.edgeDetectColor.x, settings.edgeDetectColor.y, settings.edgeDetectColor.z,
                                           settings.ditherEnabled ? 1.0f / 255.0f : 0.0f);
         float falloffScale = 0.0f;
@@ -4022,6 +3739,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         fs_uber.bloomBlur = Vector4(tint.x * settings.bloomIntensity, tint.y * settings.bloomIntensity, tint.z * settings.bloomIntensity,
                                     uberBlurTexture ? settings.blurIntensity : 0.0f);
         fs_uber.sampling = Vector4(nearestSource ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
+        fillUberFilm(settings, time, vw, vh);
 
         uberRender.applyUniformBlock(uberSlotVSParams, sizeof(vs_uber_t), &vs_uber);
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
@@ -4055,6 +3773,7 @@ void RenderSystem::PostChainTargets::destroy(){
     sourceWidth = 0;
     sourceHeight = 0;
     levels = -1;
+    upLevels = true;
 }
 
 bool RenderSystem::loadBloomProgram(BloomProgramKind kind){
@@ -4105,10 +3824,11 @@ void RenderSystem::destroyBloomPrograms(){
     }
 }
 
-bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels){
+bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels, bool upLevels){
     if (sourceWidth == 0 || sourceHeight == 0)
         return false;
-    if (targets.isCreated() && targets.sourceWidth == sourceWidth && targets.sourceHeight == sourceHeight && targets.levels == levels)
+    if (targets.isCreated() && targets.sourceWidth == sourceWidth && targets.sourceHeight == sourceHeight && targets.levels == levels &&
+            targets.upLevels == upLevels)
         return true;
 
     // made again in place: a new size or level count replaces the old targets (no pile-up)
@@ -4118,7 +3838,7 @@ bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned in
         const unsigned int divisor = 4u << level;
         const unsigned int width = std::max(1u, sourceWidth / divisor);
         const unsigned int height = std::max(1u, sourceHeight / divisor);
-        Framebuffer* sizes[2] = {&targets.down[level], level < levels ? &targets.up[level] : nullptr};
+        Framebuffer* sizes[2] = {&targets.down[level], (upLevels && level < levels) ? &targets.up[level] : nullptr};
         for (Framebuffer* framebuffer : sizes){
             if (!framebuffer)
                 continue;
@@ -4141,6 +3861,7 @@ bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned in
     targets.sourceWidth = sourceWidth;
     targets.sourceHeight = sourceHeight;
     targets.levels = levels;
+    targets.upLevels = upLevels;
     return true;
 }
 
@@ -4276,6 +3997,29 @@ TextureRender* RenderSystem::renderBlurChain(TextureRender* source, unsigned int
     return &from->getRender().getColorTexture();
 }
 
+bool RenderSystem::renderHalationChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource){
+    if (!loadBloomProgram(BLOOM_PREFILTER_THRESHOLD) || !loadBloomProgram(BLOOM_DOWN))
+        return false;
+    PostChainTargets& targets = rv().halationTargets;
+    if (!ensurePostChainTargets(targets, sourceWidth, sourceHeight, 1, false))
+        return false;
+
+    // the bloom's threshold curve on halation's display threshold (squared into the chain's
+    // gamma-2 domain), a soft knee of half of it
+    const float threshold = scene->getPostProcessing().halationThreshold * scene->getPostProcessing().halationThreshold;
+    const float knee = threshold * 0.5f + 1e-5f;
+    fs_bloom.curve = Vector4(threshold - knee, 2.0f * knee, 0.25f / knee, threshold);
+    fs_bloom.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    renderBloomPass(BLOOM_PREFILTER_THRESHOLD, "halation prefilter", source, sourceWidth, sourceHeight, nullptr, targets.down[0],
+                    Vector4(1.0f / (float)sourceWidth, 1.0f / (float)sourceHeight, 0.0f, 0.0f), nearestSource ? linearSampler() : nullptr);
+    Framebuffer& from = targets.down[0];
+    renderBloomPass(BLOOM_DOWN, "halation down", &from.getRender().getColorTexture(), from.getWidth(), from.getHeight(), nullptr,
+                    targets.down[1], Vector4(1.0f / (float)from.getWidth(), 1.0f / (float)from.getHeight(), 0.0f, 0.0f));
+    uberHalationTexture = &targets.down[0].getRender().getColorTexture();
+    uberHalationWideTexture = &targets.down[1].getRender().getColorTexture();
+    return true;
+}
+
 void RenderSystem::applyBlurredScene(ObjectRender& render, const ShaderLibraryBindings& bindings){
     if (bindings.slotFSBlurredScene != -1){
         static const blurred_scene_t none = {Vector4(0.0f, 0.0f, 0.0f, 0.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
@@ -4293,6 +4037,8 @@ void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBind
         render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSizeFS, &passFrame);
     applyPostColor(render, bindings);
     applyBlurredScene(render, bindings);
+    if (bindings.slotFSHeightFog != -1)
+        render.applyUniformBlock(bindings.slotFSHeightFog, sizeof(height_fog_t), &passHeightFog);
 }
 
 void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -4420,78 +4166,6 @@ bool RenderSystem::loadPBRTextures(Material& material, ShaderData& shaderData, O
         loadSpotMaskTexture(shaderData, render);
     }
 
-    return true;
-}
-
-void RenderSystem::updateShadowBindings(){
-    if (!needUpdateShadowBindings){
-        return;
-    }
-
-    auto meshes = scene->getComponentArray<MeshComponent>();
-    for (int i = 0; i < meshes->size(); i++){
-        MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload){
-            continue;
-        }
-
-        for (int s = 0; s < mesh.numSubmeshes; s++){
-            bool has3DShadows = mesh.submeshes[s].shaderProperties & (1u << 4);  // 'Shw'
-            bool has2DShadows = mesh.submeshes[s].shaderProperties & (1u << 23); // 'S2d'
-            if (!has3DShadows && !has2DShadows){
-                continue;
-            }
-            if (!mesh.submeshes[s].shader){
-                continue;
-            }
-
-            ShaderData& shaderData = mesh.submeshes[s].shader.get()->shaderData;
-            if (has3DShadows){
-                loadShadowTextures(shaderData, mesh.submeshes[s].render, mesh.receiveLights, true);
-            }
-            if (has2DShadows){
-                loadShadow2DTexture(shaderData, mesh.submeshes[s].render, true);
-            }
-        }
-    }
-
-    needUpdateShadowBindings = false;
-}
-
-void RenderSystem::loadShadowTextures(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool receiveShadows){
-    std::pair<int, int> slotTex(-1, -1);
-
-    if (hasLights && receiveLights && hasShadows && receiveShadows){
-        // Bind a depth/comparison fallback when the projective atlas is absent.
-        slotTex = shaderData.getTextureIndex(TextureShaderType::SHADOWATLAS);
-        render.addTexture(slotTex, ShaderStageType::FRAGMENT,
-                          hasShadowAtlas ? &shadowAtlasFramebuffer.getDepthTexture() : &emptyShadowDepth);
-
-        slotTex = shaderData.getTextureIndex(TextureShaderType::SHADOWPOINTATLAS);
-        render.addTexture(slotTex, ShaderStageType::FRAGMENT,
-                          hasShadowPointAtlas ? &shadowPointAtlasFramebuffer.getColorTexture() : &emptyWhite);
-    }
-}
-
-bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool restore){
-    const CameraShadows& shadows = ps();
-    const bool otherProjective = shadows.projectiveAtlas && shadows.projectiveAtlas != &shadowAtlasFramebuffer;
-    const bool otherPoint = shadows.pointAtlas && shadows.pointAtlas != &shadowPointAtlasFramebuffer;
-    if ((!otherProjective && !otherPoint) || !hasLights || !receiveLights)
-        return false;
-
-    if (otherProjective){
-        TextureRender* atlas = restore
-            ? (hasShadowAtlas ? &shadowAtlasFramebuffer.getDepthTexture() : &emptyShadowDepth)
-            : &shadows.projectiveAtlas->getDepthTexture();
-        render.addTexture(shaderData.getTextureIndex(TextureShaderType::SHADOWATLAS), ShaderStageType::FRAGMENT, atlas);
-    }
-    if (otherPoint){
-        TextureRender* atlas = restore
-            ? (hasShadowPointAtlas ? &shadowPointAtlasFramebuffer.getColorTexture() : &emptyWhite)
-            : &shadows.pointAtlas->getColorTexture();
-        render.addTexture(shaderData.getTextureIndex(TextureShaderType::SHADOWPOINTATLAS), ShaderStageType::FRAGMENT, atlas);
-    }
     return true;
 }
 
@@ -5067,17 +4741,157 @@ void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
 }
 
 void RenderSystem::setDisableFog(bool disableFog){
-    if (this->disableFog == disableFog){
-        return;
-    }
-    this->disableFog = disableFog;
-
-    // fog is a shader variant
-    needReloadMeshVariants();
+#ifdef JASPERENGINE_EDITOR
+    primaryView.disableFog = disableFog;
+#else
+    (void)disableFog;
+#endif
 }
+
+void RenderSystem::setDisableClouds(bool disableClouds){
+    primaryView.disableClouds = disableClouds;
+}
+
+void RenderSystem::setPreviewAtmosphereQuality(int quality){
+    primaryView.atmosphereQuality = quality;
+}
+
+const AtmosphereInfo& RenderSystem::getAtmosphereInfo(uint32_t viewId){
+#ifdef JASPERENGINE_EDITOR
+    if (viewId != 0){
+        // the newer of the view's own frames and the frames the view was drawn as the frame's
+        const AtmosphereInfo* newest = nullptr;
+        auto view = secondaryViews.find(viewId);
+        if (view != secondaryViews.end())
+            newest = &view->second->atmosphere.info;
+        auto kept = keptAtmosphereInfo.find(viewId);
+        if (kept != keptAtmosphereInfo.end() && (!newest || kept->second.frame > newest->frame))
+            newest = &kept->second;
+        if (newest)
+            return *newest;
+    }
+#endif
+    return primaryView.atmosphere.info;
+}
+
+#ifdef JASPERENGINE_EDITOR
+void RenderSystem::keepAtmosphereInfo(uint32_t viewId){
+    keptAtmosphereInfo[viewId] = primaryView.atmosphere.info;
+}
+#endif
 
 void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
     primaryView.postProcessing = !disablePostProcessing;
+}
+
+float RenderSystem::getAppliedRenderScale() const{
+    // a pinned scale applies where dynamic resolution may run (Play and the game, never the
+    // editor's edit mode)
+    if (dynamicResolutionOverride > 0.0f && !Engine::areGameEventsPaused())
+        return dynamicResolutionOverride;
+    return dynamicResolutionRunning ? dynamicResolutionScale : postTiers.renderScale;
+}
+
+DynamicResolutionStatus RenderSystem::getDynamicResolutionStatus() const{
+    DynamicResolutionStatus status;
+    status.enabled = scene && scene->getPostProcessing().dynamicResolutionEnabled;
+    status.running = dynamicResolutionRunning;
+    status.idle = dynamicResolutionRunning ? "" : (status.enabled ? dynamicResolutionIdle : "off");
+    status.overridden = dynamicResolutionOverride > 0.0f && !Engine::areGameEventsPaused();
+    status.scale = getAppliedRenderScale();
+    status.maxScale = postTiers.renderScale;
+    status.minScale = status.maxScale;
+    if (dynamicResolutionRunning){
+        const DynamicResolutionController::Stats& stats = dynamicResolution.getStats();
+        status.minScale = dynamicResolution.getConfig().minScale;
+        status.maxScale = dynamicResolution.getConfig().maxScale;
+        status.source = dynamicResolutionSourceName(stats.source);
+        status.smoothedMs = stats.smoothedMs;
+        status.targetMs = dynamicResolution.getConfig().targetMs;
+        status.saturatedLow = stats.saturatedLow;
+        status.ineffective = stats.scalingIneffective;
+        status.acceptedChanges = stats.acceptedChanges;
+        status.probeSeconds = stats.source == DynamicResolutionSource::FRAME ? stats.probeRemainingSeconds : 0.0f;
+    }
+    return status;
+}
+
+void RenderSystem::setDynamicResolutionOverride(float scale){
+    dynamicResolutionOverride = (scale > 0.0f && std::isfinite(scale)) ? std::min(std::max(scale, 0.5f), 1.0f) : 0.0f;
+}
+
+void RenderSystem::setDynamicResolutionFakeGpuMs(float milliseconds){
+    dynamicResolutionFakeGpuMs = (milliseconds > 0.0f && std::isfinite(milliseconds)) ? milliseconds : 0.0f;
+}
+
+void RenderSystem::setPostProcessingDebugTime(double seconds){
+    postDebugTime = (seconds >= 0.0 && std::isfinite(seconds)) ? seconds : -1.0;
+}
+
+void RenderSystem::updateDynamicResolution(){
+    const PostProcessingSettings& settings = scene->getPostProcessing();
+    // the frame's own view of the main scene, post-processed, with the uber pass drawing at a
+    // render scale (fixed resolution draws at its own size)
+    // the editor's edit mode (and its Pause) pauses the game's events; an exported game never
+    // does. Leaving Play (or pausing it) releases what its scripts and tests pinned
+    const bool editPaused = Engine::areGameEventsPaused();
+    if (editPaused && !dynamicResolutionEditPaused){
+        dynamicResolutionOverride = 0.0f;
+        dynamicResolutionFakeGpuMs = 0.0f;
+    }
+    dynamicResolutionEditPaused = editPaused;
+    if (!postTiers.dynamicResolution || !postTiers.uber)
+        dynamicResolutionIdle = "off";
+    else if (editPaused)
+        dynamicResolutionIdle = "edit mode";
+    else if (Engine::getMainScene() != scene)
+        dynamicResolutionIdle = "not the main scene";
+    else if (!primaryView.postProcessing)
+        dynamicResolutionIdle = "the view is not post-processed";
+    else if (scene->isFixedResolutionEnabled() && !disableFixedResolution)
+        dynamicResolutionIdle = "fixed resolution";
+    else
+        dynamicResolutionIdle = "";
+    const bool run = dynamicResolutionIdle[0] == '\0';
+    const bool connected = dynamicResolutionConnected;
+    dynamicResolutionConnected = false;
+    if (!run){
+        dynamicResolutionRunning = false;
+        dynamicResolutionScale = postTiers.renderScale;
+        return;
+    }
+
+    // the target: the frame rate asked for (no platform reports the display's yet: 60)
+    DynamicResolutionConfig config;
+    config.targetMs = 1000.0f / (float)(settings.dynamicResolutionTargetFps > 0 ? settings.dynamicResolutionTargetFps : 60);
+    config.maxScale = postTiers.renderScale;
+    config.minScale = std::min(std::max(settings.dynamicResolutionMinScale, 0.5f), config.maxScale);
+    const Rect view = targetViewRect();
+    const unsigned int viewWidth = (unsigned int)std::max(view.getWidth(), 0.0f);
+    const unsigned int viewHeight = (unsigned int)std::max(view.getHeight(), 0.0f);
+    // turned on, a new target or range, a resized view: the cost history means nothing
+    if (!dynamicResolutionRunning || config.targetMs != dynamicResolutionConfig.targetMs || config.minScale != dynamicResolutionConfig.minScale ||
+            config.maxScale != dynamicResolutionConfig.maxScale || viewWidth != dynamicResolutionViewWidth || viewHeight != dynamicResolutionViewHeight){
+        dynamicResolutionConfig = config;
+        dynamicResolutionViewWidth = viewWidth;
+        dynamicResolutionViewHeight = viewHeight;
+        dynamicResolution.configure(config);
+        dynamicResolution.reset(config.maxScale);
+        dynamicResolutionRunning = true;
+        dynamicResolutionScale = dynamicResolution.getScale();
+        return;
+    }
+
+    // the last frame: its period and CPU time, and its GPU time when there is one
+    DynamicResolutionSample sample;
+    sample.framePeriodMs = (float)(Engine::getFramePeriod() * 1000.0);
+    sample.cpuBusyMs = (float)(Engine::getFrameCpuTime() * 1000.0);
+    sample.gpuMs = dynamicResolutionFakeGpuMs;
+    sample.appliedScale = dynamicResolutionScale;
+    sample.scaleIsConnected = connected;
+    sample.valid = connected && sample.framePeriodMs > 0.0f;
+    const float deltaSeconds = (float)std::min(Engine::getFramePeriod(), 0.25);
+    dynamicResolutionScale = dynamicResolution.update(sample, deltaSeconds, ++dynamicResolutionFrame);
 }
 
 void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
@@ -5166,7 +4980,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         if (!bufferRender->isCreated()) {
             if (!bufferRender->createBuffer(buf.second->getSize(), buf.second->getData(), buf.second->getType(), buf.second->getUsage())) {
-                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %lu; resource pool may be exhausted",
+                Log::error("Cannot create GPU buffer '%s' (%zu bytes) for mesh entity %u; resource pool may be exhausted",
                            buf.first.c_str(), buf.second->getSize(), entity);
                 for (BufferRender* created : buffersCreatedThisLoad) {
                     created->destroyBuffer();
@@ -5446,6 +5260,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 mesh.submeshes[i].slotVSShadows = shaderData.getUniformBlockIndex(UniformBlockType::VS_SHADOWS);
                 mesh.submeshes[i].slotFSShadows = shaderData.getUniformBlockIndex(UniformBlockType::FS_SHADOWS);
                 mesh.submeshes[i].slotFSPointShadows = shaderData.getUniformBlockIndex(UniformBlockType::FS_POINT_SHADOWS);
+                mesh.submeshes[i].slotFSShadowData = shaderData.getUniformBlockIndexByName("u_fs_shadow_data");
+                mesh.submeshes[i].slotFSPointShadowData = shaderData.getUniformBlockIndexByName("u_fs_point_shadow_data");
             }
         }
         if (p_light2d){
@@ -5821,11 +5637,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 }
             }
 
-            unsigned int gbufferIndexCount = 0;
             for (auto const& buf : buffers){
                 if (buf.second->isRenderAttributes()) {
                     if (buf.second->getType() == BufferType::INDEX_BUFFER){
-                        gbufferIndexCount = buf.second->getCount();
                         Attribute indexattr = buf.second->getAttributes()[AttributeType::INDEX];
                         gbufferRender.setIndex(buf.second->getRender(), indexattr.getDataType(), indexattr.getOffset());
                     }else{
@@ -6752,7 +6566,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
         static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
         render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
@@ -6921,47 +6735,6 @@ unsigned int RenderSystem::selectMeshLod(const MeshComponent& mesh, const LodVie
         level = l;
     }
     return level;
-}
-
-RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
-    LodView view;
-    view.enabled = scene->isMeshLodEnabled();
-    view.threshold = SHADOW_LOD_TEXELS;
-
-    const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
-    const Matrix4& projection = shadowCamera.lightProjectionMatrix;
-    float texel = 2.0f / (std::abs(projection[1][1]) * std::max(getShadowAtlasSlotRect(slot).getHeight(), 1.0f));
-    if (light.type == LightType::DIRECTIONAL){
-        view.constant = texel;
-    }else{
-        view.origin = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
-        view.perUnit = texel;
-    }
-    return view;
-}
-
-// projective atlas slots the shadow pass draws this frame
-const std::vector<RenderSystem::ShadowSlot>& RenderSystem::collectShadowSlots(){
-    std::vector<ShadowSlot>& slots = shadowSlots;
-    slots.clear();
-    if (!hasShadows || !hasShadowAtlas)
-        return slots;
-
-    auto lights = scene->getComponentArray<LightComponent>();
-    int shadowLightCount = (int)lights->size();
-    for (int l = 0; l < shadowLightCount; l++){
-        LightComponent& light = lights->getComponentFromIndex(l);
-        if (light.type == LightType::POINT || light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0 ||
-                !isLightActive(lights->getEntity(l), light))
-            continue;
-        int numShadowCameras = (light.type == LightType::DIRECTIONAL) ? (int)lightCascades(l, light) : 1;
-        for (int c = 0; c < numShadowCameras; c++){
-            int slot = light.shadowMapIndex + c;
-            if (slot >= 0 && slot < shadowAtlasUsedSlots)
-                slots.push_back({slot, &light, l, c});
-        }
-    }
-    return slots;
 }
 
 // culled slice of every instanced mesh for the main camera and each shadow slot;
@@ -7416,7 +7189,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 #ifdef JASPERENGINE_EDITOR
                 // exponential fog of density 0: a factor of 1 everywhere, no fog
                 static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
                 render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
@@ -7470,6 +7243,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.applyUniformBlock(mesh.submeshes[i].slotVSShadows, sizeof(float) * (20 * MAX_SHADOW_ATLAS_SLOTS), &passLighting.vs_shadows);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSShadows, sizeof(fs_shadows_t), &passLighting.fs_shadows);
                     render.applyUniformBlock(mesh.submeshes[i].slotFSPointShadows, sizeof(fs_point_shadows_t), &passLighting.fs_point_shadows);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSShadowData, sizeof(fs_shadow_data_t), &passLighting.fs_shadow_data);
+                    render.applyUniformBlock(mesh.submeshes[i].slotFSPointShadowData, sizeof(fs_point_shadow_data_t), &passLighting.fs_point_shadow_data);
                     viewShadowMapsBound = bindViewShadowMaps(lightingShaderData, render, mesh.receiveLights, false);
                 }
                 // USE_SSAO (property bit 21): bind the screen-space AO texture for
@@ -8022,7 +7797,7 @@ void RenderSystem::predictSceneInputUsers(){
         if ((points.loadCalled && !points.needReload) || points.sceneInputsPredicted)
             continue;
         points.sceneInputsPredicted = true;
-        const std::string& shader = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
+        const std::string& shader = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path;
         std::shared_ptr<const ShaderManifest> manifest = findManifest(shader);
         if (!manifest)
             continue;
@@ -8840,9 +8615,12 @@ void RenderSystem::needUpdatePostProcessing(){
 }
 
 void RenderSystem::invalidatePostProcessTextures(){
-    // applyPostProcessing reads the strip again when its path differs from this one
-    postLutStripPath.clear();
-    postLutStrip = PostColorLut::Strip();
+    // applyPostProcessing reads the LUT again when its path differs from this one (the cache
+    // forgets the file too)
+    if (!postLutPath.empty())
+        invalidateColorLutCache(postLutPath);
+    postLutPath.clear();
+    postLut.reset();
     postProcessingDirty = true;
     postProcessNeedReload = true;
 }
@@ -9284,6 +9062,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSShadows = -1;
         submesh.slotFSShadows = -1;
         submesh.slotFSPointShadows = -1;
+        submesh.slotFSShadowData = -1;
+        submesh.slotFSPointShadowData = -1;
         submesh.slotVSSkinning = -1;
         submesh.slotVSMorphTarget = -1;
         submesh.slotVSTerrain = -1;
@@ -9378,7 +9158,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     }
 
     ui.shaderProperties = ShaderPool::getUIProperties(p_hasTexture, p_hasFontAtlasTexture, false, p_vertexColorVec4);
-    const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader;
+    const std::string& uiShaderBase = ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path;
     const std::string uiShaderSrc = getComponentShaderReference(uiShaderBase, ui.shaderFeatures, ui.blendMode);
     ui.customShaderId = ShaderPool::registerCustomShader(uiShaderSrc);
     ui.shader = ShaderPool::get(ShaderType::UI, ui.shaderProperties, ui.customShaderId);
@@ -9584,7 +9364,7 @@ bool RenderSystem::loadPoints(Entity entity, PointsComponent& points, uint16_t p
     }
 
     points.shaderProperties = ShaderPool::getPointsProperties(p_hasTexture, false, true, p_hasTextureRect) | postColorProperty(ShaderType::POINTS);
-    const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader;
+    const std::string& pointsShaderBase = points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path;
     const std::string pointsShaderSrc = getComponentShaderReference(pointsShaderBase, points.shaderFeatures, points.blendMode);
     points.customShaderId = ShaderPool::registerCustomShader(pointsShaderSrc);
     points.shader = ShaderPool::get(ShaderType::POINTS, points.shaderProperties, points.customShaderId);
@@ -9687,7 +9467,7 @@ bool RenderSystem::loadLines(Entity entity, LineRendererComponent& lines, uint16
     render.beginLoad(PrimitiveType::LINES);
 
     lines.shaderProperties = ShaderPool::getLinesProperties(false, true) | postColorProperty(ShaderType::LINES);
-    const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader;
+    const std::string& linesShaderBase = lines.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::LINES) : lines.customShader.path;
     const std::string linesShaderSrc = getComponentShaderReference(linesShaderBase, lines.shaderFeatures, lines.blendMode);
     lines.customShaderId = ShaderPool::registerCustomShader(linesShaderSrc);
     lines.shader = ShaderPool::get(ShaderType::LINES, lines.shaderProperties, lines.customShaderId);
@@ -10004,7 +9784,7 @@ bool RenderSystem::loadSky(Entity entity, SkyboxComponent& sky, uint16_t pipelin
 
     render->beginLoad(PrimitiveType::TRIANGLES);
 
-    const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader;
+    const std::string& skyShaderBase = sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader.path;
     const std::string skyShaderSrc = getComponentShaderReference(skyShaderBase, sky.shaderFeatures, MaterialBlendMode::AUTO);
     sky.customShaderId = ShaderPool::registerCustomShader(skyShaderSrc);
     sky.shaderProperties = postColorProperty(ShaderType::SKYBOX);
@@ -10286,6 +10066,11 @@ void RenderSystem::updateTransform(Transform& transform, Entity entity){
 
     if (hasLights){
         transform.normalMatrix = transform.modelMatrix.inverse().transpose();
+    }
+
+    // what it casts moved: the shadow cache's input (a rotation can keep the bounds)
+    if (MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+        mesh->shadowCasterRevision++;
     }
 }
 
@@ -10971,6 +10756,9 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
         count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)));
     }
+
+    // the atmosphere's passes (their shaders, the clouds' noise bake)
+    count(!atmosphere.isLoading());
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){
@@ -11012,6 +10800,9 @@ void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix,
 }
 
 void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform){
+    // its instances change what it casts
+    mesh.shadowCasterRevision++;
+
     instmesh.renderInstances.clear();
     instmesh.renderInstances.reserve(instmesh.instances.size());
     instmesh.renderBounds.clear();
@@ -11030,11 +10821,6 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
-        Vector3 camPos = camTransform.worldPosition;
-        if (instmesh.instancedCylindricalBillboard){
-            camPos.y = transform.worldPosition.y;
-        }
-
         Matrix4 m1 = camera.viewMatrix.inverse();
         bRotation.fromRotationMatrix(m1);
         bRotation = transform.worldRotation.inverse() * bRotation;
@@ -11107,229 +10893,6 @@ void RenderSystem::sortInstancedMesh(InstancedMeshComponent& instmesh, MeshCompo
 
     if (mesh.loaded)
         instmesh.needUpdateBuffer = true;
-}
-
-void RenderSystem::configureLightShadowNearFar(LightComponent& light, const CameraComponent& camera){
-    if (light.automaticShadowCamera){
-        light.shadowCameraNearFar.x = camera.nearClip;
-        if (light.range == 0.0){
-            light.shadowCameraNearFar.y = camera.farClip;
-        }else{
-            light.shadowCameraNearFar.y = light.range;
-        }
-    }
-}
-
-float RenderSystem::lerp(float a, float b, float fraction) {
-    return (a * (1.0f - fraction)) + (b * fraction);
-}
-
-Matrix4 RenderSystem::getDirLightProjection(const Matrix4& viewMatrix, const Matrix4& sceneCameraInv, float shadowMaxDistance, const Vector3& lightDirection, const Vector3& cameraPosition){
-    // Extend the frustum backwards to include more geometry
-    float extension = shadowMaxDistance * 0.5f;
-
-    Matrix4 t = viewMatrix * sceneCameraInv;
-    // Add additional points behind the camera
-    Vector3 backwardOffset = -lightDirection * extension;
-    // runs per camera and frame: a fixed array, no allocation
-    Vector4 frustumCorners[9] = {
-        t * Vector4(-1.f, 1.f, -1.f, 1.f),
-        t * Vector4(1.f, 1.f, -1.f, 1.f),
-        t * Vector4(1.f, -1.f, -1.f, 1.f),
-        t * Vector4(-1.f, -1.f, -1.f, 1.f),
-        t * Vector4(-1.f, 1.f, 1.f, 1.f),
-        t * Vector4(1.f, 1.f, 1.f, 1.f),
-        t * Vector4(1.f, -1.f, 1.f, 1.f),
-        t * Vector4(-1.f, -1.f, 1.f, 1.f),
-        viewMatrix * Vector4(cameraPosition + backwardOffset, 1.0f)
-    };
-
-    float minX = std::numeric_limits<float>::max();
-    float maxX = std::numeric_limits<float>::lowest();
-    float minY = std::numeric_limits<float>::max();
-    float maxY = std::numeric_limits<float>::lowest();
-    float minZ = std::numeric_limits<float>::max();
-    float maxZ = std::numeric_limits<float>::lowest();
-
-    for (auto& p : frustumCorners){
-        if (p.w != 0.0f) {
-            p = p / p.w;
-        }
-
-        minX = std::min(minX, p.x);
-        maxX = std::max(maxX, p.x);
-        minY = std::min(minY, p.y);
-        maxY = std::max(maxY, p.y);
-        minZ = std::min(minZ, p.z);
-        maxZ = std::max(maxZ, p.z);
-    }
-
-    float paddingX = (maxX - minX) * 0.05f;
-    float paddingY = (maxY - minY) * 0.05f;
-    float paddingZ = (maxZ - minZ) * 0.1f;
-
-    minX -= paddingX;
-    maxX += paddingX;
-    minY -= paddingY;
-    maxY += paddingY;
-    minZ -= paddingZ;
-    maxZ += paddingZ;
-
-    return Matrix4::orthoMatrix(minX, maxX, minY, maxY, -maxZ, -minZ);
-}
-
-void RenderSystem::updateLightFromScene(LightComponent& light, Transform& transform, CameraComponent& camera, Transform& cameraTransform){
-    light.worldDirection = transform.worldRotation * light.direction;
-    light.worldUp = (transform.worldRotation * light.getLocalSpotProjectionUp()).normalized();
-
-    if (hasShadows && (light.intensity > 0)){
-        configureLightShadowNearFar(light, camera);
-
-        unsigned int numCascades = light.numShadowCascades;
-        computeLightCameras(light, transform, camera, cameraTransform, light.shadowCameraNearFar, light.cameras, numCascades);
-        if (numCascades != light.numShadowCascades){
-            light.numShadowCascades = numCascades;
-            Log::warn("Can not have multiple cascades shadows when using ortho scene camera. Reducing num shadow cascades to 1");
-        }
-    }
-}
-
-// Shadow cameras of light seen through camera: the directional cascades fitted to its
-// frustum, or the spot / point cameras. numCascades comes in as the light's and goes
-// out as what the camera allows (one cascade with an orthographic camera).
-void RenderSystem::computeLightCameras(const LightComponent& light, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& shadowCameraNearFar, LightCamera* cameras, unsigned int& numCascades){
-    {
-        Vector3 up = Vector3(0, 1, 0);
-        if (light.worldDirection.crossProduct(up) == Vector3::ZERO){
-            up = Vector3(0, 0, 1);
-        }
-
-        if (light.type == LightType::DIRECTIONAL){
-
-            float shadowSplitLogFactor = 0.7f;
-            float shadowMaxDistance = shadowCameraNearFar.y;
-
-            Matrix4 projectionMatrix[MAX_SHADOWCASCADES];
-            Matrix4 viewMatrix;
-
-            viewMatrix = Matrix4::lookAtMatrix(transform.worldPosition, light.worldDirection + transform.worldPosition, up);
-
-            // cascades fitted to the frustum of the camera given (each camera's own)
-            if (camera.type == CameraType::CAMERA_PERSPECTIVE) {
-
-                float zNear = shadowCameraNearFar.x;
-                float zFar = shadowCameraNearFar.y;
-                float planeFarOffset = (zFar - zNear) * 0.05f;
-
-                // Split perspective frustum to create cascades
-                Matrix4 projection = camera.projectionMatrix;
-                Matrix4 invProjection = projection.inverse();
-
-                // near and far corners of the camera frustum in view space
-                const Vector4 nearCorner = invProjection * Vector4(-1.f, 1.f, -1.f, 1.f);
-                const Vector4 farCorner = invProjection * Vector4(-1.f, 1.f, 1.f, 1.f);
-
-                zFar = std::min(zFar, -(farCorner / farCorner.w).z);
-                zNear = -(nearCorner / nearCorner.w).z;
-                float fov = atanf(1.f / projection[1][1]) * 2.f;
-                float ratio = projection[1][1] / projection[0][0];
-
-                // runs per camera and frame: fixed arrays, no allocation
-                numCascades = std::clamp(numCascades, 1u, (unsigned int)MAX_SHADOWCASCADES);
-                float splitFar[MAX_SHADOWCASCADES];
-                float splitNear[MAX_SHADOWCASCADES];
-                splitNear[0] = zNear;
-                splitFar[numCascades - 1] = zFar;
-
-                float j = 1.f;
-                for (auto i = 0u; i < numCascades - 1; ++i, j += 1.f) {
-                    splitFar[i] = lerp(
-                        zNear + (j / (float)numCascades) * (zFar - zNear),
-                        zNear * powf(zFar / zNear, j / (float)numCascades),
-                        shadowSplitLogFactor
-                    );
-                    splitNear[i + 1] = splitFar[i];
-                }
-
-                // Get frustum box and create light ortho
-                for (int ca = 0; ca < (int)numCascades; ca++) {
-                    Matrix4 cascadeProjection = Matrix4::perspectiveMatrix(fov, ratio, splitNear[ca], splitFar[ca] + planeFarOffset);
-                    Matrix4 sceneCameraInv = (cascadeProjection * camera.viewMatrix).inverse();
-
-                    projectionMatrix[ca] = getDirLightProjection(viewMatrix, sceneCameraInv, shadowMaxDistance, light.worldDirection, cameraTransform.worldPosition);
-
-                    cameras[ca].lightViewMatrix = viewMatrix;
-                    cameras[ca].lightProjectionMatrix = projectionMatrix[ca];
-                    cameras[ca].lightViewProjectionMatrix = projectionMatrix[ca] * viewMatrix;
-                    cameras[ca].nearFar = Vector2(splitNear[ca], splitFar[ca]);
-                    updateCameraFrustumPlanes(cameras[ca].lightViewProjectionMatrix, cameras[ca].frustumPlanes);
-                }
-
-            } else {
-                // Orthographic camera handling remains the same
-                if (numCascades > 1){
-                    numCascades = 1;
-                }
-
-                Matrix4 sceneCameraInv = camera.viewProjectionMatrix.inverse();
-
-                projectionMatrix[0] = getDirLightProjection(viewMatrix, sceneCameraInv, shadowMaxDistance, light.worldDirection, cameraTransform.worldPosition);
-
-                cameras[0].lightViewMatrix = viewMatrix;
-                cameras[0].lightProjectionMatrix = projectionMatrix[0];
-                cameras[0].lightViewProjectionMatrix = projectionMatrix[0] * viewMatrix;
-                cameras[0].nearFar = Vector2(-shadowMaxDistance, shadowMaxDistance);
-                updateCameraFrustumPlanes(cameras[0].lightViewProjectionMatrix, cameras[0].frustumPlanes);
-
-            }
-
-        }else if (light.type == LightType::SPOT){
-            Matrix4 projectionMatrix;
-            Matrix4 viewMatrix;
-
-            Vector3 projectionUp = light.spotMaskReady ? light.worldUp : up;
-            float projectionAspect = light.spotMaskReady ? light.spotMaskAspect : 1.0f;
-            viewMatrix = Matrix4::lookAtMatrix(transform.worldPosition, light.worldDirection + transform.worldPosition, projectionUp);
-
-            projectionMatrix = Matrix4::perspectiveMatrix(
-                acos(light.outerConeCos) * 2,
-                projectionAspect,
-                shadowCameraNearFar.x,
-                shadowCameraNearFar.y);
-
-            cameras[0].lightViewMatrix = viewMatrix;
-            cameras[0].lightProjectionMatrix = projectionMatrix;
-            cameras[0].lightViewProjectionMatrix = projectionMatrix * viewMatrix;
-            cameras[0].nearFar = shadowCameraNearFar;
-            updateCameraFrustumPlanes(cameras[0].lightViewProjectionMatrix, cameras[0].frustumPlanes);
-
-        }else if (light.type == LightType::POINT){
-            Matrix4 projectionMatrix;
-            Matrix4 viewMatrix[6];
-
-            viewMatrix[0] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3( 1.f, 0.f, 0.f) + transform.worldPosition, Vector3(0.f, -1.f, 0.f));
-            viewMatrix[1] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3(-1.f, 0.f, 0.f) + transform.worldPosition, Vector3(0.f, -1.f, 0.f));
-            viewMatrix[2] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3( 0.f, 1.f, 0.f) + transform.worldPosition, Vector3(0.f,  0.f, 1.f));
-            viewMatrix[3] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3( 0.f,-1.f, 0.f) + transform.worldPosition, Vector3(0.f,  0.f,-1.f));
-            viewMatrix[4] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3( 0.f, 0.f, 1.f) + transform.worldPosition, Vector3(0.f, -1.f, 0.f));
-            viewMatrix[5] = Matrix4::lookAtMatrix(transform.worldPosition, Vector3( 0.f, 0.f,-1.f) + transform.worldPosition, Vector3(0.f, -1.f, 0.f));
-
-            projectionMatrix = Matrix4::perspectiveMatrix(Angle::degToRad(90), 1, shadowCameraNearFar.x, shadowCameraNearFar.y);
-
-            Vector2 calculedNearFar;
-            float nfsub = shadowCameraNearFar.y - shadowCameraNearFar.x;
-            calculedNearFar.x = (shadowCameraNearFar.y + shadowCameraNearFar.x) / nfsub * 0.5f + 0.5f;
-            calculedNearFar.y =-(shadowCameraNearFar.y * shadowCameraNearFar.x) / nfsub;
-
-            for (int f = 0; f < 6; f++){
-                cameras[f].lightViewMatrix = viewMatrix[f];
-                cameras[f].lightProjectionMatrix = projectionMatrix;
-                cameras[f].lightViewProjectionMatrix = projectionMatrix * viewMatrix[f];
-                cameras[f].nearFar = calculedNearFar;
-                updateCameraFrustumPlanes(cameras[f].lightViewProjectionMatrix, cameras[f].frustumPlanes);
-            }
-        }
-    }
 }
 
 void RenderSystem::changeLoaded(void* data){
@@ -11530,7 +11093,7 @@ const LightCamera& RenderSystem::lightCamera(const CameraShadows& shadows, int l
 unsigned int RenderSystem::lightCascades(const CameraShadows& shadows, int lightIndex, const LightComponent& light) const{
     if (shadows.ownLightCameras && light.type == LightType::DIRECTIONAL && light.shadowMapIndex >= 0 && light.shadowMapIndex < MAX_SHADOW_ATLAS_SLOTS)
         return shadows.lightCameras[light.shadowMapIndex].numCascades;
-    return light.numShadowCascades;
+    return light.shadowCascades;
 }
 
 const InstanceViewRange& RenderSystem::instanceRange(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const{
@@ -12001,6 +11564,8 @@ void RenderSystem::update(double dt){
     if (paused) {
         return;
     }
+    // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
+    shadowFrame++;
 
     int numLights = checkLightsAndShadow();
 
@@ -12246,6 +11811,18 @@ void RenderSystem::update(double dt){
     updateSpotMaskAtlas(numLights);
     loadLights2D();
     loadAndProcessFog();
+    // the atmosphere (height fog, volumetric fog and clouds): the fogged mesh variants carry the
+    // height fog (chosen by u_fs_heightFog), and the volumetric passes need depth programs on
+    // every opaque mesh
+    atmosphere.update(dt);
+    heightFogActive = hasFog && atmosphere.hasHeightFog();
+    {
+        const bool depthPrograms = atmosphere.needsDepthPrograms();
+        if (depthPrograms != atmosphereDepthPrograms){
+            atmosphereDepthPrograms = depthPrograms;
+            needReloadMeshVariants();
+        }
+    }
 
     // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();
@@ -12615,11 +12192,9 @@ void RenderSystem::update(double dt){
             LightComponent& light = scene->getComponent<LightComponent>(entity);
 
             if (mainCamera.needUpdate || transform.needUpdate || light.needUpdateShadowCamera){
-                // need to be updated ONLY for main camera
+                // its world direction; its shadow cameras follow every update (updateLightCameras)
                 updateLightFromScene(light, transform, mainCamera, mainCameraTransform);
-
                 light.needUpdateShadowCamera = false;
-                instanceViewsDirty = true;
             }
         }
 
@@ -12705,6 +12280,9 @@ void RenderSystem::update(double dt){
     updateSceneLights();
     updateObjectLights();
 
+    // the shadow casters of this update, then the shadow cameras fitted with them
+    updateShadowCasters();
+    updateLightCameras(mainCamera, mainCameraTransform);
     processLights(primaryView.shadows, numLights, mainCamera, mainCameraTransform);
     if (hasLights2D){
         processLights2D();
@@ -12723,534 +12301,6 @@ void RenderSystem::update(double dt){
 }
 
 //-----Per-camera lighting and shadow maps-----
-
-bool RenderSystem::ShadowAtlasKey::sameDepths(const ShadowAtlasKey& other) const{
-    if (slots != other.slots || cameraCasters != other.cameraCasters)
-        return false;
-    for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
-        if (casterMask[s] != other.casterMask[s] || viewProjection[s] != other.viewProjection[s])
-            return false;
-    }
-    return true;
-}
-
-RenderSystem::CameraShadows::~CameraShadows(){
-    release();
-}
-
-void RenderSystem::CameraShadows::releaseProjective(){
-    ownProjective.destroyFramebuffer();
-    ownProjectiveWidth = 0;
-    ownProjectiveHeight = 0;
-    projectiveKey.epoch = 0;
-    if (projectiveAtlas == &ownProjective)
-        projectiveAtlas = nullptr;
-}
-
-void RenderSystem::CameraShadows::releasePoint(){
-    ownPoint.destroyFramebuffer();
-    ownPointWidth = 0;
-    ownPointHeight = 0;
-    pointKey.epoch = 0;
-    if (pointAtlas == &ownPoint)
-        pointAtlas = nullptr;
-}
-
-void RenderSystem::CameraShadows::releaseInstances(){
-    for (InstanceView& view : instanceViews){
-        view.buffer.getRender()->destroyBuffer();
-        view.data.clear();
-        view.data.shrink_to_fit();
-        view.capacity = 0;
-        view.needUpload = false;
-    }
-    instanceRanges.clear();
-    instanceBuild = 0;
-}
-
-void RenderSystem::CameraShadows::release(){
-    releaseProjective();
-    releasePoint();
-    releaseInstances();
-    projectiveAtlas = nullptr;
-    pointAtlas = nullptr;
-    drawProjective = false;
-    drawPoint = false;
-    keysEpoch = 0;
-}
-
-RenderSystem::CameraShadows& RenderSystem::getCameraShadows(Entity entity){
-    std::unique_ptr<CameraShadows>& shadows = cameraShadows[entity];
-    if (!shadows){
-        shadows = std::make_unique<CameraShadows>();
-    }
-    return *shadows;
-}
-
-// A camera that stopped rendering keeps its maps a moment, so one that comes back
-// (re-enabled, a probe capturing again) reallocates nothing.
-void RenderSystem::releaseUnusedCameraShadows(){
-    static constexpr uint64_t KEEP_UNUSED_DRAWS = 120;
-    for (auto it = cameraShadows.begin(); it != cameraShadows.end();){
-        if (drawCount - it->second->lastUsed > KEEP_UNUSED_DRAWS){
-            it = cameraShadows.erase(it);
-        }else{
-            ++it;
-        }
-    }
-}
-
-// The layers holding meshes the shadow passes draw this update, and among them those whose
-// casters a camera draws its own way: a terrain through its CDLOD cut, a billboard turned
-// to it, instances culled or faded from its eye.
-void RenderSystem::ensureCasterLayers(){
-    if (casterLayersEpoch == shadowEpoch)
-        return;
-    casterLayersEpoch = shadowEpoch;
-    shadowCasterLayers = 0;
-    cameraCasterLayers = 0;
-
-    // the spot and point lights the shadow passes draw: their shadow cameras are the
-    // lights' own, so what reaches their maps is the same for every camera. Only lights
-    // holding a shadow slot, so at most one per slot.
-    auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = (int)lights->size();
-    lightCasterLayers.assign(numLights, 0u);
-    int localLights[MAX_SHADOW_ATLAS_SLOTS + MAX_POINT_SHADOW_LIGHTS];
-    int numLocalLights = 0;
-    for (int l = 0; l < numLights; l++){
-        const LightComponent& light = lights->getComponentFromIndex(l);
-        if (light.type != LightType::DIRECTIONAL && light.shadows && light.intensity > 0 && light.shadowMapIndex >= 0 &&
-                isLightActive(lights->getEntity(l), light) &&
-                numLocalLights < MAX_SHADOW_ATLAS_SLOTS + MAX_POINT_SHADOW_LIGHTS){
-            localLights[numLocalLights++] = l;
-        }
-    }
-
-#ifdef JASPERENGINE_EDITOR
-    // what a shadow pass draws: never the editor's gizmos and icons, always a mirror
-    const bool drawsOverlays = passDrawsOverlays;
-    const Entity excludedEntity = passExcludedEntity;
-    passDrawsOverlays = false;
-    passExcludedEntity = NULL_ENTITY;
-#endif
-
-    auto meshes = scene->getComponentArray<MeshComponent>();
-    for (int i = 0; i < meshes->size(); i++){
-        MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload || !mesh.castShadows)
-            continue;
-        Entity entity = meshes->getEntity(i);
-        Transform* transform = scene->findComponent<Transform>(entity);
-        if (!transform || !transform->visible || !isRenderActive(entity))
-            continue;
-
-        const uint32_t layerBit = 1u << scene->getEntityLayer(entity);
-        shadowCasterLayers |= layerBit;
-
-        // a terrain's cut stays inside its bounds; a turned billboard or a camera's own
-        // instance list may not stay inside the frame's
-        const bool terrain = scene->findComponent<TerrainComponent>(entity) != nullptr;
-        bool unbounded = transform->billboard && !transform->fakeBillboard && !mesh.shadowsBillboard;
-        InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-        if (instmesh){
-            unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
-                (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
-        }
-        if (terrain || unbounded){
-            cameraCasterLayers |= layerBit;
-        }
-
-        // the batch test of the depth passes (isBatchVisible), against each shadow camera
-        const bool everywhere = unbounded || !cullsBatch(mesh, instmesh);
-        for (int i = 0; i < numLocalLights; i++){
-            const int l = localLights[i];
-            if (lightCasterLayers[l] & layerBit)
-                continue;
-            const LightComponent& light = lights->getComponentFromIndex(l);
-            bool reaches = everywhere;
-            const int faces = (light.type == LightType::POINT) ? SHADOW_CUBE_FACES : 1;
-            for (int c = 0; c < faces && !reaches; c++){
-                reaches = isInsideCamera(light.cameras[c].nearFar.y, light.cameras[c].frustumPlanes, mesh.worldAABB);
-            }
-            if (reaches){
-                lightCasterLayers[l] |= layerBit;
-            }
-        }
-    }
-
-    for (int l = 0; l < numLights; l++){
-        if (lights->getComponentFromIndex(l).type == LightType::DIRECTIONAL){
-            lightCasterLayers[l] = shadowCasterLayers;
-        }
-    }
-
-#ifdef JASPERENGINE_EDITOR
-    passDrawsOverlays = drawsOverlays;
-    passExcludedEntity = excludedEntity;
-#endif
-}
-
-// What target's atlases hold once drawn: each slot's shadow camera and the layers casting
-// into it. A slot nothing casts into is plain clear depth, whatever its camera.
-void RenderSystem::computeShadowKeys(const CameraShadows& target, ShadowAtlasKey& projective, ShadowAtlasKey& point){
-    for (ShadowAtlasKey* key : {&projective, &point}){
-        key->slots = 0;
-        key->cameraCasters = nullptr;
-        for (int s = 0; s < SHADOW_KEY_SLOTS; s++){
-            key->viewProjection[s] = Matrix4();
-            key->casterMask[s] = 0;
-        }
-    }
-    if (!hasShadows)
-        return;
-
-    ensureCasterLayers();
-
-    auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = std::min((int)lights->size(), (int)lightCasterLayers.size());
-    for (int l = 0; l < numLights; l++){
-        LightComponent& light = lights->getComponentFromIndex(l);
-        // the lights renderShadowMaps draws
-        if (light.intensity <= 0 || !light.shadows || light.shadowMapIndex < 0 ||
-                !isLightActive(lights->getEntity(l), light))
-            continue;
-
-        const uint32_t mask = target.cameraMask & light.cullingMask & lightCasterLayers[l];
-        const void* cameraCasters = (mask & cameraCasterLayers) ? (const void*)&target : nullptr;
-
-        if (light.type == LightType::POINT){
-            if (!hasShadowPointAtlas)
-                continue;
-            for (int c = 0; c < SHADOW_CUBE_FACES; c++){
-                const int slot = light.shadowMapIndex + c;
-                if (slot < 0 || slot >= MAX_POINT_SHADOW_ATLAS_SLOTS)
-                    continue;
-                point.slots++;
-                point.casterMask[slot] = mask;
-                if (mask)
-                    point.viewProjection[slot] = lightCamera(target, l, light, c).lightViewProjectionMatrix;
-                if (cameraCasters)
-                    point.cameraCasters = cameraCasters;
-            }
-        }else{
-            if (!hasShadowAtlas)
-                continue;
-            const int numCameras = (light.type == LightType::DIRECTIONAL) ? (int)lightCascades(target, l, light) : 1;
-            for (int c = 0; c < numCameras; c++){
-                const int slot = light.shadowMapIndex + ((light.type == LightType::DIRECTIONAL) ? c : 0);
-                if (slot < 0 || slot >= shadowAtlasUsedSlots)
-                    continue;
-                projective.slots++;
-                projective.casterMask[slot] = mask;
-                if (mask)
-                    projective.viewProjection[slot] = lightCamera(target, l, light, c).lightViewProjectionMatrix;
-                if (cameraCasters)
-                    projective.cameraCasters = cameraCasters;
-            }
-        }
-    }
-}
-
-// An atlas drawn after this update holding what target wants: the frame's, target's own
-// from an earlier draw, or another camera's. Null when none does.
-FramebufferRender* RenderSystem::findShadowSource(CameraShadows& target, const ShadowAtlasKey& wanted, bool projective){
-    auto holds = [&](const CameraShadows& source){
-        const ShadowAtlasKey& key = projective ? source.projectiveKey : source.pointKey;
-        return key.epoch == shadowEpoch && key.sameDepths(wanted);
-    };
-
-    // the frame's maps, described the first time a camera asks after the update
-    CameraShadows& frame = primaryView.shadows;
-    if ((frame.projectiveKey.epoch == shadowEpoch || frame.pointKey.epoch == shadowEpoch) && frame.keysEpoch != shadowEpoch){
-        const uint64_t projectiveEpoch = frame.projectiveKey.epoch;
-        const uint64_t pointEpoch = frame.pointKey.epoch;
-        computeShadowKeys(frame, frame.projectiveKey, frame.pointKey);
-        frame.projectiveKey.epoch = projectiveEpoch;
-        frame.pointKey.epoch = pointEpoch;
-        frame.keysEpoch = shadowEpoch;
-    }
-    if (holds(frame))
-        return projective ? &shadowAtlasFramebuffer : &shadowPointAtlasFramebuffer;
-
-    if (holds(target))
-        return projective ? &target.ownProjective : &target.ownPoint;
-
-    auto other = [&](CameraShadows& source) -> FramebufferRender*{
-        if (&source == &target || !holds(source))
-            return nullptr;
-        return projective ? &source.ownProjective : &source.ownPoint;
-    };
-    for (auto& entry : cameraShadows){
-        if (FramebufferRender* atlas = other(*entry.second))
-            return atlas;
-    }
-#ifdef JASPERENGINE_EDITOR
-    for (auto& entry : secondaryViews){
-        if (FramebufferRender* atlas = other(entry.second->shadows))
-            return atlas;
-        for (auto& mirror : entry.second->mirrors){
-            if (FramebufferRender* atlas = other(mirror.second->shadows))
-                return atlas;
-        }
-    }
-#endif
-    return nullptr;
-}
-
-int RenderSystem::ownPointAtlasRows() const{
-    auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = (int)lights->size();
-    int usedSlots = 0;
-    for (int l = 0; l < numLights; l++){
-        const LightComponent& light = lights->getComponentFromIndex(l);
-        if (light.type == LightType::POINT && light.shadows && light.shadowMapIndex >= 0){
-            usedSlots = std::max(usedSlots, std::min(light.shadowMapIndex + SHADOW_CUBE_FACES, MAX_POINT_SHADOW_ATLAS_SLOTS));
-        }
-    }
-    return std::max(1, (usedSlots + SHADOW_POINT_ATLAS_COLS - 1) / SHADOW_POINT_ATLAS_COLS);
-}
-
-// A camera's own projective atlas has the frame's layout, so the slots and their uniforms
-// line up; its own point atlas has the frame's slots in only the rows its lights use
-bool RenderSystem::ensureOwnShadowAtlas(CameraShadows& target, bool projective){
-    if (projective){
-        const int width = (int)shadowAtlasSlotResolution * shadowAtlasCols;
-        const int height = (int)shadowAtlasSlotResolution * shadowAtlasRows;
-        if (target.ownProjective.isCreated() && target.ownProjectiveWidth == width && target.ownProjectiveHeight == height)
-            return true;
-        target.releaseProjective();
-        // LINEAR on a comparison sampler is hardware PCF, as on the frame's atlas
-        if (width <= 0 || height <= 0 || !target.ownProjective.createDepthOnlyFramebuffer(
-                width, height,
-                TextureFilter::LINEAR, TextureFilter::LINEAR,
-                TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
-            return false;
-        }
-        target.ownProjectiveWidth = width;
-        target.ownProjectiveHeight = height;
-        return true;
-    }
-
-    const int width = (int)shadowPointAtlasSlotResolution * SHADOW_POINT_ATLAS_COLS;
-    const int height = (int)shadowPointAtlasSlotResolution * ownPointAtlasRows();
-    if (target.ownPoint.isCreated() && target.ownPointWidth == width && target.ownPointHeight == height)
-        return true;
-    target.releasePoint();
-    if (width <= 0 || height <= 0 || !target.ownPoint.createFramebuffer(
-            TextureType::TEXTURE_2D, width, height,
-            TextureFilter::NEAREST, TextureFilter::NEAREST,
-            TextureWrap::CLAMP_TO_BORDER, TextureWrap::CLAMP_TO_BORDER, true)){
-        return false;
-    }
-    target.ownPointWidth = width;
-    target.ownPointHeight = height;
-    return true;
-}
-
-void RenderSystem::prepareCameraShadows(CameraShadows& target, const CameraComponent& camera, const Transform& cameraTransform, int terrainView, bool ownInstances){
-    target.lastUsed = drawCount;
-    target.cameraMask = camera.cullingMask;
-    target.terrainView = terrainView;
-    target.ownLightCameras = true;
-    target.ownShadowInstances = ownInstances;
-
-    auto lights = scene->getComponentArray<LightComponent>();
-    const int numLights = (int)lights->size();
-
-    // directional cascades fitted to this camera's frustum, by the light's base shadow slot
-    for (int i = 0; i < numLights; i++){
-        LightComponent& light = lights->getComponentFromIndex(i);
-        if (light.type != LightType::DIRECTIONAL || light.shadowMapIndex < 0 || light.shadowMapIndex >= MAX_SHADOW_ATLAS_SLOTS)
-            continue;
-        LightCameraSet& cameras = target.lightCameras[light.shadowMapIndex];
-        cameras.numCascades = light.numShadowCascades;
-
-        if (!hasShadows || !light.shadows || light.intensity <= 0)
-            continue;
-
-        Transform* transform = scene->findComponent<Transform>(lights->getEntity(i));
-        if (!transform){
-            for (int c = 0; c < MAX_SHADOWCASCADES; c++){
-                cameras.cameras[c] = light.cameras[c];
-            }
-            continue;
-        }
-
-        Vector2 nearFar = light.shadowCameraNearFar;
-        if (light.automaticShadowCamera){
-            nearFar.x = camera.nearClip;
-            nearFar.y = (light.range == 0.0f) ? camera.farClip : light.range;
-        }
-        computeLightCameras(light, *transform, camera, cameraTransform, nearFar, cameras.cameras, cameras.numCascades);
-    }
-
-    // the atlas layout and every camera-independent value are the frame's
-    const CameraShadows& frame = primaryView.shadows;
-    target.fs_lighting = frame.fs_lighting;
-    target.vs_shadows = frame.vs_shadows;
-    target.fs_shadows = frame.fs_shadows;
-    target.fs_point_shadows = frame.fs_point_shadows;
-    processLights(target, numLights, camera, cameraTransform);
-
-    target.projectiveAtlas = nullptr;
-    target.pointAtlas = nullptr;
-    target.drawProjective = false;
-    target.drawPoint = false;
-
-    if (!hasShadows){
-        target.releaseProjective();
-        target.releasePoint();
-        target.releaseInstances();
-        return;
-    }
-
-    computeShadowKeys(target, wantedProjectiveKey, wantedPointKey);
-
-    if (wantedProjectiveKey.slots == 0){
-        target.releaseProjective();
-        target.releaseInstances();
-    }else if (FramebufferRender* source = findShadowSource(target, wantedProjectiveKey, true)){
-        target.projectiveAtlas = source;
-        if (source != &target.ownProjective){
-            target.releaseProjective();
-            target.releaseInstances();
-        }
-    }else if (ensureOwnShadowAtlas(target, true)){
-        target.projectiveKey = wantedProjectiveKey;
-        target.projectiveKey.epoch = 0; // until drawn
-        target.projectiveAtlas = &target.ownProjective;
-        target.drawProjective = true;
-    }
-
-    if (wantedPointKey.slots == 0){
-        target.releasePoint();
-    }else if (FramebufferRender* source = findShadowSource(target, wantedPointKey, false)){
-        target.pointAtlas = source;
-        if (source != &target.ownPoint){
-            target.releasePoint();
-        }
-    }else if (ensureOwnShadowAtlas(target, false)){
-        target.pointKey = wantedPointKey;
-        target.pointKey.epoch = 0; // until drawn
-        target.pointAtlas = &target.ownPoint;
-        target.drawPoint = true;
-    }
-
-    // a camera's own point atlas (this one's or another's) keeps only the rows in use
-    if (target.pointAtlas && target.pointAtlas != &shadowPointAtlasFramebuffer){
-        const int rows = ownPointAtlasRows();
-        for (int s = 0; s < MAX_POINT_SHADOW_ATLAS_SLOTS; s++){
-            const int col = s % SHADOW_POINT_ATLAS_COLS;
-            const int row = s / SHADOW_POINT_ATLAS_COLS;
-            target.fs_point_shadows.atlasRect[s] = (row < rows) ? Vector4(
-                (float)col / (float)SHADOW_POINT_ATLAS_COLS,
-                (float)row / (float)rows,
-                1.0f / (float)SHADOW_POINT_ATLAS_COLS,
-                1.0f / (float)rows) : Vector4(0.0f, 0.0f, 0.0f, 0.0f);
-        }
-    }
-}
-
-void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
-    if (!target.drawProjective || !target.ownShadowInstances)
-        return;
-
-    auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
-    if (instmeshes->size() == 0){
-        if (target.instanceBuild != 0)
-            target.releaseInstances();
-        return;
-    }
-
-    // the slots, their cameras and detail levels are target's
-    CameraShadows* previousShadows = passShadows;
-    passShadows = &target;
-
-    const std::vector<ShadowSlot>& slots = collectShadowSlots();
-
-    uint64_t shadowHash = 1469598103934665603ULL;
-    for (const ShadowSlot& shadow : slots){
-        const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
-        const unsigned char* bytes = reinterpret_cast<const unsigned char*>(&shadowCamera.lightViewProjectionMatrix);
-        for (size_t b = 0; b < sizeof(Matrix4); b++){
-            shadowHash = (shadowHash ^ bytes[b]) * 1099511628211ULL;
-        }
-        shadowHash = (shadowHash ^ (uint64_t)(shadow.slot + 1)) * 1099511628211ULL;
-    }
-
-    if (target.instanceBuild != 0 && target.instanceRevision == instanceRevision && target.instanceShadowHash == shadowHash){
-        passShadows = previousShadows;
-        return;
-    }
-    target.instanceBuild++;
-    target.instanceRevision = instanceRevision;
-    target.instanceShadowHash = shadowHash;
-
-    for (InstanceView& view : target.instanceViews){
-        view.data.clear();
-    }
-
-    for (int i = 0; i < instmeshes->size(); i++){
-        InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
-        Entity entity = instmeshes->getEntity(i);
-        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        Transform* transform = scene->findComponent<Transform>(entity);
-
-        CameraShadows::InstanceRanges& ranges = target.instanceRanges[entity];
-        ranges.build = target.instanceBuild;
-        ranges.slots.fill(InstanceViewRange());
-        if (!mesh || !transform || !mesh->loaded || !mesh->castShadows)
-            continue;
-
-        // the frame's list, the one this camera's color pass draws
-        const InstanceRenderData* instances = instmesh.renderInstances.data();
-        const InstanceBounds* bounds = instmesh.renderBounds.data();
-        const unsigned int count = (instmesh.renderBounds.size() < instmesh.numVisible) ? 0 : instmesh.numVisible;
-
-        for (const ShadowSlot& shadow : slots){
-            const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
-            LodView shadowLod = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);
-            Vector3 lightDirection = (shadow.light->type == LightType::DIRECTIONAL) ? shadow.light->worldDirection : Vector3::ZERO;
-            buildInstanceView(target.instanceViews[shadow.slot], ranges.slots[shadow.slot], instances, bounds, count, instmesh, *mesh, *transform,
-                shadowCamera.nearFar.y, shadowCamera.frustumPlanes, shadowLod, shadowLod.origin, shadowLod.origin, lightDirection, InstanceOrder::NEAREST, false);
-        }
-    }
-
-    // batches that went away
-    for (auto it = target.instanceRanges.begin(); it != target.instanceRanges.end();){
-        if (it->second.build != target.instanceBuild){
-            it = target.instanceRanges.erase(it);
-        }else{
-            ++it;
-        }
-    }
-
-    for (InstanceView& view : target.instanceViews){
-        view.needUpload = !view.data.empty();
-    }
-    uploadInstanceViews(target.instanceViews, MAX_SHADOW_ATLAS_SLOTS);
-
-    passShadows = previousShadows;
-}
-
-void RenderSystem::renderCameraShadows(CameraShadows& target){
-    if (!target.drawProjective && !target.drawPoint)
-        return;
-
-    CameraShadows* previousShadows = passShadows;
-    passShadows = &target;
-    renderShadowMaps(target.drawProjective, target.drawPoint);
-    passShadows = previousShadows;
-
-    if (target.drawProjective)
-        target.projectiveKey.epoch = shadowEpoch;
-    if (target.drawPoint)
-        target.pointKey.epoch = shadowEpoch;
-    target.drawProjective = false;
-    target.drawPoint = false;
-}
 
 // The CDLOD cut a render-to-texture camera draws, selected before its shadow passes so
 // they draw the same terrain its color pass does
@@ -13278,6 +12328,7 @@ void RenderSystem::selectCameraTerrain(CameraComponent& camera, Transform& camer
 // shadow rows and the reflection probe face of the frame.
 void RenderSystem::drawFramePasses(){
     frameTime = (float)Engine::getSystemTime();
+    updateDynamicResolution();
 
 #ifdef JASPERENGINE_EDITOR
     passDrawsOverlays = false;
@@ -13312,6 +12363,7 @@ void RenderSystem::drawFramePasses(){
     }
 
     renderShadowMaps(true, true);
+    renderShadowAtlasDebug();
     // the frame's maps hold this update's casters; what they hold is worked out only
     // when another camera asks (computeShadowKeys)
     frameShadows.projectiveKey.epoch = hasShadows ? shadowEpoch : 0;
@@ -13336,164 +12388,6 @@ void RenderSystem::drawFramePasses(){
 #endif
     if (renderDocuments)
         scene->getSystem<UIDocumentSystem>()->renderOffscreen(targetViewRect());
-}
-
-// Depth passes of the shadow-casting lights into the projective and point atlases of
-// the camera being drawn (ps(): the frame's for the scene camera, its own otherwise),
-// through its shadow cameras.
-void RenderSystem::renderShadowMaps(bool projective, bool point){
-    if (!hasShadows)
-        return;
-
-#ifdef JASPERENGINE_EDITOR
-    // the scene's editor gizmos and icons never cast shadows
-    passDrawsOverlays = false;
-#endif
-
-    auto lights = scene->getComponentArray<LightComponent>();
-    auto meshes = scene->getComponentArray<MeshComponent>();
-    int shadowLightCount = (int)lights->size();
-
-    // as in Unity, a layer the rendering camera or the light culls casts no shadow
-    const uint32_t shadowCameraMask = ps().cameraMask;
-
-    // a projective slot has its own culled instance view; point faces draw everything
-    auto drawShadowCasters = [&](LightComponent& light, int lightIndex, int cameraIndex, PipelineType pipelineType, int instanceView){
-        const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
-        const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : LodView();
-        const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
-        const uint32_t casterMask = shadowCameraMask & light.cullingMask;
-        for (int i = 0; i < meshes->size(); i++){
-            MeshComponent& mesh = meshes->getComponentFromIndex(i);
-            Entity entity = meshes->getEntity(i);
-            Transform* transform = scene->findComponent<Transform>(entity);
-
-            if (!transform || !transform->visible || !isRenderActive(entity) || !isLayerVisible(entity, casterMask)){
-                continue;
-            }
-
-            InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-            TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
-            TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
-
-            const Matrix4& model = objectModel(*transform);
-            vs_depth_t vsDepthParams;
-            if (transform->billboard && mesh.shadowsBillboard){
-                Matrix4 modelViewMatrix = shadowCamera.lightViewMatrix * model;
-
-                modelViewMatrix.set(0, 0, transform->worldScale.x);
-                modelViewMatrix.set(0, 1, 0.0);
-                modelViewMatrix.set(0, 2, 0.0);
-
-                if (!transform->cylindricalBillboard) {
-                    modelViewMatrix.set(1, 0, 0.0);
-                    modelViewMatrix.set(1, 1, transform->worldScale.y);
-                    modelViewMatrix.set(1, 2, 0.0);
-                }
-
-                modelViewMatrix.set(2, 0, 0.0);
-                modelViewMatrix.set(2, 1, 0.0);
-                modelViewMatrix.set(2, 2, transform->worldScale.z);
-
-                const Matrix4& projection = shadowCamera.lightProjectionMatrix;
-                vsDepthParams = {modelViewMatrix, projection, projection * modelViewMatrix};
-            }else{
-                const Matrix4& lightVP = shadowCamera.lightViewProjectionMatrix;
-                vsDepthParams = {model, lightVP, lightVP * model};
-            }
-
-            drawMeshDepth(
-                entity,
-                mesh,
-                *transform,
-                shadowCamera.nearFar.y,
-                shadowCamera.frustumPlanes,
-                vsDepthParams,
-                instmesh,
-                terrain,
-                tilemap,
-                false,
-                pipelineType,
-                instanceView,
-                lodView);
-        }
-    };
-
-    // All projective slots share one pass: clear once, then viewport/scissor per slot.
-    FramebufferRender& projectiveAtlas = shadowAtlasTarget();
-    bool projectivePassStarted = false;
-    for (int l = 0; projective && l < shadowLightCount; l++){
-        LightComponent& light = lights->getComponentFromIndex(l);
-        if (light.type == LightType::POINT ||
-            light.intensity <= 0 || !light.shadows ||
-            light.shadowMapIndex < 0 || !hasShadowAtlas ||
-            !isLightActive(lights->getEntity(l), light)){
-            continue;
-        }
-
-        int numShadowCameras =
-            (light.type == LightType::DIRECTIONAL) ? (int)lightCascades(l, light) : 1;
-        for (int c = 0; c < numShadowCameras; c++){
-            int slotIndex = light.shadowMapIndex +
-                ((light.type == LightType::DIRECTIONAL) ? c : 0);
-            if (slotIndex < 0 || slotIndex >= shadowAtlasUsedSlots){
-                continue;
-            }
-
-            if (!projectivePassStarted){
-                shadowAtlasPassRender.setClearDepth(1.0f);
-                shadowAtlasPassRender.setLabel("shadow");
-                shadowAtlasPassRender.startRenderPass(&projectiveAtlas);
-                projectivePassStarted = true;
-            }
-
-            Rect slotRect = getShadowAtlasSlotRect(slotIndex);
-            shadowAtlasPassRender.applyViewport(slotRect);
-            shadowAtlasPassRender.applyScissor(slotRect);
-            passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
-            drawShadowCasters(light, l, c, PIP_SHADOW_DEPTH, 1 + slotIndex);
-        }
-    }
-    if (projectivePassStarted){
-        shadowAtlasPassRender.endRenderPass();
-    }
-
-    // Point shadows keep the packed-color depth per-face pass (PIP_DEPTH).
-    FramebufferRender& pointAtlas = shadowPointAtlasTarget();
-    bool pointAtlasSlotWritten = false;
-    for (int l = 0; point && l < shadowLightCount; l++){
-        LightComponent& light = lights->getComponentFromIndex(l);
-        if (light.type != LightType::POINT ||
-            light.intensity <= 0 || !light.shadows ||
-            light.shadowMapIndex < 0 || !hasShadowPointAtlas ||
-            !isLightActive(lights->getEntity(l), light)){
-            continue;
-        }
-
-        for (int c = 0; c < SHADOW_CUBE_FACES; c++){
-            int slotIndex = light.shadowMapIndex + c;
-            if (slotIndex < 0 || slotIndex >= MAX_POINT_SHADOW_ATLAS_SLOTS){
-                continue;
-            }
-
-            if (!pointAtlasSlotWritten){
-                shadowPointAtlasPassRender.setClearColor(Vector4(1.0, 1.0, 1.0, 1.0));
-            }else{
-                shadowPointAtlasPassRender.setLoadActionLoad();
-            }
-
-            Rect slotRect = getShadowPointAtlasSlotRect(slotIndex);
-            shadowPointAtlasPassRender.setLabel("point shadow");
-            shadowPointAtlasPassRender.startRenderPass(&pointAtlas);
-            shadowPointAtlasPassRender.applyViewport(slotRect);
-            shadowPointAtlasPassRender.applyScissor(slotRect);
-            pointAtlasSlotWritten = true;
-
-            passResolution = Vector2(slotRect.getWidth(), slotRect.getHeight());
-            drawShadowCasters(light, l, c, PIP_DEPTH, -1);
-            shadowPointAtlasPassRender.endRenderPass();
-        }
-    }
 }
 
 // 2D light shadow pass (1D polar rows): world space, so every view shares it
@@ -13686,6 +12580,11 @@ void RenderSystem::drawCameras(bool includeMain){
         passShadows = nullptr;
     }
 
+    // what the view's atmosphere ran (get_atmosphere_info), its unused targets freed; a
+    // secondary view ends its own after its camera (drawView)
+    if (includeMain)
+        atmosphere.endFrame();
+
     drawCount++;
     rv().sceneInputDraws++;
     releaseUnusedCameraShadows();
@@ -13785,8 +12684,14 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else{
             const float baseWidth = pass.renderToTexture ? (float)camera.framebuffer->getWidth() : viewRect.getWidth();
             const float baseHeight = pass.renderToTexture ? (float)camera.framebuffer->getHeight() : viewRect.getHeight();
-            uberSceneWidth = (unsigned int)std::max(1L, std::lround(baseWidth * postTiers.renderScale));
-            uberSceneHeight = (unsigned int)std::max(1L, std::lround(baseHeight * postTiers.renderScale));
+            // the frame's own view takes dynamic resolution's scale (or a pinned one); other
+            // views (the editor's Scene view while playing) the settings'
+            const bool frameView = &rv() == &primaryView;
+            const float renderScale = frameView ? getAppliedRenderScale() : postTiers.renderScale;
+            uberSceneWidth = (unsigned int)std::max(1L, std::lround(baseWidth * renderScale));
+            uberSceneHeight = (unsigned int)std::max(1L, std::lround(baseHeight * renderScale));
+            if (frameView && !pass.renderToTexture)
+                dynamicResolutionConnected = true;
             // its source target is made below, unless the post-process chain's output is it
             useUber = true;
         }
@@ -13798,6 +12703,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             rv().bloomTargets.destroy();
         if (!(postTiers.uberFeatures & UBER_BLUR) && rv().blurTargets.isCreated())
             rv().blurTargets.destroy();
+        // halation's own chain only without bloom (with it, it reads bloom's levels)
+        if (!postTiers.halationChain && rv().halationTargets.isCreated())
+            rv().halationTargets.destroy();
         // so do the uber pass's scene target (not made with fixed resolution: the uber pass
         // reads that target), the multisampled target and the linear sampler a NEAREST fixed
         // resolution is read through. By the settings, not this pass: the editor's Scene view
@@ -13947,11 +12855,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         passMsaa = msaaPipelineSamples;
 
     // The colour target of the pass (null: the swapchain), its size and viewport, as the
-    // branches below pick them: the scene inputs are made to match it
+    // branches below pick them: the scene inputs and the atmosphere's targets are made to
+    // match it
     Rect sceneInputViewport;
     unsigned int sceneInputTargetWidth = 0;
     unsigned int sceneInputTargetHeight = 0;
-    if (sceneInputs){
+    {
         if (useSSR){
             sceneInputTargetWidth = rv().ssrWidth;
             sceneInputTargetHeight = rv().ssrHeight;
@@ -13981,7 +12890,30 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             sceneInputTargetWidth = target ? (unsigned int)target->getWidth() : (unsigned int)System::instance().getScreenWidth();
             sceneInputTargetHeight = target ? (unsigned int)target->getHeight() : (unsigned int)System::instance().getScreenHeight();
         }
-        sceneInputStats.passes++;
+        if (sceneInputs)
+            sceneInputStats.passes++;
+    }
+
+    // The atmosphere (docs/specs/S12-atmosphere.md): what this pass draws of it, and before
+    // its colour pass the reduced-resolution passes (volumetric fog, Screen clouds, the Sky
+    // Map's refresh). The volumetric passes read the packed depth of the pass: an effect's
+    // above, else a depth pre-pass of their own the scene inputs then share.
+    AtmosphereRenderer::PassPlan atmospherePlan = atmosphere.planPass(camera, isMainCamera, sortsByDistance(camera));
+    float atmosphereMarched = 0.0f;
+    if (atmospherePlan.any()){
+        bool forcedDepth = false;
+        if (atmospherePlan.needsDepth() && !sharedSceneDepth && atmosphereDepthPrograms){
+            const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
+            const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
+            if (SceneInputTarget* depthTarget = ensureSceneInputTarget(false, depthWidth, depthHeight)){
+                renderOpaqueDepth(camera, depthTarget->framebuffer, depthWidth, depthHeight, isMainCamera ? 0 : -1,
+                                  isMainCamera ? &rv().lodView : nullptr, perCameraMVP ? &cameraTransform : nullptr);
+                sharedSceneDepth = &depthTarget->framebuffer.getRender().getColorTexture();
+                forcedDepth = true;
+            }
+        }
+        atmosphereMarched = atmosphere.renderPassTargets(atmospherePlan, camera, cameraTransform, sharedSceneDepth, forcedDepth,
+                                                         (unsigned int)sceneInputViewport.getWidth(), (unsigned int)sceneInputViewport.getHeight());
     }
     // the scene colour is copied out of an offscreen colour target (the swapchain cannot be read)
     const bool copySceneColorPending = (sceneInputs & ShaderRequire_SceneColor) && offscreenTarget;
@@ -14128,6 +13060,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                                    passResolution.x > 0.0f ? 1.0f / passResolution.x : 0.0f,
                                    passResolution.y > 0.0f ? 1.0f / passResolution.y : 0.0f);
 
+    // the height fog of this colour pass (u_fs_heightFog of the fogged mesh variants: a distance
+    // fog's says so), with the distance its volumetric fog marched (the composite replaces that
+    // part of the analytic fog)
+    const bool passFlipped = isRenderingFlipped(camera);
+    atmosphere.fillHeightFog(passHeightFog, camera, cameraTransform, colorPassViewport, sceneInputTargetHeight, passFlipped, atmosphereMarched);
+
     // the post-processing colour of this colour pass: the scene's for the post-processed camera
     // (the main camera of the base layer, as the post-process chain; not mirrors, probes or other
     // render-to-texture cameras), neutral for the others (updatePassFrame)
@@ -14146,7 +13084,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         const bool fullCopy = scene->getSceneColorScale() == SceneColorScale::FULL;
         const unsigned int copyWidth = fullCopy ? (unsigned int)colorPassViewport.getWidth() : std::max(1u, (unsigned int)colorPassViewport.getWidth() / 2);
         const unsigned int copyHeight = fullCopy ? (unsigned int)colorPassViewport.getHeight() : std::max(1u, (unsigned int)colorPassViewport.getHeight() / 2);
-        fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, isRenderingFlipped(camera), copyWidth, copyHeight);
+        fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, passFlipped, copyWidth, copyHeight);
     }
     auto takeSceneColor = [&](){
         sceneColorPending = false;
@@ -14253,6 +13191,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
         passSubmeshQueue = SubmeshQueue::ALL;
+        // the atmosphere over the opaque scene: the sky composite (Sky Map clouds and the sky
+        // fill on the sky's pixels), then the Screen clouds and the volumetric fog; what is
+        // drawn after (transparents) takes the analytic fog alone
+        if (atmospherePlan.any())
+            atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
         // the opaque queue and the sky are drawn
         if (sceneColorPending){
             takeSceneColor();
@@ -14469,6 +13412,19 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // below), when the loaded variant composites them
         uberBloomTexture = (uberFeatures & UBER_BLOOM) ? renderBloomChain(sourceTexture, sourceWidth, sourceHeight, nearestSource) : nullptr;
         uberBlurTexture = (uberFeatures & UBER_BLUR) ? renderBlurChain(sourceTexture, sourceWidth, sourceHeight, nearestSource) : nullptr;
+        // halation: the bloom chain's 1/4 and 1/8 levels on the way down, or its own two passes
+        uberHalationTexture = nullptr;
+        uberHalationWideTexture = nullptr;
+        if (uberFeatures & UBER_HALATION){
+            if (uberFeatures & UBER_BLOOM){
+                if (uberBloomTexture){
+                    uberHalationTexture = &rv().bloomTargets.down[0].getRender().getColorTexture();
+                    uberHalationWideTexture = &rv().bloomTargets.down[1].getRender().getColorTexture();
+                }
+            }else{
+                renderHalationChain(sourceTexture, sourceWidth, sourceHeight, nearestSource);
+            }
+        }
         if (pass.renderToTexture){
             renderUber(sourceTexture, sourceWidth, sourceHeight, &camera.framebuffer->getRender(),
                        Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight()), nearestSource);
@@ -14480,6 +13436,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
         uberBloomTexture = nullptr;
         uberBlurTexture = nullptr;
+        uberHalationTexture = nullptr;
+        uberHalationWideTexture = nullptr;
     // Fixed game resolution: upscale the offscreen scene color to the view
     // rect of the real destination. Layer scenes draw after this (load
     // action), so overlaid UI scenes stay at native resolution.
@@ -14672,6 +13630,7 @@ RenderSystem::RenderView& RenderSystem::getSecondaryView(uint32_t viewId){
 }
 
 void RenderSystem::destroyRenderView(RenderView& view){
+    view.atmosphere.destroy();
     view.ssaoDepthFramebuffer.destroy();
     view.ssaoFramebuffer.destroy();
     view.ssaoBlurFramebuffer.destroy();
@@ -14703,6 +13662,7 @@ void RenderSystem::destroyRenderView(RenderView& view){
         frameBlurredScene = nullptr;
     view.bloomTargets.destroy();
     view.blurTargets.destroy();
+    view.halationTargets.destroy();
     view.msaaFramebuffer.destroy();
     view.msaaWidth = 0;
     view.msaaHeight = 0;
@@ -15308,6 +14268,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     view.disableFog = desc.disableFog;
     view.disableFaceCulling = desc.disableFaceCulling;
     view.postProcessing = desc.postProcessing;
+    view.disableClouds = desc.disableClouds;
+    view.atmosphereQuality = desc.atmosphereQuality;
 
     activeView = &view;
 
@@ -15349,6 +14311,12 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         viewShadows.vs_shadows = frameShadows.vs_shadows;
         viewShadows.fs_shadows = frameShadows.fs_shadows;
         viewShadows.fs_point_shadows = frameShadows.fs_point_shadows;
+        viewShadows.fs_shadow_data = frameShadows.fs_shadow_data;
+        viewShadows.fs_point_shadow_data = frameShadows.fs_point_shadow_data;
+        // the shadow debug views are the Scene view's (the frame's)
+        viewShadows.fs_shadow_data.header.w = 0.0f;
+        viewShadows.fitCameraPosition = frameShadows.fitCameraPosition;
+        viewShadows.fitCameraForward = frameShadows.fitCameraForward;
         viewShadows.fs_lighting.viewportInfo = lightingViewportInfo(camera);
         viewShadows.ownLightCameras = false;
         viewShadows.ownShadowInstances = false;
@@ -15386,6 +14354,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     pass.renderToTexture = false;
     pass.terrainView = view.sharesPrimaryCamera ? 0 : TERRAIN_PASS_VIEW;
     renderCameraPass(pass);
+    atmosphere.endFrame();
 
     passObjects = nullptr;
     passExcludedEntity = NULL_ENTITY;

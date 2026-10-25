@@ -13,7 +13,7 @@ namespace editor {
 
 namespace {
 
-    std::string toLower(std::string text) {
+    std::string componentAddToLower(std::string text) {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return (char)std::tolower(c); });
         return text;
     }
@@ -67,7 +67,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LineRendererComponent, "Draws line segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
             {ComponentType::SkyboxComponent, "Skybox cube map and scene environment"},
-            {ComponentType::FogComponent, "Distance fog"},
+            {ComponentType::FogComponent, "Distance or height fog, optionally volumetric"},
             {ComponentType::MirrorComponent, "Planar reflection surface"},
             {ComponentType::ReflectionProbeComponent, "Local environment reflection"},
             {ComponentType::Light2DComponent, "2D light with radius falloff"},
@@ -75,6 +75,8 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Effects", ICON_FA_FIRE, {
             {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
+            {ComponentType::LocalVolumetricFogComponent, "A box or sphere of extra volumetric fog"},
+            {ComponentType::VolumetricCloudsComponent, "Raymarched clouds lit by the sun and the sky"},
         }},
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},
@@ -215,7 +217,7 @@ void ComponentAddDialog::show() {
     if (strcmp(previousSearch, m_searchBuffer) != 0) {
         m_highlighted = 0;
     }
-    const std::string search = toLower(m_searchBuffer);
+    const std::string search = componentAddToLower(m_searchBuffer);
     const bool searching = !search.empty();
 
     // Rows of the current page
@@ -235,7 +237,7 @@ void ComponentAddDialog::show() {
     if (searching) {
         for (int c = 0; c < (int)m_categories.size(); c++) {
             for (const ComponentEntry& entry : m_categories[c].entries) {
-                std::string name = toLower(Catalog::getComponentDisplayName(entry.type));
+                std::string name = componentAddToLower(Catalog::getComponentDisplayName(entry.type));
                 if (name.find(search) == std::string::npos) continue;
                 if (!canAdd(entry.type)) continue;
                 rows.push_back({Row::Component, c, entry.type, entry.description, true});

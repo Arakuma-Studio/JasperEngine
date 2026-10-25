@@ -6,8 +6,8 @@
 #include "Engine.h"
 #include "Log.h"
 #include "io/Data.h"
+#include "io/AssetIOService.h"
 #include "thread/ResourceProgress.h"
-#include "thread/ThreadPoolManager.h"
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -17,7 +17,7 @@
 
 using namespace jasperengine;
 
-std::unordered_map<std::string, std::future<std::shared_ptr<SoLoud::Wav>>> SoundPool::pendingBuilds;
+std::unordered_map<std::string, jobs::Task<std::shared_ptr<SoLoud::Wav>>> SoundPool::pendingBuilds;
 std::unordered_set<std::string> SoundPool::failedBuilds;
 std::mutex SoundPool::cacheMutex;
 std::atomic<bool> SoundPool::shutdownRequested{false};
@@ -28,6 +28,35 @@ sounds_t& SoundPool::getMap(){
     static sounds_t* map = new sounds_t();
     return *map;
 };
+
+std::unordered_map<std::string, uint32_t>& SoundPool::getGenerations(){
+    static auto* generations = new std::unordered_map<std::string, uint32_t>();
+    return *generations;
+}
+
+std::shared_ptr<SoLoud::Wav> SoundPool::get(const std::string& id){
+    auto it = getMap().find(id);
+    return it == getMap().end() ? nullptr : it->second;
+}
+
+void SoundPool::replace(const std::string& id, std::shared_ptr<SoLoud::Wav> sound){
+    if (!sound){
+        return;
+    }
+    getMap()[id] = std::move(sound);
+    getGenerations()[id]++;
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    failedBuilds.erase(id);
+}
+
+uint32_t SoundPool::generation(const std::string& id){
+    auto it = getGenerations().find(id);
+    return it == getGenerations().end() ? 0 : it->second;
+}
+
+std::shared_ptr<SoLoud::Wav> SoundPool::decode(const std::string& id, const std::string& filename){
+    return loadSoundInternal(id, filename, false);
+}
 
 SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string& filename){
     auto& shared = getMap()[id];
@@ -58,30 +87,24 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
 
         auto it = pendingBuilds.find(id);
         if (it != pendingBuilds.end()) {
-            auto& future = it->second;
-            if (future.valid() && future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                try {
-                    shared = future.get();
-                    pendingBuilds.erase(it);
-
-                    result.state = ResourceLoadState::Finished;
-                    result.data = shared;
-                    return result;
-                } catch (const std::exception& e) {
-                    pendingBuilds.erase(it);
-                    failedBuilds.insert(id);
-
-                    result.state = ResourceLoadState::Failed;
-                    result.errorMessage = e.what();
-                    return result;
-                }
-            } else if (future.valid()) {
+            jobs::Task<std::shared_ptr<SoLoud::Wav>>& task = it->second;
+            if (!task.isReady()) {
                 result.state = ResourceLoadState::Loading;
                 return result;
-            } else {
+            }
+            try {
+                shared = task.get();
                 pendingBuilds.erase(it);
+
+                result.state = ResourceLoadState::Finished;
+                result.data = shared;
+                return result;
+            } catch (const std::exception& e) {
+                pendingBuilds.erase(it);
+                failedBuilds.insert(id);
+
                 result.state = ResourceLoadState::Failed;
-                result.errorMessage = "Invalid future";
+                result.errorMessage = e.what();
                 return result;
             }
         }
@@ -91,9 +114,19 @@ SoundLoadResult SoundPool::loadFromFile(const std::string& id, const std::string
 
         ResourceProgress::startBuild(buildId, ResourceType::Sound, soundName);
 
-        pendingBuilds[id] = ThreadPoolManager::getInstance().enqueue(
-            [id, filename]() {
-                return loadSoundInternal(id, filename, true);
+        // read on an asset reader thread, decoded on a Background job
+        AssetIOService::ReadRequest request;
+        request.path = filename;
+        request.priority = IOPriority::Normal;
+        request.name = "sound-decode";
+        request.onFailure = [buildId, filename](const std::string& error) {
+            ResourceProgress::failBuild(buildId);
+            if (!AssetIOService::isCancellation(error))
+                Log::error("Sound file not loaded: %s (%s)", filename.c_str(), error.c_str());
+        };
+        pendingBuilds[id] = AssetIOService::instance().submitRead(request,
+            [id, filename](std::vector<uint8_t>&& bytes) {
+                return decodeSound(id, filename, bytes.data(), (unsigned int)bytes.size(), true);
             }
         );
     } else {
@@ -145,6 +178,13 @@ std::shared_ptr<SoLoud::Wav> SoundPool::loadSoundInternal(const std::string& id,
         throw std::runtime_error("Sound file not found: " + filename);
     }
 
+    return decodeSound(id, filename, filedata.getMemPtr(), filedata.length(), trackProgress);
+}
+
+std::shared_ptr<SoLoud::Wav> SoundPool::decodeSound(const std::string& id, const std::string& filename,
+                                                   unsigned char* data, unsigned int size, bool trackProgress){
+    uint64_t buildId = std::hash<std::string>{}(id);
+
     if (trackProgress) {
         if (shutdownRequested.load()) {
             ResourceProgress::failBuild(buildId);
@@ -154,7 +194,7 @@ std::shared_ptr<SoLoud::Wav> SoundPool::loadSoundInternal(const std::string& id,
     }
 
     auto sound = std::make_shared<SoLoud::Wav>();
-    SoLoud::result res = sound->loadMem(filedata.getMemPtr(), filedata.length(), false, false);
+    SoLoud::result res = sound->loadMem(data, size, false, false);
 
     if (res == SoLoud::SOLOUD_ERRORS::FILE_LOAD_FAILED){
         if (trackProgress) {
@@ -191,16 +231,20 @@ std::shared_ptr<SoLoud::Wav> SoundPool::loadSoundInternal(const std::string& id,
     return sound;
 }
 
+void SoundPool::quiescePending(bool cancel){
+    for (auto& [id, task] : pendingBuilds) {
+        if (cancel && task.cancel()) {
+            ResourceProgress::failBuild(std::hash<std::string>{}(id));
+        }
+        task.wait();
+    }
+    pendingBuilds.clear();
+}
+
 void SoundPool::requestShutdown(){
     std::lock_guard<std::mutex> lock(cacheMutex);
     shutdownRequested = true;
-
-    for (auto& [id, future] : pendingBuilds) {
-        if (future.valid()) {
-            future.wait();
-        }
-    }
-    pendingBuilds.clear();
+    quiescePending(true);
 }
 
 void SoundPool::cancelShutdown(){
@@ -214,12 +258,12 @@ void SoundPool::remove(const std::string& id){
         std::lock_guard<std::mutex> lock(cacheMutex);
         auto pendingIt = pendingBuilds.find(id);
         if (pendingIt != pendingBuilds.end()) {
-            // ThreadPoolManager uses packaged_task; destroying its future does
-            // not cancel the queued task. Wait so it cannot outlive removal or
-            // update a later build that reuses the same resource id.
-            if (pendingIt->second.valid()) {
-                pendingIt->second.wait();
+            // a load not started never runs; a running one is waited for, so it cannot
+            // outlive removal or update a later build that reuses the same resource id
+            if (pendingIt->second.cancel()) {
+                ResourceProgress::failBuild(std::hash<std::string>{}(id));
             }
+            pendingIt->second.wait();
             pendingBuilds.erase(pendingIt);
             removedPending = true;
         }
@@ -241,12 +285,7 @@ void SoundPool::remove(const std::string& id){
 void SoundPool::clear(){
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
-        for (auto& [id, future] : pendingBuilds) {
-            if (future.valid()) {
-                future.wait();
-            }
-        }
-        pendingBuilds.clear();
+        quiescePending(false);
         failedBuilds.clear();
     }
     getMap().clear();
@@ -258,12 +297,7 @@ void SoundPool::clearUnused(){
     // being registered under the same id during the wait.
     {
         std::lock_guard<std::mutex> lock(cacheMutex);
-        for (auto& [id, future] : pendingBuilds) {
-            if (future.valid()) {
-                future.wait();
-            }
-        }
-        pendingBuilds.clear();
+        quiescePending(false);
         failedBuilds.clear();
     }
 

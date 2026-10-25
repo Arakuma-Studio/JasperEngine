@@ -37,7 +37,6 @@ editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOv
     ScopedDefaultEntityPool sys(*scene, EntityPool::System);
 
     this->mouseClicked = false;
-    this->lastCommand = nullptr;
     this->useGlobalTransform = true;
     this->isPlaying = false;
 
@@ -649,7 +648,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // view only (the Game view and the game keep the scene's culling); a previewed scene
     // camera covers the view as the Engine's native canvas would size it
     layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
-                      displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing});
+                      displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
@@ -771,6 +770,10 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
+    scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
+    // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)
+    if (!isPlaying)
+        scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(-1);
 
     // Fixed game resolution only applies while playing: edit-mode viewports stay
     // at native resolution (gizmos and overlays would otherwise mismatch).
@@ -1253,10 +1256,22 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         }
     }
 
-    if (lastCommand){
-        lastCommand->setNoMerge();
-        lastCommand = nullptr;
+    dragEdit.commit();
+    dragEditStarted = false;
+}
+
+bool editor::SceneRender::pushDragCommand(size_t sceneId, Command* command){
+    if (dragEditStarted && !dragEdit.isOpen()){
+        // Esc cancelled the drag (or a popup ended it): nothing more until the mouse is released
+        delete command;
+        return false;
     }
+    CommandHistory* history = CommandHandle::get(sceneId);
+    if (!dragEditStarted){
+        dragEdit = history->beginInteractive(std::string());
+        dragEditStarted = true;
+    }
+    return history->addCommand(command);
 }
 
 Vector3 editor::SceneRender::getMatrixScale(const Matrix4& matrix){
@@ -1374,9 +1389,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                 Vector3 newLocalPos = getTrackPointsWorldMatrix(trackEntity).inverse() * newPos;
                 Command* dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
-                if (CommandHandle::get(sceneId)->addCommand(dragCommand)){
-                    lastCommand = dragCommand;
-                }
+                pushDragCommand(sceneId, dragCommand);
 
             }else if (tools.getGizmoSelected() == GizmoSelected::OBJECT2D
                 && tools.getGizmo2DSideSelected() == Gizmo2DSideSelected::CENTER){
@@ -1400,9 +1413,7 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
 
                 Command* dragCommand = new PropertyCmd<Vector3>(project, commandSceneId, trackEntity,
                     ComponentType::TranslateTracksComponent, pointProp, newLocalPos);
-                if (CommandHandle::get(sceneId)->addCommand(dragCommand)){
-                    lastCommand = dragCommand;
-                }
+                pushDragCommand(sceneId, dragCommand);
             }
         }
     }
@@ -2003,8 +2014,8 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     } // end else (entity-level OBJECT2D)
                 }
 
-                if (dragCommand && CommandHandle::get(sceneId)->addCommand(dragCommand)){
-                    lastCommand = dragCommand;
+                if (dragCommand){
+                    pushDragCommand(sceneId, dragCommand);
                 }
             }
         }

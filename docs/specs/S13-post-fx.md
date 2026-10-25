@@ -428,3 +428,86 @@ per-file header, so we add the OE copyright line to each copied file.
    piecewise sRGB / Rec.709. Default: convert at the lookup (R6). A per-asset override is not offered.
 8. **8-bit bake precision.** A 65³ LUT is reduced to our 32³ RGBA8 bake. Accepted, because the uber
    dither removes visible banding. `lutSize` 32 is recommended when a `.cube` is set (inspector hint).
+
+## Deviations (implementation)
+
+1. **No asset inspector for project files exists** in the editor (the Inspector shows GameObjects
+   and scene settings only), so R18's ".cube inspector" is the Project window's tooltip of a
+   `.cube` (title, table sizes, input ranges, the proposed encoding and its stage, or the parse
+   error), plus `inspect_color_lut` for agents. The Project window lists `.cube` files with a
+   Color LUT icon; a double-click, or its context menu's "Use as Color Grading LUT", assigns the
+   file to the selected scene's Color Grading (and turns Color Grading on) as one undo step named
+   "Assign Color LUT <file> (<scene>)". The UI test drives the menu: the harness's software-rendered
+   editor draws a frame in about 250 ms, too slow for ImGui's 0.3 s double-click.
+2. **`.cube` is an S04 asset type of its own** (`AssetType::ColorLut` = 14, "color_lut", appended;
+   sidecar meta, assets-relative). `postProcessing.lutTexture` expects a texture or, for a `.cube`
+   path, a colour LUT.
+3. **Export cooks every `.cube` of the assets tree**, not only the referenced ones: the exporter
+   ships every asset anyway (scripts and C++ may name a LUT by a computed path), so the referenced
+   set adds nothing but risk. A cooked `.cube` ships as `<name>.jlut` only; one that does not parse
+   ships as it is (the game logs the same error the editor does). Written with `io::writeFileAtomic`.
+4. **Target FPS 0 is 60 everywhere**: sokol_app reports no display refresh rate on any platform.
+5. **GPU law input**: S15 has not landed, so no backend reports GPU time yet; the controller takes
+   `DynamicResolutionSample::gpuMs` when given (today only `set_post_processing_debug.fake_gpu_ms`)
+   and the frame law otherwise. Wiring S15's timer queries is filling that one field.
+6. **Edit mode is the engine's paused game events** (`Engine::areGameEventsPaused()`: the editor's
+   edit mode and Pause; an exported game never pauses them), not a flag the editor's views set, so
+   a Play copy of a scene runs the controller whichever view shows it. `force_render_scale` /
+   `setDynamicResolutionOverride` apply only while the game runs, and Stop or Pause releases the
+   pinned scale and the fake GPU time (a script's pin must not leak into the editor or the next Play).
+7. **Named undo steps (S24)**: presets, group toggles and the LUT assignment are one
+   `CommandGroup` labelled "Apply Film Preset (Main)", "Turn On Stylised (Main)", "Assign Color LUT
+   ..."; single fields keep `ScenePropertyCmd`'s "Set Vhs Enabled (Main)".
+8. **AC11** is covered by the gtest `UberBudget.CompilesForEveryBackend` (every new bit alone and
+   all bits on, for the six backend targets, with the resource budget check), which S02's CI runs.
+9. **AC23 (device budget)** was not measured: no Mali-G57 / Adreno 610 class phone is available to
+   this stream and the emulator's GPU is the host's. The shader costs are bounded statically
+   (AC12) instead; the measurement remains for a device run with S15 timings.
+10. **Exports ship `licenses/post-fx-LICENSE.txt`** (from `engine/shaderlib/includes/LICENSE.post-fx.txt`:
+    punikonta's, the film-simulation package's with AMD's, and OpenEngine's notices) when a shipped
+    uber variant has VHS, film damage or the Lens / Filmic grain, as the shaders.com notice ships with
+    UI effects.
+11. **`.jlut` stores 16-bit steps across each table's own value range** (two float32 range ends per
+    table in the header) instead of float16: a log-encoded LUT keeps its highlights near 0.5..1,
+    where float16 has 10 bits, and its gamut decode cancels large channels against each other, so
+    float16 missed AC21's ±2/255 on the ACEScct look. Same size (2 bytes per value; 65³ cooks to
+    about 210 KB).
+12. **A scene-stage LUT scales colours brighter than its input range into it and back** (ACEScct
+    ends near linear 222, LogC3 near 55) instead of clamping each channel, which turned a very bright
+    saturated colour white; an identity log LUT is then neutral at every texel below the bake's top
+    (AC5: the top texels stand for unbounded light, where float precision cannot keep a channel a
+    million times smaller than another).
+13. **Doc thumbnails** of the new effects are in `docs/mcp/guide/img/post-fx/` (from the goldens):
+    `img/effects/` is generated from the HTML UI effects' manifests.
+14. **AC18**: the fixtures are partly hand-written, so a first save writes the editor's full form
+    (before and after S13); the test checks that the saved `postProcessing` equals the file's and
+    that a second open and save gives the same bytes.
+
+## Record (implementation)
+
+Run on build server B unless noted; the benchmarks on the benchmark server E.
+
+- AC1-AC10: `jasperengine-core-tests` `CubeLut.*`, `PostColorLut.*`, `DynamicResolutionController.*`
+  (OE's tests ported plus the frame law's), `PostProcessingTiers.*`: pass (on the merge with oe-port
+  8d78ae763: 829 of 830 core tests, the one failure on the loaded server B being
+  `CubeLutBench.Bake32`'s 10 ms budget, a timing gate that passes on E, see AC22).
+- AC11: `jasperengine-editor-tests` `UberVariants.CompileForEveryBackend` (GLSL 410, GLSL 300 es,
+  HLSL 5, MSL macOS / iOS, SPIR-V): pass (330 editor tests on the merge).
+- AC12: `UberBudget.SampleCounts`: VHS 9 texture reads (base 1), halation 3 (2 more), film damage
+  and the grain types 1 (none more); every bit on: 6 textures, 6 samplers, 320 parameter bytes.
+- AC13-AC15: `test_post_fx_golden.py` (11 goldens incl. `defaults.png`, captured on oe-port
+  8d78ae763 without S13, matched at tolerance 0; pass counts: halation with bloom +0, alone +2, VHS / damage / grain types +0).
+  Vulkan and GLES3: the exported fixture's halation, display and log `.cube` frames match GL's
+  (`tools/smoke-test.sh`, SMOKE_BACKEND=vulkan / gles3, pngdiff tolerance 24, 1 %).
+- AC16, AC18: `test_post_fx_settings.py`; AC17: `test_dynamic_resolution.py` (40 ms: min scale
+  after 0.70 s; 5 ms: max after about 5 s; a pinned 0.5 halves the uber source; edit mode idle).
+- AC19: `test_post_fx_inspector_ui.py` (Project window menu, one named step, screenshots).
+- AC20, AC21: `tools/smoke-test.sh tools/fixtures/post-processing` with `SMOKE_GAME_RUNS` of the S13
+  cases: the script case logs its values, the export ships `luts/*.jlut` (13 KB for 13^3) and
+  `licenses/post-fx-LICENSE.txt` and no `.cube`; `CubeLut.JlutRoundTrip`: 65^3 cooks to about 210 KB
+  and bakes within 2/255 of the `.cube`.
+- AC22 (server E): parse 65^3 11.9 ms, 32^3 bake 8.4 ms (display) / 7.6 ms (scene), `.jlut` load
+  0.08 ms, controller tick 0.00001 ms.
+- Android: `tools/test-projects/post-fx` on the emulator (server C): the uber pass with VHS, Lens
+  grain, damage and halation's chain, dynamic resolution running on the frame law (it settled at
+  0.6 on SwiftShader). Web: `GATE=post-fx tools/build.sh web-gate` and the sample project's gate pass.

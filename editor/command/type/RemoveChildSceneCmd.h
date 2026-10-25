@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 
 namespace jasperengine::editor {
@@ -22,6 +23,9 @@ namespace jasperengine::editor {
 
         bool execute() override;
         void undo() override;
+
+        std::string describe() const override { return "Remove Child Scene " + CommandNames::scene(project, childSceneId); }
+        const char* typeName() const override { return "RemoveChildSceneCmd"; }
 
     };
 }

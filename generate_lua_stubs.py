@@ -1758,7 +1758,9 @@ _INT_TYPES = {'int', 'unsigned', 'unsigned int', 'signed', 'signed int', 'short'
               'std::int32_t', 'std::uint64_t', 'std::int64_t', 'std::uint8_t', 'std::uint16_t'}
 _NUM_TYPES = {'float', 'double', 'long double', 'lua_Number'}
 _STR_TYPES = {'std::string', 'string', 'std::string_view', 'std::basic_string<char>', 'basic_string<char>', 'std::wstring', 'wstring', 'char', 'wchar_t',
-              'char16_t', 'char32_t'}
+              'char16_t', 'char32_t',
+              # asset path fields: plain path strings in Lua (luabridge::Stack<AssetRef>, LuaBridgeAddon.h)
+              'AssetRef', 'ShaderRef', 'jasperengine::AssetRef', 'jasperengine::ShaderRef'}
 _SEQ = re.compile(r'^(?:std::)?(?:vector|list|deque|set|unordered_set|multiset)<(.+)>$')
 _ARR = re.compile(r'^(?:std::)?array<(.+),\s*[^,]+>$')
 _MAP = re.compile(r'^(?:std::)?(?:map|unordered_map|multimap)<(.+)>$')
@@ -1936,6 +1938,21 @@ OVERRIDES = {
 OVERRIDES[('Mesh', 'getMaterial')] = {
     'doc': ['A copy of the submesh\'s material (submesh 0 by default): edit it, then `setMaterial` it back.'],
     'overloads': [([], 'Material'), ([('submesh', 'integer')], 'Material')],
+}
+
+# S13: dynamic resolution as the renderer applies it (a table built in the binding)
+OVERRIDES[('Scene', 'getDynamicResolution')] = {
+    'doc': ['Dynamic resolution as the renderer applies it: `scale` (the render scale drawn at), `source`',
+            '("gpu", "frame" or "none": the law of the last measurement), `smoothedMs` / `targetMs`, and',
+            '`enabled`, `running`, `idle` (why not), `overridden`, `minScale`, `maxScale`, `saturatedLow`, `ineffective`,',
+            '`acceptedChanges`, `probeSeconds`.'],
+    'overloads': [([], '{enabled: boolean, running: boolean, idle: string, overridden: boolean, scale: number, minScale: number, '
+                       'maxScale: number, source: string, smoothedMs: number, targetMs: number, saturatedLow: boolean, '
+                       'ineffective: boolean, acceptedChanges: integer, probeSeconds: number}')],
+}
+OVERRIDES[('Scene', 'setDynamicResolutionOverride')] = {
+    'doc': ['Pins the main camera\'s render scale (0.5..1) over dynamic resolution while the game runs; nil releases it.'],
+    'overloads': [([('scale', 'number|nil')], '')],
 }
 
 # Properties whose getter returns a LuaRef: (Lua type, a copy)

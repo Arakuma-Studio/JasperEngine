@@ -4,6 +4,8 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
+#include "command/PlayChangeReview.h"
 #include "Project.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
@@ -60,6 +62,15 @@ namespace jasperengine::editor{
         // rotation and scale (keepZ: its z too, a 2D drop), on every execute
         void setDropPosition(const Vector3& position, bool keepZ = false);
         Entity getRootEntity() const;
+
+        // "Instantiate Prefab Door.prefab"
+        std::string describe() const override { return "Instantiate Prefab " + CommandNames::file(filepath); }
+        const char* typeName() const override { return "ImportPrefabCmd"; }
+        void collectKeepCommands(KeepContext& context) const override { context.addCreated(rootEntity); }
+        size_t memoryBytes() const override {
+            return sizeof(*this) + (importedEntities.capacity() + lastSelected.capacity()) * sizeof(Entity);
+        }
+        uint32_t getSceneId() const { return sceneId; }
     };
 
 }

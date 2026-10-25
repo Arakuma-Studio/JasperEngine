@@ -16,6 +16,7 @@
 #include "htmlui/compat/UrlResolver.h"
 
 #include "yaml-cpp/yaml.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <fstream>
@@ -113,7 +114,7 @@ bool ImportTarget::forProject(const fs::path& projectRoot, const std::string& de
         } catch (const std::exception&) {
         }
     }
-    const fs::path dir = fs::u8path(assetsDir);
+    const fs::path dir = editor::FileUtils::pathFromUtf8(assetsDir);
     if (dir.empty() || dir == ".")
         target.assetsDir = target.projectRoot;
     else if (dir.is_absolute())
@@ -125,7 +126,7 @@ bool ImportTarget::forProject(const fs::path& projectRoot, const std::string& de
 
     if (destDir.empty())
         return true;
-    fs::path dest = fs::u8path(destDir);
+    fs::path dest = editor::FileUtils::pathFromUtf8(destDir);
     if (dest.is_relative())
         dest = target.projectRoot / dest;
     dest = dest.lexically_normal();
@@ -140,19 +141,19 @@ bool ImportTarget::forProject(const fs::path& projectRoot, const std::string& de
 }
 
 std::string ImportTarget::toProjectRelative(const std::string& assetPath) const{
-    const fs::path absolute = assetPath.empty() ? assetsDir : assetsDir / fs::u8path(assetPath);
+    const fs::path absolute = assetPath.empty() ? assetsDir : assetsDir / editor::FileUtils::pathFromUtf8(assetPath);
     const fs::path relative = absolute.lexically_relative(projectRoot);
     if (relative.empty())
-        return absolute.generic_u8string();
+        return editor::FileUtils::genericPathToUtf8(absolute);
     if (relative == ".")
         return ".";
     if (*relative.begin() == "..")
-        return absolute.generic_u8string();
-    return relative.generic_u8string();
+        return editor::FileUtils::genericPathToUtf8(absolute);
+    return editor::FileUtils::genericPathToUtf8(relative);
 }
 
 fs::path ImportTarget::toAbsolute(const std::string& assetPath) const{
-    return (assetsDir / fs::u8path(assetPath)).lexically_normal();
+    return (assetsDir / editor::FileUtils::pathFromUtf8(assetPath)).lexically_normal();
 }
 
 std::string ImportTarget::toAssetPath(const fs::path& path) const{
@@ -161,7 +162,7 @@ std::string ImportTarget::toAssetPath(const fs::path& path) const{
     const fs::path relative = absolute.lexically_relative(assetsDir);
     if (relative.empty() || relative == "." || *relative.begin() == "..")
         return "";
-    std::string text = relative.generic_u8string();
+    std::string text = editor::FileUtils::genericPathToUtf8(relative);
     while (!text.empty() && text.back() == '/')
         text.pop_back();
     return text;
@@ -171,11 +172,11 @@ compat::FileAccess ImportTarget::fileAccess() const{
     compat::FileAccess access;
     const fs::path root = assetsDir;
     access.read = [root](const std::string& assetPath, std::string& content){
-        return readFile(root / fs::u8path(assetPath), content);
+        return readFile(root / editor::FileUtils::pathFromUtf8(assetPath), content);
     };
     access.exists = [root](const std::string& assetPath){
         std::error_code ec;
-        return fs::is_regular_file(root / fs::u8path(assetPath), ec);
+        return fs::is_regular_file(root / editor::FileUtils::pathFromUtf8(assetPath), ec);
     };
     return access;
 }
@@ -308,11 +309,11 @@ std::string jasperengine::editor::htmlui::safeFileName(const std::string& segmen
 
 std::string jasperengine::editor::htmlui::relativeAssetPath(const std::string& fromFile, const std::string& target){
     const size_t slash = fromFile.find_last_of('/');
-    const fs::path fromDir = slash == std::string::npos ? fs::path(".") : fs::u8path(fromFile.substr(0, slash));
-    const fs::path relative = fs::u8path(target).lexically_relative(fromDir);
+    const fs::path fromDir = slash == std::string::npos ? fs::path(".") : editor::FileUtils::pathFromUtf8(fromFile.substr(0, slash));
+    const fs::path relative = editor::FileUtils::pathFromUtf8(target).lexically_relative(fromDir);
     if (relative.empty())
         return target;
-    return relative.generic_u8string();
+    return editor::FileUtils::genericPathToUtf8(relative);
 }
 
 std::string jasperengine::editor::htmlui::urlHash(const std::string& url, size_t digits){

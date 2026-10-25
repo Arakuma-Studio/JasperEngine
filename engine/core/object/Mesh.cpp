@@ -315,6 +315,14 @@ bool Mesh::isCastShadows() const{
     return mesh.castShadows;
 }
 
+void Mesh::setStaticShadowCaster(bool staticShadowCaster){
+    getComponent<MeshComponent>().staticShadowCaster = staticShadowCaster;
+}
+
+bool Mesh::isStaticShadowCaster() const{
+    return getComponent<MeshComponent>().staticShadowCaster;
+}
+
 void Mesh::setLodEnabled(bool lodEnabled){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
@@ -775,7 +783,6 @@ InstanceData& Mesh::getInstance(size_t index){
 void Mesh::updateInstance(size_t index, InstanceData instance){
     createInstancedMesh();
 
-    MeshComponent& mesh = getComponent<MeshComponent>();
     InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
     instmesh.instances.at(index) = instance;

@@ -299,6 +299,15 @@ namespace jasperengine::editor::mcp {
         void undo() override;
         bool affectsStructure() const override { return true; }
 
+        // Its first step's name, "(+N more)" for the others
+        std::string describe() const override;
+        const char* typeName() const override { return "McpStepsCmd"; }
+        void collectKeepCommands(KeepContext& context) const override;
+        bool isNoOp() const override;
+        size_t memoryBytes() const override;
+        // The commands it ran
+        const std::vector<std::unique_ptr<Command>>& getDone() const { return done; }
+
     private:
         std::vector<Step> steps;
         std::vector<std::unique_ptr<Command>> done;

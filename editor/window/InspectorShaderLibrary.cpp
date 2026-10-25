@@ -41,6 +41,10 @@ namespace {
             case BlendMode::PREMULTIPLIED: return "Premultiplied";
             case BlendMode::ADDITIVE: return "Additive";
             case BlendMode::MULTIPLY: return "Multiply";
+            case BlendMode::ADDITIVE_PREMULTIPLIED: return "Additive (premultiplied)";
+            case BlendMode::SCREEN_PREMULTIPLIED: return "Screen (premultiplied)";
+            case BlendMode::MULTIPLY_PREMULTIPLIED: return "Multiply (premultiplied)";
+            case BlendMode::SUBTRACT_PREMULTIPLIED: return "Subtract (premultiplied)";
         }
         return "Alpha";
     }

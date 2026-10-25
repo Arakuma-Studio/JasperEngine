@@ -991,7 +991,7 @@ int editor::Backend::init(int argc, char* argv[]) {
                 const bool idleFrame =
                     frameStart - lastActivityTime > IDLE_ENTER_DELAY;
                 NSDate* deadline = idleFrame
-                    ? [NSDate dateWithTimeIntervalSinceNow:IDLE_WAIT_TIMEOUT]
+                    ? [NSDate dateWithTimeIntervalSinceNow:app.idleWaitSeconds(IDLE_WAIT_TIMEOUT)]
                     : NSDate.distantPast;
                 processEvents(deadline);
                 if (backend->shouldClose) break;

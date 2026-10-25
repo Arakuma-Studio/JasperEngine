@@ -7,13 +7,41 @@ JasperEngine is a fork of [Doriax](https://github.com/doriaxengine/doriax) by Ed
 - The Doriax name was replaced with JasperEngine by `tools/rebrand.py`. Per-file copyright headers (`(c) Eduardo Doria and contributors`) are kept as they were.
 - Doriax's copyright notice is retained in [LICENSE](LICENSE), as the MIT License requires.
 
-Bundled third-party libraries under `libs/`, `engine/libs/`, and `engine/libs/shadercompiler/libs/` keep their own licenses.
+Bundled third-party libraries under `libs/`, `engine/libs/`, and `engine/libs/shadercompiler/libs/` keep their own licenses. Every one of them has a row below and a licence file in its directory; `tools/ci/check-notices.py` checks both in CI. The editor install carries this file, `LICENSE` and a `licenses/` folder with each shipped library's licence file (`<library>-LICENSE`); exported games get theirs from the export pipeline (S30).
+
+Libraries of the engine, the editor and the tools:
+
+| Library | Version | Location | License | Used for |
+|---|---|---|---|---|
+| [sokol](https://github.com/floooh/sokol) | upstream `master`, with local changes (git history) | `engine/libs/sokol/` (`LICENSE`) | zlib | graphics (sokol_gfx: GL, GLES3/WebGL2, Metal, D3D11, Vulkan), time, logging |
+| [Lua](https://www.lua.org) | 5.4.7 | `engine/libs/lua/` (`LICENSE`, from `lua.h`) | MIT | the scripting runtime |
+| [LuaBridge3](https://github.com/kunitoki/LuaBridge3) | 3.0.1 | `engine/libs/luabridge3/` (`LICENSE.txt`) | MIT | the C++ bindings of the Lua API |
+| [JSON for Modern C++](https://github.com/nlohmann/json) | 3.11.3 | `engine/libs/json/` (`LICENSE`, from `json.hpp`) | MIT | JSON reading and writing |
+| [stb](https://github.com/nothings/stb) | stb_image 2.30, stb_truetype 1.26, stb_image_write, stb_image_resize2, stb_rect_pack, stb_vorbis | `engine/libs/stb/` (`LICENSE`, from the headers) | MIT or public domain | image decoding and encoding, font rasterisation, Ogg Vorbis |
+| [SoLoud](https://github.com/jarikomppa/soloud) | 202002 (`SOLOUD_VERSION`) | `engine/libs/soloud/` (`LICENSE`) | zlib/libpng (its bundled parts as listed in `LICENSE`) | audio |
+| [tinyobjloader](https://github.com/tinyobjloader/tinyobjloader) | 2.0 | `engine/libs/tinyobjloader/` (`LICENSE`, from `tiny_obj_loader.h`) | MIT | OBJ model loading |
+| [tinygltf](https://github.com/syoyo/tinygltf) | 2.x | `engine/libs/tinygltf/` (`LICENSE`, from `tiny_gltf.h`: MIT, plus the bundled base64 (zlib-style) and dlib URI decoding (Boost) code) | MIT | glTF model loading |
+| [TinyXML-2](https://github.com/leethomason/tinyxml2) | 10.0.0 | `engine/libs/tinyxml2/` (`LICENSE.txt`) | zlib | XML (tilemaps, sprite sheets) |
+| [Box2D](https://github.com/erincatto/box2d) | 3.1.0 | `engine/libs/box2d/` (`LICENSE`) | MIT | 2D physics |
+| [Jolt Physics](https://github.com/jrouwe/JoltPhysics) | 5.2.0 | `engine/libs/joltphysics/` (`LICENSE`) | MIT | 3D physics |
+| [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.3.0 | `engine/libs/harfbuzz/` (`COPYING`) | Old MIT | text shaping |
+| [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
+| [meshoptimizer](https://github.com/zeux/meshoptimizer) | 1.2 | `engine/libs/meshoptimizer/` (`LICENSE.md`) | MIT | mesh LODs and optimisation |
+| [RmlUi](https://github.com/mikke89/RmlUi) | 6.3 (`ba95ffe8bfb6`), JasperEngine's fork | `engine/libs/rmlui/` (`LICENSE.txt`; Taffy's below, `LICENSE-taffy.txt`) | MIT | the HTML/CSS UI |
+| [glslang](https://github.com/KhronosGroup/glslang) | 15.1.0 | `engine/libs/shadercompiler/libs/glslang/` (`LICENSE.txt`) | BSD-3-Clause and the others `LICENSE.txt` lists | GLSL to SPIR-V in the shader compiler |
+| [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | vendored (git history) | `engine/libs/shadercompiler/libs/spirv-cross/` (`LICENSE`, `LICENSES/`) | Apache-2.0 | SPIR-V to GLSL, HLSL and MSL in the shader compiler |
+| [Dear ImGui](https://github.com/ocornut/imgui) | 1.92.8 | `libs/imgui/` (`LICENSE.txt`) | MIT | the editor's user interface |
+| [Native File Dialog Extended](https://github.com/btzy/nativefiledialog-extended) | 1.3.0 | `libs/nfd/` (`LICENSE`) | zlib | the editor's file dialogs |
+| [yaml-cpp](https://github.com/jbeder/yaml-cpp) | 0.8.0 | `libs/yaml-cpp/` (`LICENSE`) | MIT | the editor's scene, project and settings files |
+| [googletest](https://github.com/google/googletest) | 1.17.0 (googletest and googlemock) | `libs/googletest/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | the unit tests only: tests only, never shipped |
+
+`engine/libs/shadercompiler/` itself (`src/`, the CMake build) is JasperEngine's own code (MIT, like the engine). Portions of the build and test tooling are adapted from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), with that notice kept in each file: `engine/cmake/JasperSanitizers.cmake` (sanitizer flags, MSVC AddressSanitizer runtime staging), `tools/web/serve.py` and `tools/web/browser_gate.py` (the headless-Chrome web gate).
 
 Vector graphics of the HTML/CSS UI (all MIT):
 
 | Library | Version | Location | Used for |
 |---|---|---|---|
-| [ThorVG](https://github.com/thorvg/thorvg) | 1.2.0 (`caa5af1167d7`) | `engine/libs/thorvg/` (`LICENSE`) | Lottie (`<lottie>`), CPU renderer |
+| [ThorVG](https://github.com/thorvg/thorvg) | 1.2.0 (`caa5af1167d7`), local change: no global `operator new`/`delete` under ASan | `engine/libs/thorvg/` (`LICENSE`) | Lottie (`<lottie>`), CPU renderer |
 | [LunaSVG](https://github.com/sammycage/lunasvg) | 3.5.0 (`cf3594d5232e`) | `engine/libs/lunasvg/` (`LICENSE`) | SVG (RmlUi's SVG plugin, `.svg` textures) |
 | [plutovg](https://github.com/sammycage/plutovg) | 1.3.3 (bundled with LunaSVG) | `engine/libs/lunasvg/plutovg/` (`LICENSE`; its rasteriser derives from FreeType's, `source/FTL.TXT`) | LunaSVG's rasteriser |
 
@@ -50,3 +78,107 @@ Icons of the HTML/CSS UI:
 | [Lucide](https://github.com/lucide-icons/lucide) icons | 1.53.0 | `docs/mcp/guide/html-ui-examples/{inventory,shop}/assets/items/*.svg` (`docs/mcp/guide/html-ui-examples/LICENSE-lucide.txt`) | ISC (as above) | the item pictures of the HTML UI example library (recoloured copies) |
 
 UI effects of the HTML/CSS UI: the effects of `engine/shaderlib/effects/` marked `@source shaders.com <Name>` and the include library `engine/shaderlib/effects/lib/` are GLSL ports of [shaders.com](https://shaders.com/) effects and kit functions (MIT, Copyright (c) 2026 Shader Effects Inc.). The notice and the list of ported effects are in `engine/shaderlib/effects/LICENSE.shaders-com.txt` (generated by `tools/htmlui/gen_effects_docs.py`); exports that ship such an effect copy it to `licenses/shaders.com-LICENSE.txt`.
+
+Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), used by the OpenEngine port (`docs/specs/`). Each adapted file names its source in its header.
+
+| Code | Location | Used for |
+|---|---|---|
+| `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed) | `editor/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03) |
+| `Engine/Modules/FileWatcher` (FileWatcher, FileIdentity), `Engine/Include/Assets/ExpectedWriteLedger.h` (+ its tests), `Engine/Modules/AssetCore/.../SharedFileRead.*` (adapted, headers kept) | `engine/core/io/watch/`, `engine/tests/core/io/watch/ExpectedWriteLedgerTest.cpp` | the file watcher's rename pairing and delete hold, file identities, the self-write ledger, share-delete reads on Windows (S05) |
+| `Engine/Modules/AssetCore/Source/GUID.cpp`: `GUID::Derive`, `FnvHash`, `SplitMix64` (adapted) | `engine/core/asset/Guid.cpp` (`Guid::derive`) | deterministic sub-asset GUIDs (asset identity, S04) |
+| `Modules/Memory` (`Arena`, `ScratchScope`, `ObjectPool`, `RangeAllocator`, `SerialUseCheck`, `AddressSanitizer`), adapted | `engine/core/memory/` | the allocators, adapted to our naming and stats registry (S06) |
+| `Modules/JobSystem` (`ParallelForCore`, `ParallelAlgorithms`, `JobCounter`, `JobChannel`, the `WorkStealingThreadPool` lane contracts), adapted | `engine/core/jobs/` | parallelFor, counters, blocking channels; the scheduler itself is our own (S06) |
+| `AssetDecodeGate`, `AssetIOService`, adapted | `engine/core/jobs/BackgroundGate.*`, `engine/core/io/AssetIOService.*` | frame protection and the asset readers (S06) |
+| Tests (`ParallelAlgorithmsTests`, `AssetDecodeGateTests`, `AssetIOServiceTests`, Memory tests, `MemoryBench`), ported | `engine/tests/core/` | test cases and benchmark loops (tests only, never shipped) |
+| `Engine/Modules/Rendering/Source/Common/CubeLutFileParser.cpp`, `CubeLutColorDomain.cpp` and the curves and gamut matrices of `Shaders/Includes/cube_lut.glsl` (ported to C++) | `engine/core/util/CubeLut.*` | `.cube` LUT parsing, the input encoding proposal and the scene-stage colour maths (S13) |
+| `Engine/Source/Engine/Rendering/DynamicResolutionController.cpp` and its header (adapted) | `engine/core/render/DynamicResolutionController.*` | the GPU law of dynamic resolution (S13) |
+| `Engine/Modules/Rendering/Shaders/vhs.frag`, `vhs_interference.frag`, `vhs_signal_glitches.frag` (adapted, with the punikonta notice below) | `engine/shaderlib/includes/post_vhs.glsl` | the uber pass's VHS tape (S13) |
+| `CubeLutFileParserTests.cpp` and `Tests/Fixtures/CubeLut/*.cube`, `DynamicResolutionControllerTests.cpp` (ported) | `engine/tests/core/util/CubeLutTest.cpp`, `engine/tests/core/fixtures/cubelut/`, `engine/tests/core/render/DynamicResolutionControllerTest.cpp` | test cases and fixtures (tests only, never shipped) |
+| `Source/Engine/Rendering/ShadowMapRenderFeature.cpp` (`SliceBoundingSphereRadius`, `CascadeLightUp`, `GetCascadeFitTuning`), adapted | `engine/core/render/shadow/CascadeFit.*` | the cascades' bounding-sphere fit, the near-vertical light basis and the fit freeze bands (S10) |
+| `PointShadowAtlasPlanner` (importance ranking, sticky slots, challenge margin and cooldown), adapted | `engine/core/render/shadow/ShadowSlotPlanner.cpp` | shadow slots by importance (S10) |
+| Shader includes `shadow_receiver_plane.glsl`, `shadow_filter.glsl` (`GE_VogelDisk`), `shadow_sampling.glsl` (`GE_PoissonRotation`), `shadow_cascade_blend.glsl`, `shadow_distance_fade.glsl`, `shadow_pcss_decisions.glsl`, adapted with every depth comparison inverted | `engine/shaderlib/includes/shadow_sampling.glsl`, `engine/shaderlib/includes/shadow_pcss_decisions.glsl` | the receiver-plane bias, the Vogel filter, the cascade blend and fade, PCSS (S10) |
+| `ShadowPcssDecisionTests`, ported | `engine/tests/core/render/PcssDecisionTest.cpp` | the PCSS decision tests (tests only, never shipped) |
+| `Engine/Modules/Rendering/Shaders/Includes/height_fog_term.glsl` (closed-form height fog optical depth, after [SanielX/Height-Fog](https://github.com/SanielX/Height-Fog), MIT, commit `ab6f8278`), rewritten | `engine/shaderlib/includes/height_fog.glsl`, `engine/core/render/AtmosphereMath.cpp` | the height fog (S12) |
+| `Engine/Modules/HeightFog/Source/HeightFogEffectPresets.cpp` (looks re-derived) | `engine/core/render/AtmospherePresets.cpp` | the Fog presets (S12) |
+| `Engine/Modules/VolumetricClouds/Shaders/volumetric_clouds_march.frag` and `volumetric_clouds_worley.glsl` / `_noise.comp` (after [SebLague/Clouds](https://github.com/SebLague/Clouds), MIT, Copyright (c) 2019 Sebastian Lague), ported and extended | `engine/shaderlib/volumetric_clouds.frag`, `engine/core/render/AtmosphereNoise.cpp` | the volumetric clouds' march and CPU noise bake (S12) |
+
+The VHS tape of the uber pass (`engine/shaderlib/includes/post_vhs.glsl`, S13) is adapted from
+OpenEngine's port of punikonta's Godot VHS shader ([godot-shader-crt-vhs](https://github.com/punikonta/godot-shader-crt-vhs),
+revision `6ba87f95c152ec023fc07c4f77e87bdd70783afa`, `shaders/vhs.gdshader`):
+
+```
+MIT License
+
+Copyright (c) Marcel Jovic <punikonta@protonmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+The Lens and Filmic film grain and the film damage of the uber pass (`engine/shaderlib/includes/post_film.glsl`,
+S13) are adapted from OpenEngine's film-simulation package (`Packages/film-simulation/Assets/Shaders/
+film_simulation_grain.frag` and `film_simulation_artifacts.frag`); nothing else of that package is used (it holds
+no film-stock colour data). Its licence, reproduced as it is, includes AMD's notice for the FidelityFX Lens 1.1
+(SDK v1.1.3) derived grain:
+
+```
+MIT License
+
+Copyright (c) 2026 GameEngine contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+FidelityFX Lens-derived film grain
+----------------------------------
+
+Copyright (C) 2024 Advanced Micro Devices, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

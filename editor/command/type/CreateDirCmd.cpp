@@ -3,6 +3,8 @@
 
 #include "CreateDirCmd.h"
 
+#include "util/FileUtils.h"
+
 using namespace jasperengine;
 
 editor::CreateDirCmd::CreateDirCmd(std::string dirName, std::string dirPath){
@@ -12,6 +14,7 @@ editor::CreateDirCmd::CreateDirCmd(std::string dirName, std::string dirPath){
 bool editor::CreateDirCmd::execute(){
     try {
         fs::create_directory(directory);
+        FileUtils::reportWritten(directory);
     } catch (const fs::filesystem_error& e) {
         printf("Error: Creating directory %s: %s\n", directory.string().c_str(), e.what());
         return false;
@@ -23,6 +26,7 @@ bool editor::CreateDirCmd::execute(){
 void editor::CreateDirCmd::undo(){
     try {
         fs::remove_all(directory);
+        FileUtils::reportRemoved(directory);
     } catch (const fs::filesystem_error& e) {
         printf("Error: Undo creating directory %s: %s\n", directory.string().c_str(), e.what());
     }

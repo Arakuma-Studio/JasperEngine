@@ -6,6 +6,10 @@
 // deletion leaves (Missing Prefab instances, see ProjectPrefabMissing.cpp).
 
 #include "Project.h"
+#include "asset/AssetFileWrite.h"
+#include "EditorHost.h"
+#include "DocumentFile.h"
+#include "StreamPreserved.h"
 #include "Factory.h"
 #include "Out.h"
 #include "Stream.h"
@@ -98,6 +102,8 @@ void editor::Project::resolveRegistryPrefabRefs(EntityRegistry* registry) {
             resolvePrefabReference(component);
         }
     }
+    // the other asset references of the prefab's GameObjects, in memory only like these
+    resolveRegistryAssetRefs(registry, true);
 }
 
 void editor::Project::resolveScenePrefabInfos(SceneProject& sceneProject) {
@@ -132,21 +138,79 @@ void editor::Project::invalidateClosedSceneSources(const std::function<bool(cons
     }
 }
 
-void editor::Project::refreshAssetDatabase(bool force) {
-    const auto now = std::chrono::steady_clock::now();
-    if (!force && now - lastAssetRefreshTime < std::chrono::seconds(2)) {
-        return;
+void editor::Project::waitForAssetScan() {
+    if (assetScan.isValid()) {
+        assetScan.wait();
+        assetScan = jobs::Task<AssetDatabase::DiskScan>();
     }
+}
+
+void editor::Project::refreshAssetDatabase(bool force) {
     // Not while a scene plays or saves (a background save writes prefab files)
     if (!assetDatabase.isOpen() || isAnyScenePlaying()) {
         return;
     }
-    lastAssetRefreshTime = now;
+    std::vector<AssetDatabase::Change> found;
+    if (force) {
+        // the disk as it is now
+        waitForAssetScan();
+        assetScanRequested = false;
+        found = assetDatabase.refresh();
+    } else if (assetScan.isValid()) {
+        // the walk runs as a Background job (R23), its result is applied here
+        if (!assetScan.isReady()) {
+            return;
+        }
+        jobs::Task<AssetDatabase::DiskScan> done = std::move(assetScan);
+        assetScan = jobs::Task<AssetDatabase::DiskScan>();
+        if (done.status() != jobs::TaskStatus::Completed) {
+            return;   // cancelled (shutdown)
+        }
+        const AssetDatabase::DiskScan& scan = done.get();
+        if (scan.valid && scan.version != assetDatabase.getVersion()) {
+            // the editor changed the database during the walk (refresh ignores such a scan)
+            assetScanRequested = true;
+        } else {
+            found = assetDatabase.refresh(scan);
+        }
+    } else if (assetScanRequested) {
+        // the file watcher saw a change (applyFileChanges): one walk for every batch since
+        assetScanRequested = false;
+        const AssetDatabase* database = &assetDatabase;
+        jobs::SubmitOptions options;
+        options.lane = jobs::Lane::Background;
+        options.name = "asset-refresh-walk";
+        assetScan = jobs::submit([database] { return database->scanDisk(); }, options);
+        // the idle editor loop wakes to apply it (a continuation: the walk is ready by then)
+        options.name = "asset-refresh-wake";
+        assetScan.then([]() { editor::getEditorHost().enqueueMainThreadTask([]() {}); }, options);
+        return;
+    } else if (pendingAssetChanges.empty()) {
+        return;
+    }
     std::vector<AssetDatabase::Change> changes = std::move(pendingAssetChanges);
     pendingAssetChanges.clear();
-    std::vector<AssetDatabase::Change> found = assetDatabase.refresh();
     changes.insert(changes.end(), found.begin(), found.end());
-    applyAssetChanges(changes);
+    onAssetFilesChanged(changes);
+}
+
+bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges) {
+    if (!assetDatabase.isOpen() || projectPath.empty()) {
+        return true;
+    }
+    if (isAnyScenePlaying()) {
+        return false;
+    }
+    if (fileChanges.empty()) {
+        return true;
+    }
+    // S04's refresh tells the cases apart (a move that carried its meta, a file renamed
+    // without it, a copy, an edit): a batch asks for a walk of the disk, not per-path updates.
+    // The walk is a Background job (an MCP call's pick-up too: a tool answering from the
+    // database refreshes it first)
+    assetScanRequested = true;
+    updateAssetScan();
+    return true;
 }
 
 void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool copy, std::map<std::string, std::string>* copyGuids) {
@@ -156,7 +220,14 @@ void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool 
     applyAssetChanges(assetDatabase.importAssets(path, copy, copyGuids));
 }
 
-void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>& changes) {
+void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>& allChanges) {
+    // the prefab files among the database's changes (it tracks every asset type)
+    std::vector<AssetDatabase::Change> changes;
+    for (const AssetDatabase::Change& change : allChanges) {
+        if (Util::isPrefabFile(change.path.string()) || Util::isPrefabFile(change.oldPath.string())) {
+            changes.push_back(change);
+        }
+    }
     if (changes.empty()) {
         return;
     }
@@ -214,41 +285,6 @@ void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>
 }
 
 // ---- Rename, move, delete ----
-
-void editor::Project::remapPrefabFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path oldRelative = normalizeToProjectRelative(oldPath);
-    fs::path newRelative = normalizeToProjectRelative(newPath);
-
-    if (oldRelative.empty() || newRelative.empty()) {
-        return;
-    }
-
-    std::vector<AssetDatabase::Change> changes = assetDatabase.moveAssets(oldPath, newPath);
-
-    // A prefab renamed to another file type is gone, a file renamed to .prefab is a new one
-    std::vector<AssetDatabase::Change> removed;
-    std::vector<AssetDatabase::Change> others;
-    for (const AssetDatabase::Change& change : changes) {
-        (change.type == AssetDatabase::Change::Type::Removed ? removed : others).push_back(change);
-    }
-    applyAssetChanges(removed);
-
-    // By path too: a prefab the database does not track moves with its directory all the
-    // same. A prefab renamed to another type is not one any more: its references keep the
-    // path they had (and the GUID that finds it if it is named back).
-    if (!AssetDatabase::isTrackedFile(oldRelative) || AssetDatabase::isTrackedFile(newRelative)) {
-        remapPrefabPathsInMemory(oldRelative, newRelative);
-    }
-
-    others.erase(std::remove_if(others.begin(), others.end(), [](const AssetDatabase::Change& change) {
-        return change.type == AssetDatabase::Change::Type::Moved;
-    }), others.end());
-    applyAssetChanges(others);
-}
 
 void editor::Project::remapPrefabPathsInMemory(const fs::path& oldRelative, const fs::path& newRelative) {
     if (oldRelative.empty() || newRelative.empty()) {
@@ -354,44 +390,6 @@ void editor::Project::remapPrefabPathsInMemory(const fs::path& oldRelative, cons
     }
 }
 
-void editor::Project::cleanupPrefabFilePath(const std::filesystem::path& deletedPath) {
-    if (projectPath.empty()) {
-        return;
-    }
-
-    fs::path deletedRelative = normalizeToProjectRelative(deletedPath);
-    if (deletedRelative.empty()) {
-        return;
-    }
-
-    assetDatabase.removeAssets(deletedPath);
-    invalidateClosedSceneSources([&](const PrefabSceneInfo& info) {
-        return matchesRelativePath(deletedRelative, info.prefabPath);
-    });
-
-    // Unity's Missing Prefab: the instances in the open scenes keep their roots and what
-    // the scenes store for them, and come back when the file does (an undo of the delete).
-    // A standalone prefab stays listed for the same reason; a project load drops a listed
-    // prefab whose file is gone.
-    std::vector<fs::path> prefabsToRemove;
-    for (const auto& [filepath, prefab] : prefabAssets) {
-        if (matchesRelativePath(deletedRelative, filepath)) {
-            prefabsToRemove.push_back(filepath);
-        }
-    }
-    for (const fs::path& prefabPath : prefabsToRemove) {
-        convertPrefabInstancesToMissing(prefabPath);
-    }
-
-    for (auto it = prefabFileCache.begin(); it != prefabFileCache.end();) {
-        if (matchesRelativePath(deletedRelative, normalizeToProjectRelative(it->first))) {
-            it = prefabFileCache.erase(it);
-        } else {
-            ++it;
-        }
-    }
-}
-
 // ---- Standalone prefabs ----
 
 const std::vector<std::filesystem::path>& editor::Project::getStandalonePrefabs() const {
@@ -452,24 +450,72 @@ std::vector<std::filesystem::path> editor::Project::findPrefabFiles() const {
 
 // ---- Prefab files ----
 
-void editor::Project::savePrefabToDisk(const std::filesystem::path& filepath) {
+editor::SaveResult editor::Project::savePrefabToDisk(const std::filesystem::path& filepath, DegradedSavePolicy policy) {
     Prefab* prefab = getPrefab(filepath);
-    YAML::Node encodedNode = encodePrefabNode(filepath);
-    if (encodedNode && !encodedNode.IsNull()) {
-        std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
-        std::ofstream fout(fullPrefabPath.string());
-        if (fout.is_open()) {  // Check if file opened successfully
-            fout << YAML::Dump(encodedNode);
-            fout.close();
-            prefab->isModified = false;
-            prefab->needsUpgrade = false;
-            markReferencedSceneIdsPersisted(prefab->registry.get());
-            // the database keeps the GUID and learns the file's new time and size
-            assetDatabase.registerAsset(filepath, encodedNode["guid"].as<std::string>());
-        } else {
-            Out::error("Failed to open file for writing: %s", fullPrefabPath.string().c_str());
-        }
+    if (!prefab) {
+        return SaveResult::Failed;
     }
+    // a prefab file that did not load completely is not written over unless the loss was accepted
+    if (prefabSaveScopeDepth > 0 && prefabSaveScopePolicy == DegradedSavePolicy::SaveAnyway) {
+        policy = DegradedSavePolicy::SaveAnyway;
+    }
+    if (prefab->loadReport.dropped() > 0 && policy == DegradedSavePolicy::Refuse) {
+        if (prefabSaveScopeDepth > 0 &&
+                std::find(refusedPrefabSaves.begin(), refusedPrefabSaves.end(), filepath) == refusedPrefabSaves.end()) {
+            refusedPrefabSaves.push_back(filepath);
+        }
+        Out::warning("Prefab \"%s\" not saved: it did not load completely and saving it would remove %zu value(s) "
+                     "this editor could not read.", filepath.generic_string().c_str(), prefab->loadReport.dropped());
+        return SaveResult::RefusedDegraded;
+    }
+    if (prefab->registry && editor::getEditorHost().isMainThread()) {
+        // paths assigned in the prefab since it loaded get their assets' GUIDs (S04); a
+        // background scene save had it done before it started
+        resolveRegistryAssetRefs(prefab->registry.get(), false);
+    }
+    YAML::Node encodedNode = encodePrefabNode(filepath);
+    if (!encodedNode || encodedNode.IsNull()) {
+        return SaveResult::Failed;
+    }
+    std::filesystem::path fullPrefabPath = getProjectPath() / filepath;
+    // the prefab's GUID and the former GUIDs the database keeps for it
+    const Guid guid = prepareDocumentIdentity(encodedNode, filepath);
+    const std::string text = YAML::Dump(encodedNode);
+    const io::WriteResult written = DocumentFiles::write(fullPrefabPath, text);
+    if (!written.ok()) {
+        const std::string message = DocumentFiles::saveFailureMessage(filepath, written);
+        Out::error(message);
+        alertUser("Error", message);
+        return SaveResult::Failed;
+    }
+    prefab->diskSha1 = DocumentFiles::sha1(text);
+    if (prefab->loadReport.dropped() > 0) {
+        Out::warning("Saved prefab \"%s\" without %zu value(s) this editor could not read.",
+                     filepath.generic_string().c_str(), prefab->loadReport.dropped());
+        prefab->loadReport.clearDropped();
+    }
+    prefab->isModified = false;
+    prefab->needsUpgrade = false;
+    markReferencedSceneIdsPersisted(prefab->registry.get());
+    // the database keeps the GUID and learns the file's new time and size
+    assetDatabase.registerAsset(filepath, guid.str());
+    assetIndex.updateReferrer(normalizeToProjectRelative(filepath).generic_string());
+    return SaveResult::Saved;
+}
+
+void editor::Project::beginPrefabSaveScope(DegradedSavePolicy policy) {
+    if (prefabSaveScopeDepth++ == 0) {
+        refusedPrefabSaves.clear();
+    }
+    prefabSaveScopePolicy = policy;
+}
+
+std::vector<std::filesystem::path> editor::Project::endPrefabSaveScope() {
+    if (prefabSaveScopeDepth > 0 && --prefabSaveScopeDepth == 0) {
+        prefabSaveScopePolicy = DegradedSavePolicy::Refuse;
+        return std::move(refusedPrefabSaves);
+    }
+    return {};
 }
 
 YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepath) const {
@@ -564,29 +610,37 @@ YAML::Node editor::Project::encodePrefabNode(const std::filesystem::path& filepa
             prefabNode["stripped"] = strippedNode;
         }
     }
+    StreamSave::applyRootKeys(prefab->registry.get(), NULL_ENTITY, prefabNode);
     return prefabNode;
 }
 
-YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath) {
-    // What YAML::LoadFile gives, parsed again only when the file changed
+YAML::Node editor::Project::loadPrefabFile(const std::filesystem::path& fullPath, std::string* sha1) {
+    // What reading the file gives, parsed again only when the file changed
     std::error_code timeError;
     std::error_code sizeError;
     const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(fullPath, timeError);
     const std::uintmax_t size = std::filesystem::file_size(fullPath, sizeError);
     if (timeError || sizeError) {
         prefabFileCache.erase(fullPath);
-        return YAML::LoadFile(fullPath.string()); // throws as before for a missing file
+        DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Prefab); // throws as before for a missing file
+        if (sha1) *sha1 = document.sha1;
+        return document.root;
     }
     auto cached = prefabFileCache.find(fullPath);
     if (cached != prefabFileCache.end() && cached->second.writeTime == writeTime && cached->second.size == size) {
+        DocumentFiles::recordVersionIssues(DocumentKind::Prefab, cached->second.migration);
+        if (sha1) *sha1 = cached->second.sha1;
         return cached->second.node;
     }
-    YAML::Node node = YAML::LoadFile(fullPath.string());
+    DocumentFile document = DocumentFiles::read(fullPath, DocumentKind::Prefab);
     PrefabFileCache& entry = prefabFileCache[fullPath];
     entry.writeTime = writeTime;
     entry.size = size;
-    entry.node.reset(node);
-    return node;
+    entry.node.reset(document.root);
+    entry.sha1 = document.sha1;
+    entry.migration = document.migration;
+    if (sha1) *sha1 = document.sha1;
+    return document.root;
 }
 
 void editor::Project::cleanupPrefabsForScene(uint32_t sceneId){

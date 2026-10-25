@@ -5,6 +5,7 @@
 #include "util/XMLUtils.h"
 #include "util/Base64.h"
 #include "Log.h"
+#include "log/LogSinks.h"
 #include <stdlib.h>
 
 using namespace jasperengine;
@@ -195,6 +196,17 @@ void System::platformLog(const int type, const char *fmt, va_list args){
 
     vprintf(fmt, args);
     printf("\n");
+}
+
+void System::installLogSinks(){
+    PlatformLogOptions options;
+#ifdef JASPERENGINE_LOG_FILE
+    options.fileLog = JASPERENGINE_LOG_FILE != 0;
+#endif
+    if (options.fileLog) {
+        options.userDataPath = getUserDataPath();
+    }
+    installPlatformLogSinks(options);
 }
 
 bool System::getBoolForKey(const char *key, bool defaultValue){

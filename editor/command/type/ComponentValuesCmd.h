@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/EntityEdit.h"
 #include "Project.h"
 #include "Catalog.h"
 #include "command/PrefabEditUndo.h"
@@ -22,7 +23,7 @@ namespace jasperengine::editor {
     // component (Paste Component Values) or with its default values (Reset). The entity's
     // own structure stays: a Transform's parent, the child entities a UI control made, the
     // tracks an animation owns and the geometry a sprite, tilemap or model builds.
-    class ComponentValuesCmd : public Command {
+    class ComponentValuesCmd : public Command, public EntityEdit {
     private:
         struct Target {
             Entity entity = NULL_ENTITY;
@@ -35,6 +36,7 @@ namespace jasperengine::editor {
         std::shared_ptr<const ComponentClip> clip; // Null: reset to defaults
         std::vector<Target> targets;
         bool wasModified = false;
+        bool differs = false;       // the last execute changed a component's values
         // Unity: the properties a reset or paste changes on a prefab instance's GameObject
         // are overrides of it
         PrefabEditUndo prefabUndo;
@@ -46,6 +48,21 @@ namespace jasperengine::editor {
         bool execute() override;
         void undo() override;
 
+        // "Reset Light (Sun)", "Paste Component Values Light (2 Objects)"; a GameObject's own
+        // component values set again (an MCP edit) is "Set Light (Sun)"
+        std::string describe() const override;
+        const char* typeName() const override { return "ComponentValuesCmd"; }
+        bool isNoOp() const override { return !differs; }
+        size_t memoryBytes() const override;
+        // The component's values now, per GameObject
+        void collectKeepCommands(KeepContext& context) const override;
+
+        Project* editedProject() const override { return project; }
+        uint32_t editedSceneId() const override { return sceneId; }
+        std::vector<Entity> editedEntities() const override;
+        std::string editedLabel() const override;
+
+        ComponentType getComponentType() const { return type; }
 
         // --- Inspector component menu ---
         // Each returns null, with a reason for the tooltip, when it cannot apply to all entities.

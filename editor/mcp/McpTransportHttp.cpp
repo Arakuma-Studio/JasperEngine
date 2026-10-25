@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpTransportHttp.h"
+#include "thread/ThreadUtil.h"
 
 #include "McpServer.h"
 
@@ -452,7 +453,7 @@ bool McpTransportHttp::start(int port, std::string& errorOut) {
         error.clear();
     }
     running = true;
-    acceptThread = std::thread([this, s]() { acceptLoop(static_cast<intptr_t>(s)); });
+    acceptThread = jasperengine::thread::spawnNamed("je-mcp-accept", [this, s]() { acceptLoop(static_cast<intptr_t>(s)); });
     return true;
 }
 
@@ -498,7 +499,8 @@ void McpTransportHttp::acceptLoop(intptr_t listenFd) {
             std::lock_guard<std::mutex> lock(mutex);
             clients.insert(static_cast<intptr_t>(client));
         }
-        std::thread([this, client]() {
+        // one long-lived service thread per client (not job-system work)
+        jasperengine::thread::spawnNamed("je-mcp-client", [this, client]() {
             serveConnection(static_cast<intptr_t>(client));
             {
                 std::lock_guard<std::mutex> lock(mutex);

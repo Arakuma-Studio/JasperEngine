@@ -76,7 +76,7 @@ namespace jasperengine{
 
         // Process-wide singletons shared by every scene; not owned here.
         JPH::TempAllocatorImpl* temp_allocator;
-        JPH::JobSystemThreadPool* job_system;
+        JPH::JobSystem* job_system;
 
 		JPH::PhysicsSystem world3D;
 

@@ -576,3 +576,96 @@ in `tools/mcp/tests/test_asset_identity.py`.
   switch the cache to a binary format behind the same interface, still without SQLite.
 - **New files created during Play** are registered only after Play stops (existing rule: no
   refresh while playing). Kept.
+
+## Deviations (implementation)
+
+Recorded by the implementer; each is the closest correct alternative to the text above.
+
+1. **Linked material file.** `Material::name` (the linked `.material` path, the only meaning
+   it had in the editor) became an `AssetRef` and keeps its key, serialized `name` +
+   `nameGuid` (§6.5's scalar rule), instead of moving to a new `materialFile` key. `name` is
+   part of prefab override paths (`submeshes[i].material.name`, `SubmeshOverride_MaterialName`)
+   in closed scenes; renaming the key would have needed a migration of every override record
+   for no gain in identity. No format migration is needed as a result.
+2. **Format versions.** No scene, prefab or material version bump and no S03 migration step
+   (R34). Every key S04 adds is optional (`<key>Guid`, texture `guid`/`guids`,
+   `guid`/`formerGuids` in scenes, prefabs and materials), and S03 R22 bumps no version for
+   optional keys; readers accept both forms directly. Filling GUIDs (R10 step 4) needs the
+   project's assets directory and its asset database, which S03's pure YAML -> YAML
+   migrations do not have, so it happens in the load-time resolution pass and on save. The
+   S04 keys are in S03's `StreamSchema` known-key tables (`guid`/`formerGuids` at the root,
+   texture `guid`/`guids`, and `<key>Guid` wherever `<key>` is known), so load reports do not
+   list them as unknown and preservation does not copy them. Writes use S03's primitives:
+   metas, in-file GUID lines and the index cache through `io::writeFileAtomic`
+   (`editor/asset/AssetFileWrite`), moves through `io::renameWithRetry`, scenes and prefabs
+   through `DocumentFiles::write`, and `.material` files through `DocumentFiles::saveMaterial`
+   with its lossy-save gate.
+3. **Closed-file rewrites** (Retarget Selected, Clear, `assets migrate`) edit the YAML tree
+   at the field's node and write it back with the emitter normal saves use, rather than a
+   full decode/encode. This keeps unknown data (S03's preservation rule), reaches prefab
+   instance override records, and loads no scene. Undo restores the bytes captured before the
+   write, as §9 asks. Loaded owners are edited in memory; their undo restores component and
+   scene-settings snapshots.
+4. **Cache files.** The index is split into `.jasperengine/assetdb/index.json` (identity,
+   fingerprints, content hashes) and `deps.json` (edges), so the warm open (R21) parses only
+   the identity part. Both are deletable caches.
+5. **Index overlay.** Every loaded document (scene, prefab stage, loaded prefab asset)
+   contributes its in-memory edges, not only modified ones. The locators of a loaded owner
+   are then always the ones the editor edits.
+6. **Child scenes** stay referenced by scene id (project-wide ids that the scene list maps to
+   files); their edges are derived through `project.yaml`. The scene list entries gain
+   `filepathGuid`, so a moved scene file is found by GUID on load. A scene's `cppScripts` list
+   is regenerated from its Script components on every save; its edges come from the
+   components and the list.
+7. **Shader references** are a `ShaderRef` (a path plus the `.vert` and `.frag` GUIDs) for
+   every custom shader field, because one value names two files (`customShaderGuid:
+   "<vert>|<frag>"`, also for material and default shaders).
+8. **Prefab references** keep their existing types (`PrefabComponent{name, path, guid}`,
+   `PrefabAsset`): they already carry identity, and the schema adapts them. Prefab references
+   resolve through the prefab code (PREFABS.md §3), which owns Missing Prefab state.
+9. **Delete.** Deleting a closed scene's file keeps it in the project scene list, where it is
+   reported Missing, instead of removing the scene from the project (R15); undo resolves it.
+   A copy pasted over an existing name gets Unity's free name (`hero 1.png`) instead of
+   silently overwriting. `import_files overwrite: true` replaces the content in place and
+   keeps the file's identity, so its references stay.
+10. **Menus.** There is no Project menu: Migrate References is under Assets > Asset Database,
+    and Missing Assets is under Window > Assets (and Assets > Asset Database).
+11. **Thumbnails** are keyed by GUID plus size and mtime (the content fingerprint that needs no
+    read). A rename or move keeps both, so no thumbnail regenerates.
+12. **Export gate scope.** The Missing check covers the scenes of the project list plus the
+    prefabs and materials they reference, transitively.
+13. **MCP parameters.** `resolve_asset` also takes `path` (a hint for a GUID) and `type`. The
+    `referrers` of `retarget_asset_references` / `clear_asset_references` are locators or
+    `"<owner>|<locator>"` (a locator is per owner). The component tools return asset GUIDs as
+    `asset_guids` (and `guid` in detailed entries), so set-tool round trips are unchanged.
+    S31's tool groups do not exist yet; the six tools join `assets_pipeline` when S31 lands.
+14. **Benchmark.** `tools/performance/assetdb_bench.py` drives a developer subcommand,
+    `jasperengine-editor assets bench --project P`, which times the database and the index
+    without the engine. Measured on the benchmark-only server E (4 dedicated vCPU, nothing
+    else running, load ~1; 11,000 assets, 1,000 referrers; median of 3): warm open 121 ms
+    (budget 250), GUID resolution 59 ns (budget 200), one saved referrer 6.0 ms, cold
+    identity pass 255 ms, full index 657 ms, worst Find References 1.3 ms, the poll's walk
+    150 ms (Background job) and its main-thread part 11 ms every 2 s.
+15. **Tests location.** The unit tests are where S02 puts them (`engine/tests/core/asset/`,
+    `editor/tests/asset/`), built into `jasperengine-core-tests` and
+    `jasperengine-editor-tests` (`tools/build.sh unit-tests`).
+16. **HTML5 run of AC16** has no script of its own: the smoke test's export of the fixture is
+    built with `emcmake cmake` in the web image and opened with S02's
+    `tools/web/browser_gate.py --expect "[S04] Asset.path ..." --expect "[S04] portrait ..."`.
+17. **Excluded files.** Besides `project.yaml` and `CMakeLists.txt`, the project root's
+    `ProjectBuild.cmake` and `compile_commands.json` are not assets, and neither are hidden
+    files (S03's temporaries).
+18. **The poll (R23).** Until S05's watcher feeds `refresh()`, the editor polls every 2 s (and
+    never more than a fifth of the time): `AssetDatabase::scanDisk()` walks and stats in an
+    S06 Background job, `refresh(scan)` applies it on the main thread and drops a scan older
+    than the database's last change. Tools that answer from the database
+    (`resolve_asset`, `find_references`...) refresh first, so files an agent changed with its
+    own tools count at once. A save updates its entry and its edges in place; the index cache
+    is written by the database's Background strand (`jobs::SerialQueue`, after the content
+    hashes queued before it, and on close), not by each save. The index build is a Background
+    job whose referrer parse is a `jobs::parallelFor` (R22).
+19. **First open of a project written before GUIDs** writes one meta per asset. Metas that hold
+    only what their path derives (legacy GUID, derived sub-assets) skip the sync, since a crash
+    rewrites them identically; it is still a write per asset (about 5 s for 25,000 assets on
+    the build server, 1 s to open it again), which R22's 1 s identity budget (measured with
+    metas present) does not cover.

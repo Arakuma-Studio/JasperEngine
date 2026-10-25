@@ -82,6 +82,9 @@ namespace jasperengine{
 
         void setCastShadows(bool castShadows);
         bool isCastShadows() const;
+        // cached in the static shadow layer: redrawn only when it changes (docs/rendering/shadows.md)
+        void setStaticShadowCaster(bool staticShadowCaster);
+        bool isStaticShadowCaster() const;
 
         void setReceiveShadows(bool receiveShadows);
         bool isReceiveShadows() const;
