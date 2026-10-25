@@ -16,7 +16,8 @@
 
 uniform u_vs_htmluiPrim {
     mat4 transform;
-    vec4 viewport;      // xy: target px
+    vec4 viewport;      // xy: target px; z: 1 to cut the shapes' quads to `scissor`
+    vec4 scissor;       // document px (x0, y0, x1, y1): the draw's scissor, when transform is the projection
 } prim;
 
 in vec2 a_position;     // the unit quad's corner
@@ -71,6 +72,8 @@ void main() {
         float pixelsPerUnit = max(min(length(toScreen(center + vec2(1.0, 0.0)) - s0), length(toScreen(center + vec2(0.0, 1.0)) - s0)), 1e-3);
         float margin = reach + 2.0 / pixelsPerUnit;
         p = area.xy - vec2(margin) + a_position * (area.zw + vec2(2.0 * margin));
+        if (prim.viewport.z > 0.5)
+            p = clamp(p, prim.scissor.xy, prim.scissor.zw);
     }
     v_local = vec4(p, uv);
     v_a = i_a;

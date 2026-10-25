@@ -463,11 +463,11 @@ void RmlRenderer::drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t co
         return;
     applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1))));
     applyPassScissor(scissor);
-    drawInstances(*buffer, offset, (uint32_t)count, nullptr, transform, currentClipParams(nullptr), getGeometryState(BlendMode::PREMULTIPLIED));
+    drawInstances(*buffer, offset, (uint32_t)count, nullptr, transform, currentClipParams(nullptr), getGeometryState(BlendMode::PREMULTIPLIED), scissor);
 }
 
 bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, HtmlUITexture* texture, const Rml::Matrix4f& matrix,
-                                const ClipParams& clipParams, const PipelineState& state){
+                                const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor){
     primObject.replaceVertexBuffer(&primInstanceTemplate, &buffer, byteOffset);
     primObject.addTexture(primTextureSlot, ShaderStageType::FRAGMENT, texture ? texture->render : &placeholderWhite);
     stats.textureBinds++;
@@ -479,6 +479,18 @@ bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_
     params.viewport[0] = (float)std::max(targetSize.x, 1);
     params.viewport[1] = (float)std::max(targetSize.y, 1);
     params.viewport[2] = params.viewport[3] = 0.0f;
+    // shapes drawn in document px (no element transform): their quads, widened for the edge's
+    // antialiasing, cut to the scissor, so no fragment outside it is ever made (a rasterizer may
+    // leak samples of a primitive across the scissor's edge: llvmpipe at 4 samples)
+    params.scissor[0] = params.scissor[1] = params.scissor[2] = params.scissor[3] = 0.0f;
+    if (std::memcmp(matrix.data(), projection.data(), sizeof(float) * 16) == 0){
+        const Rml::Vector2f pixel = getPixelScale();
+        params.viewport[2] = 1.0f;
+        params.scissor[0] = (float)scissor.Left() / pixel.x;
+        params.scissor[1] = (float)scissor.Top() / pixel.y;
+        params.scissor[2] = (float)scissor.Right() / pixel.x;
+        params.scissor[3] = (float)scissor.Bottom() / pixel.y;
+    }
     primObject.applyUniformBlock(primParamsSlot, sizeof(HtmlUIPrimParams), &params);
     primObject.applyUniformBlock(primClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
     primObject.draw(0, 6, count);
@@ -1310,7 +1322,7 @@ void RmlRenderer::drawRun(const BatchRun& run){
         applyPassViewport(full);
         applyPassScissor(scissor);
         if (instances){
-            if (!drawInstances(page.data, (size_t)first.dataFirst * sizeof(HtmlUIPrimitive), count, run.texture, run.transform, clipParams, state))
+            if (!drawInstances(page.data, (size_t)first.dataFirst * sizeof(HtmlUIPrimitive), count, run.texture, run.transform, clipParams, state, scissor))
                 return;
         }else{
             geometryObject.replaceVertexBuffer(&compositeVertexBuffer, &page.data, 0);

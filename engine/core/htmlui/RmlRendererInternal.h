@@ -44,9 +44,10 @@ namespace jasperengine {
     // u_vs_htmluiPrim (htmlui_prim.vert)
     struct HtmlUIPrimParams {
         float transform[16];
-        float viewport[4];      // xy: target px
+        float viewport[4];      // xy: target px; z: 1 when the shapes' quads are cut to `scissor`
+        float scissor[4];       // the draw's scissor in document px (x0, y0, x1, y1), transform the projection only
     };
-    static_assert(sizeof(HtmlUIPrimParams) == 80, "u_vs_htmluiPrim is 80 bytes");
+    static_assert(sizeof(HtmlUIPrimParams) == 96, "u_vs_htmluiPrim is 96 bytes");
 
     // A compiled RmlUi geometry. RmlUi keeps the spans valid and unchanged until
     // ReleaseGeometry (RenderInterface.h), so its data is read from them: into the frame's

@@ -662,7 +662,7 @@ namespace jasperengine {
         void drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t count, Rml::Vector2f translation);
         // draws count instances from buffer at byteOffset with the current state
         bool drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, HtmlUITexture* texture, const Rml::Matrix4f& transform,
-                           const ClipParams& clipParams, const PipelineState& state);
+                           const ClipParams& clipParams, const PipelineState& state, Rml::Rectanglei scissor);
 
         std::vector<ClipShapeRecord> commandClipShapes;   // RenderToClipMaskShape's (CLIP_MASK i[0] - 1)
         std::vector<HtmlUIPrimitive> commandPrimitives;   // RenderPrimitives' (PRIMITIVES), without their translation
