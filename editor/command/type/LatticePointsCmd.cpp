@@ -7,6 +7,7 @@
 #include "Catalog.h"
 #include "util/EntityClipboard.h"
 
+#include <algorithm>
 #include <string>
 
 using namespace jasperengine;
@@ -89,6 +90,7 @@ bool editor::LatticePointsCmd::execute(){
     // a later redo gets a previewed point (T3c review C1). Decided on the first execute.
     if (!executed && sameLayout && shown.size() == newState.offsets.size() && oldState.offsets.size() == shown.size()){
         for (size_t i = 0; i < shown.size(); i++){
+            if (std::find(explicitPoints.begin(), explicitPoints.end(), (int)i) != explicitPoints.end()) continue;
             if (newState.offsets[i] == shown[i] && oldState.offsets[i] != shown[i]) newState.offsets[i] = oldState.offsets[i];
         }
     }
@@ -102,7 +104,15 @@ bool editor::LatticePointsCmd::execute(){
     }
 
     apply(*lattice, newState, wholeState);
-    ClipRecordHooks::afterComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
+    {
+        // the channel value is 3 floats per point (ClipRecordValue): the named points' components
+        ClipRecordHooks::ExplicitWrite write;
+        for (int point : explicitPoints){
+            for (size_t c = 0; c < 3; c++) write.components.push_back(3 * (size_t)point + c);
+        }
+        ClipRecordHooks::ExplicitWriteScope scope(write);
+        ClipRecordHooks::afterComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
+    }
 
     if (sameLayout){
         // Unity: an edited point of a prefab instance's lattice is an override of that point
@@ -144,7 +154,13 @@ void editor::LatticePointsCmd::undo(){
 
     ClipRecordHooks::beforeComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
     apply(*lattice, oldState, wholeState);
-    ClipRecordHooks::afterComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
+    {
+        // undo writes the offsets it replaced: they are the rest again
+        ClipRecordHooks::ExplicitWrite write;
+        write.all = true;
+        ClipRecordHooks::ExplicitWriteScope scope(write);
+        ClipRecordHooks::afterComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
+    }
     prefabUndo.restore(project, sceneId);
 
     sceneProject->isModified = wasModified;

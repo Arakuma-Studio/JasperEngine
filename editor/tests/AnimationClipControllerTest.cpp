@@ -904,18 +904,27 @@ TEST_F(AnimationClipControllerTest, AWholeTransformWriteDuringThePreviewKeepsThe
     expectNear(s.transform(s.hand).position, Vector3(0, 4, 0), "redone");
 }
 
-// The controller's own net: a write of exactly the previewed value is no edit of the rest (C1)
+// The controller's own net: a whole-Transform write (the gizmo's) of exactly the previewed value
+// is no edit of the rest (C1); a named property write of it (set_properties, an Inspector field)
+// is the edit, the new rest (FX item 16)
 TEST_F(AnimationClipControllerTest, WritingThePreviewedValueBackKeepsTheRest) {
     ClipScene s = clipScene();
     AnimationClipController& c = controller();
     std::string error;
     ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
     c.seek(1.0f);
-    const Vector3 previewed = s.transform(s.hand).scale;
+    const Transform shown = s.transform(s.hand);
+    const Vector3 previewed = shown.scale;
     ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(
-        new PropertyCmd<Vector3>(project(), s.id, s.hand, ComponentType::Transform, "scale", previewed)));
+        new ObjectTransformCmd(project(), s.id, s.hand, shown.position, shown.rotation, previewed)));
     c.stopPreview();
     expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "the rest");
+
+    c.seek(1.0f);
+    CommandHandle::get(s.id)->addCommandNoMerge(
+        new PropertyCmd<Vector3>(project(), s.id, s.hand, ComponentType::Transform, "scale", previewed));
+    c.stopPreview();
+    expectNear(s.transform(s.hand).scale, previewed, "the value set on purpose");
 }
 
 // Copying, duplicating and deleting the previewed hierarchy stop the preview first, so what

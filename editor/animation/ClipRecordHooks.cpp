@@ -28,8 +28,15 @@ namespace{
         bool removed = false;
     };
 
+    struct PreviewEntry{
+        ClipRecordHooks::Id id = 0;
+        ClipRecordHooks::PreviewQuery query;
+        bool removed = false;
+    };
+
     struct Registry{
         ClipRecordHooks::Id nextId = 1;
+        std::vector<std::shared_ptr<PreviewEntry>> previews;
         std::vector<std::shared_ptr<RecordEntry>> record;
         std::vector<std::shared_ptr<ChannelEntry>> before;
         std::vector<std::shared_ptr<ChannelEntry>> after;
@@ -136,7 +143,24 @@ ClipRecordHooks::Id ClipRecordHooks::addAfterChannelWrite(ChannelWriteListener l
 void ClipRecordHooks::removeChannelWriteListener(Id id){
     if (id == 0) return;
     Registry& reg = registry();
-    if (!removeFrom(reg.before, id)) removeFrom(reg.after, id);
+    if (!removeFrom(reg.before, id) && !removeFrom(reg.after, id)) removeFrom(reg.previews, id);
+}
+
+ClipRecordHooks::Id ClipRecordHooks::addPreviewQuery(PreviewQuery query){
+    Registry& reg = registry();
+    auto entry = std::make_shared<PreviewEntry>();
+    entry->id = reg.nextId++;
+    entry->query = std::move(query);
+    reg.previews.push_back(entry);
+    return entry->id;
+}
+
+bool ClipRecordHooks::previews(uint32_t sceneId, Entity entity, ClipChannel channel){
+    const std::vector<std::shared_ptr<PreviewEntry>> copy = registry().previews;
+    for (const std::shared_ptr<PreviewEntry>& entry : copy){
+        if (!entry->removed && entry->query && entry->query(sceneId, entity, channel)) return true;
+    }
+    return false;
 }
 
 void ClipRecordHooks::beforeChannelWrite(uint32_t sceneId, Entity entity, ClipChannel channel){
@@ -251,4 +275,29 @@ std::string ClipRecordHooks::takeNote(){
     std::string out;
     std::swap(out, registry().note);
     return out;
+}
+
+// ---- explicit writes (FX) ----
+
+namespace{
+    ClipRecordHooks::ExplicitWrite& currentExplicitWrite(){
+        static ClipRecordHooks::ExplicitWrite* write = new ClipRecordHooks::ExplicitWrite();
+        return *write;
+    }
+}
+
+bool ClipRecordHooks::ExplicitWrite::covers(size_t component) const{
+    return all || std::find(components.begin(), components.end(), component) != components.end();
+}
+
+const ClipRecordHooks::ExplicitWrite& ClipRecordHooks::explicitWrite(){
+    return currentExplicitWrite();
+}
+
+ClipRecordHooks::ExplicitWriteScope::ExplicitWriteScope(ExplicitWrite write): previous(currentExplicitWrite()){
+    currentExplicitWrite() = std::move(write);
+}
+
+ClipRecordHooks::ExplicitWriteScope::~ExplicitWriteScope(){
+    currentExplicitWrite() = std::move(previous);
 }

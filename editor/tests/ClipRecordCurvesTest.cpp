@@ -24,6 +24,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MorphWeightsCmd.h"
+#include "command/type/ObjectTransformCmd.h"
 #include "component/MeshComponent.h"
 #include "window/AnimationWindowClip.h"
 #include "imgui.h"
@@ -645,15 +646,114 @@ TEST_F(ClipRecordSourcesTest, TransformRowEditsDuringThePreviewKeepTheOtherCompo
     c.update(0.0);
     const Vector3 shown = s.scene->getComponent<Transform>(s.hero).position;
     ASSERT_EQ(shown, Vector3(1, 2, 3));
-    // what the row's x field builds: (new x, shown y, shown z)
-    CommandHandle::get(s.id)->addCommandNoMerge(new PropertyCmd<Vector3>(project(), s.id, s.hero, ComponentType::Transform, "position",
-                                                                          Vector3(5, shown.y, shown.z)));
+    // what the row's x field builds: (new x, shown y, shown z), y and z carried as shown
+    auto* row = new PropertyCmd<Vector3>(project(), s.id, s.hero, ComponentType::Transform, "position", Vector3(5, shown.y, shown.z));
+    row->setShownComponents(0b110);
+    CommandHandle::get(s.id)->addCommandNoMerge(row);
     c.update(0.0);
     c.stopPreview();
     EXPECT_EQ(s.scene->getComponent<Transform>(s.hero).position, Vector3(5, 0, 0)) << "only x is the edit";
     CommandHandle::get(s.id)->undo();
     CommandHandle::get(s.id)->redo();
     EXPECT_EQ(s.scene->getComponent<Transform>(s.hero).position, Vector3(5, 0, 0)) << "redo bakes nothing";
+}
+
+// FX item 16: a named write equal to the previewed value is the new rest (set_properties of a
+// position, an Inspector row's edited field, the Blend Shapes row's weight, a lattice point set by
+// index); a gizmo-style whole write left as shown keeps the rest, and an undo restores exactly
+TEST_F(ClipRecordSourcesTest, NamedWritesEqualToThePreviewAreTheNewRest) {
+    RecordScene s = recordScene();
+    const Entity face = addObject(s, "Face", s.hero);
+    s.scene->addComponent<MeshComponent>(face, {});
+    ClipData data;
+    data.tracks = {track("", ClipChannel::Position, {key(0.0f, {1, 2, 3}), key(1.0f, {1, 2, 3})}),
+                   track("Face", ClipChannel::Morph, {key(0.0f, {0.8f, 0.4f}), key(1.0f, {0.8f, 0.4f})}),
+                   track("Cage", ClipChannel::Lattice, {key(0.0f, {0, 0.5f, 0, 0, 0.25f, 0}), key(1.0f, {0, 0.5f, 0, 0, 0.25f, 0})}, {4, 5})};
+    writeRecClip(data);
+    AnimationClipController& c = AnimationClipController::shared(project());
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    auto preview = [&](){
+        c.seek(0.5f);
+        c.update(0.0);
+        ASSERT_TRUE(c.isPreviewing());
+        ASSERT_EQ(s.scene->getComponent<Transform>(s.hero).position, Vector3(1, 2, 3)) << "previewed";
+    };
+    auto position = [&](){ return s.scene->getComponent<Transform>(s.hero).position; };
+
+    // set_properties {transform: {position: [1, 2, 3]}} (a PropertyCmd of the whole value)
+    preview();
+    CommandHandle::get(s.id)->addCommandNoMerge(new PropertyCmd<Vector3>(project(), s.id, s.hero, ComponentType::Transform, "position", Vector3(1, 2, 3)));
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_EQ(position(), Vector3(1, 2, 3)) << "the value set on purpose is the scene's";
+    CommandHandle::get(s.id)->undo();
+    EXPECT_EQ(position(), Vector3(0, 0, 0)) << "undone";
+
+    // an Inspector row: x typed as shown is the edit, y and z (carried as shown) keep the rest
+    preview();
+    auto* row = new PropertyCmd<Vector3>(project(), s.id, s.hero, ComponentType::Transform, "position", Vector3(1, 2, 3));
+    row->setShownComponents(0b110);
+    CommandHandle::get(s.id)->addCommandNoMerge(row);
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_EQ(position(), Vector3(1, 0, 0));
+    CommandHandle::get(s.id)->undo();
+
+    // an undo during the preview gives the value it replaced back as the rest
+    preview();
+    CommandHandle::get(s.id)->addCommandNoMerge(new PropertyCmd<Vector3>(project(), s.id, s.hero, ComponentType::Transform, "position", Vector3(7, 7, 7)));
+    c.update(0.0);
+    CommandHandle::get(s.id)->undo();
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_EQ(position(), Vector3(0, 0, 0)) << "the undo's value";
+
+    // a whole-Transform write left as shown (the gizmo's ObjectTransformCmd) keeps the rest
+    preview();
+    const Transform shown = s.scene->getComponent<Transform>(s.hero);
+    CommandHandle::get(s.id)->addCommandNoMerge(new ObjectTransformCmd(project(), s.id, s.hero, shown.position, shown.rotation, shown.scale));
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_EQ(position(), Vector3(0, 0, 0)) << "a gizmo write of the shown pose is no edit";
+    CommandHandle::get(s.id)->undo();
+
+    // the Blend Shapes row: its weight as shown is the edit, the other weight keeps its rest
+    preview();
+    MorphWeightsCmd::Target target;
+    target.entity = face;
+    const MeshComponent& previewed = s.scene->getComponent<MeshComponent>(face);
+    std::copy(previewed.morphWeights, previewed.morphWeights + MAX_MORPHTARGETS, target.after.begin());
+    ASSERT_NEAR(target.after[1], 0.4f, 1e-6f);
+    auto* weights = new MorphWeightsCmd(project(), s.id, {target});
+    weights->setEditedWeights({1});
+    ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(weights));
+    CommandHandle::get(s.id)->mark();
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[1], 0.4f, 1e-6f) << "the row's weight";
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[0], 0.0f, 1e-6f) << "the other weight's rest";
+    CommandHandle::get(s.id)->undo();
+    // set_properties {mesh: {"morphWeights[0]": 0.8}}: that weight, as shown, is the edit
+    preview();
+    CommandHandle::get(s.id)->addCommandNoMerge(new PropertyCmd<float>(project(), s.id, face, ComponentType::MeshComponent, "morphWeights[0]", 0.8f));
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[0], 0.8f, 1e-6f);
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[1], 0.0f, 1e-6f);
+    CommandHandle::get(s.id)->undo();
+
+    // a lattice point set by index (edit_lattice, the Inspector Offset row) to what the preview
+    // shows: that point is the edit (also when no shown offset changes), the other keeps its rest
+    preview();
+    ASSERT_NEAR(offsetOf(s, 4).y, 0.5f, 1e-5f);
+    ASSERT_TRUE(LatticeEditorOps::setOffsets(project(), s.id, s.cage, {4}, {Vector3(0, 0.5f, 0)}, &error)) << error;
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_NEAR(offsetOf(s, 4).y, 0.5f, 1e-6f) << "the named point";
+    EXPECT_NEAR(offsetOf(s, 5).y, 0.0f, 1e-6f) << "the other previewed point keeps its rest";
+    CommandHandle::get(s.id)->undo();
+    EXPECT_NEAR(offsetOf(s, 4).y, 0.0f, 1e-6f);
 }
 
 // I4 (P5): a discrete lattice edit (MCP edit_lattice) while another source holds a record gesture

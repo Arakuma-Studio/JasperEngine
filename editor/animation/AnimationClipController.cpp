@@ -468,12 +468,18 @@ AnimationClipController::AnimationClipController(Project* project): project(proj
     afterWriteListener = ClipRecordHooks::addAfterChannelWrite([this](uint32_t id, Entity entity, ClipChannel channel){
         afterSceneWrite(id, entity, channel);
     });
+    previewQuery = ClipRecordHooks::addPreviewQuery([this](uint32_t id, Entity entity, ClipChannel channel){
+        const std::pair<Entity, ClipChannel> entry(entity, channel);
+        return isPreviewing() && id == previewSceneId &&
+               std::find(session.written.begin(), session.written.end(), entry) != session.written.end();
+    });
 }
 
 AnimationClipController::~AnimationClipController(){
     // never touches scenes (release() restored them while they existed)
     ClipRecordHooks::removeChannelWriteListener(beforeWriteListener);
     ClipRecordHooks::removeChannelWriteListener(afterWriteListener);
+    ClipRecordHooks::removeChannelWriteListener(previewQuery);
     ClipRecordHooks::removeRecordListener(recordListener);
     PreviewOwner::release(ownerToken);
     if (document && documentListener) document->removeListener(documentListener);
@@ -1147,21 +1153,24 @@ void AnimationClipController::afterSceneWrite(uint32_t id, Entity entity, ClipCh
     auto it = session.rest.find(entity);
     if (it == session.rest.end() || !hasRestFor(it->second, channel)) return;
     needsApply = true;
-    // the previewed value written back as it was shown is no edit: the rest stays (9.R6)
+    // the previewed value written back as it was shown is no edit: the rest stays (9.R6). Not
+    // for components a command named explicitly (an Inspector field, set_properties): a value
+    // set on purpose is the new rest even when the preview shows the same
+    const ClipRecordHooks::ExplicitWrite& explicitWrite = ClipRecordHooks::explicitWrite();
     std::vector<float> written;
     const bool read = anim::readChannelValue(sceneProject->scene, entity, channel, {}, written);
-    if (hadShown && read && sameValue(channel, written, shown)){
+    if (hadShown && read && !explicitWrite.any() && sameValue(channel, written, shown)){
         return;
     }
     // per component (T3c review C1): a component the command left as it was shown (a lattice
     // point, a blend shape weight, the y of a Position row edit of x) keeps its rest; only what
-    // the command changed becomes the rest. Rotations stay one value.
-    if (hadShown && read && channel != ClipChannel::Rotation){
+    // the command changed or named becomes the rest. Rotations stay one value.
+    if (hadShown && read && channel != ClipChannel::Rotation && !explicitWrite.all){
         std::vector<float> rest;
         if (restValue(sceneProject->scene, entity, it->second, channel, rest) && rest.size() == written.size() && shown.size() == written.size()){
             bool merged = false;
             for (size_t i = 0; i < written.size(); i++){
-                if (written[i] == shown[i] && rest[i] != shown[i]){
+                if (written[i] == shown[i] && rest[i] != shown[i] && !explicitWrite.covers(i)){
                     written[i] = rest[i];
                     merged = true;
                 }

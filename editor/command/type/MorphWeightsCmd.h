@@ -38,6 +38,10 @@ namespace jasperengine::editor{
         MorphWeightsCmd(Project* project, uint32_t sceneId, std::vector<Target> targets)
             : project(project), sceneId(sceneId), targets(std::move(targets)){}
 
+        // the weights the edit sets on purpose (the row's weight): the new rest of a clip
+        // preview even when equal to what it shows; the others follow "left as shown"
+        void setEditedWeights(std::vector<size_t> weights){ edited = std::move(weights); }
+
         bool execute() override{
             SceneProject* sceneProject = project->getScene(sceneId);
             if (!sceneProject || !sceneProject->scene) return false;
@@ -61,6 +65,7 @@ namespace jasperengine::editor{
                     // the weights it replaces are the rest
                     std::copy(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS, target.before.begin());
                     for (size_t i = 0; i < (size_t)MAX_MORPHTARGETS; i++){
+                        if (std::find(edited.begin(), edited.end(), i) != edited.end()) continue;
                         if (target.after[i] == shown[t][i] && target.before[i] != shown[t][i]) target.after[i] = target.before[i];
                     }
                 }
@@ -72,8 +77,13 @@ namespace jasperengine::editor{
                 }
                 if (!changed.empty()) project->recordPrefabEdit(sceneId, target.entity, ComponentType::MeshComponent, changed);
             }
-            for (const Target& target : targets){
-                ClipRecordHooks::afterComponentWrite(sceneId, target.entity, ComponentType::MeshComponent, "");
+            {
+                ClipRecordHooks::ExplicitWrite write;
+                write.components = edited;
+                ClipRecordHooks::ExplicitWriteScope scope(write);
+                for (const Target& target : targets){
+                    ClipRecordHooks::afterComponentWrite(sceneId, target.entity, ComponentType::MeshComponent, "");
+                }
             }
             executed = true;
             sceneProject->isModified = true;
@@ -93,6 +103,10 @@ namespace jasperengine::editor{
                 }
             }
             prefabUndo.restore(project, sceneId);
+            // undo writes the weights it replaced: they are the rest again
+            ClipRecordHooks::ExplicitWrite write;
+            write.all = true;
+            ClipRecordHooks::ExplicitWriteScope scope(write);
             for (const Target& target : targets){
                 ClipRecordHooks::afterComponentWrite(sceneId, target.entity, ComponentType::MeshComponent, "");
             }
@@ -107,6 +121,9 @@ namespace jasperengine::editor{
             }
             // the older command holds the weights (and overrides) a single undo restores
             for (size_t i = 0; i < targets.size(); i++) targets[i].before = older->targets[i].before;
+            for (size_t weight : older->edited){
+                if (std::find(edited.begin(), edited.end(), weight) == edited.end()) edited.push_back(weight);
+            }
             prefabUndo.mergeOlder(older->prefabUndo);
             wasModified = older->wasModified;
             return true;
@@ -122,6 +139,7 @@ namespace jasperengine::editor{
         std::vector<Target> targets;
         bool wasModified = false;
         bool executed = false;
+        std::vector<size_t> edited;
         PrefabEditUndo prefabUndo;
     };
 

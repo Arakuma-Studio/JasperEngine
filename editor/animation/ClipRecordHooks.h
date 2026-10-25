@@ -132,6 +132,39 @@ namespace jasperengine::editor{
         // move of a bound GameObject); takeNote returns it once ("" when none)
         static void note(const std::string& message);
         static std::string takeNote();
+
+        // ---- explicit writes (FX) ----
+
+        // A command's write of named values (PropertyCmd: an Inspector field, MCP set_properties
+        // of a component's property; the Blend Shapes row's weight, a lattice point set by
+        // index): those components of the channel value (the flattened ClipRecordValue layout)
+        // are the edit, also when equal to what a clip preview shows, so the preview takes them
+        // as the new rest. Components outside it follow the "left as shown" rule (a gizmo drag,
+        // a whole-component write, the values a row carries as the Scene view shows them).
+        struct ExplicitWrite{
+            bool all = false;                   // every component of the channels written
+            std::vector<size_t> components;
+            bool any() const { return all || !components.empty(); }
+            bool covers(size_t component) const;
+        };
+        // what the after-write being notified wrote explicitly (none outside an ExplicitWriteScope)
+        static const ExplicitWrite& explicitWrite();
+        // A preview shows other values than the scene's own for this channel now (a clip preview
+        // wrote it): an explicit write equal to what is shown still changes the scene. Queries are
+        // listeners like the channel writes (removed with removeChannelWriteListener).
+        using PreviewQuery = std::function<bool(uint32_t sceneId, Entity entity, ClipChannel channel)>;
+        static Id addPreviewQuery(PreviewQuery query);
+        static bool previews(uint32_t sceneId, Entity entity, ClipChannel channel);
+        // set around a command's afterComponentWrite / afterChannelWrite call
+        class ExplicitWriteScope{
+        public:
+            explicit ExplicitWriteScope(ExplicitWrite write);
+            ~ExplicitWriteScope();
+            ExplicitWriteScope(const ExplicitWriteScope&) = delete;
+            ExplicitWriteScope& operator=(const ExplicitWriteScope&) = delete;
+        private:
+            ExplicitWrite previous;
+        };
     };
 
 }

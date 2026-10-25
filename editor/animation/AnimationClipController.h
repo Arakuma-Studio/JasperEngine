@@ -273,6 +273,7 @@ namespace jasperengine::editor{
         int documentListener = 0;
         ClipRecordHooks::Id beforeWriteListener = 0;
         ClipRecordHooks::Id afterWriteListener = 0;
+        ClipRecordHooks::Id previewQuery = 0;
         ClipRecordHooks::Id recordListener = 0;
         // a scene write changed a previewed channel's rest: the preview is applied again on update
         bool needsApply = false;

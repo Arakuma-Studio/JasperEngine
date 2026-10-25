@@ -11,6 +11,7 @@
 #include "component/Transform.h"
 #include "Catalog.h"
 #include "animation/ClipRecordHooks.h"
+#include <cstdlib>
 #include <functional>
 #include <type_traits>
 
@@ -110,6 +111,33 @@ namespace jasperengine::editor{
         PrefabEditUndo prefabUndo;
         // the first execute ran (components left as a clip preview showed them were put back)
         bool executed = false;
+        // Vector3 components (bit i: x y z) the caller carried as the Scene view shows them
+        // instead of editing them (a Transform row's other fields): with a clip preview they keep
+        // their rest. Every other component is a value set on purpose (setShownComponents)
+        uint32_t shownComponents = 0;
+
+        // what this write names explicitly for the clip preview's rest (ClipRecordHooks)
+        ClipRecordHooks::ExplicitWrite explicitWrite(bool undoing) const{
+            ClipRecordHooks::ExplicitWrite write;
+            if (undoing || shownComponents == 0){
+                // a weight of a mesh's blend shapes is one component of its morph channel
+                if (type == ComponentType::MeshComponent && propertyName.compare(0, 13, "morphWeights[") == 0 && !undoing){
+                    write.components.push_back((size_t)std::strtoul(propertyName.c_str() + 13, nullptr, 10));
+                }else{
+                    write.all = true;
+                }
+                return write;
+            }
+            for (size_t i = 0; i < 3; i++){
+                if (!(shownComponents & (1u << i))) write.components.push_back(i);
+            }
+            return write;
+        }
+
+        void notifyAfterWrite(bool undoing){
+            ClipRecordHooks::ExplicitWriteScope scope(explicitWrite(undoing));
+            for (const auto& entry : values) ClipRecordHooks::afterComponentWrite(sceneId, entry.first, type, propertyName);
+        }
 
     public:
 
@@ -124,17 +152,23 @@ namespace jasperengine::editor{
             this->wasModified = project->getScene(sceneId)->isModified;
         }
 
+        // the Vector3 components (bit 0 x, 1 y, 2 z) the value carries as the Scene view shows
+        // them, not edited (an Inspector Transform row's other fields): see shownComponents
+        void setShownComponents(uint32_t mask){ shownComponents = mask; }
+
         bool execute() override{
             SceneProject* sceneProject = project->getScene(sceneId);
             if (!sceneProject){
                 return false;
             }
             // A Transform Position / Scale row edits one component and carries the others as the
-            // Scene view shows them: with a clip preview those may be previewed values. Read them
-            // before the rest is put back, so a component left as shown keeps its rest (T3c review C1)
+            // Scene view shows them (setShownComponents): with a clip preview those may be
+            // previewed values. Read them before the rest is put back, so a component left as
+            // shown keeps its rest (T3c review C1); the edited one is the new rest even when
+            // equal to the preview, as is every component of any other named write (FX)
             std::map<Entity, T> shown;
             if constexpr (std::is_same_v<T, Vector3>) {
-                if (!executed && type == ComponentType::Transform && (propertyName == "position" || propertyName == "scale")){
+                if (!executed && shownComponents != 0){
                     for (const auto& entry : values){
                         PropertyData prop = Catalog::findProperty(sceneProject->scene, entry.first, type, propertyName);
                         if (prop.ref) shown[entry.first] = *static_cast<T*>(prop.ref);
@@ -157,9 +191,9 @@ namespace jasperengine::editor{
                     auto it = shown.find(entity);
                     if (it != shown.end()){
                         const Vector3& seen = it->second;
-                        if (value.newValue.x == seen.x && value.oldValue.x != seen.x) value.newValue.x = value.oldValue.x;
-                        if (value.newValue.y == seen.y && value.oldValue.y != seen.y) value.newValue.y = value.oldValue.y;
-                        if (value.newValue.z == seen.z && value.oldValue.z != seen.z) value.newValue.z = value.oldValue.z;
+                        if ((shownComponents & 1u) && value.newValue.x == seen.x && value.oldValue.x != seen.x) value.newValue.x = value.oldValue.x;
+                        if ((shownComponents & 2u) && value.newValue.y == seen.y && value.oldValue.y != seen.y) value.newValue.y = value.oldValue.y;
+                        if ((shownComponents & 4u) && value.newValue.z == seen.z && value.oldValue.z != seen.z) value.newValue.z = value.oldValue.z;
                     }
                 }
                 prefabUndo.capture(project, sceneId, entity);
@@ -191,7 +225,7 @@ namespace jasperengine::editor{
             sceneProject->isModified = true;
             executed = true;
 
-            for (const auto& entry : values) ClipRecordHooks::afterComponentWrite(sceneId, entry.first, type, propertyName);
+            notifyAfterWrite(false);
 
             if (onValueChanged) {
                 onValueChanged();
@@ -233,7 +267,7 @@ namespace jasperengine::editor{
 
             sceneProject->isModified = wasModified;
 
-            for (const auto& entry : values) ClipRecordHooks::afterComponentWrite(sceneId, entry.first, type, propertyName);
+            notifyAfterWrite(true);
 
             if (onValueChanged) {
                 onValueChanged();

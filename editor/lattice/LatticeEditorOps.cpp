@@ -151,20 +151,26 @@ namespace{
         return true;
     }
 
+    // `explicitPoints`: the points the edit sets by index (setOffsets), the new rest of a clip
+    // preview even when equal to what it shows (a write of them while a preview shows the
+    // lattice is a step even when the offsets shown do not change)
     bool pushOffsets(Project* project, uint32_t sceneId, Entity entity, const LatticeComponent& lattice,
-                     const std::vector<Vector3>& offsets, bool continuous, bool record, std::string* error){
+                     const std::vector<Vector3>& offsets, bool continuous, bool record, std::string* error,
+                     const std::vector<int>& explicitPoints = {}){
         for (const Vector3& offset : offsets){
             if (!isFinite(offset)){
                 return fail(error, "the edit gives a point a non-finite offset");
             }
         }
-        if (offsets == lattice.offsets){
+        if (offsets == lattice.offsets && (explicitPoints.empty() || !ClipRecordHooks::previews(sceneId, entity, ClipChannel::Lattice))){
             return true; // nothing changes: no undo step
         }
         if (recordOffsets(sceneId, entity, lattice, offsets, continuous, record)){
             return true;
         }
-        Command* command = new LatticePointsCmd(project, sceneId, entity, offsets, continuous);
+        auto* points = new LatticePointsCmd(project, sceneId, entity, offsets, continuous);
+        points->setExplicitPoints(explicitPoints);
+        Command* command = points;
         bool added = continuous ? CommandHandle::get(sceneId)->addCommand(command) : push(sceneId, command);
         return added ? true : fail(error, "the lattice could not be edited");
     }
@@ -625,7 +631,7 @@ bool LatticeEditorOps::setOffsets(Project* project, uint32_t sceneId, Entity ent
     for (size_t n = 0; n < points.size(); n++){
         result[(size_t)points[n]] = offsets[n];
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, record, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, record, error, points);
 }
 
 bool LatticeEditorOps::setOffsetsContinuous(Project* project, uint32_t sceneId, Entity entity,
