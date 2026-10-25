@@ -791,7 +791,8 @@ int CustomTextEditor::scanOpenToken(const std::string& line, int i, OpenToken& o
 void CustomTextEditor::tokenizeAll() {
     // Every edit retokenizes, so this is also where cached widths expire
     maxLineWidthDirty = true;
-    lineTokens.clear();
+    // tokenizeText clears each line's tokens. Keep their buffers across edits
+    // instead of allocating every token vector again for the whole document.
     lineTokens.resize(lines.size());
     // Every line is retokenized after an edit, so a changed end state reaches the lines below
     lineEndStates.clear();
@@ -2239,15 +2240,22 @@ char CustomTextEditor::findMatchingBracket(const TextPosition& pos, TextPosition
 std::string CustomTextEditor::inferTypeOfVariable(const std::string& varName, int currentLine) const {
     if (varName.empty()) return "";
 
-    // [const] Type [*&] varName
-    std::regex cppDeclRegex("(?:const\\s+)?([A-Za-z0-9_:]+)(?:<[^>]*>)?\\s*(?:[*&]+\\s*)?" + varName + "\\b");
-    // auto varName = new Type(...)
-    std::regex cppNewRegex("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*new\\s+([A-Za-z0-9_:]+)");
-    // auto varName = Type(...) or Type{...}
-    std::regex cppAutoCtorRegex("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*([A-Z][A-Za-z0-9_:]*)\\s*[({]");
-
-    std::regex luaVarRegex("\\b" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
-    std::regex luaLocalVarRegex("\\blocal\\s+" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
+    // Only compile patterns for the language being searched. These expressions
+    // depend on varName and are rebuilt for each autocomplete lookup.
+    std::regex cppDeclRegex, cppNewRegex, cppAutoCtorRegex, luaVarRegex, luaLocalVarRegex;
+    if (language == SyntaxLanguage::Cpp) {
+        // [const] Type [*&] varName
+        cppDeclRegex.assign("(?:const\\s+)?([A-Za-z0-9_:]+)(?:<[^>]*>)?\\s*(?:[*&]+\\s*)?" + varName + "\\b");
+        // auto varName = new Type(...)
+        cppNewRegex.assign("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*new\\s+([A-Za-z0-9_:]+)");
+        // auto varName = Type(...) or Type{...}
+        cppAutoCtorRegex.assign("\\bauto\\s*[*&]*\\s*" + varName + "\\s*=\\s*([A-Z][A-Za-z0-9_:]*)\\s*[({]");
+    } else if (language == SyntaxLanguage::Lua) {
+        luaVarRegex.assign("\\b" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
+        luaLocalVarRegex.assign("\\blocal\\s+" + varName + "\\s*=\\s*([A-Za-z0-9_\\.:]+)(?:\\(|\\{)");
+    } else {
+        return "";
+    }
 
     for (int i = currentLine; i >= 0; --i) {
         if (i >= static_cast<int>(lines.size())) continue;
