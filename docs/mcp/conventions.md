@@ -107,6 +107,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `gameplay` | S22 |
 | `editor_tools` | S27 |
 | `vcs` | S29 |
+| `html_ui` | S17 (`ui_widget`) |
 
 A spec may add a group: one row in `McpToolGroups.cpp` (name, one-line description), and a
 `budget.json` `groups` entry only if it needs other limits than the defaults. Registering a tool

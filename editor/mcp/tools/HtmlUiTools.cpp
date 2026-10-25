@@ -2051,6 +2051,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.annotations.destructive = false;
         tool.allowedWhilePlaying = true;
         tool.activity = ToolActivity::Control;
+        tool.group = "html_ui";   // S17: a group tool (docs/mcp/conventions.md)
         tool.handler = uiWidgetTool;
         registry.addTool(std::move(tool));
     }

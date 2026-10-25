@@ -1661,7 +1661,8 @@ at other sizes. Typical sets:
 
 ### `ui_widget`
 
-Drives a virtual view of a playing document (runtime only, not undoable): `{"selector": "#servers",
+In the `html_ui` tool group (`tool_groups {"enable": ["html_ui"]}` lists it; a call by name
+works either way). Drives a virtual view of a playing document (runtime only, not undoable): `{"selector": "#servers",
 "action": "scroll_to" | "select" | "activate" | "expand" | "collapse" | "sort", "index": 0-based
 | "key": "...", "column": "ping", "direction": "asc" | "desc", "align": "start" | "center" | "end"
 | "nearest"}`. `activate` and `sort` fire the view's events, so the script reacts as to a player;

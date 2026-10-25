@@ -140,6 +140,12 @@ async def test_setup_and_play(ed: Editor):
     await ed.call("save_scene", scene=S["scene"], path="scenes/HtmlUiWidgets")
     await ed.call("wait", frames=5)
 
+    # a group tool (S31): hidden until the session enables html_ui, callable by name either way
+    default = {t.name for t in await ed.tools(groups=None)}
+    ed.check("ui_widget" not in default, "ui_widget is hidden until html_ui is enabled")
+    await ed.call("tool_groups", enable=["html_ui"])
+    ed.check("ui_widget" in {t.name for t in await ed.tools(groups=None)}, "listed once html_ui is enabled")
+
     # edit mode: ui_widget refuses (the views' data come from Lua)
     r = await ed.call_raw("ui_widget", {"entity": S["entity"], "selector": "#list", "action": "scroll_to", "index": 5})
     ed.check(r.is_error and "start play first" in r.text, f"ui_widget in edit mode: {r.text}")
