@@ -1326,17 +1326,29 @@ void Context::UpdateHoverChain(Vector2i old_mouse_position, int key_modifier_sta
 				Dictionary drag_start_parameters = drag_parameters;
 				drag_start_parameters["mouse_x"] = old_mouse_position.x;
 				drag_start_parameters["mouse_y"] = old_mouse_position.y;
-				drag->DispatchEvent(EventId::Dragstart, drag_start_parameters);
-				drag_started = true;
-
-				if (drag->GetComputedValues().drag() == Style::Drag::Clone)
+				// Fork (P7-C): a dragstart whose default action a listener prevented starts no drag, as in HTML5.
+				bool prevented = false;
+				drag->DispatchEvent(EventId::Dragstart, drag_start_parameters, &prevented);
+				if (prevented || !drag)
 				{
-					// Clone the element and attach it to the mouse cursor.
-					CreateDragClone(drag);
+					drag = nullptr;
+					drag_hover = nullptr;
+					drag_hover_chain.clear();
+				}
+				else
+				{
+					drag_started = true;
+
+					if (drag->GetComputedValues().drag() == Style::Drag::Clone)
+					{
+						// Clone the element and attach it to the mouse cursor.
+						CreateDragClone(drag);
+					}
 				}
 			}
 
-			drag->DispatchEvent(EventId::Drag, drag_parameters);
+			if (drag)
+				drag->DispatchEvent(EventId::Drag, drag_parameters);
 		}
 	}
 
@@ -1676,6 +1688,35 @@ public:
 private:
 	ElementObserverList* elements;
 };
+
+void Context::CancelDrag()
+{
+	if (!drag)
+		return;
+	if (drag_started)
+	{
+		Dictionary drag_parameters;
+		GenerateMouseEventParameters(drag_parameters);
+		GenerateDragEventParameters(drag_parameters);
+		drag_parameters["cancelled"] = 1;
+		if (drag_hover && drag_verbose)
+			drag_hover->DispatchEvent(EventId::Dragout, drag_parameters);
+		if (drag)
+			drag->DispatchEvent(EventId::Dragend, drag_parameters);
+		ReleaseDragClone();
+	}
+	drag = nullptr;
+	drag_started = false;
+	drag_hover = nullptr;
+	drag_hover_chain.clear();
+	// the button still held clicks nothing when it goes up
+	ResetActiveChain();
+}
+
+bool Context::IsDragging() const
+{
+	return drag && drag_started;
+}
 
 void Context::SendEvents(const ElementSet& old_items, const ElementSet& new_items, EventId id, const Dictionary& parameters)
 {

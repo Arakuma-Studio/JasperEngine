@@ -92,6 +92,7 @@ namespace jasperengine::htmlui {
             int count = 0;
             int first = -1, last = -1;          // visible items
             int pool = 0;                       // row elements (slots)
+            int poolBound = 0;                  // R2: (ceil(viewport / min row height) + 2 overscan + 8) lines
             int overscan = 0;
             int lanes = 1;
             SelectionMode selection = SelectionMode::Single;

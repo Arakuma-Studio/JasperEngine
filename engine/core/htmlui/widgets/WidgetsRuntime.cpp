@@ -5,6 +5,8 @@
 
 #include "htmlui/widgets/ItemsViewElement.h"
 #include "htmlui/widgets/MarkdownElement.h"
+#include "htmlui/widgets/DragDropSession.h"
+#include "htmlui/widgets/TooltipManager.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DiagnosticCodes.h"
 #include "htmlui/compat/Diagnostics.h"
@@ -36,8 +38,10 @@ namespace {
 
     class WidgetsPlugin final : public Rml::Plugin {
     public:
-        int GetEventClasses() override { return EVT_BASIC | EVT_ELEMENT; }
+        int GetEventClasses() override { return EVT_BASIC | EVT_DOCUMENT | EVT_ELEMENT; }
         void OnElementCreate(Rml::Element*) override { created++; }
+        void OnElementDestroy(Rml::Element* element) override { TooltipManager::elementDestroyed(element); }
+        void OnDocumentUnload(Rml::ElementDocument* document) override { TooltipManager::documentUnloaded(document); }
         void OnContextDestroy(Rml::Context* context) override { WidgetsRuntime::contextDestroyed(context); }
 
         uint64_t created = 0;
@@ -111,7 +115,9 @@ void WidgetsRuntime::registerAll(){
 
 void WidgetsRuntime::releaseAll(){
     Runtime& r = runtime();
-    // RmlUi forgot the instancers and plugins at shutdown
+    // RmlUi forgot the instancers and plugins at shutdown (every context, with its sessions, went before)
+    TooltipManager::releaseAll();
+    DragDropSession::releaseAll();
     r.reported.clear();
     r.registered = false;
 }
@@ -120,6 +126,8 @@ void WidgetsRuntime::update(Rml::Context* context){
     Runtime& r = runtime();
     if (!context || !r.registered)
         return;
+    DragDropSession::update(context);
+    TooltipManager::update(context);
     // a scan costs a query per document: only after enough elements were made to pass the limit
     if (r.plugin.created - r.scannedAt >= (uint64_t)kLargeDataFor){
         r.scannedAt = r.plugin.created;
@@ -131,6 +139,8 @@ void WidgetsRuntime::contextDestroyed(Rml::Context* context){
     Runtime& r = runtime();
     if (!context)
         return;
+    TooltipManager::contextDestroyed(context);
+    DragDropSession::contextDestroyed(context);
     for (int i = 0; i < context->GetNumDocuments(); i++)
         r.reported.erase(context->GetDocument(i));
 }

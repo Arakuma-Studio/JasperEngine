@@ -12,6 +12,7 @@
 #include "htmlui/RmlKeyMap.h"
 #include "htmlui/RmlSystem.h"
 #include "htmlui/RmlTextInputHandler.h"
+#include "htmlui/widgets/ItemsViewElement.h"
 #include "util/StringUtils.h"
 
 #include <RmlUi/Core/ComputedValues.h>
@@ -179,10 +180,12 @@ namespace {
     // that use them while focused (a range adjusts, an open select moves through its options);
     // everywhere else they navigate, so a text field or a closed select does not keep the d-pad.
     // A is Space on a checkbox or radio (it toggles on release), nothing on a text field (no line
-    // break, no submit), else Enter (a click on press); B is Escape (a modal <dialog> closes)
+    // break, no submit), else Enter (a click on press); B is Escape (a modal <dialog> closes). Inside
+    // a virtual view (S17 R8) the directions are its arrow keys; at its edges it leaves them to the
+    // spatial navigation
     Rml::Input::KeyIdentifier gamepadControlKey(GamepadUIKey key, Rml::Element* focus, bool selectOpen){
         if (isGamepadDirection(key))
-            return (selectOpen || isInputOfType(focus, {"range"})) ? arrowKey(key) : Rml::Input::KI_UNKNOWN;
+            return (selectOpen || isInputOfType(focus, {"range"}) || htmlui::ItemsViewElement::closestView(focus)) ? arrowKey(key) : Rml::Input::KI_UNKNOWN;
         if (key == GamepadUIKey::A){
             if (inputIsTextControl(focus, false))
                 return Rml::Input::KI_UNKNOWN;
@@ -226,10 +229,13 @@ namespace {
     // The element a gamepad navigates from: a focused element Tab reaches (a button, a link, a
     // form control, tabindex="0"). An element a click or a script focused that is not in the Tab
     // order (a clicked panel, tabindex="-1") has the keys but not the gamepad, so a click on a HUD
-    // does not take the d-pad from the game
+    // does not take the d-pad from the game. A virtual view's rows have it too: the view is the Tab
+    // stop, its active row the focus (S17 R8)
     Rml::Element* gamepadFocusElement(Rml::Context* context){
         Rml::Element* focus = focusedElement(context);
-        return (focus && focus->GetComputedValues().tab_index() == Rml::Style::TabIndex::Auto) ? focus : nullptr;
+        if (!focus)
+            return nullptr;
+        return (focus->GetComputedValues().tab_index() == Rml::Style::TabIndex::Auto || htmlui::ItemsViewElement::closestView(focus)) ? focus : nullptr;
     }
 
 }

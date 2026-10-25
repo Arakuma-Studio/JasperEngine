@@ -21,6 +21,24 @@ namespace jasperengine{
 
     class Framebuffer;
 
+    // The tooltips of a document (S17 R16): shown at all, after `delay` seconds of hover or
+    // focus, at once on another source within `hopWindow` seconds of the last one
+    struct UITooltipConfig {
+        bool enabled = true;
+        float delay = 0.5f;
+        float hopWindow = 0.5f;
+    };
+
+    // The tooltip a document shows (inspect_ui)
+    struct UITooltipInfo {
+        bool visible = false;
+        UIElement source;
+        UIElement tooltip;           // div.htmlui-tooltip
+        std::string text;
+        UIRect rect{};               // document px
+        std::string side;            // "top", "bottom", "left", "right"
+    };
+
     // A GameObject showing an HTML/CSS document over the scene (UIDocumentComponent)
     class JASPERENGINE_API UIDocument: public GameObject {
     public:
@@ -92,6 +110,15 @@ namespace jasperengine{
         // phase 6: pinned stateful effects whose replay is still running (they draw once it ends,
         // a few frames later; screenshots wait for it)
         static size_t getPendingEffectReplays();
+
+        // --- S17 ---
+        void configureTooltips(const UITooltipConfig& config);
+        UITooltipConfig getTooltipConfig() const;
+        UITooltipInfo getTooltip() const;
+        bool showTooltip(const UIElement& source);   // at once (false when it has none)
+        void hideTooltip();
+        // Markdown to the HTML <markdown> and setMarkdown show (div.markdown-body; HTML in it is text)
+        static std::string markdownToHtml(const std::string& markdown);
     };
 
 }

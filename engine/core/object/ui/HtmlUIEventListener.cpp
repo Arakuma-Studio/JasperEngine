@@ -5,6 +5,7 @@
 
 #include "Log.h"
 #include "script/LuaBinding.h"
+#include "htmlui/widgets/DragDropSession.h"
 
 #include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/Element.h>
@@ -27,7 +28,7 @@ namespace {
     const char* const kSameNames[] = {
         "click", "dblclick", "mousedown", "mouseup", "mousemove", "mouseover", "mouseout", "keydown", "keyup",
         "focus", "blur", "scroll", "resize", "load", "unload", "submit", "animationend", "transitionend",
-        "dragstart", "drag", "dragend", "dragover", "dragdrop", "textinput",
+        "dragstart", "drag", "dragend", "dragmove", "dragdrop", "dragout", "textinput",
         // the phase-3 fork's CSS animation and transition events
         "animationstart", "animationiteration", "animationcancel", "transitionrun", "transitionstart", "transitioncancel",
     };
@@ -163,7 +164,7 @@ const std::string& HtmlUIEventNames::supportedList(){
             text += name;
             text += ", ";
         }
-        text += "wheel, input, change and custom events";
+        text += "dragenter, dragover, dragleave, drop, wheel, input, change and custom events";
         return text;
     }();
     return list;
@@ -176,7 +177,10 @@ bool HtmlUIEventNames::toRml(const std::string& domType, std::string& rmlType, c
         return false;
     }
 
-    if (domType == "wheel"){
+    if (const char* drag = htmlui::DragDropSession::rmlEventOf(domType); drag[0]){
+        // HTML5's dragenter, dragover (repeating), dragleave and drop (S17 R18)
+        rmlType = drag;
+    }else if (domType == "wheel"){
         rmlType = "mousescroll";
     }else if (domType == "input"){
         // RmlUi fires change on every edit of a text field and on toggles

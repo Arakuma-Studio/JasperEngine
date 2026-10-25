@@ -6,6 +6,7 @@
 
 #include "htmlui/widgets/ItemsViewElement.h"
 
+#include "htmlui/widgets/DragDropSession.h"
 #include "htmlui/widgets/WidgetsRuntime.h"
 #include "htmlui/compat/ForkFeatures.h"
 #include "htmlui/compat/LuaHooks.h"
@@ -987,10 +988,12 @@ void ItemsViewElement::OnUpdate(){
         lastScrollTop = scrollTop;
         windowDirty = true;
     }
+    // a drag from one of the rows keeps the pool whole until it ends (R22)
+    const bool allowShrink = !DragDropSession::isDragSourceIn(this);
     if (windowDirty || modelDirty)
-        updateWindow(modelDirty ? VirtualizationCoordinator::Reason::DataChanged : VirtualizationCoordinator::Reason::ScrollChanged, true);
+        updateWindow(modelDirty ? VirtualizationCoordinator::Reason::DataChanged : VirtualizationCoordinator::Reason::ScrollChanged, allowShrink);
     else
-        core.Update(core.LastGuard(), VirtualizationCoordinator::Reason::Prewarm, lanes, VirtualWindowCore::ChangeSetView{}, *this, true);
+        core.Update(core.LastGuard(), VirtualizationCoordinator::Reason::Prewarm, lanes, VirtualWindowCore::ChangeSetView{}, *this, allowShrink);
 
     const float maxScroll = GetScrollHeight() - GetClientHeight();
     atEnd = GetScrollTop() >= maxScroll - 1.0f;
@@ -1542,6 +1545,8 @@ ItemsViewElement::State ItemsViewElement::getState() const{
     state.first = range.first;
     state.last = range.second;
     state.pool = (int)pool.size();
+    const float minHeight = std::max(kMinLineHeight, std::min(heights.estimate(), minLineHeight > 0.0f ? minLineHeight : heights.estimate()));
+    state.poolBound = ((int)std::ceil(viewportHeight() / minHeight) + 2 * overscan + VirtualWindowCore::kShrinkSlackLines) * std::max(1, lanes);
     state.overscan = overscan;
     state.lanes = lanes;
     state.selection = selectionMode;
