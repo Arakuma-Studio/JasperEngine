@@ -132,7 +132,7 @@ namespace jasperengine{
     // A scattered mesh layer painted over the terrain. The editor authors its density map;
     // instances are resolved from that map instead of being stored.
     struct TerrainFoliageLayer{
-        std::string meshPath;
+        AssetRef meshPath;
         Texture densityMap;
 
         float density = 1; //instances per square world unit where the map is fully painted

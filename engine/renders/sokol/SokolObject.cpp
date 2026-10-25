@@ -211,6 +211,13 @@ void SokolObject::applyBlend(sg_color_target_state& target, bool offscreen) cons
             target.blend.src_factor_rgb = SG_BLENDFACTOR_DST_COLOR;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             break;
+        case BlendMode::SUBTRACT_PREMULTIPLIED:
+            target.blend.op_rgb = SG_BLENDOP_REVERSE_SUBTRACT;
+            target.blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            target.blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            target.blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            return;
         default:
             target.blend.src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA;
             target.blend.dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;

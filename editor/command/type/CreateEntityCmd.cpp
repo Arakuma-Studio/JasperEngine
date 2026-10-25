@@ -431,6 +431,15 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<FogComponent>(entity, {});
         updateFlags |= Catalog::getComponentStructuralUpdateFlags(ComponentType::FogComponent);
 
+    }else if (type == EntityCreationType::LOCAL_VOLUMETRIC_FOG){
+
+        scene->addComponent<Transform>(entity, {});
+        scene->addComponent<LocalVolumetricFogComponent>(entity, {});
+
+    }else if (type == EntityCreationType::VOLUMETRIC_CLOUDS){
+
+        scene->addComponent<VolumetricCloudsComponent>(entity, {});
+
     }else if (type == EntityCreationType::REFLECTION_PROBE){
 
         scene->addComponent<Transform>(entity, {});

@@ -34,6 +34,9 @@ int runEditor(int argc, char* argv[]) {
     if (argc >= 2 && std::strcmp(argv[1], "scene-dump") == 0) {
         return editor::CommandLine::runSceneDumpCommand(argc - 1, argv + 1, argv[0]);
     }
+    if (argc >= 2 && std::strcmp(argv[1], "assets") == 0) {
+        return editor::CommandLine::runAssetsCommand(argc - 1, argv + 1, argv[0]);
+    }
     if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
         return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
     }

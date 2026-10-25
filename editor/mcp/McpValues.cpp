@@ -308,7 +308,71 @@ const EnumOptions& fogTypeOptions() {
     static const EnumOptions options = {
         {(int)FogType::LINEAR, "linear", "Linear"},
         {(int)FogType::EXPONENTIAL, "exponential", "Exponential"},
-        {(int)FogType::EXPONENTIALSQUARED, "exponential_squared", "Exponential Squared"}
+        {(int)FogType::EXPONENTIALSQUARED, "exponential_squared", "Exponential Squared"},
+        {(int)FogType::HEIGHT, "height", "Height"}
+    };
+    return options;
+}
+
+const EnumOptions& fogColorModeOptions() {
+    static const EnumOptions options = {
+        {(int)FogColorMode::COLOR, "color", "Constant Color"},
+        {(int)FogColorMode::SKY, "sky", "Sky Color"}
+    };
+    return options;
+}
+
+const EnumOptions& atmosphereQualityOverrideOptions() {
+    static const EnumOptions options = {
+        {(int)AtmosphereQualityOverride::PROJECT, "project", "Project"},
+        {(int)AtmosphereQualityOverride::LOW, "low", "Low"},
+        {(int)AtmosphereQualityOverride::MEDIUM, "medium", "Medium"}
+    };
+    return options;
+}
+
+const EnumOptions& atmosphereQualityOptions() {
+    static const EnumOptions options = {
+        {(int)AtmosphereQuality::OFF, "off", "Off"},
+        {(int)AtmosphereQuality::LOW, "low", "Low"},
+        {(int)AtmosphereQuality::MEDIUM, "medium", "Medium"},
+        {(int)AtmosphereQuality::HIGH, "high", "High"}
+    };
+    return options;
+}
+
+const EnumOptions& fogVolumeShapeOptions() {
+    static const EnumOptions options = {
+        {(int)FogVolumeShape::BOX, "box", "Box"},
+        {(int)FogVolumeShape::SPHERE, "sphere", "Sphere"}
+    };
+    return options;
+}
+
+const EnumOptions& fogVolumeFalloffOptions() {
+    static const EnumOptions options = {
+        {(int)FogVolumeFalloff::LINEAR, "linear", "Linear"},
+        {(int)FogVolumeFalloff::EXPONENTIAL, "exponential", "Exponential"}
+    };
+    return options;
+}
+
+const EnumOptions& cloudsPresetOptions() {
+    static const EnumOptions options = {
+        {(int)CloudsPreset::CUSTOM, "custom", "Custom"},
+        {(int)CloudsPreset::SPARSE, "sparse", "Sparse"},
+        {(int)CloudsPreset::CLOUDY, "cloudy", "Cloudy"},
+        {(int)CloudsPreset::OVERCAST, "overcast", "Overcast"},
+        {(int)CloudsPreset::STORMY, "stormy", "Stormy"}
+    };
+    return options;
+}
+
+const EnumOptions& cloudsRenderingOptions() {
+    static const EnumOptions options = {
+        {(int)CloudsRendering::AUTO, "auto", "Automatic"},
+        {(int)CloudsRendering::SKY_MAP, "sky_map", "Sky Map"},
+        {(int)CloudsRendering::SCREEN, "screen", "Screen"}
     };
     return options;
 }
@@ -626,6 +690,23 @@ const EnumOptions& lightShadingOptions() {
     return options;
 }
 
+const EnumOptions& cascadeSplitModeOptions() {
+    static const EnumOptions options = {
+        {(int)CascadeSplitMode::AUTO, "auto", "Auto"},
+        {(int)CascadeSplitMode::MANUAL, "manual", "Manual"}
+    };
+    return options;
+}
+
+const EnumOptions& shadowUpdateModeOptions() {
+    static const EnumOptions options = {
+        {(int)ShadowUpdateMode::AUTO, "auto", "Auto"},
+        {(int)ShadowUpdateMode::EVERY_FRAME, "every_frame", "Every Frame"},
+        {(int)ShadowUpdateMode::ON_DEMAND, "on_demand", "On Demand"}
+    };
+    return options;
+}
+
 const EnumOptions& primitiveTypeOptions() {
     static const EnumOptions options = {
         {(int)PrimitiveType::TRIANGLES, "triangles", "Triangles"},
@@ -711,10 +792,34 @@ const EnumOptions& lightStateOptions() {
 
 const EnumOptions& shadowQualityOptions() {
     static const EnumOptions options = {
-        {(int)ShadowQuality::NONE, "none", "None"},
+        {(int)ShadowQuality::AUTO, "auto", "Auto"},
+        {(int)ShadowQuality::NONE, "none", "Hard Only"},
         {(int)ShadowQuality::LOW, "low", "Low"},
         {(int)ShadowQuality::MEDIUM, "medium", "Medium"},
-        {(int)ShadowQuality::HIGH, "high", "High"}
+        {(int)ShadowQuality::HIGH, "high", "High"},
+        {(int)ShadowQuality::ULTRA, "ultra", "Ultra"}
+    };
+    return options;
+}
+
+const EnumOptions& shadowDebugViewOptions() {
+    static const EnumOptions options = {
+        {(int)ShadowDebugView::NONE, "none", "None"},
+        {(int)ShadowDebugView::CASCADES, "cascades", "Cascades"},
+        {(int)ShadowDebugView::SHADOW_FACTOR, "shadow_factor", "Shadow Factor"},
+        {(int)ShadowDebugView::TEXEL_DENSITY, "texel_density", "Texel Density"},
+        {(int)ShadowDebugView::CACHE, "cache", "Cache"},
+        {(int)ShadowDebugView::ATLAS, "atlas", "Atlas"}
+    };
+    return options;
+}
+
+const EnumOptions& shadowTierOptions() {
+    static const EnumOptions options = {
+        {(int)ShadowTier::LOW, "low", "Low"},
+        {(int)ShadowTier::MEDIUM, "medium", "Medium"},
+        {(int)ShadowTier::HIGH, "high", "High"},
+        {(int)ShadowTier::ULTRA, "ultra", "Ultra"}
     };
     return options;
 }
@@ -888,6 +993,8 @@ std::string McpValues::propertyTypeName(PropertyType type) {
         case PropertyType::Custom: return "custom";
         case PropertyType::Entity: return "entity";
         case PropertyType::EntityReference: return "entity_reference";
+        case PropertyType::Asset: return "asset";
+        case PropertyType::Shader: return "shader";
     }
     return "unknown";
 }
@@ -936,6 +1043,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
     static const std::map<std::string, const EnumOptions*> tables = {
         {"light_state", &lightStateOptions()},
         {"shadow_quality", &shadowQualityOptions()},
+        {"shadow_debug_view", &shadowDebugViewOptions()},
+        {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
         {"texture_filter", &textureFilterOptions()},
         {"framebuffer_filter", &framebufferFilterOptions()},
@@ -962,6 +1071,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"lattice_jiggle_anchor", &latticeJiggleAnchorOptions()},
         {"lattice_stage", &latticeStageOptions()},
         {"lattice_mask", &latticeMaskOptions()},
+        {"atmosphere_quality", &atmosphereQualityOptions()},
         {"ease", &easeOptions()}
     };
     auto it = tables.find(name);
@@ -991,6 +1101,8 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::LightComponent:
             if (name == "type") return &lightTypeOptions();
             if (name == "shading") return &lightShadingOptions();
+            if (name == "cascadeSplitMode") return &cascadeSplitModeOptions();
+            if (name == "shadowUpdateMode") return &shadowUpdateModeOptions();
             break;
         case ComponentType::UIComponent:
         case ComponentType::PointsComponent:
@@ -1005,6 +1117,17 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::FogComponent:
             if (name == "type") return &fogTypeOptions();
+            if (name == "colorMode") return &fogColorModeOptions();
+            if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
+            break;
+        case ComponentType::LocalVolumetricFogComponent:
+            if (name == "shape") return &fogVolumeShapeOptions();
+            if (name == "falloff") return &fogVolumeFalloffOptions();
+            break;
+        case ComponentType::VolumetricCloudsComponent:
+            if (name == "preset") return &cloudsPresetOptions();
+            if (name == "rendering") return &cloudsRenderingOptions();
+            if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
             break;
         case ComponentType::ReflectionProbeComponent:
             if (name == "mode") return &probeModeOptions();
@@ -1290,10 +1413,20 @@ std::string McpValues::assetPathToJson(Project* project, const std::string& stor
     return FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(project->resolveAssetPath(stored)));
 }
 
-bool McpValues::assetPathFromJson(Project* project, const std::string& projectRelative, std::string& stored, std::string& error) {
-    if (projectRelative.empty()) {
+bool McpValues::assetPathFromJson(Project* project, const std::string& requested, std::string& stored, std::string& error) {
+    if (requested.empty()) {
         stored.clear();
         return true;
+    }
+    // a GUID names the asset it is (S04)
+    std::string projectRelative = requested;
+    if (Guid::isValidText(requested)) {
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(Guid::parse(requested), std::string(), AssetType::Unknown, false);
+        if (!found.found()) {
+            error = "No asset has the GUID " + requested + ".";
+            return false;
+        }
+        projectRelative = found.path;
     }
     const fs::path relative = FileUtils::pathFromUtf8(projectRelative);
     if (!isSafeRelative(relative)) {
@@ -1972,6 +2105,12 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
             const std::string& value = *static_cast<std::string*>(ref);
             return isAssetPathProperty(name) ? assetPathToJson(ctx.project, value) : value;
         }
+        case PropertyType::Asset: {
+            const std::string& value = static_cast<AssetRef*>(ref)->path;
+            return isAssetPathProperty(name) ? assetPathToJson(ctx.project, value) : value;
+        }
+        case PropertyType::Shader:
+            return static_cast<ShaderRef*>(ref)->path;
         case PropertyType::Float:
             return number(*static_cast<float*>(ref));
         case PropertyType::Double:
@@ -2125,9 +2264,21 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
         case PropertyType::Bool:
             if (!value.is_boolean()) return expect("true or false");
             return new PropertyCmd<bool>(project, sceneId, entity, component, propertyName, value.get<bool>(), onChanged);
-        case PropertyType::String: {
+        case PropertyType::String:
+        case PropertyType::Asset:
+        case PropertyType::Shader: {
             if (!value.is_string()) return expect("a string");
             std::string text = value.get<std::string>();
+            // the command of the property's own type: a path set on a reference gets its GUID
+            // from the file at the path when the editor next resolves the scene's references
+            const PropertyType stringType = property.type;
+            auto stringCmd = [&](const std::string& name, const std::string& stored) -> Command* {
+                if (stringType == PropertyType::Asset)
+                    return new PropertyCmd<AssetRef>(project, sceneId, entity, component, name, AssetRef(stored), onChanged);
+                if (stringType == PropertyType::Shader)
+                    return new PropertyCmd<ShaderRef>(project, sceneId, entity, component, name, ShaderRef(stored), onChanged);
+                return new PropertyCmd<std::string>(project, sceneId, entity, component, name, stored, onChanged);
+            };
             if (component == ComponentType::ModelComponent && propertyName == "filename") {
                 // a model is its file: setting it loads the file (Inspector / drag and drop)
                 std::string stored;
@@ -2135,7 +2286,7 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 if (stored.empty()) {
                     ModelComponent* model = scene->scene->findComponent<ModelComponent>(entity);
                     if (!model || !ModelClearCmd::hasContent(*model)) {
-                        return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, std::string(), onChanged);
+                        return stringCmd(propertyName, std::string());
                     }
                     std::string reason;
                     if (!ModelClearCmd::canClear(project, sceneId, entity, &reason)) {
@@ -2151,6 +2302,15 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                 return new ModelLoadCmd(project, sceneId, entity, stored);
             }
             if (isAssetPathProperty(propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
+            // an Asset script property is project-relative: a GUID given names its file
+            if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
+                const fs::path found = project->getAssetDatabase().getPath(Guid::parse(text));
+                if (found.empty()) {
+                    error = propertyName + ": no asset has the GUID " + text + ".";
+                    return nullptr;
+                }
+                text = FileUtils::pathToGenericUtf8(found);
+            }
             // a foliage layer's FBX mesh loads from its import, created here the first time
             if (component == ComponentType::TerrainComponent && endsWith(propertyName, "meshPath") &&
                     FbxImporter::isFbxFile(text) && !project->prepareModelFile(text)) {
@@ -2175,14 +2335,14 @@ Command* McpValues::buildPropertyCommand(Project* project, uint32_t sceneId, Ent
                     const MaterialLighting current = static_cast<MaterialLighting>(*static_cast<int*>(lighting.ref));
                     if (!Catalog::supportsLighting(current, findManifest(drawn).get())) {
                         auto* multi = new MultiPropertyCmd();
-                        multi->addPropertyCmd<std::string>(project, sceneId, entity, component, propertyName, text, onChanged);
+                        multi->addCommand(std::unique_ptr<Command>(stringCmd(propertyName, text)));
                         multi->addPropertyCmd<int>(project, sceneId, entity, component, prefix + "lighting",
                                                    (int)MaterialLighting::AUTO, onChanged);
                         return multi;
                     }
                 }
             }
-            return new PropertyCmd<std::string>(project, sceneId, entity, component, propertyName, text, onChanged);
+            return stringCmd(propertyName, text);
         }
         case PropertyType::Float: {
             if (!value.is_number()) return expect("a number");

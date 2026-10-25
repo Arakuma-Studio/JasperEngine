@@ -387,7 +387,7 @@ bool Text::removeShaderUniform(const std::string& name){
 Vector4 Text::getShaderParam(const std::string& name) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, name);
+    return ShaderLibraryValues::getParam(ui.shaderUniforms, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, name);
 }
 
 void Text::setShaderTexture(const std::string& name, const std::string& path){
@@ -408,14 +408,14 @@ void Text::setShaderFeature(const std::string& define, bool enabled){
     UIComponent& ui = getComponent<UIComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define, enabled))
         ui.needReload = true;
 }
 
 bool Text::isShaderFeatureEnabled(const std::string& define) const{
     UIComponent& ui = getComponent<UIComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(ui.shaderFeatures, ui.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::UI) : ui.customShader.path, define);
 }
 
 void Text::setBlendMode(MaterialBlendMode blendMode){

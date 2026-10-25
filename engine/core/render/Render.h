@@ -52,7 +52,10 @@ namespace jasperengine{
         MULTIPLY,
         ADDITIVE_PREMULTIPLIED,
         SCREEN_PREMULTIPLIED,
-        MULTIPLY_PREMULTIPLIED
+        MULTIPLY_PREMULTIPLIED,
+        // dst - src (premultiplied colour taken away; alpha kept): the atmosphere's
+        // volumetric composite removes the analytic fog it replaces with it
+        SUBTRACT_PREMULTIPLIED
     };
 
     enum class DepthCompare{
@@ -166,7 +169,15 @@ namespace jasperengine{
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
         UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
         PROBE_FILTER,    // reflection probe capture prefiltered into roughness mip levels (probe_filter.frag)
-        FLUID            // FluidSimulator's passes (the solver and the display), the pass in the property bits
+        FLUID,           // FluidSimulator's passes (the solver and the display), the pass in the property bits
+        SHADOW_CACHE,    // the shadow cache's depth copy and slot clear; 'Vis' the atlas debug view (RenderSystem)
+        // the atmosphere's passes (docs/specs/S12-atmosphere.md, RenderSystem's AtmosphereRenderer)
+        ATMOSPHERE_DEPTH,     // reduced-resolution linear depth of the scene (Atmosphere/DepthDownsample)
+        VOLUMETRIC_FOG,       // the volumetric fog march (Atmosphere/VolumetricFog)
+        ATMOSPHERE_DENOISE,   // depth-aware 3x3 blur of a reduced (S, T) target (Atmosphere/Denoise)
+        VOLUMETRIC_CLOUDS,    // the clouds march, Screen and Sky Map (Atmosphere/CloudsScreen, CloudsSkyMap)
+        SKY_COMPOSITE,        // clouds and sky fill over the sky pixels (Atmosphere/SkyComposite)
+        VOLUMETRIC_COMPOSITE  // volumetric fog and Screen clouds over the scene (Atmosphere/VolumetricComposite)
     };
 
     enum class AttributeType{
@@ -302,7 +313,8 @@ namespace jasperengine{
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
         BONES,
         LATTICE,             // the lattice records of a mesh (RGBA32F, includes/lattice.glsl)
-        PROBESOURCE          // reflection probe capture (or its box mip chain) read by the prefilter
+        PROBESOURCE,         // reflection probe capture (or its box mip chain) read by the prefilter
+        SHADOWATLASRAW       // the projective shadow atlas's raw depths (a second view: PCSS)
     };
 
     enum class TextureType {

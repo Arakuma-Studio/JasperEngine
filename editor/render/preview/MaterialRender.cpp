@@ -78,7 +78,7 @@ void editor::MaterialRender::applyMaterial(const Material& material, const std::
     // the material's shader, its parameters, textures, features and render state are the
     // sphere's (Mesh::setMaterial reloads what the variant depends on)
     Material drawn = material;
-    drawn.colorWrite = previewColorWrite(material.colorWrite, material.shader.empty() ? meshShader : material.shader,
+    drawn.colorWrite = previewColorWrite(material.colorWrite, material.shader.empty() ? meshShader : material.shader.path,
                                          material.shaderFeatures);
     if (MaterialPass* pass = drawn.extraPass.editIfSet(); pass && !pass->shader.empty())
         pass->colorWrite = previewColorWrite(pass->colorWrite, pass->shader, pass->shaderFeatures);

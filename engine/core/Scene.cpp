@@ -19,6 +19,7 @@
 #include "util/Color.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -189,6 +190,42 @@ void Scene::setShadowQuality(ShadowQuality quality){
 
 ShadowQuality Scene::getShadowQuality() const{
     return settings.shadowQuality;
+}
+
+void Scene::setShadowDistance(float distance){
+    settings.shadowDistance = (std::isfinite(distance) && distance > 0.0f) ? distance : 0.0f;
+}
+
+float Scene::getShadowDistance() const{
+    return settings.shadowDistance;
+}
+
+void Scene::setShadowFadeFraction(float fraction){
+    settings.shadowFadeFraction = std::isfinite(fraction) ? std::clamp(fraction, 0.0f, 1.0f) : SceneSettings().shadowFadeFraction;
+}
+
+float Scene::getShadowFadeFraction() const{
+    return settings.shadowFadeFraction;
+}
+
+void Scene::setShadowCascadeBlend(bool blend){
+    settings.shadowCascadeBlend = blend;
+}
+
+bool Scene::isShadowCascadeBlend() const{
+    return settings.shadowCascadeBlend;
+}
+
+ShadowTier Scene::getEffectiveShadowTier() const{
+    return const_cast<Scene*>(this)->getSystem<RenderSystem>()->getEffectiveShadowTier();
+}
+
+void Scene::setShadowDebugView(ShadowDebugView view){
+    shadowDebugView = view;
+}
+
+ShadowDebugView Scene::getShadowDebugView() const{
+    return shadowDebugView;
 }
 
 void Scene::setMeshLodEnabled(bool enabled){
@@ -565,6 +602,30 @@ const std::string& Scene::getDefaultCustomShader(ShaderType type) const{
         case ShaderType::POINTS: return settings.defaultPointsShader;
         case ShaderType::LINES:  return settings.defaultLinesShader;
         default: return empty;
+    }
+}
+
+const ShaderRef& Scene::getDefaultShaderRef(ShaderType type) const{
+    static const ShaderRef empty;
+    switch (type){
+        case ShaderType::MESH:   return settings.defaultMeshShader;
+        case ShaderType::UI:     return settings.defaultUIShader;
+        case ShaderType::SKYBOX: return settings.defaultSkyShader;
+        case ShaderType::POINTS: return settings.defaultPointsShader;
+        case ShaderType::LINES:  return settings.defaultLinesShader;
+        default: return empty;
+    }
+}
+
+void Scene::setDefaultShaderRef(ShaderType type, const ShaderRef& ref){
+    setDefaultCustomShader(type, ref.path);
+    switch (type){
+        case ShaderType::MESH:   settings.defaultMeshShader = ref;   break;
+        case ShaderType::UI:     settings.defaultUIShader = ref;     break;
+        case ShaderType::SKYBOX: settings.defaultSkyShader = ref;    break;
+        case ShaderType::POINTS: settings.defaultPointsShader = ref; break;
+        case ShaderType::LINES:  settings.defaultLinesShader = ref;  break;
+        default: break;
     }
 }
 

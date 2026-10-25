@@ -70,6 +70,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<LatticeModifierComponent>();
     registerComponent<LatticeFollowerComponent>();
     registerComponent<LatticeTracksComponent>();
+    registerComponent<LocalVolumetricFogComponent>();
+    registerComponent<VolumetricCloudsComponent>();
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {

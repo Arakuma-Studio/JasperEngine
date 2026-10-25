@@ -214,6 +214,8 @@ namespace jasperengine{
         int slotVSShadows = -1;
         int slotFSShadows = -1;
         int slotFSPointShadows = -1;
+        int slotFSShadowData = -1;        // u_fs_shadow_data (includes/shadow_data.glsl)
+        int slotFSPointShadowData = -1;   // u_fs_point_shadow_data
         int slotVSSkinning = -1;
         int slotVSMorphTarget = -1;
         // u_vs_lattice and u_latticeTexture (includes/lattice.glsl), loaded with a lattice variant
@@ -336,11 +338,11 @@ namespace jasperengine{
         // e.g. "shaders/myMesh" -> shaders/myMesh.vert + shaders/myMesh.frag.
         // Empty = use the built-in Mesh shader. Drives the main render pass only;
         // the gbuffer pass keeps the built-in shader.
-        std::string customShader;
+        ShaderRef customShader;
         // Same for the depth shader (shadow maps, and the SSAO/post-process depth when SSR
         // is off; with SSR on those read the built-in gbuffer), so a fork that displaces
         // vertices or discards keeps its shadows in step.
-        std::string customDepthShader;
+        ShaderRef customDepthShader;
         // values of the fork's custom uniform blocks, by member name, shared by all submeshes
         ShaderUniformValues shaderUniforms;
         bool needUpdateShaderUniforms = false;
@@ -381,6 +383,12 @@ namespace jasperengine{
         bool castShadows = true;
         bool receiveShadows = true;
         bool shadowsBillboard = true;
+        // its shadows are cached in the static layer: redrawn only when it (or another static
+        // caster of the slot) changes, while dynamic casters move over it (docs/rendering/shadows.md)
+        bool staticShadowCaster = false;
+        // runtime: bumped on every change of what it casts that its bounds alone may miss (a
+        // transform, a mesh reload, a buffer or depth texture update): the shadow cache's input
+        uint32_t shadowCasterRevision = 0;
         bool renderInReflectionProbes = true; // when false the mesh is skipped by probe captures
 
         bool transparent = false;

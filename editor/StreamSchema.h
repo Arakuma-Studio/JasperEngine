@@ -17,6 +17,8 @@
 #include "Project.h"
 #include "Generator.h"
 #include "window/TerrainEditWindow.h"
+#include "render/shadow/ShadowTiers.h"
+#include "render/shadow/ShadowTypes.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -145,7 +147,14 @@ namespace jasperengine::editor {
         static const EnumTable<CullingMode>& cullingMode();
         static const EnumTable<EaseType>& easeType();
         static const EnumTable<FluidOutput>& fluidOutput();
+        static const EnumTable<AtmosphereQuality>& atmosphereQuality();
+        static const EnumTable<AtmosphereQualityOverride>& atmosphereQualityOverride();
+        static const EnumTable<CloudsPreset>& cloudsPreset();
+        static const EnumTable<CloudsRendering>& cloudsRendering();
+        static const EnumTable<FogColorMode>& fogColorMode();
         static const EnumTable<FogType>& fogType();
+        static const EnumTable<FogVolumeFalloff>& fogVolumeFalloff();
+        static const EnumTable<FogVolumeShape>& fogVolumeShape();
         static const EnumTable<Joint2DType>& joint2DType();
         static const EnumTable<Joint3DType>& joint3DType();
         static const EnumTable<LayoutGroupType>& layoutGroupType();
@@ -179,6 +188,9 @@ namespace jasperengine::editor {
         static const EnumTable<ScrollbarType>& scrollbarType();
         static const EnumTable<ShadowCaster2DShape>& shadowCaster2DShape();
         static const EnumTable<ShadowQuality>& shadowQuality();
+        static const EnumTable<ShadowUpdateMode>& shadowUpdateMode();
+        static const EnumTable<CascadeSplitMode>& cascadeSplitMode();
+        static const EnumTable<ShadowTier>& shadowTier();
         static const EnumTable<TerrainBrushFalloff>& terrainBrushFalloff();
         static const EnumTable<TerrainBrushMode>& terrainBrushMode();
         static const EnumTable<TerrainBrushShape>& terrainBrushShape();

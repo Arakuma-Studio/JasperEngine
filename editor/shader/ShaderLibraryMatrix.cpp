@@ -73,12 +73,16 @@ namespace {
                 {"no normals or uv", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.normal = false; i.tangent = false; i.texCoord1 = false; }},
                 {"fog", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.fog = true; }},
                 {"shadows", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; }},
+                // the High and Ultra tiers' filters (S10 'Shq': the Vogel disk, PCSS, the raw-depth view)
+                {"shadows, high filters", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.lights = true; e.shadows = true; e.shadowsHQ = true; }},
                 {"2d lights + shadows, sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){ i.textureRect = true; e.lights2D = true; e.shadows2D = true; }},
                 {"instanced sprite rect", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.textureRect = true; i.instanced = true; }},
                 // a Terrain's patches (no UV or tangent attributes: uv1 is the terrain's own)
                 {"terrain", [](SubmeshShaderInputs& i, MeshShaderEnvironment&){ i.terrain = true; i.texCoord1 = false; i.tangent = false; }},
                 {"terrain, fog, shadows", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
                     i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; }},
+                {"terrain, fog, shadows, high filters", [](SubmeshShaderInputs& i, MeshShaderEnvironment& e){
+                    i.terrain = true; i.texCoord1 = false; i.tangent = false; e.fog = true; e.lights = true; e.shadows = true; e.shadowsHQ = true; }},
                 // the post-processing colour (phase 4, USE_POST_COLOR): its parameters in the frame
                 // block or a block of its own, and its LUT texture, next to everything else
                 {"post colour", [](SubmeshShaderInputs&, MeshShaderEnvironment& e){ e.postColor = true; }},
@@ -220,7 +224,8 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
 
         // the lighting modes it supports, the first (default) with every feature set; a lit
         // mode at each light capacity tier, with and without shadows (only pixel lights
-        // take them), and also without scene lights (its unlit fallback)
+        // take them; with the High filters too), and also without scene lights (its unlit
+        // fallback)
         std::vector<ShaderLightingMode> modes = manifest.lighting;
         if (modes.empty())
             modes.push_back(ShaderLightingMode::NONE);
@@ -233,13 +238,15 @@ std::vector<editor::ShaderLibraryMatrix::Variant> editor::ShaderLibraryMatrix::b
             const bool lit = mode != ShaderLightingMode::NONE;
 
             for (int capacity : lightCapacities){
-                for (int shadows = 0; shadows < 2; shadows++){
+                for (int shadows = 0; shadows < 3; shadows++){
                     if (!lit && (capacity != 8 || shadows))
                         continue;
                     MeshShaderEnvironment lightingEnvironment = environment;
                     lightingEnvironment.lightCapacity = capacity;
                     lightingEnvironment.shadows = shadows != 0;
-                    const std::string label = modeLabel + (lit ? ", " + std::to_string(capacity) + " lights" + (shadows ? ", shadows" : "") : "");
+                    lightingEnvironment.shadowsHQ = shadows == 2;
+                    const std::string label = modeLabel + (lit ? ", " + std::to_string(capacity) + " lights" +
+                                                           (shadows == 2 ? ", shadows (high filters)" : (shadows ? ", shadows" : "")) : "");
                     if (mode == modes.front() && capacity == 8 && !shadows){
                         for (const auto& features : featureSets)
                             addMesh(label + ", " + features.first, referenceOf(features.second), inputs, lightingEnvironment);

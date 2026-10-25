@@ -12,6 +12,8 @@
 
 #include "EntityHandle.h"
 #include "Fog.h"
+#include "LocalVolumetricFog.h"
+#include "VolumetricClouds.h"
 #include "ReflectionProbe.h"
 #include "object/FluidSimulation.h"
 #include "Skybox.h"
@@ -404,6 +406,50 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("linearStart", &Fog::getLinearStart, &Fog::setLinearStart)
         .addProperty("linearEnd", &Fog::getLinearEnd, &Fog::setLinearEnd)
         .addFunction("setLinearStartEnd", &Fog::setLinearStartEnd)
+        .addProperty("colorMode", &Fog::getColorMode, &Fog::setColorMode)
+        .addProperty("attenuationDistance", &Fog::getAttenuationDistance, &Fog::setAttenuationDistance)
+        .addProperty("baseHeight", &Fog::getBaseHeight, &Fog::setBaseHeight)
+        .addProperty("maximumHeight", &Fog::getMaximumHeight, &Fog::setMaximumHeight)
+        .addProperty("startDistance", &Fog::getStartDistance, &Fog::setStartDistance)
+        .addProperty("maxFogDistance", &Fog::getMaxFogDistance, &Fog::setMaxFogDistance)
+        .addProperty("maxOpacity", &Fog::getMaxOpacity, &Fog::setMaxOpacity)
+        .addProperty("directionalInscattering", &Fog::getDirectionalInscattering, &Fog::setDirectionalInscattering)
+        .addProperty("anisotropy", &Fog::getAnisotropy, &Fog::setAnisotropy)
+        .addProperty("skyFill", &Fog::isSkyFill, &Fog::setSkyFill)
+        .addProperty("skyFillAngle", &Fog::getSkyFillAngle, &Fog::setSkyFillAngle)
+        .addProperty("volumetric", &Fog::isVolumetric, &Fog::setVolumetric)
+        .addProperty("volumetricDistance", &Fog::getVolumetricDistance, &Fog::setVolumetricDistance)
+        .addProperty("lightShafts", &Fog::isLightShafts, &Fog::setLightShafts)
+        .addProperty("noiseIntensity", &Fog::getNoiseIntensity, &Fog::setNoiseIntensity)
+        .addProperty("noiseScale", &Fog::getNoiseScale, &Fog::setNoiseScale)
+        .addProperty("wind", &Fog::getWind, (void(Fog::*)(Vector3))&Fog::setWind)
+        .addFunction("setWind", (void(Fog::*)(float, float, float))&Fog::setWind)
+        .addProperty("qualityOverride", &Fog::getQualityOverride, &Fog::setQualityOverride)
+        .addFunction("applyPreset", &Fog::applyPreset)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<VolumetricClouds, EntityHandle>("VolumetricClouds")
+        .addConstructor <void (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("preset", &VolumetricClouds::getPreset, &VolumetricClouds::setPreset)
+        .addProperty("rendering", &VolumetricClouds::getRendering, &VolumetricClouds::setRendering)
+        .addProperty("coverage", &VolumetricClouds::getCoverage, &VolumetricClouds::setCoverage)
+        .addProperty("density", &VolumetricClouds::getDensity, &VolumetricClouds::setDensity)
+        .addProperty("shapeScale", &VolumetricClouds::getShapeScale, &VolumetricClouds::setShapeScale)
+        .addProperty("shapeFactor", &VolumetricClouds::getShapeFactor, &VolumetricClouds::setShapeFactor)
+        .addProperty("erosionFactor", &VolumetricClouds::getErosionFactor, &VolumetricClouds::setErosionFactor)
+        .addProperty("erosionScale", &VolumetricClouds::getErosionScale, &VolumetricClouds::setErosionScale)
+        .addProperty("bottomAltitude", &VolumetricClouds::getBottomAltitude, &VolumetricClouds::setBottomAltitude)
+        .addProperty("altitudeRange", &VolumetricClouds::getAltitudeRange, &VolumetricClouds::setAltitudeRange)
+        .addProperty("earthCurvature", &VolumetricClouds::getEarthCurvature, &VolumetricClouds::setEarthCurvature)
+        .addProperty("windDirection", &VolumetricClouds::getWindDirection, &VolumetricClouds::setWindDirection)
+        .addProperty("windSpeed", &VolumetricClouds::getWindSpeed, &VolumetricClouds::setWindSpeed)
+        .addProperty("weatherMap", &VolumetricClouds::getWeatherMap, &VolumetricClouds::setWeatherMap)
+        .addProperty("weatherMapScale", &VolumetricClouds::getWeatherMapScale, &VolumetricClouds::setWeatherMapScale)
+        .addProperty("sunLightDimmer", &VolumetricClouds::getSunLightDimmer, &VolumetricClouds::setSunLightDimmer)
+        .addProperty("ambientLightDimmer", &VolumetricClouds::getAmbientLightDimmer, &VolumetricClouds::setAmbientLightDimmer)
+        .addProperty("maxDistance", &VolumetricClouds::getMaxDistance, &VolumetricClouds::setMaxDistance)
+        .addProperty("qualityOverride", &VolumetricClouds::getQualityOverride, &VolumetricClouds::setQualityOverride)
         .endClass();
 
     // the water surfaces (meshes drawn with library:water) at a point, with their waves
@@ -573,6 +619,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("enabled", &Light::isEnabled, &Light::setEnabled)
         .addProperty("cullingMask", &getLuaCullingMask<Light>, &setLuaCullingMask<Light>)
         .addProperty("shading", &Light::getShading, &Light::setShading)
+        .addProperty("volumetricIntensity", &Light::getVolumetricIntensity, &Light::setVolumetricIntensity)
         .addProperty("type", &Light::getType, &Light::setType)
         .addFunction("setType", &Light::setType)
         .addProperty("direction", &Light::getDirection, (void(Light::*)(Vector3))&Light::setDirection)
@@ -603,6 +650,18 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("automaticShadowCamera", &Light::isAutomaticShadowCamera, &Light::setAutomaticShadowCamera)
         .addProperty("numCascades", &Light::getNumCascades, &Light::setNumCascades)
         .addFunction("setNumCascades", &Light::setNumCascades)
+        .addProperty("shadowType", &Light::getShadowType, &Light::setShadowType)
+        .addProperty("shadowStrength", &Light::getShadowStrength, &Light::setShadowStrength)
+        .addProperty("shadowBias", &Light::getBias, &Light::setBias)
+        .addProperty("shadowNormalBias", &Light::getShadowNormalBias, &Light::setShadowNormalBias)
+        .addProperty("shadowResolution", &Light::getShadowMapSize, &Light::setShadowMapSize)
+        .addProperty("cascadeSplitMode", &Light::getCascadeSplitMode, &Light::setCascadeSplitMode)
+        .addProperty("cascadeSplits", &Light::getCascadeSplits, &Light::setCascadeSplits)
+        .addProperty("shadowDistance", &Light::getShadowDistance, &Light::setShadowDistance)
+        .addProperty("shadowAngularDiameter", &Light::getShadowAngularDiameter, &Light::setShadowAngularDiameter)
+        .addProperty("shadowSourceRadius", &Light::getShadowSourceRadius, &Light::setShadowSourceRadius)
+        .addProperty("shadowUpdateMode", &Light::getShadowUpdateMode, &Light::setShadowUpdateMode)
+        .addFunction("requestShadowUpdate", &Light::requestShadowUpdate)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -776,6 +835,23 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .endClass();
 
     luabridge::getGlobalNamespace(L)
+        .deriveClass<LocalVolumetricFog, GameObject>("LocalVolumetricFog")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("shape", &LocalVolumetricFog::getShape, &LocalVolumetricFog::setShape)
+        .addProperty("size", &LocalVolumetricFog::getSize, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setSize)
+        .addFunction("setSize", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setSize)
+        .addProperty("attenuationDistance", &LocalVolumetricFog::getAttenuationDistance, &LocalVolumetricFog::setAttenuationDistance)
+        .addProperty("albedo", &LocalVolumetricFog::getAlbedo, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setAlbedo)
+        .addFunction("setAlbedo", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setAlbedo)
+        .addProperty("blendDistance", &LocalVolumetricFog::getBlendDistance, &LocalVolumetricFog::setBlendDistance)
+        .addProperty("falloff", &LocalVolumetricFog::getFalloff, &LocalVolumetricFog::setFalloff)
+        .addProperty("noiseIntensity", &LocalVolumetricFog::getNoiseIntensity, &LocalVolumetricFog::setNoiseIntensity)
+        .addProperty("noiseScale", &LocalVolumetricFog::getNoiseScale, &LocalVolumetricFog::setNoiseScale)
+        .addProperty("scrollSpeed", &LocalVolumetricFog::getScrollSpeed, (void(LocalVolumetricFog::*)(Vector3))&LocalVolumetricFog::setScrollSpeed)
+        .addFunction("setScrollSpeed", (void(LocalVolumetricFog::*)(const float, const float, const float))&LocalVolumetricFog::setScrollSpeed)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
         .deriveClass<Mesh, GameObject>("Mesh")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Mesh::isEnabled, &Mesh::setEnabled)
@@ -832,6 +908,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("receiveLights", &Mesh::isReceiveLights, &Mesh::setReceiveLights)
         .addProperty("receiveIBL", &Mesh::isReceiveIBL, &Mesh::setReceiveIBL)
         .addProperty("castShadows", &Mesh::isCastShadows, &Mesh::setCastShadows)
+        .addProperty("staticShadowCaster", &Mesh::isStaticShadowCaster, &Mesh::setStaticShadowCaster)
         .addProperty("receiveShadows", &Mesh::isReceiveShadows, &Mesh::setReceiveShadows)
         .addProperty("lodEnabled", &Mesh::isLodEnabled, &Mesh::setLodEnabled)
         .addProperty("lodBias", &Mesh::getLodBias, &Mesh::setLodBias)

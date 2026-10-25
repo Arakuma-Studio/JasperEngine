@@ -134,13 +134,17 @@ namespace jasperengine::editor{
         LatticeComponent,
         LatticeModifierComponent,
         LatticeFollowerComponent,
-        LatticeTracksComponent
+        LatticeTracksComponent,
+        LocalVolumetricFogComponent,
+        VolumetricCloudsComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::LatticeTracksComponent;
+    constexpr ComponentType LastComponentType = ComponentType::VolumetricCloudsComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
+    // (S12's name for it)
+    constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
 
     enum class PropertyType{
         Bool,
@@ -160,7 +164,9 @@ namespace jasperengine::editor{
         Ease,
         Custom,
         Entity,
-        EntityReference
+        EntityReference,
+        Asset,      // AssetRef: an asset reference (path hint + GUID)
+        Shader      // ShaderRef: a custom shader reference (path + the .vert/.frag GUIDs)
     };
 
     struct PropertyData{
@@ -305,6 +311,12 @@ namespace jasperengine::editor{
         static T* getPropertyRef(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName){
             PropertyData property = Catalog::getProperty(registry, entity, component, propertyName);
             if (property.ref){
+                // an asset reference read as a string is its path (S04); write it through a
+                // PropertyCmd<std::string>, which drops a GUID a new path no longer names
+                if constexpr (std::is_same_v<T, std::string>) {
+                    if (property.type == PropertyType::Asset) return &static_cast<AssetRef*>(property.ref)->path;
+                    if (property.type == PropertyType::Shader) return &static_cast<ShaderRef*>(property.ref)->path;
+                }
                 return static_cast<T*>(property.ref);
             }
 
@@ -327,8 +339,31 @@ namespace jasperengine::editor{
             else if constexpr (std::is_same_v<T, int>) return field.type == FT::Int || field.type == FT::Enum;
             else if constexpr (std::is_same_v<T, float>) return field.type == FT::Float;
             else if constexpr (std::is_same_v<T, Vector3>) return field.type == FT::Vector3;
-            else if constexpr (std::is_same_v<T, std::string>) return field.type == FT::String;
+            else if constexpr (std::is_same_v<T, std::string>) return field.type == FT::String || field.type == FT::Asset;
             else return false;
+        }
+
+        // An Asset field (an AssetRef) reads and writes as its path; writing a new path drops
+        // its GUID, which the editor fills in again from the file at the path
+        template<typename T>
+        static T readPostProcessingField(const PostProcessingSettings& settings, const PostProcessingSettings::Field& field) {
+            if constexpr (std::is_same_v<T, std::string>) {
+                if (field.type == PostProcessingSettings::FieldType::Asset) {
+                    return static_cast<const AssetRef*>(settings.getFieldRef(field))->path;
+                }
+            }
+            return *static_cast<const T*>(settings.getFieldRef(field));
+        }
+
+        template<typename T>
+        static void writePostProcessingField(PostProcessingSettings& settings, const PostProcessingSettings::Field& field, const T& value) {
+            if constexpr (std::is_same_v<T, std::string>) {
+                if (field.type == PostProcessingSettings::FieldType::Asset) {
+                    *static_cast<AssetRef*>(field.ref(settings)) = value;
+                    return;
+                }
+            }
+            *static_cast<T*>(field.ref(settings)) = value;
         }
 
         template<typename T>
@@ -342,7 +377,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, float>) return 0.0f;
                 if constexpr (std::is_same_v<T, int>) return 0;
                 if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
-                if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
+            if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
                 if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
                 if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
                 if constexpr (std::is_same_v<T, std::string>) return std::string();
@@ -354,7 +389,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
                     if (postProcessingFieldMatches<T>(*field))
-                        return *(const T*)scene->getPostProcessing().getFieldRef(*field);
+                        return readPostProcessingField<T>(scene->getPostProcessing(), *field);
                 }
             }
             else if (propertyName == "post_processing") {
@@ -370,6 +405,26 @@ namespace jasperengine::editor{
             else if (propertyName == "shadows_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     return scene->getShadowQuality();
+                }
+            }
+            else if (propertyName == "shadow_distance") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getShadowDistance();
+                }
+            }
+            else if (propertyName == "shadow_fade_fraction") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getShadowFadeFraction();
+                }
+            }
+            else if (propertyName == "shadow_cascade_blend") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isShadowCascadeBlend();
+                }
+            }
+            else if (propertyName == "shadows_debug_view") {
+                if constexpr (std::is_same_v<T, ShadowDebugView>) {
+                    return scene ? scene->getShadowDebugView() : ShadowDebugView::NONE;
                 }
             }
             else if (propertyName == "global_illumination_color") {
@@ -561,11 +616,12 @@ namespace jasperengine::editor{
             if constexpr (std::is_same_v<T, float>) return 0.0f;
             if constexpr (std::is_same_v<T, int>) return 0;
             if constexpr (std::is_same_v<T, LightState>) return LightState::AUTO;
-                if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
+            if constexpr (std::is_same_v<T, ShadowQuality>) return ShadowQuality::LOW;
             if constexpr (std::is_same_v<T, SceneColorScale>) return SceneColorScale::HALF;
             if constexpr (std::is_same_v<T, TextureFilter>) return TextureFilter::NEAREST;
             if constexpr (std::is_same_v<T, std::string>) return std::string();
             if constexpr (std::is_same_v<T, std::vector<PostProcessPass>>) return std::vector<PostProcessPass>();
+            if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             if constexpr (std::is_same_v<T, PostProcessingSettings>) return PostProcessingSettings();
             // Add other types as needed
         }
@@ -584,7 +640,7 @@ namespace jasperengine::editor{
                 if constexpr (std::is_same_v<T, bool> || std::is_same_v<T, int> || std::is_same_v<T, float> ||
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
                     if (postProcessingFieldMatches<T>(*field))
-                        return *(const T*)d.postProcessing.getFieldRef(*field);
+                        return readPostProcessingField<T>(d.postProcessing, *field);
                 }
             }
             else if (propertyName == "post_processing") {
@@ -595,6 +651,18 @@ namespace jasperengine::editor{
             }
             else if (propertyName == "shadows_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) return d.shadowQuality;
+            }
+            else if (propertyName == "shadow_distance") {
+                if constexpr (std::is_same_v<T, float>) return d.shadowDistance;
+            }
+            else if (propertyName == "shadow_fade_fraction") {
+                if constexpr (std::is_same_v<T, float>) return d.shadowFadeFraction;
+            }
+            else if (propertyName == "shadow_cascade_blend") {
+                if constexpr (std::is_same_v<T, bool>) return d.shadowCascadeBlend;
+            }
+            else if (propertyName == "shadows_debug_view") {
+                if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             }
             else if (propertyName == "global_illumination_color") {
                 if constexpr (std::is_same_v<T, Vector3>) return Color::linearTosRGB(d.globalIllumColor);
@@ -718,7 +786,7 @@ namespace jasperengine::editor{
                               std::is_same_v<T, Vector3> || std::is_same_v<T, std::string>) {
                     if (postProcessingFieldMatches<T>(*field)) {
                         PostProcessingSettings settings = scene->getPostProcessing();
-                        *(T*)field->ref(settings) = value;
+                        writePostProcessingField<T>(settings, *field, value);
                         scene->setPostProcessing(settings);
                     }
                 }
@@ -736,6 +804,26 @@ namespace jasperengine::editor{
             else if (propertyName == "shadows_quality") {
                 if constexpr (std::is_same_v<T, ShadowQuality>) {
                     scene->setShadowQuality(value);
+                }
+            }
+            else if (propertyName == "shadow_distance") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setShadowDistance(value);
+                }
+            }
+            else if (propertyName == "shadow_fade_fraction") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setShadowFadeFraction(value);
+                }
+            }
+            else if (propertyName == "shadow_cascade_blend") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setShadowCascadeBlend(value);
+                }
+            }
+            else if (propertyName == "shadows_debug_view") {
+                if constexpr (std::is_same_v<T, ShadowDebugView>) {
+                    scene->setShadowDebugView(value);
                 }
             }
             else if (propertyName == "global_illumination_color") {

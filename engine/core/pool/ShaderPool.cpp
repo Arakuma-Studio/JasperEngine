@@ -143,6 +143,34 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::FLUID;
         return true;
     }
+    if (typeToken == "shadowcache") {
+        shaderType = ShaderType::SHADOW_CACHE;
+        return true;
+    }
+    if (typeToken == "atmospheredepth") {
+        shaderType = ShaderType::ATMOSPHERE_DEPTH;
+        return true;
+    }
+    if (typeToken == "volumetricfog") {
+        shaderType = ShaderType::VOLUMETRIC_FOG;
+        return true;
+    }
+    if (typeToken == "atmospheredenoise") {
+        shaderType = ShaderType::ATMOSPHERE_DENOISE;
+        return true;
+    }
+    if (typeToken == "volumetricclouds") {
+        shaderType = ShaderType::VOLUMETRIC_CLOUDS;
+        return true;
+    }
+    if (typeToken == "skycomposite") {
+        shaderType = ShaderType::SKY_COMPOSITE;
+        return true;
+    }
+    if (typeToken == "volumetriccomposite") {
+        shaderType = ShaderType::VOLUMETRIC_COMPOSITE;
+        return true;
+    }
 
     return false;
 }
@@ -500,8 +528,21 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
         case ShaderType::PROBE_FILTER: return lowerCase ? "probefilter" : "Probe Filter";
         case ShaderType::FLUID:  return lowerCase ? "fluid"  : "Fluid";
+        case ShaderType::SHADOW_CACHE: return lowerCase ? "shadowcache" : "Shadow Cache";
+        case ShaderType::ATMOSPHERE_DEPTH: return lowerCase ? "atmospheredepth" : "Atmosphere Depth";
+        case ShaderType::VOLUMETRIC_FOG: return lowerCase ? "volumetricfog" : "Volumetric Fog";
+        case ShaderType::ATMOSPHERE_DENOISE: return lowerCase ? "atmospheredenoise" : "Atmosphere Denoise";
+        case ShaderType::VOLUMETRIC_CLOUDS: return lowerCase ? "volumetricclouds" : "Volumetric Clouds";
+        case ShaderType::SKY_COMPOSITE: return lowerCase ? "skycomposite" : "Sky Composite";
+        case ShaderType::VOLUMETRIC_COMPOSITE: return lowerCase ? "volumetriccomposite" : "Volumetric Composite";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
+}
+
+// MESH bit 33 ('Shq'): S10 took bit 5, which upstream gave Stochastic Tiling the same month;
+// the upstream keys keep bit 5 and the high filters moved past the Lattice bit
+uint64_t ShaderPool::getShadowsHQProperty(){
+    return shaderPropertyBit(33);
 }
 
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
@@ -518,7 +559,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 33;
+        case ShaderType::MESH:   return 34;
         case ShaderType::DEPTH:  return 16;
         case ShaderType::GBUFFER: return 14;
         case ShaderType::UI:     return 4;
@@ -541,6 +582,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::PROBE_FILTER: return 0;
         // Lok (the look program), Mfl (the solver with manual filtering)
         case ShaderType::FLUID:  return 2;
+        case ShaderType::SHADOW_CACHE: return 1;
         default:                 return 0;
     }
 }
@@ -588,6 +630,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // the lattice deformer (HAS_LATTICE, includes/lattice.glsl): the first property past
             // the 32 of older keys, so keys without a lattice read as they always did
             case 32: return shortName ? "Ltc" : "Lattice";
+            // the High and Ultra shadow filters (USE_SHADOWS_HQ, S10): set by the shadow tier on
+            // variants that receive shadows (getShadowsHQProperty)
+            case 33: return shortName ? "Shq" : "Shadows HQ";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -653,6 +698,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 4: return shortName ? "Blr" : "Blur";
             case 5: return shortName ? "Unp" : "Unpremultiply";
             case 6: return shortName ? "Yuv" : "YUV";
+        }
+    } else if (shaderType == ShaderType::SHADOW_CACHE) {
+        switch (bit) {
+            case 0: return shortName ? "Vis" : "Atlas View";
         }
     } else if (shaderType == ShaderType::UI_EFFECT) {
         switch (bit) {
@@ -1429,7 +1478,11 @@ uint64_t ShaderPool::getValidPropertyMask(ShaderType shaderType) {
 }
 
 ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
-    key.properties &= getValidPropertyMask(getShaderTypeFromKey(key));
+    ShaderType type = getShaderTypeFromKey(key);
+    key.properties &= getValidPropertyMask(type);
+    // the high-quality shadow filters only exist in a variant that receives shadows
+    if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(4)))
+        key.properties &= ~getShadowsHQProperty();
     return key;
 }
 
@@ -1449,7 +1502,8 @@ uint64_t ShaderPool::getMeshProperties(
     prop |= punctual         ? shaderPropertyBit(3) : 0;
     prop |= shadows          ? shaderPropertyBit(4) : 0;
     // bit 5 was USE_SHADOWS_PCF until July 2026 (the PCF filter is uniform-driven now); since
-    // October 2026 it is Stochastic Tiling (see getShaderPropertyName)
+    // October 2026 it is Stochastic Tiling (see getShaderPropertyName). Bit 33 ('Shq',
+    // USE_SHADOWS_HQ) is set after, by the render system's shadow tier (getShadowsHQProperty)
     prop |= stochasticTiling ? shaderPropertyBit(5) : 0;
     prop |= normals          ? shaderPropertyBit(6) : 0;
     prop |= normalMap        ? shaderPropertyBit(7) : 0;

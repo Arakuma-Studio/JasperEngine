@@ -5,6 +5,7 @@
 #define RENDERSYSTEM_H
 
 #include "SubSystem.h"
+#include "AtmosphereRenderer.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
@@ -26,6 +27,11 @@
 #include "render/CameraRender.h"
 #include "render/BufferRender.h"
 #include "render/FramebufferRender.h"
+#include "render/shadow/CascadeFit.h"
+#include "render/shadow/ShadowCache.h"
+#include "render/shadow/ShadowCasterRegistry.h"
+#include "render/shadow/ShadowSlotPlanner.h"
+#include "render/shadow/ShadowTiers.h"
 #include "buffer/ExternalBuffer.h"
 #include "shader/ShaderBuildTypes.h"
 #include "shader/ShaderManifest.h"
@@ -192,6 +198,37 @@ namespace jasperengine{
         Vector4 atlasRect[MAX_POINT_SHADOW_ATLAS_SLOTS];
 	} fs_point_shadows_t;
 
+	// includes/shadow_data.glsl u_fs_shadow_data, member for member (the layout is documented
+	// there and in docs/rendering/shadows.md): the shadows a fragment stage samples
+	typedef struct fs_shadow_data_t {
+		Vector4 header;               // main directional slot, its cascades, flags, debug view
+		Vector4 fitCameraPosition;
+		Vector4 fitCameraForward;
+		Matrix4 lightVP[MAX_SHADOW_ATLAS_SLOTS];
+		Vector4 atlasRect[MAX_SHADOW_ATLAS_SLOTS];
+		Vector4 bias[MAX_SHADOW_ATLAS_SLOTS];
+		Vector4 split[MAX_SHADOW_ATLAS_SLOTS];
+		Vector4 filtering[MAX_SHADOW_ATLAS_SLOTS];
+		Vector4 fade[MAX_SHADOW_ATLAS_SLOTS];
+	} fs_shadow_data_t;
+	static_assert(sizeof(fs_shadow_data_t) == 16 * (3 + 9 * MAX_SHADOW_ATLAS_SLOTS), "fs_shadow_data_t must match u_fs_shadow_data");
+
+	// includes/shadow_data.glsl u_fs_point_shadow_data
+	typedef struct fs_point_shadow_data_t {
+		Vector4 faceRect[MAX_POINT_SHADOW_ATLAS_SLOTS];
+		Vector4 projection[MAX_POINT_SHADOW_LIGHTS];
+		Vector4 bias[MAX_POINT_SHADOW_LIGHTS];
+		Vector4 filtering[MAX_POINT_SHADOW_LIGHTS];
+		Vector4 state[MAX_POINT_SHADOW_LIGHTS];
+	} fs_point_shadow_data_t;
+	static_assert(sizeof(fs_point_shadow_data_t) == 16 * (MAX_POINT_SHADOW_ATLAS_SLOTS + 4 * MAX_POINT_SHADOW_LIGHTS), "fs_point_shadow_data_t must match u_fs_point_shadow_data");
+
+	// shadow_restore.frag u_fs_shadowRestore
+	typedef struct fs_shadow_restore_t {
+		Vector4 sourceRect;
+		Vector4 params;
+	} fs_shadow_restore_t;
+
 	typedef struct vs_depth_t {
 		Matrix4 modelMatrix;
 		Matrix4 lightVPMatrix;
@@ -313,6 +350,7 @@ namespace jasperengine{
 		bool lights = false;            // punctual lights (Light components, or lighting forced on)
 		int lightCapacity = 8;          // per-object lights tier (RenderSystem::getLightCapacity)
 		bool shadows = false;           // a light casts shadows
+		bool shadowsHQ = false;         // the shadow tier filters with the High filters ('Shq' variants)
 		bool ibl = false;               // the skybox's environment maps are ready
 		bool reflectionProbes = false;
 		bool fog = false;
@@ -327,6 +365,9 @@ namespace jasperengine{
 		// the post-processing colour (phase 4, USE_POST_COLOR): one global bit, see
 		// RenderSystem::getPostProcessingTiers
 		bool postColor = false;
+		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
+		// fog, volumetric clouds)
+		bool atmosphereDepth = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -440,6 +481,8 @@ namespace jasperengine{
 		// null until then or without one)
 		FluidSystem* frameFluids = nullptr;
 
+
+		friend class AtmosphereRenderer;
 	private:
 		enum class TransparentRenderType{
 			MESH,
@@ -546,9 +589,6 @@ namespace jasperengine{
 		// see ViewDesc). Defaults to false and is never set at runtime, so exported games
 		// are unaffected.
 		bool disableFaceCulling = false;
-
-		// editor-only, draws as if the scene had no fog
-		bool disableFog = false;
 
 		// Editor-only override that suppresses the scene's fixed game resolution
 		// (edit-mode viewports render native; play mode re-enables it). Defaults
@@ -692,6 +732,9 @@ namespace jasperengine{
 		struct LightCameraSet{
 			LightCamera cameras[6];
 			unsigned int numCascades = 1;
+			// a directional light's cascade fit, kept for the fit freeze
+			CascadeFitResult fit;
+			bool hasFit = false;
 		};
 
 		static constexpr int SHADOW_KEY_SLOTS = (MAX_SHADOW_ATLAS_SLOTS > MAX_POINT_SHADOW_ATLAS_SLOTS) ? MAX_SHADOW_ATLAS_SLOTS : MAX_POINT_SHADOW_ATLAS_SLOTS;
@@ -705,9 +748,6 @@ namespace jasperengine{
 			int slots = 0;
 			Matrix4 viewProjection[SHADOW_KEY_SLOTS];
 			uint32_t casterMask[SHADOW_KEY_SLOTS] = {};
-			// a directional slot drawn only with the casters that can shadow its receiver slice
-			// (LightCamera::receiverViewProjection): that slice, else identity
-			Matrix4 receiver[SHADOW_KEY_SLOTS];
 			// the camera whose terrain cut, billboards and instance lists the casters were
 			// drawn with, when such camera-dependent casters are in the masks
 			const void* cameraCasters = nullptr;
@@ -726,9 +766,16 @@ namespace jasperengine{
 			// envColor, viewportInfo); its lights come from each object's list. The frame block
 			// (includes/frame.glsl) of the camera's passes is RenderSystem::passFrame.
 			fs_lighting_t fs_lighting;
+			// the shadows its fragment stages sample (includes/shadow_data.glsl)
+			fs_shadow_data_t fs_shadow_data;
+			fs_point_shadow_data_t fs_point_shadow_data;
+			// the legacy blocks of forks written before the fragment-stage shadows
 			vs_shadows_t vs_shadows;
 			fs_shadows_t fs_shadows;
 			fs_point_shadows_t fs_point_shadows;
+			// the camera its cascades are fitted to (set_shadow_debug moves it, not the view)
+			Vector3 fitCameraPosition;
+			Vector3 fitCameraForward = Vector3(0.0f, 0.0f, -1.0f);
 
 			// the cascades below, else the lights' own (the scene camera); by the directional
 			// light's base shadow slot
@@ -749,10 +796,24 @@ namespace jasperengine{
 			// atlases its passes sample: its own, another camera's, or null for the frame's
 			FramebufferRender* projectiveAtlas = nullptr;
 			FramebufferRender* pointAtlas = nullptr;
+			// the raw-depth view of projectiveAtlas (PCSS)
+			TextureRender* projectiveAtlasRaw = nullptr;
 			// its own, created on first need, resized with the frame's layout (the point atlas
 			// keeps only the rows the point lights use), freed when unused
 			FramebufferRender ownProjective;
 			FramebufferRender ownPoint;
+			// the raw depths of ownProjective (PCSS)
+			TextureRender ownProjectiveRaw;
+			uint64_t ownProjectiveGeneration = 0;
+			uint64_t ownPointGeneration = 0;
+			// the shadow cache of each slot of its atlases (ShadowCache); the frame's caches
+			// with a static layer, the other cameras' only skip or redraw
+			std::array<ShadowSlotState, MAX_SHADOW_ATLAS_SLOTS> projectiveSlots;
+			std::array<ShadowSlotState, MAX_POINT_SHADOW_ATLAS_SLOTS> pointSlots;
+			// how far into the caster change log (RenderSystem::casterChangeLog) its atlases'
+			// slots were evaluated: the changes after it are the ones they have not seen
+			uint64_t projectiveChangesSeen = 0;
+			uint64_t pointChangesSeen = 0;
 			int ownProjectiveWidth = 0;
 			int ownProjectiveHeight = 0;
 			int ownPointWidth = 0;
@@ -966,6 +1027,12 @@ namespace jasperengine{
 			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
 			// always for the frame's own view)
 			bool postProcessing = true;
+			// the atmosphere's targets of the view (volumetric fog, clouds) and what it ran
+			AtmosphereViewTargets atmosphere;
+			// editor: the view draws without the volumetric clouds, and at this atmosphere
+			// quality (the Game view's preview; -1 the project's)
+			bool disableClouds = false;
+			int atmosphereQuality = -1;
 
 #ifdef JASPERENGINE_EDITOR
 			bool secondary = false;
@@ -1123,23 +1190,136 @@ namespace jasperengine{
 		bool hasShadows2D = false;
 		int numLights2D = 0;
 
-		// Directional + spot atlas keeps up to 3x3 logical slots, but its physical
-		// grid is compacted to the slots used by the current light set.
+		// Shadows (RenderSystemShadows.cpp, docs/rendering/shadows.md). The projective atlas
+		// (directional cascades and spot lights) and the point atlas (cube faces) are depth-only
+		// D32 comparison atlases laid out by the slot planner, each slot at its own resolution;
+		// the static caches hold the static casters' depths of the slots that have a static
+		// layer, copied back under the dynamic casters (ShadowCache).
 		FramebufferRender shadowAtlasFramebuffer;
+		TextureRender shadowAtlasRaw;               // its raw depths (PCSS)
 		CameraRender shadowAtlasPassRender;
-		unsigned int shadowAtlasSlotResolution;
-		int shadowAtlasCols;
-		int shadowAtlasRows;
-		int shadowAtlasUsedSlots;
-		bool needUpdateShadowAtlas;
 		bool hasShadowAtlas;
 
-		// separate atlas for point-light cube faces
 		FramebufferRender shadowPointAtlasFramebuffer;
+		TextureRender shadowPointAtlasRaw;          // its raw depths (the Atlas debug view)
 		CameraRender shadowPointAtlasPassRender;
-		unsigned int shadowPointAtlasSlotResolution;
-		bool needUpdateShadowPointAtlas;
 		bool hasShadowPointAtlas;
+
+		FramebufferRender shadowStaticAtlas;
+		TextureRender shadowStaticAtlasRaw;
+		FramebufferRender shadowStaticPointAtlas;
+		TextureRender shadowStaticPointAtlasRaw;
+		CameraRender shadowStaticPassRender;
+		// bumped when an atlas is recreated: what its slots held is gone
+		uint64_t shadowAtlasGeneration = 1;
+		uint64_t shadowPointAtlasGeneration = 1;
+		uint64_t shadowStaticGeneration = 1;
+		uint64_t shadowStaticPointGeneration = 1;
+		// update() a static cache was last used in (freed after STATIC_CACHE_KEEP_UPDATES)
+		uint64_t shadowStaticUsed = 0;
+		uint64_t shadowStaticPointUsed = 0;
+		static constexpr uint64_t STATIC_CACHE_KEEP_UPDATES = 300;
+
+		// the slots and atlas layouts of this update (the planner's)
+		ShadowSlotPlanner shadowPlanner;
+		ShadowPlan shadowPlan;
+		std::vector<ShadowLightRequest> shadowRequests;
+		std::vector<int> shadowRequestLight;        // scene light index of each request
+		// the shadow casters and what changed in them this update
+		ShadowCasterRegistry shadowCasters;
+		// the caster changes of the updates since the oldest the frame's atlases have not
+		// evaluated (update() can run more than once per draw: the editor updates the scene
+		// before its frame does); casterChangeBase is the log position of its first entry.
+		// An atlas that falls behind what the log keeps redraws its slots.
+		std::vector<ShadowCasterChange> casterChangeLog;
+		uint64_t casterChangeBase = 0;
+		static constexpr size_t CASTER_CHANGE_LOG_MAX = 16384;
+		// update() clock of the shadow caches
+		uint64_t shadowFrame = 0;
+		// the update a dynamic shadow caster was last seen in (static layers are kept a while after)
+		uint64_t shadowDynamicSeen = 0;
+		// the quality tier this update (Scene Quality, else the project's tier of the platform)
+		ShadowTier shadowTier = ShadowTier::HIGH;
+		bool shadowHardOnly = false;
+		// the mesh variants receiving shadows have the High filters (MeshShaderEnvironment::shadowsHQ)
+		bool shadowHQVariants = false;
+		// the requested tier was capped by the shaders this build cooked (warned once)
+		bool shadowTierCapWarned = false;
+		// the shadow cache's copy and clear program (and the atlas debug view's)
+		ObjectRender shadowRestoreRender;
+		std::shared_ptr<ShaderRender> shadowRestoreShader;
+		int shadowRestoreSlotParams = -1;
+		std::pair<int, int> shadowRestoreSourceSlot = {-1, -1};
+		bool shadowRestoreLoaded = false;
+		static TextureRender emptyShadowDepthRaw;
+
+	public:
+		// set_shadow_debug (editor, transient): moves only the camera the frame's cascades are
+		// fitted to (the stability tests), holds every slot as drawn, or redraws every slot
+		struct ShadowDebugSettings{
+			Vector3 fitCameraOffset = Vector3(0.0f, 0.0f, 0.0f);   // world units
+			Vector3 fitCameraEuler = Vector3(0.0f, 0.0f, 0.0f);    // pitch, yaw, roll (degrees)
+			bool freezeCache = false;
+			bool forceRerender = false;
+		};
+
+		// get_shadow_stats: what the last update's shadow passes did
+		struct ShadowSlotStats{
+			int slot = -1;
+			bool point = false;
+			ShadowRect rect;
+			unsigned int resolution = 0;
+			ShadowSlotPath path = ShadowSlotPath::SKIP;            // this update
+			ShadowDirtyCause cause = ShadowDirtyCause::NONE;
+			ShadowSlotPath renderPath = ShadowSlotPath::SKIP;      // its last draw
+			ShadowDirtyCause renderCause = ShadowDirtyCause::NONE;
+			ShadowRect dirtyRect;                                  // what its last draw wrote
+			uint64_t framesSinceRender = 0;
+			bool staticLayer = false;
+		};
+		struct ShadowLightStats{
+			Entity entity = NULL_ENTITY;
+			LightType type = LightType::DIRECTIONAL;
+			Vector3 direction = Vector3(0.0f, -1.0f, 0.0f);   // world direction the light points
+			int firstSlot = -1;
+			unsigned int cascades = 0;
+			float shadowDistance = 0.0f;
+			float splitFar[MAX_SHADOWCASCADES] = {};
+			float radius[MAX_SHADOWCASCADES] = {};
+			float texelWorld[MAX_SHADOWCASCADES] = {};
+			unsigned int resolution[6] = {};
+			std::vector<ShadowSlotStats> slots;
+		};
+		struct ShadowStats{
+			ShadowTier tier = ShadowTier::HIGH;
+			bool hardOnly = false;
+			unsigned int projectiveWidth = 0, projectiveHeight = 0;
+			unsigned int pointWidth = 0, pointHeight = 0;
+			unsigned int staticWidth = 0, staticHeight = 0;
+			unsigned int staticPointWidth = 0, staticPointHeight = 0;
+			uint64_t memoryBytes = 0;
+			uint64_t frame = 0;
+			// draw calls of the frame atlas's passes this update, by slot path (index: ShadowSlotPath)
+			uint32_t drawCalls[5] = {};
+			uint32_t passes = 0;            // render passes of the frame's shadow maps this update
+			std::vector<ShadowLightStats> lights;
+		};
+		void setShadowDebug(const ShadowDebugSettings& settings);
+		const ShadowDebugSettings& getShadowDebug() const{ return shadowDebug; }
+		const ShadowStats& getShadowStats() const{ return shadowStats; }
+		// the shadow quality tier the scene renders with
+		ShadowTier getEffectiveShadowTier() const{ return shadowTier; }
+		// the atlases as a colour image (the Atlas debug view): null unless that view is on
+		TextureRender* getShadowAtlasDebugTexture();
+
+	private:
+		ShadowDebugSettings shadowDebug;
+		ShadowStats shadowStats;
+		FramebufferRender shadowAtlasDebugTarget;
+		CameraRender shadowAtlasDebugPassRender;
+		ObjectRender shadowAtlasViewRender;
+		std::shared_ptr<ShaderRender> shadowAtlasViewShader;
+		bool shadowAtlasViewLoaded = false;
 
 		// 1D polar shadow atlas for 2D lights: width x MAX_LIGHTS_2D, one row per
 		// shadow-casting Light2D. ShadowCaster2D segments of the whole scene are merged
@@ -1201,6 +1381,17 @@ namespace jasperengine{
 		fs_lighting_t legacyLightingBlock;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
+		// the height fog of the camera pass being drawn (u_fs_heightFog), and the atmosphere:
+		// volumetric fog, clouds and their composites (AtmosphereRenderer)
+		height_fog_t passHeightFog;
+		AtmosphereRenderer atmosphere;
+#ifdef JASPERENGINE_EDITOR
+		std::unordered_map<uint32_t, AtmosphereInfo> keptAtmosphereInfo;
+#endif
+		// the scene fog is a height fog (its fogged meshes evaluate it: u_fs_heightFog)
+		bool heightFogActive = false;
+		// the variant state the meshes loaded with (needReloadMeshVariants on a change)
+		bool atmosphereDepthPrograms = false;
 
 		// SSAO: per-frame fullscreen passes for the main camera. The depth pre-pass
 		// renders camera-space packed depth, then the ssao + blur fullscreen passes
@@ -1495,15 +1686,35 @@ namespace jasperengine{
 		void releaseReflectionProbeMaps(ReflectionProbeRuntime& runtime);
 		void destroyReflectionProbe(Entity entity, ReflectionProbeComponent& probe);
 		bool selectReflectionProbe(const Vector3& worldPosition, fs_reflection_probe_t& params, TextureRender*& texture);
-		void initShadowAtlasRects();
-		void initShadowPointAtlasRects();
-		unsigned int clampShadowAtlasSlotResolution(unsigned int requestedResolution, int atlasCols, int atlasRows) const;
-		bool ensureShadowAtlas(unsigned int slotResolution, int usedSlots);
-		bool ensureShadowPointAtlas(unsigned int slotResolution);
+		// the quality tier of this update and its settings
+		void updateShadowTier();
+		const ShadowTierSettings& shadowTierSettings() const;
+		// the slots of the shadow-casting lights (importance, sticky, packed) and their atlases
+		void planShadowSlots(int numLights);
+		bool ensureShadowAtlases();
+		void releaseShadowAtlases();
+		// a light setting its shadow maps depend on changed: its slots are redrawn
+		void updateLightShadowRevision(LightComponent& light, const Transform& transform);
 		Rect getShadowAtlasSlotRect(int slotIndex) const;
 		Rect getShadowPointAtlasSlotRect(int slotIndex) const;
-		void configureLightShadowNearFar(LightComponent& light, const CameraComponent& camera);
-		Matrix4 getDirLightProjection(const Matrix4& viewMatrix, const Matrix4& sceneCameraInv, float shadowMaxDistance, const Vector3& lightDirection, const Vector3& cameraPosition);
+		// the cascades a directional light draws, its directional shadow distance
+		unsigned int lightShadowCascades(const LightComponent& light, const CameraComponent& camera) const;
+		float lightShadowDistance(const LightComponent& light, const CameraComponent& camera) const;
+		// a light's map resolution at mapResolution 0, by type
+		unsigned int lightShadowResolution(const LightComponent& light) const;
+		// the shadow casters of this update (ShadowCasterRegistry), from the meshes
+		void updateShadowCasters();
+		void appendCasterChanges();
+		// the shadow cameras of every shadowed light for the scene camera
+		void updateLightCameras(CameraComponent& camera, Transform& cameraTransform);
+		// the camera the cascades are fitted to: the camera, moved by set_shadow_debug for the frame's
+		void shadowFitCamera(const CameraComponent& camera, const Transform& cameraTransform, bool frame, Matrix4& view, Vector3& position, Vector3& forward) const;
+		// the copy / clear program of the shadow cache
+		bool loadShadowRestore();
+		void drawShadowRestore(CameraRender& pass, TextureRender* source, const ShadowRect& sourceRect, unsigned int sourceWidth, unsigned int sourceHeight,
+		                       const ShadowRect& slotRect, const ShadowRect& scissor, bool clear);
+		void renderShadowAtlasDebug();
+		void fillShadowStats();
 		// shader library: the frame block of a camera pass (fillFrameBlock fills the members
 		// library shaders read; engine-internal members appended after them get their own
 		// fill functions, called after it), uploaded by applyFrameBlock. updatePassFrame
@@ -1692,9 +1903,9 @@ namespace jasperengine{
 		void ensureCasterLayers();
 		void computeShadowKeys(const CameraShadows& target, ShadowAtlasKey& projective, ShadowAtlasKey& point);
 		FramebufferRender* findShadowSource(CameraShadows& target, const ShadowAtlasKey& wanted, bool projective);
+		// the raw-depth view of an atlas findShadowSource gave
+		TextureRender* shadowSourceRaw(FramebufferRender* atlas);
 		bool ensureOwnShadowAtlas(CameraShadows& target, bool projective);
-		// rows of point atlas slots the point lights use (a camera's own point atlas holds no more)
-		int ownPointAtlasRows() const;
 		// frees the camera shadows unused for a while
 		void releaseUnusedCameraShadows();
 		// the CDLOD cut camera draws (and its shadow passes) into terrain view terrainView
@@ -1891,7 +2102,12 @@ namespace jasperengine{
 		void updateSkyViewProjection(SkyboxComponent& sky, CameraComponent& camera);
 		Matrix4 skyViewProjection(const SkyboxComponent& sky, const CameraComponent& camera) const;
 		void updateLightFromScene(LightComponent& light, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
-		void computeLightCameras(const LightComponent& light, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform, const Vector2& shadowCameraNearFar, LightCamera* cameras, unsigned int& numCascades);
+		// Shadow cameras of light seen through camera: the directional cascades fitted to its
+		// frustum (fit: in the previous fit, out this one; frame: the scene camera's, which
+		// set_shadow_debug moves), or the spot / point cameras.
+		void computeLightCameras(const LightComponent& light, const Transform& transform, const CameraComponent& camera, const Transform& cameraTransform,
+		                         LightCamera* cameras, unsigned int& numCascades, CascadeFitResult& fit, bool& hasFit, bool frame,
+		                         Vector3& fitPosition, Vector3& fitForward);
 		void updatePoints(PointsComponent& points, Transform& transform, CameraComponent& camera, Transform& camTransform);
 		void updateTerrain(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainView& view);
 		static void updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes);
@@ -1909,7 +2125,22 @@ namespace jasperengine{
 		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
 
+		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
+		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
+		// ViewDesc::disableFog
 		void setDisableFog(bool disableFog);
+		// editor-only: the frame's own view draws without the volumetric clouds (the Scene
+		// view's Clouds toggle), and at this atmosphere quality (the Game view's preview while
+		// playing; -1 the project's)
+		void setDisableClouds(bool disableClouds);
+		void setPreviewAtmosphereQuality(int quality);
+		// what the atmosphere ran in the last frame of a view (0: the frame's own)
+		const AtmosphereInfo& getAtmosphereInfo(uint32_t viewId = 0);
+#ifdef JASPERENGINE_EDITOR
+		// the frame's own view drew for an editor view (the Game view drawn as the frame):
+		// what its atmosphere ran counts for that view too (getAtmosphereInfo(viewId))
+		void keepAtmosphereInfo(uint32_t viewId);
+#endif
 
 		// Editor-only override (see member declaration). No reload needed: the
 		// editor always renders through Engine::getFramebuffer(), so PIP_RTT is
@@ -1927,10 +2158,11 @@ namespace jasperengine{
 		LatticeRenderState& getLatticeState();
 
 		// Planes around the casters that can shadow the surfaces reading a directional cascade:
-		// its receiver slice (LightCamera::receiverViewProjection) extruded toward the light
+		// its receiver slice (the camera's projection cut to the cascade's depths) extruded toward the light
 		// (lightDirection, the way the light travels), widened by the normal offset and the PCF
 		// reach of a shadow atlas slot of slotResolution texels through lightProjection. At most
-		// 18 planes, a box wholly behind one casts nothing there; 0 culls nothing.
+		// 18 planes, a box wholly behind one casts nothing there; 0 culls nothing. (Upstream's
+		// receiver culling of the old cascades: S10's shadow passes do not call it yet.)
 		static int getShadowReceiverPlanes(const Matrix4& receiverViewProjection, const Matrix4& lightProjection,
 		                                   unsigned int slotResolution, float normalBias, const Vector3& lightDirection, Plane* planes);
 
@@ -2146,6 +2378,9 @@ namespace jasperengine{
 			bool postProcessing = true;
 			// the view camera's passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
+			// draws without the volumetric clouds; at this atmosphere quality (-1 the project's)
+			bool disableClouds = false;
+			int atmosphereQuality = -1;
 			// canvas an auto-resize camera covers in this view (0: as the camera is)
 			float canvasWidth = 0.0f;
 			float canvasHeight = 0.0f;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
 
 #include "imgui_internal.h"
@@ -135,6 +136,8 @@ editor::App::App(){
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     mcpActivityWindow = new mcp::McpActivityWindow();
+    missingAssetsWindow = new MissingAssetsWindow(&project);
+    assetReferencesWindow = new AssetReferencesWindow(&project);
     jobsMemoryWindow = new JobsMemoryWindow();
     undoHistoryWindow = new UndoHistoryWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
@@ -278,6 +281,9 @@ enum class AppMenuCommand : uint32_t {
     ToggleTextureSynthesis,
     TogglePhysicsPlacement,
     ToggleMcpActivity,
+    ToggleMissingAssets,
+    MigrateAssetReferences,
+    ToggleAssetReferences,
     ToggleJobsMemory,
     ToggleUndoHistory,
     TogglePlayModeChanges,
@@ -590,6 +596,10 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
         menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
+        menuSubmenu("Asset Database", {
+            menuCommand(AppMenuCommand::ToggleMissingAssets, "Missing Assets..."),
+            menuCommand(AppMenuCommand::MigrateAssetReferences, "Migrate References", !isProjectBusy)
+        }),
         menuSeparator(),
         menuCommand(AppMenuCommand::ProjectScenes, "Scenes in Build...", !isProjectBusy),
         menuCommand(AppMenuCommand::ProjectPrefabs, "Prefabs..."),
@@ -618,6 +628,10 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuShortcut(AppMenuCommand::ToggleAnimation, windowMenuLabel(AnimationWindow::WINDOW_NAME), "Ctrl+6")
         }),
         menuCommand(AppMenuCommand::ToggleTerrain, windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
+        menuSubmenu("Assets", {
+            menuCommand(AppMenuCommand::ToggleMissingAssets, windowMenuLabel(MissingAssetsWindow::WINDOW_NAME)),
+            menuCommand(AppMenuCommand::ToggleAssetReferences, windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
+        }),
         menuSubmenu("Analysis", {
             menuCommand(AppMenuCommand::ToggleJobsMemory, windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
         }),
@@ -792,6 +806,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleMcpActivity:
             showEditorWindow(mcpActivityWindow);
+            break;
+        case AppMenuCommand::ToggleMissingAssets:
+            showEditorWindow(missingAssetsWindow);
+            break;
+        case AppMenuCommand::ToggleAssetReferences:
+            showEditorWindow(assetReferencesWindow);
+            break;
+        case AppMenuCommand::MigrateAssetReferences:
+            migrateAssetReferences();
             break;
         case AppMenuCommand::FocusGame:
             gameWindow->requestFocus();
@@ -1183,6 +1206,16 @@ void editor::App::showFooter(){
         if (queuedResources > 0) {
             indicators.emplace_back(std::string(ICON_FA_SPINNER " Loading resources: ") + std::to_string(queuedResources), busyCol);
         }
+        // S04 R27: the Missing Assets badge, a click opens the panel
+        size_t missingIndicator = SIZE_MAX;
+        if (project.getAssetIndex().isReady()) {
+            const size_t missing = project.getMissingAssets().count();
+            if (missing > 0) {
+                missingIndicator = indicators.size();
+                indicators.emplace_back(std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(missing) +
+                                        (missing == 1 ? " missing asset" : " missing assets"), Theme::Colors::WarningText);
+            }
+        }
         if (selectedScene) {
             indicators.emplace_back(std::string(ICON_FA_CUBE " ") + selectedScene->name, dimCol);
             const size_t selectionCount = selectedScene->selectedEntities.size();
@@ -1258,6 +1291,15 @@ void editor::App::showFooter(){
         for (size_t i = 0; i < indicators.size(); i++) {
             if (i > 0) ImGui::SameLine(0.0f, gap);
             ImGui::TextColored(indicators[i].second, "%s", indicators[i].first.c_str());
+            if (i == missingIndicator) {
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::SetTooltip("Open Window > Assets > Missing Assets");
+                }
+                if (ImGui::IsItemClicked()) {
+                    showEditorWindow(missingAssetsWindow);
+                }
+            }
         }
     }
     ImGui::End();
@@ -1267,6 +1309,46 @@ void editor::App::showFooter(){
 
     // Reserve space from the viewport work area so dockspace doesn't overlap
     viewport->WorkSize.y -= footerHeight;
+}
+
+// Assets > Asset Database > Migrate References (S04 R35): every scene, prefab, material and
+// project.yaml written with the GUIDs of what it references. A document with unsaved edits is
+// left to its next save, which writes them too.
+void editor::App::migrateAssetReferences(){
+    project.getAssetIndex().waitUntilReady();
+    std::vector<std::string> files;
+    project.getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (info.type == AssetType::Scene || info.type == AssetType::Prefab || info.type == AssetType::Material) {
+            files.push_back(info.path);
+        }
+    });
+    std::sort(files.begin(), files.end());
+    files.push_back("project.yaml");
+    size_t written = 0;
+    size_t skipped = 0;
+    for (const std::string& file : files) {
+        bool unsaved = false;
+        for (SceneProject* sceneProject : project.getScenesAndPrefabStages()) {
+            const PrefabStage* stage = project.getPrefabStage(sceneProject->id);
+            const fs::path path = stage ? stage->assetPath : sceneProject->filepath;
+            unsaved |= sceneProject->scene && sceneProject->isModified && !path.empty() &&
+                       project.normalizeToProjectRelative(path).generic_string() == file;
+        }
+        if (unsaved) {
+            skipped++;
+            continue;
+        }
+        bool changed = false;
+        std::string error;
+        if (!AssetRefEditor::migrateFile(project, file, changed, error)) {
+            Out::error("%s", error.c_str());
+        } else if (changed) {
+            written++;
+        }
+    }
+    project.refreshAssetDatabase(true);
+    Out::info("Migrate References: %zu file(s) written%s", written,
+              skipped ? (", " + std::to_string(skipped) + " with unsaved edits get the GUIDs when saved").c_str() : "");
 }
 
 void editor::App::showAlert(){
@@ -2281,6 +2363,8 @@ void editor::App::show(){
     physicsPlacementWindow->show();
     inspectorWindow->show();
     mcpActivityWindow->show();
+    missingAssetsWindow->show();
+    assetReferencesWindow->show();
     jobsMemoryWindow->show();
     undoHistoryWindow->show();
     playModeChangesWindow->show();
@@ -3076,6 +3160,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     // the runtime manages its own layers while it plays
     sceneRender->setChildSceneLayers({});
+    // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
+    if (sceneProject.scene)
+        sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
@@ -3211,6 +3298,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
 
     std::vector<Engine::ViewLayer> layers;
     layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    layers.back().atmosphereQuality = gameWindow->getSettings().atmosphereQuality;
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);
@@ -3286,8 +3374,15 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
         childScene->getSystem<RenderSystem>()->update(0);
     }
     sceneRender->updateRenderSystem();
+    // the Game view's atmosphere: the scene's fog and clouds whatever the Scene view's toggles
+    // show, at its Preview Atmosphere Quality
+    RenderSystem* renderSystem = sceneProject.scene->getSystem<RenderSystem>().get();
+    renderSystem->setDisableFog(false);
+    renderSystem->setDisableClouds(false);
+    renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     Engine::systemDraw();
+    renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
@@ -3952,7 +4047,14 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and the surface includes (MESH bit 32 'Ltc', DEPTH bit 15, GBUFFER bits 11-13), the
     //      tangent of includes/surface_vs.glsl transformed before the hooks. (Builds of the lattice
     //      branch used v34/v35 with 'Ltc' at MESH bit 5, then v37 before this v37 of main.)
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v38";
+    // (oe-port) v34: (the S12 branch only: mesh bit 5 as a height fog bit; S10 has it as 'Shq')
+    // (oe-port) v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
+    //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
+    //      atmosphere pass types after S10's SHADOW_CACHE.
+    // v39: upstream (v34-v38 above) and oe-port's S10/S12 (its v34/v35) together: MESH bit 5 is
+    //      'Sto' and S10's high shadow filters moved to bit 33 ('Shq', USE_SHADOWS_HQ); the
+    //      fogged variants carry the height fog. Either side's v34-v38 cache holds other variants.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v39";
 }
 
 void editor::App::pushTabNotificationStyle(){

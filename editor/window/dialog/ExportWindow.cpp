@@ -1071,6 +1071,10 @@ void ExportWindow::drawSettings() {
         ImGui::CloseCurrentPopup();
     }
     ImGui::SetItemTooltip("Open Project Settings > Player");
+    // S04: a build referencing missing assets fails unless exported anyway
+    ImGui::SameLine();
+    ImGui::Checkbox("Export Anyway", &m_allowMissingAssets);
+    ImGui::SetItemTooltip("Build even when the build's scenes reference missing assets (Window > Assets > Missing Assets lists them)");
 
     const float actionWidth = Theme::dpi(120.0f);
     const float buttonsWidth = actionWidth * 2.0f + style.ItemSpacing.x;
@@ -1151,6 +1155,7 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
     ExportConfig exportConfig;
     exportConfig.mode = m_mode;
     exportConfig.overwriteTarget = overwriteTarget;
+    exportConfig.allowMissingAssets = m_allowMissingAssets;
 
     if (m_mode == ExportMode::SourceCode) {
         exportConfig.targetDir = m_targetDir;
@@ -1243,7 +1248,9 @@ void ExportWindow::drawAddShaderDialog() {
             ShaderType::SSR, ShaderType::SSR_BLUR, ShaderType::COMPOSITE,
             ShaderType::SHADOW2D, ShaderType::BLIT, ShaderType::POSTPROCESS, ShaderType::BLOOM,
             ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT, ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT,
-            ShaderType::PROBE_FILTER
+            ShaderType::PROBE_FILTER,
+            ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
+            ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE
         };
         constexpr int typeCount = (int)(sizeof(typeValues) / sizeof(typeValues[0]));
         std::vector<std::string> typeNameStrs;

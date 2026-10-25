@@ -222,7 +222,8 @@ async def test_scene_settings(ed: Editor):
     for name in ("background_color", "shadows_quality", "light_state", "physics_gravity_3d", "physics_interpolation", "ssao_enabled",
                  "fixed_resolution_filter", "post_process", "default_mesh_shader", "ssr_max_steps"):
         ed.check_in(name, settings)
-    ed.check_eq(schema["shadows_quality"]["options"], ["none", "low", "medium", "high"])
+    # S10: Auto (the platform's tier) and Ultra (PCSS) next to the stored ints of before
+    ed.check_eq(schema["shadows_quality"]["options"], ["auto", "none", "low", "medium", "high", "ultra"])
     before = settings
     out = await ed.call("set_scene_settings", settings={
         "background_color": "#336699", "shadows_quality": "High", "light_state": "on",
@@ -243,7 +244,7 @@ async def test_scene_settings(ed: Editor):
         ed.check(close(after[k], before[k]), f"{k} not undone: {after[k]} vs {before[k]}")
     # errors
     await ed.check_error("set_scene_settings", settings={"no_such": 1}, contains="background_color")
-    await ed.check_error("set_scene_settings", settings={"shadows_quality": "ultra"}, contains="medium")
+    await ed.check_error("set_scene_settings", settings={"shadows_quality": "extreme"}, contains="medium")
     await ed.check_error("set_scene_settings", settings={"post_process": [{"shader": "nope/missing"}]}, contains="fork")
     # all-or-nothing
     await ed.check_error("set_scene_settings", settings={"ssao_enabled": True, "ssao_radius": "big"})

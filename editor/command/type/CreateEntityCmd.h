@@ -75,7 +75,9 @@ namespace jasperengine::editor{
         FLUID_SIMULATION,
         // a unit lattice (Transform + LatticeComponent); the menus create one through
         // LatticeEditorOps::createLattice, which fits and binds it around the selection
-        LATTICE
+        LATTICE,
+        LOCAL_VOLUMETRIC_FOG,
+        VOLUMETRIC_CLOUDS
     };
 
     class CreateEntityCmd: public Command{

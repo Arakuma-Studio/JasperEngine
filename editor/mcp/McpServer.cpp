@@ -165,10 +165,12 @@ void McpServer::registerAllTools() {
     registerPrefabTools(reg);
     registerPlayTools(reg);
     registerViewTools(reg);
+    registerShadowTools(reg);
     registerConsoleTools(reg);
     registerScriptTools(reg);
     registerAssetTools(reg);
     registerSynthesisTools(reg);
+    registerAssetIdentityTools(reg);
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);
@@ -176,6 +178,7 @@ void McpServer::registerAllTools() {
     registerPlacementTools(reg);
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
+    registerAtmosphereTools(reg);
 }
 
 void McpServer::stop() {

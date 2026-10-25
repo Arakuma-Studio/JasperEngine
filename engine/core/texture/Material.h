@@ -4,6 +4,7 @@
 #ifndef MATERIAL_H
 #define MATERIAL_H
 
+#include "asset/AssetRef.h"
 #include "math/Vector3.h"
 #include "texture/Texture.h"
 #include "shader/ShaderUniforms.h"
@@ -141,7 +142,7 @@ namespace jasperengine{
     // One optional extra draw of a submesh with its own shader and state (outlines,
     // stencil masks). An empty shader means no extra pass and costs nothing.
     struct JASPERENGINE_API MaterialPass {
-        std::string shader;
+        ShaderRef shader;
         ShaderUniformValues shaderParams;
         std::vector<std::pair<std::string, Texture>> shaderTextures;
         std::vector<std::string> shaderFeatures;
@@ -274,12 +275,12 @@ namespace jasperengine{
         int emissiveTexCoord = 0;
         int normalTexCoord = 0;
 
-        // material name or file
-        std::string name = "";
+        // the linked .material file (project-relative), empty when the material is not linked
+        AssetRef name;
 
         // --- shader library (docs/superpowers/specs/2026-10-10-shader-library-phase1-design.md)
         // "" = built-in Lit, "library:<name>" = engine library shader, else a project fork
-        std::string shader;
+        ShaderRef shader;
         // @property values by member name; an unset member takes the manifest default
         ShaderUniformValues shaderParams;
         // @texture bindings by uniform name; an unset texture binds the manifest default

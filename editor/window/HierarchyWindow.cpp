@@ -492,6 +492,9 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Effects", "Line Renderer", ICON_FA_GRIP_LINES, T::LINE_RENDERER, "Line", CREATE_IN_WORLD},
         {"Effects", "Point Renderer", ICON_FA_CIRCLE, T::POINTS, "Points", CREATE_IN_WORLD},
         {"Effects", "Fluid Simulation", ICON_FA_DROPLET, T::FLUID_SIMULATION, "Fluid Simulation", CREATE_IN_WORLD},
+        {"Effects", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D, true},
+        {"Effects", "Local Volumetric Fog", ICON_FA_SMOG, T::LOCAL_VOLUMETRIC_FOG, "Local Volumetric Fog", CREATE_IN_3D},
+        {"Effects", "Volumetric Clouds", ICON_FA_CLOUD, T::VOLUMETRIC_CLOUDS, "Volumetric Clouds", CREATE_IN_3D},
 
         {"Light", "Directional Light", ICON_FA_SUN, T::DIRECTIONAL_LIGHT, "Directional Light", CREATE_IN_3D},
         {"Light", "Point Light", ICON_FA_LIGHTBULB, T::POINT_LIGHT, "Point Light", CREATE_IN_3D},
@@ -519,7 +522,6 @@ const std::vector<editor::CreateMenuEntry>& editor::HierarchyWindow::getCreateMe
         {"Physics", "Joint 2D", ICON_FA_LINK, T::JOINT2D, "Joint 2D", CREATE_IN_2D},
 
         {"Rendering", "Skybox", ICON_FA_CLOUD, T::SKYBOX, "Skybox", CREATE_IN_3D},
-        {"Rendering", "Fog", ICON_FA_SMOG, T::FOG, "Fog", CREATE_IN_3D},
 
         {"Tween", "Position Tween", ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, T::POSITION_TWEEN, "Position Tween", CREATE_IN_ALL},
         {"Tween", "Rotation Tween", ICON_FA_ROTATE, T::ROTATION_TWEEN, "Rotation Tween", CREATE_IN_ALL},

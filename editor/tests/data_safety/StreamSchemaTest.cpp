@@ -42,7 +42,7 @@ TEST(StreamSchema, EncoderKeysAreKnown) {
     // every component the editor can add, as it is added (the encoders write their full set)
     Scene scene;
     std::vector<Entity> entities;
-    for (int typeIndex = (int)ComponentType::Transform; typeIndex <= (int)ComponentType::UIDocumentComponent; typeIndex++) {
+    for (int typeIndex = (int)ComponentType::Transform; typeIndex <= (int)LAST_COMPONENT_TYPE; typeIndex++) {
         const ComponentType type = (ComponentType)typeIndex;
         const Entity entity = scene.createUserEntity();
         entities.push_back(entity);
@@ -63,7 +63,7 @@ TEST(StreamSchema, EncoderKeysAreKnown) {
 }
 
 TEST(StreamSchema, EveryComponentHasATable) {
-    for (int typeIndex = (int)ComponentType::Transform; typeIndex <= (int)ComponentType::UIDocumentComponent; typeIndex++) {
+    for (int typeIndex = (int)ComponentType::Transform; typeIndex <= (int)LAST_COMPONENT_TYPE; typeIndex++) {
         EXPECT_FALSE(StreamSchema::knownFieldKeys((ComponentType)typeIndex).empty()) << Catalog::getComponentName((ComponentType)typeIndex, true);
     }
     for (NestedKind kind : {NestedKind::Submesh, NestedKind::Material, NestedKind::MaterialPass, NestedKind::Stencil, NestedKind::Texture}) {

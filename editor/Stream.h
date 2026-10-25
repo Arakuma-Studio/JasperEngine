@@ -288,6 +288,14 @@ namespace jasperengine::editor {
         // property bit stays out of the file
         static YAML::Node encodeShaderKeys(const std::set<ShaderKey>& shaderKeys);
         static std::vector<ShaderKey> decodeShaderKeys(const YAML::Node& node);
+        // Asset references (S04 §6.5): a scalar path keeps its key and gains a sibling
+        // "<key>Guid"; a shader reference's sibling holds "<vertGuid>|<fragGuid>"
+        static void encodeAssetRef(YAML::Node& node, const std::string& key, const AssetRef& ref);
+        static AssetRef decodeAssetRef(const YAML::Node& node, const std::string& key);
+        static void encodeShaderRef(YAML::Node& node, const std::string& key, const ShaderRef& ref);
+        static ShaderRef decodeShaderRef(const YAML::Node& node, const std::string& key);
+        static std::string shaderRefGuids(const ShaderRef& ref);
+        static void parseShaderRefGuids(const std::string& text, ShaderRef& ref);
 
         // GameObject state next to the name: active, tag and layer
         static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
@@ -454,6 +462,10 @@ namespace jasperengine::editor {
 
         static YAML::Node encodeFogComponent(const FogComponent& fog);
         static FogComponent decodeFogComponent(const YAML::Node& node, const FogComponent* oldFog = nullptr);
+        static YAML::Node encodeLocalVolumetricFogComponent(const LocalVolumetricFogComponent& volume);
+        static LocalVolumetricFogComponent decodeLocalVolumetricFogComponent(const YAML::Node& node, const LocalVolumetricFogComponent* oldVolume = nullptr);
+        static YAML::Node encodeVolumetricCloudsComponent(const VolumetricCloudsComponent& clouds);
+        static VolumetricCloudsComponent decodeVolumetricCloudsComponent(const YAML::Node& node, const VolumetricCloudsComponent* oldClouds = nullptr);
 
         static YAML::Node encodeMirrorComponent(const MirrorComponent& mirror);
         static MirrorComponent decodeMirrorComponent(const YAML::Node& node, const MirrorComponent* oldMirror = nullptr);

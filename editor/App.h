@@ -21,6 +21,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/PhysicsPlacementWindow.h"
+#include "window/AssetPanels.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
 #include "window/PlayInput.h"
@@ -184,6 +185,8 @@ namespace jasperengine::editor{
         TextureSynthesisWindow* textureSynthesisWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
+        MissingAssetsWindow* missingAssetsWindow;
+        AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
         UndoHistoryWindow* undoHistoryWindow;
         PlayModeChangesWindow* playModeChangesWindow;
@@ -446,6 +449,9 @@ namespace jasperengine::editor{
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        MissingAssetsWindow* getMissingAssetsWindow() const { return missingAssetsWindow; }
+        void migrateAssetReferences();
+        AssetReferencesWindow* getAssetReferencesWindow() const { return assetReferencesWindow; }
         // Preferences (Edit > Preferences), for the MCP focus_window tool
         EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
         // Preferences on one of its pages ("Lattice" from the Scene view's lattice menu)

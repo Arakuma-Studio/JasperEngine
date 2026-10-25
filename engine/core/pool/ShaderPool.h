@@ -126,6 +126,10 @@ namespace jasperengine{
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
         static uint64_t getPostColorProperty(ShaderType shaderType);
+        // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
+        // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
+        // variant that receives shadows when the shadow tier is High or above (MESH bit 33)
+        static uint64_t getShadowsHQProperty();
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);

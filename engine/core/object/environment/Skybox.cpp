@@ -213,7 +213,7 @@ bool Skybox::removeShaderUniform(const std::string& name){
 Vector4 Skybox::getShaderParam(const std::string& name) const{
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
-    return ShaderLibraryValues::getParam(sky.shaderUniforms, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader, name);
+    return ShaderLibraryValues::getParam(sky.shaderUniforms, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader.path, name);
 }
 
 void Skybox::setShaderTexture(const std::string& name, const std::string& path){
@@ -234,12 +234,12 @@ void Skybox::setShaderFeature(const std::string& define, bool enabled){
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(sky.shaderFeatures, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(sky.shaderFeatures, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader.path, define, enabled))
         sky.needReload = true;
 }
 
 bool Skybox::isShaderFeatureEnabled(const std::string& define) const{
     SkyboxComponent& sky = getComponent<SkyboxComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(sky.shaderFeatures, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(sky.shaderFeatures, sky.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::SKYBOX) : sky.customShader.path, define);
 }

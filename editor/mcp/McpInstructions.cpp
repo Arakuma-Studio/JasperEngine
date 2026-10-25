@@ -18,18 +18,17 @@ scripts. Each tool edit is an undoable command, live to a human watching. Build 
 with tools, write code with your own file tools, verify by playing, screenshots and the Console.
 tools/list is authoritative for tool names and arguments; read a tool's description before
 first use. Deeper reference: jasper://docs/... (Lua API, C++ scripting, physics, shaders,
-prefabs, HTML/CSS UI, data safety, undo, Unity glossary).
+prefabs, assets, HTML/CSS UI, data safety, undo, Unity glossary).
 
 ## Unity names -> engine names
-Use Unity terms in prose; tools, component names and script APIs use the engine names.
+Tools, component names and script APIs use the engine names.
 GameObject = entity (Entity id; script class GameObject). Create Empty = type empty.
 Prefab = .prefab asset (PrefabComponent on the instance root; PrefabAsset in scripts).
 Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite Renderer =
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
-Most other components keep Unity's name plus "Component" (AudioSourceComponent,
-ParticleSystemComponent, Light2DComponent...).
-Build Settings = export.
+Most others are Unity's name + "Component" (AudioSourceComponent...).
+Build Settings = export; Scenes in Build = the scene list in project.yaml.
 
 ## Addressing
 - scene: numeric id, scene name, or project-relative .scene path. Omitted = the selected
@@ -46,7 +45,8 @@ Build Settings = export.
   colors as vectors (0..1); enums by name; textures/fonts/materials by asset path;
   entity references by entity ref, or {"scene": <scene>, "id": <id>} for a GameObject of
   another scene (cross-scene references); Prefab script properties by .prefab path.
-- assets: project-relative paths only ("assets/sprites/ship.png", "scripts/Player.lua").
+- assets: project-relative paths ("assets/sprites/ship.png") or GUIDs. A move rewrites no
+  referrer; see find_references, list_missing_assets, retarget_asset_references.
 
 ## The loop
 1. Inspect: `editor_status`, the scene list, the hierarchy, then the GameObjects you will
@@ -176,6 +176,11 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
+- Atmosphere (jasper://docs/atmosphere): a Fog of type "height" is physically based height fog
+  (volumetric: true adds light shafts and Local Volumetric Fog volumes near the camera);
+  create_entity volumetric_clouds adds clouds. apply_atmosphere_preset sets a look
+  (list_atmosphere_presets); get_atmosphere_info says what ran (tier, passes, resolution).
+  Atmosphere Quality is per platform (project settings quality.atmosphere_quality_*).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
@@ -230,6 +235,10 @@ post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice).
+Shadows: a light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in shadow
+texels, 1 is right almost always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
+the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).
+Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/shadows).
 
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export

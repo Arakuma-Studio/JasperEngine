@@ -357,6 +357,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_spotMaskAtlas";
     }else if (type == TextureShaderType::PROBESOURCE){
         texstr = "u_probeSourceTexture";
+    }else if (type == TextureShaderType::SHADOWATLASRAW){
+        texstr = "u_shadowAtlasRaw";
     }
 
     if (texstr.empty()){

@@ -676,7 +676,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // view only (the Game view and the game keep the scene's culling); a previewed scene
     // camera covers the view as the Engine's native canvas would size it
     layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
-                      displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing});
+                      displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
@@ -803,6 +803,10 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
+    scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
+    // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)
+    if (!isPlaying)
+        scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(-1);
 
     // Fixed game resolution only applies while playing: edit-mode viewports stay
     // at native resolution (gizmos and overlays would otherwise mismatch).

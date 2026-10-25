@@ -14,6 +14,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Prefabs](#prefabs) (12): `add_to_prefab`, `create_prefab`, `create_prefab_variant`, `get_prefab_info`, `instantiate_prefab`, `list_prefabs`, `prefab_mode`, `prefab_overrides`, `remove_from_prefab`, `replace_prefab`, `set_standalone_prefab`, `unpack_prefab`
 - [Play mode and input](#play-mode-and-input) (11): `apply_play_changes`, `discard_play_changes`, `eval_lua`, `get_play_changes`, `get_play_state`, `get_runtime_entity`, `list_runtime_entities`, `play`, `send_input`, `set_runtime_property`, `wait`
 - [Views and screenshots](#views-and-screenshots) (5): `configure_game_view`, `focus_window`, `frame_entity`, `screenshot`, `set_scene_camera`
+- [Shadows](#shadows) (2): `get_shadow_stats`, `set_shadow_debug`
 - [Console](#console) (6): `clear_console`, `get_log_config`, `list_timers`, `read_console`, `set_log_level`, `wait_for_log`
 - [Scripts](#scripts) (10): `attach_script`, `check_script`, `code_editor`, `compile_scripts`, `create_script`, `detach_script`, `list_scripts`, `set_script_properties`, `sync_files`, `update_script_entry`
 - [Assets, materials and shaders](#assets-materials-and-shaders) (22): `apply_material_preset`, `check_shader`, `create_folder`, `create_material`, `delete_asset`, `fork_shader`, `generate_placeholder_art`, `get_asset_info`, `get_shader_uniforms`, `import_files`, `link_material`, `list_assets`, `list_material_presets`, `list_shaders`, `move_asset`, `read_file`, `search_files`, `set_shader_uniform`, `set_texture_settings`, `update_material`, `view_asset`, `write_file`
@@ -1305,6 +1306,7 @@ Read (no arguments) or change the Game view toolbar settings (editor preferences
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `aspect` | `"free"` \| `"project"` \| `"16:9"` \| `"16:10"` \| `"4:3"` \| `"9:16"` |  |  |
+| `atmosphere_quality` | `"project"` \| `"off"` \| `"low"` \| `"medium"` \| `"high"` |  | Preview Atmosphere Quality (project = the project's desktop tier). |
 | `maximize_on_play` | boolean |  |  |
 | `scale` | number (1..5) |  | Zoom. |
 | `show_stats` | boolean |  |  |
@@ -1381,6 +1383,39 @@ Aim the editor's Scene view camera (not a game camera; no undo). 3D: position, t
 | `screenshot` | boolean |  | Also return a Scene view image. |
 | `target` | array[3] of number |  | Look-at point. |
 | `zoom` | number (0.01..1000) |  | World units per pixel. |
+
+
+## Shadows
+
+### `get_shadow_stats`
+
+*Get Shadow Stats*
+
+Hints: read-only, idempotent
+
+A scene's shadows on its last update: tier, atlases, memory vs budget; per light its slots, splits, texel size; per slot the cache path now and its last_render. camera game: the running game's. (jasper://docs/shadows)
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `camera` | `"scene"` \| `"game"` |  | Default: `"scene"`. |
+| `scene` | integer or string |  |  |
+
+
+### `set_shadow_debug`
+
+*Set Shadow Debug*
+
+Hints: idempotent
+
+Editor-only, transient: fit_camera_offset/_euler move only the camera the cascades fit (the view stays); freeze_cache holds every slot; force_rerender redraws them all. Omitted keys stay; zeros/false undo.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `fit_camera_euler` | array of number |  | [pitch,yaw,roll] degrees. |
+| `fit_camera_offset` | array of number |  | [x,y,z] world offset. |
+| `force_rerender` | boolean |  |  |
+| `freeze_cache` | boolean |  |  |
+| `scene` | integer or string |  |  |
 
 
 ## Console
@@ -2076,6 +2111,7 @@ File > Build Settings > Build, as a job. desktop: a player for this computer (th
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `allow_missing_assets` | boolean |  | Build even when it references missing assets (list_missing_assets). |
 | `backends` | array of string |  | source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered. |
 | `build_jobs` | integer |  | desktop: 0 = auto. Default: preferences.build_jobs. |
 | `build_type` | `"Release"` \| `"Debug"` \| `"RelWithDebInfo"` \| `"MinSizeRel"` |  | Default: `"Release"`. |

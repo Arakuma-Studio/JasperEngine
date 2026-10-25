@@ -37,6 +37,8 @@ namespace jasperengine::editor{
         bool hideSelectionOutline = false;
         bool disableFaceCulling  = false;
         bool disableFog          = false;
+        // the Scene view draws without the volumetric clouds
+        bool disableClouds       = false;
         // the scene's post-processing in the Scene view (off by default: the Game view shows it)
         bool showPostProcessing  = false;
         bool showGrid2D          = false;

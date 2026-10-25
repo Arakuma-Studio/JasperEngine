@@ -75,6 +75,9 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+bool Engine::atmosphereQualityOverridden = false;
+AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
 bool Engine::callMouseInTouchEvent = false;
@@ -600,6 +603,45 @@ Platform Engine::getPlatform(){
 #endif
 }
 
+void Engine::setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web){
+    atmosphereQualityDefaults[0] = desktop;
+    atmosphereQualityDefaults[1] = mobile;
+    atmosphereQualityDefaults[2] = web;
+}
+
+AtmosphereQuality Engine::getAtmosphereQualityDefault(Platform platform){
+    switch (platform){
+        case Platform::iOS:
+        case Platform::Android:
+            return atmosphereQualityDefaults[1];
+        case Platform::Web:
+            return atmosphereQualityDefaults[2];
+        default:
+            return atmosphereQualityDefaults[0];
+    }
+}
+
+AtmosphereQuality Engine::getAtmosphereQualityDefault(){
+    return getAtmosphereQualityDefault(getPlatform());
+}
+
+void Engine::setAtmosphereQuality(AtmosphereQuality quality){
+    atmosphereQualityOverride = quality;
+    atmosphereQualityOverridden = true;
+}
+
+AtmosphereQuality Engine::getAtmosphereQuality(){
+    return atmosphereQualityOverridden ? atmosphereQualityOverride : getAtmosphereQualityDefault();
+}
+
+void Engine::resetAtmosphereQuality(){
+    atmosphereQualityOverridden = false;
+}
+
+bool Engine::isAtmosphereQualityOverridden(){
+    return atmosphereQualityOverridden;
+}
+
 GraphicBackend Engine::getGraphicBackend(){
 #if defined(SOKOL_GLCORE)
     return GraphicBackend::GLCORE;
@@ -646,6 +688,10 @@ void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
     currentFrameStats.triangles += triangles;
+}
+
+uint32_t Engine::getPendingDrawCalls(){
+    return currentFrameStats.drawCalls;
 }
 
 const Engine::FrameStats& Engine::getFrameStats(){
@@ -1542,6 +1588,8 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.disableFog = layer.disableFog;
         desc.disableFaceCulling = layer.disableFaceCulling;
         desc.postProcessing = layer.postProcessing;
+        desc.disableClouds = layer.disableClouds;
+        desc.atmosphereQuality = layer.atmosphereQuality;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);

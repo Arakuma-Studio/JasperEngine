@@ -52,6 +52,19 @@ TEST(ShaderKey, NormalizeDropsBitsWithoutAProperty){
     EXPECT_EQ(ShaderPool::getCustomIdFromKey(ShaderPool::normalizeKey(key)), 2u);
 }
 
+TEST(ShaderKey, ShadowsHQNeedsShadows){
+    // MESH bit 33 ('Shq', S10; bit 5 is upstream's 'Sto'): a key keeps it only with 'Shw' (bit 4)
+    const uint64_t hq = ShaderPool::getShadowsHQProperty();
+    EXPECT_EQ(hq, uint64_t(1) << 33);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 33, true), "Shq");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5, true), "Sto");
+    EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::MESH) & hq, 0u);
+    const ShaderKey shadowed = ShaderPool::getShaderKey(ShaderType::MESH, 0x8 | (uint64_t(1) << 4) | hq);
+    EXPECT_EQ(ShaderPool::normalizeKey(shadowed), shadowed);
+    const ShaderKey unshadowed = ShaderPool::getShaderKey(ShaderType::MESH, 0x8 | hq);
+    EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(unshadowed)), 0x8u);
+}
+
 TEST(ShaderKey, SpecsNameTypeAndProperties){
     const std::string first = ShaderPool::getShaderPropertyName(ShaderType::MESH, 0, true);
     const std::string second = ShaderPool::getShaderPropertyName(ShaderType::MESH, 1, true);

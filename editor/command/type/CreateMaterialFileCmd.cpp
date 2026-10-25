@@ -71,11 +71,26 @@ editor::CreateMaterialFileCmd::CreateMaterialFileCmd(Project* project, const fs:
 }
 
 bool editor::CreateMaterialFileCmd::execute() {
-    const io::WriteResult written = DocumentFiles::write(targetFile, payload);
+    // the file's identity: a new GUID the first time, the same one again on redo
+    std::string content = payload;
+    try {
+        YAML::Node root = YAML::Load(payload);
+        if (root.IsMap()) {
+            if (!guid.isNull()) {
+                root["guid"] = guid.str();
+            }
+            guid = project->prepareDocumentIdentity(root, targetFile);
+            // no trailing newline: material files never had one (DocumentFiles::materialText)
+            content = YAML::Dump(root);
+        }
+    } catch (const std::exception&) {
+    }
+    const io::WriteResult written = DocumentFiles::write(targetFile, content);
     if (!written.ok()) {
         Out::error(DocumentFiles::saveFailureMessage(targetFile, written));
         return false;
     }
+    project->getAssetDatabase().registerAsset(targetFile, guid.str());
 
     if (materialCmd && !materialCmd->execute()) {
         std::error_code ec;
@@ -93,4 +108,5 @@ void editor::CreateMaterialFileCmd::undo() {
 
     std::error_code ec;
     fs::remove(targetFile, ec);
+    project->getAssetDatabase().removeAssets(targetFile);
 }

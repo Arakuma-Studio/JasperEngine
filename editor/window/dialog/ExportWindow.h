@@ -52,6 +52,7 @@ namespace jasperengine::editor {
         uint32_t m_selectedSceneId = NULL_PROJECT_SCENE;
         // Build And Run: launch the built player once the export finishes.
         bool m_runAfterBuild = false;
+        bool m_allowMissingAssets = false;
         bool m_launchDone = false;
         bool m_playerSettingsRequested = false;
         // Nested inside this modal, so it can open without closing Build Settings.

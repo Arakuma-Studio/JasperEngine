@@ -22,6 +22,9 @@ namespace jasperengine::editor {
         // Developer check: dumps every scene's GameObjects of a project (see CommandLine.cpp)
         static int runSceneDumpCommand(int argc, char** argv, const char* executableName);
 
+        // Asset identity: assets check (missing references, JSON) and assets migrate (GUIDs written)
+        static int runAssetsCommand(int argc, char** argv, const char* executableName);
+
         static int runBenchmarkHelp(const char* executableName);
 
         // Checks a project's Lua scripts, shader forks, C++ scripts and HTML/CSS UI files (see docs/mcp/checks.md)

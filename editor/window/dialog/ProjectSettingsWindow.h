@@ -28,8 +28,12 @@ namespace jasperengine::editor {
         int m_scalingModeIndex = 0;
         int m_textureStrategyIndex = 0;
         bool m_vsyncEnabled = true;
+        // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
+        int m_atmosphereQuality[3] = {3, 1, 1};
         PlayerLoggingSettings m_playerLogging;
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
+        // the shadow quality tier of each platform (Engine::Platform order), as ShadowTier ints
+        int m_shadowTiers[6] = {2, 0, 1, 0, 2, 2};
         int m_windowModeIndex = 0;
         int m_windowWidth = 0;
         int m_windowHeight = 0;

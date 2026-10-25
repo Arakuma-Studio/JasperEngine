@@ -25,9 +25,11 @@ namespace jasperengine::editor::mcp {
     void registerPrefabTools(McpRegistry& registry);
     void registerPlayTools(McpRegistry& registry);
     void registerViewTools(McpRegistry& registry);
+    void registerShadowTools(McpRegistry& registry);
     void registerConsoleTools(McpRegistry& registry);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
+    void registerAssetIdentityTools(McpRegistry& registry);
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
     void registerWorldTools(McpRegistry& registry);
@@ -48,5 +50,6 @@ namespace jasperengine::editor::mcp {
     Json synthesisAssetInfo(Project* project, const std::filesystem::path& file, bool full);
     // " Synthesized (tileable, balanced, seed 7, role primary); sources unchanged." or ""
     std::string synthesisAssetText(const Json& info);
+    void registerAtmosphereTools(McpRegistry& registry);
 
 }

@@ -64,6 +64,9 @@ namespace {
         FACT_SHADOW_LIGHTS_2D= 1u << 6, // a 2D light casting shadows
         FACT_OCCLUDERS_2D    = 1u << 7, // Shadow Caster 2D components
         FACT_SCENE_DEPTH     = 1u << 8, // a shader requiring the scene depth (every mesh gets a depth program)
+        FACT_HEIGHT_FOG      = 1u << 9, // a Fog of type Height (the sky composite)
+        FACT_VOLUMETRIC_FOG  = 1u << 10, // its volumetric fog (every mesh gets a depth program)
+        FACT_CLOUDS          = 1u << 11, // Volumetric Clouds (every mesh gets a depth program)
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -109,8 +112,16 @@ namespace {
                     facts |= FACT_SHADOW_LIGHTS;
                 }
             }
-            if (registry->findComponent<FogComponent>(entity)){
+            if (const FogComponent* fog = registry->findComponent<FogComponent>(entity)){
                 facts |= FACT_FOG;
+                if (fog->type == FogType::HEIGHT){
+                    facts |= FACT_HEIGHT_FOG;
+                    if (fog->volumetric)
+                        facts |= FACT_VOLUMETRIC_FOG;
+                }
+            }
+            if (registry->findComponent<VolumetricCloudsComponent>(entity)){
+                facts |= FACT_CLOUDS;
             }
             if (const SkyboxComponent* sky = registry->findComponent<SkyboxComponent>(entity)){
                 if (!sky->texture.empty()){
@@ -141,7 +152,7 @@ namespace {
                 }
             }
             if (const PointsComponent* points = registry->findComponent<PointsComponent>(entity)){
-                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader, points->shaderFeatures)){
+                if (readsSceneDepth(points->customShader.empty() ? scenePointsShader : points->customShader.path, points->shaderFeatures)){
                     facts |= FACT_SCENE_DEPTH;
                 }
             }
@@ -159,6 +170,8 @@ namespace {
         environment.ibl = (facts & FACT_SKY_IBL) != 0;
         environment.reflectionProbes = (facts & FACT_PROBES) != 0;
         environment.fog = (facts & FACT_FOG) != 0;
+        // RenderSystem::update: the height fog variants, the atmosphere's depth programs
+        environment.atmosphereDepth = (facts & (FACT_VOLUMETRIC_FOG | FACT_CLOUDS)) != 0;
         environment.lights2D = (facts & FACT_LIGHTS_2D) != 0;
         // RenderSystem::loadLights2D: a shadow-casting 2D light with an occluder to cast
         environment.shadows2D = (facts & FACT_SHADOW_LIGHTS_2D) && (facts & FACT_OCCLUDERS_2D);
@@ -180,7 +193,28 @@ namespace {
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
-            (e.postColor ? (1u << 21) : 0u);
+            (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u);
+    }
+
+    // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
+    // the scene's variants can be in: a tier the scene sets, both under Auto (the platform's
+    // tier, which an export filters per backend: ShadowTiers::cooksHighFilters) and when a
+    // script sets the quality
+    std::vector<bool> shadowHQStates(Scene* scene, bool scriptsSetShadowQuality){
+        if (scriptsSetShadowQuality)
+            return {false, true};
+        switch (scene->getShadowQuality()){
+            case ShadowQuality::NONE:
+            case ShadowQuality::LOW:
+            case ShadowQuality::MEDIUM:
+                return {false};
+            case ShadowQuality::HIGH:
+            case ShadowQuality::ULTRA:
+                return {true};
+            case ShadowQuality::AUTO:
+                break;
+        }
+        return {false, true};
     }
 
     // the states of the post-processing colour bit (RenderSystem::getPostProcessingTiers) the
@@ -196,7 +230,8 @@ namespace {
     // spawned in it. A skybox's environment maps light meshes only once they are built, so
     // the setups without them are reachable too (an asynchronous load draws before that).
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
-                                                             bool allLightCapacities, const std::vector<bool>& postColor){
+                                                             bool allLightCapacities, const std::vector<bool>& postColor,
+                                                             const std::vector<bool>& shadowHQ){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -220,17 +255,21 @@ namespace {
         std::set<uint32_t> distinct;
         for (uint32_t facts : withLoading){
             for (bool postColorOn : postColor){
-                MeshShaderEnvironment environment = toEnvironment(facts, scene);
-                environment.postColor = postColorOn;
-                if (distinct.insert(environmentBits(environment)).second){
-                    environments.push_back(environment);
-                }
-                // a script setting maxLightsPerObject reaches the other capacity tiers
-                if (allLightCapacities && environment.lights){
-                    for (int capacity : {4, 8, 16}){
-                        environment.lightCapacity = capacity;
-                        if (distinct.insert(environmentBits(environment)).second){
-                            environments.push_back(environment);
+                for (bool highFilters : shadowHQ){
+                    MeshShaderEnvironment environment = toEnvironment(facts, scene);
+                    environment.postColor = postColorOn;
+                    // the bit only exists on variants receiving shadows
+                    environment.shadowsHQ = highFilters && environment.shadows;
+                    if (distinct.insert(environmentBits(environment)).second){
+                        environments.push_back(environment);
+                    }
+                    // a script setting maxLightsPerObject reaches the other capacity tiers
+                    if (allLightCapacities && environment.lights){
+                        for (int capacity : {4, 8, 16}){
+                            environment.lightCapacity = capacity;
+                            if (distinct.insert(environmentBits(environment)).second){
+                                environments.push_back(environment);
+                            }
                         }
                     }
                 }
@@ -655,7 +694,7 @@ namespace {
 
         // Likewise for points, with or without a texture and texture rects (RenderSystem::loadPoints)
         void collectPoints(const PointsComponent* points){
-            const uint16_t id = shaderId(points ? points->customShader : std::string(), ShaderType::POINTS,
+            const uint16_t id = shaderId(points ? points->customShader.path : std::string(), ShaderType::POINTS,
                                          points ? points->shaderFeatures : std::vector<std::string>(),
                                          points ? points->blendMode : MaterialBlendMode::AUTO);
             insertKeys(ShaderType::POINTS, ShaderPool::getPointsProperties(false, false, true, false), id);
@@ -943,7 +982,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
                                                   const std::vector<ShaderVariantContent>& prefabContents,
                                                   std::set<ShaderKey>& keys, const fs::path& projectRoot,
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
-                                                  const std::vector<std::string>& scriptPostProcessingFields){
+                                                  const std::vector<std::string>& scriptPostProcessingFields,
+                                                  bool scriptsSetShadowQuality){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -963,7 +1003,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor);
+    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
+                                                                                  shadowHQStates(scene, scriptsSetShadowQuality));
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);
@@ -1018,6 +1059,16 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (blur){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u));
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 4u));
+    }
+    // a light casting 3D shadows copies the static shadow cache back and clears slots with the
+    // shadow cache's program (RenderSystem::renderShadowMaps)
+    if (allFacts & FACT_SHADOW_LIGHTS){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW_CACHE, 0));
+    }
+    // the atmosphere's passes (height fog's sky fill, volumetric fog, clouds)
+    for (ShaderType type : AtmosphereRenderer::passShaderTypes((allFacts & FACT_HEIGHT_FOG) != 0, (allFacts & FACT_VOLUMETRIC_FOG) != 0,
+                                                               (allFacts & FACT_CLOUDS) != 0)){
+        keys.insert(ShaderPool::getShaderKey(type, 0));
     }
     // 2D lights with shadows render occluder segments through the shadow2d pass, once an
     // occluder exists (a script can spawn one, so the light alone asks for it)

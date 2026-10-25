@@ -81,8 +81,8 @@
 //     mode a shader that handles the ambient itself defines, before including, either
 //     SURFACE_NO_VERTEX_AMBIENT (v_vertexLight leaves it out) or SURFACE_VERTEX_AMBIENT
 //     (it comes apart, in out vec3 v_vertexAmbient, which the fragment stage must read).
-//   - USE_SHADOWS (pixel lights that receive shadows): out vec4 v_lightProjPos[], the
-//     shadow-map coordinates lightShadow reads; the fragment stage must call lightShadow.
+//   - USE_SHADOWS (pixel lights that receive shadows): nothing here; the fragment stage
+//     calls lightShadow, which computes the shadow coordinates from v_position.
 
 uniform u_vs_pbrParams {
     mat4 modelMatrix;
@@ -199,15 +199,6 @@ in vec3 a_position;
     #if defined(SURFACE_VERTEX_AMBIENT) && !defined(USE_PUNCTUAL)
         out vec3 v_vertexAmbient;
     #endif
-#endif
-
-#ifdef USE_SHADOWS
-    uniform u_vs_shadows {
-        mat4 lightVPMatrix[MAX_SHADOW_ATLAS_SLOTS];
-        vec4 shadowParams[MAX_SHADOW_ATLAS_SLOTS]; // normalBias in .x
-    };
-
-    out vec4 v_lightProjPos[MAX_SHADOW_ATLAS_SLOTS];
 #endif
 
 #include "includes/skinning.glsl"
@@ -467,12 +458,6 @@ void main() {
                 v_vertexLight += ambientLight(worldNormal);
             #endif
         #endif
-    #endif
-
-    #ifdef USE_SHADOWS
-    for (int i = 0; i < MAX_SHADOW_ATLAS_SLOTS; ++i){
-        v_lightProjPos[i] = lightVPMatrix[i] * (worldPos + vec4(worldNormal * shadowParams[i].x, 0.0));
-    }
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;

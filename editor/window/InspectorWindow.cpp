@@ -43,6 +43,9 @@
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/ComponentToPrefabSharedCmd.h"
 #include "command/type/ComponentValuesCmd.h"
+#include "command/type/AtmospherePresetCmd.h"
+#include "render/AtmospherePresets.h"
+#include "render/RenderUtil.h"
 #include "util/EntityClipboard.h"
 #include "command/type/ForkShaderCmd.h"
 #include "shader/ShaderManifest.h"
@@ -195,7 +198,35 @@ static std::vector<editor::EnumEntry> entriesCullingMode = {
 static std::vector<editor::EnumEntry> entriesFogType = {
     { (int)FogType::LINEAR, "Linear" },
     { (int)FogType::EXPONENTIAL, "Exponential" },
-    { (int)FogType::EXPONENTIALSQUARED, "Exponential Squared" }
+    { (int)FogType::EXPONENTIALSQUARED, "Exponential Squared" },
+    { (int)FogType::HEIGHT, "Height" }
+};
+
+static std::vector<editor::EnumEntry> entriesFogColorMode = {
+    { (int)FogColorMode::COLOR, "Constant Color" },
+    { (int)FogColorMode::SKY, "Sky Color" }
+};
+
+static std::vector<editor::EnumEntry> entriesAtmosphereQualityOverride = {
+    { (int)AtmosphereQualityOverride::PROJECT, "Project" },
+    { (int)AtmosphereQualityOverride::LOW, "Low" },
+    { (int)AtmosphereQualityOverride::MEDIUM, "Medium" }
+};
+
+static std::vector<editor::EnumEntry> entriesFogVolumeShape = {
+    { (int)FogVolumeShape::BOX, "Box" },
+    { (int)FogVolumeShape::SPHERE, "Sphere" }
+};
+
+static std::vector<editor::EnumEntry> entriesFogVolumeFalloff = {
+    { (int)FogVolumeFalloff::LINEAR, "Linear" },
+    { (int)FogVolumeFalloff::EXPONENTIAL, "Exponential" }
+};
+
+static std::vector<editor::EnumEntry> entriesCloudsRendering = {
+    { (int)CloudsRendering::AUTO, "Automatic" },
+    { (int)CloudsRendering::SKY_MAP, "Sky Map" },
+    { (int)CloudsRendering::SCREEN, "Screen" }
 };
 
 static std::vector<editor::EnumEntry> entriesReflectionProbeMode = {
@@ -424,7 +455,7 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
 
     try {
         std::string error;
-        const SaveResult saved = DocumentFiles::saveMaterial(absolutePath, Stream::encodeMaterial(material), DegradedSavePolicy::Refuse, &error);
+        const SaveResult saved = project->writeMaterialFile(entry.relativePath, material, DegradedSavePolicy::Refuse, &error);
         if (saved == SaveResult::RefusedDegraded) {
             // the editor's lossy-save modal decides (Save Anyway writes it)
             DegradedSaveRequest request;
@@ -434,9 +465,11 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
             for (const LoadIssue& issue : report.issues) {
                 if (issue.fate == LoadIssueFate::Dropped) request.dropped.push_back(issue);
             }
-            const YAML::Node encoded = Stream::encodeMaterial(material);
-            request.saveAnyway = [absolutePath, encoded]() {
-                DocumentFiles::saveMaterial(absolutePath, encoded, DegradedSavePolicy::SaveAnyway);
+            Project* owner = project;
+            const std::filesystem::path relativePath = entry.relativePath;
+            const Material copy = material;
+            request.saveAnyway = [owner, relativePath, copy]() {
+                owner->writeMaterialFile(relativePath, copy, DegradedSavePolicy::SaveAnyway);
             };
             editor::getEditorHost().confirmDegradedSave(request);
         }
@@ -599,11 +632,26 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 }
             }
             if constexpr (std::is_same_v<T, ShadowQuality>) {
-                const char* qualityNames[] = { "None", "Low", "Medium", "High" };
-                int currentItem = static_cast<int>(value);
-                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
-                if (changed) {
-                    value = static_cast<ShadowQuality>(currentItem);
+                if (propertyName == "shadows_quality") {
+                    // the 3D quality tiers, in Unity's order
+                    static const ShadowQuality qualityValues[] = { ShadowQuality::AUTO, ShadowQuality::NONE, ShadowQuality::LOW,
+                                                                   ShadowQuality::MEDIUM, ShadowQuality::HIGH, ShadowQuality::ULTRA };
+                    const char* qualityNames[] = { "Auto", "Hard Only", "Low", "Medium", "High", "Ultra" };
+                    int currentItem = 0;
+                    for (int q = 0; q < IM_ARRAYSIZE(qualityValues); q++) {
+                        if (qualityValues[q] == value) currentItem = q;
+                    }
+                    changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
+                    if (changed) {
+                        value = qualityValues[currentItem];
+                    }
+                } else {
+                    const char* qualityNames[] = { "None", "Low", "Medium", "High" };
+                    int currentItem = std::clamp(static_cast<int>(value), 0, 3);
+                    changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
+                    if (changed) {
+                        value = static_cast<ShadowQuality>(currentItem);
+                    }
                 }
             }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
@@ -836,6 +884,10 @@ std::string editor::InspectorWindow::formatPropertyLabelValue(const PropertyData
             return std::to_string(*static_cast<Entity*>(prop.ref));
         case PropertyType::String:
             return *static_cast<std::string*>(prop.ref);
+        case PropertyType::Asset:
+            return static_cast<AssetRef*>(prop.ref)->path;
+        case PropertyType::Shader:
+            return static_cast<ShaderRef*>(prop.ref)->path;
         case PropertyType::Font:
             return static_cast<FontArray*>(prop.ref)->front();
         case PropertyType::Ease: {
@@ -3479,6 +3531,77 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         ImGui::EndGroup();
 
+    }else if (type == RowPropertyType::Asset){
+        // an asset file reference (S04): its path, editable or dropped from the Project window,
+        // kept by GUID; a missing asset shows red with its last path and stays until cleared
+        AssetRef* value = nullptr;
+        std::map<Entity, AssetRef> eValue;
+        bool dif = false;
+        AssetRef* defArr = nullptr;
+        for (Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+            if (prop.type != PropertyType::Asset || !prop.ref) continue;
+            defArr = static_cast<AssetRef*>(prop.def);
+            eValue[entity] = *static_cast<AssetRef*>(prop.ref);
+            if (value && *value != eValue[entity])
+                dif = true;
+            value = &eValue[entity];
+        }
+        if (value){
+            const AssetRef current = *value;
+            if (propertyHeader(label, settings.secondColSize, defArr && current != *defArr, settings.child)){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<AssetRef>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
+            }
+            bool missing = false;
+            std::string tooltip;
+            if (!dif && current.isSet() && project->getAssetDatabase().isOpen()){
+                const std::string hint = project->assetHintToProjectPath(current.path, AssetPathBase::Assets);
+                const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(current.guid, hint, AssetType::Unknown, true);
+                missing = !found.found();
+                tooltip = missing ? "Missing (GUID " + (current.guid.isNull() ? std::string("none") : current.guid.str()) + ")\nLast path: " + current.path
+                                  : found.path + "\nGUID " + found.guid.str();
+            }
+            std::vector<char> buffer(current.path.begin(), current.path.end());
+            buffer.resize(std::max((size_t)1024, current.path.size() + 256));
+            buffer[current.path.size()] = '\0';
+            if (missing)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+            else if (dif)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            const bool edited = ImGui::InputText(("##input_asset_"+id).c_str(), buffer.data(), buffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+            if (missing || dif)
+                ImGui::PopStyleColor();
+            if (!tooltip.empty())
+                ImGui::SetItemTooltip("%s", tooltip.c_str());
+            AssetRef assigned;
+            bool assign = false;
+            if (edited){
+                assigned = project->makeAssetRef(std::string(buffer.data()), AssetPathBase::Assets);
+                assign = true;
+            }
+            if (ImGui::BeginDragDropTarget()){
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                    std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
+                    if (!dropped.empty() && project->isInsideAssetsPath(dropped[0])){
+                        assigned = project->makeAssetRef(project->normalizeToAssetsRelative(dropped[0]).generic_string(), AssetPathBase::Assets);
+                        assign = true;
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (assign){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<AssetRef>(project, sceneProject->id, entity, cpType, id, assigned, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
+            }
+        }
+
     }else if (type == RowPropertyType::String || type == RowPropertyType::MultilineString){
         std::string* value = nullptr;
         std::map<Entity, std::string> eValue;
@@ -3486,8 +3609,17 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         std::string* defArr = nullptr;
         for (Entity& entity : entities){
             PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
-            defArr = static_cast<std::string*>(prop.def);
-            eValue[entity] = *static_cast<std::string*>(prop.ref);
+            // a reference drawn as a text row edits its path (PropertyCmd<std::string> drops the GUID)
+            if (prop.type == PropertyType::Asset) {
+                defArr = prop.def ? &static_cast<AssetRef*>(prop.def)->path : nullptr;
+                eValue[entity] = static_cast<AssetRef*>(prop.ref)->path;
+            } else if (prop.type == PropertyType::Shader) {
+                defArr = prop.def ? &static_cast<ShaderRef*>(prop.def)->path : nullptr;
+                eValue[entity] = static_cast<ShaderRef*>(prop.ref)->path;
+            } else {
+                defArr = static_cast<std::string*>(prop.def);
+                eValue[entity] = *static_cast<std::string*>(prop.ref);
+            }
             if (value){
                 if (*value != eValue[entity])
                     dif = true;
@@ -4319,19 +4451,33 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (texName.empty()) {
             texName = "< Not set >";
         }
+        // S04 R28: a reference whose asset is gone stays, shown red with its last path
+        std::string missingTooltip;
+        if (!isCameraTexture && !newValue.getPath(0).empty() && project->getAssetDatabase().isOpen()) {
+            const std::string hint = project->assetHintToProjectPath(newValue.getPath(0), AssetPathBase::Assets);
+            if (!project->getAssetDatabase().resolve(newValue.getPathGuid(0), hint, AssetType::Texture, true).found()) {
+                texName = "Missing (" + std::filesystem::path(newValue.getPath(0)).filename().string() + ")";
+                missingTooltip = "Missing (GUID " + (newValue.getPathGuid(0).isNull() ? std::string("none") : newValue.getPathGuid(0).str()) +
+                                 ")\nLast path: " + newValue.getPath(0);
+            }
+        }
 
         float textWidth = ImGui::CalcTextSize(texName.c_str()).x;
         float availWidth = ImGui::GetContentRegionAvail().x;
         ImGui::SetCursorPosX(availWidth - textWidth - 2);
         ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
-        if (dif)
+        if (!missingTooltip.empty())
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+        else if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         ImGui::Text("%s", texName.c_str());
-        if (dif)
+        if (!missingTooltip.empty() || dif)
             ImGui::PopStyleColor();
 
         ImGui::EndChild();
-        if (!newValue.getId().empty()){
+        if (!missingTooltip.empty()){
+            ImGui::SetItemTooltip("%s", missingTooltip.c_str());
+        } else if (!newValue.getId().empty()){
             ImGui::SetItemTooltip("%s", newValue.getId().c_str());
         }
         ImGui::PopStyleColor();
@@ -4795,7 +4941,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             receiveIBL = previewMesh.receiveIBL;
             // a material without its own shader draws with the mesh's, else the scene's
             meshShader = previewMesh.customShader.empty() ? sceneProject->scene->getDefaultCustomShader(ShaderType::MESH)
-                                                          : previewMesh.customShader;
+                                                          : previewMesh.customShader.path;
         }
 
         Texture texRender = getMaterialPreview(newValue, id, receiveIBL, meshShader);
@@ -6794,6 +6940,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
+    RowSettings staticCasterSettings;
+    staticCasterSettings.help = "Cache this mesh's shadows with the other static casters: they are redrawn only when one of them changes, "
+                                "while dynamic casters move over them. Mark what does not move (level geometry). A static caster that "
+                                "does change still shadows correctly, it only costs a redraw of the static layer.";
+    propertyRow(RowPropertyType::Bool, cpType, "staticShadowCaster", "Static Shadow Caster", sceneProject, entities, staticCasterSettings);
 
     RowSettings cullingSettings;
     cullingSettings.enumEntries = &entriesCullingMode;
@@ -8233,7 +8384,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
             ImGui::EndPopup();
         }
     }else{
-        propertyRow(RowPropertyType::String, cpType, "filename", "Audio Clip", sceneProject, entities);
+        propertyRow(RowPropertyType::Asset, cpType, "filename", "Audio Clip", sceneProject, entities);
     }
 
     RowSettings stateSettings = compactSettings;
@@ -9047,13 +9198,19 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     RowSettings settingsLightType;
     settingsLightType.enumEntries = &entriesLightType;
 
-    beginTable(cpType, std::max(getLabelSize("Inner cone"), getLabelSize("Culling Mask")));
+    beginTable(cpType, std::max(getLabelSize("Volumetric Intensity"), getLabelSize("Culling Mask")));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsLightType);
     propertyRow(RowPropertyType::Float, cpType, "intensity", "Intensity", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::Float, cpType, "range", "Range", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
     if (light.type != LightType::POINT){
         propertyRow(RowPropertyType::Direction, cpType, "direction", "Direction", sceneProject, entities);
+    }
+    if (light.type != LightType::DIRECTIONAL){
+        RowSettings settingsVolumetric = settingsFloat;
+        settingsVolumetric.help = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, "
+                                  "no shadows). 0: none.";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "volumetricIntensity", "Volumetric Intensity", sceneProject, entities, settingsVolumetric);
     }
     if (light.type == LightType::SPOT){
         RowSettings settingsMask;
@@ -9079,51 +9236,7 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Enum, cpType, "shading", "Shading", sceneProject, entities, settingsShading);
     endTable();
 
-    ImGui::SeparatorText("Shadow settings");
-
-    RowSettings settingsBias;
-    settingsBias.stepSize = 0.000001f;
-    settingsBias.secondColSize = 6 * ImGui::GetFontSize();
-    settingsBias.format = "%.6f";
-
-    RowSettings settingsMapRes;
-    settingsMapRes.sliderValues = &po2Values;
-
-    RowSettings settingsCascade;
-    settingsCascade.sliderValues = &cascadeValues;
-
-    beginTable(cpType, getLabelSize("Map Resolution"), "shadow_settings_table");
-    propertyRow(RowPropertyType::Bool, cpType, "shadows", "Enabled", sceneProject, entities);
-    propertyRow(RowPropertyType::Float, cpType, "shadowBias", "Bias", sceneProject, entities, settingsBias);
-    propertyRow(RowPropertyType::UIntSlider, cpType, "mapResolution", "Map Resolution", sceneProject, entities, settingsMapRes);
-    propertyRow(RowPropertyType::UIntSlider, cpType, "numShadowCascades", "Num Cascades", sceneProject, entities, settingsCascade);
-
-    propertyHeader("Shadow Camera");
-    if (ImGui::Button(ICON_FA_GEAR)){
-        ImGui::OpenPopup("menusettings_shadow_camera");
-    }
-
-    ImGui::SetNextWindowSizeConstraints(ImVec2(14 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::BeginPopup("menusettings_shadow_camera")){
-        ImGui::Text("Shadow camera settings");
-        ImGui::Separator();
-
-        RowSettings settingsFloat;
-        settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-
-        beginTable(cpType, getLabelSize("Camera Near"), "shadow_camera_popup");
-
-        propertyRow(RowPropertyType::Bool, cpType, "automaticShadowCamera", "Automatic", sceneProject, entities);
-        ImGui::BeginDisabled(light.automaticShadowCamera);
-        propertyRow(RowPropertyType::Float, cpType, "shadowCameraNear", "Camera Near", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "shadowCameraFar", "Camera Far", sceneProject, entities, settingsFloat);
-        ImGui::EndDisabled();
-
-        endTable();
-
-        ImGui::EndPopup();
-    }
-    endTable();
+    drawLightShadows(cpType, sceneProject, entities);
 }
 
 void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -9260,11 +9373,47 @@ void editor::InspectorWindow::drawShadowCaster2DComponent(ComponentType cpType, 
     }
 }
 
+bool editor::InspectorWindow::beginFoldout(const char* label){
+    return ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+}
+
+void editor::InspectorWindow::endFoldout(){
+    ImGui::TreePop();
+}
+
+void editor::InspectorWindow::drawAtmospherePresetsMenu(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                        const std::vector<AtmospherePreset>& presets, const char* current){
+    const std::string popup = "atmosphere_presets_" + std::to_string((int)cpType);
+    const std::string button = std::string(current ? current : "Presets") + " " ICON_FA_CARET_DOWN "##" + popup;
+    ImGui::TextUnformatted("Preset");
+    ImGui::SameLine();
+    if (ImGui::Button(button.c_str()))
+        ImGui::OpenPopup(popup.c_str());
+    if (ImGui::BeginPopup(popup.c_str())){
+        for (const AtmospherePreset& preset : presets){
+            if (ImGui::MenuItem(preset.name.c_str())){
+                std::string error;
+                if (Command* cmd = AtmospherePresetCmd::build(project, sceneProject->id, entities, cpType, preset.id, error)){
+                    CommandHandle::get(sceneProject->id)->addCommandNoMerge(cmd);
+                }else if (!error.empty()){
+                    Out::warning("%s", error.c_str());
+                }
+            }
+            if (!preset.description.empty())
+                ImGui::SetItemTooltip("%s", preset.description.c_str());
+        }
+        ImGui::EndPopup();
+    }
+}
+
 void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     FogComponent& fog = sceneProject->scene->getComponent<FogComponent>(entities[0]);
+    const bool height = fog.type == FogType::HEIGHT;
 
     RowSettings settingsFogType;
     settingsFogType.enumEntries = &entriesFogType;
+    settingsFogType.help = "Linear, Exponential, Exponential Squared: fog by distance. Height: physically based fog, dense up to the Base Height and "
+                           "thinning above it, lit by the sun, with an optional volumetric part.";
 
     RowSettings settingsFloat;
     settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
@@ -9273,16 +9422,297 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
     settingsDensity.stepSize = 0.001f;
     settingsDensity.format = "%.4f";
 
-    beginTable(cpType, getLabelSize("Linear Start"));
+    const float labelSize = getLabelSize("Directional Inscattering");
+
+    if (height)
+        drawAtmospherePresetsMenu(cpType, sceneProject, entities, AtmospherePresets::getFogPresets(), nullptr);
+
+    beginTable(cpType, labelSize);
     propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsFogType);
-    propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
-    if (fog.type == FogType::LINEAR) {
-        propertyRow(RowPropertyType::Float, cpType, "linearStart", "Linear Start", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "linearEnd", "Linear End", sceneProject, entities, settingsFloat);
-    } else {
-        propertyRow(RowPropertyType::Float, cpType, "density", "Density", sceneProject, entities, settingsDensity);
+    if (!height){
+        propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
+        if (fog.type == FogType::LINEAR) {
+            propertyRow(RowPropertyType::Float, cpType, "linearStart", "Linear Start", sceneProject, entities, settingsFloat);
+            propertyRow(RowPropertyType::Float, cpType, "linearEnd", "Linear End", sceneProject, entities, settingsFloat);
+        } else {
+            propertyRow(RowPropertyType::Float, cpType, "density", "Density", sceneProject, entities, settingsDensity);
+        }
+        // the volumetric fog is a part of the height fog
+        ImGui::BeginDisabled();
+        RowSettings settingsVolumetric;
+        settingsVolumetric.help = "Volumetric fog needs a Fog of Type Height.";
+        propertyRow(RowPropertyType::Bool, cpType, "volumetric", "Volumetric", sceneProject, entities, settingsVolumetric);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+            ImGui::SetTooltip("Volumetric fog needs a Fog of Type Height.");
+        endTable();
+        return;
     }
     endTable();
+
+    const AtmosphereInfo& info = sceneProject->scene->getSystem<RenderSystem>()->getAtmosphereInfo(0);
+
+    if (beginFoldout("Height Fog")){
+        RowSettings settingsColorMode;
+        settingsColorMode.enumEntries = &entriesFogColorMode;
+        settingsColorMode.help = "Constant Color: the fog takes its Color. Sky Color: the colour of the sky at the horizon (a cube map Skybox, or a "
+                                 "sky shader with a horizonColor property).";
+        RowSettings settingsAttenuation = settingsFloat;
+        settingsAttenuation.help = "The distance (m) light travels in the fog below the Base Height before 63% of it is absorbed. Smaller: denser fog.";
+        RowSettings settingsBase = settingsFloat;
+        settingsBase.help = "The fog is uniform below this height (m) and thins above it.";
+        RowSettings settingsMaximum = settingsFloat;
+        settingsMaximum.help = "The height (m) where the fog has thinned to a thousandth of its density.";
+        RowSettings settingsStart = settingsFloat;
+        settingsStart.help = "No fog nearer the camera than this (m).";
+        RowSettings settingsMaxDistance = settingsFloat;
+        settingsMaxDistance.help = "No more fog past this distance (m) from the camera.";
+        RowSettings settingsOpacity = settingsFloat;
+        settingsOpacity.help = "The most the fog hides of what is behind it (0..1).";
+
+        beginTable(cpType, labelSize, "height_fog");
+        propertyRow(RowPropertyType::Enum, cpType, "colorMode", "Color Mode", sceneProject, entities, settingsColorMode);
+        propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "attenuationDistance", "Attenuation Distance", sceneProject, entities, settingsAttenuation);
+        propertyRow(RowPropertyType::Float, cpType, "baseHeight", "Base Height", sceneProject, entities, settingsBase);
+        propertyRow(RowPropertyType::Float, cpType, "maximumHeight", "Maximum Height", sceneProject, entities, settingsMaximum);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "startDistance", "Start Distance", sceneProject, entities, settingsStart);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "maxFogDistance", "Max Fog Distance", sceneProject, entities, settingsMaxDistance);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "maxOpacity", "Max Opacity", sceneProject, entities, settingsOpacity);
+        endTable();
+        if (fog.colorMode == FogColorMode::SKY && info.horizonSource == "fog_color"){
+            ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+            ImGui::SameLine();
+            ImGui::TextWrapped("The sky has no horizon colour (it is not a cube map and its shader declares no horizonColor): the fog uses its Color.");
+        }
+        endFoldout();
+    }
+
+    if (beginFoldout("Directional Inscattering")){
+        RowSettings settingsIntensity = settingsFloat;
+        settingsIntensity.help = "How much of the main directional light the fog scatters towards the camera.";
+        RowSettings settingsAnisotropy = settingsFloat;
+        settingsAnisotropy.help = "-1 scatters the light back towards the sun, 0 evenly, 1 forward (a glow around the sun).";
+        beginTable(cpType, labelSize, "fog_inscattering");
+        propertyRow(RowPropertyType::FloatPositive, cpType, "directionalInscattering", "Intensity", sceneProject, entities, settingsIntensity);
+        propertyRow(RowPropertyType::Float, cpType, "anisotropy", "Anisotropy", sceneProject, entities, settingsAnisotropy);
+        endTable();
+        endFoldout();
+    }
+
+    if (beginFoldout("Sky")){
+        RowSettings settingsFill;
+        settingsFill.help = "The sky takes the fog's colour near the horizon, so the fogged ground meets it without a seam.";
+        RowSettings settingsAngle = settingsFloat;
+        settingsAngle.help = "How far above the horizon (degrees) the sky fill reaches.";
+        beginTable(cpType, labelSize, "fog_sky");
+        propertyRow(RowPropertyType::Bool, cpType, "skyFill", "Sky Fill", sceneProject, entities, settingsFill);
+        ImGui::BeginDisabled(!fog.skyFill);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "skyFillAngle", "Sky Fill Angle", sceneProject, entities, settingsAngle);
+        ImGui::EndDisabled();
+        endTable();
+        endFoldout();
+    }
+
+    if (beginFoldout("Volumetric Fog")){
+        RowSettings settingsEnabled;
+        settingsEnabled.help = "Raymarches the fog near the camera, with the sun's shadows (light shafts), Local Volumetric Fog volumes and a density "
+                               "noise. The main camera only; off at Atmosphere Quality Off.";
+        RowSettings settingsDistance = settingsFloat;
+        settingsDistance.help = "How far from the camera (m) the fog is raymarched; the analytic fog continues beyond.";
+        RowSettings settingsShafts;
+        settingsShafts.help = "The main directional light's shadows darken the fog behind objects (light shafts). Needs its shadows on.";
+        RowSettings settingsNoise = settingsFloat;
+        settingsNoise.help = "How much a 3D noise varies the fog's density (0..1), fading out towards the Distance.";
+        RowSettings settingsNoiseScale = settingsFloat;
+        settingsNoiseScale.help = "The size (m) of the noise's features.";
+        RowSettings settingsWind;
+        settingsWind.help = "The speed (m/s) the noise drifts at.";
+        RowSettings settingsQuality;
+        settingsQuality.enumEntries = &entriesAtmosphereQualityOverride;
+        settingsQuality.help = "Caps this fog's tier below the project's Atmosphere Quality (never raises it).";
+
+        beginTable(cpType, labelSize, "fog_volumetric");
+        propertyRow(RowPropertyType::Bool, cpType, "volumetric", "Enabled", sceneProject, entities, settingsEnabled);
+        ImGui::BeginDisabled(!fog.volumetric);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "volumetricDistance", "Distance", sceneProject, entities, settingsDistance);
+        propertyRow(RowPropertyType::Bool, cpType, "lightShafts", "Light Shafts", sceneProject, entities, settingsShafts);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "noiseIntensity", "Noise Intensity", sceneProject, entities, settingsNoise);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "noiseScale", "Noise Scale", sceneProject, entities, settingsNoiseScale);
+        propertyRow(RowPropertyType::Vector3, cpType, "wind", "Wind", sceneProject, entities, settingsWind);
+        propertyRow(RowPropertyType::Enum, cpType, "qualityOverride", "Quality Override", sceneProject, entities, settingsQuality);
+        ImGui::EndDisabled();
+        endTable();
+        if (fog.volumetric){
+            std::string running;
+            if (info.volumetricActive){
+                running = std::string("Running: ") + AtmosphereTiers::getName(info.quality) + " \xC2\xB7 " + std::to_string(info.fogWidth) + "\xC3\x97" +
+                          std::to_string(info.fogHeight) + " \xC2\xB7 " + std::to_string(info.fogSteps) + " steps \xC2\xB7 " +
+                          (info.floatTargets ? "RGBA16F" : "RGBA8");
+                if (info.forcedDepthPrePass)
+                    running += " \xC2\xB7 depth pre-pass";
+            }else{
+                running = std::string("Not running (Atmosphere Quality ") + AtmosphereTiers::getName(info.quality) + ")";
+            }
+            ImGui::TextDisabled("%s", running.c_str());
+        }
+        endFoldout();
+    }
+}
+
+void editor::InspectorWindow::drawLocalVolumetricFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    LocalVolumetricFogComponent& volume = sceneProject->scene->getComponent<LocalVolumetricFogComponent>(entities[0]);
+    (void)volume;
+
+    RowSettings settingsFloat;
+    settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
+    RowSettings settingsShape;
+    settingsShape.enumEntries = &entriesFogVolumeShape;
+    RowSettings settingsSize;
+    settingsSize.help = "The volume's size (m) before the Transform's scale.";
+    RowSettings settingsAttenuation = settingsFloat;
+    settingsAttenuation.help = "The distance (m) light travels in the volume's fog before 63% of it is absorbed. Smaller: denser fog.";
+    RowSettings settingsAlbedo;
+    settingsAlbedo.help = "The colour the volume's fog scatters.";
+    RowSettings settingsBlend = settingsFloat;
+    settingsBlend.help = "The density fades in over this distance (m) inside the volume's edge.";
+    RowSettings settingsFalloff;
+    settingsFalloff.enumEntries = &entriesFogVolumeFalloff;
+    RowSettings settingsNoise = settingsFloat;
+    settingsNoise.help = "How much a 3D noise varies the density (0..1).";
+    RowSettings settingsNoiseScale = settingsFloat;
+    settingsNoiseScale.help = "The size (m) of the noise's features.";
+    RowSettings settingsScroll;
+    settingsScroll.help = "The speed (m/s) the noise drifts at.";
+
+    beginTable(cpType, getLabelSize("Attenuation Distance"));
+    propertyRow(RowPropertyType::Enum, cpType, "shape", "Shape", sceneProject, entities, settingsShape);
+    propertyRow(RowPropertyType::Vector3, cpType, "size", "Size", sceneProject, entities, settingsSize);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "attenuationDistance", "Attenuation Distance", sceneProject, entities, settingsAttenuation);
+    propertyRow(RowPropertyType::Color3L, cpType, "albedo", "Albedo", sceneProject, entities, settingsAlbedo);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "blendDistance", "Blend Distance", sceneProject, entities, settingsBlend);
+    propertyRow(RowPropertyType::Enum, cpType, "falloff", "Falloff", sceneProject, entities, settingsFalloff);
+    propertyRow(RowPropertyType::Float_0_1, cpType, "noiseIntensity", "Noise Intensity", sceneProject, entities, settingsNoise);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "noiseScale", "Noise Scale", sceneProject, entities, settingsNoiseScale);
+    propertyRow(RowPropertyType::Vector3, cpType, "scrollSpeed", "Scroll Speed", sceneProject, entities, settingsScroll);
+    endTable();
+
+    // it shows through the scene's volumetric fog only
+    FogComponent* fog = sceneProject->scene->findComponentFromIndex<FogComponent>(0);
+    if (!fog || fog->type != FogType::HEIGHT || !fog->volumetric){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
+    }
+}
+
+void editor::InspectorWindow::drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    VolumetricCloudsComponent& clouds = sceneProject->scene->getComponent<VolumetricCloudsComponent>(entities[0]);
+
+    RowSettings settingsFloat;
+    settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
+    const float labelSize = getLabelSize("Ambient Light Dimmer");
+
+    const std::vector<AtmospherePreset>& presets = AtmospherePresets::getCloudsPresets();
+    const int presetIndex = std::clamp((int)clouds.preset, 0, (int)presets.size() - 1);
+    drawAtmospherePresetsMenu(cpType, sceneProject, entities, presets, presets[presetIndex].name.c_str());
+
+    RowSettings settingsRendering;
+    settingsRendering.enumEntries = &entriesCloudsRendering;
+    settingsRendering.help = "Sky Map: a map of the sky refreshed over a few frames, seen by every camera, behind all geometry. Screen: marched per "
+                             "pixel at quarter resolution, in front of far geometry, the main camera only. Automatic: Sky Map at Low and Medium "
+                             "Atmosphere Quality, Screen at High.";
+    RowSettings settingsQuality;
+    settingsQuality.enumEntries = &entriesAtmosphereQualityOverride;
+    settingsQuality.help = "Caps the clouds' tier below the project's Atmosphere Quality (never raises it).";
+
+    beginTable(cpType, labelSize);
+    propertyRow(RowPropertyType::Enum, cpType, "rendering", "Rendering", sceneProject, entities, settingsRendering);
+    propertyRow(RowPropertyType::Enum, cpType, "qualityOverride", "Quality Override", sceneProject, entities, settingsQuality);
+    endTable();
+
+    if (beginFoldout("Shape")){
+        RowSettings settingsCoverage = settingsFloat;
+        settingsCoverage.help = "The share of the sky the clouds cover (0..1).";
+        RowSettings settingsDensity = settingsFloat;
+        settingsDensity.help = "How dense the clouds are (0..1).";
+        RowSettings settingsShapeScale = settingsFloat;
+        settingsShapeScale.help = "The tiling of the cloud shapes: higher makes smaller clouds.";
+        RowSettings settingsShapeFactor = settingsFloat;
+        settingsShapeFactor.help = "How much the shapes carve the covered area: 0 flat sheets, 1 rounded heaps.";
+        RowSettings settingsErosion = settingsFloat;
+        settingsErosion.help = "How much the detail noise erodes the clouds' edges (0..1). Not at Low quality.";
+        RowSettings settingsErosionScale = settingsFloat;
+        settingsErosionScale.help = "The tiling of the detail noise.";
+        beginTable(cpType, labelSize, "clouds_shape");
+        propertyRow(RowPropertyType::Float_0_1, cpType, "coverage", "Coverage", sceneProject, entities, settingsCoverage);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "density", "Density", sceneProject, entities, settingsDensity);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "shapeScale", "Shape Scale", sceneProject, entities, settingsShapeScale);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "shapeFactor", "Shape Factor", sceneProject, entities, settingsShapeFactor);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "erosionFactor", "Erosion Factor", sceneProject, entities, settingsErosion);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "erosionScale", "Erosion Scale", sceneProject, entities, settingsErosionScale);
+        endTable();
+        endFoldout();
+    }
+
+    if (beginFoldout("Layer")){
+        RowSettings settingsBottom = settingsFloat;
+        settingsBottom.help = "The height (m) of the clouds' base.";
+        RowSettings settingsRange = settingsFloat;
+        settingsRange.help = "The clouds' thickness (m) above their base.";
+        RowSettings settingsCurvature = settingsFloat;
+        settingsCurvature.help = "How much the layer bends down with the earth's curvature towards the horizon (0 flat, 1 the earth's).";
+        RowSettings settingsMaxDistance = settingsFloat;
+        settingsMaxDistance.help = "Clouds farther than this (km) are not drawn.";
+        beginTable(cpType, labelSize, "clouds_layer");
+        propertyRow(RowPropertyType::Float, cpType, "bottomAltitude", "Bottom Altitude", sceneProject, entities, settingsBottom);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "altitudeRange", "Altitude Range", sceneProject, entities, settingsRange);
+        propertyRow(RowPropertyType::Float_0_1, cpType, "earthCurvature", "Earth Curvature", sceneProject, entities, settingsCurvature);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "maxDistance", "Max Distance", sceneProject, entities, settingsMaxDistance);
+        endTable();
+        endFoldout();
+    }
+
+    if (beginFoldout("Weather")){
+        RowSettings settingsMap;
+        settingsMap.allowCameraTexture = false;
+        settingsMap.allowTextureSettings = false;
+        settingsMap.help = "Where the clouds are (red: coverage) and their kind (green: 0 flat stratus .. 1 towering cumulonimbus), tiled over the "
+                           "Weather Map Scale. Empty: a built-in map.";
+        RowSettings settingsScale = settingsFloat;
+        settingsScale.help = "The distance (km) the weather map spans before it repeats.";
+        RowSettings settingsDirection = settingsFloat;
+        settingsDirection.help = "The direction the wind blows towards, in degrees about the up axis (0 = +Z).";
+        RowSettings settingsSpeed = settingsFloat;
+        settingsSpeed.help = "The wind's speed (m/s).";
+        beginTable(cpType, labelSize, "clouds_weather");
+        propertyRow(RowPropertyType::Texture, cpType, "weatherMap", "Weather Map", sceneProject, entities, settingsMap);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "weatherMapScale", "Weather Map Scale", sceneProject, entities, settingsScale);
+        propertyRow(RowPropertyType::Float, cpType, "windDirection", "Wind Direction", sceneProject, entities, settingsDirection);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "windSpeed", "Wind Speed", sceneProject, entities, settingsSpeed);
+        endTable();
+        endFoldout();
+    }
+
+    if (beginFoldout("Lighting")){
+        RowSettings settingsSun = settingsFloat;
+        settingsSun.help = "Scales the main directional light on the clouds.";
+        RowSettings settingsAmbient = settingsFloat;
+        settingsAmbient.help = "Scales the scene's ambient light on the clouds.";
+        beginTable(cpType, labelSize, "clouds_lighting");
+        propertyRow(RowPropertyType::FloatPositive, cpType, "sunLightDimmer", "Sun Light Dimmer", sceneProject, entities, settingsSun);
+        propertyRow(RowPropertyType::FloatPositive, cpType, "ambientLightDimmer", "Ambient Light Dimmer", sceneProject, entities, settingsAmbient);
+        endTable();
+        endFoldout();
+    }
+
+    // the first clouds of the scene are drawn (as the Skybox)
+    auto all = sceneProject->scene->getComponentArray<VolumetricCloudsComponent>();
+    if (all->size() > 1 && all->getEntity(0) != entities[0]){
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
+        ImGui::SameLine();
+        ImGui::TextWrapped("A scene draws its first Volumetric Clouds only: these are not drawn.");
+    }
 }
 
 void editor::InspectorWindow::drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -9443,7 +9873,7 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
         ImGui::SetItemTooltip("Load the document again, keeping scroll, focus and form values (saved files reload by themselves)");
         ImGui::EndDisabled();
     }else{
-        propertyRow(RowPropertyType::String, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
+        propertyRow(RowPropertyType::Asset, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
     }
 
     propertyRow(RowPropertyType::Int, cpType, "sortOrder", "Sort Order", sceneProject, entities, sortSettings);
@@ -9645,6 +10075,100 @@ static void drawPrefabScriptProperty(editor::Project* project, editor::SceneProj
     ImGui::BeginDisabled(!mixed && value.isEmpty());
     if (ImGui::Button(ICON_FA_XMARK "##prefab_clear", ImVec2(clearWidth, 0))) {
         assign(PrefabAsset());
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Set to None");
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+}
+
+// The value of a script property of type Asset (S04): the asset's name, a drop target for a
+// file of the property's asset type, and a button back to None. Kept by GUID (the path is a
+// hint); a missing asset shows red with its last path, and stays until it is cleared (R28).
+static void drawAssetScriptProperty(editor::Project* project, editor::SceneProject* sceneProject, const std::vector<Entity>& entities,
+        editor::ComponentType cpType, const std::string& propertyId, const std::string& assetType,
+        const std::function<void()>& onValueChanged, editor::Command*& cmd, bool& finishProperty) {
+    using namespace editor;
+
+    std::vector<AssetRef*> values;
+    for (Entity entity : entities) {
+        PropertyData data = Catalog::findProperty(sceneProject->scene, entity, cpType, propertyId);
+        if (data.ref && data.type == PropertyType::Asset) {
+            values.push_back(static_cast<AssetRef*>(data.ref));
+        }
+    }
+    if (values.empty()) {
+        return;
+    }
+    bool mixed = false;
+    for (const AssetRef* value : values) {
+        mixed |= *value != *values[0];
+    }
+    const AssetRef& value = *values[0];
+    const AssetType expected = assetTypeFromName(assetType);
+    const std::string typeLabel = assetType.empty() ? std::string("Asset") : assetType;
+
+    std::string label;
+    std::string tooltip;
+    bool missing = false;
+    if (mixed) {
+        label = "-";
+    } else if (!value.isSet()) {
+        label = "None (" + typeLabel + ")";
+    } else {
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(value.guid, value.path, expected, true);
+        if (!found.found()) {
+            missing = true;
+            label = "Missing (" + fs::path(value.path).filename().string() + ")";
+            tooltip = "Missing (GUID " + value.guid.str() + ")\nLast path: " + value.path;
+        } else {
+            label = fs::path(found.path).filename().string();
+            tooltip = found.path + "\nGUID " + found.guid.str();
+        }
+    }
+
+    auto assign = [&](const AssetRef& newValue) {
+        for (Entity entity : entities) {
+            cmd = new PropertyCmd<AssetRef>(project, sceneProject->id, entity, cpType, propertyId, newValue, onValueChanged);
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+        }
+        finishProperty = true;
+    };
+
+    const float clearWidth = ImGui::GetFrameHeight();
+    const float fieldWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::PushID(propertyId.c_str());
+    if (missing) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+    }
+    ImGui::Button((std::string(ICON_FA_FILE " ") + label + "##asset_field").c_str(), ImVec2(fieldWidth, 0));
+    if (missing) {
+        ImGui::PopStyleColor();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip.empty() ? ("Drag a " + typeLabel + " here from the Project window").c_str() : tooltip.c_str());
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
+            if (!dropped.empty()) {
+                const std::string relative = project->normalizeToProjectRelative(dropped[0]).generic_string();
+                const AssetDatabase::Resolution found = project->getAssetDatabase().lookupPath(relative);
+                if (found.found() && (expected == AssetType::Unknown || found.type == expected)) {
+                    assign(AssetRef(relative, found.guid));
+                    ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
+                } else {
+                    Out::warning("Only a %s asset of this project can go in this property", typeLabel.c_str());
+                }
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!mixed && !value.isSet());
+    if (ImGui::Button(ICON_FA_XMARK "##asset_clear", ImVec2(clearWidth, 0))) {
+        assign(AssetRef());
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("Set to None");
@@ -10190,6 +10714,13 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                         propertyHeader(displayName, -1, false, false);
                         prefabRowProperty.clear();
                         drawPrefabScriptProperty(project, sceneProject, entities, cpType, propertyId, propSettings.onValueChanged, cmd, finishProperty);
+                        continue;
+                    }
+                    if (prop.type == ScriptPropertyType::Asset) {
+                        prefabRowProperty = propertyId;
+                        propertyHeader(displayName, -1, false, false);
+                        prefabRowProperty.clear();
+                        drawAssetScriptProperty(project, sceneProject, entities, cpType, propertyId, prop.assetType, propSettings.onValueChanged, cmd, finishProperty);
                         continue;
                     }
 
@@ -15625,6 +16156,10 @@ void editor::InspectorWindow::show(){
                     drawFogComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::MirrorComponent){
                     drawMirrorComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::LocalVolumetricFogComponent){
+                    drawLocalVolumetricFogComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::VolumetricCloudsComponent){
+                    drawVolumetricCloudsComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::ReflectionProbeComponent){
                     drawReflectionProbeComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::UIDocumentComponent){
@@ -15812,21 +16347,7 @@ void editor::InspectorWindow::show(){
                 }
 
                 ImGui::SeparatorText("Shadows");
-
-                if (ImGui::BeginTable("scene_shadow_settings_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, shadowQualityLabelColWidth);
-                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                    drawScenePropertyRow<ShadowQuality>(sceneProject, "shadows_quality", "Filter Quality", ScenePropertyInputType::Combo, shadowQualityComboWidth, 0.0f, 1.0f,
-                        "Smoothness of shadow edges (PCF size):\n"
-                        "- None: 1 sample, hard edges\n"
-                        "- Low: 3x3 samples\n"
-                        "- Medium: 5x5 samples\n"
-                        "- High: 7x7 samples\n"
-                        "Higher values cost more per shadowed pixel.");
-
-                    ImGui::EndTable();
-                }
+                drawSceneShadows(sceneProject);
 
                 ImGui::SeparatorText("Mesh Detail (LOD)");
 
@@ -16091,3 +16612,8 @@ void editor::InspectorWindow::show(){
         setOpen(false);
     }
 }
+
+// the rows InspectorShadows.cpp draws
+template void editor::InspectorWindow::drawScenePropertyRow<float>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<bool>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<ShadowQuality>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);

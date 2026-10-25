@@ -171,7 +171,8 @@ def check_export(out: Path, project: Path, what: str) -> None:
         source = scene_source(project / scene, identifier)
         check((exported / source).is_file(),
               f"{what}: scene {scene} not exported (no project/{source}): {sorted(p.name for p in exported.iterdir())}")
-    assets = files_under(project / "assets")
+    # the .meta files the export's open wrote next to the assets never ship (S04)
+    assets = {p for p in files_under(project / "assets") if not p.endswith(".meta")}
     check(assets, "the fixture has assets")
     missing = sorted(assets - files_under(exported / "assets"))
     check(not missing, f"{what}: assets missing from {exported / 'assets'}: {missing[:20]}")

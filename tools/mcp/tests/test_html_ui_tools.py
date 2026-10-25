@@ -63,10 +63,17 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # Physics Placement's (+3490: place_with_physics): 109008 on main
 # S03 (data safety, R37/R38): +1479 for get_load_report (225), discard_scene_backup (146),
 # list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
+# S04 (asset identity, measured with tools/mcp/tool_budget.py): +2603 for retarget_asset_references
+# (598), resolve_asset (522), find_references (434), list_missing_assets (319),
+# clear_asset_references (311), get_asset_dependencies (293), import_files' overwrite and
+# build_project's allow_missing_assets
+# S06 (jobs & memory, merged after S04's measurement): +914 measured on the merge
+# S09 (logging, events, scheduler, merged after S04): +2633 measured on the merge
 # S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
 # undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
-# focus_window's undo_history / play_mode_changes panels (35)
-TOTAL_LIMIT = 109008 + 1479 + 2164
+# focus_window's undo_history / play_mode_changes panels (35); 2170 measured on the merge with S04
+# (main's 109008 replaces oe-port's 99800 + 837 base: the upstream sync)
+TOTAL_LIMIT = 109008 + 1479 + 2603 + 914 + 2633 + 2170
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

@@ -1758,7 +1758,9 @@ _INT_TYPES = {'int', 'unsigned', 'unsigned int', 'signed', 'signed int', 'short'
               'std::int32_t', 'std::uint64_t', 'std::int64_t', 'std::uint8_t', 'std::uint16_t'}
 _NUM_TYPES = {'float', 'double', 'long double', 'lua_Number'}
 _STR_TYPES = {'std::string', 'string', 'std::string_view', 'std::basic_string<char>', 'basic_string<char>', 'std::wstring', 'wstring', 'char', 'wchar_t',
-              'char16_t', 'char32_t'}
+              'char16_t', 'char32_t',
+              # asset path fields: plain path strings in Lua (luabridge::Stack<AssetRef>, LuaBridgeAddon.h)
+              'AssetRef', 'ShaderRef', 'jasperengine::AssetRef', 'jasperengine::ShaderRef'}
 _SEQ = re.compile(r'^(?:std::)?(?:vector|list|deque|set|unordered_set|multiset)<(.+)>$')
 _ARR = re.compile(r'^(?:std::)?array<(.+),\s*[^,]+>$')
 _MAP = re.compile(r'^(?:std::)?(?:map|unordered_map|multimap)<(.+)>$')
