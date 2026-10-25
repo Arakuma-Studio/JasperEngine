@@ -80,7 +80,8 @@ Android) also sends the zones, frame marks and plots (GPU pass times as `GPU/<pa
 
 A development build and the editor take `--profile` (record from the start),
 `--profile-capture=<path>` and `--profile-frames=N` (default 300): the capture starts once every
-scene is loaded, runs with GPU timing, and logs `Profiler capture written: <path>`. Mobile and
+scene is loaded (logging `Profiler capture started: N frames for <path>`), runs with GPU timing,
+and logs `Profiler capture written: <path>`. Mobile and
 web development builds write their captures to the path given, for Load in the Profiler.
 
 `JASPERENGINE_FRAME_STATS=1` (and `=all`, `JASPERENGINE_FRAME_STATS_ACTIONS=1`) still logs the
