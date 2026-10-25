@@ -3584,12 +3584,6 @@ void editor::Stream::decodeSceneProjectEntities(Project* project, SceneProject* 
     sceneProject->reservedEntityIds.clear();
 
     CameraTextureLink::resolve(sceneProject->scene);
-
-    // Animation Player clips by GUID (R8): a clip moved since the file was saved is found and
-    // the scene saved with its new path (the flag marks the loaded scene modified)
-    if (resolveAnimationPlayerClips(project, sceneProject->scene)) {
-        sceneProject->prefabRefsChanged = true;
-    }
 }
 
 YAML::Node editor::Stream::encodeEditorCamera(Camera* camera, float zoom, float walkSpeedOffset) {
@@ -6658,6 +6652,9 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     // come back with the file and nodes it had.
     node["filename"] = model.filename;
     node["mergeStaticMeshes"] = model.mergeStaticMeshes;
+    // written only when off (an Animation Player plays the model's clips, 9.R15), so files with
+    // models save as before; decoding reads a missing key as on, never as the old value
+    if (!model.animationEntities) node["animationEntities"] = false;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
@@ -6716,6 +6713,20 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     // Also check for the old modelPath for exact backward compatibility with old save files
     if (node["filename"]) model.filename = node["filename"].as<std::string>();
     if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = YamlNumbers::as<bool>(node["mergeStaticMeshes"]);
+    // absent (or emptied by a paste over a Model that had it) is the default, on
+    model.animationEntities = true;
+    if (const YAML::Node value = node["animationEntities"]; value && value.IsScalar() && !value.Scalar().empty()) {
+        bool flag = true;
+        if (YamlNumbers::readPlain(value.Scalar(), flag)) {
+            model.animationEntities = flag;
+        } else {
+            try {
+                model.animationEntities = value.as<bool>();
+            } catch (const YAML::Exception&) {
+                model.animationEntities = true;
+            }
+        }
+    }
     if (node["skeleton"]) model.skeleton = static_cast<Entity>(YamlNumbers::as<uint32_t>(node["skeleton"]));
 
     if (node["animations"]) {
@@ -7298,52 +7309,6 @@ AnimationPlayerComponent editor::Stream::decodeAnimationPlayerComponent(const YA
     }
 
     return player;
-}
-
-bool editor::Stream::resolveAnimationPlayerClips(const Project* project, EntityRegistry* registry) {
-    if (!project || !registry) {
-        return false;
-    }
-    // TODO(T2b): AssetDatabase::isTrackedFile learns ".anim" (T2b); until then the database
-    // knows no clip and every entry keeps its path. A Project::resolveClipPath (T2b), if it
-    // lands, replaces the two lookups below.
-    const AssetDatabase& database = project->getAssetDatabase();
-    if (!database.isOpen()) {
-        return false;
-    }
-    const fs::path projectPath = project->getProjectPath();
-
-    bool changed = false;
-    auto players = registry->getComponentArray<AnimationPlayerComponent>();
-    for (size_t i = 0; i < players->size(); i++) {
-        AnimationPlayerComponent& player = players->getComponentFromIndex(i);
-        bool playerChanged = false;
-        for (AnimationPlayerClip& entry : player.clips) {
-            // sub-clips are path-only: the model's rename remaps them (R26)
-            if (entry.clip.empty() || anim::isSubClipReference(entry.clip)) {
-                continue;
-            }
-            const fs::path hint = project->resolveAssetPath(entry.clip).lexically_normal();
-            if (entry.guid.empty()) {
-                // written by hand or before GUIDs: the file at the path, if the database has it
-                entry.guid = database.getGuid(hint);
-                continue;
-            }
-            const fs::path current = database.getPath(entry.guid);
-            // an unknown GUID is a missing clip: the hint stays (the Inspector shows
-            // "Missing (name)", and undoing a delete relinks it)
-            if (current.empty() || (projectPath / current).lexically_normal() == hint) {
-                continue;
-            }
-            entry.clip = project->normalizeToAssetsRelative(projectPath / current).generic_string();
-            playerChanged = true;
-        }
-        if (playerChanged) {
-            player.needsLoad = true;
-            changed = true;
-        }
-    }
-    return changed;
 }
 
 ReflectionProbeComponent editor::Stream::decodeReflectionProbeComponent(const YAML::Node& node, const ReflectionProbeComponent* oldProbe) {

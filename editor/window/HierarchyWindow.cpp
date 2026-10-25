@@ -6,6 +6,7 @@
 
 #include "App.h"
 #include "Backend.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/BidiText.h"
@@ -1881,6 +1882,22 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 if (payload->IsDelivery()) {
                     ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
                 }
+            }
+        }
+
+        // clips onto a GameObject: an Animation Player (added or reused) plays them, one scene
+        // step (animation clips spec 4.1; the hook is the converters')
+        if (!node.isScene && !node.isPlayCreated && animationClipAppHooks().dropClips && !project->isAnyScenePlaying()) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> clips;
+            if (peek && peek->IsDataType("resource_files")) {
+                for (const std::string& path : Util::getStringsFromPayload(peek)) {
+                    if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                }
+            }
+            if (!clips.empty() && ImGui::AcceptDragDropPayload("resource_files")) {
+                Backend::getApp().dispatchClipDrop(getNodeSceneId(node), node.id, clips);
+                ImGui::SetWindowFocus(HierarchyWindow::WINDOW_NAME);
             }
         }
 

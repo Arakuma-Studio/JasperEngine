@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
 #include "pose/PoseSheetRenderer.h"
@@ -1853,6 +1855,8 @@ bool editor::Project::reloadModelFile(const fs::path& fbxPath, bool synchronous)
     }
 
     MeshSystem::invalidateModelFile(filename);
+    // its sub-clips (AnimationClipPool "<model>#*"), their documents and the players using them
+    AnimationClipDocument::filesChanged({fbxPath.lexically_normal()}, this);
     const bool wasAsync = Engine::isAsyncLoading();
     if (synchronous) {
         Engine::setAsyncLoading(false);
@@ -3362,6 +3366,9 @@ editor::SceneProject* editor::Project::createRuntimeCloneFromSource(const SceneP
     runtime->id = source->id;
     runtime->defaultCamera = createDefaultCamera(runtime->sceneType, runtime->scene);
     Stream::decodeSceneProjectEntities(this, runtime.get(), sceneNode);
+    // clip references written before a rename point at the file by GUID (the play startup
+    // worker may run this: the database is only read)
+    resolveRegistryClipRefs(runtime->scene, false);
     pauseEngineScene(runtime->scene, true);
 
     return runtime.release();
@@ -4964,6 +4971,12 @@ void editor::Project::loadSceneProjectData(SceneProject* sceneProject, const YAM
 
     updateSceneCppScripts(sceneProject);
     updateScenePrefabs(sceneProject);
+
+    // Animation Player clips follow their GUIDs (R8): a hint a rename left stale is repaired (the
+    // scene is then modified, as for prefab references)
+    if (resolveRegistryClipRefs(sceneProject->scene)) {
+        sceneProject->prefabRefsChanged = true;
+    }
 }
 
 bool editor::Project::loadChildSceneInline(uint32_t childSceneId) {
@@ -5235,8 +5248,9 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
 }
 
 void editor::Project::resetConfigs() {
-    // pose animation documents and rigs belong to the project
+    // pose animation and clip documents and rigs belong to the project
     PoseAnimationDocument::closeAll();
+    AnimationClipDocument::closeAll();
     PoseRigProvider::clear();
     // and the offscreen renderers render_pose_animation keeps of its models
     PoseSheetRenderer::clearShared();

@@ -272,7 +272,10 @@ the same work and reports it itself):
 - **Scan**: stat-based against a cached map (mtime + size) of the project's tracked files
   (Lua, C++ `.h/.hpp/.hh/.hxx/.inl/.c/.cc/.cpp/.cxx`, shaders `.vert/.frag/.glsl`,
   `.material`, HTML UI `.html/.htm/.css`, pose files `.poseanim/.humanoid` (their open
-  `PoseAnimationDocument`s reload); assets: images (`.svg` included), fonts `.ttf/.otf`,
+  `PoseAnimationDocument`s reload), animation clips `.anim` (their open
+  `AnimationClipDocument`s reload, `AnimationClipPool` drops them and the Animation Players
+  using them reload, during play too; load errors and warnings of `.anim` and `.poseanim`
+  files become `problems`); assets: images (`.svg` included), fonts `.ttf/.otf`,
   `.json/.lottie`) and folders (mtime: an added, removed or renamed entry), skipping
   hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
   `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its

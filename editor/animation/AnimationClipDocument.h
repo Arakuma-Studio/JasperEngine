@@ -55,7 +55,24 @@ namespace jasperengine::editor{
     // Every Animation Player entry referencing `clip` (a .anim path in any accepted form, its
     // GUID, or a sub-clip reference) in open scenes, prefab stages and loaded prefab assets.
     // Owner: T2b (with the reference remapping that walks the same places). Main thread.
+    // Accepted forms: absolute, project-relative or asset-relative (the component form); a
+    // sub-clip "<model>#<name>" matches "<model>#<index>" of the same animation once the model's
+    // clips can be listed. An .anim entry matches by GUID first, then by path.
     std::vector<ClipUser> findClipUsers(Project* project, const std::string& clip);
+
+    // A rename or move (RenameFileCmd, CopyFileCmd) rewrote the editor-only hints of an .anim
+    // file (spec 9.R26): `preview.model` / `source.path` followed a renamed model, prefab, scene,
+    // pose animation or directory. The command keeps the texts to undo it as part of its step.
+    struct ClipHintEdit{
+        std::filesystem::path file;     // absolute
+        std::string before;
+        std::string after;
+    };
+    // Rewrites (canonical text) every project .anim whose preview.model or source.path is
+    // `oldPath` or lies under it (both absolute, after the move happened); open documents reload
+    std::vector<ClipHintEdit> remapClipHints(Project* project, const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+    // Puts the texts back where the file still holds what remapClipHints wrote
+    void restoreClipHints(Project* project, const std::vector<ClipHintEdit>& edits);
 
     class AnimationClipDocument{
     public:
@@ -76,10 +93,16 @@ namespace jasperengine::editor{
 
         // Files changed on disk (absolute paths; written by a command, its undo/redo, a tool or
         // another program): the documents of those files reload; a changed model reloads its
-        // sub-clip documents
-        static void filesChanged(const std::vector<std::filesystem::path>& paths);
-        // Stats every open document's file and reloads the changed ones (the editor's poll)
-        static void checkDiskChanges();
+        // sub-clip documents (a changed .bin: the .gltf files next to it naming it). A path may be a directory (moved or deleted): the documents under
+        // it. Every .anim, model or directory path also invalidates AnimationClipPool and marks
+        // the Animation Players using it for reload (needsLoad) in `project` (null: the project
+        // of the open documents), whether a document has it open or not.
+        static void filesChanged(const std::vector<std::filesystem::path>& paths, Project* project = nullptr);
+        // Stats every open document's file and reloads the changed ones (the editor's poll); with
+        // `project`, also the model files (and a .gltf's .bin buffers) the Animation Players'
+        // sub-clips come from: a changed one goes through filesChanged (pool, sub-clip documents,
+        // players)
+        static void checkDiskChanges(Project* project = nullptr);
         // Forgets every open document (the project closed)
         static void closeAll();
         // Called after a WriteFilesCmd of a document ran, was undone or redone (the MCP server
@@ -118,7 +141,12 @@ namespace jasperengine::editor{
     private:
         Project* project = nullptr;
         std::string relativePath;
+        // .anim: the file; sub-clip: "<absolute model path>#<clip>" (the pool key form)
         std::filesystem::path filePath;
+        // the file whose stamp is watched: the .anim, or the model of a sub-clip
+        std::filesystem::path statPath;
+        // sub-clip: "<asset-relative model>#<clip>" (anim::buildModelSubClip)
+        std::string subClipReference;
         ClipData current;
         std::shared_ptr<const AnimationClip> built;    // clip() of revision builtRevision
         uint64_t builtRevision = 0;
@@ -134,6 +162,16 @@ namespace jasperengine::editor{
         int nextListener = 1;
 
         AnimationClipDocument() = default;
+        bool load(std::string* error);
+        void notify(Change change);
+        void takeStamp();
+        bool stampChanged() const;
+        // a new revision (or the file went away): the pool drops it, its players reload
+        void revisionChanged();
+        bool writeUndoable(const std::string& newText, const std::string& mergeKey, std::string* error);
+        // the GUID a commit keeps: the file's, else the asset database's, else the one the
+        // database's upgrade gives a file without one
+        std::string keptGuid() const;
     };
 
 }

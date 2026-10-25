@@ -777,8 +777,12 @@ namespace jasperengine::editor{
         std::vector<AssetDatabase::Change> pendingAssetChanges;
 
         // What the database reports changed: moved prefabs get their new path everywhere in
-        // memory, removed ones leave Missing Prefab instances behind, added ones relink them
+        // memory, removed ones leave Missing Prefab instances behind, added ones relink them;
+        // the .anim changes go to applyClipAssetChanges
         void applyAssetChanges(const std::vector<AssetDatabase::Change>& changes);
+        // .anim files moved, added (copies, a delete undone), removed or edited outside the
+        // editor: the references in memory follow the GUIDs, documents and players reload
+        void applyClipAssetChanges(const std::vector<AssetDatabase::Change>& changes);
         // The in-memory part of a prefab rename or move (a file or a directory): prefab assets,
         // scene and prefab PrefabComponents, scene prefab lists and the standalone list
         void remapPrefabPathsInMemory(const fs::path& oldRelative, const fs::path& newRelative);
@@ -1541,6 +1545,28 @@ namespace jasperengine::editor{
         // A prefab file or a directory holding some appeared (a copy, a deleted file put back
         // by an undo): they are registered, and Missing Prefab instances they resolve relinked
         void importPrefabFiles(const std::filesystem::path& path, bool copy = false, std::map<std::string, std::string>* copyGuids = nullptr);
+
+        // ---- Animation clip references (animation clips spec 4.1, 9.R8/R26; ProjectPrefabPaths.cpp) ----
+        // Where an Animation Player entry's .anim points now: by GUID (a GUID no file has keeps
+        // its path: the Inspector shows it Missing, and undoing the delete relinks it), else by
+        // its path (a file not in the database yet is added when `mayImport`). The path hint is
+        // repaired (asset-relative) and a missing GUID filled in. Sub-clip entries
+        // ("<model>#<clip>") are path-only. True when the entry changed.
+        bool resolveClipReference(AnimationPlayerClip& entry, bool mayImport = true);
+        // Every Animation Player entry of a registry (a scene, a prefab asset, a play copy); true
+        // when one changed (the players reload). `mayImport` false reads the database only (the
+        // play startup worker)
+        bool resolveRegistryClipRefs(EntityRegistry* registry, bool mayImport = true);
+        // The editor renamed or moved an .anim file or a directory (RenameFileCmd, CopyFileCmd):
+        // the database moves a single file (a directory moves in remapPrefabFilePath), the open
+        // clip documents, AnimationClipPool and the players learn both paths. The references
+        // themselves follow in remapAssetFilePath (visitAssetPathsInRegistry).
+        void remapClipFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        // The editor deleted an .anim file or a directory (or undid a copy): the references stay
+        // (R8), the database forgets the files, the documents, the pool and the players learn
+        void cleanupClipFilePath(const std::filesystem::path& deletedPath);
+        // Every loaded prefab asset (clip users and reference walks)
+        void forEachPrefabAsset(const std::function<void(const std::filesystem::path& path, Prefab& prefab)>& visit);
 
         // Missing Prefab instances (SceneProject::missingPrefabs)
         const MissingPrefabInstance* getMissingPrefab(uint32_t sceneId, Entity entity) const;

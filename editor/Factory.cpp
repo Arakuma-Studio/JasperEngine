@@ -2593,6 +2593,8 @@ std::string editor::Factory::createModelComponent(int indentSpaces, EntityRegist
     code << ind << "ModelComponent modelcomp;\n";
     code << ind << "modelcomp.filename = " << formatString(model.filename) << ";\n";
     code << ind << "modelcomp.mergeStaticMeshes = " << formatBool(model.mergeStaticMeshes) << ";\n";
+    // an Animation Player plays the model's clips: no entity animations (9.R15)
+    if (!model.animationEntities) code << ind << "modelcomp.animationEntities = false;\n";
     code << ind << "modelcomp.skeleton = " << formatEntity(model.skeleton, entityVarNames) << ";\n";
     if (!model.animations.empty()) {
         code << ind << "modelcomp.animations.clear();\n";

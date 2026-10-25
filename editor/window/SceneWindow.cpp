@@ -31,6 +31,7 @@
 #include "Out.h"
 #include "App.h"
 #include "EditorHost.h"
+#include "animation/AnimationClipAppHooks.h"
 #include "Theme.h"
 #include "Widgets.h"
 #include "window/GameWindow.h"
@@ -539,6 +540,20 @@ void editor::SceneWindow::handleResourceFileDragDrop(SceneProject* sceneProject)
                             CommandHandle::get(sceneProject->id)->addCommandNoMerge(
                                 new ModelLoadCmd(project, sceneProject->id, modelEntityName, dropPosition, droppedAssetPath));
 
+                            focusSceneWindow(*sceneProject);
+                        }
+                    }
+                } else if (Util::isAnimationClipFile(droppedRelativePath)) {
+                    // clips onto a GameObject: an Animation Player (added or reused) plays them,
+                    // one scene step (animation clips spec 4.1; the hook is the converters')
+                    if (selEntity != NULL_ENTITY && animationClipAppHooks().dropClips &&
+                        sceneProject->playState == ScenePlayState::STOPPED && !project->isAnyScenePlaying()) {
+                        if (ImGui::AcceptDragDropPayload("resource_files")) {
+                            std::vector<std::string> clips;
+                            for (const std::string& path : receivedStrings) {
+                                if (Util::isAnimationClipFile(path)) clips.push_back(path);
+                            }
+                            Backend::getApp().dispatchClipDrop(sceneProject->id, selEntity, clips);
                             focusSceneWindow(*sceneProject);
                         }
                     }
