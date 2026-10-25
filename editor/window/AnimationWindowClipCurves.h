@@ -41,6 +41,11 @@ namespace jasperengine::editor::clipcurves{
     bool sampleCurves(const AnimationClip::Track& runtime, const ClipTrackData& track, const std::vector<float>& times,
                       std::vector<std::vector<float>>& out);
 
+    // sampleCurves into one flat array (out[i * componentCount + c]) without allocating per
+    // sample; `eulers` = keyEulers(track) for a rotation track (ignored otherwise); `times` ascend
+    bool sampleCurvesFlat(const AnimationClip::Track& runtime, const ClipTrackData& track, const std::vector<Vector3>& eulers,
+                          const std::vector<float>& times, std::vector<float>& out);
+
     // a key's values as the curves show them (rotation: `eulers[key]`, from keyEulers)
     std::vector<float> keyValues(const ClipTrackData& track, size_t key, const std::vector<Vector3>& eulers);
 

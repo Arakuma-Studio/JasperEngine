@@ -20,6 +20,7 @@ two properties moving time only, visibility toggles, framing). Screenshots go to
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import shutil
@@ -32,7 +33,7 @@ from harness import Editor
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness"}
 TIMEOUT = 1200
 
-SHOTS = Path(os.environ.get("T3C_SHOTS", "/tmp/clip-research/reports/T3c-shots"))
+SHOTS = Path(os.environ.get("T3C_SHOTS", "/tmp/clip-research/reports/T3c-shots/round1"))
 CLIP = "assets/anim/rec.anim"
 # a bone under the Hero root (the clip path) and its GameObject path in the scene
 SPINE = "Hero/mixamorig:Hips/mixamorig:Spine"
@@ -90,6 +91,15 @@ def euler_xyzw(x: float, y: float, z: float) -> list:
     hx, hy, hz = (math.radians(v) / 2 for v in (x, y, z))
     cx, sx, cy, sy, cz, sz = math.cos(hx), math.sin(hx), math.cos(hy), math.sin(hy), math.cos(hz), math.sin(hz)
     return [sx * cy * cz - cx * sy * sz, cx * sy * cz + sx * cy * sz, cx * cy * sz - sx * sy * cz, cx * cy * cz + sx * sy * sz]
+
+
+async def morph_weight(ed: Editor, entity: str, index: int = 0) -> float:
+    """MeshComponent morphWeights[index] (a Catalog property) of a GameObject path."""
+    got = await ed.call("get_entity", entity=entity, components=["mesh"], properties=[f"morphWeights[{index}]"])
+    value = harness.find_key(got, f"morphWeights[{index}]")
+    if isinstance(value, dict):
+        value = value.get("value", value)
+    return float(value)
 
 
 def row(st: dict, path: str, channel: str) -> dict | None:
@@ -215,12 +225,16 @@ async def test_multi_selection_and_unclaimed_edits(ed: Editor):
     ed.check(close(row(st, "", "position")["value"], target), f"Hero keyed: {row(st, '', 'position')} (was {before})")
     ed.check(close(await transform(ed, "Robot"), S["rest_robot"]), "Robot, not under Hero, stays as it is")
     ed.check("not under Hero" in st["record_status"], f"the status says so: {st['record_status']}")
+    ed.check("Rec frame 15" in st["record_status_short"] and "1 not keyed" in st["record_status_short"],
+             f"the short status: {st['record_status_short']}")
     ed.check(not await modified(ed), "no scene step")
-    # Robot alone (Hero still selected: selecting Robot would rebind the window and end Record):
-    # Record does not claim it, the drag is a scene step
+    # Robot alone selected: the window keeps its binding while recording (Unity's lock); Record
+    # does not claim Robot, the drag is a scene step
     moved = [S["rest_robot"][0] + 0.3, S["rest_robot"][1], S["rest_robot"][2]]
-    st = await hook(ed, entity="Hero", gizmo={"entities": ["Robot"], "tool": "move", "value": moved, "select": False})
-    ed.check(st["recording"], "still recording")
+    st = await hook(ed, gizmo={"entities": ["Robot"], "tool": "move", "value": moved})
+    await ed.call("wait", frames=4)
+    st = await state(ed)
+    ed.check(st["recording"] and st["root"] == "Hero", f"still recording Hero with Robot selected: {st['recording']} {st['root']}")
     ed.check(close(await transform(ed, "Robot"), moved), "Robot moved")
     ed.check(await modified(ed), "a scene step")
     ed.check(not st["undo_to_project"], "the scene step is the newest: Ctrl+Z goes to the scene")
@@ -261,15 +275,21 @@ async def test_record_blend_shapes(ed: Editor):
     ed.check(r is not None, f"the Blend Shapes row keyed a morph track: {[x.get('label') for x in st['rows']]}")
     ed.check_eq(keys_of(st, hit, "morph"), [0.5], "at the playhead")
     ed.check(abs(r["value"][0] - 0.8) < 1e-4, f"weight 0 = 0.8: {r['value']}")
-    # Record off: the same row is a scene step (MorphWeightsCmd, one per drag)
+    # Record off (the preview was on before Record: it stays, Unity): the same row is a scene step
+    # (MorphWeightsCmd, one per drag) that changes the weight's rest only
     await ed.call("save_scene", scene="Main Scene")
     st = await hook(ed, record=False)
-    ed.check(not st["recording"] and not st["preview"], "Record off")
+    ed.check(not st["recording"] and st["preview"], f"Record off, the preview stays: {st['recording']} {st['preview']}")
+    S["morph_entity"] = "Hero/" + hit
     st = await hook(ed, morph={"entities": ["Hero/" + hit], "index": 0, "value": 0.3})
     ed.check(await modified(ed), "an unrecorded Blend Shapes edit is a scene step")
     ed.check(abs(row(st, hit, "morph")["value"][0] - 0.8) < 1e-4, "the clip is unchanged")
+    st = await hook(ed, preview=False)
+    weight = await morph_weight(ed, "Hero/" + hit)
+    ed.check(abs(weight - 0.3) < 1e-4, f"after the preview the scene has the edited weight, not the previewed one: {weight}")
     await ed.call("undo", scope="scene")
     ed.check(not await modified(ed), "one undo step for the slider drag")
+    ed.check(abs(await morph_weight(ed, "Hero/" + hit)) < 1e-4, "undone")
     st = await hook(ed, frame=15, record=True)
     ed.check(st["recording"], "Record on again")
 
@@ -297,7 +317,10 @@ async def test_record_shortcut_and_leaving_restores(ed: Editor):
     await focus_x(ed, "animation")
     await key(ed, "r")
     st = await state(ed)
-    ed.check(not st["recording"] and not st["preview"], f"R left Record (and the preview): {st['recording']} {st['preview']}")
+    # (Record started with the preview on: leaving Record keeps it, Unity)
+    ed.check(not st["recording"] and st["preview"], f"R left Record, the preview stays: {st['recording']} {st['preview']}")
+    st = await hook(ed, preview=False)
+    ed.check(not st["preview"], "the preview off")
     ed.check(close(await transform(ed, "Hero"), S["rest_hero"]), "Hero back to how it was")
     ed.check(same_rotation(await transform(ed, SPINE_ENTITY, "rotation"), S["rest_spine"]), "the spine too")
     offsets = harness.find_key(await ed.call("get_entity", entity=S["cage"], components=["lattice"], properties=["offsets"]), "offsets")
@@ -305,9 +328,11 @@ async def test_record_shortcut_and_leaving_restores(ed: Editor):
     ed.check(not await modified(ed), "the scene as saved")
     await focus_x(ed, "animation")
     await key(ed, "r")
-    ed.check((await state(ed))["recording"], "R starts Record again")
+    st = await state(ed)
+    ed.check(st["recording"] and st["preview"], "R starts Record again (and the preview)")
     await key(ed, "r")
-    ed.check(not (await state(ed))["recording"], "and stops it")
+    st = await state(ed)
+    ed.check(not st["recording"] and not st["preview"], "and stops it with the preview it started")
 
 
 # ---------------------------------------------------------------------------- curves view
@@ -337,12 +362,15 @@ async def test_curves_view(ed: Editor):
 
 async def test_curves_vertical_drag_one_undo_step(ed: Editor):
     root = S["root_track"]
-    before = curve(await state(ed), root, 1)["key_values"]
+    st = await state(ed)
+    before = curve(st, root, 1)["key_values"]
+    x_before = curve(st, root, 0)["key_values"]
     st = await hook(ed, curve_drag={"track": root, "time": 0.5, "component": 1, "value_delta": 0.5})
-    ed.check(not st["value_locked"], "one property's key: the value moves")
     after = curve(st, root, 1)["key_values"]
     ed.check(abs(after[1] - (before[1] + 0.5)) < 1e-4, f"the y value moved by 0.5: {before} -> {after}")
-    ed.check(close(curve(st, root, 0)["key_values"], curve(st, root, 0)["key_values"]), "x untouched")
+    ed.check(close(curve(st, root, 0)["key_values"], x_before), "x untouched (only the y point was selected)")
+    ed.check_eq(curve(st, root, 1)["selected"], [0.5], "the y point stays selected")
+    ed.check_eq(curve(st, root, 0)["selected"], [], "x is not")
     ed.check_eq(keys_of(st, "", "position"), [0.0, 0.5], "no key lost or added")
     ed.check(not await modified(ed), "a clip edit")
     await ed.call("undo", scope="project")
@@ -357,16 +385,20 @@ async def test_curves_time_drag_and_rotation_value(ed: Editor):
     ed.check_eq(keys_of(await state(ed), "", "position"), [0.0, 0.5], "undone")
     # a rotation key's Euler x by +10 degrees
     st = await hook(ed, curve_drag={"track": spine, "time": 0.5, "component": 0, "value_delta": 10})
-    ed.check(not st["value_locked"], "one rotation key: the value moves")
     ed.check(abs(curve(st, spine, 0)["key_values"][0] - 30.0) < 0.05, f"20 -> 30 degrees: {curve(st, spine, 0)['key_values']}")
     ed.check(same_rotation(row(await hook(ed, frame=15), SPINE, "rotation")["value"], euler_xyzw(30, 0, 0)), "the key's quaternion")
     await ed.call("undo", scope="project")
-    # keys of two properties selected: a value drag moves time only
-    st = await hook(ed, select=[{"track": root, "time": 0.5}, {"track": spine, "time": 0.5}])
-    before = curve(st, root, 1)["key_values"]
+    # points of two properties (a position y and a rotation x) drag together, each on its curve
+    st = await hook(ed, curve_select=[{"track": root, "time": 0.5, "component": 1}, {"track": spine, "time": 0.5, "component": 0}])
+    y_before = curve(st, root, 1)["key_values"][1]
+    rx_before = curve(st, spine, 0)["key_values"][0]
     st = await hook(ed, curve_drag={"track": root, "time": 0.5, "component": 1, "value_delta": 1.0})
-    ed.check(st["value_locked"], "keys of two properties: the value is locked")
-    ed.check(close(curve(st, root, 1)["key_values"], before, 1e-5), "values unchanged")
+    ed.check(abs(curve(st, root, 1)["key_values"][1] - (y_before + 1.0)) < 1e-4, f"position y +1: {curve(st, root, 1)['key_values']}")
+    ed.check(abs(curve(st, spine, 0)["key_values"][0] - (rx_before + 1.0)) < 0.05, f"rotation x +1 degree: {curve(st, spine, 0)['key_values']}")
+    await ed.call("undo", scope="project")
+    st = await state(ed)
+    ed.check(abs(curve(st, root, 1)["key_values"][1] - y_before) < 1e-4 and abs(curve(st, spine, 0)["key_values"][0] - rx_before) < 0.05,
+             "one undo step for the mixed drag")
     # visibility and framing
     st = await hook(ed, curve_visible={"track": root, "component": 0, "visible": False})
     ed.check(not curve(st, root, 0)["visible"] and curve(st, root, 1)["visible"], "x hidden, y shown")
@@ -382,6 +414,99 @@ async def test_record_screenshot_in_curves(ed: Editor):
     ed.check(st["recording"], "recording in the curves view")
     await ed.call("focus_window", window="inspector")
     await shot(ed, "04-record-curves-inspector")
-    st = await hook(ed, record=False, view="dopesheet")
+    st = await hook(ed, record=False, preview=False, view="dopesheet")
     ed.check(not st["recording"] and st["view"] == "dopesheet", "back to the dopesheet, Record off")
     ed.check(close(await transform(ed, "Hero"), S["rest_hero"]), "restored")
+
+
+async def test_real_gizmo_drag_records(ed: Editor):
+    """The Scene view's real mouse drag of the Move gizmo (xdotool on the harness' Xvfb) with Record
+    on: SceneRender's drag path keys Hero's position at the playhead, no scene step, one undo step."""
+    await ed.call("save_scene", scene="Main Scene")
+    st = await hook(ed, entity="Hero", frame=20, record=True)
+    ed.check(st["recording"], "Record on")
+    before_keys = keys_of(st, "", "position")
+    position = await transform(ed, "Hero")
+    await ed.call("select_entities", entities=["Hero"])
+    await ed.call("set_scene_camera", position=[position[0], position[1] + 1.5, position[2] + 5.0], target=position)
+    await focus_x(ed, "scene")
+    await ed.call("wait", frames=10)
+    # the Move gizmo's centre sits on Hero, in the middle of the Scene view (the camera's target)
+    cx, cy = (300 + 1238) // 2, (100 + 605) // 2
+    run_x(ed, "xdotool", "mousemove", str(cx), str(cy))
+    await ed.call("wait", frames=6)
+    run_x(ed, "xdotool", "mousedown", "1")
+    await ed.call("wait", frames=3)
+    for step in range(1, 6):
+        run_x(ed, "xdotool", "mousemove", str(cx + 16 * step), str(cy))
+        await ed.call("wait", frames=3)
+    run_x(ed, "xdotool", "mouseup", "1")
+    await ed.call("wait", frames=8)
+    st = await state(ed)
+    keys = keys_of(st, "", "position")
+    moved = await transform(ed, "Hero")
+    ed.check(abs(moved[0] - position[0]) > 0.05, f"the drag moved Hero: {position} -> {moved}")
+    ed.check(round(20 / 30, 4) in keys and len(keys) == len(set(before_keys) | {round(20 / 30, 4)}), f"keyed at frame 20: {before_keys} -> {keys}")
+    ed.check(close(row(await hook(ed, frame=20), "", "position")["value"], moved, 1e-3), "the key holds the dragged position")
+    ed.check(not await modified(ed), "no scene step")
+    await ed.call("undo", scope="project")
+    ed.check_eq(keys_of(await state(ed), "", "position"), before_keys, "one undo step for the whole drag")
+    st = await hook(ed, record=False, preview=False)
+    ed.check(close(await transform(ed, "Hero"), S["rest_hero"], 1e-3), "restored")
+
+
+async def test_curves_view_large_clip_responsive(ed: Editor):
+    """I3: the curves view of a 60 x 600 key clip draws in under 30 ms per frame."""
+    paths = [p for p in (await hook(ed, list_paths=True))["paths"] if p.startswith("Hero/")][:20]
+    tracks = []
+    for i, path in enumerate(paths):
+        for channel in ("position", "rotation", "scale"):
+            keys = []
+            for k in range(600):
+                t = round(k / 60, 6)
+                wave = math.sin(k / 20 + i)
+                if channel == "rotation":
+                    keys.append([t, euler_xyzw(30 * wave, 10 * wave, 0)])
+                elif channel == "scale":
+                    keys.append([t, [1 + 0.1 * wave, 1, 1]])
+                else:
+                    keys.append([t, [wave, 0, 0]])
+            tracks.append({"path": path, "channel": channel, "keys": keys})
+    clip = {"format": "jasperengine.anim", "version": 1, "frame_rate": 60, "wrap": "loop", "tracks": tracks, "events": []}
+    (ed.project / "assets/anim/bigcurves.anim").write_text(json.dumps(clip) + "\n")
+    st = await hook(ed, clip="assets/anim/bigcurves.anim", root="Hero", brief=True, view="curves", frame_curves="all")
+    ed.check_eq(st["view"], "curves", "the curves view")
+    await ed.call("wait", seconds=1.0)
+    st = await hook(ed, brief=True)
+    ed.check(st["draw_ms"] < 30.0, f"the curves view draws in {st['draw_ms']:.1f} ms (moving average)")
+    await shot(ed, "05-curves-large-clip")
+    st = await hook(ed, view="dopesheet", clip=CLIP, root="Hero")
+
+
+async def test_blend_shape_weights_save_and_reload(ed: Editor):
+    """I1: a Blend Shapes weight edited on a plain model and on a prefab instance survives save +
+    reopen (morphWeights[i] is a Catalog property; the instance's edit is an override)."""
+    blob = (await ed.call("create_entity", type="model", name="Blob", model="assets/models/skinned_morph.gltf"))["entity_id"]
+    await ed.call("wait", frames=6)
+    mesh_path = None
+    for candidate in ("Blob", "Blob/Strip"):
+        r = await ed.call_raw("focus_window", {"window": "animation", "animation": {"morph": {"entities": [candidate], "index": 0, "value": 0.6}}})
+        if not r.is_error:
+            mesh_path = candidate
+            break
+    ed.check(mesh_path is not None, "the model's mesh with blend shapes")
+    ed.check(abs(await morph_weight(ed, mesh_path) - 0.6) < 1e-4, "edited")
+    made = await ed.call("create_prefab", entity=blob, path="prefabs/Blob.prefab")
+    ed.check(made["prefabs"], f"prefab made: {made}")
+    inst = await ed.call("instantiate_prefab", prefab="prefabs/Blob.prefab", position=[3, 0, 0], name="Blob B")
+    await ed.call("wait", frames=6)
+    instance_mesh = mesh_path.replace("Blob", "Blob B", 1)
+    r = await ed.call_raw("focus_window", {"window": "animation", "animation": {"morph": {"entities": [instance_mesh], "index": 0, "value": 0.9}}})
+    ed.check(not r.is_error, f"the instance's mesh: {r.text if r.is_error else ''}")
+    ed.check(abs(await morph_weight(ed, instance_mesh) - 0.9) < 1e-4, "the instance edited")
+    await ed.call("save_scene", scene="Main Scene")
+    await ed.call("close_scene", scene="Main Scene")
+    await ed.call("open_scene", scene="Main Scene.scene")
+    await ed.call("wait", frames=10)
+    ed.check(abs(await morph_weight(ed, mesh_path) - 0.6) < 1e-4, f"the plain model's weight after reopening: {await morph_weight(ed, mesh_path)}")
+    ed.check(abs(await morph_weight(ed, instance_mesh) - 0.9) < 1e-4, f"the instance's weight after reopening: {await morph_weight(ed, instance_mesh)}")

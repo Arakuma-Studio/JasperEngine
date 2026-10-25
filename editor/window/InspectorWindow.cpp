@@ -84,6 +84,7 @@
 #include "pose/PoseEditSession.h"
 #include "animation/PreviewOwner.h"
 #include "animation/ClipRecordHooks.h"
+#include "command/type/MorphWeightsCmd.h"
 #include "window/InspectorWindowClips.h"
 #include "component/AnimationPlayerComponent.h"
 #include "action/Action.h"
@@ -136,83 +137,6 @@ static std::vector<float> rotationValue(const Quaternion& value) {
     std::vector<float> out(4);
     quaternionToXYZW(value, out.data());
     return out;
-}
-
-namespace {
-
-    // The Blend Shapes rows' scene command: the morph weights of several GameObjects' meshes, one
-    // undo step per slider drag (mergeWith). Its writes notify the channel write listeners
-    // (ClipRecordHooks::before/afterComponentWrite, animation clips 9.R6): a clip preview puts the
-    // weights back to their rest first and takes the new weights as its rest after.
-    class MorphWeightsCmd : public editor::Command {
-    public:
-        using Weights = std::array<float, MAX_MORPHTARGETS>;
-        struct Target {
-            Entity entity = NULL_ENTITY;
-            Weights before{};
-            Weights after{};
-        };
-
-        MorphWeightsCmd(editor::Project* project, uint32_t sceneId, std::vector<Target> targets)
-            : project(project), sceneId(sceneId), targets(std::move(targets)) {}
-
-        bool execute() override {
-            editor::SceneProject* sceneProject = project->getScene(sceneId);
-            if (!sceneProject || !sceneProject->scene) return false;
-            if (!executed) wasModified = sceneProject->isModified;
-            write(sceneProject, false);
-            executed = true;
-            sceneProject->isModified = true;
-            return true;
-        }
-
-        void undo() override {
-            editor::SceneProject* sceneProject = project->getScene(sceneId);
-            if (!sceneProject || !sceneProject->scene) return;
-            write(sceneProject, true);
-            sceneProject->isModified = wasModified;
-        }
-
-        bool mergeWith(editor::Command* other) override {
-            MorphWeightsCmd* older = dynamic_cast<MorphWeightsCmd*>(other);
-            if (!older || older->sceneId != sceneId || older->targets.size() != targets.size()) return false;
-            for (size_t i = 0; i < targets.size(); i++) {
-                if (older->targets[i].entity != targets[i].entity) return false;
-            }
-            // the older command holds the weights a single undo restores
-            for (size_t i = 0; i < targets.size(); i++) targets[i].before = older->targets[i].before;
-            wasModified = older->wasModified;
-            return true;
-        }
-
-        bool affectsStructure() const override { return false; }
-
-    private:
-        editor::Project* project;
-        uint32_t sceneId;
-        std::vector<Target> targets;
-        bool wasModified = false;
-        bool executed = false;
-
-        void write(editor::SceneProject* sceneProject, bool toBefore) {
-            Scene* scene = sceneProject->scene;
-            for (const Target& target : targets) {
-                editor::ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, editor::ComponentType::MeshComponent, "");
-            }
-            for (Target& target : targets) {
-                MeshComponent* mesh = scene->findComponent<MeshComponent>(target.entity);
-                if (!mesh) continue;
-                // the first execute reads what it replaces (after a preview put its rest back)
-                if (!toBefore && !executed) std::copy(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS, target.before.begin());
-                const Weights& value = toBefore ? target.before : target.after;
-                std::copy(value.begin(), value.end(), mesh->morphWeights);
-            }
-            for (const Target& target : targets) {
-                editor::ClipRecordHooks::afterComponentWrite(sceneId, target.entity, editor::ComponentType::MeshComponent, "");
-            }
-        }
-    };
-
 }
 
 static std::vector<editor::EnumEntry> entriesPrimitiveType = {
@@ -5541,9 +5465,7 @@ bool editor::InspectorWindow::recordRowEdit(SceneProject* sceneProject, Componen
     if (channels.size() != 1) return false;
     const ClipChannel channel = channels.front();
     if (!ClipRecordHooks::claimsAny(sceneProject->id, entities, channel)) return false;
-    bool opened = false;
-    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
-    recordRowOpen = recordRowOpen || opened;
+    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(RecordSource::Inspector, nullptr);
     for (Entity entity : entities){
         // the selection's GameObjects Record does not key stay as they are
         if (!ClipRecordHooks::claims(sceneProject->id, entity, channel)) continue;
@@ -5556,9 +5478,8 @@ bool editor::InspectorWindow::recordRowEdit(SceneProject* sceneProject, Componen
 }
 
 void editor::InspectorWindow::finishRecordRow(){
-    if (!recordRowOpen) return;
-    recordRowOpen = false;
-    ClipRecordHooks::endDrag();
+    // the row's record gesture (only the Inspector's: another source's stays open)
+    ClipRecordHooks::endGesture(RecordSource::Inspector);
 }
 
 bool editor::InspectorWindow::setMorphWeight(SceneProject* sceneProject, const std::vector<Entity>& entities, int index, float value){
@@ -5575,9 +5496,7 @@ bool editor::InspectorWindow::setMorphWeight(SceneProject* sceneProject, const s
     if (meshes.empty()) return false;
     // Record keys the claimed meshes (the others stay as they are)
     if (ClipRecordHooks::claimsAny(sceneProject->id, meshes, ClipChannel::Morph)){
-        bool opened = false;
-        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
-        recordRowOpen = recordRowOpen || opened;
+        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(RecordSource::Inspector, nullptr);
         for (Entity entity : meshes){
             if (!ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Morph)) continue;
             const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
@@ -5589,26 +5508,25 @@ bool editor::InspectorWindow::setMorphWeight(SceneProject* sceneProject, const s
         }
         return true;
     }
-    std::vector<MorphWeightsCmd::Target> targets;
+    std::vector<editor::MorphWeightsCmd::Target> targets;
     for (Entity entity : meshes){
         const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
-        MorphWeightsCmd::Target target;
+        editor::MorphWeightsCmd::Target target;
         target.entity = entity;
         std::copy(mesh.morphWeights, mesh.morphWeights + MAX_MORPHTARGETS, target.after.begin());
         target.after[(size_t)index] = value;
         targets.push_back(target);
     }
-    Command* command = new MorphWeightsCmd(project, sceneProject->id, targets);
+    Command* command = new editor::MorphWeightsCmd(project, sceneProject->id, targets);
     if (!CommandHandle::get(sceneProject->id)->addCommand(command)) return false;
-    morphCmd = command;
+    morphEditScene = sceneProject->id;
     return true;
 }
 
 void editor::InspectorWindow::finishMorphEdit(){
-    if (morphCmd){
-        morphCmd->setNoMerge();
-        morphCmd = nullptr;
-    }
+    // the next slider edit is its own undo step (the history is marked; no pointer is kept)
+    if (morphEditScene != 0 && project->getScene(morphEditScene)) CommandHandle::get(morphEditScene)->mark();
+    morphEditScene = 0;
     finishRecordRow();
 }
 
@@ -5635,11 +5553,35 @@ void editor::InspectorWindow::drawBlendShapes(SceneProject* sceneProject, const 
         const Transform* transform = scene->findComponent<Transform>(owner);
         owner = transform ? transform->parent : NULL_ENTITY;
     }
-    int count = MAX_MORPHTARGETS;
-    if (!names.empty()) count = std::min(MAX_MORPHTARGETS, names.rbegin()->first + 1);
+    // the meshes' own target count (their morph position attributes); the names are the model's
+    // (glTF targetNames, kept per model: a model whose meshes name their targets differently shows
+    // the last mesh's names)
+    int count = 0;
+    for (Entity entity : meshes){
+        const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            int targets = 0;
+            for (int a = (int)AttributeType::MORPHTARGET0; a <= (int)AttributeType::MORPHTARGET7; a++){
+                if (mesh.submeshes[s].attributes.count((AttributeType)a)) targets++;
+            }
+            count = std::max(count, targets);
+        }
+    }
+    if (count == 0) count = names.empty() ? MAX_MORPHTARGETS : std::min(MAX_MORPHTARGETS, names.rbegin()->first + 1);
 
     if (!ImGui::TreeNodeEx("Blend Shapes##mesh_blend_shapes", ImGuiTreeNodeFlags_SpanAvailWidth)) return;
     const bool recording = ClipRecordHooks::claimsAny(sceneProject->id, meshes, ClipChannel::Morph);
+    size_t claimed = 0;
+    bool animated = false;
+    for (Entity entity : meshes){
+        if (ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Morph)) claimed++;
+        animated = animated || ClipRecordHooks::animates(sceneProject->id, entity, ClipChannel::Morph);
+    }
+    if (recording && claimed < meshes.size()){
+        ImGui::TextColored(Theme::Colors::WarningText, "Record keys %zu of the %zu selected; the others stay as they are", claimed, meshes.size());
+    }
+    // Unity: animated fields red, fields Record would start keying fainter
+    const ImVec4 recordTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), animated ? 0.55f : 0.78f);
     beginTable(ComponentType::MeshComponent, getLabelSize("Blend Shape 00"), "mesh_blend_shapes");
     for (int i = 0; i < count; i++){
         float value = scene->getComponent<MeshComponent>(meshes.front()).morphWeights[i];
@@ -5652,14 +5594,16 @@ void editor::InspectorWindow::drawBlendShapes(SceneProject* sceneProject, const 
         propertyHeader(label);
         ImGui::PushID(i);
         // Unity tints the fields Record keys
-        if (recording) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.55f));
+        if (recording) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::SliderFloat("##weight", &value, 0.0f, 1.0f, mixed ? "--" : "%.3f")){
             setMorphWeight(sceneProject, meshes, i, value);
         }
         if (recording) ImGui::PopStyleColor();
         if (ImGui::IsItemDeactivated()) finishMorphEdit();
-        ImGui::SetItemTooltip("%s", recording ? "Record keys this weight at the playhead" : "The blend shape's weight (0 to 1)");
+        ImGui::SetItemTooltip("%s", !recording ? "The blend shape's weight (0 to 1)"
+                                    : claimed < meshes.size() ? "Record keys this weight at the playhead on the selected meshes it animates; the others stay as they are"
+                                    : "Record keys this weight at the playhead");
         ImGui::PopID();
     }
     endTable();
@@ -5879,10 +5823,16 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
     // Record (animation clips 9.R5): the rows it keys are tinted red (Unity); GameObjects of the
     // selection it does not key stay as they are
     bool recorded[3] = {false, false, false};
+    bool animated[3] = {false, false, false};
     const ClipChannel recordChannels[3] = {ClipChannel::Position, ClipChannel::Rotation, ClipChannel::Scale};
     size_t unrecorded = 0;
     if (sceneProject) {
-        for (int channel = 0; channel < 3; channel++) recorded[channel] = ClipRecordHooks::claimsAny(sceneProject->id, entities, recordChannels[channel]);
+        for (int channel = 0; channel < 3; channel++){
+            recorded[channel] = ClipRecordHooks::claimsAny(sceneProject->id, entities, recordChannels[channel]);
+            for (Entity entity : entities){
+                animated[channel] = animated[channel] || (recorded[channel] && ClipRecordHooks::animates(sceneProject->id, entity, recordChannels[channel]));
+            }
+        }
         if (recorded[0]) {
             for (Entity entity : entities) {
                 if (!ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Position)) unrecorded++;
@@ -5893,22 +5843,24 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
         ImGui::TextColored(Theme::Colors::WarningText, "Record keys %zu of the %zu selected; the others stay as they are",
                            entities.size() - unrecorded, entities.size());
     }
-    const ImVec4 recordTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.55f);
+    // Unity: an animated row red, a row Record would start keying a fainter red
+    const ImVec4 animatedTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.55f);
+    const ImVec4 recordTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.78f);
 
     beginTable(cpType, getLabelSize("billboard"));
 
     ImGui::BeginDisabled(posedBones || drivenChannel[0]);
-    if (recorded[0]) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
+    if (recorded[0]) ImGui::PushStyleColor(ImGuiCol_FrameBg, animated[0] ? animatedTint : recordTint);
     propertyRow(RowPropertyType::Vector3, cpType, "position", "Position", sceneProject, entities, settingsPos);
     if (recorded[0]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
     ImGui::BeginDisabled(posedBones || drivenChannel[1]);
-    if (recorded[1]) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
+    if (recorded[1]) ImGui::PushStyleColor(ImGuiCol_FrameBg, animated[1] ? animatedTint : recordTint);
     propertyRow(RowPropertyType::Quat, cpType, "rotation", "Rotation", sceneProject, entities);
     if (recorded[1]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
     ImGui::BeginDisabled(posedBones || drivenChannel[2]);
-    if (recorded[2]) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
+    if (recorded[2]) ImGui::PushStyleColor(ImGuiCol_FrameBg, animated[2] ? animatedTint : recordTint);
     propertyRow(RowPropertyType::Vector3, cpType, "scale", "Scale", sceneProject, entities);
     if (recorded[2]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
@@ -15093,11 +15045,8 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
         }
         if (ImGui::IsItemDeactivatedAfterEdit() && latticeOffsetPending.isValid()){
             std::string error;
-            // Record keys the point when it claims the lattice (a record gesture of its own)
-            bool recordOpened = false;
-            if (ClipRecordHooks::claims(sceneId, entity, ClipChannel::Lattice)) ClipRecordHooks::gestureMergeKey(&recordOpened);
-            reportLatticeEdit(LatticeEditorOps::setOffsets(project, sceneId, entity, {index}, {latticeOffsetPending}, &error), error);
-            if (recordOpened) ClipRecordHooks::endDrag();
+            // Record keys the point when it claims the lattice (animation clips 9.R5)
+            reportLatticeEdit(LatticeEditorOps::setOffsets(project, sceneId, entity, {index}, {latticeOffsetPending}, &error, true), error);
         }
         if (ImGui::IsItemDeactivated()){
             latticeOffsetEditing = false;

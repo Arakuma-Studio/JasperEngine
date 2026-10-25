@@ -35,6 +35,9 @@ namespace{
         std::vector<std::shared_ptr<ChannelEntry>> after;
         uint64_t dragSerial = 0;
         std::string dragKey;
+        // T3c: the open gesture of each RecordSource
+        std::vector<std::pair<int, std::string>> gestures;
+        std::string note;
     };
 
     // never destroyed: listeners of objects that live until static exit (the shared clip
@@ -156,7 +159,8 @@ std::vector<ClipChannel> ClipRecordHooks::channelsOf(ComponentType type, const s
             if (property.empty() || property == "offsets") return {ClipChannel::Lattice};
             return {};
         case ComponentType::MeshComponent:
-            if (property.empty()) return {ClipChannel::Morph};
+            // the whole component, or one weight ("morphWeights[i]", T3c)
+            if (property.empty() || property.compare(0, 12, "morphWeights") == 0) return {ClipChannel::Morph};
             return {};
         default:
             return {};
@@ -201,9 +205,50 @@ ClipRecordValue ClipRecordHooks::transformValue(ClipChannel channel, const Vecto
     return out;
 }
 
-std::string ClipRecordHooks::gestureMergeKey(bool* opened){
+std::string ClipRecordHooks::gestureMergeKey(RecordSource source, bool* opened){
     if (opened) *opened = false;
-    if (!registry().dragKey.empty()) return registry().dragKey;
+    Registry& reg = registry();
+    for (const auto& gesture : reg.gestures){
+        if (gesture.first == (int)source) return gesture.second;
+    }
     if (opened) *opened = true;
-    return beginDrag();
+    reg.dragSerial++;
+    const std::string key = "record#" + std::to_string(reg.dragSerial);
+    reg.gestures.push_back({(int)source, key});
+    return key;
+}
+
+void ClipRecordHooks::endGesture(RecordSource source){
+    std::vector<std::pair<int, std::string>>& gestures = registry().gestures;
+    gestures.erase(std::remove_if(gestures.begin(), gestures.end(), [source](const auto& g){ return g.first == (int)source; }), gestures.end());
+}
+
+bool ClipRecordHooks::hasGesture(RecordSource source){
+    for (const auto& gesture : registry().gestures){
+        if (gesture.first == (int)source) return true;
+    }
+    return false;
+}
+
+void ClipRecordHooks::endAllGestures(){
+    registry().gestures.clear();
+    registry().dragKey.clear();
+}
+
+bool ClipRecordHooks::animates(uint32_t sceneId, Entity entity, ClipChannel channel){
+    const std::vector<std::shared_ptr<RecordEntry>> copy = registry().record;
+    for (const std::shared_ptr<RecordEntry>& entry : copy){
+        if (!entry->removed && entry->listener.animates && entry->listener.animates(sceneId, entity, channel)) return true;
+    }
+    return false;
+}
+
+void ClipRecordHooks::note(const std::string& message){
+    registry().note = message;
+}
+
+std::string ClipRecordHooks::takeNote(){
+    std::string out;
+    std::swap(out, registry().note);
+    return out;
 }

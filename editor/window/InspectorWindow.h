@@ -162,10 +162,9 @@ namespace jasperengine::editor{
 
         std::map<std::string, bool> textureCubeSingleMode;
 
-        // Record (animation clips 9.R5): a row edit opened a record gesture (its deactivation ends
-        // it) and the morph weight rows' scene command being dragged
-        bool recordRowOpen = false;
-        Command* morphCmd = nullptr;
+        // the scene whose history a Blend Shapes slider drag merges into (finishMorphEdit marks
+        // it: no command pointer is kept across frames), 0 when none
+        uint32_t morphEditScene = 0;
 
         // Lattice inspector state (edits apply through LatticeEditorOps when a field is let go)
         int latticeResolutionPending[3] = {3, 3, 3};

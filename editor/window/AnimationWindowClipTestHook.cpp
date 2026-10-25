@@ -52,7 +52,7 @@ namespace {
         "remove_track", "rebind", "frame_rate", "snap_keys", "time_format", "preview_model", "add_event", "select_event",
         "event", "drag_event", "delete_event", "create_clip", "extract", "input", "list_paths", "event_editor", "entity_play",
         "entity_mode_entries", "entity_move_frame", "brief", "view", "curve_visible", "frame_curves", "curve_drag", "record",
-        "gizmo", "inspector", "morph", "lattice_drag"};
+        "gizmo", "inspector", "morph", "lattice_drag", "curve_select"};
 
     Json argJson(const AnimationEventArg& arg){
         if (std::holds_alternative<double>(arg)) return std::get<double>(arg);
@@ -190,7 +190,8 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject, bool brief){
         out["curve_range"] = {curveMin, curveMax};
     }
     out["recording"] = c.isRecording();
-    out["record_status"] = recordStatus();
+    out["record_status"] = recordStatus(true);
+    out["record_status_short"] = recordStatus(false);
     return out;
 }
 
@@ -537,6 +538,8 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         Command* last = nullptr;
         for (int step = 1; step <= 4; step++){
             const float f = (float)step / 4.0f;
+            // as mouseDragEvent: whether Record takes the selection's drag, once per event
+            const bool claimed = render->gizmoRecordClaims(sceneProject->id, gizmo, entities);
             for (size_t i = 0; i < entities.size(); i++){
                 Vector3 position = start[i].position, scale = start[i].scale;
                 Quaternion rotation = start[i].rotation;
@@ -547,15 +550,14 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
                     rotation = Quaternion::slerp(f, start[i].rotation, quaternionFromXYZW(xyzw.data()));
                 }
                 const Matrix4 local = Matrix4::translateMatrix(position) * rotation.getRotationMatrix() * Matrix4::scaleMatrix(scale);
-                if (!render->recordGizmoTransform(sceneProject->id, entities[i], local, gizmo, entities)){
-                    Command* command = new ObjectTransformCmd(project, sceneProject->id, entities[i], local);
+                if (Command* command = render->buildObjectTransformDrag(project, sceneProject->id, entities[i], local, gizmo, claimed)){
                     if (CommandHandle::get(sceneProject->id)->addCommand(command)) last = command;
                 }
             }
         }
-        // the release
+        // the release (as the Scene view's: ends the merge and the record gesture)
         if (last) last->setNoMerge();
-        render->endGizmoRecord();
+        render->mouseReleaseEvent(0.0f, 0.0f);
     }
     if (hook.contains("inspector")){
         // an Inspector Transform row edit: {entities, property: position|rotation|scale, value: [x, y, z]
@@ -643,6 +645,18 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         }
         LatticeEditorOps::endContinuousEdit(sceneProject->id);
     }
+    if (hook.contains("curve_select")){
+        // clicks on curve points: [{track, time, component}] (+ add: Shift)
+        const Json& picks = hook["curve_select"];
+        if (!picks.is_array()) return fail("curve_select", "an array of {track, time, component}");
+        std::vector<CurveKeyId> points;
+        for (const Json& pick : picks){
+            KeyId id;
+            if (!keyIdOf(pick, id) || !pick.contains("component") || !pick["component"].is_number_integer()) return fail("curve_select", "no point " + pick.dump());
+            points.push_back({id, pick["component"].get<int>()});
+        }
+        selectCurvePoints(points, hook.value("add", false));
+    }
     if (hook.contains("curve_drag")){
         // a mouse drag of a key point in the curves view: {track, time, component, time_delta?,
         // value_delta?} (the point is selected first unless it is, as a click; 4 pointer steps)
@@ -654,9 +668,10 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             return fail("curve_drag", "{track, time, component, time_delta?, value_delta?}");
         }
         refreshSelection();
+        refreshCurveSelection();
         AnimationClipController::KeyRef ref;
         AnimationClipController::findKey(document()->data(), id.path, id.channel, id.time, ref);
-        if (!isSelected(ref.track, ref.key)) selectKeys({id}, false);
+        if (!curvePointSelected(ref.track, ref.key, drag["component"].get<int>())) selectCurvePoints({{id, drag["component"].get<int>()}}, false);
         dragGrabTime = id.time;
         if (!beginCurveDrag(track, drag["component"].get<int>(), &failure)) return fail("curve_drag", failure);
         const float timeDelta = drag.value("time_delta", 0.0f);
@@ -665,7 +680,6 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             if (!updateCurveDrag(timeDelta * (float)step / 4.0f, valueDelta * (float)step / 4.0f, &failure)) return fail("curve_drag", failure);
         }
         endDrag();
-        extra["value_locked"] = curveValueLocked;
     }
     if (hook.contains("frame_curves")){
         // F / A in the curves view: "selected" or "all"

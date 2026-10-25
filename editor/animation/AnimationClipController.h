@@ -227,6 +227,22 @@ namespace jasperengine::editor{
         bool newestRedoIsClipEdit() const;
         bool ownsRedo(const ClipUndoFocus& focus) const;
 
+        // ---- additions (T3c review round 1) ----
+
+        // A key drag giving each dragged key an ABSOLUTE value (ClipKey::value layout, the drag
+        // base's width; rotations are normalized): `dragIndex` is the key's position in the list
+        // given to beginKeyDrag; an empty value (or a key not listed) keeps the base value. The
+        // time offset applies to every dragged key as in the other overload; one merge key per
+        // drag. The curves view computes the values from dragBaseData().
+        struct KeyDragValue{
+            size_t dragIndex = 0;
+            std::vector<float> value;
+        };
+        bool updateKeyDrag(float totalDeltaTime, const std::vector<KeyDragValue>& values,
+                           std::vector<KeyRef>* moved, std::string* error);
+        // the clip as it was when the drag began (valid while isDraggingKeys())
+        const ClipData& dragBaseData() const;
+
     private:
         struct Snapshot;
         Project* project = nullptr;
@@ -302,6 +318,7 @@ namespace jasperengine::editor{
         void beforeSceneWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
         void afterSceneWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
         bool recordClaims(uint32_t sceneId, Entity entity, ClipChannel channel) const;
+        bool recordAnimates(uint32_t sceneId, Entity entity, ClipChannel channel) const;
         void recordValue(uint32_t sceneId, Entity entity, const ClipRecordValue& value, const std::string& mergeKey);
         // the root key values are read on (the preview root while previewing, else the bound root)
         Entity valueRoot(SceneProject** sceneProject) const;

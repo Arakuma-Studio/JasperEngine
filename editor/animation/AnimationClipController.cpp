@@ -816,6 +816,7 @@ void AnimationClipController::endPreview(bool write){
     previewRoot = NULL_ENTITY;
     // Record keys into the preview: it ends with it (Unity)
     if (recording) setRecording(false);
+    ClipRecordHooks::endAllGestures();
     PreviewOwner::release(ownerToken);
     ownerToken = 0;
 }
@@ -1148,8 +1149,25 @@ void AnimationClipController::afterSceneWrite(uint32_t id, Entity entity, ClipCh
     needsApply = true;
     // the previewed value written back as it was shown is no edit: the rest stays (9.R6)
     std::vector<float> written;
-    if (hadShown && anim::readChannelValue(sceneProject->scene, entity, channel, {}, written) && sameValue(channel, written, shown)){
+    const bool read = anim::readChannelValue(sceneProject->scene, entity, channel, {}, written);
+    if (hadShown && read && sameValue(channel, written, shown)){
         return;
+    }
+    // per component (T3c review C1): a component the command left as it was shown (a lattice
+    // point, a blend shape weight, the y of a Position row edit of x) keeps its rest; only what
+    // the command changed becomes the rest. Rotations stay one value.
+    if (hadShown && read && channel != ClipChannel::Rotation){
+        std::vector<float> rest;
+        if (restValue(sceneProject->scene, entity, it->second, channel, rest) && rest.size() == written.size() && shown.size() == written.size()){
+            bool merged = false;
+            for (size_t i = 0; i < written.size(); i++){
+                if (written[i] == shown[i] && rest[i] != shown[i]){
+                    written[i] = rest[i];
+                    merged = true;
+                }
+            }
+            if (merged) anim::writeChannelValue(sceneProject->scene, entity, channel, {}, written);
+        }
     }
     // the value the command wrote is the new rest; the preview shows again on the next update
     // (not now: the command's other channels are notified after this one)
@@ -1474,6 +1492,66 @@ bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vec
     return true;
 }
 
+bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vector<KeyDragValue>& values,
+                                            std::vector<KeyRef>* moved, std::string* error){
+    if (!dragging) return fail(error, "no key drag in progress");
+    if (!editable(error)){
+        endKeyDrag();
+        return false;
+    }
+    if (!finite(totalDeltaTime)) return fail(error, "the time offset must be a finite number");
+    if (document->revision() != dragRevision){
+        endKeyDrag();
+        return fail(error, "the clip changed during the drag");
+    }
+    ClipData data = dragBase;
+    // the absolute values first (indices are the drag base's), then the time offset
+    bool valued = false;
+    for (const KeyDragValue& entry : values){
+        if (entry.dragIndex >= dragKeys.size() || entry.value.empty()) continue;
+        const KeyRef& ref = dragKeys[entry.dragIndex];
+        if (ref.track >= data.tracks.size() || ref.key >= data.tracks[ref.track].keys.size()) return fail(error, "no such key");
+        ClipKey& key = data.tracks[ref.track].keys[ref.key];
+        if (entry.value.size() != key.value.size()) return fail(error, "a dragged key's value has the wrong width");
+        for (float v : entry.value){
+            if (!finite(v)) return fail(error, "a dragged key's value must be finite");
+        }
+        key.value = entry.value;
+        if (data.tracks[ref.track].channel == ClipChannel::Rotation){
+            float length = 0.0f;
+            for (float c : key.value) length += c * c;
+            length = std::sqrt(length);
+            if (length > 1e-6f){
+                for (float& c : key.value) c /= length;
+            }else{
+                key.value = {0.0f, 0.0f, 0.0f, 1.0f};
+            }
+        }
+        valued = true;
+    }
+    if (!moveKeyData(data, dragKeys, totalDeltaTime, nullptr, error)) return false;
+    if (!commitEdit(data, valued ? "Drag Keys" : "Move Keys", dragMergeKey, error)) return false;
+    dragRevision = document->revision();
+    if (moved){
+        moved->clear();
+        for (const DragIdentity& identity : dragIdentities){
+            const int track = document->data().findTrack(identity.path, identity.channel);
+            if (track < 0) continue;
+            const int key = nearestKey(document->data().tracks[(size_t)track], std::max(0.0f, identity.time + totalDeltaTime), 1e-4f);
+            if (key < 0) continue;
+            const bool listed = std::any_of(moved->begin(), moved->end(), [&](const KeyRef& ref){
+                return ref.track == (size_t)track && ref.key == (size_t)key;
+            });
+            if (!listed) moved->push_back({(size_t)track, (size_t)key});
+        }
+    }
+    return true;
+}
+
+const ClipData& AnimationClipController::dragBaseData() const{
+    return dragBase;
+}
+
 void AnimationClipController::endKeyDrag(){
     dragging = false;
     dragKeys.clear();
@@ -1581,12 +1659,15 @@ void AnimationClipController::setRecording(bool on){
         listener.record = [this](uint32_t id, Entity entity, const ClipRecordValue& value, const std::string& mergeKey){
             recordValue(id, entity, value, mergeKey);
         };
+        listener.animates = [this](uint32_t id, Entity entity, ClipChannel channel){ return recordAnimates(id, entity, channel); };
         recordListener = ClipRecordHooks::addRecordListener(listener);
         return;
     }
     recording = false;
     ClipRecordHooks::removeRecordListener(recordListener);
     recordListener = 0;
+    // a source's gesture never outlives Record (T3c review I4)
+    ClipRecordHooks::endAllGestures();
 }
 
 bool AnimationClipController::isRecording() const{
@@ -1605,9 +1686,25 @@ bool AnimationClipController::recordClaims(uint32_t id, Entity entity, ClipChann
     return anim::readChannelValue(sceneProject->scene, entity, channel, {}, value);
 }
 
+bool AnimationClipController::recordAnimates(uint32_t id, Entity entity, ClipChannel channel) const{
+    if (!recordClaims(id, entity, channel)) return false;
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    std::string path;
+    if (!sceneProject || !anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
+    return document->data().findTrack(path, channel) >= 0;
+}
+
 void AnimationClipController::recordValue(uint32_t id, Entity entity, const ClipRecordValue& value, const std::string& mergeKey){
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
     if (!recordClaims(id, entity, value.channel) || !sceneProject) return;
+    // keys land on the Samples grid (T3c review I5); a playing preview pauses there first, so
+    // the key and the shown pose stay at one frame
+    {
+        const float fps = std::isfinite(document->data().frameRate) && document->data().frameRate >= 1.0f ? document->data().frameRate : 30.0f;
+        const float snapped = std::max(0.0f, std::round(time * fps) / fps);
+        playing = false;
+        if (std::fabs(snapped - time) > 1e-6f) setTime(snapped);
+    }
     Scene* scene = sceneProject->scene;
     std::string path;
     if (!anim::relativePath(scene, previewRoot, entity, path)) return;

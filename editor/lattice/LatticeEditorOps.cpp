@@ -126,17 +126,14 @@ namespace{
         return CommandHandle::get(sceneId)->addCommand(command);
     }
 
-    // a Record gesture this file opened (a continuous edit: endContinuousEdit ends it)
-    bool recordGestureOpen = false;
-
-    // Record (animation clips 9.R5): a claimed lattice's edit from the Scene view's drag (a
-    // continuous edit) or from an Inspector row (which opens a record gesture first) writes the
-    // live offsets and keys the changed points at the playhead, with no command. Discrete edits
-    // without a gesture (MCP edit_lattice, menus) stay scene steps.
+    // Record (animation clips 9.R5): a claimed lattice's edit asked to record by its source (the
+    // Scene view's point drag: a continuous edit, one gesture until endContinuousEdit; the
+    // Inspector's Offset row: one gesture per edit) writes the live offsets and keys the changed
+    // points at the playhead, with no command. Edits not asked to record (MCP edit_lattice, menus,
+    // presets) always stay scene steps, whatever gesture another source has open (T3c review I4).
     bool recordOffsets(uint32_t sceneId, Entity entity, const LatticeComponent& lattice,
-                       const std::vector<Vector3>& offsets, bool continuous){
-        if (!continuous && ClipRecordHooks::currentMergeKey().empty()) return false;
-        if (!ClipRecordHooks::claims(sceneId, entity, ClipChannel::Lattice)) return false;
+                       const std::vector<Vector3>& offsets, bool continuous, bool record){
+        if (!record || !ClipRecordHooks::claims(sceneId, entity, ClipChannel::Lattice)) return false;
         ClipRecordValue value;
         value.channel = ClipChannel::Lattice;
         for (size_t i = 0; i < offsets.size(); i++){
@@ -146,16 +143,16 @@ namespace{
             value.value.insert(value.value.end(), {offsets[i].x, offsets[i].y, offsets[i].z});
         }
         if (value.points.empty()) return true;
+        const RecordSource source = continuous ? RecordSource::LatticeDrag : RecordSource::Inspector;
         bool opened = false;
-        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
-        if (opened && continuous) recordGestureOpen = true;
+        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(source, &opened);
         ClipRecordHooks::record(sceneId, entity, value, mergeKey);
-        if (opened && !continuous) ClipRecordHooks::endDrag();
+        if (opened && !continuous) ClipRecordHooks::endGesture(source);
         return true;
     }
 
     bool pushOffsets(Project* project, uint32_t sceneId, Entity entity, const LatticeComponent& lattice,
-                     const std::vector<Vector3>& offsets, bool continuous, std::string* error){
+                     const std::vector<Vector3>& offsets, bool continuous, bool record, std::string* error){
         for (const Vector3& offset : offsets){
             if (!isFinite(offset)){
                 return fail(error, "the edit gives a point a non-finite offset");
@@ -164,7 +161,7 @@ namespace{
         if (offsets == lattice.offsets){
             return true; // nothing changes: no undo step
         }
-        if (recordOffsets(sceneId, entity, lattice, offsets, continuous)){
+        if (recordOffsets(sceneId, entity, lattice, offsets, continuous, record)){
             return true;
         }
         Command* command = new LatticePointsCmd(project, sceneId, entity, offsets, continuous);
@@ -609,7 +606,7 @@ std::vector<Vector3> LatticeEditorOps::transformedOffsets(int rx, int ry, int rz
 // --- edits ---
 
 bool LatticeEditorOps::setOffsets(Project* project, uint32_t sceneId, Entity entity,
-                                  const std::vector<int>& points, const std::vector<Vector3>& offsets, std::string* error){
+                                  const std::vector<int>& points, const std::vector<Vector3>& offsets, std::string* error, bool record){
     SceneProject* sceneProject = sceneOf(project, sceneId, error);
     if (!sceneProject) return false;
     LatticeComponent* lattice = latticeOf(sceneProject->scene, entity, error);
@@ -628,7 +625,7 @@ bool LatticeEditorOps::setOffsets(Project* project, uint32_t sceneId, Entity ent
     for (size_t n = 0; n < points.size(); n++){
         result[(size_t)points[n]] = offsets[n];
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, record, error);
 }
 
 bool LatticeEditorOps::setOffsetsContinuous(Project* project, uint32_t sceneId, Entity entity,
@@ -648,16 +645,13 @@ bool LatticeEditorOps::setOffsetsContinuous(Project* project, uint32_t sceneId, 
     for (size_t n = 0; n < points.size(); n++){
         result[(size_t)points[n]] = offsets[n];
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, true, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, true, true, error);
 }
 
 void LatticeEditorOps::endContinuousEdit(uint32_t sceneId){
     CommandHandle::get(sceneId)->mark();
     // a recorded drag: one key edit per drag
-    if (recordGestureOpen){
-        recordGestureOpen = false;
-        ClipRecordHooks::endDrag();
-    }
+    ClipRecordHooks::endGesture(RecordSource::LatticeDrag);
 }
 
 bool LatticeEditorOps::transformPoints(Project* project, uint32_t sceneId, Entity entity,
@@ -678,7 +672,7 @@ bool LatticeEditorOps::transformPoints(Project* project, uint32_t sceneId, Entit
 
     std::vector<Vector3> result = transformedOffsets(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ,
                                                      lattice->offsets, points, localTransform, pivot, falloff);
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::resetPoints(Project* project, uint32_t sceneId, Entity entity, const std::vector<int>& points, std::string* error){
@@ -697,7 +691,7 @@ bool LatticeEditorOps::resetPoints(Project* project, uint32_t sceneId, Entity en
             result[(size_t)index] = Vector3(0, 0, 0);
         }
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::applyPreset(Project* project, uint32_t sceneId, Entity entity,
@@ -731,7 +725,7 @@ bool LatticeEditorOps::applyPreset(Project* project, uint32_t sceneId, Entity en
     }
     std::vector<Vector3> result = lattice->offsets;
     lattice::applyPreset(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, result, proportional, points);
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::mirror(Project* project, uint32_t sceneId, Entity entity, lattice::LatticeAxis axis, bool fromPositive, std::string* error){
@@ -746,7 +740,7 @@ bool LatticeEditorOps::mirror(Project* project, uint32_t sceneId, Entity entity,
 
     std::vector<Vector3> result = lattice->offsets;
     lattice::mirror(lattice->resolutionX, lattice->resolutionY, lattice->resolutionZ, result, axis, fromPositive);
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity entity, int rx, int ry, int rz, std::string* error){
@@ -1096,7 +1090,7 @@ bool LatticeEditorOps::applyPose(Project* project, uint32_t sceneId, Entity enti
     for (Vector3& offset : result){
         offset = offset * weight;
     }
-    return pushOffsets(project, sceneId, entity, *lattice, result, false, error);
+    return pushOffsets(project, sceneId, entity, *lattice, result, false, false, error);
 }
 
 bool LatticeEditorOps::renamePose(Project* project, uint32_t sceneId, Entity entity, const std::string& name, const std::string& newName, std::string* error){

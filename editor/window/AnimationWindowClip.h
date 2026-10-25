@@ -37,6 +37,8 @@
 #include <cstdint>
 #include <memory>
 #include <set>
+#include <tuple>
+#include <utility>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -89,6 +91,8 @@ namespace jasperengine::editor{
         void update(double dt, bool clipModeShown, bool focused);
         // the window closed or left clip mode: the preview restores
         void stopPreview();
+        // Record is on (the window keeps its binding while recording, Unity's lock)
+        bool isRecording() const;
         // a scene is gone
         void sceneClosed(uint32_t sceneId);
 
@@ -104,6 +108,10 @@ namespace jasperengine::editor{
         void runEntityModeRequest(SceneProject* sceneProject, Entity selected);
         // the entries drawEntityModeEntries shows for `selected` (test hook)
         std::vector<std::string> entityModeEntries(SceneProject* sceneProject, Entity selected) const;
+
+        // the ImGui ini handler of the window's saved settings (label width, Dopesheet / Curves):
+        // the App registers it right after creating the ImGui context (AnimationWindowClipRecord.cpp)
+        static void registerSettingsHandler();
 
         // MCP focus_window {window: "animation", animation: {...}} (AnimationWindowClipTestHook.cpp)
         bool testHook(SceneProject* sceneProject, const nlohmann::json& hook, nlohmann::json& out, std::string& error);
@@ -245,23 +253,61 @@ namespace jasperengine::editor{
         std::string entityModeState;
 
         // ---- curves view (T3c) ----
+        // a curve point: a key and one of its value components
+        struct CurveKeyId{
+            KeyId key;
+            int component = 0;
+        };
+        // One track's curves, cached per (document revision, track content, visible time range,
+        // zoom, visibility): sample times, values (times x components) and key values (keys x
+        // components; rotations as continuous Euler degrees)
+        struct CurveTrackCache{
+            size_t components = 0;
+            uint64_t contentHash = 0;
+            std::vector<char> visible;          // per component
+            bool anyVisible = false;
+            std::vector<float> times;
+            std::vector<float> values;
+            std::vector<float> keyValues;
+            std::vector<Vector3> eulers;        // rotation: keyEulers
+        };
+        struct CurveCache{
+            std::weak_ptr<AnimationClipDocument> document;
+            uint64_t revision = ~uint64_t(0);
+            float from = -1.0f, to = -1.0f, pixelsPerSecond = 0.0f;
+            uint64_t hiddenVersion = ~uint64_t(0);
+            std::vector<CurveTrackCache> tracks;
+        };
         // hidden curves: "path|channel#component"
         std::set<std::string> hiddenCurves;
+        uint64_t hiddenVersion = 0;
+        CurveCache curveCache;
+        // the curve points selected in the curves view: a selected key (the shared KeyId selection)
+        // with entries here has only those components selected, without entries all of them
+        // (the dopesheet's selection); selectKeys clears it
+        std::vector<CurveKeyId> curveSelection;
+        uint64_t curveSelectionVersion = 0;
+        // curveSelection resolved per revision: (track, key, component) and the keys with entries
+        std::set<std::tuple<size_t, size_t, int>> curveSelected;
+        std::set<std::pair<size_t, size_t>> curveSelectedKeys;
+        uint64_t curveSelectedRevision = ~uint64_t(0);
+        uint64_t curveSelectedVersion = ~uint64_t(0);
+        std::weak_ptr<AnimationClipDocument> curveSelectedDocument;
         // the value range shown (value units: Euler degrees for rotations), framed on a new clip
         float curveMin = -1.0f;
         float curveMax = 1.0f;
         std::string curveRangeClip;
-        // the key point grabbed (its track and component) and the drag's state
+        // the key point grabbed (its track and component) and the drag's state: the dragged keys,
+        // per key the components the value moves and a rotation key's base Euler
         int curveGrabTrack = -1;
         int curveGrabComponent = -1;
         float curveGrabValue = 0.0f;
         float curveDragTime = 0.0f;
         float curveDragValue = 0.0f;
-        bool curveValueLocked = false;
-        // a rotation key's Euler and quaternion when its drag began, the grabbed keys' value width
-        Vector3 curveDragEuler = Vector3(0, 0, 0);
-        std::vector<float> curveDragQuaternion;
-        size_t curveDragWidth = 0;
+        std::vector<AnimationClipController::KeyRef> curveDragRefs;
+        std::vector<std::vector<int>> curveDragComponents;
+        std::vector<Vector3> curveDragEulers;
+        std::vector<CurveKeyId> curveDragSelection;
         // the rotation tracks' continuous key Eulers, per document revision (trackEulers)
         mutable std::vector<std::vector<Vector3>> curveEulerCache;
         mutable std::vector<char> curveEulerValid;
@@ -272,6 +318,8 @@ namespace jasperengine::editor{
 
         // ---- Record and the saved settings (T3c, AnimationWindowClipRecord.cpp) ----
         bool settingsLoaded = false;
+        // the preview was on when Record started (leaving Record keeps it, Unity)
+        bool previewBeforeRecord = false;
 
         // the CPU time of draw() (test hook: large clips stay responsive)
         double drawMs = 0.0;
@@ -363,18 +411,29 @@ namespace jasperengine::editor{
         // a rotation track's continuous key Eulers (clipcurves::keyEulers, cached per revision)
         const std::vector<Vector3>& trackEulers(size_t track) const;
         void setCurveVisible(const ClipTrackData& track, int component, bool visible);
-        // a drag of the selected keys from the grabbed point (time frame snapped; value on the
-        // grabbed component: of one property's keys, or of one rotation key, else time only)
+        // a drag of the selected curve points (time frame snapped for their keys; the value delta
+        // added to every selected point on its own curve, rotations in Euler degrees: one absolute
+        // value per dragged key through the controller's drag API, one merge key)
         bool beginCurveDrag(int track, int component, std::string* error);
         bool updateCurveDrag(float rawTimeDelta, float valueDelta, std::string* error);
+        // click / box selection of curve points (their keys join the shared selection)
+        void selectCurvePoints(const std::vector<CurveKeyId>& points, bool additive);
+        void refreshCurveSelection();
+        bool curvePointSelected(size_t track, size_t key, int component) const;
+        // the components a selected key's value moves in a curve drag (its selected points, or
+        // every visible component when the key was selected as a whole)
+        std::vector<int> curveDragComponentsOf(size_t track, size_t key) const;
+        // the per-track sample cache for the visible range [from, to] at the current zoom
+        void refreshCurveCache(float from, float to, float stepTime);
         // the curves list for the test hook: {track, component, label, visible}
         nlohmann::json curvesJson() const;
 
         // ---- Record and settings (AnimationWindowClipRecord.cpp) ----
         // Record on (starts the preview) / off (stops it: the scene goes back to its snapshot)
         bool setRecording(SceneProject* sceneProject, bool on, std::string* error);
-        // the bottom status while recording ("" when not recording)
-        std::string recordStatus() const;
+        // what Record does now ("" when not recording): `full` the sentence (the tooltip, the test
+        // hook), else the short form of the bottom status
+        std::string recordStatus(bool full = true) const;
         // the label column width and the view, kept in the editor layout ini (an ImGui settings
         // handler): loaded on the first frame, saved when they change
         void loadSettings();

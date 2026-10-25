@@ -61,6 +61,18 @@ namespace jasperengine::editor{
         std::function<bool(uint32_t sceneId, Entity entity, ClipChannel channel)> claims;
         // writes the live value and commits the key at the playhead
         std::function<void(uint32_t sceneId, Entity entity, const ClipRecordValue& value, const std::string& mergeKey)> record;
+        // (T3c) the open clip has a track for this channel of this entity (the Inspector tints
+        // animated rows stronger than rows Record would only start keying); optional
+        std::function<bool(uint32_t sceneId, Entity entity, ClipChannel channel)> animates;
+    };
+
+    // (T3c) who holds a record gesture: each source owns its own, so one source's open gesture
+    // never merges (or records) another source's edits
+    enum class RecordSource : int{
+        Gizmo = 1,          // SceneRender's transform gizmo drag
+        Inspector,          // the Inspector's Transform / Blend Shapes / lattice Offset rows
+        LatticeDrag,        // the Scene view's lattice point drag (LatticeEditorOps continuous edit)
+        Window              // the Animation window and its test hook
     };
 
     using ChannelWriteListener = std::function<void(uint32_t sceneId, Entity entity, ClipChannel channel)>;
@@ -91,7 +103,7 @@ namespace jasperengine::editor{
 
         // The channels a component write touches (implemented): Transform "position" / "rotation"
         // / "scale" that one, "" (the whole component) all three, other Transform properties none;
-        // LatticeComponent "offsets" or "" Lattice; MeshComponent "" Morph; anything else none
+        // LatticeComponent "offsets" or "" Lattice; MeshComponent "" or "morphWeights[i]" Morph; anything else none
         static std::vector<ClipChannel> channelsOf(ComponentType type, const std::string& property);
         // before/afterChannelWrite for every channel of channelsOf (the command call sites)
         static void beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
@@ -106,9 +118,20 @@ namespace jasperengine::editor{
         static bool claimsAny(uint32_t sceneId, const std::vector<Entity>& entities, ClipChannel channel);
         // the record value of a Transform channel (position / scale x y z, rotation x y z w)
         static ClipRecordValue transformValue(ClipChannel channel, const Vector3& position, const Quaternion& rotation, const Vector3& scale);
-        // the merge key of a source's gesture: the current drag's, or a new drag's (then `opened`
-        // is set and the source calls endDrag() when the gesture ends: release, deactivation)
-        static std::string gestureMergeKey(bool* opened);
+        // the merge key of `source`'s gesture: its open one, or a new one (then `opened` is set and
+        // the source calls endGesture(source) when the gesture ends: release, deactivation). Only
+        // the same source's gesture is joined.
+        static std::string gestureMergeKey(RecordSource source, bool* opened);
+        static void endGesture(RecordSource source);
+        static bool hasGesture(RecordSource source);
+        // every source's gesture (Record stops, the preview stops): no gesture outlives Record
+        static void endAllGestures();
+        // some listener's `animates` says so
+        static bool animates(uint32_t sceneId, Entity entity, ClipChannel channel);
+        // A note for the Animation window's status (an edit Record does not key, e.g. a 2D or UI
+        // move of a bound GameObject); takeNote returns it once ("" when none)
+        static void note(const std::string& message);
+        static std::string takeNote();
     };
 
 }

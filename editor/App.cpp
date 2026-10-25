@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "window/AnimationWindowClip.h"
 
 #include "imgui_internal.h"
 #include "Platform.h"
@@ -1760,6 +1761,8 @@ void editor::App::setup() {
     layoutIniPath = (AppSettings::getConfigDirectory() / "editor_layout_v2.ini").string();
     io.IniFilename = layoutIniPath.c_str();
     registerLayoutSettings();
+    // the Animation window's saved label width and view (before the first frame loads the ini)
+    AnimationWindowClip::registerSettingsHandler();
 
     // Separate from the window scale: the layout keeps the scale it was built at,
     // while the window is measured on whichever monitor it closes on.

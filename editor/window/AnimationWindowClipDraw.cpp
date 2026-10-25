@@ -82,6 +82,9 @@ void AnimationWindowClip::draw(SceneProject* sceneProject, bool focused){
     ImGui::PushID("clip_mode");
     // the label width and the view saved with the editor layout (first frame)
     if (!settingsLoaded) loadSettings();
+    // an edit Record does not key (a 2D or UI move of a bound GameObject) says so here
+    const std::string recordNote = ClipRecordHooks::takeNote();
+    if (!recordNote.empty()) setNotice(recordNote, true);
     // the window handles its keys while focused (App: AnimationClipAppHooks::takesKeys)
     controller().setTakesKeys(focused);
     refreshBinding();
@@ -146,7 +149,8 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
         ImGui::PopStyleColor(on ? 2 : 1);
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)){
-            ImGui::SetTooltip("%s", on ? "Stop recording (R): the scene goes back to how it was before"
+            ImGui::SetTooltip("%s", on ? (previewBeforeRecord ? "Stop recording (R): the preview stays on"
+                                                              : "Stop recording (R): the preview stops and the scene goes back to how it was before")
                                     : !doc ? "Record: open a clip first"
                                     : doc->isReadOnly() ? "Record: the clip is read-only (extract it to edit it)"
                                     : !blocker.empty() ? blocker.c_str()
@@ -1031,15 +1035,16 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     ImGui::SetItemTooltip("The curves of the properties: drag key points in time and value; the wheel zooms the values,\n"
                           "right-click a key or a curve for its interpolation; F frames the selected keys, A all");
     ImGui::SameLine();
-    // the notice, else what Record does now
-    const std::string recording = notice.empty() ? recordStatus() : std::string();
+    // the notice, else what Record does now (short; the sentence in the tooltip)
+    const std::string recording = notice.empty() ? recordStatus(false) : std::string();
     if (!notice.empty() || !recording.empty()){
         const std::string& text = notice.empty() ? recording : notice;
         const float room = keyAreaX - ImGui::GetCursorScreenPos().x - 6.0f * m.s;
         const std::string shown = elideMiddle(text, std::max(10.0f, room));
         const ImVec4 colour = !notice.empty() ? (noticeWarning ? Theme::Colors::WarningText : Theme::Colors::SubtleText) : Theme::Colors::ErrorText;
         ImGui::TextColored(colour, "%s", shown.c_str());
-        if (shown != text) ImGui::SetItemTooltip("%s", text.c_str());
+        const std::string tip = notice.empty() ? recordStatus(true) : notice;
+        if (shown != text || notice.empty()) ImGui::SetItemTooltip("%s", tip.c_str());
     }
     const float contentWidth = std::max(keyAreaWidth, (std::max(viewLength(), c.getTime()) + 1.0f) * pixelsPerSecond);
     const float barY = bottom.y + (bottomHeight - ImGui::GetStyle().ScrollbarSize) * 0.5f;

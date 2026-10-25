@@ -26,7 +26,9 @@ namespace jasperengine::editor{
         // Open `animation` in the Pose Animation window, bound to the model entity
         std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> open;
         // (A posed bone's Transform written by a scene command goes back to its rest first: the Pose
-        // window listens to ClipRecordHooks::beforeChannelWrite, PoseEditSession::beforeChannelWrite)
+        // window listens to ClipRecordHooks::beforeChannelWrite, PoseEditSession::beforeChannelWrite.
+        // Only position / rotation / scale writes notify: the old slot also fired for the other
+        // Transform properties (visible, billboard...), which carry no posed values.)
     };
 
     // the editor-wide hooks (set once at startup by the tasks that own them)

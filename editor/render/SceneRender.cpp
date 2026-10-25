@@ -1404,30 +1404,54 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
     endLatticeDrag();
 }
 
-bool editor::SceneRender::recordGizmoTransform(uint32_t sceneId, Entity entity, const Matrix4& localMatrix, GizmoSelected gizmo,
-                                               const std::vector<Entity>& selection){
+namespace {
+    bool gizmoChannel(editor::GizmoSelected gizmo, ClipChannel& channel){
+        if (gizmo == editor::GizmoSelected::TRANSLATE) channel = ClipChannel::Position;
+        else if (gizmo == editor::GizmoSelected::ROTATE) channel = ClipChannel::Rotation;
+        else if (gizmo == editor::GizmoSelected::SCALE) channel = ClipChannel::Scale;
+        else return false;
+        return true;
+    }
+}
+
+bool editor::SceneRender::gizmoRecordClaims(uint32_t sceneId, GizmoSelected gizmo, const std::vector<Entity>& selection) const{
     ClipChannel channel;
-    if (gizmo == GizmoSelected::TRANSLATE) channel = ClipChannel::Position;
-    else if (gizmo == GizmoSelected::ROTATE) channel = ClipChannel::Rotation;
-    else if (gizmo == GizmoSelected::SCALE) channel = ClipChannel::Scale;
-    else return false;
-    if (!ClipRecordHooks::claimsAny(sceneId, selection, channel)) return false;
+    return gizmoChannel(gizmo, channel) && ClipRecordHooks::claimsAny(sceneId, selection, channel);
+}
+
+bool editor::SceneRender::recordGizmoTransform(uint32_t sceneId, Entity entity, const Matrix4& localMatrix, GizmoSelected gizmo,
+                                               bool selectionClaimed){
+    ClipChannel channel;
+    if (!selectionClaimed || !gizmoChannel(gizmo, channel)) return false;
     // an unbound GameObject of the selection stays as it is (no scene step mixed into the key edit)
     if (!ClipRecordHooks::claims(sceneId, entity, channel)) return true;
     Vector3 position, scale;
     Quaternion rotation;
     localMatrix.decomposeStandard(position, scale, rotation);
-    bool opened = false;
-    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
-    gizmoRecordOpen = gizmoRecordOpen || opened;
+    // one merge key per drag, the gizmo's own (another source's gesture is never joined)
+    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(RecordSource::Gizmo, nullptr);
     ClipRecordHooks::record(sceneId, entity, ClipRecordHooks::transformValue(channel, position, rotation, scale), mergeKey);
+    // Rotate / Scale about a pivot that is not the GameObject's origin (a selection's Center)
+    // moves it too: the position is keyed with the drag, as without Record (T3c review M2)
+    if (channel != ClipChannel::Position && ClipRecordHooks::claims(sceneId, entity, ClipChannel::Position)){
+        Scene* target = gizmoScene();
+        const Transform* transform = target ? target->findComponent<Transform>(entity) : nullptr;
+        if (transform && (transform->position - position).length() > 1e-5f){
+            ClipRecordHooks::record(sceneId, entity, ClipRecordHooks::transformValue(ClipChannel::Position, position, rotation, scale), mergeKey);
+        }
+    }
     return true;
 }
 
+editor::Command* editor::SceneRender::buildObjectTransformDrag(Project* project, uint32_t sceneId, Entity entity, const Matrix4& localMatrix,
+                                                       GizmoSelected gizmo, bool selectionClaimed){
+    if (recordGizmoTransform(sceneId, entity, localMatrix, gizmo, selectionClaimed)) return nullptr;
+    return new ObjectTransformCmd(project, sceneId, entity, localMatrix);
+}
+
 void editor::SceneRender::endGizmoRecord(){
-    if (!gizmoRecordOpen) return;
-    gizmoRecordOpen = false;
-    ClipRecordHooks::endDrag();
+    gizmoRecordNoted = false;
+    ClipRecordHooks::endGesture(RecordSource::Gizmo);
 }
 
 Vector3 editor::SceneRender::getMatrixScale(const Matrix4& matrix){
@@ -1607,6 +1631,10 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
         }
     }
 
+    // Record (animation clips 9.R5): whether it takes this drag of the selection, asked once per
+    // drag event (not per selected entity)
+    const bool recordSelection = gizmoRecordClaims(commandSceneId, tools.getGizmoSelected(), selEntities);
+
     for (Entity& entity: selEntities){
         if (selectedTrackPointIndex >= 0 && entity == selectedTrackPointEntity){
             // the drag targets the track keyframe point (handled above), not the entity
@@ -1672,9 +1700,9 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             multiCmd->addCommand(std::make_unique<ObjectTransformCmd>(project, commandSceneId, entity,
                                 transform->position, newRotation, newScale));
                             dragCommand = multiCmd;
-                        }else if (!recordGizmoTransform(commandSceneId, entity, m, tools.getGizmoSelected(), selEntities)){
-                            // (Record keys a claimed channel instead, animation clips 9.R5)
-                            dragCommand = new ObjectTransformCmd(project, commandSceneId, entity, m);
+                        }else{
+                            // (Record keys a claimed channel instead: no command, animation clips 9.R5)
+                            dragCommand = buildObjectTransformDrag(project, commandSceneId, entity, m, tools.getGizmoSelected(), recordSelection);
                         }
                     }
                 };
@@ -2204,6 +2232,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                     } // end else (entity-level OBJECT2D)
                 }
 
+                // a move Record does not key (2D gizmo, UI layout, instances, sub-points) of a
+                // GameObject it animates: say so once per drag
+                if (dragCommand && !gizmoRecordNoted && ClipRecordHooks::claims(commandSceneId, entity, ClipChannel::Position)){
+                    gizmoRecordNoted = true;
+                    ClipRecordHooks::note("Record does not key 2D, UI layout, instance or point moves yet: this drag is a scene step");
+                }
                 if (dragCommand && CommandHandle::get(sceneId)->addCommand(dragCommand)){
                     lastCommand = dragCommand;
                 }

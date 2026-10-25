@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 using namespace jasperengine;
@@ -97,44 +98,75 @@ std::vector<Vector3> clipcurves::keyEulers(const ClipTrackData& track){
 bool clipcurves::sampleCurves(const AnimationClip::Track& runtime, const ClipTrackData& track, const std::vector<float>& times,
                               std::vector<std::vector<float>>& out){
     out.clear();
-    if (track.channel == ClipChannel::Property || track.keys.empty() || !runtime.isSampled()) return false;
+    std::vector<float> flat;
+    const std::vector<Vector3> eulers = track.channel == ClipChannel::Rotation ? keyEulers(track) : std::vector<Vector3>();
+    if (!sampleCurvesFlat(runtime, track, eulers, times, flat)) return false;
     const size_t count = componentCount(track);
     out.reserve(times.size());
+    for (size_t i = 0; i < times.size(); i++) out.emplace_back(flat.begin() + (long)(i * count), flat.begin() + (long)((i + 1) * count));
+    return true;
+}
+
+bool clipcurves::sampleCurvesFlat(const AnimationClip::Track& runtime, const ClipTrackData& track, const std::vector<Vector3>& eulers,
+                                  const std::vector<float>& times, std::vector<float>& out){
+    out.clear();
+    if (track.channel == ClipChannel::Property || track.keys.empty() || !runtime.isSampled()) return false;
     const bool rotation = track.channel == ClipChannel::Rotation;
-    const std::vector<Vector3> eulers = rotation ? keyEulers(track) : std::vector<Vector3>();
+    if (rotation && eulers.size() != track.keys.size()) return false;
+    const size_t count = componentCount(track);
+    out.assign(times.size() * count, 0.0f);
     anim::KeyCursor cursor;
+    anim::TrackSample sample;
     // rotation continuity: the segment of the previous sample and its Euler
     long previousSegment = -2;
     Vector3 previous(0, 0, 0);
-    for (float time : times){
-        anim::TrackSample sample;
-        std::vector<float> row(count, 0.0f);
-        if (anim::sampleTrack(runtime, time, sample, &cursor) && sample.valid){
-            if (rotation){
-                // the key at or before the time (-1 before the first key)
-                const auto after = std::upper_bound(track.keys.begin(), track.keys.end(), time + kKeyEpsilon,
-                                                    [](float t, const ClipKey& k){ return t < k.time; });
-                const long segment = (long)(after - track.keys.begin()) - 1;
+    // the key at or before the time, walked forward (times ascend)
+    size_t nextKey = 0;
+    std::vector<float> xyzw(4);
+    for (size_t i = 0; i < times.size(); i++){
+        const float time = times[i];
+        float* row = out.data() + i * count;
+        if (!anim::sampleTrack(runtime, time, sample, &cursor) || !sample.valid) continue;
+        switch (track.channel){
+            case ClipChannel::Position:
+            case ClipChannel::Scale:
+                row[0] = sample.vector.x;
+                row[1] = sample.vector.y;
+                row[2] = sample.vector.z;
+                break;
+            case ClipChannel::Rotation: {
+                while (nextKey < track.keys.size() && track.keys[nextKey].time <= time + kKeyEpsilon) nextKey++;
+                const long segment = (long)nextKey - 1;
                 const size_t keyIndex = (size_t)std::max(0L, segment);
                 Vector3 euler;
                 if (segment >= 0 && std::fabs(track.keys[keyIndex].time - time) <= kKeyEpsilon){
                     // at a key: the key's continuous Euler (the curve passes through its point)
                     euler = eulers[keyIndex];
                 }else{
-                    std::vector<float> xyzw(4);
                     quaternionToXYZW(sample.rotation, xyzw.data());
                     const Vector3 reference = segment == previousSegment ? previous : eulers[keyIndex];
                     euler = nearestEuler(eulerOf(xyzw), reference);
                 }
                 previousSegment = segment;
                 previous = euler;
-                row = {euler.x, euler.y, euler.z};
-            }else{
-                const std::vector<float> flat = flatten(sample);
-                for (size_t c = 0; c < count && c < flat.size(); c++) row[c] = flat[c];
+                row[0] = euler.x;
+                row[1] = euler.y;
+                row[2] = euler.z;
+                break;
             }
+            case ClipChannel::Morph:
+                for (size_t c = 0; c < count && c < sample.weights.size(); c++) row[c] = sample.weights[c];
+                break;
+            case ClipChannel::Lattice:
+                for (size_t p = 0; p < sample.offsets.size() && p * 3 + 2 < count; p++){
+                    row[p * 3] = sample.offsets[p].x;
+                    row[p * 3 + 1] = sample.offsets[p].y;
+                    row[p * 3 + 2] = sample.offsets[p].z;
+                }
+                break;
+            case ClipChannel::Property:
+                break;
         }
-        out.push_back(row);
     }
     return true;
 }
@@ -182,17 +214,17 @@ namespace {
         return rowKey(track) + "#" + std::to_string(component);
     }
 
-    // x red, y green, z blue (from the Theme); blend shapes cycle through the Theme's accents
+    // x red, y green, z blue; blend shapes cycle through the Theme's accents
     ImVec4 curveColor(const ClipTrackData& track, size_t component){
         if (track.channel == ClipChannel::Morph){
             const ImVec4 palette[] = {Theme::Colors::WarningText, Theme::Colors::ChildSceneText, Theme::Colors::SubSelectionText,
                                       Theme::Colors::PrefabText, Theme::Colors::PhysicsAccent, Theme::Colors::ErrorText,
-                                      mix(Theme::Colors::DisabledGreenText, ImVec4(1, 1, 1, 1), 0.2f), Theme::Colors::LogIcon};
+                                      ImVec4(0.35f, 0.85f, 0.35f, 1.0f), Theme::Colors::LogIcon};
             return palette[component % (sizeof(palette) / sizeof(palette[0]))];
         }
         switch (component % 3){
             case 0: return Theme::Colors::ErrorText;
-            case 1: return mix(Theme::Colors::DisabledGreenText, ImVec4(1, 1, 1, 1), 0.2f);
+            case 1: return ImVec4(0.35f, 0.85f, 0.35f, 1.0f);   // a saturated green, apart from the warning yellow
             default: return Theme::Colors::PrefabText;
         }
     }
@@ -213,6 +245,25 @@ namespace {
         float value = 0.0f;
     };
 
+    // a track's content (keys, times, eases, tangents, points): its samples are reused while equal
+    uint64_t trackHash(const ClipTrackData& track){
+        uint64_t h = 1469598103934665603ull;
+        auto mix = [&h](uint64_t v){ h = (h ^ v) * 1099511628211ull; };
+        auto bits = [](float f){ uint32_t u; std::memcpy(&u, &f, sizeof(u)); return (uint64_t)u; };
+        mix((uint64_t)track.channel);
+        mix(track.keys.size());
+        mix(track.loop ? 1 : 0);
+        for (int point : track.points) mix((uint64_t)(uint32_t)point);
+        for (const ClipKey& key : track.keys){
+            mix(bits(key.time));
+            mix((uint64_t)key.ease);
+            for (float v : key.value) mix(bits(v));
+            for (float v : key.inTangent) mix(bits(v));
+            for (float v : key.outTangent) mix(bits(v));
+        }
+        return h;
+    }
+
 }
 
 bool AnimationWindowClip::curveVisible(const ClipTrackData& track, int component) const{
@@ -220,8 +271,10 @@ bool AnimationWindowClip::curveVisible(const ClipTrackData& track, int component
 }
 
 void AnimationWindowClip::setCurveVisible(const ClipTrackData& track, int component, bool visible){
+    const size_t before = hiddenCurves.size();
     if (visible) hiddenCurves.erase(curveKey(track, component));
     else hiddenCurves.insert(curveKey(track, component));
+    if (hiddenCurves.size() != before) hiddenVersion++;
 }
 
 const std::vector<Vector3>& AnimationWindowClip::trackEulers(size_t trackIndex) const{
@@ -242,10 +295,151 @@ const std::vector<Vector3>& AnimationWindowClip::trackEulers(size_t trackIndex) 
     return curveEulerCache[trackIndex];
 }
 
+void AnimationWindowClip::refreshCurveCache(float from, float to, float stepTime){
+    std::shared_ptr<AnimationClipDocument> doc = document();
+    CurveCache& cache = curveCache;
+    if (!doc){
+        cache = CurveCache();
+        return;
+    }
+    const bool sameDocument = doc == cache.document.lock();
+    const bool sameRange = std::fabs(from - cache.from) < 1e-6f && std::fabs(to - cache.to) < 1e-6f &&
+                           std::fabs(pixelsPerSecond - cache.pixelsPerSecond) < 1e-6f;
+    if (sameDocument && sameRange && doc->revision() == cache.revision && hiddenVersion == cache.hiddenVersion) return;
+    const ClipData& data = doc->data();
+    std::shared_ptr<const AnimationClip> clip = doc->clip();
+    const bool keepSamples = sameDocument && sameRange;
+    cache.document = doc;
+    cache.from = from;
+    cache.to = to;
+    cache.pixelsPerSecond = pixelsPerSecond;
+    cache.revision = doc->revision();
+    cache.hiddenVersion = hiddenVersion;
+    if (cache.tracks.size() != data.tracks.size()) cache.tracks.assign(data.tracks.size(), CurveTrackCache());
+    // the sample grid (every 2 px) of the visible range
+    std::vector<float> grid;
+    for (double t = from; t <= (double)to + stepTime && grid.size() < 4096; t += stepTime) grid.push_back((float)t);
+    for (size_t t = 0; t < data.tracks.size(); t++){
+        const ClipTrackData& track = data.tracks[t];
+        CurveTrackCache& entry = cache.tracks[t];
+        const uint64_t hash = trackHash(track);
+        const size_t count = clipcurves::componentCount(track);
+        const bool contentSame = entry.contentHash == hash && entry.components == count;
+        // visibility (no strings per frame afterwards)
+        entry.visible.assign(count, 1);
+        entry.anyVisible = false;
+        for (size_t c = 0; c < count; c++){
+            entry.visible[c] = curveVisible(track, (int)c) ? 1 : 0;
+            entry.anyVisible = entry.anyVisible || entry.visible[c];
+        }
+        if (contentSame && keepSamples && (!entry.times.empty() || !entry.anyVisible)) continue;
+        if (!contentSame){
+            entry.contentHash = hash;
+            entry.components = count;
+            entry.eulers = track.channel == ClipChannel::Rotation ? clipcurves::keyEulers(track) : std::vector<Vector3>();
+            entry.keyValues.assign(track.keys.size() * count, 0.0f);
+            for (size_t k = 0; k < track.keys.size(); k++){
+                if (track.channel == ClipChannel::Rotation){
+                    entry.keyValues[k * count] = entry.eulers[k].x;
+                    entry.keyValues[k * count + 1] = entry.eulers[k].y;
+                    entry.keyValues[k * count + 2] = entry.eulers[k].z;
+                }else{
+                    for (size_t c = 0; c < count && c < track.keys[k].value.size(); c++) entry.keyValues[k * count + c] = track.keys[k].value[c];
+                }
+            }
+        }
+        entry.times.clear();
+        entry.values.clear();
+        const int index = clip ? clip->findTrack(track.path, track.channel) : -1;
+        if (!entry.anyVisible || index < 0 || track.keys.empty()) continue;
+        // the grid, plus the keys' own times while keys are sparser than the grid (dense keys:
+        // the 2 px grid already follows the curve)
+        entry.times = grid;
+        const auto first = std::lower_bound(track.keys.begin(), track.keys.end(), from,
+                                             [](const ClipKey& k, float time){ return k.time < time; });
+        const auto last = std::upper_bound(track.keys.begin(), track.keys.end(), to,
+                                           [](float time, const ClipKey& k){ return time < k.time; });
+        if ((size_t)(last - first) * 2 < grid.size() + 1){
+            for (auto it = first; it != last; ++it) entry.times.push_back(it->time);
+            std::sort(entry.times.begin(), entry.times.end());
+        }
+        clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, entry.eulers, entry.times, entry.values);
+    }
+}
+
+void AnimationWindowClip::refreshCurveSelection(){
+    std::shared_ptr<AnimationClipDocument> doc = document();
+    if (!doc){
+        curveSelected.clear();
+        curveSelectedKeys.clear();
+        return;
+    }
+    if (doc == curveSelectedDocument.lock() && doc->revision() == curveSelectedRevision && curveSelectionVersion == curveSelectedVersion) return;
+    curveSelectedDocument = doc;
+    curveSelectedRevision = doc->revision();
+    curveSelectedVersion = curveSelectionVersion;
+    curveSelected.clear();
+    curveSelectedKeys.clear();
+    const ClipData& data = doc->data();
+    for (const CurveKeyId& point : curveSelection){
+        const int track = data.findTrack(point.key.path, point.key.channel);
+        if (track < 0) continue;
+        const std::vector<ClipKey>& keys = data.tracks[(size_t)track].keys;
+        auto it = std::lower_bound(keys.begin(), keys.end(), point.key.time - kKeyEpsilon,
+                                   [](const ClipKey& k, float time){ return k.time < time; });
+        if (it == keys.end() || std::fabs(it->time - point.key.time) > kKeyEpsilon) continue;
+        const size_t key = (size_t)(it - keys.begin());
+        curveSelected.insert({(size_t)track, key, point.component});
+        curveSelectedKeys.insert({(size_t)track, key});
+    }
+}
+
+bool AnimationWindowClip::curvePointSelected(size_t track, size_t key, int component) const{
+    if (!isSelected(track, key)) return false;
+    if (!curveSelectedKeys.count({track, key})) return true;
+    return curveSelected.count({track, key, component}) > 0;
+}
+
+void AnimationWindowClip::selectCurvePoints(const std::vector<CurveKeyId>& points, bool additive){
+    if (!additive){
+        selection.clear();
+        curveSelection.clear();
+    }
+    for (const CurveKeyId& point : points){
+        bool listed = false;
+        for (const KeyId& id : selection) listed = listed || id == point.key;
+        if (!listed) selection.push_back(point.key);
+        bool pointListed = false;
+        for (const CurveKeyId& other : curveSelection){
+            pointListed = pointListed || (other.key == point.key && other.component == point.component);
+        }
+        if (!pointListed) curveSelection.push_back(point);
+    }
+    curveSelectionVersion++;
+    // one selection (Unity): keys and the event don't stay selected together
+    selectEvent(-1);
+    refreshSelection();
+    refreshCurveSelection();
+}
+
+std::vector<int> AnimationWindowClip::curveDragComponentsOf(size_t trackIndex, size_t keyIndex) const{
+    std::vector<int> out;
+    std::shared_ptr<AnimationClipDocument> doc = document();
+    if (!doc || trackIndex >= doc->data().tracks.size()) return out;
+    const ClipTrackData& track = doc->data().tracks[trackIndex];
+    const size_t count = clipcurves::componentCount(track);
+    const bool explicitPoints = curveSelectedKeys.count({trackIndex, keyIndex}) > 0;
+    for (size_t c = 0; c < count; c++){
+        if (explicitPoints ? curveSelected.count({trackIndex, keyIndex, (int)c}) > 0 : curveVisible(track, (int)c)) out.push_back((int)c);
+    }
+    return out;
+}
+
 void AnimationWindowClip::frameCurveValues(bool selectedOnly){
     std::shared_ptr<AnimationClipDocument> doc = document();
     if (!doc) return;
     refreshSelection();
+    refreshCurveSelection();
     const ClipData& data = doc->data();
     float low = std::numeric_limits<float>::max(), high = -std::numeric_limits<float>::max();
     auto take = [&](float v){
@@ -257,8 +451,8 @@ void AnimationWindowClip::frameCurveValues(bool selectedOnly){
         for (const AnimationClipController::KeyRef& ref : selectedRefs){
             const ClipTrackData& track = data.tracks[ref.track];
             const std::vector<float> values = clipcurves::keyValues(track, ref.key, trackEulers(ref.track));
-            for (size_t c = 0; c < values.size(); c++){
-                if (curveVisible(track, (int)c)) take(values[c]);
+            for (int c : curveDragComponentsOf(ref.track, ref.key)){
+                if ((size_t)c < values.size()) take(values[(size_t)c]);
             }
         }
     }else{
@@ -267,18 +461,26 @@ void AnimationWindowClip::frameCurveValues(bool selectedOnly){
         const float length = std::max(data.effectiveLength(), 1e-3f);
         std::vector<float> times;
         for (int i = 0; i <= 256; i++) times.push_back(length * (float)i / 256.0f);
+        std::vector<float> flat;
         for (size_t t = 0; t < data.tracks.size() && clip; t++){
             const ClipTrackData& track = data.tracks[t];
             const int index = clip->findTrack(track.path, track.channel);
             if (index < 0) continue;
+            const size_t count = clipcurves::componentCount(track);
+            std::vector<char> visible(count);
+            bool any = false;
+            for (size_t c = 0; c < count; c++){
+                visible[c] = curveVisible(track, (int)c) ? 1 : 0;
+                any = any || visible[c];
+            }
+            if (!any) continue;
             std::vector<float> all = times;
             for (const ClipKey& key : track.keys) all.push_back(key.time);
             std::sort(all.begin(), all.end());
-            std::vector<std::vector<float>> rows;
-            if (!clipcurves::sampleCurves(clip->getTracks()[(size_t)index], track, all, rows)) continue;
-            for (const std::vector<float>& row : rows){
-                for (size_t c = 0; c < row.size(); c++){
-                    if (curveVisible(track, (int)c)) take(row[c]);
+            if (!clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, trackEulers(t), all, flat)) continue;
+            for (size_t i = 0; i < all.size(); i++){
+                for (size_t c = 0; c < count; c++){
+                    if (visible[c]) take(flat[i * count + c]);
                 }
             }
         }
@@ -299,6 +501,7 @@ void AnimationWindowClip::frameCurveValues(bool selectedOnly){
 
 bool AnimationWindowClip::beginCurveDrag(int trackIndex, int component, std::string* error){
     refreshSelection();
+    refreshCurveSelection();
     std::shared_ptr<AnimationClipDocument> doc = document();
     if (!doc || selectedRefs.empty()){
         if (error) *error = "no keys selected";
@@ -309,31 +512,17 @@ bool AnimationWindowClip::beginCurveDrag(int trackIndex, int component, std::str
         if (error) *error = "no such track";
         return false;
     }
-    const ClipTrackData& grabbed = data.tracks[(size_t)trackIndex];
-    // the value moves on the grabbed component: of the keys of one property (blend shapes and
-    // lattices: of one track, their components differ), of one rotation key (an Euler change is
-    // not the same quaternion offset for two keys); otherwise only the time moves
-    curveValueLocked = component < 0 || component >= (int)clipcurves::componentCount(grabbed);
-    for (const AnimationClipController::KeyRef& ref : selectedRefs){
-        const ClipTrackData& track = data.tracks[ref.track];
-        if (track.channel != grabbed.channel) curveValueLocked = true;
-        if ((grabbed.channel == ClipChannel::Morph || grabbed.channel == ClipChannel::Lattice) && ref.track != (size_t)trackIndex) curveValueLocked = true;
+    // per dragged key: the components its value moves and, for a rotation, its base Euler
+    curveDragRefs = selectedRefs;
+    curveDragComponents.clear();
+    curveDragEulers.clear();
+    for (const AnimationClipController::KeyRef& ref : curveDragRefs){
+        curveDragComponents.push_back(curveDragComponentsOf(ref.track, ref.key));
+        const std::vector<Vector3>& eulers = trackEulers(ref.track);
+        curveDragEulers.push_back(ref.key < eulers.size() ? eulers[ref.key] : Vector3(0, 0, 0));
     }
-    if (grabbed.channel == ClipChannel::Rotation && selectedRefs.size() != 1) curveValueLocked = true;
-    curveDragWidth = 0;
-    curveDragQuaternion.clear();
-    for (const AnimationClipController::KeyRef& ref : selectedRefs){
-        if (ref.track != (size_t)trackIndex) continue;
-        const ClipKey& key = data.tracks[ref.track].keys[ref.key];
-        curveDragWidth = std::max(curveDragWidth, key.value.size());
-        if (grabbed.channel == ClipChannel::Rotation){
-            curveDragQuaternion = key.value;
-            const std::vector<Vector3>& eulers = trackEulers(ref.track);
-            curveDragEuler = ref.key < eulers.size() ? eulers[ref.key] : eulerOf(key.value);
-        }
-    }
-    if (grabbed.channel == ClipChannel::Rotation && curveDragQuaternion.size() != 4) curveValueLocked = true;
-    if (!controller().beginKeyDrag(selectedRefs, error)) return false;
+    curveDragSelection = curveSelection;
+    if (!controller().beginKeyDrag(curveDragRefs, error)) return false;
     curveGrabTrack = trackIndex;
     curveGrabComponent = component;
     curveDragTime = 0.0f;
@@ -350,29 +539,38 @@ bool AnimationWindowClip::updateCurveDrag(float rawTimeDelta, float valueDelta, 
     // frame snapped: the grabbed key lands on a frame; the earliest key stops at 0
     float delta = snapToFrame(dragGrabTime + rawTimeDelta) - dragGrabTime;
     delta = std::max(delta, -dragMinTime);
-    const float value = curveValueLocked || !std::isfinite(valueDelta) ? 0.0f : valueDelta;
+    const float value = std::isfinite(valueDelta) ? valueDelta : 0.0f;
     if (std::fabs(delta - curveDragTime) < 1e-6f && std::fabs(value - curveDragValue) < 1e-7f) return true;
-    std::vector<float> offset;
+    // every selected point moves by the value delta on its own curve: one absolute value per
+    // dragged key from the drag's base (rotations through their continuous Euler)
+    std::vector<AnimationClipController::KeyDragValue> values;
     if (value != 0.0f){
-        std::shared_ptr<AnimationClipDocument> doc = document();
-        const ClipChannel channel = doc && curveGrabTrack >= 0 && curveGrabTrack < (int)doc->data().tracks.size()
-            ? doc->data().tracks[(size_t)curveGrabTrack].channel : ClipChannel::Position;
-        if (channel == ClipChannel::Rotation){
-            // the grabbed key's Euler component changed: the quaternion offset from its base
-            Vector3 euler = curveDragEuler;
-            if (curveGrabComponent == 0) euler.x += value;
-            if (curveGrabComponent == 1) euler.y += value;
-            if (curveGrabComponent == 2) euler.z += value;
-            const std::vector<float> target = xyzwOf(euler);
-            offset.resize(4);
-            for (size_t i = 0; i < 4; i++) offset[i] = target[i] - curveDragQuaternion[i];
-        }else{
-            offset.assign(std::max(curveDragWidth, (size_t)curveGrabComponent + 1), 0.0f);
-            offset[(size_t)curveGrabComponent] = value;
+        const ClipData& base = controller().dragBaseData();
+        for (size_t i = 0; i < curveDragRefs.size(); i++){
+            const AnimationClipController::KeyRef& ref = curveDragRefs[i];
+            if (curveDragComponents[i].empty() || ref.track >= base.tracks.size() || ref.key >= base.tracks[ref.track].keys.size()) continue;
+            const ClipTrackData& track = base.tracks[ref.track];
+            AnimationClipController::KeyDragValue entry;
+            entry.dragIndex = i;
+            if (track.channel == ClipChannel::Rotation){
+                Vector3 euler = curveDragEulers[i];
+                for (int c : curveDragComponents[i]){
+                    if (c == 0) euler.x += value;
+                    if (c == 1) euler.y += value;
+                    if (c == 2) euler.z += value;
+                }
+                entry.value = xyzwOf(euler);
+            }else{
+                entry.value = track.keys[ref.key].value;
+                for (int c : curveDragComponents[i]){
+                    if ((size_t)c < entry.value.size()) entry.value[(size_t)c] += value;
+                }
+            }
+            values.push_back(entry);
         }
     }
     std::vector<AnimationClipController::KeyRef> moved;
-    if (!controller().updateKeyDrag(delta, offset.empty() ? nullptr : &offset, &moved, error)){
+    if (!controller().updateKeyDrag(delta, values, &moved, error)){
         controller().endKeyDrag();
         drag = Drag::None;
         return false;
@@ -380,6 +578,11 @@ bool AnimationWindowClip::updateCurveDrag(float rawTimeDelta, float valueDelta, 
     curveDragTime = delta;
     curveDragValue = value;
     setSelectionFromRefs(moved);
+    // the selected points follow their keys in time
+    curveSelection = curveDragSelection;
+    for (CurveKeyId& point : curveSelection) point.key.time = std::max(0.0f, point.key.time + delta);
+    curveSelectionVersion++;
+    refreshCurveSelection();
     return true;
 }
 
@@ -395,12 +598,14 @@ nlohmann::json AnimationWindowClip::curvesJson() const{
         const size_t count = clipcurves::componentCount(track);
         for (size_t c = 0; c < count; c++){
             nlohmann::json values = nlohmann::json::array();
+            nlohmann::json selected = nlohmann::json::array();
             for (size_t k = 0; k < track.keys.size() && k < 512; k++){
                 const std::vector<float> keyed = clipcurves::keyValues(track, k, eulers);
                 values.push_back(c < keyed.size() ? keyed[c] : 0.0f);
+                if (curvePointSelected(t, k, (int)c)) selected.push_back(track.keys[k].time);
             }
             out.push_back({{"track", t}, {"component", c}, {"label", clipcurves::componentLabel(track, c, names)},
-                           {"visible", curveVisible(track, (int)c)}, {"key_values", values}});
+                           {"visible", curveVisible(track, (int)c)}, {"key_values", values}, {"selected", selected}});
         }
     }
     return out;
@@ -420,6 +625,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         curveRangeClip = doc->path();
         frameCurveValues(false);
     }
+    refreshCurveSelection();
     const std::vector<Row> rows = buildRows();
     auto rowOfTrack = [&rows](size_t track){
         for (size_t r = 0; r < rows.size(); r++){
@@ -447,13 +653,14 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         ImGui::SameLine();
         if (row.missing) ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
         if (ImGui::Selectable(row.leaf.c_str(), false)){
-            // the property's keys (as a click on a dopesheet label)
+            // the property's keys (as a click on a dopesheet label), its curves framed
             std::vector<KeyId> ids;
             for (const ClipKey& key : track.keys) ids.push_back({track.path, track.channel, key.time});
             selectKeys(ids, io.KeyShift || io.KeyCtrl);
+            frameCurveValues(true);
         }
         if (row.missing) ImGui::PopStyleColor();
-        ImGui::SetItemTooltip("%s%s%s", row.label.c_str(), row.message.empty() ? "" : "\n", row.message.c_str());
+        ImGui::SetItemTooltip("%s%s%s\nClick: select its keys and frame its curves", row.label.c_str(), row.message.empty() ? "" : "\n", row.message.c_str());
         const std::vector<std::string> names = track.channel == ClipChannel::Morph ? componentLabels((size_t)row.track) : std::vector<std::string>();
         for (size_t k = 0; k < count; k++){
             ImGui::PushID((int)k);
@@ -500,13 +707,11 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->PushClipRect(ImVec2(x0, y0), ImVec2(x1, y1), true);
-    // the timeline is red while recording, blue while previewing (Unity)
-    const ImU32 background = c.isRecording() ? color(Theme::Colors::ErrorText, 0.22f)
-                           : c.isPreviewing() ? color(Theme::Colors::Selection, 0.28f) : color(ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
-    drawList->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), background);
+    // a neutral graph (the curves keep their contrast); Record and Preview show as a frame
+    // (red / blue) and on the ruler
+    drawList->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), color(ImVec4(0.15f, 0.15f, 0.15f, 1.0f)));
     const float clipEnd = xAt(data.effectiveLength());
     if (clipEnd < x1) drawList->AddRectFilled(ImVec2(std::max(x0, clipEnd), y0), ImVec2(x1, y1), IM_COL32(0, 0, 0, 60));
-    // frame lines
     const float visibleFrom = std::max(0.0f, timeAt(x0));
     const float visibleTo = std::max(visibleFrom, timeAt(x1));
     if (pixelsPerSecond / fps >= 8.0f * m.s){
@@ -515,84 +720,102 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             drawList->AddLine(ImVec2(x, y0), ImVec2(x, y1), IM_COL32(255, 255, 255, 12));
         }
     }
-    // the value axis: nice ticks, grid lines, labels at the left edge
+
+    // the samples of the visible range (cached until the clip, the zoom, the scroll or the
+    // visibility change)
+    refreshCurveCache(visibleFrom, visibleTo, 2.0f * m.s / pixelsPerSecond);
+
+    // the value axis: nice ticks, grid lines, labels at the left edge; the unit while only
+    // rotations (Euler degrees) are shown
+    bool onlyRotations = true, anyShown = false;
+    for (size_t t = 0; t < data.tracks.size() && t < curveCache.tracks.size(); t++){
+        if (!curveCache.tracks[t].anyVisible) continue;
+        anyShown = true;
+        onlyRotations = onlyRotations && data.tracks[t].channel == ClipChannel::Rotation;
+    }
     const float step = clipcurves::niceStep(curveMax - curveMin, graphH, 26.0f * m.s);
     for (float tick : clipcurves::ticks(curveMin, curveMax, step)){
         const float y = yAt(tick);
         drawList->AddLine(ImVec2(x0, y), ImVec2(x1, y), tick == 0.0f ? IM_COL32(255, 255, 255, 45) : IM_COL32(255, 255, 255, 18));
-        const std::string label = formatValue(tick, step);
+        const std::string label = formatValue(tick, step) + (anyShown && onlyRotations ? "\xC2\xB0" : "");
         drawList->AddText(ImVec2(x0 + 3.0f * m.s, y - ImGui::GetTextLineHeight() - 1.0f * m.s), color(Theme::Colors::SubtleText), label.c_str());
     }
 
-    // the curves: the runtime sampler every 2 px of the visible range (and at the keys)
-    std::shared_ptr<const AnimationClip> clip = doc->clip();
-    std::vector<float> grid;
-    {
-        const float stepTime = 2.0f * m.s / pixelsPerSecond;
-        for (float t = visibleFrom; t <= visibleTo + stepTime; t += stepTime) grid.push_back(t);
-        if (grid.size() > 4096) grid.resize(4096);
-    }
+    // the curves and key points from the cache
     std::vector<CurvePoint> points;
     const float keyRadius = 4.0f * m.s;
     const ImVec4 selectedColour = selectedKeyColor();
-    for (size_t t = 0; t < data.tracks.size() && clip; t++){
+    std::vector<ImVec2> line;
+    const float bucket = 4.0f * m.s;       // dense keys: one point per 4 px column per curve
+    for (size_t t = 0; t < data.tracks.size() && t < curveCache.tracks.size(); t++){
         const ClipTrackData& track = data.tracks[t];
-        const size_t count = clipcurves::componentCount(track);
-        bool any = false;
-        for (size_t k = 0; k < count; k++) any = any || curveVisible(track, (int)k);
-        if (!any || track.keys.empty()) continue;
-        const int index = clip->findTrack(track.path, track.channel);
-        if (index < 0) continue;
-        const AnimationClip::Track& runtime = clip->getTracks()[(size_t)index];
-        // the keys in the visible range, sampled with the grid (rotation continuity at keys)
-        const auto first = std::lower_bound(track.keys.begin(), track.keys.end(), visibleFrom - m.keyHit / pixelsPerSecond,
-                                             [](const ClipKey& k, float time){ return k.time < time; });
-        const auto last = std::upper_bound(track.keys.begin(), track.keys.end(), visibleTo + m.keyHit / pixelsPerSecond,
-                                           [](float time, const ClipKey& k){ return time < k.time; });
-        std::vector<float> times = grid;
-        for (auto it = first; it != last; ++it) times.push_back(it->time);
-        std::sort(times.begin(), times.end());
-        std::vector<std::vector<float>> samples;
-        if (!clipcurves::sampleCurves(runtime, track, times, samples)) continue;
-        std::vector<ImVec2> line(times.size());
+        const CurveTrackCache& entry = curveCache.tracks[t];
+        if (!entry.anyVisible || entry.times.empty() || entry.values.size() != entry.times.size() * entry.components) continue;
+        const size_t count = entry.components;
+        line.resize(entry.times.size());
         for (size_t k = 0; k < count; k++){
-            if (!curveVisible(track, (int)k)) continue;
-            for (size_t i = 0; i < times.size(); i++) line[i] = ImVec2(xAt(times[i]), yAt(samples[i][k]));
-            drawList->AddPolyline(line.data(), (int)line.size(), color(curveColor(track, k), readOnly ? 0.6f : 0.95f), ImDrawFlags_None, 1.5f * m.s);
+            if (!entry.visible[k]) continue;
+            for (size_t i = 0; i < entry.times.size(); i++) line[i] = ImVec2(xAt(entry.times[i]), yAt(entry.values[i * count + k]));
+            drawList->AddPolyline(line.data(), (int)line.size(), color(curveColor(track, k), readOnly ? 0.6f : 0.95f), ImDrawFlags_None, 1.0f * m.s);
         }
-        // key points (and the read-only tangents of keys that carry them)
-        const std::vector<Vector3>& eulers = trackEulers(t);
-        for (auto it = first; it != last; ++it){
-            const size_t keyIndex = (size_t)(it - track.keys.begin());
-            const std::vector<float> values = clipcurves::keyValues(track, keyIndex, eulers);
-            const bool selected = isSelected(t, keyIndex);
-            const float x = xAt(it->time);
-            float inSlope = 0.0f, outSlope = 0.0f;
-            std::vector<std::vector<float>> around;
-            const float h = 0.25f / fps;
-            if (it->hasTangents()) clipcurves::sampleCurves(runtime, track, {it->time - h, it->time, it->time + h}, around);
-            for (size_t k = 0; k < count && k < values.size(); k++){
-                if (!curveVisible(track, (int)k)) continue;
-                const float y = yAt(values[k]);
-                if (around.size() == 3){
-                    // the curve's slopes at the key (value units per second), drawn as handles
-                    inSlope = (around[1][k] - around[0][k]) / h;
-                    outSlope = (around[2][k] - around[1][k]) / h;
-                    const float length = 28.0f * m.s;
-                    auto handle = [&](float slope, float side){
-                        const ImVec2 dir(side * 1.0f, -slope * pixelsPerValue / pixelsPerSecond * side);
-                        const float norm = std::sqrt(dir.x * dir.x + dir.y * dir.y);
-                        const ImVec2 end(x + dir.x / norm * length, y + dir.y / norm * length);
-                        drawList->AddLine(ImVec2(x, y), end, color(Theme::Colors::SubtleText, 0.8f), 1.0f * m.s);
-                        drawList->AddCircle(end, 2.5f * m.s, color(Theme::Colors::SubtleText, 0.8f));
-                    };
-                    if (keyIndex > 0) handle(inSlope, -1.0f);
-                    if (keyIndex + 1 < track.keys.size()) handle(outSlope, 1.0f);
+        // key points in the visible range: thinned where keys are denser than a few pixels
+        // (selected points always show), outlined only where they are apart
+        const auto first = std::lower_bound(track.keys.begin(), track.keys.end(), visibleFrom - m.keyHit / pixelsPerSecond,
+                                             [](const ClipKey& key, float time){ return key.time < time; });
+        const auto last = std::upper_bound(track.keys.begin(), track.keys.end(), visibleTo + m.keyHit / pixelsPerSecond,
+                                           [](float time, const ClipKey& key){ return time < key.time; });
+        const size_t begin = (size_t)(first - track.keys.begin()), end = (size_t)(last - track.keys.begin());
+        if (begin >= end || entry.keyValues.size() != track.keys.size() * count) continue;
+        const float spacing = end - begin > 1 ? (xAt(track.keys[end - 1].time) - xAt(track.keys[begin].time)) / (float)(end - begin - 1) : 1e9f;
+        const bool outline = spacing >= 8.0f * m.s;
+        for (size_t k = 0; k < count; k++){
+            if (!entry.visible[k]) continue;
+            const ImVec4 colour = curveColor(track, k);
+            float lastX = -1e9f;
+            for (size_t key = begin; key < end; key++){
+                const float x = xAt(track.keys[key].time);
+                const bool selected = curvePointSelected(t, key, (int)k);
+                if (!selected && x - lastX < bucket) continue;
+                lastX = x;
+                const float value = entry.keyValues[key * count + k];
+                const float y = yAt(value);
+                if (outline || selected){
+                    drawList->AddCircleFilled(ImVec2(x, y), keyRadius, color(selected ? selectedColour : colour, readOnly ? 0.6f : 1.0f), 10);
+                    drawList->AddCircle(ImVec2(x, y), keyRadius, IM_COL32(20, 20, 20, 255), 10, 1.0f * m.s);
+                }else{
+                    const float r = 2.5f * m.s;
+                    drawList->AddRectFilled(ImVec2(x - r, y - r), ImVec2(x + r, y + r), color(colour, readOnly ? 0.6f : 1.0f));
                 }
-                const ImVec4 fill = selected ? selectedColour : curveColor(track, k);
-                drawList->AddCircleFilled(ImVec2(x, y), keyRadius, color(fill, readOnly ? 0.6f : 1.0f));
-                drawList->AddCircle(ImVec2(x, y), keyRadius, IM_COL32(20, 20, 20, 255), 0, 1.0f * m.s);
-                points.push_back({t, keyIndex, (int)k, it->time, values[k]});
+                points.push_back({t, key, (int)k, track.keys[key].time, value});
+                // tangents (read-only) of selected keys that carry them: the stored tangents
+                // (value units per second); a rotation's from its sampled curve
+                if (!selected || !track.keys[key].hasTangents()) continue;
+                float inSlope = 0.0f, outSlope = 0.0f;
+                if (track.channel == ClipChannel::Rotation){
+                    std::shared_ptr<const AnimationClip> clip = doc->clip();
+                    const int index = clip ? clip->findTrack(track.path, track.channel) : -1;
+                    const float h = 0.25f / fps;
+                    std::vector<float> around;
+                    if (index < 0 || !clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, entry.eulers,
+                                                                   {track.keys[key].time - h, track.keys[key].time, track.keys[key].time + h}, around)) continue;
+                    inSlope = (around[count + k] - around[k]) / h;
+                    outSlope = (around[2 * count + k] - around[count + k]) / h;
+                }else{
+                    const ClipKey& keyed = track.keys[key];
+                    if (k >= keyed.inTangent.size() || k >= keyed.outTangent.size()) continue;
+                    inSlope = keyed.inTangent[k];
+                    outSlope = keyed.outTangent[k];
+                }
+                const float length = 28.0f * m.s;
+                auto handle = [&](float slope, float side){
+                    const ImVec2 dir(side, -slope * pixelsPerValue / pixelsPerSecond * side);
+                    const float norm = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+                    const ImVec2 tip(x + dir.x / norm * length, y + dir.y / norm * length);
+                    drawList->AddLine(ImVec2(x, y), tip, color(Theme::Colors::SubtleText, 0.9f), 1.0f * m.s);
+                    drawList->AddCircle(tip, 2.5f * m.s, color(Theme::Colors::SubtleText, 0.9f));
+                };
+                if (key > 0) handle(inSlope, -1.0f);
+                if (key + 1 < track.keys.size()) handle(outSlope, 1.0f);
             }
         }
     }
@@ -602,6 +825,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
     ImGui::InvisibleButton("##curve_graph", ImVec2(graphW, y1 - y0),
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
     const bool hovered = ImGui::IsItemHovered();
+    const bool active = ImGui::IsItemActive();
     // the key point under the mouse (the nearest)
     int hoveredPoint = -1;
     float best = m.keyHit * m.keyHit;
@@ -615,25 +839,37 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
     }
     auto pointId = [&](const CurvePoint& point){
         const ClipTrackData& track = data.tracks[point.track];
-        return KeyId{track.path, track.channel, point.time};
+        return CurveKeyId{KeyId{track.path, track.channel, point.time}, point.component};
     };
     if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
         const bool additive = io.KeyShift || io.KeyCtrl;
         dragStart = io.MousePos;
         if (hoveredPoint >= 0){
             const CurvePoint& point = points[(size_t)hoveredPoint];
-            const bool already = isSelected(point.track, point.key);
+            const bool already = curvePointSelected(point.track, point.key, point.component);
             if (io.KeyCtrl && already){
-                std::vector<KeyId> kept;
-                const KeyId id = pointId(point);
-                for (const KeyId& other : selection){
-                    if (!(other.path == id.path && other.channel == id.channel && std::fabs(other.time - id.time) <= kKeyEpsilon)) kept.push_back(other);
+                // Ctrl toggles the point off
+                const CurveKeyId id = pointId(point);
+                std::vector<CurveKeyId> kept;
+                if (!curveSelectedKeys.count({point.track, point.key})){
+                    // a whole key: its other visible points stay
+                    for (int comp : curveDragComponentsOf(point.track, point.key)){
+                        if (comp != point.component) kept.push_back({id.key, comp});
+                    }
                 }
-                selection = kept;
-                refreshSelection();
+                for (const CurveKeyId& other : curveSelection){
+                    if (!(other.key == id.key && other.component == id.component)) kept.push_back(other);
+                }
+                std::vector<KeyId> keys;
+                for (const KeyId& key : selection){
+                    if (!(key == id.key)) keys.push_back(key);
+                }
+                selection = keys;
+                curveSelection.clear();
+                selectCurvePoints(kept, true);
                 drag = Drag::None;
             }else{
-                if (!already) selectKeys({pointId(point)}, additive);
+                if (!already) selectCurvePoints({pointId(point)}, additive);
                 dragGrabTime = point.time;
                 curveGrabTrack = (int)point.track;
                 curveGrabComponent = point.component;
@@ -644,6 +880,8 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
         }else{
             if (!additive){
                 selection.clear();
+                curveSelection.clear();
+                curveSelectionVersion++;
                 selectEvent(-1);
                 refreshSelection();
             }
@@ -651,15 +889,11 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             drag = Drag::CurveBox;
         }
     }
-    if (ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left)){
+    if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left)){
         const ImVec2 moved(io.MousePos.x - dragStart.x, io.MousePos.y - dragStart.y);
         if (drag == Drag::PendingCurve && (std::fabs(moved.x) > 3.0f * m.s || std::fabs(moved.y) > 3.0f * m.s)){
             std::string error;
-            if (!readOnly && beginCurveDrag(curveGrabTrack, curveGrabComponent, &error)){
-                if (curveValueLocked && std::fabs(moved.y) > std::fabs(moved.x)){
-                    setNotice("Value drags move the keys of one property (or one rotation key) at a time: this drag moves time only", true);
-                }
-            }else{
+            if (readOnly || !beginCurveDrag(curveGrabTrack, curveGrabComponent, &error)){
                 setNotice(readOnly ? std::string("Read-only clip: extract it to edit it") : error, true);
                 drag = Drag::None;
             }
@@ -689,40 +923,54 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             const ImVec2 a(std::min(dragStart.x, io.MousePos.x), std::min(dragStart.y, io.MousePos.y));
             const ImVec2 b(std::max(dragStart.x, io.MousePos.x), std::max(dragStart.y, io.MousePos.y));
             if (b.x - a.x > 2.0f * m.s || b.y - a.y > 2.0f * m.s){
-                std::vector<KeyId> found;
-                for (const CurvePoint& point : points){
-                    const float x = xAt(point.time), y = yAt(point.value);
-                    if (x >= a.x && x <= b.x && y >= a.y && y <= b.y) found.push_back(pointId(point));
+                // every key point inside (also the thinned ones): from the cached key values
+                std::vector<CurveKeyId> found;
+                for (size_t t = 0; t < data.tracks.size() && t < curveCache.tracks.size(); t++){
+                    const ClipTrackData& track = data.tracks[t];
+                    const CurveTrackCache& entry = curveCache.tracks[t];
+                    if (!entry.anyVisible || entry.keyValues.size() != track.keys.size() * entry.components) continue;
+                    const auto from = std::lower_bound(track.keys.begin(), track.keys.end(), timeAt(a.x),
+                                                       [](const ClipKey& key, float time){ return key.time < time; });
+                    for (auto it = from; it != track.keys.end() && xAt(it->time) <= b.x; ++it){
+                        const size_t key = (size_t)(it - track.keys.begin());
+                        for (size_t k = 0; k < entry.components; k++){
+                            if (!entry.visible[k]) continue;
+                            const float y = yAt(entry.keyValues[key * entry.components + k]);
+                            if (y >= a.y && y <= b.y) found.push_back({KeyId{track.path, track.channel, it->time}, (int)k});
+                        }
+                    }
                 }
-                selectKeys(found, dragAdditive);
+                selectCurvePoints(found, dragAdditive);
             }
             drag = Drag::None;
         }else{
-            // a click (no drag) on one of several selected keys selects it alone
-            if (!dragAdditive && hoveredPoint >= 0) selectKeys({pointId(points[(size_t)hoveredPoint])}, false);
+            // a click (no drag) on one of several selected points selects it alone
+            if (!dragAdditive && hoveredPoint >= 0) selectCurvePoints({pointId(points[(size_t)hoveredPoint])}, false);
             drag = Drag::None;
         }
     }
     if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && drag == Drag::None){
         contextRow = -1;
         contextTime = snapToFrame(std::max(0.0f, timeAt(io.MousePos.x)));
+        std::shared_ptr<const AnimationClip> clip = doc->clip();
         if (hoveredPoint >= 0){
             const CurvePoint& point = points[(size_t)hoveredPoint];
-            if (!isSelected(point.track, point.key)) selectKeys({pointId(point)}, false);
+            if (!curvePointSelected(point.track, point.key, point.component)) selectCurvePoints({pointId(point)}, false);
             contextRow = rowOfTrack(point.track);
             contextTime = point.time;
         }else if (clip){
             // a curve segment under the mouse: its ease is its first key's (the menu's Interpolation)
             const float time = timeAt(io.MousePos.x);
-            for (size_t t = 0; t < data.tracks.size(); t++){
+            std::vector<float> sample;
+            for (size_t t = 0; t < data.tracks.size() && t < curveCache.tracks.size(); t++){
                 const ClipTrackData& track = data.tracks[t];
+                const CurveTrackCache& entry = curveCache.tracks[t];
                 const int index = clip->findTrack(track.path, track.channel);
-                if (index < 0 || track.keys.size() < 2 || time < track.keys.front().time || time > track.keys.back().time) continue;
-                std::vector<std::vector<float>> sample;
-                if (!clipcurves::sampleCurves(clip->getTracks()[(size_t)index], track, {time}, sample)) continue;
+                if (!entry.anyVisible || index < 0 || track.keys.size() < 2 || time < track.keys.front().time || time > track.keys.back().time) continue;
+                if (!clipcurves::sampleCurvesFlat(clip->getTracks()[(size_t)index], track, entry.eulers, {time}, sample)) continue;
                 bool near = false;
-                for (size_t k = 0; k < sample[0].size(); k++){
-                    near = near || (curveVisible(track, (int)k) && std::fabs(yAt(sample[0][k]) - io.MousePos.y) <= 5.0f * m.s);
+                for (size_t k = 0; k < entry.components; k++){
+                    near = near || (entry.visible[k] && std::fabs(yAt(sample[k]) - io.MousePos.y) <= 5.0f * m.s);
                 }
                 if (!near) continue;
                 const auto after = std::upper_bound(track.keys.begin(), track.keys.end(), time,
@@ -746,7 +994,7 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
                           track.channel == ClipChannel::Rotation ? " deg" : "");
     }
     // the wheel zooms the values at the mouse (Ctrl: time, Shift: pan, as in the dopesheet); the
-    // middle button pans both
+    // middle button pans time and values
     if (hovered && io.MouseWheel != 0.0f && !io.KeyCtrl && !io.KeyShift){
         const float anchor = valueAt(io.MousePos.y);
         const float factor = 1.0f - io.MouseWheel * 0.1f;
@@ -757,15 +1005,20 @@ void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, 
             curveMax = high;
         }
     }
-    if (hovered && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)){
+    if (active && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)){
         const float shift = io.MouseDelta.y / pixelsPerValue;
         curveMin += shift;
         curveMax += shift;
+        scrollX = std::max(0.0f, scrollX - io.MouseDelta.x);
     }
 
-    // the playhead
+    // the playhead, and the Record (red) / Preview (blue) frame
     const float playX = xAt(c.getTime());
     if (playX >= x0 && playX <= x1) drawList->AddLine(ImVec2(playX, y0), ImVec2(playX, y1), color(playheadColor()), 1.5f * m.s);
+    if (c.isRecording() || c.isPreviewing()){
+        const ImVec4 frame = c.isRecording() ? Theme::Colors::ErrorText : Theme::Colors::Selection;
+        drawList->AddRect(ImVec2(x0 + 1.0f * m.s, y0 + 1.0f * m.s), ImVec2(x1 - 1.0f * m.s, y1 - 1.0f * m.s), color(frame, 0.95f), 0.0f, 0, 2.0f * m.s);
+    }
     drawList->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(origin.x, y1));
 }

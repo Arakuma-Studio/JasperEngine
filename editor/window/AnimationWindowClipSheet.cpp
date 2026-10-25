@@ -690,6 +690,12 @@ void AnimationWindowClip::askExtract(SceneProject* sceneProject){
 
 bool AnimationWindowClip::selectKeys(const std::vector<KeyId>& keys, bool additive){
     if (!additive) selection.clear();
+    // whole keys: no per-curve point selection any more (the curves view's own clicks use
+    // selectCurvePoints)
+    if (!curveSelection.empty()){
+        curveSelection.clear();
+        curveSelectionVersion++;
+    }
     selection.insert(selection.end(), keys.begin(), keys.end());
     // one selection (Unity): keys and the event don't stay selected together
     if (!keys.empty() || !additive) selectEvent(-1);

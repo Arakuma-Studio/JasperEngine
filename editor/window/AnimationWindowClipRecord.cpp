@@ -9,19 +9,20 @@
 //   the scene goes back to its snapshot. Ctrl+Z goes to the project history while the newest step
 //   is a recorded key (R5b, the controller's undo routing).
 // - Settings: the label column width and the Dopesheet / Curves choice are kept in the editor's
-//   layout ini (an ImGui settings handler, [JasperAnimationWindow][Clip]), read on the window's
-//   first frame and written when they change.
+//   layout ini (an ImGui settings handler, [JasperAnimationWindow][Clip], registered by the App
+//   before the ini loads: registerSettingsHandler), applied on the window's first frame and
+//   written when they change.
 
 #include "AnimationWindowClip.h"
 #include "AnimationWindowClipUtil.h"
 
 #include "imgui_internal.h"
+#include "external/IconsFontAwesome6.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/ClipBinding.h"
 
 #include <cstdio>
-#include <fstream>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -32,7 +33,6 @@ namespace {
     struct SavedSettings{
         float labelWidth = -1.0f;
         int view = -1;
-        bool registered = false;
     };
 
     SavedSettings& saved(){
@@ -49,46 +49,6 @@ namespace {
         else if (std::sscanf(line, "View=%d", &view) == 1) saved().view = view;
     }
 
-    // the handler (ImGui writes every handler's data when it saves the ini); an ini loaded before
-    // it was registered is read here from the file
-    void registerSettings(){
-        SavedSettings& settings = saved();
-        if (settings.registered || !ImGui::GetCurrentContext()) return;
-        settings.registered = true;
-        if (!ImGui::FindSettingsHandler(SETTINGS_TYPE)){
-            ImGuiSettingsHandler handler;
-            handler.TypeName = SETTINGS_TYPE;
-            handler.TypeHash = ImHashStr(SETTINGS_TYPE);
-            handler.ReadOpenFn = [](ImGuiContext*, ImGuiSettingsHandler*, const char*) -> void* {
-                return reinterpret_cast<void*>(1);
-            };
-            handler.ReadLineFn = [](ImGuiContext*, ImGuiSettingsHandler*, void*, const char* line){ readLine(line); };
-            handler.WriteAllFn = [](ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiTextBuffer* buf){
-                const SavedSettings& values = saved();
-                if (values.labelWidth < 0.0f && values.view < 0) return;
-                buf->appendf("[%s][Clip]\n", handler->TypeName);
-                if (values.labelWidth >= 0.0f) buf->appendf("LabelWidth=%.1f\n", values.labelWidth);
-                if (values.view >= 0) buf->appendf("View=%d\n", values.view);
-                buf->append("\n");
-            };
-            ImGui::AddSettingsHandler(&handler);
-        }
-        const char* path = ImGui::GetIO().IniFilename;
-        if (!path || !*path) return;
-        std::ifstream file(path);
-        std::string line;
-        const std::string header = std::string("[") + SETTINGS_TYPE + "][";
-        bool inSection = false;
-        while (std::getline(file, line)){
-            if (!line.empty() && line.back() == '\r') line.pop_back();
-            if (!line.empty() && line[0] == '['){
-                inSection = line.compare(0, header.size(), header) == 0;
-                continue;
-            }
-            if (inSection) readLine(line.c_str());
-        }
-    }
-
 }
 
 // ---- Record ----
@@ -97,9 +57,10 @@ bool AnimationWindowClip::setRecording(SceneProject* sceneProject, bool on, std:
     AnimationClipController& c = controller();
     if (on == c.isRecording()) return true;
     if (!on){
-        // leaving Record ends the preview: the scene goes back to its snapshot (Unity)
+        // leaving Record goes back to how it was before (Unity): the preview stops (the scene
+        // goes back to its snapshot) unless it was on before Record
         c.setRecording(false);
-        stopPreview();
+        if (!previewBeforeRecord) stopPreview();
         return true;
     }
     std::shared_ptr<AnimationClipDocument> doc = document();
@@ -116,6 +77,7 @@ bool AnimationWindowClip::setRecording(SceneProject* sceneProject, bool on, std:
         return false;
     }
     // Record keys what the preview shows (a target-less clip previews on its model)
+    previewBeforeRecord = c.isPreviewing();
     if (!c.isPreviewing() && !startPreview(sceneProject, error)) return false;
     c.setRecording(true);
     if (!c.isRecording()){
@@ -125,7 +87,11 @@ bool AnimationWindowClip::setRecording(SceneProject* sceneProject, bool on, std:
     return true;
 }
 
-std::string AnimationWindowClip::recordStatus() const{
+bool AnimationWindowClip::isRecording() const{
+    return controllerUsed && controller().isRecording();
+}
+
+std::string AnimationWindowClip::recordStatus(bool full) const{
     if (!controllerUsed) return std::string();
     AnimationClipController& c = controller();
     if (!c.isRecording()) return std::string();
@@ -134,14 +100,20 @@ std::string AnimationWindowClip::recordStatus() const{
     if (!sceneProject || !sceneProject->scene || root == NULL_ENTITY || !sceneProject->scene->isEntityCreated(root)) return std::string();
     Scene* scene = sceneProject->scene;
     const std::string rootName = scene->getEntityName(root);
-    std::string text = "Recording: edits of " + rootName + " key frame " +
-                       std::to_string((long)std::lround(c.getTime() * frameRate()));
+    const std::string frame = std::to_string((long)std::lround(c.getTime() * frameRate()));
     // selected GameObjects Record does not key stay as they are when edited with the bound ones
     size_t outside = 0;
     std::string path;
     for (Entity entity : project->getSelectedEntities(sceneProject->id)){
         if (!scene->isEntityCreated(entity) || !anim::relativePath(scene, root, entity, path)) outside++;
     }
+    if (!full){
+        // the bottom status (the full text is its tooltip)
+        std::string text = ICON_FA_CIRCLE " Rec frame " + frame + " \xC2\xB7 " + rootName;
+        if (outside > 0) text += " \xC2\xB7 " + std::to_string(outside) + " not keyed";
+        return text;
+    }
+    std::string text = "Recording: edits of " + rootName + " key frame " + frame;
     if (outside > 0){
         text += "; " + std::to_string(outside) + (outside == 1 ? " selected GameObject is" : " selected GameObjects are") +
                 " not under " + rootName + " and stay" + (outside == 1 ? "s" : "") + " as " + (outside == 1 ? "it is" : "they are");
@@ -151,9 +123,32 @@ std::string AnimationWindowClip::recordStatus() const{
 
 // ---- settings ----
 
+void AnimationWindowClip::registerSettingsHandler(){
+    // the App calls this right after creating the ImGui context, before the first frame loads the
+    // ini: ImGui drops sections of unknown handlers at load and writes only registered ones, so a
+    // session that never shows the window keeps the saved values (T3c review I6)
+    if (!ImGui::GetCurrentContext() || ImGui::FindSettingsHandler(SETTINGS_TYPE)) return;
+    ImGuiSettingsHandler handler;
+    handler.TypeName = SETTINGS_TYPE;
+    handler.TypeHash = ImHashStr(SETTINGS_TYPE);
+    handler.ReadOpenFn = [](ImGuiContext*, ImGuiSettingsHandler*, const char*) -> void* {
+        return reinterpret_cast<void*>(1);
+    };
+    handler.ReadLineFn = [](ImGuiContext*, ImGuiSettingsHandler*, void*, const char* line){ readLine(line); };
+    handler.WriteAllFn = [](ImGuiContext*, ImGuiSettingsHandler* handler, ImGuiTextBuffer* buf){
+        const SavedSettings& values = saved();
+        if (values.labelWidth < 0.0f && values.view < 0) return;
+        buf->appendf("[%s][Clip]\n", handler->TypeName);
+        if (values.labelWidth >= 0.0f) buf->appendf("LabelWidth=%.1f\n", values.labelWidth);
+        if (values.view >= 0) buf->appendf("View=%d\n", values.view);
+        buf->append("\n");
+    };
+    ImGui::AddSettingsHandler(&handler);
+}
+
 void AnimationWindowClip::loadSettings(){
     settingsLoaded = true;
-    registerSettings();
+    registerSettingsHandler();
     const SavedSettings& values = saved();
     if (values.labelWidth > 0.0f) labelWidth = std::clamp(values.labelWidth, 160.0f, 900.0f);
     if (values.view == 0) view = View::Dopesheet;
@@ -161,7 +156,7 @@ void AnimationWindowClip::loadSettings(){
 }
 
 void AnimationWindowClip::saveSettings(){
-    registerSettings();
+    registerSettingsHandler();
     SavedSettings& values = saved();
     const int shown = view == View::Curves ? 1 : 0;
     if (values.labelWidth == labelWidth && values.view == shown) return;

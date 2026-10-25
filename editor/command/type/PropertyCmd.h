@@ -108,6 +108,8 @@ namespace jasperengine::editor{
         std::map<Entity,PropertyCmdValue<T>> values;
         // Unity: a value edited on a prefab instance's GameObject is an override of it
         PrefabEditUndo prefabUndo;
+        // the first execute ran (components left as a clip preview showed them were put back)
+        bool executed = false;
 
     public:
 
@@ -127,6 +129,18 @@ namespace jasperengine::editor{
             if (!sceneProject){
                 return false;
             }
+            // A Transform Position / Scale row edits one component and carries the others as the
+            // Scene view shows them: with a clip preview those may be previewed values. Read them
+            // before the rest is put back, so a component left as shown keeps its rest (T3c review C1)
+            std::map<Entity, T> shown;
+            if constexpr (std::is_same_v<T, Vector3>) {
+                if (!executed && type == ComponentType::Transform && (propertyName == "position" || propertyName == "scale")){
+                    for (const auto& entry : values){
+                        PropertyData prop = Catalog::findProperty(sceneProject->scene, entry.first, type, propertyName);
+                        if (prop.ref) shown[entry.first] = *static_cast<T*>(prop.ref);
+                    }
+                }
+            }
             // a posed bone (Pose window) or a previewed channel (clip preview) goes back to its rest
             // first: the command records and edits the rest (animation clips 9.R5/R6)
             for (const auto& entry : values) ClipRecordHooks::beforeComponentWrite(sceneId, entry.first, type, propertyName);
@@ -139,6 +153,15 @@ namespace jasperengine::editor{
                 }
 
                 value.oldValue = T(*valueRef);
+                if constexpr (std::is_same_v<T, Vector3>) {
+                    auto it = shown.find(entity);
+                    if (it != shown.end()){
+                        const Vector3& seen = it->second;
+                        if (value.newValue.x == seen.x && value.oldValue.x != seen.x) value.newValue.x = value.oldValue.x;
+                        if (value.newValue.y == seen.y && value.oldValue.y != seen.y) value.newValue.y = value.oldValue.y;
+                        if (value.newValue.z == seen.z && value.oldValue.z != seen.z) value.newValue.z = value.oldValue.z;
+                    }
+                }
                 prefabUndo.capture(project, sceneId, entity);
                 *valueRef = value.newValue;
 
@@ -166,6 +189,7 @@ namespace jasperengine::editor{
             }
 
             sceneProject->isModified = true;
+            executed = true;
 
             for (const auto& entry : values) ClipRecordHooks::afterComponentWrite(sceneId, entry.first, type, propertyName);
 

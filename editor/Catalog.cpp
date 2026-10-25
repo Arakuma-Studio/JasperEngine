@@ -892,6 +892,19 @@ namespace {
         PropertyData result = resolveDirectProperties(comp, propertyName, kMeshTopProperties);
         if (result.ref) return result;
 
+        // morphWeights[N]: one blend shape weight, so a prefab instance overrides weights one by
+        // one (the Inspector's Blend Shapes rows, animation clips T3c)
+        if (propertyName.compare(0, 13, "morphWeights[") == 0) {
+            size_t pos = 13;
+            size_t weight = 0;
+            if (!parseIndex(propertyName, pos, weight) || pos + 1 != propertyName.size() || propertyName[pos] != ']' ||
+                weight >= (size_t)MAX_MORPHTARGETS) {
+                return PropertyData();
+            }
+            static float defWeight = 0.0f;
+            return {PropertyType::Float, UpdateFlags_None, (void*)&defWeight, (void*)&comp->morphWeights[weight]};
+        }
+
         // Submeshes: submeshes[N].field
         if (propertyName.compare(0, 10, "submeshes[") != 0) {
             return PropertyData();
@@ -3089,6 +3102,12 @@ namespace {
         MeshComponent& def = getDefaultComponent<MeshComponent>();
 
         enumerateFromDescriptors(compRef, ps, kMeshTopProperties);
+
+        static float defWeight = 0.0f;
+        for (int w = 0; w < (compRef ? MAX_MORPHTARGETS : 1); w++) {
+            std::string idx = compRef ? std::to_string(w) : "";
+            ps["morphWeights[" + idx + "]"] = {PropertyType::Float, UpdateFlags_None, (void*)&defWeight, compRef ? (void*)&comp->morphWeights[w] : nullptr};
+        }
 
         for (int s = 0; s < (compRef ? (int)comp->submeshes.size() : 1); s++) {
             std::string idx = compRef ? std::to_string(s) : "";

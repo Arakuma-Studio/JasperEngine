@@ -23,6 +23,10 @@
 #include "animation/KeyframeSampling.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/MorphWeightsCmd.h"
+#include "component/MeshComponent.h"
+#include "window/AnimationWindowClip.h"
+#include "imgui.h"
 #include "component/LatticeComponent.h"
 #include "component/ModelComponent.h"
 #include "lattice/LatticeEditorOps.h"
@@ -343,7 +347,7 @@ namespace {
             setEditorHost(&host);
         }
         void TearDown() override {
-            ClipRecordHooks::endDrag();
+            ClipRecordHooks::endAllGestures();
             AnimationClipController::release(project());
             setEditorHost(nullptr);
         }
@@ -370,17 +374,24 @@ TEST_F(ClipRecordSourcesTest, SourceHelpers) {
     EXPECT_EQ(ClipRecordHooks::transformValue(ClipChannel::Scale, Vector3(1, 2, 3), Quaternion(), Vector3(4, 5, 6)).value, (std::vector<float>{4, 5, 6}));
     EXPECT_EQ(ClipRecordHooks::transformValue(ClipChannel::Position, Vector3(1, 2, 3), Quaternion(), Vector3(4, 5, 6)).value, (std::vector<float>{1, 2, 3}));
 
-    // a gesture opens a drag when none is open, else joins the open one
+    // a source's gesture opens when it has none, else joins its own; another source's is never
+    // joined; Record stopping ends every gesture
     bool opened = false;
-    const std::string first = ClipRecordHooks::gestureMergeKey(&opened);
+    const std::string first = ClipRecordHooks::gestureMergeKey(RecordSource::Gizmo, &opened);
     EXPECT_TRUE(opened);
     EXPECT_EQ(first.rfind("record#", 0), 0u);
-    const std::string joined = ClipRecordHooks::gestureMergeKey(&opened);
+    const std::string joined = ClipRecordHooks::gestureMergeKey(RecordSource::Gizmo, &opened);
     EXPECT_FALSE(opened);
     EXPECT_EQ(joined, first);
-    ClipRecordHooks::endDrag();
-    EXPECT_NE(ClipRecordHooks::gestureMergeKey(&opened), first) << "a new gesture, a new merge key";
-    ClipRecordHooks::endDrag();
+    const std::string other = ClipRecordHooks::gestureMergeKey(RecordSource::Inspector, &opened);
+    EXPECT_TRUE(opened);
+    EXPECT_NE(other, first) << "another source: its own gesture";
+    ClipRecordHooks::endGesture(RecordSource::Inspector);
+    EXPECT_TRUE(ClipRecordHooks::hasGesture(RecordSource::Gizmo)) << "ending one source's gesture leaves the others";
+    ClipRecordHooks::endGesture(RecordSource::Gizmo);
+    EXPECT_NE(ClipRecordHooks::gestureMergeKey(RecordSource::Gizmo, &opened), first) << "a new gesture, a new merge key";
+    c.setRecording(false);
+    EXPECT_FALSE(ClipRecordHooks::hasGesture(RecordSource::Gizmo)) << "no gesture outlives Record";
     c.stopPreview();
 }
 
@@ -428,11 +439,9 @@ TEST_F(ClipRecordSourcesTest, LatticeDragsRecordOneKeyEditPerDrag) {
     EXPECT_EQ(project()->getProjectCommandHistory()->position(), projectSteps + 2);
     EXPECT_EQ(c.getDocument()->data().tracks[(size_t)c.getDocument()->data().findTrack("Cage", ClipChannel::Lattice)].points, (std::vector<int>{2, 4}));
 
-    // an Inspector row (which opens a gesture first) is recorded
-    bool opened = false;
-    ClipRecordHooks::gestureMergeKey(&opened);
-    ASSERT_TRUE(LatticeEditorOps::setOffsets(project(), s.id, s.cage, {1}, {Vector3(0, 0, 0.25f)}, &error)) << error;
-    ClipRecordHooks::endDrag();
+    // the Inspector's Offset row (asks to record) is recorded, its own one-step gesture
+    ASSERT_TRUE(LatticeEditorOps::setOffsets(project(), s.id, s.cage, {1}, {Vector3(0, 0, 0.25f)}, &error, true)) << error;
+    EXPECT_FALSE(ClipRecordHooks::hasGesture(RecordSource::Inspector));
     EXPECT_EQ(project()->getProjectCommandHistory()->position(), projectSteps + 3);
     EXPECT_EQ(CommandHandle::get(s.id)->position(), sceneSteps);
 
@@ -509,4 +518,249 @@ TEST_F(ClipRecordSourcesTest, PoseWindowSuspendsThroughTheChannelWriteChain) {
     session.goIdle();
     PoseEditSession::setActive(nullptr);
     session.unbind();
+}
+
+// ---- review round 1 -------------------------------------------------------------------------
+
+namespace {
+
+    // the Hero player's clip replaced by `data` (before binding)
+    void writeRecClip(const ClipData& data) {
+        writeAll(assets() / "anim/rec.anim", AnimationClipDocument::fileText(data));
+        AnimationClipDocument::checkDiskChanges(project());
+    }
+
+    ClipTrackData track(const std::string& path, ClipChannel channel, std::vector<ClipKey> keys, std::vector<int> points = {}) {
+        ClipTrackData out;
+        out.path = path;
+        out.channel = channel;
+        out.keys = std::move(keys);
+        out.points = std::move(points);
+        return out;
+    }
+
+    Vector3 offsetOf(const RecordScene& s, int point) {
+        return s.scene->getComponent<LatticeComponent>(s.cage).offsets[(size_t)point];
+    }
+
+}
+
+// C1 (P1, P2 + redo after stop): a scene step on a previewed lattice changes only the points it
+// edits; the previewed points are never baked into the scene, by the step, its undo or its redo
+TEST_F(ClipRecordSourcesTest, LatticeSceneStepsDuringThePreviewKeepThePreviewedPointsRest) {
+    RecordScene s = recordScene();
+    ClipData data;
+    data.tracks = {track("Cage", ClipChannel::Lattice, {key(0.0f, {0, 0.5f, 0}), key(1.0f, {0, 0.5f, 0})}, {4})};
+    writeRecClip(data);
+    AnimationClipController& c = AnimationClipController::shared(project());
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    c.update(0.0);
+    ASSERT_TRUE(c.isPreviewing());
+    ASSERT_NEAR(offsetOf(s, 4).y, 0.5f, 1e-5f) << "previewed";
+
+    // P1: an edit of point 0 (computed from the shown offsets, as every LatticeEditorOps edit)
+    ASSERT_TRUE(LatticeEditorOps::setOffsets(project(), s.id, s.cage, {0}, {Vector3(0, 0, 0.25f)}, &error)) << error;
+    c.update(0.0);
+    EXPECT_NEAR(offsetOf(s, 4).y, 0.5f, 1e-5f) << "still previewed";
+    c.stopPreview();
+    EXPECT_NEAR(offsetOf(s, 0).z, 0.25f, 1e-6f) << "the edited point";
+    EXPECT_NEAR(offsetOf(s, 4).y, 0.0f, 1e-6f) << "the previewed point is not baked";
+    // redo after the preview: the command's own values are clean
+    CommandHandle::get(s.id)->undo();
+    EXPECT_NEAR(offsetOf(s, 0).z, 0.0f, 1e-6f);
+    CommandHandle::get(s.id)->redo();
+    EXPECT_NEAR(offsetOf(s, 0).z, 0.25f, 1e-6f);
+    EXPECT_NEAR(offsetOf(s, 4).y, 0.0f, 1e-6f) << "redo bakes nothing";
+    CommandHandle::get(s.id)->undo();
+
+    // P2: the same edit undone during the preview
+    c.seek(0.5f);
+    c.update(0.0);
+    ASSERT_NEAR(offsetOf(s, 4).y, 0.5f, 1e-5f);
+    ASSERT_TRUE(LatticeEditorOps::setOffsets(project(), s.id, s.cage, {0}, {Vector3(0, 0, 0.25f)}, &error)) << error;
+    CommandHandle::get(s.id)->undo();
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_NEAR(offsetOf(s, 0).z, 0.0f, 1e-6f) << "undone";
+    EXPECT_NEAR(offsetOf(s, 4).y, 0.0f, 1e-6f) << "the undo bakes nothing";
+}
+
+// C1 (P3): the Blend Shapes rows' MorphWeightsCmd during the preview changes only the edited weight
+TEST_F(ClipRecordSourcesTest, BlendShapeEditsDuringThePreviewKeepThePreviewedWeightsRest) {
+    RecordScene s = recordScene();
+    const Entity face = addObject(s, "Face", s.hero);
+    s.scene->addComponent<MeshComponent>(face, {});
+    ClipData data;
+    data.tracks = {track("Face", ClipChannel::Morph, {key(0.0f, {0.8f}), key(1.0f, {0.8f})})};
+    writeRecClip(data);
+    AnimationClipController& c = AnimationClipController::shared(project());
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    c.update(0.0);
+    ASSERT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[0], 0.8f, 1e-5f) << "previewed";
+
+    // what the slider builds: the shown weights with weight 1 changed (two drag steps, merged)
+    for (float value : {0.25f, 0.5f}) {
+        MorphWeightsCmd::Target target;
+        target.entity = face;
+        const MeshComponent& mesh = s.scene->getComponent<MeshComponent>(face);
+        std::copy(mesh.morphWeights, mesh.morphWeights + MAX_MORPHTARGETS, target.after.begin());
+        target.after[1] = value;
+        ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(new MorphWeightsCmd(project(), s.id, {target})));
+        c.update(0.0);
+    }
+    CommandHandle::get(s.id)->mark();
+    EXPECT_TRUE(s.sceneProject->isModified);
+    c.stopPreview();
+    const MeshComponent& mesh = s.scene->getComponent<MeshComponent>(face);
+    EXPECT_NEAR(mesh.morphWeights[0], 0.0f, 1e-6f) << "the previewed weight is not baked";
+    EXPECT_NEAR(mesh.morphWeights[1], 0.5f, 1e-6f) << "the edited weight";
+    // one undo step for the drag; the modified flag back
+    CommandHandle::get(s.id)->undo();
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[1], 0.0f, 1e-6f);
+    EXPECT_FALSE(s.sceneProject->isModified);
+    CommandHandle::get(s.id)->redo();
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[1], 0.5f, 1e-6f);
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[0], 0.0f, 1e-6f) << "redo bakes nothing";
+    // the weights are a Catalog property (prefab instance overrides: morphWeights[i])
+    float* weight = Catalog::getPropertyRef<float>(s.scene, face, ComponentType::MeshComponent, "morphWeights[1]");
+    ASSERT_NE(weight, nullptr);
+    EXPECT_FLOAT_EQ(*weight, 0.5f);
+    EXPECT_EQ(Catalog::getPropertyRef<float>(s.scene, face, ComponentType::MeshComponent, "morphWeights[8]"), nullptr);
+}
+
+// C1 (P4): an Inspector Position row edit of x during the preview keeps the rest of y and z
+TEST_F(ClipRecordSourcesTest, TransformRowEditsDuringThePreviewKeepTheOtherComponentsRest) {
+    RecordScene s = recordScene();
+    ClipData data;
+    data.tracks = {track("", ClipChannel::Position, {key(0.0f, {1, 2, 3}), key(1.0f, {1, 2, 3})})};
+    writeRecClip(data);
+    AnimationClipController& c = AnimationClipController::shared(project());
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    c.update(0.0);
+    const Vector3 shown = s.scene->getComponent<Transform>(s.hero).position;
+    ASSERT_EQ(shown, Vector3(1, 2, 3));
+    // what the row's x field builds: (new x, shown y, shown z)
+    CommandHandle::get(s.id)->addCommandNoMerge(new PropertyCmd<Vector3>(project(), s.id, s.hero, ComponentType::Transform, "position",
+                                                                          Vector3(5, shown.y, shown.z)));
+    c.update(0.0);
+    c.stopPreview();
+    EXPECT_EQ(s.scene->getComponent<Transform>(s.hero).position, Vector3(5, 0, 0)) << "only x is the edit";
+    CommandHandle::get(s.id)->undo();
+    CommandHandle::get(s.id)->redo();
+    EXPECT_EQ(s.scene->getComponent<Transform>(s.hero).position, Vector3(5, 0, 0)) << "redo bakes nothing";
+}
+
+// I4 (P5): a discrete lattice edit (MCP edit_lattice) while another source holds a record gesture
+// is a scene step, never recorded into that gesture
+TEST_F(ClipRecordSourcesTest, AnMcpLatticeEditDuringAUserDragIsNeverRecorded) {
+    RecordScene s = recordScene();
+    AnimationClipController& c = AnimationClipController::shared(project());
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.setRecording(true);
+    ASSERT_TRUE(c.isRecording());
+    const size_t projectSteps = project()->getProjectCommandHistory()->position();
+    const size_t sceneSteps = CommandHandle::get(s.id)->position();
+    // a gizmo drag in progress (its gesture open) and an Inspector row being dragged
+    ClipRecordHooks::gestureMergeKey(RecordSource::Gizmo, nullptr);
+    ClipRecordHooks::gestureMergeKey(RecordSource::Inspector, nullptr);
+    ASSERT_TRUE(LatticeEditorOps::setOffsets(project(), s.id, s.cage, {0}, {Vector3(0, 0, 0.5f)}, &error)) << error;
+    EXPECT_EQ(project()->getProjectCommandHistory()->position(), projectSteps) << "not recorded";
+    EXPECT_EQ(CommandHandle::get(s.id)->position(), sceneSteps + 1) << "a scene step";
+    EXPECT_LT(c.getDocument()->data().findTrack("Cage", ClipChannel::Lattice), 0);
+    c.stopPreview();
+    EXPECT_FALSE(ClipRecordHooks::hasGesture(RecordSource::Gizmo)) << "stopping the preview ends the gestures";
+}
+
+// I5 (P6): Record keys on the Samples grid even when the playhead is between frames, and a
+// playing preview pauses there
+TEST_F(ClipRecordSourcesTest, RecordKeysOnTheFrameGrid) {
+    RecordScene s = recordScene();
+    AnimationClipController& c = AnimationClipController::shared(project());
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.517f);
+    c.setRecording(true);
+    c.play();
+    ClipRecordValue value;
+    value.channel = ClipChannel::Position;
+    value.value = {0, 1, 0};
+    ASSERT_TRUE(ClipRecordHooks::record(s.id, s.hero, value, ""));
+    EXPECT_FALSE(c.isPlaying()) << "the first record pauses the playing preview";
+    AnimationClipController::KeyRef ref;
+    ASSERT_TRUE(AnimationClipController::findKey(c.getDocument()->data(), "", ClipChannel::Position, 0.5f, ref)) << "frame 15 (30 fps)";
+    EXPECT_NEAR(c.getTime(), 0.5f, 1e-6f) << "the playhead on the key";
+    c.stopPreview();
+}
+
+// I2: one absolute value per dragged key: a Position key's x and a Rotation key's Euler y move by
+// the same delta on their own curves, one merge key
+TEST_F(ClipRecordSourcesTest, KeyDragsTakeOneAbsoluteValuePerKey) {
+    RecordScene s = recordScene();
+    ClipData data;
+    data.tracks = {track("", ClipChannel::Position, {key(0.0f, {0, 0, 0}), key(1.0f, {0, 0, 0})}),
+                   track("Cage", ClipChannel::Rotation, {key(0.0f, clipui::xyzwOf(Vector3(30, 0, 0))), key(1.0f, clipui::xyzwOf(Vector3(30, 0, 0)))})};
+    writeRecClip(data);
+    AnimationClipController& c = AnimationClipController::shared(project());
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    const ClipData& clip = c.getDocument()->data();
+    AnimationClipController::KeyRef position, rotation;
+    ASSERT_TRUE(AnimationClipController::findKey(clip, "", ClipChannel::Position, 1.0f, position));
+    ASSERT_TRUE(AnimationClipController::findKey(clip, "Cage", ClipChannel::Rotation, 1.0f, rotation));
+    const size_t steps = project()->getProjectCommandHistory()->position();
+    ASSERT_TRUE(c.beginKeyDrag({position, rotation}, &error)) << error;
+    for (float delta : {5.0f, 10.0f}) {
+        const ClipData& base = c.dragBaseData();
+        std::vector<AnimationClipController::KeyDragValue> values(2);
+        values[0].dragIndex = 0;
+        values[0].value = base.tracks[position.track].keys[position.key].value;
+        values[0].value[0] += delta;
+        values[1].dragIndex = 1;
+        const Vector3 euler = clipcurves::keyEulers(base.tracks[rotation.track])[rotation.key];
+        values[1].value = clipui::xyzwOf(Vector3(euler.x, euler.y + delta, euler.z));
+        ASSERT_TRUE(c.updateKeyDrag(0.0f, values, nullptr, &error)) << error;
+    }
+    c.endKeyDrag();
+    EXPECT_EQ(project()->getProjectCommandHistory()->position(), steps + 1) << "one merge key";
+    const ClipData& after = c.getDocument()->data();
+    ASSERT_TRUE(AnimationClipController::findKey(after, "", ClipChannel::Position, 1.0f, position));
+    ASSERT_TRUE(AnimationClipController::findKey(after, "Cage", ClipChannel::Rotation, 1.0f, rotation));
+    EXPECT_EQ(after.tracks[position.track].keys[position.key].value, (std::vector<float>{10, 0, 0}));
+    const Vector3 euler = clipcurves::keyEulers(after.tracks[rotation.track])[rotation.key];
+    EXPECT_NEAR(euler.x, 30.0f, 0.01f);
+    EXPECT_NEAR(euler.y, 10.0f, 0.01f);
+    EXPECT_NEAR(euler.z, 0.0f, 0.01f);
+    // a value of the wrong width is refused
+    ASSERT_TRUE(c.beginKeyDrag({position}, &error));
+    std::vector<AnimationClipController::KeyDragValue> bad(1);
+    bad[0].value = {1, 2};
+    EXPECT_FALSE(c.updateKeyDrag(0.0f, bad, nullptr, &error));
+    c.endKeyDrag();
+}
+
+// I6: the window's settings handler keeps its section in an ini written by a session that never
+// shows the window
+TEST(ClipWindowSettings, AnIniSavedWithoutTheWindowKeepsItsSettings) {
+    ImGuiContext* previous = ImGui::GetCurrentContext();
+    ImGuiContext* context = ImGui::CreateContext();
+    ImGui::SetCurrentContext(context);
+    ImGui::GetIO().IniFilename = nullptr;
+    AnimationWindowClip::registerSettingsHandler();
+    AnimationWindowClip::registerSettingsHandler();     // once per context
+    const char* ini = "[JasperAnimationWindow][Clip]\nLabelWidth=412.0\nView=1\n\n";
+    ImGui::LoadIniSettingsFromMemory(ini);
+    size_t size = 0;
+    const std::string saved = ImGui::SaveIniSettingsToMemory(&size);
+    EXPECT_NE(saved.find("[JasperAnimationWindow][Clip]"), std::string::npos) << saved;
+    EXPECT_NE(saved.find("LabelWidth=412.0"), std::string::npos) << saved;
+    EXPECT_NE(saved.find("View=1"), std::string::npos) << saved;
+    ImGui::DestroyContext(context);
+    ImGui::SetCurrentContext(previous);
 }

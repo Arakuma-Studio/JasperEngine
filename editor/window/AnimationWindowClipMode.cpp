@@ -94,6 +94,9 @@ void editor::AnimationWindow::openEntityAnimation(uint32_t sceneId, Entity anima
 }
 
 void editor::AnimationWindow::applySelection(SceneProject* sceneProject, const std::vector<Entity>& selected){
+    // while recording the window keeps its clip and root whatever is selected (Unity's lock):
+    // selecting another GameObject to move it never ends Record; the selection applies after
+    if (clipModeActive && clipMode->isRecording()) return;
     lastSelectionScene = sceneProject->id;
     lastSelection = selected;
     Scene* scene = sceneProject->scene;

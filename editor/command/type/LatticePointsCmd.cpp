@@ -74,11 +74,25 @@ bool editor::LatticePointsCmd::execute(){
         return false;
     }
 
+    // what the Scene view shows now: a clip preview may show other offsets than the rest
+    const std::vector<Vector3> shown = lattice->offsets;
+    // clip previews put previewed offsets back to their rest (animation clips 9.R6): the
+    // command records and edits the rest
+    ClipRecordHooks::beforeComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
     oldState = capture(*lattice);
     prefabUndo.capture(project, sceneId, entity);
 
     const bool sameLayout = !wholeState || (oldState.resolutionX == newState.resolutionX &&
         oldState.resolutionY == newState.resolutionY && oldState.resolutionZ == newState.resolutionZ);
+    // A point the edit leaves as it was shown (the edit was computed from the shown offsets)
+    // keeps its rest: only the points the edit changed take new values, so neither the scene nor
+    // a later redo gets a previewed point (T3c review C1). Decided on the first execute.
+    if (!executed && sameLayout && shown.size() == newState.offsets.size() && oldState.offsets.size() == shown.size()){
+        for (size_t i = 0; i < shown.size(); i++){
+            if (newState.offsets[i] == shown[i] && oldState.offsets[i] != shown[i]) newState.offsets[i] = oldState.offsets[i];
+        }
+    }
+    executed = true;
     // the component as it was, for the overrides of an edit that is more than offsets
     YAML::Node before;
     if (wholeState){
@@ -87,8 +101,6 @@ bool editor::LatticePointsCmd::execute(){
             EntityClipboard::encodeComponent(scene, entity, ComponentType::LatticeComponent);
     }
 
-    // clip previews put previewed offsets back to their rest (animation clips 9.R6)
-    ClipRecordHooks::beforeComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
     apply(*lattice, newState, wholeState);
     ClipRecordHooks::afterComponentWrite(sceneId, entity, ComponentType::LatticeComponent, "offsets");
 

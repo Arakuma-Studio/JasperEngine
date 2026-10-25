@@ -40,6 +40,8 @@ namespace jasperengine::editor{
         bool wholeState;  // resolution and poses are part of the edit
         bool continuous;
         bool wasModified;
+        // the first execute ran (offsets left as a clip preview showed them were put back to rest)
+        bool executed = false;
         PrefabEditUndo prefabUndo;
 
         static LatticePointsState capture(const LatticeComponent& lattice);
