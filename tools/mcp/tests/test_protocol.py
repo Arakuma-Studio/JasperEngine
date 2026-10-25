@@ -7,7 +7,6 @@ import asyncio
 import base64
 import contextlib
 import json
-import os
 import socket
 import stat
 import sys
@@ -19,6 +18,8 @@ from mcp.client.stdio import StdioServerParameters
 
 from harness import (HTTP_TOKEN, Editor, ProtocolError, RawEditor, Scratch, TestFailure, _env_flag, find_key,
                      launch_spec, skip)
+
+EDITOR = {"create": True, "name": "MCP Protocol"}
 
 PROTOCOL_VERSIONS = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
 
@@ -37,6 +38,7 @@ async def test_initialize(ed: Editor):
     ed.check(r.server_info and r.server_info.name, "serverInfo.name is empty")
     ed.check(r.capabilities and r.capabilities.tools is not None, "server does not declare the tools capability")
     ed.check(ed.instructions.strip(), "initialize.instructions (the agent guide) is empty")
+    ed.check(len(ed.instructions.encode("utf-8")) <= 16384, "initialize instructions exceed the documented 16 KB budget")
 
 
 async def test_tools_list(ed: Editor):
@@ -83,21 +85,6 @@ async def test_bad_argument_is_tool_error(ed: Editor):
 # -- edits through commands -------------------------------------------------------
 
 
-async def test_create_entity_undo_redo(ed: Editor):
-    ed.require_tools("create_entity", "find_entities", "undo", "redo")
-    name = "McpBox_" + uuid.uuid4().hex[:6]
-    made = await ed.call("create_entity", name=name, type="box", position=[1, 2, 3])
-    eid = made["entity_id"]
-    ed.check(eid in await scene_entity_ids(ed), f"created GameObject {eid} ({name}) is not listed")
-
-    await ed.call("undo")
-    ed.check(eid not in await scene_entity_ids(ed), f"GameObject {eid} still exists after undo")
-
-    await ed.call("redo")
-    ed.check(eid in await scene_entity_ids(ed), f"GameObject {eid} is missing after redo")
-    await ed.call("undo")
-
-
 async def test_batch(ed: Editor):
     ed.require_tools("batch", "create_entity", "find_entities", "undo")
     names = ["McpBatchA_" + uuid.uuid4().hex[:6], "McpBatchB_" + uuid.uuid4().hex[:6]]
@@ -138,7 +125,7 @@ async def test_stdio_raw():
     """Every stdout line is a JSON-RPC 2.0 message (the editor's own prints go to stderr), the
     earliest supported legacy version is echoed, protocol errors are typed, ping works after
     malformed input, and closing stdin shuts the editor down cleanly."""
-    async with RawEditor() as raw:
+    async with RawEditor(create=True) as raw:
         init = await raw.initialize(version="2024-11-05")
         if "error" in init:
             raw.fail(f"initialize failed: {init['error']}")
@@ -185,7 +172,7 @@ async def test_stdio_raw():
 
 async def test_version_fallback():
     """An unknown client version gets the newest supported one."""
-    async with RawEditor() as raw:
+    async with RawEditor(create=True) as raw:
         init = await raw.initialize(version="1999-01-01")
         v = init.get("result", {}).get("protocolVersion")
         if v not in PROTOCOL_VERSIONS:
@@ -214,7 +201,7 @@ def check_cache_hints(raw, result: dict, what: str) -> None:
 async def test_stdio_modern_without_initialize():
     """A 2026-07-28 client never initializes: server/discover and every request carry _meta;
     the same process still serves an initialize-era client afterwards (dual-era)."""
-    async with RawEditor() as raw:
+    async with RawEditor(create=True) as raw:
         raw.send({"jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": modern_params()})
         discover = (await raw.response(1)).get("result")
         if not discover or MODERN not in discover.get("supportedVersions", []):
@@ -264,10 +251,10 @@ async def test_sdk_client_negotiates_modern_over_stdio():
     """The MCP SDK's own client in its default mode (server/discover, falling back to
     initialize) speaks 2026-07-28 with the editor and runs tools that way."""
     from mcp.client.client import Client
-    scratch = Scratch.make()
+    scratch = Scratch.make(create=True)
     ok = False
     try:
-        argv, env, cwd = launch_spec(scratch)
+        argv, env, cwd = launch_spec(scratch, create=True)
         params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(cwd))
         async with Client(params, mode="auto", read_timeout_seconds=180) as client:
             if client.protocol_version != MODERN:
@@ -297,9 +284,9 @@ def free_port() -> int:
 
 
 async def http_post(port: int, body, headers: dict | None = None, token: str | None = HTTP_TOKEN,
-                    timeout: float = 120.0, close_after: float | None = None, method: str = "POST"):
+                    timeout: float = 120.0, before_close=None, method: str = "POST"):
     """One POST on its own connection: (status, lower-case headers, the JSON-RPC message or None).
-    close_after: hang up that many seconds after sending, without reading (returns None)."""
+    before_close: await a condition, then hang up without reading (returns None)."""
     reader, writer = await asyncio.open_connection("127.0.0.1", port)
     data = body if isinstance(body, bytes) else json.dumps(body).encode()
     lines = [f"{method} /mcp HTTP/1.1", f"Host: 127.0.0.1:{port}", "Content-Type: application/json",
@@ -309,9 +296,12 @@ async def http_post(port: int, body, headers: dict | None = None, token: str | N
     lines += [f"{k}: {v}" for k, v in (headers or {}).items()]
     writer.write(("\r\n".join(lines) + "\r\n\r\n").encode() + data)
     await writer.drain()
-    if close_after is not None:
-        await asyncio.sleep(close_after)
-        writer.close()
+    if before_close is not None:
+        try:
+            await before_close()
+        finally:
+            writer.close()
+            await writer.wait_closed()
         return None
     raw = await asyncio.wait_for(reader.read(), timeout)
     writer.close()
@@ -361,12 +351,8 @@ async def test_http_token_and_protocol_eras():
     if _env_flag("JASPER_FAKE"):
         skip("the fake server's HTTP transport has no token or header checks")
     port = free_port()
-    os.environ["JASPER_MCP_TRACE"] = "1"   # the cancel check reads the trace on stderr
-    try:
-        raw_cm = RawEditor(extra_args=["--http-port", str(port)])
-        raw = await raw_cm.__aenter__()
-    finally:
-        os.environ.pop("JASPER_MCP_TRACE", None)
+    raw_cm = RawEditor(create=True, extra_args=["--http-port", str(port)])
+    raw = await raw_cm.__aenter__()
     try:
         await raw.initialize()
         await wait_for_port(raw, port)
@@ -480,18 +466,35 @@ async def test_http_token_and_protocol_eras():
         if status != 404:
             raw.fail(f"2026-07-28 has no initialize: expected 404, got {status} {answer}")
 
-        # hanging up cancels the request (the trace shows the wait ending long before its 60 s)
+        # Disconnect only after the real request is pending; release of that public
+        # waiting state proves cancellation without depending on trace-log wording.
+        probe_id = 100
+
+        async def pending_calls():
+            nonlocal probe_id
+            probe_id += 1
+            raw.send({"jsonrpc": "2.0", "id": probe_id, "method": "tools/call",
+                      "params": {"name": "editor_status", "arguments": {}}})
+            response = await raw.response(probe_id)
+            return response["result"]["structuredContent"]["waiting_calls"]
+
+        async def wait_for_pending():
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                if await pending_calls() > 0:
+                    return
+                await asyncio.sleep(0.01)
+            raw.fail("the HTTP wait never entered the pending state")
+
         waiting = {"jsonrpc": "2.0", "id": "cancel-me", "method": "tools/call",
                    "params": modern_params(name="wait", arguments={"seconds": 60})}
-        t0 = time.monotonic()
-        await http_post(port, waiting, headers=modern_headers("tools/call", "wait"), close_after=1.0)
-        trace_done = False
-        while time.monotonic() - t0 < 30 and not trace_done:
-            await asyncio.sleep(0.5)
-            log = raw.scratch.stderr_log.read_text(errors="replace")
-            trace_done = any("] done wait " in line and '"cancel-me"' in line for line in log.splitlines())
-        if not trace_done:
-            raw.fail("closing a 2026-07-28 connection did not cancel its call within 30 s")
+        await http_post(port, waiting, headers=modern_headers("tools/call", "wait"),
+                        before_close=wait_for_pending)
+        deadline = time.monotonic() + 30
+        while await pending_calls() != 0:
+            if time.monotonic() >= deadline:
+                raw.fail("closing the HTTP connection did not cancel its pending call")
+            await asyncio.sleep(0.01)
         status, _, _ = await http_post(port, call, headers=modern_headers("tools/call", "editor_status"))
         if status != 200:
             raw.fail(f"the server after a cancelled call: {status}")
@@ -551,7 +554,7 @@ async def test_http_read_only_mode():
     port = free_port()
     harness.Scratch.make = make
     try:
-        raw_cm = RawEditor(extra_args=["--http-port", str(port)])
+        raw_cm = RawEditor(create=True, extra_args=["--http-port", str(port)])
         raw = await raw_cm.__aenter__()
     finally:
         harness.Scratch.make = original

@@ -120,6 +120,14 @@ async def http_checks():
                 ok(made["entity_id"] >= 100, "HTTP: tool call")
                 ok(len(await ed.screenshot(path=Path(shots) / "http.png")) > 8, "HTTP: screenshot")
                 ok(ed.stderr_tail() == "", "HTTP: no stderr")
+            remote = subprocess.run(
+                [sys.executable, str(HERE / "run_tests.py"), "--url", f"http://127.0.0.1:{port}/mcp",
+                 "-k", "test_initialize", str(HERE / "tests" / "test_protocol.py")],
+                capture_output=True, text=True,
+                env=dict(os.environ, JASPER_EDITOR=str(Path(shots) / "must-not-launch-editor")),
+            )
+            ok(remote.returncode == 0 and "1 passed, 0 failed, 0 skipped" in remote.stdout,
+               "runner: explicit --url overrides a test module's owned project")
     finally:
         proc.terminate()
         proc.wait()
@@ -128,10 +136,10 @@ async def http_checks():
 def runner_checks():
     runner = [sys.executable, str(HERE / "run_tests.py"), "--fake"]
     run = runner + [str(HERE / "tests" / "test_protocol.py")]
-    r = subprocess.run(run + ["-k", "test_protocol.py::test_create_entity_undo_redo",
+    r = subprocess.run(run + ["-k", "test_protocol.py::test_initialize",
                               "-k", "test_protocol.py::test_batch"], capture_output=True, text=True)
     ok(r.returncode == 0 and "0 failed" in r.stdout, "runner: selected tests pass on the fake")
-    for test in ("test_create_entity_undo_redo", "test_batch"):
+    for test in ("test_initialize", "test_batch"):
         ok(f"PASS test_protocol.py::{test} (" in r.stdout, f"runner: {test} exercises the fake")
     with tempfile.TemporaryDirectory(prefix="jasper-runner-selftest-") as root:
         files = [Path(root) / f"parallel_{name}.py" for name in ("a", "b")]
@@ -150,7 +158,7 @@ async def test_parallel():
         r = subprocess.run(runner + ["-j", "2", *map(str, files)], capture_output=True, text=True)
         ok(r.returncode == 0 and "2 passed, 0 failed, 0 skipped" in r.stdout,
            "runner: -j 2 runs two files concurrently")
-    r = subprocess.run(run + ["-k", "test_protocol.py::test_create_entity_undo_redo"], capture_output=True, text=True)
+    r = subprocess.run(run + ["-k", "test_protocol.py::test_initialize"], capture_output=True, text=True)
     ok(r.returncode == 0 and "1 passed, 0 failed, 0 skipped" in r.stdout, "runner: -k filters")
     env = dict(os.environ, FAKE_DIRTY_STDOUT="1")
     r = subprocess.run(run + ["-k", "stdio_raw"], capture_output=True, text=True, env=env)

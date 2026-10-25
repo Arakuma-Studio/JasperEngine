@@ -6,7 +6,9 @@ methods and callbacks that direct UIElement calls cannot exercise.
 
 from pathlib import Path
 
-from harness import Editor
+from harness import Editor, REPO
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 

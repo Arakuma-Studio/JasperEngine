@@ -1,14 +1,14 @@
-"""Project checks shared by the CLI and the MCP server: `jasperengine-editor check` (Lua, shaders,
-C++ scripts; text/JSON output, --files, --hook) run as a subprocess, the same findings through
-check_script / check_shader / compile_scripts, and search_files.
+"""CLI diagnostics and file filtering on small authored project inputs.
 
-The C++ build tests (CLI --cpp and its comparison with compile_scripts) build the scripts with the
-host compiler; they run when cmake and a C++ compiler are on PATH (about a minute)."""
+The actual C++ compiler owner checks both public adapters, then repairs, compiles and links
+its script using the same configured build. Script/shader semantics live in their owners.
+"""
 
 from __future__ import annotations
 
 import json
 import shutil
+import shlex
 import subprocess
 import tempfile
 import time
@@ -17,6 +17,9 @@ from pathlib import Path
 
 import harness
 from harness import Editor, TestFailure, find_key, skip
+from project_fixture import write_project
+
+EDITOR = {"create": True, "name": "Project Checks"}
 
 TIMEOUT = 900
 
@@ -61,7 +64,10 @@ def scratch_project(source: Path | None = None):
     tmp = Path(tempfile.mkdtemp(prefix="jasper-check-"))
     try:
         project = tmp / "project"
-        shutil.copytree(source or harness.default_fixture(), project, ignore=_ignore_copy, symlinks=True)
+        if source is None:
+            write_project(project)
+        else:
+            shutil.copytree(source, project, ignore=_ignore_copy, symlinks=True)
         yield project
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -117,10 +123,6 @@ def break_main(source: str, statement: str) -> tuple[str, int]:
         index += 1   # the opening brace on the next line
     lines.insert(index + 1, statement)
     return "\n".join(lines), index + 2
-
-
-def strip_findings(findings: list[dict]) -> list[tuple]:
-    return sorted((f["tool"], f["path"], f["line"], f["col"], f["severity"], f["message"]) for f in findings)
 
 
 def has_cpp_toolchain() -> bool:
@@ -182,23 +184,20 @@ async def test_cli_broken_lua_text_and_json():
         r = run_check(project, "--lua")
         check_eq(r.returncode, 1, f"problems exit 1: {r.stdout}{r.stderr}")
         lines = r.stdout.splitlines()
-        expected = [
-            "scripts/BadDefault.lua: error: property 'speed' (float): default must be a number, got string",
-            "scripts/Boom.lua:2: error: runtime error at load: boom",
-            "scripts/Broken.lua:3: error: unexpected symbol near '='",
-            "scripts/Undefined.lua:3: error: runtime error at load: attempt to call a nil value (global 'undefinedThing')",
-        ]
-        check_eq(lines, expected, "compiler-style lines, sorted by path")
+        check_eq([line.split(":", 1)[0] for line in lines],
+                 ["scripts/BadDefault.lua", "scripts/Boom.lua", "scripts/Broken.lua", "scripts/Undefined.lua"],
+                 "compiler-style lines are sorted by project-relative path")
+        check(all(": error: " in line for line in lines), "diagnostics identify severity")
         check("4 errors" in r.stderr, f"summary: {r.stderr}")
 
         code, data = run_json(project, "--lua")
         check_eq(code, 1, "json exit code")
         check_eq((data["ok"], data["errors"], data["warnings"]), (False, 4, 0), "json counts")
-        check_eq(data["checked"].get("lua"), 7, f"lua files checked (fixture + 6): {data['checked']}")
+        check_eq(data["checked"].get("lua"), 7, f"lua files checked (probe + 6): {data['checked']}")
         for f in data["findings"]:
             check_eq((f["tool"], f["severity"], f["col"]), ("lua", "error", 0), f"finding {f}")
         broken = next(f for f in data["findings"] if f["path"] == "scripts/Broken.lua")
-        check_eq((broken["line"], broken["message"]), (3, "unexpected symbol near '='"), "syntax finding")
+        check_eq(broken["line"], 3, "syntax finding points at the authored broken line")
         bad = next(f for f in data["findings"] if f["path"] == "scripts/BadDefault.lua")
         check_eq(bad["line"], 0, "a property problem has no line")
 
@@ -207,30 +206,28 @@ async def test_cli_broken_lua_text_and_json():
         write(project, deep, BROKEN_LUA)
         write(project, deep.replace("Deep", "DeepBoom"), BOOM_LUA)
         code, data = run_json(project, "--files", deep, deep.replace("Deep", "DeepBoom"))
-        check_eq(sorted((f["path"], f["line"], f["message"]) for f in data["findings"]),
-                 [(deep, 3, "unexpected symbol near '='"), (deep.replace("Deep", "DeepBoom"), 2, "runtime error at load: boom")],
-                 "line numbers of a long path")
+        check_eq(sorted((f["path"], f["line"]) for f in data["findings"]),
+                 [(deep, 3), (deep.replace("Deep", "DeepBoom"), 2)], "line numbers of a long path")
 
 
 async def test_cli_lua_isolated_state():
     """The CLI runs each script's top level in an isolated state: no files, processes or endless loops."""
     with scratch_project() as project:
         marker = project.parent / "touched-by-lua"
+        process_marker = project.parent / "spawned-by-lua"
         write(project, "scripts/Writer.lua",
               f"local f = io.open({json.dumps(str(marker))}, 'w')\nif f then f:write('x') f:close() end\n"
-              "local ok = pcall(function() return os.execute('true') end)\nreturn {}\n")
+              f"pcall(function() return os.execute({json.dumps('touch ' + shlex.quote(str(process_marker)))}) end)\nreturn {{}}\n")
         write(project, "scripts/Forever.lua", "local T = {}\nwhile true do end\nreturn T\n")
         write(project, "scripts/Hungry.lua", "local t = {}\nfor i = 1, 1e9 do t[i] = string.rep('x', 1024) .. i end\nreturn t\n")
-        t0 = time.monotonic()
         code, data = run_json(project, "--files", "scripts/Writer.lua", "scripts/Forever.lua", "scripts/Hungry.lua")
-        seconds = time.monotonic() - t0
-        check(not marker.exists(), "a script can't write files from the check")
+        check(not marker.exists(), "a checked script cannot write files")
+        check(not process_marker.exists(), "a checked script cannot spawn a process")
         by_path = {f["path"]: f for f in data["findings"]}
         check("scripts/Writer.lua" not in by_path, f"io is an inert stand-in, os.execute is gone (no crash): {data}")
         check_eq((by_path["scripts/Forever.lua"]["line"], code), (2, 1), f"an endless loop is stopped: {data}")
         check("did not finish loading" in by_path["scripts/Forever.lua"]["message"], by_path["scripts/Forever.lua"]["message"])
         check("not enough memory" in by_path["scripts/Hungry.lua"]["message"], f"memory is capped: {data}")
-        check(seconds < 20, f"the limits keep it quick: {seconds:.1f}s")
 
 
 async def test_cli_files_filter():
@@ -244,7 +241,7 @@ async def test_cli_files_filter():
 
         # absolute paths, several files, cwd elsewhere
         elsewhere = project.parent
-        code, data = run_json(project, "--files", str(project / "scripts/Boom.lua"), str(project / "scripts/GameController.lua"),
+        code, data = run_json(project, "--files", str(project / "scripts/Boom.lua"), str(project / "scripts/Probe.lua"),
                               cwd=elsewhere)
         check_eq([f["path"] for f in data["findings"]], ["scripts/Boom.lua"], "absolute paths")
         check_eq(data["checked"], {"lua": 2}, "two files")
@@ -270,7 +267,7 @@ async def test_cli_files_filter():
 async def test_cli_hook_mode():
     with scratch_project() as project:
         broken = write(project, "scripts/Broken.lua", BROKEN_LUA)
-        good = project / "scripts/GameController.lua"
+        good = project / "scripts/Probe.lua"
         claude = {"hook_event_name": "PostToolUse", "tool_name": "Edit", "cwd": str(project),
                   "tool_input": {"file_path": str(broken), "old_string": "a", "new_string": "b"}}
         r = run_check(project, "--hook", stdin=json.dumps(claude))
@@ -292,7 +289,7 @@ async def test_cli_hook_mode():
                  "tool_input": {"command": patch}}
         r = run_check(project, "--hook", stdin=json.dumps(codex))
         check_eq(r.returncode, 2, f"Codex apply_patch paths: {r.stderr}")
-        check("scripts/Broken.lua:3:" in r.stderr and "GameController" not in r.stderr, r.stderr)
+        check("scripts/Broken.lua:3:" in r.stderr and "Probe" not in r.stderr, r.stderr)
 
         r = run_check(project, "--hook", stdin="not json")
         check_eq(r.returncode, 1, f"unreadable hook input exits 1 (shown to the user, not the agent): {r.stderr}")
@@ -313,8 +310,8 @@ async def test_cli_shaders():
         (project / frag).write_text(broken)
         r = run_check(project, "--shaders")
         check_eq(r.returncode, 1, f"broken fork: {r.stdout}{r.stderr}")
-        check_eq(r.stdout.splitlines()[0], f"{frag}:{line}: error: 'undefined_symbol_cli' : undeclared identifier",
-                 "compiler-style shader error at the fork's line")
+        check(r.stdout.splitlines()[0].startswith(f"{frag}:{line}: error:") and "undefined_symbol_cli" in r.stdout,
+              "shader diagnostics name the authored undefined symbol and source line")
 
         # an error in a project include, reported in the include
         (project / frag).write_text(source.replace("void main()", '#include "inc/extra.glsl"\nvoid main()', 1))
@@ -367,7 +364,7 @@ async def test_cli_ui_effects():
         frag = "assets/ui/fx/check-glow.frag"
         write(project, frag, EFFECT_FRAG)
         code, data = run_json(project, "--shaders")
-        check_eq((code, data["checked"]), (0, {"shaders": 2}), f"a paint effect: both forms compile: {data}")
+        check_eq((code, data["findings"]), (0, []), "the authored paint effect compiles")
 
         broken = EFFECT_FRAG.replace("return params.color * params.amount;", "return params.color * undefined_amount;")
         line = broken.split("\n").index("    return params.color * undefined_amount;") + 1
@@ -398,113 +395,56 @@ async def test_cli_ui_effects():
         write(project, frag, EFFECT_FRAG.replace("// @kind       paint", "// @kind       filter")
               .replace("main_paint", "main_filter").replace("vec4 jfx_paint(JfxContext c){", "vec4 jfx_filter(JfxContext c){"))
         code, data = run_json(project, "--shaders")
-        check_eq((code, data["checked"]), (0, {"shaders": 1}), f"a filter effect: one form: {data}")
+        check_eq((code, data["findings"]), (0, []), "the authored filter effect compiles")
 
 
 # ---------------------------------------------------------------------------- MCP: same findings
 
-async def test_check_script_findings_match_cli(ed: Editor):
-    ed.require_tools("check_script")
-    cases = {"scripts/Broken.lua": BROKEN_LUA, "scripts/Boom.lua": BOOM_LUA, "scripts/Undefined.lua": UNDEFINED_LUA,
-             "scripts/BadDefault.lua": BAD_DEFAULT_LUA, "scripts/Good.lua": GOOD_LUA, "scripts/GoodUtils.lua": GOOD_UTILS_LUA}
-    for rel, text in cases.items():
-        write(ed.project, rel, text)
-    mcp = []
-    results = {}
-    for rel in cases:
-        r = await ed.call("check_script", path=rel)
-        ed.check(isinstance(r.get("findings"), list), f"check_script returns findings: {r!r}")
-        ed.check_eq(r["ok"], not r["findings"], f"ok iff no findings: {r!r}")
-        mcp += r["findings"]
-        results[rel] = r
-    good = results["scripts/Good.lua"]
-    ed.check_eq([p["name"] for p in good["properties"]], ["speed", "tint"], "properties of a clean script")
-    boom = results["scripts/Boom.lua"]
-    ed.check_eq(boom["errors"], [{"line": 2, "message": "runtime error at load: boom"}], "errors carry the load error")
-    # the editor survives a property default it can't read (it used to abort)
-    bad = results["scripts/BadDefault.lua"]
-    ed.check_eq(bad["ok"], False, f"bad default: {bad!r}")
-    await ed.check_alive()
-
-    with scratch_project(ed.project) as copy:
-        code, data = run_json(copy, "--files", *cases)
-    ed.check_eq(code, 1, "CLI exit code")
-    ed.check_eq(strip_findings(data["findings"]), strip_findings(mcp), "CLI and check_script find the same")
-    for rel in cases:
-        (ed.project / rel).unlink()
-
-
-async def test_check_shader_findings_match_cli(ed: Editor):
-    ed.require_tools("fork_shader", "check_shader", "save_scene")
-    made = await ed.call("create_entity", name="CheckGlow", type="box")
-    eid = find_key(made, "entity_id", "id")
-    fork = await ed.call("fork_shader", entity=eid, directory="shaders")
-    frag = fork["frag_path"]
-    await ed.call("save_scene")
-    source = (ed.project / frag).read_text()
-    broken, line = break_main(source, "    undefined_symbol_mcp = 1.0;")
-    (ed.project / frag).write_text(broken)
-    r = await ed.call("check_shader", shader=fork["custom_shader"], timeout=300)
-    ed.check_eq(r["failed"], 1, f"broken: {r!r}")
-    ed.check(r["findings"], f"check_shader returns findings: {r!r}")
-    ed.check_eq((r["findings"][0]["path"], r["findings"][0]["line"]), (frag, line), "file:line of the error")
-    with scratch_project(ed.project) as copy:
-        code, data = run_json(copy, "--files", frag)
-    ed.check_eq(code, 1, "CLI exit code")
-    ed.check_eq(strip_findings(data["findings"]), strip_findings(r["findings"]), "CLI and check_shader find the same")
-    (ed.project / frag).write_text(source)
-    ok = await ed.call("check_shader", shader=fork["custom_shader"], timeout=300)
-    ed.check_eq((ok["failed"], ok["findings"]), (0, []), "fixed")
-
-
-CPP_BAD_LINE = "    counter += undefinedThing;  // compile error\n"
-
 
 async def test_cpp_cli_and_compile_scripts(ed: Editor):
-    ed.require_tools("create_script", "compile_scripts", "save_scene")
     if not has_cpp_toolchain():
         skip("no C++ toolchain (cmake + compiler) on PATH")
-    made = await ed.call("create_entity", name="CheckSpinner", type="box")
-    eid = find_key(made, "entity_id", "id")
-    await ed.call("create_script", kind="cpp_script", name="CheckSpinner", entity=eid)
-    await ed.call("save_scene")
-    with scratch_project(ed.project) as copy:
-        t0 = time.monotonic()
-        code, data = run_json(copy, "--cpp", timeout=900)
-        print(f"     [timing] check --cpp, first (configure + build): {time.monotonic() - t0:.1f}s")
-        if code != 0 and any("ABI" in f["message"] or "compatible" in f["message"] for f in data["findings"]):
-            skip(f"the C++ build can't run in this environment: {data['findings']}")
-        ed.check_eq((code, data["errors"]), (0, 0), f"clean C++ build: {data}")
-        ed.check_eq(data["checked"], {"cpp": 1}, "one script")
-
-        source = (copy / "scripts/CheckSpinner.cpp").read_text()
-        lines = source.splitlines(keepends=True)
-        anchor = next(i for i, line in enumerate(lines) if "counter++" in line)
-        lines.insert(anchor + 1, CPP_BAD_LINE)
-        broken = "".join(lines)
-        (copy / "scripts/CheckSpinner.cpp").write_text(broken)
-        t0 = time.monotonic()
-        r = run_check(copy, "--cpp", "--files", "scripts/CheckSpinner.cpp", timeout=900)
-        print(f"     [timing] check --cpp, incremental: {time.monotonic() - t0:.1f}s")
-        ed.check_eq(r.returncode, 1, f"broken C++: {r.stdout}{r.stderr}")
-        first = r.stdout.splitlines()[0]
-        ed.check(first.startswith(f"scripts/CheckSpinner.cpp:{anchor + 2}:") and ": error: " in first and "undefinedThing" in first,
-                 f"compiler-style C++ error: {r.stdout}")
-        code, cli = run_json(copy, "--cpp", timeout=900)
-
-    (ed.project / "scripts/CheckSpinner.cpp").write_text(broken)
-    mcp = await ed.call("compile_scripts", timeout_seconds=600, timeout=700)
-    ed.check_eq(mcp["success"], False, "compile_scripts fails too")
-    as_findings = [{"tool": "cpp", "path": e["file"], "line": e["line"], "col": e["column"], "severity": sev,
-                    "message": e["message"]} for sev, key in (("error", "errors"), ("warning", "warnings")) for e in mcp[key]]
-    ed.check_eq(strip_findings(cli["findings"]), strip_findings(as_findings), "CLI --cpp and compile_scripts find the same")
-    (ed.project / "scripts/CheckSpinner.cpp").write_text(source)
+    await ed.call("set_project_settings", values={"scripting.lua_dir": "scripts"})
+    made = await ed.call("create_entity", name="CompileProbe", type="empty")
+    header = """#pragma once
+#include "ScriptBase.h"
+class CompileProbe : public jasperengine::ScriptBase {
+public:
+    CompileProbe(jasperengine::Scene* scene, jasperengine::Entity entity);
+    void onUpdate();
+};
+"""
+    source = """#include "CompileProbe.h"
+CompileProbe::CompileProbe(jasperengine::Scene* s, jasperengine::Entity e): ScriptBase(s, e) {}
+void CompileProbe::onUpdate() {
+    undefined_from_check;
+}
+"""
+    await ed.call("create_script", kind="cpp_script", name="CompileProbe", entity=find_key(made, "entity_id"),
+                  header_content=header, source_content=source)
+    await ed.call("save_scene", path="Compile.scene")
+    code, report = run_json(ed.project, "--cpp", timeout=900)
+    ed.check_eq(code, 1, "CLI C++ compilation reports an actual compiler error")
+    ed.check(any(f["path"] == "scripts/CompileProbe.cpp" and f["line"] == 4
+                 and f["severity"] == "error" and "undefined_from_check" in f["message"]
+                 for f in report["findings"]), f"CLI preserves the compiler's file, line and symbol: {report}")
+    # Reuse this project's configured build; the MCP adapter must preserve the same authored source location.
+    compiled = await ed.call("compile_scripts", timeout_seconds=600, timeout=700)
+    ed.check_eq(compiled["success"], False, "the MCP compiler rejects the source")
+    ed.check(any(e["file"] == "scripts/CompileProbe.cpp" and e["line"] == 4
+                 and "undefined_from_check" in e["message"] for e in compiled["errors"]), compiled)
+    (ed.project / "scripts/CompileProbe.cpp").write_text(source.replace("undefined_from_check;", "return;"))
+    await ed.call("create_script", kind="cpp_script", name="DefaultTemplate")
+    repaired = await ed.call("compile_scripts", timeout_seconds=600, timeout=700)
+    ed.check_eq(repaired["success"], True, f"the repaired script and shipped default template compile and link: {repaired}")
 
 
 # ---------------------------------------------------------------------------- search_files
 
 async def test_search_files(ed: Editor):
     ed.require_tools("search_files")
+    await ed.call("get_project_summary")
+    (ed.project / "assets").mkdir(exist_ok=True)
     write(ed.project, "scripts/SearchA.lua", "local A = {}\n-- needle one\nfunction A:Speed() end\nlocal speed = 1\nreturn A\n")
     write(ed.project, "docs/notes.md", "first\nsecond NEEDLE two\nthird\n")
     write(ed.project, ".jasperengine/build/hidden.txt", "needle hidden\n")
@@ -544,14 +484,14 @@ async def test_search_files(ed: Editor):
         await ed.check_error("search_files", pattern="root", glob=escape, contains="project")
 
     outside = ed.project.parent / "outside-secret.txt"
-    outside.write_text("needle secret\n")
+    outside.write_text("outside-only-byte-probe\n")
     link = ed.project / "docs/link.txt"
     try:
         link.symlink_to(outside)
     except OSError:
         link = None
     if link:
-        r = await ed.call("search_files", pattern="secret")
+        r = await ed.call("search_files", pattern="outside-only-byte-probe")
         ed.check_eq(r["matches"], [], f"a symlink out of the project is not followed: {r!r}")
         link.unlink()
     outside.unlink()

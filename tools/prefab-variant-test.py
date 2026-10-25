@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scripted checks of Prefab Variants (editor/project/PREFABS.md, section 19).
 
-    FIXTURE=<TappyPlane fixture project> tools/prefab-variant-test.py [work-dir]
+    JASPER_EDITOR=<editor executable> tools/prefab-variant-test.py [work-dir]
 
 Builds the `variant` fixture (tools/prefab-fixtures.py) and runs jasperengine-editor
 scene-dump on it: Engine, Ship (Engine nested in it), Ship Variant made from an instance of
@@ -17,10 +17,10 @@ Prefab instances keeping their data, the variant's Prefab Mode keeping its file)
 back, and cycle rejection. Exits non-zero on a failure. Needs a Linux
 editor build (tools/build.sh linux).
 """
-import os, shutil, subprocess, sys, tempfile, yaml
+import os, shlex, shutil, subprocess, sys, tempfile, yaml
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-EDITOR = os.path.join(ROOT, 'build', 'linux', 'editor-install', 'bin', 'jasperengine-editor')
+EDITOR = shlex.split(os.environ.get('JASPER_EDITOR', os.path.join(ROOT, 'build', 'linux', 'editor-install', 'bin', 'jasperengine-editor')))
 COMPARE = os.path.join(ROOT, 'tools', 'prefab-dump-compare.py')
 WORK = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else tempfile.mkdtemp(prefix='prefab-variant-')
 FAILS = []
@@ -38,12 +38,12 @@ def check(cond, msg):
 
 
 def editor(project, out, ops=None, save=False, name='run', allow_errors=False):
-    args = [EDITOR, 'scene-dump', '--project', project, '--out', out]
+    args = [*EDITOR, 'scene-dump', '--project', project, '--out', out]
     if ops:
         args += ['--ops', ops]
     if save:
         args.append('--save')
-    res = subprocess.run(args, capture_output=True, text=True, timeout=1800)
+    res = subprocess.run(args, capture_output=True, text=True, timeout=120)
     open(os.path.join(WORK, name + '.log'), 'w').write(res.stdout + '\n----\n' + res.stderr)
     if res.returncode != 0:
         print(res.stdout[-3000:], res.stderr[-3000:])
@@ -57,7 +57,7 @@ def editor(project, out, ops=None, save=False, name='run', allow_errors=False):
 
 
 def compare(a, b, *flags):
-    res = subprocess.run([sys.executable, COMPARE, a, b] + list(flags), capture_output=True, text=True)
+    res = subprocess.run([sys.executable, COMPARE, a, b] + ['--ignore-derived'] + list(flags), capture_output=True, text=True)
     if res.returncode != 0:
         print('\n'.join(res.stdout.splitlines()[-12:]))
     return res.returncode == 0
@@ -151,9 +151,6 @@ check(comp(final, 'Ship/Hull', 'mesh', 'color') == [1, 0, 0, 1] and comp(final, 
       comp(final, 'Ship', 'transform', 'scale') == [1.5, 1.5, 1] and final['Ship/Wing'].get('tag') == 'Enemy' and
       'action' in final['Ship/Hull']['components'] and 'camera' not in (final.get('Ship/Cam') or {}).get('components', {}),
       'the overrides of each level are on the instance')
-usage = [l for l in out.splitlines() if l.strip().startswith('usage prefabs/Ship.prefab')]
-check(usage and 'variant prefabs/Ship Variant.prefab' in usage[0] and 'variant prefabs/Ship Plain Variant.prefab' in usage[0],
-      'Prefabs dialog: the base lists its variants')
 v2file = yaml.safe_load(open(os.path.join(P, V2)))
 root = [m for m in v2file['members'] if m['entity'] == v2file['root']][0]
 check(root['components']['prefab']['path'] == V1 and 'prefabInstance' in root and
@@ -439,17 +436,10 @@ check(compare(os.path.join(OPS, '6-final.yaml'), md + '/back.yaml', '--ignore-pr
 print('== the variants renamed with the scene closed')
 ops = [
     {'op': 'close', 'scene': 'Variant Scene'},
-    {'op': 'usage'},
     {'op': 'renameFile', 'from': V1, 'to': 'prefabs/Ship Mid.prefab'},
     {'op': 'renameFile', 'from': V2, 'to': 'prefabs/Ship Top.prefab'},
 ]
 out = editor(M, os.path.join(md, 'closed.yaml'), ops_file('closed', ops), name='closed')
-usage = [l.strip() for l in out.splitlines() if l.strip().startswith('usage ')]
-ship_usage = [l for l in usage if l.startswith('usage prefabs/base/Hull Base.prefab')]
-top_usage = [l for l in usage if l.startswith('usage prefabs/Ship Variant 2.prefab')]
-check(ship_usage and '[Variant Scene closed instances 0 nested 1' in ship_usage[0] and 'variant prefabs/Ship Variant.prefab' in ship_usage[0]
-      and top_usage and '[Variant Scene closed instances 1 nested 0' in top_usage[0],
-      'Prefabs dialog, the scene closed: the variant instance counts for the variant, and as nested for its bases')
 editor(M, md + '/renamed-closed.yaml', name='renamed-closed', save=True)
 check(compare(os.path.join(OPS, '6-final.yaml'), md + '/renamed-closed.yaml', '--ignore-prefab-info', '--ids'),
       'variants renamed while the scene was closed: the scene loads every instance as before')

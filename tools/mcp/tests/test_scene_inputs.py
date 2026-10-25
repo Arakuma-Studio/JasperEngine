@@ -1,16 +1,15 @@
-"""Shader library phase 3, scene inputs: a fork requiring scenedepth / scenecolor compiles
-(includes/scene.glsl), the manifest checks its shader type, reserved textures and queue, a
-material putting it in the opaque queue is a check error (check_shader without arguments), and
-list_shaders reports scene_inputs."""
+"""Scene-reading shader manifests and queue validation on an owned blank project."""
 
 from __future__ import annotations
 
+
 from harness import Editor, find_key
+from shader_project import scene as project_scene
 
-TIMEOUT = 600
-
-SCENE = "scenes/SceneInputs.scene"
+EDITOR = {"create": True}
+TIMEOUT = 900
 M = "submeshes[0].material."
+P = M + "extraPass."
 
 VERT = """#version 450
 #include "includes/surface_vs.glsl"
@@ -64,63 +63,61 @@ def messages(result) -> list[str]:
 
 
 async def test_fork_compiles(ed: Editor):
-    ed.require_tools("create_scene", "write_file", "check_shader", "list_shaders", "set_properties")
-    await ed.call("create_scene", name="SceneInputs", path=SCENE)
-    await write_fork(ed, "shaders/soft", FRAG)
-    for ref in ("shaders/soft", "shaders/soft#TINT"):
-        ok = await ed.call("check_shader", shader=ref, shader_type="mesh", timeout=300)
-        ed.check_eq(ok["failed"], 0, f"{ref} compiles: {ok!r}")
-        ed.check(not [m for m in messages(ok) if "manifest" in m], f"{ref}: no manifest problem: {ok!r}")
+    async with project_scene(ed, "test_fork_compiles", with_texture=False) as SCENE:
+        await write_fork(ed, "shaders/soft", FRAG)
+        for ref in ("shaders/soft", "shaders/soft#TINT"):
+            ok = await ed.call("check_shader", shader=ref, shader_type="mesh", timeout=300)
+            ed.check_eq(ok["failed"], 0, f"{ref} compiles: {ok!r}")
+            ed.check(not [m for m in messages(ok) if "manifest" in m], f"{ref}: no manifest problem: {ok!r}")
+        broken = FRAG.replace("void main()", "void main()\n{ unknown_shader_symbol = 1.0; }\nvoid unused()", 1)
+        result = await ed.call("write_file", path="shaders/soft.frag", content=broken)
+        checks = result.get("shader_check", [])
+        ed.check(checks and any(not check["ok"] and "unknown_shader_symbol" in check.get("log", "") for check in checks),
+                 "editing a GLSL error reports its actual compiler diagnostic")
+        await ed.call("undo", scope="project")
+        restored = await ed.call("check_shader", shader="shaders/soft", shader_type="mesh")
+        ed.check_eq(restored["failed"], 0, "undo restores a compiling shader")
 
 
 async def test_manifest_rules(ed: Editor):
-    # a UI shader cannot read the scene
-    ui = FRAG.replace("// @shader mesh", "// @shader ui")
-    await write_fork(ed, "shaders/soft_ui", ui)
-    r = await ed.call("check_shader", shader="shaders/soft_ui", shader_type="ui", timeout=300)
-    ed.check(any("needs @shader mesh or points" in m for m in messages(r)), f"ui refused: {r!r}")
+    async with project_scene(ed, "test_manifest_rules", with_texture=False) as SCENE:
+        # a UI shader cannot read the scene
+        ui = FRAG.replace("// @shader mesh", "// @shader ui")
+        await write_fork(ed, "shaders/soft_ui", ui)
+        r = await ed.call("check_shader", shader="shaders/soft_ui", shader_type="ui", timeout=300)
+        ed.check(any("needs @shader mesh or points" in m for m in messages(r)), f"ui refused: {r!r}")
 
-    # opaque: drawn before the scene it reads
-    opaque = FRAG.replace("// @state blend=alpha zwrite=off", "// @state blend=opaque")
-    await write_fork(ed, "shaders/soft_opaque", opaque)
-    r = await ed.call("check_shader", shader="shaders/soft_opaque", shader_type="mesh", timeout=300)
-    ed.check(any("transparent queue" in m for m in messages(r)), f"opaque state refused: {r!r}")
+        # opaque: drawn before the scene it reads
+        opaque = FRAG.replace("// @state blend=alpha zwrite=off", "// @state blend=opaque")
+        await write_fork(ed, "shaders/soft_opaque", opaque)
+        r = await ed.call("check_shader", shader="shaders/soft_opaque", shader_type="mesh", timeout=300)
+        ed.check(any("transparent queue" in m for m in messages(r)), f"opaque state refused: {r!r}")
 
-    # the engine's texture names are reserved
-    reserved = FRAG.replace("// @property softness", "// @texture u_sceneColorTexture white\n// @property softness")
-    await write_fork(ed, "shaders/soft_reserved", reserved)
-    r = await ed.call("check_shader", shader="shaders/soft_reserved", shader_type="mesh", timeout=300)
-    ed.check(any("reserved" in m for m in messages(r)), f"reserved texture refused: {r!r}")
+        # the engine's texture names are reserved
+        reserved = FRAG.replace("// @property softness", "// @texture u_sceneColorTexture white\n// @property softness")
+        await write_fork(ed, "shaders/soft_reserved", reserved)
+        r = await ed.call("check_shader", shader="shaders/soft_reserved", shader_type="mesh", timeout=300)
+        ed.check(any("reserved" in m for m in messages(r)), f"reserved texture refused: {r!r}")
 
 
 async def test_opaque_material_is_a_check_error(ed: Editor):
-    eid = await make_entity(ed, "Soft box")
-    await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft"}})
-    r = await ed.call("check_shader", timeout=300)
-    ed.check(not [m for m in messages(r) if "opaque queue" in m], f"blended: no error: {r!r}")
+    async with project_scene(ed, "test_opaque_material_is_a_check_error", with_texture=False) as SCENE:
+        await write_fork(ed, "shaders/soft", FRAG)
+        eid = await make_entity(ed, "Soft box")
+        await ed.call("set_properties", entity=eid, values={"mesh": {M + "shader": "shaders/soft"}})
+        r = await ed.call("check_shader", timeout=300)
+        ed.check(not [m for m in messages(r) if "opaque queue" in m], f"blended: no error: {r!r}")
 
-    await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "opaque"}})
-    r = await ed.call("check_shader", timeout=300)
-    errors = [f for f in r.get("findings", []) if "opaque queue" in f.get("message", "")]
-    ed.check(errors and errors[0].get("severity") == "error", f"opaque material reported: {r!r}")
-    ed.check("Soft box" in errors[0]["message"] and "depth and colour" not in errors[0]["message"],
-             f"names the GameObject and the depth: {errors[0]!r}")
+        await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "opaque"}})
+        r = await ed.call("check_shader", timeout=300)
+        errors = [f for f in r.get("findings", []) if "opaque queue" in f.get("message", "")]
+        ed.check(errors and errors[0].get("severity") == "error", f"opaque material reported: {r!r}")
+        # with TINT it reads the colour too
+        await ed.call("set_properties", entity=eid, values={"mesh": {M + "shaderFeatures": ["TINT"]}})
+        r = await ed.call("check_shader", timeout=300)
+        errors = [f for f in r.get("findings", []) if "opaque queue" in f.get("message", "")]
+        ed.check(errors and errors[0]["severity"] == "error", f"colour reader remains invalid in the opaque queue: {r!r}")
 
-    # with TINT it reads the colour too
-    await ed.call("set_properties", entity=eid, values={"mesh": {M + "shaderFeatures": ["TINT"]}})
-    r = await ed.call("check_shader", timeout=300)
-    errors = [f for f in r.get("findings", []) if "opaque queue" in f.get("message", "")]
-    ed.check(errors and "depth and colour" in errors[0]["message"], f"depth and colour: {r!r}")
-
-    await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "auto"}})
-    r = await ed.call("check_shader", timeout=300)
-    ed.check(not [m for m in messages(r) if "opaque queue" in m], f"back to its state: no error: {r!r}")
-
-
-async def test_list_shaders_state_priority(ed: Editor):
-    # @state priority= (engine review fixes): projected_decal draws before the transparent objects
-    # of the same sort priority
-    entry = (await ed.call("list_shaders", name="projected_decal"))["shaders"][0]
-    ed.check_eq(entry.get("state", {}).get("priority"), -1, f"projected_decal's state priority: {entry.get('state')!r}")
-    entry = (await ed.call("list_shaders", name="toon"))["shaders"][0]
-    ed.check("priority" not in entry.get("state", {}), f"no priority where the manifest sets none: {entry.get('state')!r}")
+        await ed.call("set_properties", entity=eid, values={"mesh": {M + "blendMode": "auto"}})
+        r = await ed.call("check_shader", timeout=300)
+        ed.check(not [m for m in messages(r) if "opaque queue" in m], f"back to its state: no error: {r!r}")

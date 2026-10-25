@@ -4,7 +4,9 @@ Engine tests own focus, slider and repeat semantics. This scenario protects conv
 MCP button/axis names and values, cancellation by document handlers, and routing to game scripts.
 """
 
-from harness import Editor
+from harness import Editor, REPO
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 

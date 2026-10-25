@@ -1,6 +1,6 @@
 """Engine/editor runtime regressions found when AI agents built games through the MCP server.
 
-Runs on a scratch copy of the TappyPlane fixture (a 2D Lua game with a HUD child UI scene).
+Each retained regression authors its minimal scene in a new empty project.
 Tests run in order and share one editor.
 
 - Rigidbody / Rigidbody2D are usable from a Lua init() on the first play (the body used to be
@@ -15,50 +15,32 @@ import asyncio
 import os
 import sys
 import time
+import wave
 
 from harness import Editor, skip
 from htmlui_pixels import decode_png
 
+EDITOR = {"create": True, "name": "Runtime Regressions"}
 TIMEOUT = 900
 
-SCENES = {}
 
 
 # -- helpers -----------------------------------------------------------------
 
 
-def image_difference(a: bytes, b: bytes, step: int = 4) -> float:
-    """Mean absolute RGB difference (0..255) of two same-sized screenshots, sampled every `step` px."""
-    wa, ha, ca, ra = decode_png(a)
-    wb, hb, cb, rb = decode_png(b)
-    assert (wa, ha) == (wb, hb), f"sizes differ: {wa}x{ha} vs {wb}x{hb}"
-    total = 0
-    count = 0
-    for y in range(0, ha, step):
-        for x in range(0, wa, step):
-            for k in range(3):
-                total += abs(ra[y][x * ca + k] - rb[y][x * cb + k])
-            count += 3
-    return total / max(count, 1)
-
-
 async def new_scene(ed: Editor, kind: str, name: str):
-    """Create and cache one test scene per kind (2d, 3d, ui)."""
-    if kind not in SCENES:
-        made = await ed.call("create_scene", name=name, type=kind)
-        scene = made["scene"]
-        ed.check(scene["selected"] and scene["name"].startswith(name), f"new scene is not selected: {scene!r}")
-        SCENES[kind] = scene["id"]
-    return SCENES[kind]
+    return (await ed.call("create_scene", name=name, type=kind))["scene"]["id"]
 
 
 async def play_and_collect(ed: Editor, scene):
     """Start Play on `scene`, collect console lines, and stop again."""
     cursor = (await ed.call("read_console", limit=1)).get("next_cursor", 0)
     started = await ed.call("play", action="start", scene=scene, wait=True)
-    await ed.call("wait", frames=5)
-    lines = await ed.call("read_console", since=cursor, limit=200)
-    await ed.call("play", action="stop")
+    try:
+        await ed.call("wait", frames=1)
+        lines = await ed.call("read_console", since=cursor, limit=200)
+    finally:
+        await ed.call("play", action="stop")
     texts = [e["message"] for e in lines["entries"]]
     return started, texts
 
@@ -70,33 +52,34 @@ def problem_texts(started) -> list:
 # -- HUD child scene orientation (first in the file: it needs the editor's first play) ------------
 
 
-async def game_shot(ed: Editor) -> bytes:
-    shot = await ed.call_raw("screenshot", {"view": "game"})
-    ed.check(not shot.is_error and shot.images, f"no game screenshot: {shot.text[:300]}")
-    return shot.images[0][0]
-
-
 async def test_child_ui_scene_not_flipped_on_first_play(ed: Editor):
-    """The fixture's Main Scene stacks the HUD Scene, which is not open in the editor: its
-    runtime copy comes from disk. The first and second plays must draw the same picture."""
-    # Fixed steps with auto-pause make both plays reach the same frame whatever the host
-    # load, so only a real difference (an upside-down HUD) can fail the comparison.
-    shots = []
+    await ed.call("set_project_settings", values={"graphics.canvas_width": 1280, "graphics.canvas_height": 720})
+    child = (await ed.call("create_scene", name="OrientationChild", type="ui"))["scene"]["id"]
+    for name, color, y in [("Top", [1, 0, 0, 1], 0), ("Bottom", [0, 0, 1, 1], 360)]:
+        await ed.call("create_ui", scene=child, root={
+            "type": "image", "name": name, "color": color,
+            "layout": {"anchor": "top_left", "position": [0, y], "size": [1280, 360]}})
+    await ed.call("save_scene", scene=child, path="OrientationChild.scene")
+    parent = await new_scene(ed, "2d", "OrientationParent")
+    await ed.call("set_child_scene", scene=parent, child=child, start_active=True)
+    await ed.call("save_scene", scene=parent, path="OrientationParent.scene")
+    await ed.call("close_scene", scene=child, unsaved="discard")
+    await ed.call("play", action="start", scene=parent, auto_pause=True, fixed_fps=60)
     try:
-        for _ in range(2):
-            await ed.call("play", action="start", scene="Main Scene", wait=True,
-                          auto_pause=True, fixed_fps=60)
-            await ed.call("wait", frames=60)
-            shots.append(await game_shot(ed))
-            await ed.call("play", action="stop")
+        await ed.call("wait", frames=2)
+        shot = await ed.call_raw("screenshot", {"view": "game", "max_width": 640})
+        ed.check(not shot.is_error and shot.images, shot.text)
+        data = shot.images[0][0]
+        (ed.scratch.root / "child-ui-first-play.png").write_bytes(data)
+        _, _, channels, rows = decode_png(data)
+        rect = shot.value["canvas_rect_in_image"]
+        x = round(rect["x"] + rect["width"] / 2)
+        top = rows[round(rect["y"] + rect["height"] / 4)][x*channels:x*channels+3]
+        bottom = rows[round(rect["y"] + rect["height"] * 3 / 4)][x*channels:x*channels+3]
+        ed.check(top[0] > 200 and top[2] < 30, "the authored top panel is red on the first disk-loaded child play")
+        ed.check(bottom[2] > 200 and bottom[0] < 30, "the authored bottom panel is blue")
     finally:
-        await ed.call("play", action="set", auto_pause=False, fixed_fps=0)
-    diff = image_difference(shots[0], shots[1])
-    if diff > 1.5:
-        (ed.scratch.root / "first-play.png").write_bytes(shots[0])
-        (ed.scratch.root / "second-play.png").write_bytes(shots[1])
-    ed.check(diff <= 1.5, f"the first play draws differently from the second (mean RGB diff {diff:.2f}): "
-                          f"the HUD child scene is upside down; see {ed.scratch.root}")
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
 
 
 # -- 1. Rigidbody ready in init() --------------------------------------------------------------
@@ -175,7 +158,7 @@ return FrictionProbe
 
 
 async def test_rigidbody3d_friction_restitution_properties(ed: Editor):
-    sid = await new_scene(ed, "3d", "BodyInit3D")
+    sid = await new_scene(ed, "3d", "MaterialPersistence3D")
     made = await ed.call("create_entity", scene=sid, name="Rubber", type="box", position=[2, 1, 0])
     rubber = made["entity_id"]
     body = await ed.call("edit_colliders", scene=sid, entity=rubber, body_type="dynamic", add=[{"shape": "box"}],
@@ -194,32 +177,41 @@ async def test_rigidbody3d_friction_restitution_properties(ed: Editor):
     ed.check_in("friction=0.75", hits[0], "the body is made with the component's friction")
     ed.check_in("restitution=0.60", hits[0], "and its restitution")
 
-    # the scene file keeps them
     await ed.call("save_scene", scene=sid, path="FrictionTest.scene")
-    text = (ed.project / "FrictionTest.scene").read_text()
-    ed.check_in("friction: 0.75", text, "friction saved")
-    ed.check_in("restitution: 0.6", text, "restitution saved")
-    # an editor-made mesh no longer writes MAX_BONES identity matrices
-    ed.check("bonesMatrix:\n          - [[1, 0, 0, 0]" not in text, "identity bone matrices are not written")
+    await ed.call("close_scene", scene=sid, unsaved="discard")
+    reopened = await ed.call("open_scene", scene="FrictionTest.scene")
+    props = (await ed.call("get_entity", scene=reopened["scene"]["id"], entity="Rubber",
+                          components=["rigidbody"], properties=["friction", "restitution"]))["components"]["rigidbody"]
+    ed.check(abs(float(props["friction"]) - 0.75) < 1e-4, props)
+    ed.check(abs(float(props["restitution"]) - 0.6) < 1e-4, props)
 
 
 # -- Audio without an output device -------------------------------------------------------------
 
 
 async def test_no_audio_device_is_quiet(ed: Editor):
-    """Without an audio device (this headless host) the sounds of the TappyPlane game used to log
-    'Failed to initialize audio output' as an error on every frame they were pending."""
-    cursor = (await ed.call("read_console", limit=1)).get("next_cursor", 0)
-    await ed.call("play", action="start", scene="Main Scene", wait=True)
-    for _ in range(4):
-        await ed.call("send_input", events=[{"type": "key", "key": "space"}])
-        await ed.call("wait", seconds=0.3)
-    errors = await ed.call("read_console", since=cursor, types=["error"], limit=200)
-    everything = await ed.call("read_console", since=cursor, contains="audio", limit=200)
-    await ed.call("play", action="stop")
-    audio_errors = [e["message"] for e in errors.get("entries", []) if "audio" in e["message"].lower()]
-    ed.check(not audio_errors, f"audio errors logged: {audio_errors[:3]} ({len(audio_errors)})")
-    ed.check(len(everything.get("entries", [])) <= 1, f"audio messages repeat: {everything.get('entries', [])[:3]}")
+    """A real valid sound is requested repeatedly; unavailable output stays quiet."""
+    path = ed.project / "assets" / "probe.wav"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "wb") as sound:
+        sound.setparams((1, 2, 44100, 441, "NONE", "not compressed"))
+        sound.writeframes(bytes(441 * 2))
+    cursor = (await ed.call("read_console", limit=1))["next_cursor"]
+    await ed.call("play", action="start", auto_pause=True, fixed_fps=60)
+    try:
+        loaded = await ed.call("eval_lua", code="audioProbe = AudioSource(scene); audioProbe:loadSound('assets/probe.wav'); audioProbe:play()")
+        await ed.call("wait", until="audioProbe:getLength() > 0", timeout_seconds=10)
+        loaded = await ed.call("eval_lua", code="return audioProbe:getLength()")
+        ed.check(abs(loaded["values"][0] - 0.01) < 1e-4, "the owned valid PCM sample was decoded before playback")
+        for _ in range(4):
+            await ed.call("eval_lua", code="audioProbe:play()")
+            await ed.call("wait", frames=1)
+        errors = await ed.call("read_console", since=cursor, types=["error"], contains="audio")
+        device_warnings = await ed.call("read_console", since=cursor, contains="No audio output available")
+        ed.check_eq(errors["entries"], [], "lack of an output device is not a playback error")
+        ed.check(len(device_warnings["entries"]) <= 1, "the unavailable output device is not retried for every sound")
+    finally:
+        await ed.call("play", action="stop", auto_pause=False, fixed_fps=0)
 
 
 # -- Idle CPU -------------------------------------------------------------------------------------
@@ -232,11 +224,13 @@ def _editor_cpu_ticks(root) -> tuple:
             continue
         try:
             cwd = os.readlink(f"/proc/{name}/cwd")
-            exe = open(f"/proc/{name}/cmdline", "rb").read().split(b"\0")[0].decode()
-            stat = open(f"/proc/{name}/stat").read()
+            with open(f"/proc/{name}/cmdline", "rb") as process:
+                command = process.read().split(b"\0")
+            with open(f"/proc/{name}/stat") as process:
+                stat = process.read()
         except OSError:
             continue
-        if cwd.startswith(str(root)) and "jasperengine-editor" in exe:
+        if cwd == str(root) and b"mcp" in command:
             fields = stat[stat.rindex(")") + 2:].split()
             return int(name), int(fields[11]) + int(fields[12])
     return None, 0
@@ -250,8 +244,7 @@ async def test_idle_editor_does_not_spin(ed: Editor):
     await ed.call("editor_status")
     await asyncio.sleep(3)  # past the idle delay and the settle frames
     pid, before = _editor_cpu_ticks(ed.scratch.root)
-    if pid is None:
-        skip("editor process not found")
+    ed.check(pid is not None, "the owned local editor process is measurable")
     start = time.monotonic()
     await asyncio.sleep(6)
     _, after = _editor_cpu_ticks(ed.scratch.root)

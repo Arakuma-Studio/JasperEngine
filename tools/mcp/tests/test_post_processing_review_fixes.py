@@ -16,15 +16,13 @@
 from __future__ import annotations
 
 import struct
-import sys
 import os
 import zlib
 from pathlib import Path
 
 from harness import Editor
 
-sys.path.insert(0, str(Path(__file__).parent))
-from test_runtime_regressions import decode_png  # noqa: E402
+from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Post Processing Review Fixes"}
 TIMEOUT = 600

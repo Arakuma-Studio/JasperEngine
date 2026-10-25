@@ -35,8 +35,10 @@ import os
 import time
 
 import harness
-from harness import Editor, TestFailure
+from harness import Editor, TestFailure, REPO
 from htmlui_pixels import Shot
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 S: dict = {}
 

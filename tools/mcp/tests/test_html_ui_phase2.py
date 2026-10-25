@@ -29,8 +29,10 @@ from pathlib import Path
 import yaml
 
 import harness
-from harness import Editor
+from harness import Editor, REPO
 from htmlui_pixels import Shot, near
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -362,7 +364,7 @@ async def test_verbose_setting_reaches_the_compat_layer():
 
     harness.Scratch.make = make
     try:
-        async with Editor() as ed:
+        async with Editor(**EDITOR) as ed:
             await ed.call("write_file", path=MENU_CSS, content=BAD_CSS)
             await ed.call("write_file", path=MENU, content=BAD_HTML)
             made = await ed.call("create_scene", name="P2Verbose", type="UI")

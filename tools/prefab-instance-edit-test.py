@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Scripted checks of Unity's instance-edit semantics (editor/project/PREFABS.md, section 12).
 
-    FIXTURE=<TappyPlane fixture project> tools/prefab-instance-edit-test.py
+    JASPER_EDITOR=<editor executable> tools/prefab-instance-edit-test.py
 
 Builds the `legacy` fixture (tools/prefab-fixtures.py) in a temporary directory, then runs
 jasperengine-editor scene-dump --ops on copies of it: instance edits recorded as overrides of
-that instance only, Apply to the owning / inner / outer prefab, Revert, Apply All /
-Revert All, undo and redo, multi-selection, name / state / component overrides, Play
+legacy default overrides, Apply to the owning / inner / outer prefab, Apply All /
+Revert All, and deep state/component propagation. Generic flat edit/undo cases belong to
+tools/mcp/tests/test_prefab.py. Play
 mode edits gone after Stop, overrides kept across a save and a reload. Exits non-zero on a
 failure. Needs a Linux editor build (tools/build.sh linux).
 """
-import os, shutil, subprocess, sys, tempfile, yaml
+import os, shlex, shutil, subprocess, sys, tempfile, yaml
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-EDITOR = os.path.join(ROOT, 'build', 'linux', 'editor-install', 'bin', 'jasperengine-editor')
+EDITOR = shlex.split(os.environ.get('JASPER_EDITOR', os.path.join(ROOT, 'build', 'linux', 'editor-install', 'bin', 'jasperengine-editor')))
 WORK = tempfile.mkdtemp(prefix='prefab-instance-edit-')
 
 
@@ -33,8 +34,8 @@ def run(project, ops, name):
         full.append(op)
     opsPath = work + '/ops.yaml'
     yaml.safe_dump(full, open(opsPath, 'w'), sort_keys=False)
-    res = subprocess.run([EDITOR, 'scene-dump', '--project', proj, '--ops', opsPath, '--out', work + '/final.yaml'],
-                         capture_output=True, text=True, timeout=600)
+    res = subprocess.run([*EDITOR, 'scene-dump', '--project', proj, '--ops', opsPath, '--out', work + '/final.yaml'],
+                         capture_output=True, text=True, timeout=120)
     open(work + '/log.txt', 'w').write(res.stdout + '\n----\n' + res.stderr)
     if res.returncode != 0:
         print(res.stdout[-3000:], res.stderr[-3000:])
@@ -66,50 +67,7 @@ def done():
 P = os.path.join(WORK, 'legacy')
 subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'prefab-fixtures.py'), 'legacy', P], check=True)
 
-print("== edits, undo, redo, revert")
-
-ops = [
-    {'op': 'dump'},
-    # an instance member's value edited: an override of that instance only
-    {'op': 'set', 'entity': 'Rock B/Rock/Pebble', 'component': 'transform', 'property': 'position', 'value': [7, 8, 0]},
-    {'op': 'dump'},
-    {'op': 'undo'},
-    {'op': 'dump'},
-    {'op': 'redo'},
-    {'op': 'dump'},
-    # the same value as the prefab's again: still an override (Unity keeps it until Revert)
-    {'op': 'set', 'entity': 'Rock B/Rock/Pebble', 'component': 'transform', 'property': 'position', 'value': [90, 0, 0]},
-    {'op': 'dump'},
-    {'op': 'revertProperty', 'entity': 'Rock B/Rock/Pebble', 'component': 'transform', 'properties': ['position']},
-    {'op': 'dump'},
-    {'op': 'undo'},
-    {'op': 'dump'},
-]
-d, out, proj = run(P, ops, 't1')
-before, edited, undone, redone, same, reverted, unreverted, final = d
-e0 = ents(before)
-print('Rock B/Rock/Pebble before', e0['Rock B/Rock/Pebble']['components']['transform']['position'], e0['Rock B/Rock/Pebble'].get('overrides'))
-print('Rock A/Rock/Pebble before', e0['Rock A/Rock/Pebble']['components']['transform']['position'], e0['Rock A/Rock/Pebble'].get('overrides'))
-e = ents(edited)
-check(e['Rock B/Rock/Pebble']['components']['transform']['position'] == [7, 8, 0], 'edit applied to the instance')
-check(e['Rock B/Rock/Pebble'].get('overrides', {}).get('properties', {}).get('transform') == ['position'], 'position override recorded')
-check(e['Rock A/Rock/Pebble']['components']['transform']['position'] == e0['Rock A/Rock/Pebble']['components']['transform']['position'], 'other instance unaffected')
-e = ents(undone)
-check(e['Rock B/Rock/Pebble']['components']['transform']['position'] == e0['Rock B/Rock/Pebble']['components']['transform']['position'], 'undo: value back')
-check('overrides' not in e['Rock B/Rock/Pebble'], 'undo: override gone')
-e = ents(redone)
-check(e['Rock B/Rock/Pebble'].get('overrides', {}).get('properties', {}).get('transform') == ['position'], 'redo: override back')
-check(e['Rock B/Rock/Pebble']['components']['transform']['position'] == [7, 8, 0], 'redo: value back')
-e = ents(same)
-check(e['Rock B/Rock/Pebble'].get('overrides', {}).get('properties', {}).get('transform') == ['position'], 'value equal to the prefab: still overridden')
-e = ents(reverted)
-check('overrides' not in e['Rock B/Rock/Pebble'], 'revert: override gone')
-check(e['Rock B/Rock/Pebble']['components']['transform']['position'] == e0['Rock B/Rock/Pebble']['components']['transform']['position'], 'revert: prefab value')
-e = ents(unreverted)
-check(e['Rock B/Rock/Pebble'].get('overrides', {}).get('properties', {}).get('transform') == ['position'], 'undo revert: override back')
-
-
-print("== apply, nested targets, state, components, multi-selection, Play, reload")
+print("== explicit overrides and legacy nested propagation")
 
 RB = 'Rock B/Rock/Pebble'
 RA = 'Rock A/Rock/Pebble'
@@ -121,6 +79,21 @@ def pos(e, path, key='position'):
 
 def ov(e, path):
     return e[path].get('overrides', {})
+
+# An explicit override remains explicit when its value is set back to the base's value.
+# Unlike an ordinary changed-value Revert, this must clear metadata without changing pixels.
+ops = [
+    {'op': 'set', 'entity': RB, 'component': 'transform', 'property': 'position', 'value': [7, 8, 0]},
+    {'op': 'set', 'entity': RB, 'component': 'transform', 'property': 'position', 'value': [90, 0, 0]},
+    {'op': 'dump'},
+    {'op': 'revertProperty', 'entity': RB, 'component': 'transform', 'properties': ['position']},
+    {'op': 'dump'},
+]
+d, out, proj = run(P, ops, 'explicit-equal')
+explicit, reverted, final = d
+check(pos(ents(explicit), RB) == [90, 0, 0] and ov(ents(explicit), RB).get('properties', {}).get('transform') == ['position'],
+      'value equal to the prefab: still overridden')
+check('overrides' not in ents(reverted)[RB], 'revert: override gone')
 
 # ---- A/B/C: apply to the owning prefab, undo
 ops = [
@@ -189,51 +162,6 @@ check(pos(e, CA, 'scale') == [2, 2, 1], 'apply to Rock: Castle gets it')
 e = ents(undoRock)
 check(pos(e, RB, 'scale') == [1, 1, 1], 'undo apply to Rock')
 
-# ---- F/G/H/I: names, state, components, multi-selection
-ops = [
-    {'op': 'setName', 'entity': RB, 'name': 'Stone'},
-    {'op': 'dump'},
-    {'op': 'setState', 'entity': 'Rock B/Rock/Stone', 'active': False},
-    {'op': 'dump'},
-    {'op': 'undo'}, {'op': 'undo'},
-    {'op': 'setName', 'entity': 'Rock B', 'name': 'Rock Renamed'},
-    {'op': 'dump'},
-    {'op': 'undo'},
-    {'op': 'addComponent', 'entity': RB, 'component': 'light'},
-    {'op': 'removeComponent', 'entity': RB, 'component': 'sprite'},
-    {'op': 'dump'},
-    {'op': 'removeComponent', 'entity': RB, 'component': 'light'},
-    {'op': 'dump'},
-    {'op': 'undo'}, {'op': 'undo'}, {'op': 'undo'},
-    {'op': 'dump'},
-    {'op': 'set', 'entity': RB, 'also': [TA], 'component': 'transform', 'property': 'position', 'value': [1, 2, 3]},
-    {'op': 'dump'},
-    {'op': 'undo'},
-    {'op': 'dump'},
-]
-d, out, proj = run(P, ops, 't2f')
-named, inactive, rootNamed, comps, addedRemoved, compsUndone, multi, multiUndone, final = d
-e = ents(named)
-check(ov(e, 'Rock B/Rock/Stone').get('state') == 1, 'rename member: name override')
-check(RA in e, 'other instance keeps its name')
-e = ents(inactive)
-check(ov(e, 'Rock B/Rock/Stone').get('state') == 3, 'active edit: active override')
-e = ents(rootNamed)
-check('Rock Renamed' in e and not (ov(e, 'Rock Renamed').get('state', 0) & 1), 'rename instance root: no override (default override)')
-e = ents(comps)
-check(ov(e, RB).get('added') == ['light'], 'add component: added component override')
-check(ov(e, RB).get('removed') == ['sprite'], 'remove component: removed component override')
-check('light' not in e[RA]['components'] and 'sprite' in e[RA]['components'], 'other instance keeps its components')
-e = ents(addedRemoved)
-check('added' not in ov(e, RB), 'removing an added component just removes it')
-e = ents(compsUndone)
-check('overrides' not in e[RB] and 'sprite' in e[RB]['components'] and 'light' not in e[RB]['components'], 'undo component edits')
-e = ents(multi)
-check(pos(e, RB) == [1, 2, 3] and pos(e, TA) == [1, 2, 3], 'multi-selection: both edited')
-check(ov(e, RB).get('properties', {}).get('transform') == ['position'] and ov(e, TA).get('properties', {}).get('transform') == ['position'], 'multi-selection: both overridden')
-e = ents(multiUndone)
-check('overrides' not in e[RB] and 'transform' not in ov(e, TA).get('properties', {}) and pos(e, TA) == [90, 0, 0], 'multi-selection: one undo step')
-
 # ---- J: Play
 ops = [
     {'op': 'playStart'},
@@ -250,7 +178,7 @@ ops = [
 ]
 d, out, proj = run(P, ops, 't2j')
 playing, stopped, final = d
-check('play mode' in out.lower(), 'play: apply refused for the play-mode restriction')
+check('canApply: no' in out and 'play mode' in out.lower(), 'play: apply refused for the play-mode restriction')
 e = ents(playing)
 check(ov(e, RB).get('properties', {}).get('transform') == ['position'], 'play: edit recorded while playing')
 check(pos(e, 'Tower A/Base/Rock/Rock/PlayName') == [90, 0, 0], 'play: other instance untouched')
@@ -283,6 +211,9 @@ CAROOT = 'Castle A/Keep/Tower/Base/Rock'
 
 # nested instance root: Apply to Prefab 'Rock' (its own) / as Override in Prefab 'Tower'
 ops = [
+    {'op': 'setName', 'entity': 'Rock B', 'name': 'Rock Renamed'},
+    {'op': 'dump'},
+    {'op': 'undo'},
     {'op': 'dump'},
     {'op': 'set', 'entity': TAROOT, 'component': 'transform', 'property': 'scale', 'value': [3, 3, 1]},
     {'op': 'applyProperty', 'entity': TAROOT, 'component': 'transform', 'properties': ['scale'], 'target': 'prefabs/Rock.prefab'},
@@ -293,7 +224,10 @@ ops = [
     {'op': 'dump'},
 ]
 d, out, proj = run(P, ops, 't3a')
-before, toRock, undone, toTower, final = d
+rootNamed, before, toRock, undone, toTower, final = d
+e = ents(rootNamed)
+check('Rock Renamed' in e and not (ov(e, 'Rock Renamed').get('state', 0) & 1),
+      'rename instance root: no override (default override)')
 e0 = ents(before)
 e = ents(toRock)
 print('  Rock A root scale', pos(e0, 'Rock A', 'scale'), '->', pos(e, 'Rock A', 'scale'))

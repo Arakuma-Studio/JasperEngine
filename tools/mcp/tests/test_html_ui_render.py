@@ -4,7 +4,9 @@ The renderer's documented gallery is owned by TestRenderP1Golden; the editor Sce
 pipeline is owned by test_html_ui_editor. This test verifies the export-facing contract.
 """
 
-from harness import Editor
+from harness import Editor, REPO
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 1200
 

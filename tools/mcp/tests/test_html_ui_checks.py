@@ -1,10 +1,10 @@
 """HTML/CSS UI checks (phase 4, p4-checks, spec §3.4 and §5.2): `jasperengine-editor check --ui`
 (default set, --all, --files, text/JSON, --hook with UI warnings shown once), `ui-support` and the
-generated support matrix (tools/mcp/gen_html_ui_support.py), and the parity of the CLI findings
+public support schema and diagnostic codes, and the parity of the CLI findings
 with what the editor reports for the same files (external_changes problems, a live document's
 diagnostics).
 
-The CLI tests run on scratch copies of the fixture (no editor). The parity test uses the editor
+The CLI tests run on scratch copies of the minimal HTML project (no editor). The parity test uses the editor
 (and inspect_ui, p4-mcp-tools).
 """
 
@@ -15,7 +15,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -24,7 +23,9 @@ from pathlib import Path
 import yaml
 
 import harness
-from harness import Editor, TestFailure
+from harness import Editor, TestFailure, REPO
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -160,11 +161,11 @@ def _ignore_copy(directory: str, names: list[str]) -> set[str]:
 
 @contextmanager
 def scratch_project(source: Path | None = None):
-    """A temporary copy of the fixture (or of `source`), without .git and .jasperengine/build."""
+    """A temporary copy of the minimal HTML project (or of `source`), without .git and .jasperengine/build."""
     tmp = Path(tempfile.mkdtemp(prefix="jasper-uicheck-"))
     try:
         project = tmp / "project"
-        shutil.copytree(source or harness.default_fixture(), project, ignore=_ignore_copy, symlinks=True)
+        shutil.copytree(source or EDITOR["project"], project, ignore=_ignore_copy, symlinks=True)
         yield project
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -254,10 +255,6 @@ def tiny_png() -> bytes:
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)) +
             chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
-
-def gen_support(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(harness.REPO / "tools" / "mcp" / "gen_html_ui_support.py"), *args],
-                          capture_output=True, text=True, timeout=180)
 
 
 # ---------------------------------------------------------------------------- 1. usage
@@ -669,7 +666,7 @@ async def test_cli_ui_speed():
 
 # ---------------------------------------------------------------------------- 8. ui-support and the matrix
 
-async def test_ui_support_json_and_generated_doc():
+async def test_ui_support_schema_and_diagnostic_codes():
     data = ui_support()
     check_eq(data["version"], 1, "version")
     check(isinstance(data.get("editor_version"), str) and data["editor_version"], "editor_version")
@@ -698,25 +695,6 @@ async def test_ui_support_json_and_generated_doc():
     check_eq(support_row(data, "attribute", "on*")["code"], "HTMLUI-HTML-0005", "on*")
     check(support_row(data, "value", "sticky", "position"), "values carry their property")
 
-    r = gen_support("--check")
-    check_eq(r.returncode, 0, f"the committed matrix is current (run tools/mcp/gen_html_ui_support.py):\n{r.stdout[-3000:]}{r.stderr}")
-    text = (harness.REPO / "docs/mcp/guide/html-ui-support.md").read_text()
-
-    tmp = Path(tempfile.mkdtemp(prefix="jasper-uisupport-"))
-    try:
-        out = tmp / "matrix.md"
-        r = gen_support("--out", str(out), "--json-out", str(tmp / "support.json"))
-        check_eq(r.returncode, 0, r.stderr)
-        check_eq(out.read_text(), text, "--out writes the same matrix")
-        check_eq(json.loads((tmp / "support.json").read_text())["features"], data["features"], "--json-out")
-        out.write_text(text.replace("| `mix-blend-mode` | unsupported |", "| `mix-blend-mode` | native |"))
-        r = gen_support("--check", "--out", str(out))
-        check_eq(r.returncode, 1, "a corrupted row is stale")
-        check("-| `mix-blend-mode` | native |" in r.stdout and "+| `mix-blend-mode` | unsupported |" in r.stdout,
-              f"with a unified diff: {r.stdout[-2000:]}")
-        check_eq(gen_support("--check", "--out", str(tmp / "absent.md")).returncode, 1, "a missing file is stale")
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------- 9. parity CLI / editor

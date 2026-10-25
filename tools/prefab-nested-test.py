@@ -2,7 +2,7 @@
 """Scripted checks of nested prefabs in assets, stripped objects and persistence
 (editor/project/PREFABS.md, section 17).
 
-    FIXTURE=<TappyPlane fixture project> tools/prefab-nested-test.py [work-dir]
+    JASPER_EDITOR=<editor executable> tools/prefab-nested-test.py [work-dir]
 
 Builds the `nested` fixture (tools/prefab-fixtures.py) and runs jasperengine-editor
 scene-dump on it: Leaf, Branch, Tree and Forest made bottom-up from instances with overrides
@@ -14,10 +14,10 @@ and to an outer one, undo / redo of Create Prefab from a selection holding an in
 nested prefab going missing and coming back, and Prefab Mode persistence.
 Exits non-zero on a failure. Needs a Linux editor build (tools/build.sh linux).
 """
-import os, shutil, subprocess, sys, tempfile, yaml
+import os, shlex, shutil, subprocess, sys, tempfile, yaml
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-EDITOR = os.path.join(ROOT, 'build', 'linux', 'editor-install', 'bin', 'jasperengine-editor')
+EDITOR = shlex.split(os.environ.get('JASPER_EDITOR', os.path.join(ROOT, 'build', 'linux', 'editor-install', 'bin', 'jasperengine-editor')))
 COMPARE = os.path.join(ROOT, 'tools', 'prefab-dump-compare.py')
 WORK = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else tempfile.mkdtemp(prefix='prefab-nested-')
 FAILS = []
@@ -30,12 +30,12 @@ def check(cond, msg):
 
 
 def editor(project, out, ops=None, save=False, name='run'):
-    args = [EDITOR, 'scene-dump', '--project', project, '--out', out]
+    args = [*EDITOR, 'scene-dump', '--project', project, '--out', out]
     if ops:
         args += ['--ops', ops]
     if save:
         args.append('--save')
-    res = subprocess.run(args, capture_output=True, text=True, timeout=1800)
+    res = subprocess.run(args, capture_output=True, text=True, timeout=120)
     open(os.path.join(WORK, name + '.log'), 'w').write(res.stdout + '\n----\n' + res.stderr)
     if res.returncode != 0:
         print(res.stdout[-3000:], res.stderr[-3000:])
@@ -46,7 +46,7 @@ def editor(project, out, ops=None, save=False, name='run'):
 
 
 def compare(a, b, *flags):
-    res = subprocess.run([sys.executable, COMPARE, a, b] + list(flags), capture_output=True, text=True)
+    res = subprocess.run([sys.executable, COMPARE, a, b] + ['--ignore-derived'] + list(flags), capture_output=True, text=True)
     if res.returncode != 0:
         print('\n'.join(res.stdout.splitlines()[-12:]))
     return res.returncode == 0

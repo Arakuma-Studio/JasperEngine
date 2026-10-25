@@ -7,8 +7,10 @@ is owned by the native HTML UI tests; these cases protect the editor's public ad
 
 import yaml
 
-from harness import Editor
+from harness import Editor, REPO
 from htmlui_pixels import Shot, check_color, count_near
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 

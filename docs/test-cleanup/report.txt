@@ -1,3 +1,7 @@
+HISTORICAL SCOPE: this report records cleanup through commit304e64e43.
+The current TappyPlane dependency audit and full MCP validation are in
+tappyplane-followup.txt and its disposition/performance companions.
+
 TEST SUITE CLEANUP — DELIVERY REPORT
 
 COMPLETION STATUS: cleanup and available validation are complete. The five

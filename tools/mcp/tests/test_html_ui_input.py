@@ -12,8 +12,10 @@ Runs on a scratch copy of the fixture project (canvas 1280 x 720). Coordinates a
 pixels, which are document pixels here.
 """
 
-from harness import Editor
+from harness import Editor, REPO
 from htmlui_pixels import Shot, check_color
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 

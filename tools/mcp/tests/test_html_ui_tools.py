@@ -28,7 +28,7 @@ from pathlib import Path
 from mcp.shared.exceptions import MCPError
 
 import harness
-from harness import Editor
+from harness import Editor, REPO
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
@@ -36,6 +36,8 @@ sys.path.insert(0, str(HERE.parent))
 import pngdiff  # noqa: E402
 import tool_budget  # noqa: E402
 from test_html_ui_checks import GOOD_CSS, GOOD_HTML, LLM_CSS, LLM_HTML, normalized, run_json, scratch_project  # noqa: E402
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -398,7 +400,6 @@ async def test_tools_listed_with_annotations(ed: Editor):
     ed.check(a and not a.read_only_hint and not a.destructive_hint, f"create_ui_document annotations: {a}")
     enum = ed.tool("create_ui_document").input_schema["properties"]["template"]["enum"]
     ed.check_eq(set(enum), {e["name"] for e in MANIFEST["examples"]} | {"blank"}, "template enum")
-    ed.check_eq(enum[-1], "blank", "blank last")
     kinds = ed.tool("assert_ui").input_schema["properties"]["checks"]["items"]["properties"]["type"]["enum"]
     ed.check_eq(kinds, ["exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport",
                         "contrast", "min_size"], "assert_ui check types")

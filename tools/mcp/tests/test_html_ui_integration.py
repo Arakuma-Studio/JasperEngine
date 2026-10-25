@@ -9,8 +9,10 @@ Renderer, animation and Lua API details are covered at their direct public seams
 
 import time
 
-from harness import Editor
+from harness import Editor, REPO
 from htmlui_pixels import Shot, near, check_color
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -79,7 +81,7 @@ function HudGame:init()
     doc.onLoad = function() self.loads = self.loads + 1 end
 
     -- a component button of this HUD over the middle of the 3D scene's wall (owned by this
-    -- Lua handle: collected after the play stop deleted the HUD's copy, see test_lua_gc_lifetime)
+    -- Lua handle: collected after the play stop deleted the HUD's copy, see TestEntityHandleLifetime.cpp::LuaHandlesCollectedAfterTheirSceneWasDeleted)
     self.button = Button(self.scene)
     self.button:setPosition(600, 340)
     self.button:setSize(80, 40)

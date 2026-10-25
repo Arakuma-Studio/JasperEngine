@@ -30,8 +30,10 @@ import tempfile
 from pathlib import Path
 
 import harness
-from harness import Editor, skip
+from harness import Editor, skip, REPO
 from htmlui_pixels import Shot
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -272,7 +274,7 @@ async def check_reports_the_mp4(ed: Editor):
     tmp = Path(tempfile.mkdtemp(prefix="jasper-videocheck-"))
     try:
         project = tmp / "project"
-        shutil.copytree(harness.default_fixture(), project, symlinks=True,
+        shutil.copytree(ed.project, project, symlinks=True,
                         ignore=lambda d, names: {".git"} & set(names) | ({"build"} & set(names) if Path(d).name == ".jasperengine" else set()))
         (project / "assets/ui/video").mkdir(parents=True, exist_ok=True)
         shutil.copy(CLIPS / "testcard-vp9.webm", project / "assets/ui/video/clip.mp4")
@@ -354,7 +356,7 @@ async def test_import_without_ffmpeg():
         saved = os.environ.get("JASPER_FFMPEG")
         os.environ["JASPER_FFMPEG"] = ""
         try:
-            async with Editor() as ed:
+            async with Editor(**EDITOR) as ed:
                 r = await ed.call("import_files", sources=[str(source)], to_dir="assets/ui/video")
                 videos = r.get("videos", [])
                 ed.check(len(videos) == 1 and not videos[0]["converted"], f"not converted: {r}")

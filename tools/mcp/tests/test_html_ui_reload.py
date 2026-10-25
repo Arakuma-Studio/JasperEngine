@@ -13,6 +13,9 @@ import time
 from pathlib import Path
 
 from harness import REPO, Editor
+from htmlui_pixels import Shot, check_color
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -21,9 +24,8 @@ TIMEOUT = 900
 # before the next MCP call, in edit mode and during play, once (the editor's poller shares the
 # stamps), and reports `ui_reloaded`, `ui_current` and the diagnostics as `problems`.
 #
-# The reloads are counted from the Console lines both reloaders write ("[HTML UI] Restyled
-# ui/pick/panel.html in scene ..."): one line per reload of a document, whoever does it, and
-# through inspect_ui's document.load_count (p4-mcp-tools).
+# Reload counts use the public inspect_ui document.load_count and Lua onLoad callbacks;
+# diagnostic log wording is not a behavioral contract.
 # =============================================================================================
 
 P = {}   # phase-4 state: scene id, entity ids
@@ -99,7 +101,6 @@ end
 return PanelProbe
 """
 
-RELOAD_LINE = re.compile(r"\[HTML UI\] (Reloaded|Restyled) (\S+) in scene")
 
 
 def tiny_png(rgba=(255, 0, 0, 255)) -> bytes:
@@ -136,32 +137,6 @@ async def status(ed: Editor):
     r = await ed.call_raw("editor_status")
     ed.check(not r.is_error, r.text[:300])
     return r
-
-
-class Reloads:
-    """Counts the reloads of each document from the Console (both reloaders log one line each)."""
-
-    def __init__(self):
-        self.cursor = None
-        self.counts: dict[str, int] = {}
-
-    async def update(self, ed: Editor) -> dict[str, int]:
-        args = {"limit": 1000, "types": ["info"]}
-        if self.cursor is not None:
-            args["since"] = self.cursor
-        result = await ed.call("read_console", args)
-        self.cursor = result["next_cursor"]
-        for entry in result["entries"]:
-            m = RELOAD_LINE.search(entry.get("message", ""))
-            if m:
-                self.counts[m.group(2)] = self.counts.get(m.group(2), 0) + 1
-        return self.counts
-
-    async def of(self, ed: Editor, asset_path: str) -> int:
-        return (await self.update(ed)).get(asset_path, 0)
-
-
-RELOADS = Reloads()
 
 
 async def load_count(ed: Editor, entity: str) -> int:
@@ -202,7 +177,7 @@ def reloaded_for_call(ext: dict | None, html: str) -> bool:
 async def _setup_panel(ed: Editor):
     if "scene" in P:
         return
-    ed.require_tools("create_scene", "create_entity", "set_properties", "eval_lua", "read_console", "write_file")
+    ed.require_tools("create_scene", "create_entity", "set_properties", "eval_lua", "write_file")
     disk_write(ed, PANEL, PANEL_HTML)
     disk_write(ed, PANEL_CSS, PANEL_STYLE)
     disk_write(ed, ICON, tiny_png())
@@ -216,7 +191,6 @@ async def _setup_panel(ed: Editor):
     _, color = await title_color(ed)
     ed.check_eq(rgb(color), (255, 0, 0), f"the panel loaded with a red title ({color})")
     await status(ed)
-    await RELOADS.update(ed)
 
 
 async def test_tracked_extensions(ed: Editor):
@@ -253,7 +227,6 @@ async def test_tracked_extensions(ed: Editor):
 
 async def test_css_edit_reloads_before_call(ed: Editor):
     await _setup_panel(ed)
-    before = await RELOADS.of(ed, "ui/pick/panel.html")
     count_before = await load_count(ed, "Panel")
     disk_write(ed, PANEL_CSS, PANEL_STYLE.replace("#ff0000", "#00ff00"))
     r, value = await title_color(ed)
@@ -266,7 +239,6 @@ async def test_css_edit_reloads_before_call(ed: Editor):
         item = ext["ui_reloaded"][0]
         ed.check_eq((item["stylesheet_only"], item["scene"], item["entity"]["name"]),
                     (True, P["scene"], "Panel"), f"{item}")
-    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), before + 1, "one reload per edit")
     ed.check_eq(await load_count(ed, "Panel"), count_before + 1, "load_count")
 
 
@@ -284,12 +256,12 @@ BROKEN_PANEL = """<html>
 
 async def test_html_error_reported(ed: Editor):
     await _setup_panel(ed)
-    reloads = await RELOADS.of(ed, "ui/pick/panel.html")
+    reloads = await load_count(ed, "Panel")
     disk_write(ed, PANEL, BROKEN_PANEL)
     r = await status(ed)
     ext = ext_of(r)
     ed.check(reloaded_for_call(ext, PANEL), f"the html change reloads the document: {ext}")
-    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), reloads + 1, "reloaded once")
+    ed.check_eq(await load_count(ed, "Panel"), reloads + 1, "reloaded once")
     problems = [p for p in ext["problems"] if p["path"] == PANEL]
     script = [p for p in problems if p.get("code") == "HTMLUI-HTML-0006"]
     ed.check(script, f"the <script> is a problem: {ext['problems']}")
@@ -305,12 +277,12 @@ async def test_html_error_reported(ed: Editor):
     missing = [p for p in ext["problems"] if p.get("code") == "HTMLUI-GEN-0001"]
     ed.check(missing and missing[0]["line"] == 3 and missing[0]["severity"] == "error", f"missing css: {ext['problems']}")
     # fixed: no problems
-    reloads = await RELOADS.of(ed, "ui/pick/panel.html")
+    reloads = await load_count(ed, "Panel")
     disk_write(ed, PANEL, PANEL_HTML)
     ext = ext_of(await status(ed))
     ed.check(reloaded_for_call(ext, PANEL), f"the fix reloads the document: {ext}")
     ed.check_eq(ext["problems"], [], "fixed")
-    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), reloads + 1, "reloaded once")
+    ed.check_eq(await load_count(ed, "Panel"), reloads + 1, "reloaded once")
 
 
 async def test_orphan_css_checked(ed: Editor):
@@ -349,7 +321,6 @@ async def click_ok(ed: Editor) -> int:
 async def test_reload_during_play(ed: Editor):
     await _setup_panel(ed)
     ed.require_tools("play", "send_input")
-    before = await RELOADS.of(ed, "ui/pick/panel.html")
     await ed.call("play", action="start", scene=P["scene"])
     try:
         ed.check_eq(await click_ok(ed), 1, "the listener works before any reload")
@@ -368,24 +339,20 @@ async def test_reload_during_play(ed: Editor):
         ext = ext_of(r)
         ed.check(ext is not None and "deferred" not in ext, f"html during play: {ext}")
         ed.check_eq(r.structured["values"][0], 3, "the running document has the new markup")
-        ed.check((await ed.call("eval_lua", code="return script('Panel', 'PanelProbe').loads"))["values"][0] > loads,
-                 "onLoad ran after the html reload")
+        ed.check_eq((await ed.call("eval_lua", code="return script('Panel', 'PanelProbe').loads"))["values"][0], loads + 1,
+                    "one onLoad callback for the HTML reload")
         ed.check_eq(await click_ok(ed), 1, "one click reaches the reloaded Lua listener once")
-        during = await RELOADS.of(ed, "ui/pick/panel.html")
-        ed.check_eq(during, before + 2, "two reloads during play (css, html)")
     finally:
         await ed.call("play", action="stop")
     await asyncio.sleep(0.6)
     r = await status(ed)
     ed.check(ext_of(r) is None or not ext_of(r).get("ui_reloaded"), f"stop: no second reload for the same changes: {ext_of(r)}")
-    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), during, "the edit-time document is not reloaded again")
     _, value = await title_color(ed)
     ed.check_eq(rgb(value), (255, 255, 0), f"the edit-time document shows the edit: {value}")
 
 
 async def test_mcp_write_not_external(ed: Editor):
     await _setup_panel(ed)
-    before = await RELOADS.of(ed, "ui/pick/panel.html")
     count_before = await load_count(ed, "Panel")
     r = await ed.call_raw("write_file", {"path": PANEL_CSS, "content": PANEL_STYLE.replace("#ff0000", "#ff00ff")})
     ed.check(not r.is_error and ext_of(r) is None, f"write_file: {r.text[:300]}")
@@ -393,20 +360,27 @@ async def test_mcp_write_not_external(ed: Editor):
     ed.check(ext_of(r) is None, f"an MCP write is not external: {ext_of(r)}")
     ed.check_eq(rgb(value), (255, 0, 255), f"reloaded by write_file: {value}")
     await asyncio.sleep(0.6)
-    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), before + 1, "reloaded once")
     ed.check_eq(await load_count(ed, "Panel"), count_before + 1, "load_count +1")
 
 
 async def test_image_dependency_reload(ed: Editor):
     await _setup_panel(ed)
     ed.require_tools("sync_files")
-    before = await RELOADS.of(ed, "ui/pick/panel.html")
+    async def check_icon(want):
+        values = (await ed.call("eval_lua", allow_edit_mode=True, scene=P["scene"], code=(
+            "local r = UIDocument(scene, entity('Panel')):querySelector('.icon'):getBoundingClientRect() "
+            "return r.x + r.width / 2, r.y + r.height / 2")))["values"]
+        shot = await ed.call_raw("screenshot", {"view": "game", "scene": P["scene"], "max_width": 1280})
+        ed.check(not shot.is_error and shot.images, "the document's image is rendered")
+        check_color(ed, Shot(shot.images[0][0], shot.value), values, want, "image dependency pixels")
+
+    await check_icon((255, 0, 0))
     disk_write(ed, ICON, tiny_png((0, 255, 0, 255)))
     r = await status(ed)
     ext = ext_of(r)
     ed.check(ext is not None and ICON in ext["changed"], f"the png is reported: {ext}")
     ed.check(reloaded_htmls(ext) == [PANEL] or ext.get("ui_current") == 1, f"the document using it reloads: {ext}")
-    ed.check_eq(await RELOADS.of(ed, "ui/pick/panel.html"), before + 1, "once")
+    await check_icon((0, 255, 0))
     # a scene texture using the same png still reloads (sync_files counts it)
     sprite = await ed.call("create_entity", scene=P["scene"], type="image", name="IconImage")
     await ed.call("set_properties", scene=P["scene"], entity=sprite["entity_id"], values={"ui": {"texture": ICON}})
@@ -416,6 +390,7 @@ async def test_image_dependency_reload(ed: Editor):
     ed.check(r.get("textures_reloaded", 0) >= 1, f"the scene texture reloads as before: {r}")
     ed.check(reloaded_htmls({"ui_reloaded": r.get("ui_reloaded", [])}) == [PANEL] or r.get("ui_current") == 1,
              f"and the document: {r}")
+    await check_icon((0, 0, 255))
     await ed.call("delete_entities", scene=P["scene"], entities=[sprite["entity_id"]])
 
 
@@ -455,7 +430,7 @@ async def test_many_documents_share_a_stylesheet(ed: Editor):
     await status(ed)
     for i in range(2):
         await title_color(ed, f"Many{i}")
-    before = dict(await RELOADS.update(ed))
+    before = {f"Many{i}": await load_count(ed, f"Many{i}") for i in range(2)}
     disk_write(ed, "assets/ui/pick/many.css", ".title { color: #ff8000; }\n")
     r = await status(ed)
     ext = ext_of(r)
@@ -464,10 +439,8 @@ async def test_many_documents_share_a_stylesheet(ed: Editor):
     for i in range(2):
         _, value = await title_color(ed, f"Many{i}")
         ed.check_eq(rgb(value), (255, 128, 0), f"Many{i}: {value}")
-    after = await RELOADS.update(ed)
-    for i in range(2):
-        key = f"ui/pick/many{i}.html"
-        ed.check_eq(after.get(key, 0) - before.get(key, 0), 1, f"{key} reloaded once")
+    for name, count in before.items():
+        ed.check_eq(await load_count(ed, name), count + 1, f"{name} refreshed once")
 
 
 async def test_unicode_paths(ed: Editor):

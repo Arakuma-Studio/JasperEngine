@@ -18,6 +18,8 @@ from htmlui_pixels import Shot, near  # noqa: E402
 from test_html_ui_checks import check, check_eq, fail, run_json, scratch_project, tiny_png, write  # noqa: E402
 from test_stubs import clangd_check, find_tool, lua_workspace, luals_check, wait_tooling  # noqa: E402
 
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+
 TIMEOUT = 900
 
 S: dict = {}

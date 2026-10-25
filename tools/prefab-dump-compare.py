@@ -21,8 +21,24 @@ import yaml
 
 # --ignore-derived: what the engine computes when it runs (a dump of a project saved by the
 # GUI against one that never ran)
-DERIVED_FIELDS = {("mesh", k) for k in ("aabb", "verticesAABB", "worldAABB", "submeshes", "transparent")} | \
+DERIVED_FIELDS = {("mesh", k) for k in ("aabb", "verticesAABB", "worldAABB", "transparent")} | \
     {("transform", k) for k in ("localMatrix", "modelMatrix", "normalMatrix", "worldPosition", "worldRotation", "worldScale")}
+
+
+# Material and texture inputs remain observable even when runtime mesh metadata is ignored.
+DERIVED_SUBMESH_FIELDS = {"vertexCount", "indexCount", "textureShadow", "hasTexCoord1", "hasTexCoord2",
+                          "hasNormalMap", "hasTangent", "hasVertexColor3", "hasVertexColor4",
+                          "hasTextureRect", "hasSkinning", "hasMorphTarget", "hasMorphNormal", "hasMorphTangent"}
+
+
+def component_data(component, value, ignored):
+    if not isinstance(value, dict):
+        return value
+    value = {k: v for k, v in value.items() if (component, k) not in ignored}
+    if component == "mesh" and ignored and isinstance(value.get("submeshes"), list):
+        value["submeshes"] = [{k: v for k, v in submesh.items() if k not in DERIVED_SUBMESH_FIELDS}
+                              for submesh in value["submeshes"]]
+    return value
 
 
 def load(path):
@@ -150,8 +166,8 @@ def main():
                     for comp in sorted(set(ca) | set(cb)):
                         va, vb = ca.get(comp), cb.get(comp)
                         if isinstance(va, dict) and isinstance(vb, dict):
-                            va = {k: v for k, v in va.items() if (comp, k) not in ignored}
-                            vb = {k: v for k, v in vb.items() if (comp, k) not in ignored}
+                            va = component_data(comp, va, ignored)
+                            vb = component_data(comp, vb, ignored)
                         if va != vb:
                             detail = ""
                             if isinstance(va, dict) and isinstance(vb, dict):

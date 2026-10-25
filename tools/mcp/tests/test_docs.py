@@ -5,6 +5,8 @@ from mcp.shared.exceptions import MCPError
 
 from harness import Editor
 
+EDITOR = {"create": True, "name": "MCP Resources"}
+
 DOCS = ["cpp-scripting", "html-ui", "lattice", "lua-api", "physics", "post-processing", "prefabs", "shaders", "unity-glossary"]
 
 
@@ -26,7 +28,7 @@ async def test_resources_listed(ed: Editor):
 
 async def test_read_docs(ed: Editor):
     guide = await read_text(ed, "jasper://guide")
-    ed.check(guide.startswith(ed.instructions.strip()[:200]), "guide starts with the initialize instructions")
+    ed.check(guide.startswith(ed.instructions.strip()), "guide starts with the initialize instructions")
     ed.check("jasper://docs/lua-api" in guide, "guide lists the docs")
     for name in DOCS:
         text = await read_text(ed, f"jasper://docs/{name}")
@@ -51,8 +53,13 @@ async def test_read_docs(ed: Editor):
 
 async def test_project_resources(ed: Editor):
     (ed.project / "AGENTS.md").unlink(missing_ok=True)
+    claude_file = ed.project / "CLAUDE.md"
+    claude_file.unlink(missing_ok=True)
     agents = await read_text(ed, "jasper://project/AGENTS.md")
     ed.check((ed.project / "AGENTS.md").is_file(), "reading the resource generates AGENTS.md")
+    ed.check(claude_file.is_file(), "generating context also creates its client import")
+    ed.check(any(line.strip() in ("@AGENTS.md", "@./AGENTS.md") for line in claude_file.read_text().splitlines()),
+             "CLAUDE.md imports the generated project context")
     # Public onboarding targets required by phase-4-agent-tooling.md §3.8.4.
     for target in ("check --ui", "jasper://docs/html-ui", "jasper://docs/html-ui-support",
                    ".jasperengine/engine-api/html-ui-examples/"):
@@ -89,6 +96,7 @@ async def test_prompts(ed: Editor):
     listed = await ed.session.list_prompts()
     names = {p.name for p in listed.prompts}
     ed.check_in("new_2d_game", names, "prompt listed")
-    got = await ed.session.get_prompt("new_2d_game", {"idea": "a pong clone"})
+    idea = "a nocturnal library maze"
+    got = await ed.session.get_prompt("new_2d_game", {"idea": idea})
     text = got.messages[0].content.text
-    ed.check("pong" in text, "the prompt must include the caller's game idea")
+    ed.check_in(idea, text, "the prompt preserves the caller's complete game idea")

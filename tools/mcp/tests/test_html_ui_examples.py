@@ -21,10 +21,12 @@ import time
 from pathlib import Path
 
 import harness
-from harness import Editor, TestFailure, skip
+from harness import Editor, TestFailure, skip, REPO
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pngdiff  # noqa: E402  (tools/mcp/pngdiff.py)
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -238,6 +240,7 @@ async def test_lua_scripts_have_no_luals_diagnostics(ed: Editor):
     if not exe:
         skip("lua-language-server is not installed (https://github.com/LuaLS/lua-language-server/releases)")
     await wait_project_copy(ed, ed.project)
+    (ed.project / LUA_DIR).mkdir(parents=True, exist_ok=True)
     for name in NAMES:
         shutil.copy(LIBRARY / name / ENTRIES[name]["lua"], ed.project / LUA_DIR / ENTRIES[name]["lua"])
     await ed.call("sync_files")
