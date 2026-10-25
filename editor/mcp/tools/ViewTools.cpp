@@ -201,7 +201,8 @@ using CaptureJobPtr = std::shared_ptr<CaptureJob>;
 void captureGame(const CaptureJobPtr& job);
 void captureScene(const CaptureJobPtr& job);
 
-// RGB(A) rows → PNG, scaled down to maxWidth; analyses flatness on the way
+#if defined(SOKOL_GLCORE) || defined(SOKOL_GLES3)
+// RGB(A) rows → PNG, scaled down to maxWidth (the whole-editor capture's: GL only)
 bool encodePixels(const uint8_t* pixels, int width, int height, int channels, int maxWidth,
                   std::vector<uint8_t>& png, int& outWidth, int& outHeight) {
     std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3);
@@ -229,6 +230,7 @@ bool encodePixels(const uint8_t* pixels, int width, int height, int channels, in
     };
     return stbi_write_png_to_func(append, &png, outWidth, outHeight, 3, rgb.data(), outWidth * 3) != 0;
 }
+#endif
 
 // True when every pixel of the PNG is the same colour (a blank render)
 bool isFlatPng(const std::vector<uint8_t>& png, std::string& colour) {
