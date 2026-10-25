@@ -436,3 +436,91 @@ TEST(AnimationPlayerComponent, FactoryEmitsTheAuthoredFields) {
               "animationplayer.defaultFadeTime = 0.250000f;\n"
               "scene->addComponent<AnimationPlayerComponent>(entity, animationplayer);\n");
 }
+
+// ---- ModelComponent.animationEntities (spec 9.R15) -----------------------------------------
+
+namespace {
+
+    Entity modelEntity(Scene& scene, bool animationEntities) {
+        Entity entity = scene.createUserEntity();
+        scene.addComponent<Transform>(entity, {});
+        ModelComponent model;
+        model.filename = "models/hero.gltf";
+        // (ModelComponent leaves it uninitialized; the editor's add/clear set it)
+        model.skeleton = NULL_ENTITY;
+        model.animationEntities = animationEntities;
+        scene.addComponent<ModelComponent>(entity, model);
+        return entity;
+    }
+
+}
+
+TEST(AnimationPlayerComponent, ModelAnimationEntitiesRoundTrip) {
+    ModelComponent off;
+    off.filename = "models/hero.gltf";
+    off.skeleton = NULL_ENTITY;
+    off.animationEntities = false;
+    const YAML::Node offNode = Stream::encodeModelComponent(off);
+    ASSERT_TRUE(offNode["animationEntities"]);
+    EXPECT_EQ(offNode["animationEntities"].as<std::string>(), "false");
+    EXPECT_FALSE(Stream::decodeModelComponent(offNode).animationEntities);
+    EXPECT_EQ(YAML::Dump(Stream::encodeModelComponent(Stream::decodeModelComponent(offNode))), YAML::Dump(offNode));
+
+    // on (the default) is not written: files with models save as before
+    ModelComponent on;
+    on.filename = "models/hero.gltf";
+    on.skeleton = NULL_ENTITY;
+    const YAML::Node onNode = Stream::encodeModelComponent(on);
+    EXPECT_FALSE(onNode["animationEntities"]);
+    // decoded over a Model that had it off (ModelLoadCmd undo, a paste, a prefab revert), the
+    // missing key is on, not the old value; an emptied key too
+    EXPECT_TRUE(Stream::decodeModelComponent(onNode, &off).animationEntities);
+    EXPECT_TRUE(Stream::decodeModelComponent(YAML::Load("animationEntities: \"\"\n"), &off).animationEntities);
+    EXPECT_TRUE(Stream::decodeModelComponent(YAML::Load("animationEntities: maybe\n"), &off).animationEntities);
+    EXPECT_FALSE(Stream::decodeModelComponent(YAML::Load("animationEntities: no\n")).animationEntities);
+
+    // a whole-component copy (Paste Component Values) carries it both ways
+    Scene scene;
+    const Entity source = modelEntity(scene, false);
+    const Entity target = modelEntity(scene, true);
+    EntityClipboard::applyComponentValue(&scene, target, ComponentType::ModelComponent,
+                                         EntityClipboard::encodeComponent(&scene, source, ComponentType::ModelComponent));
+    EXPECT_FALSE(scene.getComponent<ModelComponent>(target).animationEntities);
+    const Entity back = modelEntity(scene, true);
+    EntityClipboard::applyComponentValue(&scene, target, ComponentType::ModelComponent,
+                                         EntityClipboard::encodeComponent(&scene, back, ComponentType::ModelComponent));
+    EXPECT_TRUE(scene.getComponent<ModelComponent>(target).animationEntities);
+}
+
+TEST(AnimationPlayerComponent, ModelAnimationEntitiesPropertyFactoryAndPrefabOverride) {
+    Scene scene;
+    const Entity entity = modelEntity(scene, false);
+    const PropertyData property = Catalog::findProperty(&scene, entity, ComponentType::ModelComponent, "animationEntities");
+    ASSERT_EQ(property.type, PropertyType::Bool);
+    EXPECT_EQ(property.ref, &scene.getComponent<ModelComponent>(entity).animationEntities);
+    ASSERT_TRUE(property.def);
+    EXPECT_TRUE(*static_cast<bool*>(property.def));  // Reset gives on
+    EXPECT_TRUE(Catalog::findEntityProperties(&scene, entity, ComponentType::ModelComponent).count("animationEntities"));
+
+    // the exporter: written only when off
+    const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::ModelComponent, "", "scene", "entity");
+    EXPECT_NE(code.find("modelcomp.mergeStaticMeshes = false;\nmodelcomp.animationEntities = false;\n"), std::string::npos) << code;
+    Scene plain;
+    const Entity plainEntity = modelEntity(plain, true);
+    EXPECT_EQ(Factory::createComponent(0, &plain, plainEntity, ComponentType::ModelComponent, "", "scene", "entity").find("animationEntities"),
+              std::string::npos);
+
+    // a prefab instance turning it off overrides that one property, applied as the instance loads
+    Scene asset;
+    const Entity assetRoot = modelEntity(asset, true);
+    EXPECT_EQ(prefabinternal::diffComponentProperties(&asset, assetRoot, &scene, entity, ComponentType::ModelComponent),
+              std::vector<std::string>{"animationEntities"});
+    prefabinternal::ScratchEntity values;
+    values.takeComponents(&scene, entity, Catalog::componentTypeToSignature(&scene, ComponentType::ModelComponent));
+    Scene loaded;
+    const Entity loadedRoot = modelEntity(loaded, true);
+    std::set<std::string> names{"animationEntities"};
+    prefabinternal::copyProperties(values, &loaded, loadedRoot, ComponentType::ModelComponent, names, "test");
+    EXPECT_FALSE(loaded.getComponent<ModelComponent>(loadedRoot).animationEntities);
+    EXPECT_EQ(loaded.getComponent<ModelComponent>(loadedRoot).filename, "models/hero.gltf");
+}
