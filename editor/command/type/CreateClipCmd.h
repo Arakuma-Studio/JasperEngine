@@ -26,7 +26,9 @@
 
 #pragma once
 
+#include "animation/PlayerModelLayout.h"
 #include "command/Command.h"
+#include "ecs/Entity.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -58,11 +60,24 @@ namespace jasperengine::editor{
 
         // why the last execute failed ("can't write <path>: <reason>", a scene command's)
         const std::string& getFailure() const { return failure; }
+        // where execute() also writes its failure (the history deletes a command that fails)
+        void reportFailureTo(std::shared_ptr<std::string> sink) { failureSink = std::move(sink); }
+
+        // The entity whose Animation Player this step adds or uses: after the scene commands,
+        // models on or under it still in the legacy layout are reloaded in the node hierarchy
+        // (PlayerModelLayout::ensureNodeHierarchyForPlayer, R3), undone first on undo
+        void setPlayerRoot(Entity root) { playerRoot = root; }
+        // how many models the last execute reloaded in the node hierarchy
+        size_t getReloadedModels() const { return layoutReloads.size(); }
+        // the files undo kept because they changed since this command wrote them
+        const std::vector<std::filesystem::path>& getKeptFiles() const { return keptFiles; }
+        const std::vector<File>& getFiles() const { return files; }
 
     private:
         struct Written{
             bool existed = false;
             std::string previous;
+            bool done = false;          // written by the last execute
         };
 
         Project* project = nullptr;
@@ -72,6 +87,17 @@ namespace jasperengine::editor{
         std::vector<std::unique_ptr<Command>> sceneCommands;
         bool wasModified = false;
         std::string failure;
+        std::shared_ptr<std::string> failureSink;
+        Entity playerRoot = NULL_ENTITY;
+        PlayerModelLayout::Reloads layoutReloads;
+        bool reloadsTaken = false;              // the first execute ran the helper
+        std::vector<std::filesystem::path> createdDirs;
+        std::vector<std::filesystem::path> keptFiles;
+
+        // files [0, count) back to what was there before execute
+        void restoreFiles(size_t count, bool checkBytes);
+        void notifyFiles();
+        bool fail(const std::string& message);
     };
 
 }
