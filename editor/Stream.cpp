@@ -6652,6 +6652,9 @@ YAML::Node editor::Stream::encodeModelComponent(const ModelComponent& model) {
     // come back with the file and nodes it had.
     node["filename"] = model.filename;
     node["mergeStaticMeshes"] = model.mergeStaticMeshes;
+    // written only when off (an Animation Player plays the model's clips, 9.R15), so files with
+    // models save as before; decoding reads a missing key as on, never as the old value
+    if (!model.animationEntities) node["animationEntities"] = false;
 
     node["skeleton"] = static_cast<uint32_t>(model.skeleton);
 
@@ -6710,6 +6713,20 @@ ModelComponent editor::Stream::decodeModelComponent(const YAML::Node& node, cons
     // Also check for the old modelPath for exact backward compatibility with old save files
     if (node["filename"]) model.filename = node["filename"].as<std::string>();
     if (node["mergeStaticMeshes"]) model.mergeStaticMeshes = YamlNumbers::as<bool>(node["mergeStaticMeshes"]);
+    // absent (or emptied by a paste over a Model that had it) is the default, on
+    model.animationEntities = true;
+    if (const YAML::Node value = node["animationEntities"]; value && value.IsScalar() && !value.Scalar().empty()) {
+        bool flag = true;
+        if (YamlNumbers::readPlain(value.Scalar(), flag)) {
+            model.animationEntities = flag;
+        } else {
+            try {
+                model.animationEntities = value.as<bool>();
+            } catch (const YAML::Exception&) {
+                model.animationEntities = true;
+            }
+        }
+    }
     if (node["skeleton"]) model.skeleton = static_cast<Entity>(YamlNumbers::as<uint32_t>(node["skeleton"]));
 
     if (node["animations"]) {

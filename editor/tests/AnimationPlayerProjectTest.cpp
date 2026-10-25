@@ -6,13 +6,16 @@
 // refusal and its text, a clip list read and written back with a deleted clip in it, read-only
 // GUIDs), the asset path visitor (a moved clip folder, the model part of "<model>#<clip>", a
 // deletion keeping the reference) and the scene resources the generated scene source preloads.
-// A headless project (AppSettings in a temporary config directory + Project::loadProject); the
-// engine is not started (nothing here renders or loads a model).
+// A headless project (AppSettings in a temporary config directory + Project::loadProject), the
+// engine started on the editor's Platform as PlacementSessionTest does (model clip names are read
+// through the ModelPool).
 
 #include <gtest/gtest.h>
 
 #include "AppSettings.h"
+#include "Engine.h"
 #include "Factory.h"
+#include "Platform.h"
 #include "Project.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "mcp/McpValues.h"
@@ -43,6 +46,7 @@ namespace {
         bool ready = false;
         fs::path dir;
         std::unique_ptr<Project> project;
+        std::unique_ptr<editor::Platform> platform;
     };
 
     Headless& headless() {
@@ -61,6 +65,14 @@ namespace {
             std::ofstream(out.dir / "project.yaml") << "name: playerproject\nassetsDir: assets\n";
             AppSettings::initialize();
             out.project.reset(new Project());
+            // the model clip names are read through the ModelPool (File needs the System), as
+            // PlacementSessionTest and the clip assets tests start it
+            out.platform.reset(new editor::Platform(out.project.get()));
+            static char arg0[] = "jasperengine-editor-tests";
+            static char* argv[] = {arg0, nullptr};
+            Engine::systemInit(1, argv, out.platform.get());
+            Engine::pauseGameEvents(true);
+            Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
             return out;
         }();
@@ -96,8 +108,10 @@ namespace {
         fs::remove_all(assets() / "characters");
         writeClip("anim/walk.anim", WALK_GUID);
         writeClip("anim/run.anim", RUN_GUID);
-        // listed as a model by its extension; no animation of it is read here
-        writeAll(assets() / "models/hero.gltf", "{\"asset\": {\"version\": \"2.0\"}}\n");
+        // T1c's animated hero: Walk, Idle, Animation 2 (unnamed), Wave, Wave 2
+        fs::create_directories(assets() / "models");
+        fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+                      "models" / "hero_animated.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
     }
 
     // A new scene with one GameObject holding an Animation Player with `clips`
@@ -188,7 +202,9 @@ TEST(AnimationPlayerProject, ClipPathsInBothFormsWithTheirGuids) {
     EXPECT_EQ(s.player().clips[0].clip, "anim/walk.anim");
     EXPECT_EQ(s.player().clips[0].guid, WALK_GUID);
 
-    // a model's animation: path only, no GUID
+    // a model's animation: path only, no GUID; an index is stored as the name (canonical form)
+    applyOk(s, player({{"clips[0].clip", "assets/models/hero.gltf#2"}}));
+    EXPECT_EQ(s.player().clips[0].clip, "models/hero.gltf#Animation 2");
     applyOk(s, player({{"clips[0].clip", "assets/models/hero.gltf#Walk"}}));
     EXPECT_EQ(s.player().clips[0].clip, "models/hero.gltf#Walk");
     EXPECT_EQ(s.player().clips[0].guid, "");
@@ -224,6 +240,8 @@ TEST(AnimationPlayerProject, RefusalsNameTheProblemAndGiveAnExample) {
               on + "clip: assets/anim/missing.anim does not exist: create the clip first (Assets > Create > Animation Clip)" + EXAMPLE + ".");
     EXPECT_EQ(refusal(s, player({{"clips[0].clip", "assets/models/hero.gltf"}})),
               on + "clip must be a .anim file or <model>#<animation>" + EXAMPLE + ".");
+    EXPECT_EQ(refusal(s, player({{"clips[0].clip", "assets/models/hero.gltf#Run"}})),
+              on + "clip: assets/models/hero.gltf has no animation \"Run\" (it has: Walk, Idle, Animation 2, Wave, Wave 2).");
     EXPECT_EQ(refusal(s, player({{"clips[0].clip", "assets/models/none.gltf#Walk"}})),
               on + "clip: the model assets/models/none.gltf does not exist" + EXAMPLE + ".");
     EXPECT_EQ(refusal(s, player({{"clips[0].clip", "../x.anim"}})),
