@@ -799,6 +799,10 @@ void RmlRenderer::uploadAtlasTexture(HtmlUITexture& texture){
         texture.uploadedGeneration = *texture.atlasGeneration;
 }
 
+std::vector<const HtmlUITexture*> RmlRenderer::getAtlasTextures() const{
+    return std::vector<const HtmlUITexture*>(atlasTextures.begin(), atlasTextures.end());
+}
+
 void RmlRenderer::updateAtlasTextures(){
     for (HtmlUITexture* texture : atlasTextures)
         uploadAtlasTexture(*texture);

@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 
@@ -1328,10 +1329,30 @@ void RmlRenderer::replayScoped(){
     activeClipScope = -1;
 }
 
+double RmlRenderer::getLastGatherMs() const{
+    return lastGatherMs;
+}
+
+size_t RmlRenderer::getGatherLiveBytes() const{
+    size_t live = 0;
+    for (const std::unique_ptr<GatherPage>& page : gatherPages)
+        live += page->liveBytes;
+    return live;
+}
+
+size_t RmlRenderer::getGatherCapacityBytes() const{
+    size_t capacity = 0;
+    for (const std::unique_ptr<GatherPage>& page : gatherPages)
+        capacity += page->dataCapacity + page->indexCapacity;
+    return capacity;
+}
+
 void RmlRenderer::replayBatched(){
+    const auto start = std::chrono::steady_clock::now();
     planClipScopes();
     planRuns();
     uploadGathered();
+    lastGatherMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     for (const BatchChunk& chunk : batchChunks){
         if (chunk.hit)
             stats.runCacheHits++;

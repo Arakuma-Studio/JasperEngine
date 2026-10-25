@@ -897,8 +897,18 @@ const RmlFontEngine::GlyphEntry& RmlFontEngine::getGlyph(const FaceHandle& handl
 
     GlyphEntry& entry = glyphs[key];
     entry.kind = PageKind::BASE;
-    if (FrameCounters* counters = countersOf(currentManager))
+    FrameCounters* counters = countersOf(currentManager);
+    if (counters)
         counters->glyphsRasterized++;
+    const auto start = std::chrono::steady_clock::now();
+    struct RasterTime {
+        FrameCounters* counters;
+        std::chrono::steady_clock::time_point start;
+        ~RasterTime(){
+            if (counters)
+                counters->glyphRasterMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        }
+    } rasterTime{counters, start};
 
     std::vector<unsigned char> bitmap;
     int width, height, xoff, yoff;

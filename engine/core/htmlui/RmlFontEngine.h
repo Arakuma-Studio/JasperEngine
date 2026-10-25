@@ -157,6 +157,7 @@ namespace jasperengine {
             uint32_t textRegenerations = 0;
             uint32_t textEffectFallbacks = 0;
             uint32_t atlasEvictions = 0;
+            double glyphRasterMs = 0.0;      // the time those glyphs took (R22's budget)
         };
         void beginContextFrame(const Rml::RenderManager& renderManager);
         FrameCounters takeContextFrame(const Rml::RenderManager& renderManager);

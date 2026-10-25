@@ -422,6 +422,7 @@ struct FixtureRunner::State {
     double time = 0.0;
     bool gpu = false;
     bool pointerDown = false;
+    RmlFontEngine::FrameCounters text;   // of the last frame drawn
 };
 
 FixtureRunner::FixtureRunner(int width, int height, int sampleCount): state(std::make_unique<State>()){
@@ -474,6 +475,14 @@ RmlRenderer* FixtureRunner::renderer() const{
     return state->render ? &state->render->renderer : nullptr;
 }
 
+bool FixtureRunner::renderRequested() const{
+    return state->render && state->render->renderRequested;
+}
+
+RmlFontEngine::FrameCounters FixtureRunner::textCounters() const{
+    return state->text;
+}
+
 Rml::ElementDocument* FixtureRunner::document() const{
     return state->document;
 }
@@ -508,8 +517,17 @@ void FixtureRunner::frame(bool draw, bool* drawn){
     r.context->Update();
     // <video> frames chosen in the update (HtmlUIContext converts them before beginFrame)
     r.renderer.runVideoConversions();
-    if (begun)
+    if (begun){
+        // the font engine's counters of the frame, as HtmlUIContext::render takes them
+        RmlFontEngine& fonts = HtmlUI::getFontEngine();
+        fonts.beginContextFrame(r.context->GetRenderManager());
         r.context->Render();
+        state->text = fonts.takeContextFrame(r.context->GetRenderManager());
+        r.renderer.addTextStats(state->text.glyphsRasterized, state->text.textRegenerations, state->text.textEffectFallbacks,
+                                state->text.atlasEvictions);
+    }
+    // text settling at its on-screen scale asks for another frame (S16 R15)
+    r.renderRequested = r.context->GetRenderManager().ConsumeRenderRequest();
     const bool result = draw && r.renderer.endFrame();
     SystemRender::commit();
     if (drawn)
