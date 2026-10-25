@@ -173,7 +173,7 @@ bool editor::Project::resolveSceneAssetRefs(SceneProject& sceneProject, bool loa
     return hintChanged;
 }
 
-void editor::Project::bindMaterialAssetRefs(Material& material) const {
+void editor::Project::bindMaterialAssetRefs(Material& material) {
     if (!assetDatabase.isOpen()) {
         return;
     }
@@ -184,7 +184,15 @@ void editor::Project::bindMaterialAssetRefs(Material& material) const {
             return;
         }
         const std::string hint = AssetIndex::toProjectRelative(roots, site.base, ref.path);
-        const AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
+        AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
+        std::error_code ec;
+        if (!found.found() && !hint.empty() && fs::is_regular_file(projectPath / hint, ec)) {
+            // written a moment ago (a fork_shader, a tool's file) and not seen by a refresh yet;
+            // what else the database learns waits for the next refresh, as resolvePrefabPath does
+            std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(hint);
+            pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
+            found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
+        }
         if (found.found()) {
             ref.guid = found.guid;
         }
