@@ -185,6 +185,10 @@ namespace jasperengine::test {
         bool renderRequested() const;
         // the font engine's counters of the last frame drawn (S16)
         RmlFontEngine::FrameCounters textCounters() const;
+        // the last frame's wall time by phase (benchmarks): Context::Update, Context::Render (the
+        // recording) and the renderer's endFrame (the replay, backend calls included)
+        struct PhaseTimes { double updateMs = 0.0, renderMs = 0.0, endFrameMs = 0.0; };
+        PhaseTimes phaseTimes() const;
         Rml::ElementDocument* document() const;
         std::shared_ptr<const htmlui::compat::CompatDocument> compiled() const;
         std::string diagnosticsText() const;

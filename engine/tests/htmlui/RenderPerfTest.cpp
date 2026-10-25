@@ -83,6 +83,7 @@ namespace {
         double engineMs = 0.0;               // median: wall less the backend
         double frameMs = 0.0;                // median wall time
         double gatherMs = 0.0;               // median
+        double updateMs = 0.0, recordMs = 0.0, replayMs = 0.0;   // medians: Context::Update, Render, endFrame less the backend
         size_t gatherLive = 0, gatherCapacity = 0;
         std::array<uint32_t, (size_t)RmlRenderer::RunBreak::COUNT> runBreaks{};   // the last frame's
         size_t basePages = 0, distancePages = 0;   // the font engine's atlas pages after the run
@@ -119,7 +120,7 @@ namespace {
         double clock = runner.time();
         RenderBackendTime::setEnabled(true);
         BenchRun run;
-        std::vector<double> engines, frames, gathers;
+        std::vector<double> engines, frames, gathers, updates, records, replays;
         for (int i = 0; i < warm + measured; i++){
             clock += 1.0 / 60.0;
             if (perFrame)
@@ -142,6 +143,10 @@ namespace {
             engines.push_back(wall - RenderBackendTime::totalMs());
             frames.push_back(wall);
             gathers.push_back(runner.renderer()->getLastGatherMs());
+            const FixtureRunner::PhaseTimes phases = runner.phaseTimes();
+            updates.push_back(phases.updateMs);
+            records.push_back(phases.renderMs);
+            replays.push_back(phases.endFrameMs - RenderBackendTime::totalMs());
             run.gatherLive = std::max(run.gatherLive, runner.renderer()->getGatherLiveBytes());
             run.gatherCapacity = std::max(run.gatherCapacity, runner.renderer()->getGatherCapacityBytes());
         }
@@ -151,6 +156,9 @@ namespace {
         run.engineMs = median(engines);
         run.frameMs = median(frames);
         run.gatherMs = median(gathers);
+        run.updateMs = median(updates);
+        run.recordMs = median(records);
+        run.replayMs = median(replays);
         return run;
     }
 
@@ -186,7 +194,7 @@ namespace {
                 {"layersPushed", run.maxLayers}, {"boxShadowTextures", run.maxBoxShadowTextures}, {"runsMerged", run.last.runsMerged},
                 {"runCacheHits", run.last.runCacheHits}, {"instancesDrawn", run.last.instancesDrawn}, {"verticesGathered", run.last.verticesGathered},
                 {"geometrySubmitted", run.last.geometrySubmitted}, {"atlasBytes", run.last.atlasBytes}, {"maxGlyphsRasterized", run.maxGlyphs},
-                {"maxGlyphRasterMs", run.maxGlyphMs}, {"engineMs", run.engineMs}, {"frameMs", run.frameMs}, {"gatherMs", run.gatherMs},
+                {"maxGlyphRasterMs", run.maxGlyphMs}, {"engineMs", run.engineMs}, {"frameMs", run.frameMs}, {"gatherMs", run.gatherMs}, {"updateMs", run.updateMs}, {"recordMs", run.recordMs}, {"replayMs", run.replayMs},
                 {"gatherLiveBytes", run.gatherLive}, {"gatherCapacityBytes", run.gatherCapacity}};
     }
 
@@ -197,6 +205,8 @@ namespace {
                     name.c_str(), baseline.maxDraws, s16.maxDraws, baseline.maxStencilDraws, s16.maxStencilDraws, baseline.maxLayers,
                     s16.maxLayers, baseline.maxBoxShadowTextures, s16.maxBoxShadowTextures, baseline.engineMs, s16.engineMs, baseline.frameMs,
                     s16.frameMs);
+        std::printf("[ ui-bench ] %-24s update %.3f -> %.3f ms, record %.3f -> %.3f ms, replay %.3f -> %.3f ms (gather %.3f ms)\n", "",
+                    baseline.updateMs, s16.updateMs, baseline.recordMs, s16.recordMs, baseline.replayMs, s16.replayMs, s16.gatherMs);
         // what started the S16 runs (RmlRenderer::RunBreak), when it batched
         const auto& b = s16.runBreaks;
         using RB = RmlRenderer::RunBreak;
