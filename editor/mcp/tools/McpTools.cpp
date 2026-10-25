@@ -45,6 +45,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerPlacementTools, "Physics placement", "editor_ux"},   // upstream (Physics Placement)
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
+    {registerEcsTools, "ECS: statistics, system schedule and queries", "diagnostics"},   // S07
     {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
 };
 

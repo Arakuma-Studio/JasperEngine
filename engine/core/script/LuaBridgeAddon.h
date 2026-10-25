@@ -236,7 +236,11 @@ namespace luabridge
         {
             if (lua_type(L, index) != LUA_TSTRING)
                 return makeErrorCode(ErrorCode::InvalidTypeCast);
-            return Signature(lua_tostring(L, index));
+            // up to 256 '0'/'1' characters, MSB first (a 64-character string sets the low bits)
+            Signature signature;
+            if (!Signature::fromString(lua_tostring(L, index), signature))
+                return makeErrorCode(ErrorCode::InvalidTypeCast);
+            return signature;
         }
 
         static bool isInstance (lua_State* L, int index)

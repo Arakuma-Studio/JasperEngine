@@ -265,6 +265,7 @@ bool editor::ComponentValuesCmd::execute(){
         YAML::Node source = clip ? clip->value :
             (type == ComponentType::ScriptComponent ? scriptDefaults(scene, target.entity) : defaults);
         EntityClipboard::applyComponentValue(scene, target.entity, type, prepareValue(scene, target.entity, type, source, skip));
+        Catalog::markChanged(scene, target.entity, type);
 
         if (clip) {
             // The copied GameObject becomes this one; other references follow the paste rules
@@ -350,6 +351,7 @@ void editor::ComponentValuesCmd::undo(){
             continue;
         }
         EntityClipboard::applyComponentValue(scene, it->entity, type, it->before);
+        Catalog::markChanged(scene, it->entity, type);
         if (uint64_t updateFlags = EntityClipboard::bindCameraTextures(scene, it->entity, type)) {
             Catalog::updateEntity(scene, it->entity, updateFlags);
         }

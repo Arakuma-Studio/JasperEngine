@@ -90,6 +90,13 @@ namespace jasperengine{
     		return scene->getComponent<T>(entity);
     	}
 
+        // A change made through the wrapper: the setters that set a needUpdate flag stamp
+        // the component changed (Changed<T>, EntityRegistry::markChanged)
+        template <typename T>
+        void markChanged() const {
+            scene->markChanged<T>(entity);
+        }
+
     };
 }
 

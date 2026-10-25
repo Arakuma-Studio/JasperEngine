@@ -24,6 +24,7 @@ void ReflectionProbe::invalidateCapture(){
     ReflectionProbeComponent& probe = getComponent<ReflectionProbeComponent>();
 
     probe.needUpdate = true;
+    markChanged<ReflectionProbeComponent>();
     probe.captureRevision++;
 }
 

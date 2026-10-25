@@ -3,75 +3,91 @@
 
 #include "EntityRegistry.h"
 
+#include <algorithm>
+#include <cassert>
 #include <unordered_set>
 
 using namespace jasperengine;
 
+std::vector<EntityRegistry*>& EntityRegistry::liveRegistries() {
+    static std::vector<EntityRegistry*> registries;
+    return registries;
+}
+
+std::mutex& EntityRegistry::liveRegistriesMutex() {
+    static std::mutex mutex;
+    return mutex;
+}
+
 EntityRegistry::EntityRegistry() {
-    registerComponent<MeshComponent>();
-    registerComponent<ModelComponent>();
-    registerComponent<BoneComponent>();
-    registerComponent<SkyboxComponent>();
-    registerComponent<FogComponent>();
-    registerComponent<MirrorComponent>();
-    registerComponent<LayoutGroupComponent>();
-    registerComponent<RectTransformComponent>();
-    registerComponent<SpriteComponent>();
-    registerComponent<SpriteAnimationComponent>();
-    registerComponent<Transform>();
-    registerComponent<CameraComponent>();
-    registerComponent<LightComponent>();
-    registerComponent<Light2DComponent>();
-    registerComponent<ShadowCaster2DComponent>();
-    registerComponent<ActionComponent>();
-    registerComponent<TweenComponent>();
-    registerComponent<PositionTweenComponent>();
-    registerComponent<RotationTweenComponent>();
-    registerComponent<ScaleTweenComponent>();
-    registerComponent<ColorTweenComponent>();
-    registerComponent<AlphaTweenComponent>();
-    registerComponent<ParticleSystemComponent>();
-    registerComponent<PointsComponent>();
-    registerComponent<LineRendererComponent>();
-    registerComponent<TextComponent>();
-    registerComponent<UIComponent>();
-    registerComponent<ImageComponent>();
-    registerComponent<ButtonComponent>();
-    registerComponent<PanelComponent>();
-    registerComponent<ScrollbarComponent>();
-    registerComponent<ProgressbarComponent>();
-    registerComponent<InputFieldComponent>();
-    registerComponent<MeshPolygonComponent>();
-    registerComponent<PolygonComponent>();
-    registerComponent<AnimationComponent>();
-    registerComponent<KeyframeTracksComponent>();
-    registerComponent<MorphTracksComponent>();
-    registerComponent<RotateTracksComponent>();
-    registerComponent<TranslateTracksComponent>();
-    registerComponent<ScaleTracksComponent>();
-    registerComponent<ScriptComponent>();
-    registerComponent<TerrainComponent>();
-    registerComponent<AudioSourceComponent>();
-    registerComponent<TilemapComponent>();
+    registerComponent<MeshComponent>(ComponentOrder::Hierarchy, "MeshComponent");
+    registerComponent<ModelComponent>(ComponentOrder::Hierarchy, "ModelComponent");
+    registerComponent<BoneComponent>(ComponentOrder::Hierarchy, "BoneComponent");
+    registerComponent<SkyboxComponent>(ComponentOrder::Manual, "SkyboxComponent");
+    registerComponent<FogComponent>(ComponentOrder::Insertion, "FogComponent");
+    registerComponent<MirrorComponent>(ComponentOrder::Insertion, "MirrorComponent");
+    registerComponent<LayoutGroupComponent>(ComponentOrder::Insertion, "LayoutGroupComponent");
+    registerComponent<RectTransformComponent>(ComponentOrder::Hierarchy, "RectTransformComponent");
+    registerComponent<SpriteComponent>(ComponentOrder::Insertion, "SpriteComponent");
+    registerComponent<SpriteAnimationComponent>(ComponentOrder::Insertion, "SpriteAnimationComponent");
+    registerComponent<Transform>(ComponentOrder::Insertion, "Transform");
+    registerComponent<CameraComponent>(ComponentOrder::Insertion, "CameraComponent");
+    registerComponent<LightComponent>(ComponentOrder::Insertion, "LightComponent");
+    registerComponent<Light2DComponent>(ComponentOrder::Insertion, "Light2DComponent");
+    registerComponent<ShadowCaster2DComponent>(ComponentOrder::Insertion, "ShadowCaster2DComponent");
+    registerComponent<ActionComponent>(ComponentOrder::Insertion, "ActionComponent");
+    registerComponent<TweenComponent>(ComponentOrder::Insertion, "TweenComponent");
+    registerComponent<PositionTweenComponent>(ComponentOrder::Insertion, "PositionTweenComponent");
+    registerComponent<RotationTweenComponent>(ComponentOrder::Insertion, "RotationTweenComponent");
+    registerComponent<ScaleTweenComponent>(ComponentOrder::Insertion, "ScaleTweenComponent");
+    registerComponent<ColorTweenComponent>(ComponentOrder::Insertion, "ColorTweenComponent");
+    registerComponent<AlphaTweenComponent>(ComponentOrder::Insertion, "AlphaTweenComponent");
+    registerComponent<ParticleSystemComponent>(ComponentOrder::Insertion, "ParticleSystemComponent");
+    registerComponent<PointsComponent>(ComponentOrder::Hierarchy, "PointsComponent");
+    registerComponent<LineRendererComponent>(ComponentOrder::Hierarchy, "LineRendererComponent");
+    registerComponent<TextComponent>(ComponentOrder::Insertion, "TextComponent");
+    registerComponent<UIComponent>(ComponentOrder::Hierarchy, "UIComponent");
+    registerComponent<ImageComponent>(ComponentOrder::Insertion, "ImageComponent");
+    registerComponent<ButtonComponent>(ComponentOrder::Insertion, "ButtonComponent");
+    registerComponent<PanelComponent>(ComponentOrder::Insertion, "PanelComponent");
+    registerComponent<ScrollbarComponent>(ComponentOrder::Insertion, "ScrollbarComponent");
+    registerComponent<ProgressbarComponent>(ComponentOrder::Insertion, "ProgressbarComponent");
+    registerComponent<InputFieldComponent>(ComponentOrder::Insertion, "InputFieldComponent");
+    registerComponent<MeshPolygonComponent>(ComponentOrder::Insertion, "MeshPolygonComponent");
+    registerComponent<PolygonComponent>(ComponentOrder::Hierarchy, "PolygonComponent");
+    registerComponent<AnimationComponent>(ComponentOrder::Insertion, "AnimationComponent");
+    registerComponent<KeyframeTracksComponent>(ComponentOrder::Insertion, "KeyframeTracksComponent");
+    registerComponent<MorphTracksComponent>(ComponentOrder::Insertion, "MorphTracksComponent");
+    registerComponent<RotateTracksComponent>(ComponentOrder::Insertion, "RotateTracksComponent");
+    registerComponent<TranslateTracksComponent>(ComponentOrder::Insertion, "TranslateTracksComponent");
+    registerComponent<ScaleTracksComponent>(ComponentOrder::Insertion, "ScaleTracksComponent");
+    registerComponent<ScriptComponent>(ComponentOrder::Insertion, "ScriptComponent");
+    registerComponent<TerrainComponent>(ComponentOrder::Insertion, "TerrainComponent");
+    registerComponent<AudioSourceComponent>(ComponentOrder::Hierarchy, "AudioSourceComponent");
+    registerComponent<TilemapComponent>(ComponentOrder::Insertion, "TilemapComponent");
 #ifdef JASPERENGINE_PHYSICS_2D
-    registerComponent<Rigidbody2DComponent>();
-    registerComponent<Joint2DComponent>();
+    registerComponent<Rigidbody2DComponent>(ComponentOrder::Insertion, "Rigidbody2DComponent");
+    registerComponent<Joint2DComponent>(ComponentOrder::Insertion, "Joint2DComponent");
 #endif
 #ifdef JASPERENGINE_PHYSICS_3D
-    registerComponent<RigidbodyComponent>();
-    registerComponent<Joint3DComponent>();
+    registerComponent<RigidbodyComponent>(ComponentOrder::Insertion, "RigidbodyComponent");
+    registerComponent<Joint3DComponent>(ComponentOrder::Insertion, "Joint3DComponent");
 #endif
-    registerComponent<InstancedMeshComponent>();
-    registerComponent<PrefabComponent>();
-    registerComponent<ReflectionProbeComponent>();
-    registerComponent<UIDocumentComponent>();
-    registerComponent<FluidSimulationComponent>();
-    registerComponent<LatticeComponent>();
-    registerComponent<LatticeModifierComponent>();
-    registerComponent<LatticeFollowerComponent>();
-    registerComponent<LatticeTracksComponent>();
-    registerComponent<LocalVolumetricFogComponent>();
-    registerComponent<VolumetricCloudsComponent>();
+    registerComponent<InstancedMeshComponent>(ComponentOrder::Hierarchy, "InstancedMeshComponent");
+    registerComponent<PrefabComponent>(ComponentOrder::Insertion, "PrefabComponent");
+    registerComponent<ReflectionProbeComponent>(ComponentOrder::Insertion, "ReflectionProbeComponent");
+    registerComponent<UIDocumentComponent>(ComponentOrder::Insertion, "UIDocumentComponent");
+    registerComponent<FluidSimulationComponent>(ComponentOrder::Insertion, "FluidSimulationComponent");
+    registerComponent<LatticeComponent>(ComponentOrder::Insertion, "LatticeComponent");
+    registerComponent<LatticeModifierComponent>(ComponentOrder::Insertion, "LatticeModifierComponent");
+    registerComponent<LatticeFollowerComponent>(ComponentOrder::Insertion, "LatticeFollowerComponent");
+    registerComponent<LatticeTracksComponent>(ComponentOrder::Insertion, "LatticeTracksComponent");
+    registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
+    registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
+
+    // complete: markChangedComponent may look into it
+    std::lock_guard<std::mutex> lock(liveRegistriesMutex());
+    liveRegistries().push_back(this);
 }
 
 EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
@@ -79,6 +95,11 @@ EntityRegistry::EntityRegistry(EntityPool defaultPool) : EntityRegistry() {
 }
 
 EntityRegistry::~EntityRegistry(){
+    {
+        std::lock_guard<std::mutex> lock(liveRegistriesMutex());
+        auto& registries = liveRegistries();
+        registries.erase(std::remove(registries.begin(), registries.end(), this), registries.end());
+    }
     Entity entity;
     while (entityManager.getFirstEntity(entity)) {
         // Destroy callbacks may remove other entities, so inspect the current first
@@ -87,66 +108,33 @@ EntityRegistry::~EntityRegistry(){
     }
 }
 
+void EntityRegistry::linkOrderSource(ComponentArrayBase* array){
+    if (!componentManager.isRegistered<Transform>()){
+        return;
+    }
+    ComponentArrayBase* transforms = componentManager.getComponentArray<Transform>();
+    if (array == transforms){
+        // the Transforms came after some Hierarchy types
+        hierarchyTypes.forEachSet([&](size_t id){
+            componentManager.getArray((ComponentId)id)->setOrderSource(transforms);
+        });
+    }else if (array->getOrder() == ComponentOrder::Hierarchy){
+        array->setOrderSource(transforms);
+    }
+}
+
 void EntityRegistry::sortComponentsByTransform(Signature entitySignature){
-    // Mesh component
-    if (entitySignature.test(getComponentId<MeshComponent>())){
-        auto meshes = componentManager.getComponentArray<MeshComponent>();
-        meshes->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
+    if (structuralLocked("sortComponentsByTransform")) {
+        return;
     }
+    (entitySignature & hierarchyTypes).forEachSet([&](size_t id){
+        componentManager.getArray((ComponentId)id)->markOrderDirty();
+    });
+}
 
-    // InstancedMesh component
-    if (entitySignature.test(getComponentId<InstancedMeshComponent>())){
-        auto instmeshes = componentManager.getComponentArray<InstancedMeshComponent>();
-        instmeshes->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // Model component
-    if (entitySignature.test(getComponentId<ModelComponent>())){
-        auto models = componentManager.getComponentArray<ModelComponent>();
-        models->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // Bone component
-    if (entitySignature.test(getComponentId<BoneComponent>())){
-        auto bones = componentManager.getComponentArray<BoneComponent>();
-        bones->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // Polygon component
-    if (entitySignature.test(getComponentId<PolygonComponent>())){
-        auto polygons = componentManager.getComponentArray<PolygonComponent>();
-        polygons->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // UI layout component
-    if (entitySignature.test(getComponentId<RectTransformComponent>())){
-        auto layout = componentManager.getComponentArray<RectTransformComponent>();
-        layout->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // UI component
-    if (entitySignature.test(getComponentId<UIComponent>())){
-        auto ui = componentManager.getComponentArray<UIComponent>();
-        ui->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // Points component
-    if (entitySignature.test(getComponentId<PointsComponent>())){
-        auto points = componentManager.getComponentArray<PointsComponent>();
-        points->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // Lines component
-    if (entitySignature.test(getComponentId<LineRendererComponent>())){
-        auto lines = componentManager.getComponentArray<LineRendererComponent>();
-        lines->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
-
-    // Sound component
-    if (entitySignature.test(getComponentId<AudioSourceComponent>())){
-        auto audios = componentManager.getComponentArray<AudioSourceComponent>();
-        audios->sortByComponent<Transform>(componentManager.getComponentArray<Transform>());
-    }
+void EntityRegistry::transformChanged(Entity entity){
+    // where the entity sorts among its Hierarchy components' arrays changed
+    sortComponentsByTransform(entityManager.getSignature(entity));
 }
 
 void EntityRegistry::moveChildAux(Entity entity, bool increase, bool stopIfFound){
@@ -187,13 +175,16 @@ void EntityRegistry::moveChildAux(Entity entity, bool increase, bool stopIfFound
 void EntityRegistry::changeTransformChildren(Entity entity){
     // Get the parent of the entity being removed before it's deleted
     Transform* removedTransform = findComponent<Transform>(entity);
-    Entity newParent = NULL_ENTITY;
-    if (removedTransform) {
-        newParent = removedTransform->parent;
+    if (!removedTransform) {
+        return;
     }
+    const Entity newParent = removedTransform->parent;
 
+    // the children are in the entity's branch, right after it
     auto transformArray = getComponentArray<Transform>();
-    for (size_t i = 0; i < transformArray->size(); i++) {
+    const size_t first = transformArray->getIndex(entity) + 1;
+    const size_t last = findBranchLastIndex(entity);
+    for (size_t i = first; i <= last; i++) {
         Transform& childTransform = transformArray->getComponentFromIndex(i);
         if (childTransform.parent == entity) {
             childTransform.parent = newParent;
@@ -204,16 +195,25 @@ void EntityRegistry::changeTransformChildren(Entity entity){
 }
 
 Entity EntityRegistry::createEntity() {
+    if (structuralLocked("createEntity")) {
+        return NULL_ENTITY;
+    }
     return (defaultPool == EntityPool::System)
         ? entityManager.createSystemEntity()
         : entityManager.createUserEntity();
 }
 
 Entity EntityRegistry::createUserEntity() {
+    if (structuralLocked("createUserEntity")) {
+        return NULL_ENTITY;
+    }
     return entityManager.createUserEntity();
 }
 
 Entity EntityRegistry::createSystemEntity() {
+    if (structuralLocked("createSystemEntity")) {
+        return NULL_ENTITY;
+    }
     return entityManager.createSystemEntity();
 }
 
@@ -222,20 +222,59 @@ bool EntityRegistry::isEntityCreated(Entity entity) const {
 }
 
 bool EntityRegistry::recreateEntity(Entity entity) {
+    if (structuralLocked("recreateEntity")) {
+        return false;
+    }
     return entityManager.recreateEntity(entity);
 }
 
+bool EntityRegistry::structuralLocked(const char* operation) const {
+    if (clock.isWaveLocked()) {
+        Log::error("ECS: %s during a parallel system wave; record it in the system's command buffer", operation);
+        assert(false && "ECS: structural change inside a parallel wave");
+        return true;
+    }
+    return false;
+}
+
+bool EntityRegistry::deferStructural(Entity entity) const {
+    return deferDepth > 0 && entityManager.isCreated(entity) && (deferAnyThread > 0 || std::this_thread::get_id() == deferThread);
+}
+
 void EntityRegistry::destroyEntity(Entity entity) {
-    onEntityDestroyed(entity, entityManager.getSignature(entity));
+    if (deferStructural(entity)) {
+        deferred.destroy(makeRef(entity));
+        return;
+    }
+    if (structuralLocked("destroyEntity")) {
+        return;
+    }
+
+    const Signature signature = entityManager.getSignature(entity);
+    // the arrays' slots load while the hooks run
+    componentManager.prefetchEntity(entity, signature);
+    onEntityDestroyed(entity, signature);
     if (editorData) {
         editorData->entityDestroyed(entity);
     }
 
-    componentManager.entityDestroyed(entity);
+    // the hooks may have changed what it has
+    componentManager.entityDestroyed(entity, entityManager.isCreated(entity) ? entityManager.getSignature(entity) : signature);
     entityManager.destroy(entity);
 }
 
 void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
+    if (deferDepth > 0 && (deferAnyThread > 0 || std::this_thread::get_id() == deferThread)) {
+        for (Entity entity : entities) {
+            if (entityManager.isCreated(entity)) {
+                deferred.destroy(makeRef(entity));
+            }
+        }
+        return;
+    }
+    if (structuralLocked("destroyEntities")) {
+        return;
+    }
     if (entities.size() == 1) {
         if (isEntityCreated(entities[0])) {
             destroyEntity(entities[0]);
@@ -248,17 +287,21 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
             onEntityDestroyed(entity, entityManager.getSignature(entity));
         }
     }
-    std::unordered_set<Entity> doomed;
+    std::vector<Entity> doomed;
     doomed.reserve(entities.size());
+    std::unordered_set<Entity> seen;
+    seen.reserve(entities.size());
+    Signature types;
     for (Entity entity : entities) {
-        if (isEntityCreated(entity)) {
-            doomed.insert(entity);
+        if (isEntityCreated(entity) && seen.insert(entity).second) {
+            doomed.push_back(entity);
+            types |= entityManager.getSignature(entity);
         }
     }
     if (doomed.empty()) {
         return;
     }
-    componentManager.entitiesDestroyed(doomed);
+    componentManager.entitiesDestroyed(doomed, types);
     for (Entity entity : doomed) {
         if (editorData) {
             editorData->entityDestroyed(entity);
@@ -267,8 +310,182 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     }
 }
 
-Signature EntityRegistry::getSignature(Entity entity) const {
-    return entityManager.getSignature(entity);
+void EntityRegistry::destroyHierarchy(Entity entity) {
+    if (deferStructural(entity)) {
+        deferred.destroyHierarchy(makeRef(entity));
+        return;
+    }
+    if (isEntityCreated(entity) && !structuralLocked("destroyHierarchy")) {
+        destroyHierarchyNow(entity);
+    }
+}
+
+void EntityRegistry::destroyHierarchyNow(Entity entity) {
+    std::vector<Entity> branch{entity};
+    if (Transform* transform = findComponent<Transform>(entity)) {
+        (void)transform;
+        auto transforms = getComponentArray<Transform>();
+        const size_t first = transforms->getIndex(entity);
+        const size_t last = findBranchLastIndex(entity);
+        for (size_t i = first + 1; i <= last; i++) {
+            branch.push_back(transforms->getEntity(i));
+        }
+    }
+    // children first, as GameObject.destroy does
+    std::reverse(branch.begin(), branch.end());
+    destroyEntities(branch);
+}
+
+EntityRef EntityRegistry::makeRef(Entity entity) const {
+    return EntityRef{entity, entityManager.getSerial(entity)};
+}
+
+bool EntityRegistry::isAlive(const EntityRef& ref) const {
+    return ref.id != NULL_ENTITY && ref.serial != 0 && entityManager.getSerial(ref.id) == ref.serial;
+}
+
+Tick EntityRegistry::changeTick() const {
+    return clock.sample();
+}
+
+Tick EntityRegistry::advanceChangeTick() {
+    return clock.advance();
+}
+
+ChangeClock& EntityRegistry::getChangeClock() {
+    return clock;
+}
+
+bool EntityRegistry::markChanged(ComponentId componentId, Entity entity) {
+    ComponentArrayBase* array = componentManager.getArray(componentId);
+    return array && array->markChanged(entity);
+}
+
+std::vector<Entity> EntityRegistry::queryEntities(const std::vector<ComponentId>& include, const std::vector<ComponentId>& exclude,
+                                                  const Tick* changedAfter, size_t limit) {
+    std::vector<Entity> found;
+    if (include.empty() || limit == 0) {
+        return found;
+    }
+    Signature required;
+    Signature excluded;
+    std::vector<ComponentArrayBase*> arrays;
+    for (ComponentId id : include) {
+        ComponentArrayBase* array = componentManager.getArray(id);
+        if (!array) {
+            return found;
+        }
+        required.set(id);
+        arrays.push_back(array);
+    }
+    for (ComponentId id : exclude) {
+        excluded.set(id);
+    }
+    if (changedAfter) {
+        // nothing newer anywhere: no row can pass
+        bool newer = false;
+        for (ComponentArrayBase* array : arrays) {
+            newer = newer || array->getLastChangedTick() > *changedAfter;
+        }
+        if (!newer) {
+            return found;
+        }
+    }
+
+    ComponentArrayBase* driving = arrays.front();
+    driving->settle();
+    const size_t count = driving->size();
+    for (size_t i = 0; i < count && found.size() < limit; i++) {
+        const Entity entity = driving->getEntity(i);
+        const Signature signature = entityManager.getSignature(entity);
+        if (!signature.contains(required) || signature.intersects(excluded)) {
+            continue;
+        }
+        if (changedAfter) {
+            bool changed = false;
+            for (ComponentArrayBase* array : arrays) {
+                changed = changed || array->getChangedTickOf(entity) > *changedAfter;
+            }
+            if (!changed) {
+                continue;
+            }
+        }
+        found.push_back(entity);
+    }
+    return found;
+}
+
+void EntityRegistry::trimRemovedComponents(Tick tick) {
+    componentManager.forEachArray([tick](ComponentId, ComponentArrayBase& array){
+        array.trimRemoved(tick);
+    });
+}
+
+void EntityRegistry::beginStructuralDefer(bool anyThread) {
+    if (anyThread) {
+        deferAnyThread++;
+    }
+    if (deferDepth == 0) {
+        deferThread = std::this_thread::get_id();
+    } else if (std::this_thread::get_id() != deferThread) {
+        Log::error("StructuralDeferScope opened on a second thread; it applies to the first one only");
+    }
+    deferDepth++;
+}
+
+void EntityRegistry::endStructuralDefer(bool anyThread) {
+    if (deferDepth <= 0) {
+        Log::error("StructuralDeferScope closed more often than opened");
+        return;
+    }
+    if (anyThread && deferAnyThread > 0) {
+        deferAnyThread--;
+    }
+    if (--deferDepth > 0) {
+        return;
+    }
+    // what the playback's hooks defer again plays next, until nothing is left
+    while (!deferred.empty()) {
+        EntityCommandBuffer pending(std::move(deferred));
+        deferred = EntityCommandBuffer();
+        pending.playback(*this);
+    }
+}
+
+bool EntityRegistry::isStructuralDeferActive() const {
+    return deferDepth > 0 && (deferAnyThread > 0 || std::this_thread::get_id() == deferThread);
+}
+
+EntityCommandBuffer& EntityRegistry::getDeferredCommands() {
+    return deferred;
+}
+
+size_t EntityRegistry::getComponentTypeCount() const {
+    return componentManager.getRegisteredCount();
+}
+
+const std::string& EntityRegistry::getComponentName(ComponentId componentId) const {
+    return componentManager.getName(componentId);
+}
+
+bool EntityRegistry::findComponentId(const std::string& name, ComponentId& componentId) const {
+    return componentManager.findId(name, componentId);
+}
+
+ComponentArrayBase* EntityRegistry::getComponentArray(ComponentId componentId) const {
+    return componentManager.getArray(componentId);
+}
+
+size_t EntityRegistry::getMetadataBytes() const {
+    return entityManager.bytes();
+}
+
+size_t EntityRegistry::getEntityCount() const {
+    return entityManager.count();
+}
+
+size_t EntityRegistry::getSystemEntityCount() const {
+    return entityManager.countSystem();
 }
 
 void EntityRegistry::setEntityName(Entity entity, const std::string& name) {
@@ -291,10 +508,6 @@ Entity EntityRegistry::findEntity(const std::string& name, Entity parent) const 
 
 void EntityRegistry::setEntityActive(Entity entity, bool active) {
     entityManager.setActive(entity, active);
-}
-
-bool EntityRegistry::isEntityActive(Entity entity) const {
-    return entityManager.isActive(entity);
 }
 
 bool EntityRegistry::isEntityActiveInHierarchy(Entity entity) const {
@@ -332,10 +545,6 @@ void EntityRegistry::setEntityLayer(Entity entity, int layer) {
     if (entityManager.getLayer(entity) != previous) {
         onEntityLayerChanged(entity);
     }
-}
-
-int EntityRegistry::getEntityLayer(Entity entity) const {
-    return entityManager.getLayer(entity);
 }
 
 Entity EntityRegistry::findEntityByTag(const std::string& tag) const {
@@ -417,33 +626,17 @@ size_t EntityRegistry::findBranchLastIndex(Entity entity){
     // will throw error if entity has not Transform
     size_t index = transforms->getIndex(entity);
 
+    // The branch is contiguous and parents come before children, so an element after it is
+    // in the branch exactly when its parent lies in [index, currentIndex). The array is settled
+    // (getIndex), so a component's slot is its index.
     size_t currentIndex = index + 1;
-    // The branch so far: a list while short (the common case), then a set, as a long
-    // branch made the list scan quadratic
-    std::vector<Entity> branchList{entity};
-    std::unordered_set<Entity> branchSet;
-    auto inBranch = [&](Entity candidate) {
-        return branchSet.empty() ?
-            std::find(branchList.begin(), branchList.end(), candidate) != branchList.end() :
-            branchSet.count(candidate) != 0;
-    };
-    auto addToBranch = [&](Entity member) {
-        if (branchSet.empty() && branchList.size() < 32) {
-            branchList.push_back(member);
-            return;
-        }
-        if (branchSet.empty()) {
-            branchSet.insert(branchList.begin(), branchList.end());
-        }
-        branchSet.insert(member);
-    };
-
-    while (currentIndex < transforms->size()){
+    const size_t size = transforms->size();
+    while (currentIndex < size){
         const Transform& transform = transforms->getComponentFromIndex(currentIndex);
-        if (!inBranch(transform.parent)) {
+        const size_t parentIndex = transforms->orderKey(transform.parent);
+        if (parentIndex < index || parentIndex >= currentIndex) {
             break;
         }
-        addToBranch(transforms->getEntity(currentIndex));
         currentIndex++;
     }
 
@@ -490,6 +683,9 @@ void EntityRegistry::clear() {
 }
 
 void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTransform){
+    if (structuralLocked("addEntityChild")) {
+        return;
+    }
     Signature childSignature = entityManager.getSignature(child);
     if (childSignature.test(getComponentId<Transform>())){
         Transform& transformChild = componentManager.getComponent<Transform>(child);
@@ -543,6 +739,9 @@ void EntityRegistry::addEntityChild(Entity parent, Entity child, bool changeTran
 }
 
 void EntityRegistry::moveChildToIndex(Entity entity, size_t index){
+    if (structuralLocked("moveChildToIndex")) {
+        return;
+    }
     Signature signature = entityManager.getSignature(entity);
 
     if (signature.test(getComponentId<Transform>())){
@@ -552,6 +751,12 @@ void EntityRegistry::moveChildToIndex(Entity entity, size_t index){
         if (index != entityIndex){
             size_t lastChildIndex = findBranchLastIndex(entity);
             size_t length = lastChildIndex - entityIndex + 1;
+
+            // the types of the whole branch move along with it
+            Signature branchTypes;
+            for (size_t i = entityIndex; i <= lastChildIndex; i++){
+                branchTypes |= entityManager.getSignature(transforms->getEntity(i));
+            }
 
             if (index > entityIndex){
                 index--;
@@ -572,7 +777,7 @@ void EntityRegistry::moveChildToIndex(Entity entity, size_t index){
                 transforms->moveEntityRangeToIndex(entity, transforms->getEntity(lastChildIndex), index);
             }
 
-            sortComponentsByTransform(entityManager.getSignature(entity));
+            sortComponentsByTransform(branchTypes);
         }
     }
 }

@@ -273,6 +273,9 @@ void ActionSystem::syncParticlePoint(size_t idx, ParticleSystemComponent& partic
 
 ActionSystem::ActionSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<ActionComponent>());
+    // the types onComponentRemoved handles
+    declareHookType(scene->getComponentId<ActionComponent>());
+    declareHookType(scene->getComponentId<AnimationComponent>());
 }
 
 void ActionSystem::actionStart(Entity entity, bool newRun){
@@ -359,6 +362,8 @@ void ActionSystem::actionComponentStart(ActionComponent& action){
     action.state = ActionState::Running;
     action.startTrigger = false;
 
+    // what the Lua callbacks destroy goes when they are done (StructuralDeferScope)
+    StructuralDeferScope deferScope(*scene);
     onStart.call();
 }
 
@@ -416,6 +421,7 @@ void ActionSystem::actionComponentStop(ActionComponent& action){
 
     // not from a copy, which would still call the scripts unsubscribed meanwhile: call()
     // keeps its subscriber list even when a callback destroys the component
+    StructuralDeferScope deferScope(*scene);
     action.onStop.call();
 }
 
@@ -443,6 +449,7 @@ void ActionSystem::actionComponentPause(ActionComponent& action){
     action.state = ActionState::Paused;
     action.pauseTrigger = false;
 
+    StructuralDeferScope deferScope(*scene);
     action.onPause.call();
 }
 
@@ -453,6 +460,7 @@ void ActionSystem::actionUpdate(double dt, ActionComponent& action){
         action.timecount = 0;
     }
 
+    StructuralDeferScope deferScope(*scene);
     action.onStep.call();
 }
 

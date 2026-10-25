@@ -29,6 +29,11 @@ namespace jasperengine{
 
     private:
 
+        // the ids onComponentRemoved compares against (it runs for every destroyed entity
+        // with a Transform)
+        ComponentId uiId, rectTransformId, imageId, transformId;
+        ComponentId buttonId, panelId, scrollbarId, progressbarId, inputFieldId, textId;
+
         Entity lastUIFromPointer;
         Entity lastUIFromPointerHover;
         Entity lastUIFromClick;

@@ -8616,6 +8616,14 @@ void editor::Project::stop(uint32_t sceneId) {
                 conector.disconnect();
             }
 
+            // the Systems window's and set_system_options' switches are Play-mode debug state
+            for (const auto& entry : runtimeScenes) {
+                if (entry.runtime && entry.runtime->scene) entry.runtime->scene->getScheduler().resetDebugOptions();
+            }
+            if (mainSceneProject && mainSceneProject->scene) {
+                mainSceneProject->scene->getScheduler().resetDebugOptions();
+            }
+
             if (startupSucceeded) {
                 finalizeStop(mainSceneProject, runtimeScenes);
             } else {

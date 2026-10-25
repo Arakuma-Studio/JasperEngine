@@ -29,6 +29,7 @@ void RectTransform::setSize(unsigned int width, unsigned int height){
     layout.height = height;
 
     layout.needUpdateSizes = true;
+    markChanged<RectTransformComponent>();
 }
 
 void RectTransform::setWidth(unsigned int width){
@@ -37,6 +38,7 @@ void RectTransform::setWidth(unsigned int width){
     layout.width = width;
 
     layout.needUpdateSizes = true;
+    markChanged<RectTransformComponent>();
 }
 
 void RectTransform::setHeight(unsigned int height){
@@ -45,6 +47,7 @@ void RectTransform::setHeight(unsigned int height){
     layout.height = height;
 
     layout.needUpdateSizes = true;
+    markChanged<RectTransformComponent>();
 }
 
 unsigned int RectTransform::getWidth() const{
@@ -247,6 +250,7 @@ void RectTransform::setPivot(Vector2 pivot){
         layout.pivot = pivot;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
