@@ -271,6 +271,10 @@ namespace jasperengine::editor {
         // written again for these scripts (their classes or DPROPERTYs changed), everything
         // else as the last configure() wrote it. False before any configure().
         bool rewriteScriptSources(const std::vector<SceneScriptSource>& scriptFiles);
+        // PluginGeneration.cmake: the reload generation the next plugin build links (its MSVC PDB name)
+        static std::string pluginGenerationCMake(size_t generation) {
+            return "set(JASPERENGINE_PLUGIN_GENERATION " + std::to_string(generation) + ")\n";
+        }
         // The script sources of the last configure() (what the loaded library was built from)
         const std::vector<SceneScriptSource>& lastScriptSources() const { return lastSourceArgs.scriptFiles; }
         // A build output line's progress: "[12/50]" (Ninja), "[ 45%]" (Make); false otherwise

@@ -2865,6 +2865,11 @@ namespace {
         return bases;
     }
 
+    using editor::NumericUnit;
+    using editor::NumericFieldScope;
+    using editor::NumericExpression;
+    using editor::NumericContext;
+
     template<class Draw>
     bool numericField(NumericUnit unit, size_t objects, bool integer, Draw&& draw) {
         NumericFieldScope scope(unit, static_cast<int>(objects), integer);

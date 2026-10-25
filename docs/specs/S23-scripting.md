@@ -661,3 +661,45 @@ New files: `engine/core/script/{LuaReload,ToolchainFingerprint}.*`, `engine/core
   superset diff gates deletion of the old script.
 - **Open: per-language external editors** (for example Lua in VS Code, C++ in Visual Studio).
   *Default:* one setting; revisit with S25 preferences search.
+
+## Deviations
+
+Recorded by the S23 implementation.
+
+- **S08 (reflection) has not landed.** The numeric unit of a field is a local
+  `editor::NumericUnit` (None, Meters, Degrees, Seconds, Pixels) that `InspectorWindow` rows set
+  through `RowSettings::unit`: Transform position uses Meters and rotations use Degrees. Lua
+  property remapping (R6) matches by name and kind (the script's `type` string), not by S08
+  type ids. `jasper://lua-api` has no `components` section merged from `jasper://reflection`,
+  because that resource does not exist yet. S08 can add it, since the format is additive (R50).
+- **S25 (menus) has not landed.** Editor-script items go into the existing main menu model: a
+  top-level path becomes its own menu, and the Assets menu gets a Scripts submenu (Reload Lua,
+  Rebuild C++, Cancel Build). The four context menus (Hierarchy, Project, Inspector component,
+  Scene view) call `EditorScripts::drawContextItems`. Shortcuts in annotations are only displayed
+  next to the item and are not bound, because S25 owns the shortcut map. The Scene view's
+  context menu opens on a short right click (no drag), since that view had no context menu.
+- **S31 (agent tooling) has not landed.** The new tools are registered with the existing
+  registry and budget (`tools/mcp/tool_budget.py`). `script_status` also sets the Preferences
+  > Scripting values and the External Script Editor (with its custom command). Tests and agents
+  need that without a Preferences tool.
+- **AC12 tool.** `Editor.call("set_transform")` replaces `set_component_property`, which does
+  not exist in this tree. `set_transform` is the undoable transform edit.
+- **AC15 test kind.** The `test` graph kind is registered when the editor starts with
+  `JASPER_TEST_GRAPH_KIND=1`, not by a separate test build. The MCP harness passes environment
+  variables to the editor (`Editor(env=...)`).
+- **AC19 stubs.** The stubs are byte-identical to the last `generate_lua_stubs.py` output
+  except in two intended places: `Script.lua` gains `ScriptReloadInfo` and `onReload`, and there
+  is a new `EditorScript.lua` (R47). `tools/lua_api/tests/fixtures/regex_symbols.txt` holds the
+  old regex suggestion set, and the test checks that the new set is a superset. The diff was
+  recorded once with the old scripts on this commit (see the PR).
+- **R2/R33 debounce.** The 150 ms debounce counts from the file's modification time, not from
+  when the watcher reported it, so the watcher's own latency does not add to the 300 ms budget.
+- **R10 Windows PDBs.** The plugin's CMake gives each reload generation's MSVC PDB the name
+  `<lib>_<n>.pdb` (`.jasperengine/PluginGeneration.cmake`). The file is included on MSVC only, so
+  a reload on other platforms does not re-run the configure step.
+- **R25 ImGui patch.** Beyond the hook and the 256-byte `TempInputScalar` buffer, `InputScalar`'s
+  buffer is also 256 bytes. When the hook is installed, `,` is not turned into a decimal point,
+  because expressions need commas for function arguments (`L(0, 10)`). See
+  `libs/imgui/JASPER_PATCHES.md`.
+- **R46 `search_engine_api`** reads `engine_api_suggestions.h`, which is now generated from
+  `lua-api.json`, so it serves the same data without a second load path.

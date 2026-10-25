@@ -6328,6 +6328,7 @@ bool editor::Project::startCppReload(const std::vector<fs::path>& changed, std::
     cppReload.started = std::chrono::steady_clock::now();
     cppReload.changed = changed;
     const fs::path buildPath = getProjectInternalPath() / "build";
+    FileUtils::writeIfChanged(getProjectInternalPath() / "PluginGeneration.cmake", Generator::pluginGenerationCMake(conector.generationCount()));
     generator.build(getProjectPath(), buildPath, playBuildKit.cCompiler, playBuildKit.cxxCompiler, playBuildKit.generator, playBuildJobs);
     Out::info("C++ reload: building the scripts (the running code stays until the build is done)");
     return true;

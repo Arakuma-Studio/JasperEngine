@@ -21,13 +21,15 @@ TIMEOUT = 2400
 
 HEADER = """#pragma once
 
-#include "JasperEngine.h"
+#include "ScriptBase.h"
+#include "ScriptProperty.h"
 
 class Mover : public jasperengine::ScriptBase {
 public:
     DPROPERTY("Speed")
     float speed = 1.0f;
 
+    // not a property: kept across a reload by saveReloadState / loadReloadState
     int counter = 0;
 
     Mover(jasperengine::Scene* scene, jasperengine::Entity entity);
@@ -38,13 +40,18 @@ public:
 };
 """
 
+# {version} is replaced; the script sets its own Speed at runtime (frame 10), so a value that
+# survives the reload is the runtime one, not the scene's 1.0
 SOURCE = """#include "Mover.h"
+#include "Log.h"
+
+#include <variant>
 
 using namespace jasperengine;
 
 Mover::Mover(Scene* scene, Entity entity) : ScriptBase(scene, entity) {
     REGISTER_ENGINE_EVENT(onUpdate);
-    Log::info("Mover constructed version=%d reloading=%d", {version}, ScriptBase::isReloading() ? 1 : 0);
+    Log::print("Mover constructed version=%d reloading=%d", {version}, ScriptBase::isReloading() ? 1 : 0);
 }
 
 Mover::~Mover() {
@@ -52,7 +59,8 @@ Mover::~Mover() {
 
 void Mover::onUpdate() {
     counter++;
-    if (counter % 30 == 0) Log::info("Mover tick version=%d counter=%d speed=%.1f", {version}, counter, speed);
+    if (counter == 10) speed = 2.5f;
+    if (counter % 30 == 0) Log::print("Mover tick version=%d counter=%d speed=%.1f", {version}, counter, speed);
 }
 
 void Mover::saveReloadState(ScriptReloadState& state) const {
@@ -62,7 +70,7 @@ void Mover::saveReloadState(ScriptReloadState& state) const {
 void Mover::loadReloadState(const ScriptReloadState& state) {
     auto it = state.values.find("counter");
     if (it != state.values.end() && std::holds_alternative<int>(it->second)) counter = std::get<int>(it->second);
-    Log::info("Mover loaded counter=%d speed=%.1f", counter, speed);
+    Log::print("Mover loaded counter=%d speed=%.1f", counter, speed);
 }
 """
 
@@ -78,10 +86,8 @@ async def make_project(ed: Editor) -> dict:
     made = await ed.call("create_scene", name="Movers", type="3D", path="scenes/Movers")
     scene = made["scene"]["id"]
     ent = await ed.call("create_entity", scene=scene, type="empty", name="Mover")
-    await ed.call("create_script", kind="cpp_script", name="Mover", scene=scene, entity=ent["entity_id"])
-    await ed.call("write_file", path="scripts/Mover.h", content=HEADER)
-    await ed.call("write_file", path="scripts/Mover.cpp", content=SOURCE.replace("{version}", "1"))
-    await ed.call("sync_files", paths=["scripts/Mover.h", "scripts/Mover.cpp"])
+    await ed.call("create_script", kind="cpp_script", name="Mover", scene=scene, entity=ent["entity_id"],
+                  header_content=HEADER, source_content=SOURCE.replace("{version}", "1"))
     await ed.call("save_scene", scene=scene)
     await ed.call("save_project")
     return {"scene": scene, "entity": ent["entity_id"]}
@@ -101,7 +107,7 @@ async def logged(ed: Editor, text: str) -> list[str]:
 
 
 async def play(ed: Editor, scene) -> dict:
-    r = await ed.call_raw("play", {"action": "start", "scene": scene}, timeout=1200)
+    r = await ed.call_raw("play", {"action": "start", "scene": scene, "timeout_seconds": 1100}, timeout=1200)
     if r.is_error and ("ABI" in r.text or "build tools" in r.text):
         skip("the C++ build can't run in this environment: " + r.text[:400])
     return r
@@ -116,8 +122,9 @@ async def test_cpp_reload_keeps_state(ed: Editor):
     ed.check(not r.is_error, f"play starts: {r.text[:800]}")
     await ed.call("wait", frames=40)
     ed.check(await logged(ed, "Mover constructed version=1 reloading=0"), "the first library runs")
-    await ed.call("set_script_properties", scene=s["scene"], entity=s["entity"], script="Mover", values={"speed": 2.5})
     await ed.call("wait", frames=40)
+    live = await ed.call("get_runtime_entity", entity="Mover")
+    ed.check_eq(live["scripts"][0]["state"]["speed"], 2.5, "the script set its Speed at runtime")
 
     await ed.call("write_file", path="scripts/Mover.cpp", content=SOURCE.replace("{version}", "2"))
     r = await ed.call("reload_scripts", language="cpp", timeout_seconds=1200, timeout=1300)
@@ -132,6 +139,8 @@ async def test_cpp_reload_keeps_state(ed: Editor):
     ed.check("speed=2.5" in loaded[-1], f"the runtime DPROPERTY value survived ({loaded[-1]})")
     await ed.call("wait", frames=40)
     ed.check(await logged(ed, "Mover tick version=2"), "the new code runs")
+    live = await ed.call("get_runtime_entity", entity="Mover")
+    ed.check_eq(live["scripts"][0]["state"]["speed"], 2.5, "the runtime Speed after the reload")
 
     # a compile error keeps the last good library
     await ed.call("write_file", path="scripts/Mover.cpp", content=SOURCE.replace("{version}", "3").replace("counter++;", "counter++ undefinedThing;"))

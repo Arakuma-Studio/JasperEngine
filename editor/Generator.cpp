@@ -1233,6 +1233,15 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "endif()\n\n";
     cmakeContent += "target_link_libraries(" + libName + " PRIVATE ${JASPERENGINE_LIB} ${PLATFORM_LIBS})\n\n";
     cmakeContent += "# Set compile options based on compiler and platform\n";
+    cmakeContent += "# A C++ reload during Play links a new library while the old one (and, under a debugger, its\n";
+    cmakeContent += "# PDB) is still loaded: each reload generation gets its own PDB name.\n";
+    cmakeContent += "# (Included on MSVC only: a change of the file re-runs the configure step.)\n";
+    cmakeContent += "if(MSVC AND JASPERENGINE_EDITOR_PLUGIN)\n";
+    cmakeContent += "    include(${INTERNAL_DIR}/PluginGeneration.cmake OPTIONAL)\n";
+    cmakeContent += "    if(JASPERENGINE_PLUGIN_GENERATION GREATER 0)\n";
+    cmakeContent += "        set_target_properties(" + libName + " PROPERTIES PDB_NAME \"" + libName + "_${JASPERENGINE_PLUGIN_GENERATION}\")\n";
+    cmakeContent += "    endif()\n";
+    cmakeContent += "endif()\n\n";
     cmakeContent += "if(MSVC)\n";
     cmakeContent += "    # C4251/C4275: exported engine classes (JASPERENGINE_API -> dllimport) expose STL\n";
     cmakeContent += "    # members (std::vector, std::string, FunctionSubscribe, ...). This is safe\n";
@@ -1350,6 +1359,8 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
 
     FileUtils::writeIfChanged(cmakeFile, cmakeContent);
     FileUtils::writeIfChanged(projectInternalPath / "LocalPaths.cmake", localPathsContent);
+    // a Play build is generation 0; a C++ reload during Play writes its own number (MSVC PDB names)
+    FileUtils::writeIfChanged(projectInternalPath / "PluginGeneration.cmake", pluginGenerationCMake(0));
     FileUtils::writeIfChanged(sourceFile, sourceContent);
 
     // Generate .vscode/settings.json for VS Code if it doesn't exist

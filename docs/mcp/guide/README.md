@@ -8,7 +8,8 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 
 | File | Resource | Contents |
 |---|---|---|
-| [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls (checked against `engine/core/script/binding/*`) |
+| [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls, hot reload (`onReload`) and editor scripts (checked against `engine/core/script/binding/*`; its ```lua blocks by `tools/lua_api/doctest.py`, ```lua run blocks by `tools/mcp/tests/test_lua_api_json.py`) |
+| (generated) | `jasper://docs/lua-api-reference` | every Lua class, method, property and enum, generated from `lua-api.json` by `tools/lua_api` (the data itself: `jasper://lua-api`, one class `jasper://lua-api?class=<Name>`) |
 | [cpp-scripting.md](cpp-scripting.md) | `jasper://docs/cpp-scripting` | C++ script kinds, DPROPERTY, event macros, includes, script dirs, ProjectBuild.cmake |
 | [data-safety.md](data-safety.md) | `jasper://docs/data-safety` | atomic saves, load reports (preserved/dropped issues, did-you-mean), the degraded_document save refusal and allow_data_loss, Auto Save backups and open_scene recovery, the project lock |
 | [physics.md](physics.md) | `jasper://docs/physics` | bodies and colliders, mass and density, forces, teleporting, layers, ray casts |

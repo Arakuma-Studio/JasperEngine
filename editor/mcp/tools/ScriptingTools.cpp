@@ -15,6 +15,7 @@
 #include "AppSettings.h"
 #include "Project.h"
 #include "util/EditorScripts.h"
+#include "util/ExternalCodeEditor.h"
 #include "util/NumericExpression.h"
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
@@ -132,10 +133,31 @@ void scriptStatusTool(const CallPtr& call) {
         AppSettings::setReloadCppDuringPlay(args["reload_cpp_during_play"].get<bool>());
         changed = true;
     }
+    if (args.contains("external_script_editor") && args["external_script_editor"].is_string()) {
+        const std::string id = args["external_script_editor"].get<std::string>();
+        bool known = false;
+        std::string ids;
+        for (const ExternalCodeEditor::Choice& choice : ExternalCodeEditor::choices()) {
+            known = known || id == choice.id;
+            ids += (ids.empty() ? "" : ", ") + std::string(choice.id);
+        }
+        if (!known) {
+            call->fail("external_script_editor is one of " + ids + ".");
+            return;
+        }
+        AppSettings::setExternalScriptEditor(id);
+        changed = true;
+    }
+    if (args.contains("external_script_editor_command") && args["external_script_editor_command"].is_string()) {
+        AppSettings::setExternalScriptEditorCommand(args["external_script_editor_command"].get<std::string>());
+        changed = true;
+    }
     if (changed) AppSettings::saveSettings();
     Json status = ScriptStatus::get().toJson();
     status["settings"] = {{"changes_while_playing", AppSettings::getScriptChangesWhilePlaying()},
-                          {"reload_cpp_during_play", AppSettings::getReloadCppDuringPlay()}};
+                          {"reload_cpp_during_play", AppSettings::getReloadCppDuringPlay()},
+                          {"external_script_editor", AppSettings::getExternalScriptEditor()},
+                          {"external_script_editor_command", AppSettings::getExternalScriptEditorCommand()}};
     call->ok(status["summary"].get<std::string>(), status);
 }
 
@@ -278,10 +300,13 @@ void registerScriptingTools(McpRegistry& registry) {
             "The toolbar badge's state: lua (ok, reloading, error), cpp (none, stale, building + fraction, up_to_date, "
             "failed + using_last_good_build, refused), editor_cpp, findings [{file, line, message}], and the last C++ "
             "library's toolchain fingerprint {ok, mismatches [{field, editor, library, severity}]}. Also sets Preferences > "
-            "Scripting: changes_while_playing, reload_cpp_during_play (off by default).";
+            "Scripting: changes_while_playing, reload_cpp_during_play (off by default), and the External Script Editor "
+            "(custom: a command with {file} {line} {column} {project}).";
         tool.inputSchema = object({
             {"changes_while_playing", stringEnum("Script Changes While Playing.", {"reload", "after_stop", "stop_and_reload"})},
-            {"reload_cpp_during_play", boolean("Reload C++ Scripts During Play.")}
+            {"reload_cpp_during_play", boolean("Reload C++ Scripts During Play.")},
+            {"external_script_editor", string("builtin, vscode, visualstudio, rider, clion, xcode, sublime, zed, system, custom.")},
+            {"external_script_editor_command", string("custom's command.")}
         });
         tool.activity = ToolActivity::Control;
         tool.handler = scriptStatusTool;
