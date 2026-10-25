@@ -1,6 +1,6 @@
 formatVersion: 2
-guid: 264c0e33769e3318bf118ed240246e2f
-id: 3145187697
+guid: 7ee0ed86c1403d0c6603f0a7ff3ea8c0
+id: 1824306547
 name: Hex
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -192,7 +192,7 @@ entities:
         blendMaps:
           - textureType: 2D
             source: path
-            path: terrain_maps/terrain_3145187697_1003_blend.png
+            path: terrain_maps/terrain_1824306547_1003_blend.png
             minFilter: linear
             magFilter: linear
             wrapU: repeat

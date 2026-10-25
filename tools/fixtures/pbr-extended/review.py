@@ -80,7 +80,16 @@ async def main(out: Path) -> None:
         await ed.call("set_properties", entity=cam, values={"camera": {"useTarget": True, "target": [0, 0, 0]}})
         await ed.call("create_entity", name="ClearCoatTest", type="model", model="models/ClearCoatTest/ClearCoatTest.glb")
         await ed.call("wait", frames=60, timeout_seconds=900)
-        meshes = [find_key(e, "entity_id", "id") for e in (await ed.call("find_entities", component="MeshComponent"))["entities"]]
+        # the entities with submeshes, once the model has loaded (in the background)
+        meshes = []
+        for _ in range(60):
+            for e in (await ed.call("find_entities", component="MeshComponent"))["entities"]:
+                eid = find_key(e, "entity_id", "id")
+                if not (await ed.call_raw("get_material_variant", {"entity": eid, "submesh": 0})).is_error:
+                    meshes.append(eid)
+            if meshes:
+                break
+            await ed.call("wait", frames=10, timeout_seconds=900)
         coated = None
         for eid in meshes:
             v = await ready(ed, eid)

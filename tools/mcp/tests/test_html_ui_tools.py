@@ -68,9 +68,9 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # set_post_processing_debug 675, the presets' list in list_post_processing_presets)
 # S10 (shadows) and S12 (atmosphere), merged after S13's measurement: +2295 measured on the merge
 TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295
-# S11 (materials and lighting): S11_BUDGET measured on S11's merge (get_material_variant, set_light_unit,
+# S11 (materials and lighting): +1571 measured on S11's merge (get_material_variant, set_light_unit,
 # set_terrain_maps' hexTiling/hexRotation, the material pbr/emissiveStrength schema)
-TOTAL_LIMIT += S11_BUDGET
+TOTAL_LIMIT += 1571
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
