@@ -7,6 +7,24 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5E5150000000000000000014 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
+		5E5150000000000000000015 /* EngineProfiling.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000001 /* EngineProfiling.cpp */; };
+		5E5150000000000000000016 /* FrameTimes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000003 /* FrameTimes.cpp */; };
+		5E5150000000000000000017 /* FrameTimes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000003 /* FrameTimes.cpp */; };
+		5E5150000000000000000018 /* GpuMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000005 /* GpuMemory.cpp */; };
+		5E5150000000000000000019 /* GpuMemory.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000005 /* GpuMemory.cpp */; };
+		5E515000000000000000001A /* Profiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000007 /* Profiler.cpp */; };
+		5E515000000000000000001B /* Profiler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000007 /* Profiler.cpp */; };
+		5E515000000000000000001C /* SokolPassPreview.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000009 /* SokolPassPreview.cpp */; };
+		5E515000000000000000001D /* SokolPassPreview.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000009 /* SokolPassPreview.cpp */; };
+		5E515000000000000000001E /* SokolPassRecorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000B /* SokolPassRecorder.cpp */; };
+		5E515000000000000000001F /* SokolPassRecorder.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000B /* SokolPassRecorder.cpp */; };
+		5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000D /* SokolTraceHub.cpp */; };
+		5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000D /* SokolTraceHub.cpp */; };
+		5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
+		5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E515000000000000000000F /* SokolVramTracker.cpp */; };
+		5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
+		5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E5150000000000000000012 /* ProfilerClassesLua.cpp */; };
 		5E0A1E00000000000000000F /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
 		5E0A1E000000000000000010 /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
 		5E0A1E000000000000000011 /* ShadowCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000003 /* ShadowCache.cpp */; };
@@ -3614,6 +3632,25 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5E5150000000000000000001 /* EngineProfiling.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = EngineProfiling.cpp; sourceTree = "<group>"; };
+		5E5150000000000000000002 /* EngineProfiling.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EngineProfiling.h; sourceTree = "<group>"; };
+		5E5150000000000000000003 /* FrameTimes.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = FrameTimes.cpp; sourceTree = "<group>"; };
+		5E5150000000000000000004 /* FrameTimes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FrameTimes.h; sourceTree = "<group>"; };
+		5E5150000000000000000005 /* GpuMemory.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = GpuMemory.cpp; sourceTree = "<group>"; };
+		5E5150000000000000000006 /* GpuMemory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GpuMemory.h; sourceTree = "<group>"; };
+		5E5150000000000000000007 /* Profiler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Profiler.cpp; sourceTree = "<group>"; };
+		5E5150000000000000000008 /* Profiler.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Profiler.h; sourceTree = "<group>"; };
+		5E5150000000000000000009 /* SokolPassPreview.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPassPreview.cpp; sourceTree = "<group>"; };
+		5E515000000000000000000A /* SokolPassPreview.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SokolPassPreview.h; sourceTree = "<group>"; };
+		5E515000000000000000000B /* SokolPassRecorder.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SokolPassRecorder.cpp; sourceTree = "<group>"; };
+		5E515000000000000000000C /* SokolPassRecorder.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SokolPassRecorder.h; sourceTree = "<group>"; };
+		5E515000000000000000000D /* SokolTraceHub.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SokolTraceHub.cpp; sourceTree = "<group>"; };
+		5E515000000000000000000E /* SokolTraceHub.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SokolTraceHub.h; sourceTree = "<group>"; };
+		5E515000000000000000000F /* SokolVramTracker.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SokolVramTracker.cpp; sourceTree = "<group>"; };
+		5E5150000000000000000010 /* SokolVramTracker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SokolVramTracker.h; sourceTree = "<group>"; };
+		5E5150000000000000000011 /* Profile.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Profile.h; sourceTree = "<group>"; };
+		5E5150000000000000000012 /* ProfilerClassesLua.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ProfilerClassesLua.cpp; sourceTree = "<group>"; };
+		5E5150000000000000000013 /* RenderStats.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RenderStats.h; sourceTree = "<group>"; };
 		5E0A1E000000000000000001 /* CascadeFit.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CascadeFit.cpp; sourceTree = "<group>"; };
 		5E0A1E000000000000000002 /* CascadeFit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CascadeFit.h; sourceTree = "<group>"; };
 		5E0A1E000000000000000003 /* ShadowCache.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShadowCache.cpp; sourceTree = "<group>"; };
@@ -6923,6 +6960,22 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5E5150000000000000000026 /* profiler */ = {
+			isa = PBXGroup;
+			children = (
+				5E5150000000000000000001 /* EngineProfiling.cpp */,
+				5E5150000000000000000002 /* EngineProfiling.h */,
+				5E5150000000000000000003 /* FrameTimes.cpp */,
+				5E5150000000000000000004 /* FrameTimes.h */,
+				5E5150000000000000000005 /* GpuMemory.cpp */,
+				5E5150000000000000000006 /* GpuMemory.h */,
+				5E5150000000000000000007 /* Profiler.cpp */,
+				5E5150000000000000000008 /* Profiler.h */,
+				5E5150000000000000000011 /* Profile.h */,
+			);
+			path = profiler;
+			sourceTree = "<group>";
+		};
 		5E0A1E00000000000000001D /* shadow */ = {
 			isa = PBXGroup;
 			children = (
@@ -7016,6 +7069,7 @@
 				7105A55E28B305B20092EA05 /* MathClassesLua.cpp */,
 				7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */,
 				716803C72DF75E6F00ED71BE /* ThreadClassesLua.cpp */,
+				5E5150000000000000000012 /* ProfilerClassesLua.cpp */,
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
 				50314C550000000000000013 /* HtmlUIClassesLua.h */,
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
@@ -7830,6 +7884,7 @@
 				71BE623325B1DB9E006D6E02 /* pool */,
 				71125F192E41845E006D11A1 /* registry */,
 				7162FC3825962A0E0075B97D /* render */,
+				5E5150000000000000000026 /* profiler */,
 				7162FC8625962A0E0075B97D /* Scene.h */,
 				7162FC2D25962A0E0075B97D /* Scene.cpp */,
 				175DCCBA300FA22F008C19EC /* SceneSettings.h */,
@@ -7925,6 +7980,7 @@
 		7162FC3825962A0E0075B97D /* render */ = {
 			isa = PBXGroup;
 			children = (
+				5E5150000000000000000013 /* RenderStats.h */,
 				5E0A1E00000000000000001D /* shadow */,
 				7162FC4125962A0E0075B97D /* BufferRender.cpp */,
 				7162FC3F25962A0E0075B97D /* BufferRender.h */,
@@ -8172,6 +8228,14 @@
 				7162FC8925962A0E0075B97D /* SokolObject.cpp */,
 				7162FC8A25962A0E0075B97D /* SokolObject.h */,
 				7162FC9525962A0E0075B97D /* SokolCamera.cpp */,
+				5E5150000000000000000009 /* SokolPassPreview.cpp */,
+				5E515000000000000000000A /* SokolPassPreview.h */,
+				5E515000000000000000000B /* SokolPassRecorder.cpp */,
+				5E515000000000000000000C /* SokolPassRecorder.h */,
+				5E515000000000000000000D /* SokolTraceHub.cpp */,
+				5E515000000000000000000E /* SokolTraceHub.h */,
+				5E515000000000000000000F /* SokolVramTracker.cpp */,
+				5E5150000000000000000010 /* SokolVramTracker.h */,
 				7162FC9125962A0E0075B97D /* SokolCamera.h */,
 				7162FC8C25962A0E0075B97D /* SokolShader.cpp */,
 				7162FC9025962A0E0075B97D /* SokolShader.h */,
@@ -13560,6 +13624,15 @@
 				71C33FBD2A315918007A5822 /* Model.cpp in Sources */,
 				713D82B6259D307F00567F9F /* SokolTexture.cpp in Sources */,
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
+				5E5150000000000000000014 /* EngineProfiling.cpp in Sources */,
+				5E5150000000000000000016 /* FrameTimes.cpp in Sources */,
+				5E5150000000000000000018 /* GpuMemory.cpp in Sources */,
+				5E515000000000000000001A /* Profiler.cpp in Sources */,
+				5E515000000000000000001C /* SokolPassPreview.cpp in Sources */,
+				5E515000000000000000001E /* SokolPassRecorder.cpp in Sources */,
+				5E5150000000000000000020 /* SokolTraceHub.cpp in Sources */,
+				5E5150000000000000000022 /* SokolVramTracker.cpp in Sources */,
+				5E5150000000000000000024 /* ProfilerClassesLua.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
 				434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */,
@@ -13846,6 +13919,15 @@
 				C5A54E00000005104A55E709 /* Guid.cpp in Sources */,
 				C5A54E00000005104A55E70B /* AssetMap.cpp in Sources */,
 				7162FE102596A5BE0075B97D /* SokolCamera.cpp in Sources */,
+				5E5150000000000000000015 /* EngineProfiling.cpp in Sources */,
+				5E5150000000000000000017 /* FrameTimes.cpp in Sources */,
+				5E5150000000000000000019 /* GpuMemory.cpp in Sources */,
+				5E515000000000000000001B /* Profiler.cpp in Sources */,
+				5E515000000000000000001D /* SokolPassPreview.cpp in Sources */,
+				5E515000000000000000001F /* SokolPassRecorder.cpp in Sources */,
+				5E5150000000000000000021 /* SokolTraceHub.cpp in Sources */,
+				5E5150000000000000000023 /* SokolVramTracker.cpp in Sources */,
+				5E5150000000000000000025 /* ProfilerClassesLua.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,
 				7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */,

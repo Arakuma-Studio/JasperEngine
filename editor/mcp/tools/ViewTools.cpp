@@ -31,6 +31,8 @@
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/profiler/FrameDebuggerWindow.h"
+#include "window/profiler/ProfilerWindow.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/SceneWindow.h"
 #include "window/UndoHistoryWindow.h"
@@ -1079,6 +1081,12 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "profiler") {
+        app.getProfilerWindow()->setOpen(true);
+        imguiName = ProfilerWindow::WINDOW_NAME;
+    } else if (window == "frame_debugger") {
+        app.getFrameDebuggerWindow()->setOpen(true);
+        imguiName = FrameDebuggerWindow::WINDOW_NAME;
     } else if (window == "undo_history") {
         app.getUndoHistoryWindow()->setOpen(true);
         imguiName = UndoHistoryWindow::WINDOW_NAME;
@@ -1087,7 +1095,7 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = PlayModeChangesWindow::WINDOW_NAME;
     } else {
         call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, terrain, mcp, "
-                   "jobs_memory, preferences, undo_history, play_mode_changes.");
+                   "jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes.");
         return;
     }
     // A window opened just now exists after its next draw
@@ -1276,7 +1284,7 @@ void registerViewTools(McpRegistry& registry) {
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "terrain", "mcp",
-                                       "jobs_memory", "preferences", "undo_history", "play_mode_changes"})},
+                                       "jobs_memory", "profiler", "frame_debugger", "preferences", "undo_history", "play_mode_changes"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({
                 {"hidden_categories", array(string(""), "The Category filter: categories not shown.")},
