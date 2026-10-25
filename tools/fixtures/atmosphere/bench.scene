@@ -46,7 +46,7 @@ maxValues:
   maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
-    properties: 5240
+    properties: 5208
   - type: sky
   - type: depth
   - type: blit
