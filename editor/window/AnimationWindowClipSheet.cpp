@@ -172,7 +172,7 @@ void AnimationWindowClip::update(double dt, bool clipModeShown, bool focused){
 
 void AnimationWindowClip::stopPreview(){
     if (!controllerUsed) return;
-    if (drag == Drag::Keys) endDrag();
+    if (drag == Drag::Keys || drag == Drag::CurveKeys) endDrag();
     drag = Drag::None;
     controller().stopPreview();
 }
@@ -757,7 +757,7 @@ bool AnimationWindowClip::updateDrag(float rawDelta, std::string* error){
 }
 
 void AnimationWindowClip::endDrag(){
-    if (drag == Drag::Keys){
+    if (drag == Drag::Keys || drag == Drag::CurveKeys){
         controller().endKeyDrag();
         // keys the drag left on one time collapsed into one
         const std::vector<ClipWarning>& warnings = controller().getLastWarnings();

@@ -3,7 +3,6 @@
 
 #include "ObjectTransformCmd.h"
 #include "animation/ClipRecordHooks.h"
-#include "pose/PoseInspectorHooks.h"
 
 #include <algorithm>
 #include <cmath>
@@ -83,16 +82,13 @@ bool editor::ObjectTransformCmd::execute(){
     if (!sceneProject){
         return false;
     }
-    // a posed bone: the old values recorded are its rest, and the edit applies to the rest
-    if (poseInspectorHooks().beforeTransformWrite){
-        for (const auto& entry : props) poseInspectorHooks().beforeTransformWrite(static_cast<uint32_t>(sceneId), entry.first);
-    }
     // what the entities show now: a clip preview may be showing other values than their rest
     std::map<Entity, Transform> shown;
     for (const auto& entry : props){
         if (const Transform* transform = sceneProject->scene->findComponent<Transform>(entry.first)) shown[entry.first] = *transform;
     }
-    // clip previews put a previewed Transform back to its rest (animation clips 9.R6)
+    // a posed bone (Pose window) and a previewed Transform (clip preview) go back to their rest:
+    // the old values recorded are the rest, and the edit applies to it (animation clips 9.R5/R6)
     for (const auto& entry : props) ClipRecordHooks::beforeComponentWrite(static_cast<uint32_t>(sceneId), entry.first, ComponentType::Transform, "");
     for (auto& [entity, property] : props){
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){

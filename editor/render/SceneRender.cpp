@@ -17,6 +17,7 @@ extern unsigned int bulb_icon_png_len;
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "command/type/MultiPropertyCmd.h"
+#include "animation/ClipRecordHooks.h"
 #include "lattice/LatticeEditorOps.h"
 #include "util/GraphicUtils.h"
 #include "window/PhysicsPlacementWindow.h"
@@ -1396,9 +1397,37 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         lastCommand->setNoMerge();
         lastCommand = nullptr;
     }
+    // a recorded drag: one key edit (one merge key) per drag
+    endGizmoRecord();
 
     // one drag of lattice points, one undo step
     endLatticeDrag();
+}
+
+bool editor::SceneRender::recordGizmoTransform(uint32_t sceneId, Entity entity, const Matrix4& localMatrix, GizmoSelected gizmo,
+                                               const std::vector<Entity>& selection){
+    ClipChannel channel;
+    if (gizmo == GizmoSelected::TRANSLATE) channel = ClipChannel::Position;
+    else if (gizmo == GizmoSelected::ROTATE) channel = ClipChannel::Rotation;
+    else if (gizmo == GizmoSelected::SCALE) channel = ClipChannel::Scale;
+    else return false;
+    if (!ClipRecordHooks::claimsAny(sceneId, selection, channel)) return false;
+    // an unbound GameObject of the selection stays as it is (no scene step mixed into the key edit)
+    if (!ClipRecordHooks::claims(sceneId, entity, channel)) return true;
+    Vector3 position, scale;
+    Quaternion rotation;
+    localMatrix.decomposeStandard(position, scale, rotation);
+    bool opened = false;
+    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
+    gizmoRecordOpen = gizmoRecordOpen || opened;
+    ClipRecordHooks::record(sceneId, entity, ClipRecordHooks::transformValue(channel, position, rotation, scale), mergeKey);
+    return true;
+}
+
+void editor::SceneRender::endGizmoRecord(){
+    if (!gizmoRecordOpen) return;
+    gizmoRecordOpen = false;
+    ClipRecordHooks::endDrag();
 }
 
 Vector3 editor::SceneRender::getMatrixScale(const Matrix4& matrix){
@@ -1643,7 +1672,8 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                             multiCmd->addCommand(std::make_unique<ObjectTransformCmd>(project, commandSceneId, entity,
                                 transform->position, newRotation, newScale));
                             dragCommand = multiCmd;
-                        }else{
+                        }else if (!recordGizmoTransform(commandSceneId, entity, m, tools.getGizmoSelected(), selEntities)){
+                            // (Record keys a claimed channel instead, animation clips 9.R5)
                             dragCommand = new ObjectTransformCmd(project, commandSceneId, entity, m);
                         }
                     }

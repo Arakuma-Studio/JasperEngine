@@ -19,9 +19,8 @@
 //   undo; the morph weights have no editor write site yet: whoever adds one, e.g. T3c's Inspector
 //   morph rows, calls before/afterComponentWrite); T3a implements the registries and the Animation
 //   window's listeners; T3c calls claims/record at the sources (SceneRender gizmo drag, Inspector
-//   Transform rows, morph rows, LatticeEditorOps) and moves the Pose window from
-//   poseInspectorHooks().beforeTransformWrite onto beforeChannelWrite (the old slot stays called
-//   until then, before the clip notifications).
+//   Transform rows, morph rows, LatticeEditorOps) and moved the Pose window from
+//   poseInspectorHooks().beforeTransformWrite onto beforeChannelWrite (the old slot is gone).
 // - Thread-safety: main thread.
 // - Invariants: listeners run in registration order; a listener may not add or remove listeners
 //   while it runs (removal is deferred until the call returns); MCP set_properties never records
@@ -36,6 +35,8 @@
 
 #include "animation/AnimationClip.h"
 #include "ecs/Entity.h"
+#include "math/Quaternion.h"
+#include "math/Vector3.h"
 
 #include <cstdint>
 #include <functional>
@@ -95,6 +96,19 @@ namespace jasperengine::editor{
         // before/afterChannelWrite for every channel of channelsOf (the command call sites)
         static void beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
         static void afterComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
+
+        // ---- additions (T3c): helpers of the record sources ----
+
+        // Record takes this edit of a selection: some of `entities` is claimed for `channel`. The
+        // sources then record the claimed ones and leave the others unchanged (no scene step: one
+        // edit is never split between the project and the scene history; the Animation window's
+        // status says which selected GameObjects Record leaves alone)
+        static bool claimsAny(uint32_t sceneId, const std::vector<Entity>& entities, ClipChannel channel);
+        // the record value of a Transform channel (position / scale x y z, rotation x y z w)
+        static ClipRecordValue transformValue(ClipChannel channel, const Vector3& position, const Quaternion& rotation, const Vector3& scale);
+        // the merge key of a source's gesture: the current drag's, or a new drag's (then `opened`
+        // is set and the source calls endDrag() when the gesture ends: release, deactivation)
+        static std::string gestureMergeKey(bool* opened);
     };
 
 }

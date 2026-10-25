@@ -7,7 +7,6 @@
 #include "Stream.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ModelClearCmd.h"
-#include "pose/PoseInspectorHooks.h"
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -261,11 +260,8 @@ bool editor::ComponentValuesCmd::execute(){
         defaults = EntityClipboard::encodeDefaultComponent(type);
     }
 
-    // a posed bone's Transform (paste values, reset): recorded and edited on its rest pose
-    if (type == ComponentType::Transform && poseInspectorHooks().beforeTransformWrite) {
-        for (const Target& target : targets) poseInspectorHooks().beforeTransformWrite(sceneId, target.entity);
-    }
-    // clip previews put previewed channels back to their rest (animation clips 9.R6)
+    // a posed bone's Transform (paste values, reset; Pose window) and previewed channels (clip
+    // preview) go back to their rest: recorded and edited on it (animation clips 9.R5/R6)
     for (const Target& target : targets) ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, type, "");
     for (Target& target : targets) {
         target.before = YAML::Node();

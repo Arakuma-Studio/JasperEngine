@@ -170,3 +170,40 @@ void ClipRecordHooks::beforeComponentWrite(uint32_t sceneId, Entity entity, Comp
 void ClipRecordHooks::afterComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property){
     for (ClipChannel channel : channelsOf(type, property)) afterChannelWrite(sceneId, entity, channel);
 }
+
+// ---- record source helpers (T3c) ----
+
+bool ClipRecordHooks::claimsAny(uint32_t sceneId, const std::vector<Entity>& entities, ClipChannel channel){
+    if (registry().record.empty()) return false;
+    for (Entity entity : entities){
+        if (claims(sceneId, entity, channel)) return true;
+    }
+    return false;
+}
+
+ClipRecordValue ClipRecordHooks::transformValue(ClipChannel channel, const Vector3& position, const Quaternion& rotation, const Vector3& scale){
+    ClipRecordValue out;
+    out.channel = channel;
+    switch (channel){
+        case ClipChannel::Position:
+            out.value = {position.x, position.y, position.z};
+            break;
+        case ClipChannel::Rotation:
+            out.value.resize(4);
+            quaternionToXYZW(rotation, out.value.data());
+            break;
+        case ClipChannel::Scale:
+            out.value = {scale.x, scale.y, scale.z};
+            break;
+        default:
+            break;
+    }
+    return out;
+}
+
+std::string ClipRecordHooks::gestureMergeKey(bool* opened){
+    if (opened) *opened = false;
+    if (!registry().dragKey.empty()) return registry().dragKey;
+    if (opened) *opened = true;
+    return beginDrag();
+}
