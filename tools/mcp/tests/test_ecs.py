@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from harness import Editor
+from harness import Editor, tool_meta
 
 EDITOR = {"xvfb": "harness"}
 TIMEOUT = 900
@@ -90,6 +90,24 @@ async def click_enabled_checkbox(ed: Editor, xdo, phase_name: str, system: str):
         await asyncio.sleep(0.3)
         await ed.call("wait", frames=2)
     raise AssertionError(f"the {phase_name} {system} row never scrolled into view: {row}")
+
+
+ECS_TOOLS = ("get_ecs_stats", "get_system_schedule", "set_system_options", "query_entities")
+
+
+async def test_ecs_tools_group(ed: Editor):
+    """S31: the ECS tools are the diagnostics group's, hidden until a session enables it."""
+    ed.require_tools("tool_groups", *ECS_TOOLS)
+    for name in ECS_TOOLS:
+        ed.check_eq(tool_meta(ed.tool(name)).get("jasper/group"), "diagnostics", f"{name}'s group")
+    default = {t.name for t in await ed.tools(groups=None)}
+    ed.check(not default & set(ECS_TOOLS), f"hidden by default: {sorted(default & set(ECS_TOOLS))}")
+    await ed.call("tool_groups", enable=["diagnostics"])
+    try:
+        listed = {t.name for t in await ed.tools(groups=None)}
+        ed.check(set(ECS_TOOLS) <= listed, f"listed once diagnostics is enabled: {sorted(set(ECS_TOOLS) - listed)}")
+    finally:
+        await ed.call("tool_groups", disable=["diagnostics"])
 
 
 async def test_ecs_stats_counts(ed: Editor):

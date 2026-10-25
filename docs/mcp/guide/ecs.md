@@ -5,6 +5,10 @@ what the change tick means, the typed queries, deferred structural changes, the 
 scheduler, and the tools, Lua functions and editor window that show them. The code is in
 `engine/core/ecs` and `engine/core/registry`.
 
+The four ECS tools (`get_ecs_stats`, `get_system_schedule`, `set_system_options`,
+`query_entities`) are in the `diagnostics` tool group: `tool_groups {enable: ["diagnostics"]}`
+lists them (they can be called by name without it).
+
 ## Storage and order
 
 - A GameObject is an `Entity` (an unsigned id). User ids start at 1001 and are never reused;
