@@ -35,6 +35,10 @@ namespace {
         {codes::RmluiMessage, W, false, "rmlui-message", "RmlUi message",
          "RmlUi, the engine's layout library, rejected or warned about the converted document or stylesheet. The location is "
          "mapped back to your file. Simplify the construct or report the case: converted output should always be accepted."},
+        {codes::GlyphAtlasBudget, W, false, "glyph-atlas-budget", "Glyph atlas budget too small",
+         "The text drawn needs more glyphs than the glyph atlas holds: its least recently used pages keep being cleared and "
+         "their glyphs made again (more than 4 times in 120 frames). Raise Project Settings > Graphics > HTML UI > Glyph Atlas "
+         "Budget (graphics.html_ui_glyph_atlas_mib), or use fewer font sizes and fonts at once."},
 
         // ---- HTML
         {codes::HtmlParseError, I, false, "html-parse-error", "HTML parse error",

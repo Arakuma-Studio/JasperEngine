@@ -62,6 +62,7 @@ namespace jasperengine::htmlui::compat {
         inline constexpr DiagCode InternalError{DiagArea::GEN, 4};
         inline constexpr DiagCode NonUtf8Charset{DiagArea::GEN, 5};
         inline constexpr DiagCode RmluiMessage{DiagArea::GEN, 6};
+        inline constexpr DiagCode GlyphAtlasBudget{DiagArea::GEN, 7};
         // HTML
         inline constexpr DiagCode HtmlParseError{DiagArea::HTML, 1};
         inline constexpr DiagCode UnsupportedElement{DiagArea::HTML, 2};

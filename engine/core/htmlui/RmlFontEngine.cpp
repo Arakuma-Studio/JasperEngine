@@ -8,6 +8,7 @@
 #include "Log.h"
 #include "RmlFontMsdf.h"
 #include "RmlRenderer.h"
+#include "compat/DiagnosticCodes.h"
 #include "jobs/JobSystem.h"
 #include "render/SystemRender.h"
 #include "util/FontFace.h"
@@ -778,9 +779,9 @@ void RmlFontEngine::noteEviction(){
     // the pages keep being cleared for glyphs they held: the budget is too small for the text drawn
     if (evictionFrames.size() > evictionWarnCount && warnedBudget.insert(currentManager).second){
         Log::warn("[HTML UI] glyph atlas budget too small: %u atlas pages cleared within %u frames (%u + %u MiB); raise the project's "
-                  "glyph atlas budget [HTMLUI-GEN-0007]",
+                  "glyph atlas budget [%s]",
                   (unsigned int)evictionFrames.size(), (unsigned int)evictionWarnFrames, (unsigned int)(getBaseBudgetBytes() / MiB),
-                  (unsigned int)(getDistanceBudgetBytes() / MiB));
+                  (unsigned int)(getDistanceBudgetBytes() / MiB), htmlui::compat::codes::GlyphAtlasBudget.id().c_str());
     }
 }
 

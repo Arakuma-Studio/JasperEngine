@@ -503,3 +503,61 @@ one line pointing here.
 | Effective scale is wrong under perspective (scale varies across the box) | Use the max singular value at the box centre; perspective text uses MSDF (R16) |
 | Slug patent status | Not used. Revisit only with a written legal clearance; MSDF covers the need |
 | Gamma/contrast tuning à la `text_mask_gamma.glsl` | Out of scope (would change every text golden); candidate follow-up |
+
+## Deviations (implementation record)
+
+- **Toggles (D1).** Batching (`RmlRenderer::setBatchingForTesting`) covers the merged runs, the run
+  cache and the clip-mask elision; the analytic rounded clip (R6) is part of the SDF primitives
+  toggle (`setSdfPrimitivesForTesting` / `htmlUiSdfPrimitives`) and applies to the unbatched
+  replay too (`RmlRenderer::replayScoped`). Elision draws exactly what the mask would, analytic
+  clips antialias the curve differently from a stencil mask: with the analytic clip under the
+  batching toggle, R7's "max channel difference <= 1 between batching on and off" could not hold
+  on any rounded clip. The project settings call these setters (`UIDocumentSystem::
+  setHtmlUiRenderOptions`), the names stay D1's. `JASPER_HTMLUI_S16_OFF=1` turns all three off
+  for a whole `jasperengine-htmlui-tests` run (AC1).
+- **No `MSDF_GLYPH` instance mode.** Distance glyphs are `QUAD` instances (or meshes, unbatched)
+  whose texture is an MTSDF page: the texture's kind (`HtmlUITexture::Sample`) and its effect
+  variant's parameters (D6) go into `u_fs_htmluiClip` per draw (`params.y`, `text`), which both
+  `htmlui.frag` and `htmlui_prim.frag` decode, so distance text also draws with batching off.
+- **Distance range.** "12 px (0.3 em)" is read as 12 atlas texels of distance on each side of the
+  outline (msdfgen's range of 24), so that an effect reach of 0.3 em is inside it as R17 says.
+- **Atlas pages update in place.** A page that gets glyphs keeps its texture (a DYNAMIC image the
+  renderer uploads again before the frame draws, `RmlRenderer::updateAtlasTextures`) instead of a
+  new texture source: nothing is regenerated for a growing page. Per-handle versions (R13) change
+  when a page a handle drew from is cleared (eviction), when the distance glyphs a handle waits for
+  arrive, and with the epoch (reloads, scale and render-text resets). A render interface other than
+  the engine's (RmlUi's own tests, `RecordingRenderInterface`) still gets a new source per growing
+  page, bumping that page's users.
+- **Budget split.** `htmlUiGlyphAtlasMiB` is the sum of both budgets, split 2:1 (bitmap : distance,
+  as 16 + 8 and 8 + 4); the CPU font-effect pages (RGBA8, 4 MiB) count against the bitmap budget.
+  A page cleared to make room keeps its index (parked, no texels, no texture) so glyph entries stay
+  valid; the "unused in this frame and the last" rule reads the renderer's draws of the page's
+  textures (`HtmlUITexture::drawFrame`) and the strings that used it.
+- **Shadows (D4).** The analytic shadow integrates the Gaussian exactly over the rows between the
+  corners (separable erf) and numerically (6 rows per curved band) over the corners, instead of
+  `erf` of the signed distance: a true Gaussian of the rounded rectangle at every blur, so
+  `GeometryBoxShadow::primitive_blur_limit` stays at "no limit". `BoxPrimitive` also carries
+  `fill_insets` (the mesh path's one-pixel inset of the fill under opaque borders) beyond the API
+  sketch.
+- **Translate-only transforms** are folded into the members' translation (outside analytic clips),
+  so `translateX(-50%)` centring and slides join the runs around them.
+- **Hysteresis (R15).** "The scale changed" is a change above 1e-4 of the last render's on-screen
+  scale; the first generation of a text is at its on-screen scale at once; text above 128 device px,
+  under perspective or with `geometricPrecision` waits for its distance glyphs as a bitmap at its
+  scale. The settle's glyphs are made within 256 glyphs and 2 ms a frame (`PrepareGlyphs`); the
+  first generation is never held back.
+- **Acutance (AC10)** is the mean Sobel gradient over the ink box's edge pixels (those at least a
+  tenth of the box's largest gradient): over the whole box a sharp text twice the size has a lower
+  mean (more pixels inside the strokes), which made the 1.37 pixel ratio comparison meaningless.
+- **Tests on the GPU renderer.** `RenderBatch.*` drive `RmlRenderer` directly in a
+  `RenderTestContext` (draw counts and images) rather than the `RecordingRenderInterface`, which
+  does not batch. `TestFontEngine.AtlasBudget*` are GPU tests (`TestFontEngineAtlas.cpp`): the LRU
+  rule counts rendered frames. `RenderBatch.EquivalenceAllGoldenScenes` compares every capture of
+  the browser-parity fixtures (the golden scenes the documents define); the C++-drawn goldens'
+  suites compare their own images.
+- **B6** is `list-500` in its own 1024 x 1024 context (what a texture-mode document is: an
+  `HtmlUIContext` of the texture's size), not through a scene's `UIDocumentComponent`.
+- **textEffectFallbacks** counts a string generated with a CPU font effect and, per frame, each
+  blurred `text-shadow` drawn through a layer.
+- **S15's render-stats tool** does not exist yet (S15 has not landed); `HtmlUIRenderStats::
+  forEachField` is what it can report.

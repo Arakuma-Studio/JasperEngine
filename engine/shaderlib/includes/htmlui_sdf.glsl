@@ -20,7 +20,7 @@ uniform u_fs_htmluiClip {
     vec4 radiiY[2];
     vec4 params;        // x: clip shapes (0, 1 or 2); y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF)
     vec4 text;          // MTSDF: x: effect (0 fill, 1 dilated, 2 blurred), y: dilation, z: blur sigma
-                        // (document px), w: the atlas distance range (texels)
+                        // (document px), w: the atlas distance range (texels each side of the outline)
 } clip;
 
 // Signed distance to a rounded rectangle with elliptical corners: positive inside, negative
@@ -171,7 +171,8 @@ float htmluiMedian(float r, float g, float b){
 // its position in atlas texels, docPos the document position: their derivatives give the screen
 // size of a texel and of a document px
 float htmluiDistanceText(vec4 texel, vec2 uvTexels, vec2 docPos){
-    float range = clip.text.w;
+    // a texel's value v is the distance (v - 0.5) * 2 * range, in texels
+    float range = 2.0 * clip.text.w;
     vec2 texelsX = dFdx(uvTexels);
     vec2 texelsY = dFdy(uvTexels);
     // atlas texels per screen pixel, and document px per atlas texel

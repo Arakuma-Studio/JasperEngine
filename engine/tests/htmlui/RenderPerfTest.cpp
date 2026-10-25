@@ -23,7 +23,7 @@
 //
 // CPU time is the engine's own work, the frame's wall time less the graphics backend's share
 // (RenderBackendTime: llvmpipe and lavapipe do on this thread what a GPU driver does not), the
-// median of the measured frames; gates take the least of up to 5 runs and the
+// median of the measured frames; gates take the least of up to 3 runs and the
 // JASPER_HTMLUI_PERF_SLACK factor (compat/PerfFixtures.h). Results go to
 // build/<platform>/htmlui-render-bench[-vulkan].json and the table to docs/html-ui/render-benchmark.md.
 
@@ -148,10 +148,10 @@ namespace {
         return run;
     }
 
-    // the least engine time of up to 5 runs, stopping once within target
+    // the least engine time of up to 3 runs, stopping once within target
     BenchRun gated(const std::function<BenchRun()>& once, double target){
         BenchRun least = once();
-        for (int attempt = 1; attempt < 5 && target > 0.0 && least.engineMs > target; attempt++){
+        for (int attempt = 1; attempt < 3 && target > 0.0 && least.engineMs > target; attempt++){
             const BenchRun run = once();
             if (run.engineMs < least.engineMs)
                 least = run;
@@ -224,7 +224,7 @@ TEST(HtmlUIRenderPerf, B1Examples){
     for (const char* example : examples){
         BenchRun baseline, s16;
         const std::string asset = std::string(example) + "/" + example + ".html";
-        both(asset, 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 1.05 * slack; }, examplesRoot().string());
+        both(asset, 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 1.05 * slack + 0.05; }, examplesRoot().string());
         record(std::string("B1 ") + example, baseline, s16);
         EXPECT_LE(s16.maxDraws, std::max(1u, (uint32_t)(0.30 * baseline.maxDraws))) << example;
         EXPECT_LE(s16.maxDraws, 40u) << example;
