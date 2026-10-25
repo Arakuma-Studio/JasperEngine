@@ -1802,15 +1802,6 @@ entities:
                       enabled: true
                       factor: 1
                       roughness: 0.03
-                      map:
-                        textureType: 2D
-                        source: id
-                        id: pack|cc|/tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|0|none
-                        minFilter: nearest
-                        magFilter: nearest
-                        wrapU: repeat
-                        wrapV: repeat
-                        releaseDataAfterLoad: true
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
                 vertexCount: 6180
@@ -2053,15 +2044,6 @@ entities:
                       enabled: true
                       factor: 1
                       roughness: 1
-                      map:
-                        textureType: 2D
-                        source: id
-                        id: pack|cc|none|/tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2
-                        minFilter: nearest
-                        magFilter: nearest
-                        wrapU: repeat
-                        wrapV: repeat
-                        releaseDataAfterLoad: true
                 textureRect: [0, 0, 1, 1]
                 primitiveType: triangles
                 vertexCount: 6180

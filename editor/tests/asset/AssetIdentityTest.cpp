@@ -598,6 +598,11 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::MeshComponent, "submeshes[].material.shader"}, {C::MeshComponent, "submeshes[].material.name"},
         {C::MeshComponent, "submeshes[].material.extraPass.shader"}, {C::MeshComponent, "submeshes[].material.extraPass.shaderTextures{}"},
         {C::MeshComponent, "customShader"}, {C::MeshComponent, "customDepthShader"},
+        // the built-in Lit's extended lobes' maps (S11)
+        {C::MeshComponent, "submeshes[].material.pbr.clearcoat.map"}, {C::MeshComponent, "submeshes[].material.pbr.clearcoat.normalMap"},
+        {C::MeshComponent, "submeshes[].material.pbr.sheen.map"}, {C::MeshComponent, "submeshes[].material.pbr.anisotropy.map"},
+        {C::MeshComponent, "submeshes[].material.pbr.iridescence.map"}, {C::MeshComponent, "submeshes[].material.pbr.transmission.map"},
+        {C::MeshComponent, "submeshes[].material.pbr.specular.map"},
         {C::UIComponent, "texture"}, {C::UIComponent, "customShader"}, {C::UIComponent, "shaderTextures{}"},
         {C::ButtonComponent, "textureNormal"}, {C::ButtonComponent, "textureHovered"}, {C::ButtonComponent, "texturePressed"}, {C::ButtonComponent, "textureDisabled"},
         {C::TextComponent, "font"},

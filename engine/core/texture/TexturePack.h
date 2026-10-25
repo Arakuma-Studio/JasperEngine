@@ -58,6 +58,8 @@ namespace jasperengine{
         static TextureData pack(const Source* first, const Source* second, const Layout& layout);
         // The pool id of a packed image: both sources' keys and the layout
         static std::string makeId(const std::string& firstKey, const std::string& secondKey, const Layout& layout);
+        // an id makeId made (a texture generated at load, never written to a file)
+        static bool isPackedId(const std::string& id){ return id.rfind("pack|", 0) == 0; }
     };
 
 }

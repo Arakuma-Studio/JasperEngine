@@ -21,6 +21,7 @@
 #include "util/ProjectUtils.h"
 #include "util/StringUtils.h"
 #include "util/LightPhotometry.h"
+#include "texture/TexturePack.h"
 #include "ecs/EntityManager.h"
 #include "render/SceneRender2D.h"
 #include "render/SceneRender3D.h"
@@ -3793,7 +3794,10 @@ YAML::Node editor::Stream::encodeMaterialPbr(const MaterialPbrExtensions& pbr, b
                     if (*(const Vector3*)value != *(const Vector3*)def) lobeNode[field.name] = encodeVector3(*(const Vector3*)value);
                     break;
                 case PbrFieldType::Texture:
-                    if (!((const Texture*)value)->empty()) lobeNode[field.name] = encodeTexture(*(const Texture*)value, embedTextureData);
+                    // a map packed from a model's images (TexturePack) is made again when the
+                    // model loads: not written
+                    if (!((const Texture*)value)->empty() && !TexturePack::isPackedId(((const Texture*)value)->getId()))
+                        lobeNode[field.name] = encodeTexture(*(const Texture*)value, embedTextureData);
                     break;
                 case PbrFieldType::TexCoord:
                     if (*(const int*)value != *(const int*)def) lobeNode[field.name] = YamlNumbers::integerText(*(const int*)value);
