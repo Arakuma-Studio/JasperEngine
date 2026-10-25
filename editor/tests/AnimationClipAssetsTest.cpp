@@ -30,6 +30,8 @@
 #include "pool/AnimationClipPoolTesting.h"
 #include "pool/ModelPool.h"
 #include "pool/TextureDataPool.h"
+#include "pose/PoseAnimationDocument.h"
+#include "pose/PoseAnimationIO.h"
 #include "subsystem/MeshSystem.h"
 #include "Stream.h"
 #include "util/AssetDatabase.h"
@@ -1064,6 +1066,49 @@ TEST_F(AnimationClipAssets, ACommitNeverOverwritesAnUnseenOutsideEdit) {
     EXPECT_EQ(document->data().tracks.size(), 2u) << "the outside edit survives the undo";
     ASSERT_TRUE(history()->undo());
     EXPECT_FLOAT_EQ(lastKeyY(document->data()), 1.0f);
+}
+
+// The pose animation document has the same rule: a commit over an outside edit it has not seen
+// yet is refused (the document reloads), the edit made again on the new content is written
+TEST_F(AnimationClipAssets, APoseAnimationCommitNeverOverwritesAnUnseenOutsideEdit) {
+    const std::string dir = folder("unseenpose");
+    pose::PoseAnimationData initial;
+    initial.poses.resize(2);
+    initial.poses[0].name = "Rest";
+    initial.poses[1].name = "Raise";
+    std::string error;
+    std::shared_ptr<PoseAnimationDocument> document =
+        PoseAnimationDocument::create(project(), dir + "/wave.poseanim", initial, "Create", nullptr, &error);
+    ASSERT_TRUE(document) << error;
+    const fs::path file = document->absolutePath();
+    pose::PoseAnimationData data = document->data();
+    data.poses[1].hold = 0.5f;
+    ASSERT_TRUE(document->commit(data, "Hold", "", nullptr, &error)) << error;
+    const size_t steps = history()->position();
+
+    // another program adds a pose; nobody told the document yet
+    pose::PoseAnimationData outside = document->data();
+    outside.poses.push_back(outside.poses[0]);
+    outside.poses.back().name = "Wave";
+    writeAll(file, pose::writePoseAnimation(outside));
+    std::error_code ec;
+    fs::last_write_time(file, fs::last_write_time(file, ec) + std::chrono::seconds(2), ec);
+
+    data.poses[1].hold = 0.75f;
+    EXPECT_FALSE(document->commit(data, "Hold", "", nullptr, &error));
+    EXPECT_NE(error.find("changed on disk"), std::string::npos) << error;
+    ASSERT_EQ(document->data().poses.size(), 3u) << "reloaded";
+    EXPECT_EQ(readAll(file), pose::writePoseAnimation(outside)) << "the outside edit is not overwritten";
+    EXPECT_EQ(history()->position(), steps);
+
+    pose::PoseAnimationData again = document->data();
+    again.poses[1].hold = 0.75f;
+    ASSERT_TRUE(document->commit(again, "Hold", "", nullptr, &error)) << error;
+    EXPECT_EQ(history()->position(), steps + 1);
+    EXPECT_EQ(document->data().poses.size(), 3u);
+    EXPECT_FLOAT_EQ(document->data().poses[1].hold, 0.75f);
+    ASSERT_TRUE(history()->undo());
+    EXPECT_EQ(document->data().poses.size(), 3u) << "the outside edit survives the undo";
 }
 
 TEST_F(AnimationClipAssets, AFailedWriteReportsItsReason) {
