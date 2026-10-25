@@ -40,8 +40,7 @@ editor::AnimationWindow::~AnimationWindow(){
     hooks.openEntityAnimation = nullptr;
     animationClipAppHooks().windowTestHook = nullptr;
     // the entity preview's PreviewOwner stop captures this window
-    PreviewOwner::release(previewOwnerToken);
-    previewOwnerToken = 0;
+    releasePreviewOwners();
 }
 
 bool editor::AnimationWindow::moveFrameToLane(SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error){

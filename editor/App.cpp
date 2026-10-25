@@ -50,6 +50,7 @@
 #include "pose/PoseTemplates.h"
 #include "pose/PoseViewport.h"
 #include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -2494,6 +2495,8 @@ void editor::App::engineInit(int argc, char** argv) {
     CommandHistory::beforeChange = [this](size_t sceneId, CommandHistory::Change change){
         return physicsPlacementWindow->beforeHistoryChange((uint32_t)sceneId, change);
     };
+    // the clip editor's history timeline (undo routing, R5b) after the listeners above
+    AnimationClipController::installHistoryTimeline(&project);
 
     ShaderPool::setShaderBuilder([this](jasperengine::ShaderKey shaderKey) -> jasperengine::ShaderBuildResult {
         static jasperengine::editor::ShaderBuilder builder;  // Make static to reuse

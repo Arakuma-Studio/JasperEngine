@@ -19,6 +19,10 @@
 //     exist) or given its previous content back (it existed), but only when its bytes are still
 //     the ones this command wrote; otherwise it is kept and the mismatch logged, and a redo then
 //     leaves it as it is too (logged).
+//   * a redo writes no file that came back by other means since its undo: a new file (one
+//     the first execute created) that exists again with other bytes (a project redo of a clip
+//     edit recreated it), or whose GUID the asset database has at another existing path (it
+//     was renamed or moved: the players' entries follow the GUID there). Both are kept (logged).
 //   * the scene's modified flag is set on execute and put back on undo (like CreatePrefabCmd);
 //     after execute, undo and redo the files go through AnimationClipDocument::filesChanged and
 //     the same files-written hook as document commits (AnimationClipDocument::
@@ -93,11 +97,16 @@ namespace jasperengine::editor{
         Entity playerRoot = NULL_ENTITY;
         PlayerModelLayout::Reloads layoutReloads;
         bool reloadsTaken = false;              // the first execute ran the helper
+        bool executedOnce = false;              // a later execute is a redo
+        std::vector<bool> existedFirst;         // per file: it existed before the first execute
         std::vector<std::filesystem::path> createdDirs;
         std::vector<std::filesystem::path> keptFiles;
 
         // files [0, count) back to what was there before execute
         void restoreFiles(size_t count, bool checkBytes);
+        // where the asset database has `file`'s clip GUID now when that is another existing
+        // file (a rename or move of it), else empty
+        std::filesystem::path movedTo(const File& file) const;
         void notifyFiles();
         bool fail(const std::string& message);
     };

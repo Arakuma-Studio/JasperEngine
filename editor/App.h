@@ -245,9 +245,9 @@ namespace jasperengine::editor{
             // the Pose Animation window, or a Scene view posing its character: its keys and
             // Ctrl/Cmd+Z/Y (the project history) are the window's
             PoseAnimation,
-            // the Animation window's clip mode after a clip edit, or Record with the Scene view
-            // focused (animation clips spec 9.R4/R5): Ctrl/Cmd+Z/Y go to the project history
-            // (AnimationClipAppHooks::ownsUndo)
+            // the newest undoable step across the scene and project histories is a clip commit
+            // made through the editor UI, whatever has focus (animation clips spec 9.R5b/R5c):
+            // Ctrl/Cmd+Z/Y go to the project history (AnimationClipAppHooks::ownsUndo)
             AnimationClip
         } lastFocusedWindow;
 

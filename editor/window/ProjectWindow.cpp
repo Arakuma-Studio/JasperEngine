@@ -31,6 +31,7 @@
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/CreatePrefabVariantAssetCmd.h"
 #include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "pose/PoseAnimationDocument.h"
@@ -3849,10 +3850,13 @@ void editor::ProjectWindow::assetsCreateAnimationClip() {
     ClipData initial;
     std::string error;
     const fs::path relative = uniqueRelativePath(currentPath, "New Animation", anim::ANIM_EXTENSION);
+    const uint64_t clock = AnimationClipController::clipCommitClock(project);
     if (!AnimationClipDocument::create(project, relative.generic_string(), initial, "Create Animation Clip", &error)) {
         Backend::getApp().registerAlert("Create Animation Clip", error);
         return;
     }
+    // a clip file write of the editor UI: Ctrl+Z undoes it from any window (9.R5c)
+    AnimationClipController::markClipCommit(clock);
     scanDirectory(currentPath);
     const std::string fileName = relative.filename().string();
     selectedFiles.clear();

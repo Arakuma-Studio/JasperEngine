@@ -44,6 +44,7 @@
 #include "lattice/LatticeEditorOps.h"
 #include "lattice/LatticeSolver.h"
 #include "animation/PreviewOwner.h"
+#include "window/InspectorWindowClips.h"
 
 #include <algorithm>
 #include <cstring>
@@ -1412,17 +1413,9 @@ void editor::AnimationWindow::startPreview(Scene* scene) {
         return;
     }
 
-    // the Pose window, a clip preview or the Inspector's action preview of this hierarchy
-    // restore first (spec 9.R7)
-    {
-        const ActionComponent* rootAction = scene->findComponent<ActionComponent>(selectedEntity);
-        const Entity root = rootAction && rootAction->target != NULL_ENTITY && scene->isEntityCreated(rootAction->target)
-            ? rootAction->target : selectedEntity;
-        PreviewOwner::release(previewOwnerToken);
-        previewOwnerToken = PreviewOwner::acquire(selectedSceneId, root, scene, "Animation window (entity Animation)", [this]() {
-            stopTransientPreviews();
-        });
-    }
+    // the Pose window, a clip preview or the Inspector's action preview of anything this
+    // preview writes restore first (spec 9.R7)
+    ownPreviewRoots(scene, {selectedEntity});
 
     previewState.clear();
     previewAnimations.clear();
@@ -1464,6 +1457,13 @@ void editor::AnimationWindow::triggerTransitionPreview(Scene* scene, SceneProjec
         if (e == transitionTarget) { alreadyActive = true; break; }
     }
     if (!alreadyActive) {
+        // the target's tracks may write outside the first Animation's roots: owned before its snapshot
+        std::vector<Entity> animations = previewAnimations;
+        animations.push_back(transitionTarget);
+        ownPreviewRoots(scene, animations);
+        if (!isPreviewing) {
+            return;
+        }
         addAnimationToPreview(scene, transitionTarget);
         previewAnimations.push_back(transitionTarget);
 
@@ -1540,8 +1540,7 @@ void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProje
     if (sceneProject) {
         sceneProject->needUpdateRender = true;
     }
-    PreviewOwner::release(previewOwnerToken);
-    previewOwnerToken = 0;
+    releasePreviewOwners();
 }
 
 void editor::AnimationWindow::clearSceneState(uint32_t sceneId) {
@@ -1554,8 +1553,7 @@ void editor::AnimationWindow::clearSceneState(uint32_t sceneId) {
         return;
     }
     // the scene is gone: forget the ownership without restoring
-    PreviewOwner::release(previewOwnerToken);
-    previewOwnerToken = 0;
+    releasePreviewOwners();
 
     // The scene is already deleted, drop the snapshots instead of restoring them
     previewState.clear();
@@ -3416,7 +3414,33 @@ void editor::AnimationWindow::stopTransientPreviews(){
         previewAnimations.clear();
         previewPrimary = NULL_ENTITY;
         isPreviewing = false;
-        PreviewOwner::release(previewOwnerToken);
-        previewOwnerToken = 0;
+        releasePreviewOwners();
+    }
+}
+
+void editor::AnimationWindow::ownPreviewRoots(Scene* scene, const std::vector<Entity>& animations){
+    // this preview's own tokens go without a stop: the new set covers them again
+    releasePreviewOwners();
+    std::vector<Entity> touched;
+    for (Entity animation : animations) {
+        const std::vector<Entity> written = inspectorclips::actionPreviewEntities(scene, animation);
+        touched.insert(touched.end(), written.begin(), written.end());
+    }
+    // the top-level roots don't overlap one another: acquiring one never stops this preview
+    for (Entity root : inspectorclips::topLevelEntities(scene, touched)) {
+        const PreviewOwner::Token token = PreviewOwner::acquire(selectedSceneId, root, scene, "Animation window (entity Animation)", [this]() {
+            stopTransientPreviews();
+        });
+        if (token != 0) {
+            previewOwnerTokens.push_back(token);
+        }
+    }
+}
+
+void editor::AnimationWindow::releasePreviewOwners(){
+    const std::vector<int> tokens = std::move(previewOwnerTokens);
+    previewOwnerTokens.clear();
+    for (int token : tokens) {
+        PreviewOwner::release(token);
     }
 }

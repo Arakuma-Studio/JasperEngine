@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
+#include "animation/ClipEditorUtil.h"
 #include "animation/ModelSubClips.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
@@ -28,6 +29,7 @@
 #include "component/TweenComponent.h"
 #include "io/FileData.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/MeshSystem.h"
 #include "util/AssetDatabase.h"
 #include "util/FileUtils.h"
 
@@ -57,31 +59,14 @@ namespace {
     }
 
     std::string nameOf(Scene* scene, Entity entity){
-        return "'" + scene->getEntityName(entity) + "'";
+        return clipui::quotedName(scene, entity);
     }
 
-    bool sameExtension(const std::string& path, const char* extension){
-        std::string ext = FileData::getFilePathExtension(path);
-        std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return (char)std::tolower(c); });
-        return ext == extension;
-    }
-
-    // a model in the legacy layout (no node hierarchy): what MeshSystem::needsNodeHierarchyReload
-    // checks, without the player condition
+    // a model in the legacy layout (no node hierarchy): MeshSystem's one rule
+    // (needsNodeHierarchyReload without the player condition)
     bool isLegacyLayoutModel(Scene* scene, Entity entity){
         const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
-        if (!model || model->filename.empty() || model->loadedFilename.empty() || !model->nodesIdMapping.empty()) return false;
-        if (sameExtension(model->filename, "obj")) return false;
-        if (model->mergeStaticMeshes){
-            size_t meshNodes = 0;
-            if (model->gltfModel){
-                for (const tinygltf::Node& node : model->gltfModel->nodes){
-                    if (node.mesh >= 0) meshNodes++;
-                }
-            }
-            if (!model->gltfModel || meshNodes > 1) return false;
-        }
-        return true;
+        return model && MeshSystem::isLegacyLayout(*model);
     }
 
     // the glTF node index a legacy-layout part of `model` was built from, -1 when not one
@@ -93,6 +78,65 @@ namespace {
             if (node.second == entity) return node.first;
         }
         return -1;
+    }
+
+    // A legacy-layout model entity that stands in for the glTF scene root (a lone mesh, a skin
+    // without its nodes) has that root's matrix in its local transform. The reload a player
+    // brings (R3) moves the matrix onto the new root node's entity and leaves the model entity
+    // local * root⁻¹ (ModelLoadCmd), so the converted keys of the model entity are taken off it
+    // the same way: exact for a root without translation and with a uniform scale (rotation
+    // keys * r⁻¹, scale keys / s; positions stay), else kept as they are with a warning.
+    // `legacyRoots` receives those model entities.
+    void compensateLegacyRootKeys(Scene* scene, Entity root, ClipData& data, std::vector<ClipWarning>& warnings,
+                                  std::vector<Entity>& legacyRoots){
+        std::shared_ptr<MeshSystem> meshes = scene->getSystem<MeshSystem>();
+        if (!meshes) return;
+        std::vector<std::string> said;
+        for (ClipTrackData& track : data.tracks){
+            if (track.channel != ClipChannel::Position && track.channel != ClipChannel::Rotation && track.channel != ClipChannel::Scale) continue;
+            const Entity entity = anim::resolvePath(scene, root, track.path);
+            if (entity == NULL_ENTITY || !isLegacyLayoutModel(scene, entity)) continue;
+            Matrix4 sceneRoot;
+            if (!meshes->getLegacyRootTransform(entity, sceneRoot)) continue;
+            if (std::find(legacyRoots.begin(), legacyRoots.end(), entity) == legacyRoots.end()) legacyRoots.push_back(entity);
+            Vector3 position;
+            Vector3 scale;
+            Quaternion rotation;
+            sceneRoot.decompose(position, scale, rotation);
+            const float tolerance = 1e-5f * std::max(1.0f, std::fabs(scale.x));
+            const bool exact = position.length() <= 1e-5f && scale.x > 0.0f && std::fabs(scale.x - scale.y) <= tolerance &&
+                               std::fabs(scale.x - scale.z) <= tolerance && !track.relative;
+            if (!exact || track.channel == ClipChannel::Position){
+                if (exact) continue;
+                const bool first = std::find(said.begin(), said.end(), track.path) == said.end();
+                if (first){
+                    said.push_back(track.path);
+                    warn(warnings, track.path, "kept as they are: the model's reload in its node hierarchy moves the file's root "
+                         "transform (translated or not uniformly scaled, or the track is relative) to its root node, so these "
+                         "keys apply it twice; key them again after the reload");
+                }
+                continue;
+            }
+            const Quaternion undo = rotation.inverse();
+            for (ClipKey& key : track.keys){
+                auto adjust = [&](std::vector<float>& value){
+                    if (track.channel == ClipChannel::Rotation && value.size() == 4){
+                        // linear in q: values and tangents alike
+                        quaternionToXYZW(quaternionFromXYZW(value.data()) * undo, value.data());
+                    }else if (track.channel == ClipChannel::Scale){
+                        for (float& component : value) component /= scale.x;
+                    }
+                };
+                adjust(key.value);
+                adjust(key.inTangent);
+                adjust(key.outTangent);
+            }
+            if (std::find(said.begin(), said.end(), track.path) == said.end()){
+                said.push_back(track.path);
+                warn(warnings, track.path, "its keys are taken off the file's root transform, which the model's reload in its node "
+                     "hierarchy moves to its root node");
+            }
+        }
     }
 
     // what a track entity animates: the not-converted line of anything else
@@ -615,6 +659,9 @@ bool ClipConverters::convertEntityAnimation(Scene* scene, Entity animation, Enti
         }
         return fail(error, message);
     }
+
+    // the keys of a legacy model entity carrying the file's root transform (its reload moves it)
+    compensateLegacyRootKeys(scene, root, out, report.warnings, report.legacyRootModels);
 
     out.wrap = loop ? ClipWrapMode::Loop : ClipWrapMode::Once;
     out.source.kind = "entity";

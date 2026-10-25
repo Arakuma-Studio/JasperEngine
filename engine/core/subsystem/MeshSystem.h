@@ -252,6 +252,10 @@ namespace jasperengine{
         // The model is forced into the node-hierarchy layout but loaded in another one: reloading
         // its file (the editor's ModelLoadCmd) rebuilds it
         bool needsNodeHierarchyReload(Entity entity) const;
+        // A loaded model in the legacy layout (no node hierarchy) that the node-hierarchy layout
+        // would change: not an OBJ, not a merged static model (those animate only at the root).
+        // needsNodeHierarchyReload without the player condition; the editor's one rule for it.
+        static bool isLegacyLayout(const ModelComponent& model);
         // A loaded model in the legacy layout whose entity stands in for the glTF scene root (a
         // lone mesh, or a skin without the node hierarchy): true with that node's global matrix.
         // The node hierarchy gives the root node an entity of its own, so a switch takes it off

@@ -45,6 +45,9 @@ namespace jasperengine::editor{
         std::vector<Entity> convertedTrackEntities;     // the track entities Convert may remove
         std::vector<std::string> notConverted;          // "Tween 'Fade' (alpha tween)", ...
         std::vector<ClipWarning> warnings;
+        // legacy-layout model entities standing in for the glTF scene root that tracks animate:
+        // their keys were taken off the root's matrix (the reload moves it to the root node)
+        std::vector<Entity> legacyRootModels;
     };
 
     // What "Use Animation Player" on a model does in its one scene step (R15)

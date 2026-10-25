@@ -146,7 +146,6 @@ bool AnimationWindowClip::addEvent(float time, const std::string& function, cons
     ClipData data = doc->data();
     data.events.push_back(event);
     if (!controller().commit(data, "Add Animation Event", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     selection.clear();
     refreshSelection();
     selectEvent(findNearest(document()->data().events, event.function, event.time));
@@ -167,7 +166,6 @@ bool AnimationWindowClip::editEvent(int index, const ClipEventData& event, const
     ClipData data = doc->data();
     data.events[(size_t)index] = event;
     if (!controller().commit(data, "Edit Animation Event", mergeKey, error)) return false;
-    controller().setLastActionWasClipEdit(true);
     selectEvent(findNearest(document()->data().events, event.function, event.time));
     return true;
 }
@@ -181,7 +179,6 @@ bool AnimationWindowClip::deleteEvent(int index, std::string* error){
     ClipData data = doc->data();
     data.events.erase(data.events.begin() + index);
     if (!controller().commit(data, "Delete Animation Event", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     selectEvent(-1);
     return true;
 }

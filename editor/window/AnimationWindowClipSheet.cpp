@@ -125,6 +125,14 @@ void AnimationWindowClip::refreshBinding(){
     AnimationClipController& c = controller();
     SceneProject* bound = boundScene();
     const Entity root = c.getRoot();
+    // an undone Create New Clip: the file and the player are gone, the empty state shows again
+    if (bound && root != NULL_ENTITY && bound->scene->isEntityCreated(root) && c.getDocument() && !c.getDocument()->exists() &&
+        !c.getDocument()->isReadOnly() && !c.hasPlayer()){
+        c.closeClip();
+        selection.clear();
+        selectEvent(-1);
+        return;
+    }
     if (!bound || root == NULL_ENTITY || !bound->scene->isEntityCreated(root) || c.getDocument() || !c.getStateName().empty()) return;
     if (!c.hasPlayer() || c.getStateNames().empty()) return;
     const uint32_t sceneId = bound->id;
@@ -254,10 +262,10 @@ std::string AnimationWindowClip::previewBlocker(SceneProject* sceneProject) cons
         return std::string();
     }
     const std::string model = previewModelOf();
-    if (model.empty()) return "Nothing to preview on: select a GameObject, or set Preview on";
+    if (model.empty()) return "Nothing to preview on: select a GameObject, or set the Preview Model";
     if (findModelInstance(sceneProject, model) == NULL_ENTITY){
         return "No instance of " + fs::u8path(model).filename().u8string() +
-               " in this scene: select a GameObject, or drop a model or prefab on Preview on";
+               " in this scene: select a GameObject, or drop a model or prefab on Preview Model";
     }
     return std::string();
 }
@@ -490,7 +498,7 @@ std::vector<AnimationWindowClip::Row> AnimationWindowClip::buildRows() const{
     rows.push_back(summary);
     Scene* scene = valueScene();
     const Entity root = valueRoot();
-    const std::string rootName = scene && root != NULL_ENTITY ? scene->getEntityName(root) : std::string("(Root)");
+    const std::string rootName = scene && root != NULL_ENTITY ? scene->getEntityName(root) : std::string(rootLabel());
     // the report by track (one pass)
     std::vector<const TrackReport*> reports(data.tracks.size(), nullptr);
     for (const TrackReport& entry : report.tracks){
@@ -627,7 +635,6 @@ bool AnimationWindowClip::createNewClip(SceneProject* sceneProject, const std::s
         if (error) *error = failure;
         return false;
     }
-    c.setLastActionWasClipEdit(false);
     std::string openError;
     if (!c.openClip(result.clip, &openError)) setNotice(openError, true);
     selection.clear();
@@ -682,16 +689,11 @@ bool AnimationWindowClip::dropClips(SceneProject* sceneProject, Entity fallback,
 void AnimationWindowClip::askCreateNewClip(SceneProject* sceneProject){
     AnimationClipController& c = controller();
     if (!sceneProject || c.getRoot() == NULL_ENTITY) return;
-    const std::string directory = ClipConverters::defaultClipDirectory(project, sceneProject->id, c.getRoot());
-    const fs::path start = project->getProjectPath() / fs::u8path(directory);
-    const std::string name = sceneProject->scene->getEntityName(c.getRoot());
-    std::string chosen = FileDialogs::saveFileDialog(FileUtils::pathToGenericUtf8(start), (name.empty() ? "New Animation" : name) + ".anim",
-                                                     FILE_DIALOG_ANIMATION_CLIP);
-    if (chosen.empty()) return;
-    fs::path file = fs::u8path(chosen);
-    if (file.extension() != ".anim") file += ".anim";
+    const std::string file = ClipSceneActions::askNewClipPath(project, ClipConverters::defaultClipDirectory(project, sceneProject->id, c.getRoot()),
+                                                              sceneProject->scene->getEntityName(c.getRoot()));
+    if (file.empty()) return;
     std::string error;
-    if (!createNewClip(sceneProject, FileUtils::pathToGenericUtf8(file), &error)) setNotice("Create New Clip: " + error, true);
+    if (!createNewClip(sceneProject, file, &error)) setNotice("Create New Clip: " + error, true);
 }
 
 bool AnimationWindowClip::extract(SceneProject* sceneProject, const std::string& path, std::string* error){
@@ -706,12 +708,14 @@ bool AnimationWindowClip::extract(SceneProject* sceneProject, const std::string&
     if (usePlayer) c.stopPreview();
     ClipActionResult result;
     std::string failure;
+    const uint64_t clock = AnimationClipController::clipCommitClock(project);
     if (!ClipSceneActions::extractSubClip(project, usePlayer ? sceneProject->id : 0, usePlayer ? c.getRoot() : NULL_ENTITY,
                                           doc->path(), path, usePlayer, result, failure)){
         if (error) *error = failure;
         return false;
     }
-    c.setLastActionWasClipEdit(result.projectStep);
+    // the file alone is a clip commit of the window: Ctrl+Z undoes it (9.R5c)
+    if (result.projectStep) AnimationClipController::markClipCommit(clock);
     std::string openError;
     // the player's state now plays the file (it kept its name); else the file opens alone
     const bool opened = usePlayer ? c.openState(state, &openError) : c.openClip(result.clip, &openError);
@@ -729,14 +733,10 @@ void AnimationWindowClip::askExtract(SceneProject* sceneProject){
     if (!doc) return;
     anim::SubClipReference reference;
     if (!anim::parseSubClipReference(doc->path(), reference)) return;
-    const fs::path model = project->getProjectPath() / fs::u8path(reference.model);
-    std::string chosen = FileDialogs::saveFileDialog(FileUtils::pathToGenericUtf8(model.parent_path()), reference.clip + ".anim",
-                                                     FILE_DIALOG_ANIMATION_CLIP);
-    if (chosen.empty()) return;
-    fs::path file = fs::u8path(chosen);
-    if (file.extension() != ".anim") file += ".anim";
+    const std::string file = ClipSceneActions::askNewClipPath(project, ClipSceneActions::subClipDirectory(project, doc->path()), reference.clip);
+    if (file.empty()) return;
     std::string error;
-    if (!extract(sceneProject, FileUtils::pathToGenericUtf8(file), &error)) setNotice("Extract to .anim: " + error, true);
+    if (!extract(sceneProject, file, &error)) setNotice("Extract to .anim: " + error, true);
 }
 
 bool AnimationWindowClip::selectKeys(const std::vector<KeyId>& keys, bool additive){
@@ -831,7 +831,6 @@ bool AnimationWindowClip::deleteSelected(std::string* error){
         return false;
     }
     if (!controller().deleteKeys(selectedRefs, error)) return false;
-    controller().setLastActionWasClipEdit(true);
     selection.clear();
     refreshSelection();
     return true;
@@ -938,7 +937,6 @@ bool AnimationWindowClip::paste(float time, std::string* error){
         return false;
     }
     if (!controller().commit(data, "Paste Keys", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     selection = pasted;
     selectEvent(-1);
     refreshSelection();
@@ -979,7 +977,6 @@ bool AnimationWindowClip::duplicateSelected(std::string* error){
         made.push_back({track.path, track.channel, at});
     }
     if (!controller().commit(data, "Duplicate Keys", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     selection = made;
     refreshSelection();
     if (replaced) setNotice("Duplicated " + std::to_string(made.size()) + " keys, replacing " + std::to_string(replaced), true);
@@ -993,7 +990,6 @@ bool AnimationWindowClip::setEase(EaseType ease, std::string* error){
         return false;
     }
     if (!controller().setEase(selectedRefs, ease, error)) return false;
-    controller().setLastActionWasClipEdit(true);
     refreshSelection();
     return true;
 }
@@ -1033,7 +1029,6 @@ bool AnimationWindowClip::addKeysAt(int trackIndex, float time, std::string* err
         return false;
     }
     if (!controller().commit(data, "Add Key", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     selection = made;
     selectEvent(-1);
     refreshSelection();
@@ -1046,7 +1041,6 @@ bool AnimationWindowClip::keyAt(bool modifiedOnly, std::string* error){
     const float time = snapToFrame(c.getTime());
     if (std::fabs(time - c.getTime()) > 1e-6f) c.setTime(time);
     const bool ok = modifiedOnly ? c.keyModified(time, error) : c.keyAll(time, error);
-    if (ok) c.setLastActionWasClipEdit(true);
     return ok;
 }
 
@@ -1087,7 +1081,6 @@ bool AnimationWindowClip::snapKeysToFrames(std::string* error){
         return true;
     }
     if (!controller().commit(data, "Snap Keys to Frames", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     refreshSelection();
     std::string text = "Snapped " + std::to_string(moved) + (moved == 1 ? " key" : " keys") + " to frames";
     if (merged){
@@ -1111,7 +1104,6 @@ bool AnimationWindowClip::setFrameRate(float rate, std::string* error){
     ClipData data = doc->data();
     data.frameRate = rate;
     if (!controller().commit(data, "Set Samples", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     // keys between the new frames: say how to put them on the grid (R54)
     size_t off = 0;
     for (const ClipTrackData& track : data.tracks){
@@ -1132,7 +1124,7 @@ bool AnimationWindowClip::setPreviewModel(const std::string& model, std::string*
     std::string value = model;
     if (!value.empty()){
         if (!anim::isModelFilePath(value) && fs::u8path(value).extension() != ".prefab"){
-            if (error) *error = "Preview on takes a model (.gltf, .glb, .fbx, .obj) or a prefab";
+            if (error) *error = "Preview Model takes a model (.gltf, .glb, .fbx, .obj) or a prefab";
             return false;
         }
         // asset-relative like ModelComponent::filename
@@ -1149,7 +1141,6 @@ bool AnimationWindowClip::setPreviewModel(const std::string& model, std::string*
     ClipData data = doc->data();
     data.previewModel = value;
     if (!controller().commit(data, "Set Preview Model", "", error)) return false;
-    controller().setLastActionWasClipEdit(true);
     return true;
 }
 
@@ -1201,7 +1192,6 @@ bool AnimationWindowClip::setComponentValue(size_t trackIndex, int component, fl
         upsertKey(data.tracks[trackIndex], time, key);
         if (!c.commit(data, "Set Key Value", valueMergeKey, error)) return false;
     }
-    c.setLastActionWasClipEdit(true);
     return true;
 }
 

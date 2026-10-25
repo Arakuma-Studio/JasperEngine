@@ -6,6 +6,7 @@
 #include "Project.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
+#include "animation/ClipEditorUtil.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
@@ -13,6 +14,7 @@
 #include "component/Transform.h"
 #include "io/FileData.h"
 #include "registry/EntityRegistry.h"
+#include "subsystem/MeshSystem.h"
 
 #include "tiny_gltf.h"
 
@@ -44,10 +46,7 @@ namespace {
         return row[b.size()];
     }
 
-    std::string lastSegment(const std::string& path){
-        const size_t slash = path.find_last_of('/');
-        return slash == std::string::npos ? path : path.substr(slash + 1);
-    }
+    using clipui::lastSegment;
 
     std::string quotedPath(const std::string& path){
         return path.empty() ? std::string("the root") : "'" + path + "'";
@@ -61,21 +60,7 @@ namespace {
     // the player condition: validation may run before a player is added)
     bool isLegacyLayoutModel(EntityRegistry* registry, Entity entity){
         const ModelComponent* model = registry->findComponent<ModelComponent>(entity);
-        if (!model || model->filename.empty() || model->loadedFilename.empty() || !model->nodesIdMapping.empty()) return false;
-        std::string extension = FileData::getFilePathExtension(model->filename);
-        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
-        if (extension == "obj") return false;
-        // merged static meshes animate only at the root (a single mesh node is not merged)
-        if (model->mergeStaticMeshes){
-            size_t meshNodes = 0;
-            if (model->gltfModel){
-                for (const tinygltf::Node& node : model->gltfModel->nodes){
-                    if (node.mesh >= 0) meshNodes++;
-                }
-            }
-            if (!model->gltfModel || meshNodes > 1) return false;
-        }
-        return true;
+        return model && MeshSystem::isLegacyLayout(*model);
     }
 
     std::string formatSeconds(float seconds){

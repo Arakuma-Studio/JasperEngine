@@ -14,7 +14,9 @@
 #include "InspectorWindow.h"
 #include "InspectorWindowClips.h"
 
+#include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/ClipEditorUtil.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
@@ -101,7 +103,7 @@ const char* inspectorclips::channelLabel(ClipChannel channel){
         case ClipChannel::Position: return "Position";
         case ClipChannel::Rotation: return "Rotation";
         case ClipChannel::Scale: return "Scale";
-        case ClipChannel::Morph: return "Morph";
+        case ClipChannel::Morph: return clipui::channelLabel(channel);
         case ClipChannel::Lattice: return "Lattice";
         case ClipChannel::Property: return "Property";
     }
@@ -196,7 +198,7 @@ size_t inspectorclips::problemCount(const ClipValidationReport& report){
 namespace{
 
     std::string leafName(const std::string& path){
-        if (path.empty()) return "(root)";
+        if (path.empty()) return clipui::rootLabel();
         const size_t slash = path.rfind('/');
         return slash == std::string::npos ? path : path.substr(slash + 1);
     }
@@ -319,6 +321,28 @@ std::vector<Entity> inspectorclips::actionPreviewEntities(Scene* scene, Entity a
     return touched;
 }
 
+std::shared_ptr<AnimationClipDocument> inspectorclips::ClipDocumentCache::find(Project* project, const std::string& clip, double now,
+                                                                              double retrySeconds, std::string* error){
+    Entry& entry = entries[clip];
+    if (std::shared_ptr<AnimationClipDocument> document = entry.document.lock()){
+        // still the file the reference named (a renamed one took its document along)
+        if (document->exists() && document->path() == entry.path){
+            return document;
+        }
+    }else if (!entry.error.empty() && now < entry.retryAt){
+        if (error) *error = entry.error;
+        return nullptr;
+    }
+    std::string why;
+    std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, clip, &why);
+    entry.document = document;
+    entry.path = document ? document->path() : std::string();
+    entry.error = document ? std::string() : (why.empty() ? std::string("can't open the clip") : why);
+    entry.retryAt = now + retrySeconds;
+    if (!document && error) *error = entry.error;
+    return document;
+}
+
 std::vector<int> inspectorclips::acquirePreviewOwners(uint32_t sceneId, Scene* scene, Entity action, std::function<void()> stop){
     std::vector<int> tokens;
     for (Entity root : topLevelEntities(scene, actionPreviewEntities(scene, action))){
@@ -348,11 +372,6 @@ inspectorclips::InspectedObjectTracker::Result inspectorclips::InspectedObjectTr
 namespace jasperengine::editor{
 
     struct InspectorClipState{
-        struct DocumentEntry{
-            std::weak_ptr<AnimationClipDocument> document;
-            std::string error;
-            double retryAt = 0.0;
-        };
         struct ModelClipsEntry{
             int64_t stamp = 0;
             int checkedFrame = -1;
@@ -377,7 +396,7 @@ namespace jasperengine::editor{
         };
 
         fs::path project;
-        std::map<std::string, DocumentEntry> documents;
+        inspectorclips::ClipDocumentCache documents;
         std::map<std::string, ModelClipsEntry> modelClips;
         std::map<std::string, UsersEntry> users;
         std::map<std::string, BindingsEntry> bindings;
@@ -564,22 +583,7 @@ namespace{
             if (error) *error = "no clip";
             return nullptr;
         }
-        const double now = ImGui::GetTime();
-        InspectorClipState::DocumentEntry& entry = state.documents[clip];
-        if (std::shared_ptr<AnimationClipDocument> document = entry.document.lock()){
-            if (document->exists()){
-                return document;
-            }
-        }else if (!entry.error.empty() && now < entry.retryAt){
-            if (error) *error = entry.error;
-            return nullptr;
-        }
-        std::string why;
-        std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, clip, &why);
-        entry.document = document;
-        entry.error = document ? std::string() : (why.empty() ? std::string("can't open the clip") : why);
-        entry.retryAt = now + CLIP_RETRY_SECONDS;
-        if (!document && error) *error = entry.error;
+        std::shared_ptr<AnimationClipDocument> document = state.documents.find(project, clip, ImGui::GetTime(), CLIP_RETRY_SECONDS, error);
         if (state.documents.size() > 256){
             state.documents.clear();
         }
@@ -902,7 +906,7 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
                 std::string tooltip = entry.clip;
                 if (subClip) tooltip += "\n(Read-Only: Extract to .anim in the row menu to edit it)";
                 drawFileLabel("clipfile", inspectorclips::clipFieldText(entry.clip), tooltip + menuHint, nullptr, fieldWidth,
-                              nullptr, subClip ? "(Read-Only)" : nullptr);
+                              nullptr, subClip ? "Read-Only" : nullptr);
             }
             ImGui::EndGroup();
             UIProbe::item("player.clip." + std::to_string(i));
@@ -1466,11 +1470,14 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
 
     auto commit = [&](const ClipData& newData, const std::string& undoName){
         std::string error;
+        const uint64_t clock = AnimationClipController::clipCommitClock(project);
         if (!document.commit(newData, undoName, "", &error)){
             state.assetError = error.empty() ? std::string("The clip could not be written") : error;
             Out::error("%s: %s", document.path().c_str(), state.assetError.c_str());
         }else{
             state.assetError.clear();
+            // a clip commit of the editor UI: Ctrl+Z undoes it whatever has focus (9.R5c)
+            AnimationClipController::markClipCommit(clock);
         }
     };
 
@@ -1635,7 +1642,7 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
                 const ClipTrackData& track = data.tracks[(size_t)i];
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                std::string label = (track.path.empty() ? std::string("(root)") : track.path) + " : " + inspectorclips::channelLabel(track.channel);
+                std::string label = (track.path.empty() ? std::string(clipui::rootLabel()) : track.path) + " : " + inspectorclips::channelLabel(track.channel);
                 if (track.channel == ClipChannel::Property) label += " (not played)";
                 ImGui::TextUnformatted(inspectorclips::elideStart(label, ImGui::GetContentRegionAvail().x, textWidth).c_str());
                 ImGui::SetItemTooltip("%s", label.c_str());
@@ -1777,7 +1784,7 @@ void editor::InspectorWindow::drawModelRowClipButtons(SceneProject* sceneProject
         if (ImGui::Button(ICON_FA_FILE_EXPORT "##model_clip_extract")){
             hooks.extractSubClip(project, sceneProject->id, model, reference);
         }
-        ImGui::SetItemTooltip("Extract sub-clip %s to an editable .anim", which.c_str());
+        ImGui::SetItemTooltip("Extract to .anim...: sub-clip %s into an editable .anim file", which.c_str());
     }
     ImGui::EndDisabled();
 }

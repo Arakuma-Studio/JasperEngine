@@ -8,9 +8,11 @@
 #include "Out.h"
 #include "Project.h"
 #include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/ClipEditorUtil.h"
 #include "animation/ClipValidation.h"
 #include "animation/ClipBinding.h"
 #include "animation/ModelSubClips.h"
@@ -21,6 +23,7 @@
 #include "command/type/CreateClipCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "pose/PoseEditSession.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/ModelComponent.h"
@@ -64,15 +67,15 @@ namespace {
     }
 
     std::string nameOf(Scene* scene, Entity entity){
-        return "'" + scene->getEntityName(entity) + "'";
+        return clipui::quotedName(scene, entity);
     }
 
-    bool readWhole(const fs::path& path, std::string& content){
-        std::ifstream in(path, std::ios::binary);
-        if (!in) return false;
-        content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-        return true;
+    // a previewed value never reaches a written clip or the scene
+    void stopPreviewsFor(uint32_t sceneId, std::vector<Entity> roots){
+        ClipSceneActions::stopPreviewsFor(sceneId, std::move(roots));
     }
+
+    using clipui::readWholeFile;
 
     // a project-relative .anim path to write: inside the project, .anim
     bool checkClipPath(Project* project, const std::string& clipPath, fs::path& absolute, std::string& error){
@@ -117,7 +120,7 @@ namespace {
 
     std::string readText(const fs::path& path){
         std::string text;
-        readWhole(path, text);
+        readWholeFile(path, text);
         return text;
     }
 
@@ -151,14 +154,8 @@ namespace {
 
     // ---- the hooks' UI (native save dialog, alerts) ----
 
-    // a save dialog for a new .anim; empty when cancelled. `directory` project-relative.
     std::string askClipPath(Project* project, const std::string& directory, const std::string& name){
-        const fs::path start = project->getProjectPath() / fs::u8path(directory);
-        std::string chosen = FileDialogs::saveFileDialog(FileUtils::pathToGenericUtf8(start), name + ".anim", FILE_DIALOG_ANIMATION_CLIP);
-        if (chosen.empty()) return "";
-        fs::path path = fs::u8path(chosen);
-        if (path.extension() != ".anim") path += ".anim";
-        return FileUtils::pathToGenericUtf8(path);
+        return ClipSceneActions::askNewClipPath(project, directory, name);
     }
 
     void report(const std::string& title, bool ok, const ClipActionResult& result, const std::string& error){
@@ -192,7 +189,8 @@ namespace {
             SceneProject* sceneProject = project->getScene(sceneId);
             if (!sceneProject || !sceneProject->scene || !isEntity(sceneProject->scene, animation)) return;
             Scene* scene = sceneProject->scene;
-            // what would convert, before asking anything
+            // what would convert, before asking anything (the scene's values, not a preview's)
+            stopPreviewsFor(sceneId, {animation, ClipConverters::defaultConvertRoot(scene, animation)});
             ClipData data;
             ClipConvertReport preview;
             std::string error;
@@ -226,19 +224,20 @@ namespace {
         hooks.extractSubClip = [](Project* project, uint32_t sceneId, Entity model, const std::string& subClip){
             anim::SubClipReference reference;
             if (!anim::parseSubClipReference(subClip, reference)) return;
-            const fs::path modelFile = project->resolveAssetPath(fs::u8path(reference.model));
-            std::string directory = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(modelFile.parent_path()));
-            if (directory.compare(0, 2, "..") == 0) directory.clear();
-            const std::string path = askClipPath(project, directory, reference.clip);
+            const std::string path = askClipPath(project, ClipSceneActions::subClipDirectory(project, subClip), reference.clip);
             if (path.empty()) return;
-            bool usePlayer = false;
+            // the player that plays the model (on it or an ancestor, as the Animation window binds)
+            Entity playerRoot = NULL_ENTITY;
             SceneProject* sceneProject = project->getScene(sceneId);
             if (model != NULL_ENTITY && sceneProject && sceneProject->scene && isEntity(sceneProject->scene, model)){
-                usePlayer = sceneProject->scene->findComponent<AnimationPlayerComponent>(model) != nullptr;
+                playerRoot = AnimationClipController::findPlayerRoot(sceneProject->scene, model);
             }
             ClipActionResult result;
             std::string error;
-            const bool ok = ClipSceneActions::extractSubClip(project, sceneId, model, subClip, path, usePlayer, result, error);
+            const uint64_t clock = AnimationClipController::clipCommitClock(project);
+            const bool ok = ClipSceneActions::extractSubClip(project, sceneId, playerRoot, subClip, path, playerRoot != NULL_ENTITY, result, error);
+            // the file alone is a clip commit of the editor UI: Ctrl+Z undoes it (9.R5c)
+            if (ok && result.projectStep) AnimationClipController::markClipCommit(clock);
             report("Extract to .anim", ok, result, error);
         };
 
@@ -282,7 +281,7 @@ std::string ClipSceneActions::newClipText(Project* project, ClipData data, const
     std::string guid;
     if (!keepGuidOf.empty()){
         std::string text;
-        if (readWhole(fs::u8path(keepGuidOf), text)) guid = anim::readClipGuid(text);
+        if (readWholeFile(fs::u8path(keepGuidOf), text)) guid = anim::readClipGuid(text);
     }
     if (!anim::isClipGuid(guid)){
         const AssetDatabase* database = project ? &project->getAssetDatabase() : nullptr;
@@ -368,10 +367,11 @@ bool ClipSceneActions::createNewClip(Project* project, uint32_t sceneId, Entity 
     Scene* scene = editableScene(project, sceneId, error);
     if (!scene) return false;
     if (!isEntity(scene, root)) return fail(error, "no GameObject to animate");
+    stopPreviewsFor(sceneId, {root});
     fs::path absolute;
     if (!checkClipPath(project, clipPath, absolute, error)) return false;
     std::error_code ec;
-    if (fs::exists(absolute, ec)) return fail(error, "'" + projectRelative(project, absolute) + "' already exists");
+    if (fs::exists(absolute, ec)) return fail(error, "'" + projectRelative(project, absolute) + "' already exists: a new clip never replaces a file, choose another name");
 
     ClipData data;
     if (const ModelComponent* model = scene->findComponent<ModelComponent>(root)){
@@ -395,10 +395,12 @@ bool ClipSceneActions::convertToClip(Project* project, uint32_t sceneId, Entity 
     fs::path absolute;
     if (!checkClipPath(project, clipPath, absolute, error)) return false;
     std::error_code ec;
-    if (fs::exists(absolute, ec)) return fail(error, "'" + projectRelative(project, absolute) + "' already exists");
+    if (fs::exists(absolute, ec)) return fail(error, "'" + projectRelative(project, absolute) + "' already exists: a new clip never replaces a file, choose another name");
     if (root == NULL_ENTITY){
         root = ClipConverters::defaultConvertRoot(scene, animation);
     }
+    // the keys come from the scene's values (a hold key at the playhead): never a previewed one
+    stopPreviewsFor(sceneId, {animation, root});
 
     ClipData data;
     std::string failure;
@@ -412,6 +414,14 @@ bool ClipSceneActions::convertToClip(Project* project, uint32_t sceneId, Entity 
     }
     const std::string text = newClipText(project, data);
     result.warnings = result.convert.warnings;
+    if (!removeConvertedTracks){
+        for (Entity model : result.convert.legacyRootModels){
+            ClipWarning warning;
+            warning.message = "the kept tracks of " + nameOf(scene, model) + " still write its legacy local values: after its reload in "
+                              "the node hierarchy they apply the file's root transform twice (remove them, or key them again)";
+            result.warnings.push_back(warning);
+        }
+    }
 
     std::vector<Command*> commands;
     appendPlayerCommands(project, sceneId, root, {fileEntry(project, absolute, text)}, commands, result);
@@ -465,6 +475,7 @@ bool ClipSceneActions::extractSubClip(Project* project, uint32_t sceneId, Entity
         scene = editableScene(project, sceneId, error);
         if (!scene) return false;
         if (!isEntity(scene, model)) return fail(error, "the model GameObject is gone");
+        stopPreviewsFor(sceneId, {model});
     }
     if (!scene || exists){
         // the file alone: a project step (into an existing file: a commit, its GUID kept)
@@ -534,6 +545,7 @@ bool ClipSceneActions::useAnimationPlayer(Project* project, uint32_t sceneId, En
     result = ClipActionResult();
     Scene* scene = editableScene(project, sceneId, error);
     if (!scene) return false;
+    if (isEntity(scene, model)) stopPreviewsFor(sceneId, {model});
     UseAnimationPlayerPlan plan;
     std::string failure;
     if (!ClipConverters::planUseAnimationPlayer(scene, model, plan, &failure)) return fail(error, failure);
@@ -570,6 +582,7 @@ bool ClipSceneActions::addClipsToPlayer(Project* project, uint32_t sceneId, Enti
     if (!scene) return false;
     if (!isEntity(scene, target)) return fail(error, "no GameObject to add the clips to");
     if (clips.empty()) return fail(error, "no clips given");
+    stopPreviewsFor(sceneId, {target});
 
     std::vector<AnimationPlayerClip> entries;
     for (const std::string& clip : clips){
@@ -643,6 +656,7 @@ bool ClipSceneActions::reloadModelsForPlayer(Project* project, uint32_t sceneId,
     Scene* scene = editableScene(project, sceneId, error);
     if (!scene) return false;
     if (!isEntity(scene, root)) return fail(error, "no GameObject");
+    stopPreviewsFor(sceneId, {root});
     if (PlayerModelLayout::modelsNeedingReload(project, sceneId, root).empty()){
         return fail(error, "no model on or under " + nameOf(scene, root) + " needs a reload (none is in the legacy layout under an "
                     "Animation Player)");
@@ -657,4 +671,40 @@ bool ClipSceneActions::reloadModelsForPlayer(Project* project, uint32_t sceneId,
     result.status = "Reloaded " + std::to_string(result.reloadedModels) + " model" + (result.reloadedModels == 1 ? "" : "s") +
                     " under " + nameOf(scene, root) + " in the node hierarchy (one scene undo step)";
     return true;
+}
+
+void ClipSceneActions::stopPreviewsFor(uint32_t sceneId, std::vector<Entity> roots){
+    roots.erase(std::remove(roots.begin(), roots.end(), NULL_ENTITY), roots.end());
+    if (roots.empty()) return;
+    PoseEditSession::suspendActiveFor(sceneId, roots);
+}
+
+std::string ClipSceneActions::askNewClipPath(Project* project, const std::string& directory, const std::string& name){
+    fs::path start = project->getProjectPath();
+    if (!directory.empty()){
+        const fs::path given = fs::u8path(directory);
+        const fs::path absolute = (given.is_absolute() ? given : start / given).lexically_normal();
+        const fs::path relative = project->normalizeToProjectRelative(absolute);
+        if (!relative.empty() && !relative.is_absolute() && FileUtils::pathToGenericUtf8(relative).compare(0, 2, "..") != 0){
+            start = absolute;
+        }
+    }
+    const std::string chosen = FileDialogs::saveFileDialog(FileUtils::pathToGenericUtf8(start), (name.empty() ? "New Animation" : name) + ".anim",
+                                                           FILE_DIALOG_ANIMATION_CLIP);
+    if (chosen.empty()) return "";
+    fs::path path = fs::u8path(chosen);
+    std::string extension = path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+    if (extension != ".anim") path += ".anim";
+    return FileUtils::pathToGenericUtf8(path);
+}
+
+std::string ClipSceneActions::subClipDirectory(Project* project, const std::string& subClip){
+    anim::SubClipReference reference;
+    if (!project || !anim::parseSubClipReference(subClip, reference)) return "";
+    const fs::path modelFile = project->resolveAssetPath(fs::u8path(reference.model));
+    const fs::path directory = project->normalizeToProjectRelative(modelFile.parent_path());
+    const std::string text = FileUtils::pathToGenericUtf8(directory);
+    if (directory.is_absolute() || text.compare(0, 2, "..") == 0) return "";
+    return text;
 }

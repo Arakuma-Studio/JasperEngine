@@ -4,6 +4,8 @@
 #include "ModelLoadCmd.h"
 
 #include "Stream.h"
+#include "pose/PoseEditSession.h"
+#include "tiny_gltf.h"
 #include "util/ProjectUtils.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
@@ -202,6 +204,57 @@ void editor::ModelLoadCmd::recordArrangement(SceneProject* sceneProject, const M
     }
 }
 
+void editor::ModelLoadCmd::recordMorphWeights(Scene* scene, const ModelComponent& model) {
+    savedMorphWeights.clear();
+    auto weightsOf = [scene](Entity part) {
+        std::vector<float> weights;
+        if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(part)) {
+            weights.assign(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS);
+        }
+        return weights;
+    };
+    for (const auto& node : model.meshNodesMapping) {
+        std::vector<float> weights = weightsOf(node.second);
+        if (!weights.empty()) savedMorphWeights[node.first] = weights;
+    }
+    // the model entity's own mesh (a lone mesh, a skin without its nodes): the one mesh node
+    // no part stands for
+    if (model.gltfModel) {
+        int unmapped = -1;
+        size_t count = 0;
+        for (size_t i = 0; i < model.gltfModel->nodes.size(); i++) {
+            if (model.gltfModel->nodes[i].mesh < 0 || model.meshNodesMapping.count((int)i)) continue;
+            unmapped = (int)i;
+            count++;
+        }
+        if (count == 1) {
+            std::vector<float> weights = weightsOf(entity);
+            if (!weights.empty()) savedMorphWeights[unmapped] = weights;
+        }
+    }
+}
+
+void editor::ModelLoadCmd::restoreMorphWeights(Scene* scene, const ModelComponent& model) {
+    for (const auto& saved : savedMorphWeights) {
+        Entity part = NULL_ENTITY;
+        auto mesh = model.meshNodesMapping.find(saved.first);
+        if (mesh != model.meshNodesMapping.end()) {
+            part = mesh->second;
+        } else {
+            auto node = model.nodesIdMapping.find(saved.first);
+            if (node != model.nodesIdMapping.end()) part = node->second;
+        }
+        MeshComponent* component = part != NULL_ENTITY && scene->isEntityCreated(part) ? scene->findComponent<MeshComponent>(part) : nullptr;
+        if (!component) continue;
+        for (size_t i = 0; i < MAX_MORPHTARGETS && i < saved.second.size(); i++) {
+            component->morphWeights[i] = saved.second[i];
+        }
+        // the parts are new entities (their load gave them the file's defaults): the carried
+        // weights are theirs now, kept by later reloads like saved ones (MeshComponent::morphWeightsSet)
+        component->morphWeightsSet = true;
+    }
+}
+
 void editor::ModelLoadCmd::recordRetargets(Scene* scene, const ModelComponent& model) {
     retargetedActions.clear();
     std::unordered_map<Entity, NodeRef> modelNodes;
@@ -385,6 +438,9 @@ void editor::ModelLoadCmd::finalizeLoad(){
 
     restoreArrangement(sceneProject, newModel);
     applyRetargets(scene, newModel);
+    if (switchesLayout) {
+        restoreMorphWeights(scene, newModel);
+    }
 
     // Put back on whichever mesh the primitive ended up in, which a merge change moves.
     scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides, entity, newModel);
@@ -465,6 +521,15 @@ void editor::ModelLoadCmd::completePendingLoad(uint32_t sceneId, Entity entity){
 }
 
 bool editor::ModelLoadCmd::execute(){
+    // the reload records the arrangement and moves the parts from their rest, not from a preview
+    // of the model (the clip and entity modes, the Inspector's, a pose): they restore first (9.R7)
+    if (!createEntityCmd && entity != NULL_ENTITY) {
+        SceneProject* previewed = project->getScene(sceneId);
+        const ModelComponent* loaded = previewed && previewed->scene && previewed->scene->isEntityCreated(entity)
+            ? previewed->scene->findComponent<ModelComponent>(entity) : nullptr;
+        // (a first load has nothing a preview shows yet: the previews go on, Record too)
+        if (loaded && !loaded->loadedFilename.empty()) PoseEditSession::suspendActiveFor(sceneId, {entity});
+    }
     // An FBX loads from its import, created here the first time
     if (!project->prepareModelFile(modelPath)) {
         return false;
@@ -567,6 +632,9 @@ bool editor::ModelLoadCmd::execute(){
         recordArrangement(sceneProject, model);
         recordRetargets(scene, model);
     }
+    if (firstExecution && switchesLayout) {
+        recordMorphWeights(scene, model);
+    }
     parkEntities(sceneProject);
     detachRetargets(scene);
 
@@ -652,6 +720,8 @@ void editor::ModelLoadCmd::restoreTransform(Scene* scene){
 void editor::ModelLoadCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
     Scene* scene = sceneProject->scene;
+    // the reload rebuilds (and records) the model from its rest, not from a preview (clips 9.R7)
+    if (!isNewModel && entity != NULL_ENTITY && scene->isEntityCreated(entity)) PoseEditSession::suspendActiveFor(sceneId, {entity});
 
     if (asyncPending) {
         // Async load still in flight — cancel it; no sub-entities have been created yet

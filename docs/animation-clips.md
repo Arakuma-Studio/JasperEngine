@@ -93,8 +93,10 @@ stays, and a warning tells you.
 
 Clip edits (keys, properties, events, settings, Retarget) change the `.anim` file, so they are
 **project** undo steps, not scene steps. `Ctrl/Cmd+Z` and `Ctrl/Cmd+Y` (and Edit > Undo / Redo) go
-to the project history when your newest step is a clip edit made in the Animation window or by
-Record, whatever window has focus. Otherwise they undo the scene as usual. A drag of keys, or one
+to the project history when your newest step is a clip edit made in the editor (the Animation
+window, Record, the Inspector's `.anim` section, Extract to .anim... into a file alone, Create >
+Animation Clip), whatever window has focus. Otherwise they undo the scene as usual. Edits made
+by agents (MCP tools) keep their own undo scopes and do not change where the keys go. A drag of keys, or one
 Record drag, is a single step. Actions that also change the scene are one **scene** step that
 includes the file: Create, Create New Clip..., dropping a clip on a GameObject, Convert to Clip,
 Use Animation Player and Bake to Animation Clip. Undoing one of them deletes the new file only if
@@ -136,7 +138,7 @@ The window remembers the label column width and the Dopesheet/Curves choice in t
 - **Clips**: the count, **+ Add Clip** (an empty entry; drop `.anim` files or a model on it), and
   **Create New Clip...**. Each entry is a row named after its state:
   - a file field with a picker and a clear button. Picking a model opens a list of its animations.
-    A model clip shows "(Read-Only)", and a deleted file shows the file name in yellow with a
+    A model clip shows "Read-Only", and a deleted file shows the file name in yellow with a
     warning icon. Right-click the field for Open in Animation Window, Extract to .anim... (model
     clips), Show in Project, Clear and Remove;
   - **Name**: the state name. The default is the file name without `.anim` (or the model clip's

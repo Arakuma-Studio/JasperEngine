@@ -6323,31 +6323,35 @@ bool MeshSystem::isNodeHierarchyForced(Entity entity) const{
     return false;
 }
 
-bool MeshSystem::needsNodeHierarchyReload(Entity entity) const{
-    const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+bool MeshSystem::isLegacyLayout(const ModelComponent& model){
     // not loaded yet: its first load builds the forced layout itself
-    if (!model || model->filename.empty() || model->loadedFilename.empty()){
+    if (model.filename.empty() || model.loadedFilename.empty() || !model.nodesIdMapping.empty()){
         return false;
     }
     // OBJ files have no nodes
-    std::string ext = FileData::getFilePathExtension(model->filename);
+    std::string ext = FileData::getFilePathExtension(model.filename);
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
     if (ext == "obj"){
         return false;
     }
     // a merged static model (more than one mesh node, as loadGLTF merges) animates only at the root
-    if (model->mergeStaticMeshes){
+    if (model.mergeStaticMeshes){
         size_t meshNodes = 0;
-        if (model->gltfModel){
-            for (const tinygltf::Node& node : model->gltfModel->nodes){
+        if (model.gltfModel){
+            for (const tinygltf::Node& node : model.gltfModel->nodes){
                 if (node.mesh >= 0) meshNodes++;
             }
         }
-        if (!model->gltfModel || meshNodes > 1){
+        if (!model.gltfModel || meshNodes > 1){
             return false;
         }
     }
-    return model->nodesIdMapping.empty() && isNodeHierarchyForced(entity);
+    return true;
+}
+
+bool MeshSystem::needsNodeHierarchyReload(Entity entity) const{
+    const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+    return model && isLegacyLayout(*model) && isNodeHierarchyForced(entity);
 }
 
 bool MeshSystem::getLegacyRootTransform(Entity entity, Matrix4& sceneRoot){

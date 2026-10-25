@@ -362,7 +362,6 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         // as the Add Property popup: the key lands on the Samples grid
         c.setTime(snapToFrame(c.getTime()));
         if (!c.addProperty(add["path"].get<std::string>(), channel, &track, &failure)) return fail("add_property", failure);
-        c.setLastActionWasClipEdit(true);
         std::shared_ptr<AnimationClipDocument> doc = document();
         if (doc && track < doc->data().tracks.size()){
             expanded.insert(doc->data().tracks[track].path + "|" + anim::channelName(doc->data().tracks[track].channel));
@@ -382,7 +381,6 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         int track = -1;
         if (!trackIndex(hook["remove_track"], track)) return fail("remove_track", "no such track");
         if (!c.removeTrack((size_t)track, &failure)) return fail("remove_track", failure);
-        c.setLastActionWasClipEdit(true);
         selection.clear();
     }
     if (hook.contains("rebind")){
@@ -393,7 +391,6 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             return fail("rebind", "{track, path}");
         }
         if (!c.retargetTrack((size_t)track, rebind["path"].get<std::string>(), &failure)) return fail("rebind", failure);
-        c.setLastActionWasClipEdit(true);
         const size_t users = findClipUsers(project, document()->path()).size();
         setNotice("Rebound to '" + rebind["path"].get<std::string>() + "' (changes the clip for " + std::to_string(users) +
                   (users == 1 ? " user" : " users") + ")", false);

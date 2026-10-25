@@ -21,14 +21,27 @@
 #include "animation/ClipBinding.h"
 #include "animation/ClipRecordHooks.h"
 #include "animation/PreviewOwner.h"
+#include "Stream.h"
 #include "command/CommandHandle.h"
+#include "command/type/ClipSceneActions.h"
+#include "command/type/CreateEntityCmd.h"
+#include "command/type/CreatePrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
+#include "command/type/MoveEntityOrderCmd.h"
 #include "command/type/ObjectTransformCmd.h"
+#include "command/type/PrefabOverrideCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "command/type/RemoveComponentCmd.h"
+#include "lattice/LatticeEditorOps.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/KeyframeTracksComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
+#include "component/TranslateTracksComponent.h"
 #include "util/EntityClipboard.h"
+#include "window/InspectorWindowClips.h"
 
 #include "imgui.h"
 #include "component/ModelComponent.h"
@@ -554,7 +567,7 @@ TEST_F(AnimationClipControllerTest, KeyingCommitsAreProjectStepsAndADragIsOneSte
     EXPECT_EQ(sceneHistory->position(), sceneSteps) << "no scene step";
     EXPECT_FALSE(s.sceneProject->isModified);
     // R5b: the newest undoable step is the clip commit, whatever window has focus
-    EXPECT_TRUE(c.ownsUndo(false));
+    EXPECT_TRUE(c.newestStepIsClipEdit());
     ClipUndoFocus focus;
     focus.sceneView = true;
     EXPECT_TRUE(animationClipAppHooks().ownsUndo(focus));
@@ -1396,4 +1409,300 @@ TEST_F(AnimationClipControllerTest, RedoGoesWhereTheStepUndoneLastWas) {
     expectNear(s.transform(s.prop).position, Vector3(3, 0, 0), "the move to 4 undone");
     EXPECT_EQ(routing.redo(), "scene");          // undone last
     expectNear(s.transform(s.prop).position, Vector3(4, 0, 0), "the move to 4 redone");
+}
+
+// ---- final editor review fixes (FX2) --------------------------------------------------------
+
+namespace {
+
+    Entity createQuiet(ClipScene& s, const std::string& name, EntityCreationType type, Entity parent) {
+        CreateEntityCmd* cmd = new CreateEntityCmd(project(), s.id, name, type, parent);
+        cmd->setQuiet(true);
+        CommandHandle::get(s.id)->addCommandNoMerge(cmd);
+        return cmd->getEntity();
+    }
+
+}
+
+// I1: an action that changes a scene stops the previews of what it changes before it reads
+// anything: a converted hold key and the scene keep the rest, never the previewed value
+TEST_F(AnimationClipControllerTest, SceneChangingClipActionsStopThePreviewFirst) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+
+    // an entity Animation whose Arm track starts at 0.5 s: Convert holds the Arm's value before it
+    const Entity animation = createQuiet(s, "Wave", EntityCreationType::ANIMATION, s.hero);
+    const Entity track = createQuiet(s, "Arm position", EntityCreationType::TRANSLATE_TRACKS, s.arm);
+    s.scene->getComponent<KeyframeTracksComponent>(track).times = {0.0f, 1.0f};
+    s.scene->getComponent<TranslateTracksComponent>(track).values = {Vector3(9, 9, 9), Vector3(9, 10, 9)};
+    s.scene->getComponent<AnimationComponent>(animation).actions = {{0.5f, 0.0f, track, 0}};
+    const size_t steps = history->position();
+
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    expectNear(s.transform(s.arm).position, Vector3(1, 1, 0), "previewed");
+    ClipActionResult result;
+    ASSERT_TRUE(ClipSceneActions::convertToClip(project(), s.id, animation, s.hero, "assets/anim/converted.anim", false, result, error)) << error;
+    EXPECT_FALSE(c.isPreviewing()) << "Convert stopped the preview before reading the scene";
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "the Arm at rest");
+    const anim::ClipParseResult parsed = anim::parseClip(readAll(assets() / "anim" / "converted.anim"));
+    ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
+    const int armTrack = parsed.data->findTrack("Arm", ClipChannel::Position);
+    ASSERT_GE(armTrack, 0);
+    const ClipTrackData& converted = parsed.data->tracks[(size_t)armTrack];
+    ASSERT_FALSE(converted.keys.empty());
+    EXPECT_FLOAT_EQ(converted.keys[0].time, 0.0f);
+    EXPECT_EQ(converted.keys[0].value, (std::vector<float>{5, 5, 5})) << "the hold key is the rest, not the previewed value";
+    ASSERT_TRUE(history->undo());
+    ASSERT_EQ(history->position(), steps);
+
+    // Create New Clip on a previewed child, and a drop on one: stopped first, the rest stays
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    ASSERT_TRUE(ClipSceneActions::createNewClip(project(), s.id, s.arm, "assets/anim/arm_new.anim", result, error)) << error;
+    EXPECT_FALSE(c.isPreviewing());
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "created on the rest");
+    ASSERT_TRUE(history->undo());
+    c.seek(0.5f);
+    ASSERT_TRUE(ClipSceneActions::addClipsToPlayer(project(), s.id, s.hand, {"assets/anim/arm.anim"}, result, error)) << error;
+    EXPECT_FALSE(c.isPreviewing());
+    expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "the Hand at rest");
+    ASSERT_TRUE(history->undo());
+    // elsewhere in the scene: the preview goes on
+    c.seek(0.5f);
+    ASSERT_TRUE(ClipSceneActions::createNewClip(project(), s.id, s.prop, "assets/anim/prop.anim", result, error)) << error;
+    EXPECT_TRUE(c.isPreviewing());
+    c.stopPreview();
+    ASSERT_TRUE(history->undo());
+}
+
+// I8: a Hierarchy move during the preview keeps the object where its rest puts it (from the
+// rest, not the previewed pose), and its undo too
+TEST_F(AnimationClipControllerTest, AReparentDuringThePreviewMovesTheRest) {
+    ClipScene s = clipScene();
+    transformFrame(s);
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    expectNear(s.transform(s.arm).position, Vector3(1, 1, 0), "previewed");
+
+    ASSERT_TRUE(history->addCommand(new MoveEntityOrderCmd(project(), s.id, s.arm, s.prop, InsertionType::INTO)));
+    EXPECT_FALSE(c.isPreviewing()) << "the move stopped the preview first";
+    EXPECT_EQ(s.transform(s.arm).parent, s.prop);
+    // the Prop is at (3, 0, 0): the Arm's rest world position (5, 5, 5) is kept
+    expectNear(s.transform(s.arm).position, Vector3(2, 5, 5), "local under the Prop, from the rest");
+    c.stopPreview();
+    expectNear(s.transform(s.arm).position, Vector3(2, 5, 5), "nothing written back by a stop");
+
+    // the undo during a preview of the new parent's hierarchy: from the rest again
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    transformFrame(s);
+    c.seek(0.5f);
+    ASSERT_TRUE(history->undo());
+    EXPECT_EQ(s.transform(s.arm).parent, s.hero);
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "back under the Hero at rest");
+    c.stopPreview();
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "still at rest");
+}
+
+// I7: a prefab override's Revert (and its undo) while the instance is previewed: the preview
+// restores first, so its stop never writes the old value back over the reverted one
+TEST_F(AnimationClipControllerTest, PrefabRevertAndItsUndoDuringThePreviewKeepTheirValues) {
+    ClipScene s = clipScene();
+    CommandHistory* history = CommandHandle::get(s.id);
+    fs::create_directories(assets() / "prefabs");
+    std::error_code ec;
+    fs::remove(assets() / "prefabs" / "ArmHero.prefab", ec);
+    history->addCommandNoMerge(new CreatePrefabCmd(project(), s.id, fs::path("assets") / "prefabs" / "ArmHero.prefab",
+                                                   Stream::encodeEntity(s.hero, s.scene, project(), s.sceneProject)));
+    ASSERT_TRUE(project()->isPrefabInstanceRoot(s.id, s.hero));
+    // an override of the Arm's position (6, 6, 6) over the prefab's (5, 5, 5)
+    ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.arm, ComponentType::Transform, "position", Vector3(6, 6, 6))));
+    ASSERT_TRUE(project()->getOverriddenProperties(s.id, s.arm, ComponentType::Transform).count("position"));
+
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    ASSERT_TRUE(history->addCommand(new PrefabOverrideCmd(project(), s.id, s.arm, PrefabOverrideCmd::Operation::RevertProperty,
+                                                          ComponentType::Transform, {"position"})));
+    EXPECT_FALSE(c.isPreviewing()) << "the revert stopped the preview first";
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "reverted to the prefab's value");
+    EXPECT_FALSE(project()->getOverriddenProperties(s.id, s.arm, ComponentType::Transform).count("position"));
+    c.stopPreview();
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "a stop writes nothing back");
+
+    // its undo while previewing: the override value comes back and stays after the stop
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(c.isPreviewing()) << "the undo stopped the preview first";
+    expectNear(s.transform(s.arm).position, Vector3(6, 6, 6), "the override is back");
+    EXPECT_TRUE(project()->getOverriddenProperties(s.id, s.arm, ComponentType::Transform).count("position"));
+    c.stopPreview();
+    expectNear(s.transform(s.arm).position, Vector3(6, 6, 6), "and stays");
+}
+
+// I3 (and Minor 6): the Inspector's document of a clip reference is the file the reference names:
+// after a rename the old path names a new file (Create again), not the renamed one; the controller
+// reports where its open clip is now
+TEST_F(AnimationClipControllerTest, TheInspectorDocumentCacheFollowsTheFileAfterARename) {
+    writeClip("anim/New Animation.anim", armClip());
+    AnimationClipDocument::checkDiskChanges(project());
+    inspectorclips::ClipDocumentCache cache;
+    std::string error;
+    const std::string original = "assets/anim/New Animation.anim";
+    std::shared_ptr<AnimationClipDocument> first = cache.find(project(), original, 0.0, 1.0, &error);
+    ASSERT_TRUE(first) << error;
+    AnimationClipController& c = controller();
+    ASSERT_TRUE(c.openClip(original, &error)) << error;
+
+    // the inline rename (RenameFileCmd: the move on disk, then the remap)
+    const fs::path from = assets() / "anim" / "New Animation.anim";
+    const fs::path to = assets() / "anim" / "Walk.anim";
+    fs::rename(from, to);
+    project()->remapClipFilePath(from, to);
+    EXPECT_EQ(first->path(), "assets/anim/Walk.anim") << "the document followed its file";
+    EXPECT_EQ(c.getClipPath(), "assets/anim/Walk.anim");
+
+    // Create again: a new file at the old path
+    ClipData other = armClip();
+    other.frameRate = 12.0f;
+    writeClip("anim/New Animation.anim", other);
+    std::shared_ptr<AnimationClipDocument> second = cache.find(project(), original, 0.5, 1.0, &error);
+    ASSERT_TRUE(second) << error;
+    EXPECT_NE(second.get(), first.get()) << "not the renamed clip's document";
+    EXPECT_EQ(second->path(), original);
+    EXPECT_FLOAT_EQ(second->data().frameRate, 12.0f);
+    EXPECT_EQ(cache.find(project(), "assets/anim/Walk.anim", 0.5, 1.0, &error).get(), first.get());
+    c.closeClip();
+}
+
+// I6 / R5c: a clip commit the editor UI makes outside the controller (the Inspector's .anim asset
+// section, Extract or Create file writes) routes Ctrl+Z to the project history, with or without a
+// controller; an unmarked commit (MCP) does not
+TEST_F(AnimationClipControllerTest, MarkedClipCommitsRouteUndoWithoutAController) {
+    ClipScene s = clipScene();
+    AnimationClipController::release(project());
+    CommandHistory* history = CommandHandle::get(s.id);
+    ClipUndoFocus sceneView;
+    sceneView.sceneView = true;
+    ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(1, 1, 1))));
+    std::string error;
+    std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project(), "assets/anim/arm.anim", &error);
+    ASSERT_TRUE(document) << error;
+
+    // an MCP edit: not marked
+    ClipData data = document->data();
+    data.frameRate = 24.0f;
+    ASSERT_TRUE(document->commit(data, "Frame Rate", "", &error)) << error;
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView));
+    // the Inspector's: marked
+    data.frameRate = 25.0f;
+    const uint64_t clock = AnimationClipController::clipCommitClock(project());
+    ASSERT_TRUE(document->commit(data, "Frame Rate", "", &error)) << error;
+    AnimationClipController::markClipCommit(clock);
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView)) << "Ctrl+Z undoes the Inspector's clip edit";
+    // a newer scene step is undone first
+    ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(2, 2, 2))));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView));
+    ASSERT_TRUE(history->undo());
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView));
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_FLOAT_EQ(document->data().frameRate, 24.0f);
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView));
+}
+
+// I5: a scene undo giving an entry back its old path hint (the clip was renamed since) points it
+// at the clip by GUID again, so the player finds it without a reopen
+TEST_F(AnimationClipControllerTest, SceneUndoReResolvesStaleClipPathsByGuid) {
+    ClipScene s = clipScene();
+    controller();   // (the history timeline, which the App installs at startup)
+    std::string error;
+    ClipData data = armClip();
+    data.guid = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+    writeClip("anim/run.anim", data);
+    project()->refreshAssetDatabase(true);
+    AnimationClipDocument::checkDiskChanges(project());
+    CommandHistory* history = CommandHandle::get(s.id);
+    AnimationPlayerClip entry;
+    entry.clip = "anim/run.anim";
+    entry.guid = data.guid;
+    std::vector<AnimationPlayerClip> clips = s.scene->getComponent<AnimationPlayerComponent>(s.hero).clips;
+    clips.push_back(entry);
+    history->addCommandNoMerge(new PropertyCmd<std::vector<AnimationPlayerClip>>(project(), s.id, s.hero,
+                                                                                      ComponentType::AnimationPlayerComponent, "clips", clips));
+    // renamed (the Project window's rename): the entry follows
+    const fs::path from = assets() / "anim" / "run.anim";
+    const fs::path to = assets() / "anim" / "sprint.anim";
+    fs::rename(from, to);
+    project()->remapAssetFilePath(from, to);
+    project()->remapClipFilePath(from, to);
+    ASSERT_EQ(s.scene->getComponent<AnimationPlayerComponent>(s.hero).clips.back().clip, "anim/sprint.anim");
+
+    // a scene step removing it, undone: the recorded value has the old hint, re-resolved
+    std::vector<AnimationPlayerClip> fewer = s.scene->getComponent<AnimationPlayerComponent>(s.hero).clips;
+    fewer.pop_back();
+    history->addCommandNoMerge(new PropertyCmd<std::vector<AnimationPlayerClip>>(project(), s.id, s.hero,
+                                                                                      ComponentType::AnimationPlayerComponent, "clips", fewer));
+    ASSERT_TRUE(history->undo());
+    ASSERT_TRUE(history->undo());
+    ASSERT_TRUE(history->redo());
+    const AnimationPlayerClip& back = s.scene->getComponent<AnimationPlayerComponent>(s.hero).clips.back();
+    EXPECT_EQ(back.guid, data.guid);
+    EXPECT_EQ(back.clip, "anim/sprint.anim") << "the redo's stale hint follows the GUID";
+}
+
+// Minors 10 / 11: a lattice resolution change and a Remove Component of a previewed mesh restore
+// the preview first: the resampled offsets and the removed (then restored) weights are the rest
+TEST_F(AnimationClipControllerTest, ResolutionChangesAndComponentRemovalsTakeTheRest) {
+    ClipScene s = clipScene();
+    const Entity face = addObject(s, "Face", s.hero, Vector3(0, 0, 0));
+    s.scene->addComponent<MeshComponent>(face, {});
+    const Entity cage = addObject(s, "Cage", s.hero, Vector3(0, 0, 0));
+    s.scene->addComponent<LatticeComponent>(cage, {});
+    s.scene->getComponent<LatticeComponent>(cage).offsets.assign(27, Vector3(0, 0, 0));
+    ClipData data;
+    ClipTrackData weights;
+    weights.path = "Face";
+    weights.channel = ClipChannel::Morph;
+    weights.keys = {key(0.0f, {0}), key(1.0f, {1})};
+    ClipTrackData points;
+    points.path = "Cage";
+    points.channel = ClipChannel::Lattice;
+    points.points = {0};
+    points.keys = {key(0.0f, {0, 0, 0}), key(1.0f, {0, 1, 0})};
+    data.tracks = {weights, points};
+    writeClip("anim/arm.anim", data);
+    AnimationClipDocument::checkDiskChanges(project());
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    expectNear(s.scene->getComponent<LatticeComponent>(cage).offsets[0], Vector3(0, 0.5f, 0), "previewed point");
+    ASSERT_TRUE(LatticeEditorOps::setResolution(project(), s.id, cage, 4, 3, 3, &error)) << error;
+    EXPECT_FALSE(c.isPreviewing()) << "the resolution change stopped the preview first";
+    const LatticeComponent& resampled = s.scene->getComponent<LatticeComponent>(cage);
+    ASSERT_EQ(resampled.offsets.size(), 36u);
+    for (const Vector3& offset : resampled.offsets) expectNear(offset, Vector3(0, 0, 0), "resampled from the rest");
+    ASSERT_TRUE(history->undo());
+
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[0], 0.5f, 1e-5f) << "previewed weight";
+    ASSERT_TRUE(history->addCommand(new RemoveComponentCmd(project(), s.id, face, ComponentType::MeshComponent)));
+    EXPECT_FALSE(c.isPreviewing()) << "the removal stopped the preview first";
+    ASSERT_TRUE(history->undo());
+    ASSERT_TRUE(s.scene->findComponent<MeshComponent>(face));
+    EXPECT_FLOAT_EQ(s.scene->getComponent<MeshComponent>(face).morphWeights[0], 0.0f) << "the undo brings the rest back";
 }

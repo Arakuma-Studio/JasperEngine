@@ -17,6 +17,7 @@
 #include "Project.h"
 #include "Stream.h"
 #include "animation/PlayerModelLayout.h"
+#include "animation/PreviewOwner.h"
 #include "command/CommandHandle.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ComponentValuesCmd.h"
@@ -24,6 +25,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 
@@ -316,4 +318,62 @@ TEST_F(PlayerModelLayoutTest, PastedModelValueAppliesAnimationEntitiesWithItsLoa
     ASSERT_TRUE(history(sceneId)->undo());
     EXPECT_TRUE(modelOf(sceneId, model).animationEntities);
     EXPECT_EQ(modelOf(sceneId, model).animations.size(), 5u);
+}
+
+// I1: the layout reload (a ModelLoadCmd) stops the previews of the model before it records its
+// arrangement, in execute and in undo (a preview's restore would undo the reload's moves)
+TEST_F(PlayerModelLayoutTest, TheLayoutReloadStopsThePreviewsOfTheModelFirst) {
+    const uint32_t sceneId = newScene();
+    const Entity model = createModel(sceneId, scaledHero());
+    const Entity other = createGameObject(sceneId, "Other");
+    int stops = 0;
+    int unrelated = 0;
+    PreviewOwner::Token token = PreviewOwner::acquire(sceneId, model, sceneOf(sceneId), "test preview", [&]() { stops++; });
+    const PreviewOwner::Token elsewhere = PreviewOwner::acquire(sceneId, other, sceneOf(sceneId), "elsewhere", [&]() { unrelated++; });
+    history(sceneId)->addCommandNoMerge(new AddComponentCmd(project(), sceneId, model, ComponentType::AnimationPlayerComponent));
+    ASSERT_FALSE(modelOf(sceneId, model).nodesIdMapping.empty()) << "reloaded";
+    EXPECT_EQ(stops, 1) << "stopped before the reload";
+    EXPECT_FALSE(PreviewOwner::owns(token));
+    token = PreviewOwner::acquire(sceneId, model, sceneOf(sceneId), "test preview", [&]() { stops++; });
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_EQ(stops, 2) << "and before its undo";
+    EXPECT_EQ(unrelated, 0) << "another hierarchy's preview goes on";
+    EXPECT_TRUE(PreviewOwner::owns(elsewhere));
+    PreviewOwner::release(elsewhere);
+}
+
+// Minor 8: blend shape weights set on a legacy-layout model survive its reload in the node
+// hierarchy (the mesh moves from the model entity to its node's entity), undo and redo
+TEST_F(PlayerModelLayoutTest, BlendShapeWeightsSurviveTheLayoutSwitch) {
+    const uint32_t sceneId = newScene();
+    const std::string morph = (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "shader-library" /
+                               "assets" / "models" / "skinned_morph.gltf").lexically_normal().generic_string();
+    const Entity model = createModel(sceneId, morph);
+    Scene* scene = sceneOf(sceneId);
+    ASSERT_TRUE(modelOf(sceneId, model).nodesIdMapping.empty()) << "legacy layout";
+    // the weight on whichever entity holds the strip's mesh now
+    auto stripMesh = [&]() -> MeshComponent* {
+        const ModelComponent& m = modelOf(sceneId, model);
+        auto node = m.meshNodesMapping.find(0);
+        Entity holder = node != m.meshNodesMapping.end() ? node->second : NULL_ENTITY;
+        if (holder == NULL_ENTITY) {
+            auto any = m.nodesIdMapping.find(0);
+            holder = any != m.nodesIdMapping.end() ? any->second : model;
+        }
+        return scene->findComponent<MeshComponent>(holder);
+    };
+    ASSERT_TRUE(stripMesh());
+    stripMesh()->morphWeights[0] = 0.7f;
+
+    history(sceneId)->addCommandNoMerge(new AddComponentCmd(project(), sceneId, model, ComponentType::AnimationPlayerComponent));
+    ASSERT_FALSE(modelOf(sceneId, model).nodesIdMapping.empty()) << "reloaded in the node hierarchy";
+    ASSERT_TRUE(stripMesh());
+    EXPECT_FLOAT_EQ(stripMesh()->morphWeights[0], 0.7f) << "the weight is carried to the rebuilt mesh";
+    ASSERT_TRUE(history(sceneId)->undo());
+    ASSERT_TRUE(modelOf(sceneId, model).nodesIdMapping.empty());
+    ASSERT_TRUE(stripMesh());
+    EXPECT_FLOAT_EQ(stripMesh()->morphWeights[0], 0.7f) << "undo: the legacy mesh has it";
+    ASSERT_TRUE(history(sceneId)->redo());
+    ASSERT_TRUE(stripMesh());
+    EXPECT_FLOAT_EQ(stripMesh()->morphWeights[0], 0.7f) << "redo";
 }

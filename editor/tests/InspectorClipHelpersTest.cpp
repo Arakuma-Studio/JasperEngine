@@ -97,7 +97,7 @@ TEST(InspectorClipHelpers, WrapAndChannelLabelsAndSeconds) {
     EXPECT_STREQ(inspectorclips::wrapLabel(ClipWrapMode::PingPong), "Ping Pong");
     EXPECT_STREQ(inspectorclips::wrapLabel(ClipWrapMode::ClampForever), "Clamp Forever");
     EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Position), "Position");
-    EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Morph), "Morph");
+    EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Morph), "Blend Shapes") << "the Animation window's name";
     EXPECT_EQ(inspectorclips::formatSeconds(1.25f), "1.25 s");
     EXPECT_EQ(inspectorclips::formatSeconds(std::numeric_limits<float>::quiet_NaN()), "0.00 s");
 }
@@ -151,9 +151,9 @@ TEST(InspectorClipHelpers, ProblemRowsAreShortWithTheNearestLeaf) {
     missing.message = "Hero/mixamorig:Hips/mixamorig:Spne : position: no GameObject at '...': did you mean '...'?";
     EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean mixamorig:Spine?)");
     missing.nearest = {"A/Hand", "A/Hand2", ""};
-    EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean Hand, Hand2 or (root)?)");
+    EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean Hand, Hand2 or (Root)?)");
     EXPECT_EQ(inspectorclips::trackProblemText(track("", ClipChannel::Morph, TrackBindingStatus::MissingComponent)),
-              "(root) : Morph: nothing to animate on the GameObject");
+              "(Root) : Blend Shapes: nothing to animate on the GameObject");
 }
 
 TEST(InspectorClipHelpers, EventTexts) {
