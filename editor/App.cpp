@@ -2772,6 +2772,10 @@ void editor::App::engineRender(){
     project.refreshFbxImports();
     project.refreshAssetDatabase();
     project.updateGeneratedSources();
+    // clip previews (the Animation window's clip mode, MCP preview_animation) advance every frame
+    if (animationClipAppHooks().frame) {
+        animationClipAppHooks().frame(&project, ImGui::GetIO().DeltaTime, ImGui::GetFrameCount());
+    }
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
         || ImGui::GetIO().WantTextInput || physicsPlacementWindow->isAnyBusy());

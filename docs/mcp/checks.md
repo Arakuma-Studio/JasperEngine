@@ -197,7 +197,7 @@ Each `.anim` goes through the engine's clip reader (`engine/core/animation/Anima
 one the editor, the game and `write_file` use):
 
 ```
-assets/anim/bob.anim:5:3: error: syntax error while parsing object - unexpected '}'; expected string literal
+assets/anim/bob.anim:5:1: error: not valid JSON: syntax error while parsing value - unexpected '}'; expected '[', '{', or a literal
 assets/anim/walk.anim: warning: tracks[2].keys[0].value: expected [x, y, z]
 assets/anim/old.anim: error: This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}: create one with Create > Animation Clip or edit_animation {clip, create}.
 Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does not exist (paths are relative to the assets folder)
@@ -213,7 +213,8 @@ Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does n
   entry's GUID finds the clip somewhere else (moved outside the editor: the editor resolves it and
   updates the path when the scene is opened and saved); a model clip (`models/hero.gltf#Walk`)
   whose model file is missing is an error. The animation names inside models are not checked here
-  (`get_animation {clip}` in the editor reads them).
+  (`get_animation {clip}` in the editor reads them; the check parses no model), and clip entries
+  inside a scene's prefab-instance overrides are not scanned (the prefab file's own entries are).
 - With `--files`, only the named `.anim` files (no reference scan). Binding paths against a
   hierarchy are an editor check: `edit_animation`/`get_animation` with `root`.
 

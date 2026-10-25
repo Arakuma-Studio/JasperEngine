@@ -110,6 +110,11 @@ namespace{
                 for (auto& entry : controllers()) entry.second->sceneClosed(sceneId);
                 PreviewOwner::releaseScene(sceneId);
             };
+            // every frame, Animation window open or not: previews advance, deferred stops end
+            hooks.frame = [](Project* project, double dt, int frame){
+                auto it = controllers().find(project);
+                if (it != controllers().end()) it->second->update(dt, frame);
+            };
             hooks.projectClosed = [](){
                 std::vector<Project*> projects;
                 for (auto& entry : controllers()) projects.push_back(entry.first);
@@ -860,6 +865,12 @@ float AnimationClipController::getTime() const{
 
 float AnimationClipController::getLength() const{
     return document ? document->data().effectiveLength() : 0.0f;
+}
+
+void AnimationClipController::update(double dt, int frame){
+    if (frame == lastUpdateFrame) return;
+    lastUpdateFrame = frame;
+    update(dt);
 }
 
 void AnimationClipController::update(double dt){

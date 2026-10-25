@@ -15,6 +15,8 @@
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
+#include "animation/PlayerModelLayout.h"
+#include "command/type/ClipSceneActions.h"
 #include "animation/AnimationClipIO.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ComponentValuesCmd.h"
@@ -553,9 +555,17 @@ void addComponentTool(const CallPtr& call) {
     auto* steps = new McpStepsCmd();
     Json added = Json::array();
     Json skipped = Json::array();
+    // an Animation Player already there whose models are in the legacy layout (no node
+    // hierarchy, so its clips can't bind them): adding it again reloads them (9.R3)
+    std::vector<Entity> reloadPlayers;
     for (Entity entity : entities) {
         for (ComponentType type : types) {
             if (McpRefs::hasComponent(scene, entity, type)) {
+                if (type == ComponentType::AnimationPlayerComponent &&
+                    !PlayerModelLayout::modelsNeedingReload(project, scene->id, entity).empty()) {
+                    reloadPlayers.push_back(entity);
+                    continue;
+                }
                 skipped.push_back(Json{{"entity", entity}, {"component", McpRefs::componentName(type)}});
                 continue;
             }
@@ -566,6 +576,24 @@ void addComponentTool(const CallPtr& call) {
             });
         }
     }
+    if (added.empty() && changes.empty() && !reloadPlayers.empty()) {
+        delete steps;
+        Json reloaded = Json::array();
+        std::string text;
+        for (Entity entity : reloadPlayers) {
+            ClipActionResult result;
+            if (!ClipSceneActions::reloadModelsForPlayer(project, sceneId, entity, result, error)) {
+                call->fail("add_component: " + error);
+                return;
+            }
+            reloaded.push_back(Json{{"entity", entity}, {"models", result.reloadedModels}});
+            text += (text.empty() ? "" : "; ") + result.status;
+        }
+        call->ok(text + ": the Animation Player and its settings are kept.",
+                 Json{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}, {"reloaded", reloaded}});
+        return;
+    }
+    for (Entity entity : reloadPlayers) skipped.push_back(Json{{"entity", entity}, {"component", "animationplayer"}});
     if (added.empty() && changes.empty()) {
         delete steps;
         call->fail("Every GameObject has that component already (set its values with set_properties).",
