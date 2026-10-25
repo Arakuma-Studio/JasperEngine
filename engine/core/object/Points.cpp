@@ -60,6 +60,7 @@ void Points::addPoint(PointData point){
     }
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::addPoint(Vector3 position){
@@ -131,6 +132,7 @@ void Points::updatePoint(size_t index, PointData point){
     }
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::updatePoint(size_t index, Vector3 position){
@@ -193,6 +195,7 @@ void Points::removePoint(size_t index){
     pointscomp.points.erase(pointscomp.points.begin() + index);
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 bool Points::isPointVisible(size_t index){
@@ -208,6 +211,7 @@ void Points::setPointVisible(size_t index, bool visible) const{
         pointscomp.points.at(index).visible = visible;
 
         pointscomp.needUpdate = true;
+        markChanged<PointsComponent>();
     }
 }
 
@@ -215,6 +219,7 @@ void Points::updatePoints(){
     PointsComponent& pointscomp = getComponent<PointsComponent>();
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 size_t Points::getNumPoints(){
@@ -227,6 +232,7 @@ void Points::clearPoints(){
     pointscomp.points.clear();
 
     pointscomp.needUpdate = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTexture(const std::string& path){
@@ -235,6 +241,7 @@ void Points::setTexture(const std::string& path){
     pointscomp.texture.setPath(path);
 
     pointscomp.needUpdateTexture = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTexture(const std::string& id, TextureData data){
@@ -243,6 +250,7 @@ void Points::setTexture(const std::string& id, TextureData data){
     pointscomp.texture.setData(id, data);
 
     pointscomp.needUpdateTexture = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTexture(Framebuffer* framebuffer){
@@ -251,6 +259,7 @@ void Points::setTexture(Framebuffer* framebuffer){
     pointscomp.texture.setFramebuffer(framebuffer);
 
     pointscomp.needUpdateTexture = true;
+    markChanged<PointsComponent>();
 }
 
 void Points::setTransparent(bool transparent){
@@ -358,8 +367,10 @@ std::string Points::getCustomShader() const{
 void Points::setShaderUniform(const std::string& name, const Vector4& value){
     PointsComponent& points = getComponent<PointsComponent>();
 
-    if (ShaderUniforms::set(points.shaderUniforms, name, value))
+    if (ShaderUniforms::set(points.shaderUniforms, name, value)){
         points.needUpdateShaderUniforms = true;
+        markChanged<PointsComponent>();
+    }
 }
 
 void Points::setShaderUniform(const std::string& name, const Vector3& value){
@@ -387,6 +398,7 @@ bool Points::removeShaderUniform(const std::string& name){
         return false;
 
     points.needUpdateShaderUniforms = true;
+    markChanged<PointsComponent>();
     return true;
 }
 

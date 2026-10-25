@@ -85,6 +85,12 @@
 		175DCCBC300FA22F008C19EC /* SceneSettings.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCBA300FA22F008C19EC /* SceneSettings.h */; };
 		175DCCBE3022C5A2008C19EC /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */; };
 		175DCCBF3022C5A2008C19EC /* ComponentManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */; };
+		5A07EC5A07EC520A1B2C3D4E /* ChangeTracking.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A07EC5A07EC510A1B2C3D4E /* ChangeTracking.cpp */; };
+		5A07EC5A07EC530A1B2C3D4E /* ChangeTracking.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A07EC5A07EC510A1B2C3D4E /* ChangeTracking.cpp */; };
+		5A07EC5A07EC550A1B2C3D4E /* CommandBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A07EC5A07EC540A1B2C3D4E /* CommandBuffer.cpp */; };
+		5A07EC5A07EC560A1B2C3D4E /* CommandBuffer.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A07EC5A07EC540A1B2C3D4E /* CommandBuffer.cpp */; };
+		5A07EC5A07EC580A1B2C3D4E /* SystemScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A07EC5A07EC570A1B2C3D4E /* SystemScheduler.cpp */; };
+		5A07EC5A07EC590A1B2C3D4E /* SystemScheduler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5A07EC5A07EC570A1B2C3D4E /* SystemScheduler.cpp */; };
 		175DCCC23022C5E9008C19EC /* Mirror.h in Headers */ = {isa = PBXBuildFile; fileRef = 175DCCC03022C5E9008C19EC /* Mirror.h */; };
 		175DCCC33022C5E9008C19EC /* Mirror.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCC13022C5E9008C19EC /* Mirror.cpp */; };
 		175DCCC43022C5E9008C19EC /* Mirror.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 175DCCC13022C5E9008C19EC /* Mirror.cpp */; };
@@ -3708,6 +3714,16 @@
 		175DCCB9300FA22F008C19EC /* Export.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Export.h; sourceTree = "<group>"; };
 		175DCCBA300FA22F008C19EC /* SceneSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneSettings.h; sourceTree = "<group>"; };
 		175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ComponentManager.cpp; sourceTree = "<group>"; };
+		5A07EC5A07EC510A1B2C3D4E /* ChangeTracking.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ChangeTracking.cpp; sourceTree = "<group>"; };
+		5A07EC5A07EC540A1B2C3D4E /* CommandBuffer.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CommandBuffer.cpp; sourceTree = "<group>"; };
+		5A07EC5A07EC570A1B2C3D4E /* SystemScheduler.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SystemScheduler.cpp; sourceTree = "<group>"; };
+		5A07EC5A07EC5A0A1B2C3D4E /* BitOps.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = BitOps.h; sourceTree = "<group>"; };
+		5A07EC5A07EC5B0A1B2C3D4E /* ChangeTracking.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ChangeTracking.h; sourceTree = "<group>"; };
+		5A07EC5A07EC5C0A1B2C3D4E /* CommandBuffer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CommandBuffer.h; sourceTree = "<group>"; };
+		5A07EC5A07EC5D0A1B2C3D4E /* EntityRef.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EntityRef.h; sourceTree = "<group>"; };
+		5A07EC5A07EC5E0A1B2C3D4E /* PagedStorage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PagedStorage.h; sourceTree = "<group>"; };
+		5A07EC5A07EC5F0A1B2C3D4E /* SystemScheduler.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SystemScheduler.h; sourceTree = "<group>"; };
+		5A07EC5A07EC600A1B2C3D4E /* View.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = View.h; sourceTree = "<group>"; };
 		175DCCC03022C5E9008C19EC /* Mirror.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Mirror.h; sourceTree = "<group>"; };
 		175DCCC13022C5E9008C19EC /* Mirror.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Mirror.cpp; sourceTree = "<group>"; };
 		175DCE6930255343008C19EC /* CharExtent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CharExtent.h; sourceTree = "<group>"; };
@@ -9417,6 +9433,16 @@
 				71E36B8225D5996400EFEED4 /* ComponentArray.h */,
 				71E36B8525D5996400EFEED4 /* ComponentManager.h */,
 				175DCCBD3022C5A2008C19EC /* ComponentManager.cpp */,
+				5A07EC5A07EC510A1B2C3D4E /* ChangeTracking.cpp */,
+				5A07EC5A07EC540A1B2C3D4E /* CommandBuffer.cpp */,
+				5A07EC5A07EC570A1B2C3D4E /* SystemScheduler.cpp */,
+				5A07EC5A07EC5A0A1B2C3D4E /* BitOps.h */,
+				5A07EC5A07EC5B0A1B2C3D4E /* ChangeTracking.h */,
+				5A07EC5A07EC5C0A1B2C3D4E /* CommandBuffer.h */,
+				5A07EC5A07EC5D0A1B2C3D4E /* EntityRef.h */,
+				5A07EC5A07EC5E0A1B2C3D4E /* PagedStorage.h */,
+				5A07EC5A07EC5F0A1B2C3D4E /* SystemScheduler.h */,
+				5A07EC5A07EC600A1B2C3D4E /* View.h */,
 				71E36B8725D5996400EFEED4 /* Entity.h */,
 				71E36B8425D5996400EFEED4 /* EntityManager.h */,
 				71E36B8325D5996400EFEED4 /* Signature.h */,
@@ -13624,6 +13650,9 @@
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */,
 				175DCCBE3022C5A2008C19EC /* ComponentManager.cpp in Sources */,
+				5A07EC5A07EC520A1B2C3D4E /* ChangeTracking.cpp in Sources */,
+				5A07EC5A07EC550A1B2C3D4E /* CommandBuffer.cpp in Sources */,
+				5A07EC5A07EC580A1B2C3D4E /* SystemScheduler.cpp in Sources */,
 				717AD994292FC30A007D7DB5 /* Framebuffer.cpp in Sources */,
 				7128D11F25C2356200965B51 /* SokolSystem.cpp in Sources */,
 				7105A56528B305B20092EA05 /* CoreClassesLua.cpp in Sources */,
@@ -14053,6 +14082,9 @@
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */,
 				175DCCBF3022C5A2008C19EC /* ComponentManager.cpp in Sources */,
+				5A07EC5A07EC530A1B2C3D4E /* ChangeTracking.cpp in Sources */,
+				5A07EC5A07EC560A1B2C3D4E /* CommandBuffer.cpp in Sources */,
+				5A07EC5A07EC590A1B2C3D4E /* SystemScheduler.cpp in Sources */,
 				717AD993292FC30A007D7DB5 /* Framebuffer.cpp in Sources */,
 				7128D11E25C2356200965B51 /* SokolSystem.cpp in Sources */,
 				7105A56428B305B20092EA05 /* CoreClassesLua.cpp in Sources */,

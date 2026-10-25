@@ -35,6 +35,17 @@ def definition(text, marker):
     return text[start:end]
 
 
+def clock_source(directory, revision):
+    """ChangeTracking.cpp of the revision (the ECS since S07), copied next to its ComponentArray.h; None before"""
+    try:
+        text = source("engine/core/ecs/ChangeTracking.cpp", revision)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    path = directory / "ChangeTracking.cpp"
+    path.write_text(text)
+    return path
+
+
 def run_variant(out, name, revision, sanitize, only):
     print(f"Compiling {name}: {revision or 'working tree'} ({'ASan/UBSan checks' if sanitize else 'release benchmark'})", flush=True)
     variant = out / name
@@ -58,9 +69,14 @@ def run_variant(out, name, revision, sanitize, only):
             continue
         binary = variant / kind
         command = [os.environ.get("CXX", "g++"), *flags, *(f"-I{p}" for p in includes)]
+        extra = []
         if kind == "component":
             command.append(f'-DCOMPONENT_ARRAY_HEADER="{header}"')
-        command += [str(src), "-o", str(binary)]
+            # the paged array (S07) stamps change ticks through ChangeClock
+            clock = clock_source(variant, revision)
+            if clock:
+                extra.append(str(clock))
+        command += [str(src), *extra, "-o", str(binary)]
         subprocess.run(command, check=True, cwd=ROOT)
         output = subprocess.check_output([str(binary)], text=True, cwd=ROOT)
         print(f"{name} {kind}: behavior assertions passed", flush=True)
@@ -86,7 +102,8 @@ def paired_component(out):
     subprocess.run([os.environ.get("CXX", "g++"), "-std=c++20", "-O3",
         f"-I{ROOT / 'engine/core'}", f"-I{ROOT / 'engine/core/ecs'}",
         f'-DBASELINE_COMPONENT_HEADER="{header}"',
-        str(ROOT / "tools/performance/component_sort_paired.cpp"), "-o", str(binary)], check=True)
+        str(ROOT / "tools/performance/component_sort_paired.cpp"), str(ROOT / "engine/core/ecs/ChangeTracking.cpp"),
+        "-o", str(binary)], check=True)
     output = subprocess.check_output([str(binary)], text=True)
     (out / "component-paired.csv").write_text(output)
     rows = list(csv.reader(output.splitlines()))

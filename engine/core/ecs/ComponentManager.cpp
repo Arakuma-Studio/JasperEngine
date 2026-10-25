@@ -26,3 +26,37 @@ size_t ComponentTypeRegistry::indexOf(const char* mangledName){
     indices.emplace(mangledName, next);
     return next++;
 }
+
+#if defined(__GNUG__) || defined(__clang__)
+#include <cxxabi.h>
+#include <cstdlib>
+#endif
+
+std::string jasperengine::ecs::readableTypeName(const char* typeName){
+    std::string name = typeName ? typeName : "";
+#if defined(__GNUG__) || defined(__clang__)
+    int status = 0;
+    char* demangled = abi::__cxa_demangle(name.c_str(), nullptr, nullptr, &status);
+    if (status == 0 && demangled){
+        name = demangled;
+    }
+    std::free(demangled);
+#endif
+    // MSVC names are already readable: "class jasperengine::RenderSystem"
+    for (const char* prefix : {"class ", "struct "}){
+        const std::string text(prefix);
+        if (name.compare(0, text.size(), text) == 0){
+            name.erase(0, text.size());
+        }
+    }
+    const size_t scope = name.rfind("::");
+    if (scope != std::string::npos && name.find('<') == std::string::npos){
+        name.erase(0, scope + 2);
+    }
+    return name;
+}
+
+void ComponentManager::notRegistered(){
+    Log::error("Component not registered before use");
+    throw std::out_of_range("Component not registered before use");
+}

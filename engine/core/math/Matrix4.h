@@ -23,8 +23,9 @@ namespace jasperengine {
 
     public:
 
-        Matrix4();
-        Matrix4(const Matrix4 &matrix);
+        // inline and trivially copyable: Transform holds four (S07 R25)
+        Matrix4(): matrix{{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}} {}
+        Matrix4(const Matrix4 &matrix) = default;
         Matrix4 (float fEntry00, float fEntry10, float fEntry20, float fEntry30,
                 float fEntry01, float fEntry11, float fEntry21, float fEntry31,
                 float fEntry02, float fEntry12, float fEntry22, float fEntry32,
@@ -33,7 +34,7 @@ namespace jasperengine {
 
         std::string toString() const;
 
-        Matrix4 &operator=(const Matrix4 &);
+        Matrix4 &operator=(const Matrix4 &) = default;
         Matrix4 operator*(const Matrix4 &) const;
         Matrix4 operator*(float scalar) const;
         Matrix4 operator+(const Matrix4 &) const;

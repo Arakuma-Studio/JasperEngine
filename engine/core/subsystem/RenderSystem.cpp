@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "TransformPropagation.h"
 #include "InstanceSort.h"
 #include "RenderSystemShared.h"
 #include "object/Camera.h"
@@ -414,6 +415,22 @@ blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
+    // the types onComponentAdded/onComponentRemoved handle (forgetEntityInViews included)
+    declareHookType(scene->getComponentId<CameraComponent>());
+    declareHookType(scene->getComponentId<LightComponent>());
+    declareHookType(scene->getComponentId<Light2DComponent>());
+    declareHookType(scene->getComponentId<LineRendererComponent>());
+    declareHookType(scene->getComponentId<MeshComponent>());
+    declareHookType(scene->getComponentId<MirrorComponent>());
+    declareHookType(scene->getComponentId<PointsComponent>());
+    declareHookType(scene->getComponentId<ReflectionProbeComponent>());
+    declareHookType(scene->getComponentId<SkyboxComponent>());
+    declareHookType(scene->getComponentId<UIComponent>());
+#ifdef JASPERENGINE_EDITOR
+    declareHookType(scene->getComponentId<Transform>());
+    declareHookType(scene->getComponentId<InstancedMeshComponent>());
+    declareHookType(scene->getComponentId<TerrainComponent>());
+#endif
 
     this->scene = scene;
 
@@ -11600,27 +11617,9 @@ void RenderSystem::update(double dt){
     auto transforms = scene->getComponentArray<Transform>();
     auto cameras = scene->getComponentArray<CameraComponent>();
 
-    for (int i = 0; i < transforms->size(); i++){
-        Transform& transform = transforms->getComponentFromIndex(i);
-
-        if (transform.parent != NULL_ENTITY){
-            Transform* transformParent = scene->findComponent<Transform>(transform.parent);
-            if (transformParent){
-                if (transformParent->needUpdate){
-                    transform.needUpdate = true;
-                }
-
-                if (transformParent->needUpdateChildVisibility){
-                    transform.visible = transformParent->visible;
-                    transform.needUpdateChildVisibility = true;
-                }
-            }
-        }
-
-        if (transform.needUpdate){
-            updateTransform(transform, transforms->getEntity(i));
-        }
-    }
+    propagateTransforms(*scene, [this](Transform& transform, Entity entity){
+        updateTransform(transform, entity);
+    });
 
     auto models = scene->getComponentArray<ModelComponent>();
     for (int i = 0; i < models->size(); i++) {
