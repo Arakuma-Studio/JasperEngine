@@ -14,9 +14,6 @@
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
-#include "animation/AnimationClipDocument.h"
-#include "animation/ClipValidation.h"
-#include "animation/ModelSubClips.h"
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
@@ -35,6 +32,11 @@ namespace jasperengine::editor{
     class SceneWindow;
     class ForkShaderCmd;
     class MultiPropertyCmd;
+    class AnimationClipDocument;
+    struct InspectorClipState;
+    struct InspectorClipStateDeleter{
+        void operator()(InspectorClipState* state) const;
+    };
 
     enum class RowPropertyType{
         Label,
@@ -242,71 +244,37 @@ namespace jasperengine::editor{
         void stopActionPreviewIfActive();
 
         // ---- animation clips (InspectorWindowClips.cpp; spec 4.2, 9.R30) ----
-        // the inspected object (Unity's activeObject): a scene selection change after the
-        // Project window set an asset shows the selection again
-        bool inspectedSelectionKnown = false;
-        uint32_t inspectedSelectionScene = 0;
-        std::vector<Entity> inspectedSelection;
-        std::filesystem::path inspectedAssetSeen;
+        // caches, popup state and error lines of the clip sections (defined in
+        // InspectorWindowClips.cpp, so this header needs none of the clip headers)
+        std::unique_ptr<InspectorClipState, InspectorClipStateDeleter> clipStatePtr;
+        InspectorClipState& clipState();
+        // Unity's activeObject: a programmatic selection change (MCP, undo) after the Project
+        // window set an asset shows the selection again; user clicks clear it at their sites
         void trackInspectedObject();
+        // ProjectWindow::revealAsset (InspectorWindow.cpp, which has the App)
+        void revealAssetInProject(const std::filesystem::path& absolutePath);
 
-        struct ClipDocumentEntry{
-            std::weak_ptr<AnimationClipDocument> document;
-            std::string error;
-            double retryAt = 0.0;
-        };
-        struct ModelClipsEntry{
-            int64_t stamp = 0;
-            double retryAt = 0.0;
-            bool failed = false;
-            std::vector<anim::ModelClipInfo> clips;
-        };
-        struct ClipUsersEntry{
-            double retryAt = 0.0;
-            std::vector<ClipUser> users;
-        };
-        struct BindingsEntry{
-            uint64_t revision = 0;
-            uint64_t hierarchy = 0;
-            uint64_t names = 0;
-            double retryAt = 0.0;
-            ClipValidationReport report;
-        };
-        std::filesystem::path clipCacheProject;
-        std::map<std::string, ClipDocumentEntry> clipDocuments;
-        std::map<std::string, ModelClipsEntry> modelClipsCache;
-        std::map<std::string, ClipUsersEntry> clipUsersCache;
-        std::map<std::string, BindingsEntry> bindingsCache;
-        // a model picked or dropped on a clip entry: the "Model Clip" popup chooses its animation
-        std::string playerSubClipModel;
-        size_t playerSubClipEntry = 0;
-        Entity playerSubClipEntity = NULL_ENTITY;
-        uint32_t playerSubClipScene = 0;
-        bool playerSubClipPopupRequested = false;
-        std::string playerClipError;
-        std::string clipAssetError;
-        std::string modelAssetClip;     // the model asset section's selected sub-clip
-        int clipDragSerial = 0;         // merge key of one drag of a clip setting
-
-        std::shared_ptr<AnimationClipDocument> findClipDocument(const std::string& clip, std::string* error);
-        const std::vector<anim::ModelClipInfo>& modelClipsOf(const std::string& model);
-        std::vector<std::string> modelSubClipNames(const std::string& model);
-        const std::vector<ClipUser>& clipUsersOf(const std::string& clip);
-        const ClipValidationReport& clipBindingsOf(SceneProject* sceneProject, Entity root, const std::string& clip, AnimationClipDocument& document);
         void setPlayerClipEntry(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::string& stored);
-        bool usePlayerClipFile(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::string& file);
+        void removePlayerClipEntry(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
+        bool usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::vector<std::string>& files);
         void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
-        void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index);
+        void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawAnimationPlayerBindings(SceneProject* sceneProject, Entity entity);
         void drawAnimationPlayerStates(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         // the inspected .anim (or model with clips): true when it drew the window's contents
         bool drawInspectedAsset();
         void drawAssetHeader(const char* icon, const std::filesystem::path& asset, const char* kind);
-        void drawClipAsset(const std::filesystem::path& asset);
+        void drawClipAsset(const std::filesystem::path& asset, const std::string& reference);
         void drawModelClipsAsset(const std::filesystem::path& asset, const std::string& model);
         void drawClipDocument(AnimationClipDocument& document, const std::string& reference);
-        void drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the Model section: the clip buttons of an entity animation row that stands for a
+        // sub-clip, and the rows of the sub-clips no entity row shows
+        float modelRowClipButtonsWidth() const;
+        void drawModelRowClipButtons(SceneProject* sceneProject, Entity model, const std::string& subClip, const std::string& entityName);
+        void drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<std::string>& shownInRows);
+        std::vector<std::string> modelSubClipNames(const std::string& model);
         void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
         void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
@@ -403,6 +371,12 @@ namespace jasperengine::editor{
         void endPrefabComponent();
         // The overridden names matching a property row (exact, "*", or nested in it), per entity
         std::vector<std::string> prefabOverridesOf(SceneProject* sceneProject, Entity entity, ComponentType type, const std::string& property) const;
+    public:
+        // The overridden property names a row's Apply/Revert covers: the row's property, the
+        // ones inside it ("clips[0]" covers "clips[0].clip" and its "clips[0].guid") and the one it
+        // is part of
+        static std::vector<std::string> matchingPrefabOverrides(const std::set<std::string>& names, const std::string& property);
+    private:
         bool isPrefabPropertyOverridden(SceneProject* sceneProject, const std::vector<Entity>& entities, ComponentType type, const std::string& property) const;
         // Unity's blue bar at the Inspector's left margin, from y0 to y1
         void drawPrefabOverrideBar(float y0, float y1);
