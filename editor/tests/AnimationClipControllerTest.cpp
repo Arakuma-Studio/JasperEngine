@@ -1513,6 +1513,55 @@ TEST_F(AnimationClipControllerTest, AReparentDuringThePreviewMovesTheRest) {
     expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "still at rest");
 }
 
+// Merge of main (pose suspendActiveForMove, a prop held by a posed hand) with 9.R7: a GameObject
+// the clip does not animate, held by a previewed bone, keeps its rest world when it moves out (the
+// snapshot restores the bones, MoveEntityOrderCmd::prepareReparent recomputes what hangs below
+// them before the move reads its world), and its undo puts it back under the bone at its local
+TEST_F(AnimationClipControllerTest, AHeldPropMovedOutDuringThePreviewKeepsItsRestWorld) {
+    ClipScene s = clipScene();
+    const Entity held = addObject(s, "Held", s.hand, Vector3(0, 0, 1));
+    transformFrame(s);
+    RenderSystem* render = s.scene->getSystem<RenderSystem>().get();
+    render->updateTransform(s.transform(held), held);
+    // Hero (0) > Arm (5, 5, 5) > Hand (0, 1, 0) > Held (0, 0, 1)
+    expectNear(s.transform(held).worldPosition, Vector3(5, 6, 6), "the rest world");
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    // a frame ran: Arm at (1, 1, 0), Hand scaled 1.5, Held's world from the preview
+    transformFrame(s);
+    render->updateTransform(s.transform(held), held);
+    expectNear(s.transform(held).worldPosition, Vector3(1, 2, 1.5f), "previewed world");
+
+    // out of the Hand, next to the Prop (the scene root): its world is kept, the rest's
+    ASSERT_TRUE(history->addCommand(new MoveEntityOrderCmd(project(), s.id, held, s.prop, InsertionType::AFTER)));
+    EXPECT_FALSE(c.isPreviewing()) << "the move stopped the preview first";
+    EXPECT_EQ(s.transform(held).parent, NULL_ENTITY);
+    expectNear(s.transform(held).position, Vector3(5, 6, 6), "the rest world as its new local");
+    expectNear(s.transform(held).scale, Vector3(1, 1, 1), "not the previewed scale");
+
+    // back under the previewed Hand by the undo: from the rest again
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    transformFrame(s);
+    ASSERT_TRUE(history->undo());
+    EXPECT_EQ(s.transform(held).parent, s.hand);
+    expectNear(s.transform(held).position, Vector3(0, 0, 1), "its local under the Hand");
+    expectNear(s.transform(held).scale, Vector3(1, 1, 1), "unscaled");
+    c.stopPreview();
+
+    // a reorder among the same siblings keeps the preview (nothing is recomputed)
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    const Entity other = addObject(s, "Other", s.hand, Vector3(0, 0, -1));
+    ASSERT_TRUE(history->addCommand(new MoveEntityOrderCmd(project(), s.id, other, held, InsertionType::BEFORE)));
+    EXPECT_TRUE(c.isPreviewing()) << "a reorder under the Hand";
+    c.stopPreview();
+}
+
 // I7: a prefab override's Revert (and its undo) while the instance is previewed: the preview
 // restores first, so its stop never writes the old value back over the reverted one
 TEST_F(AnimationClipControllerTest, PrefabRevertAndItsUndoDuringThePreviewKeepTheirValues) {

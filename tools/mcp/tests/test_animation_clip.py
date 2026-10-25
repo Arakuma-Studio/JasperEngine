@@ -612,6 +612,29 @@ async def test_move_copy_delete(ed: Editor):
     ed.check(not state.get("missing"), f"undo relinks: {state}")
 
 
+async def test_scene_undo_relinks_a_moved_clip(ed: Editor):
+    """R8 after a scene undo / redo step: a player entry the step gives back with the path hint of a clip moved
+    since points at the clip by GUID again (the clip timeline resolves after the step: CommandHistory's
+    onSceneModified following beforeStep, since the merge of main dropped afterStep)."""
+    box = await make_cube(ed, "RelinkBox", (6, 0, 0))
+    await edit(ed, clip="assets/anim/relink.anim", create=True,
+               tracks=[{"path": "", "channel": "position", "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 1, 0]}]}])
+    await ed.call("add_component", entity=box, component="animationplayer", values={"animationplayer": {"clips": [{"clip": "assets/anim/relink.anim"}]}})
+    await ed.call("remove_component", entity=box, component="animationplayer")
+    r = await ed.call_raw("move_asset", {"path": "assets/anim/relink.anim", "to": "assets/anim/relink_moved.anim"})
+    ed.check(not r.is_error, r.text)
+    # the removed player comes back with the old path hint: resolved by its GUID right after the step
+    await ed.call("undo", scope="scene")
+    state = (await ed.call("get_animation", entity=box))["players"][0]["states"][0]
+    ed.check_eq(state["clip"], "assets/anim/relink_moved.anim", f"the undone removal points at the moved clip: {state}")
+    ed.check(not state.get("missing"), f"not missing: {state}")
+    await ed.call("redo", scope="scene")
+    await ed.call("undo", scope="scene")
+    state = (await ed.call("get_animation", entity=box))["players"][0]["states"][0]
+    ed.check_eq(state["clip"], "assets/anim/relink_moved.anim", "again after a redo and an undo")
+    await ed.call("delete_entities", entities=[box])
+
+
 # ---------------------------------------------------------------------------- component plumbing (T2a)
 
 async def test_component_values(ed: Editor):
