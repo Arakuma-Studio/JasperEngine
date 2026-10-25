@@ -245,10 +245,10 @@ start scene correct.
 R"JE(
 ## HTML/CSS UI
 Menus, HUDs and dialogs in standard HTML + CSS, logic in Lua (no JavaScript): create_ui_document
-(templates) writes assets/ui/<name>.html, .css and Lua; edit them yourself. inspect_ui (boxes in
+writes assets/ui/<name>.html, .css and Lua; edit them yourself. inspect_ui (boxes in
 canvas px = send_input coords) and assert_ui check layouts; import_files brings fonts, icons and
-videos; effect(<name>, ...) draws GPU effects (list_ui_effects). Edit mode runs no Lua. First read
-jasper://docs/html-ui.
+videos; effect(<name>, ...) draws GPU effects (list_ui_effects, set_ui_effect_time). Edit mode
+runs no Lua. Read jasper://docs/html-ui.
 
 ## Pitfalls
 - Edits made while playing are rolled back when play stops (as in Unity), then offered back
