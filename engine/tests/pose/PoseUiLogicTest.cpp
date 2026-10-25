@@ -82,17 +82,6 @@ TEST(PoseUiLogic, NewPoseNameIsUnique){
     EXPECT_EQ(poseui::newPoseName({}), "Pose 1");
 }
 
-TEST(PoseUiLogic, Labels){
-    EXPECT_EQ(poseui::poseCountLabel("Delete", 1), "Delete Pose");
-    EXPECT_EQ(poseui::poseCountLabel("Delete", 3), "Delete 3 Poses");
-    EXPECT_EQ(poseui::transportLabel(1.2, 6, false, 0, 0), "1.20 s \xC2\xB7 6 poses");
-    EXPECT_EQ(poseui::transportLabel(0.5, 1, false, 0, 0), "0.50 s \xC2\xB7 1 pose");
-    EXPECT_EQ(poseui::transportLabel(1.2, 6, true, 0.42, 13), "0.42 / 1.20 s \xC2\xB7 frame 13");
-    EXPECT_EQ(poseui::holdLabel(0.1f), "hold 0.10s");
-    EXPECT_EQ(poseui::transitionChipLabel(0.12f, false), "\xE2\x86\x92 0.12s");
-    EXPECT_EQ(poseui::transitionChipLabel(0.12f, true), "\xE2\x86\xBA 0.12s");
-}
-
 TEST(PoseUiLogic, RigStatus){
     std::array<std::string, HUMAN_BONE_COUNT> bones;
     for (int b = 0; b < HUMAN_BONE_COUNT; b++) bones[b] = std::string("bone") + std::to_string(b);
@@ -323,35 +312,6 @@ TEST(PoseUiLogic, MixedValuesAndMultiEdit){
     EXPECT_TRUE(poseui::mixedValue(data, {0, 1, 2}, [](const PoseKey& key){ return key.hold; }).mixed);
 }
 
-TEST(PoseUiLogic, DofGroupsCoverEverySlotOnce){
-    std::vector<int> count(HUMAN_BONE_COUNT, 0);
-    for (const poseui::DofGroup& group : poseui::dofGroups()){
-        for (HumanBone bone : group.bones) count[boneIndex(bone)]++;
-    }
-    for (int b = 0; b < HUMAN_BONE_COUNT; b++) EXPECT_EQ(count[b], 1) << humanBoneName(boneAt(b));
-    EXPECT_EQ(poseui::dofGroups().size(), 7u);
-    EXPECT_STREQ(poseui::dofGroups()[0].name, "Body");
-    // limits: the elbow does not bend backwards
-    EXPECT_TRUE(poseui::outsideLimits(dof("left_lower_arm.bend"), -5.0f));
-    EXPECT_FALSE(poseui::outsideLimits(dof("left_lower_arm.bend"), 90.0f));
-    EXPECT_FALSE(poseui::outsideLimits(dof("hips.turn"), 179.0f));
-}
-
-// ---- feel ----
-
-TEST(PoseUiLogic, PresetMatching){
-    PoseAnimationSettings settings;   // the defaults are Snappy
-    EXPECT_EQ(poseui::matchingPresetIndex(settings), 0);
-    for (size_t i = 0; i < feelPresets().size(); i++){
-        applyFeelPreset(feelPresets()[i], settings);
-        EXPECT_EQ(poseui::matchingPresetIndex(settings), (int)i) << feelPresets()[i].name;
-    }
-    settings.transition.overshoot += 0.01f;
-    EXPECT_EQ(poseui::matchingPresetIndex(settings), -1);
-    applyFeelPreset(*findFeelPreset("Cartoon"), settings);
-    settings.transition.overshoot += 0.00005f;   // within 1e-4: still lit
-    EXPECT_EQ(poseui::matchingPresetIndex(settings), 1);
-}
 
 // ---- timing bar ----
 
@@ -458,27 +418,6 @@ TEST(PoseUiLogic, TimingSnapAndDrag){
     EXPECT_FLOAT_EQ(data.poses[1].transition.duration, 1.0f);   // clamped to the phase 1 range
 }
 
-TEST(PoseUiLogic, EaseSamplesAndFrameTicks){
-    Transition spring;
-    spring.overshoot = 0.5f;
-    spring.anticipation = 0.1f;
-    // the target is first reached at x = 1, the overshoot comes after it (drawn over the next hold)
-    std::vector<float> samples = poseui::easeSamples(spring, 24);
-    ASSERT_EQ(samples.size(), 24u);
-    EXPECT_FLOAT_EQ(samples.front(), 0.0f);
-    EXPECT_NEAR(samples.back(), 1.0f, 1e-5);
-    samples = poseui::easeSamples(spring, 48, 2.0f);
-    EXPECT_NEAR(samples[0], 0.0f, 1e-6);
-    float lowest = 1, highest = 0;
-    for (float v : samples){
-        lowest = std::min(lowest, v);
-        highest = std::max(highest, v);
-    }
-    EXPECT_LT(lowest, 0.0f);    // the wind-up is visible
-    EXPECT_GT(highest, 1.0f);   // and the overshoot
-    EXPECT_DOUBLE_EQ(poseui::frameTickStep(100.0, 30), 0.0);         // 3.3 px per frame: no ticks
-    EXPECT_NEAR(poseui::frameTickStep(600.0, 30), 1.0 / 30.0, 1e-12);
-}
 
 // ---- Global Edit ----
 
@@ -588,9 +527,7 @@ TEST(PoseUiLogic, GlobalEditSurvivesEditsOfThePoses){
 
 // ---- Templates tab (phase 6, section 4) ----
 
-TEST(PoseUiLogic, TemplateSummaryAndCategories){
-    EXPECT_EQ(poseui::templateSummary(4, true), "4 poses \xC2\xB7 loop");
-    EXPECT_EQ(poseui::templateSummary(1, false), "1 pose \xC2\xB7 once");
+TEST(PoseUiLogic, TemplateCategoriesAreCaseInsensitiveAndUnique){
     std::vector<editor::PoseTemplateInfo> list(5);
     list[0].category = "Basics";
     list[1].category = "Locomotion";

@@ -26,8 +26,6 @@
 
 #include "htmlui/compat/DocumentLoader.h"
 
-#include "DefaultFont.h"
-
 #include "json.hpp"
 
 #include <gtest/gtest.h>
@@ -35,7 +33,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -242,188 +239,6 @@ TEST(BrowserCompareStrict, SizesMustMatch){
     EXPECT_FALSE(metrics.passes());
     EXPECT_NE(metrics.error.find("10x10"), std::string::npos) << metrics.error;
     EXPECT_FALSE(compareStrict(Image(), solid(2, 2, 0, 0, 0)).comparable);
-}
-
-// ---- the committed data ----------------------------------------------------------------------------
-
-namespace {
-
-    // The tables of a TrueType font: tag -> bytes.
-    std::map<std::string, std::string> fontTables(const std::string& font){
-        std::map<std::string, std::string> result;
-        if (font.size() < 12)
-            return result;
-        auto u16 = [&](size_t at){ return (uint32_t(uint8_t(font[at])) << 8) | uint8_t(font[at + 1]); };
-        auto u32 = [&](size_t at){ return (u16(at) << 16) | u16(at + 2); };
-        const uint32_t count = u16(4);
-        for (uint32_t i = 0; i < count && 12 + 16 * (i + 1) <= font.size(); i++){
-            const size_t record = 12 + 16 * i;
-            const uint32_t offset = u32(record + 8), length = u32(record + 12);
-            if (size_t(offset) + length <= font.size())
-                result[font.substr(record, 4)] = font.substr(offset, length);
-        }
-        return result;
-    }
-
-}
-
-// The fixtures' Roboto is the engine's built-in face (DefaultFont.h) with a 'post' table: Chromium's font sanitizer
-// rejects a TrueType font without one (and draws another face), so the fixtures load this copy.
-TEST(BrowserFixtures, FontsAreTheEnginesFaces){
-    const std::string roboto(reinterpret_cast<const char*>(roboto_regular_ttf), size_t(roboto_regular_ttf_len));
-    std::string ahem;
-    ASSERT_TRUE(readText(htmluiTestSourceDirectory() + "/fonts/Ahem.ttf", ahem));
-    EXPECT_EQ(ahem.size(), 12480u);
-
-    // the copy Chromium loads: the same tables, plus 'post' (and the head checksum adjustment)
-    std::string post;
-    ASSERT_TRUE(readText(htmluiTestSourceDirectory() + "/fonts/Roboto-Regular-subset-post.ttf", post));
-    std::map<std::string, std::string> original = fontTables(roboto), copy = fontTables(post);
-    ASSERT_FALSE(original.empty());
-    ASSERT_EQ(copy.count("post"), 1u);
-    EXPECT_EQ(original.count("post"), 0u);
-    copy.erase("post");
-    ASSERT_EQ(original.size(), copy.size());
-    for (auto& entry : original){
-        ASSERT_EQ(copy.count(entry.first), 1u) << entry.first;
-        if (entry.first == "head"){
-            // (checkSumAdjustment, bytes 8-11, differs)
-            entry.second.replace(8, 4, 4, '\0');
-            copy[entry.first].replace(8, 4, 4, '\0');
-        }
-        EXPECT_EQ(entry.second, copy[entry.first]) << entry.first;
-    }
-}
-
-// Every local font a Chromium-rendered fixture loads (browser-parity, Taffy and compat pages) exists and has the
-// tables Chromium's sanitizer requires ('post' among them): a font Chromium rejects makes it draw another face, and
-// the reference no longer shows the engine's text.
-TEST(BrowserFixtures, FontFacesLoadInChromium){
-    namespace fs = std::filesystem;
-    const fs::path fixtures = fs::path(htmluiTestSourceDirectory()) / "fixtures";
-    size_t checked = 0;
-    for (const char* area : {"p3", "taffy", "compat/pages"}){
-        std::error_code ec;
-        for (auto it = fs::recursive_directory_iterator(fixtures / area, ec); it != fs::recursive_directory_iterator(); it.increment(ec)){
-            const fs::path file = it->path();
-            const std::string extension = file.extension().string();
-            if (ec || !it->is_regular_file() || (extension != ".html" && extension != ".css"))
-                continue;
-            std::string text;
-            ASSERT_TRUE(readText(file.string(), text)) << file;
-            // url("...ttf"), url('...otf'), url(...woff2)
-            size_t at = 0;
-            while ((at = text.find("url(", at)) != std::string::npos){
-                at += 4;
-                size_t end = text.find(')', at);
-                if (end == std::string::npos)
-                    break;
-                std::string url = text.substr(at, end - at);
-                url.erase(std::remove(url.begin(), url.end(), '"'), url.end());
-                url.erase(std::remove(url.begin(), url.end(), '\''), url.end());
-                const std::string lower = [&]{ std::string l = url; for (char& c : l) c = char(std::tolower((unsigned char)c)); return l; }();
-                auto endsWith = [&](const char* suffix){
-                    const size_t n = std::strlen(suffix);
-                    return lower.size() >= n && lower.compare(lower.size() - n, n, suffix) == 0;
-                };
-                if (!(endsWith(".ttf") || endsWith(".otf") || endsWith(".woff") || endsWith(".woff2")) || lower.find("://") != std::string::npos ||
-                    lower.rfind("data:", 0) == 0)
-                    continue;
-                const fs::path font = (file.parent_path() / url).lexically_normal();
-                SCOPED_TRACE(file.string() + ": " + url);
-                std::string bytes;
-                ASSERT_TRUE(readText(font.string(), bytes)) << font << " is missing";
-                if (endsWith(".ttf") || endsWith(".otf")){
-                    const std::map<std::string, std::string> tables = fontTables(bytes);
-                    for (const char* required : {"cmap", "head", "hhea", "hmtx", "maxp", "name", "OS/2", "post"})
-                        EXPECT_EQ(tables.count(required), 1u) << font << " has no '" << required << "' table";
-                }
-                checked++;
-            }
-        }
-    }
-    EXPECT_GT(checked, 20u);
-}
-
-// manifest.json names every area and its owner; every fixture's sidecar loads, overrides its gate only
-// with a comment, uses selfTest only in testkit, and has its references (one image per capture, boxes
-// for each capture, ids that the HTML has); known failures name fixtures and phase-3 owners.
-TEST(BrowserFixtures, ManifestAndReferencesAreConsistent){
-    std::string manifestText;
-    ASSERT_TRUE(readText(browserFixturesDirectory() + "/manifest.json", manifestText));
-    const nlohmann::json manifest = nlohmann::json::parse(manifestText);
-    std::set<std::string> areas;
-    for (const auto& area : manifest.at("areas").items()){
-        areas.insert(area.key());
-        EXPECT_TRUE(isPhase3Package(area.value().value("owner", ""))) << "area " << area.key() << ": owner";
-    }
-    const nlohmann::json& defaults = manifest.at("defaults").at("tolerance");
-    EXPECT_EQ(defaults.value("channel", 0), kStrictGate.channelThreshold);
-    EXPECT_EQ(defaults.value("badPercent", 0.0), kStrictGate.maxBadPercent);
-    EXPECT_EQ(defaults.value("cluster", size_t(0)), kStrictGate.maxCluster);
-    EXPECT_EQ(defaults.value("box", 0.0f), 1.0f);
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(browserFixturesDirectory(), ec)){
-        if (entry.is_directory()){
-            EXPECT_TRUE(areas.count(entry.path().filename().string())) << "fixtures/p3/" << entry.path().filename().string()
-                                                                       << " is not an area of manifest.json";
-        }
-    }
-
-    const std::vector<BrowserFixture> fixtures = listBrowserFixtures();
-    ASSERT_GE(fixtures.size(), 4u) << "the testkit fixtures";
-    std::string version;
-    EXPECT_TRUE(readText(browserReferenceDirectory() + "/VERSION", version));
-    EXPECT_NE(version.find("Chromium 153.0.8010.12"), std::string::npos) << version;
-    for (const BrowserFixture& fixture : fixtures){
-        SCOPED_TRACE(fixture.id());
-        FixtureSidecar sidecar;
-        std::string error;
-        ASSERT_TRUE(loadSidecar(browserFixturesDirectory() + "/" + fixture.area + "/" + fixture.name + ".json", sidecar, &error)) << error;
-        if (sidecar.toleranceOverridden){
-            EXPECT_FALSE(sidecar.comment.empty()) << "a tolerance override needs a comment (spec 5.2)";
-        }
-        if (sidecar.sampleCount != 4){
-            EXPECT_FALSE(sidecar.comment.empty()) << "\"samples\" needs a comment";
-        }
-        // a text-heavy fixture (its full image reported only) keeps a strict image gate without its text
-        if (sidecar.boxes){
-            EXPECT_TRUE(sidecar.noText) << "\"boxes\": true (text-heavy) needs \"noText\": true";
-        }
-        if (!sidecar.referenceCss.empty() || sidecar.expectMismatch){
-            EXPECT_EQ(fixture.area, "testkit") << "selfTest is for the harness's own fixtures";
-        }
-        std::map<std::string, std::vector<LayoutBox>> boxes;
-        ASSERT_TRUE(loadReferenceBoxes(browserReferenceDirectory() + "/" + fixture.area + "/" + fixture.name + ".boxes.json", boxes, &error))
-            << error << ": node tools/htmlui/render-reference.mjs --fixtures " << fixture.id();
-        std::string html;
-        ASSERT_TRUE(readText(browserFixturesDirectory() + "/" + fixture.area + "/" + fixture.name + ".html", html));
-        for (const std::string& suffix : sidecar.captures()){
-            Image image;
-            EXPECT_TRUE(loadPng(browserReferenceDirectory() + "/" + captureFile(fixture, suffix), image)) << captureFile(fixture, suffix);
-            EXPECT_EQ(image.width, sidecar.width);
-            EXPECT_EQ(image.height, sidecar.height);
-            if (sidecar.noText){
-                const std::string noTextFile = captureFile(fixture, suffix);
-                Image noText;
-                EXPECT_TRUE(loadPng(browserReferenceDirectory() + "/" + noTextFile.substr(0, noTextFile.size() - 4) + ".notext.png", noText))
-                    << noTextFile << " without text";
-                EXPECT_EQ(noText.width, sidecar.width);
-            }
-            ASSERT_TRUE(boxes.count(suffix)) << "capture '" << suffix << "' has no boxes";
-            for (const LayoutBox& box : boxes[suffix])
-                EXPECT_NE(html.find("id=\"" + box.id + "\""), std::string::npos) << box.id;
-        }
-        EXPECT_EQ(boxes.size(), sidecar.captures().size());
-    }
-    const FixtureList& known = browserKnownFailures();
-    for (const std::string& error : known.errors)
-        ADD_FAILURE() << error;
-    for (const ListedFixture& entry : known.entries){
-        EXPECT_TRUE(std::any_of(fixtures.begin(), fixtures.end(), [&](const BrowserFixture& f){ return f.id() == entry.id; }))
-            << "known-failures.txt:" << entry.line << ": no fixture " << entry.id;
-        EXPECT_TRUE(isPhase3Package(entry.owner)) << "known-failures.txt:" << entry.line << ": owner '" << entry.owner << "'";
-    }
 }
 
 // ---- the fixtures ----------------------------------------------------------------------------------

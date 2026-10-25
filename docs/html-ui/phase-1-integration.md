@@ -2500,12 +2500,11 @@ global scale would flip every frame. `RmlFontEngine::setRasterScale(Rml::RenderM
 float)` stores the scale per render manager (one per `HtmlUIContext`); `GenerateString`
 uses the scale of the `render_manager` it is given; the glyph cache key already contains
 `rasterPixelSize`, so contexts with different scales share faces and keep separate glyphs.
-The global version bumps only when a context's scale changes. *As implemented:* phase 0's
-`setRasterScale(float)` stays as the default for render managers without their own scale
-(it keeps its phase-0 behaviour of dropping glyphs, and is only called by tests);
-`getRasterScale(const RenderManager&)` reads a context's scale; the per-manager scales are
-dropped by `ReleaseFontResources` (RmlUi's `ReleaseRenderManagers` goes through it, and a
-later manager may reuse an address). `GlyphAtlas` gains a `bytesPerPixel` constructor
+The global version bumps only when a context's scale changes. Unconfigured render
+managers use raster scale 1; `getRasterScale(const RenderManager&)` reads a context's
+own scale. Per-manager scales are dropped by `ReleaseFontResources` (RmlUi's
+`ReleaseRenderManagers` goes through it, and a later manager may reuse an address).
+`GlyphAtlas` gains a `bytesPerPixel` constructor
 argument (1 = R8, 4 = RGBA8) for the effect pages.
 
 ---

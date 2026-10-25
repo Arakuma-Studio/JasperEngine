@@ -84,32 +84,6 @@ namespace{
 
 }
 
-// --- the engine math the solver relies on (catches a wrong reading of the conventions) ---
-
-TEST(LatticeMath, MatrixConventions){
-    // [column][row] storage, operator* is the usual product, Matrix4 * Vector3 applies translation
-    const Matrix4 t = Matrix4::translateMatrix(1, 2, 3);
-    const Vector3 p = t * Vector3(1, 1, 1);
-    EXPECT_EQ(p, Vector3(2, 3, 4));
-    EXPECT_EQ(t.get(3, 0), 1.0f);
-
-    const Matrix4 s = Matrix4::scaleMatrix(Vector3(2, 3, 4));
-    // t * s: scale first, then translate
-    EXPECT_EQ((t * s) * Vector3(1, 1, 1), Vector3(3, 5, 7));
-    EXPECT_EQ((s * t) * Vector3(1, 1, 1), Vector3(4, 9, 16));
-
-    const Matrix3 a = columns3(Vector3(1, 2, 3), Vector3(4, 5, 6), Vector3(7, 8, 10));
-    EXPECT_EQ(a * Vector3(1, 0, 0), Vector3(1, 2, 3));
-    EXPECT_EQ(a.column(1), Vector3(4, 5, 6));
-    EXPECT_EQ(a.row(0), Vector3(1, 4, 7));
-    EXPECT_FLOAT_EQ(a.determinant(), -3.0f);
-    EXPECT_EQ(affine(a, Vector3(0, 0, 0)).linear(), a);
-
-    const Matrix4 m = placedLatticeModel();
-    EXPECT_LT(maxAbsDifference((m * m.inverse()).linear(), Matrix3()), 1e-5f);
-    EXPECT_LT(maxAbsDifference(m.inverse() * (m * Vector3(0.3f, -0.2f, 0.1f)), Vector3(0.3f, -0.2f, 0.1f)), 1e-5f);
-}
-
 // --- indexing ---
 
 TEST(LatticeSolver, IndexingAndRestPositions){

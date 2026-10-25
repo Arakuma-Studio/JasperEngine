@@ -109,9 +109,8 @@ ENV_FLAGS=()
 # the HTML UI performance tests' tolerance on a loaded host (compat_perf_test.cpp)
 [[ -n "${JASPER_HTMLUI_PERF_SLACK:-}" ]] && ENV_FLAGS+=(-e "JASPER_HTMLUI_PERF_SLACK=$JASPER_HTMLUI_PERF_SLACK")
 [[ -n "${HTMLUI_LIVE_NETWORK:-}" ]] && ENV_FLAGS+=(-e "HTMLUI_LIVE_NETWORK=$HTMLUI_LIVE_NETWORK")
-# the UI effects' measuring switches (EffectPerfTest: JASPER_EFFECT_COST_ONLY, JASPER_EFFECT_PERF_*;
-# EffectFluidTest: JASPER_EFFECT_FLUID_PROFILE)
-for name in $(compgen -e | grep '^JASPER_EFFECT_' || true); do ENV_FLAGS+=(-e "$name=${!name}"); done
+# Limit the retained effects cost measurement to selected effects.
+[[ -n "${JASPER_EFFECT_COST_ONLY:-}" ]] && ENV_FLAGS+=(-e "JASPER_EFFECT_COST_ONLY=$JASPER_EFFECT_COST_ONLY")
 
 run() {
     # (the ${a[@]+...} form: an empty array under set -u fails on bash before 4.4, e.g. macOS)

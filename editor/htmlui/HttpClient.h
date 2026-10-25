@@ -60,7 +60,6 @@ namespace jasperengine::editor::htmlui {
         static void setDefaultHostRewrite(std::map<std::string, std::string> rewrites);
         static std::map<std::string, std::string> getDefaultHostRewrite();
         static void setDefaultTimeoutSeconds(int seconds);
-        static int getDefaultTimeoutSeconds();
 
         // The mirror directory of JASPERENGINE_IMPORT_MIRROR, "" when not set
         static std::string mirrorDirectory();

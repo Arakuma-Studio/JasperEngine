@@ -476,7 +476,7 @@ void RmlFontEngine::shape(const FaceHandle& handle, const std::vector<uint32_t>&
 
 float RmlFontEngine::scaleFor(const Rml::RenderManager& renderManager) const{
     auto it = managerScales.find(&renderManager);
-    return (it != managerScales.end()) ? it->second : rasterScale;
+    return (it != managerScales.end()) ? it->second : 1.0f;
 }
 
 int RmlFontEngine::GetStringWidth(Rml::FontFaceHandle handle, Rml::StringView string, const Rml::TextShapingContext& context,
@@ -569,7 +569,7 @@ bool RmlFontEngine::place(PageList& list, int bytesPerPixel, const unsigned char
     // earlier pages first: space left there is used before a new page opens
     for (size_t i = 0; i <= list.size() && i < maxPages; i++){
         if (i == list.size()){
-            if (width + 1 > pageSize || height + 1 > pageSize)
+            if (width + 2 > pageSize || height + 2 > pageSize)
                 break;
             list.emplace_back(new Page(bytesPerPixel));
             makeSource(*list.back());
@@ -577,7 +577,12 @@ bool RmlFontEngine::place(PageList& list, int bytesPerPixel, const unsigned char
 
         Page& page = *list[i];
         int x, y;
-        if (page.atlas.pack(width, height, x, y)){
+        // The atlas adds padding on the right and bottom. Reserve the left and top too:
+        // linear sampling at a page edge otherwise clamps to ink instead of transparent
+        // coverage, so the same glyph changes appearance with the page's packing history.
+        if (page.atlas.pack(width + 1, height + 1, x, y)){
+            ++x;
+            ++y;
             page.atlas.blit(pixels, width, height, x, y);
             page.dirty = true;
             entry.page = (int)i;
@@ -859,19 +864,6 @@ bool RmlFontEngine::reloadFontFile(const std::string& path){
     return true;
 }
 
-void RmlFontEngine::setRasterScale(float scale){
-    if (!(scale > 0.0f) || std::fabs(scale - rasterScale) < 1e-6f)
-        return;
-
-    rasterScale = scale;
-    clearGlyphs();
-    version++;
-}
-
-float RmlFontEngine::getRasterScale() const{
-    return rasterScale;
-}
-
 void RmlFontEngine::setRasterScale(Rml::RenderManager& renderManager, float scale){
     if (!(scale > 0.0f))
         return;
@@ -885,21 +877,4 @@ void RmlFontEngine::setRasterScale(Rml::RenderManager& renderManager, float scal
 
 float RmlFontEngine::getRasterScale(const Rml::RenderManager& renderManager) const{
     return scaleFor(renderManager);
-}
-
-size_t RmlFontEngine::getPageCount() const{
-    return pages.size();
-}
-
-size_t RmlFontEngine::getEffectPageCount() const{
-    return effectPages.size();
-}
-
-size_t RmlFontEngine::getEffectSetCount() const{
-    return effectSets.size();
-}
-
-std::vector<const FontFace*> RmlFontEngine::getChain(Rml::FontFaceHandle handle) const{
-    FaceHandle* face = toHandle(handle);
-    return face ? face->faces : std::vector<const FontFace*>();
 }

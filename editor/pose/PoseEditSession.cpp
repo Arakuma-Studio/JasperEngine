@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
+#include "subsystem/RenderSystem.h"
 #include "pose/HumanoidMapIO.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseIK.h"
@@ -18,6 +19,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
+#include <unordered_map>
 #include <cmath>
 
 using namespace jasperengine;
@@ -48,48 +51,47 @@ void editor::PoseEditSession::suspendActive(){
     }
 }
 
-void editor::PoseEditSession::beginSceneStep(uint32_t sceneId){
+void editor::PoseEditSession::suspendActiveForScene(uint32_t sceneId){
+    // the step runs on the rest bones (commands carry rest values: beforeChannelWrite); the
+    // next update saves what it left as the rest and poses again over it
     PoseEditSession* session = activeSession;
-    if (!session) return;
-    session->stepOpen = false;
-    session->stepBones.clear();
-    if (!session->bound() || session->sceneId() != sceneId || !session->applied || !session->scenePtr) return;
-    for (const SavedBone& saved : session->savedBones){
-        const Transform* transform = session->scenePtr->isEntityCreated(saved.entity) ? session->scenePtr->findComponent<Transform>(saved.entity) : nullptr;
-        session->stepBones.push_back(transform ? StepBone{transform->position, transform->rotation, transform->scale} : StepBone{});
+    if (session && session->bound() && session->sceneId() == sceneId){
+        session->suspend();
     }
-    session->stepOpen = true;
 }
 
-void editor::PoseEditSession::endSceneStep(uint32_t sceneId){
+void editor::PoseEditSession::suspendActiveForMove(uint32_t sceneId, Entity source, Entity oldParent, Entity newParent){
     PoseEditSession* session = activeSession;
-    if (!session || !session->stepOpen) return;
-    session->stepOpen = false;
-    // a command of the step put the bones back to rest itself (its execute suspended): nothing to adopt
-    if (!session->bound() || session->sceneId() != sceneId || !session->applied || !session->scenePtr ||
-            session->stepBones.size() != session->savedBones.size()){
-        session->stepBones.clear();
-        return;
-    }
-    bool changed = false;
-    for (size_t i = 0; i < session->savedBones.size(); i++){
-        SavedBone& saved = session->savedBones[i];
-        const Transform* transform = session->scenePtr->isEntityCreated(saved.entity) ? session->scenePtr->findComponent<Transform>(saved.entity) : nullptr;
-        if (!transform) continue;
-        const StepBone& before = session->stepBones[i];
-        if (transform->position == before.position && transform->rotation == before.rotation && transform->scale == before.scale) continue;
-        // only what the step wrote: that bone's rest is the step's value now
-        saved.position = transform->position;
-        saved.rotation = transform->rotation;
-        saved.scale = transform->scale;
-        saved.localMatrix = Matrix4::translateMatrix(saved.position) * saved.rotation.getRotationMatrix() * Matrix4::scaleMatrix(saved.scale);
-        saved.recompute = true;
-        changed = true;
-    }
-    session->stepBones.clear();
-    if (changed){
-        // the rest as the step left it (restore), the pose again over it on the next update
+    if (!session || !session->bound() || session->sceneId() != sceneId || !session->scenePtr) return;
+    auto underPosed = [session, sceneId](Entity entity){
+        for (int guard = 0; entity != NULL_ENTITY && guard < 4096; guard++){
+            if (session->ownsEntity(sceneId, entity)) return true;
+            const Transform* transform = session->scenePtr->findComponent<Transform>(entity);
+            if (!transform) return false;
+            entity = transform->parent;
+        }
+        return false;
+    };
+    if (session->copiesPosedEntities(sceneId, {source}) || underPosed(oldParent) || underPosed(newParent)){
         session->suspend();
+        // the restore put the bones' rest world back; what hangs below them gets its world from
+        // that rest now, parents first: the moved GameObject with the ones between it and the bone
+        // (the world it keeps), and the new parent's (the world its new local is taken against)
+        std::shared_ptr<RenderSystem> render = session->scenePtr->getSystem<RenderSystem>();
+        auto refreshChain = [&](Entity from){
+            std::vector<Entity> chain;
+            for (Entity entity = from; entity != NULL_ENTITY && chain.size() < 4096 && !session->ownsEntity(sceneId, entity);){
+                chain.push_back(entity);
+                const Transform* transform = session->scenePtr->findComponent<Transform>(entity);
+                entity = transform ? transform->parent : NULL_ENTITY;
+            }
+            if (!render) return;
+            for (auto it = chain.rbegin(); it != chain.rend(); ++it){
+                if (Transform* transform = session->scenePtr->findComponent<Transform>(*it)) render->updateTransform(*transform, *it);
+            }
+        };
+        refreshChain(source);
+        refreshChain(newParent);
     }
 }
 
@@ -865,6 +867,10 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
         // above it restores its snapshot first, so the bones saved below are the scene's
         const PreviewOwner::Token poseToken = PreviewOwner::acquireFor(this, sceneIdValue, modelEntity, scenePtr, "Pose Animation", [this](){ goIdle(); });
         PreviewOwner::setWrites(poseToken, [this](Entity entity){ return ownsEntity(sceneIdValue, entity); });
+        // a step that wrote bones this frame (a keyboard / menu undo runs before this update,
+        // before the transform system), or the preview's restore just now: their matrices
+        // first, so what is saved is consistent
+        refreshPendingTransforms();
         // the bones as the scene has them, put back by restoreBones()
         savedBones.clear();
         for (Entity entity : entities){
@@ -923,6 +929,29 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
     }
 }
 
+void editor::PoseEditSession::refreshPendingTransforms(){
+    std::shared_ptr<RenderSystem> render = scenePtr ? scenePtr->getSystem<RenderSystem>() : nullptr;
+    if (!render || !rigInfoPtr) return;
+    // parents first: a Transform with needUpdate, or under one recomputed, gets the local and
+    // world matrices the transform system would give it (needUpdate stays: it recomputes the same)
+    std::unordered_map<Entity, bool> recomputed;
+    std::function<bool(Entity, int)> refresh = [&](Entity entity, int depth) -> bool{
+        if (entity == NULL_ENTITY || depth > 4096) return false;
+        const auto it = recomputed.find(entity);
+        if (it != recomputed.end()) return it->second;
+        Transform* transform = scenePtr->isEntityCreated(entity) ? scenePtr->findComponent<Transform>(entity) : nullptr;
+        bool update = false;
+        if (transform){
+            const bool parentUpdated = refresh(transform->parent, depth + 1);
+            update = parentUpdated || transform->needUpdate;
+            if (update) render->updateTransform(*transform, entity);
+        }
+        recomputed[entity] = update;
+        return update;
+    };
+    for (Entity bone : rigInfoPtr->boneEntities) refresh(bone, 0);
+}
+
 void editor::PoseEditSession::restoreBones(){
     if (!applied) return;
     // a thread is writing the scene file: it must not see bones change under it (the save
@@ -958,7 +987,7 @@ void editor::PoseEditSession::restoreBones(){
             transform->rotation = saved.rotation;
             transform->scale = saved.scale;
             transform->localMatrix = saved.localMatrix;
-            if ((moved || saved.recompute) && parent){
+            if (moved){
                 transform->modelMatrix = parent->modelMatrix * saved.localMatrix;
                 transform->worldPosition = parent->modelMatrix * saved.position;
                 transform->worldRotation = parent->worldRotation * saved.rotation;

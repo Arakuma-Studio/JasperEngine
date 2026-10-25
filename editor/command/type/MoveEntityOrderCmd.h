@@ -36,6 +36,11 @@ namespace jasperengine::editor{
         PlayerModelLayout::Reloads layoutReloads;
         bool executed = false;
 
+        // before `source` moves from under `fromParent` to under `toParent` keeping its world:
+        // the clip previews and the pose of the branch or of either place restore first, and the
+        // world matrices the move reads are recomputed from that rest
+        void prepareReparent(Scene* scene, Entity fromParent, Entity toParent);
+
     public:
         MoveEntityOrderCmd(Project* project, uint32_t sceneId, Entity source, Entity target, InsertionType type);
 

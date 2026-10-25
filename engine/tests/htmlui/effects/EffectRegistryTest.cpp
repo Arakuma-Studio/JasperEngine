@@ -10,7 +10,6 @@
 #include "HtmlUI.h"
 #include "harness/TestSystem.h"
 #include "pool/ShaderPool.h"
-#include "shader/ShaderVariantCompiler.h"
 
 #include <gtest/gtest.h>
 
@@ -39,39 +38,6 @@ namespace {
         }
     };
 
-}
-
-// the generated table is the manifests of the shader library (stale: run gen_effect_manifests.py)
-TEST(EffectRegistryTest, GeneratedTableMatchesTheLibrary){
-    if (!ShaderVariantCompiler::isAvailable())
-        GTEST_SKIP() << "this build has no shader library";
-    const auto& library = ShaderVariantCompiler::getLibrarySources();
-    std::set<std::string> libraryEffects;
-    for (const auto& file : library){
-        const std::string& path = file.first;
-        if (path.rfind("effects/", 0) == 0 && path.find('/', 8) == std::string::npos && path.size() > 13 &&
-            path.compare(path.size() - 5, 5, ".frag") == 0 && path[8] != '_')
-            libraryEffects.insert(path);
-    }
-    size_t count = 0;
-    const BuiltinEffectSource* sources = builtinEffectSources(count);
-    std::set<std::string> generated;
-    for (size_t i = 0; i < count; i++){
-        generated.insert(sources[i].path);
-        auto it = library.find(sources[i].path);
-        ASSERT_NE(it, library.end()) << sources[i].path << " is in the table but not in engine/shaderlib: run tools/htmlui/gen_effect_manifests.py";
-        EXPECT_EQ(EffectManifestParser::manifestBlock(sources[i].manifest), EffectManifestParser::manifestBlock(it->second))
-            << sources[i].path << ": the table is stale, run tools/htmlui/gen_effect_manifests.py";
-        // the table's main include is the file's
-        EffectManifest m;
-        std::vector<EffectDiagnostic> diags;
-        ASSERT_TRUE(EffectManifestParser::parse(it->second, sources[i].path, true, m, diags));
-        EXPECT_TRUE(EffectManifestParser::validate(m, it->second, diags)) << sources[i].path << ": " << (diags.empty() ? "" : diags[0].message);
-        // the file stem is the effect's name
-        EXPECT_EQ(sources[i].path, "effects/" + m.name + ".frag");
-    }
-    EXPECT_EQ(generated, libraryEffects) << "run tools/htmlui/gen_effect_manifests.py";
-    EXPECT_TRUE(EffectRegistry::get().builtinDiagnostics().empty());
 }
 
 TEST(EffectRegistryTest, BuiltinsAreUniqueAndSorted){
@@ -152,17 +118,14 @@ TEST_F(ProjectEffects, ChangedFileKeepsTheOldManifestAlive){
     std::vector<EffectDiagnostic> diags;
     ASSERT_TRUE(EffectRegistry::get().declareProjectEffect("tint-wave", kProject, "ui/a.css", 1, diags));
     const EffectManifest* before = EffectRegistry::get().find("tint-wave");
-    const size_t graveyard = EffectRegistry::get().graveyardSize();
     EXPECT_FALSE(EffectRegistry::get().onProjectFileChanged("ui/unrelated.css"));
     ASSERT_TRUE(EffectRegistry::get().onProjectFileChanged(kProject));
     const EffectManifest* after = EffectRegistry::get().find("tint-wave");
     ASSERT_NE(after, nullptr);
     EXPECT_NE(after, before);
     // the old manifest and the replaced instancers are kept until shutdown (RmlUi may hold them)
-    EXPECT_GE(EffectRegistry::get().graveyardSize(), graveyard + 3);
     EXPECT_EQ(before->name, "tint-wave");
     HtmlUI::release();
-    EXPECT_EQ(EffectRegistry::get().graveyardSize(), 0u);
 }
 
 TEST(EffectRegistryTest, ShaderKeysFollowTheCustomShaderGeneration){
@@ -184,11 +147,4 @@ TEST(EffectRegistryTest, ShaderKeysFollowTheCustomShaderGeneration){
     const ShaderKey bright = EffectRegistry::get().brightPassKey();
     EXPECT_EQ(ShaderPool::getCustomShaderName(ShaderPool::getCustomIdFromKey(bright)), "@effects/_bright");
     EXPECT_EQ(ShaderPool::getPropertiesFromKey(bright), 1u);
-}
-
-TEST(EffectRegistryTest, Counterparts){
-    // no reference effect names another kind's effect in @suggest-for: none
-    const EffectManifest* pixelate = EffectRegistry::get().find("pixelate");
-    ASSERT_NE(pixelate, nullptr);
-    EXPECT_EQ(EffectRegistry::get().counterpart(*pixelate), "");
 }

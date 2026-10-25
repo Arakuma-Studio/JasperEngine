@@ -4,12 +4,11 @@ Run with:  uv run --no-project --with mcp --with pyyaml python <script>
 
     from harness import Editor, ToolError
 
-    async with Editor() as ed:                       # copy of build/fixture-unity
+    async with Editor(create=True) as ed:            # a new isolated project
         status = await ed.call("editor_status")
         made = await ed.call("create_entity", name="Box", type="box")
         await ed.screenshot(view="game", path="game.png")
 
-    async with Editor(create=True) as ed: ...        # a new empty project
     async with Editor(project="/path/proj") as ed: ...   # a copy of that project
     async with Editor(url="http://127.0.0.1:47615/mcp", token="...") as ed: ...   # attach over HTTP
 
@@ -293,8 +292,6 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
     env["LIBGL_ALWAYS_SOFTWARE"] = "1"
     # the engine's Lua state used off the main thread aborts the editor (LuaBinding::ThreadCheck)
     env.setdefault("JASPER_LUA_THREAD_CHECK", "abort")
-    # the editor's test-only MCP hooks (focus_window pose.viewport, Scene view handle pixels)
-    env.setdefault("JASPER_MCP_TEST_HOOKS", "1")
     # test-only widget locator (editor/util/UIProbe.h): the editor writes the rectangles of the
     # widgets it names there (Editor.ui_rect)
     if ui_probe:

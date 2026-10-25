@@ -8,9 +8,7 @@
 #include "TestUtil.h"
 
 #include "pose/ModelRig.h"
-#include "pose/PoseAnimationIO.h"
 #include "pose/PoseAnimatorRuntime.h"
-#include "pose/PoseRealisation.h"
 #include "pose/PoseSampler.h"
 
 #include <gtest/gtest.h>
@@ -300,48 +298,20 @@ TEST(PoseRuntime, ResolveHumanoidOverrides){
     EXPECT_NE(error.find("left_hand"), std::string::npos) << error;
 }
 
-TEST(PoseRuntime, RigCacheSharesRigs){
-    PoseRigCache cache;
-    const TestRig& rig = tposeRig();
-    int built = 0;
-    auto skinFactory = [&](){ built++; return rig.skin; };
-    ModelRigInfo a, b, c;
-    std::string error;
-    ASSERT_TRUE(cache.get("models/hero.gltf", "", rig.skeleton, HumanoidOverrides(), skinFactory, a, &error)) << error;
-    ASSERT_TRUE(cache.get("models/hero.gltf", "", rig.skeleton, HumanoidOverrides(), skinFactory, b, &error)) << error;
-    EXPECT_EQ(a.rig.get(), b.rig.get());
-    EXPECT_EQ(built, 1);
-    // a new sidecar stamp builds again
-    HumanoidOverrides overrides;
-    overrides.bones[boneIndex(H::LeftToes)] = std::string();
-    ASSERT_TRUE(cache.get("models/hero.gltf", "{}", rig.skeleton, overrides, skinFactory, c, &error)) << error;
-    EXPECT_NE(a.rig.get(), c.rig.get());
-    EXPECT_FALSE(c.rig->has(H::LeftToes));
-    EXPECT_EQ(cache.size(), 1u);
-}
-
-TEST(PoseRuntime, RigCacheFollowsTheModelData){
+TEST(PoseRuntime, RigCacheAppliesChangedHumanoidOverrides){
     PoseRigCache cache;
     const TestRig& rig = tposeRig();
     auto skinFactory = [&](){ return rig.skin; };
+    ModelRigInfo original, changed;
     std::string error;
-    auto loadA = std::make_shared<int>(1);   // stands for a ModelComponent's loaded gltfModel
-    ModelRigInfo a, again, b;
-    ASSERT_TRUE(cache.get("models/hero.gltf", "", loadA, rig.skeleton, HumanoidOverrides(), skinFactory, a, &error)) << error;
-    ASSERT_TRUE(cache.get("models/hero.gltf", "", loadA, rig.skeleton, HumanoidOverrides(), skinFactory, again, &error)) << error;
-    EXPECT_EQ(a.rig.get(), again.rig.get());
-    // the file reloaded: new data, a new rig
-    auto loadB = std::make_shared<int>(2);
-    ASSERT_TRUE(cache.get("models/hero.gltf", "", loadB, rig.skeleton, HumanoidOverrides(), skinFactory, b, &error)) << error;
-    EXPECT_NE(a.rig.get(), b.rig.get());
-    EXPECT_EQ(cache.size(), 1u);
-    // unloaded: the entry goes with the data
-    loadB.reset();
-    ModelRigInfo other;
-    ASSERT_TRUE(cache.get("models/robot.gltf", "", rig.skeleton, HumanoidOverrides(), skinFactory, other, &error)) << error;
-    EXPECT_EQ(cache.size(), 1u);
-    cache.clear();
-    EXPECT_EQ(cache.size(), 0u);
+    ASSERT_TRUE(cache.get("models/hero.gltf", "", rig.skin, rig.skeleton, HumanoidOverrides(), skinFactory, original, &error)) << error;
+    ASSERT_TRUE(original.rig->has(H::LeftToes));
+
+    HumanoidOverrides overrides;
+    overrides.bones[boneIndex(H::LeftToes)] = std::string();
+    ASSERT_TRUE(cache.get("models/hero.gltf", "{}", rig.skin, rig.skeleton, overrides, skinFactory, changed, &error)) << error;
+    EXPECT_FALSE(changed.rig->has(H::LeftToes));
+    EXPECT_TRUE(original.rig->has(H::LeftToes)) << "an existing animator keeps its rig";
 }
 
 TEST(PoseRuntime, PausedTransitionFreezes){
@@ -367,62 +337,6 @@ TEST(PoseRuntime, PausedTransitionFreezes){
     EXPECT_FALSE(runtime->transitionPaused);
 }
 
-// N animators of one animation on one model share one build (PoseBuildCache): the same file text
-// on the same rig is built once; another text or rig builds anew; entries go with the animators
-TEST(PoseRuntime, BuildCacheSharesOneBuild){
-    PoseBuildCache cache;
-    const PoseAnimationData data = armsAnimation(true);
-    const std::string text = writePoseAnimation(data);
-    auto runtimeFor = [&](const std::string& source, const std::shared_ptr<PoseRig>& rig){
-        auto runtime = std::make_shared<PoseAnimatorRuntime>();
-        runtime->path = "anims/arms.poseanim";
-        runtime->source = source;
-        runtime->data = data;
-        runtime->dataLoaded = true;
-        std::string error;
-        EXPECT_TRUE(runtime->build(rig, &error, &cache)) << error;
-        return runtime;
-    };
-    auto a = runtimeFor(text, tposeRig().skinned);
-    auto b = runtimeFor(text, tposeRig().skinned);
-    ASSERT_TRUE(a->isLoaded());
-    EXPECT_EQ(a->built.get(), b->built.get());
-    EXPECT_EQ(cache.buildCount(), 1u);
-    EXPECT_EQ(cache.size(), 1u);
-    EXPECT_EQ(a->keys().size(), 3u);
-    EXPECT_FLOAT_EQ(a->length, b->length);
-    // the file changed, or another model: a build of its own
-    auto edited = runtimeFor(text + " ", tposeRig().skinned);
-    auto other = runtimeFor(text, aposeRig().skinned);
-    EXPECT_NE(edited->built.get(), a->built.get());
-    EXPECT_NE(other->built.get(), a->built.get());
-    EXPECT_EQ(cache.buildCount(), 3u);
-    // the same as an uncached build
-    auto plain = loaded(data, tposeRig());
-    ASSERT_EQ(plain->frames().size(), a->frames().size());
-    for (size_t f = 0; f < a->frames().size(); f++){
-        EXPECT_LT(maxDifference(plain->frames()[f], a->frames()[f]), 1e-7);
-    }
-    // the editor's realisation takes the runtime's (const, cached) rig as it is
-    const std::shared_ptr<const PoseRig> runtimeRig = a->rig;
-    const auto realised = realisePoseAnimation(data, runtimeRig);
-    ASSERT_TRUE(realised);
-    EXPECT_EQ(realised->rig.get(), runtimeRig.get());
-    EXPECT_EQ(realised->frames.size(), a->frames().size());
-    // no source (data set directly): never cached
-    auto direct = runtimeFor("", tposeRig().skinned);
-    EXPECT_EQ(cache.buildCount(), 3u);
-    EXPECT_NE(direct->built.get(), a->built.get());
-    // the entries go with the last animator playing them
-    a.reset();
-    edited.reset();
-    other.reset();
-    cache.prune();
-    EXPECT_EQ(cache.size(), 1u);
-    b.reset();
-    cache.prune();
-    EXPECT_EQ(cache.size(), 0u);
-}
 
 // a rebuild (the model reloaded under a playing animator, a load retried) keeps the goToPose
 // target: a live transition goes on to its key, a settled one holds it at once

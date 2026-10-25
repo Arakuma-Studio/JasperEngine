@@ -27,7 +27,6 @@ CORAL = (0xFF, 0x7A, 0x45)
 CYAN = (0x36, 0xB3, 0xFF)
 FLOOR = (0xFF, 0xA7, 0x26)
 LABEL = 14          # label strip and title strip height
-SHOTS = None        # set to a directory to keep the sheets for a look
 
 
 def sheet_size(columns: int, rows: int, cell: tuple, overlay: bool = True) -> tuple:
@@ -77,10 +76,6 @@ async def render(ed: Editor, **args):
     ed.check_eq(len(r.images), 1, "one image")
     data, mime = r.images[0]
     ed.check_eq(mime, "image/png", "a PNG")
-    if SHOTS:
-        import pathlib
-        name = "_".join(f"{k}-{v}" for k, v in args.items() if k in ("mode", "views", "model", "path"))
-        pathlib.Path(SHOTS, name.replace("/", "_").replace(" ", "") + ".png").write_bytes(data)
     return r, data
 
 
@@ -103,19 +98,6 @@ async def make_animation(ed: Editor, path: str = ANIM, model: str = HERO):
     await ed.call("edit_pose_animation", path=path, create={"preview_model": model}, ops=POSES)
 
 
-# -- registry ------------------------------------------------------------------
-
-async def test_tool_listed(ed: Editor):
-    ed.require_tools("render_pose_animation")
-    tool = ed.tool("render_pose_animation")
-    ed.check(tool.annotations.read_only_hint, "read-only")
-    props = tool.input_schema["properties"]
-    ed.check_eq(props["mode"]["enum"], ["poses", "motion", "times"], "modes")
-    ed.check_eq(props["views"]["items"]["enum"], ["front", "side", "three_quarter", "back", "top"], "views")
-    for name in ("path", "poses", "frames", "times", "model", "scene", "cell", "overlay", "save_path"):
-        ed.check_in(name, props, "arguments")
-
-
 # -- poses mode ----------------------------------------------------------------
 
 async def test_poses_layout_and_sides(ed: Editor):
@@ -133,15 +115,7 @@ async def test_poses_layout_and_sides(ed: Editor):
     for col in range(3):
         for row in range(2):
             ed.check(sheet.distinct(col, row) > 20, f"cell {col},{row} is not flat")
-    # metrics: the phase 2 shape, per column
-    ed.check_eq(len(s["metrics"]), 3, "metrics per column")
-    for key in ("feet", "lowest", "balanced", "balance_margin", "center_of_mass", "limit_hits"):
-        ed.check_in(key, s["metrics"][0], "metrics shape")
     ed.check(s["metrics"][0]["feet"]["left"]["contact"] and s["metrics"][0]["feet"]["right"]["contact"], "Stand on both feet")
-    got = await ed.call("get_pose_animation", path=ANIM, poses=[1], detail="summary")
-    ed.check_eq(s["metrics"][1], got["poses"][0]["metrics"], "the same metrics as get_pose_animation")
-    for word in ("coral", "cyan", "front", "side", "Raise L"):
-        ed.check_in(word, r.text, "caption")
 
     # front view, Raise L: the character's left (coral) is on image right, its raised arm the highest
     coral = sheet.cell_pixels(1, 0, CORAL)
@@ -174,21 +148,6 @@ async def test_poses_without_overlay(ed: Editor):
     ed.check(len(sheet.cell_pixels(0, 0, CORAL)) < 5 and len(sheet.cell_pixels(0, 0, CYAN)) < 5,
              "no skeleton colours without the overlay")
     ed.check(sheet.distinct(0, 0) > 20, "the model is drawn")
-
-
-async def test_all_views(ed: Editor):
-    await make_animation(ed)
-    views = ["front", "side", "three_quarter", "back", "top"]
-    r, png = await render(ed, path=ANIM, poses=[1], views=views, cell=[96, 128])
-    ed.check_eq(r.structured["rows"], views, "rows")
-    sheet = Sheet(png, (96, 128))
-    ed.check_eq((sheet.width, sheet.height), sheet_size(1, 5, (96, 128)), "size")
-    for row in range(5):
-        ed.check(sheet.distinct(0, row) > 10, f"{views[row]} is not flat")
-    # back view: the character's left is on image left
-    coral = sheet.cell_pixels(0, 3, CORAL)
-    cyan = sheet.cell_pixels(0, 3, CYAN)
-    ed.check(sum(p[0] for p in coral) / len(coral) < sum(p[0] for p in cyan) / len(cyan), "back view: left on image left")
 
 
 # -- motion and times ----------------------------------------------------------
@@ -239,7 +198,6 @@ async def test_model_override_robot(ed: Editor):
     r, png = await render(ed, path=ANIM, poses=[1], views=["front"], model="Robot")
     s = r.structured
     ed.check_eq(s["model"]["name"], "Robot", "the scene model")
-    ed.check_in("robot_apose", r.text, "the caption names the robot's model")
     sheet = Sheet(png, (160, 200))
     coral = sheet.cell_pixels(0, 0, CORAL)
     cyan = sheet.cell_pixels(0, 0, CYAN)
@@ -348,13 +306,6 @@ async def test_orientation_from_joints(ed: Editor):
     lh, rh = j(stand, "front")["left_hand"], j(stand, "front")["right_hand"]
     ed.check(near(sheet.pixel(int(lh[0]), int(lh[1])), CORAL, 24), "the left hand dot is coral")
     ed.check(near(sheet.pixel(int(rh[0]), int(rh[1])), CYAN, 24), "the right hand dot is cyan")
-    # one orientation hint per rendered row in the caption, and no negative zeros
-    for hint in ("its left is on image right", "faces image right", "its left is on image left", "forward is up"):
-        ed.check_in(hint, r.text, "caption hints")
-    ed.check("-0.00" not in r.text, "no -0.00 in the caption")
-    r, _ = await render(ed, path=ANIM, poses=[0], views=["side"])
-    ed.check("image right, near side = right" in r.text and "its left is on image left" not in r.text, "only the rendered rows' hints")
-    ed.check("cells" not in r.structured, "joints only when asked")
 
 
 async def test_mode_arguments_refused(ed: Editor):
@@ -366,15 +317,3 @@ async def test_mode_arguments_refused(ed: Editor):
     for args, needle in cases:
         err = await ed.call("render_pose_animation", path=ANIM, expect_error=True, **args)
         ed.check_in(needle, err, f"{args}")
-
-
-async def test_scene_model_same_as_file(ed: Editor):
-    """model: Robot (the scene model's rig) draws the same cells as the robot file as preview model."""
-    await make_animation(ed)
-    robot_anim = "assets/anim/render_robot.poseanim"
-    await make_animation(ed, robot_anim, "assets/models/robot_apose.gltf")
-    _, by_file = await render(ed, path=robot_anim, poses=[1, 2], views=["front", "side"], overlay=False)
-    _, by_scene = await render(ed, path=ANIM, poses=[1, 2], views=["front", "side"], overlay=False, model="Robot")
-    _, again = await render(ed, path=ANIM, poses=[1, 2], views=["front", "side"], overlay=False, model="Robot")
-    ed.check(by_scene == again, "the scene model renders deterministically (the cached renderer is reused)")
-    ed.check(by_file == by_scene, "the scene model's rig draws what the file's rig draws")

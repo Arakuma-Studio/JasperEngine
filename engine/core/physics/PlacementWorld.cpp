@@ -195,7 +195,13 @@ namespace {
     }
 
     bool editorOverlay(Scene* scene, Entity entity) {
+#ifdef JASPERENGINE_EDITOR
         return scene->getSystem<RenderSystem>()->isEditorOverlay(entity);
+#else
+        (void)scene;
+        (void)entity;
+        return false;
+#endif
     }
 
     bool isSkinned(MeshComponent* mesh) {

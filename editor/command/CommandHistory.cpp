@@ -57,7 +57,6 @@ public:
 
 std::function<void(size_t, bool)> editor::CommandHistory::onSceneModified = nullptr;
 std::function<void(size_t)> editor::CommandHistory::beforeStep = nullptr;
-std::function<void(size_t)> editor::CommandHistory::afterStep = nullptr;
 std::function<bool(size_t, editor::CommandHistory::Change)> editor::CommandHistory::beforeChange = nullptr;
 
 editor::CommandHistory::CommandHistory(size_t sceneId): sceneId(sceneId){
@@ -142,9 +141,6 @@ bool editor::CommandHistory::undo(){
         const bool structural = list[index-1]->affectsStructure();
         list[index-1]->undo();
         index--;
-        if (afterStep){
-            afterStep(sceneId);
-        }
 
         if (onSceneModified){
             onSceneModified(sceneId, structural);
@@ -168,9 +164,6 @@ bool editor::CommandHistory::redo(){
         }
         index++;
         list[index-1]->execute();
-        if (afterStep){
-            afterStep(sceneId);
-        }
 
         if (onSceneModified){
             onSceneModified(sceneId, list[index-1]->affectsStructure());

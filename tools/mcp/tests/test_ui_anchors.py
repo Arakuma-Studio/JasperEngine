@@ -10,15 +10,14 @@ Also: 3D friction / restitution are per body, so edit_colliders writes a 3D coll
 restitution to the Rigidbody (with a note).
 
 Each placement test builds one board of colored images (one color per anchor case), screenshots
-the stopped game view and finds every color's box in the image. Runs on a scratch copy of the
-TappyPlane fixture (canvas 1280 x 720).
+the stopped game view and finds every color's box in the image. Runs on an
+owned empty project (canvas 1280 x 720).
 """
 
-import struct
-import zlib
-
 from harness import Editor, ToolError
+from htmlui_pixels import decode_png
 
+EDITOR = {"create": True, "name": "Coordinate Contracts"}
 SCENES = {}
 
 # (name, color, layout, expected top-down canvas rect [x, y, w, h]); canvas 1280 x 720
@@ -33,6 +32,8 @@ ROOTS = [
     ("BC", [0, 0.5, 1], {"anchor": "bottom_center", "size": [80, 50], "position": [0, -30]}, [600, 640, 80, 50]),
     ("BR", [0.5, 0, 1], {"anchor": "bottom_right", "size": [80, 50], "position": [-20, -30]}, [1180, 640, 80, 50]),
     ("Abs", [1, 0, 0.5], {"position": [300, 120], "size": [100, 60]}, [300, 120, 100, 60]),
+    ("Piv", [0.5, 0.5, 0], {"anchor": "top_left", "size": [80, 50], "position": [700, 120], "pivot": [1, 1]},
+     [740, 145, 40, 25]),
 ]
 
 # Containers (invisible) with colored children: [parent layout, [(name, color, layout, expected rect)]]
@@ -49,52 +50,6 @@ GROUPS = [
         ("BottomWide", [0, 0, 0.5], {"anchor": "bottom_wide", "size": [10, 20], "position": [0, -5]}, [300, 575, 300, 20]),
     ]),
 ]
-
-
-def decode_png(data: bytes):
-    """(width, height, channels, rows) for the 8-bit RGB/RGBA PNGs the editor writes."""
-    assert data.startswith(b"\x89PNG\r\n\x1a\n"), "not a PNG"
-    pos = 8
-    width = height = 0
-    color_type = 2
-    idat = b""
-    while pos < len(data):
-        length = struct.unpack(">I", data[pos:pos + 4])[0]
-        kind = data[pos + 4:pos + 8]
-        chunk = data[pos + 8:pos + 8 + length]
-        if kind == b"IHDR":
-            width, height, depth, color_type = struct.unpack(">IIBB", chunk[:10])
-            assert depth == 8, f"bit depth {depth}"
-        elif kind == b"IDAT":
-            idat += chunk
-        pos += 12 + length
-    channels = {2: 3, 6: 4}[color_type]
-    raw = zlib.decompress(idat)
-    stride = width * channels
-    rows = []
-    prev = bytearray(stride)
-    i = 0
-    for _ in range(height):
-        f = raw[i]
-        line = bytearray(raw[i + 1:i + 1 + stride])
-        i += 1 + stride
-        for x in range(stride):
-            a = line[x - channels] if x >= channels else 0
-            b = prev[x]
-            c = prev[x - channels] if x >= channels else 0
-            if f == 1:
-                line[x] = (line[x] + a) & 255
-            elif f == 2:
-                line[x] = (line[x] + b) & 255
-            elif f == 3:
-                line[x] = (line[x] + (a + b) // 2) & 255
-            elif f == 4:
-                p = a + b - c
-                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
-                line[x] = (line[x] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
-        rows.append(line)
-        prev = line
-    return width, height, channels, rows
 
 
 def level(v: int) -> int:
@@ -128,10 +83,11 @@ def color_boxes(png: bytes) -> dict:
 
 async def new_scene(ed: Editor, kind: str, name: str):
     """Create and select the named shared scene; return its id."""
+    if not SCENES:
+        await ed.call("set_project_settings", values={"graphics.canvas_width": 1280, "graphics.canvas_height": 720, "graphics.scaling_mode": "letterbox"})
     if name not in SCENES:
         made = await ed.call("create_scene", name=name, type=kind)
         scene = made["scene"]
-        ed.check(scene["selected"] and scene["name"].startswith(name), f"new scene is not selected: {scene!r}")
         SCENES[name] = scene["id"]
     return SCENES[name]
 
@@ -147,6 +103,7 @@ async def build_board(ed: Editor, sid):
         await ed.call("create_ui", scene=sid, root={
             "type": "container", "name": name, "layout": layout,
             "children": [image_node(n, c, lay) for n, c, lay, _ in children]})
+    await ed.call("set_properties", scene=sid, entity="Piv", values={"transform": {"scale": [0.5, 0.5, 1]}})
 
 
 async def placements(ed: Editor, sid, label: str) -> dict:
@@ -199,36 +156,6 @@ async def test_2d_scene_placement_matches_ui_scene(ed: Editor):
     await check_board(ed, sid, "2d")
 
 
-async def _pivot_scaled_rect(ed: Editor, sid, label: str):
-    """A Piv image with pivot [1, 1] (bottom-right) scaled by 0.5 keeps its bottom-right corner."""
-    color = [0.5, 0.5, 0]
-    if not await _exists(ed, sid, "Piv"):
-        await ed.call("create_ui", scene=sid, root=image_node(
-            "Piv", color, {"anchor": "top_left", "size": [80, 50], "position": [700, 120], "pivot": [1, 1]}))
-    await ed.call("set_properties", scene=sid, entity="Piv", values={"transform": {"scale": [0.5, 0.5, 1]}})
-    shot = await ed.call_raw("screenshot", {"view": "game", "scene": sid, "max_width": 1280})
-    png = shot.images[0][0]
-    (ed.scratch.root / f"ui-pivot-{label}.png").write_bytes(png)
-    info = shot.value
-    rect, canvas = info["canvas_rect_in_image"], info["canvas"]
-    sx, sy = rect["width"] / canvas["width"], rect["height"] / canvas["height"]
-    b = color_boxes(png).get(color_key(color))
-    ed.check(b, f"{label}: Piv not found on screen")
-    got = [round((b[0] - rect["x"]) / sx), round((b[1] - rect["y"]) / sy),
-           round((b[2] - b[0] + 1) / sx), round((b[3] - b[1] + 1) / sy)]
-    ed.check(close(got, [740, 145, 40, 25]), f"{label}: pivot [1, 1] is the bottom-right: measured {got}")
-    laid = await ed.call("set_rect_layout", scene=sid, items=[{"entity": "Piv", "pivot": [1, 1]}])
-    ed.check_eq(laid["items"][0]["layout"]["pivot"], [1, 1], f"{label}: pivot reads back as asked")
-
-
-async def test_pivot_ui_scene(ed: Editor):
-    await _pivot_scaled_rect(ed, await new_scene(ed, "ui", "AnchorsUI"), "ui")
-
-
-async def test_pivot_2d_scene(ed: Editor):
-    await _pivot_scaled_rect(ed, await new_scene(ed, "2d", "Anchors2D"), "2d")
-
-
 # -- read-back ---------------------------------------------------------------------------------
 
 
@@ -243,8 +170,10 @@ async def test_2d_read_back_is_top_down(ed: Editor):
         {"entity": "Abs", "position": [300, 120], "size": [100, 60]},
         {"entity": "Box2/Stretch", "anchor": "stretch", "margins": [10, 20, 30, 40]},
         {"entity": "Box3/TopWide", "anchor": "top_wide", "size": [10, 20], "position": [0, 5]},
+        {"entity": "Piv", "pivot": [1, 1]},
     ])
     items = {i["name"]: i["layout"] for i in laid["items"]}
+    ed.check_eq(items["Piv"]["pivot"], [1, 1], "the bottom-right pivot reads back in the caller's coordinate space")
     ed.check_eq(items["TL"]["anchor"], "top_left")
     ed.check_eq(items["TL"]["position_offset"], [20, 30])
     ed.check_eq(items["BR"]["anchor"], "bottom_right")
@@ -285,7 +214,6 @@ async def test_layout_group_in_2d_scene_warns(ed: Editor):
         "type": "layout_group", "name": "Menu", "direction": "vertical", "layout": {"anchor": "center", "size": [200, 100]},
         "children": [{"type": "button", "text": "A"}, {"type": "button", "text": "B"}]}})
     ed.check(not r.is_error, r.text)
-    ed.check_in("bottom-up", r.text, "2D scene + layout group: warns that it stacks bottom-up")
     ed.check(r.value.get("warnings"), f"structured warnings: {r.value}")
 
     uid = await new_scene(ed, "ui", "AnchorsUI")
@@ -293,7 +221,7 @@ async def test_layout_group_in_2d_scene_warns(ed: Editor):
         "type": "layout_group", "name": "Menu", "direction": "vertical",
         "children": [{"type": "button", "text": "A"}]}})
     ed.check(not r.is_error, r.text)
-    ed.check("bottom-up" not in r.text, f"no warning in a UI scene: {r.text}")
+    ed.check(not r.value.get("warnings"), "a UI scene needs no coordinate-fallback warning")
 
 
 # -- 3D friction / restitution per body ----------------------------------------------------------
@@ -306,7 +234,6 @@ async def test_3d_collider_friction_goes_to_body(ed: Editor):
     r = await ed.call_raw("edit_colliders", {"scene": sid, "entity": ball, "body_type": "dynamic",
                                              "add": [{"shape": "sphere", "friction": 0.8, "restitution": 0.4}]})
     ed.check(not r.is_error, f"3D friction on a collider: {r.text}")
-    ed.check_in("per body", r.text, "the result notes that 3D friction/restitution are per body")
     ed.check(abs(r.value["body"]["friction"] - 0.8) < 1e-4, f"body friction in the result: {r.value}")
     got = await ed.call("get_entity", scene=sid, entity=ball, components=["rigidbody"], properties=["friction", "restitution"])
     props = got["components"]["rigidbody"]

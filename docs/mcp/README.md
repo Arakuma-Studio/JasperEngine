@@ -167,9 +167,9 @@ The repository root has a `.mcp.json` that runs the editor from your build outpu
   "args": ["mcp", "--project", "${JASPER_PROJECT:-/path/to/your/test/project}", "--headless"]}}}
 ```
 
-Set `JASPER_PROJECT` to a throwaway project before you start Claude Code in the repository,
-for example a copy of `build/fixture-unity`, or a folder made with `--create`. The agent edits
-and saves that project, so never point it at the fixture itself. The path is resolved from
+Set `JASPER_PROJECT` to a throwaway project created with `--create` before you start
+Claude Code in the repository. The agent edits and saves that project, so use a copy
+when starting from a shared fixture. The path is resolved from
 the directory where you start the client, so start it at the repository root (or set
 `JASPER_EDITOR` to an absolute path).
 

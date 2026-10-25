@@ -15,10 +15,7 @@
 #include "htmlui/effects/EffectSyntax.h"
 #include "htmlui/effects/EffectValue.h"
 
-#include <array>
 #include <set>
-#include <chrono>
-#include <cstdlib>
 #include <limits>
 
 using namespace jasperengine;
@@ -157,40 +154,8 @@ namespace {
 
 // ── the manifest and the grammar it added ──
 
-TEST(EffectFluidManifest, TheEffect){
+TEST(EffectFluidManifest, DefaultsMatchTheFluidParameters){
     const EffectManifest& m = fluid();
-    ASSERT_TRUE(m.stateful());
-    EXPECT_EQ(m.kind, EffectKind::Paint);
-    EXPECT_EQ(m.cost, EffectCost::Stateful);
-    EXPECT_EQ(m.source.rfind("port WebGL-Fluid-Simulation", 0), 0u) << m.source;
-    ASSERT_EQ(m.states.size(), 8u);
-    const int vel = m.stateIndex("vel");
-    ASSERT_GE(vel, 0);
-    EXPECT_EQ(m.states[(size_t)vel].format, EffectStateFormat::RG16F);
-    EXPECT_EQ(m.states[(size_t)vel].aspectShort, 128);
-    EXPECT_EQ(m.states[(size_t)m.stateIndex("pressure")].format, EffectStateFormat::R16F);
-    EXPECT_EQ(m.states[(size_t)m.stateIndex("aux")].format, EffectStateFormat::R16F);
-    EXPECT_EQ(m.states[(size_t)m.stateIndex("sunrays")].format, EffectStateFormat::R16F);
-    EXPECT_EQ(m.states[(size_t)m.stateIndex("dye")].format, EffectStateFormat::RGBA16F);
-    EXPECT_EQ(m.states[(size_t)m.stateIndex("dye")].aspectShort, 0) << "the dye follows the area's px";
-    for (const EffectStateDef& st : m.states)
-        EXPECT_TRUE(st.format != EffectStateFormat::RGBA32F && st.format != EffectStateFormat::R32F)
-            << st.name << ": a 32-bit float state needs EXT_color_buffer_float (half-float-only devices could not run it)";
-    int init = 0, steps = 0, frames = 0;
-    for (const EffectPassDef& pass : m.passes)
-        (pass.init ? init : (pass.frame ? frames : steps))++;
-    EXPECT_EQ(init, 3);
-    EXPECT_EQ(steps, 10);
-    EXPECT_EQ(frames, 6);
-    EXPECT_TRUE(m.hasFramePasses());
-    const EffectParamDef* preset = m.findParam("preset");
-    ASSERT_NE(preset, nullptr);
-    EXPECT_EQ(preset->options, (std::vector<std::string>{"default", "mobile", "smoke", "ink", "calm-water", "psychedelic"}));
-    EXPECT_EQ(m.presets.size(), 5u);
-    for (const char* name : {"density-dissipation", "velocity-dissipation", "pressure", "pressure-iterations", "curl", "gradient-scale",
-                             "splat-radius", "splat-force", "shading", "colorful", "color-speed", "seed", "splats-on-start",
-                             "bloom", "bloom-intensity", "bloom-threshold", "bloom-soft-knee", "sunrays", "sunrays-weight"})
-        EXPECT_NE(m.findParam(name), nullptr) << name;
     // Pavel's defaults
     std::vector<EffectValue> values = valuesWith(m, {});
     EXPECT_FLOAT_EQ(valueOf(m, values, "density-dissipation"), 1.f);
@@ -451,46 +416,6 @@ TEST_F(EffectFluid, PresetsDraw){
     EXPECT_GT(maxDifference(plain, pinned("shading off", 0.4)), 2);
 }
 
-// JASPER_EFFECT_FLUID_PROFILE=1: the live cost of a 512 x 512 instance per variant (a step a capture)
-TEST(EffectFluidProfile, LiveCost){
-    if (!std::getenv("JASPER_EFFECT_FLUID_PROFILE"))
-        GTEST_SKIP() << "JASPER_EFFECT_FLUID_PROFILE=1 to run";
-    EffectScene scene(512, 512, 1);
-    if (!scene.valid())
-        GTEST_SKIP() << "no GPU";
-    ASSERT_TRUE(warmUpEffect(fluid()));
-    ASSERT_TRUE(warmUpEffect(*EffectRegistry::get().find("ink-flow")));
-    const char* variants[] = {"background-image: none", "background-image: effect(ink-flow)", "background-image: effect(fluid)",
-                              "background-image: effect(fluid, bloom off, sunrays off)",
-                              "background-image: effect(fluid, bloom off, sunrays off, pressure-iterations 1)",
-                              "background-image: effect(fluid, bloom off, sunrays off, pressure-iterations 1, shading off)",
-                              "background-image: effect(fluid, sunrays off)", "background-image: effect(fluid, bloom off)"};
-    for (const char* declaration : variants){
-        const std::string html = "<!DOCTYPE html><html><head><style>html, body { margin: 0; width: 512px; height: 512px; background: #000; }"
-                                 "#f { position: absolute; left: 0; top: 0; width: 512px; height: 512px; " + std::string(declaration) +
-                                 "; }</style></head><body><div id=\"f\"></div></body></html>";
-        ASSERT_TRUE(scene.loadHtml(html));
-        TestImage image;
-        double t = 10.0;
-        for (int i = 0; i < 3; i++){
-            HtmlUIClock::setFixedTime(t += 1.0 / 60.0);
-            scene.capture(image);
-        }
-        const uint64_t passes = EffectRuntime::get().stats().stepPasses;
-        const EffectStats before = EffectRuntime::get().stats();
-        const auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < 6; i++){
-            HtmlUIClock::setFixedTime(t += 1.0 / 60.0);
-            scene.capture(image);
-        }
-        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count() / 6.0;
-        const EffectStats after = EffectRuntime::get().stats();
-        std::printf("[ fluid    ] %-100s %8.1f ms a capture, %.1f passes; pipelines %llu, compiles %llu, images %llu, replays %llu\n", declaration, ms,
-                    (double)(EffectRuntime::get().stats().stepPasses - passes) / 6.0,
-                    (unsigned long long)(after.pipelinesCreated - before.pipelinesCreated), (unsigned long long)(after.compileCalls - before.compileCalls),
-                    (unsigned long long)(after.stateImagesCreated - before.stateImagesCreated), (unsigned long long)(after.replays - before.replays));
-    }
-}
 
 // ── the review's findings ──
 

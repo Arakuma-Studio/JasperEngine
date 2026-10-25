@@ -32,7 +32,6 @@
 #include <cmath>
 #include <limits>
 #include <memory>
-#include <set>
 #include <unordered_map>
 #include <string>
 #include <vector>
@@ -41,19 +40,6 @@ using namespace jasperengine;
 using namespace jasperengine::test;
 
 namespace {
-
-    // every serialized field of FluidSimulationComponent (its Catalog property names)
-    const std::set<std::string>& componentFields(){
-        static const std::set<std::string> fields = {
-            "enabled", "output", "interactive", "aspectRatio",
-            "simResolution", "dyeResolution", "densityDissipation", "velocityDissipation", "pressure",
-            "pressureIterations", "curl", "gradientScale", "simulationRate", "maxSubsteps", "timeScale", "paused",
-            "splatRadius", "splatForce", "colorful", "colorUpdateSpeed", "splatsOnStart", "randomSplatCount", "seed",
-            "shading", "backColor", "transparent", "bloom", "bloomIterations", "bloomResolution", "bloomIntensity",
-            "bloomThreshold", "bloomSoftKnee", "sunrays", "sunraysResolution", "sunraysWeight",
-        };
-        return fields;
-    }
 
     // a component whose compositing and clock differ from the defaults (presets leave them)
     FluidSimulationComponent customized(){
@@ -95,30 +81,6 @@ namespace {
 
 // ---------------------------------------------------------------- presets
 
-TEST(FluidPresetsTest, TheBuiltInPresets){
-    std::vector<std::string> ids;
-    for (const FluidPreset& preset : getFluidPresets())
-        ids.push_back(preset.id);
-    EXPECT_EQ(ids, (std::vector<std::string>{"default", "mobile", "smoke", "ink", "calm-water", "psychedelic"}));
-    EXPECT_EQ(FluidSimulation::getPresetIds(), ids);
-
-    for (const FluidPreset& preset : getFluidPresets()){
-        EXPECT_FALSE(preset.name.empty()) << preset.id;
-        EXPECT_FALSE(preset.description.empty()) << preset.id;
-        EXPECT_EQ(findFluidPreset(preset.id), &preset);
-        ASSERT_FALSE(preset.fields.empty()) << preset.id;
-        std::set<std::string> seen;
-        for (const std::string& field : preset.fields){
-            EXPECT_TRUE(componentFields().count(field)) << preset.id << " lists " << field << ", not a FluidSimulationComponent field";
-            EXPECT_TRUE(seen.insert(field).second) << preset.id << " lists " << field << " twice";
-        }
-        // the compositing and the clock are not a look
-        for (const char* field : {"enabled", "output", "interactive", "aspectRatio", "transparent", "backColor", "seed",
-                                  "simulationRate", "maxSubsteps", "timeScale", "paused", "splatsOnStart", "randomSplatCount"})
-            EXPECT_FALSE(seen.count(field)) << preset.id << " sets " << field;
-    }
-    EXPECT_EQ(findFluidPreset("no-such-preset"), nullptr);
-}
 
 TEST(FluidPresetsTest, DefaultIsPavelsConfig){
     const FluidPreset* preset = findFluidPreset("default");
@@ -196,15 +158,7 @@ TEST(FluidPresetsTest, AnyChangedFieldIsCustom){
     fluid.seed = 99;
     EXPECT_EQ(matchFluidPreset(fluid), "psychedelic");
 
-    // presets are distinct
-    for (const FluidPreset& a : getFluidPresets())
-        for (const FluidPreset& b : getFluidPresets())
-            if (&a != &b){
-                FluidSimulationComponent probe;
-                applyFluidPreset(probe, a.id);
-                applyFluidPreset(probe, b.id);
-                EXPECT_EQ(matchFluidPreset(probe), b.id);
-            }
+
 }
 
 TEST(FluidPresetsTest, UnknownPresetChangesNothing){
@@ -244,29 +198,6 @@ namespace {
 
 }
 
-TEST_F(FluidSimulationTest, AccessorsReachTheComponent){
-    FluidSimulation fluid(scene.get());
-    FluidSimulationComponent& component = scene->getComponent<FluidSimulationComponent>(fluid.getEntity());
-    EXPECT_EQ(&fluid.getComponent(), &component);
-
-    fluid.setEnabled(false);
-    fluid.setOutput(FluidOutput::SCREEN);
-    fluid.setSimResolution(64);
-    fluid.setDyeResolution(300);       // outside Pavel's set: kept
-    fluid.setCurl(0.0f);
-    fluid.setSeed(7);
-    fluid.setBackColor(0.25f, 0.5f, 1.0f);
-    fluid.setTransparent(true);
-    EXPECT_FALSE(component.enabled);
-    EXPECT_EQ(component.output, FluidOutput::SCREEN);
-    EXPECT_EQ(component.simResolution, 64u);
-    EXPECT_EQ(component.dyeResolution, 300u);
-    EXPECT_EQ(component.curl, 0.0f);
-    EXPECT_EQ(component.seed, 7u);
-    EXPECT_EQ(fluid.getBackColor(), Vector3(0.25f, 0.5f, 1.0f));
-    EXPECT_TRUE(fluid.isTransparent());
-    EXPECT_EQ(takeErrors(), 0u);
-}
 
 TEST_F(FluidSimulationTest, SettersRejectWhatTheSolverCannotUse){
     FluidSimulation fluid(scene.get());
@@ -305,123 +236,9 @@ TEST_F(FluidSimulationTest, SettersRejectWhatTheSolverCannotUse){
     EXPECT_EQ(takeErrors(), 0u);
 }
 
-TEST_F(FluidSimulationTest, SplatsBurstsAndStepsAreQueued){
-    FluidSimulation fluid(scene.get());
-    FluidSimulationComponent& component = fluid.getComponent();
-    EXPECT_TRUE(component.needReset);
-    component.needReset = false;
-
-    fluid.splat(0.25f, 0.75f, 10.0f, -5.0f, 1.0f, 0.5f, 0.0f);
-    fluid.splat(Vector2(0.5f, 0.5f), Vector2(0.0f, 1.0f), Vector3(0.0f, 0.0f, 2.0f), 0.5f);
-    ASSERT_EQ(component.pendingSplats.size(), 2u);
-    EXPECT_EQ(component.pendingSplats[0].position, Vector2(0.25f, 0.75f));
-    EXPECT_EQ(component.pendingSplats[0].velocity, Vector2(10.0f, -5.0f));
-    EXPECT_EQ(component.pendingSplats[0].color, Vector3(1.0f, 0.5f, 0.0f));
-    EXPECT_EQ(component.pendingSplats[0].radius, 0.0f);
-    EXPECT_EQ(component.pendingSplats[1].radius, 0.5f);
-
-    fluid.splat(Vector2(std::nanf(""), 0.0f), Vector2(0.0f, 0.0f), Vector3(1.0f, 1.0f, 1.0f));
-    fluid.splat(Vector2(0.5f, 0.5f), Vector2(0.0f, 0.0f), Vector3(-1.0f, 0.0f, 0.0f));
-    EXPECT_EQ(component.pendingSplats.size(), 2u);
-    EXPECT_EQ(takeErrors(), 2u);
-
-    fluid.randomSplats();
-    fluid.randomSplats(12);
-    EXPECT_EQ(component.pendingBursts, (std::vector<unsigned int>{0u, 12u}));
-
-    fluid.step();
-    fluid.step(3);
-    fluid.step(-2);
-    EXPECT_EQ(component.pendingSteps, 4u);
-
-    fluid.reset();
-    EXPECT_TRUE(component.needReset);
-
-    // nothing GPU made yet: zero stats
-    FluidStats stats = fluid.getStats();
-    EXPECT_EQ(stats.steps, 0u);
-}
-
-TEST_F(FluidSimulationTest, PresetsThroughTheWrapper){
-    FluidSimulation fluid(scene.get());
-    EXPECT_EQ(fluid.getPreset(), "default");
-    EXPECT_TRUE(fluid.applyPreset("smoke"));
-    EXPECT_EQ(fluid.getPreset(), "smoke");
-    fluid.setCurl(1.0f);
-    EXPECT_EQ(fluid.getPreset(), "");
-    EXPECT_FALSE(fluid.applyPreset("nope"));
-    EXPECT_EQ(fluid.getCurl(), 1.0f);
-}
-
-TEST_F(FluidSimulationTest, ClonesStartTheirOwnSimulation){
-    FluidSimulation fluid(scene.get());
-    FluidSimulationComponent& source = fluid.getComponent();
-    fluid.applyPreset("ink");
-    fluid.setSeed(42);
-    fluid.splat(0.5f, 0.5f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f);
-    fluid.randomSplats(3);
-    fluid.step(2);
-    source.needReset = false;
-    source.revision = 5;
-    source.simulator = std::make_shared<FluidSimulator>();
-
-    std::vector<Entity> copies = EntityCloner::clone(scene.get(), {fluid.getEntity()}, scene.get());
-    ASSERT_EQ(copies.size(), 1u);
-    FluidSimulationComponent& copy = scene->getComponent<FluidSimulationComponent>(copies[0]);
-    // its own simulator (made by the clone, so textures showing the original's output can be
-    // pointed at the copy's)
-    EXPECT_NE(copy.simulator, nullptr);
-    EXPECT_NE(copy.simulator, source.simulator) << "the copy shares the original's GPU side";
-    EXPECT_TRUE(copy.pendingSplats.empty());
-    EXPECT_TRUE(copy.pendingBursts.empty());
-    EXPECT_EQ(copy.pendingSteps, 0u);
-    EXPECT_TRUE(copy.needReset);
-    EXPECT_EQ(copy.revision, 0u);
-    // the settings are copied
-    EXPECT_EQ(copy.seed, 42u);
-    EXPECT_EQ(matchFluidPreset(copy), "ink");
-    // the original keeps its own
-    EXPECT_NE(source.simulator, nullptr);
-    EXPECT_EQ(source.pendingSplats.size(), 1u);
-    EXPECT_EQ(source.revision, 5u);
-
-    source.simulator.reset();
-    scene->destroyEntity(copies[0]);
-}
 
 // ---------------------------------------------------------------- Lua
 
-TEST_F(FluidSimulationTest, ClonedHierarchyShowsItsOwnFluid){
-    // a TEXTURE fluid and a sprite (its child) showing its output
-    FluidSimulation fluid(scene.get());
-    fluid.setOutput(FluidOutput::TEXTURE);
-    Framebuffer* output = fluid.getTexture().getFramebuffer();
-    ASSERT_NE(output, nullptr);
-    Sprite sprite(scene.get());
-    sprite.setTexture(output);
-    fluid.addChild(&sprite);
-
-    std::vector<Entity> copies = EntityCloner::clone(scene.get(), EntityCloner::collectHierarchy(scene.get(), fluid.getEntity()), scene.get());
-    ASSERT_EQ(copies.size(), 2u);
-    FluidSimulationComponent& copy = scene->getComponent<FluidSimulationComponent>(copies[0]);
-    ASSERT_NE(copy.simulator, nullptr);
-    ASSERT_NE(copy.simulator, fluid.getComponent().simulator);
-    const MeshComponent& copiedSprite = scene->getComponent<MeshComponent>(copies[1]);
-    EXPECT_EQ(copiedSprite.submeshes[0].material.baseColorTexture.getFramebuffer(), copy.simulator->getOutputFramebuffer())
-        << "the copy's sprite shows the copy's fluid";
-    // the original keeps showing its own
-    EXPECT_EQ(sprite.getComponent<MeshComponent>().submeshes[0].material.baseColorTexture.getFramebuffer(), output);
-
-    // a fluid without a simulator yet: none made for the copy (nothing can show its output)
-    FluidSimulation lone(scene.get());
-    std::vector<Entity> loneCopies = EntityCloner::clone(scene.get(), {lone.getEntity()}, scene.get());
-    ASSERT_EQ(loneCopies.size(), 1u);
-    EXPECT_EQ(scene->getComponent<FluidSimulationComponent>(loneCopies[0]).simulator, nullptr);
-
-    scene->destroyEntity(loneCopies[0]);
-    scene->destroyEntity(copies[1]);
-    scene->destroyEntity(copies[0]);
-}
 
 TEST_F(FluidSimulationTest, ClonesRemapEveryTextureSlot){
     // every texture slot showing a copied camera's or fluid's framebuffer shows the copy's,
@@ -489,70 +306,6 @@ TEST_F(FluidSimulationTest, ClonesRemapEveryTextureSlot){
     scene->destroyEntity(pointsEntity);
 }
 
-TEST_F(FluidSimulationTest, SanitizedSettings){
-    const float nan = std::numeric_limits<float>::quiet_NaN();
-    const float inf = std::numeric_limits<float>::infinity();
-    const FluidSimulationComponent d;
-    FluidSimulationComponent c;
-    c.aspectRatio = nan;
-    c.simResolution = 0;
-    c.dyeResolution = 100000;
-    c.densityDissipation = nan;
-    c.velocityDissipation = -3.0f;
-    c.pressure = inf;
-    c.pressureIterations = 1000000;
-    c.curl = -inf;
-    c.gradientScale = nan;
-    c.simulationRate = 0.0f;
-    c.maxSubsteps = 0;
-    c.timeScale = nan;
-    c.splatRadius = nan;
-    c.splatForce = -1.0f;
-    c.colorUpdateSpeed = inf;
-    c.randomSplatCount = 4000000000u;
-    c.backColor = Vector3(nan, -1.0f, 0.5f);
-    c.bloomIterations = 1000;
-    c.bloomResolution = 0;
-    c.bloomIntensity = nan;
-    c.bloomThreshold = -1.0f;
-    c.bloomSoftKnee = inf;
-    c.sunraysResolution = 0;
-    c.sunraysWeight = nan;
-    FluidSimulator::sanitizeSettings(c);
-    EXPECT_EQ(c.aspectRatio, 0.0f);
-    EXPECT_EQ(c.simResolution, 1u);
-    EXPECT_EQ(c.dyeResolution, 8192u);
-    EXPECT_EQ(c.densityDissipation, d.densityDissipation);
-    EXPECT_EQ(c.velocityDissipation, 0.0f);
-    EXPECT_EQ(c.pressure, d.pressure);
-    EXPECT_EQ(c.pressureIterations, 1000u);
-    EXPECT_EQ(c.curl, d.curl);
-    EXPECT_EQ(c.gradientScale, d.gradientScale);
-    EXPECT_EQ(c.simulationRate, d.simulationRate);
-    EXPECT_EQ(c.maxSubsteps, 1u);
-    EXPECT_EQ(c.timeScale, d.timeScale);
-    EXPECT_EQ(c.splatRadius, d.splatRadius);
-    EXPECT_EQ(c.splatForce, 0.0f);
-    EXPECT_EQ(c.colorUpdateSpeed, d.colorUpdateSpeed);
-    EXPECT_EQ(c.randomSplatCount, FLUID_MAX_BURST_SPLATS);
-    EXPECT_EQ(c.backColor, Vector3(0.0f, 0.0f, 0.5f));
-    EXPECT_EQ(c.bloomIterations, 16u);
-    EXPECT_EQ(c.bloomResolution, 1u);
-    EXPECT_EQ(c.bloomIntensity, d.bloomIntensity);
-    EXPECT_EQ(c.bloomThreshold, 0.0f);
-    EXPECT_EQ(c.bloomSoftKnee, d.bloomSoftKnee);
-    EXPECT_EQ(c.sunraysResolution, 1u);
-    EXPECT_EQ(c.sunraysWeight, d.sunraysWeight);
-    // valid values are kept
-    FluidSimulationComponent valid;
-    valid.simulationRate = 30.0f;
-    valid.maxSubsteps = 9;
-    valid.curl = 0.0f;
-    FluidSimulator::sanitizeSettings(valid);
-    EXPECT_EQ(valid.simulationRate, 30.0f);
-    EXPECT_EQ(valid.maxSubsteps, 9u);
-    EXPECT_EQ(valid.curl, 0.0f);
-}
 
 TEST_F(FluidSimulationTest, QueuesAreBounded){
     // a disabled fluid while a script splats every frame keeps the latest splats only

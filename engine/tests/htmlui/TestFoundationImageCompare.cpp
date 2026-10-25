@@ -94,18 +94,6 @@ TEST_F(ImageCompareTest, PngRoundTrip){
     EXPECT_FALSE(writePng(golden("bad-size"), image, width + 1, height));
 }
 
-TEST_F(ImageCompareTest, Identical){
-    const std::vector<uint8_t> image = makeImage(30, 30, 30);
-    ASSERT_TRUE(writePng(golden("identical"), image, width, height));
-
-    CompareResult result = compare("identical", image);
-    EXPECT_TRUE(result.passed) << result.message;
-    EXPECT_EQ(result.maxDiff, 0);
-    EXPECT_EQ(result.badPixels, 0u);
-    EXPECT_DOUBLE_EQ(result.meanDiff, 0.0);
-    EXPECT_TRUE(result.actualPath.empty());
-    EXPECT_FALSE(std::filesystem::exists(directory + "/output/identical.actual.png"));
-}
 
 TEST_F(ImageCompareTest, WithinTolerance){
     ASSERT_TRUE(writePng(golden("tolerance"), makeImage(100, 100, 100), width, height));

@@ -136,10 +136,7 @@ editor::PoseAnimationWindow::TemplateEntry* editor::PoseAnimationWindow::findTem
     return nullptr;
 }
 
-void editor::PoseAnimationWindow::setTemplateFilter(const std::string& category, const std::string& search){
-    templateCategory = category;
-    copyTo(templateSearch, sizeof(templateSearch), search);
-}
+
 
 // ---- actions ----
 
@@ -379,7 +376,6 @@ bool editor::PoseAnimationWindow::drawTemplateCard(TemplateEntry& entry, const I
     ImGui::SetCursorScreenPos(pos);
     ImGui::PushID((std::string(info.user ? "user:" : "builtin:") + info.name).c_str());
     const bool clicked = ImGui::InvisibleButton("##template", ImVec2(cardWidth, cardHeight));
-    noteCardSpot(-1, info.name);
     const bool hovered = ImGui::IsItemHovered();
     if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)){
         templateMenu = info.name;

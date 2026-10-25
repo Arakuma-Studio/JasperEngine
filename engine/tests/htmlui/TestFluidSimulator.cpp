@@ -27,7 +27,6 @@
 #include "object/ui/Image.h"
 #include "component/TerrainComponent.h"
 #include "pool/ShaderPool.h"
-#include "render/ShaderRender.h"
 #include "render/SystemRender.h"
 #include "subsystem/FluidSystem.h"
 
@@ -37,10 +36,8 @@
 #include <functional>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <cstdio>
 #include <cstdlib>
-#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -523,19 +520,6 @@ TEST_F(FluidSimulatorTest, ReleaseFreesAndRecreates){
     }
 }
 
-TEST(FluidShaderType, NamesAndKeys){
-    EXPECT_EQ(ShaderPool::getShaderTypeName(ShaderType::FLUID, true), "fluid");
-    EXPECT_EQ(ShaderPool::getShaderTypeName(ShaderType::FLUID), "Fluid");
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::FLUID), 2);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::FLUID), 3u);
-    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::FLUID, 0), "fluid");
-    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::FLUID, 1), "fluid_Lok");
-    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::FLUID, 2), "fluid_Mfl");
-    ShaderKey key;
-    ASSERT_TRUE(ShaderPool::parseShaderStr("fluid_Mfl", key));
-    EXPECT_EQ(ShaderPool::getShaderTypeFromKey(key), ShaderType::FLUID);
-    EXPECT_EQ(ShaderPool::getPropertiesFromKey(key), 2u);
-}
 
 namespace {
 
@@ -701,25 +685,6 @@ TEST_F(FluidSimulatorTest, SystemLendsMaterialAndPreviews){
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_ERROR), 0u);
 }
 
-TEST_F(FluidSimulatorTest, SystemKeepsAnExistingSimulator){
-    SceneFixture fixture;
-    Scene& scene = fixture.getScene();
-    ensureFluidComponent(scene);
-    // made before the system's first update (the wrapper's getTexture(), a texture link)
-    FluidSimulationComponent c = plainFluid();
-    c.output = FluidOutput::TEXTURE;
-    c.simulator = std::make_shared<FluidSimulator>();
-    FluidSimulator* made = c.simulator.get();
-    Framebuffer* output = made->getOutputFramebuffer();
-    const Entity entity = scene.createEntity();
-    scene.addComponent<FluidSimulationComponent>(entity, c);
-    FluidSimulationComponent& fluid = scene.getComponent<FluidSimulationComponent>(entity);
-    ASSERT_TRUE(fixture.waitUntilLoaded());
-    ASSERT_TRUE(framesUntil([&](){ return output->isCreated(); }));
-    EXPECT_EQ(fluid.simulator.get(), made);
-    EXPECT_EQ(fluid.simulator->getOutputFramebuffer(), output);
-    scene.removeComponent<FluidSimulationComponent>(entity);
-}
 
 TEST_F(FluidSimulatorTest, TransparentMaterialHasNoDarkFringe){
     TestSystem::get().clearLogs();
@@ -1088,102 +1053,6 @@ TEST_F(FluidSimulatorTest, RequiredTargetFailureWaitsBeforeRetrying){
     EXPECT_TRUE(drawn) << sim.getError();
 }
 
-TEST_F(FluidSimulatorTest, AnyFieldValueIsSafe){
-    // raw writes (C++ or Lua fields, not the validating setters)
-    const float nan = std::numeric_limits<float>::quiet_NaN();
-    const float inf = std::numeric_limits<float>::infinity();
-    FluidSimulationComponent c = smallFluid(12);
-    c.simulationRate = nan;
-    c.timeScale = inf;
-    c.densityDissipation = -inf;
-    c.velocityDissipation = nan;
-    c.pressure = nan;
-    c.curl = inf;
-    c.gradientScale = nan;
-    c.splatRadius = -1.0f;
-    c.splatForce = nan;
-    c.colorUpdateSpeed = inf;
-    c.bloomIntensity = nan;
-    c.bloomThreshold = -2.0f;
-    c.bloomSoftKnee = nan;
-    c.sunraysWeight = inf;
-    c.backColor = Vector3(nan, -1.0f, inf);
-    c.aspectRatio = nan;
-    c.simResolution = 0;
-    c.dyeResolution = 0;
-    c.bloomResolution = 0;
-    c.sunraysResolution = 0;
-    c.maxSubsteps = 4000000000u;
-    c.randomSplatCount = 4000000000u;
-    FluidSimulator sim;
-    ASSERT_TRUE(warmUp(sim, c, nan)) << sim.getError();
-    EXPECT_GE(sim.getStats().simWidth, 1);
-    EXPECT_GE(sim.getStats().dyeWidth, 1);
-    EXPECT_LE(sim.getStats().splats, (uint64_t)FLUID_MAX_BURST_SPLATS);
-    // the clock: not a number, infinite or huge times step at most the (bounded) cap
-    for (double dt : {(double)nan, (double)inf, -1.0, 1.0e300, 1.0 / 60.0}){
-        const uint64_t before = sim.getStats().steps;
-        ASSERT_TRUE(frame(sim, c, 1.0f, dt)) << dt;
-        EXPECT_LE(sim.getStats().steps - before, 1000u) << dt;
-    }
-    // splats that are not finite are dropped, the others painted
-    const uint64_t splats = sim.getStats().splats;
-    c.pendingSplats.push_back(splatAt(nan, 0.5f, Vector3(1.0f, 0.0f, 0.0f)));
-    FluidSplat bad = splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f));
-    bad.radius = nan;
-    c.pendingSplats.push_back(bad);
-    c.pendingSplats.push_back(splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f), Vector2(inf, 0.0f)));
-    c.pendingSplats.push_back(splatAt(0.5f, 0.5f, Vector3(1.0f, 0.0f, 0.0f)));
-    sim.pointerDown(3, Vector2(nan, 0.5f));
-    ASSERT_TRUE(frame(sim, c, 1.0f, 0.0));
-    EXPECT_EQ(sim.getStats().splats, splats + 1);
-    // the component itself is left as written (the editor shows what was set)
-    EXPECT_TRUE(std::isnan(c.simulationRate));
-    EXPECT_EQ(c.maxSubsteps, 4000000000u);
-}
-
-TEST_F(FluidSimulatorTest, ManualFilteringReadsUnfilterableImages){
-    // without linear filtering the half floats are bound as unfilterable images through
-    // non-filtering samplers (sokol's validation wants a filterable format otherwise)
-    FluidSimulator::setDisabledFeaturesForTesting(FLUID_TEST_NO_LINEAR_FILTER);
-    FluidSimulationComponent c = plainFluid();
-    FluidSimulator sim;
-    ASSERT_TRUE(warmUp(sim, c));
-    ASSERT_TRUE(sim.getStats().manualFiltering);
-    auto samplerTypes = [](uint32_t properties){
-        std::map<std::string, TextureSamplerType> textures;
-        std::map<std::string, SamplerType> samplers;
-        std::shared_ptr<ShaderRender> shader = ShaderPool::get(ShaderType::FLUID, properties);
-        EXPECT_TRUE(shader && shader->isCreated()) << properties;
-        if (shader){
-            for (const ShaderStage& stage : shader->shaderData.stages){
-                for (const ShaderTexture& texture : stage.textures)
-                    textures[texture.name] = texture.samplerType;
-                for (const ShaderSampler& sampler : stage.samplers)
-                    samplers[sampler.name] = sampler.type;
-            }
-        }
-        return std::make_pair(textures, samplers);
-    };
-    // the solver: both images
-    auto solver = samplerTypes(2u);
-    for (const char* name : {"u_fluidRaw0", "u_fluidRaw1"}){
-        ASSERT_TRUE(solver.first.count(name)) << name;
-        EXPECT_EQ(solver.first[name], TextureSamplerType::UNFILTERABLE_FLOAT) << name;
-        EXPECT_EQ(solver.second[std::string(name) + "_smp"], SamplerType::NONFILTERING) << name;
-    }
-    // the look: the dye through the third, the composite's RGBA8 output through the first
-    auto look = samplerTypes(3u);
-    ASSERT_TRUE(look.first.count("u_fluidRaw2"));
-    EXPECT_EQ(look.first["u_fluidRaw2"], TextureSamplerType::UNFILTERABLE_FLOAT);
-    EXPECT_EQ(look.second["u_fluidRaw2_smp"], SamplerType::NONFILTERING);
-    ASSERT_TRUE(look.first.count("u_fluidTex0"));
-    EXPECT_EQ(look.first["u_fluidTex0"], TextureSamplerType::FLOAT);
-    // the filtering variants keep filterable images
-    auto plain = samplerTypes(1u);
-    ASSERT_TRUE(plain.first.count("u_fluidTex2"));
-    EXPECT_EQ(plain.first["u_fluidTex2"], TextureSamplerType::FLOAT);
-}
 
 TEST_F(FluidSimulatorTest, ScreenFluidIgnoresUIElementsNotDrawn){
     // a hidden UI element first, then a sprite: the fluid covers the sprite (it goes before

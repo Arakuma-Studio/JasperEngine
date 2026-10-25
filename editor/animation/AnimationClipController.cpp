@@ -207,6 +207,10 @@ namespace{
     void chainTimeline(){
         std::function<void(size_t, bool)> modified = CommandHistory::onSceneModified;
         CommandHistory::onSceneModified = [modified](size_t id, bool structural){
+            // an undo / redo step (beforeStep marked it) has run: CommandHistory reports it here
+            // right after the step, as it does for a new command
+            const bool step = timeline().stepping.count(id) > 0;
+            if (step) resolveClipRefsAfterStep(id);
             if (modified) modified(id, structural);
             historyChanged(id);
         };
@@ -214,11 +218,6 @@ namespace{
         CommandHistory::beforeStep = [before](size_t id){
             if (before) before(id);
             timeline().stepping.insert(id);
-        };
-        std::function<void(size_t)> after = CommandHistory::afterStep;
-        CommandHistory::afterStep = [after](size_t id){
-            if (after) after(id);
-            resolveClipRefsAfterStep(id);
         };
     }
 

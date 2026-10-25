@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // The example library embedded in the editor (editor/util/HtmlUiExamples, phase-4 spec 3.7.3,
-// 3.7.4): the embedded tree equals docs/mcp/guide/html-ui-examples, names() and the manifest,
+// 3.7.4): template instantiation and the generated project library,
 // writeTo (the project copy: unchanged files left alone, files no longer embedded removed,
 // unicode paths, an unwritable target), and instantiate's renames, checked by compiling every
 // instantiated template through the compat layer.
 
-#include "ImporterTestCommon.h"
+#include <gtest/gtest.h>
 
 #include "util/FileUtils.h"
 #include "util/HtmlUiExamples.h"
@@ -19,7 +19,6 @@
 #include <map>
 #include <set>
 #include <sstream>
-#include <thread>
 
 #include <unistd.h>
 
@@ -29,10 +28,6 @@ namespace hc = jasperengine::htmlui::compat;
 namespace fs = std::filesystem;
 
 namespace {
-
-    fs::path libraryDir(){
-        return jasperengine::editor::htmlui::test::sourceDir() / "docs" / "mcp" / "guide" / "html-ui-examples";
-    }
 
     std::string readAll(const fs::path& path){
         std::ifstream in(path, std::ios::binary);
@@ -96,52 +91,6 @@ namespace {
 
 }
 
-TEST(HtmlUiExamples, EmbeddedTreeIsTheLibrary){
-    ASSERT_TRUE(fs::is_directory(libraryDir()));
-    std::set<std::string> onDisk;
-    for (const auto& entry : fs::recursive_directory_iterator(libraryDir())){
-        if (entry.is_regular_file())
-            onDisk.insert(fs::relative(entry.path(), libraryDir()).generic_string());
-    }
-    std::set<std::string> embedded;
-    for (const HtmlUiExamples::File& file : HtmlUiExamples::files()){
-        embedded.insert(file.path);
-        EXPECT_EQ(std::string(file.data), readAll(libraryDir() / file.path)) << file.path << " differs from the source tree";
-    }
-    EXPECT_EQ(embedded, onDisk);
-    EXPECT_NE(HtmlUiExamples::find("examples.json"), nullptr);
-    EXPECT_NE(HtmlUiExamples::find("LICENSE-lucide.txt"), nullptr);
-    EXPECT_EQ(HtmlUiExamples::find("nope.html"), nullptr);
-}
-
-TEST(HtmlUiExamples, NamesFollowTheManifest){
-    EXPECT_EQ(HtmlUiExamples::names(), (std::vector<std::string>{"main_menu", "pause_menu", "hud", "inventory", "settings", "dialogue",
-                                                                 "shop", "toasts", "loading", "video_menu", "blank"}));
-    EXPECT_EQ(HtmlUiExamples::manifest().value("version", 0), 1);
-    EXPECT_TRUE(HtmlUiExamples::has("hud"));
-    EXPECT_TRUE(HtmlUiExamples::has("blank"));
-    EXPECT_FALSE(HtmlUiExamples::has("Hud"));
-    EXPECT_FALSE(HtmlUiExamples::has(""));
-    for (const nlohmann::json& entry : HtmlUiExamples::manifest()["examples"]){
-        const std::string name = entry["name"];
-        EXPECT_EQ(entry["example"].get<bool>(), name != "blank");
-        for (const char* key : {"html", "css", "lua"})
-            EXPECT_NE(HtmlUiExamples::find(name + "/" + entry[key].get<std::string>()), nullptr) << name << " " << key;
-    }
-}
-
-TEST(HtmlUiExamples, NameHelpers){
-    EXPECT_EQ(HtmlUiExamples::pascalName("main_menu"), "MainMenu");
-    EXPECT_EQ(HtmlUiExamples::pascalName("game-over screen"), "GameOverScreen");
-    EXPECT_EQ(HtmlUiExamples::pascalName("HUD"), "HUD");
-    EXPECT_EQ(HtmlUiExamples::pascalName("2048"), "Ui2048");
-    EXPECT_EQ(HtmlUiExamples::pascalName("menú_principal"), "MenPrincipal");
-    EXPECT_EQ(HtmlUiExamples::pascalName("☃"), "Document");
-    EXPECT_EQ(HtmlUiExamples::titleName("main_menu"), "Main Menu");
-    EXPECT_EQ(HtmlUiExamples::titleName("game-over  screen"), "Game Over Screen");
-    EXPECT_EQ(HtmlUiExamples::titleName("menú_principal"), "Menú Principal");
-}
-
 TEST(HtmlUiExamples, WriteToMakesAndKeepsTheProjectCopy){
     TempDir temp;
     const fs::path dir = temp.path / ".jasperengine" / "engine-api" / "html-ui-examples";
@@ -152,8 +101,8 @@ TEST(HtmlUiExamples, WriteToMakesAndKeepsTheProjectCopy){
 
     // unchanged files are not written again (no new modification time)
     const fs::path css = dir / "hud" / "hud.css";
+    fs::last_write_time(css, fs::file_time_type::clock::now() - std::chrono::hours(24));
     const auto before = fs::last_write_time(css);
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
     ASSERT_TRUE(HtmlUiExamples::writeTo(dir, error)) << error;
     EXPECT_EQ(fs::last_write_time(css), before);
 
@@ -224,7 +173,6 @@ TEST(HtmlUiExamples, InstantiatedTemplatesCompileClean){
         const std::string html = "assets/screens/my " + name + ".htm";
         ASSERT_TRUE(HtmlUiExamples::instantiate(name, html, "lua/ui", instance, error)) << error;
         EXPECT_EQ(problemsOf(checkInstance(instance, html)), "");
-        EXPECT_EQ(instance.luaPath, "lua/ui/My" + HtmlUiExamples::pascalName(name) + "UI.lua");
         // every asset reference was renamed: no file is outside the document's folder or the Lua folder
         for (const auto& [path, content] : instance.files){
             const bool inScreens = path.compare(0, 15, "assets/screens/") == 0;

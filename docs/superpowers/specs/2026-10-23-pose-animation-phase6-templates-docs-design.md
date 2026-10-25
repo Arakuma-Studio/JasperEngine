@@ -69,9 +69,8 @@ an appropriate feel preset/humanize. Mirrored halves use `mirror_pose`.
   Without a character the cards have no thumbnails and the hint "Bind a character to preview
   templates"; the no-character, no-animation and no-poses empty states show the grid too. Delete
   asks for confirmation. MCP: `focus_window` `pose.tab: "templates"`; the state lists the cards;
-  the tab's actions are reachable for tests through the `pose.templates` hook
-  (`JASPER_MCP_TEST_HOOKS=1`); filter, labels, default path and the replace/append edit are
-  `poseui` functions with unit tests.)
+  filter, labels, default path and the replace/append edit are `poseui` functions with unit tests.
+  The test-only `pose.templates` hook was removed upstream with the test prune of 2026-10-25.)
 
 ## 5. MCP
 

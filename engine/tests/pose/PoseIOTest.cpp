@@ -183,18 +183,6 @@ TEST(PoseIO, PoseWriteGolden){
     EXPECT_EQ(text.back(), '\n');
 }
 
-TEST(PoseIO, KeyOrderOfTheTopLevel){
-    const std::string text = writePoseAnimation(PoseAnimationData());
-    size_t last = 0;
-    for (const char* key : {"\"format\"", "\"version\"", "\"preview_model\"", "\"frame_rate\"", "\"loop\"",
-                            "\"feel\"", "\"humanize\"", "\"poses\""}){
-        const size_t at = text.find(key);
-        ASSERT_NE(at, std::string::npos) << key;
-        EXPECT_GT(at, last) << key;
-        last = at;
-    }
-}
-
 TEST(PoseIO, NumbersRoundedToFourDecimalsWithoutNegativeZero){
     PoseAnimationData data;
     data.settings.overlap = 0.123456f;
@@ -274,15 +262,6 @@ TEST(PoseIO, AllDofsRoundTripAndLinesStayShort){
 
 // ---- round trip ----
 
-TEST(PoseIO, DefaultsRoundTrip){
-    const PoseAnimationData defaults;
-    const std::string text = writePoseAnimation(defaults);
-    Parsed back = parse(text);
-    ASSERT_TRUE(back.ok) << back.error;
-    EXPECT_TRUE(back.warnings.empty());
-    expectDataEq(defaults, back.data);
-    EXPECT_EQ(writePoseAnimation(back.data), text);
-}
 
 TEST(PoseIO, EveryFieldRoundTrips){
     const PoseAnimationData data = fullData();

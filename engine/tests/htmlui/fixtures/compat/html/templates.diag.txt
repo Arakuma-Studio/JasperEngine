@@ -1,1 +1,0 @@
-compat/html/templates.html:5:23: info: <script type="text/lua"> in a template or an HTML fragment is not run (scripts run once per document load) (fix: move the script to the document) [HTMLUI-HTML-0007]
