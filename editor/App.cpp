@@ -801,6 +801,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleFrameDebugger:
             showEditorWindow(frameDebuggerWindow);
+            break;
         case AppMenuCommand::ToggleSystems:
             showEditorWindow(systemsWindow);
             break;
