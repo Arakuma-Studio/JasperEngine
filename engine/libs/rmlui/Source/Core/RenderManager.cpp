@@ -216,8 +216,9 @@ bool RenderManager::SupportsPrimitives() const
 
 void RenderManager::RenderPrimitives(Span<const BoxPrimitive> primitives, Vector2f translation)
 {
+	// pixel-snapped as Geometry::Render snaps the mesh path's translation (S16-F1)
 	if (!primitives.empty())
-		render_interface->RenderPrimitives(primitives, translation);
+		render_interface->RenderPrimitives(primitives, translation.Round());
 }
 
 void RenderManager::SetState(const RenderState& next)
