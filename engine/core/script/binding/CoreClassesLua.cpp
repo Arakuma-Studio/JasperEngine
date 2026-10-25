@@ -604,6 +604,33 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("FilmGrainType")
+        .addVariable("CLASSIC", FilmGrainType::CLASSIC)
+        .addVariable("LENS", FilmGrainType::LENS)
+        .addVariable("FILMIC", FilmGrainType::FILMIC)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FilmGateMask")
+        .addVariable("NONE", FilmGateMask::NONE)
+        .addVariable("ROUNDED", FilmGateMask::ROUNDED)
+        .addVariable("ACADEMY_137", FilmGateMask::ACADEMY_137)
+        .addVariable("WIDESCREEN_185", FilmGateMask::WIDESCREEN_185)
+        .addVariable("ANAMORPHIC_239", FilmGateMask::ANAMORPHIC_239)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LutInputEncoding")
+        .addVariable("AUTO", LutInputEncoding::AUTO)
+        .addVariable("SRGB", LutInputEncoding::SRGB)
+        .addVariable("LINEAR", LutInputEncoding::LINEAR)
+        .addVariable("LOGC3", LutInputEncoding::LOGC3)
+        .addVariable("ACESCCT", LutInputEncoding::ACESCCT)
+        .addVariable("CINEON", LutInputEncoding::CINEON)
+        .addVariable("DAVINCI_INTERMEDIATE", LutInputEncoding::DAVINCI_INTERMEDIATE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("UIEventState")
         .addVariable("NOT_SET", UIEventState::NOT_SET)
         .addVariable("ENABLED", UIEventState::ENABLED)
@@ -909,6 +936,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("gain", &PostProcessingSettings::gain, &PostProcessingSettings::gain)
         .addProperty("lutTexture", &PostProcessingSettings::lutTexture, &PostProcessingSettings::lutTexture)
         .addProperty("lutContribution", &PostProcessingSettings::lutContribution, &PostProcessingSettings::lutContribution)
+        .addProperty("lutInputEncoding", &PostProcessingSettings::lutInputEncoding, &PostProcessingSettings::lutInputEncoding)
         .addProperty("lutSize", &PostProcessingSettings::lutSize, &PostProcessingSettings::lutSize)
         .addProperty("monochromeEnabled", &PostProcessingSettings::monochromeEnabled, &PostProcessingSettings::monochromeEnabled)
         .addProperty("monochromeMode", &PostProcessingSettings::monochromeMode, &PostProcessingSettings::monochromeMode)
@@ -936,6 +964,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("filmGrainEnabled", &PostProcessingSettings::filmGrainEnabled, &PostProcessingSettings::filmGrainEnabled)
         .addProperty("filmGrainIntensity", &PostProcessingSettings::filmGrainIntensity, &PostProcessingSettings::filmGrainIntensity)
         .addProperty("filmGrainResponse", &PostProcessingSettings::filmGrainResponse, &PostProcessingSettings::filmGrainResponse)
+        .addProperty("filmGrainType", &PostProcessingSettings::filmGrainType, &PostProcessingSettings::filmGrainType)
+        .addProperty("filmGrainSize", &PostProcessingSettings::filmGrainSize, &PostProcessingSettings::filmGrainSize)
+        .addProperty("filmGrainColored", &PostProcessingSettings::filmGrainColored, &PostProcessingSettings::filmGrainColored)
+        .addProperty("filmFrameRate", &PostProcessingSettings::filmFrameRate, &PostProcessingSettings::filmFrameRate)
+        .addProperty("vhsEnabled", &PostProcessingSettings::vhsEnabled, &PostProcessingSettings::vhsEnabled)
+        .addProperty("vhsIntensity", &PostProcessingSettings::vhsIntensity, &PostProcessingSettings::vhsIntensity)
+        .addProperty("vhsWobble", &PostProcessingSettings::vhsWobble, &PostProcessingSettings::vhsWobble)
+        .addProperty("vhsTracking", &PostProcessingSettings::vhsTracking, &PostProcessingSettings::vhsTracking)
+        .addProperty("vhsColorBleed", &PostProcessingSettings::vhsColorBleed, &PostProcessingSettings::vhsColorBleed)
+        .addProperty("vhsTapeNoise", &PostProcessingSettings::vhsTapeNoise, &PostProcessingSettings::vhsTapeNoise)
+        .addProperty("vhsChromaStreaks", &PostProcessingSettings::vhsChromaStreaks, &PostProcessingSettings::vhsChromaStreaks)
+        .addProperty("vhsDropouts", &PostProcessingSettings::vhsDropouts, &PostProcessingSettings::vhsDropouts)
+        .addProperty("vhsScanlines", &PostProcessingSettings::vhsScanlines, &PostProcessingSettings::vhsScanlines)
+        .addProperty("vhsInterference", &PostProcessingSettings::vhsInterference, &PostProcessingSettings::vhsInterference)
+        .addProperty("vhsGlitches", &PostProcessingSettings::vhsGlitches, &PostProcessingSettings::vhsGlitches)
+        .addProperty("vhsSpeed", &PostProcessingSettings::vhsSpeed, &PostProcessingSettings::vhsSpeed)
+        .addProperty("filmDamageEnabled", &PostProcessingSettings::filmDamageEnabled, &PostProcessingSettings::filmDamageEnabled)
+        .addProperty("filmDamageIntensity", &PostProcessingSettings::filmDamageIntensity, &PostProcessingSettings::filmDamageIntensity)
+        .addProperty("filmHairAmount", &PostProcessingSettings::filmHairAmount, &PostProcessingSettings::filmHairAmount)
+        .addProperty("filmScratchAmount", &PostProcessingSettings::filmScratchAmount, &PostProcessingSettings::filmScratchAmount)
+        .addProperty("filmDustAmount", &PostProcessingSettings::filmDustAmount, &PostProcessingSettings::filmDustAmount)
+        .addProperty("filmDustSize", &PostProcessingSettings::filmDustSize, &PostProcessingSettings::filmDustSize)
+        .addProperty("filmGateWeave", &PostProcessingSettings::filmGateWeave, &PostProcessingSettings::filmGateWeave)
+        .addProperty("filmGateMask", &PostProcessingSettings::filmGateMask, &PostProcessingSettings::filmGateMask)
+        .addProperty("filmGateMaskFeather", &PostProcessingSettings::filmGateMaskFeather, &PostProcessingSettings::filmGateMaskFeather)
         .addProperty("sharpenEnabled", &PostProcessingSettings::sharpenEnabled, &PostProcessingSettings::sharpenEnabled)
         .addProperty("sharpenIntensity", &PostProcessingSettings::sharpenIntensity, &PostProcessingSettings::sharpenIntensity)
         .addProperty("bloomEnabled", &PostProcessingSettings::bloomEnabled, &PostProcessingSettings::bloomEnabled)
@@ -947,8 +1000,16 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("blurEnabled", &PostProcessingSettings::blurEnabled, &PostProcessingSettings::blurEnabled)
         .addProperty("blurRadius", &PostProcessingSettings::blurRadius, &PostProcessingSettings::blurRadius)
         .addProperty("blurIntensity", &PostProcessingSettings::blurIntensity, &PostProcessingSettings::blurIntensity)
+        .addProperty("halationEnabled", &PostProcessingSettings::halationEnabled, &PostProcessingSettings::halationEnabled)
+        .addProperty("halationIntensity", &PostProcessingSettings::halationIntensity, &PostProcessingSettings::halationIntensity)
+        .addProperty("halationThreshold", &PostProcessingSettings::halationThreshold, &PostProcessingSettings::halationThreshold)
+        .addProperty("halationRadius", &PostProcessingSettings::halationRadius, &PostProcessingSettings::halationRadius)
+        .addProperty("halationTint", &PostProcessingSettings::halationTint, &PostProcessingSettings::halationTint)
         .addProperty("renderScale", &PostProcessingSettings::renderScale, &PostProcessingSettings::renderScale)
         .addProperty("msaaSamples", &PostProcessingSettings::msaaSamples, &PostProcessingSettings::msaaSamples)
+        .addProperty("dynamicResolutionEnabled", &PostProcessingSettings::dynamicResolutionEnabled, &PostProcessingSettings::dynamicResolutionEnabled)
+        .addProperty("dynamicResolutionMinScale", &PostProcessingSettings::dynamicResolutionMinScale, &PostProcessingSettings::dynamicResolutionMinScale)
+        .addProperty("dynamicResolutionTargetFps", &PostProcessingSettings::dynamicResolutionTargetFps, &PostProcessingSettings::dynamicResolutionTargetFps)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1624,6 +1685,34 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("getMeshSystem", [] (Scene* self, lua_State* L) { return self->getSystem<MeshSystem>().get(); })
         .addFunction("getPhysicsSystem", [] (Scene* self, lua_State* L) { return self->getSystem<PhysicsSystem>().get(); })
         .addFunction("getRenderSystem", [] (Scene* self, lua_State* L) { return self->getSystem<RenderSystem>().get(); })
+        // dynamic resolution as the renderer applies it (S13): {enabled, running, overridden, scale,
+        // minScale, maxScale, source ("gpu", "frame", "none"), smoothedMs, targetMs, saturatedLow,
+        // ineffective, acceptedChanges, probeSeconds}
+        .addFunction("getDynamicResolution", [] (Scene* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            std::shared_ptr<RenderSystem> render = self->getSystem<RenderSystem>();
+            const DynamicResolutionStatus status = render ? render->getDynamicResolutionStatus() : DynamicResolutionStatus();
+            table["enabled"] = status.enabled;
+            table["running"] = status.running;
+            table["idle"] = std::string(status.idle);
+            table["overridden"] = status.overridden;
+            table["scale"] = status.scale;
+            table["minScale"] = status.minScale;
+            table["maxScale"] = status.maxScale;
+            table["source"] = std::string(status.source);
+            table["smoothedMs"] = status.smoothedMs;
+            table["targetMs"] = status.targetMs;
+            table["saturatedLow"] = status.saturatedLow;
+            table["ineffective"] = status.ineffective;
+            table["acceptedChanges"] = (double)status.acceptedChanges;
+            table["probeSeconds"] = status.probeSeconds;
+            return table;
+        })
+        // pins the main camera's render scale (0.5..1) over dynamic resolution; nil releases it
+        .addFunction("setDynamicResolutionOverride", [] (Scene* self, std::optional<float> scale) {
+            if (std::shared_ptr<RenderSystem> render = self->getSystem<RenderSystem>())
+                render->setDynamicResolutionOverride(scale ? *scale : 0.0f);
+        })
         .addFunction("getUISystem", [] (Scene* self, lua_State* L) { return self->getSystem<UISystem>().get(); })
         // change tracking: the tick a change made from now on is newer than
         .addFunction("getChangeTick", [] (Scene* self, lua_State* L) -> lua_Integer { return (lua_Integer)self->changeTick(); })

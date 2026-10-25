@@ -164,10 +164,15 @@ namespace jasperengine::editor{
             return cssExtensions.find(ext) != cssExtensions.end();
         }
 
+        // colour LUTs a scene's post-processing grades with besides image strips (.cube)
+        inline static bool isColorLutFile(const std::string& path) {
+            return fileExtension(path) == ".cube";
+        }
+
         // Files referenced relative to the assets directory
         inline static bool isAssetFile(const std::string& path) {
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
-                   isHtmlFile(path) || isCssFile(path);
+                   isHtmlFile(path) || isCssFile(path) || isColorLutFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {

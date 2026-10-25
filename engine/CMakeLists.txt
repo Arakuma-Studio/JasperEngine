@@ -1063,6 +1063,7 @@ set(JASPERENGINE_SRCS
     core/render/AtmosphereQuality.cpp
     core/render/BufferRender.cpp
     core/render/CameraRender.cpp
+    core/render/DynamicResolutionController.cpp
     core/render/FramebufferRender.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
@@ -1135,6 +1136,7 @@ set(JASPERENGINE_SRCS
     core/util/Base64.cpp
     core/util/Color.cpp
     core/util/CrashHook.cpp
+    core/util/CubeLut.cpp
     core/util/FontFace.cpp
     core/util/FontRegistry.cpp
     core/util/GlyphAtlas.cpp
