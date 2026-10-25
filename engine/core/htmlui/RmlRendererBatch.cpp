@@ -46,7 +46,7 @@ namespace {
     // run cache granularity: a chunk ends after this many members or vertices
     constexpr uint32_t chunkMembers = 64;
     constexpr uint32_t chunkVertices = 4096;
-    constexpr size_t gatherPageBytes = 256 * 1024;
+    constexpr size_t gatherPageBytes = 128 * 1024;
     // a page whose live chunks fill less than this share of it is written again (compaction)
     constexpr float minimumLiveShare = 0.5f;
     // a coordinate within it of a whole pixel is on the pixel boundary
