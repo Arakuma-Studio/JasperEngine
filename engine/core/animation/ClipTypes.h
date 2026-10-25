@@ -5,7 +5,7 @@
 // - Purpose: the small clip enums and the warning type, without the rest of the clip model, for
 //   headers included everywhere (AnimationPlayerComponent reaches every TU through
 //   EntityRegistry.h).
-// - Owner: T0. Thread-safety: plain types.
+// - Thread-safety: plain types.
 // - Invariants: the enum order is the canonical order of tracks with the same path in files
 //   (Position < Rotation < Scale < Morph < Lattice < Property); appending is allowed, reordering
 //   is not.

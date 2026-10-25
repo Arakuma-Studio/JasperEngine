@@ -4,8 +4,10 @@
 #include "ModelSubClips.h"
 
 #include "animation/AnimationClipIO.h"
+#include "animation/ClipBinding.h"
 #include "io/File.h"
 #include "io/FileData.h"
+#include "pool/AnimationClipPoolTesting.h"
 #include "pool/ModelPool.h"
 #include "subsystem/MeshSystem.h"
 
@@ -14,8 +16,11 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 
@@ -34,17 +39,6 @@ namespace{
     std::string nodeName(const tinygltf::Model& model, size_t index){
         const std::string& name = model.nodes[index].name;
         return name.empty() ? "Node " + std::to_string(index) : name;
-    }
-
-    // ClipBinding's grammar (spec 9.R39): a name with '/' or ending in "#<digits>" can't be addressed
-    bool addressableName(const std::string& name){
-        if (name.find('/') != std::string::npos) return false;
-        size_t hash = name.rfind('#');
-        if (hash == std::string::npos || hash + 1 >= name.size()) return true;
-        for (size_t i = hash + 1; i < name.size(); i++){
-            if (!std::isdigit((unsigned char)name[i])) return true;
-        }
-        return false;
     }
 
     std::string pathSegment(const std::string& name, int index){
@@ -86,7 +80,7 @@ namespace{
         for (size_t i = 0; i < count; i++){
             std::string name = nodeName(model, i);
             int index = siblings[{parents[i], name}]++;
-            ownAddressable[i] = addressableName(name);
+            ownAddressable[i] = anim::isAddressableName(name);   // ClipBinding's rule (spec 9.R39)
             segments[i] = pathSegment(name, index);
         }
 
@@ -230,22 +224,85 @@ namespace{
         return true;
     }
 
+    // The last model file withModelFile parsed itself (not in the ModelPool), so the sub-clips of
+    // one library file (a player's N clips, the alias table, previews) share one parse instead of
+    // a full parse each. Read-only once cached (any thread may read it: shared ownership); dropped
+    // by dropModelFileParse (AnimationClipPool::invalidateModel and clear/clearUnused), and not
+    // used once the file's time or size changed (a .bin next to a .gltf: the editor invalidates).
+    struct FileStamp{
+        int64_t time = 0;
+        uintmax_t size = 0;
+        bool operator==(const FileStamp& other) const { return time == other.time && size == other.size; }
+    };
+
+    // zero when the file can't be stat'ed (a resource pack): then only the drops count
+    FileStamp fileStamp(const std::string& key){
+        FileStamp stamp;
+        std::error_code ec;
+        const std::filesystem::path path(key);
+        const auto time = std::filesystem::last_write_time(path, ec);
+        if (ec) return stamp;
+        const uintmax_t size = std::filesystem::file_size(path, ec);
+        if (ec) return stamp;
+        stamp.time = (int64_t)time.time_since_epoch().count();
+        stamp.size = size;
+        return stamp;
+    }
+
+    struct ParseCache{
+        std::mutex mutex;
+        std::string key;
+        FileStamp stamp;
+        std::shared_ptr<const tinygltf::Model> model;
+        uint64_t epoch = 0;     // bumped by every drop: a parse that started before it is not cached
+        size_t parses = 0;      // parseGLTFFile calls (test builds read it)
+    };
+
+    // never destroyed: loads may run during static destruction
+    ParseCache& parseCache(){
+        static ParseCache* cache = new ParseCache();
+        return *cache;
+    }
+
     // Runs `read` on the model of `modelPath`: the pooled parse under the pooled-glTF mutex (loads
-    // append buffers to it), else a parse of its own, dropped afterwards (nothing keeps it alive)
+    // append buffers to it), else the cached parse of the file, else a parse of its own (cached)
     template<typename Read>
     bool withModelFile(const std::string& modelPath, std::string* error, Read read){
         if (!anim::isModelFilePath(modelPath)){
             if (error) *error = modelPath + " is not a glTF, GLB or FBX model";
             return false;
         }
-        std::shared_ptr<tinygltf::Model> pooled = ModelPool::getGLTF(MeshSystem::getModelFilenameKey(modelPath));
+        const std::string key = MeshSystem::getModelFilenameKey(modelPath);
+        std::shared_ptr<tinygltf::Model> pooled = ModelPool::getGLTF(key);
         if (pooled){
             std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
             return read(*pooled);
         }
-        tinygltf::Model parsed;
+        ParseCache& cache = parseCache();
+        const FileStamp stamp = fileStamp(key);
+        std::shared_ptr<const tinygltf::Model> cached;
+        uint64_t epoch = 0;
+        {
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            if (cache.model && cache.key == key && cache.stamp == stamp) cached = cache.model;
+            epoch = cache.epoch;
+        }
+        if (cached) return read(*cached);
+
+        // parsed without the lock (other files' reads go on meanwhile)
+        std::shared_ptr<tinygltf::Model> parsed = std::make_shared<tinygltf::Model>();
         std::string parseError;
-        if (!MeshSystem::parseGLTFFile(modelPath, parsed, &parseError)){
+        const bool ok = MeshSystem::parseGLTFFile(modelPath, *parsed, &parseError);
+        {
+            std::lock_guard<std::mutex> lock(cache.mutex);
+            cache.parses++;
+            if (ok && cache.epoch == epoch){
+                cache.key = key;
+                cache.stamp = stamp;
+                cache.model = parsed;
+            }
+        }
+        if (!ok){
             if (error){
                 File imported;
                 if (lower(FileData::getFilePathExtension(modelPath)) == "fbx" &&
@@ -258,7 +315,7 @@ namespace{
             }
             return false;
         }
-        return read(parsed);
+        return read(*parsed);
     }
 
 }
@@ -415,7 +472,7 @@ bool anim::buildSubClip(const tinygltf::Model& model, int animationIndex, ClipDa
         }
         if (!nodes.addressable[channel.target_node]){
             drop("node \"" + nodes.paths[channel.target_node] +
-                 "\" has a name with '/' or ending in \"#<number>\" on its path, which a clip can't address");
+                 "\" has a name with '/' or ending in '#' or \"#<number>\" on its path, which a clip can't address");
             continue;
         }
         if (channel.sampler < 0 || (size_t)channel.sampler >= animation.samplers.size()){
@@ -520,6 +577,26 @@ bool anim::buildSubClip(const tinygltf::Model& model, int animationIndex, ClipDa
     normalize(out, &warnings);
     return true;
 }
+
+void anim::dropModelFileParse(const std::string& modelPath){
+    const std::string key = modelPath.empty() ? std::string() : MeshSystem::getModelFilenameKey(modelPath);
+    ParseCache& cache = parseCache();
+    std::shared_ptr<const tinygltf::Model> dropped;    // freed after the unlock
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    cache.epoch++;
+    if (cache.model && (key.empty() || cache.key == key)){
+        dropped.swap(cache.model);
+        cache.key.clear();
+    }
+}
+
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
+size_t jasperengine::getModelFileParseCount(){
+    ParseCache& cache = parseCache();
+    std::lock_guard<std::mutex> lock(cache.mutex);
+    return cache.parses;
+}
+#endif
 
 bool anim::listModelFileClips(const std::string& modelPath, std::vector<ModelClipInfo>& out, std::string* error){
     out.clear();

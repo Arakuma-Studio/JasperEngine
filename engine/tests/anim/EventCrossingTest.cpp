@@ -29,10 +29,10 @@ namespace {
 
     // the names of what crossed
     std::vector<std::string> crossed(const AnimationClip& clip, ClipWrapMode wrap, float from, float to, bool start = false){
-        std::vector<size_t> indices;
+        std::vector<anim::CrossedEvent> indices;
         anim::collectCrossedEvents(clip, wrap, from, to, start, indices);
         std::vector<std::string> names;
-        for (size_t index : indices) names.push_back(clip.getEvents()[index].function);
+        for (const anim::CrossedEvent& event : indices) names.push_back(clip.getEvents()[event.index].function);
         return names;
     }
 

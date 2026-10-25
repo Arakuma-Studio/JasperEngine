@@ -16,6 +16,7 @@
 #include "animation/AnimationClip.h"
 #include "object/Model.h"
 #include "pool/AnimationClipPool.h"
+#include "pool/AnimationClipPoolTesting.h"
 #include "pool/ModelPool.h"
 #include "subsystem/MeshSystem.h"
 
@@ -181,4 +182,59 @@ TEST_F(SubClipPool, ConcurrentFirstLoadsShareOneClip){
     EXPECT_EQ(AnimationClipPool::getOrLoad(clip("Idle")), clips[0]);
     EXPECT_EQ(AnimationClipPool::getGeneration(clip("Idle")), generation) << "a cache hit keeps the generation";
     EXPECT_EQ(AnimationClipPool::size(), 1u);
+}
+
+// Engine review I1: the sub-clips of a model no scene has loaded (an animation library file) share
+// one parse of the file; invalidateModelParse / invalidateModelFile / invalidateModel drop it, so
+// the next load reads the changed file once again
+TEST_F(SubClipPool, OneParsePerUnpooledModel){
+    ASSERT_FALSE(ModelPool::getGLTF(MeshSystem::getModelFilenameKey(model)));
+    const size_t before = getModelFileParseCount();
+    std::vector<std::shared_ptr<const AnimationClip>> held;
+    for (const char* name : {"Walk", "Idle", "Wave", "2"}){
+        std::string error;
+        held.push_back(AnimationClipPool::getOrLoad(clip(name), &error));
+        ASSERT_TRUE(held.back()) << name << ": " << error;
+    }
+    EXPECT_EQ(getModelFileParseCount(), before + 1) << "the alias table and four clips: one parse";
+
+    // the file changes and the editor drops the parse (entities kept): read again, once
+    std::string text = heroText();
+    const std::string from = "\"name\": \"Walk\"";
+    ASSERT_NE(text.find(from), std::string::npos);
+    text.replace(text.find(from), from.size(), "\"name\": \"Stroll\"");
+    animtest::writeAsset(model, text);
+    MeshSystem::invalidateModelParse(model);
+    std::string error;
+    EXPECT_FALSE(AnimationClipPool::getOrLoad(clip("Walk"), &error)) << "the changed file was read";
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Stroll"), &error)) << error;
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Idle"), &error)) << error;
+    EXPECT_EQ(getModelFileParseCount(), before + 2);
+
+    MeshSystem::invalidateModelFile(model);
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Stroll")));
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Wave")));
+    EXPECT_EQ(getModelFileParseCount(), before + 3);
+
+    AnimationClipPool::invalidateModel(animtest::assetDir() + "/" + model);
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Idle")));
+    EXPECT_EQ(getModelFileParseCount(), before + 4) << "the absolute path drops the same parse";
+
+    // another model's drop and a sub-clip invalidate keep it; clear() drops every kept parse
+    AnimationClipPool::invalidateModel("models/other/elsewhere.gltf");
+    AnimationClipPool::invalidate(clip("Idle"));
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Idle")));
+    EXPECT_EQ(getModelFileParseCount(), before + 4);
+    AnimationClipPool::clear();
+    ASSERT_TRUE(AnimationClipPool::getOrLoad(clip("Idle")));
+    EXPECT_EQ(getModelFileParseCount(), before + 5);
+
+    // a file written again without an invalidate (its size changed) is not read from the kept parse
+    text.replace(text.find("\"name\": \"Stroll\""), std::string("\"name\": \"Stroll\"").size(), "\"name\": \"Amble\"");
+    animtest::writeAsset(model, text);
+    std::vector<anim::ModelClipInfo> infos;
+    ASSERT_TRUE(anim::listModelFileClips(model, infos, &error)) << error;
+    ASSERT_FALSE(infos.empty());
+    EXPECT_EQ(infos[0].name, "Amble");
+    EXPECT_EQ(getModelFileParseCount(), before + 6);
 }

@@ -199,7 +199,7 @@ one the editor, the game and `write_file` use):
 ```
 assets/anim/bob.anim:5:1: error: not valid JSON: syntax error while parsing value - unexpected '}'; expected '[', '{', or a literal
 assets/anim/walk.anim: warning: tracks[2].keys[0].value: expected [x, y, z]
-assets/anim/old.anim: error: This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}: create one with Create > Animation Clip or edit_animation {clip, create}.
+assets/anim/old.anim: error: This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}: create one with Assets > Create > Animation Clip or edit_animation {clip, create}.
 Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does not exist (paths are relative to the assets folder)
 ```
 
@@ -218,6 +218,9 @@ Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does n
   chunk, for an `.fbx` from the `.glb` the editor imported it to (an FBX not imported yet is not
   checked). The entries of a scene's prefab-instance overrides (and of GameObjects added to an
   instance) are checked like the others.
+- Also warnings: an entry whose `.anim` exists but whose GUID names another clip (the editor
+  resolves the GUID first and plays that one), and a `.scene` or `.prefab` whose YAML can't be read
+  (its entries are not checked).
 - With `--files`, only the named `.anim` files (no reference scan). Binding paths against a
   hierarchy are an editor check: `edit_animation`/`get_animation` with `root`.
 

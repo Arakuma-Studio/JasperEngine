@@ -28,6 +28,7 @@ Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
 Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent...).
+Legacy Animation = AnimationPlayerComponent (AnimationComponent: entity sequences).
 
 ## Addressing
 - scene: numeric id ("12" ok), scene name, or project-relative .scene path. Omitted = the selected

@@ -9,8 +9,6 @@
 //     file-static samplers, with no behaviour change (ActionTracks/ActionTiming tests);
 //   * clips (AnimationClip::Track): the Animation Player, ActionSystem::previewPlayer /
 //     sampleClip, MCP get_animation `times`, the Animation window's curves view.
-// - Owner: T0 (API); T1a implements the samplers and refactors ActionSystem onto them; T1b
-//   implements the clip-time and event helpers it needs (wrapClipTime, collectCrossedEvents).
 // - Thread-safety: pure; no engine state.
 // - Invariants:
 //   * locateKey reproduces ActionSystem::keyframeUpdate exactly: `index` is the first key whose
@@ -119,11 +117,9 @@ namespace jasperengine::anim{
     // (spec 9.R16): forward fires fromTime < t <= toTime, backward toTime <= t < fromTime;
     // `includeStart` also fires events exactly at fromTime (a state that just started: at 0, or
     // at its length when played backwards, R18); a loop or ping-pong boundary splits the
-    // interval; each event at most once per update. Appends indices into clip.getEvents().
-    JASPERENGINE_API void collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
-                                               bool includeStart, std::vector<size_t>& out);
-    // The same with where each was crossed: its position on the state's unwrapped time line
-    // (between fromTime and toTime), for ordering callbacks of several states by time (T1b)
+    // interval; each event at most once per update. Appends each event's index into
+    // clip.getEvents() with where it was crossed: its position on the state's unwrapped time
+    // line (between fromTime and toTime), for ordering callbacks of several states by time.
     struct CrossedEvent{
         size_t index = 0;       // into clip.getEvents()
         double position = 0.0;

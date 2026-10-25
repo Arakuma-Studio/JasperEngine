@@ -541,3 +541,7 @@ clip test files, then merge to pose-animation/main.
   when the newest undoable step across the scene and project histories is a clip commit made by the Animation window or
   Record (tracked by the controller with each history's position), whatever window has focus; otherwise they go where
   they always went. Record mode never steals a scene undo.
+- **R5c (coordinator decision after the final editor review, I6):** for R5b, a "clip commit" is any project-history step
+  that commits clip data through the editor UI: the Animation window, Record, the Inspector's `.anim` asset section,
+  Extract/Create/Convert file writes made from the editor UI, and Retarget. MCP tool edits keep their own explicit
+  undo scopes and do not change keyboard routing.

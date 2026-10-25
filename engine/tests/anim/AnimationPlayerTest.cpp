@@ -985,6 +985,33 @@ TEST_F(Player, ModelPlayAnimationGoesToThePlayer){
     EXPECT_FALSE(object.isPlaying());
     model.playAnimation("missing", 0.0f);
     EXPECT_FALSE(object.isPlaying());
+
+    // engine review M11: an index past the player's states falls back to the model's entity
+    // animation of that index, as a name does; the player's states make room for it
+    std::vector<Entity> entityAnimations;
+    for (int i = 0; i < 3; i++){
+        Animation animation(&scene);
+        animation.setEntityOwned(false);           // the model lists it: it outlives this handle
+        entityAnimations.push_back(animation.getEntity());
+    }
+    scene.getComponent<ModelComponent>(root).animations = entityAnimations;
+    auto started = [&](Entity animation){
+        const ActionComponent& action = scene.getComponent<ActionComponent>(animation);
+        return action.startTrigger || action.state == ActionState::Running;
+    };
+    model.playAnimation(1, 0.0f);
+    EXPECT_TRUE(object.isPlaying("run")) << "1 is still the player's state";
+    EXPECT_FALSE(started(entityAnimations[1]));
+    model.playAnimation(2);
+    EXPECT_TRUE(started(entityAnimations[2])) << "2 is past the player's two states";
+    EXPECT_FALSE(started(entityAnimations[0]));
+    step(0.5);
+    EXPECT_FALSE(object.isPlaying()) << "the player's states faded out (the Animation's defaultFadeTime, 0.15 s)";
+    object.play("walk");
+    model.playAnimation(3, 0.0f);
+    EXPECT_TRUE(object.isPlaying("walk")) << "no state or animation 3: nothing changes";
+    EXPECT_FALSE(started(entityAnimations[0]));
+    scene.getComponent<ModelComponent>(root).animations.clear();
 }
 
 TEST_F(Player, PreviewWritesAndRestores){

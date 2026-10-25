@@ -41,10 +41,10 @@ AI agents edit the same files through the MCP tools `edit_animation`, `get_anima
 3. **Add properties.** **+ Add Property** opens a searchable tree of the bound GameObject's
    hierarchy. Pick **Position**, **Rotation** or **Scale** of any child, **Blend Shapes** of a mesh
    with morph targets, or **Lattice** of a lattice cage. The new row gets a key at the playhead
-   that holds the current value. A row reads `Name : Channel` (for example
-   `mixamorig:Spine : Rotation`). Hover a row to see its full path, and open its foldout to see
-   x/y/z, the blend shape names (that mesh's own: two meshes of a model can name their targets
-   differently) or the lattice point count.
+   that holds the current value. A row reads `Name : Channel` (for example `Hero : Position`;
+   deeper paths start with `…/`, as in `…/mixamorig:Spine : Rotation`). Hover a row to see its
+   full path, and open its foldout to see x/y/z, the blend shape names (that mesh's own: two
+   meshes of a model can name their targets differently) or the lattice point count.
 4. **Key it, one of two ways:**
    - **Record** (the red circle, or `R`): the timeline turns red (the curves view gets a red
      frame). Moving the bound GameObject or its children keys the clip at the playhead, on the
@@ -169,7 +169,8 @@ Click a `.anim` file in the Project window and the Inspector shows the **clip as
   it);
 - load warnings.
 
-Edits there are project undo steps. Double-clicking the file opens it in the Animation window.
+Edits there are project undo steps: `Ctrl/Cmd+Z` right after one undoes it, as in the Animation
+window (see [Undo](#undo)). Double-clicking the file opens it in the Animation window.
 
 ## Events
 
@@ -243,7 +244,8 @@ return Hero
 - **Wrap modes.** A `once` state that reaches its end calls `onFinish(state)`, stops advancing
   (`isPlaying` is false) and **holds its last pose** at its weight, until a fade or `stop` releases
   it. So `onFinish` followed by `crossFade("Idle")` blends from the end pose with no dip. With
-  nothing else playing, the last pose stays. `clamp_forever` holds the last frame and keeps playing,
+  nothing else playing, the last pose stays. `play(name)` or `blend(name, w > 0)` of a held state
+  restarts it; `blend(name, 0, fade)` fades it out. `clamp_forever` holds the last frame and keeps playing,
   calling `onFinish` once when it first reaches the end. `loop` and `ping_pong` never finish. A state
   started with a negative speed starts at its end.
 - `getState(name)` returns an `AnimationState`. `time`, `normalizedTime`, `speed`, `weight`, `wrap`
@@ -256,8 +258,9 @@ return Hero
   `defaultClip`, `defaultFadeTime`, `playAutomatically`, `enabled`; `isLoaded()`.
 - `Model:playAnimation(name[, fade])` uses the model's Animation Player first: it crossfades to that
   state (over Default Fade when no fade is given) and fades out the model's entity animations. An
-  index addresses the player's states in list order. A name the player doesn't have falls back to
-  the model's entity animation of that name. `stopAnimations(fade)` fades the player out too. Models
+  index addresses the player's states in list order (0-based); an index past them is the model's
+  entity animation of that index. A name the player doesn't have falls back to the model's entity
+  animation of that name. `stopAnimations(fade)` fades the player out too. Models
   without a player behave as before.
 
 Players run in play mode and in the game. In the editor's edit mode, the Animation window's preview
@@ -269,9 +272,10 @@ made with `GameObject.instantiate` binds its own hierarchy. The full reference i
 ## Sharing a clip: paths
 
 A track's path is the names from the player's GameObject down to the target, joined by `/`. `""` is
-the player's own GameObject, and paths never start with its name. `Wheel#1` is the second sibling
-named "Wheel" (`#0`, the first, is never written). Names containing `/` or ending in `#<digits>`
-can't be addressed: Add Property shows them in yellow with the reason, and they can't be added.
+the player's own GameObject, and paths never start with its name. A model's glTF root node is a real
+child, though, often named like the model: on the Hero model the spine is
+`Hero/mixamorig:Hips/mixamorig:Spine`. `Wheel#1` is the second sibling named "Wheel" (`#0`, the
+first, is never written). Names containing `/` or ending in `#` or `#<digits>` can't be addressed: Add Property shows them in yellow with the reason, and they can't be added.
 
 Because paths are relative, a clip plays on any GameObject whose children have the same names:
 
@@ -297,8 +301,9 @@ relinks it. A copied clip gets a new GUID.
 Every animation in a glTF/GLB or FBX model is a read-only clip named `<model>#<animation>`:
 `models/hero.gltf#Walk`. Unnamed animations are `#Animation 2` (the glTF index). When two animations
 share a name, the later one is `"Wave 2"`, `"Wave 3"`. Its paths are relative to the model's
-GameObject: bones and mesh nodes by their glTF names, for example
-`mixamorig:Hips/mixamorig:Spine`. It plays at 30 samples, wrap once (set the entry's Wrap to Loop to
+GameObject and include the glTF scene's root nodes, as the Hierarchy shows them: bones and mesh
+nodes by their glTF names, for example `Hero/mixamorig:Hips/mixamorig:Spine` (the hero's glTF root
+node is named Hero too). It plays at 30 samples, wrap once (set the entry's Wrap to Loop to
 loop it). Model clips can be referenced like files: pick a model in a clip field, or drop the model
 on **+ Add Clip** and choose the animation.
 
@@ -360,7 +365,7 @@ animation the Pose Animator plays, under the file's name), opens a menu:
   legacy until reloaded. Click **Reload with its hierarchy** (window banner) or **Reload Models in
   Node Hierarchy** (Inspector Bindings). One undo step; tracks of entity Animations that targeted the
   old bones follow the rebuilt bones.
-- **"duplicate sibling name".** Two children with the same name: the path binds the first. Write
+- **"several siblings share a name".** Two children with the same name: the path binds the first. Write
   `Name#1` for the second one, or rename one.
 - **An event does nothing.** The handler must be a method on a Lua script of the player's own
   GameObject (not a child), named exactly like the event's function, or subscribe with `onEvent`.
@@ -372,8 +377,8 @@ animation the Pose Animator plays, under the file's name), opens a menu:
 - **A `once` clip doesn't snap back.** It holds its last pose (Unity does too). Use `stop`, crossfade
   to another state, or set the wrap to loop.
 - **The preview loops a `once` clip.** The window's Play always loops. Play mode follows the wrap.
-- **"This is a Unity .anim (YAML)".** Unity clips are not read. Create a JasperEngine clip (Create >
-  Animation Clip) and key it, or import the animation in a glTF/FBX model and extract it.
+- **"This is a Unity .anim (YAML)".** Unity clips are not read. Create a JasperEngine clip (Assets >
+  Create > Animation Clip) and key it, or import the animation in a glTF/FBX model and extract it.
 - **"the file on disk is not a valid animation clip ... showing its last valid content".** A
   hand-edited file has a JSON error at that `line:col`. The window and the running players keep the
   last valid version until you fix it. `jasperengine-editor check --project . --anims` lists every

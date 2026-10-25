@@ -582,6 +582,29 @@ TEST(ModelSubClips, RejectsBadChannelsWithWarnings){
     EXPECT_FALSE(anim::buildSubClip(empty.model, -1, clip, warnings, &error));
 }
 
+// One addressable-name rule (ClipBinding's isAddressableName): "Bone#" and "Bone#-1" can't be read
+// back as paths, so their channels are dropped with a warning like "Bone#2"; "Take #b" is a name
+TEST(ModelSubClips, UnaddressableNamesFollowClipBinding){
+    GltfBuilder gltf;
+    const std::vector<std::string> names = {"Bone#", "Bone#-1", "Bone#2", "Take #b"};
+    for (const std::string& name : names) gltf.node(name);
+    const int animation = gltf.animation("Names");
+    const int times = gltf.floats({0.0f, 1.0f}, TINYGLTF_TYPE_SCALAR);
+    const int values = gltf.floats({0, 0, 0, 1, 1, 1}, TINYGLTF_TYPE_VEC3);
+    for (size_t i = 0; i < names.size(); i++) gltf.channel(animation, (int)i, "translation", times, values);
+
+    ClipData clip;
+    std::vector<ClipWarning> warnings;
+    std::string error;
+    ASSERT_TRUE(anim::buildSubClip(gltf.model, animation, clip, warnings, &error)) << error;
+    ASSERT_EQ(clip.tracks.size(), 1u) << describe(warnings);
+    EXPECT_EQ(clip.tracks[0].path, "Take #b");
+    for (int i = 0; i < 3; i++){
+        EXPECT_TRUE(hasWarning(warnings, "animations[0].channels[" + std::to_string(i) + "]", "can't address"))
+            << names[i] << "\n" << describe(warnings);
+    }
+}
+
 // The T-pose hero has no animation: alone it loads in the legacy layout (unchanged), on or under an
 // Animation Player in the node-hierarchy layout, where the animated hero's clips bind 100%
 TEST(ModelSubClips, PlayerForcesTheNodeHierarchyForCrossFileClips){

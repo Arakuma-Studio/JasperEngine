@@ -4,13 +4,13 @@
 // Contract (animation clips spec 3.2-3.3, 9.R1/R2/R9/R10/R16-R19, R43)
 // - Purpose: the runtime state of one Animation Player (AnimationPlayerComponent::runtime) and
 //   of one edit-mode clip preview (ClipPreviewSession), and the state-name rule. Internal to the
-//   engine's player code and the editor, not game-facing API (anim:: is internal; public
+//   engine's player code and the editor, not game-facing API (this header and ModelSubClips are
+//   internal; ClipBinding and KeyframeSampling are the public anim:: helpers, JasperEngine.h; game
 //   signatures use jasperengine types: the read-only state view AnimationStateInfo is in
 //   object/AnimationPlayer.h).
-// - Owner: T0 (shape); T1b fills and drives it (ActionSystem players, ActionSystemPlayers.cpp)
-//   and may add fields. Nothing outside the engine's player code writes these structs: the
-//   editor and scripts go through AnimationPlayer (object/AnimationPlayer.h) and
-//   ActionSystem::previewPlayer.
+// - Filled and driven by ActionSystem's players (ActionSystemPlayers.cpp). Nothing outside the
+//   engine's player code writes these structs: the editor and scripts go through
+//   AnimationPlayer (object/AnimationPlayer.h) and ActionSystem::previewPlayer.
 // - Thread-safety: main thread (owned by an ECS component / the editor preview).
 // - Invariants:
 //   * one state per clip entry (states[i] is AnimationPlayerComponent::clips[i] while the list
@@ -47,7 +47,7 @@
 
 namespace jasperengine::anim{
 
-    // ---- state names (implemented; the one rule for runtime, Inspector, controller, MCP) ----
+    // ---- state names (the one rule for runtime, Inspector, controller, MCP) ----
 
     // the entry's state name: `name`, else the sub-clip name ("hero.gltf#Walk" -> "Walk"), else the
     // .anim file stem ("anim/walk.anim" -> "walk")
@@ -77,19 +77,13 @@ namespace jasperengine::anim{
         std::shared_ptr<const AnimationClip> clip;
         uint64_t clipGeneration = 0;        // AnimationClipPool generation bound to
         uint64_t hierarchyRevision = 0;     // EntityRegistry::hierarchyRevision() bound at
-        uint64_t nameRevision = 0;          // EntityRegistry::nameRevision() the names were checked at
-        uint64_t destroyRevision = 0;       // EntityRegistry::destroyRevision() likewise
         uint64_t checkedFrame = 0;          // the player update that last looked at them
         std::vector<Entity> targets;        // per clip track, NULL_ENTITY = unresolved
-        // per target: name and parent at bind (validate-then-re-resolve, R9)
-        std::vector<std::string> boundNames;
-        std::vector<Entity> boundParents;
         std::vector<KeyCursor> cursors;     // per clip track
         float nextUnresolvedRetry = 0.0f;   // re-resolve throttle for unresolved paths (4 Hz)
-        // per target: its index in the Transform array at bind (SIZE_MAX without a Transform),
-        // and the root's: a hierarchy change that shifts every target like the root moved
-        // nothing under it (a spawn elsewhere), any other shift re-resolves (R9)
-        std::vector<size_t> boundIndices;
+        // the root's index in the Transform array at bind (SIZE_MAX without a Transform): a
+        // hierarchy change that shifts every path entity like the root moved nothing under it (a
+        // spawn elsewhere), any other shift re-resolves (R9)
         size_t rootIndex = SIZE_MAX;
         // every entity the resolved paths go through (targets and their ancestors below the
         // root), with its name, parent, Transform index and "#N" (its rank among the earlier
@@ -163,8 +157,6 @@ namespace jasperengine::anim{
         // the loadedFilename of each model bound under the root: a change rebinds
         std::unordered_map<Entity, std::string> modelFiles;
         std::vector<PendingPlayerCallback> pending;
-        // unused: the missing-handler warnings are kept per ActionSystem (once per (clip, function))
-        std::vector<std::string> warnedHandlers;
         // state names a call named that the clip list does not have (warned once each)
         std::vector<std::string> warnedStates;
         // the clip list's duplicate state names as aliased (spec 3.2, R40: "'Walk' (clip 3) plays
@@ -182,7 +174,7 @@ namespace jasperengine::anim{
         int findState(const std::string& name) const;
     };
 
-    // ---- playback (T1b; Unity legacy Animation semantics, object/AnimationPlayer.h) ----
+    // ---- playback (Unity legacy Animation semantics, object/AnimationPlayer.h) ----
 
     // The player's runtime, created when missing; a changed clip list (needsLoad) rebuilds the
     // states first (no file is read here: clips load in the system update)

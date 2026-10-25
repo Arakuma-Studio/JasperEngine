@@ -100,11 +100,6 @@ namespace {
         }
     }
 
-    // the entity's rest entry (made on its first use)
-    anim::ChannelRest& restOf(Entity entity, anim::RestMap& rest){
-        return rest[entity];
-    }
-
     size_t sampledTrackCount(const AnimationClip& clip){
         size_t count = 0;
         for (const AnimationClip::Track& track : clip.getTracks()){
@@ -119,9 +114,6 @@ namespace {
         const std::vector<AnimationClip::Track>& tracks = bindings.clip->getTracks();
         const size_t count = tracks.size();
         bindings.targets.assign(count, NULL_ENTITY);
-        bindings.boundNames.assign(count, std::string());
-        bindings.boundParents.assign(count, NULL_ENTITY);
-        bindings.boundIndices.assign(count, SIZE_MAX);
         bindings.cursors.assign(count, anim::KeyCursor());
         bindings.resolvedCount = 0;
         std::unordered_map<std::string, Entity> cache;
@@ -130,11 +122,8 @@ namespace {
             Entity target = resolveCached(scene, root, tracks[i].path, cache);
             if (target == NULL_ENTITY) continue;
             bindings.targets[i] = target;
-            bindings.boundNames[i] = scene->getEntityName(target);
-            bindings.boundParents[i] = parentOf(scene, target);
-            bindings.boundIndices[i] = transformIndex(scene, target);
             bindings.resolvedCount++;
-            if (rest) completeRest(scene, target, restOf(target, *rest), tracks[i].channel);
+            if (rest) completeRest(scene, target, (*rest)[target], tracks[i].channel);
         }
         // every entity a resolved path went through (the targets and their ancestors), with the
         // "#N" its segment selected it by
@@ -171,8 +160,6 @@ namespace {
         }
         bindings.rootIndex = transformIndex(scene, root);
         bindings.hierarchyRevision = scene->hierarchyRevision();
-        bindings.nameRevision = scene->nameRevision();
-        bindings.destroyRevision = scene->destroyRevision();
         bindings.resolved = true;
     }
 
@@ -242,8 +229,6 @@ namespace {
             bindings.pathIndices[i] = (size_t)(found[i] - first);
         }
         bindings.rootIndex = rootIndex;
-        bindings.nameRevision = scene->nameRevision();
-        bindings.destroyRevision = scene->destroyRevision();
         return true;
     }
 
@@ -450,7 +435,6 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
     anim::TrackSample sample;
     // the tracks of one path are neighbours: their target's lookups are made once
     Entity current = NULL_ENTITY;
-    bool alive = false;
     anim::ChannelRest* currentRest = nullptr;
     TransformBlendAccum* currentAccum = nullptr;
     for (size_t i = 0; i < tracks.size() && i < bindings.targets.size(); i++){
@@ -461,11 +445,9 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
             current = target;
             // bound entities are alive: destroying one under a parent bumps the hierarchy
             // revision, and bindings are validated (or resolved again) before sampling
-            alive = true;
-            currentRest = alive ? &restOf(target, rest) : nullptr;
+            currentRest = &rest[target];
             currentAccum = nullptr;
         }
-        if (!alive) continue;
         anim::ChannelRest& channelRest = *currentRest;
         completeRest(scene, target, channelRest, track.channel);
         if (!anim::sampleTrack(track, clipTime, sample, &bindings.cursors[i])) continue;

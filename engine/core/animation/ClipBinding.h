@@ -6,8 +6,6 @@
 //   grammar with editor/util/EntityPath (which gains relative()/findRelative() over these):
 //   names from the root joined by '/', a segment "Name#N" selecting the N-th later sibling of
 //   that name (Transform child order; "#0" is never written), "" = the root itself.
-// - Owner: T0 (API; readChannelValue / writeChannelValue implemented); T1b implements the path
-//   functions (with EntityRegistry::hierarchyRevision bumps).
 // - Thread-safety: reads the registry: the thread that owns the scene (main thread for scenes in
 //   the editor and the game).
 // - Invariants:
@@ -15,8 +13,9 @@
 //     and malformed "#N" (non-digits, N < 0).
 //   * resolution walks Transform children in order; a missing segment gives NULL_ENTITY (the
 //     runtime skips it silently, the editor reports it: ClipValidation).
-//   * a name containing '/' or ending in "#<digits>" can't be addressed (isAddressableName):
-//     relativePath fails for entities under such a name.
+//   * an empty name, a name containing '/' or ending in '#', "#<digits>" or "#-<digits>" can't be
+//     addressed (isAddressableName, the one rule: ModelSubClips uses it too): relativePath fails
+//     for entities under such a name.
 
 #ifndef CLIP_BINDING_H
 #define CLIP_BINDING_H
@@ -46,7 +45,8 @@ namespace jasperengine::anim{
     JASPERENGINE_API std::string formatPath(const std::vector<PathSegment>& segments);
     // "Name" or "Name#N" (N > 0)
     JASPERENGINE_API std::string formatSegment(const std::string& name, int index);
-    // false for names with '/' or ending in "#<digits>" (spec 9.R39)
+    // false for empty names, names with '/' and names ending in '#', "#<digits>" or "#-<digits>"
+    // (they would read back as a malformed or real "#N"; spec 9.R39)
     JASPERENGINE_API bool isAddressableName(const std::string& name);
 
     // the Transform children of `parent`, in order
@@ -70,9 +70,6 @@ namespace jasperengine::anim{
     // The path of `entity` relative to `root` ("" for the root itself); false when it is not the
     // root or under it, or a name on the way can't be addressed
     JASPERENGINE_API bool relativePath(EntityRegistry* registry, Entity root, Entity entity, std::string& out);
-
-    // `entity` shares its name with a sibling (its path needs or has "#N")
-    JASPERENGINE_API bool hasDuplicateSiblingName(EntityRegistry* registry, Entity entity);
 
     // Every addressable descendant of `root` (root included, as "") with its path, depth first in
     // child order: nearest-name suggestions, the Add Property tree, binding reports

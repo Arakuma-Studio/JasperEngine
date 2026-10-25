@@ -1433,7 +1433,7 @@ bool clipPathFromJson(Project* project, const std::string& text, std::string& st
     const fs::path full = project->resolveAssetPath(stored);
     std::error_code ec;
     if (!fs::is_regular_file(full, ec)) {
-        error = "clip: " + text + " does not exist: create the clip first (Assets > Create > Animation Clip)" +
+        error = "clip: " + text + " does not exist: create it first with edit_animation {clip, create: {}}" +
                 CLIP_PATH_EXAMPLE + ".";
         stored.clear();
         return false;

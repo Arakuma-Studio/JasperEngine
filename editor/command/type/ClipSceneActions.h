@@ -57,9 +57,11 @@ namespace jasperengine::editor{
         // `model` and `usePlayer`, the model's player entries of that sub-clip switch to the file
         // (the state keeps its name; a player is added with the file when it has none) in one
         // scene step; otherwise the file alone, a project step (into an existing file: a commit
-        // that keeps its GUID)
+        // that keeps its GUID). `edited` (optional): the clip to write instead of the plain
+        // extract (MCP's extract with the call's edits applied)
         static bool extractSubClip(Project* project, uint32_t sceneId, Entity model, const std::string& subClip,
-                                   const std::string& clipPath, bool usePlayer, ClipActionResult& result, std::string& error);
+                                   const std::string& clipPath, bool usePlayer, ClipActionResult& result, std::string& error,
+                                   const ClipData* edited = nullptr);
 
         // Use Animation Player (R15): the model's entity animations and their tracks removed,
         // ModelComponent.animationEntities = false, a player listing every "<model>#<name>"

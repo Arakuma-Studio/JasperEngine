@@ -85,7 +85,6 @@ namespace jasperengine {
         // see hierarchyRevision() / nameRevision()
         uint64_t hierarchyRev = 0;
         uint64_t nameRev = 0;
-        uint64_t destroyRev = 0;
         // see takeHierarchyLog()
         std::vector<Entity> renamedLog;
         std::vector<Entity> destroyedLog;
@@ -200,9 +199,6 @@ namespace jasperengine {
         // and clear(): a player whose bound entities kept their parents and places compares
         // names only when it changed
         uint64_t nameRevision() const;
-        // Increases when an entity with a parent or children is destroyed or recreated, and on
-        // clear(): ids can come back, so a player compares the names of what it bound then
-        uint64_t destroyRevision() const;
         // For code that changes Transform::parent directly instead of through addEntityChild
         void hierarchyChanged();
         // The entities renamed under a parent and the ones destroyed (or recreated) with a parent

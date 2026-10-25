@@ -804,7 +804,8 @@ intervalMs, loop)`, plus Action: `start()`, `pause()`, `stop()`, `isRunning()`,
 With an Animation Player on the Model's GameObject (4.8.2), `playAnimation(name [, fadeTime])`
 crossfades to the player's state of that name (over the player's `defaultFadeTime` when no fade
 is given) and fades out the model's running entity animations; an index is a player state, in
-list order. A name the player lacks falls back to the entity animation of that name (the player's
+list order (0-based); an index past the player's states is the entity animation of that index. A
+name the player lacks falls back to the entity animation of that name (the player's
 states fade out). `stopAnimations(fadeTime)` fades the player out too. Without a player,
 `playAnimation` uses the model's entity animations (glTF animations loaded as Animation
 entities), as before; `getAnimation` / `findAnimation` always return entity animations (none
@@ -878,7 +879,8 @@ on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs
 A `once` state that reaches its end fires `onFinish`, stops advancing and **holds its last pose**
 at its weight until a fade (crossFade / play with a fade / blend to 0) or `stop` releases it, so
 `onFinish` then `crossFade("Idle", 0.2)` blends from the end pose; with nothing else playing the
-pose stays. Events and `onFinish` run after the frame's animation update, in time order; player
+pose stays. `play(name)` or `blend(name, w > 0)` of a held state restarts it; `blend(name, 0,
+fade)` fades it out. Events and `onFinish` run after the frame's animation update, in time order; player
 calls made inside them take effect next frame.
 
 `AnimationState` (by player + state name, looked up on every access; works across clip list
@@ -1407,9 +1409,9 @@ Rigidbody wrappers by index.
     (`event.functionName`, `event.args[1]`), not `function(name, args)`; `onFinish` gets the
     state name. `GameObject:getAnimationPlayer()` is `nil` without the component (unlike
     `getRigidbody2D`, it never adds one).
-21. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
+22. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
     called. Event subscriptions are cleaned up automatically.
-22. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
+23. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
-23. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
+24. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).

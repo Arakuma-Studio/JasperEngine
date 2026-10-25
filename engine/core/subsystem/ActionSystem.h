@@ -195,7 +195,7 @@ namespace jasperengine{
 		float getDuration(Entity entity, int depth);
 		bool isAnimationReachable(Entity from, Entity target, std::unordered_set<Entity>& visited);
 
-		// Animation Players (animation clips spec 3.3; ActionSystemPlayers.cpp, TODO(T1b)): they
+		// Animation Players (animation clips spec 3.3; ActionSystemPlayers.cpp): they
 		// live in this system so they share the pose blend with entity animations. update()
 		// calls updatePlayers after the entity animations and before flushPoseBlend, and
 		// dispatchPlayerCallbacks after it (events and onFinish, in time order: callbacks may

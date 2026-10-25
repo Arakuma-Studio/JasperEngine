@@ -4,8 +4,6 @@
 // Contract (animation clips spec 2.1, 9.R8/R20/R35-R38)
 // - Purpose: the one .anim parser and canonical writer, shared by the engine (AnimationClipPool),
 //   the editor document, MCP, the CLI checks and the tests.
-// - Owner: T0 (API, and the pure helpers already implemented: enum names, GUID helpers, Unity
-//   YAML detection); T1a implements parseClip / writeClip / normalize.
 // - Thread-safety: pure functions of their arguments (no engine state): any thread.
 // - Format: UTF-8 JSON {"format": "jasperengine.anim", "version": 1, "guid", "frame_rate", "wrap",
 //   "length", "tracks", "events", "preview", "source", unknown keys...}.
@@ -23,7 +21,7 @@
 //     |‖q‖ - 1| > 1e-5, tangent objects only for keys with tangents, every lattice point in
 //     every key, unknown keys written back. writeClip(parseClip(writeClip(d))) == writeClip(d)
 //     byte for byte, and parse + write of a canonical file is a no-op.
-// - Canonical details (T1a): members in the order of the Format line; "guid", "length"
+// - Canonical details: members in the order of the Format line; "guid", "length"
 //   (explicit only), "preview" and "source" only when set, "tracks" and "events" always (empty:
 //   []); a track is {"path", "channel", "relative"?, "loop"?, "keys"} with one key per line,
 //   [time, value] / [time, value, ease] (ease only when not linear) or the object form for keys
@@ -89,7 +87,7 @@ namespace jasperengine::anim{
     // Unity's YAML .anim (%YAML header or an "AnimationClip:" document)
     JASPERENGINE_API bool isUnityYamlClip(const std::string& text);
     // "This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}:
-    // create one with Create > Animation Clip or edit_animation {clip, create}."
+    // create one with Assets > Create > Animation Clip or edit_animation {clip, create}."
     JASPERENGINE_API const char* unityYamlRefusal();
 
     // GUIDs (32 lowercase hex digits, AssetDatabase's form)
@@ -110,6 +108,10 @@ namespace jasperengine::anim{
     // "linear", "step", "<quad|cubic|quart|quint|sine|expo|circ|back|elastic|bounce>_<in|out|in_out>"
     JASPERENGINE_API const char* easeName(EaseType ease);
     JASPERENGINE_API bool easeFromName(const std::string& name, EaseType& out);
+
+    // the event function rule: a Lua identifier that is not a keyword ("end", "function"...);
+    // the loader drops other events
+    JASPERENGINE_API bool isLuaIdentifier(const std::string& name);
 
 }
 

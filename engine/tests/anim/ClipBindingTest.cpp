@@ -127,11 +127,6 @@ TEST(ClipBinding, RelativePathsAndDescendants){
     EXPECT_FALSE(anim::relativePath(r, rig.arm, rig.hand1, path)) << "not under the root";
     EXPECT_FALSE(anim::relativePath(r, rig.hand, rig.root, path));
 
-    EXPECT_TRUE(anim::hasDuplicateSiblingName(r, rig.arm));
-    EXPECT_TRUE(anim::hasDuplicateSiblingName(r, rig.arm1));
-    EXPECT_FALSE(anim::hasDuplicateSiblingName(r, rig.leg));
-    EXPECT_FALSE(anim::hasDuplicateSiblingName(r, rig.hand));
-
     // every descendant, depth first in child order; resolving each path gives it back
     std::vector<std::pair<std::string, Entity>> all = anim::descendantPaths(r, rig.root);
     std::vector<std::pair<std::string, Entity>> expected = {
@@ -245,7 +240,6 @@ TEST(ClipBinding, HierarchyLogListsRenamesAndDestroys){
     EXPECT_FALSE(overflow);
 
     const uint64_t names = r.nameRevision();
-    const uint64_t destroys = r.destroyRevision();
     r.setEntityName(rig.root, "Top");               // a root's name is in no path
     r.setEntityName(rig.leg, "Shin");
     r.destroyEntity(rig.hand1);
@@ -256,7 +250,6 @@ TEST(ClipBinding, HierarchyLogListsRenamesAndDestroys){
     EXPECT_EQ(destroyed, std::vector<Entity>{rig.hand1});
     EXPECT_FALSE(overflow);
     EXPECT_EQ(r.nameRevision(), names + 1);
-    EXPECT_EQ(r.destroyRevision(), destroys + 1);
     EXPECT_EQ(r.getEntityNameRef(rig.leg), "Shin");
     EXPECT_EQ(r.getEntityNameRef(NULL_ENTITY), "");
 
