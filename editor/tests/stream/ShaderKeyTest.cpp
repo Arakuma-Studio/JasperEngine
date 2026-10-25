@@ -55,7 +55,9 @@ namespace {
         ShaderType::GBUFFER, ShaderType::UI, ShaderType::SSAO, ShaderType::SSAO_BLUR, ShaderType::SSR,
         ShaderType::SSR_BLUR, ShaderType::COMPOSITE, ShaderType::SHADOW2D, ShaderType::BLIT,
         ShaderType::POSTPROCESS, ShaderType::BLOOM, ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT,
-        ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER};
+        ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER, ShaderType::FLUID,
+        ShaderType::SHADOW_CACHE, ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
+        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE};
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
@@ -264,7 +266,8 @@ TEST(ShaderKeyNormalize, ValidMasksAreTheNamedBits) {
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::POINTS), 0x1Fu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::LINES), 0x7u);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::SKYBOX), 0x1u);
-    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::BLIT), 0x1FFFu);
+    // (bits 13-17 S13's uber pass: VHS, halation, film damage, the grains)
+    EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::BLIT), 0x3FFFFu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::BLOOM), 0xFu);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::HTMLUI), 0x1u);
     EXPECT_EQ(ShaderPool::getValidPropertyMask(ShaderType::HTMLUI_POST), 0x7Fu);
@@ -519,6 +522,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::SHADOW2D, 0, "shadow2d"},
         {ShaderType::BLIT, 0, "blit"},
         {ShaderType::BLIT, 0x1FFF, "blit_FxaCabPixCrtEdgGrnShpLutVigDthBlmBlrScl"},
+        {ShaderType::BLIT, 0x3E000, "blit_VhsHalFdmGlnGfm"},
         {ShaderType::BLOOM, 0x3, "bloom_PreThr"},
         {ShaderType::POSTPROCESS, 0, "postprocess"},
         {ShaderType::HTMLUI, 1, "htmlui_Tex"},
