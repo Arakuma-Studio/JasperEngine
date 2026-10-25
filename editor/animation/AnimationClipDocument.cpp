@@ -44,11 +44,14 @@ namespace {
         return absolute.lexically_normal().generic_string();
     }
 
+    void clearWatchedModels();
+
     // Another project (or the same object reopened elsewhere) drops the documents of the old one
     void useProject(Project* project){
         Registry& reg = registry();
         if (reg.project != project || reg.projectPath != project->getProjectPath()){
             reg.documents.clear();
+            clearWatchedModels();
             reg.project = project;
             reg.projectPath = project->getProjectPath();
         }
@@ -259,6 +262,10 @@ namespace {
         return models;
     }
 
+    void clearWatchedModels(){
+        watchedModels().clear();
+    }
+
     std::pair<int64_t, uint64_t> statFile(const fs::path& path){
         std::error_code ec;
         const auto time = fs::last_write_time(path, ec);
@@ -437,10 +444,12 @@ std::vector<ClipHintEdit> jasperengine::editor::remapClipHints(Project* project,
         return false;
     };
 
+    // a hint naming the old path holds its last component: other clips are not parsed
+    const std::string oldName = oldAbsolute.filename().string();
     std::vector<fs::path> written;
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".anim"})){
         std::string text;
-        if (!ProjectChecks::readFile(file, text)) continue;
+        if (!ProjectChecks::readFile(file, text) || oldName.empty() || text.find(oldName) == std::string::npos) continue;
         anim::ClipParseResult parsed = anim::parseClip(text);
         if (!parsed.ok()) continue;
         ClipData data = *parsed.data;
@@ -465,7 +474,9 @@ void jasperengine::editor::restoreClipHints(Project* project, const std::vector<
     for (const ClipHintEdit& edit : edits){
         std::string text;
         if (!ProjectChecks::readFile(edit.file, text) || text != edit.after){
-            continue;   // edited since: what it holds now stays
+            // edited since: what it holds now stays
+            Out::warning("%s changed since the move: its preview/source path was left as it is now", edit.file.string().c_str());
+            continue;
         }
         if (FileUtils::writeFileReplacing(edit.file, edit.before)){
             written.push_back(edit.file);
@@ -555,7 +566,8 @@ std::shared_ptr<AnimationClipDocument> AnimationClipDocument::create(Project* pr
 
     std::shared_ptr<AnimationClipDocument> document;
     auto it = reg.documents.find(key);
-    if (it != reg.documents.end()){
+    const bool existing = it != reg.documents.end();
+    if (existing){
         document = it->second;   // a document whose file was deleted (an undone creation)
     }else{
         document.reset(new AnimationClipDocument());
@@ -575,7 +587,8 @@ std::shared_ptr<AnimationClipDocument> AnimationClipDocument::create(Project* pr
         } while (database.contains(copy.guid));
     }
     if (!document->writeUndoable(anim::writeClip(copy), "", error)){
-        if (!document->onDisk){
+        // a document of an undone creation stays for its holders (a redo brings the file back)
+        if (!existing && !document->onDisk){
             reg.documents.erase(key);
         }
         return nullptr;
@@ -659,6 +672,20 @@ void AnimationClipDocument::revisionChanged(){
 }
 
 void AnimationClipDocument::reloadFromDisk(){
+    reload();
+}
+
+AnimationClipDocument::ReloadResult AnimationClipDocument::reload(){
+    const ReloadResult result = reloadContent();
+    // an outside change (not this document's own commit) ends the merge of the edit before it:
+    // undoing the next drag must not restore what the outside change replaced
+    if (!committing && result != ReloadResult::Unchanged && result != ReloadResult::Busy){
+        mergeEpoch++;
+    }
+    return result;
+}
+
+AnimationClipDocument::ReloadResult AnimationClipDocument::reloadContent(){
     std::error_code ec;
     if (!fs::is_regular_file(statPath, ec)){
         if (onDisk){
@@ -668,7 +695,7 @@ void AnimationClipDocument::reloadFromDisk(){
             revisionChanged();
             notify(Change::Removed);
         }
-        return;
+        return ReloadResult::Removed;
     }
 
     ClipData data;
@@ -686,20 +713,20 @@ void AnimationClipDocument::reloadFromDisk(){
             onDisk = true;
             takeStamp();
             notify(Change::Reloaded);
-            return;
+            return ReloadResult::Kept;
         }
         newText = anim::writeClip(data);
         if (onDisk && newText == text){
             takeStamp();
-            return;
+            return ReloadResult::Unchanged;
         }
     }else{
         if (!ProjectChecks::readFile(filePath, newText)){
-            return;   // being written: the next poll or notification reads it
+            return ReloadResult::Busy;   // being written: the next poll or notification reads it
         }
         if (onDisk && newText == text){
             takeStamp();
-            return;
+            return ReloadResult::Unchanged;
         }
         anim::ClipParseResult parsed = anim::parseClip(newText);
         if (!parsed.ok()){
@@ -710,7 +737,7 @@ void AnimationClipDocument::reloadFromDisk(){
             onDisk = true;
             takeStamp();
             notify(Change::Reloaded);
-            return;
+            return ReloadResult::Kept;
         }
         data = std::move(*parsed.data);
         newWarnings = std::move(parsed.warnings);
@@ -723,6 +750,7 @@ void AnimationClipDocument::reloadFromDisk(){
     takeStamp();
     revisionChanged();
     notify(committing ? Change::Edited : Change::Reloaded);
+    return ReloadResult::Changed;
 }
 
 std::string AnimationClipDocument::keptGuid() const{
@@ -753,14 +781,15 @@ bool AnimationClipDocument::writeUndoable(const std::string& newText, const std:
     if (mergeKey.empty()){
         command->setNoMerge();
     }else{
-        command->setMergeKey(relativePath + "\n" + mergeKey);
+        command->setMergeKey(relativePath + "\n" + std::to_string(mergeEpoch) + "\n" + mergeKey);
     }
     auto failure = std::make_shared<std::string>();
     command->reportFailureTo(failure);
+    const bool wasCommitting = committing;
     committing = true;
     // addCommand runs execute() (which reloads this document) and deletes the command when it fails
     const bool written = project->getProjectCommandHistory()->addCommand(command);
-    committing = false;
+    committing = wasCommitting;
     if (!written){
         return fail(error, "writing '" + relativePath + "' failed (" +
                     (failure->empty() ? std::string("permissions, a read-only disk, or a parent path that is a file") : *failure) + ")");
@@ -776,6 +805,12 @@ bool AnimationClipDocument::commit(const ClipData& newData, const std::string& u
     }
     if (!onDisk){
         return fail(error, "'" + relativePath + "' does not exist any more");
+    }
+    // written by something else since it was read (the poll or auto-sync had not seen it yet):
+    // the edit was made on old content, so it is not written over the new one
+    if (stampChanged()){
+        reload();
+        return fail(error, "'" + relativePath + "' changed on disk since it was read: it was reloaded, make the edit again");
     }
     ClipData copy = newData;
     // the file keeps its identity whatever the edit holds
@@ -815,18 +850,18 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
             }
         }
     }
-    // the files whose document found a new revision: revisionChanged() told the pool and players
+    // the clips an open document read again took care of themselves: a new revision told the
+    // pool and the players (revisionChanged), the same text needs nothing, a broken file keeps
+    // the last valid clip
     std::set<std::string> covered;
     for (const std::shared_ptr<AnimationClipDocument>& document : changed){
-        const uint64_t before = document->rev;
-        document->reloadFromDisk();
-        if (document->rev != before && document->project == project){
+        const ReloadResult result = document->reload();
+        if (!document->readOnly && result != ReloadResult::Busy && document->project == project){
             covered.insert(keyOf(document->statPath));
         }
     }
 
-    // the files no document has open (or whose document found nothing new to show, like a
-    // broken file): the pool and the players hear of them all the same
+    // the files no document has open: the pool and the players hear of them all the same
     if (!project) return;
     for (const fs::path& path : paths){
         const fs::path normal = path.lexically_normal();
@@ -834,16 +869,60 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
         std::error_code ec;
         const bool clipFile = Util::isAnimationClipFile(p);
         const bool modelFile = Util::isModelFile(p);
-        // a directory moved or deleted: what was under it (a gone path without an extension)
-        const bool directory = !clipFile && !modelFile &&
-                               (fs::is_directory(normal, ec) || (!fs::exists(normal, ec) && normal.extension().empty()));
+        // a directory moved or deleted: what was under it (a gone path that is no clip or model,
+        // "clips.v2" too)
+        const bool directory = !clipFile && !modelFile && (fs::is_directory(normal, ec) || !fs::exists(normal, ec));
         if ((!clipFile && !modelFile && !directory) || covered.count(keyOf(normal))){
             continue;
         }
         if (clipFile){
+            // a file that does not parse any more: the players keep the last valid clip, as an
+            // open document does (the problem is reported by whoever saw the change)
+            std::string content;
+            if (fs::is_regular_file(normal, ec) && ProjectChecks::readFile(normal, content) && !anim::parseClip(content).ok()){
+                continue;
+            }
             AnimationClipPool::invalidate(normal.generic_string());
         }
         markPlayers(project, normal);
+    }
+}
+
+void AnimationClipDocument::filesMoved(const fs::path& oldPath, const fs::path& newPath){
+    Registry& reg = registry();
+    std::vector<std::pair<std::string, std::shared_ptr<AnimationClipDocument>>> moved;
+    for (const auto& entry : reg.documents){
+        if (isSameOrUnder(oldPath, entry.second->statPath)){
+            moved.emplace_back(entry.first, entry.second);
+        }
+    }
+    for (auto& [oldKey, document] : moved){
+        const fs::path rest = document->statPath.lexically_relative(oldPath.lexically_normal());
+        const fs::path statPath = (rest == "." ? newPath : newPath / rest).lexically_normal();
+        std::string clipPart;
+        if (document->readOnly){
+            clipPart = document->filePath.generic_string().substr(document->statPath.generic_string().size() + 1);
+        }
+        document->statPath = statPath;
+        std::string key = keyOf(statPath);
+        fs::path relative;
+        const std::string fileRelative = document->project && isInside(document->project->getProjectPath(), statPath, &relative)
+            ? relative.generic_string() : statPath.generic_string();
+        if (document->readOnly){
+            document->filePath = fs::path(statPath.generic_string() + "#" + clipPart);
+            document->subClipReference = anim::formatSubClipReference(assetForm(document->project, statPath), clipPart);
+            document->relativePath = fileRelative + "#" + clipPart;
+            key += "#" + clipPart;
+        }else{
+            document->filePath = statPath;
+            document->relativePath = fileRelative;
+        }
+        reg.documents.erase(oldKey);
+        reg.documents[key] = document;
+        document->mergeEpoch++;
+        document->rev++;
+        document->takeStamp();
+        document->notify(Change::Reloaded);
     }
 }
 
@@ -854,8 +933,12 @@ void AnimationClipDocument::checkDiskChanges(Project* project){
             documents.push_back(entry.second);
         }
     }
+    std::set<std::string> rebuilt;
     for (const std::shared_ptr<AnimationClipDocument>& document : documents){
-        document->reloadFromDisk();
+        document->reload();
+        if (document->readOnly){
+            rebuilt.insert(keyOf(document->statPath));
+        }
     }
 
     // the models the players' sub-clips come from (edited or reimported outside the editor)
@@ -883,7 +966,10 @@ void AnimationClipDocument::checkDiskChanges(Project* project){
         const ModelStamp now = stampModel(FileUtils::pathFromUtf8(it->first), &it->second);
         if (now.time != it->second.time || now.size != it->second.size || now.buffers != it->second.buffers ||
             now.bufferStamps != it->second.bufferStamps){
-            changed.push_back(FileUtils::pathFromUtf8(it->first));
+            // a model a document just rebuilt from: its players were told (revisionChanged)
+            if (!rebuilt.count(it->first)){
+                changed.push_back(FileUtils::pathFromUtf8(it->first));
+            }
             it->second = now;
         }
         ++it;

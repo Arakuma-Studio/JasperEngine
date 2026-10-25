@@ -300,7 +300,11 @@ std::string editor::AssetDatabase::assignNewGuid(const std::string& relative, co
         guid = generateGuid();
     }
     if (!writeGuid(projectPath / relative, guid)) {
-        Out::warning("The GUID of %s is kept in memory only", relative.c_str());
+        // a Unity YAML .anim is no JasperEngine clip (it is converted, never referenced): no warning
+        std::string text;
+        if (!(isClipFile(relative) && readText(projectPath / relative, text) && anim::isUnityYamlClip(text))) {
+            Out::warning("The GUID of %s is kept in memory only", relative.c_str());
+        }
     }
     return guid;
 }
@@ -507,6 +511,12 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh() {
             writeGuid(projectPath / relative, it->second.guid);
             stat(relative, it->second);
             changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
+        } else if (isClipFile(relative) && byGuid.count(guid) && byGuid[guid] != relative && fileExists(byGuid[guid])) {
+            // A clip rewritten with another existing clip's GUID (JSON copied from it by an agent):
+            // still this asset, its references keep finding it
+            writeGuid(projectPath / relative, it->second.guid);
+            stat(relative, it->second);
+            changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
         } else {
             // Another asset now (a checkout replaced it)
             changes.push_back({Change::Type::Removed, it->second.guid, relative, {}});
@@ -668,8 +678,8 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::importAssets(c
         auto existing = byPath.find(relative);
         if (existing != byPath.end()) {
             if (existing->second.guid == guid && !(copy && copyGuids && copyGuids->count(relative))) {
+                // the same asset, a new time and size: the cache (GUID and path only) is unchanged
                 stat(relative, existing->second);
-                dirty = true;
                 continue;
             }
             // Overwritten by another file: the asset it was is gone
