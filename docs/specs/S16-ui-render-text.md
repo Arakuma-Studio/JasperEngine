@@ -570,15 +570,15 @@ one line pointing here.
   target per example and why each run started (`RmlRenderer::getLastRunBreaks`), and gates "no
   more draws than the baseline" and the engine time. Follow-up: a few texture slots per
   `HTMLUI_PRIM` draw (a per-instance slot and kind) would merge the texture splits.
-- **R22 B2 (the replay gated).** "<= 50 % of the baseline" holds for the replay (0.385 -> 0.108 ms
+- **R22 B2 (the replay gated).** "<= 50 % of the baseline" holds for the replay (0.404 -> 0.117 ms
   on the benchmark host), the part S16 changes; the whole engine time is mostly RmlUi's update and
-  paint traversal (`Context::Render`, 2.4 ms for 500 cards, the same both ways). The test gates the
+  paint traversal (`Context::Render`, 2.5 ms for 500 cards, the same both ways). The test gates the
   replay at 50 % and the engine time at the baseline + 5 %. Follow-up: culling elements outside the
   clip in the paint traversal (fork).
 - **R22 gathering** counts an instance as the 4 vertices it replaces, on warm frames with the run
   cache dropped (`RmlRenderer::clearRunCacheForTesting`).
 - **Wall frame times on a software rasterizer** (llvmpipe, the CI and benchmark hosts) are higher
-  with S16: llvmpipe pays per instance (B3 text-wall: 104 ms instanced, 31 ms as vertex runs, 30 ms
+  with S16: llvmpipe pays per instance (B3 text-wall: 128 ms instanced, 38 ms as a vertex run, 37 ms
   baseline). They are not a criterion (R22 excludes the backend, R24 needs GPU pass timings) and
   are reported in `docs/html-ui/render-benchmark.md`.
 - **AC8 compare budget.** `RenderPrimitive.MatchesTheMeshPath` uses the default threshold and mean
@@ -606,3 +606,9 @@ one line pointing here.
   may pass the middle of a side: `border-radius: 20px / 50px` on a 60 px box), and an outer shadow
   is cut out half a pixel inside the box's edge, so the box antialiases against the shadow rather
   than against its hole (no lighter seam; `paint/box-shadow-radius-percent`).
+- **AC4 ties.** `RenderBatch.EquivalenceAllGoldenScenes` holds max channel difference <= 1 on every
+  capture but two, which it lists with their reason and bound: `paint/object-position`, where a
+  nearest-filtered texel boundary falls exactly on pixel centres (the folded translation and the
+  shader's round the tie differently; up to 120 pixels), and `integration/fixed-modal-backdrop`,
+  where the `translate(-50%, -50%)` modal's 30 px shadow tail under a backdrop blur differs by up to
+  3.
