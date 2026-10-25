@@ -612,3 +612,9 @@ one line pointing here.
   shader's round the tie differently; up to 120 pixels), and `integration/fixed-modal-backdrop`,
   where the `translate(-50%, -50%)` modal's 30 px shadow tail under a backdrop blur differs by up to
   3.
+- **AC1 residual.** With `JASPER_HTMLUI_S16_OFF=1` every golden passes against the unchanged files
+  except `p1/texture_effects` (`IntegrationTest.TextureDocumentDrawsClipsLayersAndFilters`): 48
+  pixels over the threshold (0.073 %, limit 0.05 %), deterministic, on the 4-sample texture
+  document's stencil-clipped disc edge and its outlined label (the same test passes on the oe-port
+  base). Not traced to a single change yet; follow-up. The other S16-off failures are S16's own
+  tests needing S16 on (they now turn it on, `S16On`) and the new goldens.
