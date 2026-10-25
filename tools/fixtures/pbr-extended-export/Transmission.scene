@@ -1,9 +1,10 @@
-formatVersion: 1
-id: 1416860044
+formatVersion: 2
+guid: 40ec2894964d45e6929efb46a6525ce3
+id: 2790661500
 name: Transmission
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
-  shadowQuality: low
+  shadowQuality: auto
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
@@ -50,14 +51,25 @@ shaderKeys:
     properties: 1112
   - type: mesh
     properties: 1114
+  - type: mesh
+    properties: 1144
+  - type: mesh
+    properties: 1146
   - type: sky
   - type: depth
   - type: blit
+  - type: shadowcache
   - type: mesh
     properties: 1114
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
+    properties: 1146
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
     properties: 1112
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
+    properties: 1144
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
 entities:
   - type: Entity
@@ -93,10 +105,10 @@ entities:
         cullingMask: 4294967295
         shadows: true
         automaticShadowCamera: true
-        shadowBias: 0.002
-        mapResolution: 2048
-        shadowCameraNearFar: [0.3, 100]
-        numShadowCascades: 3
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0
   - type: Entity
     entity: 1002
     name: Skybox
@@ -213,6 +225,7 @@ entities:
                 textureType: 2D
                 source: path
                 path: assets/textures/stripes.png
+                guid: 88e86514b55b097d9e5e1cc963cdd02a
                 minFilter: linear
                 magFilter: linear
                 wrapU: repeat
@@ -455,7 +468,7 @@ entities:
         renderToTexture: false
         transparentSort: true
         depthTest: true
-        useTarget: false
+        useTarget: true
         autoResize: true
         framebufferWidth: 512
         framebufferHeight: 512

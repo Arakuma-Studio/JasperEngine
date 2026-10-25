@@ -13,6 +13,9 @@ windowResizable: true
 luaDir: .
 scenes:
   - filepath: Lobes.scene
+    filepathGuid: c52370fe0d8f592f04e6060810053232
   - filepath: Transmission.scene
+    filepathGuid: 40ec2894964d45e6929efb46a6525ce3
   - filepath: Hex.scene
+    filepathGuid: 264c0e33769e3318bf118ed240246e2f
 runtimeShaders: false

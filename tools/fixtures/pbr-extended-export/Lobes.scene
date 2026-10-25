@@ -1,9 +1,10 @@
-formatVersion: 1
-id: 3706682953
+formatVersion: 2
+guid: c52370fe0d8f592f04e6060810053232
+id: 850110330
 name: Lobes
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
-  shadowQuality: low
+  shadowQuality: auto
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
@@ -49,71 +50,138 @@ shaderKeys:
   - type: mesh
     properties: 346
   - type: mesh
+    properties: 378
+  - type: mesh
     properties: 1112
   - type: mesh
     properties: 1114
   - type: mesh
+    properties: 1144
+  - type: mesh
+    properties: 1146
+  - type: mesh
     properties: 33554776
   - type: mesh
     properties: 33554778
   - type: mesh
+    properties: 33554808
+  - type: mesh
+    properties: 33554810
+  - type: mesh
     properties: 33554906
+  - type: mesh
+    properties: 33554938
   - type: sky
   - type: depth
   - type: blit
+  - type: shadowcache
   - type: mesh
     properties: 346
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 378
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
+    properties: 1144
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
     properties: 33554776
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 33554778
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
+    properties: 33554808
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 33554810
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
     properties: 33554906
+    customShader: builtin:lit#USE_LIT_QUALITY
+  - type: mesh
+    properties: 33554938
     customShader: builtin:lit#USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 1144
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 1112
+    customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
+  - type: mesh
+    properties: 1144
     customShader: builtin:lit#PBR_SHEEN,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
   - type: mesh
+    properties: 1144
+    customShader: builtin:lit#PBR_ANISOTROPY,USE_LIT_QUALITY
+  - type: mesh
     properties: 1112
+    customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
+  - type: mesh
+    properties: 1144
     customShader: builtin:lit#PBR_IRIDESCENCE,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
   - type: mesh
+    properties: 1144
+    customShader: builtin:lit#PBR_SPECULAR,PBR_TRANSMISSION,PBR_VOLUME,USE_LIT_QUALITY
+  - type: mesh
     properties: 1112
+    customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
+  - type: mesh
+    properties: 1144
     customShader: builtin:lit#PBR_SPECULAR,USE_LIT_QUALITY
   - type: mesh
     properties: 1114
     customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
   - type: mesh
+    properties: 1146
+    customShader: builtin:lit#PBR_HEX_TILING,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554776
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
+    properties: 33554808
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554906
+    customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
+  - type: mesh
+    properties: 33554938
     customShader: builtin:lit#PBR_CLEARCOAT,USE_LIT_QUALITY
   - type: mesh
     properties: 1112
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 1144
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554776
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 33554808
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY
   - type: mesh
     properties: 33554776
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
   - type: mesh
+    properties: 33554808
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
     properties: 33554906
+    customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
+  - type: mesh
+    properties: 33554938
     customShader: builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_NORMAL_MAP,USE_LIT_QUALITY
 entities:
   - type: Entity
@@ -149,10 +217,10 @@ entities:
         cullingMask: 4294967295
         shadows: true
         automaticShadowCamera: true
-        shadowBias: 0.002
-        mapResolution: 2048
-        shadowCameraNearFar: [0.3, 100]
-        numShadowCascades: 3
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0
         intensityUnit: lux
         useColorTemperature: true
         colorTemperature: 5500
@@ -181,15 +249,15 @@ entities:
     name: Camera
     components:
       transform:
-        position: [0, 0.5, 9]
+        position: [0, 0, 13]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 0.5, 9]
+        worldPosition: [0, 0, 13]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.5, 9, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0.5, 9, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -0.5], [0, 0, 1, -9], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 13, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 13, 1]]
+        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, -13], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -212,7 +280,7 @@ entities:
         renderToTexture: false
         transparentSort: true
         depthTest: true
-        useTarget: false
+        useTarget: true
         autoResize: true
         framebufferWidth: 512
         framebufferHeight: 512
@@ -222,15 +290,15 @@ entities:
     name: Clearcoat
     components:
       transform:
-        position: [-4.5, 1.2, 0]
+        position: [-6.3, 1.2, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [-4.5, 1.2, 0]
+        worldPosition: [-6.3, 1.2, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.5, 1.2, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.5, 1.2, 0, 1]]
-        normalMatrix: [[1, 0, 0, 4.5], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-6.3, 1.2, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-6.3, 1.2, 0, 1]]
+        normalMatrix: [[1, 0, 0, 6.3], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -367,8 +435,8 @@ entities:
           min: [-1, -1, -1]
           max: [1, 1, 1]
         worldAABB:
-          min: [-5.5, 0.20000005, -1]
-          max: [-3.5, 2.2, 1]
+          min: [-7.3, 0.20000005, -1]
+          max: [-5.3, 2.2, 1]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -386,15 +454,15 @@ entities:
     name: Sheen
     components:
       transform:
-        position: [-3, 1.2, 0]
+        position: [-4.2, 1.2, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [-3, 1.2, 0]
+        worldPosition: [-4.2, 1.2, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-3, 1.2, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-3, 1.2, 0, 1]]
-        normalMatrix: [[1, 0, 0, 3], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.2, 1.2, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-4.2, 1.2, 0, 1]]
+        normalMatrix: [[1, 0, 0, 4.2], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -513,8 +581,8 @@ entities:
           min: [-1, -1, -1]
           max: [1, 1, 1]
         worldAABB:
-          min: [-4, 0.20000005, -1]
-          max: [-2, 2.2, 1]
+          min: [-5.2, 0.20000005, -1]
+          max: [-3.1999998, 2.2, 1]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -532,15 +600,15 @@ entities:
     name: Anisotropy
     components:
       transform:
-        position: [-1.5, 1.2, 0]
+        position: [-2.1, 1.2, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [-1.5, 1.2, 0]
+        worldPosition: [-2.1, 1.2, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.5, 1.2, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-1.5, 1.2, 0, 1]]
-        normalMatrix: [[1, 0, 0, 1.5], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-2.1, 1.2, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-2.1, 1.2, 0, 1]]
+        normalMatrix: [[1, 0, 0, 2.1], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -659,8 +727,8 @@ entities:
           min: [-1, -1, -1]
           max: [1, 1, 1]
         worldAABB:
-          min: [-2.5, 0.20000005, -1]
-          max: [-0.5, 2.2, 1]
+          min: [-3.1, 0.20000005, -1]
+          max: [-1.0999999, 2.2, 1]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -678,15 +746,15 @@ entities:
     name: Iridescence
     components:
       transform:
-        position: [0, 1.2, 0]
+        position: [8.881784e-16, 1.2, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 1.2, 0]
+        worldPosition: [8.881784e-16, 1.2, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 1.2, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 1.2, 0, 1]]
-        normalMatrix: [[1, 0, 0, 0], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [8.881784e-16, 1.2, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [8.881784e-16, 1.2, 0, 1]]
+        normalMatrix: [[1, 0, 0, -8.881784e-16], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -823,15 +891,15 @@ entities:
     name: Transmission
     components:
       transform:
-        position: [1.5, 1.2, 0]
+        position: [2.1, 1.2, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [1.5, 1.2, 0]
+        worldPosition: [2.1, 1.2, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.5, 1.2, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1.5, 1.2, 0, 1]]
-        normalMatrix: [[1, 0, 0, -1.5], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [2.1, 1.2, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [2.1, 1.2, 0, 1]]
+        normalMatrix: [[1, 0, 0, -2.1], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -954,8 +1022,8 @@ entities:
           min: [-1, -1, -1]
           max: [1, 1, 1]
         worldAABB:
-          min: [0.5, 0.20000005, -1]
-          max: [2.5, 2.2, 1]
+          min: [1.0999999, 0.20000005, -1]
+          max: [3.1, 2.2, 1]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -973,15 +1041,15 @@ entities:
     name: Specular
     components:
       transform:
-        position: [3, 1.2, 0]
+        position: [4.2, 1.2, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [3, 1.2, 0]
+        worldPosition: [4.2, 1.2, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [3, 1.2, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [3, 1.2, 0, 1]]
-        normalMatrix: [[1, 0, 0, -3], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.2, 1.2, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.2, 1.2, 0, 1]]
+        normalMatrix: [[1, 0, 0, -4.2], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -1100,8 +1168,8 @@ entities:
           min: [-1, -1, -1]
           max: [1, 1, 1]
         worldAABB:
-          min: [2, 0.20000005, -1]
-          max: [4, 2.2, 1]
+          min: [3.1999998, 0.20000005, -1]
+          max: [5.2, 2.2, 1]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1119,15 +1187,15 @@ entities:
     name: Hex
     components:
       transform:
-        position: [4.5, 1.2, 0]
+        position: [6.3, 1.2, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [4.5, 1.2, 0]
+        worldPosition: [6.3, 1.2, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.5, 1.2, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [4.5, 1.2, 0, 1]]
-        normalMatrix: [[1, 0, 0, -4.5], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [6.3, 1.2, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [6.3, 1.2, 0, 1]]
+        normalMatrix: [[1, 0, 0, -6.3], [0, 1, 0, -1.2], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
         billboard: false
@@ -1210,6 +1278,7 @@ entities:
                 textureType: 2D
                 source: path
                 path: assets/textures/floor_tiles.png
+                guid: dd44ec0308f077026ed079ecd039f11e
                 minFilter: linear
                 magFilter: linear
                 wrapU: repeat
@@ -1253,8 +1322,8 @@ entities:
           min: [-1, -1, -1]
           max: [1, 1, 1]
         worldAABB:
-          min: [3.5, 0.20000005, -1]
-          max: [5.5, 2.2, 1]
+          min: [5.3, 0.20000005, -1]
+          max: [7.3, 2.2, 1]
         receiveLights: true
         receiveIBL: false
         castShadows: true
@@ -1316,6 +1385,7 @@ entities:
       model:
         enabled: true
         filename: assets/models/ClearCoatTest/ClearCoatTest.glb
+        filenameGuid: 51d962a48ea86fc61ab38bbf9d029638
         mergeStaticMeshes: false
         skeleton: 0
         animations:
@@ -1735,7 +1805,7 @@ entities:
                       map:
                         textureType: 2D
                         source: id
-                        id: pack|cc|/tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|0|none
+                        id: pack|cc|/tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|0|none
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -1814,7 +1884,7 @@ entities:
                   baseColorTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|1|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|1|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -1986,7 +2056,7 @@ entities:
                       map:
                         textureType: 2D
                         source: id
-                        id: pack|cc|none|/tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2
+                        id: pack|cc|none|/tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -2065,7 +2135,7 @@ entities:
                   metallicRoughnessTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|2|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2150,7 +2220,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2235,7 +2305,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2488,7 +2558,7 @@ entities:
                       normalMap:
                         textureType: 2D
                         source: id
-                        id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
+                        id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -2567,7 +2637,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|4|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2652,7 +2722,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2737,7 +2807,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2757,7 +2827,7 @@ entities:
                       normalMap:
                         textureType: 2D
                         source: id
-                        id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                        id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                         minFilter: nearest
                         magFilter: nearest
                         wrapU: repeat
@@ -2836,7 +2906,7 @@ entities:
                   normalTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|3|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -2921,7 +2991,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3006,7 +3076,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3091,7 +3161,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3176,7 +3246,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3261,7 +3331,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3346,7 +3416,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3431,7 +3501,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3516,7 +3586,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3601,7 +3671,7 @@ entities:
                   emissiveTexture:
                     textureType: 2D
                     source: id
-                    id: /tmp/jasper-mcp-y1njgx9x/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
+                    id: /tmp/jasper-mcp-_cgw41l9/project/assets/models/ClearCoatTest/ClearCoatTest.glb|gltf-image|5|s0
                     minFilter: nearest
                     magFilter: nearest
                     wrapU: repeat
@@ -3686,10 +3756,10 @@ entities:
         cullingMask: 4294967295
         shadows: false
         automaticShadowCamera: true
-        shadowBias: 0.002
-        mapResolution: 2048
-        shadowCameraNearFar: [0.3, 12]
-        numShadowCascades: 3
+        shadowBias: 1
+        mapResolution: 0
+        shadowCameraNearFar: [0.1, 10]
+        numShadowCascades: 0
         intensityUnit: lumen
   - type: Entity
     entity: 1040
@@ -3714,5 +3784,6 @@ entities:
         scripts:
           - type: lua
             path: SceneSelect.lua
+            pathGuid: 4bdb2d317a5bc35882c833f189a10add
             className: SceneSelect
             enabled: true

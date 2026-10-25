@@ -38,7 +38,7 @@ def record(name, ok, detail):
 
 
 async def save_shot(ed, out: Path, name: str, view: str = "game"):
-    await ed.call("wait", frames=20)
+    await ed.call("wait", frames=20, timeout_seconds=900)
     r = await ed.call_raw("screenshot", {"view": view, "max_width": 0}, timeout=300)
     if r.images:
         (out / f"{name}.png").write_bytes(r.images[0][0])
@@ -52,7 +52,7 @@ async def ready(ed, eid, submesh=0):
         v = await ed.call("get_material_variant", entity=eid, submesh=submesh)
         if v["ready"] or v["failed"]:
             return v
-        await ed.call("wait", frames=5)
+        await ed.call("wait", frames=5, timeout_seconds=900)
     return v
 
 
@@ -61,7 +61,7 @@ async def frame_times(ed, frames: int):
     times = []
     for _ in range(frames):
         start = time.perf_counter()
-        await ed.call("wait", frames=1)
+        await ed.call("wait", frames=1, timeout_seconds=900)
         times.append((time.perf_counter() - start) * 1000.0)
     return times
 
@@ -79,7 +79,7 @@ async def main(out: Path) -> None:
         await ed.call("set_main_camera", entity=cam)
         await ed.call("set_properties", entity=cam, values={"camera": {"useTarget": True, "target": [0, 0, 0]}})
         await ed.call("create_entity", name="ClearCoatTest", type="model", model="models/ClearCoatTest/ClearCoatTest.glb")
-        await ed.call("wait", frames=60)
+        await ed.call("wait", frames=60, timeout_seconds=900)
         meshes = [find_key(e, "entity_id", "id") for e in (await ed.call("find_entities", component="MeshComponent"))["entities"]]
         coated = None
         for eid in meshes:
@@ -178,7 +178,7 @@ async def main(out: Path) -> None:
     async with Editor(REPO / "tools" / "fixtures" / "pbr-extended-export") as ed:
         for scene in ("Lobes", "Transmission", "Hex"):
             await ed.call("open_scene", path=f"{scene}.scene", close_previous=True, unsaved="discard")
-            await ed.call("wait", frames=120)
+            await ed.call("wait", frames=120, timeout_seconds=900)
             await save_shot(ed, out, f"export-{scene}")
     failed = [r for r in RESULTS if not r[1]]
     print(f"{len(RESULTS) - len(failed)} / {len(RESULTS)} checks passed")
