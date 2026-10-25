@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MoveEntityOrderCmd.h"
+#include "pose/PoseEditSession.h"
 
 #include "Out.h"
 #include "util/ProjectUtils.h"
@@ -54,6 +55,12 @@ bool editor::MoveEntityOrderCmd::execute(){
         return false;
     }
 
+    // the local transform is recomputed from the world under the new parent: with a posed bone in
+    // the branch, or a posed bone above the old or the new place (a prop held by a posed hand),
+    // that world is the rest's, not the pose's
+    const Entity newParent = type == InsertionType::INTO ? target : ProjectUtils::getEffectiveParent(sceneProject->scene, target);
+    const Transform* sourceTransform = sceneProject->scene->findComponent<Transform>(source);
+    PoseEditSession::suspendActiveForMove(sceneId, source, sourceTransform ? sourceTransform->parent : NULL_ENTITY, newParent);
     ProjectUtils::moveEntityOrderByTarget(sceneProject->scene, sceneProject->entities, source, target, type, oldParent, oldIndex, hasTransform);
 
     sceneProject->isModified = true;

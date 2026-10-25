@@ -25,9 +25,14 @@ bool editor::PrefabOverrideCmd::isApply() const{
 
 bool editor::PrefabOverrideCmd::execute(){
     std::vector<std::filesystem::path> targets;
-    if (isApply()){
-        // a posed bone applies its rest transform, not the pose
+    const bool revert = operation == Operation::RevertProperty || operation == Operation::RevertState ||
+        operation == Operation::RevertAddedComponent || operation == Operation::RevertRemovedComponent;
+    if (isApply() || revert){
+        // a posed bone applies its rest transform, not the pose; a revert writes the rest (the
+        // pose's restore would put the old value back over it)
         PoseEditSession::suspendActiveFor(sceneId, {entity});
+    }
+    if (isApply()){
         if (!project->canApplyPrefabOverrides()){
             return false;
         }
