@@ -1074,9 +1074,10 @@ Rml::Rectanglef RmlRenderer::primitiveBounds(uint32_t first, uint32_t count) con
     for (uint32_t i = 0; i < count; i++){
         const HtmlUIPrimitive& p = commandPrimitives[first + i];
         // what the instance can touch: a box its border box, an outer shadow its shape and 3 sigma
-        // of blur, an inset one its clip box
+        // of blur (the shader widens sigma by a pixel's box filter), an inset one its clip box; and
+        // a pixel of antialiased edge around each
         const float* r = (p.params[0] == (float)HtmlUIPrimitive::SHADOW_INSET) ? p.d : p.a;
-        const float reach = (p.params[0] == (float)HtmlUIPrimitive::SHADOW_OUTER) ? 3.0f * p.params[1] : 0.0f;
+        const float reach = 1.0f + ((p.params[0] == (float)HtmlUIPrimitive::SHADOW_OUTER) ? 3.0f * (p.params[1] + 0.5f) : 0.0f);
         const float a0 = r[0] - reach, b0 = r[1] - reach, a1 = r[0] + r[2] + reach, b1 = r[1] + r[3] + reach;
         if (i == 0){
             x0 = a0;
