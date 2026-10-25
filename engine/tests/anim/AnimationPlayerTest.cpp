@@ -23,6 +23,8 @@
 #include "registry/EntityCloner.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/MeshSystem.h"
+#include "animation/ClipBinding.h"
 
 #include "lua.hpp"
 
@@ -802,6 +804,36 @@ TEST_F(Player, ResetPlayersStartsOver){
     EXPECT_FALSE(component.onFinish.hasSubscribers());
     step(0.25);
     EXPECT_NEAR(object.getState("walk").getTime(), 0.25f, 1e-5f);
+}
+
+// a model sub-clip played on the model it comes from: every track binds and the bones move
+TEST_F(Player, PlaysModelSubClipsOnTheirModel){
+    const std::string path = std::string(ANIM_POSE_FIXTURE_MODELS_DIR) + "/hero_animated.gltf";
+    Model model(&scene);
+    const Entity hero = model.getEntity();
+    AnimationPlayer object(&scene, hero);
+    object.addClip(path + "#Walk");
+    object.setPlayAutomatically(true);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(hero, path, false, false, false));
+    scene.getComponent<ModelComponent>(hero).needUpdateModel = false;
+    step(0.0);
+    ASSERT_TRUE(object.isLoaded()) << object.getStateInfo("Walk").error;
+    AnimationStateInfo info = object.getStateInfo("Walk");
+    EXPECT_GT(info.trackCount, 0u);
+    EXPECT_EQ(info.boundTracks, info.trackCount) << "100% bound on the model's own hierarchy";
+    EXPECT_NEAR(info.length, 1.0f, 1e-5f);
+
+    // some bound bone moves between two times
+    std::vector<std::pair<Entity, Quaternion>> before;
+    for (const auto& entry : anim::descendantPaths(&scene, hero)){
+        if (Transform* transform = scene.findComponent<Transform>(entry.second)) before.push_back({entry.second, transform->rotation});
+    }
+    step(0.3);
+    bool moved = false;
+    for (const auto& entry : before){
+        if (std::fabs(std::fabs(scene.getComponent<Transform>(entry.first).rotation.dot(entry.second)) - 1.0f) > 1e-4f) moved = true;
+    }
+    EXPECT_TRUE(moved);
 }
 
 // R9: 100 players of 60 bones and one spawn per frame stay under 2 ms a frame (Release)
