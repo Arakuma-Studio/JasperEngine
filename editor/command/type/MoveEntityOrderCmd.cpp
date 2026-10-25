@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MoveEntityOrderCmd.h"
+#include "pose/PoseEditSession.h"
 
 #include "Out.h"
 #include "util/ProjectUtils.h"
@@ -54,6 +55,9 @@ bool editor::MoveEntityOrderCmd::execute(){
         return false;
     }
 
+    // a posed bone (or a branch holding the posed character) keeps its rest world, not the
+    // pose's, when its local transform is recomputed under the new parent
+    PoseEditSession::suspendActiveFor(sceneId, {source});
     ProjectUtils::moveEntityOrderByTarget(sceneProject->scene, sceneProject->entities, source, target, type, oldParent, oldIndex, hasTransform);
 
     sceneProject->isModified = true;

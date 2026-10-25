@@ -2293,13 +2293,9 @@ void editor::App::engineInit(int argc, char** argv) {
     Engine::pauseGameEvents(true);
 
     // Any edit/undo/redo flags its scene for redraw, so the loop can idle otherwise.
-    // a scene undo / redo while a character is posed: a bone the step changed takes the step's
-    // value as its rest (PoseEditSession), the others keep theirs
+    // a scene undo / redo while a character is posed runs on its rest bones (PoseEditSession)
     CommandHistory::beforeStep = [](size_t sceneId){
-        PoseEditSession::beginSceneStep(static_cast<uint32_t>(sceneId));
-    };
-    CommandHistory::afterStep = [](size_t sceneId){
-        PoseEditSession::endSceneStep(static_cast<uint32_t>(sceneId));
+        PoseEditSession::suspendActiveForScene(static_cast<uint32_t>(sceneId));
     };
     CommandHistory::onSceneModified = [this](size_t sceneId, bool structural){
         if (SceneProject* sceneProject = project.getScene((uint32_t)sceneId)){

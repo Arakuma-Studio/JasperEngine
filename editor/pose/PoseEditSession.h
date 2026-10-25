@@ -93,12 +93,10 @@ namespace jasperengine::editor{
         // suspend() on the active session, if any: before scene commands that copy entities
         // (duplicate, copy, delete, create or apply a prefab), so they copy rest bones
         static void suspendActive();
-        // A scene undo / redo step on the active session's scene (CommandHistory::beforeStep /
-        // afterStep): the posed bones' transforms before it, then every saved bone whose
-        // Transform the step changed takes the step's value as its rest (the bones are restored
-        // and posed again on the next update); bones the step did not change keep their rest
-        static void beginSceneStep(uint32_t sceneId);
-        static void endSceneStep(uint32_t sceneId);
+        // suspend() on the active session when it poses a model of scene `sceneId`: before every
+        // scene undo / redo step (CommandHistory::beforeStep), which then runs on the rest bones
+        // (and their saved mesh data); the next update re-captures that rest and poses again
+        static void suspendActiveForScene(uint32_t sceneId);
         // suspend() on the active session when `entity` of `sceneId` is one of its posed bones
         // (not the model): before a command reads and writes its Transform
         static void suspendActiveForBone(uint32_t sceneId, Entity entity);
@@ -184,16 +182,7 @@ namespace jasperengine::editor{
             Matrix4 modelMatrix;
             Matrix4 normalMatrix;
             Matrix4 parentMatrix;                // the parent's modelMatrix then: a change means it moved
-            bool recompute = false;              // its local TRS changed (a scene undo/redo): world matrices from the parent
         };
-        // the posed bones' local TRS before a scene undo / redo step (beginSceneStep)
-        struct StepBone{
-            Vector3 position;
-            Quaternion rotation;
-            Vector3 scale;
-        };
-        std::vector<StepBone> stepBones;
-        bool stepOpen = false;
 
         // a skinned mesh of the model as the scene had it: the skinning matrices and the posed
         // bounds the render system derives from the bones (the scene file stores them too)

@@ -107,11 +107,13 @@ Additions (implementation; the members above are unchanged, these are extra):
     Transform, an `ObjectTransformCmd` and a Transform `ComponentValuesCmd` (paste values, reset) call `poseInspectorHooks().beforeTransformWrite` before they
     read the old values, and the window's hook `suspendActiveForBone` restores the rest when the entity
     is a posed bone (not the model): the edit applies to the rest pose (Inspector, gizmo, MCP
-    set_transform / set_properties alike). Scene undo / redo (`CommandHistory::beforeStep` /
-    `afterStep` -> `beginSceneStep` / `endSceneStep`): the posed bones' local TRS are taken before the
-    step; after it, only a saved bone whose Transform the step changed takes the step's value as its
-    rest (then restore, and the pose again on the next update); the other bones keep their rest. A
-    redo whose command already suspended (its execute) has nothing to adopt.
+    set_transform / set_properties alike). Scene undo / redo (second re-review ruling): since commands
+    carry rest values, `CommandHistory::beforeStep` -> `suspendActiveForScene` suspends the posing
+    session (rest bones and saved mesh data back) and the step runs on the rest state; nothing is
+    adopted explicitly: the next apply re-captures the stepped rest as the saved state and poses again
+    (no change detection: a bone the pose leaves at its rest value would look unchanged). A prefab
+    override revert (`PrefabOverrideCmd` revert ops, `PrefabOverridesCmd::revertAll`) and a reparent
+    (`MoveEntityOrderCmd`, whose local transform is recomputed from the world) suspend first too.
   - The rig follows the model's `.humanoid` sidecar: a change on disk (Map Bones, its undo/redo, MCP
     `set_humanoid`) rebinds.
   - Global Edit stays active through window edits that keep the poses (angles, offset, hold,
