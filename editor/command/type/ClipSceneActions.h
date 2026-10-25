@@ -90,6 +90,24 @@ namespace jasperengine::editor{
         // the text of a new clip file: canonical, with a GUID no asset has (or `keepGuidOf`'s
         // GUID when that file exists: a rewrite keeps its identity)
         static std::string newClipText(Project* project, ClipData data, const std::string& keepGuidOf = "");
+
+        // Before a step reads or changes what a preview may show (every action above, their
+        // CreateClipCmd's execute / undo, the layout reload's ModelLoadCmd): the previews of
+        // `roots` of `sceneId` (or of an entity above or under one) restore their snapshots
+        // first (9.R7): the clip and entity modes of the Animation window, the Inspector's
+        // action preview, and a posed character (PoseEditSession::suspendActiveFor).
+        // NULL_ENTITY roots are ignored; none left: nothing stops.
+        static void stopPreviewsFor(uint32_t sceneId, std::vector<Entity> roots);
+
+        // The save dialog of a new .anim (Create New Clip, Convert to Clip, Extract to .anim from
+        // the Inspector and the Animation window): starts in `directory` (project-relative; a
+        // path outside the project starts at its root) with `name`.anim ("New Animation" when
+        // empty). The chosen path with ".anim" added unless it has it (any case); empty when
+        // cancelled.
+        static std::string askNewClipPath(Project* project, const std::string& directory, const std::string& name);
+        // The directory a sub-clip's Extract starts in: its model's folder (project-relative,
+        // empty when outside the project)
+        static std::string subClipDirectory(Project* project, const std::string& subClip);
     };
 
 }

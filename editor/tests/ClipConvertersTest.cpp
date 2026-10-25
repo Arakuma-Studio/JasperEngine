@@ -18,12 +18,14 @@
 #include "Out.h"
 #include "Project.h"
 #include "animation/AnimationClipAppHooks.h"
+#include "animation/AnimationClipController.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
+#include "animation/ClipRecordHooks.h"
 #include "animation/ClipValidation.h"
 #include "animation/ModelSubClips.h"
 #include "command/CommandHandle.h"
@@ -50,6 +52,9 @@
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseBaker.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/MeshSystem.h"
+
+#include "json.hpp"
 
 #include <unistd.h>
 
@@ -1586,4 +1591,221 @@ TEST_F(ClipConverters_, ValidationHandlerScan) {
     scene->addComponent<ScriptComponent>(hero, scripts);
     const std::vector<std::string> functions = ClipValidation::scriptFunctions(project(), project()->getScene(sceneId), hero);
     EXPECT_EQ(functions, std::vector<std::string>{"onReal"});
+}
+
+// ---- final editor review fixes (FX2) --------------------------------------------------------
+
+// I4 (and I5): Create New Clip, the clip renamed, the scene step undone and redone: the redo
+// writes no second file with the clip's GUID at the old path, and the entry follows the GUID
+TEST_F(ClipConverters_, CreateClipRedoAfterARenameFollowsTheGuid) {
+    AnimationClipController::clipCommitClock(project());    // the history timeline (the App's, at startup)
+    const std::string dir = folder("renamedredo");
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    const fs::path file = root() / dir / "New Animation.anim";
+    const fs::path renamed = root() / dir / "Walk.anim";
+    ClipActionResult result;
+    std::string error;
+    ASSERT_TRUE(ClipSceneActions::createNewClip(project(), sceneId, hero, dir + "/New Animation.anim", result, error)) << error;
+    const std::string guid = scene->getComponent<AnimationPlayerComponent>(hero).clips.at(0).guid;
+    ASSERT_FALSE(guid.empty());
+
+    // the Project window's rename (RenameFileCmd: the move on disk, then the remaps)
+    fs::rename(file, renamed);
+    project()->remapAssetFilePath(file, renamed);
+    project()->remapClipFilePath(file, renamed);
+    EXPECT_EQ(scene->getComponent<AnimationPlayerComponent>(hero).clips.at(0).clip, "renamedredo/Walk.anim");
+
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_FALSE(scene->findComponent<AnimationPlayerComponent>(hero));
+    EXPECT_TRUE(fs::exists(renamed)) << "the renamed clip is kept";
+    ASSERT_TRUE(history(sceneId)->redo());
+    EXPECT_FALSE(fs::exists(file)) << "no second file with the same GUID at the old path";
+    EXPECT_TRUE(fs::exists(renamed));
+    const AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(hero);
+    ASSERT_EQ(player.clips.size(), 1u);
+    EXPECT_EQ(player.clips[0].guid, guid);
+    EXPECT_EQ(player.clips[0].clip, "renamedredo/Walk.anim") << "the redone entry follows the GUID to the renamed file";
+    EXPECT_EQ(project()->getAssetDatabase().getPath(guid).generic_string(), "assets/renamedredo/Walk.anim");
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_TRUE(fs::exists(renamed)) << "a second undo keeps it too";
+    history(sceneId)->dropRedo();
+}
+
+// Minor 9: Create New Clip undone (the file goes), a project redo of a clip edit writes the file
+// again, then the scene redo: it keeps the file the project history holds, never writes over it
+TEST_F(ClipConverters_, CreateClipRedoKeepsAFileRecreatedSinceItsUndo) {
+    const std::string dir = folder("recreated");
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    const fs::path file = root() / dir / "jump.anim";
+    ClipActionResult result;
+    std::string error;
+    ASSERT_TRUE(ClipSceneActions::createNewClip(project(), sceneId, hero, dir + "/jump.anim", result, error)) << error;
+    std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project(), dir + "/jump.anim", &error);
+    ASSERT_TRUE(document) << error;
+    ClipData edited = document->data();
+    edited.tracks.push_back(track("", ClipChannel::Position, {{0, 0, 0}, {0, 4, 0}}));
+    ASSERT_TRUE(document->commit(edited, "Key", "", &error)) << error;
+    const std::string editedText = readAll(file);
+
+    ASSERT_TRUE(projectHistory()->undo());          // the edit
+    ASSERT_TRUE(history(sceneId)->undo());          // the creation: the file goes
+    EXPECT_FALSE(fs::exists(file));
+    ASSERT_TRUE(projectHistory()->redo());          // the edit writes the file again
+    ASSERT_EQ(readAll(file), editedText);
+    ASSERT_TRUE(history(sceneId)->redo());
+    EXPECT_EQ(readAll(file), editedText) << "the redo leaves the recreated file as it is";
+    EXPECT_EQ(scene->getComponent<AnimationPlayerComponent>(hero).clips.size(), 1u) << "the scene part is redone";
+    EXPECT_EQ(document->data().tracks.size(), 1u);
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_EQ(readAll(file), editedText) << "and its undo keeps it";
+    ASSERT_TRUE(projectHistory()->undo());
+    EXPECT_TRUE(document->data().tracks.empty()) << "the project history still undoes the edit";
+}
+
+namespace {
+
+    Matrix4 localMatrixOf(const Transform& t) {
+        return Matrix4::translateMatrix(t.position) * t.rotation.getRotationMatrix() * Matrix4::scaleMatrix(t.scale);
+    }
+
+    Vector3 worldPositionOf(Scene* scene, Entity entity) {
+        Matrix4 world;
+        for (int depth = 0; entity != NULL_ENTITY && depth < 1000; depth++) {
+            const Transform* t = scene->findComponent<Transform>(entity);
+            if (!t) break;
+            world = localMatrixOf(*t) * world;
+            entity = t->parent;
+        }
+        return Vector3(world[3][0], world[3][1], world[3][2]);
+    }
+
+    Entity findNamedUnder(Scene* scene, Entity root, const std::string& name) {
+        auto transforms = scene->getComponentArray<Transform>();
+        for (size_t i = 0; i < transforms->size(); i++) {
+            const Entity entity = transforms->getEntity(i);
+            if (scene->getEntityName(entity) != name) continue;
+            for (Entity up = entity; up != NULL_ENTITY;) {
+                if (up == root) return entity;
+                const Transform* t = scene->findComponent<Transform>(up);
+                up = t ? t->parent : NULL_ENTITY;
+            }
+        }
+        return NULL_ENTITY;
+    }
+
+    // the T-pose hero with a turned and scaled glTF scene root (no translation): the legacy model
+    // entity carries that root's matrix
+    std::string turnedHero() {
+        const fs::path path = root() / "assets" / "models" / "tpose_turned.gltf";
+        if (!fs::exists(path)) {
+            nlohmann::json gltf = nlohmann::json::parse(readAll(root() / "assets" / "models" / "tpose.gltf"));
+            gltf["nodes"][0]["scale"] = {2.0, 2.0, 2.0};
+            gltf["nodes"][0]["rotation"] = {0.7071068, 0.0, 0.0, 0.7071068};
+            writeAll(path, gltf.dump(1));
+        }
+        return "models/tpose_turned.gltf";
+    }
+
+}
+
+// Minor 1: Convert on a legacy model whose entity carries the glTF scene root: the step reloads
+// it in its node hierarchy (the root's matrix moves to the root node), and the clip's keys on the
+// model entity are taken off that matrix, so the converted clip poses the bones where the entity
+// Animation did
+TEST_F(ClipConverters_, ConvertTakesLegacyRootKeysOffTheMovedRootTransform) {
+    const std::string dir = folder("legacyroot");
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = loadModel(sceneId, turnedHero());
+    ASSERT_TRUE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty()) << "legacy layout";
+    Matrix4 sceneRoot;
+    ASSERT_TRUE(scene->getSystem<MeshSystem>()->getLegacyRootTransform(hero, sceneRoot)) << "the entity stands in for the scene root";
+    const Transform rest = scene->getComponent<Transform>(hero);
+
+    // the model entity turns and grows: its keys are whole local transforms (the root's matrix in them)
+    const Entity animation = create(sceneId, "Spin", EntityCreationType::ANIMATION, hero);
+    const Entity turn = create(sceneId, "Hero turn", EntityCreationType::ROTATE_TRACKS, hero);
+    scene->getComponent<KeyframeTracksComponent>(turn).times = {0.0f, 1.0f};
+    scene->getComponent<RotateTracksComponent>(turn).values = {rest.rotation, Quaternion(60, Vector3(0, 1, 0)) * rest.rotation};
+    const Entity grow = create(sceneId, "Hero grow", EntityCreationType::SCALE_TRACKS, hero);
+    scene->getComponent<KeyframeTracksComponent>(grow).times = {0.0f, 1.0f};
+    scene->getComponent<ScaleTracksComponent>(grow).values = {rest.scale, rest.scale * 1.5f};
+    scene->getComponent<AnimationComponent>(animation).actions = {{0.0f, 0.0f, turn, 0}, {0.0f, 0.0f, grow, 1}};
+
+    // where the entity Animation puts a hand at 1 s (legacy layout)
+    sampleEntityAnimation(scene, animation, 1.0f);
+    const Entity legacyHand = findNamedUnder(scene, hero, "mixamorig:LeftHand");
+    ASSERT_NE(legacyHand, NULL_ENTITY);
+    const Vector3 expected = worldPositionOf(scene, legacyHand);
+    scene->getComponent<ActionComponent>(animation).stopTrigger = true;
+    scene->getSystem<ActionSystem>()->updateAnimationPreview(0.0, animation);
+    scene->getComponent<Transform>(hero) = rest;
+
+    ClipActionResult result;
+    std::string error;
+    ASSERT_TRUE(ClipSceneActions::convertToClip(project(), sceneId, animation, hero, dir + "/spin.anim", true, result, error)) << error;
+    ASSERT_FALSE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty()) << "reloaded in the node hierarchy";
+    EXPECT_EQ(result.convert.legacyRootModels, std::vector<Entity>{hero});
+    const ClipData clip = readClipFile(root() / dir / "spin.anim");
+    const int rotation = clip.findTrack("", ClipChannel::Rotation);
+    ASSERT_GE(rotation, 0);
+    // at 0 s the key is the model entity's rest after the reload (its local * root⁻¹)
+    const Quaternion first = quaternionFromXYZW(clip.tracks[(size_t)rotation].keys[0].value.data());
+    const Quaternion now = scene->getComponent<Transform>(hero).rotation;
+    EXPECT_NEAR(std::fabs(first.dot(now)), 1.0f, 1e-4f) << "the first key is the reloaded rest";
+
+    // the clip at 1 s puts the hand where the entity Animation did
+    std::shared_ptr<const AnimationClip> runtime = AnimationClip::build(clip);
+    ASSERT_TRUE(runtime);
+    anim::ClipPreviewSession session;
+    sampleClip(scene, hero, runtime, 1.0f, session);
+    const Entity hand = findNamedUnder(scene, hero, "mixamorig:LeftHand");
+    ASSERT_NE(hand, NULL_ENTITY);
+    const Vector3 got = worldPositionOf(scene, hand);
+    EXPECT_NEAR(got.x, expected.x, 2e-3f);
+    EXPECT_NEAR(got.y, expected.y, 2e-3f);
+    EXPECT_NEAR(got.z, expected.z, 2e-3f);
+    scene->getSystem<ActionSystem>()->restorePlayerPreview(session);
+    ASSERT_TRUE(history(sceneId)->undo());
+}
+
+// Minor 2: Add Property and Record refuse a part of a model still in the legacy layout under the
+// bound root (its path changes when a player reloads the model), and say why
+TEST_F(ClipConverters_, AddPropertyAndRecordRefuseLegacyModelParts) {
+    const std::string dir = folder("legacyparts");
+    std::string error;
+    ASSERT_TRUE(AnimationClipDocument::create(project(), dir + "/rig.anim", ClipData(), "Create", &error)) << error;
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity rig = gameObject(sceneId, "Rig");
+    const Entity hero = loadModel(sceneId, "models/tpose.gltf");
+    scene->addEntityChild(rig, hero, false);
+    ASSERT_TRUE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty()) << "legacy layout (no player)";
+    const Entity hips = scene->getComponent<ModelComponent>(hero).bonesNameMapping.at("mixamorig:Hips");
+    std::string legacyPath;
+    ASSERT_TRUE(anim::relativePath(scene, rig, hips, legacyPath));
+    std::string nodePath;
+    ASSERT_TRUE(ClipConverters::clipPath(scene, rig, hips, nodePath));
+    ASSERT_NE(legacyPath, nodePath) << "the node hierarchy addresses the bone by another path";
+
+    AnimationClipController& c = AnimationClipController::shared(project());
+    ASSERT_TRUE(c.bindRoot(sceneId, rig, &error)) << error;
+    ASSERT_TRUE(c.openClip(dir + "/rig.anim", &error)) << error;
+    size_t added = 0;
+    EXPECT_FALSE(c.addProperty(legacyPath, ClipChannel::Rotation, &added, &error));
+    EXPECT_NE(error.find("legacy layout"), std::string::npos) << error;
+    // the Rig itself is no model part
+    EXPECT_TRUE(c.addProperty("", ClipChannel::Position, &added, &error)) << error;
+    c.seek(0.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    c.setRecording(true);
+    EXPECT_FALSE(ClipRecordHooks::claims(sceneId, hips, ClipChannel::Rotation)) << "a scene edit instead";
+    EXPECT_NE(ClipRecordHooks::takeNote().find("legacy layout"), std::string::npos);
+    EXPECT_TRUE(ClipRecordHooks::claims(sceneId, rig, ClipChannel::Position));
+    c.setRecording(false);
+    AnimationClipController::release(project());
 }
