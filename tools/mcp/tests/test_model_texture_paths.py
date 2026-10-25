@@ -25,11 +25,14 @@ DISPLAY = {"show_grid_3d": False, "hide_light_icons": True, "hide_selection_outl
 S: dict = {}
 
 
-async def shot(ed: Editor, scene) -> tuple:
+async def shot(ed: Editor, scene, label: str) -> tuple:
+    # nothing selected: no transform gizmo over the model in either editor
+    await ed.call("select_entities", scene=scene, entities=[])
     await ed.call("set_scene_camera", scene=scene, position=[2.2, 1.6, 2.6], target=[0, 0, 0], display=DISPLAY)
     await ed.call("wait", frames=6)
     r = await ed.call_raw("screenshot", {"view": "scene", "scene": scene, "max_width": 480}, timeout=300)
     ed.check(not r.is_error and r.images, f"no scene screenshot: {r.text[:300]}")
+    (ed.scratch.root / f"model-{label}.png").write_bytes(r.images[0][0])
     return pngdiff.decode(r.images[0][0])
 
 
@@ -55,11 +58,13 @@ async def test_scene_stores_no_absolute_path(ed: Editor):
     text = (ed.project / SCENE).read_text()
     root = str(ed.project.resolve())
     ed.check(S["id"] in text and root not in text and str(ed.scratch.root) not in text, f"the scene names no absolute path:\n{text}")
-    S["shot"] = await shot(ed, scene)
+    S["shot"] = await shot(ed, scene, "original")
     # the comparison below sees a model drawn without its normal map
     await ed.call("set_properties", scene=scene, entity="Box", values={"mesh": {NORMAL: None}})
-    flat = await shot(ed, scene)
+    flat = await shot(ed, scene, "without-normal-map")
     same, fraction, _ = pngdiff.compare(S["shot"], flat, 8, 0.002)
+    S["without"] = fraction
+    print(f"     [model] without its normal map {fraction * 100:.2f}% of the pixels differ")
     ed.check(not same, f"the normal map shows in the Scene view ({fraction * 100:.2f}% of the pixels differ without it)")
     await ed.call("undo")
     await ed.call("save_scene", scene=scene)
@@ -74,6 +79,9 @@ async def test_moved_project_loads_the_model_textures(ed: Editor):
         await moved.call("get_model_info", scene=scene, entity="Box")
         texture = await normal_texture(moved, scene, "Box")
         moved.check_eq(texture.get("id"), S["id"], "the moved project names the same texture")
-        image = await shot(moved, scene)
-        same, fraction, _ = pngdiff.compare(S["shot"], image, 8, 0.002)
-        moved.check(same, f"the moved project draws the model as the original did ({fraction * 100:.2f}% of the pixels differ)")
+        image = await shot(moved, scene, "moved")
+        same, fraction, diff = pngdiff.compare(S["shot"], image, 8, 0.002)
+        (ed.scratch.root / "model-moved.diff.png").write_bytes(diff or b"")
+        print(f"     [model] moved: {fraction * 100:.2f}% of the pixels differ from the original")
+        moved.check(same, f"the moved project draws the model as the original did ({fraction * 100:.2f}% of the pixels differ; "
+                          f"{S['without'] * 100:.2f}% without the normal map)")
