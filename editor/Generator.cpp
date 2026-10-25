@@ -1462,7 +1462,11 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- Features with their own reference (`jasper://docs` lists them all), e.g. the GPU fluid simulation (Fluid Simulation component: "
                      "`create_entity` type `fluid_simulation`, presets, seeded deterministic runs, Lua `FluidSimulation`; `jasper://docs/fluid`) "
                      "and post-processing (`jasper://docs/post-processing`).\n";
-    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, HTML/CSS UI, C++ build; exit code 1 on errors). "
+    agentsContent += "- Keyframe animation: Animation Clips are shared `.anim` JSON assets whose tracks bind by path below the GameObject that plays them, "
+                     "played by an Animation Player component (Unity's legacy Animation; Lua `getAnimationPlayer()`, `play`, `crossFade`, `queue`, clip events into script methods). "
+                     "Edit them with `edit_animation {clip, ...}` (one project undo step) or by hand (auto-sync reloads them and reports problems); "
+                     "a model's animations are read-only clips `assets/models/hero.gltf#Walk`. Guide: `jasper://docs/animation`.\n";
+    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp]` (Lua syntax and load, shaders, HTML/CSS UI, animation clips, C++ build; exit code 1 on errors). "
                      "As an agent hook after every edit, shell commands included: `jasperengine-editor check --project <this directory> --hook` "
                      "(PostToolUse; it checks what changed since its last run and logs to `" + relativeInternalPath.generic_string() + "/check-hook.log`).\n\n";
     agentsContent += "## HTML/CSS UI\n\n";

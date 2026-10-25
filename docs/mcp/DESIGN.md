@@ -278,7 +278,10 @@ the same work and reports it itself):
   `PoseAnimationDocument`s reload), animation clips `.anim` (their open
   `AnimationClipDocument`s reload, `AnimationClipPool` drops them and the Animation Players
   using them reload, during play too; load errors and warnings of `.anim` and `.poseanim`
-  files become `problems`); assets: images (`.svg` included), fonts `.ttf/.otf`,
+  files become `problems`); models `.gltf/.glb/.obj/.fbx` and glTF `.bin` buffers (picked up
+  but not reported: only `AnimationClipDocument::filesChanged` sees them, which drops the
+  pooled parse, the model's sub-clips and their documents and reloads the players using them;
+  no full sync, so no thumbnail and no FBX import); assets: images (`.svg` included), fonts `.ttf/.otf`,
   `.json/.lottie`) and folders (mtime: an added, removed or renamed entry), skipping
   hidden folders (`.jasperengine`, `.git`...), `build`, `node_modules` and `trash`.
   `.scene`, `.prefab`, `project.yaml` and the terrain maps the editor writes from its
