@@ -278,6 +278,18 @@ TEST(HtmlUIRenderPerf, B3TextWall){
     BenchRun baseline, s16;
     both("fixtures/bench/text-wall.html", 1280, baseline, s16);
     record("B3 text-wall", baseline, s16);
+    {
+        // (printed: the glyphs batched as vertices instead of instances, for the wall-time comparison
+        // on a software rasterizer, whose instanced draws cost per instance)
+        S16Mode on(true);
+        RmlRenderer::setSdfPrimitivesForTesting(false);
+        FixtureRunner runner(1280, 720, 4);
+        ASSERT_TRUE(runner.valid());
+        ASSERT_TRUE(load(runner, "fixtures/bench/text-wall.html"));
+        const BenchRun vertices = measure(runner);
+        std::printf("[ ui-bench ] B3 as vertices: draws %u, engine %.3f ms, frame %.3f ms\n", vertices.maxDraws, vertices.engineMs, vertices.frameMs);
+        results()["B3 text-wall"]["s16Vertices"] = toJson(vertices);
+    }
     EXPECT_LE(s16.maxDraws, 4u);
     // R23: R8 pages, 1 MiB each where the RGBA8 expansion took 4 (30 % at most)
     // (the page counts of the measured run: the runner releases them)
