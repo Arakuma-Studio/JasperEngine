@@ -120,6 +120,9 @@ namespace jasperengine::editor{
         float getLength() const;
         // per frame while the window shows (advances a playing preview, re-applies after edits)
         void update(double dt);
+        // update(dt) at most once per editor frame `frame` (ImGui::GetFrameCount()): the App's
+        // per-frame hook (AnimationClipAppHooks::frame) and the Animation window may both call it
+        void update(double dt, int frame);
         // the bound entities' local transforms as the preview shows them (up to `max`)
         std::vector<BoundTransform> sampledBoundTransforms(size_t max = 8) const;
 
@@ -260,6 +263,7 @@ namespace jasperengine::editor{
         // stopPreview() while the scene was being saved: update() finishes it
         bool stopPending = false;
         bool windowKeys = false;
+        int lastUpdateFrame = -1;
         std::vector<std::string> unresolved;
         // the drag's dragged keys by identity (path, channel, time in dragBase)
         struct DragIdentity{
