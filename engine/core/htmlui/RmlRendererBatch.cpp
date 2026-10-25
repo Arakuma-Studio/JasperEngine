@@ -1113,7 +1113,8 @@ void RmlRenderer::uploadGathered(){
         std::unique_ptr<GatherPage> page = std::make_unique<GatherPage>();
         page->kind = kind;
         page->dataCapacity = std::max(gatherPageBytes, dataBytes);
-        page->indexCapacity = (kind == RunKind::VERTICES) ? std::max(gatherPageBytes, indexBytes) : 0;
+        // (UI meshes have about 1.5 indices a vertex: 6 index bytes to 20 vertex bytes)
+        page->indexCapacity = (kind == RunKind::VERTICES) ? std::max(gatherPageBytes / 4, indexBytes) : 0;
         page->dataShadow.resize(page->dataCapacity);
         page->indexShadow.resize(page->indexCapacity);
         page->writable = true;
@@ -1380,6 +1381,10 @@ void RmlRenderer::replayScoped(){
 
 double RmlRenderer::getLastGatherMs() const{
     return lastGatherMs;
+}
+
+void RmlRenderer::clearRunCacheForTesting(){
+    runCache.clear();
 }
 
 size_t RmlRenderer::getGatherLiveBytes() const{

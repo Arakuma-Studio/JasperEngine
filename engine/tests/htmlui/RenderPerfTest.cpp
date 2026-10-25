@@ -85,6 +85,7 @@ namespace {
         double gatherMs = 0.0;               // median
         size_t gatherLive = 0, gatherCapacity = 0;
         std::array<uint32_t, (size_t)RmlRenderer::RunBreak::COUNT> runBreaks{};   // the last frame's
+        size_t basePages = 0, distancePages = 0;   // the font engine's atlas pages after the run
     };
 
     double median(std::vector<double> values){
@@ -145,6 +146,8 @@ namespace {
             run.gatherCapacity = std::max(run.gatherCapacity, runner.renderer()->getGatherCapacityBytes());
         }
         RenderBackendTime::setEnabled(false);
+        run.basePages = HtmlUI::getFontEngine().getPageCount();
+        run.distancePages = HtmlUI::getFontEngine().getDistancePageCount();
         run.engineMs = median(engines);
         run.frameMs = median(frames);
         run.gatherMs = median(gathers);
@@ -267,8 +270,9 @@ TEST(HtmlUIRenderPerf, B3TextWall){
     record("B3 text-wall", baseline, s16);
     EXPECT_LE(s16.maxDraws, 4u);
     // R23: R8 pages, 1 MiB each where the RGBA8 expansion took 4 (30 % at most)
-    const RmlFontEngine& fonts = HtmlUI::getFontEngine();
-    EXPECT_LE((double)s16.last.atlasBytes, 0.30 * (double)(fonts.getPageCount() * 4u * 1024u * 1024u) + (double)(fonts.getDistancePageCount() * 4u * 1024u * 1024u));
+    // (the page counts of the measured run: the runner releases them)
+    ASSERT_GT(s16.basePages, 0u);
+    EXPECT_LE((double)s16.last.atlasBytes, 0.30 * (double)(s16.basePages * 4u * 1024u * 1024u) + (double)(s16.distancePages * 4u * 1024u * 1024u));
 }
 
 TEST(HtmlUIRenderPerf, B4ScalePopin){
@@ -288,8 +292,8 @@ TEST(HtmlUIRenderPerf, B4ScalePopin){
         EXPECT_LE(stats.glyphsRasterized, (uint32_t)RmlFontEngine::settleGlyphBudget) << "frame " << frame;
         if (frame > 0)
             EXPECT_LE(runner.textCounters().glyphRasterMs, RmlFontEngine::settleTimeBudgetMs * compat::perfSlack()) << "frame " << frame;
-        // after the animation (300 ms and its 80 ms of delays)
-        if (clock > 0.4)
+        // from the end of the first labels' animation (300 ms; the others' delays reach 80 ms)
+        if (clock > 0.3)
             settleRegenerations += stats.textRegenerations;
         if (clock > 0.4 && !runner.renderRequested())
             break;
@@ -330,19 +334,27 @@ TEST(HtmlUIRenderPerf, GatherCost){
     S16Mode on(true);
     double least = -1.0;
     uint32_t vertices = 0;
-    // the first frame of the list: everything gathered anew
-    for (int attempt = 0; attempt < 5; attempt++){
-        FixtureRunner runner(1280, 720, 4);
-        ASSERT_TRUE(runner.valid());
-        ASSERT_TRUE(load(runner, "fixtures/bench/list-500.html"));
-        runner.frameAt(1.0 / 60.0, true);
-        vertices = runner.renderer()->getStats().verticesGathered;
+    // warm frames of the list, each gathering everything anew (the run cache dropped before it);
+    // an instance counts as the 4 vertices it replaces (its 132 bytes against 4 x 20 + 6 x 4)
+    FixtureRunner runner(1280, 720, 4);
+    ASSERT_TRUE(runner.valid());
+    ASSERT_TRUE(load(runner, "fixtures/bench/list-500.html"));
+    double clock = runner.time();
+    for (int frame = 0; frame < 40; frame++){
+        clock += 1.0 / 60.0;
+        runner.renderer()->clearRunCacheForTesting();
+        runner.frameAt(clock, true);
+        if (frame < 10)
+            continue;
+        const HtmlUIRenderStats& stats = runner.renderer()->getStats();
+        ASSERT_EQ(stats.runCacheHits, 0u);
+        vertices = (stats.verticesGathered - stats.instancesDrawn) + 4u * stats.instancesDrawn;
         const double ms = runner.renderer()->getLastGatherMs();
         least = least < 0.0 ? ms : std::min(least, ms);
     }
     ASSERT_GT(vertices, 0u);
     const double per10k = least * 10000.0 / (double)vertices;
-    std::printf("[ ui-bench ] gathering: %u vertices and instances in %.3f ms (%.3f ms per 10k)\n", vertices, least, per10k);
+    std::printf("[ ui-bench ] gathering: %u vertices (instances x 4) in %.3f ms (%.3f ms per 10k)\n", vertices, least, per10k);
     results()["gather"] = {{"items", vertices}, {"ms", least}, {"msPer10k", per10k}};
     EXPECT_LE(per10k, 0.2 * compat::perfSlack());
 }

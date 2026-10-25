@@ -316,6 +316,8 @@ namespace jasperengine {
         // upload, the bytes its chunks hold, the capacity of the gather pages (the stream and the
         // run cache's ranges)
         double getLastGatherMs() const;
+        // tests: the next frame gathers every run again (the pages stay)
+        void clearRunCacheForTesting();
         size_t getGatherLiveBytes() const;
         size_t getGatherCapacityBytes() const;
         // why the last plan started each run (benchmarks): after a command that ends runs (layers,
