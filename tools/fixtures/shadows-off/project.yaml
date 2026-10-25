@@ -1,0 +1,14 @@
+name: ShadowsOff
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: letterbox
+vsync: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+assetsDir: assets
+luaDir: scripts
+startSceneId: 1
+scenes:
+  - filepath: Main Scene.scene

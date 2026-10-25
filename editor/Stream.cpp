@@ -1668,6 +1668,20 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerLogging"] = loggingNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
+    // graphics.shadowTier.<platform>, only the platforms away from their default tier
+    {
+        YAML::Node tiers;
+        for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+            const ShadowTier tier = project->getShadowTier(platform);
+            if (tier != ShadowTiers::defaultTier(platform))
+                tiers[Project::getShadowTierPlatformName(platform)] = StreamSchema::shadowTier().toString(tier);
+        }
+        if (tiers.size() > 0){
+            YAML::Node graphics;
+            graphics["shadowTier"] = tiers;
+            root["graphics"] = graphics;
+        }
+    }
 
     root["windowMode"] = windowModeToString(project->getWindowMode());
     root["windowWidth"] = project->getWindowWidth();
@@ -2049,6 +2063,18 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
+    }
+
+    // graphics.shadowTier.<platform>: an absent platform takes its default tier
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        ShadowTier tier = ShadowTiers::defaultTier(platform);
+        const YAML::Node graphics = node["graphics"];
+        if (graphics && graphics.IsMap() && graphics["shadowTier"] && graphics["shadowTier"].IsMap()){
+            const YAML::Node value = graphics["shadowTier"][Project::getShadowTierPlatformName(platform)];
+            if (value && value.IsScalar())
+                tier = StreamSchema::shadowTier().fromString(value.Scalar());
+        }
+        project->setShadowTier(platform, tier);
     }
 
     if (node["windowMode"]) {
@@ -2863,6 +2889,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
 
     sceneNode["backgroundColor"] = encodeVector4(scene->getBackgroundColor());
     sceneNode["shadowQuality"] = shadowQualityToString(scene->getShadowQuality());
+    // written only away from their defaults (scenes saved before them re-save unchanged)
+    if (scene->getShadowDistance() != SceneSettings().shadowDistance)
+        sceneNode["shadowDistance"] = scene->getShadowDistance();
+    if (scene->getShadowFadeFraction() != SceneSettings().shadowFadeFraction)
+        sceneNode["shadowFadeFraction"] = scene->getShadowFadeFraction();
+    if (scene->isShadowCascadeBlend() != SceneSettings().shadowCascadeBlend)
+        sceneNode["shadowCascadeBlend"] = scene->isShadowCascadeBlend();
     sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
     sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
     sceneNode["depthPrepassEnabled"] = scene->isDepthPrepassEnabled();
@@ -3007,6 +3040,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     if (node["shadowQuality"]) {
         scene->setShadowQuality(decodeEnum(node, "shadowQuality", StreamSchema::shadowQuality()));
     }
+    scene->setShadowDistance(node["shadowDistance"] ? YamlNumbers::as<float>(node["shadowDistance"]) : SceneSettings().shadowDistance);
+    scene->setShadowFadeFraction(node["shadowFadeFraction"] ? YamlNumbers::as<float>(node["shadowFadeFraction"]) : SceneSettings().shadowFadeFraction);
+    scene->setShadowCascadeBlend(node["shadowCascadeBlend"] ? YamlNumbers::as<bool>(node["shadowCascadeBlend"]) : SceneSettings().shadowCascadeBlend);
     if (node["meshLodEnabled"]) {
         scene->setMeshLodEnabled(YamlNumbers::as<bool>(node["meshLodEnabled"]));
     }
@@ -4817,6 +4853,8 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["lodBias"] = YamlNumbers::text(mesh.lodBias);
     node["renderInReflectionProbes"] = YamlNumbers::text(mesh.renderInReflectionProbes);
     node["shadowsBillboard"] = YamlNumbers::text(mesh.shadowsBillboard);
+    if (mesh.staticShadowCaster)
+        node["staticShadowCaster"] = YamlNumbers::text(mesh.staticShadowCaster);
     node["transparent"] = YamlNumbers::text(mesh.transparent);
     node["autoTransparency"] = YamlNumbers::text(mesh.autoTransparency);
 
@@ -4902,6 +4940,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
     if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = YamlNumbers::as<bool>(node["renderInReflectionProbes"]);
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = YamlNumbers::as<bool>(node["shadowsBillboard"]);
+    // omitted when false
+    mesh.staticShadowCaster = node["staticShadowCaster"] ? YamlNumbers::as<bool>(node["staticShadowCaster"]) : false;
     if (node["transparent"]) mesh.transparent = YamlNumbers::as<bool>(node["transparent"]);
     if (node["autoTransparency"]) mesh.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
 
@@ -5883,6 +5923,20 @@ YAML::Node editor::Stream::encodeLightComponent(const LightComponent& light) {
     node["numShadowCascades"] = light.numShadowCascades;
     if (light.shading != LightShading::BOTH)
         node["shading"] = lightShadingToString(light.shading);
+    // the shadow settings added with S10, written only away from their defaults (so scenes
+    // saved before them re-save unchanged)
+    const LightComponent defaults;
+    if (light.softShadows != defaults.softShadows) node["softShadows"] = light.softShadows;
+    if (light.shadowStrength != defaults.shadowStrength) node["shadowStrength"] = light.shadowStrength;
+    if (light.shadowNormalBias != defaults.shadowNormalBias) node["shadowNormalBias"] = light.shadowNormalBias;
+    if (light.cascadeSplitMode != defaults.cascadeSplitMode)
+        node["cascadeSplitMode"] = StreamSchema::cascadeSplitMode().toString(light.cascadeSplitMode);
+    if (light.cascadeSplits != defaults.cascadeSplits) node["cascadeSplits"] = encodeVector3(light.cascadeSplits);
+    if (light.shadowDistance != defaults.shadowDistance) node["shadowDistance"] = light.shadowDistance;
+    if (light.shadowAngularDiameter != defaults.shadowAngularDiameter) node["shadowAngularDiameter"] = light.shadowAngularDiameter;
+    if (light.shadowSourceRadius != defaults.shadowSourceRadius) node["shadowSourceRadius"] = light.shadowSourceRadius;
+    if (light.shadowUpdateMode != defaults.shadowUpdateMode)
+        node["shadowUpdateMode"] = StreamSchema::shadowUpdateMode().toString(light.shadowUpdateMode);
 
     return node;
 }
@@ -5913,6 +5967,17 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["numShadowCascades"]) light.numShadowCascades = YamlNumbers::as<unsigned int>(node["numShadowCascades"]);
     // omitted at its default, so an absent key is the default
     light.shading = node["shading"] ? decodeEnum(node, "shading", StreamSchema::lightShading()) : LightShading::BOTH;
+    // omitted at their defaults (S10), so an absent key is the default
+    const LightComponent defaults;
+    light.softShadows = node["softShadows"] ? YamlNumbers::as<bool>(node["softShadows"]) : defaults.softShadows;
+    light.shadowStrength = node["shadowStrength"] ? YamlNumbers::as<float>(node["shadowStrength"]) : defaults.shadowStrength;
+    light.shadowNormalBias = node["shadowNormalBias"] ? YamlNumbers::as<float>(node["shadowNormalBias"]) : defaults.shadowNormalBias;
+    light.cascadeSplitMode = node["cascadeSplitMode"] ? decodeEnum(node, "cascadeSplitMode", StreamSchema::cascadeSplitMode()) : defaults.cascadeSplitMode;
+    light.cascadeSplits = node["cascadeSplits"] ? decodeVector3(node["cascadeSplits"]) : defaults.cascadeSplits;
+    light.shadowDistance = node["shadowDistance"] ? YamlNumbers::as<float>(node["shadowDistance"]) : defaults.shadowDistance;
+    light.shadowAngularDiameter = node["shadowAngularDiameter"] ? YamlNumbers::as<float>(node["shadowAngularDiameter"]) : defaults.shadowAngularDiameter;
+    light.shadowSourceRadius = node["shadowSourceRadius"] ? YamlNumbers::as<float>(node["shadowSourceRadius"]) : defaults.shadowSourceRadius;
+    light.shadowUpdateMode = node["shadowUpdateMode"] ? decodeEnum(node, "shadowUpdateMode", StreamSchema::shadowUpdateMode()) : defaults.shadowUpdateMode;
 
     if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 

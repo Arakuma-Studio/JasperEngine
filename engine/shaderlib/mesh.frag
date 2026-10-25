@@ -406,6 +406,15 @@ void main() {
             color.rgb += baseColor.rgb * getLight2DIntensity(v_position, n, false);
         #endif
 
+        #if defined(USE_SHADOWS) && defined(USE_PUNCTUAL)
+            // the Scene view's shadow debug views replace the shading (includes/lights.glsl)
+            vec4 shadowDebug = shadowDebugColor(v_position, n);
+            if (shadowDebug.a > 0.5){
+                g_finalColor = vec4(linearTosRGB(shadowDebug.rgb), 1.0);
+                return;
+            }
+        #endif
+
         #ifdef HAS_FOG
             color.rgb = getFogColor(color.rgb);
         #endif
