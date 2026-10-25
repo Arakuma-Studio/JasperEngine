@@ -7,6 +7,7 @@
 #include "Log.h"
 #include "io/FileData.h"
 #include "thread/ResourceProgress.h"
+#include "render/SystemRender.h"
 #include "io/AssetIOService.h"
 
 #include <atomic>
@@ -82,6 +83,23 @@ std::vector<std::string> TextureDataPool::findIdsUsingFile(const std::string& sy
 
 std::array<TextureData,6> TextureDataPool::decode(const std::string& id, const TextureSource& source){
     return loadTextureInternal(id, source.paths, source.numFaces, source.fixAlphaBorder, false);
+}
+
+std::shared_ptr<std::array<TextureData,6>> TextureDataPool::shareDecoded(std::array<TextureData,6> data){
+    // The faces (one pixel allocation each, see loadCubeMapFromSingleFile) go through the render
+    // queue's cleanup like the release after an upload: queued after it, they are released (a
+    // no-op when that release ran) and deleted once an upload queued from a loading thread and
+    // its own release have run; on the main thread at once
+    return std::shared_ptr<std::array<TextureData,6>>(new std::array<TextureData,6>(std::move(data)),
+        [](std::array<TextureData,6>* faces){
+            SystemRender::scheduleCleanup([](void* pointer){
+                auto* decoded = static_cast<std::array<TextureData,6>*>(pointer);
+                for (TextureData& face : *decoded){
+                    face.releaseImageData();
+                }
+                delete decoded;
+            }, faces);
+        });
 }
 
 bool TextureDataPool::hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces) {
@@ -185,7 +203,7 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
                 return result;
             }
             try {
-                shared = std::make_shared<std::array<TextureData,6>>(task.get());
+                shared = shareDecoded(task.get());
                 pendingBuilds.erase(it);
 
                 result.state = ResourceLoadState::Finished;
@@ -204,8 +222,7 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
 
     } else {
         try {
-            std::array<TextureData,6> data = loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false);
-            shared = std::make_shared<std::array<TextureData,6>>(data);
+            shared = shareDecoded(loadTextureInternal(id, paths, numFaces, fixAlphaBorder, false));
 
             result.state = ResourceLoadState::Finished;
             result.data = shared;
