@@ -3314,6 +3314,7 @@ void RenderSystem::bakePostColorLut(TextureRender& texture, int& textureSize, Po
         textureSize = 0;
     }
     if (!texture.isCreated()){
+        JE_GPU_ALLOC_SCOPE(PostFX, "Post colour LUT");
         if (!texture.createDynamicColorTexture(stage == PostColorLut::Stage::GRADE ? "post grade LUT" : "post colour LUT", n * n, n))
             return;
         textureSize = n;

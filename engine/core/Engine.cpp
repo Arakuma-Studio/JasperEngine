@@ -878,7 +878,10 @@ bool Engine::ensureCompositeFramebuffer(){
     compositeFramebuffer.setHeight(height);
     compositeFramebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
     compositeFramebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    compositeFramebuffer.create();
+    {
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "Scene stack composite");
+        compositeFramebuffer.create();
+    }
 
     return compositeFramebuffer.isCreated();
 }
