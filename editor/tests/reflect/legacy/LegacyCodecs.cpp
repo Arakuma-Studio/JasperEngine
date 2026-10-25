@@ -1433,3 +1433,67 @@ BoneComponent LegacyCodecs::decodeBoneComponent(const YAML::Node& node, const Bo
 
     return bone;
 }
+
+YAML::Node LegacyCodecs::encodePostProcessing(const PostProcessingSettings& settings) {
+    YAML::Node node(YAML::NodeType::Map);
+    static const PostProcessingSettings defaults;
+    using FieldType = PostProcessingSettings::FieldType;
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        const void* value = settings.getFieldRef(field);
+        const void* def = defaults.getFieldRef(field);
+        switch (field.type) {
+            case FieldType::Bool:
+                if (*(const bool*)value != *(const bool*)def) node[field.name] = *(const bool*)value;
+                break;
+            case FieldType::Int:
+                if (*(const int*)value != *(const int*)def) node[field.name] = *(const int*)value;
+                break;
+            case FieldType::Float:
+                if (*(const float*)value != *(const float*)def) node[field.name] = *(const float*)value;
+                break;
+            case FieldType::Vector3:
+                if (*(const Vector3*)value != *(const Vector3*)def) node[field.name] = encodeVector3(*(const Vector3*)value);
+                break;
+            case FieldType::String:
+                if (*(const std::string*)value != *(const std::string*)def) node[field.name] = *(const std::string*)value;
+                break;
+            case FieldType::Asset:
+                if (*(const AssetRef*)value != *(const AssetRef*)def) encodeAssetRef(node, field.name, *(const AssetRef*)value);
+                break;
+            case FieldType::Enum: {
+                const int v = *(const int*)value;
+                if (v != *(const int*)def) node[field.name] = std::string(field.enumNames[v]);
+                break;
+            }
+        }
+    }
+    return node;
+}
+
+PostProcessingSettings LegacyCodecs::decodePostProcessing(const YAML::Node& node) {
+    PostProcessingSettings settings;
+    if (!node || !node.IsMap()) return settings;
+    using FieldType = PostProcessingSettings::FieldType;
+    for (const PostProcessingSettings::Field& field : PostProcessingSettings::getFields()) {
+        const YAML::Node value = node[field.name];
+        if (!value) continue;
+        void* ref = field.ref(settings);
+        switch (field.type) {
+            case FieldType::Bool: *(bool*)ref = YamlNumbers::as<bool>(value); break;
+            case FieldType::Int: *(int*)ref = YamlNumbers::as<int>(value); break;
+            case FieldType::Float: *(float*)ref = decodeFinite(value, *(float*)ref); break;
+            case FieldType::Vector3: *(Vector3*)ref = decodeVector3(value); break;
+            case FieldType::String: *(std::string*)ref = value.as<std::string>(); break;
+            case FieldType::Asset: *(AssetRef*)ref = decodeAssetRef(node, field.name); break;
+            case FieldType::Enum: {
+                const std::string name = value.as<std::string>();
+                for (int i = 0; field.enumNames[i]; i++) {
+                    if (name == field.enumNames[i]) *(int*)ref = i;
+                }
+                break;
+            }
+        }
+    }
+    settings.clamp();
+    return settings;
+}

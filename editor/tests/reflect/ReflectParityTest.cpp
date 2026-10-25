@@ -161,4 +161,26 @@ PARITY_COMPONENT(AlphaTween)
 PARITY_COMPONENT(Animation)
 PARITY_COMPONENT(Bone)
 
+// PostProcessingSettings (R15): the scene's post-processing block written and read through its
+// reflection fields gives the text and values of the hand-written codec
+TEST(ReflectParity, PostProcessingMatchesLegacy) {
+    const reflect::StructDesc& desc = reflect::postProcessingStruct();
+    ASSERT_EQ(desc.fields.size(), PostProcessingSettings::getFields().size());
+    EXPECT_LT(PostProcessingSettings::getFields().size(), reflect::postProcessingFieldCapacity());
+    for (int i = 0; i < kSamples; i++) {
+        RandomValues random(424242u + static_cast<uint32_t>(i));
+        PostProcessingSettings settings;
+        random.fillStruct(desc, &settings);
+        const std::string expected = YAML::Dump(LegacyCodecs::encodePostProcessing(settings));
+        ASSERT_EQ(YAML::Dump(Stream::encodePostProcessing(settings)), expected) << "sample " << i;
+
+        YAML::Node node = YAML::Load(expected);
+        if (i % 2 && node.IsMap()) node = withoutKeys(node, random);
+        const PostProcessingSettings legacy = LegacyCodecs::decodePostProcessing(node);
+        const PostProcessingSettings decoded = Stream::decodePostProcessing(node);
+        ASSERT_EQ(YAML::Dump(LegacyCodecs::encodePostProcessing(decoded)), YAML::Dump(LegacyCodecs::encodePostProcessing(legacy)))
+            << "sample " << i << ", decoding\n" << YAML::Dump(node);
+    }
+}
+
 }

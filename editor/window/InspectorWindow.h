@@ -27,6 +27,7 @@ namespace jasperengine::editor{
 
     namespace reflect {
         struct EnumDesc;
+        struct FieldDesc;
     }
 
 
@@ -510,10 +511,14 @@ namespace jasperengine::editor{
         static ComponentDrawer componentDrawer(ComponentType cpType);
         // the rows of a component's table in its Inspector order, groups under their headings
         void drawDefaultComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a struct field as a foldout of its members; an array field as a foldout of its elements
+        // with move, remove and add buttons (ReflectedValueCmd)
+        void drawDefaultStruct(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                               const reflect::FieldDesc& field, const std::string& path, const RowSettings& base);
+        void drawDefaultArray(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                              const reflect::FieldDesc& field, const std::string& path, const RowSettings& base);
         // what a component drawn by default shows after its rows (a warning)
         void drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
-        // the power-of-two sizes of a size slider (shadow maps, probes)
-        static std::vector<int> powerOfTwoSizes;
 
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -596,6 +601,8 @@ namespace jasperengine::editor{
     public:
         // a dropdown's entries from an enum table (its labels, in its Inspector order)
         static std::vector<EnumEntry>* enumEntries(const reflect::EnumDesc& desc, uint64_t mask = 0);
+        // the power-of-two sizes of a size slider (shadow maps, probes)
+        static std::vector<int> powerOfTwoSizes;
 
         static constexpr const char* WINDOW_NAME = "Inspector";
 

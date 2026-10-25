@@ -425,6 +425,16 @@ namespace jasperengine::editor::reflect {
         return value;
     }
 
+    // ---- PostProcessingSettings (R15) ----------------------------------------------------
+
+    // The scene's post-processing settings as reflection fields, from the engine's table
+    // (SceneSettings.cpp): YAML key and name the camelCase member, the snake_case Catalog name
+    // an alias, every field OmitIfDefault
+    const StructDesc& postProcessingStruct();
+    std::vector<const EnumDesc*> postProcessingEnums();
+    // the rows the struct can hold (a static check of the engine table's size)
+    size_t postProcessingFieldCapacity();
+
     // ---- multi-object editing (the Inspector) ------------------------------------------
 
     struct Mixed {

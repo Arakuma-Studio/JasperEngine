@@ -269,8 +269,15 @@ Json reflect::reflectionDocument() {
         }
         components.push_back(item);
     }
+    // the scene's post-processing block (R15)
+    const StructDesc& postProcessing = postProcessingStruct();
+    Json postProcessingProperties = Json::object();
+    for (const FieldDesc& field : postProcessing.fields) postProcessingProperties[field.name] = fieldSchema(postProcessing, field);
+
+    std::vector<const EnumDesc*> enumList(enumTables().begin(), enumTables().end());
+    for (const EnumDesc* desc : postProcessingEnums()) enumList.push_back(desc);
     Json enumsJson = Json::array();
-    for (const EnumDesc* desc : enumTables()) {
+    for (const EnumDesc* desc : enumList) {
         Json items = Json::array();
         for (const EnumItem& item : desc->items) {
             Json entry = {{"value", item.value}, {"token", item.token}, {"mcp_token", enumMcpToken(item)}, {"label", item.label},
@@ -289,6 +296,7 @@ Json reflect::reflectionDocument() {
         {"format_version", StreamMigrations::currentVersion(DocumentKind::Scene)},
         {"prefab_format_version", StreamMigrations::currentVersion(DocumentKind::Prefab)},
         {"components", components},
+        {"post_processing", Json{{"type", "object"}, {"properties", postProcessingProperties}}},
         {"enums", enumsJson}
     };
 }

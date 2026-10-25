@@ -75,6 +75,8 @@ namespace jasperengine::editor {
         static AlphaTweenComponent decodeAlphaTweenComponent(const YAML::Node& node, const AlphaTweenComponent* oldAlphaTween = nullptr);
         static YAML::Node encodeAnimationComponent(const AnimationComponent& animation);
         static AnimationComponent decodeAnimationComponent(const YAML::Node& node, const AnimationComponent* oldAnimation = nullptr);
+        static YAML::Node encodePostProcessing(const PostProcessingSettings& settings);
+        static PostProcessingSettings decodePostProcessing(const YAML::Node& node);
         static YAML::Node encodeBoneComponent(const BoneComponent& bone);
         static BoneComponent decodeBoneComponent(const YAML::Node& node, const BoneComponent* oldBone = nullptr);
     };

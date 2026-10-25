@@ -16,6 +16,8 @@
 #include "Theme.h"
 #include "component/FogComponent.h"
 #include "component/ModelComponent.h"
+#include "command/CommandHandle.h"
+#include "command/type/ReflectedValueCmd.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
 #include "subsystem/RenderSystem.h"
@@ -124,6 +126,41 @@ std::vector<EnumEntry>* editor::InspectorWindow::enumEntries(const reflect::Enum
     return &entries;
 }
 
+namespace {
+
+    // a struct drawn as a foldout of its members, an array as a foldout of its elements
+    bool complexField(const reflect::FieldDesc& field) {
+        if (field.drawer) return false;
+        if (field.kind == reflect::Kind::Struct) return field.structDesc != nullptr;
+        return field.kind == reflect::Kind::Array && field.arrayOps && (field.structDesc || field.elementOps);
+    }
+
+    // a field's row settings: its tooltip (with unit and range), step, format, integer range,
+    // dropdown entries and slider values
+    RowSettings fieldSettings(const reflect::FieldDesc& field, RowPropertyType type, const RowSettings& base) {
+        RowSettings settings = base;
+        settings.help = reflect::tooltip(field);
+        if (field.step > 0.0f) settings.stepSize = field.step;
+        if (field.format) settings.format = field.format;
+        if (field.kind == reflect::Kind::Int && std::isfinite(field.min) && std::isfinite(field.max)) {
+            settings.intMin = static_cast<int>(field.min);
+            settings.intMax = static_cast<int>(field.max);
+        }
+        if (field.enumDesc) settings.enumEntries = InspectorWindow::enumEntries(*field.enumDesc, field.enumMask);
+        if (type == RowPropertyType::UIntSlider) settings.sliderValues = &InspectorWindow::powerOfTwoSizes;
+        return settings;
+    }
+
+    // the row of an array's element: its field's widget for the element's kind
+    bool elementRowType(const reflect::FieldDesc& field, RowPropertyType& type) {
+        reflect::FieldDesc element = field;
+        element.kind = field.elementOps->kind;
+        element.ops = field.elementOps;
+        return rowType(element, type);
+    }
+
+}
+
 void editor::InspectorWindow::drawDefaultComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities) {
     const reflect::ComponentDesc* desc = reflect::find(cpType);
     if (!desc || entities.empty()) return;
@@ -135,7 +172,8 @@ void editor::InspectorWindow::drawDefaultComponent(ComponentType cpType, ScenePr
     }
     if (comps.empty()) return;
 
-    // the sections in order: the ungrouped rows, then each group from its first row's place
+    // the sections in order: the ungrouped rows, then each group from its first row's place;
+    // visibleIf and enabledIf read the first selected GameObject's, as the hand drawers did
     std::vector<Section> sections;
     sections.push_back({nullptr, 0, 0, {}});
     for (size_t i = 0; i < desc->body.fields.size(); i++) {
@@ -143,9 +181,9 @@ void editor::InspectorWindow::drawDefaultComponent(ComponentType cpType, ScenePr
         if (field.flags & (reflect::Hidden | reflect::Derived)) continue;
         if (desc->hasEnabled && std::string_view(field.name) == "enabled") continue;
         if ((field.flags & reflect::NoMultiEdit) && entities.size() > 1) continue;
-        RowPropertyType type;
-        if (!rowType(field, type)) continue;
-        if (field.visibleIf && std::none_of(comps.begin(), comps.end(), [&field](void* comp) { return field.visibleIf(comp); })) continue;
+        RowPropertyType type = RowPropertyType::Custom;
+        if (!complexField(field) && !rowType(field, type)) continue;
+        if (field.visibleIf && !field.visibleIf(comps.front())) continue;
         Section* section = nullptr;
         for (Section& candidate : sections) {
             if ((candidate.group == nullptr) == (field.group == nullptr) &&
@@ -182,35 +220,127 @@ void editor::InspectorWindow::drawDefaultComponent(ComponentType cpType, ScenePr
         std::stable_sort(section.rows.begin(), section.rows.end(), [](const Row& a, const Row& b) {
             return a.field->uiOrder != b.field->uiOrder ? a.field->uiOrder < b.field->uiOrder : a.index < b.index;
         });
-        float labelSize = 0.0f;
-        for (const Row& row : section.rows) labelSize = std::max(labelSize, getLabelSize(reflect::label(*row.field)));
         if (section.group) separatorText(section.group);
-        beginTable(cpType, labelSize, section.group ? std::string(desc->key) + "_" + section.group : std::string());
+        // the rows in a table, then the structs and arrays in foldouts of their own
+        float labelSize = 0.0f;
+        bool rows = false;
         for (const Row& row : section.rows) {
-            const reflect::FieldDesc& field = *row.field;
-            RowSettings settings = base;
-            settings.help = reflect::tooltip(field);
-            if (field.step > 0.0f) settings.stepSize = field.step;
-            if (field.format) settings.format = field.format;
-            if (field.kind == reflect::Kind::Int && reflect::hasRange(field) && std::isfinite(field.min) && std::isfinite(field.max)) {
-                settings.intMin = static_cast<int>(field.min);
-                settings.intMax = static_cast<int>(field.max);
-            }
-            if (field.enumDesc) settings.enumEntries = enumEntries(*field.enumDesc, field.enumMask);
-            if (row.type == RowPropertyType::UIntSlider) settings.sliderValues = &powerOfTwoSizes;
-            if (field.drawer && std::string_view(field.drawer) == "modelEntity") {
-                settings.entityFilter.set(scene->getComponentId<ModelComponent>());
-            }
-            const bool enabled = !(field.flags & reflect::ReadOnly) &&
-                (!field.enabledIf || std::all_of(comps.begin(), comps.end(), [&field](void* comp) { return field.enabledIf(comp); }));
-            if (!enabled) ImGui::BeginDisabled();
-            propertyRow(row.type, cpType, field.name, reflect::label(field), sceneProject, entities, settings);
-            if (!enabled) ImGui::EndDisabled();
+            if (complexField(*row.field)) continue;
+            labelSize = std::max(labelSize, getLabelSize(reflect::label(*row.field)));
+            rows = true;
         }
-        endTable();
+        if (rows) {
+            beginTable(cpType, labelSize, section.group ? std::string(desc->key) + "_" + section.group : std::string());
+            for (const Row& row : section.rows) {
+                const reflect::FieldDesc& field = *row.field;
+                if (complexField(field)) continue;
+                RowSettings settings = fieldSettings(field, row.type, base);
+                if (field.drawer && std::string_view(field.drawer) == "modelEntity") {
+                    settings.entityFilter.set(scene->getComponentId<ModelComponent>());
+                }
+                const bool enabled = !(field.flags & reflect::ReadOnly) && (!field.enabledIf || field.enabledIf(comps.front()));
+                if (!enabled) ImGui::BeginDisabled();
+                propertyRow(row.type, cpType, field.name, reflect::label(field), sceneProject, entities, settings);
+                if (!enabled) ImGui::EndDisabled();
+            }
+            endTable();
+        }
+        for (const Row& row : section.rows) {
+            if (!complexField(*row.field)) continue;
+            if (row.field->kind == reflect::Kind::Struct) drawDefaultStruct(cpType, sceneProject, entities, *row.field, row.field->name, base);
+            else drawDefaultArray(cpType, sceneProject, entities, *row.field, row.field->name, base);
+        }
     }
 
     drawDefaultComponentNotes(cpType, sceneProject, entities);
+}
+
+void editor::InspectorWindow::drawDefaultStruct(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                const reflect::FieldDesc& field, const std::string& path, const RowSettings& base) {
+    // a collapsible sub-section of its members (R8)
+    if (!beginFoldout((reflect::label(field) + "##" + path).c_str())) return;
+    float labelSize = 0.0f;
+    for (const reflect::FieldDesc& member : field.structDesc->fields) labelSize = std::max(labelSize, getLabelSize(reflect::label(member)));
+    beginTable(cpType, labelSize, path);
+    for (const reflect::FieldDesc& member : field.structDesc->fields) {
+        RowPropertyType type;
+        if ((member.flags & (reflect::Hidden | reflect::Derived)) || complexField(member) || !rowType(member, type)) continue;
+        if (member.flags & reflect::ReadOnly) ImGui::BeginDisabled();
+        propertyRow(type, cpType, path + "." + member.name, reflect::label(member), sceneProject, entities, fieldSettings(member, type, base));
+        if (member.flags & reflect::ReadOnly) ImGui::EndDisabled();
+    }
+    endTable();
+    endFoldout();
+}
+
+void editor::InspectorWindow::drawDefaultArray(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                               const reflect::FieldDesc& field, const std::string& path, const RowSettings& base) {
+    // a size heading, a row per element with move and remove buttons, and an add button (R8);
+    // arrays of different lengths across the selection are mixed: their size and order read-only
+    const reflect::ComponentDesc& desc = *reflect::find(cpType);
+    std::vector<void*> comps;
+    for (Entity entity : entities) comps.push_back(desc.find(sceneProject->scene, entity));
+    const reflect::Mixed mixed = reflect::mixedValues(desc, comps, path);
+    const reflect::FieldRef first = reflect::resolve(desc, comps.front(), path);
+    if (!first) return;
+    const size_t count = reflect::elementCount(field, first.owner, first.ref);
+    const std::string title = reflect::label(field) + " (" + (mixed.sizeDiffers ? std::string("\xE2\x80\x94") : std::to_string(count)) + ")##" + path;
+    if (!beginFoldout(title.c_str())) return;
+    // a counted or fixed-size array keeps its length (its owner counts it)
+    const bool resizable = !field.count && std::string_view(field.ops->typeName) != "array";
+    const bool editable = !mixed.sizeDiffers && !(field.flags & reflect::ReadOnly) && resizable;
+    const uint32_t sceneId = sceneProject->id;
+    Command* command = nullptr;
+    if (!mixed.sizeDiffers) {
+        RowPropertyType elementType = RowPropertyType::Custom;
+        const bool scalarElements = !field.structDesc && elementRowType(field, elementType);
+        beginTable(cpType, getLabelSize("Element 00"), path);
+        for (size_t i = 0; i < count; i++) {
+            const std::string elementPath = path + "[" + std::to_string(i) + "]";
+            const std::string elementLabel = "Element " + std::to_string(i);
+            if (scalarElements) {
+                propertyRow(elementType, cpType, elementPath, elementLabel, sceneProject, entities, fieldSettings(field, elementType, base));
+            } else if (field.structDesc) {
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                ImGui::TextUnformatted(elementLabel.c_str());
+                for (const reflect::FieldDesc& member : field.structDesc->fields) {
+                    RowPropertyType type;
+                    if ((member.flags & (reflect::Hidden | reflect::Derived)) || complexField(member) || !rowType(member, type)) continue;
+                    RowSettings settings = fieldSettings(member, type, base);
+                    settings.child = true;
+                    propertyRow(type, cpType, elementPath + "." + member.name, reflect::label(member), sceneProject, entities, settings);
+                }
+            }
+            if (!editable) continue;
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(1);
+            ImGui::PushID(elementPath.c_str());
+            ImGui::BeginDisabled(i == 0);
+            if (ImGui::SmallButton(ICON_FA_ARROW_UP)) command = ReflectedValueCmd::move(project, sceneId, entities, cpType, path, i, i - 1);
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::BeginDisabled(i + 1 >= count);
+            if (ImGui::SmallButton(ICON_FA_ARROW_DOWN)) command = ReflectedValueCmd::move(project, sceneId, entities, cpType, path, i, i + 1);
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            if (ImGui::SmallButton(ICON_FA_XMARK)) command = ReflectedValueCmd::remove(project, sceneId, entities, cpType, path, i);
+            ImGui::PopID();
+        }
+        endTable();
+    }
+    ImGui::BeginDisabled(!editable);
+    if (ImGui::SmallButton((std::string(ICON_FA_PLUS " Add##") + path).c_str())) {
+        // a default element (a default-constructed one of the element's type)
+        const reflect::TypeOps* elementOps = field.elementOps;
+        command = ReflectedValueCmd::insert(project, sceneId, entities, cpType, path, count, reflect::Value(elementOps));
+    }
+    ImGui::EndDisabled();
+    endFoldout();
+    if (command) {
+        if (base.onValueChanged) static_cast<ReflectedValueCmd*>(command)->setOnValueChanged(base.onValueChanged);
+        CommandHandle::get(sceneId)->addCommand(command);
+    }
 }
 
 void editor::InspectorWindow::drawDefaultComponentNotes(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>&) {
