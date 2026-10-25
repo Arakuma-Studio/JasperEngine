@@ -296,14 +296,15 @@ TEST_F(GraphTest, BadOpChangesNothing) {
 
 TEST_F(GraphTest, IdsAreNeverReused) {
     Graph graph = loadOk(SAMPLE);
+    // the file says nextId 9 but has n10: loading moves nextId past every id in the file
+    ASSERT_EQ(graph.nextId, 11u);
     const GraphOp added = opFromJson({{"op", "addNode"}, {"node", {{"type", "const"}}}});
     apply(graph, added);
-    EXPECT_NE(graph.findNode("n9"), nullptr) << "nextId was 9";
-    apply(graph, opFromJson({{"op", "removeNode"}, {"id", "n9"}}));
+    ASSERT_NE(graph.findNode("n11"), nullptr);
+    apply(graph, opFromJson({{"op", "removeNode"}, {"id", "n11"}}));
     apply(graph, added);
-    EXPECT_EQ(graph.findNode("n9"), nullptr);
-    EXPECT_NE(graph.findNode("n10"), nullptr);
-    EXPECT_NE(graph.findNode("n11"), nullptr) << "a deleted node's id is not given again";
+    EXPECT_EQ(graph.findNode("n11"), nullptr) << "a deleted node's id is not given again";
+    EXPECT_NE(graph.findNode("n12"), nullptr);
 }
 
 TEST_F(GraphTest, DescribesOps) {
