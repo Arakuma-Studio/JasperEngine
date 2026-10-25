@@ -129,7 +129,10 @@ void AnimationState::setEnabled(bool enabled){
     if (!state) return;
     // Unity: a disabled state keeps its time (paused) until enabled again
     state->enabled = enabled;
-    if (enabled) state->playing = true;
+    if (enabled){
+        state->playing = true;
+        state->held = false;
+    }
 }
 
 bool AnimationState::isEnabled() const{

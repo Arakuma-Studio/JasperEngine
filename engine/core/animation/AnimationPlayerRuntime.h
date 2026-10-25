@@ -78,6 +78,8 @@ namespace jasperengine::anim{
         uint64_t clipGeneration = 0;        // AnimationClipPool generation bound to
         uint64_t hierarchyRevision = 0;     // EntityRegistry::hierarchyRevision() bound at
         uint64_t nameRevision = 0;          // EntityRegistry::nameRevision() the names were checked at
+        uint64_t destroyRevision = 0;       // EntityRegistry::destroyRevision() likewise
+        uint64_t checkedFrame = 0;          // the player update that last looked at them
         std::vector<Entity> targets;        // per clip track, NULL_ENTITY = unresolved
         // per target: name and parent at bind (validate-then-re-resolve, R9)
         std::vector<std::string> boundNames;
@@ -90,11 +92,13 @@ namespace jasperengine::anim{
         std::vector<size_t> boundIndices;
         size_t rootIndex = SIZE_MAX;
         // every entity the resolved paths go through (targets and their ancestors below the
-        // root), with its name, parent and Transform index at bind: what the validation checks
+        // root), with its name, parent, Transform index and "#N" (its rank among the earlier
+        // same-named siblings) at bind: what the validation checks (R9)
         std::vector<Entity> pathEntities;
         std::vector<std::string> pathNames;
         std::vector<Entity> pathParents;
         std::vector<size_t> pathIndices;
+        std::vector<int> pathSiblingIndices;
         bool resolved = false;              // resolved at least once for `clip`
         size_t resolvedCount = 0;           // tracks whose path resolved
     };
@@ -126,7 +130,11 @@ namespace jasperengine::anim{
         ClipWrapMode entryWrap = ClipWrapMode::Default;     // the entry's wrap (R14)
         bool startAtEnd = false;            // started backwards before its clip loaded: at its length then
         bool stopAtCycleEnd = false;        // a queued state waits for it: stops at its next end (R17)
-        // this update only: a once state that reached its end is sampled there, then stopped
+        // R1b: an ended state (once at its end, or a state a queue stopped at its cycle end) is
+        // not playing, does not advance or fire, and keeps contributing its last pose (time =
+        // its end) at its weight until a fade brings that to 0 (then it is stopped and rewound)
+        bool held = false;
+        // this update only: a state that reached its end is sampled there, then held
         bool finishing = false;
         float finishTime = 0.0f;            // the clip time it ended at
         float finishWhen = 0.0f;            // seconds into the update when it ended
@@ -155,7 +163,7 @@ namespace jasperengine::anim{
         // the loadedFilename of each model bound under the root: a change rebinds
         std::unordered_map<Entity, std::string> modelFiles;
         std::vector<PendingPlayerCallback> pending;
-        // (clip, function) pairs already warned about having no handler (play mode, once)
+        // unused: the missing-handler warnings are kept per ActionSystem (once per (clip, function))
         std::vector<std::string> warnedHandlers;
         // state names a call named that the clip list does not have (warned once each)
         std::vector<std::string> warnedStates;
