@@ -7,7 +7,7 @@ with xdotool in the harness's Xvfb (1600x900, default layout), and a 200-texture
    texture decodes are, take at most heavy_max = max - 2 of it, R9), and the editor's frames
    keep their pace.
 
-The clicks are real (xdotool), aimed where locate_ui_item says the control is drawn now (by its
+The clicks are real (xdotool), aimed where find_ui_item says the control is drawn now (by its
 label, scrolling with the wheel until it is), so a layout change does not move them off target.
 Screenshots go to $JE_EVIDENCE_DIR (else the scratch directory).
 """
@@ -78,9 +78,9 @@ class Ui:
         await self.settle(0.3)
 
     async def find(self, label: str, window: str | None = None) -> dict | None:
-        """the first drawn, visible item with this label (locate_ui_item), or None"""
+        """the first drawn, visible item with this label (find_ui_item), or None"""
         args = {"label": label} | ({"window": window} if window else {})
-        items = (await self.ed.call("locate_ui_item", **args))["items"]
+        items = (await self.ed.call("find_ui_item", **args))["items"]
         visible = [item for item in items if item["visible"]]
         return visible[0] if visible else None
 
@@ -96,7 +96,7 @@ class Ui:
                 await self.ed.call("wait", frames=5)
             else:
                 await self.wheel(self.centre(scroll_in), 3)
-        raise TestFailure(f"locate_ui_item: no visible {label!r}" + (f" in {window!r}" if window else ""))
+        raise TestFailure(f"find_ui_item: no visible {label!r}" + (f" in {window!r}" if window else ""))
 
 
 def evidence(ed: Editor) -> Path:

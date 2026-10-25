@@ -1335,9 +1335,9 @@ void registerViewTools(McpRegistry& registry) {
 
     {
         ToolDef tool;
-        tool.name = "locate_ui_item";
+        tool.name = "find_ui_item";
         tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
-        tool.title = "Locate UI Item";
+        tool.title = "Find UI Item";
         tool.description =
             "Where editor controls with this label are drawn now (window coords, as focus_window's rect), to click "
             "them with send_input or real input. Only drawn items: scroll or open their panel first.";

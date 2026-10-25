@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // Finds ImGui items by label, for tests that drive the editor with real mouse and key input
-// (MCP locate_ui_item): they click where an item is drawn now instead of at positions measured
+// (MCP find_ui_item): they click where an item is drawn now instead of at positions measured
 // once, so a layout change does not break them. ImGui reports every item it draws through its
 // test-engine hooks (IMGUI_ENABLE_TEST_ENGINE); they are on only while a lookup records.
 

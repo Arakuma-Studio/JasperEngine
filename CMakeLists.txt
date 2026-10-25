@@ -328,7 +328,7 @@ endif()
 
 add_definitions("-DJASPERENGINE_EDITOR")
 # ImGui reports the items it draws through its test-engine hooks (editor/util/UiItemLocator.cpp,
-# MCP locate_ui_item); they run only while a lookup records
+# MCP find_ui_item); they run only while a lookup records
 add_definitions("-DIMGUI_ENABLE_TEST_ENGINE")
 add_definitions("-DJASPERENGINE_CRASH_GUARD")
 
