@@ -277,9 +277,12 @@ async def test_record_blend_shapes(ed: Editor):
     ed.check(abs(r["value"][0] - 0.8) < 1e-4, f"weight 0 = 0.8: {r['value']}")
     # Record off (the preview was on before Record: it stays, Unity): the same row is a scene step
     # (MorphWeightsCmd, one per drag) that changes the weight's rest only
+    # (a save stops the preview and Record with it, 9.R6)
     await ed.call("save_scene", scene="Main Scene")
     st = await hook(ed, record=False)
-    ed.check(not st["recording"] and st["preview"], f"Record off, the preview stays: {st['recording']} {st['preview']}")
+    ed.check(not st["recording"] and not st["preview"], f"the save ended Record and the preview: {st['recording']} {st['preview']}")
+    st = await hook(ed, frame=15, preview=True)
+    ed.check(st["preview"] and not st["recording"], "previewing, Record off")
     S["morph_entity"] = "Hero/" + hit
     st = await hook(ed, morph={"entities": ["Hero/" + hit], "index": 0, "value": 0.3})
     ed.check(await modified(ed), "an unrecorded Blend Shapes edit is a scene step")
@@ -486,6 +489,8 @@ async def test_curves_view_large_clip_responsive(ed: Editor):
 async def test_blend_shape_weights_save_and_reload(ed: Editor):
     """I1: a Blend Shapes weight edited on a plain model and on a prefab instance survives save +
     reopen (morphWeights[i] is a Catalog property; the instance's edit is an override)."""
+    (ed.project / "assets/models").mkdir(parents=True, exist_ok=True)
+    shutil.copy(MORPH_MODEL, ed.project / "assets/models/skinned_morph.gltf")
     blob = (await ed.call("create_entity", type="model", name="Blob", model="assets/models/skinned_morph.gltf"))["entity_id"]
     await ed.call("wait", frames=6)
     mesh_path = None
@@ -505,6 +510,7 @@ async def test_blend_shape_weights_save_and_reload(ed: Editor):
     ed.check(not r.is_error, f"the instance's mesh: {r.text if r.is_error else ''}")
     ed.check(abs(await morph_weight(ed, instance_mesh) - 0.9) < 1e-4, "the instance edited")
     await ed.call("save_scene", scene="Main Scene")
+    await ed.call("create_scene", name="Spare", type="3d")
     await ed.call("close_scene", scene="Main Scene")
     await ed.call("open_scene", scene="Main Scene.scene")
     await ed.call("wait", frames=10)

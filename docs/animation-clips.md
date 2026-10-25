@@ -41,11 +41,16 @@ AI agents edit the same files through the MCP tools `edit_animation`, `get_anima
    `mixamorig:Spine : Rotation`). Hover a row to see its full path, and open its foldout to see
    x/y/z, the blend shape names or the lattice point count.
 4. **Key it, one of two ways:**
-   - **Record** (the red circle, or `R`): the timeline turns red. Moving the bound GameObject or
-     its children keys the clip at the playhead. This works with the Scene view's Move, Rotate and
-     Scale tools, the Inspector's Transform and Blend Shapes rows, and dragging lattice points. One
-     drag is one key edit. Leaving Record puts the scene back as it was, so recording never changes
-     the scene.
+   - **Record** (the red circle, or `R`): the timeline turns red (the curves view gets a red
+     frame). Moving the bound GameObject or its children keys the clip at the playhead, on the
+     nearest frame (a playing preview pauses there). This works with the Scene view's Move, Rotate
+     and Scale tools (rotating or scaling a selection about its centre also keys the moved
+     positions), the Inspector's Transform and Blend Shapes rows and its lattice point Offset, and
+     dragging lattice points. One drag is one key edit.
+     The Inspector tints the rows of animated properties red, and rows Record would start keying a
+     fainter red. While Record is on the window keeps its clip whatever you select. Leaving Record
+     goes back to how it was before: it stops the preview Record started (the scene is put back as it
+     was, so recording never changes the scene), or keeps a preview you had started yourself.
    - **Without Record**: move the playhead, type values in the row's value column (rotations are
      Euler degrees), then press `K` to key every property at the playhead. `Shift+K` keys only the
      properties you changed. A typed value without Record is tinted and only previews, until you
@@ -98,17 +103,22 @@ points get their own colours). Click a property name to select its keys. The gra
 visible curve with the engine's own sampler, so what you see is what plays: eases, steps and the
 tangents of imported clips. Rotations are shown as continuous Euler angles.
 
-- Click, Shift-click, Ctrl-click and box select work as in the dopesheet. Drag a key point to move
-  it in time (snapped to frames) and in value. Hold Shift to keep the drag on one axis. The value
-  moves only when the selected keys belong to one property, or when a single rotation key is
-  selected. Otherwise the drag moves time only, and the status line says why.
+- Click, Shift-click, Ctrl-click and box select pick key points: one curve's point, not the whole
+  key (keys selected in the dopesheet select all their visible points). Drag a point to move the
+  selection in time (snapped to frames; a key moves in time as a whole) and in value: every selected
+  point moves by the same amount on its own curve, also across properties and rotation keys
+  (rotations in Euler degrees). Hold Shift to keep the drag on one axis. Clicking a property name
+  selects its keys and frames its curves.
 - Right-click a key or a curve segment to set the segment's **Interpolation**, add a key on that
   property, or delete keys.
 - The wheel zooms the values at the mouse, `Ctrl`+wheel zooms time, `Shift`+wheel pans time, and the
   middle button pans both. `F` frames the selected keys (time and values), and `A` frames every
   visible curve.
-- Keys with tangents (imported glTF CUBICSPLINE clips) show their tangent handles. The handles are
-  read-only: free tangent editing is not part of this version.
+- Selected keys with tangents (imported glTF CUBICSPLINE clips) show their stored tangent handles.
+  The handles are read-only: free tangent editing is not part of this version.
+- All curves share one value axis (rotations in degrees, positions in units, weights 0 to 1): hide
+  curves or click a property name to frame the ones you work on. The axis shows `°` while only
+  rotations are visible. Dense keys are drawn thinned; every key still selects and drags.
 
 The window remembers the label column width and the Dopesheet/Curves choice in the editor layout.
 
@@ -362,8 +372,13 @@ the same channels whenever it plays.
   prefabs, and the `preview` / `source` paths inside `.anim` files. Closed scenes and prefabs keep
   the old model path. Open them before you rename the model, or fix their clip fields afterwards.
 - **Record keys only some of the selection.** Only GameObjects under the bound root are recorded.
-  The others stay as they are, and the status line says how many. A 2D gizmo drag, a Rect Transform
-  edit and MCP `set_properties` are never recorded: they stay normal scene edits.
+  The others stay as they are, and the status line says how many (its tooltip says which root). A
+  2D gizmo drag, a Rect Transform edit, instance or point moves stay normal scene edits (the status
+  line says so the first time). MCP edits (`set_properties`, `set_transform`, `edit_lattice`) are
+  never recorded, even while you are dragging something else.
+- **An edit during the preview.** With the preview on and Record off, an edit (an Inspector row, a
+  Blend Shapes slider, a lattice point) changes only what you edited; the previewed values of the
+  other components or points are not saved into the scene.
 - **Two animations write the same bones.** A model with both entity animations and an Animation
   Player has two writers. Use **Use Animation Player** to keep only the player, or call
   `Model:playAnimation`, which fades out the other side.

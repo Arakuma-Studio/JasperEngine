@@ -5482,7 +5482,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
 
             if (morphTargets) {
-                for (int w = 0; w < static_cast<int>(gltfmesh.weights.size()) && w < MAX_MORPHTARGETS; w++) {
+                // the file's default weights on a mesh whose weights are still all 0 (a new
+                // MeshComponent); weights a scene or prefab saved (the editor's Blend Shapes rows,
+                // a prefab instance override) survive the model's (re)load
+                bool weightsSet = false;
+                for (int w = 0; w < MAX_MORPHTARGETS; w++) weightsSet = weightsSet || mesh.morphWeights[w] != 0.0f;
+                for (int w = 0; !weightsSet && w < static_cast<int>(gltfmesh.weights.size()) && w < MAX_MORPHTARGETS; w++) {
                     mesh.morphWeights[w] = gltfmesh.weights[w];
                 }
                 if (gltfmesh.extras.Has("targetNames") && gltfmesh.extras.Get("targetNames").IsArray()) {

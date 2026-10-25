@@ -687,15 +687,21 @@ TEST_F(ClipRecordSourcesTest, RecordKeysOnTheFrameGrid) {
     ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
     c.seek(0.517f);
     c.setRecording(true);
+    ASSERT_TRUE(c.isRecording());
+    ASSERT_TRUE(ClipRecordHooks::claims(s.id, s.hero, ClipChannel::Position)) << "recording";
     c.play();
+    ASSERT_TRUE(c.isPlaying());
+    ASSERT_TRUE(ClipRecordHooks::claims(s.id, s.hero, ClipChannel::Position)) << "playing";
     ClipRecordValue value;
     value.channel = ClipChannel::Position;
     value.value = {0, 1, 0};
     ASSERT_TRUE(ClipRecordHooks::record(s.id, s.hero, value, ""));
     EXPECT_FALSE(c.isPlaying()) << "the first record pauses the playing preview";
     AnimationClipController::KeyRef ref;
-    ASSERT_TRUE(AnimationClipController::findKey(c.getDocument()->data(), "", ClipChannel::Position, 0.5f, ref)) << "frame 15 (30 fps)";
-    EXPECT_NEAR(c.getTime(), 0.5f, 1e-6f) << "the playhead on the key";
+    // 0.517 s is frame 15.51 at 30 fps: the nearest frame is 16
+    ASSERT_TRUE(AnimationClipController::findKey(c.getDocument()->data(), "", ClipChannel::Position, 16.0f / 30.0f, ref)) << "frame 16";
+    EXPECT_NEAR(c.getDocument()->data().tracks[ref.track].keys[ref.key].time, 16.0f / 30.0f, 1e-6f);
+    EXPECT_NEAR(c.getTime(), 16.0f / 30.0f, 1e-6f) << "the playhead on the key";
     c.stopPreview();
 }
 
