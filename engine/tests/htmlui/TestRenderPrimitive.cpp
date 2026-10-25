@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -130,9 +131,16 @@ TEST(RenderPrimitive, MatchesTheMeshPath){
         const std::string rml = documentOf(test.css, test.body);
         for (int samples : {1, 4, 8}){
             Frame meshes, primitives;
+            const size_t framebufferErrors = TestSystem::get().countLogs(D_LOG_ERROR, "sokol sg log item");
             ASSERT_TRUE(drawDocument(rml, samples, false, meshes)) << test.name;
             ASSERT_TRUE(drawDocument(rml, samples, true, primitives)) << test.name;
             const std::string label = std::string(test.name) + " at " + std::to_string(samples) + " samples";
+            // a device that cannot make this sample count's layer targets (llvmpipe at 8) draws
+            // neither path: nothing to compare
+            if (TestSystem::get().countLogs(D_LOG_ERROR, "sokol sg log item") != framebufferErrors){
+                std::printf("[ skipped  ] %s: the device made no complete target\n", label.c_str());
+                continue;
+            }
             const ::testing::AssertionResult result = similar(primitives.screen, meshes.screen, label);
             EXPECT_TRUE(result);
             if (!result){

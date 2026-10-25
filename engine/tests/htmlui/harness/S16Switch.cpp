@@ -33,4 +33,15 @@ namespace {
         return true;
     }();
 
+    // (diagnosis) one layer off: JASPER_HTMLUI_BATCHING=0, JASPER_HTMLUI_SDF_PRIMITIVES=0
+    [[maybe_unused]] const bool s16Layers = [](){
+        const char* batching = std::getenv("JASPER_HTMLUI_BATCHING");
+        const char* primitives = std::getenv("JASPER_HTMLUI_SDF_PRIMITIVES");
+        if (batching && std::strcmp(batching, "0") == 0)
+            jasperengine::RmlRenderer::setBatchingForTesting(false);
+        if (primitives && std::strcmp(primitives, "0") == 0)
+            jasperengine::RmlRenderer::setSdfPrimitivesForTesting(false);
+        return true;
+    }();
+
 }
