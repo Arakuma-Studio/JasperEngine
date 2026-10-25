@@ -145,6 +145,10 @@ public:
 	/// has already been called after the change. This has a performance penalty, only call when necessary.
 	void UpdateDocument();
 
+	/// Fork (P7-L): how many document layouts so far formatted only layout boundaries (Element::SetLayoutBoundary),
+	/// over every document (tests and benchmarks).
+	static int GetBoundaryLayoutCount();
+
 protected:
 	/// Repositions the document if necessary.
 	void OnPropertyChange(const PropertyIdSet& changed_properties) override;
@@ -159,10 +163,6 @@ protected:
 	bool IsFocusableFromModal() const;
 	/// Sets whether the document can receive focus when another document is modal.
 	void SetFocusableFromModal(bool focusable);
-
-	/// Fork (P7-L): how many document layouts so far formatted only layout boundaries (Element::SetLayoutBoundary),
-	/// over every document (tests and benchmarks).
-	static int GetBoundaryLayoutCount();
 
 private:
 	bool canvas_background = false;

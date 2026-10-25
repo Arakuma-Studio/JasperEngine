@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <random>
 #include <vector>
 
@@ -153,18 +154,21 @@ TEST(HeightIndex, RandomOperationsMatchNaivePrefixArray){
         }else if (count > 0){
             // queries
             const int i = (int)(random() % (count + 1));
-            ASSERT_NEAR(index.offsetOf(i), naive.offset(i), 0.05) << "op " << op;
+            // offsets are floats: a million px down, half an ulp is a few hundredths of a px
+            const double expectedOffset = naive.offset(i);
+            ASSERT_NEAR(index.offsetOf(i), expectedOffset, std::max(0.05, std::abs(expectedOffset) * 1.2e-7)) << "op " << op;
             const double total = naive.offset((int)naive.heights.size());
             const float y = (float)(std::uniform_real_distribution<double>(-10.0, total + 10.0)(random));
             const int at = index.indexAt(y);
             const int expected = naive.indexAt(y);
             if (at != expected){
                 // a float y on a row boundary may land on either side: the rows must touch it
-                ASSERT_NEAR(index.offsetOf(std::max(at, expected)), y, 0.05) << "op " << op << " y " << y;
+                ASSERT_NEAR(index.offsetOf(std::max(at, expected)), y, std::max(0.05, std::abs((double)y) * 1.2e-7)) << "op " << op << " y " << y;
             }
         }
     }
-    ASSERT_NEAR(index.total(), naive.offset((int)naive.heights.size()), 0.05);
+    const double total = naive.offset((int)naive.heights.size());
+    ASSERT_NEAR(index.total(), total, std::max(0.05, total * 1.2e-7));
 }
 
 // R34: heights + tree within 24 bytes per item (keys and selection are not per item)

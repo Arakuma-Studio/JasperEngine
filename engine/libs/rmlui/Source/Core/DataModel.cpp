@@ -246,7 +246,7 @@ int DataModel::InsertRowAlias(Element* row, const String& alias_name, DataAddres
 	// and the entry that reads the row's current target.
 	DataAddress replacement;
 	replacement.emplace_back(target.front().name);
-	DataAddressEntry entry(String(RowAliasEntryName));
+	DataAddressEntry entry{String(RowAliasEntryName)};
 	entry.index = handle;
 	replacement.push_back(std::move(entry));
 

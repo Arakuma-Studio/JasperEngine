@@ -386,6 +386,6 @@ void jasperengine::htmlui::compat::runTransforms(TransformContext& context){
         transformElements(context, *source.content);
         transformLucide(context, *source.content);
         transformForms(context, *source.content);
-        transformAttributes(context, *source.content);
+        transformAttributes(context, *source.content, source.inModel);
     }
 }

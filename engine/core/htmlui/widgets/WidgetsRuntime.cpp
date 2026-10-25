@@ -4,6 +4,7 @@
 #include "htmlui/widgets/WidgetsRuntime.h"
 
 #include "htmlui/widgets/ItemsViewElement.h"
+#include "htmlui/widgets/MarkdownElement.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/DiagnosticCodes.h"
 #include "htmlui/compat/Diagnostics.h"
@@ -73,7 +74,7 @@ namespace {
             if (!document || !compat::DocumentLoader::compiledOf(document))
                 continue;
             Rml::ElementList templates;
-            Rml::ElementUtilities::QuerySelectorAll(templates, document, "[data-for]");
+            document->QuerySelectorAll(templates, "[data-for]");
             for (Rml::Element* element : templates){
                 Rml::Element* parent = element->GetParentNode();
                 if (!parent)
@@ -102,6 +103,7 @@ void WidgetsRuntime::registerAll(){
         return;
     for (const char* tag : {"list-view", "grid-view", "tree-view", "table-view"})
         Rml::Factory::RegisterElementInstancer(tag, &r.views);
+    MarkdownElement::registerInstancers();
     Rml::RegisterPlugin(&r.plugin);
     r.scannedAt = r.plugin.created;
     r.registered = true;

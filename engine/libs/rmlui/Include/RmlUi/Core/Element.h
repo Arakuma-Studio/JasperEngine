@@ -638,6 +638,15 @@ public:
 	/// Return the computed values of the element's properties. These values are updated as appropriate on every Context::Update.
 	const ComputedValues& GetComputedValues() const;
 
+	/// Fork (P7-L): makes the element a layout boundary, or a normal element again. A boundary is a box whose size its
+	/// descendants cannot change (the owner decides: a positioned scroll container of a definite width and height, as
+	/// the engine's virtual list views are): a layout dirtied inside it formats the boundary alone, again in its
+	/// current box, instead of the whole document (ElementDocument::UpdateLayout). A change of the boundary itself or
+	/// outside it lays the document out as before.
+	void SetLayoutBoundary(bool boundary);
+	/// Fork (P7-L): true when the element is a layout boundary.
+	bool IsLayoutBoundary() const;
+
 protected:
 	void Update(float dp_ratio, Vector2f vp_dimensions);
 	void Render();
@@ -704,15 +713,6 @@ protected:
 	virtual void DirtyLayout();
 	/// Returns true if the element has been marked as needing a re-layout.
 	virtual bool IsLayoutDirty();
-
-	/// Fork (P7-L): makes the element a layout boundary, or a normal element again. A boundary is a box whose size its
-	/// descendants cannot change (the owner decides: a positioned scroll container of a definite width and height, as
-	/// the engine's virtual list views are): a layout dirtied inside it formats the boundary alone, again in its
-	/// current box, instead of the whole document (ElementDocument::UpdateLayout). A change of the boundary itself or
-	/// outside it lays the document out as before.
-	void SetLayoutBoundary(bool boundary);
-	/// Fork (P7-L): true when the element is a layout boundary.
-	bool IsLayoutBoundary() const;
 
 	/// Returns the RML of this element and all children.
 	/// @param[out] content The content of this element and those under it, in XML form.
@@ -916,6 +916,7 @@ private:
 	friend class Rml::ElementScroll;
 	friend class Rml::ElementCascade;
 	friend class Rml::LineClampAccess;
+	friend class Rml::ElementDocument;
 	friend RMLUICORE_API void Rml::ReleaseFontResources();
 };
 

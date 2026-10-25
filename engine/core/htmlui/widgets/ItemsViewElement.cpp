@@ -25,9 +25,11 @@
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/Input.h>
 #include <RmlUi/Core/Property.h>
+#include <RmlUi/Core/PropertyIdSet.h>
 #include <RmlUi/Core/StringUtilities.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstdlib>
 
@@ -1045,7 +1047,8 @@ void ItemsViewElement::checkHeight(){
     heightChecked = true;
     const Rml::ComputedValues& computed = GetComputedValues();
     const float total = heights.total();
-    const bool grewToContent = computed.height().type == Rml::Style::Height::Auto && computed.max_height().type == Rml::Style::MaxHeight::None &&
+    const bool grewToContent = computed.height().type == Rml::Style::Height::Auto && computed.max_height().type == Rml::Style::MaxHeight::Length &&
+                               computed.max_height().value >= FLT_MAX * 0.5f &&
                                lineCount() > kIndefiniteRows && client + 1.0f >= total;
     if (grewToContent && !indefiniteHeight){
         // R13: HTMLUI-HTML-0029; the view lays out 20 rows instead of every row
