@@ -396,23 +396,31 @@ async def test_bulk_checkout(ed: Editor):
     t0 = time.monotonic()
     for i, p in enumerate(files):
         p.write_text(f"{i} checked out")
-    # editor_status is asked throughout the 10 s, also after the watcher settled (the asset
-    # database's refresh of the burst runs then)
+    written = time.monotonic() - t0
+    # editor_status is asked until the watcher settled and for at least the 10 s of the budget
+    # (the asset database's refresh of the burst runs after it settled); a loaded runner may take
+    # longer than that to write the files alone, so the wait ends 120 s after the writes
     slowest = 0.0
     took = None
-    while time.monotonic() - t0 < 10.0:
+    stats: dict = {}
+    while True:
         c0 = time.monotonic()
         stats = await ed.call("editor_status")
         slowest = max(slowest, time.monotonic() - c0)
         fw = stats["file_watcher"]
         if took is None and fw["pending"] == 0 and fw["reloading"] == 0:
             took = time.monotonic() - t0
+        if (took is not None and time.monotonic() - t0 >= 10.0) or time.monotonic() - t0 > written + 120.0:
+            break
         time.sleep(0.1)
-    if took is None:
-        took = time.monotonic() - t0
-    print(f"     [bulk] settled in {took:.1f} s, slowest editor_status {slowest:.3f} s, last {stats['file_watcher']!r}")
-    ed.check(took <= 10.0 + 1.0, f"the burst settled within 10 s (took {took:.1f} s, slowest call {slowest:.3f} s)")
-    ed.check(slowest < 0.2 + 0.3, f"editor_status stayed responsive (slowest {slowest:.3f} s)")
+    print(f"     [bulk] files written in {written:.1f} s, settled in {took}, slowest editor_status {slowest:.3f} s, "
+          f"last {stats['file_watcher']!r}")
+    ed.check(took is not None, f"the burst never settled: {stats['file_watcher']!r}")
+    # R25's budgets are wall-clock ones: the benchmark run enforces them (harness.over_budget)
+    slow = harness.over_budget("S05 R25 checkout burst settled", {"settled": took}, 10.0 + 1.0)
+    ed.check(not slow, f"the burst settled within 10 s (took {took:.1f} s, slowest call {slowest:.3f} s)")
+    slow = harness.over_budget("S05 R25 slowest editor_status during the burst", {"slowest": slowest}, 0.2 + 0.3)
+    ed.check(not slow, f"editor_status stayed responsive (slowest {slowest:.3f} s)")
     lines = await ed.console_since(contains="[Hot Reload]")
     ed.check(len(lines) <= 10, f"{len(lines)} [Hot Reload] lines: {[e['message'] for e in lines][:12]!r}")
 
