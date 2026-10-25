@@ -165,7 +165,9 @@ bool EditorFrame::run(EditorFrameState& state){
     }
     renderer->purgeTextures();
 
-    if (!state.focused || state.minimized){
+    // a benchmark measures the frames as fast as they go, focused or not (a headless X server
+    // gives no window the focus)
+    if ((!state.focused || state.minimized) && !app->isBenchmarkMode()){
         const int sleepMs = static_cast<int>(
             (state.framePeriod - (frameMonotonicSeconds() - frameStart)) * 1000.0);
         if (sleepMs > 0){
