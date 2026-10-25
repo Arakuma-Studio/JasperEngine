@@ -26,7 +26,10 @@
 #include <execinfo.h>
 
 #if defined(JASPERENGINE_SANITIZE_ADDRESS)
-    #include <sanitizer/allocator_interface.h>
+// libasan's allocator hook (compiler-rt's sanitizer/allocator_interface.h, which not every
+// toolchain installs): called for each allocation and free of the program
+extern "C" int __sanitizer_install_malloc_and_free_hooks(void (*mallocHook)(const volatile void*, std::size_t),
+                                                         void (*freeHook)(const volatile void*));
 #endif
 
 namespace{
