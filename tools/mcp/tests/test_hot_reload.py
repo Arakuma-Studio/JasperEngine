@@ -15,6 +15,7 @@ import time
 import zlib
 from pathlib import Path
 
+import harness
 import pngdiff
 from harness import Editor, find_key
 
@@ -324,6 +325,7 @@ async def test_reload_hitch(ed: Editor):
     r = await ed.call_raw("play", {"action": "start", "scene": STATE["scene"], "timeout_seconds": 300})
     ed.check(not r.is_error, f"play failed: {r.text[:500]}")
     latencies = []
+    missed = 0
     runs: dict[str, list[dict]] = {"control": [], "reload": []}
 
     async def stat(run: str) -> dict:
@@ -340,12 +342,15 @@ async def test_reload_hitch(ed: Editor):
                 t0 = time.monotonic()
                 if run == "reload":
                     safe_save(big, png_bytes(GREEN if i % 2 == 0 else RED, 2048))
+                reloaded = False
                 while time.monotonic() - t0 < (5.0 if run == "reload" else 0.25):
                     if (await stat(run))["file_watcher"]["reloads"] > before:
+                        reloaded = True
                         break
                     time.sleep(0.02)
                 if run == "reload":
                     latencies.append(time.monotonic() - t0)
+                    missed += 0 if reloaded else 1
                 time.sleep(0.2)
             await stat(run)
     finally:
@@ -356,11 +361,17 @@ async def test_reload_hitch(ed: Editor):
           f"reload {reload[0]} frames, median {reload[1]:.1f} ms, max {reload[2]:.1f} ms; "
           f"reload latency max {max(latencies) * 1000:.0f} ms")
     ed.check(reload[0] >= 100, f"the view redrew continuously: {reload[0]} frames")
+    ed.check(missed == 0, f"{missed} of the 20 saves were not reloaded within 5 s: latencies (s) {latencies!r}")
+    # R22-R24's budgets are wall-clock ones: the benchmark run enforces them (harness.over_budget);
+    # on a shared builder the neighbours' load makes frames of 60-100 ms with or without a reload
     hitch = (reload[2] - reload[1]) - max(0.0, control[2] - control[1])
-    ed.check(hitch <= 16.0, f"a reload frame hitched {hitch:.1f} ms over the run's own spikes: control {control}, reload {reload}")
-    ed.check(reload[1] <= control[1] * 1.25 + 2.0, f"the reloads slowed every frame: control {control}, reload {reload}")
+    slow = harness.over_budget("AC19 reload frame hitch over the run's own spikes", {"hitch": hitch}, 16.0, "ms")
+    ed.check(not slow, f"a reload frame hitched {hitch:.1f} ms over the run's own spikes: control {control}, reload {reload}")
+    slow = harness.over_budget("AC19 median frame, reload run", {"median": reload[1]}, control[1] * 1.25 + 2.0, "ms")
+    ed.check(not slow, f"the reloads slowed every frame: control {control}, reload {reload}")
     # each measure includes the status calls' own round trips
-    ed.check(max(latencies) <= 0.5 + 0.25, f"reload latencies (s): {latencies!r}")
+    slow = harness.over_budget("AC19 slowest reload latency", {"latency": max(latencies)}, 0.5 + 0.25)
+    ed.check(not slow, f"reload latencies (s): {latencies!r}")
 
 
 async def test_bulk_checkout(ed: Editor):
