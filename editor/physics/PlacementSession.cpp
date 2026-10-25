@@ -388,7 +388,11 @@ namespace {
             hasher.quat(transform->rotation);
             hasher.vec(transform->scale);
             hasher.value(transform->parent);
-            hasher.value(scene->getSignature(entity).to_ullong());
+            // (S07's 256-type mask: its set bits)
+            const Signature signature = scene->getSignature(entity);
+            for (size_t bit = 0; bit < Signature::size(); bit++) {
+                if (signature.test(bit)) hasher.value(static_cast<uint64_t>(bit));
+            }
             hasher.value(scene->getEntityLayer(entity));
             hasher.value(scene->isEntityActive(entity));
         }
