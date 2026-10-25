@@ -169,8 +169,8 @@ def report(results: dict, platform: str, relative: bool = False) -> bool:
     if relative:
         print(f"\nrelative method: cost = (frame - baseline) / frame(none) = {results['none']['frame_ms']:.2f} ms; "
               f"budget share = budget / {REFERENCE_FRAME_MS:.2f} ms; render size {results['none'].get('render_size')}")
-        print("\n| Feature | Frame (ms) | Baseline | Cost (ms) | Cost share | Budget (ms) | Budget share | VRAM@res (MB) | Budget (MB) |"
-              "\n|---|---|---|---|---|---|---|---|---|")
+        print("\n| Feature | Frame (ms) | Baseline | Cost (ms) | Cost share | Budget (ms) | Budget share | Sky Composites | VRAM (MB) | Budget (MB) |"
+              "\n|---|---|---|---|---|---|---|---|---|---|")
     else:
         print("\n| Feature | Cost (ms) | Budget (ms) | VRAM (MB) | Budget (MB) |\n|---|---|---|---|---|")
     for feature, budget in BUDGETS_MS[platform].items():
@@ -186,8 +186,11 @@ def report(results: dict, platform: str, relative: bool = False) -> bool:
             share = cost / results["none"]["frame_ms"]
             budget_share = budget / REFERENCE_FRAME_MS
             passed = share <= budget_share and vram <= vram_budget
+            # the cost in units of the Sky Composite (one trivial full-screen pass) on this machine
+            unit = results["sky_composite"]["frame_ms"] - results["height_fog"]["frame_ms"]
+            passes = f"{cost / unit:.1f}" if unit > 0 else "-"
             print(f"| {feature} | {results[feature]['frame_ms']:.2f} | {BASELINE[feature]} | {cost:.2f} | {share * 100:.1f}% | "
-                  f"{budget} | {budget_share * 100:.1f}% | {vram:.1f} | {vram_budget} |{'' if passed else ' over budget'}")
+                  f"{budget} | {budget_share * 100:.1f}% | {passes} | {vram:.1f} | {vram_budget} |{'' if passed else ' over budget'}")
         else:
             passed = cost <= budget and vram <= vram_budget
             print(f"| {feature} | {cost:.3f} | {budget} | {vram:.1f} | {vram_budget} |{'' if passed else ' over budget'}")
@@ -244,6 +247,12 @@ async def main() -> int:
     results = median_of_runs(runs)
     platform = "mobile" if args.mobile else "desktop"
     ok = report(results, platform, args.relative)
+    if args.relative:
+        # the Game view renders at the window's size whatever the canvas: one measurement serves
+        # both platforms' budgets (the mobile ones at a 720p VRAM)
+        other = "desktop" if args.mobile else "mobile"
+        print(f"\n{other} budgets, same measurements:")
+        ok = report(results, other, True) and ok
     if args.json:
         Path(args.json).write_text(json.dumps({"platform": platform, "relative": args.relative, "runs": len(runs),
                                                "frames": args.frames, "passed": ok, "results": results}, indent=2))
