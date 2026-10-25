@@ -46,7 +46,7 @@ namespace {
     // run cache granularity: a chunk ends after this many members or vertices
     constexpr uint32_t chunkMembers = 64;
     constexpr uint32_t chunkVertices = 4096;
-    constexpr size_t gatherPageBytes = 128 * 1024;
+    constexpr size_t gatherPageBytes = 128 * 1024;   // at least: a page made in a frame holds what the frame gathers
     // a page whose live chunks fill less than this share of it is written again (compaction)
     constexpr float minimumLiveShare = 0.5f;
     // a coordinate within it of a whole pixel is on the pixel boundary
@@ -1110,6 +1110,15 @@ void RmlRenderer::uploadGathered(){
     }
 
     size_t current[2] = {SIZE_MAX, SIZE_MAX};   // by run kind
+    // what is left to gather, by run kind: a new page holds all of it (one draw per run), at least
+    // a page's size
+    size_t remainingData[2] = {0, 0}, remainingIndex[2] = {0, 0};
+    for (uint32_t c : pendingChunks){
+        const BatchChunk& chunk = batchChunks[c];
+        const bool instances = batchRuns[chunk.run].kind == RunKind::INSTANCES;
+        remainingData[instances ? 1 : 0] += (size_t)chunk.vertices * (instances ? sizeof(HtmlUIPrimitive) : sizeof(Rml::Vertex));
+        remainingIndex[instances ? 1 : 0] += instances ? 0 : (size_t)chunk.indices * 4u;
+    }
     auto pageFor = [&](RunKind kind, size_t dataBytes, size_t indexBytes) -> size_t {
         auto fits = [&](const GatherPage& page){
             return page.kind == kind && page.writable && page.dataTop + dataBytes <= page.dataCapacity &&
@@ -1124,9 +1133,10 @@ void RmlRenderer::uploadGathered(){
         }
         std::unique_ptr<GatherPage> page = std::make_unique<GatherPage>();
         page->kind = kind;
-        page->dataCapacity = std::max(gatherPageBytes, dataBytes);
+        const int k = (kind == RunKind::INSTANCES) ? 1 : 0;
+        page->dataCapacity = std::max(gatherPageBytes, std::max(dataBytes, remainingData[k]));
         // (UI meshes have about 1.5 indices a vertex: 6 index bytes to 20 vertex bytes)
-        page->indexCapacity = (kind == RunKind::VERTICES) ? std::max(gatherPageBytes / 4, indexBytes) : 0;
+        page->indexCapacity = (kind == RunKind::VERTICES) ? std::max(gatherPageBytes / 4, std::max(indexBytes, remainingIndex[k])) : 0;
         page->dataShadow.resize(page->dataCapacity);
         page->indexShadow.resize(page->indexCapacity);
         page->writable = true;
@@ -1154,6 +1164,8 @@ void RmlRenderer::uploadGathered(){
         const size_t dataBytes = (size_t)chunk.vertices * (instances ? sizeof(HtmlUIPrimitive) : sizeof(Rml::Vertex));
         const size_t indexBytes = instances ? 0 : (size_t)chunk.indices * 4u;
         const size_t p = pageFor(run->kind, dataBytes, indexBytes);
+        remainingData[instances ? 1 : 0] -= dataBytes;
+        remainingIndex[instances ? 1 : 0] -= indexBytes;
         if (p == SIZE_MAX){
             chunk.count = 0;
             chunk.dataCount = 0;
