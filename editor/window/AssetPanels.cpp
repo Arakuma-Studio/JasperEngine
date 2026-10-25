@@ -93,7 +93,7 @@ namespace {
         return target;
     }
 
-    std::vector<AssetRefTarget> groupTargets(const MissingAssetTracker::Group& group) {
+    std::vector<AssetRefTarget> panelGroupTargets(const MissingAssetTracker::Group& group) {
         std::vector<AssetRefTarget> targets;
         for (const MissingAssetTracker::Referrer& referrer : group.referrers) {
             targets.push_back({referrer.ownerPath, referrer.locator, 0});
@@ -101,7 +101,7 @@ namespace {
         return targets;
     }
 
-    void runProjectCommand(Project* project, Command* command, const char* what) {
+    void panelRunProjectCommand(Project* project, Command* command, const char* what) {
         if (!project->getProjectCommandHistory()->addCommand(command)) {
             Out::error("%s failed", what);
         }
@@ -251,23 +251,23 @@ void MissingAssetsWindow::drawGroup(const MissingAssetTracker::Group& group, siz
         if (ImGui::SmallButton("Retarget All...")) {
             const Guid missing = group.guid;
             openPicker(group.expected, [this, missing](const AssetDatabase::AssetInfo& info) {
-                runProjectCommand(project, new AddFormerGuidCmd(project, info.path, missing), "Retarget All");
+                panelRunProjectCommand(project, new AddFormerGuidCmd(project, info.path, missing), "Retarget All");
             });
         }
         ImGui::SetItemTooltip("Every reference to the missing asset resolves to the chosen one: its GUID becomes a former GUID of it. No referrer file is rewritten.");
         ImGui::SameLine();
     }
     if (ImGui::SmallButton(prefab ? "Replace Prefab..." : "Retarget Rewrite...")) {
-        const std::vector<AssetRefTarget> targets = groupTargets(group);
+        const std::vector<AssetRefTarget> targets = panelGroupTargets(group);
         openPicker(group.expected, [this, targets](const AssetDatabase::AssetInfo& info) {
-            runProjectCommand(project, new RetargetAssetRefsCmd(project, targets, AssetRef(info.path, info.guid)), "Retarget");
+            panelRunProjectCommand(project, new RetargetAssetRefsCmd(project, targets, AssetRef(info.path, info.guid)), "Retarget");
             project->relinkMissingPrefabs();
         });
     }
     ImGui::SetItemTooltip(prefab ? "The instances use the chosen prefab; their overrides stay" : "The referencing fields are rewritten to the chosen asset");
     ImGui::SameLine();
     if (ImGui::SmallButton("Clear All")) {
-        runProjectCommand(project, new RetargetAssetRefsCmd(project, groupTargets(group), AssetRef()), "Clear All");
+        panelRunProjectCommand(project, new RetargetAssetRefsCmd(project, panelGroupTargets(group), AssetRef()), "Clear All");
     }
 
     for (const MissingAssetTracker::Referrer& referrer : group.referrers) {
@@ -330,7 +330,7 @@ void MissingAssetsWindow::show() {
         std::vector<AssetRefTarget> targets;
         for (const std::string& key : selected) targets.push_back(targetFromKey(key));
         openPicker(AssetType::Unknown, [this, targets](const AssetDatabase::AssetInfo& info) {
-            runProjectCommand(project, new RetargetAssetRefsCmd(project, targets, AssetRef(info.path, info.guid)), "Retarget Selected");
+            panelRunProjectCommand(project, new RetargetAssetRefsCmd(project, targets, AssetRef(info.path, info.guid)), "Retarget Selected");
             selected.clear();
         });
     }
@@ -338,7 +338,7 @@ void MissingAssetsWindow::show() {
     if (ImGui::Button("Clear Selected")) {
         std::vector<AssetRefTarget> targets;
         for (const std::string& key : selected) targets.push_back(targetFromKey(key));
-        runProjectCommand(project, new RetargetAssetRefsCmd(project, targets, AssetRef()), "Clear Selected");
+        panelRunProjectCommand(project, new RetargetAssetRefsCmd(project, targets, AssetRef()), "Clear Selected");
         selected.clear();
     }
     ImGui::EndDisabled();
@@ -361,7 +361,7 @@ void MissingAssetsWindow::show() {
                                   entry.referrers.size(), entry.referencedGuid.str().c_str(), entry.currentGuid.str().c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("Keep")) {
-                runProjectCommand(project, new AddFormerGuidCmd(project, entry.path, entry.referencedGuid), "Keep");
+                panelRunProjectCommand(project, new AddFormerGuidCmd(project, entry.path, entry.referencedGuid), "Keep");
             }
             ImGui::SetItemTooltip("The file keeps these references: the GUID they hold becomes a former GUID of it");
             for (const MissingAssetTracker::Referrer& referrer : entry.referrers) {
@@ -385,7 +385,7 @@ void MissingAssetsWindow::show() {
                                   orphan.assetPath.c_str(), orphan.guid.str().c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("Delete Meta")) {
-                runProjectCommand(project, new DeleteOrphanMetaCmd(project, orphan.metaPath), "Delete Meta");
+                panelRunProjectCommand(project, new DeleteOrphanMetaCmd(project, orphan.metaPath), "Delete Meta");
             }
             ImGui::PopID();
         }

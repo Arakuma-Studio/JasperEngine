@@ -36,7 +36,7 @@ TEST(Out, TypesFromLevelFlagsAndCategory) {
     Out::success("a success");
     Out::warning(std::string("a warning"));
     Out::build("main.cpp:1:2: warning: unused");
-    Out::build("[ 50%%] Building CXX object");
+    Out::build(std::string("[ 50%] Building CXX object"));
     const std::vector<LogEntry> logs = Out::getLogsSince(cursor);
     ASSERT_EQ(logs.size(), 5u);
     EXPECT_EQ(logs[0].type, LogType::Info);

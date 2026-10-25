@@ -64,7 +64,7 @@ namespace{
         size_t count = 0;
         ParallelForInvoke invoke = nullptr;
         void* body = nullptr;
-        Scheduler* scheduler = nullptr;
+        jobs::detail::Scheduler* scheduler = nullptr;
         CancelState* cancel = nullptr;
         Lane lane = Lane::Normal;
         GateClass gate = GateClass::Default;
@@ -291,7 +291,7 @@ namespace{
     };
 }
 
-bool jobs::detail::runParallelFor(Scheduler* scheduler, ParallelForInvoke invoke, void* body, size_t count,
+bool jobs::detail::runParallelFor(jobs::detail::Scheduler* scheduler, ParallelForInvoke invoke, void* body, size_t count,
                             const ParallelForOptions& options){
     if (count == 0)
         return true;

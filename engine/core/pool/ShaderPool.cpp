@@ -1257,12 +1257,18 @@ void ShaderPool::remove(ShaderType shaderType, uint32_t properties, uint16_t cus
 }
 
 void ShaderPool::destroyCustomShaders(){
+    destroyCustomShaders([](const std::string&){ return true; });
+}
+
+void ShaderPool::destroyCustomShaders(const std::function<bool(const std::string& name)>& which){
     // library shaders ("library:<name>") and the library UI effects ("@effects/<name>") are
     // embedded in the engine: their sources never change with the project
-    auto isFork = [](ShaderKey key){
+    auto isFork = [&which](ShaderKey key){
         const uint16_t customId = getCustomIdFromKey(key);
-        return customId != 0 && getCustomShaderName(customId).compare(0, 8, "library:") != 0 &&
-               !isLibraryCustomShader(customId);
+        if (customId == 0)
+            return false;
+        const std::string name = getCustomShaderName(customId);
+        return name.compare(0, 8, "library:") != 0 && !isLibraryCustomShader(customId) && which(name);
     };
     for (auto& entry : getMap()){
         if (isFork(entry.first) && entry.second && entry.second->isCreated()){

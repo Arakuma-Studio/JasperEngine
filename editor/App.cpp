@@ -26,6 +26,7 @@
 #include "command/PlayChangeReview.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpAutoSync.h"
+#include "reload/HotReloadService.h"
 
 #include "util/CrashHandler.h"
 #include "util/FileDialogs.h"
@@ -116,7 +117,13 @@ editor::App::App(){
     playInput = new PlayInput(&project);
     sceneWindow = new SceneWindow(&project);
     gameWindow = new GameWindow(&project, playInput);
+    // the open project's files changing on disk reload (S05)
+    project.setWatchFiles(true);
     mainToolbar = new MainToolbar(&project);
+    statusBar = new StatusBar([this]() {
+        editorSettingsWindow.open(&project);
+        editorSettingsWindow.showPage("Asset Pipeline");
+    });
     inspectorWindow->setSceneWindow(sceneWindow);
     hierarchyWindow = new HierarchyWindow(&project, sceneWindow);
     codeEditor = new CodeEditor(&project);
@@ -585,7 +592,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         menuCommand(AppMenuCommand::AssetsDelete, "Delete", assetSelected),
         menuSeparator(),
         menuCommand(AppMenuCommand::AssetsImport, "Import New Asset..."),
-        menuCommand(AppMenuCommand::AssetsRefresh, "Refresh"),
+        menuShortcut(AppMenuCommand::AssetsRefresh, "Refresh", "Ctrl+R"),
         menuSubmenu("Asset Database", {
             menuCommand(AppMenuCommand::ToggleMissingAssets, "Missing Assets..."),
             menuCommand(AppMenuCommand::MigrateAssetReferences, "Migrate References", !isProjectBusy)
@@ -945,6 +952,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             projectWindow->assetsImport();
             break;
         case AppMenuCommand::AssetsRefresh:
+            // what changed on disk (the journal with Auto Refresh off), then the open folder
+            HotReloadService::get().refresh();
             projectWindow->assetsRefresh();
             break;
         case AppMenuCommand::About:
@@ -2075,7 +2084,7 @@ void editor::App::show(){
 
     EntityClipboard::update();
 
-    pollHtmlUI();
+    pollExternalChanges();
 
     // Scripts ran in engineRender, so drop what they destroyed before any window reads the selection
     for (SceneProject& sceneProject : project.getScenes()) {
@@ -2136,6 +2145,7 @@ void editor::App::show(){
                 executeMenuCommand({static_cast<uint32_t>(menuCommand), std::move(payload)});
             };
             if (chord(true, true, false, ImGuiKey_B)) run(AppMenuCommand::ExportProject);
+            if (chord(true, false, false, ImGuiKey_R)) run(AppMenuCommand::AssetsRefresh);
             if (chord(true, true, false, ImGuiKey_N)) {
                 const auto& entries = HierarchyWindow::getCreateMenuEntries();
                 for (size_t i = 0; i < entries.size(); i++) {
@@ -2210,6 +2220,7 @@ void editor::App::show(){
 
     showMenu();
     mainToolbar->show();
+    statusBar->show();
     showFooter();
 
     isInitialized = true;
@@ -2709,12 +2720,19 @@ void editor::App::processProjectChange() {
     requestRedraw();
 }
 
-// Every loop iteration, idle ones too (engineRender only runs on drawn frames): HTML UI hot
-// reload, and the document animations due now wake the loop up
-void editor::App::pollHtmlUI(){
-    // (held while an MCP call that may write files runs: its sync reloads them once)
-    bool wake = !project.getHtmlUIWatcher().update(&project, mcp::McpAutoSync::get().writingCallInFlight()).empty();
+// Every loop iteration, idle ones too (engineRender only runs on drawn frames): the file
+// watcher's changes and the reloads they started (S05), HTML UI imports, and the document
+// animations due now wake the loop up
+void editor::App::pollExternalChanges(){
+    HotReloadService& reloads = HotReloadService::get();
+    // an MCP call that may write files holds the watcher's batches: its own sync reloads
+    // them once (R30)
+    reloads.setPaused(mcp::McpAutoSync::get().writingCallInFlight());
+    bool wake = FileWatchService::get().pump(PUMP_BUDGET_MS);
+    wake = reloads.update() || wake;
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
+    // the asset database's walk a watcher batch started (S04 refresh, no poll)
+    project.updateAssetScan();
 
     const auto now = std::chrono::steady_clock::now();
     for (const auto& pair : htmlUIRedrawTimes) {
@@ -2758,9 +2776,8 @@ void editor::App::engineRender(){
         return;
     }
 
+
     processMainThreadTasks();
-    project.refreshLinkedMaterials();
-    project.refreshAssetDatabase();
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()
@@ -3457,6 +3474,20 @@ double editor::App::idleWaitSeconds(double maxSeconds) const {
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
 // last request: enough for ImGui to auto-resize a window whose content just grew.
+void editor::App::recordFrameTime(double ms) {
+    if (frameTimes.size() < 100000) frameTimes.push_back(static_cast<float>(ms));
+}
+
+nlohmann::json editor::App::takeFrameStats() {
+    std::vector<float> times;
+    times.swap(frameTimes);
+    if (times.empty()) return {{"median", 0}, {"p99", 0}, {"max", 0}, {"frames", 0}};
+    std::sort(times.begin(), times.end());
+    auto round1 = [](float v) { return std::round(v * 10.0f) / 10.0f; };
+    const size_t p99 = std::min(times.size() - 1, static_cast<size_t>(std::ceil(times.size() * 0.99)) - 1);
+    return {{"median", round1(times[times.size() / 2])}, {"p99", round1(times[p99])}, {"max", round1(times.back())}, {"frames", times.size()}};
+}
+
 void editor::App::requestRedraw() {
     redrawRequested = true;
 }
@@ -3489,6 +3520,7 @@ void editor::App::shutdownBackgroundWork() {
     pendingProjectChange = nullptr;
     // Before glfwTerminate/SDL_Quit: pending MCP calls fail, the HTTP listener closes.
     mcp::McpServer::get().stop();
+    HotReloadService::get().stopWatching();
     htmlui::HtmlUiAutoImport::get().shutdown();
     setWakeCallback(nullptr);
 }
@@ -3535,6 +3567,8 @@ void editor::App::clearSceneWindowState(uint32_t sceneId) {
 }
 
 void editor::App::prepareForProjectSwitch() {
+    // the watcher stops before the project goes (S05 D2)
+    HotReloadService::get().stopWatching();
     imageViewerWindow->closeAll();
     projectWindow->cancelThumbnailWork();
     // Thumbnail cancellation prevents new preview loads from being queued;

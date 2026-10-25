@@ -67,10 +67,12 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # S13 (post FX): +1555 measured (inspect_color_lut 446, get_post_processing_status 403,
 # set_post_processing_debug 675, the presets' list in list_post_processing_presets)
 # S10 (shadows) and S12 (atmosphere), merged after S13's measurement: +2295 measured on the merge
+# S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
+# and editor_status' file_watcher and frame_ms
 # S07 adds the four ECS tools (get_ecs_stats 276, get_system_schedule 292, set_system_options 332,
 # query_entities 640: +1540) and focus_window's "systems" (the window and its rows' Enabled
 # checkbox rects, AC17): measured on the merge with S04
-TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295 + 1540 + 80
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295 + 395 + 1540 + 80
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
