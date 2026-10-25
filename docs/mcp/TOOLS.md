@@ -60,7 +60,7 @@ Ask a running job to stop; poll get_job until it is cancelled (or it finished fi
 
 Hints: read-only, idempotent
 
-Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, prefab stage), unsaved changes, jobs, pending dialog, MCP sessions. Call it first.
+Editor overview: project, open scenes (id, name, path, selected, start, modified, play state, prefab stage), unsaved changes, jobs, pending dialog, MCP sessions, file watcher, frame times. Call it first.
 
 No parameters.
 
@@ -1687,8 +1687,11 @@ Rarely needed (files edited on disk are picked up before every call: external_ch
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
+| `auto_refresh` | boolean |  | Set Auto Refresh: off, external edits wait for a call or Assets > Refresh. |
 | `full` | boolean |  | Scan the project, recheck all scripts. Default: `true`. |
 | `paths` | array of string |  | Changed files (optional). |
+| `rebuild_models` | boolean |  | Rebuild a model whose node hierarchy changed (its GameObjects are made again). |
+| `wait` | boolean |  | Return after the reloads it started finish (30 s max). Default: `true`. |
 
 
 ### `update_script_entry`

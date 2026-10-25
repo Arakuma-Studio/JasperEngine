@@ -189,7 +189,6 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
     this->isRenaming = false;
     this->renameSelectPending = false;
     this->isCreatingNewDirectory = false;
-    this->timeSinceLastCheck = 0.0f;
     this->windowOpen = true;
     this->focusRequested = false;
     this->windowFocused = false;
@@ -336,14 +335,15 @@ void editor::ProjectWindow::assignColorLut(const fs::path& filePath) {
 }
 
 void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) {
-    std::error_code ec;
-    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
-        return;
-    }
-
+    // by extension first: most changed files have no thumbnail (no stat for them)
     FileType type = classifyThumbnailFileType(filePath);
 
     if (type == FileType::NONE) {
+        return;
+    }
+
+    std::error_code ec;
+    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
         return;
     }
 
@@ -623,9 +623,8 @@ void editor::ProjectWindow::checkPrefabThumbnailStamps() {
     if (changed.empty()) {
         return;
     }
-    // A file changed outside the editor: the loaded prefabs read it again first, so the
-    // thumbnails show what is on disk
-    project->refreshAssetDatabase(true);
+    // (the loaded prefabs read a changed file first: the hot reload applies it to the asset
+    // database before it tells this window)
     for (const fs::path& path : changed) {
         notifyResourceFileChanged(path);
     }
@@ -2111,13 +2110,6 @@ void editor::ProjectWindow::scanDirectory(const fs::path& path) {
 
     requestSort = true;
 
-    // Update last write time
-    ec.clear();
-    lastWriteTime = fs::last_write_time(currentPath, ec);
-    if (ec) {
-        lastWriteTime = {};
-    }
-
     files.clear();
 
     // A search lists matches from this folder and everything below it instead.
@@ -3280,6 +3272,48 @@ void editor::ProjectWindow::refreshCurrentDirectory() {
     scanDirectory(currentPath);
 }
 
+void editor::ProjectWindow::onFilesChanged(std::span<const FileChange> changes) {
+    const fs::path current = currentPath.lexically_normal();
+    auto inCurrent = [&](const fs::path& path) {
+        if (path.empty()) return false;
+        // a search lists everything under the folder
+        if (!searchText.empty()) {
+            std::string rel;
+            return watch::relativeTo(current, path, rel) && !rel.empty();
+        }
+        return path.lexically_normal().parent_path() == current;
+    };
+    bool rescan = false, folders = false, documents = false, prefabs = false;
+    std::vector<fs::path> modified;
+    for (const FileChange& change : changes) {
+        if (change.kind == FileChangeKind::Rescan) {
+            rescan = folders = documents = true;
+            continue;
+        }
+        const bool listing = change.kind != FileChangeKind::Modified;
+        if (listing && (inCurrent(change.path) || inCurrent(change.oldPath))) rescan = true;
+        if (listing && change.directory) folders = true;
+        // the open folder itself went (renamed or removed): scanDirectory falls back
+        std::string rel;
+        if (listing && (watch::relativeTo(change.path, current, rel) || watch::relativeTo(change.oldPath, current, rel))) rescan = true;
+        const std::string name = watch::pathToUtf8(change.path);
+        if (listing && (Util::isSceneFile(name) || Util::isPrefabFile(name))) documents = true;
+        if (change.kind == FileChangeKind::Modified && !change.directory) {
+            modified.push_back(change.path);
+            if (Util::isPrefabFile(name)) prefabs = true;
+        }
+    }
+    if (rescan) {
+        scanDirectory(currentPath);
+    } else {
+        if (folders) dirTreeGeneration++;
+        if (documents) refreshProjectFiles();
+    }
+    for (const fs::path& path : modified) notifyResourceFileChanged(path);
+    // a prefab's thumbnail also shows what it nests
+    if (prefabs || !modified.empty()) checkPrefabThumbnailStamps();
+}
+
 editor::ProjectWindow::UiRect editor::ProjectWindow::lastItemRect() {
     const ImVec2 min = ImGui::GetItemRectMin();
     const ImVec2 max = ImGui::GetItemRectMax();
@@ -3381,24 +3415,6 @@ void editor::ProjectWindow::show() {
                 file.thumbnailPath.clear();
             }
         }
-    }
-
-    timeSinceLastCheck += ImGui::GetIO().DeltaTime;
-    if (timeSinceLastCheck >= 1.0f) {
-        try {
-            auto currentWriteTime = fs::last_write_time(currentPath);
-            if (currentWriteTime != lastWriteTime) {
-                scanDirectory(currentPath);
-            } else {
-                // The project can change without touching this directory
-                refreshProjectFiles();
-                // a prefab saved in place (or one it nests) does not touch it either
-                checkPrefabThumbnailStamps();
-            }
-        } catch (const fs::filesystem_error& e) {
-            // Handle potential filesystem errors silently
-        }
-        timeSinceLastCheck = 0.0f;
     }
 
     if (!windowOpen) {

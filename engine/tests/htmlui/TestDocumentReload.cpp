@@ -192,6 +192,42 @@ TEST_F(UIDocumentReloadTest, StyleSheetChangeKeepsTheDom){
     EXPECT_EQ(errors(), 0u);
 }
 
+// S05: two saves in one timestamp tick keep the time and the size. The stamps cannot tell them
+// apart; the editor's hot reload, which knows another change came, forgets the file's stamps
+TEST_F(UIDocumentReloadTest, ForgottenStampsReloadASaveTheStampsCannotSee){
+    SceneFixture fixture;
+    Scene& scene = fixture.getScene();
+    UIDocument document = fixture.addDocument(path("reload.rml"));
+    updateDocuments(scene);
+    ASSERT_TRUE(document.isLoaded());
+    Rml::Element* rmlBox = documentSystem(scene).getDocument(document.getEntity())->GetElementById("box");
+    EXPECT_EQ(backgroundOf(rmlBox), "#ff0000");
+
+    const fs::path file = dir / "reload.css";
+    std::error_code error;
+    const fs::file_time_type tick = fs::last_write_time(file, error);
+    ASSERT_FALSE(error);
+    const uintmax_t size = fs::file_size(file);
+    std::string css = reloadCss;
+    css.replace(css.find("#ff0000"), 7, "#0000ff");
+    {
+        std::ofstream out(file, std::ios::binary | std::ios::trunc);
+        out << css;
+    }
+    fs::last_write_time(file, tick, error);
+    ASSERT_EQ(fs::file_size(file), size);
+
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles({path("reload.css")}).empty()) << "the same stamp";
+    documentSystem(scene).forgetFileStamps({path("reload.css")});
+    const std::vector<UIDocumentSystem::Reloaded> reloaded = documentSystem(scene).reloadChangedFiles({path("reload.css")});
+    ASSERT_EQ(reloaded.size(), 1u);
+    EXPECT_TRUE(reloaded[0].stylesheetOnly);
+    EXPECT_EQ(backgroundOf(documentSystem(scene).getDocument(document.getEntity())->GetElementById("box")), "#0000ff");
+    // stamped again by that reload: current
+    EXPECT_TRUE(documentSystem(scene).reloadChangedFiles({path("reload.css")}).empty());
+    EXPECT_EQ(errors(), 0u);
+}
+
 // p5-tooling: a file written while a (re)load is reading the document's files (the editor
 // writing right after play stopped, an agent's next edit) is not taken as seen: the next
 // reloadChangedFiles reloads it. The hook runs after the files were read and before the load

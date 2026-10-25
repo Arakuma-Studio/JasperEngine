@@ -149,6 +149,10 @@ private:
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
     static bool htmlUiAutoImport;
+    static bool assetAutoRefresh;
+    static std::string assetWatcher;          // auto, native, polling
+    static float assetPollingInterval;        // seconds, 0.25..10
+    static bool assetLogReloads;
     static bool htmlUiVerboseDiagnostics;
 
     // Undo (Editor Settings > Undo): steps per history, the memory limit of every history
@@ -264,6 +268,18 @@ public:
 
     // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a
     // document references when it loads (default on); log every Info diagnostic (default off)
+    // Asset Pipeline (S05 R26): Auto Refresh of files changed on disk (default on), the file
+    // watcher (auto, native, polling), the polling interval (0.25-10 s), Console lines for
+    // reloads (default on). Editor-wide, not per project.
+    static bool getAutoRefresh();
+    static void setAutoRefresh(bool enabled);
+    static std::string getFileWatcher();
+    static void setFileWatcher(const std::string& kind);
+    static float getPollingInterval();
+    static void setPollingInterval(float seconds);
+    static bool getLogReloads();
+    static void setLogReloads(bool enabled);
+
     static bool getHtmlUiAutoImport();
     static void setHtmlUiAutoImport(bool enabled);
     static bool getHtmlUiVerboseDiagnostics();

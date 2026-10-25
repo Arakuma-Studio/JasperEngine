@@ -83,12 +83,12 @@ namespace {
         fs::last_write_time(file, fs::last_write_time(file) + std::chrono::seconds(2));
     }
 
-    fs::path fixture(const std::string& name) {
+    fs::path repoFixture(const std::string& name) {
         return fs::path(JASPER_TEST_REPO_DIR) / "tools" / "fixtures" / name;
     }
 
     fs::path copyFixture(const std::string& name, const fs::path& into) {
-        fs::copy(fixture(name), into, fs::copy_options::recursive);
+        fs::copy(repoFixture(name), into, fs::copy_options::recursive);
         return into;
     }
 
@@ -282,9 +282,9 @@ TEST(AssetIdentity, UpgradeIsDeterministic) {
 
     size_t tracked = 0;
     std::set<Guid> guids;
-    for (const auto& entry : fs::recursive_directory_iterator(fixture("legacy_paths_project"))) {
+    for (const auto& entry : fs::recursive_directory_iterator(repoFixture("legacy_paths_project"))) {
         if (!entry.is_regular_file()) continue;
-        const std::string relative = entry.path().lexically_relative(fixture("legacy_paths_project")).generic_string();
+        const std::string relative = entry.path().lexically_relative(repoFixture("legacy_paths_project")).generic_string();
         const AssetTypeInfo* info = AssetTypes::find(relative, "assets");
         if (!info) continue;
         tracked++;
@@ -304,7 +304,7 @@ TEST(AssetIdentity, UpgradeIsDeterministic) {
             const size_t at = upgraded.find(line);
             ASSERT_NE(at, std::string::npos) << relative;
             upgraded.erase(at, line.size());
-            EXPECT_EQ(upgraded, read(fixture("legacy_paths_project") / relative)) << relative;
+            EXPECT_EQ(upgraded, read(repoFixture("legacy_paths_project") / relative)) << relative;
         }
     }
     EXPECT_EQ(dbA.assetCount(), tracked);

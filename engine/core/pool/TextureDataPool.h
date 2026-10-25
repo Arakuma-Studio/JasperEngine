@@ -17,6 +17,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <atomic>
+#include <string>
+#include <vector>
 
 namespace jasperengine{
 
@@ -35,9 +37,20 @@ namespace jasperengine{
         }
     };
 
+    // What a file-backed pool entry was decoded from, so a hot reload decodes it again with
+    // the same settings (S05 R11)
+    struct TextureSource {
+        std::array<std::string, 6> paths;   // as loadFromFile got them (an SVG with its ?svgScale=)
+        size_t numFaces = 1;
+        bool fixAlphaBorder = false;
+    };
+
     class JASPERENGINE_API TextureDataPool{
     private:
         static texturesdata_t& getMap();
+        static std::unordered_map<std::string, uint32_t>& getGenerations();
+        static std::unordered_map<std::string, TextureSource>& getSources();
+        static std::atomic<uint32_t> replaceEpoch;
 
         // an async load: the combined result, and the token its reads and decodes share
         struct PendingTexture {
@@ -85,6 +98,19 @@ namespace jasperengine{
         static void cancelShutdown();
 
         static void remove(const std::string& id);
+
+        // Hot reload (S05 R13): the entry becomes `data` and its generation goes up; every
+        // Texture of the id sees the new pixels on its next use, without a destroy(). Main thread.
+        static void replace(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data);
+        static uint32_t generation(const std::string& id);
+        // Goes up with every replace(): a Texture skips the generation lookup while it stays
+        static uint32_t getReplaceEpoch() { return replaceEpoch.load(std::memory_order_acquire); }
+        static bool getSource(const std::string& id, TextureSource& out);
+        // The file-backed ids reading `systemPath` (absolute; FileData::getSystemPath of theirs)
+        static std::vector<std::string> findIdsUsingFile(const std::string& systemPath);
+        // Decodes `source` as loadFromFile would; any thread. Throws with the decoder's message.
+        static std::array<TextureData,6> decode(const std::string& id, const TextureSource& source);
+
         static void clear();
         // removes only entries no one else references (safe while other scenes are alive)
         static void clearUnused();

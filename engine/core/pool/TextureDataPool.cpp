@@ -5,6 +5,7 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "io/FileData.h"
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 
@@ -18,6 +19,7 @@ std::unordered_map<std::string, TextureDataPool::PendingTexture> TextureDataPool
 std::unordered_map<std::string, std::function<TextureData()>> TextureDataPool::generators;
 std::mutex TextureDataPool::cacheMutex;
 std::atomic<bool> TextureDataPool::shutdownRequested{false};
+std::atomic<uint32_t> TextureDataPool::replaceEpoch{0};
 
 texturesdata_t& TextureDataPool::getMap(){
     //To prevent similar problem of static init fiasco but on deinitialization
@@ -25,6 +27,63 @@ texturesdata_t& TextureDataPool::getMap(){
     static texturesdata_t* map = new texturesdata_t();
     return *map;
 };
+
+std::unordered_map<std::string, uint32_t>& TextureDataPool::getGenerations(){
+    static auto* generations = new std::unordered_map<std::string, uint32_t>();
+    return *generations;
+}
+
+std::unordered_map<std::string, TextureSource>& TextureDataPool::getSources(){
+    static auto* sources = new std::unordered_map<std::string, TextureSource>();
+    return *sources;
+}
+
+void TextureDataPool::replace(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data){
+    if (!data){
+        return;
+    }
+    getMap()[id] = std::move(data);
+    getGenerations()[id]++;
+    replaceEpoch.fetch_add(1, std::memory_order_acq_rel);
+}
+
+uint32_t TextureDataPool::generation(const std::string& id){
+    auto& generations = getGenerations();
+    auto it = generations.find(id);
+    return it == generations.end() ? 0 : it->second;
+}
+
+bool TextureDataPool::getSource(const std::string& id, TextureSource& out){
+    auto& sources = getSources();
+    auto it = sources.find(id);
+    if (it == sources.end()){
+        return false;
+    }
+    out = it->second;
+    return true;
+}
+
+std::vector<std::string> TextureDataPool::findIdsUsingFile(const std::string& systemPath){
+    const std::string wanted = std::filesystem::path(systemPath).lexically_normal().generic_string();
+    std::vector<std::string> ids;
+    for (const auto& [id, source] : getSources()){
+        for (size_t f = 0; f < 6; f++){
+            if (source.paths[f].empty()){
+                continue;
+            }
+            const std::string file = TextureData::parseSvgScalePath(source.paths[f], nullptr);
+            if (std::filesystem::path(FileData::getSystemPath(file)).lexically_normal().generic_string() == wanted){
+                ids.push_back(id);
+                break;
+            }
+        }
+    }
+    return ids;
+}
+
+std::array<TextureData,6> TextureDataPool::decode(const std::string& id, const TextureSource& source){
+    return loadTextureInternal(id, source.paths, source.numFaces, source.fixAlphaBorder, false);
+}
 
 bool TextureDataPool::hasTexturePixels(const std::shared_ptr<std::array<TextureData,6>>& data, size_t numFaces) {
     if (!data) {
@@ -97,6 +156,9 @@ TextureLoadResult TextureDataPool::loadFromFile(const std::string& id, const std
 
     TextureLoadResult result;
     result.id = id;
+
+    // what a hot reload decodes again
+    getSources()[id] = TextureSource{paths, numFaces, fixAlphaBorder};
 
     if (shared.use_count() > 0 && hasTexturePixels(shared, numFaces)) {
         result.state = ResourceLoadState::Finished;

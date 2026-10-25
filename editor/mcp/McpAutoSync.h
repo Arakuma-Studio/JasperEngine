@@ -7,6 +7,7 @@
 #include "McpJson.h"
 
 #include <chrono>
+#include <deque>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -21,20 +22,24 @@ namespace jasperengine::editor::mcp {
 
     // Automatic pick-up of files the agent edits on disk with its own tools (Read/Edit/git...).
     //
-    // Before every top-level tools/call, a cheap stat-based scan finds the project's Lua, C++,
-    // shader, .material, HTML UI (.html/.htm/.css) and asset (images, .svg, .ttf/.otf,
-    // .json/.lottie) files that changed since the last scan (not .scene / .prefab /
-    // project.yaml, nor the terrain maps the terrain tools write: the editor owns those). If
-    // any did, the sync_files pick-up runs on them (code editor buffers, script properties, Lua
-    // syntax, materials, shader forks, textures, HTML UI documents, asset database) and the
-    // call's result gets
-    //   external_changes: {changed, added?, removed?,
+    // Before every top-level tools/call it finds the project's Lua, C++, shader, .material,
+    // HTML UI (.html/.htm/.css) and asset (images, .svg, .ttf/.otf, .json/.lottie) files that
+    // changed since the last call (not .scene / .prefab / project.yaml, nor the terrain maps the
+    // terrain tools write: the editor owns those): from the file watcher's journal after a
+    // flush (S05 R29, `source: "watcher"`), or, when the watcher is off, degraded, fell behind
+    // or its flush timed out, from a cheap stat-based scan (`source: "scan"`). If any changed,
+    // the sync_files pick-up (HotReloadService::apply) runs on them (code editor buffers,
+    // script properties, Lua syntax, materials, shader forks, textures, models, audio, fonts,
+    // HTML UI documents, asset database), the call waits (at most 10 s) for the reloads it
+    // started on workers, and the call's result gets
+    //   external_changes: {changed, added?, removed?, source, reloaded: [{path, kind, ms}],
+    //                      pending: [path],
     //                      problems: [{path, line, message} (+ col, severity, code, suggestion for UI)],
     //                      script_properties?, ui_reloaded?, ui_current?, deferred?}
     // plus one text line. Shader forks using a changed shader file are compiled before the
-    // tool runs, so their errors are in `problems` too. HTML UI documents reading a changed file
-    // reload before the tool runs (w4::syncHtmlUi; UIDocumentSystem::reloadChangedFiles, whose
-    // stamps the editor's HtmlUIWatcher shares, so a change is reloaded once).
+    // tool runs, so their errors are in `problems` too; a reload that failed is a problem (the
+    // previous version is kept). A change the watcher reloaded before the call is reported
+    // once and reloaded once (the hot reload's applied stamps).
     //
     // Files the MCP tools write themselves are not external: syncFiles (the funnel of
     // write_file, create_script, the material and asset tools) restamps what it handled, and
@@ -80,8 +85,8 @@ namespace jasperengine::editor::mcp {
                        std::chrono::system_clock::time_point start, std::chrono::system_clock::time_point end);
 
         // A call that may write files starts its handler (McpServer; afterCall ends it): while one
-        // runs, the editor's HTML UI poller holds, so the call's writes reload once, with its sync
-        // (p5-tooling)
+        // runs, the hot reload holds the watcher's batches, so the call's writes reload once,
+        // with its sync (S05 R30)
         // (a call that never completes stops holding it after 10 minutes)
         void callStarted() { writingCalls++; lastCallStart = std::chrono::steady_clock::now(); }
         bool writingCallInFlight() const {
@@ -96,10 +101,14 @@ namespace jasperengine::editor::mcp {
         // are current. `full`: the whole project was rescanned and picked up.
         void filesSynced(McpContext& ctx, const std::vector<std::filesystem::path>& paths, bool full);
 
+        // With Auto Refresh off: the external changes the journal held when this call started
+        // (its pick-up applied them since; editor_status counts them as pending)
+        size_t heldAtCallStart() const { return heldAtCall; }
+
         // Adds `report` to a tools/call result (structuredContent.external_changes + one text item)
         static void attach(Json& result, const Json& report);
 
-        // {files, dirs, checked, complete, scan_ms, settle_ms, scan_cpu_ms, settle_cpu_ms} (editor_status)
+        // {source, files, dirs, checked, complete, scan_ms, settle_ms, scan_cpu_ms, settle_cpu_ms} (editor_status)
         Json stats() const;
 
         // Files the scan tracks: Lua, C++, shaders, .material, HTML UI and assets (by extension)
@@ -128,13 +137,19 @@ namespace jasperengine::editor::mcp {
             char kind = 'm';       // a(dded), m(odified), r(emoved)
             int64_t when = 0;      // mtime, or (removed) the mtime of the nearest existing folder
             bool report = true;    // false: a tool's own write, picked up silently
+            uint64_t sequence = 0; // the file watcher's journal change (0: found by a scan)
         };
         struct Pending {
             char kind = 'm';
             bool report = true;
+            uint64_t sequence = 0;
         };
 
         int writingCalls = 0;                      // callStarted() without afterCall yet
+        uint64_t journalCursor = 1;                // the file watcher's journal, next to read
+        std::deque<std::pair<int64_t, int64_t>> toolWindows;   // recent writing calls' [start, end] (ns)
+        std::string lastSource = "scan";           // what the last pick-up read: watcher or scan
+        size_t heldAtCall = 0;
         std::chrono::steady_clock::time_point lastCallStart{};
         std::filesystem::path root;                // project folder of the baseline; empty = none
         int64_t serverStartNs = 0;                 // serverStarted(), ns since the Unix epoch
@@ -171,13 +186,16 @@ namespace jasperengine::editor::mcp {
         bool insideSkippedDir(const std::string& rel) const;
         void restamp(const std::string& rel);
 
-        static void merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report);
+        static void merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report, uint64_t sequence = 0);
         // syncFiles' problems as reported ({path, line?, message} + the UI keys when present)
         static Json compactProblems(const Json& problems);
         // ui_reloaded (when not empty) and ui_current (when > 0)
         static void addUiReport(Json& report, const Json& reloaded, int current);
         // Runs the sync_files pick-up on the changes; the report (null if none is reportable)
-        Json process(McpContext& ctx, const std::vector<Change>& changes, std::vector<std::string>& shaderFiles);
+        Json process(McpContext& ctx, const std::vector<Change>& changes);
+        // The file watcher's changes since the last call (its journal, after a flush); false
+        // when it does not run, is degraded, fell behind or the flush timed out (the scan then)
+        bool takeJournal(std::vector<Change>& found);
     };
 
 }

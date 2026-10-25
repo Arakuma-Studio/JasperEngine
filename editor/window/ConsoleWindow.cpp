@@ -11,6 +11,28 @@
 #include "Backend.h"
 #include "Theme.h"
 #include <cmath>
+
+namespace {
+
+    // The project-relative path a "[Hot Reload] Reloaded <path> (<kind>, <ms> ms)" or a
+    // "[Hot Reload] <path>: <error> (kept the previous version)" line names ("" for others)
+    std::string hotReloadAsset(const std::string& message) {
+        static const std::string prefix = "[Hot Reload] ";
+        if (message.rfind(prefix, 0) != 0) return {};
+        std::string rest = message.substr(prefix.size());
+        if (rest.rfind("Reloaded ", 0) == 0) {
+            rest = rest.substr(9);
+            const size_t paren = rest.rfind(" (");
+            // "Reloaded 37 files: ..." names no single asset
+            if (paren == std::string::npos || rest.find(" files: ") != std::string::npos) return {};
+            return rest.substr(0, paren);
+        }
+        const size_t colon = rest.find(": ");
+        if (colon == std::string::npos || rest.find("(kept the previous version)") == std::string::npos) return {};
+        return rest.substr(0, colon);
+    }
+
+}
 #include <algorithm>
 #include <cstring>
 #include <unordered_map>
@@ -703,6 +725,11 @@ void ConsoleWindow::showList(float height) {
         selectedLogId = logs[rows[clickedRow].logIndex].id;
         hasSelection = true;
         autoScroll = false;
+        // a hot reload line pings its asset in the Project window (S05 R27)
+        const std::string asset = hotReloadAsset(logs[rows[clickedRow].logIndex].message);
+        if (!asset.empty() && Backend::getApp().getProjectWindow()) {
+            Backend::getApp().getProjectWindow()->revealAsset(Backend::getApp().getProject()->getProjectPath() / asset);
+        }
     }
     if (contextRow >= 0 && rows[contextRow].logIndex < logs.size()) {
         selectedLogId = logs[rows[contextRow].logIndex].id;

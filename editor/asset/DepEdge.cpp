@@ -7,12 +7,12 @@ using namespace jasperengine;
 
 namespace {
 
-    struct KindName {
+    struct DepKindName {
         editor::DepEdgeKind kind;
         const char* name;
     };
 
-    const KindName kindNames[] = {
+    const DepKindName kindNames[] = {
         {editor::DepEdgeKind::Other, "other"},
         {editor::DepEdgeKind::SceneComponent, "scene_component"},
         {editor::DepEdgeKind::PrefabComponent, "prefab_component"},
@@ -35,7 +35,7 @@ namespace {
 }
 
 const char* editor::depEdgeKindName(DepEdgeKind kind) {
-    for (const KindName& entry : kindNames) {
+    for (const DepKindName& entry : kindNames) {
         if (entry.kind == kind) {
             return entry.name;
         }
@@ -44,7 +44,7 @@ const char* editor::depEdgeKindName(DepEdgeKind kind) {
 }
 
 editor::DepEdgeKind editor::depEdgeKindFromName(const std::string& name) {
-    for (const KindName& entry : kindNames) {
+    for (const DepKindName& entry : kindNames) {
         if (name == entry.name) {
             return entry.kind;
         }

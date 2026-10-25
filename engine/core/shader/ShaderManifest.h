@@ -374,6 +374,8 @@ namespace jasperengine{
         static bool readForkFile(const std::string& path, std::string& content);
         // Forgets the fork manifests (their sources changed); library ones stay
         static void clearForks();
+        // Only the forks `which` names (a hot reload of some shader files, S05)
+        static void clearForks(const std::function<bool(const std::string& fork)>& which);
 
         // the library shaders the build has, by name, sorted
         static std::vector<std::string> getLibraryShaderNames();

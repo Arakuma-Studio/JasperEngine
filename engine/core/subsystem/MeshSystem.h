@@ -265,6 +265,23 @@ namespace jasperengine{
         bool createOrUpdateTilemap(TilemapComponent& tilemap, MeshComponent& mesh);
         bool createOrUpdateModel(Entity entity, ModelComponent& model, MeshComponent& mesh);
 
+        // Hot reload of a model file (S05 R11). parseModelForReload reads and parses it again
+        // on any thread (throws with the parser's error); on the main thread,
+        // modelHierarchyMatches says whether its nodes (names and parents) are the loaded
+        // ones, and adoptModelReload puts the parse and its textures in the pools. Then every
+        // MeshSystem's reloadModelFile rebuilds the meshes, skins, morphs and animations of
+        // the ModelComponents using the file on their existing GameObjects (transforms, added
+        // components and submesh overrides are kept).
+        struct ModelReload;
+        static std::shared_ptr<ModelReload> parseModelForReload(const std::string& filename);
+        static bool modelHierarchyMatches(const ModelReload& reload, std::string& why);
+        static void adoptModelReload(const std::shared_ptr<ModelReload>& reload);
+        // The components of `filename` load again (true: there was one)
+        bool reloadModelFile(const std::string& filename);
+        // The same, after the GameObjects the load generated are destroyed: a hierarchy that
+        // changed is created again from the file (what was edited on those GameObjects goes)
+        bool rebuildModelFile(const std::string& filename);
+
         void calculateMeshAABB(MeshComponent& mesh);
 
         void load() override;

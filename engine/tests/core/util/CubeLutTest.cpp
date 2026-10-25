@@ -171,8 +171,9 @@ namespace {
     void reportBench(const char* name, double ms, double budget){
         const double slack = benchSlack();
         std::printf("[bench] %s: %.3f ms (budget %.1f ms)\n", name, ms, budget * slack);
-        if (slack > 0.0)
+        if (slack > 0.0) {
             EXPECT_LE(ms, budget * slack) << name;
+        }
     }
 
 }

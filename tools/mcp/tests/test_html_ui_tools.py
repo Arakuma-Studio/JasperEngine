@@ -67,7 +67,9 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # S13 (post FX): +1555 measured (inspect_color_lut 446, get_post_processing_status 403,
 # set_post_processing_debug 675, the presets' list in list_post_processing_presets)
 # S10 (shadows) and S12 (atmosphere), merged after S13's measurement: +2295 measured on the merge
-TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295
+# S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
+# and editor_status' file_watcher and frame_ms
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295 + 395
 # S11 (materials and lighting): +1571 measured on S11's merge (get_material_variant, set_light_unit,
 # set_terrain_maps' hexTiling/hexRotation, the material pbr/emissiveStrength schema)
 TOTAL_LIMIT += 1571

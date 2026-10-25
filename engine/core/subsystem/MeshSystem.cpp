@@ -10,6 +10,7 @@
 #include "io/Data.h"
 #include "io/ResourcePack.h"
 #include "pool/ModelPool.h"
+#include "pool/TexturePool.h"
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
@@ -1330,6 +1331,136 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
     }
 
     return result;
+}
+
+struct MeshSystem::ModelReload {
+    std::string filename;
+    std::string poolKey;
+    bool obj = false;
+    std::shared_ptr<AsyncModelLoadResult> result;
+};
+
+std::shared_ptr<MeshSystem::ModelReload> MeshSystem::parseModelForReload(const std::string& filename){
+    auto reload = std::make_shared<ModelReload>();
+    reload->filename = filename;
+    reload->poolKey = getModelFilenameKey(filename);
+    reload->obj = FileData::getFilePathExtension(filename) == "obj";
+    // the whole file (the I/O service's read, with its retry window for a file being replaced)
+    std::vector<uint8_t> bytes;
+    std::string readError;
+    if (!AssetIOService::readFile(filename, 0, 0, bytes, readError))
+        throw std::runtime_error(readError);
+    reload->result = loadModelFileOnWorker(filename, reload->obj, 0, bytes);
+    if (!reload->result || !reload->result->success){
+        const std::string error = reload->result && !reload->result->err.empty() ? reload->result->err : std::string("the model could not be parsed");
+        throw std::runtime_error(error);
+    }
+    return reload;
+}
+
+bool MeshSystem::modelHierarchyMatches(const ModelReload& reload, std::string& why){
+    if (reload.obj){
+        std::shared_ptr<ObjModelData> loaded = ModelPool::getObj(reload.poolKey);
+        if (!loaded || !reload.result->objModel){
+            return true;
+        }
+        const auto& before = loaded->shapes;
+        const auto& after = reload.result->objModel->shapes;
+        if (before.size() != after.size()){
+            why = "it has " + std::to_string(after.size()) + " shapes instead of " + std::to_string(before.size());
+            return false;
+        }
+        for (size_t i = 0; i < before.size(); i++){
+            if (before[i].name != after[i].name){
+                why = "shape " + std::to_string(i) + " is \"" + after[i].name + "\" instead of \"" + before[i].name + "\"";
+                return false;
+            }
+        }
+        return true;
+    }
+    std::shared_ptr<tinygltf::Model> loaded = ModelPool::getGLTF(reload.poolKey);
+    if (!loaded || !reload.result->gltfModel){
+        return true;
+    }
+    const auto& before = loaded->nodes;
+    const auto& after = reload.result->gltfModel->nodes;
+    if (before.size() != after.size()){
+        why = "it has " + std::to_string(after.size()) + " nodes instead of " + std::to_string(before.size());
+        return false;
+    }
+    for (size_t i = 0; i < before.size(); i++){
+        if (before[i].name != after[i].name || before[i].children != after[i].children || (before[i].mesh >= 0) != (after[i].mesh >= 0)){
+            why = "node " + std::to_string(i) + " (\"" + after[i].name + "\") is not the one loaded (\"" + before[i].name + "\")";
+            return false;
+        }
+    }
+    return true;
+}
+
+void MeshSystem::adoptModelReload(const std::shared_ptr<ModelReload>& reload){
+    if (!reload || !reload->result){
+        return;
+    }
+    if (reload->obj){
+        ModelPool::replaceObj(reload->poolKey, reload->result->objModel);
+    }else{
+        ModelPool::replaceGLTF(reload->poolKey, reload->result->gltfModel);
+        // the embedded textures are new pixels too: their Textures take them (generation)
+        for (auto& prebuilt : reload->result->prebuiltTextures){
+            if (prebuilt.second){
+                TextureDataPool::replace(prebuilt.first, prebuilt.second);
+                TexturePool::invalidate(prebuilt.first);
+            }
+        }
+    }
+}
+
+bool MeshSystem::rebuildModelFile(const std::string& filename){
+    const std::string key = getModelFilenameKey(filename);
+    std::vector<Entity> entities;
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (int i = 0; i < models->size(); i++){
+        const ModelComponent& model = models->getComponentFromIndex(i);
+        if (!model.filename.empty() && getModelFilenameKey(model.filename) == key){
+            entities.push_back(models->getEntity(i));
+        }
+    }
+    // destroying entities compacts the component arrays: by entity, one at a time
+    for (Entity entity : entities){
+        ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+        if (!model){
+            continue;
+        }
+        clearMeshNodeMapping(*model);
+        for (Entity animation : model->animations){
+            if (scene->isEntityCreated(animation)){
+                scene->destroyEntity(animation);
+            }
+        }
+        model = scene->findComponent<ModelComponent>(entity);
+        if (model){
+            model->animations.clear();
+        }
+    }
+    return reloadModelFile(filename);
+}
+
+bool MeshSystem::reloadModelFile(const std::string& filename){
+    const std::string key = getModelFilenameKey(filename);
+    bool any = false;
+    auto models = scene->getComponentArray<ModelComponent>();
+    for (int i = 0; i < models->size(); i++){
+        ModelComponent& model = models->getComponentFromIndex(i);
+        if (model.filename.empty() || getModelFilenameKey(model.filename) != key){
+            continue;
+        }
+        // the cached parse is the new one: createOrUpdateModel loads it on the GameObjects it has
+        model.loadedFilename.clear();
+        model.needUpdateModel = true;
+        failedModelLoads.erase(model.filename);
+        any = true;
+    }
+    return any;
 }
 
 bool MeshSystem::preloadModel(const std::string& filename, std::shared_ptr<void>& data){
