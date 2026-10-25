@@ -17,6 +17,9 @@ namespace{
         PreviewOwner::Owner owner;
         PreviewOwner::Stop stop;
         const void* who = nullptr;
+        // the registry the owner acquired with (stopFor without one); valid while the scene is
+        // open: a closed scene's owners are released (releaseScene)
+        EntityRegistry* registry = nullptr;
     };
 
     struct Registry{
@@ -74,6 +77,7 @@ PreviewOwner::Token PreviewOwner::acquire(uint32_t sceneId, Entity root, EntityR
     entry.owner.root = root;
     entry.owner.name = name;
     entry.stop = std::move(stop);
+    entry.registry = registry;
     reg.entries.push_back(std::move(entry));
     return reg.entries.back().owner.token;
 }
@@ -142,4 +146,25 @@ PreviewOwner::Token PreviewOwner::tokenOf(const void* who){
         if (entry.who == who) return entry.owner.token;
     }
     return 0;
+}
+
+void PreviewOwner::stopFor(uint32_t sceneId, const std::vector<Entity>& roots, EntityRegistry* registry, const void* except){
+    Registry& reg = ownerRegistry();
+    std::vector<Entry> stopped;
+    for (auto it = reg.entries.begin(); it != reg.entries.end();){
+        bool hit = (sceneId == 0 || it->owner.sceneId == sceneId) && !(except && it->who == except);
+        if (hit && !roots.empty()){
+            EntityRegistry* hierarchy = registry ? registry : it->registry;
+            hit = std::any_of(roots.begin(), roots.end(), [&](Entity root){ return overlaps(hierarchy, it->owner.root, root); });
+        }
+        if (hit){
+            stopped.push_back(std::move(*it));
+            it = reg.entries.erase(it);
+        }else{
+            ++it;
+        }
+    }
+    for (Entry& entry : stopped){
+        if (entry.stop) entry.stop();
+    }
 }

@@ -253,6 +253,10 @@ namespace jasperengine::editor{
 
         // the Undo/Redo target is the project history (Project window, Pose window, clip edits)
         bool undoGoesToProjectHistory() const;
+        // redo is routed on its own (animation clips R5b: the newest redoable step decides)
+        bool redoGoesToProjectHistory() const;
+        // AnimationClipAppHooks::ownsRedo for the windows that route like the scene (set per frame)
+        bool clipRedoToProject = false;
         // which windows have focus, for AnimationClipAppHooks::ownsUndo
         ClipUndoFocus clipUndoFocus() const;
 

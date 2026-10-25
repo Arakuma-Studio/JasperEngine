@@ -10,11 +10,14 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
 #include "animation/KeyframeSampling.h"
+#include "animation/ModelSubClips.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
+#include "command/CommandHandle.h"
+#include "command/CommandHistory.h"
 #include "lattice/LatticeSolver.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
@@ -91,6 +94,12 @@ namespace{
                 }
                 return false;
             };
+            hooks.ownsRedo = [](const ClipUndoFocus& focus){
+                for (auto& entry : controllers()){
+                    if (entry.second->ownsRedo(focus)) return true;
+                }
+                return false;
+            };
             hooks.takesKeys = [](){
                 for (auto& entry : controllers()){
                     if (entry.second->takesKeys()) return true;
@@ -109,6 +118,120 @@ namespace{
         }
     };
     const AppHooksInstaller appHooksInstaller;
+
+    // R5b: when each history's undoable steps were taken, to find the newest across the scene
+    // and project histories. Kept from CommandHistory::onSceneModified (every add, merge, insert,
+    // undo and redo) and beforeStep (an undo or redo follows), both chained after the App's own
+    // listeners when the first controller is made (the App sets them at startup).
+    struct HistoryTimeline{
+        struct Steps{
+            std::vector<uint64_t> stamps;   // per position: when that step was done
+            std::vector<bool> clip;         // per position: a clip commit of a controller
+            std::vector<uint64_t> undone;   // per position: when that step was undone (0: not undone)
+            uint64_t lastNew = 0;           // when its last new step (not a redo) was made
+            size_t last = 0;
+        };
+        bool installed = false;
+        uint64_t clock = 0;
+        std::map<size_t, Steps> histories;
+        std::set<size_t> stepping;
+        Project* project = nullptr;         // whose history id 0 is
+    };
+
+    HistoryTimeline& timeline(){
+        static HistoryTimeline* instance = new HistoryTimeline();
+        return *instance;
+    }
+
+    CommandHistory* historyOf(size_t id){
+        HistoryTimeline& t = timeline();
+        if (id == NULL_PROJECT_SCENE) return t.project ? t.project->getProjectCommandHistory() : nullptr;
+        return CommandHandle::get(id);
+    }
+
+    void historyChanged(size_t id){
+        HistoryTimeline& t = timeline();
+        CommandHistory* history = historyOf(id);
+        if (!history) return;
+        HistoryTimeline::Steps& steps = t.histories[id];
+        const size_t position = history->position();
+        const bool step = t.stepping.erase(id) > 0;
+        if (!step){
+            // a new step (or one merged into the last): the redo tail is gone
+            steps.stamps.resize(position, 0);
+            steps.clip.resize(position, false);
+            steps.undone.resize(position, 0);
+            if (position > 0){
+                steps.stamps[position - 1] = ++t.clock;
+                steps.clip[position - 1] = false;
+                steps.undone[position - 1] = 0;
+                steps.lastNew = t.clock;
+            }
+        }else if (position > steps.last){
+            // a redo: the step is done again now (and stays what it was)
+            if (steps.stamps.size() < position){
+                steps.stamps.resize(position, 0);
+                steps.clip.resize(position, false);
+                steps.undone.resize(position, 0);
+            }
+            steps.stamps[position - 1] = ++t.clock;
+            steps.undone[position - 1] = 0;
+        }else if (position < steps.last){
+            // an undo: the step at `position` is the next redo, undone now
+            if (steps.stamps.size() <= position){
+                steps.stamps.resize(position + 1, 0);
+                steps.clip.resize(position + 1, false);
+                steps.undone.resize(position + 1, 0);
+            }
+            steps.undone[position] = ++t.clock;
+        }
+        steps.last = position;
+    }
+
+    void installTimeline(Project* project){
+        HistoryTimeline& t = timeline();
+        if (project) t.project = project;
+        if (t.installed) return;
+        t.installed = true;
+        std::function<void(size_t, bool)> modified = CommandHistory::onSceneModified;
+        CommandHistory::onSceneModified = [modified](size_t id, bool structural){
+            if (modified) modified(id, structural);
+            historyChanged(id);
+        };
+        std::function<void(size_t)> before = CommandHistory::beforeStep;
+        CommandHistory::beforeStep = [before](size_t id){
+            if (before) before(id);
+            timeline().stepping.insert(id);
+        };
+    }
+
+    // the next redoable step of a history: when it was undone (0: none, or before the timeline)
+    // and whether it is a clip commit
+    uint64_t redoStep(size_t id, bool* clip){
+        if (clip) *clip = false;
+        CommandHistory* history = historyOf(id);
+        if (!history || !history->canRedo()) return 0;
+        HistoryTimeline& t = timeline();
+        auto it = t.histories.find(id);
+        const size_t position = history->position();
+        if (it == t.histories.end() || position >= it->second.undone.size()) return 0;
+        if (clip) *clip = it->second.clip[position];
+        return it->second.undone[position];
+    }
+
+    // the top undoable step of a history: when it was done (0: before the timeline) and whether
+    // it is a clip commit
+    uint64_t topStep(size_t id, bool* clip){
+        if (clip) *clip = false;
+        CommandHistory* history = historyOf(id);
+        if (!history) return 0;
+        HistoryTimeline& t = timeline();
+        auto it = t.histories.find(id);
+        const size_t position = history->position();
+        if (it == t.histories.end() || position == 0 || position > it->second.stamps.size()) return 0;
+        if (clip) *clip = it->second.clip[position - 1];
+        return it->second.stamps[position - 1];
+    }
 
     bool finite(float value){
         return std::isfinite(value);
@@ -331,6 +454,7 @@ namespace{
 // ---- construction ----
 
 AnimationClipController::AnimationClipController(Project* project): project(project){
+    installTimeline(project);
     // scene commands, undo and redo writing a previewed channel: the command sees (and edits)
     // the rest, which becomes the snapshot (9.R6)
     beforeWriteListener = ClipRecordHooks::addBeforeChannelWrite([this](uint32_t id, Entity entity, ClipChannel channel){
@@ -468,10 +592,25 @@ std::string AnimationClipController::stateOfDocument() const{
     const AnimationPlayerComponent& player = sceneProjectOf(sceneId)->scene->getComponent<AnimationPlayerComponent>(root);
     const std::vector<AnimationPlayerClip> entries = player.clips;
     const std::vector<std::string> names = anim::playerStateNames(entries);
+    const fs::path documentFile = document->absolutePath().lexically_normal();
     for (size_t i = 0; i < entries.size() && i < names.size(); i++){
-        if (entries[i].clip.empty()) continue;
-        // documents are shared per file: the same document is the same clip
-        if (AnimationClipDocument::open(project, entries[i].clip, nullptr) == document) return names[i];
+        const std::string& clip = entries[i].clip;
+        if (clip.empty()) continue;
+        anim::SubClipReference reference;
+        if (anim::parseSubClipReference(clip, reference)){
+            // a sub-clip document's path is "<absolute model>#<clip name>"; an entry naming the
+            // animation by its index only matches through the (cached) document
+            const fs::path model = project->resolveAssetPath(fs::u8path(reference.model)).lexically_normal();
+            if (fs::path(model.generic_string() + "#" + reference.clip) == documentFile) return names[i];
+            const std::string documentText = documentFile.generic_string();
+            if (documentText.rfind(model.generic_string() + "#", 0) == 0 && !reference.clip.empty() &&
+                    std::all_of(reference.clip.begin(), reference.clip.end(), [](char c){ return c >= '0' && c <= '9'; }) &&
+                    AnimationClipDocument::open(project, clip, nullptr) == document){
+                return names[i];
+            }
+            continue;
+        }
+        if (project->resolveAssetPath(fs::u8path(clip)).lexically_normal() == documentFile) return names[i];
     }
     return "";
 }
@@ -484,6 +623,7 @@ void AnimationClipController::setDocument(const std::shared_ptr<AnimationClipDoc
     document = next;
     clipPath = document ? document->path() : std::string();
     unresolved.clear();
+    pending.clear();
     if (document){
         documentListener = document->addListener([this](AnimationClipDocument&, AnimationClipDocument::Change change){
             if (change == AnimationClipDocument::Change::Removed){
@@ -614,6 +754,10 @@ bool AnimationClipController::startPreview(std::string* error){
     if (sceneProject->playState != ScenePlayState::STOPPED){
         return fail(error, "the scene is playing or being saved: previews run in edit mode");
     }
+    if (project->getSelectedSceneId() != targetScene){
+        // a preview shows in the scene on screen and ends when another one is selected (R6)
+        return fail(error, "the scene is not the selected one: select its tab to preview in it");
+    }
 
     // one edit-mode pose owner per root: the Pose window, the Inspector's action preview or
     // another preview of this hierarchy restore their snapshots now (9.R7)
@@ -661,6 +805,8 @@ void AnimationClipController::endPreview(bool write){
     stopPending = false;
     needsApply = false;
     unresolved.clear();
+    pending.clear();
+    shownValues.clear();
     previewSceneId = 0;
     previewRoot = NULL_ENTITY;
     // Record keys into the preview: it ends with it (Unity)
@@ -768,6 +914,19 @@ bool AnimationClipController::apply(){
     if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED) return false;
     Scene* scene = sceneProject->scene;
     if (!scene->isEntityCreated(previewRoot)) return false;
+    // another scene tab shows: this one goes back as it was (also without an update)
+    if (project && project->getSelectedSceneId() != previewSceneId){
+        stopPreview();
+        return false;
+    }
+    // destroyed entities leave the session (a recycled id must not get their rest)
+    for (auto it = session.rest.begin(); it != session.rest.end();){
+        if (!scene->isEntityCreated(it->first)) it = session.rest.erase(it);
+        else ++it;
+    }
+    session.written.erase(std::remove_if(session.written.begin(), session.written.end(),
+                                         [scene](const std::pair<Entity, ClipChannel>& entry){ return !scene->isEntityCreated(entry.first); }),
+                          session.written.end());
 
     ActionSystem::PlayerPreview preview;
     ActionSystem::PlayerPreviewState state;
@@ -786,6 +945,11 @@ bool AnimationClipController::apply(){
         }
     }
     unresolved = result.unresolved;
+    // the unkeyed values stay over the clip while the playhead stays
+    if (!pending.empty()){
+        if (pendingTime == time) writePending();
+        else pending.clear();
+    }
     sceneProject->needUpdateRender = true;
     return result.ready;
 }
@@ -937,23 +1101,48 @@ Entity AnimationClipController::valueRoot(SceneProject** sceneProject) const{
 // ---- scene writes during a preview (9.R6) ----
 
 void AnimationClipController::beforeSceneWrite(uint32_t id, Entity entity, ClipChannel channel){
-    if (!previewing || id != previewSceneId) return;
+    if (!isPreviewing() || id != previewSceneId) return;
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED) return;
     // the command reads and edits the rest, not the previewed value
-    if (std::find(session.written.begin(), session.written.end(), std::make_pair(entity, channel)) != session.written.end()){
+    const std::pair<Entity, ClipChannel> entry(entity, channel);
+    if (std::find(session.written.begin(), session.written.end(), entry) != session.written.end()){
+        std::vector<float> shown;
+        if (anim::readChannelValue(sceneProject->scene, entity, channel, {}, shown)){
+            shownValues.erase(std::remove_if(shownValues.begin(), shownValues.end(),
+                                             [&entry](const auto& value){ return value.first == entry; }), shownValues.end());
+            shownValues.push_back({entry, shown});
+        }
         writeRest(entity, channel);
     }
 }
 
 void AnimationClipController::afterSceneWrite(uint32_t id, Entity entity, ClipChannel channel){
-    if (!previewing || id != previewSceneId) return;
+    if (!isPreviewing() || id != previewSceneId) return;
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
-    if (!sceneProject) return;
+    if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED) return;
+    const std::pair<Entity, ClipChannel> entry(entity, channel);
+    std::vector<float> shown;
+    bool hadShown = false;
+    for (auto value = shownValues.begin(); value != shownValues.end(); ++value){
+        if (value->first == entry){
+            shown = value->second;
+            hadShown = true;
+            shownValues.erase(value);
+            break;
+        }
+    }
     auto it = session.rest.find(entity);
     if (it == session.rest.end() || !hasRestFor(it->second, channel)) return;
+    needsApply = true;
+    // the previewed value written back as it was shown is no edit: the rest stays (9.R6)
+    std::vector<float> written;
+    if (hadShown && anim::readChannelValue(sceneProject->scene, entity, channel, {}, written) && sameValue(channel, written, shown)){
+        return;
+    }
     // the value the command wrote is the new rest; the preview shows again on the next update
     // (not now: the command's other channels are notified after this one)
     takeRest(sceneProject->scene, entity, it->second, channel, true);
-    needsApply = true;
 }
 
 // ---- keying ----
@@ -970,9 +1159,22 @@ bool AnimationClipController::commitEdit(const ClipData& data, const std::string
     if (!editable(error)) return false;
     // keep the document across the commit: its listener may run stopPreview()
     std::shared_ptr<AnimationClipDocument> edited = document;
-    if (!edited->commit(data, undoName, mergeKey, error)) return false;
+    const uint64_t clockBefore = timeline().clock;
+    std::vector<ClipWarning> warnings;
+    if (!edited->commit(data, undoName, mergeKey, error, &warnings)) return false;
+    lastWarnings = warnings;
     // the preview shows the new revision through the document's listener
     lastActionWasClipEdit = true;
+    // the project step it made (or merged into) is a clip commit (R5b)
+    HistoryTimeline& t = timeline();
+    CommandHistory* history = historyOf(NULL_PROJECT_SCENE);
+    auto steps = t.histories.find(NULL_PROJECT_SCENE);
+    if (history && steps != t.histories.end()){
+        const size_t position = history->position();
+        if (position > 0 && position <= steps->second.stamps.size() && steps->second.stamps[position - 1] > clockBefore){
+            steps->second.clip[position - 1] = true;
+        }
+    }
     return true;
 }
 
@@ -1051,6 +1253,12 @@ bool AnimationClipController::addProperty(const std::string& path, ClipChannel c
 }
 
 bool AnimationClipController::keyTracks(const std::vector<size_t>& tracks, float atTime, const std::string& mergeKey, std::string* error){
+    return keyTracks(tracks, atTime, mergeKey, nullptr, error);
+}
+
+bool AnimationClipController::keyTracks(const std::vector<size_t>& tracks, float atTime, const std::string& mergeKey,
+                                        std::vector<KeyRef>* keyed, std::string* error){
+    if (keyed) keyed->clear();
     if (!editable(error)) return false;
     if (!finite(atTime) || atTime < 0.0f) return fail(error, "the key time must be 0 or more");
     ClipData data = document->data();
@@ -1058,24 +1266,44 @@ bool AnimationClipController::keyTracks(const std::vector<size_t>& tracks, float
     if (indices.empty()){
         for (size_t i = 0; i < data.tracks.size(); i++) indices.push_back(i);
     }
-    size_t keyed = 0;
+    std::vector<std::pair<std::string, ClipChannel>> written;
     for (size_t index : indices){
         if (index >= data.tracks.size()) return fail(error, "no track " + std::to_string(index));
         ClipTrackData& track = data.tracks[index];
         std::vector<float> value;
         if (!currentTrackValue(track, value)) continue;
         setKeyAt(track, atTime, value);
-        keyed++;
+        written.push_back({track.path, track.channel});
     }
-    if (keyed == 0) return fail(error, "no bound track to key (missing bindings are skipped)");
-    return commitEdit(data, "Add Key", mergeKey, error);
+    if (written.empty()) return fail(error, "no bound track to key (missing bindings are skipped)");
+    if (!commitEdit(data, "Add Key", mergeKey, error)) return false;
+    // the keyed values are the clip's now: nothing pending for those tracks
+    pending.erase(std::remove_if(pending.begin(), pending.end(), [&written](const PendingValue& value){
+        return std::find(written.begin(), written.end(), std::make_pair(value.path, value.channel)) != written.end();
+    }), pending.end());
+    if (keyed){
+        for (const auto& identity : written){
+            KeyRef ref;
+            if (findKey(document->data(), identity.first, identity.second, atTime, ref)) keyed->push_back(ref);
+        }
+    }
+    return true;
 }
 
 bool AnimationClipController::keyAll(float atTime, std::string* error){
-    return keyTracks({}, atTime, "", error);
+    return keyTracks({}, atTime, "", nullptr, error);
+}
+
+bool AnimationClipController::keyAll(float atTime, std::vector<KeyRef>* keyed, std::string* error){
+    return keyTracks({}, atTime, "", keyed, error);
 }
 
 bool AnimationClipController::keyModified(float atTime, std::string* error){
+    return keyModified(atTime, nullptr, error);
+}
+
+bool AnimationClipController::keyModified(float atTime, std::vector<KeyRef>* keyed, std::string* error){
+    if (keyed) keyed->clear();
     if (!editable(error)) return false;
     const ClipData& data = document->data();
     std::shared_ptr<const AnimationClip> clip = document->clip();
@@ -1094,7 +1322,7 @@ bool AnimationClipController::keyModified(float atTime, std::string* error){
         if (!sameValue(track.channel, value, sampleValue(samples[(size_t)built]))) changed.push_back(i);
     }
     if (changed.empty()) return fail(error, "no bound channel differs from the clip at the playhead");
-    return keyTracks(changed, atTime, "", error);
+    return keyTracks(changed, atTime, "", keyed, error);
 }
 
 bool AnimationClipController::setKeyValue(const KeyRef& key, const std::vector<float>& value, const std::string& mergeKey, std::string* error){
@@ -1136,6 +1364,15 @@ namespace{
             key.time = std::max(0.0f, key.time + delta);
             if (valueDelta){
                 for (size_t i = 0; i < key.value.size() && i < valueDelta->size(); i++) key.value[i] += (*valueDelta)[i];
+                if (data.tracks[ref.track].channel == ClipChannel::Rotation && key.value.size() == 4){
+                    const float length = std::sqrt(key.value[0] * key.value[0] + key.value[1] * key.value[1] +
+                                                   key.value[2] * key.value[2] + key.value[3] * key.value[3]);
+                    if (length > 1e-6f){
+                        for (float& component : key.value) component /= length;
+                    }else{
+                        key.value = {0.0f, 0.0f, 0.0f, 1.0f};
+                    }
+                }
             }
         }
         return true;
@@ -1161,7 +1398,12 @@ bool AnimationClipController::moveKeys(const std::vector<KeyRef>& keys, float de
             const int track = document->data().findTrack(identity.path, identity.channel);
             if (track < 0) continue;
             const int key = nearestKey(document->data().tracks[(size_t)track], identity.time, 1e-4f);
-            if (key >= 0) moved->push_back({(size_t)track, (size_t)key});
+            if (key < 0) continue;
+            // keys that ended on one time collapsed into one (getLastWarnings says so)
+            const bool listed = std::any_of(moved->begin(), moved->end(), [&](const KeyRef& ref){
+                return ref.track == (size_t)track && ref.key == (size_t)key;
+            });
+            if (!listed) moved->push_back({(size_t)track, (size_t)key});
         }
     }
     return true;
@@ -1210,7 +1452,12 @@ bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vec
             const int track = document->data().findTrack(identity.path, identity.channel);
             if (track < 0) continue;
             const int key = nearestKey(document->data().tracks[(size_t)track], std::max(0.0f, identity.time + totalDeltaTime), 1e-4f);
-            if (key >= 0) moved->push_back({(size_t)track, (size_t)key});
+            if (key < 0) continue;
+            // keys that end on one time collapse into one (getLastWarnings says so)
+            const bool listed = std::any_of(moved->begin(), moved->end(), [&](const KeyRef& ref){
+                return ref.track == (size_t)track && ref.key == (size_t)key;
+            });
+            if (!listed) moved->push_back({(size_t)track, (size_t)key});
         }
     }
     return true;
@@ -1407,12 +1654,122 @@ void AnimationClipController::stopTransientPreviews(){
 }
 
 bool AnimationClipController::ownsUndo(bool sceneViewFocused) const{
-    return (lastActionWasClipEdit && document) || (recording && sceneViewFocused);
+    (void)sceneViewFocused;
+    return newestStepIsClipEdit();
 }
 
 bool AnimationClipController::ownsUndo(const ClipUndoFocus& focus) const{
-    if (focus.animationWindow && lastActionWasClipEdit && document) return true;
-    return recording && (focus.sceneView || focus.inspector);
+    // R5b: by the newest undoable step, whatever window has focus (Record never steals a scene undo)
+    (void)focus;
+    return newestStepIsClipEdit();
+}
+
+bool AnimationClipController::newestStepIsClipEdit() const{
+    if (!project || historyOf(NULL_PROJECT_SCENE) != project->getProjectCommandHistory()) return false;
+    bool clip = false;
+    const uint64_t projectStep = topStep(NULL_PROJECT_SCENE, &clip);
+    if (!clip) return false;
+    const uint32_t selected = project->getSelectedSceneId();
+    const uint64_t sceneStep = selected != NULL_PROJECT_SCENE ? topStep(selected, nullptr) : 0;
+    return projectStep > sceneStep;
+}
+
+bool AnimationClipController::newestRedoIsClipEdit() const{
+    if (!project || historyOf(NULL_PROJECT_SCENE) != project->getProjectCommandHistory()) return false;
+    bool clip = false;
+    const uint64_t projectStep = redoStep(NULL_PROJECT_SCENE, &clip);
+    if (!clip || projectStep == 0) return false;
+    const uint32_t selected = project->getSelectedSceneId();
+    // newer than the scene's next redo and than its last new step (a scene edit made after the
+    // undo is the newest action: Ctrl+Y does not jump back to the clip; scene redos do not count)
+    const uint64_t sceneRedo = selected != NULL_PROJECT_SCENE ? redoStep(selected, nullptr) : 0;
+    uint64_t sceneNew = 0;
+    if (selected != NULL_PROJECT_SCENE){
+        auto steps = timeline().histories.find(selected);
+        if (steps != timeline().histories.end()) sceneNew = steps->second.lastNew;
+    }
+    return projectStep > sceneRedo && projectStep > sceneNew;
+}
+
+bool AnimationClipController::ownsRedo(const ClipUndoFocus& focus) const{
+    (void)focus;
+    return newestRedoIsClipEdit();
+}
+
+const std::vector<ClipWarning>& AnimationClipController::getLastWarnings() const{
+    return lastWarnings;
+}
+
+bool AnimationClipController::setPendingValue(size_t track, const std::vector<float>& value, std::string* error){
+    if (!document) return fail(error, "no clip is open");
+    const ClipData& data = document->data();
+    if (track >= data.tracks.size()) return fail(error, "no track " + std::to_string(track));
+    const ClipTrackData& target = data.tracks[track];
+    if (target.channel == ClipChannel::Property) return fail(error, "component properties can't be animated yet");
+    for (float v : value){
+        if (!finite(v)) return fail(error, "values must be finite numbers");
+    }
+    size_t width = ClipData::valueWidth(target.channel, value.size(), target.points.size());
+    if (target.channel == ClipChannel::Morph){
+        if (value.empty() || value.size() > MAX_MORPHTARGETS){
+            return fail(error, "a blend shape value holds 1 to " + std::to_string(MAX_MORPHTARGETS) + " weights");
+        }
+        width = value.size();
+    }
+    if (value.size() != width){
+        return fail(error, "a " + std::string(anim::channelName(target.channel)) + " value holds " + std::to_string(width) + " numbers");
+    }
+    if (!isPreviewing() && !startPreview(error)) return false;
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject) return fail(error, "the previewed scene is gone");
+    const Entity entity = anim::resolvePath(sceneProject->scene, previewRoot, target.path);
+    std::vector<float> current;
+    if (entity == NULL_ENTITY || !anim::readChannelValue(sceneProject->scene, entity, target.channel, target.points, current)){
+        return fail(error, "'" + target.path + "' is not bound: nothing shows the value");
+    }
+    if (pendingTime != time) pending.clear();
+    pendingTime = time;
+    PendingValue entry;
+    entry.path = target.path;
+    entry.channel = target.channel;
+    entry.points = target.points;
+    entry.value = value;
+    pending.erase(std::remove_if(pending.begin(), pending.end(), [&entry](const PendingValue& other){
+        return other.path == entry.path && other.channel == entry.channel;
+    }), pending.end());
+    pending.push_back(entry);
+    writePending();
+    sceneProject->needUpdateRender = true;
+    return true;
+}
+
+bool AnimationClipController::hasPendingValue(size_t track) const{
+    if (!document || track >= document->data().tracks.size()) return false;
+    const ClipTrackData& target = document->data().tracks[track];
+    return std::any_of(pending.begin(), pending.end(), [&target](const PendingValue& value){
+        return value.path == target.path && value.channel == target.channel;
+    });
+}
+
+void AnimationClipController::clearPendingValues(){
+    if (pending.empty()) return;
+    pending.clear();
+    if (isPreviewing()) apply();
+}
+
+void AnimationClipController::writePending(){
+    SceneProject* sceneProject = sceneProjectOf(previewSceneId);
+    if (!sceneProject) return;
+    Scene* scene = sceneProject->scene;
+    for (const PendingValue& value : pending){
+        const Entity entity = anim::resolvePath(scene, previewRoot, value.path);
+        if (entity == NULL_ENTITY) continue;
+        // the rest is what the scene had before (stop puts it back)
+        takeRest(scene, entity, session.rest[entity], value.channel, false);
+        const std::pair<Entity, ClipChannel> entry(entity, value.channel);
+        if (std::find(session.written.begin(), session.written.end(), entry) == session.written.end()) session.written.push_back(entry);
+        anim::writeChannelValue(scene, entity, value.channel, value.points, value.value);
+    }
 }
 
 void AnimationClipController::setLastActionWasClipEdit(bool clipEdit){

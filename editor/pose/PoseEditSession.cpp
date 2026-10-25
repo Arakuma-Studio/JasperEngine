@@ -41,6 +41,8 @@ void editor::PoseEditSession::setActive(PoseEditSession* session){
 }
 
 void editor::PoseEditSession::suspendActive(){
+    // the clip previews too (animation clips 9.R7): what is copied or stored next is the rest
+    PreviewOwner::stopFor(0, {}, nullptr, activeSession);
     if (activeSession && activeSession->bound()){
         activeSession->suspend();
     }
@@ -100,6 +102,8 @@ void editor::PoseEditSession::suspendActiveForBone(uint32_t sceneId, Entity enti
 }
 
 void editor::PoseEditSession::suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots){
+    // a clip preview of (or under, or above) the copied entities restores first (9.R7)
+    if (!roots.empty()) PreviewOwner::stopFor(sceneId, roots, nullptr, activeSession);
     if (activeSession && activeSession->copiesPosedEntities(sceneId, roots)){
         activeSession->suspend();
     }
@@ -269,6 +273,7 @@ bool editor::PoseEditSession::bind(Scene* scene, uint32_t sceneId, Entity model,
         applyCurrent();
     }else{
         currentMode = Mode::Idle;
+        PreviewOwner::releaseFor(this);
     }
     notify();
     return true;
@@ -629,6 +634,7 @@ void editor::PoseEditSession::update(float dt){
                 globalEditPose = -1;
             }
             currentMode = Mode::Idle;
+            PreviewOwner::releaseFor(this);
             notify();
         }
         return;
@@ -696,6 +702,8 @@ void editor::PoseEditSession::goIdle(){
     restoreBones();
     playing = false;
     currentMode = Mode::Idle;
+    // idle: the model's pose ownership goes (a suspended pose keeps it, 9.R7)
+    PreviewOwner::releaseFor(this);
     if (changed) notify();
 }
 
@@ -916,7 +924,6 @@ void editor::PoseEditSession::restoreBones(){
         if (sceneProject->playState == ScenePlayState::SAVING) return;
     }
     applied = false;
-    PreviewOwner::releaseFor(this);
     if (scenePtr){
         // The local TRS as saved. The world matrices too, unless the model (or a parent) moved
         // while posing: then they follow from the parents as they are now (parents first), the

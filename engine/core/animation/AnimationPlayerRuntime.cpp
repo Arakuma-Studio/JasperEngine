@@ -106,6 +106,7 @@ void anim::stopState(PlayerStateRuntime& state){
     state.finishNotified = false;
     state.startAtEnd = false;
     state.finishing = false;
+    state.held = false;
     state.time = 0.0f;
     state.cycles = 0;
 }
@@ -122,6 +123,7 @@ void anim::startState(const AnimationPlayerComponent& player, PlayerStateRuntime
     state.stopOnFadeOut = false;
     state.startAtEnd = false;
     state.finishing = false;
+    state.held = false;
     state.time = 0.0f;
     if (effectiveSpeed(player, state) < 0.0f){
         if (state.bindings.clip){
@@ -235,18 +237,19 @@ bool anim::playState(AnimationPlayerComponent& player, const std::string& name, 
         target->fadeSpeed = 0.0f;
         return true;
     }
-    // CrossFade: the others fade out and stop, the state fades in from its current weight (a
-    // playing state keeps its time)
+    // CrossFade: the others (held ones too, R1b) fade out and stop, the state fades in from its
+    // current weight (a playing state keeps its time; a held one restarts at its weight)
     for (PlayerStateRuntime& state : runtime.states){
-        if (&state == target || !state.enabled) continue;
+        if (&state == target || (!state.enabled && !state.held)) continue;
         state.targetWeight = 0.0f;
         state.fadeSpeed = fadeRate(state.weight, 0.0f, fade);
         state.stopOnFadeOut = true;
         if (state.fadeSpeed == 0.0f) stopState(state);
     }
     if (!target->enabled){
+        const bool held = target->held;
         startState(player, *target);
-        target->weight = 0.0f;
+        if (!held) target->weight = 0.0f;
     }
     target->stopOnFadeOut = false;
     target->targetWeight = 1.0f;
@@ -261,6 +264,14 @@ bool anim::blendState(AnimationPlayerComponent& player, const std::string& name,
     player.started = true;
     weight = std::max(0.0f, finiteOr(weight, 0.0f));
     fade = finiteOr(fade, 0.0f);
+    if (target->held && weight <= 0.0f){
+        // blending a held state to 0 fades it out (R1b)
+        target->targetWeight = 0.0f;
+        target->fadeSpeed = fadeRate(target->weight, 0.0f, fade);
+        target->stopOnFadeOut = true;
+        if (fade <= 0.0f || target->fadeSpeed == 0.0f) stopState(*target);
+        return true;
+    }
     if (!target->enabled){
         startState(player, *target);
         target->weight = 0.0f;
@@ -297,6 +308,8 @@ void anim::stopStates(AnimationPlayerComponent& player, const std::string* name,
         PlayerStateRuntime* target = findNamed(player, *name, who);
         if (target){
             stopState(*target);
+            // R17: stop clears the queue
+            clearQueue(*player.runtime);
             player.started = true;
         }
         return;
@@ -336,7 +349,7 @@ void anim::fadeOutStates(AnimationPlayerComponent& player, float fade){
     clearQueue(runtime);
     fade = finiteOr(fade, 0.0f);
     for (PlayerStateRuntime& state : runtime.states){
-        if (!state.enabled) continue;
+        if (!state.enabled && !state.held) continue;
         state.targetWeight = 0.0f;
         state.fadeSpeed = fadeRate(state.weight, 0.0f, fade);
         state.stopOnFadeOut = true;

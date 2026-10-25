@@ -182,9 +182,10 @@ namespace jasperengine::editor{
         uint32_t getPreviewSceneId() const;
         // paths of the open clip's tracks that did not resolve in the last preview write
         const std::vector<std::string>& getUnresolvedPaths() const;
-        // the App's undo routing (AnimationClipAppHooks::ownsUndo): the Animation window has focus
-        // and its last action was a pure clip edit, or Record is on and the Scene view or the
-        // Inspector has focus. ownsUndo(bool) above is the window's own form (it has focus).
+        // the App's undo routing (AnimationClipAppHooks::ownsUndo), spec 9.R5b: the newest
+        // undoable step across the project history and the selected scene's is a clip commit of
+        // this controller, whatever has focus (newestStepIsClipEdit; ownsUndo(bool) answers the
+        // same; setLastActionWasClipEdit no longer routes anything)
         bool ownsUndo(const ClipUndoFocus& focus) const;
         // the window sets it every frame: it is focused in clip mode and handles its keys
         // (AnimationClipAppHooks::takesKeys)
@@ -192,6 +193,36 @@ namespace jasperengine::editor{
         bool takesKeys() const;
         // the time key edits use (the playhead), in seconds
         void setTime(float time);
+
+        // ---- additions (T3a review round 1) ----
+
+        // keyTracks / keyAll / keyModified reporting where the keys they wrote are now (`keyed`
+        // optional, one ref per keyed track)
+        bool keyTracks(const std::vector<size_t>& tracks, float time, const std::string& mergeKey,
+                       std::vector<KeyRef>* keyed, std::string* error);
+        bool keyAll(float time, std::vector<KeyRef>* keyed, std::string* error);
+        bool keyModified(float time, std::vector<KeyRef>* keyed, std::string* error);
+        // what normalize changed in the last commit (keys collapsed by a drag, ignored eases...)
+        const std::vector<ClipWarning>& getLastWarnings() const;
+        // Unity's pink field: an unkeyed value of a track's channel shown on its bound entity
+        // (the scene value layout, ClipKey::value width; relative tracks too: the entity's value,
+        // not the offset) until the playhead moves, the clip changes or the preview stops; K
+        // (keyTracks / keyAll / keyModified) keys it. Starts the preview when needed.
+        bool setPendingValue(size_t track, const std::vector<float>& value, std::string* error);
+        bool hasPendingValue(size_t track) const;
+        void clearPendingValues();
+        // R5b: the newest undoable step across the project history and the selected scene's is
+        // a clip commit of this controller (the window's edits, Record): Ctrl+Z / Ctrl+Y go to the
+        // project history, whatever window has focus (both ownsUndo forms answer this)
+        bool newestStepIsClipEdit() const;
+
+        // ---- additions (T3a review round 2) ----
+
+        // R5b for redo: the newest redoable step (the one undone last) across the project history
+        // and the selected scene's is a clip commit of this controller: Ctrl+Y goes to the project
+        // history (AnimationClipAppHooks::ownsRedo), independently of where Ctrl+Z goes
+        bool newestRedoIsClipEdit() const;
+        bool ownsRedo(const ClipUndoFocus& focus) const;
 
     private:
         struct Snapshot;
@@ -239,6 +270,19 @@ namespace jasperengine::editor{
         std::vector<DragIdentity> dragIdentities;
         uint64_t dragRevision = 0;
         uint64_t dragSerial = 0;
+        // the previewed value of a written channel a scene write is about to replace (only a
+        // different value becomes the rest)
+        std::vector<std::pair<std::pair<Entity, ClipChannel>, std::vector<float>>> shownValues;
+        struct PendingValue{
+            std::string path;
+            ClipChannel channel = ClipChannel::Position;
+            std::vector<int> points;
+            std::vector<float> value;
+        };
+        std::vector<PendingValue> pending;
+        float pendingTime = 0.0f;
+        std::vector<ClipWarning> lastWarnings;
+        void writePending();
 
         SceneProject* sceneProjectOf(uint32_t id) const;
         void setDocument(const std::shared_ptr<AnimationClipDocument>& next);

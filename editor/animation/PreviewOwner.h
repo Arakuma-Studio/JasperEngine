@@ -70,6 +70,13 @@ namespace jasperengine::editor{
         // `a` and `b` (of one scene) are the same entity or one is an ancestor of the other by
         // the Transform parents of `registry` (null: equality only)
         static bool overlaps(EntityRegistry* registry, Entity a, Entity b);
+        // Before something copies or stores entities of `sceneId` (duplicate, copy, delete, create
+        // or apply a prefab: the PoseEditSession::suspendActive* sites): every owner whose root is
+        // one of `roots`, under one or above one stops (restores), except the one held by `except`
+        // (acquireFor's `who`). Empty `roots`: every owner of the scene; sceneId 0: of every
+        // scene. `registry` null: each owner's own (the one it acquired with).
+        static void stopFor(uint32_t sceneId, const std::vector<Entity>& roots, EntityRegistry* registry,
+                            const void* except = nullptr);
     };
 
 }

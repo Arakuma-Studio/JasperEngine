@@ -230,3 +230,37 @@ TEST(ClipBinding, HierarchyRevisionFollowsEveryMutation){
     r.clear();
     bumped("clear");
 }
+
+TEST(ClipBinding, HierarchyLogListsRenamesAndDestroys){
+    Rig rig;
+    EntityRegistry& r = rig.registry;
+    std::vector<Entity> renamed, destroyed;
+    bool overflow = true;
+    r.takeHierarchyLog(renamed, destroyed, overflow);
+    renamed.clear();
+    destroyed.clear();
+    r.takeHierarchyLog(renamed, destroyed, overflow);
+    EXPECT_TRUE(renamed.empty());
+    EXPECT_TRUE(destroyed.empty());
+    EXPECT_FALSE(overflow);
+
+    const uint64_t names = r.nameRevision();
+    const uint64_t destroys = r.destroyRevision();
+    r.setEntityName(rig.root, "Top");               // a root's name is in no path
+    r.setEntityName(rig.leg, "Shin");
+    r.destroyEntity(rig.hand1);
+    Entity lone = r.createEntity();
+    r.destroyEntity(lone);                          // not in a hierarchy
+    r.takeHierarchyLog(renamed, destroyed, overflow);
+    EXPECT_EQ(renamed, std::vector<Entity>{rig.leg});
+    EXPECT_EQ(destroyed, std::vector<Entity>{rig.hand1});
+    EXPECT_FALSE(overflow);
+    EXPECT_EQ(r.nameRevision(), names + 1);
+    EXPECT_EQ(r.destroyRevision(), destroys + 1);
+    EXPECT_EQ(r.getEntityNameRef(rig.leg), "Shin");
+    EXPECT_EQ(r.getEntityNameRef(NULL_ENTITY), "");
+
+    r.clear();
+    r.takeHierarchyLog(renamed, destroyed, overflow);
+    EXPECT_TRUE(overflow) << "clear: everything changed";
+}
