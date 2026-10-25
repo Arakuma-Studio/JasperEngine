@@ -366,3 +366,23 @@ TEST_F(ScriptElementTest, DocumentApi){
     UIDocument::setDebuggerVisible(false);
     EXPECT_FALSE(UIDocument::isDebuggerVisible());
 }
+
+// S16 R28 (AC18): UIDocument:getRenderStats() is the HtmlUIRenderStats of the document's context,
+// every field by its name, the same values as the C++ API
+TEST_F(ScriptElementTest, RenderStats){
+    GpuEnvironment::drawFrames(3);
+    const HtmlUIRenderStats stats = document->getRenderStats();
+    EXPECT_GT(stats.drawCalls, 0u);
+    EXPECT_GE(stats.geometrySubmitted, stats.drawCalls > 0 ? 1u : 0u);
+    EXPECT_LUA("result = doc:getRenderStats()");
+    stats.forEachField([this](const char* name, uint32_t value){
+        lua_getglobal(L, "result");
+        ASSERT_TRUE(lua_istable(L, -1));
+        lua_getfield(L, -1, name);
+        EXPECT_TRUE(lua_isinteger(L, -1)) << name;
+        EXPECT_EQ((uint32_t)lua_tointeger(L, -1), value) << name;
+        lua_pop(L, 2);
+    });
+    EXPECT_EQ(luaString("doc:getRenderStats().drawCalls"), std::to_string(stats.drawCalls));
+    EXPECT_EQ(luaString("doc:getRenderStats().atlasBytes"), std::to_string(stats.atlasBytes));
+}

@@ -75,7 +75,7 @@ namespace {
         }
     };
 
-    struct Run {
+    struct BenchRun {
         HtmlUIRenderStats last;              // the last measured frame
         uint32_t maxDraws = 0, maxStencilDraws = 0, maxLayers = 0, maxBoxShadowTextures = 0, maxGlyphs = 0;
         double maxGlyphMs = 0.0;
@@ -112,10 +112,10 @@ namespace {
     }
 
     // warm-up and measured frames on the moving clock
-    Run measure(FixtureRunner& runner, int warm = 30, int measured = 120, const std::function<void(int)>& perFrame = {}){
+    BenchRun measure(FixtureRunner& runner, int warm = 30, int measured = 120, const std::function<void(int)>& perFrame = {}){
         double clock = runner.time();
         RenderBackendTime::setEnabled(true);
-        Run run;
+        BenchRun run;
         std::vector<double> engines, frames, gathers;
         for (int i = 0; i < warm + measured; i++){
             clock += 1.0 / 60.0;
@@ -149,10 +149,10 @@ namespace {
     }
 
     // the least engine time of up to 5 runs, stopping once within target
-    Run gated(const std::function<Run()>& once, double target){
-        Run least = once();
+    BenchRun gated(const std::function<BenchRun()>& once, double target){
+        BenchRun least = once();
         for (int attempt = 1; attempt < 5 && target > 0.0 && least.engineMs > target; attempt++){
-            const Run run = once();
+            const BenchRun run = once();
             if (run.engineMs < least.engineMs)
                 least = run;
         }
@@ -175,7 +175,7 @@ namespace {
 #endif
     }
 
-    nlohmann::json toJson(const Run& run){
+    nlohmann::json toJson(const BenchRun& run){
         return {{"drawCalls", run.last.drawCalls}, {"maxDrawCalls", run.maxDraws}, {"stencilDraws", run.maxStencilDraws},
                 {"layersPushed", run.maxLayers}, {"boxShadowTextures", run.maxBoxShadowTextures}, {"runsMerged", run.last.runsMerged},
                 {"runCacheHits", run.last.runCacheHits}, {"instancesDrawn", run.last.instancesDrawn}, {"verticesGathered", run.last.verticesGathered},
@@ -184,7 +184,7 @@ namespace {
                 {"gatherLiveBytes", run.gatherLive}, {"gatherCapacityBytes", run.gatherCapacity}};
     }
 
-    void record(const std::string& name, const Run& baseline, const Run& s16){
+    void record(const std::string& name, const BenchRun& baseline, const BenchRun& s16){
         results()[name] = {{"baseline", toJson(baseline)}, {"s16", toJson(s16)}};
         std::printf("[ ui-bench ] %-24s draws %4u -> %4u, stencil %3u -> %3u, layers %3u -> %3u, shadow textures %3u -> %3u, "
                     "engine %.3f -> %.3f ms (frame %.3f -> %.3f ms)\n",
@@ -196,7 +196,7 @@ namespace {
     }
 
     // one document both ways: the baseline, then S16 (gated on the engine time when target > 0)
-    void both(const std::string& asset, int size, Run& baseline, Run& s16, const std::function<double(const Run&)>& target = {},
+    void both(const std::string& asset, int size, BenchRun& baseline, BenchRun& s16, const std::function<double(const BenchRun&)>& target = {},
               const std::string& assetRoot = std::string(), int samples = 4){
         {
             S16Mode off(false);
@@ -222,9 +222,9 @@ TEST(HtmlUIRenderPerf, B1Examples){
     JASPER_REQUIRE_GPU();
     const double slack = compat::perfSlack();
     for (const char* example : examples){
-        Run baseline, s16;
+        BenchRun baseline, s16;
         const std::string asset = std::string(example) + "/" + example + ".html";
-        both(asset, 1280, baseline, s16, [&](const Run& b){ return b.engineMs * 1.05 * slack; }, examplesRoot().string());
+        both(asset, 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 1.05 * slack; }, examplesRoot().string());
         record(std::string("B1 ") + example, baseline, s16);
         EXPECT_LE(s16.maxDraws, std::max(1u, (uint32_t)(0.30 * baseline.maxDraws))) << example;
         EXPECT_LE(s16.maxDraws, 40u) << example;
@@ -235,8 +235,8 @@ TEST(HtmlUIRenderPerf, B1Examples){
 TEST(HtmlUIRenderPerf, B2List500){
     JASPER_REQUIRE_GPU();
     const double slack = compat::perfSlack();
-    Run baseline, s16;
-    both("fixtures/bench/list-500.html", 1280, baseline, s16, [&](const Run& b){ return b.engineMs * 0.5 * slack; });
+    BenchRun baseline, s16;
+    both("fixtures/bench/list-500.html", 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 0.5 * slack; });
     record("B2 list-500", baseline, s16);
     EXPECT_LE(s16.maxDraws, 16u);
     EXPECT_EQ(s16.maxStencilDraws, 0u);
@@ -250,7 +250,7 @@ TEST(HtmlUIRenderPerf, B2List500){
 
 TEST(HtmlUIRenderPerf, B3TextWall){
     JASPER_REQUIRE_GPU();
-    Run baseline, s16;
+    BenchRun baseline, s16;
     both("fixtures/bench/text-wall.html", 1280, baseline, s16);
     record("B3 text-wall", baseline, s16);
     EXPECT_LE(s16.maxDraws, 4u);
@@ -295,7 +295,7 @@ TEST(HtmlUIRenderPerf, B4ScalePopin){
 
 TEST(HtmlUIRenderPerf, B5TextEffects){
     JASPER_REQUIRE_GPU();
-    Run baseline, s16;
+    BenchRun baseline, s16;
     both("fixtures/bench/text-effects.html", 1280, baseline, s16);
     record("B5 text-effects", baseline, s16);
     EXPECT_GT(baseline.maxLayers, 0u);
@@ -305,7 +305,7 @@ TEST(HtmlUIRenderPerf, B5TextEffects){
 
 TEST(HtmlUIRenderPerf, B6TextureList500){
     JASPER_REQUIRE_GPU();
-    Run baseline, s16;
+    BenchRun baseline, s16;
     both("fixtures/bench/list-500.html", 1024, baseline, s16);
     record("B6 list-500 texture", baseline, s16);
     EXPECT_LE(s16.maxDraws, 16u);
@@ -343,7 +343,7 @@ TEST(HtmlUIRenderPerf, OneSampleReport){
         FixtureRunner runner(1280, 720, 1);
         ASSERT_TRUE(runner.valid());
         ASSERT_TRUE(load(runner, asset));
-        const Run run = measure(runner, 10, 30);
+        const BenchRun run = measure(runner, 10, 30);
         std::printf("[ ui-bench ] 1 sample %-32s draws %u, stencil %u, layers %u, engine %.3f ms\n", asset, run.maxDraws, run.maxStencilDraws,
                     run.maxLayers, run.engineMs);
         results()[std::string("1 sample ") + asset] = toJson(run);
