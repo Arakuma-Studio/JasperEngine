@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Gamecrafters Guild Limited and contributors
 // SPDX-License-Identifier: MIT
-// roundedRectSDF, rectEdgeFootprint, sdfCoverage, erfApprox and the Gaussian edge are OpenEngine's
+// roundedRectSDF (adapted), rectEdgeFootprint, sdfCoverage, erfApprox and the Gaussian edge are OpenEngine's
 // (Engine/Modules/Rendering/Shaders/UI/sdf_functions.glsl, MIT, NOTICE.md); the clip, shadow,
 // border and distance-field text helpers below them are JasperEngine's (S16).
 //
@@ -23,32 +23,55 @@ uniform u_fs_htmluiClip {
                         // (document px), w: the atlas distance range (texels each side of the outline)
 } clip;
 
-// Signed distance to a rounded rectangle with elliptical corners: positive inside, negative
-// outside, zero on the boundary. Equal semi-axes keep the exact circular distance; unequal ones
-// take the gradient-normalised first-order distance, exact along both axes.
-float roundedRectSDF(vec2 p, vec4 rect, vec4 radX, vec4 radY){
-    vec2 center = rect.xy + rect.zw * 0.5;
-    vec2 halfExt = rect.zw * 0.5;
-    vec2 q = abs(p - center) - halfExt;
-
-    bool isLeft = p.x < center.x;
-    bool isTop = p.y < center.y;
-    vec2 r = vec2(isLeft ? (isTop ? radX.x : radX.w) : (isTop ? radX.y : radX.z),
-                  isLeft ? (isTop ? radY.x : radY.w) : (isTop ? radY.y : radY.z));
-    r = min(r, halfExt);
-    if (r.x <= 0.0 || r.y <= 0.0)
-        r = vec2(0.0);
-
-    vec2 d = q + r;
-    vec2 md = max(d, vec2(0.0));
-    if (md.x <= 0.0 && md.y <= 0.0)
-        return -max(q.x, q.y);
+// Signed distance to an elliptical corner whose ellipse is centred at c with semi-axes r, for a
+// point d = p - c already turned to the corner's quadrant (both positive): equal semi-axes keep
+// the exact circular distance; unequal ones take the gradient-normalised first-order distance,
+// exact along both axes. Positive inside.
+float ellipseCornerSDF(vec2 d, vec2 r){
     if (r.x == r.y)
-        return -(length(md) - r.x);
-
-    float k1 = length(md / r);
-    float k2 = length(md / (r * r));
+        return -(length(d) - r.x);
+    float k1 = length(d / r);
+    float k2 = length(d / (r * r));
     return -((k1 - 1.0) * k1 / max(k2, 1e-12));
+}
+
+// Signed distance to a rounded rectangle with elliptical corners: positive inside, negative
+// outside, zero on the boundary. Each corner's ellipse applies where p is past its centre on both
+// axes, whatever half of the rectangle that is: a CSS radius may reach past the middle of a side
+// (`border-radius: 20px / 50px` on a 60 px box, `100% 0`), the shape is the rectangle cut by every
+// corner that reaches p (adapted from OpenEngine's, which took the corner of p's quadrant and
+// limited radii to half the side).
+float roundedRectSDF(vec2 p, vec4 rect, vec4 radX, vec4 radY){
+    vec2 p0 = rect.xy;
+    vec2 p1 = rect.xy + rect.zw;
+    vec2 q = abs(p - (rect.xy + rect.zw * 0.5)) - rect.zw * 0.5;
+    float sd = -max(q.x, q.y);
+    // top-left, top-right, bottom-right, bottom-left
+    vec2 r0 = vec2(radX.x, radY.x);
+    if (r0.x > 0.0 && r0.y > 0.0){
+        vec2 d = (p0 + r0) - p;
+        if (d.x > 0.0 && d.y > 0.0)
+            sd = min(sd, ellipseCornerSDF(d, r0));
+    }
+    vec2 r1 = vec2(radX.y, radY.y);
+    if (r1.x > 0.0 && r1.y > 0.0){
+        vec2 d = vec2(p.x - (p1.x - r1.x), (p0.y + r1.y) - p.y);
+        if (d.x > 0.0 && d.y > 0.0)
+            sd = min(sd, ellipseCornerSDF(d, r1));
+    }
+    vec2 r2 = vec2(radX.z, radY.z);
+    if (r2.x > 0.0 && r2.y > 0.0){
+        vec2 d = p - (p1 - r2);
+        if (d.x > 0.0 && d.y > 0.0)
+            sd = min(sd, ellipseCornerSDF(d, r2));
+    }
+    vec2 r3 = vec2(radX.w, radY.w);
+    if (r3.x > 0.0 && r3.y > 0.0){
+        vec2 d = vec2((p0.x + r3.x) - p.x, p.y - (p1.y - r3.y));
+        if (d.x > 0.0 && d.y > 0.0)
+            sd = min(sd, ellipseCornerSDF(d, r3));
+    }
+    return sd;
 }
 
 // How far along the normal of the edge of rect nearest p one screen pixel reaches, in the units
