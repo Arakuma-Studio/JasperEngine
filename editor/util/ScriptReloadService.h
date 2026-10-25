@@ -135,6 +135,7 @@ namespace jasperengine::editor {
         std::map<std::filesystem::path, std::vector<ScriptFinding>> luaErrors;   // scripts that kept their old code
         std::deque<Record> records;
         uint64_t nextSerial = 1;
+        uint64_t staleInvalidator = 0;   // HotReloadService: C++ sources changed in edit mode
     };
 
 }

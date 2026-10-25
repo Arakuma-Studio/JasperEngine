@@ -356,6 +356,8 @@ class Editor:
               "none"    inherit the caller's DISPLAY (a visible editor on a desktop)
     command   editor command (default: editor_command()); fake=True uses tools/mcp/fake_server.py
     extra_args  appended to the `mcp` command line
+    env       extra environment variables of the editor process (a test switch such as
+              JASPER_TEST_GRAPH_KIND=1), only for this editor
     startup_timeout  seconds for the editor to answer initialize
     call_timeout     default seconds per tool call
     keep      keep the scratch dir even on success
@@ -364,7 +366,7 @@ class Editor:
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
                  url: str | None = None, token: str | None = None, xvfb: str | None = None,
                  command: list[str] | None = None, fake: bool | None = None,
-                 extra_args: list[str] | None = None, startup_timeout: float = 180.0,
+                 extra_args: list[str] | None = None, env: dict[str, str] | None = None, startup_timeout: float = 180.0,
                  call_timeout: float = 300.0, keep: bool | None = None, label: str = ""):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
             url = os.environ["JASPER_MCP_URL"]
@@ -380,6 +382,7 @@ class Editor:
             raise HarnessError(f"xvfb must be editor, harness or none, not {self.xvfb_mode!r}")
         self.command = command or (fake_editor_command() if fake else None)
         self.extra_args = extra_args or []
+        self.env = dict(env or {})
         self.startup_timeout = startup_timeout
         self.call_timeout = call_timeout
         self.keep = _env_flag("JASPER_KEEP_SCRATCH") if keep is None else keep
@@ -437,6 +440,7 @@ class Editor:
             argv, env, cwd = launch_spec(
                 self.scratch, create=self.create, name=self.name, command=self.command,
                 display=display, extra_args=self.extra_args, inherit_display=inherit)
+            env.update(self.env)
             self.argv = argv
             self._stderr_file = open(self.scratch.stderr_log, "w", buffering=1)
             params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(cwd))

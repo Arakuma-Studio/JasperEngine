@@ -17,6 +17,7 @@
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
+#include "util/EditorScripts.h"
 #include "util/SourceLocation.h"
 
 #include <algorithm>
@@ -61,6 +62,18 @@ ScriptReloadService& ScriptReloadService::get(){
 void ScriptReloadService::attach(Project* project){
     this->project = project;
     HotReloadService::get().setScriptChangedHook([this](const fs::path& path) { return notifyChanged(path); });
+    // a C++ script edited in edit mode: the badge says the build is stale until the next one
+    if (staleInvalidator == 0) {
+        staleInvalidator = HotReloadService::get().addInvalidator(static_cast<uint8_t>(HotReloadService::Event::Reloaded),
+            [this](const fs::path& path, const std::string& kind, HotReloadService::Event) {
+                if (kind != "script" || !this->project || this->project->isAnyScenePlaying()) return;
+                const std::string text = FileUtils::pathToUtf8(path);
+                if ((Util::isSourceFile(text) || Util::isHeaderFile(text)) && isCppScriptFile(path) &&
+                    !EditorScripts::isEditorOnlyScript(path, this->project->getProjectPath())) {
+                    ScriptStatus::get().setCpp(CppScriptState::Stale, {}, "changed since the last build");
+                }
+            });
+    }
 }
 
 void ScriptReloadService::detach(){
@@ -124,14 +137,27 @@ bool ScriptReloadService::notifyChanged(const fs::path& pathIn){
         case Policy::ReloadAndContinue:
             break;
     }
+    // The debounce counts from the save (the file's time): a change the watcher delivers has
+    // already settled for its quiet window and goes at once, an editor write waits the rest
     const auto now = std::chrono::steady_clock::now();
+    std::chrono::steady_clock::duration age{};
+    std::error_code ec;
+    const auto written = fs::last_write_time(path, ec);
+    if (!ec) {
+        const auto sinceWrite = fs::file_time_type::clock::now() - written;
+        if (sinceWrite > fs::file_time_type::clock::duration::zero() && sinceWrite < std::chrono::seconds(10)) {
+            age = std::chrono::duration_cast<std::chrono::steady_clock::duration>(sinceWrite);
+        }
+    }
+    const auto debounce = std::chrono::milliseconds(lua ? LUA_DEBOUNCE_MS : CPP_DEBOUNCE_MS);
+    const auto due = now + (age < debounce ? debounce - age : std::chrono::steady_clock::duration::zero());
     auto& queue = lua ? pendingLua : pendingCpp;
     auto it = queue.find(path);
-    // a newer change supersedes the queued one; the time of the first stays (save to effect)
+    // a newer change supersedes the queued one; the time of the first save stays (save to effect)
     if (it == queue.end()) {
-        queue[path] = {now + std::chrono::milliseconds(lua ? LUA_DEBOUNCE_MS : CPP_DEBOUNCE_MS), now};
+        queue[path] = {due, now - age};
     } else {
-        it->second.due = now + std::chrono::milliseconds(lua ? LUA_DEBOUNCE_MS : CPP_DEBOUNCE_MS);
+        it->second.due = due;
     }
     if (cpp) ScriptStatus::get().setCpp(CppScriptState::Stale, {}, "changed: rebuilding during Play");
     return true;

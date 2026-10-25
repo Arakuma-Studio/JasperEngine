@@ -13,6 +13,7 @@
 #include "mcp/McpCall.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpUndo.h"
+#include "script/EditorMenu.h"
 #include "script/LuaBinding.h"
 #include "script/LuaReload.h"
 #include "util/EditorFingerprint.h"
@@ -67,18 +68,30 @@ namespace {
     // The trailing "key=value" options of an annotation; `rest` is what comes before them.
     // A key in `restKeys` takes the rest of the line (tooltip=Some words).
     std::map<std::string, std::string> takeOptions(std::string& text, const std::set<std::string>& keys, const std::set<std::string>& restKeys){
+        // [key=value] or key=value (the brackets are the documentation's "optional")
+        auto unbracket = [](std::string value) {
+            value = trim(value);
+            if (!value.empty() && value.front() == '[') value.erase(0, 1);
+            if (!value.empty() && value.back() == ']') value.pop_back();
+            return trim(value);
+        };
         std::map<std::string, std::string> options;
         for (const std::string& key : restKeys) {
-            const size_t at = text.find(" " + key + "=");
+            size_t at = text.find(" [" + key + "=");
+            size_t skip = key.size() + 3;
+            if (at == std::string::npos) {
+                at = text.find(" " + key + "=");
+                skip = key.size() + 2;
+            }
             if (at != std::string::npos) {
-                options[key] = trim(text.substr(at + key.size() + 2));
+                options[key] = unbracket(text.substr(at + skip));
                 text = text.substr(0, at);
             }
         }
         while (true) {
             const size_t space = text.find_last_of(' ');
             if (space == std::string::npos) break;
-            const std::string token = text.substr(space + 1);
+            const std::string token = unbracket(text.substr(space + 1));
             const size_t equals = token.find('=');
             if (equals == std::string::npos || !keys.count(token.substr(0, equals))) break;
             options[token.substr(0, equals)] = token.substr(equals + 1);
@@ -899,7 +912,7 @@ std::vector<EditorMenuItem> EditorScripts::parseLua(const std::string& code, con
 
 std::vector<EditorMenuItem> EditorScripts::parseCpp(const std::string& code, const std::string& file){
     std::vector<EditorMenuItem> items;
-    static const std::regex macro(R"(JE_MENU_ITEM\s*\(\s*"((?:[^"\\]|\\.)*)"\s*(?:,\s*(-?\d+)\s*)?\))");
+    static const std::regex macro(R"re(JE_MENU_ITEM\s*\(\s*"((?:[^"\\]|\\.)*)"\s*(?:,\s*(-?\d+)\s*)?\))re");
     static const std::regex function(R"(^\s*(?:static\s+)?void\s+([A-Za-z_]\w*)\s*\()");
     const std::vector<std::string> lines = splitLines(code);
     for (size_t i = 0; i < lines.size(); i++) {
