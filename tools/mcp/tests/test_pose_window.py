@@ -561,6 +561,31 @@ async def test_moving_into_a_prop_held_by_a_posed_bone(ed: Editor):
         await ed.call("undo", scene="Main Scene", steps=2)
 
 
+async def test_undoing_a_move_into_a_prop_held_by_a_posed_bone(ed: Editor):
+    """The undo of that move while posed (Item back to the scene root, keeping its world): the world under
+    the prop's rest, so Item is back where it was. The undo suspends the pose before the step, which puts
+    the bones back but not what hangs below them: MoveEntityOrderCmd's undo recomputes Item's chain from
+    the rest before the move reads it (merge of animation-clips: prepareReparent for execute and undo)."""
+    await leave_posing(ed)
+    await ed.call("create_entity", name="Prop", parent="mixamorig:RightLeg", position=[0.1, 0.0, 0.0])
+    await ed.call("create_entity", name="Item", position=[0.3, 1.0, 0.2])
+    try:
+        before = await bone_local(ed, "Item")
+        await pose_again(ed)
+        await ed.call("move_entity", entity="Item", parent="Prop")
+        await ed.call("wait", seconds=0.3)
+        await ed.call("undo", scene="Main Scene")
+        await ed.call("wait", seconds=0.3)
+        ed.check_eq((await state(ed))["mode"], "posing", "still posing after the undo")
+        await leave_posing(ed)
+        after = await bone_local(ed, "Item")
+        ed.check(close(after[0], before[0], 1e-4) and all(abs(a - b) <= 1e-4 for a, b in zip(after[1], before[1])),
+                 f"Item back where it was: {after} vs {before}")
+    finally:
+        await ed.call("select_entities", entities=["Ground"])
+        await ed.call("undo", scene="Main Scene", steps=2)
+
+
 async def test_moving_a_prop_off_a_posed_bone_keeps_its_rest_world(ed: Editor):
     """A GameObject held by a posed bone (a prop under the right leg, whose world the posed thigh
     moves) reparented to the scene root keeping its world: the rest world, as without posing."""
