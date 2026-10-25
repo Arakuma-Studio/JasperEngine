@@ -570,6 +570,13 @@ namespace{
         }
         if (with == 0 || with == track.keys.size()) return;
         warn(warnings, member(origin.path, "keys"), "some keys have tangents and others not: the others got linear tangents");
+        // a rotation key getting tangents made from the values takes the side of the key before it
+        // first (its sign is free: no stored tangent depends on it), so its segments don't flip
+        if (track.channel == ClipChannel::Rotation){
+            for (size_t k = 1; k < track.keys.size(); k++){
+                if (!track.keys[k].hasTangents()) anim::alignQuaternionKey(track.keys[k].value, track.keys[k - 1].value);
+            }
+        }
         for (size_t k = 0; k < track.keys.size(); k++){
             ClipKey& key = track.keys[k];
             if (key.hasTangents()) continue;
@@ -1495,6 +1502,7 @@ static anim::ClipParseResult parseClipText(const std::string& text){
 void anim::normalize(ClipData& data, std::vector<ClipWarning>* warnings){
     normalizeClip(data, warnings, nullptr);
 }
+
 
 std::string anim::writeClip(const ClipData& input){
     ClipData data = input;

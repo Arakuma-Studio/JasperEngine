@@ -779,11 +779,19 @@ TEST(ModelSubClips, MorphWeightsKeepTheSavedStateOverTheFileDefaults){
     // a mesh decoded from a saved scene (the editor's Stream sets the flag with the weights)
     // before its model loads keeps the saved zeros
     ASSERT_TRUE(scene.getComponent<MeshComponent>(root).morphWeightsSet) << "the single mesh loads on the model root";
+    // (with the target count the weights cover: MeshComponent::morphTargetCount)
     Model saved(&scene);
     scene.getComponent<MeshComponent>(saved.getEntity()).morphWeightsSet = true;
+    scene.getComponent<MeshComponent>(saved.getEntity()).morphTargetCount = 1;
     ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(saved.getEntity(), withDefaults, false, false, false));
     EXPECT_FLOAT_EQ(scene.getComponent<MeshComponent>(saved.getEntity()).morphWeights[0], 0.0f) << "the saved zeros, not the file's 0.75";
     EXPECT_FLOAT_EQ(weightOf(saved.getEntity()), 0.0f);
+    // weights that covered no target yet (the file gained it since): its default
+    Model older(&scene);
+    scene.getComponent<MeshComponent>(older.getEntity()).morphWeightsSet = true;
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(older.getEntity(), withDefaults, false, false, false));
+    EXPECT_FLOAT_EQ(weightOf(older.getEntity()), 0.75f) << "a target past the saved count";
+    EXPECT_EQ(scene.getComponent<MeshComponent>(older.getEntity()).morphTargetCount, 1);
 }
 
 // Blend shape names per mesh (MeshComponent::morphTargetNames): a model with two meshes whose

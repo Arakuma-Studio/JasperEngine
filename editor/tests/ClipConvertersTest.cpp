@@ -36,6 +36,7 @@
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/ModelLoadCmd.h"
+#include "command/type/PropertyCmd.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
@@ -1855,9 +1856,83 @@ TEST_F(ClipConverters_, AddPropertyAndRecordRefuseLegacyModelParts) {
     c.seek(0.0f);
     ASSERT_TRUE(c.isPreviewing());
     c.setRecording(true);
+    ClipRecordHooks::takeNote();
     EXPECT_FALSE(ClipRecordHooks::claims(sceneId, hips, ClipChannel::Rotation)) << "a scene edit instead";
-    EXPECT_NE(ClipRecordHooks::takeNote().find("legacy layout"), std::string::npos);
+    // N1: the check is pure (the sources ask it every frame): no note without an edit
+    EXPECT_EQ(ClipRecordHooks::takeNote(), "");
     EXPECT_TRUE(ClipRecordHooks::claims(sceneId, rig, ClipChannel::Position));
+    // the edit arrives as a scene step: then the window says why
+    history(sceneId)->addCommandNoMerge(new PropertyCmd<Quaternion>(project(), sceneId, hips, ComponentType::Transform, "rotation",
+                                                                    Quaternion(20, Vector3(0, 0, 1))));
+    EXPECT_NE(ClipRecordHooks::takeNote().find("legacy layout"), std::string::npos);
+    // its undo writes the bone too, but is no edit Record left alone
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_EQ(ClipRecordHooks::takeNote(), "");
     c.setRecording(false);
     AnimationClipController::release(project());
+}
+
+// N3: the legacy model entity standing in for the glTF scene root carries that root's matrix:
+// Record and Add Property leave its Rotation and Scale alone (the reload would apply it twice);
+// its Position, unchanged by the reload, is keyed
+TEST_F(ClipConverters_, AddPropertyAndRecordRefuseTheLegacyRootsRotationAndScale) {
+    const std::string dir = folder("legacyrootkeys");
+    std::string error;
+    ASSERT_TRUE(AnimationClipDocument::create(project(), dir + "/rig.anim", ClipData(), "Create", &error)) << error;
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity rig = gameObject(sceneId, "Rig");
+    const Entity hero = loadModel(sceneId, turnedHero());
+    scene->addEntityChild(rig, hero, false);
+    Matrix4 sceneRoot;
+    ASSERT_TRUE(scene->getSystem<MeshSystem>()->getLegacyRootTransform(hero, sceneRoot));
+
+    AnimationClipController& c = AnimationClipController::shared(project());
+    ASSERT_TRUE(c.bindRoot(sceneId, rig, &error)) << error;
+    ASSERT_TRUE(c.openClip(dir + "/rig.anim", &error)) << error;
+    size_t added = 0;
+    EXPECT_FALSE(c.addProperty("Hero", ClipChannel::Rotation, &added, &error));
+    EXPECT_NE(error.find("root transform"), std::string::npos) << error;
+    EXPECT_FALSE(c.addProperty("Hero", ClipChannel::Scale, &added, &error));
+    EXPECT_TRUE(c.addProperty("Hero", ClipChannel::Position, &added, &error)) << error;
+    c.seek(0.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    c.setRecording(true);
+    EXPECT_FALSE(ClipRecordHooks::claims(sceneId, hero, ClipChannel::Rotation));
+    EXPECT_FALSE(ClipRecordHooks::claims(sceneId, hero, ClipChannel::Scale));
+    EXPECT_TRUE(ClipRecordHooks::claims(sceneId, hero, ClipChannel::Position));
+    c.setRecording(false);
+    AnimationClipController::release(project());
+}
+
+// N4: under a turned scene root, a non-uniform scale of the model entity makes R·S·r⁻¹ no longer
+// (R·r⁻¹)·S: Convert keeps those keys as they are and warns, instead of rewriting them wrongly
+TEST_F(ClipConverters_, ConvertKeepsLegacyRootKeysWithANonUniformScale) {
+    const std::string dir = folder("legacyrootstretch");
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = loadModel(sceneId, turnedHero());
+    const Transform rest = scene->getComponent<Transform>(hero);
+    const Entity animation = create(sceneId, "Stretch", EntityCreationType::ANIMATION, hero);
+    const Entity turn = create(sceneId, "Hero turn", EntityCreationType::ROTATE_TRACKS, hero);
+    const Quaternion turned = Quaternion(60, Vector3(0, 1, 0)) * rest.rotation;
+    scene->getComponent<KeyframeTracksComponent>(turn).times = {0.0f, 1.0f};
+    scene->getComponent<RotateTracksComponent>(turn).values = {rest.rotation, turned};
+    const Entity stretch = create(sceneId, "Hero stretch", EntityCreationType::SCALE_TRACKS, hero);
+    scene->getComponent<KeyframeTracksComponent>(stretch).times = {0.0f, 1.0f};
+    scene->getComponent<ScaleTracksComponent>(stretch).values = {rest.scale, Vector3(rest.scale.x, rest.scale.y * 2.0f, rest.scale.z)};
+    scene->getComponent<AnimationComponent>(animation).actions = {{0.0f, 0.0f, turn, 0}, {0.0f, 0.0f, stretch, 1}};
+
+    ClipActionResult result;
+    std::string error;
+    ASSERT_TRUE(ClipSceneActions::convertToClip(project(), sceneId, animation, hero, dir + "/stretch.anim", true, result, error)) << error;
+    bool warned = false;
+    for (const ClipWarning& warning : result.warnings) warned = warned || warning.message.find("kept as they are") != std::string::npos;
+    EXPECT_TRUE(warned) << "the keys are kept, with a warning";
+    const ClipData clip = readClipFile(root() / dir / "stretch.anim");
+    const int rotation = clip.findTrack("", ClipChannel::Rotation);
+    ASSERT_GE(rotation, 0);
+    const Quaternion last = quaternionFromXYZW(clip.tracks[(size_t)rotation].keys.back().value.data());
+    EXPECT_NEAR(std::fabs(last.dot(turned)), 1.0f, 1e-4f) << "not rewritten";
+    ASSERT_TRUE(history(sceneId)->undo());
 }

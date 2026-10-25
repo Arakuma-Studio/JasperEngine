@@ -403,7 +403,8 @@ animation the Pose Animator plays, under the file's name), opens a menu:
   the preview shows it keeps the value from before the preview.
 - **Blend shape weights after a reload.** A new model starts with its file's default weights.
   Weights you set (0 too) are saved with the scene or prefab and kept whenever the model reloads;
-  loading another model file into the Model gives that file's defaults.
+  loading another model file into the Model gives that file's defaults. If you re-export the model
+  with more blend shapes, the new ones start at their defaults and the ones it had keep your weights.
 - **Two animations write the same bones.** A model with both entity animations and an Animation
   Player has two writers. Use **Use Animation Player** to keep only the player, or call
   `Model:playAnimation`, which fades out the other side.

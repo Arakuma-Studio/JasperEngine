@@ -55,12 +55,17 @@ bool editor::MoveEntityOrderCmd::execute(){
         return false;
     }
 
-    // the move keeps the world transform: from the rest, not from a preview of the old or the
-    // new hierarchy (animation clips 9.R7)
+    // a reparent keeps the world transform: from the rest, not from a preview of the old or the
+    // new hierarchy (animation clips 9.R7). A reorder among the same siblings recomputes nothing:
+    // the previews (and Record) go on.
     {
-        const Transform* targetTransform = target != NULL_ENTITY && sceneProject->scene->isEntityCreated(target)
-            ? sceneProject->scene->findComponent<Transform>(target) : nullptr;
-        PoseEditSession::suspendActiveFor(sceneId, {source, target, targetTransform ? targetTransform->parent : NULL_ENTITY});
+        Scene* scene = sceneProject->scene;
+        const Transform* targetTransform = target != NULL_ENTITY && scene->isEntityCreated(target) ? scene->findComponent<Transform>(target) : nullptr;
+        const Transform* sourceTransform = scene->findComponent<Transform>(source);
+        const Entity newParent = type == InsertionType::INTO ? target : (targetTransform ? targetTransform->parent : NULL_ENTITY);
+        if (!sourceTransform || sourceTransform->parent != newParent){
+            PoseEditSession::suspendActiveFor(sceneId, {source, target, targetTransform ? targetTransform->parent : NULL_ENTITY});
+        }
     }
     ProjectUtils::moveEntityOrderByTarget(sceneProject->scene, sceneProject->entities, source, target, type, oldParent, oldIndex, hasTransform);
 
@@ -82,7 +87,9 @@ void editor::MoveEntityOrderCmd::undo(){
     // from the rest again (the new parent's preview, the old one's)
     {
         const Transform* sourceTransform = sceneProject->scene->findComponent<Transform>(source);
-        PoseEditSession::suspendActiveFor(sceneId, {source, oldParent, sourceTransform ? sourceTransform->parent : NULL_ENTITY});
+        if (!sourceTransform || sourceTransform->parent != oldParent){
+            PoseEditSession::suspendActiveFor(sceneId, {source, oldParent, sourceTransform ? sourceTransform->parent : NULL_ENTITY});
+        }
     }
 
     // the model reloads ran after the move

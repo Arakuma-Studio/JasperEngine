@@ -1136,8 +1136,11 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.morphWeights[" << w << "] = " << formatFloat(mesh.morphWeights[w]) << ";\n";
     }
     // the model's load keeps these weights (zeros too) instead of its file's defaults
-    if (mesh.morphWeightsSet)
+    if (mesh.morphWeightsSet) {
         code << ind << "mesh.morphWeightsSet = true;\n";
+        // the targets those weights cover (more in the model file: theirs are its defaults)
+        code << ind << "mesh.morphTargetCount = " << mesh.morphTargetCount << ";\n";
+    }
     if (!mesh.customShader.empty())
         code << ind << "mesh.customShader = " << formatString(mesh.customShader) << ";\n";
     if (!mesh.customDepthShader.empty())

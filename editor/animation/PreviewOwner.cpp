@@ -20,6 +20,7 @@ namespace{
         // the registry the owner acquired with (stopFor without one); valid while the scene is
         // open: a closed scene's owners are released (releaseScene)
         EntityRegistry* registry = nullptr;
+        PreviewOwner::Writes writes;
     };
 
     struct Registry{
@@ -167,4 +168,23 @@ void PreviewOwner::stopFor(uint32_t sceneId, const std::vector<Entity>& roots, E
     for (Entry& entry : stopped){
         if (entry.stop) entry.stop();
     }
+}
+
+void PreviewOwner::setWrites(Token token, Writes writes){
+    for (Entry& entry : ownerRegistry().entries){
+        if (entry.owner.token == token) entry.writes = std::move(writes);
+    }
+}
+
+bool PreviewOwner::writes(uint32_t sceneId, Entity entity){
+    if (entity == NULL_ENTITY) return false;
+    // (the predicates of a copy: one never acquires, but a release while asking stays safe)
+    std::vector<std::pair<Entity, Writes>> asked;
+    for (const Entry& entry : ownerRegistry().entries){
+        if (entry.owner.sceneId == sceneId) asked.emplace_back(entry.owner.root, entry.writes);
+    }
+    for (const auto& owner : asked){
+        if (owner.second ? owner.second(entity) : owner.first == entity) return true;
+    }
+    return false;
 }

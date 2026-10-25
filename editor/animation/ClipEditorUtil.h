@@ -8,13 +8,17 @@
 #pragma once
 
 #include "animation/AnimationClip.h"
+#include "animation/AnimationClipIO.h"
 #include "ecs/Entity.h"
 #include "registry/EntityRegistry.h"
 
+#include <cmath>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 namespace jasperengine::editor::clipui{
 
@@ -46,6 +50,60 @@ namespace jasperengine::editor::clipui{
     // "'Name'": a GameObject in messages
     inline std::string quotedName(EntityRegistry* registry, Entity entity){
         return "'" + registry->getEntityName(entity) + "'";
+    }
+
+    // ---- time texts (one place; each form has its own use) ----
+
+    // a duration or time in the Inspector: "1.25 s"
+    inline std::string formatSeconds(float seconds){
+        char text[32];
+        std::snprintf(text, sizeof(text), "%.2f s", std::isfinite(seconds) ? seconds : 0.0f);
+        return text;
+    }
+
+    // a time in messages, as short as it is exact: "0.5", "1.125" (validation, event texts)
+    inline std::string formatSecondsPlain(float seconds){
+        char text[32];
+        std::snprintf(text, sizeof(text), "%g", seconds);
+        return text;
+    }
+
+    // the Animation window's ruler label: the frame number, or seconds
+    inline std::string formatTime(float time, float fps, bool frames){
+        char text[48];
+        if (frames){
+            std::snprintf(text, sizeof(text), "%d", (int)std::lround(time * fps));
+        }else{
+            std::snprintf(text, sizeof(text), "%.2f", time);
+        }
+        return text;
+    }
+
+    // both forms, the shown one first: "frame 21 (0.700 s)" / "0.700 s (frame 21)"
+    inline std::string formatBoth(float time, float fps, bool frames){
+        char text[64];
+        const long frame = std::lround(time * fps);
+        if (frames) std::snprintf(text, sizeof(text), "frame %ld (%.3f s)", frame, time);
+        else std::snprintf(text, sizeof(text), "%.3f s (frame %ld)", time, frame);
+        return text;
+    }
+
+    // The value a key written at `time` into `track` gets (Record, K, Add Key, paste): a rotation
+    // on the side of the key it replaces there, else of the key before `time` (the first key when
+    // none is), by anim::alignQuaternionKey, so a Hermite segment never flips. Other channels:
+    // `value` as it is.
+    inline std::vector<float> alignedRotationKeyValue(const ClipTrackData& track, float time, std::vector<float> value){
+        if (track.channel != ClipChannel::Rotation || track.keys.empty()) return value;
+        const ClipKey* reference = &track.keys.front();
+        for (const ClipKey& key : track.keys){
+            if (std::fabs(key.time - time) <= anim::ANIM_TIME_EPSILON){
+                reference = &key;
+                break;
+            }
+            if (key.time < time) reference = &key;
+        }
+        anim::alignQuaternionKey(value, reference->value);
+        return value;
     }
 
     // the bytes of a file; false when it can't be opened

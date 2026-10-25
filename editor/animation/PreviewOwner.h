@@ -77,6 +77,17 @@ namespace jasperengine::editor{
         // scene. `registry` null: each owner's own (the one it acquired with).
         static void stopFor(uint32_t sceneId, const std::vector<Entity>& roots, EntityRegistry* registry,
                             const void* except = nullptr);
+
+        // ---- what a preview writes ----
+
+        // What an owner's preview writes now (an entity whose own values it shows): every owner
+        // sets one when it acquires. A step that only touches something new under a previewed
+        // root (a first model load) asks writes() instead of stopping the root's preview.
+        using Writes = std::function<bool(Entity entity)>;
+        static void setWrites(Token token, Writes writes);
+        // some owner of `sceneId` previews `entity`'s own values; an owner without a predicate
+        // answers for its root entity only
+        static bool writes(uint32_t sceneId, Entity entity);
     };
 
 }

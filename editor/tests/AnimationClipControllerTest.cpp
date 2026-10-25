@@ -28,6 +28,7 @@
 #include "command/type/CreatePrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/DuplicateEntityCmd.h"
+#include "command/type/ModelLoadCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "command/type/PrefabOverrideCmd.h"
@@ -42,6 +43,7 @@
 #include "component/TranslateTracksComponent.h"
 #include "util/EntityClipboard.h"
 #include "window/InspectorWindowClips.h"
+#include "animation/ClipEditorUtil.h"
 
 #include "imgui.h"
 #include "component/ModelComponent.h"
@@ -1705,4 +1707,161 @@ TEST_F(AnimationClipControllerTest, ResolutionChangesAndComponentRemovalsTakeThe
     ASSERT_TRUE(history->undo());
     ASSERT_TRUE(s.scene->findComponent<MeshComponent>(face));
     EXPECT_FLOAT_EQ(s.scene->getComponent<MeshComponent>(face).morphWeights[0], 0.0f) << "the undo brings the rest back";
+}
+
+// ---- verification round fixes (FX5) ---------------------------------------------------------
+
+// N2: a first model load on an entity whose own values a preview shows stops that preview first
+// (its Transform is the load's oldTransform: the undo would write the previewed pose back); a
+// first load of something new under the previewed root leaves the preview and Record running
+TEST_F(AnimationClipControllerTest, AFirstModelLoadStopsOnlyAPreviewOfTheEntityItself) {
+    fs::create_directories(assets() / "models");
+    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+                  "models" / "hero_tpose.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
+    Engine::setAsyncLoading(false);
+    ClipScene s = clipScene();
+    const Entity gadget = addObject(s, "Gadget", s.hero, Vector3(0, 0, 2));
+    for (Entity entity : {s.arm, gadget}){
+        s.scene->addComponent<MeshComponent>(entity, {});
+        s.scene->addComponent<ModelComponent>(entity, {});
+    }
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+
+    // a model loaded on Gadget (nothing of it previewed): the preview and Record go on
+    c.seek(0.5f);
+    c.setRecording(true);
+    ASSERT_TRUE(c.isPreviewing() && c.isRecording());
+    ASSERT_TRUE(history->addCommand(new ModelLoadCmd(project(), s.id, gadget, "models/hero.gltf")));
+    EXPECT_FALSE(s.scene->getComponent<ModelComponent>(gadget).loadedFilename.empty()) << "loaded";
+    EXPECT_TRUE(c.isPreviewing()) << "a new model under the previewed root";
+    EXPECT_TRUE(c.isRecording());
+    c.setRecording(false);
+    // (its undo deletes the model's nodes: DeleteEntityCmd restores the previews above them first)
+    ASSERT_TRUE(history->undo());
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+
+    // a model loaded on the previewed Arm: stopped first, the load keeps the Arm's rest
+    expectNear(s.transform(s.arm).position, Vector3(1, 1, 0), "previewed");
+    ASSERT_TRUE(history->addCommand(new ModelLoadCmd(project(), s.id, s.arm, "models/hero.gltf")));
+    EXPECT_FALSE(c.isPreviewing()) << "the Arm's own values were previewed";
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "loaded at rest");
+    // its undo during a new preview: the rest comes back, never the previewed pose
+    c.seek(0.5f);
+    ASSERT_TRUE(c.isPreviewing());
+    ASSERT_TRUE(history->undo());
+    EXPECT_FALSE(c.isPreviewing());
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "the undo writes the rest");
+    c.stopPreview();
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "and keeps it");
+}
+
+// N5: steps that would stop a preview for nothing leave it (and Record) running: a reorder among
+// the same siblings, a Create refused by its checks, an invalid or unchanged lattice resolution
+TEST_F(AnimationClipControllerTest, RefusedOrNoOpStepsLeaveThePreviewAndRecordRunning) {
+    ClipScene s = clipScene();
+    const Entity leg = addObject(s, "Leg", s.hero, Vector3(0, -1, 0));
+    const Entity cage = addObject(s, "Cage", s.hero, Vector3(0, 0, 0));
+    s.scene->addComponent<LatticeComponent>(cage, {});
+    s.scene->getComponent<LatticeComponent>(cage).offsets.assign(27, Vector3(0, 0, 0));
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+    c.seek(0.5f);
+    c.setRecording(true);
+    ASSERT_TRUE(c.isPreviewing() && c.isRecording());
+
+    ASSERT_TRUE(history->addCommand(new MoveEntityOrderCmd(project(), s.id, leg, s.arm, InsertionType::BEFORE)));
+    EXPECT_TRUE(c.isRecording()) << "a reorder among the Hero's children";
+    ASSERT_TRUE(history->undo());
+    EXPECT_TRUE(c.isRecording()) << "and its undo";
+
+    ClipActionResult result;
+    EXPECT_FALSE(ClipSceneActions::createNewClip(project(), s.id, s.arm, "assets/anim/arm.anim", result, error)) << "it exists";
+    EXPECT_TRUE(c.isRecording()) << "a refused Create";
+    EXPECT_FALSE(LatticeEditorOps::setResolution(project(), s.id, cage, 1, 3, 3, &error));
+    EXPECT_TRUE(c.isRecording()) << "an invalid resolution";
+    EXPECT_TRUE(LatticeEditorOps::setResolution(project(), s.id, cage, 3, 3, 3, &error)) << error;
+    EXPECT_TRUE(c.isRecording()) << "the same resolution";
+
+    // a reparent still stops
+    ASSERT_TRUE(history->addCommand(new MoveEntityOrderCmd(project(), s.id, leg, s.arm, InsertionType::INTO)));
+    EXPECT_FALSE(c.isPreviewing());
+    ASSERT_TRUE(history->undo());
+}
+
+// Integration review I1: a Hermite (CUBICSPLINE) rotation key edited with the same rotation of
+// the other sign (an Euler entry) keeps its side: the segments around it sample as before, no
+// flip; a key added (Record, K) takes the side of the key before it; a key without tangents
+// in a track with some (linear tangents made for it) is aligned before they are made
+TEST_F(AnimationClipControllerTest, HermiteRotationEditsKeepTheKeySideAndDoNotFlip) {
+    ClipData data;
+    ClipTrackData turn;
+    turn.path = "Arm";
+    turn.channel = ClipChannel::Rotation;
+    auto hermite = [](float time, std::vector<float> value){
+        ClipKey k = key(time, std::move(value));
+        k.inTangent.assign(4, 0.0f);
+        k.outTangent.assign(4, 0.0f);
+        return k;
+    };
+    // a half turn past 0.5 s stored with w < 0, as exporters write it
+    turn.keys = {hermite(0.0f, {0, 0, 0, 1}), hermite(1.0f, {0, -0.6f, 0, -0.8f}), hermite(2.0f, {0, -0.8f, 0, -0.6f})};
+    data.tracks = {turn};
+    writeClip("anim/arm.anim", data);
+    AnimationClipDocument::checkDiskChanges(project());
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    auto rotationAt = [&](float time){
+        c.seek(time);
+        return s.transform(s.arm).rotation;
+    };
+    std::vector<Quaternion> before;
+    for (float t : {0.25f, 0.5f, 0.75f, 1.25f, 1.5f, 1.75f}) before.push_back(rotationAt(t));
+
+    // the same rotation as +q (what an Euler value gives): stored on the old key's side
+    AnimationClipController::KeyRef middle{0, 1};
+    ASSERT_TRUE(c.setKeyValue(middle, {0, 0.6f, 0, 0.8f}, "", &error)) << error;
+    const std::vector<float>& stored = c.getDocument()->data().tracks[0].keys[1].value;
+    ASSERT_EQ(stored.size(), 4u);
+    EXPECT_NEAR(stored[1], -0.6f, 1e-5f) << "on the old value's side";
+    EXPECT_NEAR(stored[3], -0.8f, 1e-5f);
+    size_t i = 0;
+    for (float t : {0.25f, 0.5f, 0.75f, 1.25f, 1.5f, 1.75f}){
+        const Quaternion now = rotationAt(t);
+        EXPECT_NEAR(std::fabs(now.dot(before[i])), 1.0f, 1e-5f) << "no flip at " << t;
+        i++;
+    }
+    c.stopPreview();
+
+    // a new key keyed from the scene's +q value at 1.5 s: on the previous key's side
+    s.transform(s.arm).rotation = quaternionFromXYZW(std::vector<float>{0, 0.7071068f, 0, 0.7071068f}.data());
+    std::vector<AnimationClipController::KeyRef> keyed;
+    ASSERT_TRUE(c.keyTracks({0}, 1.5f, "", &keyed, &error)) << error;
+    const std::vector<float>& added = c.getDocument()->data().tracks[0].keys[2].value;
+    EXPECT_LT(added[3], 0.0f) << "w on the side of the key at 1 s";
+
+    // normalize: a key without tangents among keys with them is aligned before it gets them
+    ClipData mixed;
+    ClipTrackData partial = turn;
+    partial.keys[2] = key(2.0f, {0, 0.8f, 0, 0.6f});
+    mixed.tracks = {partial};
+    anim::normalize(mixed, nullptr);
+    const std::vector<float>& completed = mixed.tracks[0].keys[2].value;
+    ASSERT_EQ(completed.size(), 4u);
+    EXPECT_NEAR(completed[1], -0.8f, 1e-5f) << "aligned with the key before it";
+    EXPECT_NEAR(completed[3], -0.6f, 1e-5f);
+    EXPECT_TRUE(mixed.tracks[0].keys[2].hasTangents());
+
+    // the helper the edit paths share
+    std::vector<float> flipped = {0, 0.6f, 0, 0.8f};
+    anim::alignQuaternionKey(flipped, {0, -0.6f, 0, -0.8f});
+    EXPECT_EQ(flipped, (std::vector<float>{0, -0.6f, 0, -0.8f}));
+    EXPECT_EQ(clipui::alignedRotationKeyValue(turn, 1.0f, {0, 0.6f, 0, 0.8f}), (std::vector<float>{0, -0.6f, 0, -0.8f}));
 }

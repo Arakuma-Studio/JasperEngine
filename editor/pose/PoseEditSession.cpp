@@ -863,7 +863,8 @@ void editor::PoseEditSession::applyPose(const pose::HumanPose& pose){
     if (!applied){
         // the model's one edit-mode pose owner (animation clips 9.R7): a clip preview on it or
         // above it restores its snapshot first, so the bones saved below are the scene's
-        PreviewOwner::acquireFor(this, sceneIdValue, modelEntity, scenePtr, "Pose Animation", [this](){ goIdle(); });
+        const PreviewOwner::Token poseToken = PreviewOwner::acquireFor(this, sceneIdValue, modelEntity, scenePtr, "Pose Animation", [this](){ goIdle(); });
+        PreviewOwner::setWrites(poseToken, [this](Entity entity){ return ownsEntity(sceneIdValue, entity); });
         // the bones as the scene has them, put back by restoreBones()
         savedBones.clear();
         for (Entity entity : entities){

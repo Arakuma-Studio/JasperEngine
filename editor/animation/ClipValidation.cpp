@@ -63,11 +63,8 @@ namespace {
         return model && MeshSystem::isLegacyLayout(*model);
     }
 
-    std::string formatSeconds(float seconds){
-        char buffer[32];
-        std::snprintf(buffer, sizeof(buffer), "%g", seconds);
-        return buffer;
-    }
+    // a time in messages, as short as it is exact ("0.5"): the editor's one formatter of it
+    using clipui::formatSecondsPlain;
 
     // `entity` itself or a Transform ancestor up to (and including) `root` that is a legacy
     // layout model; NULL_ENTITY when none
@@ -680,7 +677,7 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
                 event.status = EventHandlerStatus::Found;
             }else{
                 event.status = EventHandlerStatus::NotFound;
-                event.message = "event " + event.function + " at " + formatSeconds(data.events[i].time) +
+                event.message = "event " + event.function + " at " + formatSecondsPlain(data.events[i].time) +
                                 " s: no Lua script on " + entityLabel(registry, root) + " defines " + event.function +
                                 "() (add the method, or subscribe to onEvent)";
             }
