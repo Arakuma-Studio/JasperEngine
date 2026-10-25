@@ -827,13 +827,24 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
         pageIndex = (int)i;
         return true;
     };
-    // earlier pages first: space left there is used before a new page opens
+    // the pages drawn in this frame or the last first, then (room for a new page in the budget)
+    // the space left in older pages before a new page opens; with the budget full, a new page in
+    // place of the least recently used ones before that space: a glyph placed in an older page
+    // keeps it from being cleared, which a text that does not fit the pages it uses would need
+    const uint64_t frame = SystemRender::getFrameCount();
+    const size_t pageBytes = (size_t)pageSize * (size_t)pageSize * (kind == PageKind::BASE ? 1u : 4u);
+    auto recent = [&](size_t i){ return list[i]->lastUsed() + 1 >= frame; };
     for (size_t i = 0; i < list.size(); i++){
-        if (packInto(i))
+        if (recent(i) && packInto(i))
             return true;
     }
+    if (usedBytes(kind) + pageBytes <= budgetBytes(kind)){
+        for (size_t i = 0; i < list.size(); i++){
+            if (!recent(i) && packInto(i))
+                return true;
+        }
+    }
     if (width + 1 <= pageSize && height + 1 <= pageSize){
-        const size_t pageBytes = (size_t)pageSize * (size_t)pageSize * (kind == PageKind::BASE ? 1u : 4u);
         // a new page (a parked slot first) within the budget, after clearing the least recently used ones
         while (usedBytes(kind) + pageBytes > budgetBytes(kind)){
             if (!evictPage(kind))
@@ -857,12 +868,15 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
                 return true;
         }
     }
+    for (size_t i = 0; i < list.size(); i++){
+        if (!recent(i) && packInto(i))
+            return true;
+    }
 
     // every page held back by "drawn in this frame or the last": one that was not drawn in this
     // frame can go in the next, the glyph waits for it
     placeDeferred = false;
     if (width + 1 <= pageSize && height + 1 <= pageSize){
-        const uint64_t frame = SystemRender::getFrameCount();
         for (const std::unique_ptr<Page>& page : list){
             if (page->bytes() > 0 && page->lastUsed() < frame)
                 placeDeferred = true;
@@ -1566,6 +1580,9 @@ bool RmlFontEngine::getRenderTextForTesting() const{
 }
 
 int RmlFontEngine::GetVersion(Rml::FontFaceHandle face_handle){
+    // (a glyph that waited for room: its text is made again in the next frame, whichever context
+    // or harness renders it)
+    retryDeferredGlyphs();
     FaceHandle* handle = toHandle(face_handle);
     if (!handle)
         return epoch;
