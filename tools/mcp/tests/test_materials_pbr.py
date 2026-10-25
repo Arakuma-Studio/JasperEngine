@@ -677,8 +677,10 @@ async def test_khronos_models(ed: Editor):
         golden = GOLDEN_DIR / f"{model}.png"
         small = pngdiff.downscale(img, *GOLDEN_SIZE)
         if UPDATE_GOLDEN:
-            GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
-            golden.write_bytes(pngdiff.encode(small))
+            # (JASPER_S11_GOLDEN_OUT: write them there instead, e.g. outside the checkout)
+            out = Path(os.environ.get("JASPER_S11_GOLDEN_OUT") or GOLDEN_DIR)
+            out.mkdir(parents=True, exist_ok=True)
+            (out / golden.name).write_bytes(pngdiff.encode(small))
         elif golden.is_file():
             ok, fraction, diff = pngdiff.compare(small, pngdiff.load(golden))
             if not ok:
