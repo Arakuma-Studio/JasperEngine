@@ -5715,7 +5715,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
             morphWeightsNode[i] = YamlNumbers::text(mesh.morphWeights[i]);
         }
         node["morphWeights"] = morphWeightsNode;
-        node["morphTargetCount"] = mesh.morphWeightsSet ? mesh.morphTargetCount : MAX_MORPHTARGETS;
+        node["morphTargetCount"] = mesh.morphWeightsSet ? mesh.morphTargetCount : morphWeightsPresentCount(mesh.morphWeights);
     }
 
     // Encode AABBs
@@ -5804,8 +5804,10 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
             mesh.morphWeights[i] = YamlNumbers::as<float>(morphWeightsNode[i]);
         }
         mesh.morphWeightsSet = true;
-        // (weights saved without their count cover every target, as they did then)
-        mesh.morphTargetCount = node["morphTargetCount"] ? std::clamp(node["morphTargetCount"].as<int>(), 0, MAX_MORPHTARGETS) : MAX_MORPHTARGETS;
+        // (weights saved without their count, by an older version, cover up to their last non-zero
+        // weight: MeshComponent::morphTargetCount)
+        mesh.morphTargetCount = node["morphTargetCount"] ? std::clamp(node["morphTargetCount"].as<int>(), 0, MAX_MORPHTARGETS)
+                                                         : morphWeightsPresentCount(mesh.morphWeights);
     }
 
     if (node["aabb"]) mesh.aabb = decodeAABB(node["aabb"]);

@@ -552,12 +552,29 @@ TEST(AnimationPlayerComponent, SavedMorphWeightsAreKeptByTheModelLoad) {
     EXPECT_TRUE(back.morphWeightsSet);
     EXPECT_EQ(back.morphTargetCount, 2);
     EXPECT_FLOAT_EQ(back.morphWeights[1], 0.4f);
-    YAML::Node older = YAML::Clone(node);
+    // (FX6) weights saved without their count (an older version) cover up to their last non-zero
+    // weight: the zeros after it get the file's defaults on load, as they always did then
+    MeshComponent oldSaved;
+    oldSaved.morphWeightsSet = true;
+    oldSaved.morphWeights[2] = 0.3f;
+    YAML::Node older = Stream::encodeMeshComponent(oldSaved, false, false, false);
     older.remove("morphTargetCount");
-    EXPECT_EQ(Stream::decodeMeshComponent(older).morphTargetCount, MAX_MORPHTARGETS);
+    EXPECT_EQ(Stream::decodeMeshComponent(older).morphTargetCount, 3);
+    // a non-zero weight set before any load: Stream and the exporter both keep it, with that count
     MeshComponent edited;
     edited.morphWeights[0] = 0.5f;
-    EXPECT_TRUE(Stream::encodeMeshComponent(edited, false, false, false)["morphWeights"]) << "a weight set before any load is kept";
+    const YAML::Node editedNode = Stream::encodeMeshComponent(edited, false, false, false);
+    ASSERT_TRUE(editedNode["morphWeights"]) << "a weight set before any load is kept";
+    EXPECT_EQ(Stream::decodeMeshComponent(editedNode).morphTargetCount, 1);
+    {
+        Scene exported;
+        const Entity entity = exported.createEntity();
+        exported.addComponent<Transform>(entity, {});
+        exported.addComponent<MeshComponent>(entity, edited);
+        const std::string code = Factory::createComponent(0, &exported, entity, ComponentType::MeshComponent, "", "scene", "entity");
+        EXPECT_NE(code.find("mesh.morphWeightsSet = true;\n"), std::string::npos) << code;
+        EXPECT_NE(code.find("mesh.morphTargetCount = 1;\n"), std::string::npos) << code;
+    }
 
     Scene scene;
     const Entity entity = scene.createEntity();

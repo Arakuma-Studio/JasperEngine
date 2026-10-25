@@ -377,8 +377,11 @@ void Model::setMorphWeight(int id, float value){
 
     if (id >= 0 && id < MAX_MORPHTARGETS){
         mesh.morphWeights[id] = value;
-        // set before a (async) load finishes: the load keeps it
+        // the weights are the mesh's own now, up to this target at least: a load (also one still
+        // running) keeps them; targets past the count get the file's defaults
+        // (MeshComponent::morphTargetCount)
         mesh.morphWeightsSet = true;
+        mesh.morphTargetCount = std::max(mesh.morphTargetCount, id + 1);
     }else{
         Log::error("Retrieving non-existent morph weight '%i'", id);
     }

@@ -365,7 +365,9 @@ namespace jasperengine{
         bool morphWeightsSet = false;
         // how many targets those weights cover: the mesh's target count at its last load (saved
         // with them). A reload of a model file that has more targets now gives the new ones the
-        // file's defaults. Weights saved without it cover every target.
+        // file's defaults. Weights saved without it (older files) or set before any load cover
+        // the targets up to their last non-zero weight (morphWeightsPresentCount): the zeros after
+        // it get the file's defaults, as every load gave them before the count existed.
         int morphTargetCount = 0;
         // the blend shape (morph target) names of this mesh in its model file (glTF
         // extras.targetNames), index = weight; empty when the file names none. Filled by the
@@ -433,7 +435,17 @@ namespace jasperengine{
         // reloads once the new variant's shaders are built (needReload then)
         bool needVariantReload = false;
     };
-    
+
+    // the targets weights without a count cover: up to the last non-zero one
+    // (MeshComponent::morphTargetCount)
+    inline int morphWeightsPresentCount(const float* weights){
+        int count = 0;
+        for (int i = 0; i < MAX_MORPHTARGETS; i++){
+            if (weights[i] != 0.0f) count = i + 1;
+        }
+        return count;
+    }
+
 }
 
 #endif //MESH_COMPONENT_H

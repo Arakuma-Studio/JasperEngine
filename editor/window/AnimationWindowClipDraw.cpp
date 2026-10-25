@@ -496,7 +496,7 @@ void AnimationWindowClip::drawBanners(SceneProject* sceneProject){
             ImGui::SameLine();
             const bool canFix = sceneProject && sceneProject->id == c.getSceneId() && sceneProject->playState == ScenePlayState::STOPPED;
             ImGui::BeginDisabled(!canFix);
-            if (ImGui::SmallButton("Reload with its hierarchy")){
+            if (ImGui::SmallButton("Reload Models in Node Hierarchy")){
                 ClipActionResult result;
                 std::string error;
                 c.stopPreview();

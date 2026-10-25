@@ -792,6 +792,12 @@ TEST(ModelSubClips, MorphWeightsKeepTheSavedStateOverTheFileDefaults){
     ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(older.getEntity(), withDefaults, false, false, false));
     EXPECT_FLOAT_EQ(weightOf(older.getEntity()), 0.75f) << "a target past the saved count";
     EXPECT_EQ(scene.getComponent<MeshComponent>(older.getEntity()).morphTargetCount, 1);
+    // (FX6) Model:setMorphWeight before the load (a script): the weight covers its target, kept
+    Model scripted(&scene);
+    scripted.setMorphWeight(0, 0.3f);
+    EXPECT_EQ(scene.getComponent<MeshComponent>(scripted.getEntity()).morphTargetCount, 1);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(scripted.getEntity(), withDefaults, false, false, false));
+    EXPECT_FLOAT_EQ(weightOf(scripted.getEntity()), 0.3f) << "the script's weight, not the file's 0.75";
 }
 
 // Blend shape names per mesh (MeshComponent::morphTargetNames): a model with two meshes whose

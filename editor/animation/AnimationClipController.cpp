@@ -272,25 +272,39 @@ namespace{
         return ClipConverters::clipPath(scene, root, entity, later) && later != now;
     }
 
-    const char* const LEGACY_PART_REASON = "is part of a model in the legacy layout: reload it in its node hierarchy first "
-                                           "(the Animation window's banner), or its keys would stop binding then";
-    const char* const LEGACY_ROOT_REASON = "carries its model file's root transform in the legacy layout: reload it in its node "
-                                           "hierarchy first (the Animation window's banner), or its Rotation and Scale keys "
-                                           "would apply that transform twice then";
+    // (the model reloads in its node hierarchy once an Animation Player on it or above it plays it:
+    // adding the player does it, and a player that has one already offers "Reload Models in Node
+    // Hierarchy" in its Inspector Bindings and the Animation window)
+    const char* const LEGACY_PART_REASON = "is part of a model in the legacy layout, whose paths change when an Animation Player "
+                                           "reloads it in its node hierarchy: add the player (or its Reload Models in Node "
+                                           "Hierarchy) first, or these keys would stop binding then";
+    const char* const LEGACY_ROOT_REASON = "carries its model file's root transform in the legacy layout, which moves to the root "
+                                           "node when an Animation Player reloads the model in its node hierarchy: add the "
+                                           "player (or its Reload Models in Node Hierarchy) first, or these keys would apply that "
+                                           "transform twice then";
 
     // Why Record and Add Property leave `channel` of `entity` (under or at `root`) alone, null when
-    // they don't: a legacy model part (its path changes with the node hierarchy), or the Rotation /
-    // Scale of a legacy model entity standing in for the glTF scene root (the reload moves that
-    // root's matrix to the root node: Convert takes it off its keys, a key made here could not)
+    // they don't: a legacy model part (its path changes with the node hierarchy), or a channel of a
+    // legacy model entity standing in for a glTF scene root that is not the identity (the reload
+    // moves that matrix to the root node: Convert takes it off its keys, a key made here could
+    // not). The root's rotation and scale change the Rotation and Scale keys, its translation
+    // every Transform key; an identity root changes none.
     const char* legacyRefusal(Scene* scene, Entity root, Entity entity, ClipChannel channel){
         if (legacyModelPart(scene, root, entity)) return LEGACY_PART_REASON;
-        if (channel != ClipChannel::Rotation && channel != ClipChannel::Scale) return nullptr;
+        if (channel != ClipChannel::Position && channel != ClipChannel::Rotation && channel != ClipChannel::Scale) return nullptr;
         const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
         std::shared_ptr<MeshSystem> meshes = scene->getSystem<MeshSystem>();
         Matrix4 sceneRoot;
-        if (model && meshes && MeshSystem::isLegacyLayout(*model) && meshes->getLegacyRootTransform(entity, sceneRoot)){
-            return LEGACY_ROOT_REASON;
-        }
+        if (!model || !meshes || !MeshSystem::isLegacyLayout(*model) || !meshes->getLegacyRootTransform(entity, sceneRoot)) return nullptr;
+        Vector3 position;
+        Vector3 scale;
+        Quaternion rotation;
+        sceneRoot.decompose(position, scale, rotation);
+        const float eps = 1e-5f;
+        const bool translated = position.length() > eps;
+        const bool turnedOrScaled = std::fabs(std::fabs(rotation.w) - 1.0f) > 1e-6f ||
+                                    std::fabs(scale.x - 1.0f) > eps || std::fabs(scale.y - 1.0f) > eps || std::fabs(scale.z - 1.0f) > eps;
+        if (translated || (turnedOrScaled && channel != ClipChannel::Position)) return LEGACY_ROOT_REASON;
         return nullptr;
     }
 
@@ -1202,9 +1216,9 @@ void AnimationClipController::afterSceneWrite(uint32_t id, Entity entity, ClipCh
     if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED) return;
     // Record on: an edit it left alone (a scene step now) says why, when the edit arrives (not
     // for an undo or redo writing it)
-    std::string recordPath;
-    if (recording && channel != ClipChannel::Property && !timeline().stepping.count(id) && sceneProject->scene->isEntityCreated(entity) &&
-        anim::relativePath(sceneProject->scene, previewRoot, entity, recordPath)){
+    // (only an edit Record would take but for the legacy layout: the channels, documents and
+    // entities recordClaims refuses for other reasons get no note)
+    if (!timeline().stepping.count(id) && sceneProject->scene->isEntityCreated(entity) && recordEligible(id, entity, channel)){
         if (const char* refusal = legacyRefusal(sceneProject->scene, previewRoot, entity, channel)){
             ClipRecordHooks::note("Record leaves '" + sceneProject->scene->getEntityName(entity) + "' alone: it " + refusal);
         }
@@ -1819,6 +1833,13 @@ bool AnimationClipController::takeRecordStoppedNotice(){
 }
 
 bool AnimationClipController::recordClaims(uint32_t id, Entity entity, ClipChannel channel) const{
+    // a pure check (the sources ask it every frame): the edit becomes a scene step, and the window
+    // says why when one arrives (afterSceneWrite)
+    if (!recordEligible(id, entity, channel)) return false;
+    return legacyRefusal(sceneProjectOf(previewSceneId)->scene, previewRoot, entity, channel) == nullptr;
+}
+
+bool AnimationClipController::recordEligible(uint32_t id, Entity entity, ClipChannel channel) const{
     if (!recording || !isPreviewing() || id != previewSceneId || channel == ClipChannel::Property) return false;
     if (!document || document->isReadOnly() || !document->exists()) return false;
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
@@ -1827,10 +1848,7 @@ bool AnimationClipController::recordClaims(uint32_t id, Entity entity, ClipChann
     std::string path;
     if (!anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
     std::vector<float> value;
-    if (!anim::readChannelValue(sceneProject->scene, entity, channel, {}, value)) return false;
-    // a pure check (the sources ask it every frame): the edit becomes a scene step, and the window
-    // says why when one arrives (afterSceneWrite)
-    return legacyRefusal(sceneProject->scene, previewRoot, entity, channel) == nullptr;
+    return anim::readChannelValue(sceneProject->scene, entity, channel, {}, value);
 }
 
 bool AnimationClipController::recordAnimates(uint32_t id, Entity entity, ClipChannel channel) const{

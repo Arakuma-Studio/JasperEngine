@@ -183,10 +183,9 @@ namespace {
         return ease == EaseType::CUSTOM ? EaseType::LINEAR : ease;
     }
 
+    // a time or speed in messages ("0.25"): the editor's one short form (clipui)
     std::string clipNumber(float value){
-        char buffer[32];
-        std::snprintf(buffer, sizeof(buffer), "%g", value);
-        return buffer;
+        return clipui::formatSecondsPlain(value);
     }
 
     // ClipKey values of one entity track (`speed` scales its time line: tangents are per second)

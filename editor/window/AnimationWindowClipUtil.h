@@ -131,7 +131,7 @@ namespace jasperengine::editor::clipui{
         // pasted or added key never makes a Hermite segment flip
         ClipKey key = given;
         if (track.channel == ClipChannel::Rotation && key.value.size() == 4){
-            const std::vector<float> aligned = clipui::alignedRotationKeyValue(track, time, key.value);
+            const std::vector<float> aligned = clipui::alignedRotationKeyValue(track, time, key.value, kKeyEpsilon);
             if (aligned != key.value){
                 key.value = aligned;
                 for (float& v : key.inTangent) v = -v;

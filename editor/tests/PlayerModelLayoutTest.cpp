@@ -409,3 +409,41 @@ TEST_F(PlayerModelLayoutTest, KeptBlendShapeWeightsCoverOnlyTheTargetsTheyHad) {
     EXPECT_FLOAT_EQ(loadWith(true, 1, 0.9f).morphWeights[0], 0.9f) << "the target it had: kept";
     EXPECT_FLOAT_EQ(loadWith(true, 0, 0.9f).morphWeights[0], 0.25f) << "a target the file gained since: its default";
 }
+
+// FX6: the layout switch carries a part's weights only for the targets they cover: a target past
+// the count (a re-export added it) gets the file's default on the rebuilt mesh
+TEST_F(PlayerModelLayoutTest, TheLayoutSwitchCarriesWeightsOnlyForTheTargetsTheyCover) {
+    const fs::path source = (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "shader-library" /
+                             "assets" / "models" / "skinned_morph.gltf").lexically_normal();
+    nlohmann::json gltf = nlohmann::json::parse(readAll(source));
+    // two targets (the same shape twice), defaults 0.25 and 0.5
+    gltf["meshes"][0]["primitives"][0]["targets"].push_back(gltf["meshes"][0]["primitives"][0]["targets"][0]);
+    gltf["meshes"][0]["weights"] = {0.25, 0.5};
+    const fs::path file = headless().dir / "assets" / "models" / "morph_two.gltf";
+    std::ofstream(file, std::ios::binary) << gltf.dump(1);
+
+    const uint32_t sceneId = newScene();
+    const Entity model = createModel(sceneId, file.generic_string());
+    Scene* scene = sceneOf(sceneId);
+    ASSERT_TRUE(modelOf(sceneId, model).nodesIdMapping.empty()) << "legacy layout";
+    MeshComponent* legacy = scene->findComponent<MeshComponent>(model);
+    ASSERT_TRUE(legacy && legacy->morphWeightsSet);
+    ASSERT_EQ(legacy->morphTargetCount, 2);
+    // weights saved when the file had one target: 0.7, and a stale 0 beyond
+    legacy->morphWeights[0] = 0.7f;
+    legacy->morphWeights[1] = 0.0f;
+    legacy->morphTargetCount = 1;
+
+    history(sceneId)->addCommandNoMerge(new AddComponentCmd(project(), sceneId, model, ComponentType::AnimationPlayerComponent));
+    ASSERT_FALSE(modelOf(sceneId, model).nodesIdMapping.empty()) << "reloaded in the node hierarchy";
+    const ModelComponent& reloaded = modelOf(sceneId, model);
+    Entity strip = NULL_ENTITY;
+    auto node = reloaded.meshNodesMapping.find(0);
+    if (node != reloaded.meshNodesMapping.end()) strip = node->second;
+    else if (reloaded.nodesIdMapping.count(0)) strip = reloaded.nodesIdMapping.at(0);
+    const MeshComponent* rebuilt = strip != NULL_ENTITY ? scene->findComponent<MeshComponent>(strip) : nullptr;
+    ASSERT_TRUE(rebuilt);
+    EXPECT_FLOAT_EQ(rebuilt->morphWeights[0], 0.7f) << "the covered target: carried";
+    EXPECT_FLOAT_EQ(rebuilt->morphWeights[1], 0.5f) << "the target past the count: the file's default";
+    ASSERT_TRUE(history(sceneId)->undo());
+}

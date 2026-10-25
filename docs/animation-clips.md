@@ -365,8 +365,8 @@ animation the Pose Animator plays, under the file's name), opens a menu:
   its bones are not GameObjects, so nothing binds. Adding an Animation Player normally reloads the
   model in the node hierarchy layout as part of the same step. A model that was saved in the old
   layout under a player, or moved under a player by duplicating or creating with a parent, stays
-  legacy until reloaded. Click **Reload with its hierarchy** (window banner) or **Reload Models in
-  Node Hierarchy** (Inspector Bindings). One undo step; tracks of entity Animations that targeted the
+  legacy until reloaded. Click **Reload Models in Node Hierarchy** (window banner or Inspector
+  Bindings). One undo step; tracks of entity Animations that targeted the
   old bones follow the rebuilt bones.
 - **"several siblings share a name".** Two children with the same name: the path binds the first. Write
   `Name#1` for the second one, or rename one.
@@ -405,6 +405,8 @@ animation the Pose Animator plays, under the file's name), opens a menu:
   Weights you set (0 too) are saved with the scene or prefab and kept whenever the model reloads;
   loading another model file into the Model gives that file's defaults. If you re-export the model
   with more blend shapes, the new ones start at their defaults and the ones it had keep your weights.
+  A scene or prefab saved by an older version keeps its weights up to the last non-zero one; the
+  zero weights after it take the file's defaults on load, as they always did then.
 - **Two animations write the same bones.** A model with both entity animations and an Animation
   Player has two writers. Use **Use Animation Player** to keep only the player, or call
   `Model:playAnimation`, which fades out the other side.

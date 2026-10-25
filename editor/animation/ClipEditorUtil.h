@@ -91,12 +91,13 @@ namespace jasperengine::editor::clipui{
     // The value a key written at `time` into `track` gets (Record, K, Add Key, paste): a rotation
     // on the side of the key it replaces there, else of the key before `time` (the first key when
     // none is), by anim::alignQuaternionKey, so a Hermite segment never flips. Other channels:
-    // `value` as it is.
-    inline std::vector<float> alignedRotationKeyValue(const ClipTrackData& track, float time, std::vector<float> value){
+    // `value` as it is. `tolerance`: how close a key replaced at `time` is (the caller's own rule).
+    inline std::vector<float> alignedRotationKeyValue(const ClipTrackData& track, float time, std::vector<float> value,
+                                                      float tolerance = anim::ANIM_TIME_EPSILON){
         if (track.channel != ClipChannel::Rotation || track.keys.empty()) return value;
         const ClipKey* reference = &track.keys.front();
         for (const ClipKey& key : track.keys){
-            if (std::fabs(key.time - time) <= anim::ANIM_TIME_EPSILON){
+            if (std::fabs(key.time - time) <= tolerance){
                 reference = &key;
                 break;
             }

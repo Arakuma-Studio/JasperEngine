@@ -207,10 +207,14 @@ void editor::ModelLoadCmd::recordArrangement(SceneProject* sceneProject, const M
 
 void editor::ModelLoadCmd::recordMorphWeights(Scene* scene, const ModelComponent& model) {
     savedMorphWeights.clear();
+    // the weights a part owns: the targets they cover (MeshComponent::morphTargetCount), so the
+    // targets a re-exported file gained keep the defaults the rebuild gives them
     auto weightsOf = [scene](Entity part) {
         std::vector<float> weights;
-        if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(part)) {
-            weights.assign(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS);
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(part);
+        if (mesh && mesh->morphWeightsSet) {
+            const int count = std::clamp(mesh->morphTargetCount, 0, MAX_MORPHTARGETS);
+            weights.assign(mesh->morphWeights, mesh->morphWeights + count);
         }
         return weights;
     };
@@ -253,6 +257,7 @@ void editor::ModelLoadCmd::restoreMorphWeights(Scene* scene, const ModelComponen
         // the parts are new entities (their load gave them the file's defaults): the carried
         // weights are theirs now, kept by later reloads like saved ones (MeshComponent::morphWeightsSet)
         component->morphWeightsSet = true;
+        component->morphTargetCount = std::max(component->morphTargetCount, (int)saved.second.size());
     }
 }
 

@@ -1763,6 +1763,20 @@ namespace {
         return "models/tpose_turned.gltf";
     }
 
+    // the T-pose hero with its scene root node set to `translation` and no rotation or scale
+    std::string heroWithRoot(const std::string& name, std::vector<double> translation) {
+        const fs::path path = root() / "assets" / "models" / (name + ".gltf");
+        if (!fs::exists(path)) {
+            nlohmann::json gltf = nlohmann::json::parse(readAll(root() / "assets" / "models" / "tpose.gltf"));
+            gltf["nodes"][0].erase("rotation");
+            gltf["nodes"][0].erase("scale");
+            gltf["nodes"][0].erase("matrix");
+            gltf["nodes"][0]["translation"] = translation;
+            writeAll(path, gltf.dump(1));
+        }
+        return "models/" + name + ".gltf";
+    }
+
 }
 
 // Minor 1: Convert on a legacy model whose entity carries the glTF scene root: the step reloads
@@ -1902,6 +1916,46 @@ TEST_F(ClipConverters_, AddPropertyAndRecordRefuseTheLegacyRootsRotationAndScale
     EXPECT_FALSE(ClipRecordHooks::claims(sceneId, hero, ClipChannel::Scale));
     EXPECT_TRUE(ClipRecordHooks::claims(sceneId, hero, ClipChannel::Position));
     c.setRecording(false);
+    AnimationClipController::release(project());
+}
+
+// FX6: an identity scene root changes no key (nothing refused); a translated one changes every
+// Transform key (Position refused too). The refusal names the player that reloads the model.
+TEST_F(ClipConverters_, LegacyRootRefusalsFollowWhatTheRootChanges) {
+    const std::string dir = folder("legacyrootkinds");
+    std::string error;
+    ASSERT_TRUE(AnimationClipDocument::create(project(), dir + "/rig.anim", ClipData(), "Create", &error)) << error;
+    AnimationClipController& c = AnimationClipController::shared(project());
+    for (const bool translated : {false, true}) {
+        const uint32_t sceneId = newScene();
+        Scene* scene = sceneOf(sceneId);
+        const Entity rig = gameObject(sceneId, "Rig");
+        const Entity hero = loadModel(sceneId, translated ? heroWithRoot("tpose_moved", {0.0, 1.0, 0.0})
+                                                          : heroWithRoot("tpose_identity", {0.0, 0.0, 0.0}));
+        scene->addEntityChild(rig, hero, false);
+        Matrix4 sceneRoot;
+        ASSERT_TRUE(scene->getSystem<MeshSystem>()->getLegacyRootTransform(hero, sceneRoot));
+        ASSERT_TRUE(c.bindRoot(sceneId, rig, &error)) << error;
+        ASSERT_TRUE(c.openClip(dir + "/rig.anim", &error)) << error;
+        size_t added = 0;
+        if (!translated) {
+            EXPECT_TRUE(c.addProperty("Hero", ClipChannel::Rotation, &added, &error)) << "an identity root: " << error;
+            EXPECT_TRUE(c.addProperty("Hero", ClipChannel::Scale, &added, &error)) << error;
+            EXPECT_TRUE(c.addProperty("Hero", ClipChannel::Position, &added, &error)) << error;
+        } else {
+            EXPECT_FALSE(c.addProperty("Hero", ClipChannel::Position, &added, &error)) << "a translated root moves Position keys";
+            EXPECT_NE(error.find("Animation Player"), std::string::npos) << error;
+            EXPECT_NE(error.find("Reload Models in Node Hierarchy"), std::string::npos) << error;
+            EXPECT_FALSE(c.addProperty("Hero", ClipChannel::Rotation, &added, &error));
+        }
+        c.closeClip();
+        // the clip back to empty for the next round
+        ASSERT_TRUE(c.openClip(dir + "/rig.anim", &error)) << error;
+        ClipData empty;
+        empty.guid = c.getDocument()->data().guid;
+        ASSERT_TRUE(c.commit(empty, "Clear", "", &error)) << error;
+        c.closeClip();
+    }
     AnimationClipController::release(project());
 }
 

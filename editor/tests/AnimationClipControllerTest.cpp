@@ -1858,6 +1858,14 @@ TEST_F(AnimationClipControllerTest, HermiteRotationEditsKeepTheKeySideAndDoNotFl
     EXPECT_NEAR(completed[1], -0.8f, 1e-5f) << "aligned with the key before it";
     EXPECT_NEAR(completed[3], -0.6f, 1e-5f);
     EXPECT_TRUE(mixed.tracks[0].keys[2].hasTangents());
+    // (FX6) a first key without tangents takes the side of the key after it (stored tangents)
+    ClipData leading;
+    ClipTrackData front = turn;
+    front.keys[0] = key(0.0f, {0, 0.6f, 0, 0.8f});     // the stored key 1 is [0,-0.6,0,-0.8]
+    leading.tracks = {front};
+    anim::normalize(leading, nullptr);
+    EXPECT_NEAR(leading.tracks[0].keys[0].value[1], -0.6f, 1e-5f) << "key 0 aligned with key 1";
+    EXPECT_NEAR(leading.tracks[0].keys[0].value[3], -0.8f, 1e-5f);
 
     // the helper the edit paths share
     std::vector<float> flipped = {0, 0.6f, 0, 0.8f};

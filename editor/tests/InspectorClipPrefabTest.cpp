@@ -17,6 +17,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "command/CommandHandle.h"
 #include "command/type/CreatePrefabCmd.h"
+#include "component/MeshComponent.h"
 #include "window/InspectorWindow.h"
 
 #include <unistd.h>
@@ -147,5 +148,40 @@ TEST(InspectorClipPrefab, RevertingAClipRowBringsThePathAndTheGuidBack) {
     EXPECT_EQ(reverted.clips[0].clip, dir + "/a.anim");
     EXPECT_EQ(reverted.clips[0].guid, guidA);
     EXPECT_TRUE(project()->getOverriddenProperties(sceneId, entity, ComponentType::AnimationPlayerComponent).empty());
+    sceneProject->isModified = false;
+}
+
+// FX6: a prefab instance's override of a blend shape weight past the targets the asset's weights
+// cover is the instance's own: the re-import keeps it, and so does a model load (the count
+// follows the overridden index, MeshComponent::morphTargetCount)
+TEST(InspectorClipPrefab, AnOverriddenBlendShapeWeightRaisesTheTargetCount) {
+    ASSERT_TRUE(headless().ready);
+    const std::string dir = "inspector_prefab_morph";
+    fs::remove_all(headless().dir / dir);
+    fs::create_directories(headless().dir / dir);
+    project()->createNewScene("Prefab Weights", SceneType::SCENE_3D);
+    SceneProject* sceneProject = project()->getScene(project()->getSelectedSceneId());
+    const uint32_t sceneId = sceneProject->id;
+    Scene* scene = sceneProject->scene;
+    const Entity entity = scene->createEntity();
+    scene->addComponent<Transform>(entity);
+    MeshComponent mesh;
+    mesh.morphWeightsSet = true;
+    mesh.morphTargetCount = 1;
+    mesh.morphWeights[0] = 0.2f;
+    scene->addComponent<MeshComponent>(entity, mesh);
+    sceneProject->entities.push_back(entity);
+    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project(), sceneId, fs::path(dir) / "Jelly.prefab",
+        Stream::encodeEntity(entity, scene, project(), sceneProject)));
+    ASSERT_TRUE(project()->isPrefabInstanceRoot(sceneId, entity));
+
+    scene->getComponent<MeshComponent>(entity).morphWeights[3] = 0.6f;
+    ASSERT_TRUE(project()->recordPrefabEdit(sceneId, entity, ComponentType::MeshComponent, {"morphWeights[3]"}));
+    ASSERT_TRUE(project()->reimportPrefabInstance(sceneProject, entity, YAML::Node()));
+    const MeshComponent& instance = scene->getComponent<MeshComponent>(entity);
+    EXPECT_FLOAT_EQ(instance.morphWeights[3], 0.6f) << "the override applies";
+    EXPECT_FLOAT_EQ(instance.morphWeights[0], 0.2f) << "the asset's weight";
+    EXPECT_TRUE(instance.morphWeightsSet);
+    EXPECT_GE(instance.morphTargetCount, 4) << "a load keeps the overridden weight";
     sceneProject->isModified = false;
 }
