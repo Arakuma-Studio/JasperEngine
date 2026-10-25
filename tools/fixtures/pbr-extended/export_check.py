@@ -55,7 +55,9 @@ async def main() -> int:
                 continue
             headers = [p for p in out.rglob("glsl300es.h")]
             text = "\n".join(h.read_text(errors="ignore") for h in headers)
-            missing = [n for n in names if n not in text]
+            # (the High shadow filters' 'Shq' variants are not cooked for GLES3: the web and Android
+            # shadow tiers never use them, ShadowTiers::cooksHighFilters, S10)
+            missing = [n for n in names if n not in text and "Shq" not in n]
             ok = headers and not missing
             failed |= not ok
             print(f"{'PASS' if ok else 'FAIL'} {platform}: {len(names)} shaders listed ({len(lit)} built-in Lit lobe/quality "
