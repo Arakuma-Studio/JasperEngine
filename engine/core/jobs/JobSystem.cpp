@@ -1748,6 +1748,9 @@ void jobs::detail::Scheduler::runChannelsInline(){
 
 void jobs::detail::Scheduler::publishCounterJob(CounterQueue* queue, Job* job, Lane lane){
     job->lane = clampLane(lane);
+    // read before the job is queued: from then on a visit of an earlier job may run (and free) it
+    const Lane visitLane = job->lane;
+    const char* const visitName = job->name;
     {
         std::lock_guard<std::mutex> lock(queue->mutex);
         job->next = nullptr;
@@ -1774,7 +1777,7 @@ void jobs::detail::Scheduler::publishCounterJob(CounterQueue* queue, Job* job, L
         if (next)
             runBareJob(next);
         releaseCounterQueue(queue);
-    }, job->lane, GateClass::Default, job->name, 0);
+    }, visitLane, GateClass::Default, visitName, 0);
     visit->flags |= kFlagInternal;
     publishJob(visit);
 }
