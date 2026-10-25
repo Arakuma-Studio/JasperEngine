@@ -203,7 +203,7 @@ void captureGame(const CaptureJobPtr& job);
 void captureScene(const CaptureJobPtr& job);
 
 // RGB(A) rows → PNG, scaled down to maxWidth; analyses flatness on the way
-bool encodePixels(const uint8_t* pixels, int width, int height, int channels, int maxWidth,
+[[maybe_unused]] bool encodePixels(const uint8_t* pixels, int width, int height, int channels, int maxWidth,
                   std::vector<uint8_t>& png, int& outWidth, int& outHeight) {
     std::vector<uint8_t> rgb(static_cast<size_t>(width) * height * 3);
     for (int i = 0; i < width * height; i++) {
