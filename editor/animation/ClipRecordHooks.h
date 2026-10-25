@@ -15,9 +15,9 @@
 //   This replaces the single poseInspectorHooks().beforeTransformWrite slot: both the Pose window
 //   and the Animation window are listeners.
 // - Owner: T0 (API, the component-write helpers and the channel write CALL SITES, already in
-//   place: PropertyCmd, ObjectTransformCmd, ComponentValuesCmd, LatticePointsCmd, execute and
-//   undo; the morph weights have no editor write site yet: whoever adds one, e.g. T3c's Inspector
-//   morph rows, calls before/afterComponentWrite); T3a implements the registries and the Animation
+//   place: PropertyCmd, ObjectTransformCmd, ComponentValuesCmd, LatticePointsCmd and
+//   MorphWeightsCmd (the Inspector's Blend Shapes rows), execute and undo; a new write site of a
+//   channel calls before/afterComponentWrite too); T3a implements the registries and the Animation
 //   window's listeners; T3c calls claims/record at the sources (SceneRender gizmo drag, Inspector
 //   Transform rows, morph rows, LatticeEditorOps) and moved the Pose window from
 //   poseInspectorHooks().beforeTransformWrite onto beforeChannelWrite (the old slot is gone).
@@ -109,7 +109,7 @@ namespace jasperengine::editor{
         static void beforeComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
         static void afterComponentWrite(uint32_t sceneId, Entity entity, ComponentType type, const std::string& property);
 
-        // ---- additions (T3c): helpers of the record sources ----
+        // ---- helpers of the record sources ----
 
         // Record takes this edit of a selection: some of `entities` is claimed for `channel`. The
         // sources then record the claimed ones and leave the others unchanged (no scene step: one

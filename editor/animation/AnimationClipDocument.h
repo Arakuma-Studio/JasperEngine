@@ -16,9 +16,7 @@
 //   (commit, undo, redo, reload) invalidates AnimationClipPool for the path, so players in open
 //   scenes rebind (edit preview and play mode see edits immediately).
 // - Owner: T0 (API); T2b implements it (and the Project window, AssetDatabase GUID and auto-sync
-//   plumbing around it). Order: everything here reads and writes through AnimationClipIO, which
-//   is a stub until T1a lands: T2b codes in parallel with T1a but runs its document tests after
-//   T1a is merged (or rebases on it).
+//   plumbing around it). Everything here reads and writes through AnimationClipIO.
 // - Thread-safety: main thread.
 // - Invariants: one document per normalized path; path() is project-relative with '/'; a parse
 //   failure on reload keeps the last good data and adds a warning (with line:col); the GUID of

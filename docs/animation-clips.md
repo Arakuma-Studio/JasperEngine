@@ -131,7 +131,7 @@ The window remembers the label column width and the Dopesheet/Curves choice in t
 - **Clips**: the count, **+ Add Clip** (an empty entry; drop `.anim` files or a model on it), and
   **Create New Clip...**. Each entry is a row named after its state:
   - a file field with a picker and a clear button. Picking a model opens a list of its animations.
-    A model clip shows "(Read-Only)", and a deleted file shows the file name in yellow with a
+    A model clip shows "Read-Only", and a deleted file shows the file name in yellow with a
     warning icon. Right-click the field for Open in Animation Window, Extract to .anim... (model
     clips), Show in Project, Clear and Remove;
   - **Name**: the state name. The default is the file name without `.anim` (or the model clip's

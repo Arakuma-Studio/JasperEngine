@@ -57,7 +57,7 @@ namespace jasperengine::editor{
         static std::vector<Owner> owners();
         static void releaseScene(uint32_t sceneId);
 
-        // ---- additions (T3a) ----
+        // ---- owners without a token of their own, overlap and stops before a copy ----
 
         // acquire() / release() keyed by the owning object, for owners with no place to keep a
         // token (PoseEditSession): one ownership per `who`; acquiring again for the same root

@@ -25,6 +25,7 @@
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "util/EntityPath.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include <chrono>
@@ -85,6 +86,10 @@ void AnimationWindowClip::draw(SceneProject* sceneProject, bool focused){
     // an edit Record does not key (a 2D or UI move of a bound GameObject) says so here
     const std::string recordNote = ClipRecordHooks::takeNote();
     if (!recordNote.empty()) setNotice(recordNote, true);
+    // a save, Play or Prefab Mode Auto Save restored the preview, and Record ended with it
+    if (controller().takeRecordStoppedNotice()){
+        setNotice("Record is off: saving or Play restores the previewed scene, which ends Record (press Record again to go on)", true);
+    }
     // the window handles its keys while focused (App: AnimationClipAppHooks::takesKeys)
     controller().setTakesKeys(focused);
     refreshBinding();
@@ -437,7 +442,7 @@ void AnimationWindowClip::drawBanners(SceneProject* sceneProject){
         ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_LOCK " Read-Only");
         ImGui::SetItemTooltip("%s is an animation of a model: extract it to an .anim file to edit it", doc->path().c_str());
         ImGui::SameLine();
-        if (ImGui::SmallButton(ICON_FA_FILE_EXPORT " Extract to .anim")) askExtract(sceneProject);
+        if (ImGui::SmallButton(ICON_FA_FILE_EXPORT " Extract to .anim...")) askExtract(sceneProject);
         ImGui::SetItemTooltip(c.getStateName().empty() ? "Writes the animation to a new .anim file (one project undo step) and opens it"
                                                        : "Writes the animation to a new .anim file and switches the Animation Player's state to it (one undo step)");
     }
@@ -454,7 +459,7 @@ void AnimationWindowClip::drawBanners(SceneProject* sceneProject){
     if (targetless){
         // the file is edited; the preview runs on an instance of the preview model
         next();
-        ImGui::TextColored(Theme::Colors::SubtleText, "Preview on");
+        ImGui::TextColored(Theme::Colors::SubtleText, "Preview Model");
         ImGui::SameLine();
         static char buffer[512];
         const std::string model = doc->isReadOnly() ? previewOverride : doc->data().previewModel;
@@ -496,7 +501,6 @@ void AnimationWindowClip::drawBanners(SceneProject* sceneProject){
                 std::string error;
                 c.stopPreview();
                 if (ClipSceneActions::reloadModelsForPlayer(project, c.getSceneId(), c.getRoot(), result, error)){
-                    c.setLastActionWasClipEdit(false);
                     setNotice(result.status, false);
                 }else{
                     setNotice(error, true);
@@ -588,9 +592,11 @@ void AnimationWindowClip::drawRowLabel(const Row& row, size_t index, ImVec2 pos,
         // the label: right-click for the row menu (Rebind / Retarget / Remove)
         ImGui::SetCursorScreenPos(ImVec2(pos.x + m.indent + 2.0f * m.s, pos.y));
         ImGui::InvisibleButton("##label", ImVec2(std::max(1.0f, labelEnd - pos.x - m.indent - 2.0f * m.s), height));
+        UIProbe::item("clip.rowLabel." + std::to_string(row.track));
         if (ImGui::IsItemClicked(ImGuiMouseButton_Right)){
+            // opened by drawRowMenu: OpenPopup here would use this row's ID scope
             rowMenuTrack = row.track;
-            ImGui::OpenPopup("##clip_row_menu");
+            rowMenuRequested = true;
         }
         if (ImGui::IsItemClicked(ImGuiMouseButton_Left)){
             // selects the row's keys (Unity)
@@ -1105,6 +1111,10 @@ void AnimationWindowClip::drawKeyContextMenu(){
 }
 
 void AnimationWindowClip::drawRowMenu(){
+    if (rowMenuRequested){
+        rowMenuRequested = false;
+        ImGui::OpenPopup("##clip_row_menu");
+    }
     if (!ImGui::BeginPopup("##clip_row_menu")) return;
     std::shared_ptr<AnimationClipDocument> doc = document();
     const bool editable = doc && !doc->isReadOnly();
@@ -1116,13 +1126,13 @@ void AnimationWindowClip::drawRowMenu(){
     std::string error;
     ImGui::BeginDisabled(!editable || !valid);
     if (ImGui::MenuItem(missing ? "Rebind..." : "Retarget...")) openRebindFor(rowMenuTrack);
+    UIProbe::item("clip.rowMenu.retarget");
     ImGui::SetItemTooltip("Rewrites the property's path in the clip: it changes for every Animation Player using the clip");
     if (ImGui::MenuItem("Add Key at Playhead")){
         if (!addKeysAt(rowMenuTrack, controller().getTime(), &error)) setNotice(error, true);
     }
     if (ImGui::MenuItem("Remove Property")){
         if (!controller().removeTrack((size_t)rowMenuTrack, &error)) setNotice(error, true);
-        else controller().setLastActionWasClipEdit(true);
         selection.clear();
     }
     ImGui::EndDisabled();
@@ -1173,7 +1183,6 @@ void AnimationWindowClip::drawAddPropertyPopup(){
                 if (!c.addProperty(path, channel, &track, &error)){
                     setNotice(error, true);
                 }else{
-                    c.setLastActionWasClipEdit(true);
                     std::shared_ptr<AnimationClipDocument> now = document();
                     if (now && track < now->data().tracks.size()) expanded.insert(rowKey(now->data().tracks[track]));
                 }
@@ -1283,6 +1292,7 @@ void AnimationWindowClip::drawRebindPopup(){
     const ClipTrackData& track = doc->data().tracks[(size_t)rebindTrack];
     const size_t users = rebindSceneUsers + rebindPrefabUsers;
     ImGui::Text("%s %s", rebindMissing ? "Rebind" : "Retarget", ClipValidation::trackLabel(track).c_str());
+    UIProbe::item("clip.rebind.title");
     ImGui::TextColored(Theme::Colors::WarningText, "This rewrites the path in the clip: it changes the clip for %zu Animation %s (%zu in open scenes, %zu in prefabs).",
                        users, users == 1 ? "Player" : "Players", rebindSceneUsers, rebindPrefabUsers);
     if (rebindCandidates.empty()){
@@ -1309,7 +1319,6 @@ void AnimationWindowClip::drawRebindPopup(){
             if (!controller().retargetTrack((size_t)rebindTrack, path, &error)){
                 setNotice(error, true);
             }else{
-                controller().setLastActionWasClipEdit(true);
                 setNotice("Rebound to '" + lastSegment(path) + "' (changes the clip for " + std::to_string(users) +
                           (users == 1 ? " Animation Player)" : " Animation Players)"), false);
             }

@@ -189,6 +189,9 @@ namespace jasperengine::editor{
         int contextRow = -1;
         float contextTime = 0.0f;
         int rowMenuTrack = -1;
+        // a row label was right-clicked: drawRowMenu opens the menu in its own ID scope (the
+        // label's is its row's)
+        bool rowMenuRequested = false;
         // the keys under the mouse, by identity (valid after a commit in the same frame)
         std::vector<KeyId> hoveredKeyIds;
         float hoveredTime = 0.0f;

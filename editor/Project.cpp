@@ -5733,7 +5733,7 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         sceneProject->scene->getSystem<AudioSystem>()->stopSceneSounds();
         // what the animators played (and the bone poses they remember) goes with Play
         sceneProject->scene->getSystem<PoseAnimatorSystem>()->resetAnimators();
-        // and the Animation Players (animation clips spec 3.3; a no-op until T1b)
+        // and the Animation Players (animation clips spec 3.3)
         sceneProject->scene->getSystem<ActionSystem>()->resetPlayers();
 
         // The copy goes with Stop, so its id does too: after the prefab instances the game

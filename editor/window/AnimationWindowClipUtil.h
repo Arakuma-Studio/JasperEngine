@@ -10,6 +10,7 @@
 #include "Theme.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/ClipEditorUtil.h"
 #include "animation/KeyframeSampling.h"
 #include "imgui.h"
 
@@ -70,25 +71,10 @@ namespace jasperengine::editor::clipui{
     inline ImVec4 pendingFieldColor(){ return mix(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.55f); }
     inline ImVec4 keyColor(){ return mix(Theme::Colors::SubtleText, ImVec4(1, 1, 1, 1), 0.55f); }
 
-    inline const char* channelLabel(ClipChannel channel){
-        switch (channel){
-            case ClipChannel::Position: return "Position";
-            case ClipChannel::Rotation: return "Rotation";
-            case ClipChannel::Scale: return "Scale";
-            case ClipChannel::Morph: return "Blend Shapes";
-            case ClipChannel::Lattice: return "Lattice";
-            case ClipChannel::Property: return "Property";
-        }
-        return "";
-    }
+    // (channelLabel, lastSegment: animation/ClipEditorUtil.h, shared with the Inspector)
 
     inline std::string rowKey(const ClipTrackData& track){
         return track.path + "|" + anim::channelName(track.channel);
-    }
-
-    inline std::string lastSegment(const std::string& path){
-        const size_t slash = path.rfind('/');
-        return slash == std::string::npos ? path : path.substr(slash + 1);
     }
 
     inline std::string lower(std::string s){
