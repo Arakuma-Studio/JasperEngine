@@ -3376,7 +3376,8 @@ void previewAnimationTool(const CallPtr& call) {
         return;
     }
     if (!scene->findComponent<AnimationComponent>(target.entity) || !scene->findComponent<ActionComponent>(target.entity)) {
-        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation (it needs Animation and Action components).");
+        call->fail("\"" + scene->getEntityName(target.entity) + "\" is not an Animation (it needs Animation and Action components); for a "
+                   "clip, give a GameObject whose Animation Player lists it (add_component animationplayer).");
         return;
     }
     if (target.scene->playState != ScenePlayState::STOPPED) {

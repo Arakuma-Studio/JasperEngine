@@ -122,6 +122,9 @@ async def test_tools_and_schema(ed: Editor):
     ed.check_in("clip", bake, "bake.clip")
     ed.check("Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}" in ed.instructions, "the instructions bullet")
     ed.check("jasper://docs/animation" in ed.instructions, "the instructions name the guide")
+    # agents review I5: Unity's legacy Animation is the Animation Player, not the entity Animation
+    ed.check("Legacy Animation = AnimationPlayerComponent" in ed.instructions, "the naming rule names the legacy Animation")
+    ed.check(len(ed.instructions.encode()) <= 16384, f"instructions within 16 KB: {len(ed.instructions.encode())}")
 
 
 async def test_create_and_read(ed: Editor):
@@ -176,6 +179,9 @@ async def test_times_sampling(ed: Editor):
     ed.check(approx(ys, expected, 1e-4), f"sampled y {ys}, hand-computed {expected}")
     rot = next(t for t in samples["tracks"] if t["channel"] == "rotation")
     ed.check(approx(rot["values"][2]["euler"][1], 45, 0.05), f"rotation at 0.5 s is halfway (slerp): {rot['values'][2]}")
+    for sample in samples["tracks"]:
+        track = got["tracks"][sample["index"]]
+        ed.check_eq((track["path"], track["channel"]), (sample["path"], sample["channel"]), "samples.tracks[k].index is the track's")
     await refused(ed, "get_animation", {"clip": BOB, "times": "0.5"}, "times must be")
     await refused(ed, "get_animation", {"clip": BOB, "times": [-1]}, ">= 0")
     await refused(ed, "get_animation", {"times": [0]}, "pass clip")
@@ -214,6 +220,7 @@ async def test_file_mode_rejections(ed: Editor):
             ({"wrap": "sideways"}, "once, loop, ping_pong or clamp_forever"), ({"frame_rate": 0}, "1 to 240"),
             ({"length": "long"}, "must be a number"), ({"events": {"time": 0}}, "array"),
             ({"events": [{"time": 0, "function": "on-bob"}]}, "Lua identifier"),
+            ({"events": [{"time": 0, "function": "end"}]}, "not a keyword"),
             ({"events": [{"time": 0, "function": "f", "args": list(range(9))}]}, "at most 8"),
             ({"events": [{"time": 0, "function": "f", "args": [[1]]}]}, "number, string or boolean"),
             ({"events": [{"time": 0, "function": "f", "when": 1}]}, "unknown key"),
@@ -347,6 +354,7 @@ async def test_preview_player(ed: Editor):
     pos = next(t for t in sampled["samples"]["tracks"] if t["channel"] == "position")["values"][0]
     ed.check(approx(bound["position"], pos, 1e-3), f"the preview shows the sampled value: {bound['position']} vs {pos}")
     ed.check_eq(bound["path"], "", "the root's path")
+    ed.check_eq(bound["entity"]["id"], S["box_a"], "bound[] items name their GameObject")
     ed.check(approx(await local_position(ed, S["box_a"]), pos, 1e-3), "the scene shows the preview")
     r = await ed.call_raw("preview_animation", {"animation": S["box_a"], "action": "play", "wait_ms": 300})
     ed.check(not r.is_error and r.structured["playing"], r.text)
@@ -393,6 +401,23 @@ async def test_bindings_hero_robot(ed: Editor):
                tracks=[{"path": miss["nearest"][0], "channel": "rotation", "keys": [{"time": 0, "value": [0, 0, 0, 1]}]}])
     near = await ed.call("get_animation", clip="assets/anim/near.anim", root="Robot")
     ed.check_eq((near["bindings"]["resolved"], near["bindings"]["total"]), (1, 1), f"nearest[0] resolves on Robot: {near['bindings']}")
+    # agents review I1: a model's paths start with its glTF root node; the guide's example is real
+    ed.check(all(p.startswith("Hero/") for p in S["walk_paths"]), f"Hero's paths include its glTF root node: {S['walk_paths'][:3]}")
+    spine = next((m for m in b["missing"] if m["path"] == "Hero/mixamorig:Hips/mixamorig:Spine" and m["channel"] == "rotation"), None)
+    ed.check(spine is not None and spine["nearest"][:1] == ["Robot/pelvis/spine"], f"the guide's nearest example: {spine}")
+    # agents review I3: the fix is a write_file edit renaming the path, every key kept
+    ed.check("fix_with" in b and all("fix" in m for m in b["missing"] if m["status"] == "missing_path" and m["nearest"]),
+             f"missing paths with a nearest one carry fix: {json.dumps(b)[:600]}")
+    await ed.call("move_asset", path="assets/anim/walk.anim", to="assets/anim/walk_robot.anim", copy=True)
+    before = await ed.call("get_animation", clip="assets/anim/walk_robot.anim", root="Robot", max_keys=100000)
+    keys_before = next(t for t in before["tracks"] if t["path"] == spine["path"] and t["channel"] == "rotation")["keys"]
+    r = await ed.call_raw("write_file", {"path": "assets/anim/walk_robot.anim", "edits": [spine["fix"]]})
+    ed.check(not r.is_error, f"the fix applies: {r.text[:500]}")
+    after = await ed.call("get_animation", clip="assets/anim/walk_robot.anim", root="Robot", max_keys=100000)
+    ed.check_eq(after["bindings"]["resolved"], before["bindings"]["resolved"] + 1, "the renamed track binds")
+    moved = next(t for t in after["tracks"] if t["path"] == "Robot/pelvis/spine" and t["channel"] == "rotation")
+    ed.check_eq(moved["keys"], keys_before, "every key kept")
+    ed.check(not any(m["path"] == spine["path"] for m in after["bindings"]["missing"]), "no longer missing")
     # a bone's bound transform in the preview is the sampled value
     r = await ed.call_raw("preview_animation", {"animation": "Hero", "action": "seek", "time": 0.3})
     ed.check(not r.is_error and r.structured["bound_total"] >= len(r.structured["bound"]) and 0 < len(r.structured["bound"]) <= 8,
@@ -432,8 +457,9 @@ async def test_create_from_entity_animation(ed: Editor):
     made, _ = await edit(ed, target=box, tracks=[{"channel": "position", "keys": [{"time": 0, "value": [0, 0, 4]}, {"time": 2, "value": [0, 3, 4]}]}],
                          tweens=[{"type": "scale", "to": [2, 2, 2], "duration": 1}])
     animation = made["animation"]["id"]
-    out, text = await edit(ed, clip="assets/anim/mover.anim", create={"from": animation}, wrap="loop")
+    out, text = await edit(ed, clip="assets/anim/mover.anim", create={"from": animation}, wrap="loop", max_keys=1)
     ed.check(out["created"] and out["added_player"] and out["player"]["name"] == "Mover", f"converted: {text}")
+    ed.check_eq((len(out["tracks"][0]["keys"]), out["tracks"][0]["key_count"]), (1, 2), "max_keys applies to create {from}")
     ed.check("one scene undo step" in text and "undo scope scene" in text, text)
     ed.check_eq([(t["path"], t["channel"]) for t in out["tracks"]], [("", "position")], "keyframe tracks only")
     ed.check(any("not converted" in c for c in out["changes"]), f"the tween is listed: {out['changes']}")
@@ -495,6 +521,7 @@ async def test_asset_tools(ed: Editor):
     ed.check_eq(info["type"], "animation", "type")
     clip = info["clip"]
     ed.check(clip["version"] == 1 and clip["guid"] == S["bob_guid"] and clip["wrap"] == "loop" and len(clip["tracks"]) == 3, f"clip info: {clip}")
+    ed.check(all(isinstance(t["key_count"], int) and "keys" not in t for t in clip["tracks"]), f"a count is key_count: {clip['tracks']}")
     ed.check_eq(len(clip["users"]), 3, "users")
     ed.check("3 users" in r.text, r.text)
     await refused(ed, "view_asset", {"path": BOB}, "preview_animation")
@@ -747,6 +774,94 @@ async def test_create_from_entity_remove_tracks(ed: Editor):
     ed.check("position_track" in kinds and not (ed.project / "assets/anim/mover2.anim").exists(), f"one undo step: {kinds}")
 
 
+async def test_extract_with_root_switches_the_player(ed: Editor):
+    """agents review I2: an extract with root repoints the root's player entries of the model clip
+    to the new file in the same call (the UI's Extract), one scene step; without root the result
+    names the players still playing the model clip."""
+    await ed.call("add_component", entity="Hero", component="animationplayer", values={"animationplayer": {"clips": [{"clip": WALK_SUB}]}})
+    out, text = await edit(ed, clip="assets/anim/walk_alone.anim", create={"from": WALK_SUB})
+    ed.check("one project undo step" in text and "still plays" in text, text)
+    ed.check(out.get("model_clip_users") and out["model_clip_users"][0]["entity"]["name"] == "Hero", f"model_clip_users: {out.get('model_clip_users')}")
+    out, text = await edit(ed, clip="assets/anim/walk_hero.anim", create={"from": WALK_SUB}, root="Hero", wrap="loop")
+    ed.check("plays the file now" in text and "one scene undo step" in text, text)
+    ed.check("model_clip_users" not in out and out["wrap"] == "loop", f"switched, this call's edits in the file: {json.dumps(out)[:400]}")
+    ed.check(any(u["entity"]["name"] == "Hero" for u in out["users"]), f"Hero plays the file: {out['users']}")
+    state = (await ed.call("get_animation", entity="Hero"))["players"][0]["states"]
+    ed.check_eq([(s["name"], s["clip"]) for s in state], [("Walk", "assets/anim/walk_hero.anim")], "the entry switched, its state name kept")
+    await ed.call("undo", scope="scene")
+    ed.check(not (ed.project / "assets/anim/walk_hero.anim").exists(), "the scene undo removes the file")
+    state = (await ed.call("get_animation", entity="Hero"))["players"][0]["states"]
+    ed.check_eq(state[0]["clip"], WALK_SUB, "and the entry plays the model clip again")
+    await ed.call("remove_component", entity="Hero", component="animationplayer")
+
+
+TANGENT_CLIP = {"format": "jasperengine.anim", "version": 1, "tracks": [
+    {"path": "", "channel": "position", "keys": [
+        {"time": 0, "value": [0, 0, 0], "in": [0, 0, 0], "out": [0, 2, 0]},
+        {"time": 1, "value": [0, 1, 0], "in": [0, 2, 0], "out": [0, 1, 0]},
+        {"time": 2, "value": [0, 0, 0], "in": [0, -1, 0], "out": [0, 0, 0]}]},
+    {"path": "", "channel": "rotation", "keys": [
+        {"time": 0, "value": [0, 0, 0, 1], "in": [0, 0, 0, 0], "out": [0, 0.5, 0, 0]},
+        {"time": 1, "value": [0, 0.382683, 0, 0.92388], "in": [0, 0.3, 0, -0.1], "out": [0, 0, 0, 0]}]}]}
+
+
+async def test_tangents_survive_edits(ed: Editor):
+    """agents review I4: keys sent back with their in/out, or unchanged without them, keep their
+    tangents in replace and merge; a changed key without them gets linear tangents."""
+    path = "assets/anim/tangents.anim"
+    r = await ed.call_raw("write_file", {"path": path, "content": json.dumps(TANGENT_CLIP, indent=2)})
+    ed.check(not r.is_error, r.text)
+    got = await ed.call("get_animation", clip=path)
+    tangents = [[(k["in"], k["out"]) for k in t["keys"]] for t in got["tracks"]]
+    ed.check(all("in" in k for t in got["tracks"] for k in t["keys"]), f"read with tangents: {got['tracks']}")
+    # read-modify-write of the whole tracks as read (rotations as {quat, euler})
+    out, _ = await edit(ed, clip=path, tracks=[{"path": t["path"], "channel": t["channel"], "keys": t["keys"]} for t in got["tracks"]])
+    ed.check_eq([[(k.get("in"), k.get("out")) for k in t["keys"]] for t in out["tracks"]], tangents, "replace with the read keys keeps them")
+    rot = out["tracks"][1]["keys"][1]["value"]["quat"]
+    ed.check(approx(rot, [0, 0.382683, 0, 0.92388], 1e-4), f"the rotation stays in its hemisphere: {rot}")
+    # the same keys without in/out: unchanged keys keep their tangents
+    bare = [{"time": k["time"], "value": k["value"]} for k in got["tracks"][0]["keys"]]
+    out, _ = await edit(ed, clip=path, tracks=[{"path": "", "channel": "position", "keys": bare}])
+    ed.check_eq([(k.get("in"), k.get("out")) for k in out["tracks"][0]["keys"]], tangents[0], "unchanged keys keep their tangents")
+    # merge: the changed key loses them, the others keep theirs
+    out, _ = await edit(ed, clip=path, tracks=[{"path": "", "channel": "position", "mode": "merge", "keys": [{"time": 1, "value": [0, 3, 0]}]}])
+    keys = out["tracks"][0]["keys"]
+    ed.check(approx(keys[1]["value"], [0, 3, 0]) and keys[1]["in"] == [0, 3, 0] and keys[1]["out"] == [0, -3, 0],
+             f"the changed key gets the straight line to its neighbours: {keys[1]}")
+    ed.check(any("linear tangents" in w for w in out["warnings"]), f"a warning says so: {out['warnings']}")
+    ed.check_eq([(keys[i].get("in"), keys[i].get("out")) for i in (0, 2)], [tangents[0][0], tangents[0][2]], "untouched keys keep theirs")
+    file = file_json(ed, path)
+    ed.check(isinstance(file["tracks"][0]["keys"][0], dict) and "in" in file["tracks"][0]["keys"][0], f"written with tangents: {file['tracks'][0]}")
+    # explicit tangents on a new key; malformed pairs are refused
+    out, _ = await edit(ed, clip=path, tracks=[{"path": "", "channel": "position", "mode": "merge",
+                                                "keys": [{"time": 1, "value": [0, 3, 0], "in": [0, 1, 0], "out": [0, 1, 0]}]}])
+    ed.check_eq((out["tracks"][0]["keys"][1]["in"], out["tracks"][0]["keys"][1]["out"]), ([0, 1, 0], [0, 1, 0]), "given in/out are written")
+    await refused(ed, "edit_animation", {"clip": path, "tracks": [{"path": "", "keys": [{"time": 0, "value": [0, 0, 0], "in": [0, 0, 0]}]}]},
+                  "in and out go together")
+    await refused(ed, "edit_animation", {"clip": path, "tracks": [{"path": "", "keys": [{"time": 0, "value": [0, 0, 0], "in": [0, 0], "out": [0, 0]}]}]},
+                  "arrays of 3 numbers")
+
+
+async def test_paste_into_a_player_rebinds_the_preview(ed: Editor):
+    """engine review M1: a GameObject pasted as the last child of a player's root (parent written in
+    place, no re-sort) bumps the hierarchy revision: the preview binds it."""
+    await edit(ed, clip="assets/anim/paste_bind.anim", create={}, tracks=[
+        {"path": "Leaf", "channel": "position", "keys": [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 4, 0]}]}])
+    leaf = await make_cube(ed, "Leaf", (0, 0, 9))
+    rig = (await ed.call("create_entity", type="empty", name="PasteRig", position=[0, 0, 9]))["entity_id"]
+    await ed.call("add_component", entity=rig, component="animationplayer", values={"animationplayer": {"clips": [{"clip": "assets/anim/paste_bind.anim"}]}})
+    r = await ed.call_raw("preview_animation", {"animation": rig, "action": "seek", "time": 0.5})
+    ed.check(not r.is_error and r.structured["unresolved"] == ["Leaf"], f"Leaf is not under PasteRig yet: {r.text}")
+    await ed.call("copy_entities", entity=leaf)
+    pasted = (await ed.call("paste_entities", parent=rig))["created"][0]
+    ed.check_eq(pasted["path"], "PasteRig/Leaf", "pasted as the rig's child")
+    r = await ed.call_raw("preview_animation", {"animation": rig, "action": "seek", "time": 0.5})
+    ed.check(not r.is_error and r.structured["unresolved"] == [] and [b["path"] for b in r.structured["bound"]] == ["Leaf"],
+             f"the preview binds the pasted Leaf: {r.text}")
+    await ed.call("preview_animation", animation=rig, action="stop")
+    await ed.call("delete_entities", entities=[rig, leaf])
+
+
 async def test_guide_names_exist(ed: Editor):
     """Every tool, argument and result field the guide names (snake_case, and `tool {` calls) exists."""
     got = await ed.session.read_resource("jasper://docs/animation")
@@ -779,7 +894,9 @@ async def test_guide_names_exist(ed: Editor):
     await ed.call("preview_animation", animation=S["box_b"], action="stop")
     # binding statuses that need a broken setup, ease names and file-format keys
     known |= {"missing_component", "lattice_index_out_of_range", "morph_index_out_of_range", "legacy_model_layout",
-              "unaddressable_name", "duplicate_sibling_name", "missing_path", "quad_out", "in_out", "external_changes", "frame_rate"}
+              "unaddressable_name", "duplicate_sibling_name", "missing_path", "quad_out", "in_out", "external_changes", "frame_rate",
+              # results of calls this test does not repeat: create {from}, an extract, a missing path with a fix, > 50 users
+              "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

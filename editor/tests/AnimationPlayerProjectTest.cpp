@@ -237,7 +237,7 @@ TEST(AnimationPlayerProject, RefusalsNameTheProblemAndGiveAnExample) {
     const std::string on = "animationplayer.clips[0].clip on GameObject " + std::to_string(s.entity) + " \"Hero\": ";
 
     EXPECT_EQ(refusal(s, player({{"clips[0].clip", "assets/anim/missing.anim"}})),
-              on + "clip: assets/anim/missing.anim does not exist: create the clip first (Assets > Create > Animation Clip)" + EXAMPLE + ".");
+              on + "clip: assets/anim/missing.anim does not exist: create it first with edit_animation {clip, create: {}}" + EXAMPLE + ".");
     EXPECT_EQ(refusal(s, player({{"clips[0].clip", "assets/models/hero.gltf"}})),
               on + "clip must be a .anim file or <model>#<animation>" + EXAMPLE + ".");
     EXPECT_EQ(refusal(s, player({{"clips[0].clip", "assets/models/hero.gltf#Run"}})),
@@ -259,7 +259,7 @@ TEST(AnimationPlayerProject, RefusalsNameTheProblemAndGiveAnExample) {
     EXPECT_EQ(refusal(s, player({{"clips", Json::array({Json{{"clip", "assets/anim/walk.anim"}, {"loop", true}}})}})),
               list + "clips[0]: unknown key \"loop\" (an entry is {clip, name, wrap}; its guid follows the clip).");
     EXPECT_EQ(refusal(s, player({{"clips", Json::array({Json{{"clip", "assets/anim/nope.anim"}}})}})),
-              list + "clips[0].clip: assets/anim/nope.anim does not exist: create the clip first (Assets > Create > Animation Clip)" +
+              list + "clips[0].clip: assets/anim/nope.anim does not exist: create it first with edit_animation {clip, create: {}}" +
               EXAMPLE + ".");
     EXPECT_EQ(refusal(s, player({{"clips", "anim/walk.anim"}})),
               list + "clips must be a list of {clip, name, wrap}, e.g. [{\"clip\": \"assets/anim/walk.anim\", \"wrap\": \"loop\"}].");

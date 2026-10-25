@@ -158,7 +158,7 @@ bool anim::isUnityYamlClip(const std::string& text){
 
 const char* anim::unityYamlRefusal(){
     return "This is a Unity .anim (YAML). JasperEngine clips are JSON {\"format\": \"jasperengine.anim\"}: "
-           "create one with Create > Animation Clip or edit_animation {clip, create}.";
+           "create one with Assets > Create > Animation Clip or edit_animation {clip, create}.";
 }
 
 std::string anim::generateClipGuid(){
@@ -251,7 +251,7 @@ bool anim::easeFromName(const std::string& name, EaseType& out){
     return false;
 }
 
-// ---- parser, normalizer and canonical writer (T1a) ----
+// ---- parser, normalizer and canonical writer ----
 
 namespace{
 
@@ -322,20 +322,6 @@ namespace{
             float number;
             if (!toFloat(item, number)) return false;
             out.push_back(number);
-        }
-        return true;
-    }
-
-    bool isLuaIdentifier(const std::string& name){
-        static const char* const keywords[] = {"and", "break", "do", "else", "elseif", "end", "false", "for",
-            "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true",
-            "until", "while"};
-        if (name.empty() || !(std::isalpha((unsigned char)name[0]) || name[0] == '_')) return false;
-        for (char c : name){
-            if (!(std::isalnum((unsigned char)c) || c == '_')) return false;
-        }
-        for (const char* keyword : keywords){
-            if (name == keyword) return false;
         }
         return true;
     }
@@ -759,7 +745,7 @@ namespace{
                 warn(warnings, member(path, "time"), "not a number, event dropped");
                 continue;
             }
-            if (!isLuaIdentifier(event.function)){
+            if (!anim::isLuaIdentifier(event.function)){
                 warn(warnings, member(path, "function"), "\"" + event.function + "\" is not a Lua function name, event dropped");
                 continue;
             }
@@ -1581,4 +1567,18 @@ std::string anim::writeClip(const ClipData& input){
     text.erase(text.size() - 2, 1);
     text += "}\n";
     return text;
+}
+
+bool anim::isLuaIdentifier(const std::string& name){
+    static const char* const keywords[] = {"and", "break", "do", "else", "elseif", "end", "false", "for",
+        "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true",
+        "until", "while"};
+    if (name.empty() || !(std::isalpha((unsigned char)name[0]) || name[0] == '_')) return false;
+    for (char c : name){
+        if (!(std::isalnum((unsigned char)c) || c == '_')) return false;
+    }
+    for (const char* keyword : keywords){
+        if (name == keyword) return false;
+    }
+    return true;
 }
