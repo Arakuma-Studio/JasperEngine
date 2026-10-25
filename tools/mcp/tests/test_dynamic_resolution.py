@@ -30,16 +30,22 @@ async def status(ed: Editor, sid: int) -> dict:
 
 
 async def wait_for(ed: Editor, sid: int, what: str, ok, seconds: float) -> tuple[dict, float]:
-    """Polls the status (frames keep running) until ok(status), at most `seconds` of wall time."""
+    """Polls the status (frames keep running) until ok(status), within `seconds` of the controller's
+    time: the frames' periods, each capped at 0.25 s as the renderer caps the controller's delta
+    (a loaded test machine drawing a frame in 0.4 s gives the controller 0.25 s of it)."""
     start = time.monotonic()
+    controller = 0.0
     got = await status(ed, sid)
-    while not ok(got) and time.monotonic() - start < seconds:
+    while not ok(got) and controller < seconds:
+        before = time.monotonic()
         await ed.call("wait", frames=3)
+        period = (time.monotonic() - before) / 3
+        controller += 3 * min(period, 0.25)
         got = await status(ed, sid)
     elapsed = time.monotonic() - start
-    ed.check(ok(got), f"{what} within {seconds} s (after {elapsed:.2f} s): scene {got['scene_id']}, playing {got['playing']}, "
-                      f"{got['dynamic_resolution']}")
-    return got, elapsed
+    ed.check(ok(got), f"{what} within {seconds} s (after {controller:.2f} s of controller time, {elapsed:.2f} s wall): "
+                      f"scene {got['scene_id']}, playing {got['playing']}, {got['dynamic_resolution']}")
+    return got, controller
 
 
 def source_sizes(ed: Editor, start: int) -> list[tuple[int, int]]:
