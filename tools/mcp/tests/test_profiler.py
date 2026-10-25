@@ -4,16 +4,14 @@ preview (AC10), frame-time spikes (AC11), profiler captures as .jetrace.json and
 (AC12), the Lua Profiler table (AC13) and the CLI's capture (R38).
 
 GPU timing on the build servers' software devices: llvmpipe answers GL_TIME_ELAPSED queries and
-lavapipe writes timestamps, so every pass is timed on both (JASPER_MCP_BACKEND says which)."""
+lavapipe writes timestamps, so every pass is timed on both (a Vulkan editor: JASPER_EDITOR)."""
 
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
-import harness
 from harness import Editor
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -109,8 +107,9 @@ async def test_vram_report(ed: Editor):
     ed.check(owners["groups"] and owners["groups"][0]["bytes"] >= owners["groups"][-1]["bytes"], "owners largest first")
     filtered = await ed.call("get_vram_report", filter="shadow")
     ed.check(all("shadow" in (a["owner"] + a["label"] + a["category"]).lower() for a in filtered["allocations"]), "filter")
-    backend = os.environ.get("JASPER_MCP_BACKEND", "glcore")
-    if backend == "vulkan":
+    # Vulkan (lavapipe, JASPER_EDITOR=build/linux/editor-vulkan-install/...) has timestamps: pipeline_point
+    semantics = (await ed.call("get_render_stats"))["gpu"]["semantics"]
+    if semantics == "pipeline_point":
         ed.check(r["driver"] and r["driver"]["used_bytes"] > 0, f"lavapipe reports its memory: {r['driver']}")
     else:
         ed.check(r["driver"] is None, f"llvmpipe reports none: {r['driver']}")
