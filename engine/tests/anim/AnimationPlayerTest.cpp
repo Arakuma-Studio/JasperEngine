@@ -182,11 +182,198 @@ TEST_F(Player, OnceStopsAtItsEndAndKeepsThePose){
     EXPECT_NEAR(x(arm), 10.0f, 1e-5f) << "the last update samples the end";
     EXPECT_FALSE(object.isPlaying());
     EXPECT_EQ(finished, std::vector<std::string>{"wave"});
-    EXPECT_NEAR(object.getState("wave").getTime(), 0.0f, 1e-6f) << "once resets its time";
+    // R1b: an ended once state holds its last pose at its weight, not playing
     scene.getComponent<Transform>(arm).position.x = 3.0f;
     step(0.5);
-    EXPECT_NEAR(x(arm), 3.0f, 1e-6f) << "a stopped player no longer writes";
+    EXPECT_NEAR(x(arm), 10.0f, 1e-6f) << "held at its end";
+    EXPECT_FALSE(object.isPlaying("wave"));
+    EXPECT_NEAR(object.getState("wave").getTime(), 1.0f, 1e-6f) << "held at its end time";
     EXPECT_EQ(finished.size(), 1u);
+    // stop(name) releases it: rewound, the pose kept, nothing written
+    object.stop("wave");
+    EXPECT_NEAR(object.getState("wave").getTime(), 0.0f, 1e-6f);
+    scene.getComponent<Transform>(arm).position.x = 3.0f;
+    step(0.5);
+    EXPECT_NEAR(x(arm), 3.0f, 1e-6f) << "a released state no longer writes";
+    // play() of a held state restarts it from 0
+    object.play("wave");
+    step(1.5);
+    object.play("wave");
+    step(0.25);
+    EXPECT_NEAR(x(arm), 2.5f, 1e-5f);
+    EXPECT_TRUE(object.isPlaying("wave"));
+}
+
+// R1b, the review's probe: onFinish -> crossFade("idle") blends from the end pose (10) to the
+// idle (12) with no dip toward the rest (5)
+TEST_F(Player, OnFinishCrossFadeDoesNotDipTowardRest){
+    ClipData attack = slide("Arm", 10);
+    ClipData idle = slide("Arm", 0, ClipWrapMode::Loop);
+    idle.tracks[0].keys[0].value = {12, 0, 0};
+    idle.tracks[0].keys[1].value = {12, 0, 0};
+    AnimationPlayer object = player({{"attack", attack}, {"idle", idle}});
+    object.getOnFinish().add("test", std::function<void(const std::string&)>([&object](const std::string& state){
+        if (state == "attack") object.crossFade("idle");
+    }));
+    object.play("attack");
+    step(0.0);
+    float lowest = 100.0f;
+    float previous = 0.0f;
+    bool monotonic = true;
+    for (int i = 0; i < 60; i++){
+        step(1.0 / 30.0);
+        if (i > 30){
+            lowest = std::min(lowest, x(arm));
+            if (x(arm) < previous - 1e-4f) monotonic = false;
+        }
+        previous = x(arm);
+    }
+    EXPECT_GE(lowest, 10.0f - 1e-4f) << "no dip toward the rest";
+    EXPECT_TRUE(monotonic);
+    EXPECT_NEAR(x(arm), 12.0f, 1e-4f);
+    EXPECT_FALSE(object.isPlaying("attack"));
+    EXPECT_NEAR(object.getState("attack").getWeight(), 0.0f, 1e-6f) << "faded out, then released";
+}
+
+// R1b: a crossfade (or a queue with a fade) issued shortly before a once state ends keeps its pose
+// while it fades: no dip toward the rest (0 here)
+TEST_F(Player, CrossFadeNearTheEndOfAOnceStateDoesNotDip){
+    ClipData a = slide("Arm", 0);
+    a.tracks[0].keys[0].value = {10, 0, 0};
+    a.tracks[0].keys[1].value = {10, 0, 0};
+    ClipData b = a;
+    b.tracks[0].keys[0].value = {20, 0, 0};
+    b.tracks[0].keys[1].value = {20, 0, 0};
+    for (bool queued : {false, true}){
+        Entity rig = child(root, queued ? "Queued" : "Crossfaded");
+        Entity limb = child(rig, "Arm", Vector3(0, 0, 0));
+        AnimationPlayer object = player({{"a", a}, {"b", b}}, false, rig);
+        object.play("a");
+        step(0.0);
+        step(0.9);
+        if (queued) object.queue("b", 0.5f);
+        else object.crossFade("b", 0.5f);
+        float lowest = 100.0f;
+        for (int i = 0; i < 30; i++){
+            step(1.0 / 30.0);
+            lowest = std::min(lowest, x(limb));
+        }
+        EXPECT_GE(lowest, 10.0f - 1e-3f) << (queued ? "queue" : "crossFade");
+        EXPECT_NEAR(x(limb), 20.0f, 1e-3f) << (queued ? "queue" : "crossFade");
+    }
+}
+
+// R17 / I1: the playing state queued again with a fade restarts at its end
+TEST_F(Player, QueueingThePlayingStateWithAFadeRestartsIt){
+    AnimationPlayer object = player({{"wave", slide("Arm", 10)}, {"loop", slide("Arm", 10, ClipWrapMode::Loop)}});
+    object.play("wave");
+    step(0.25);
+    object.queue("wave", 0.2f);
+    step(1.0);
+    EXPECT_TRUE(object.isPlaying("wave")) << "once: restarted";
+    EXPECT_NEAR(object.getState("wave").getTime(), 0.25f, 1e-4f);
+    object.play("loop");
+    step(0.5);
+    object.queue("loop", 0.2f);
+    step(0.75);
+    EXPECT_TRUE(object.isPlaying("loop")) << "loop: restarted at the end of its cycle";
+    EXPECT_NEAR(object.getState("loop").getTime(), 0.25f, 1e-4f);
+}
+
+// I2: a queued crossfade's state fires its events at 0, and the outgoing state fades the same frame
+TEST_F(Player, QueuedCrossfadeFiresItsStartEvents){
+    ClipData a = slide("Arm", 10);
+    ClipData b = slide("Arm", 20);
+    b.events = {event(0.0f, "bStart"), event(0.05f, "bEarly")};
+    AnimationPlayer object = player({{"a", a}, {"b", b}});
+    std::vector<std::string> fired;
+    object.getOnEvent().add("test", std::function<void(const AnimationEvent&)>([&](const AnimationEvent& e){
+        fired.push_back(e.functionName);
+    }));
+    object.play("a");
+    object.queue("b", 0.3f);
+    step(0.5);
+    EXPECT_FALSE(object.isPlaying("b"));
+    step(0.25);
+    EXPECT_TRUE(object.isPlaying("b"));
+    EXPECT_GT(object.getState("b").getWeight(), 0.0f) << "faded in for the rest of the update";
+    EXPECT_LT(object.getState("a").getWeight(), 1.0f) << "the outgoing state fades the same frame";
+    step(0.1);
+    EXPECT_EQ(fired, (std::vector<std::string>{"bStart", "bEarly"}));
+}
+
+// M1, M2, M7, M8
+TEST_F(Player, QueueDetails){
+    AnimationPlayer object = player({{"a", slide("Arm", 10)}, {"b", slide("Arm", 4)},
+                                     {"back", slide("Arm", 10, ClipWrapMode::Loop)},
+                                     {"empty", ClipData()}, {"pong", slide("Arm", 10, ClipWrapMode::PingPong)}});
+    // stop(name) clears the queue
+    object.play("a");
+    object.queue("b");
+    object.stop("a");
+    step(0.1);
+    EXPECT_FALSE(object.isPlaying("b"));
+
+    // a loop played backwards shows its end on its first frame
+    object.getState("back").setSpeed(-1.0f);
+    object.play("back");
+    step(0.0);
+    EXPECT_NEAR(x(arm), 10.0f, 1e-5f);
+
+    // a zero-length loop does not hold a queue forever
+    AnimationPlayerComponent& component = scene.getComponent<AnimationPlayerComponent>(root);
+    component.clips[3].wrap = ClipWrapMode::Loop;
+    component.needsLoad = true;
+    object.play("empty");
+    step(0.1);
+    object.queue("b");
+    step(0.1);
+    EXPECT_TRUE(object.isPlaying("b"));
+
+    // a ping-pong queue waits for the way there and back (the cycle)
+    object.play("pong");
+    step(0.25);
+    object.queue("b");
+    step(1.0);
+    EXPECT_TRUE(object.isPlaying("pong")) << "turned at 1, the cycle ends at 2";
+    step(1.0);
+    EXPECT_FALSE(object.isPlaying("pong"));
+    EXPECT_TRUE(object.isPlaying("b"));
+}
+
+// I3: renames that change what a path selects re-resolve (validate-then-re-resolve)
+TEST_F(Player, RenamedSiblingsChangeWhatAPathSelects){
+    // [Leg, Arm]: the Leg renamed "Arm" is now the first Arm
+    Entity hero = child(root, "Body");
+    Entity leg = child(hero, "Leg", Vector3(1, 0, 0));
+    Entity arm2 = child(hero, "Arm", Vector3(42, 0, 0));
+    AnimationPlayer object = player({{"walk", slide("Arm", 10, ClipWrapMode::Loop)}}, false, hero);
+    object.play("walk");
+    step(0.0);
+    step(0.5);
+    EXPECT_NEAR(x(arm2), 5.0f, 1e-5f);
+    scene.setEntityName(leg, "Arm");
+    step(0.1);
+    EXPECT_NEAR(x(leg), 6.0f, 1e-5f) << "the first Arm is animated now";
+    scene.getComponent<Transform>(arm2).position.x = 42.0f;
+    step(0.1);
+    EXPECT_NEAR(x(arm2), 42.0f, 1e-6f) << "the former one is no longer written";
+
+    // [Arm, Arm] with "Arm#1": the first renamed away, nothing is the second Arm any more
+    Entity pair = child(root, "Pair");
+    Entity first = child(pair, "Arm", Vector3(1, 0, 0));
+    Entity second = child(pair, "Arm", Vector3(42, 0, 0));
+    AnimationPlayer other = player({{"reach", slide("Arm#1", 10, ClipWrapMode::Loop)}}, false, pair);
+    other.play("reach");
+    step(0.0);
+    step(0.5);
+    EXPECT_NEAR(x(second), 5.0f, 1e-5f);
+    EXPECT_NEAR(x(first), 1.0f, 1e-6f);
+    scene.setEntityName(first, "Shoulder");
+    scene.getComponent<Transform>(second).position.x = 42.0f;
+    step(0.1);
+    EXPECT_NEAR(x(second), 42.0f, 1e-6f) << "Arm#1 no longer resolves";
+    EXPECT_EQ(other.getStateInfo("reach").boundTracks, 0u);
 }
 
 TEST_F(Player, WrapModes){
@@ -899,10 +1086,30 @@ TEST_F(Player, PerformanceBudget){
     };
     const double still = measure(false);
     const double spawning = measure(true);
+    // M5: one spawn and one destroy a frame under a bone of a rig (named after parenting)
+    Entity bone = scene.findEntity("Bone30");
+    ASSERT_NE(bone, NULL_ENTITY);
+    std::vector<double> boneTimes;
+    Entity attached = NULL_ENTITY;
+    for (int f = 0; f < 120; f++){
+        if (attached != NULL_ENTITY) scene.destroyEntity(attached);
+        attached = scene.createEntity();
+        scene.addComponent<Transform>(attached, {});
+        scene.addEntityChild(bone, attached, false);
+        scene.setEntityName(attached, "Spark");
+        clock::time_point start = clock::now();
+        scene.getSystem<ActionSystem>()->update(1.0 / 60.0);
+        boneTimes.push_back(std::chrono::duration<double, std::milli>(clock::now() - start).count());
+    }
+    std::sort(boneTimes.begin(), boneTimes.end());
+    const double underBone = boneTimes[boneTimes.size() / 2];
+    std::printf("[ perf ]   under a bone: min %.3f, median %.3f, max %.3f ms\n", boneTimes.front(), underBone, boneTimes.back());
     std::printf("[ perf ] 100 players x 60 bones (6100 tracks): %.3f ms a frame, %.3f ms with a spawn per frame (medians)\n",
                 still, spawning);
 #ifdef NDEBUG
+    // the median thread CPU time of a frame
     EXPECT_LT(spawning, 2.0);
+    EXPECT_LT(underBone, 2.0);
 #endif
     // they play
     AnimationPlayerComponent& any = scene.getComponentFromIndex<AnimationPlayerComponent>(0);

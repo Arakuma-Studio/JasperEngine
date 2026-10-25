@@ -244,12 +244,16 @@ bool EntityRegistry::recreateEntity(Entity entity) {
     // undo of a delete: the entity's place in the hierarchy comes back
     hierarchyRev++;
     nameRev++;
+    destroyRev++;
+    logHierarchyChange(destroyedLog, entity);
     return entityManager.recreateEntity(entity);
 }
 
 void EntityRegistry::destroyEntity(Entity entity) {
     if (isInHierarchy(entity)) {
         hierarchyRev++;
+        destroyRev++;
+        logHierarchyChange(destroyedLog, entity);
     }
     onEntityDestroyed(entity, entityManager.getSignature(entity));
 
@@ -267,7 +271,8 @@ void EntityRegistry::destroyEntities(const std::vector<Entity>& entities) {
     for (Entity entity : entities) {
         if (isInHierarchy(entity)) {
             hierarchyRev++;
-            break;
+            destroyRev++;
+            logHierarchyChange(destroyedLog, entity);
         }
     }
     for (Entity entity : entities) {
@@ -302,12 +307,17 @@ void EntityRegistry::setEntityName(Entity entity, const std::string& name) {
         componentManager.getComponent<Transform>(entity).parent != NULL_ENTITY && entityManager.getName(entity) != name) {
         hierarchyRev++;
         nameRev++;
+        logHierarchyChange(renamedLog, entity);
     }
     entityManager.setName(entity, name);
 }
 
 std::string EntityRegistry::getEntityName(Entity entity) const {
     return entityManager.getName(entity);
+}
+
+const std::string& EntityRegistry::getEntityNameRef(Entity entity) const {
+    return entityManager.getNameRef(entity);
 }
 
 Entity EntityRegistry::findEntity(const std::string& name) const {
@@ -513,9 +523,36 @@ uint64_t EntityRegistry::nameRevision() const {
     return nameRev;
 }
 
+uint64_t EntityRegistry::destroyRevision() const {
+    return destroyRev;
+}
+
+void EntityRegistry::hierarchyChanged() {
+    hierarchyRev++;
+}
+
+void EntityRegistry::logHierarchyChange(std::vector<Entity>& log, Entity entity) {
+    if (log.size() < 256) {
+        log.push_back(entity);
+    } else {
+        hierarchyLogOverflow = true;
+    }
+}
+
+void EntityRegistry::takeHierarchyLog(std::vector<Entity>& renamed, std::vector<Entity>& destroyed, bool& overflow) {
+    renamed.swap(renamedLog);
+    destroyed.swap(destroyedLog);
+    overflow = hierarchyLogOverflow;
+    renamedLog.clear();
+    destroyedLog.clear();
+    hierarchyLogOverflow = false;
+}
+
 void EntityRegistry::clear() {
     hierarchyRev++;
     nameRev++;
+    destroyRev++;
+    hierarchyLogOverflow = true;
     std::vector<Entity> entities = getEntityList();
     for (Entity entity : entities) {
         // An owner's removal callbacks can destroy other entities in this snapshot.
