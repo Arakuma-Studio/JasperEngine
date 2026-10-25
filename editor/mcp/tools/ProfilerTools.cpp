@@ -258,7 +258,7 @@ void getFrameTimesTool(const CallPtr& call){
     call->ok(text + ".", data);
 }
 
-// ------------------------------------------------------------------ profiler_capture
+// ------------------------------------------------------------------ capture_profile
 
 Json categoriesJson(const std::vector<profiler::Frame>& frames){
     Json categories = Json::object();
@@ -415,7 +415,7 @@ void getCpuProfileTool(const CallPtr& call){
         captureId = args["capture_id"].get<uint32_t>();
         const std::vector<profiler::Frame>* captured = profiler::captureFrames(captureId);
         if (!captured){
-            call->fail("No capture " + std::to_string(captureId) + " (profiler_capture returns capture_id; 8 are kept).");
+            call->fail("No capture " + std::to_string(captureId) + " (capture_profile returns capture_id; 8 are kept).");
             return;
         }
         for (const profiler::Frame& frame : *captured)
@@ -432,7 +432,7 @@ void getCpuProfileTool(const CallPtr& call){
     }
     if (frames.empty()){
         call->fail(captureId ? "The capture has no frames yet." :
-                   "The profiler has recorded no frames: run profiler_capture, or turn on Record in Window > Analysis > Profiler.");
+                   "The profiler has recorded no frames: run capture_profile, or turn on Record in Window > Analysis > Profiler.");
         return;
     }
     const profiler::Frame* frame = pickFrame(call, frames);
@@ -684,7 +684,7 @@ void getGpuPassesTool(const CallPtr& call){
     if (args.contains("capture_id")){
         const profiler::CaptureId id = args["capture_id"].get<uint32_t>();
         if (!profiler::captureFrames(id)){
-            call->fail("No capture " + std::to_string(id) + " (profiler_capture returns capture_id).");
+            call->fail("No capture " + std::to_string(id) + " (capture_profile returns capture_id).");
             return;
         }
         Json data = {{"view", name}, {"semantics", SystemRender::getGpuTimingState().semantics}};
@@ -1009,8 +1009,8 @@ void registerProfilerTools(McpRegistry& registry){
     }
     {
         ToolDef tool;
-        tool.name = "profiler_capture";
-        tool.title = "Profiler Capture";
+        tool.name = "capture_profile";
+        tool.title = "Capture Profile";
         tool.description =
             "Records `frames` frames (views redraw meanwhile), then replies: capture_id, frame/cpu/gpu ms summaries, per-category "
             "ms, worst_frame, overhead_note (recorded times include the profiler's cost), `path` when save_path is given "
@@ -1120,7 +1120,7 @@ void registerProfilerTools(McpRegistry& registry){
         def.uriTemplate = "jasper://profiler/capture/{id}";
         def.name = "profiler-capture";
         def.title = "Profiler Capture";
-        def.description = "A profiler_capture as .jetrace.json (Chrome Trace Event JSON).";
+        def.description = "A capture_profile as .jetrace.json (Chrome Trace Event JSON).";
         def.mimeType = "application/json";
         def.read = [](const std::string& uri, const std::map<std::string, std::string>& vars){
             ResourceResult result;

@@ -635,3 +635,5 @@ alternative to what the text above asks.
   tools/smoke-test.sh tools/fixtures/post-processing`, then `tools/ci/check_profiler_smoke.py
   --capture build/smoke/capture.jetrace.json build/smoke/game.log` (the path is the container's;
   llvmpipe draws the recorded frames slowly, so the game needs the longer settle).
+- **`profiler_capture` is named `capture_profile`**: S31's convention (a new tool's name is
+  verb_noun, `tools/mcp/tests/test_tool_conventions.py`) landed before S15.

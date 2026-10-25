@@ -24,7 +24,7 @@ TIMEOUT = 900
 DISPLAY = {"show_grid_3d": False, "hide_light_icons": True, "hide_selection_outline": True,
            "hide_camera_view": True, "hide_sound_icons": True}
 
-PROFILER_TOOLS = ["get_render_stats", "get_frame_times", "profiler_capture", "get_cpu_profile", "get_gpu_passes",
+PROFILER_TOOLS = ["get_render_stats", "get_frame_times", "capture_profile", "get_cpu_profile", "get_gpu_passes",
                   "capture_pass_output", "get_vram_report"]
 
 S: dict = {}
@@ -156,10 +156,10 @@ async def test_capture_pass_output(ed: Editor):
     await ed.check_error("capture_pass_output", {"pass": 100000})
 
 
-async def test_profiler_capture(ed: Editor):
+async def test_capture_profile(ed: Editor):
     await red_scene(ed)
     path = ed.project / "captures" / "run.jetrace.json"
-    r = await ed.call("profiler_capture", frames=60, save_path="captures/run.jetrace.json", timeout=600)
+    r = await ed.call("capture_profile", frames=60, save_path="captures/run.jetrace.json", timeout=600)
     ed.check_eq(r["frames"], 60, "60 frames")
     ed.check(r["path"] and Path(r["path"]).exists(), f"written: {r.get('path')}")
     ed.check("overhead_note" in r and "categories" in r and r["worst_frame"] > 0, "summary")
@@ -226,7 +226,7 @@ async def test_lua_profiler(ed: Editor):
         end
         Timer.nextFrame(work)
         return true""")
-    r = await ed.call("profiler_capture", frames=10, gpu=False)
+    r = await ed.call("capture_profile", frames=10, gpu=False)
     tree = await ed.call("get_cpu_profile", capture_id=r["capture_id"], frame="median", filter="work")
     work = [row for row in tree["rows"] if row["name"] == "work"]
     ed.check(work and work[0]["calls"] == 1, f"one 'work' sample a frame: {tree['rows']}")

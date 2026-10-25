@@ -12,7 +12,7 @@ tool is callable by name without it.
 |---|---|
 | `get_render_stats` | the last frame of a view: draws, instances, triangles, passes, pipelines and bindings applied, uniform and upload bytes, alive resources, pipeline cache, `cpu_ms`, `fps`, `gpu {available, reason, frame_ms, semantics}` (also `jasper://stats`) |
 | `get_frame_times` | the always-on history of 600 frames: median/p95/p99/max of `frame_ms`, `cpu_ms`, `gpu_ms`, `fps`; spikes over `min_frame_ms` with `spike_interval_frames`; the newest frames; monitor series |
-| `profiler_capture` | records N frames (views redraw meanwhile), then: `capture_id`, summaries, per-category ms, `worst_frame`, `overhead_note`, `path` when `save_path` is given |
+| `capture_profile` | records N frames (views redraw meanwhile), then: `capture_id`, summaries, per-category ms, `worst_frame`, `overhead_note`, `path` when `save_path` is given |
 | `get_cpu_profile` | one frame of a capture (or of the live recording): the scope tree of a thread, flat rows over every thread, or each thread's busy % |
 | `get_gpu_passes` | the ordered passes of a view's frame: targets, load/store actions, draws, triangles, `cpu_ms`, `gpu_ms`; with `capture_id`, per-label GPU ms over the capture |
 | `capture_pass_output` | an image of what one pass wrote (colour, alpha, depth, one channel) |
@@ -27,13 +27,13 @@ Scene view), `"game"` or `"scene"` by name, or a view tag.
 (16.7 ms at 60 fps). `cpu_ms` is the main thread's work without presenting and waiting; `gpu_ms`
 is the game frame's GPU time while GPU timing runs.
 
-**Find the worst frame and why.** `profiler_capture frames=120` then `get_cpu_profile
+**Find the worst frame and why.** `capture_profile frames=120` then `get_cpu_profile
 capture_id=<id> frame=worst` (tree), `view=flat` (what costs most over every thread) and
 `view=threads` (are the job workers busy?). `filter` narrows rows by name.
 
 **Which pass costs the GPU time?** `get_gpu_passes` arms GPU timing, waits until the times of a
 frame arrive (a few frames late) and lists every pass with `gpu_ms`. Over many frames:
-`profiler_capture frames=300` then `get_gpu_passes capture_id=<id>` gives median/p95/p99/max per
+`capture_profile frames=300` then `get_gpu_passes capture_id=<id>` gives median/p95/p99/max per
 pass label.
 
 **What did a pass draw?** `capture_pass_output pass=<index or label> attachment=color0|depth

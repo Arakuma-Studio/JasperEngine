@@ -627,7 +627,7 @@ local s = Profiler.frameStats()              -- {drawCalls, instances, triangles
 - Samples nest. An `endSample` without its `beginSample` is ignored (logged once). An error in
   `Profiler.sample`'s function is rethrown after the sample closes.
 - Every Lua callback runs inside a `Lua` scope (the CPU chart's Scripts); with Deep Profile Lua
-  (the Profiler's toolbar, `profiler_capture deep_lua`) each callback gets a scope of its own,
+  (the Profiler's toolbar, `capture_profile deep_lua`) each callback gets a scope of its own,
   named by its chunk and line.
 - `frameStats().gpuMs` is there only while GPU timing runs (the Profiler records, an agent called
   `get_gpu_passes`); GPU times arrive a few frames late.

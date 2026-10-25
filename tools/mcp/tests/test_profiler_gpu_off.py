@@ -27,6 +27,6 @@ async def test_gpu_timer_disabled(ed: Editor):
     ed.check(r["passes"] and all(p["gpu_ms"] is None and not p["valid"] for p in r["passes"]), "passes without times")
     stats = await ed.call("get_render_stats")
     ed.check(stats["gpu"]["available"] is False and stats["gpu"]["reason"] == "disabled", f"stats: {stats['gpu']}")
-    capture = await ed.call("profiler_capture", frames=10)
+    capture = await ed.call("capture_profile", frames=10)
     ed.check_eq(capture["frames"], 10, "the CPU profiler still records")
     await ed.check_alive()

@@ -213,7 +213,7 @@ the platform's tier), shadow_distance; meshes that never move: staticShadowCaste
 Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/shadows).
 
 ## Profiling
-The profiling group: get_frame_times (the always-on history), profiler_capture then
+The profiling group: get_frame_times (the always-on history), capture_profile then
 get_cpu_profile (capture_id, frame worst), get_gpu_passes (each pass's GPU ms; with capture_id
 per-label medians), capture_pass_output, get_vram_report, get_render_stats. Compare medians,
 not single frames; GPU time semantics differ per backend (jasper://docs/profiling).
