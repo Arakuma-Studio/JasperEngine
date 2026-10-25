@@ -112,6 +112,7 @@ bool EditorFrame::run(EditorFrameState& state){
     Backend::setMouseControlSuspended(
         playSessionActive && !project->isMainScenePlaying());
 
+    const double frameStart = frameMonotonicSeconds();
     const bool idleFrame = !state.forceRedraw && isIdle();
 
     // Unfocused always drops synchronization, so a blocked present can never
