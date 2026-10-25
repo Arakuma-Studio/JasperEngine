@@ -106,6 +106,8 @@ namespace {
         std::string line, out;
         while (std::getline(in, line)) {
             if (line.rfind("formatVersion:", 0) == 0) continue;
+            // the scene's asset identity (S04): the project's, which a bare decode does not carry
+            if (line.rfind("guid:", 0) == 0 || line.rfind("formerGuids:", 0) == 0) continue;
             out += line + "\n";
         }
         return out;
