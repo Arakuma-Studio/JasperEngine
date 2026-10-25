@@ -303,9 +303,11 @@ void FileWatchService::stop() {
         shared->indexReady = false;
         shared->coalescer.clear();
         shared->state = State::Off;
-        // cursors from before point past the journal: their consumers start over
+        // cursors from before point past the journal: their consumers start over. The ring
+        // keeps its entries: a sequence's slot is (sequence - 1) % JOURNAL_CAPACITY, so clearing
+        // it would leave the next sequences' slots past its end (an out-of-range read in
+        // journalSince after a re-attach)
         shared->oldestSequence = shared->nextSequence;
-        shared->ring.clear();
     }
     {
         std::lock_guard<std::mutex> lock(shared->rawMutex);
