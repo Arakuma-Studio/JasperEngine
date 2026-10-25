@@ -1082,8 +1082,18 @@ void focusWindowTool(const CallPtr& call) {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
     } else if (window == "profiler") {
-        app.getProfilerWindow()->setOpen(true);
+        ProfilerWindow* profiler = app.getProfilerWindow();
+        profiler->setOpen(true);
         imguiName = ProfilerWindow::WINDOW_NAME;
+        // what Load does, without the file dialog
+        const Json options = args.value("profiler", Json::object());
+        if (options.contains("load") && options["load"].is_string()) {
+            std::string error;
+            if (!profiler->loadCapture(options["load"].get<std::string>(), error)) {
+                call->fail("profiler.load: " + error);
+                return;
+            }
+        }
     } else if (window == "frame_debugger") {
         app.getFrameDebuggerWindow()->setOpen(true);
         imguiName = FrameDebuggerWindow::WINDOW_NAME;
@@ -1114,6 +1124,11 @@ void focusWindowTool(const CallPtr& call) {
             }
             if (window == "console") data["console"] = consoleStateJson(*call->ctx().consoleWindow());
             if (window == "preferences") data["page"] = call->ctx().app().getEditorSettingsWindow().pageName();
+            if (window == "profiler") {
+                const ProfilerWindow* profiler = call->ctx().app().getProfilerWindow();
+                data["profiler"] = {{"target", profiler->getTarget()}, {"frames", profiler->targetFrameCount()},
+                                    {"recording", profiler->isRecording()}};
+            }
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
                 return;
@@ -1292,7 +1307,8 @@ void registerViewTools(McpRegistry& registry) {
                 {"select", integer("Select the row of this message id (as a click).")}
             })},
             {"page", string("preferences: General, Code Editor, Undo, External Tools, Logging, Shader Cache.")},
-            {"close", boolean("preferences: close it.")}
+            {"close", boolean("preferences: close it.")},
+            {"profiler", object({{"load", string("A .jetrace.json to load (as Load).")}})}
         }, {"window"});
         tool.annotations.idempotent = true;
         tool.handler = focusWindowTool;

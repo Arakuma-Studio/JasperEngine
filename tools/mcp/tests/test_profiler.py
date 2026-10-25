@@ -51,7 +51,7 @@ async def test_tools_listed(ed: Editor):
         ed.check(name in names, f"{name} is registered")
     for tool in ed.tool_list:
         if tool.name in PROFILER_TOOLS:
-            ed.check(tool.annotations and tool.annotations.readOnlyHint, f"{tool.name} is read-only")
+            ed.check(tool.annotations and tool.annotations.read_only_hint, f"{tool.name} is read-only")
 
 
 async def test_render_stats(ed: Editor):
@@ -112,7 +112,8 @@ async def test_vram_report(ed: Editor):
     if semantics == "pipeline_point":
         ed.check(r["driver"] and r["driver"]["used_bytes"] > 0, f"lavapipe reports its memory: {r['driver']}")
     else:
-        ed.check(r["driver"] is None, f"llvmpipe reports none: {r['driver']}")
+        # Mesa's llvmpipe exposes GL_NVX_gpu_memory_info (its total, not what is in use): null or that
+        ed.check(r["driver"] is None or r["driver"]["source"] == "GL_NVX_gpu_memory_info", f"the GL driver's figure: {r['driver']}")
 
 
 async def test_capture_pass_output(ed: Editor):
@@ -126,7 +127,9 @@ async def test_capture_pass_output(ed: Editor):
     ed.check(not shot.is_error and shot.images, f"an image of the pass: {shot.text}")
     w, h, n, rows = decode_png(shot.images[0][0])
     centre = rows[h // 2][(w // 2) * n:(w // 2) * n + 3]
-    ed.check(abs(centre[0] - 255) <= 3 and centre[1] <= 3 and centre[2] <= 3, f"the centre is red: {list(centre)}")
+    ed.check(abs(centre[0] - 255) <= 3 and centre[1] <= 3 and centre[2] <= 3,
+             f"the centre of pass {opaque['index']} {opaque['label']} is red: {list(centre)}; passes "
+             f"{[(p['index'], p['label'], p['draws'], [t['attachment'] for t in p['targets']]) for p in r['passes']]}")
     depth_pass = [p for p in r["passes"] if any(t["attachment"] == "depth" and t.get("samples", 1) == 1 for t in p["targets"])]
     if depth_pass:
         target = max(depth_pass, key=lambda p: p["draws"])
@@ -168,38 +171,39 @@ async def test_profiler_capture(ed: Editor):
     ed.check(gpu["passes"] and gpu["frames_with_gpu"] > 30, f"the capture's pass times: {gpu.get('frames_with_gpu')}")
     resource = await ed.session.read_resource(f"jasper://profiler/capture/{r['capture_id']}")
     ed.check(json.loads(resource.contents[0].text)["jasper"]["version"] == 1, "jasper://profiler/capture/{id}")
-    # the Profiler window loads it back
-    ui = await ed.call("focus_window", window="profiler")
+    # the Profiler window loads the file back (its Load button, without the file dialog)
+    ui = await ed.call("focus_window", window="profiler", profiler={"load": str(path)})
     ed.check(ui["shown"], "the Profiler window")
-    loaded = await ed.call("eval_lua", code="return 1", allow_edit_mode=True)
-    ed.check(loaded == 1, "the editor still answers")
+    ed.check_eq(ui["profiler"]["frames"], 60, "the Profiler shows the capture's 60 frames")
+    ed.check(ui["profiler"]["target"] != 0, "its target is the loaded capture")
 
 
 async def test_frame_times_spikes(ed: Editor):
-    """A script that busy-waits 50 ms every 30th frame (AC11)."""
+    """A script that busy-waits every 30th frame (AC11: 50 ms; here 200 ms, so a slow software-rendered
+    frame of a loaded build server is never taken for a spike)."""
     scene = await red_scene(ed)
     await ed.call("play", action="start", scene=scene)
     await ed.call("eval_lua", code="""
         local function spike()
             local t = os.clock()
-            while os.clock() - t < 0.05 do end
+            while os.clock() - t < 0.2 do end
             Timer.afterFrames(30, spike)
         end
         Timer.afterFrames(30, spike)
         return true""")
     await ed.call("wait", frames=130)
-    r = await ed.call("get_frame_times", window=120, min_frame_ms=40, monitors=["FPS", "Draw calls"])
+    r = await ed.call("get_frame_times", window=120, min_frame_ms=150, monitors=["FPS", "Draw calls"])
     await ed.call("play", action="stop")
     ed.check(r["spike_count"] >= 3, f"spikes: {r['spike_count']} {r.get('spikes')}")
     ed.check_eq(r["spike_interval_frames"], 30, "spike interval")
-    ed.check(r["summary"]["frame_ms"]["max"] >= 40, "the max is a spike")
+    ed.check(r["summary"]["frame_ms"]["max"] >= 150, "the max is a spike")
     ed.check(len(r["monitors"]["FPS"]["series"]) > 0, "the FPS monitor's series")
     await ed.check_error("get_frame_times", {"monitors": ["No such monitor"]}, contains="Monitors:")
 
 
 async def test_lua_profiler(ed: Editor):
     scene = await red_scene(ed)
-    stats = await ed.call("eval_lua", code="return Profiler.frameStats()", allow_edit_mode=True)
+    stats = (await ed.call("eval_lua", code="return Profiler.frameStats()", allow_edit_mode=True))["values"][0]
     ed.check(stats["drawCalls"] > 0 and stats["fps"] >= 0 and "cpuMs" in stats, f"frameStats: {stats}")
     await ed.call("play", action="start", scene=scene)
     await ed.call("eval_lua", code="""

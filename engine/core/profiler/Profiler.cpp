@@ -25,6 +25,14 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__EMSCRIPTEN__)
+    #if defined(_MSC_VER)
+        #include <intrin.h>
+    #else
+        #include <x86intrin.h>
+    #endif
+#endif
+
 #if defined(_WIN32)
     #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
@@ -50,14 +58,75 @@ std::atomic<bool> profiler::enabledFlag{false};
 
 namespace {
 
-    // ---- clock
+    // ---- clock: events take the CPU's counter (a few cycles; a steady_clock read is a vDSO call
+    // that costs tens of ns on a virtual machine), converted to steady_clock nanoseconds when
+    // drained, with a factor the main thread refines every frame
 
-    uint64_t nowNs(){
+    uint64_t steadyNs(){
 #if defined(__EMSCRIPTEN__)
         return (uint64_t)(emscripten_get_now() * 1.0e6);
 #else
         return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
 #endif
+    }
+
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(__EMSCRIPTEN__)
+    inline uint64_t readTicks(){ return __rdtsc(); }
+    #define JE_PROFILER_COUNTER_CLOCK 1
+#elif defined(__aarch64__) && !defined(_MSC_VER) && !defined(__EMSCRIPTEN__)
+    inline uint64_t readTicks(){
+        uint64_t value;
+        asm volatile("mrs %0, cntvct_el0" : "=r"(value));
+        return value;
+    }
+    #define JE_PROFILER_COUNTER_CLOCK 1
+#else
+    inline uint64_t readTicks(){ return steadyNs(); }
+    #define JE_PROFILER_COUNTER_CLOCK 0
+#endif
+
+    struct TickClock {
+        uint64_t baseTicks = 0;
+        uint64_t baseNs = 0;
+        std::atomic<double> nsPerTick{1.0};   // refined by the main thread, read by any
+        TickClock(){
+            baseTicks = readTicks();
+            baseNs = steadyNs();
+#if JE_PROFILER_COUNTER_CLOCK
+            // a first factor over 2 ms; frameMark refines it over the whole run
+            const uint64_t until = baseNs + 2000000;
+            uint64_t ns = baseNs;
+            while (ns < until)
+                ns = steadyNs();
+            const uint64_t ticks = readTicks();
+            if (ticks > baseTicks)
+                nsPerTick.store((double)(ns - baseNs) / (double)(ticks - baseTicks), std::memory_order_relaxed);
+#endif
+        }
+        uint64_t toNs(uint64_t ticks) const{
+#if JE_PROFILER_COUNTER_CLOCK
+            return baseNs + (uint64_t)((double)(int64_t)(ticks - baseTicks) * nsPerTick.load(std::memory_order_relaxed));
+#else
+            return ticks;
+#endif
+        }
+        void refine(){
+#if JE_PROFILER_COUNTER_CLOCK
+            const uint64_t ticks = readTicks();
+            const uint64_t ns = steadyNs();
+            if (ns > baseNs + 100000000 && ticks > baseTicks)
+                nsPerTick.store((double)(ns - baseNs) / (double)(ticks - baseTicks), std::memory_order_relaxed);
+#endif
+        }
+    };
+
+    TickClock& tickClock(){
+        static TickClock* clock = new TickClock();
+        return *clock;
+    }
+
+    uint64_t nowNs(){
+        return tickClock().toNs(readTicks());
     }
 
     uint64_t osThreadId(){
@@ -336,17 +405,18 @@ namespace {
         uint64_t tail = buffer->tail.load(std::memory_order_relaxed);
         while (tail < head){
             const Event& event = buffer->events[tail & buffer->mask];
-            if (event.ns > until)
+            const uint64_t eventNs = tickClock().toNs(event.ns);
+            if (eventNs > until)
                 break;   // the next frame's: a ring is in time order
             if ((event.nameKind & KIND_END) == 0){
-                buffer->stack.push_back({event.nameKind & NAME_MASK, event.ns, 0});
+                buffer->stack.push_back({event.nameKind & NAME_MASK, eventNs, 0});
             }else if (!buffer->stack.empty()){
                 const OpenScope open = buffer->stack.back();
                 buffer->stack.pop_back();
                 if (keep){
                     Interval interval;
                     interval.startNs = open.startNs;
-                    interval.endNs = std::max(event.ns, open.startNs);
+                    interval.endNs = std::max(eventNs, open.startNs);
                     interval.nameId = open.nameId;
                     interval.depth = (uint16_t)buffer->stack.size();
                     interval.flags = open.flags;
@@ -509,8 +579,8 @@ void profiler::setEnabled(bool enabled){
             const uint64_t start = nowNs();
             for (int i = 0; i < 1000; i++){
                 const uint64_t h = scratch.head.load(std::memory_order_relaxed);
-                scratch.events[h & scratch.mask] = {nowNs(), KIND_BEGIN | 1u, 0};
-                scratch.events[(h + 1) & scratch.mask] = {nowNs(), KIND_END, 0};
+                scratch.events[h & scratch.mask] = {readTicks(), KIND_BEGIN | 1u, 0};
+                scratch.events[(h + 1) & scratch.mask] = {readTicks(), KIND_END, 0};
                 scratch.head.store(h + 2, std::memory_order_release);
             }
             s.pairCostNs = (double)(nowNs() - start) / 1000.0;
@@ -559,7 +629,7 @@ bool profiler::beginScope(uint32_t nameId){
         buffer->dropped.fetch_add(1, std::memory_order_relaxed);
         return false;
     }
-    buffer->events[head & buffer->mask] = {nowNs(), (nameId & NAME_MASK) | KIND_BEGIN, 0};
+    buffer->events[head & buffer->mask] = {readTicks(), (nameId & NAME_MASK) | KIND_BEGIN, 0};
     buffer->head.store(head + 1, std::memory_order_release);
     buffer->openDepth++;
     return true;
@@ -570,7 +640,7 @@ void profiler::endScope(){
     if (!buffer || buffer->openDepth == 0)
         return;
     const uint64_t head = buffer->head.load(std::memory_order_relaxed);
-    buffer->events[head & buffer->mask] = {nowNs(), KIND_END, 0};
+    buffer->events[head & buffer->mask] = {readTicks(), KIND_END, 0};
     buffer->head.store(head + 1, std::memory_order_release);
     buffer->openDepth--;
 }
@@ -605,6 +675,7 @@ void profiler::setDetailLimits(size_t frames, size_t bytes){
 
 void profiler::frameMark(){
     State& s = state();
+    tickClock().refine();
     const uint64_t now = nowNs();
     const bool recording = isEnabled();
     ThreadTable& t = threadTable();

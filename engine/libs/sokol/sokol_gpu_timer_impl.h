@@ -969,8 +969,9 @@ bool sgj_query_device_memory(sgj_device_memory* out) {
             out->source = "GL_NVX_gpu_memory_info";
             out->budget_bytes = (uint64_t)total * 1024u;
             out->available_bytes = (uint64_t)available * 1024u;
-            out->used_bytes = out->budget_bytes > out->available_bytes ? out->budget_bytes - out->available_bytes : 0;
-            out->used_known = true;
+            // a driver without a current figure (Mesa's software ones) reports only its total
+            out->used_known = available > 0;
+            out->used_bytes = out->used_known && out->budget_bytes > out->available_bytes ? out->budget_bytes - out->available_bytes : 0;
             return total > 0;
         }
         if (ati) {

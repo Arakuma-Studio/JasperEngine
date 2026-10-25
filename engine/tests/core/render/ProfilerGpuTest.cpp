@@ -107,9 +107,11 @@ TEST_F(GpuTimerGpu, EveryPassIsTimed){
         if (frame >= 4 && !list.gpuPending && list.gpuFrameValid)
             break;
     }
+    const GpuTimingState timer = SystemRender::getGpuTimingState();
     SystemRender::releaseGpuTiming();
     ASSERT_FALSE(list.passes.empty());
-    EXPECT_FALSE(list.gpuPending);
+    EXPECT_FALSE(list.gpuPending) << "resolved " << timer.resolvedCommits << ", dropped (overflow " << timer.droppedOverflow
+                                  << ", disjoint " << timer.droppedDisjoint << "), " << list.passes.size() << " passes";
     ASSERT_TRUE(list.gpuFrameValid);
     double sum = 0.0;
     for (const PassRecord& pass : list.passes){
