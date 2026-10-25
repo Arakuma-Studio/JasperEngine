@@ -70,6 +70,9 @@ The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build
   appear at that console level (log, info, warning, error), in order; an error listed there is
   expected and fails nothing. `GATE=core-utilities` (after `WEB_PROJECT=core-utilities tools/build.sh
   web`) checks the logger's browser console sink and a Lua `Timer` that way.
+- The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
+  terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
+  renderer uploads it as R32F or R16F there).
 
 ### Test projects
 
