@@ -594,14 +594,16 @@ Unit tests live in `engine/tests/core/ecs/` (S02 gtest target `jasperengine_core
   the Transform rotation itself, the same before and after S07.
 - **R25 and R26 are measured on the benchmark-only server E** (4 dedicated EPYC-Milan vCPUs,
   nothing else running; the shared build servers ran at load 20-90 and gave 1.5-2x the times).
-  `run-ecs-bench.py --baseline-archive <git archive oe-port engine>` (7 runs each), three times;
-  every R25, R26 and R27 budget is met in the median of the three. Medians (ms; ns/op for
-  lookup), 10k / 100k: create 1.43 / 14.7, destroy one by one 1.05 / 23.4, remove 10% 0.16 /
-  3.55, add 0.25 / 2.51, index loop 0.025 / 0.41, view 0.035 / 0.60, lookup 6.0 / 11.5,
-  move_branch 0.13 / 0.34. R26: destroy 10k 530x, metadata at 100k 14x, index loop 1.2x /
-  1.2-1.3x faster than before, view 1.8x / 1.7-2.4x the baseline index loop. R27: 17.3 B per
-  component and 76 B per entity at 100k. Destroy at 100k varies most between processes
-  (21.0-27.7 ms within one run's seven samples; the run medians were 23.4, 26.3 and 22.0): it is bound
+  `run-ecs-bench.py --baseline-archive <git archive oe-port engine>` (7 runs each), three times,
+  on the final merge with oe-port (S04); every R25, R26 and R27 budget is met in the median of
+  the three. Medians (ms; ns/op for lookup), 10k / 100k: create 1.44 / 14.3, destroy one by one
+  1.05 / 22.4, remove 10% 0.16 / 3.62, add 0.24 / 2.44, index loop 0.024 / 0.45, view 0.035 /
+  0.73, lookup 6.1 / 10.0, move_branch 0.15 / 0.33. R26: destroy 10k 482-555x, metadata at
+  100k 14-16x, index loop 1.15-1.33x / 1.16-1.27x faster than before, view 1.8-1.9x / 1.9-2.8x
+  the baseline index loop. R27: 17.3 B per component and 76 B per entity at 100k. Destroy at
+  100k is the tight one: the run medians of that set were 22.4, 25.5 and 22.1, and of an
+  earlier set on the same code 22.8, 25.8 and 26.0 (median 25.8, missed); within one run its
+  seven samples spread 21-30 ms, as the machine's own floor_destroy does (2.4-5.6 ms). It is bound
   by cache misses on randomly ordered entities. What got it there: Vector3, Quaternion and
   Matrix4 construct and copy inline and trivially (a Transform move is a plain copy); a destroy
   allocates nothing (an intrusive entity free list, arena chunks reserving their page lists,
