@@ -821,6 +821,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/LinkMaterialCmd.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/CreateClipCmd.cpp
+    ${EDITOR_DIR}/command/type/ClipSceneActions.cpp
     ${EDITOR_DIR}/command/type/CreatePrefabVariantAssetCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentToPrefabSharedCmd.cpp
     ${EDITOR_DIR}/command/type/UnpackPrefabCmd.cpp

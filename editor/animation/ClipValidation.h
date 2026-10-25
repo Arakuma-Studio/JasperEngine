@@ -73,6 +73,10 @@ namespace jasperengine::editor{
         size_t resolved = 0;                    // tracks whose status is Ok or DuplicateSiblingName
         size_t total = 0;                       // sampled tracks
         bool legacyModelLayout = false;
+        // the models on or under the root loaded in the legacy layout (R3): the fix is
+        // ClipSceneActions::reloadModelsForPlayer (PlayerModelLayout::ensureNodeHierarchyForPlayer
+        // as one scene step); tracks that can't bind because of it are LegacyModelLayout
+        std::vector<Entity> legacyModels;
         std::vector<TrackReport> tracks;
         std::vector<EventReport> events;
         std::vector<ClipWarning> warnings;      // other problems (unaddressable names in the root...)

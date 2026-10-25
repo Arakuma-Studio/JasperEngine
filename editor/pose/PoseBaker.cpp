@@ -23,8 +23,17 @@
 
 #include "pose/PoseInspectorHooks.h"
 
+#include "animation/AnimationClipIO.h"
+#include "animation/ClipConverters.h"
+#include "command/type/ClipSceneActions.h"
+#include "component/AnimationPlayerComponent.h"
+#include "util/FileUtils.h"
+
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <map>
 #include <set>
 
@@ -51,86 +60,116 @@ namespace {
 
 }
 
-bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, PoseAnimationDocument& document,
-                             const std::string& requestedName, PoseBakeResult& result, std::string& error){
-    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
-    if (!sceneProject || !sceneProject->scene){
-        error = "the scene is not open";
-        return false;
-    }
-    if (sceneProject->playState != ScenePlayState::STOPPED){
-        error = "the scene is playing: stop play mode before baking";
-        return false;
-    }
-    Scene* scene = sceneProject->scene;
-    if (!scene->findComponent<ModelComponent>(model)){
-        error = "\"" + scene->getEntityName(model) + "\" is not a model GameObject";
-        return false;
-    }
-    const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forSceneModel(project, scene, model);
-    if (!info->rig){
-        error = info->error;
-        return false;
-    }
-    const std::shared_ptr<const PoseRealisation> realised = document.realise(info->rig);
-    if (!realised || document.data().poses.empty() || realised->frames.size() < 2){
-        error = "the animation has no poses to bake";
-        return false;
-    }
-    const pose::PoseRig& rig = *info->rig;
-    const pose::PoseAnimationData& data = document.data();
-    const std::vector<pose::HumanPose>& frames = realised->frames;
-    const size_t count = frames.size() - 1;
-    const float length = static_cast<float>(realised->timeline.length);
+namespace {
 
-    std::vector<float> times;
-    for (size_t f = 0; f < frames.size(); f++){
-        times.push_back(f == count ? length : static_cast<float>(static_cast<double>(f) * realised->timeline.length / static_cast<double>(count)));
-    }
-    std::vector<EaseType> easings;
-    if (data.settings.stepRate > 0.0f){
-        easings.assign(count, EaseType::STEP);
-    }
+    // The frames of a bake, shared by the entity bake and the clip bake (the same keys)
+    struct BakeFrames {
+        std::vector<float> times;
+        std::vector<EaseType> easings;      // per segment (step when stepped), empty = linear
+        std::vector<TrackPlan> plans;
+        float length = 0.0f;
+        int frames = 0;
+    };
 
-    std::vector<TrackPlan> plans;
-    for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
-        const pose::HumanBone slot = pose::boneAt(b);
-        const int bone = rig.boneIndex(slot);
-        if (bone < 0 || static_cast<size_t>(bone) >= info->boneEntities.size() || info->boneEntities[bone] == NULL_ENTITY){
-            continue;
+    bool computeBake(editor::Project* project, uint32_t sceneId, Entity model, editor::PoseAnimationDocument& document,
+                     BakeFrames& out, std::string& error){
+        using namespace editor;
+        SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+        if (!sceneProject || !sceneProject->scene){
+            error = "the scene is not open";
+            return false;
         }
-        TrackPlan plan;
-        plan.bone = info->boneEntities[bone];
-        plan.name = scene->getEntityName(plan.bone) + " rotation";
-        TrackPlan hips;
-        hips.bone = plan.bone;
-        hips.translation = true;
-        hips.name = scene->getEntityName(plan.bone) + " position";
-        // the pose is in skeleton-local terms; the tracks write the bone's Transform, so the
-        // non-bone ancestors ModelRig folded into the skeleton come off again
-        const bool bridged = static_cast<size_t>(bone) < info->bridges.size() && !(info->bridges[bone] == Matrix4());
-        const Matrix4 unbridge = bridged ? info->bridges[bone].inverse() : Matrix4();
-        const pose::SkeletonBone& rest = rig.skeleton().bones[bone];
-        for (const pose::HumanPose& frame : frames){
-            const Vector3 position = slot == pose::HumanBone::Hips ? frame.hipsPosition : rest.position;
-            if (bridged){
-                const Matrix4 local = unbridge * Matrix4::translateMatrix(position) * frame.rotations[b].getRotationMatrix() *
-                                      Matrix4::scaleMatrix(rest.scale);
-                Vector3 p, s;
-                Quaternion r;
-                local.decompose(p, s, r);
-                plan.rotations.push_back(r);
-                hips.positions.push_back(p);
-            }else{
-                plan.rotations.push_back(frame.rotations[b]);
-                hips.positions.push_back(position);
+        if (sceneProject->playState != ScenePlayState::STOPPED){
+            error = "the scene is playing: stop play mode before baking";
+            return false;
+        }
+        Scene* scene = sceneProject->scene;
+        if (!scene->findComponent<ModelComponent>(model)){
+            error = "\"" + scene->getEntityName(model) + "\" is not a model GameObject";
+            return false;
+        }
+        const std::shared_ptr<const PoseRigInfo> info = PoseRigProvider::forSceneModel(project, scene, model);
+        if (!info->rig){
+            error = info->error;
+            return false;
+        }
+        const std::shared_ptr<const PoseRealisation> realised = document.realise(info->rig);
+        if (!realised || document.data().poses.empty() || realised->frames.size() < 2){
+            error = "the animation has no poses to bake";
+            return false;
+        }
+        const pose::PoseRig& rig = *info->rig;
+        const pose::PoseAnimationData& data = document.data();
+        const std::vector<pose::HumanPose>& frames = realised->frames;
+        const size_t count = frames.size() - 1;
+        const float length = static_cast<float>(realised->timeline.length);
+
+        std::vector<float>& times = out.times;
+        for (size_t f = 0; f < frames.size(); f++){
+            times.push_back(f == count ? length : static_cast<float>(static_cast<double>(f) * realised->timeline.length / static_cast<double>(count)));
+        }
+        if (data.settings.stepRate > 0.0f){
+            out.easings.assign(count, EaseType::STEP);
+        }
+
+        std::vector<TrackPlan>& plans = out.plans;
+        for (int b = 0; b < pose::HUMAN_BONE_COUNT; b++){
+            const pose::HumanBone slot = pose::boneAt(b);
+            const int bone = rig.boneIndex(slot);
+            if (bone < 0 || static_cast<size_t>(bone) >= info->boneEntities.size() || info->boneEntities[bone] == NULL_ENTITY){
+                continue;
+            }
+            TrackPlan plan;
+            plan.bone = info->boneEntities[bone];
+            plan.name = scene->getEntityName(plan.bone) + " rotation";
+            TrackPlan hips;
+            hips.bone = plan.bone;
+            hips.translation = true;
+            hips.name = scene->getEntityName(plan.bone) + " position";
+            // the pose is in skeleton-local terms; the tracks write the bone's Transform, so the
+            // non-bone ancestors ModelRig folded into the skeleton come off again
+            const bool bridged = static_cast<size_t>(bone) < info->bridges.size() && !(info->bridges[bone] == Matrix4());
+            const Matrix4 unbridge = bridged ? info->bridges[bone].inverse() : Matrix4();
+            const pose::SkeletonBone& rest = rig.skeleton().bones[bone];
+            for (const pose::HumanPose& frame : frames){
+                const Vector3 position = slot == pose::HumanBone::Hips ? frame.hipsPosition : rest.position;
+                if (bridged){
+                    const Matrix4 local = unbridge * Matrix4::translateMatrix(position) * frame.rotations[b].getRotationMatrix() *
+                                          Matrix4::scaleMatrix(rest.scale);
+                    Vector3 p, s;
+                    Quaternion r;
+                    local.decompose(p, s, r);
+                    plan.rotations.push_back(r);
+                    hips.positions.push_back(p);
+                }else{
+                    plan.rotations.push_back(frame.rotations[b]);
+                    hips.positions.push_back(position);
+                }
+            }
+            plans.push_back(plan);
+            if (slot == pose::HumanBone::Hips){
+                plans.push_back(hips);
             }
         }
-        plans.push_back(plan);
-        if (slot == pose::HumanBone::Hips){
-            plans.push_back(hips);
-        }
+        out.length = length;
+        out.frames = static_cast<int>(frames.size());
+        return true;
     }
+
+}
+
+bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, PoseAnimationDocument& document,
+                             const std::string& requestedName, PoseBakeResult& result, std::string& error){
+    BakeFrames baked;
+    if (!computeBake(project, sceneId, model, document, baked, error)){
+        return false;
+    }
+    Scene* scene = project->getScene(sceneId)->scene;
+    const pose::PoseAnimationData& data = document.data();
+    const std::vector<float>& times = baked.times;
+    const std::vector<EaseType>& easings = baked.easings;
+    const std::vector<TrackPlan>& plans = baked.plans;
+    const float length = baked.length;
 
     std::string name = requestedName;
     if (name.empty()){
@@ -277,7 +316,7 @@ bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, P
 
     result.animation = animation;
     result.name = scene->getEntityName(animation);
-    result.frames = static_cast<int>(frames.size());
+    result.frames = baked.frames;
     result.tracks = static_cast<int>(plans.size());
     result.length = length;
     return true;
@@ -307,6 +346,143 @@ bool editor::PoseBaker::bakeAnimatorAsset(Project* project, uint32_t sceneId, En
 std::string editor::PoseBaker::bakeStatusLine(const std::string& animation, const PoseBakeResult& result){
     return "Baked '" + animation + "' to the Animation '" + result.name + "' (" + std::to_string(result.tracks) + " tracks, " +
            std::to_string(result.frames) + " keys each): Model:playAnimation(\"" + result.name + "\")";
+}
+
+namespace {
+
+    std::string documentStem(const editor::PoseAnimationDocument& document){
+        const std::string& path = document.path();
+        const size_t slash = path.find_last_of('/');
+        std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+        const size_t dot = name.find_last_of('.');
+        if (dot != std::string::npos && dot > 0) name = name.substr(0, dot);
+        return name;
+    }
+
+    // a clip file that a bake of `poseAnimation` wrote (its source says so)
+    bool bakedFrom(const std::filesystem::path& file, const std::string& poseAnimation){
+        std::ifstream in(file, std::ios::binary);
+        if (!in) return false;
+        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const anim::ClipParseResult parsed = anim::parseClip(text);
+        return parsed.ok() && parsed.data->source.kind == "pose" && parsed.data->source.path == poseAnimation;
+    }
+
+}
+
+bool editor::PoseBaker::bakeToClip(Project* project, uint32_t sceneId, Entity model, PoseAnimationDocument& document,
+                                   const std::string& requestedName, const std::string& clipPath, PoseClipBakeResult& result,
+                                   std::string& error){
+    namespace fs = std::filesystem;
+    result = PoseClipBakeResult();
+    BakeFrames baked;
+    if (!computeBake(project, sceneId, model, document, baked, error)){
+        return false;
+    }
+    Scene* scene = project->getScene(sceneId)->scene;
+    const pose::PoseAnimationData& data = document.data();
+    const std::string name = requestedName.empty() ? documentStem(document) : requestedName;
+
+    // the frames as channels on the actual bone entities: their paths from the model root
+    std::vector<BakedChannel> channels;
+    for (const TrackPlan& plan : baked.plans){
+        BakedChannel channel;
+        channel.target = plan.bone;
+        channel.channel = plan.translation ? ClipChannel::Position : ClipChannel::Rotation;
+        channel.times = baked.times;
+        channel.ease = data.settings.stepRate > 0.0f ? EaseType::STEP : EaseType::LINEAR;
+        if (plan.translation){
+            for (const Vector3& position : plan.positions) channel.values.push_back({position.x, position.y, position.z});
+        }else{
+            for (const Quaternion& rotation : plan.rotations){
+                std::vector<float> value(4);
+                quaternionToXYZW(rotation, value.data());
+                channel.values.push_back(value);
+            }
+        }
+        channels.push_back(channel);
+    }
+    ClipData clip;
+    std::string failure;
+    if (!ClipConverters::bakeChannels(scene, model, channels, baked.length, data.settings.loop, clip, &failure)){
+        error = failure;
+        return false;
+    }
+    clip.frameRate = std::max(1.0f, std::min(240.0f, static_cast<float>(data.settings.frameRate)));
+    clip.source.kind = "pose";
+    clip.source.path = document.path();
+    clip.source.name = name;
+    clip.previewModel = scene->getComponent<ModelComponent>(model).filename;
+
+    // where: next to the pose animation, or the given path
+    std::string path = clipPath;
+    bool rewrite = false;
+    std::error_code ec;
+    if (path.empty()){
+        const size_t slash = document.path().find_last_of('/');
+        const std::string directory = slash == std::string::npos ? std::string() : document.path().substr(0, slash);
+        // the sanitized file name (no project: never numbered)
+        path = ClipConverters::uniqueClipPath(nullptr, directory, name);
+        const fs::path existing = project->getProjectPath() / fs::u8path(path);
+        if (fs::exists(existing, ec)){
+            rewrite = bakedFrom(existing, document.path());
+            if (!rewrite) path = ClipConverters::uniqueClipPath(project, directory, name);
+        }
+    }else{
+        const fs::path given = fs::u8path(path);
+        const fs::path existing = given.is_absolute() ? given : project->getProjectPath() / given;
+        path = FileUtils::pathToGenericUtf8(project->normalizeToProjectRelative(existing));
+        if (fs::exists(existing, ec)){
+            rewrite = bakedFrom(existing, document.path());
+            if (!rewrite){
+                error = "'" + path + "' exists and was not baked from '" + document.path() + "': choose another clip path";
+                return false;
+            }
+        }
+    }
+    const fs::path absolute = (project->getProjectPath() / fs::u8path(path)).lexically_normal();
+    std::string extension = absolute.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c){ return (char)std::tolower(c); });
+    if (extension != ".anim"){
+        error = "'" + path + "' is not an .anim path";
+        return false;
+    }
+    if (path.compare(0, 2, "..") == 0 || !project->isInsideAssetsPath(absolute)){
+        error = "'" + path + "' is outside the assets folder: the runtime can't load it";
+        return false;
+    }
+
+    const std::string text = ClipSceneActions::newClipText(project, clip, rewrite ? FileUtils::pathToGenericUtf8(absolute) : "");
+    AnimationPlayerClip entry;
+    entry.clip = ClipConverters::assetRelative(project, absolute);
+    entry.guid = anim::readClipGuid(text);
+    std::vector<Command*> commands;
+    ClipActionResult action;
+    ClipSceneActions::appendPlayerCommands(project, sceneId, model, {entry}, commands, action);
+    if (!ClipSceneActions::runStep(project, sceneId, {{path, text}}, std::move(commands), model, action, error)){
+        return false;
+    }
+
+    result.clip = path;
+    result.created = !rewrite;
+    result.addedPlayer = action.addedPlayer;
+    result.entry = action.entries.empty() ? 0 : action.entries[0];
+    result.frames = baked.frames;
+    result.tracks = static_cast<int>(baked.plans.size());
+    result.length = baked.length;
+    result.reloadedModels = action.reloadedModels;
+    const AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(model);
+    if (player && result.entry < player->clips.size()){
+        const AnimationPlayerClip& listed = player->clips[result.entry];
+        result.name = listed.name.empty() ? fs::u8path(listed.clip).stem().u8string() : listed.name;
+    }
+    return true;
+}
+
+std::string editor::PoseBaker::clipBakeStatusLine(const std::string& animation, const PoseClipBakeResult& result){
+    return "Baked '" + animation + "' to the clip '" + result.clip + "' (" + std::to_string(result.tracks) + " tracks, " +
+           std::to_string(result.frames) + " keys each), state '" + result.name + "' of the Animation Player" +
+           (result.addedPlayer ? " (added)" : "") + ": AnimationPlayer:play(\"" + result.name + "\")";
 }
 
 namespace {
