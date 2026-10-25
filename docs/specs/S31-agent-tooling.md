@@ -581,4 +581,7 @@ in `tools/mcp/tests/`.
   S10's guide paragraph became its own `## Shadows` digest: appended to "Shaders and materials"
   it took that section over the 1,500-byte section limit. S12's tools
   (`list_atmosphere_presets`, `apply_atmosphere_preset`, `get_atmosphere_info`) are in
-  `rendering_fx` as §6.4 says, and its guide bullet became an `## Atmosphere` digest the same way.
+  `rendering_fx` as §6.4 says, and its guide bullet became an `## Atmosphere` digest the same way;
+  so are S13's (`inspect_color_lut`, `get_post_processing_status`, `set_post_processing_debug`),
+  with post-processing a `## Post-processing` digest of its own. S10, S12 and S13 had raised
+  `TOTAL_LIMIT` in `test_html_ui_tools.py`; the merges keep budget.json as the only limits.

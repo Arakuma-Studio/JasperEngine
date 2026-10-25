@@ -199,9 +199,12 @@ pass or colour copy per camera and must draw transparent; avoid on low-end mobil
 when nothing fits: fork_shader copies the built-in shader and sets customShader. Read a fork
 before editing (its rules: jasper://docs/shaders); its parameters are the u_fs_customParams
 block (set_shader_uniform). A failing shader draws as the built-in one (error in the Console).
-Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
-post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
-(jasper://docs/post-processing).
+
+## Post-processing
+Main camera only: apply_post_processing_preset (film, vhs, mobile_adaptive...), then
+set_scene_settings post_processing.<field>; get_post_processing_status reads what applies,
+inspect_color_lut a .cube. Mobile: in-shader colour, low render scale or dynamic resolution, few
+passes (jasper://docs/post-processing).
 
 ## Shadows
 A light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in shadow texels,

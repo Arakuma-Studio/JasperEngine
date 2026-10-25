@@ -9,19 +9,27 @@ precision highp int;
 // (RenderSystem::UberFeature, one define each). In order:
 //
 //   1. UV warp: CRT curvature (UBER_CRT), pixelate (UBER_PIXELATE, UV snapped to blocks of
-//      output pixels)
-//   2. the scene tap, or FXAA 3.11's console algorithm (UBER_FXAA: luma from green, the 4
-//      corner taps, 4 more on edge pixels), then sharpen (UBER_SHARPEN, from the same corners)
+//      output pixels), the VHS tape's line wobble and tracking (UBER_VHS, includes/post_vhs.glsl),
+//      the film gate's weave (UBER_FILM_DAMAGE, includes/post_film.glsl)
+//   2. the scene tap, or the VHS tape's colour bleed taps (UBER_VHS: they replace it, and FXAA
+//      and sharpen never come with it), or FXAA 3.11's console algorithm (UBER_FXAA: luma from
+//      green, the 4 corner taps, 4 more on edge pixels), then sharpen (UBER_SHARPEN, from the
+//      same corners)
 //   3. chromatic aberration (UBER_CHROMATIC): red and blue taps shifted along the radius, added
 //      as their difference from the centre tap (FXAA and sharpen stay on every channel)
 //   4. bloom (UBER_BLOOM: u_bloomTexture, added in linear light with the gamma-2 approximation
-//      sqrt(c*c + bloom), exact where there is none) and blur (UBER_BLUR: u_blurTexture mixed in)
+//      sqrt(c*c + bloom), exact where there is none), halation (UBER_HALATION: the chain's 1/4
+//      and 1/8 levels mixed by the radius, tinted, added the same way) and blur (UBER_BLUR:
+//      u_blurTexture mixed in)
 //   5. the colour grade's LUT (UBER_LUT: display colour in and out, includes/post_color.glsl's
 //      strip layout)
 //   6. edge detect (UBER_EDGE: Sobel on luma from the 4 corner taps, which are a Sobel kernel
-//      exactly; source texels, so aspect-correct), vignette (UBER_VIGNETTE)
-//   7. CRT scanlines, aperture mask, tube vignette (UBER_CRT), film grain (UBER_GRAIN), dither
-//      (UBER_DITHER, last)
+//      exactly; source texels, so aspect-correct), vignette (UBER_VIGNETTE), the film gate's
+//      mask (UBER_FILM_DAMAGE)
+//   7. the VHS tape's noise and scanlines (UBER_VHS), CRT scanlines, aperture mask, tube
+//      vignette (UBER_CRT), film damage (UBER_FILM_DAMAGE: hairs, scratches, dust), film grain
+//      (UBER_GRAIN: the classic hash, or with UBER_GRAIN_LENS / UBER_GRAIN_FILMIC the film
+//      simulation's), dither (UBER_DITHER, last)
 //
 // Colour maths is mediump (fp16 on GLES where the GPU has it); UVs and texel sizes stay highp
 // (the parameter block too: GL uploads it as one vec4 array).
@@ -30,14 +38,15 @@ precision highp int;
 // to the centre of its source texel (sampling.x 1), so that upscale stays nearest and every
 // effect works per source texel. UBER_UPSCALE (none of the effects) is the plain upscale of a
 // render scale below 1.
-// The bloom and blur textures are the phase 4 bloom chain's (SRGB8A8: linear when sampled, in
-// the gamma-2 domain the chain's prefilter decoded the scene to); with none bound the engine
-// binds black (bloom adds nothing) and the source with a blur mix of 0.
+// The bloom, halation and blur textures are the phase 4 bloom chain's (SRGB8A8: linear when
+// sampled, in the gamma-2 domain the chain's prefilter decoded the scene to; halation reads the
+// bloom chain's first two levels, or its own two-level chain without bloom); with none bound the
+// engine binds black (bloom and halation add nothing) and the source with a blur mix of 0.
 
 #if defined(UBER_FXAA) || defined(UBER_SHARPEN) || defined(UBER_EDGE)
     #define UBER_CORNERS
 #endif
-#if defined(UBER_PIXELATE) || defined(UBER_CRT)
+#if defined(UBER_PIXELATE) || defined(UBER_CRT) || defined(UBER_VHS) || defined(UBER_FILM_DAMAGE)
     #define UBER_WARP
 #endif
 
@@ -63,6 +72,12 @@ uniform sampler u_sceneColor_smp;
     uniform texture2D u_blurTexture;
     uniform sampler u_blur_smp;
 #endif
+#ifdef UBER_HALATION
+    uniform texture2D u_halationTexture;
+    uniform sampler u_halation_smp;
+    uniform texture2D u_halationWideTexture;
+    uniform sampler u_halationWide_smp;
+#endif
 
 uniform u_fs_uberParams {
     vec4 uvScaleOffset;       // source UV = screen * xz + yw
@@ -77,6 +92,15 @@ uniform u_fs_uberParams {
     vec4 vignetteLutScan;     // x, y vignette falloff, z LUT side, w scanline period (output pixels)
     vec4 bloomBlur;                 // rgb bloom tint * intensity (linear), a blur mix
     vec4 sampling;            // x 1: snap the UV to source texel centres (a NEAREST upscale)
+    // S13 (includes/post_vhs.glsl, includes/post_film.glsl)
+    vec4 vhs0;                      // x intensity, y wobble, z tracking, w colour bleed
+    vec4 vhs1;                      // x tape noise, y chroma streaks, z dropouts, w scanlines
+    vec4 vhs2;                // x interference, y glitches, z tape time (s)
+    vec4 halation;                  // rgb tint * intensity (linear), a radius (the 1/8 level's share)
+    vec4 film;                // x grain size (px), y coloured grain, z film frame, w dust size (px)
+    vec4 damage;                    // x strength, y hair, z scratch, w dust candidates
+    vec4 gateWeave;           // xy offset (output px), z cos, w sin of the rotation
+    vec4 gateMask;            // xy half size, z corner radius, w feather (output px); x 0: none
 } uber;
 
 mediump vec3 sceneTap(highp vec2 uv){
@@ -130,6 +154,13 @@ mediump vec3 sceneTap(highp vec2 uv){
     }
 #endif
 
+#ifdef UBER_VHS
+    #include "includes/post_vhs.glsl"
+#endif
+#if defined(UBER_FILM_DAMAGE) || defined(UBER_GRAIN_LENS) || defined(UBER_GRAIN_FILMIC)
+    #include "includes/post_film.glsl"
+#endif
+
 // interleaved gradient noise in 0..1 (stable per pixel)
 highp float uberNoise(highp vec2 pixel){
     return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715))));
@@ -152,10 +183,28 @@ void main(){
     #ifdef UBER_WARP
         uv = screen * uber.uvScaleOffset.xz + uber.uvScaleOffset.yw;
     #endif
+    #ifdef UBER_VHS
+        VhsState vhs;
+        uv = vhsWarp(uv, vhs);
+    #endif
+    #ifdef UBER_FILM_DAMAGE
+        uv = filmGateWeave(uv);
+        // nothing of the frame outside the weaving gate
+        mediump float gate = step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
+    #endif
+    #if defined(UBER_FILM_DAMAGE) || defined(UBER_GRAIN_LENS) || defined(UBER_GRAIN_FILMIC)
+        // the image's position in output pixels from its top-left (the unwarped source UV is
+        // the image's, y down on every backend): where the film damage and grain lie
+        highp vec2 imagePixel = v_texcoord * uber.outputTexel.zw;
+    #endif
     // a NEAREST upscale: the centre of the source texel (bilinear there is that texel)
     highp vec2 snapped = (floor(uv * uber.sourceTexel.zw) + 0.5) * uber.sourceTexel.xy;
     highp vec2 snap = (snapped - uv) * uber.sampling.x;
     uv += snap;
+    #ifdef UBER_VHS
+        // the undisturbed source the intensity mixes back to, snapped the same way
+        vhs.sourceUv = mix(vhs.sourceUv, (floor(vhs.sourceUv * uber.sourceTexel.zw) + 0.5) * uber.sourceTexel.xy, uber.sampling.x);
+    #endif
 
     #ifdef UBER_CORNERS
         #ifdef UBER_WARP
@@ -170,8 +219,13 @@ void main(){
         mediump vec3 se = sceneTap(corners.zw);
     #endif
 
-    mediump vec4 sceneColor = texture(sampler2D(u_sceneColorTexture, u_sceneColor_smp), uv);
-    mediump vec3 color = sceneColor.rgb;
+    #ifdef UBER_VHS
+        mediump vec4 sceneColor;
+        mediump vec3 color = vhsTaps(uv, vhs, sceneColor);
+    #else
+        mediump vec4 sceneColor = texture(sampler2D(u_sceneColorTexture, u_sceneColor_smp), uv);
+        mediump vec3 color = sceneColor.rgb;
+    #endif
 
     #ifdef UBER_FXAA
         color = fxaa(uv, color, nw.g, ne.g, sw.g, se.g);
@@ -194,6 +248,12 @@ void main(){
     #ifdef UBER_BLOOM
         mediump vec3 bloom = texture(sampler2D(u_bloomTexture, u_bloom_smp), uv).rgb;
         color = sqrt(color * color + bloom * uber.bloomBlur.rgb);
+    #endif
+    #ifdef UBER_HALATION
+        // the 1/4 and 1/8 levels of what passed the threshold, mixed by the radius
+        mediump vec3 halo = mix(texture(sampler2D(u_halationTexture, u_halation_smp), uv).rgb,
+                                texture(sampler2D(u_halationWideTexture, u_halationWide_smp), uv).rgb, uber.halation.a);
+        color = sqrt(color * color + halo * uber.halation.rgb);
     #endif
     #ifdef UBER_BLUR
         // the chain's colour is linear (gamma 2, as its prefilter decoded it)
@@ -219,6 +279,13 @@ void main(){
         mediump float w = clamp(dot(vp, vp) * uber.vignetteLutScan.x + uber.vignetteLutScan.y, 0.0, 1.0);
         color = mix(color, uber.vignetteColor.rgb, w * w * (3.0 - 2.0 * w) * uber.vignetteColor.a);
     #endif
+    #ifdef UBER_FILM_DAMAGE
+        color *= filmGateMask(imagePixel) * gate;
+    #endif
+
+    #ifdef UBER_VHS
+        color = vhsNoise(color, vhs, v_texcoord);
+    #endif
 
     #ifdef UBER_CRT
         // scanlines: a dark line per source row (or every few output pixels)
@@ -234,7 +301,13 @@ void main(){
         color *= mix(1.0, tube, uber.crt.w) * inside;
     #endif
 
-    #ifdef UBER_GRAIN
+    #ifdef UBER_FILM_DAMAGE
+        color = filmDamage(color, imagePixel);
+    #endif
+
+    #if defined(UBER_GRAIN_LENS) || defined(UBER_GRAIN_FILMIC)
+        color = filmGrain(color, imagePixel);
+    #elif defined(UBER_GRAIN)
         // a new pattern every frame, less of it on bright pixels by the response
         highp vec2 grainPixel = gl_FragCoord.xy + fract(uber.edgeSharpenTime.w * vec2(13.7, 7.3)) * 1024.0;
         highp float noise = fract(sin(dot(grainPixel, vec2(12.9898, 78.233))) * 43758.5453);
