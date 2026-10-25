@@ -480,6 +480,11 @@ void AnimationClipDocument::setFilesWrittenHook(std::function<void(const std::ve
     registry().filesWrittenHook = std::move(hook);
 }
 
+void AnimationClipDocument::filesWritten(Project* project, const std::vector<fs::path>& paths){
+    if (!project || paths.empty()) return;
+    documentFilesWritten(project, paths);
+}
+
 std::string AnimationClipDocument::fileText(const ClipData& data){
     return anim::writeClip(data);
 }
