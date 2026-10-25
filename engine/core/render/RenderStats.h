@@ -46,6 +46,7 @@ namespace jasperengine{
         bool executed = true;       // false: sokol skipped it (validation, attachments gone)
         bool listed = false;        // begun by SokolCamera (the JASPERENGINE_FRAME_STATS pass list)
         bool hidden = false;        // the Frame Debugger's own preview blit (not in pass lists)
+        bool detailed = false;      // its attachments were recorded (while a consumer wanted them)
         int width = 0;              // render area
         int height = 0;
         int samples = 1;

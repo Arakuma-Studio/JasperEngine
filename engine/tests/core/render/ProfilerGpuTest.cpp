@@ -150,6 +150,17 @@ TEST_F(PassRecorderGpu, ListsTheFramePassesInOrder){
     EXPECT_TRUE(stats.valid);
     EXPECT_EQ(stats.passes, (uint32_t)list.passes.size());
     EXPECT_GT(stats.aliveImages, 0u);
+
+    // a reader asked: the next frames' passes carry their attachments (an idle editor's do not)
+    GpuEnvironment::drawFrames(2);
+    const PassList detailed = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+    ASSERT_FALSE(detailed.passes.empty());
+    for (const PassRecord& pass : detailed.passes){
+        EXPECT_TRUE(pass.detailed) << pass.label;
+        if (!pass.swapchain && !pass.compute){
+            EXPECT_GT(pass.width, 0) << pass.label;
+        }
+    }
 }
 
 TEST(VramTrackerGpu, CreateDestroyBalances){

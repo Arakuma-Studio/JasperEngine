@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SokolPassRecorder.h"
+#include "SokolPassPreview.h"
 
 #include "profiler/FrameTimes.h"
 #include "render/SystemRender.h"
@@ -78,6 +79,9 @@ namespace {
         CommitRecord current;
         bool inPass = false;
         std::chrono::steady_clock::time_point passStart;
+        // the attachments of each pass are queried only while someone reads pass lists (the
+        // queries cost a few microseconds a pass: the idle editor's frame would pay them)
+        std::chrono::steady_clock::time_point detailUntil{};
 
         CommitRecord ring[COMMIT_RING];
         size_t ringHead = 0;        // the next write
@@ -90,6 +94,16 @@ namespace {
     State& state(){
         static State s;
         return s;
+    }
+
+    bool detailWanted(const State& s, std::chrono::steady_clock::time_point now){
+        if (s.drawList || now < s.detailUntil || sgj_gpu_timer_enabled() || SokolPassPreview::isRequested())
+            return true;
+    #if JASPERENGINE_PROFILER
+        return profiler::isEnabled();
+    #else
+        return false;
+    #endif
     }
 
     // JASPERENGINE_FRAME_STATS_ACTIONS=1: the pass list names each pass's colour load action and
@@ -296,28 +310,41 @@ void SokolPassRecorder::onBeginPass(const sg_pass* pass){
 
     if (!s.enabled)
         return;
+    const auto now = std::chrono::steady_clock::now();
+    const bool detail = detailWanted(s, now);
     PassRecord record;
     record.index = (uint32_t)s.current.passes.size();
     record.viewTag = s.viewTag;
     record.listed = listedPass;
     record.hidden = hiddenPass;
+    record.detailed = detail;
     copyLabel(record.label, pass->label, "pass");
     record.compute = pass->compute;
     for (int i = 0; i < RENDER_STATS_MAX_COLORS; i++){
-        fillAttachment(record.colors[i], pass->attachments.colors[i], 0);
-        fillAttachment(record.resolves[i], pass->attachments.resolves[i], 1);
+        if (detail){
+            fillAttachment(record.colors[i], pass->attachments.colors[i], 0);
+            fillAttachment(record.resolves[i], pass->attachments.resolves[i], 1);
+        }else{
+            record.colors[i].used = pass->attachments.colors[i].id != SG_INVALID_ID;
+            record.resolves[i].used = pass->attachments.resolves[i].id != SG_INVALID_ID;
+        }
         if (record.colors[i].used)
             record.numColors = i + 1;
         record.colorLoad[i] = loadAction(pass->action.colors[i].load_action);
         record.colorStore[i] = storeAction(pass->action.colors[i].store_action);
     }
-    fillAttachment(record.depth, pass->attachments.depth_stencil, 2);
+    if (detail)
+        fillAttachment(record.depth, pass->attachments.depth_stencil, 2);
+    else
+        record.depth.used = pass->attachments.depth_stencil.id != SG_INVALID_ID;
     record.depthLoad = loadAction(pass->action.depth.load_action);
     record.depthStore = storeAction(pass->action.depth.store_action);
     record.stencilLoad = loadAction(pass->action.stencil.load_action);
     record.stencilStore = storeAction(pass->action.stencil.store_action);
     const PassAttachment& target = record.numColors > 0 ? record.colors[0] : record.depth;
-    if (target.used){
+    if (target.used && !detail){
+        // sizes and samples come with the detail
+    }else if (target.used){
         record.width = target.width;
         record.height = target.height;
         record.samples = target.samples;
@@ -330,7 +357,7 @@ void SokolPassRecorder::onBeginPass(const sg_pass* pass){
     record.firstDraw = (uint32_t)s.current.draws.size();
     s.current.passes.push_back(record);
     s.inPass = true;
-    s.passStart = std::chrono::steady_clock::now();
+    s.passStart = now;
 }
 
 void SokolPassRecorder::onApplyPipeline(uint32_t pipeline){
@@ -499,6 +526,8 @@ bool SokolPassRecorder::getFrameGpuMs(uint32_t viewTag, uint64_t frame, double& 
 }
 
 PassList SokolPassRecorder::getPassList(uint32_t viewTag, bool resolvedOnly){
+    // a reader: the next frames' passes keep their attachments for a while
+    state().detailUntil = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     const State& s = state();
     PassList list;
     list.viewTag = viewTag;

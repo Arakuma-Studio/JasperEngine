@@ -19,6 +19,7 @@
 #include "lua.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -120,7 +121,7 @@ namespace {
     CommandLineOptions commandLine;
     CaptureId cliCapture = 0;
     bool cliCaptureDone = false;
-    uint64_t monitorFrame = 0;
+    std::chrono::steady_clock::time_point slowMonitorsAt{};
 
     bool parseFrames(const std::string& text, uint32_t& out){
         char* end = nullptr;
@@ -170,9 +171,12 @@ namespace {
                 htmlDraws += documents->getRenderStats().drawCalls;
         }
         counter("HTML UI draws", htmlDraws, MonitorUnit::Quantity);
-        // the slower ones a few times a second
-        if (monitorFrame++ % 10 != 0)
+        // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
+        // the frame rate
+        const auto now = std::chrono::steady_clock::now();
+        if (now < slowMonitorsAt)
             return;
+        slowMonitorsAt = now + std::chrono::milliseconds(250);
         const gpumem::Report vram = gpumem::report(false);
         counter("VRAM estimated", (double)vram.totalBytes, MonitorUnit::Memory);
         // per category, for the GPU Memory module's chart

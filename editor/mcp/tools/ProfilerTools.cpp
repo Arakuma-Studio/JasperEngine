@@ -710,6 +710,11 @@ void getGpuPassesTool(const CallPtr& call){
         const PassList list = SystemRender::getPassList(tag, needGpu);
         if (list.frame <= armedAt + 1 || list.passes.empty())
             return false;
+        // a frame recorded since the list was asked for: its passes have their attachments
+        for (const PassRecord& pass : list.passes){
+            if (!pass.detailed)
+                return false;
+        }
         if (needGpu && list.gpuPending)
             return false;
         if (needGpu){
