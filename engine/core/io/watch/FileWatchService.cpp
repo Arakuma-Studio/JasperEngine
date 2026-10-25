@@ -104,7 +104,10 @@ struct FileWatchService::Shared {
     CoalescerEnvironment environment{index};
     FileChangeCoalescer coalescer{environment};
     bool paused = false;
+    // grows to JOURNAL_CAPACITY, then wraps; ring[(sequence - ringBase) % JOURNAL_CAPACITY]
+    // holds `sequence` (stop() empties it, and the next journal starts at the next sequence)
     std::vector<FileChange> ring;
+    uint64_t ringBase = 1;
     uint64_t nextSequence = 1;
     uint64_t oldestSequence = 1;
     uint64_t delivered = 0;
@@ -306,6 +309,7 @@ void FileWatchService::stop() {
         // cursors from before point past the journal: their consumers start over
         shared->oldestSequence = shared->nextSequence;
         shared->ring.clear();
+        shared->ringBase = shared->nextSequence;
     }
     {
         std::lock_guard<std::mutex> lock(shared->rawMutex);
@@ -685,7 +689,7 @@ void FileWatchService::emitLocked(FileChange change) {
     Shared& s = *shared;
     change.sequence = s.nextSequence++;
     if (s.ring.size() < JOURNAL_CAPACITY) s.ring.push_back(change);
-    else s.ring[(change.sequence - 1) % JOURNAL_CAPACITY] = change;
+    else s.ring[(change.sequence - s.ringBase) % JOURNAL_CAPACITY] = change;
     if (s.nextSequence - s.oldestSequence > JOURNAL_CAPACITY) s.oldestSequence = s.nextSequence - JOURNAL_CAPACITY;
     s.delivered++;
 
@@ -1039,7 +1043,7 @@ std::vector<FileChange> FileWatchService::journalSince(uint64_t& cursor, size_t 
         return out;
     }
     for (; cursor < s.nextSequence && out.size() < max; cursor++) {
-        out.push_back(s.ring[(cursor - 1) % JOURNAL_CAPACITY]);
+        out.push_back(s.ring[(cursor - s.ringBase) % JOURNAL_CAPACITY]);
     }
     return out;
 }
@@ -1057,7 +1061,7 @@ size_t FileWatchService::externalChangesSince(uint64_t cursor) const {
     if (cursor < s.oldestSequence) return static_cast<size_t>(s.nextSequence - s.oldestSequence);
     size_t count = 0;
     for (uint64_t sequence = cursor; sequence < s.nextSequence; sequence++) {
-        const FileChange& change = s.ring[(sequence - 1) % JOURNAL_CAPACITY];
+        const FileChange& change = s.ring[(sequence - s.ringBase) % JOURNAL_CAPACITY];
         if (change.origin == ChangeOrigin::External && change.kind != FileChangeKind::Rescan && !change.directory) count++;
     }
     return count;

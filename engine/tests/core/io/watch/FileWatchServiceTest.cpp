@@ -226,6 +226,26 @@ TEST_P(FileWatchServiceTests, StoppedConsumersStartOver) {
     EXPECT_EQ(journal[0].path, dir.path);
 }
 
+TEST_P(FileWatchServiceTests, JournalAfterARestart) {
+    // a project switch (stop, start) empties the journal: the next one reads back what it holds
+    // (it was indexed from the first journal's start: a read past the emptied ring, the editor's
+    // SIGSEGV in journalSince on open_project)
+    startWatching();
+    for (int i = 0; i < 3; i++) writeText(dir.path / ("before" + std::to_string(i) + ".txt"), "x");
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    ASSERT_GT(service.journalHead(), 2u);
+    service.stop();
+    startWatching();
+    uint64_t cursor = service.journalHead();
+    writeText(dir.path / "after.txt", "x");
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    EXPECT_EQ(service.externalChangesSince(cursor), 1u);
+    std::vector<FileChange> journal = service.journalSince(cursor);
+    ASSERT_EQ(journal.size(), 1u);
+    EXPECT_EQ(journal[0].path.filename(), "after.txt");
+    EXPECT_EQ(cursor, service.journalHead());
+}
+
 TEST_P(FileWatchServiceTests, IdleCostsNothing) {
     startWatching();
     // let the self-test and the first pass finish
