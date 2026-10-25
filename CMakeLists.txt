@@ -608,6 +608,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/EditorHost.cpp
     ${EDITOR_DIR}/Generator.cpp
     ${EDITOR_DIR}/Stream.cpp
+    ${EDITOR_DIR}/StreamComponents.cpp
     ${EDITOR_DIR}/StreamPrefab.cpp
     ${EDITOR_DIR}/StreamMigrations.cpp
     ${EDITOR_DIR}/StreamSchema.cpp

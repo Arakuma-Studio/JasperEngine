@@ -20,7 +20,7 @@ import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOURCES = [os.path.join(ROOT, "editor", "Stream.cpp"), os.path.join(ROOT, "editor", "StreamPrefab.cpp")]
+SOURCES = [os.path.join(ROOT, "editor", name) for name in ("Stream.cpp", "StreamComponents.cpp", "StreamPrefab.cpp")]
 SCHEMA = os.path.join(ROOT, "editor", "StreamSchema.cpp")
 REFLECT = os.path.join(ROOT, "editor", "reflect", "components")
 
