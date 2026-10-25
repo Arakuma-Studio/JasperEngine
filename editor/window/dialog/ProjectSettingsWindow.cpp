@@ -8,8 +8,11 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
+#include "command/CommandHistory.h"
+#include "command/type/ThreadingSettingsCmd.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cctype>
 #include <cfloat>
@@ -39,9 +42,22 @@ static const char* windowModeNames[] = { "Windowed", "Maximized", "Fullscreen" }
 static const WindowMode windowModeValues[] = { WindowMode::WINDOWED, WindowMode::MAXIMIZED, WindowMode::FULLSCREEN };
 static const int windowModeCount = sizeof(windowModeValues) / sizeof(windowModeValues[0]);
 
-static const char* cxxStandardNames[] = { "C++17", "C++20", "C++23" };
-static const int cxxStandardCount = sizeof(cxxStandardNames) / sizeof(cxxStandardNames[0]);
-static_assert(std::size(cxxStandardNames) == std::size(cxxStandards));
+static constexpr int cxxStandardCount = static_cast<int>(std::size(cxxStandards));
+
+// "C++20", "C++23", ...: the combo labels of cxxStandards
+static const char* const* cxxStandardNames() {
+    static const auto labels = [] {
+        std::array<std::string, std::size(cxxStandards)> result;
+        for (size_t i = 0; i < result.size(); i++) result[i] = "C++" + std::to_string(cxxStandards[i]);
+        return result;
+    }();
+    static const auto names = [] {
+        std::array<const char*, std::size(cxxStandards)> result;
+        for (size_t i = 0; i < result.size(); i++) result[i] = labels[i].c_str();
+        return result;
+    }();
+    return names.data();
+}
 
 static const char* androidOrientationNames[] = { "Unspecified", "Portrait", "Landscape", "Sensor Portrait", "Sensor Landscape", "Full Sensor" };
 static const AndroidOrientation androidOrientationValues[] = {
@@ -114,9 +130,9 @@ static const AndroidPermissionInfo androidPermissionInfos[] = {
 
 static const int androidPermissionCount = sizeof(androidPermissionInfos) / sizeof(androidPermissionInfos[0]);
 
-static constexpr float dialogWidth = 960.0f;
-static constexpr float dialogHeight = 660.0f;
-static constexpr float categoryListWidth = 200.0f;
+static constexpr float projectDialogWidth = 960.0f;
+static constexpr float projectDialogHeight = 660.0f;
+static constexpr float projectCategoryListWidth = 200.0f;
 
 enum class ProjectCategory {
     Player,
@@ -134,8 +150,9 @@ enum class ProjectCategory {
 static const settingsui::Category projectCategories[] = {
     {"Player", "", "project product name application identifier version build default icon resolution presentation "
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
+                   "threading worker threads reserved frame workers asset io threads web pump budget multithreaded "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
-    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
+    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants shadows shadow tier quality "
                      "html ui msaa anti-aliasing antialiasing"},
     {"Quality", "", "vsync"},
     {"Physics", "", "3d physics jolt rigidbody"},
@@ -147,10 +164,10 @@ static const settingsui::Category projectCategories[] = {
 static constexpr int projectCategoryCount = static_cast<int>(ProjectCategory::Count);
 static_assert(std::size(projectCategories) == static_cast<size_t>(ProjectCategory::Count));
 
-static constexpr float settingsLabelWidth = 200.0f;
-static constexpr float settingsPanelPadding = 12.0f;
-static constexpr float settingsButtonWidth = 120.0f;
-static constexpr ImGuiWindowFlags noScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+static constexpr float projectSettingsLabelWidth = 200.0f;
+static constexpr float projectSettingsPanelPadding = 12.0f;
+static constexpr float projectSettingsButtonWidth = 120.0f;
+static constexpr ImGuiWindowFlags projectNoScrollFlags = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
 static int findScalingIndex(Scaling mode) {
     for (int i = 0; i < scalingModeCount; i++) {
@@ -351,7 +368,7 @@ static bool hasAndroidAbiSelection(bool armeabiV7a, bool arm64V8a, bool x86, boo
 // followed by a table, like the Terrain editor panels.
 static bool beginSettingsPanel(const char* panelId) {
     const ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(settingsPanelPadding, settingsPanelPadding)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Theme::dpi(ImVec2(projectSettingsPanelPadding, projectSettingsPanelPadding)));
     ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, 1.0f);
     ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(style.CellPadding.x, Theme::dpi(6.0f)));
 
@@ -366,7 +383,7 @@ static void endSettingsPanel() {
 }
 
 static bool beginSettingsTable(const char* tableId) {
-    float labelWidth = std::min(Theme::dpi(settingsLabelWidth), ImGui::GetContentRegionAvail().x * 0.4f);
+    float labelWidth = std::min(Theme::dpi(projectSettingsLabelWidth), ImGui::GetContentRegionAvail().x * 0.4f);
     if (!ImGui::BeginTable(tableId, 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
         return false;
     }
@@ -376,7 +393,7 @@ static bool beginSettingsTable(const char* tableId) {
 }
 
 template <typename DrawContents>
-static void drawSettingsPanel(const char* panelId, DrawContents drawContents) {
+static void projectDrawSettingsPanel(const char* panelId, DrawContents drawContents) {
     if (beginSettingsPanel(panelId) && beginSettingsTable("##SettingsTable")) {
         drawContents();
         ImGui::EndTable();
@@ -408,7 +425,7 @@ static float helpMarkerWidth() {
 }
 
 // Returns true when the reset arrow is clicked, like the property rows in Properties.
-static bool beginSettingsRow(const char* label, bool defChanged = false, const char* resetTooltip = "Restore default") {
+static bool projectBeginSettingsRow(const char* label, bool defChanged = false, const char* resetTooltip = "Restore default") {
     ImGui::TableNextRow();
     ImGui::TableNextColumn();
     ImGui::AlignTextToFramePadding();
@@ -442,7 +459,7 @@ static void endSettingsRow(const char* tooltip) {
 // An empty field inherits, and the hint shows the value it inherits.
 template <size_t N>
 static void drawOverrideSetting(const char* label, const char* id, char (&buffer)[N], const std::string& inherited, const char* tooltip) {
-    if (beginSettingsRow(label, buffer[0] != '\0', "Use the shared value")) {
+    if (projectBeginSettingsRow(label, buffer[0] != '\0', "Use the shared value")) {
         buffer[0] = '\0';
     }
     ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
@@ -468,7 +485,7 @@ static void drawOverrideWarning(const char (&buffer)[N], bool (*isValid)(const s
 }
 
 static void drawComboSetting(const char* label, const char* id, const char* const* names, int count, int& selectedIndex, int defaultIndex, const char* tooltip = nullptr) {
-    if (beginSettingsRow(label, selectedIndex != defaultIndex)) {
+    if (projectBeginSettingsRow(label, selectedIndex != defaultIndex)) {
         selectedIndex = defaultIndex;
     }
     if (selectedIndex < 0 || selectedIndex >= count) selectedIndex = 0;
@@ -486,7 +503,7 @@ static void drawComboSetting(const char* label, const char* id, const char* cons
 }
 
 static void drawIntSetting(const char* label, const char* id, int& value, int defaultValue, int minValue = 1, const char* tooltip = nullptr) {
-    if (beginSettingsRow(label, value != defaultValue)) {
+    if (projectBeginSettingsRow(label, value != defaultValue)) {
         value = defaultValue;
     }
     ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
@@ -495,8 +512,27 @@ static void drawIntSetting(const char* label, const char* id, int& value, int de
     endSettingsRow(tooltip);
 }
 
+// A thread count: Auto (-1) or minValue..maxValue.
+static void drawCountSetting(const char* label, const char* id, int& value, int minValue, int maxValue, const char* tooltip) {
+    if (projectBeginSettingsRow(label, value != -1)) {
+        value = -1;
+    }
+    ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
+    const std::string current = value < 0 ? std::string("Auto") : std::to_string(value);
+    if (ImGui::BeginCombo(id, current.c_str())) {
+        if (ImGui::Selectable("Auto", value < 0)) value = -1;
+        for (int count = minValue; count <= maxValue; count++) {
+            const bool selected = value == count;
+            if (ImGui::Selectable(std::to_string(count).c_str(), selected)) value = count;
+            if (selected) ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+    endSettingsRow(tooltip);
+}
+
 static void drawSecondsSetting(const char* label, const char* id, float& value, float defaultValue, const char* tooltip = nullptr) {
-    if (beginSettingsRow(label, value != defaultValue)) {
+    if (projectBeginSettingsRow(label, value != defaultValue)) {
         value = defaultValue;
     }
     ImGui::SetNextItemWidth(tooltip ? -helpMarkerWidth() : -1.0f);
@@ -516,7 +552,7 @@ static void drawDirectorySetting(
     bool keepAbsolutePathOnError = false
 ) {
     // An empty directory already means the default root
-    if (beginSettingsRow(label, !directory.empty() && directory != defaultDirectory)) {
+    if (projectBeginSettingsRow(label, !directory.empty() && directory != defaultDirectory)) {
         directory = defaultDirectory;
     }
 
@@ -554,7 +590,7 @@ static void drawDirectorySetting(
 }
 
 static void drawScriptDirsSetting(Project* project, std::vector<fs::path>& directories) {
-    if (beginSettingsRow("Script Directories", !directories.empty())) {
+    if (projectBeginSettingsRow("Script Directories", !directories.empty())) {
         directories.clear();
     }
 
@@ -621,7 +657,7 @@ static void drawProjectFilePathSetting(
     fs::path& imagePath,
     int filter = FILE_DIALOG_IMAGE
 ) {
-    beginSettingsRow(label);
+    projectBeginSettingsRow(label);
 
     const ImGuiStyle& style = ImGui::GetStyle();
     float browseWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
@@ -848,7 +884,11 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
+    m_playerLogging = project->getPlayerLogging();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+        m_shadowTiers[platform] = static_cast<int>(project->getShadowTier(platform));
+    }
     m_windowModeIndex = findWindowModeIndex(project->getWindowMode());
     m_windowWidth = (int)project->getWindowWidth();
     m_windowHeight = (int)project->getWindowHeight();
@@ -944,6 +984,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     }
 
     m_loadingSettings = project->getLoadingSettings();
+    m_threading = project->getThreadingSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -966,15 +1007,15 @@ void ProjectSettingsWindow::show() {
     ImVec2 center = viewport->GetWorkCenter();
     ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImVec2 size(
-        std::min(Theme::dpi(dialogWidth), viewport->WorkSize.x * 0.9f),
-        std::min(Theme::dpi(dialogHeight), viewport->WorkSize.y * 0.9f)
+        std::min(Theme::dpi(projectDialogWidth), viewport->WorkSize.x * 0.9f),
+        std::min(Theme::dpi(projectDialogHeight), viewport->WorkSize.y * 0.9f)
     );
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal |
                              ImGuiWindowFlags_NoResize |
-                             noScrollFlags;
+                             projectNoScrollFlags;
 
     bool popupOpen = ImGui::BeginPopupModal("Project Settings##ProjectSettingsModal", &m_isOpen, flags);
 
@@ -993,9 +1034,9 @@ void ProjectSettingsWindow::drawSettings() {
     const float footerY = ImGui::GetWindowHeight() - style.WindowPadding.y - ImGui::GetFrameHeight();
     float regionHeight = std::max(1.0f, footerY - style.ItemSpacing.y * 2.0f - ImGui::GetCursorPosY());
 
-    ImGui::BeginChild("##ProjectSettingsRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, noScrollFlags);
+    ImGui::BeginChild("##ProjectSettingsRegion", ImVec2(0, regionHeight), ImGuiChildFlags_None, projectNoScrollFlags);
 
-    const float listWidth = std::min(Theme::dpi(categoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
+    const float listWidth = std::min(Theme::dpi(projectCategoryListWidth), ImGui::GetContentRegionAvail().x * 0.3f);
     settingsui::categoryList("##ProjectSettingsCategories", projectCategories, projectCategoryCount, m_category,
                              m_categorySearch, sizeof(m_categorySearch), ImVec2(listWidth, ImGui::GetContentRegionAvail().y));
     ImGui::SameLine();
@@ -1021,7 +1062,7 @@ void ProjectSettingsWindow::drawSettings() {
     ImGui::Separator();
 
     // Unity-style footer: buttons on the right, primary first.
-    const float buttonWidth = Theme::dpi(settingsButtonWidth);
+    const float buttonWidth = Theme::dpi(projectSettingsButtonWidth);
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     ImGui::SetCursorPos(ImVec2(std::max(style.WindowPadding.x, ImGui::GetWindowContentRegionMax().x - buttonsWidth), footerY));
 
@@ -1078,20 +1119,20 @@ std::string ProjectSettingsWindow::inheritedApplicationBuild() const {
 void ProjectSettingsWindow::drawPlayerSettings() {
     if (beginSettingsPanel("##PlayerSettingsPanel")) {
         if (beginSettingsTable("##PlayerProductTable")) {
-            beginSettingsRow("Project Name");
+            projectBeginSettingsRow("Project Name");
             ImGui::SetNextItemWidth(-1);
             ImGui::InputText("##ProjectName", m_projectNameBuffer, sizeof(m_projectNameBuffer));
 
 
             const ApplicationSettings defaults;
 
-            beginSettingsRow("Product Name");
+            projectBeginSettingsRow("Product Name");
             ImGui::SetNextItemWidth(-helpMarkerWidth());
             std::string nameHint = m_projectNameBuffer[0] ? m_projectNameBuffer : "JasperEngine";
             ImGui::InputTextWithHint("##ApplicationName", nameHint.c_str(), m_applicationNameBuffer, sizeof(m_applicationNameBuffer));
             endSettingsRow("Name every platform shows to the player. Empty means the project name.");
 
-            if (beginSettingsRow("Application Identifier", strcmp(m_applicationIdentifierBuffer, defaults.identifier.c_str()) != 0)) {
+            if (projectBeginSettingsRow("Application Identifier", strcmp(m_applicationIdentifierBuffer, defaults.identifier.c_str()) != 0)) {
                 snprintf(m_applicationIdentifierBuffer, sizeof(m_applicationIdentifierBuffer), "%s", defaults.identifier.c_str());
             }
             ImGui::SetNextItemWidth(-helpMarkerWidth());
@@ -1101,7 +1142,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
                 ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Use letters and digits only, for example com.company.game.");
             }
 
-            if (beginSettingsRow("Version", strcmp(m_applicationVersionBuffer, defaults.version.c_str()) != 0)) {
+            if (projectBeginSettingsRow("Version", strcmp(m_applicationVersionBuffer, defaults.version.c_str()) != 0)) {
                 snprintf(m_applicationVersionBuffer, sizeof(m_applicationVersionBuffer), "%s", defaults.version.c_str());
             }
             ImGui::SetNextItemWidth(-helpMarkerWidth());
@@ -1118,7 +1159,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
         }
 
         if (Theme::foldoutHeader("Icon", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerIconTable")) {
-            beginSettingsRow("Default Icon");
+            projectBeginSettingsRow("Default Icon");
             {
                 const ImGuiStyle& style = ImGui::GetStyle();
                 float browseWidth = ImGui::CalcTextSize("Browse").x + style.FramePadding.x * 2.0f;
@@ -1183,13 +1224,13 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             drawIntSetting("Default Screen Width", "##WindowWidth", m_windowWidth, (int)Project::defaultWindowWidth);
             drawIntSetting("Default Screen Height", "##WindowHeight", m_windowHeight, (int)Project::defaultWindowHeight);
 
-            if (beginSettingsRow("Resizable Window", m_windowResizable != Project::defaultWindowResizable)) {
+            if (projectBeginSettingsRow("Resizable Window", m_windowResizable != Project::defaultWindowResizable)) {
                 m_windowResizable = Project::defaultWindowResizable;
             }
             ImGui::Checkbox("##WindowResizable", &m_windowResizable);
             endSettingsRow("Applies to desktop builds. Exported Windows and macOS builds are always resizable.");
 
-            if (beginSettingsRow("Window Title", strcmp(m_windowTitleBuffer, Project::defaultWindowTitle) != 0)) {
+            if (projectBeginSettingsRow("Window Title", strcmp(m_windowTitleBuffer, Project::defaultWindowTitle) != 0)) {
                 snprintf(m_windowTitleBuffer, sizeof(m_windowTitleBuffer), "%s", Project::defaultWindowTitle);
             }
             std::string titleHint = m_project->getName().empty() ? "JasperEngine" : m_project->getName();
@@ -1200,7 +1241,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
         }
 
         if (Theme::foldoutHeader("Splash and Loading", ImGuiTreeNodeFlags_DefaultOpen) && beginSettingsTable("##PlayerLoadingTable")) {
-            beginSettingsRow("Start Scene");
+            projectBeginSettingsRow("Start Scene");
 
             const auto& scenes = m_project->getScenes();
             const SceneProject* selectedScene = m_project->getScene(m_startSceneId);
@@ -1236,7 +1277,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             const LoadingSettings defaults;
             LoadingSettings& loading = m_loadingSettings;
 
-            if (beginSettingsRow("Loading Scene", loading.sceneId != defaults.sceneId)) {
+            if (projectBeginSettingsRow("Loading Scene", loading.sceneId != defaults.sceneId)) {
                 loading.sceneId = defaults.sceneId;
             }
             const SceneProject* loadingScene = m_project->getScene(loading.sceneId);
@@ -1259,7 +1300,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             drawSecondsSetting("Loading Timeout", "##LoadingTimeout", loading.timeout, defaults.timeout,
                 "Time a load waits without progress before giving up.");
 
-            if (beginSettingsRow("Async Loading", loading.asyncLoading != defaults.asyncLoading)) {
+            if (projectBeginSettingsRow("Async Loading", loading.asyncLoading != defaults.asyncLoading)) {
                 loading.asyncLoading = defaults.asyncLoading;
             }
             ImGui::Checkbox("##AsyncLoading", &loading.asyncLoading);
@@ -1268,8 +1309,73 @@ void ProjectSettingsWindow::drawPlayerSettings() {
             ImGui::EndTable();
         }
 
+        if (Theme::foldoutHeader("Logging") && beginSettingsTable("##PlayerLoggingTable")) {
+            const PlayerLoggingSettings defaults;
+            if (projectBeginSettingsRow("Log Level", m_playerLogging.level != defaults.level)) {
+                m_playerLogging.level = defaults.level;
+            }
+            static const char* const levelNames[] = {"trace", "debug", "info", "warn", "error", "off"};
+            static const char* const levelLabels[] = {"Trace", "Debug", "Info", "Warning", "Error", "Off"};
+            int levelIndex = 2;
+            for (int i = 0; i < IM_ARRAYSIZE(levelNames); i++) {
+                if (m_playerLogging.level == levelNames[i]) levelIndex = i;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            if (ImGui::Combo("##PlayerLogLevel", &levelIndex, levelLabels, IM_ARRAYSIZE(levelLabels))) {
+                m_playerLogging.level = levelNames[levelIndex];
+            }
+            endSettingsRow("The lowest level the built game logs (the console, logcat, the browser console). "
+                "JASPER_LOG_LEVEL and --log-level override it when the game starts.");
+
+            if (projectBeginSettingsRow("Log File", m_playerLogging.fileLog != defaults.fileLog)) {
+                m_playerLogging.fileLog = defaults.fileLog;
+            }
+            ImGui::Checkbox("##PlayerLogFile", &m_playerLogging.fileLog);
+            endSettingsRow("Desktop games also write logs/player.log in their user data folder (1 MB, the previous one kept).");
+
+            if (projectBeginSettingsRow("Capture Backtrace on Errors", m_playerLogging.backtrace != defaults.backtrace)) {
+                m_playerLogging.backtrace = defaults.backtrace;
+            }
+            ImGui::Checkbox("##PlayerLogBacktrace", &m_playerLogging.backtrace);
+            endSettingsRow("Errors record their call stack (written to the log file). Debug builds always do.");
+
+            ImGui::EndTable();
+        }
+
+        if (Theme::foldoutHeader("Threading") && beginSettingsTable("##PlayerThreadingTable")) {
+            const ThreadingProjectSettings defaults;
+            ThreadingProjectSettings& threading = m_threading;
+            drawCountSetting("Worker Threads", "##WorkerThreads", threading.workers, 1, 15,
+                "Job system workers. Auto: one per logical core minus one (at most 15; 4 on mobile and web). "
+                "Applies on the next launch.");
+            drawCountSetting("Reserved Frame Workers", "##ReservedFrameWorkers", threading.reservedFrameWorkers, 0, 4,
+                "Workers Background work (asset decoding, cooks) never takes, so the frame always has them. "
+                "Auto: 2 on desktop, 1 on mobile and web. Applies immediately.");
+            drawCountSetting("Asset I/O Threads", "##AssetIOThreads", threading.ioThreads, 0, 4,
+                "Threads that read asset files. Auto: 2 on desktop, 1 on mobile, none on web (the decode job reads). "
+                "Applies on the next launch.");
+
+            if (projectBeginSettingsRow("Web Pump Budget", threading.webPumpBudgetMs != defaults.webPumpBudgetMs)) {
+                threading.webPumpBudgetMs = defaults.webPumpBudgetMs;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputFloat("##WebPumpBudget", &threading.webPumpBudgetMs, 0.5f, 1.0f, "%.1f ms");
+            threading.webPumpBudgetMs = std::isfinite(threading.webPumpBudgetMs)
+                ? std::min(std::max(threading.webPumpBudgetMs, 0.5f), 50.0f) : defaults.webPumpBudgetMs;
+            endSettingsRow("Web builds without threads run Background jobs for this long each frame.");
+
+            if (projectBeginSettingsRow("Web: Multithreaded", threading.webMultithreaded != defaults.webMultithreaded)) {
+                threading.webMultithreaded = defaults.webMultithreaded;
+            }
+            ImGui::Checkbox("##WebMultithreaded", &threading.webMultithreaded);
+            endSettingsRow("Also builds the web player with threads (requires cross-origin isolation): the page "
+                           "picks it when the browser allows SharedArrayBuffer, else the single-thread build.");
+
+            ImGui::EndTable();
+        }
+
         if (Theme::foldoutHeader("Publishing Settings") && beginSettingsTable("##PlayerPublishingTable")) {
-            if (beginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
+            if (projectBeginSettingsRow("Native Resource Pack", m_packNativeResources != Project::defaultPackNativeResources)) {
                 m_packNativeResources = Project::defaultPackNativeResources;
             }
             ImGui::Checkbox("##PackNativeResources", &m_packNativeResources);
@@ -1286,7 +1392,7 @@ void ProjectSettingsWindow::drawPlayerSettings() {
 }
 
 void ProjectSettingsWindow::drawGraphicsSettings() {
-    drawSettingsPanel("##GraphicsSettingsPanel", [this]() {
+    projectDrawSettingsPanel("##GraphicsSettingsPanel", [this]() {
         drawIntSetting("Canvas Width", "##CanvasWidth", m_canvasWidth, (int)Project::defaultCanvasWidth);
         drawIntSetting("Canvas Height", "##CanvasHeight", m_canvasHeight, (int)Project::defaultCanvasHeight);
 
@@ -1301,7 +1407,24 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
             "Devices without MSAA draw them without it.");
 
-        if (beginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
+        // Shadows: the quality tier a scene of Quality Auto renders with, per platform
+        ImGui::SeparatorText("Shadows");
+        {
+            static const char* const tierNames[] = {"Low", "Medium", "High", "Ultra"};
+            static const char* const platformLabels[] = {"macOS", "iOS", "Web", "Android", "Linux", "Windows"};
+            static const int platformOrder[] = {5, 4, 0, 2, 3, 1};   // Windows, Linux, macOS, Web, Android, iOS
+            for (int platform : platformOrder) {
+                const std::string label = std::string(platformLabels[platform]) + " Shadow Tier";
+                const std::string id = std::string("##ShadowTier") + platformLabels[platform];
+                drawComboSetting(label.c_str(), id.c_str(), tierNames, 4, m_shadowTiers[platform],
+                    static_cast<int>(ShadowTiers::defaultTier(platform)),
+                    "The shadow quality tier of this platform's builds (and of the editor running on it) for scenes whose shadow "
+                    "Quality is Auto: cascades, resolution, distance, filter and the memory budget (docs/rendering/shadows.md). "
+                    "Ultra adds PCSS contact hardening.");
+            }
+        }
+
+        if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
             m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
         }
         ImGui::Checkbox("##RuntimeShaders", &m_runtimeShadersEnabled);
@@ -1312,8 +1435,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
 }
 
 void ProjectSettingsWindow::drawQualitySettings() {
-    drawSettingsPanel("##QualitySettingsPanel", [this]() {
-        if (beginSettingsRow("VSync", m_vsyncEnabled != Project::defaultVSyncEnabled)) {
+    projectDrawSettingsPanel("##QualitySettingsPanel", [this]() {
+        if (projectBeginSettingsRow("VSync", m_vsyncEnabled != Project::defaultVSyncEnabled)) {
             m_vsyncEnabled = Project::defaultVSyncEnabled;
         }
         ImGui::Checkbox("##VSync", &m_vsyncEnabled);
@@ -1326,7 +1449,7 @@ void ProjectSettingsWindow::drawQualitySettings() {
 void ProjectSettingsWindow::drawPhysicsSettings() {
     if (beginSettingsPanel("##PhysicsSettingsPanel")) {
         if (beginSettingsTable("##SettingsTable")) {
-            if (beginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
+            if (projectBeginSettingsRow("3D Physics", m_physics3DEnabled != Project::defaultPhysics3DEnabled)) {
                 m_physics3DEnabled = Project::defaultPhysics3DEnabled;
             }
             ImGui::Checkbox("##Physics3D", &m_physics3DEnabled);
@@ -1346,7 +1469,7 @@ void ProjectSettingsWindow::drawPhysicsSettings() {
 void ProjectSettingsWindow::drawPhysics2DSettings() {
     if (beginSettingsPanel("##Physics2DSettingsPanel")) {
         if (beginSettingsTable("##SettingsTable")) {
-            if (beginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
+            if (projectBeginSettingsRow("2D Physics", m_physics2DEnabled != Project::defaultPhysics2DEnabled)) {
                 m_physics2DEnabled = Project::defaultPhysics2DEnabled;
             }
             ImGui::Checkbox("##Physics2D", &m_physics2DEnabled);
@@ -1489,18 +1612,21 @@ void ProjectSettingsWindow::drawLayerCollisionMatrix(const char* id, LayerCollis
 }
 
 void ProjectSettingsWindow::drawScriptingSettings() {
-    drawSettingsPanel("##ScriptingSettingsPanel", [this]() {
+    projectDrawSettingsPanel("##ScriptingSettingsPanel", [this]() {
         drawDirectorySetting(
             m_project, "Lua Directory", nullptr, "##LuaPath", "Browse##lua",
             m_luaDir, fs::path(Project::defaultLuaDir), true
         );
         drawScriptDirsSetting(m_project, m_scriptDirs);
 
-        drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames, cxxStandardCount, m_cxxStandardIndex,
+        drawComboSetting("C++ Standard", "##CxxStandard", cxxStandardNames(), cxxStandardCount, m_cxxStandardIndex,
             findCxxStandardIndex(Project::defaultCxxStandard),
             "Language standard for C++ scripts in Play and exported games. Saved with the project. "
             "Exports also compile the engine with this standard. "
-            "Choose a compatible compiler in Preferences > External Tools.");
+            "Choose a compatible compiler in Preferences > External Tools: GCC " JASPERENGINE_CXX_FLOOR_GNU
+            ", Clang " JASPERENGINE_CXX_FLOOR_CLANG ", Apple Clang " JASPERENGINE_CXX_FLOOR_APPLECLANG
+            " or MSVC " JASPERENGINE_CXX_FLOOR_MSVC
+            " (Visual Studio 2022) or newer. C++23 exports to Xcode need Xcode 16 or newer.");
     });
 }
 
@@ -1640,8 +1766,8 @@ void ProjectSettingsWindow::drawTagsAndLayersSettings() {
 }
 
 void ProjectSettingsWindow::drawEditorSettings() {
-    drawSettingsPanel("##EditorSettingsPanel", [this]() {
-        if (beginSettingsRow("Version Control Files", m_versionControlMetadata != Project::defaultVersionControlMetadata)) {
+    projectDrawSettingsPanel("##EditorSettingsPanel", [this]() {
+        if (projectBeginSettingsRow("Version Control Files", m_versionControlMetadata != Project::defaultVersionControlMetadata)) {
             m_versionControlMetadata = Project::defaultVersionControlMetadata;
         }
         ImGui::Checkbox("##VersionControlMetadata", &m_versionControlMetadata);
@@ -1727,18 +1853,18 @@ void ProjectSettingsWindow::drawWebSettings() {
     drawProjectFilePathSetting(m_project, "Custom HTML Shell", "Optional web HTML wrapper. The file must contain {{JASPERENGINE_DEFAULT_HTML}} marker.", "##WebHtmlShellPath",
         "Browse##webhtmlshell", "Clear##webhtmlshell", m_webCustomHtmlShell, FILE_DIALOG_ALL);
 
-    beginSettingsRow("Head Include");
+    projectBeginSettingsRow("Head Include");
     ImGui::SetNextItemWidth(-1);
     ImGui::InputTextMultiline("##WebHeadInclude", m_webHeadIncludeBuffer, sizeof(m_webHeadIncludeBuffer), ImVec2(-1, Theme::dpi(80.0f)));
     endSettingsRow("HTML inserted into the <head> section by web export when supported.");
 
-    if (beginSettingsRow("Resize Canvas To Window", !m_webResizeCanvasToWindow)) {
+    if (projectBeginSettingsRow("Resize Canvas To Window", !m_webResizeCanvasToWindow)) {
         m_webResizeCanvasToWindow = true;
     }
     ImGui::Checkbox("##WebResizeCanvasToWindow", &m_webResizeCanvasToWindow);
     endSettingsRow("Resize the rendering surface to the browser window. Canvas Scaling Mode controls aspect ratio and stretching.");
 
-    if (beginSettingsRow("Hide Emscripten UI", m_webHideEmscriptenUI)) {
+    if (projectBeginSettingsRow("Hide Emscripten UI", m_webHideEmscriptenUI)) {
         m_webHideEmscriptenUI = false;
     }
     ImGui::Checkbox("##WebHideEmscriptenUI", &m_webHideEmscriptenUI);
@@ -1749,12 +1875,12 @@ void ProjectSettingsWindow::drawLinuxSettings() {
     drawOverrideSetting("App Name", "##LinuxAppName", m_linuxApplicationNameBuffer, inheritedApplicationName(),
         "Linux desktop launcher name. Empty means the shared application name.");
 
-    beginSettingsRow("Comment");
+    projectBeginSettingsRow("Comment");
     ImGui::SetNextItemWidth(-helpMarkerWidth());
     ImGui::InputText("##LinuxComment", m_linuxCommentBuffer, sizeof(m_linuxCommentBuffer));
     endSettingsRow("Short description written to the .desktop launcher file.");
 
-    if (beginSettingsRow("Categories", strcmp(m_linuxCategoriesBuffer, LinuxProjectSettings{}.categories.c_str()) != 0)) {
+    if (projectBeginSettingsRow("Categories", strcmp(m_linuxCategoriesBuffer, LinuxProjectSettings{}.categories.c_str()) != 0)) {
         snprintf(m_linuxCategoriesBuffer, sizeof(m_linuxCategoriesBuffer), "%s", LinuxProjectSettings{}.categories.c_str());
     }
     ImGui::SetNextItemWidth(-helpMarkerWidth());
@@ -1766,7 +1892,7 @@ void ProjectSettingsWindow::drawWindowsSettings() {
     drawOverrideSetting("Product Name", "##WindowsProductName", m_windowsProductNameBuffer, inheritedApplicationName(),
         "Windows executable metadata. Empty means the shared application name.");
 
-    beginSettingsRow("Company Name");
+    projectBeginSettingsRow("Company Name");
     ImGui::SetNextItemWidth(-helpMarkerWidth());
     ImGui::InputText("##WindowsCompanyName", m_windowsCompanyNameBuffer, sizeof(m_windowsCompanyNameBuffer));
     endSettingsRow("Windows executable metadata company name.");
@@ -1808,7 +1934,7 @@ void ProjectSettingsWindow::drawMacOSSettings() {
     drawProjectFilePathSetting(m_project, "Icon", "macOS application icon source image. Export support depends on the generated Xcode project.", "##MacOSIconPath",
         "Browse##macosicon", "Clear##macosicon", m_macOSIcon);
 
-    if (beginSettingsRow("High DPI", !m_macOSHighDpi)) {
+    if (projectBeginSettingsRow("High DPI", !m_macOSHighDpi)) {
         m_macOSHighDpi = true;
     }
     ImGui::Checkbox("##MacOSHighDpi", &m_macOSHighDpi);
@@ -1836,19 +1962,19 @@ void ProjectSettingsWindow::drawIOSSettings() {
     drawProjectFilePathSetting(m_project, "Icon", "iOS application icon source image. Export support depends on the generated Xcode project.", "##IOSIconPath",
         "Browse##iosicon", "Clear##iosicon", m_iosIcon);
 
-    if (beginSettingsRow("Hide Status Bar", !m_iosHideStatusBar)) {
+    if (projectBeginSettingsRow("Hide Status Bar", !m_iosHideStatusBar)) {
         m_iosHideStatusBar = true;
     }
     ImGui::Checkbox("##IOSHideStatusBar", &m_iosHideStatusBar);
     endSettingsRow("Hide the iOS status bar while the app runs.");
 
-    if (beginSettingsRow("Hide Home Indicator", !m_iosHideHomeIndicator)) {
+    if (projectBeginSettingsRow("Hide Home Indicator", !m_iosHideHomeIndicator)) {
         m_iosHideHomeIndicator = true;
     }
     ImGui::Checkbox("##IOSHideHomeIndicator", &m_iosHideHomeIndicator);
     endSettingsRow("Request hiding the iOS home indicator.");
 
-    if (beginSettingsRow("High Refresh Rate", !m_iosSupportsHighRefreshRate)) {
+    if (projectBeginSettingsRow("High Refresh Rate", !m_iosSupportsHighRefreshRate)) {
         m_iosSupportsHighRefreshRate = true;
     }
     ImGui::Checkbox("##IOSHighRefreshRate", &m_iosSupportsHighRefreshRate);
@@ -1874,7 +2000,7 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     drawOverrideSetting("Version Name", "##AndroidVersionName", m_androidVersionNameBuffer, inheritedApplicationVersion(),
         "Visible version string. Empty means the shared version.");
 
-    beginSettingsRow("Launcher Icons");
+    projectBeginSettingsRow("Launcher Icons");
     ImGui::TextWrapped("PNG recommended. Adaptive icon requires foreground and background images.");
     endSettingsRow("Android launcher icon resources. If adaptive foreground and background are set, the export creates an adaptive icon. Otherwise Launcher Icon is used.");
 
@@ -1895,7 +2021,7 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         m_androidOrientationIndex, findAndroidOrientationIndex(defaults.orientation),
         "Screen orientation requested by the Android activity.");
 
-    beginSettingsRow("Architectures");
+    projectBeginSettingsRow("Architectures");
     ImGui::Checkbox("armeabi-v7a", &m_androidAbiArmeabiV7a);
     ImGui::Checkbox("arm64-v8a", &m_androidAbiArm64V8a);
     ImGui::Checkbox("x86", &m_androidAbiX86);
@@ -1905,7 +2031,7 @@ void ProjectSettingsWindow::drawAndroidSettings() {
         ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "Select at least one architecture.");
     }
 
-    beginSettingsRow("Permissions");
+    projectBeginSettingsRow("Permissions");
     if (ImGui::SmallButton("None##AndroidPermissionsNone")) {
         m_androidPermissions.clear();
     }
@@ -1933,7 +2059,7 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::EndChild();
     endSettingsRow("Android permissions written to AndroidManifest.xml. Some permissions still require runtime approval in your Android code.");
 
-    if (beginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup || m_androidKeepScreenOn != defaults.keepScreenOn)) {
+    if (projectBeginSettingsRow("Application Options", m_androidAllowBackup != defaults.allowBackup || m_androidKeepScreenOn != defaults.keepScreenOn)) {
         m_androidAllowBackup = defaults.allowBackup;
         m_androidKeepScreenOn = defaults.keepScreenOn;
     }
@@ -1945,7 +2071,7 @@ void ProjectSettingsWindow::drawAndroidSettings() {
     ImGui::SetItemTooltip("Adds FLAG_KEEP_SCREEN_ON to the Android activity.");
     endSettingsRow("Android application/activity behavior.");
 
-    if (beginSettingsRow("Screen Options", m_androidFullscreen != defaults.fullscreen)) {
+    if (projectBeginSettingsRow("Screen Options", m_androidFullscreen != defaults.fullscreen)) {
         m_androidFullscreen = defaults.fullscreen;
     }
 
@@ -1972,7 +2098,11 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
+    m_project->setPlayerLogging(m_playerLogging);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+        m_project->setShadowTier(platform, static_cast<ShadowTier>(m_shadowTiers[platform]));
+    }
     m_project->setWindowMode(windowModeValues[m_windowModeIndex]);
     m_project->setWindowSize(m_windowWidth, m_windowHeight);
     m_project->setWindowResizable(m_windowResizable);
@@ -2098,6 +2228,10 @@ bool ProjectSettingsWindow::applySettings() {
     }
 
     m_project->getLoadingSettings() = m_loadingSettings;
+    // undoable: the reserve applies to the editor's job system at once
+    if (m_threading != m_project->getThreadingSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));
+    }
 
     m_project->setPackNativeResources(m_packNativeResources);
     m_project->setVersionControlMetadata(m_versionControlMetadata);

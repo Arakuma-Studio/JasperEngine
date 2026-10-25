@@ -8,8 +8,12 @@
 #include "render/SystemRender.h"
 #include "Engine.h"
 
+#include "memory/MemoryStats.h"
+
 #include <cstring>
 #include <cstdlib>
+#include <mutex>
+#include <unordered_map>
 
 // Sokol never sets TRANSFER_SRC, needed to copy render targets out for editor
 // thumbnails (GraphicUtils). Wrapping the call keeps sokol itself unpatched
@@ -66,11 +70,81 @@ const void* SokolTexture::getVulkanImage(sg_image image) {
 #endif
 }
 
+namespace {
+    // GPU texture memory in the memory stats (get_memory_stats, Jobs & Memory): estimated
+    // from each image's description when it is made, given back when it is destroyed.
+    // Texture copies share an image, so the count is kept per image id.
+    struct TrackedImage {
+        uint64_t bytes = 0;
+        jasperengine::memory::TrackedBytes* record = nullptr;
+    };
+
+    std::mutex& trackedImageMutex(){
+        static std::mutex* mutex = new std::mutex();
+        return *mutex;
+    }
+
+    std::unordered_map<uint32_t, TrackedImage>& trackedImages(){
+        static auto* images = new std::unordered_map<uint32_t, TrackedImage>();
+        return *images;
+    }
+
+    jasperengine::memory::TrackedBytes& textureBytes(){
+        static auto* tracked = new jasperengine::memory::TrackedBytes("Texture.GPU", jasperengine::memory::Residency::Gpu);
+        return *tracked;
+    }
+
+    jasperengine::memory::TrackedBytes& renderTargetBytes(){
+        static auto* tracked = new jasperengine::memory::TrackedBytes("Texture.RenderTargets", jasperengine::memory::Residency::Gpu);
+        return *tracked;
+    }
+
+    uint64_t pixelBytes(sg_pixel_format format){
+        switch (format){
+            case SG_PIXELFORMAT_R8: return 1;
+            case SG_PIXELFORMAT_R16: return 2;
+            case SG_PIXELFORMAT_RGBA16F: return 8;
+            case SG_PIXELFORMAT_RGBA32F: return 16;
+            default: return 4;
+        }
+    }
+
+    // a full mip chain is ~4/3 of the base level
+    void trackImage(sg_image image, const sg_image_desc& desc, bool mipChain, bool renderTarget){
+        if (image.id == SG_INVALID_ID)
+            return;
+        const uint64_t slices = desc.type == SG_IMAGETYPE_CUBE ? 6 : (uint64_t)(desc.num_slices > 0 ? desc.num_slices : 1);
+        const uint64_t samples = desc.sample_count > 1 ? (uint64_t)desc.sample_count : 1;
+        uint64_t bytes = (uint64_t)desc.width * (uint64_t)desc.height * pixelBytes(desc.pixel_format) * slices * samples;
+        if (mipChain || desc.num_mipmaps > 1)
+            bytes = bytes * 4 / 3;
+        jasperengine::memory::TrackedBytes& record = renderTarget ? renderTargetBytes() : textureBytes();
+        std::lock_guard<std::mutex> lock(trackedImageMutex());
+        TrackedImage& tracked = trackedImages()[image.id];
+        if (tracked.record)
+            tracked.record->subtract(tracked.bytes);
+        tracked.bytes = bytes;
+        tracked.record = &record;
+        record.add(bytes);
+    }
+
+    void untrackImage(sg_image image){
+        std::lock_guard<std::mutex> lock(trackedImageMutex());
+        auto it = trackedImages().find(image.id);
+        if (it == trackedImages().end())
+            return;
+        if (it->second.record)
+            it->second.record->subtract(it->second.bytes);
+        trackedImages().erase(it);
+    }
+}
+
 SokolTexture::SokolTexture(){
     image.id = SG_INVALID_ID;
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
     streamBytes = 0;
+    aliasImage = false;
 }
 
 SokolTexture::SokolTexture(const SokolTexture& rhs) = default;
@@ -261,7 +335,7 @@ bool SokolTexture::createTexture(
             ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[], 
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
 
-    sg_pixel_format pixelFormat;
+    sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     if (colorFormat == ColorFormat::RGBA){
         pixelFormat = SG_PIXELFORMAT_RGBA8;
     }else if (colorFormat == ColorFormat::RED){
@@ -316,6 +390,7 @@ bool SokolTexture::createTexture(
             image = sg_make_image(image_desc);
         }
     }
+    trackImage(image, image_desc, sampler_desc.mipmap_filter == SG_FILTER_LINEAR || sampler_desc.mipmap_filter == SG_FILTER_NEAREST, false);
     // must come after image creation: in the synchronous path scheduleCleanup
     // frees immediately, and the data is only consumed inside sg_make_image
     if (combined){
@@ -356,13 +431,14 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
         image = sg_make_image(imageDesc);
         sampler = sg_make_sampler(samplerDesc);
     }
+    trackImage(image, imageDesc, false, false);
     createTextureView(label.c_str());
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
 bool SokolTexture::createDynamicTexture(const std::string& label, int width, int height,
             ColorFormat colorFormat, TextureFilter filter){
-    sg_pixel_format pixelFormat;
+    sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     size_t bytesPerPixel;
     if (colorFormat == ColorFormat::RGBA){
         pixelFormat = SG_PIXELFORMAT_RGBA8;
@@ -400,6 +476,7 @@ bool SokolTexture::createDynamicTexture(const std::string& label, int width, int
         image = sg_make_image(imageDesc);
         sampler = sg_make_sampler(samplerDesc);
     }
+    trackImage(image, imageDesc, false, false);
     createTextureView(label.c_str());
     streamBytes = (size_t)width * (size_t)height * bytesPerPixel;
     return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
@@ -431,6 +508,7 @@ bool SokolTexture::createDynamicColorTexture(const std::string& label, int width
         image = sg_make_image(imageDesc);
         sampler = sg_make_sampler(samplerDesc);
     }
+    trackImage(image, imageDesc, false, false);
     createTextureView(label.c_str());
     // updated whole (the LUT strip), so the size check holds
     streamBytes = (size_t)width * (size_t)height * 4;
@@ -460,7 +538,7 @@ bool SokolTexture::createTextureCubeWithMips(
             ColorFormat colorFormat, int numMipmaps, void* data[], size_t size[],
             TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV){
 
-    sg_pixel_format pixelFormat;
+    sg_pixel_format pixelFormat = _SG_PIXELFORMAT_DEFAULT;
     if (colorFormat == ColorFormat::RGBA){
         pixelFormat = SG_PIXELFORMAT_RGBA8;
     }else if (colorFormat == ColorFormat::RED){
@@ -503,6 +581,7 @@ bool SokolTexture::createTextureCubeWithMips(
         image = sg_make_image(image_desc);
         sampler = sg_make_sampler(sampler_desc);
     }
+    trackImage(image, image_desc, false, false);
 
     createTextureView(label.c_str());
 
@@ -600,6 +679,7 @@ bool SokolTexture::createFramebufferTexture(
         if (sampled)
             sampler = sg_make_sampler(sampler_desc);
     }
+    trackImage(image, img_desc, false, true);
 
     if (!sampled)
         return image.id != SG_INVALID_ID;
@@ -612,6 +692,30 @@ bool SokolTexture::createFramebufferTexture(
     return false;
 }
 
+bool SokolTexture::createAliasView(const SokolTexture& source, const char* label){
+    destroyTexture();
+    if (source.image.id == SG_INVALID_ID)
+        return false;
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_NEAREST;
+    samplerDesc.mag_filter = SG_FILTER_NEAREST;
+    samplerDesc.mipmap_filter = SG_FILTER_NEAREST;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.label = label;
+
+    image = source.image;
+    aliasImage = true;
+    if (Engine::isAsyncThread()){
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label);
+    return sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 void SokolTexture::destroyTexture(){
     if (view.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){
@@ -620,7 +724,9 @@ void SokolTexture::destroyTexture(){
             sg_destroy_view(view);
         }
     }
-    if (image.id != SG_INVALID_ID && sg_isvalid()){
+    if (image.id != SG_INVALID_ID && !aliasImage)
+        untrackImage(image);
+    if (image.id != SG_INVALID_ID && !aliasImage && sg_isvalid()){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
@@ -639,6 +745,7 @@ void SokolTexture::destroyTexture(){
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
     streamBytes = 0;
+    aliasImage = false;
 }
 
 uint32_t SokolTexture::getGLHandler() const{

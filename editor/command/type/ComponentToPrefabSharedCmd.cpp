@@ -4,6 +4,7 @@
 #include "ComponentToPrefabSharedCmd.h"
 
 #include "Stream.h"
+#include "util/YamlFootprint.h"
 
 using namespace jasperengine;
 
@@ -31,6 +32,7 @@ bool editor::ComponentToPrefabSharedCmd::execute() {
         if (!project->isComponentOverridden(sceneId, entityData.entity, componentType)) {
             continue; // already following the prefab
         }
+        prefabUndo.capture(project, sceneId, entityData.entity);
         Signature signature = Catalog::componentTypeToSignature(sceneProject->scene, componentType);
         entityData.recovery = Stream::encodeComponents(entityData.entity, sceneProject->scene, signature);
         entityData.properties = project->getOverriddenProperties(sceneId, entityData.entity, componentType);
@@ -83,4 +85,21 @@ bool editor::ComponentToPrefabSharedCmd::mergeWith(Command* otherCommand){
     }
 
     return false;
+}
+
+std::string editor::ComponentToPrefabSharedCmd::describe() const{
+    std::vector<Entity> targets;
+    for (const ComponentToPrefabSharedData& entityData : entities){
+        targets.push_back(entityData.entity);
+    }
+    return "Revert Component Overrides " + CommandNames::component(componentType) + " (" +
+        CommandNames::entities(project, sceneId, targets) + ")";
+}
+
+size_t editor::ComponentToPrefabSharedCmd::memoryBytes() const{
+    size_t bytes = sizeof(*this);
+    for (const ComponentToPrefabSharedData& entityData : entities){
+        bytes += sizeof(entityData) + yamlFootprint(entityData.recovery);
+    }
+    return bytes;
 }

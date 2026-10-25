@@ -42,10 +42,12 @@
 #define MAX_SHADOWCASCADES 4
 #endif
 
-// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map
-// (a spot light, or a single directional cascade) and maps 1:1 to a v_lightProjPos
-// vertex varying, so the slot count is bounded by GPU vertex-output limits: keep the
-// grid small (a 6x6 / 36-slot grid overflows the varyings and breaks shader compiles).
+// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map (a spot
+// light, or a single directional cascade) of its own resolution, packed into the atlas by
+// ShadowSlotPlanner. Shaders compute the shadow coordinates in the fragment stage, but forks
+// written before that still write one v_lightProjPos vertex varying per slot (and every slot
+// costs 9 fragment uniform vectors), so keep the count small: a 6x6 / 36-slot count overflows
+// the varyings and breaks such shaders.
 #ifndef SHADOW_ATLAS_COLS
 #define SHADOW_ATLAS_COLS 3
 #endif
@@ -58,9 +60,9 @@
 #define MAX_SHADOW_ATLAS_SLOTS (SHADOW_ATLAS_COLS * SHADOW_ATLAS_ROWS)
 #endif
 
-// Point shadow atlas (omnidirectional). Each shadow-casting point light consumes
-// SHADOW_CUBE_FACES consecutive slots (one per cube face) and is sampled only in the
-// fragment shader, so this atlas is bounded by texture size rather than varyings.
+// Point shadow atlas (omnidirectional), a depth atlas like the projective one. Each
+// shadow-casting point light consumes SHADOW_CUBE_FACES consecutive slots (one per cube face)
+// and is sampled only in the fragment shader, so this atlas is bounded by texture size.
 #ifndef SHADOW_POINT_ATLAS_COLS
 #define SHADOW_POINT_ATLAS_COLS 6
 #endif
@@ -169,6 +171,7 @@
     }
 
 namespace jasperengine {
+    class Scheduler;
 
     class JASPERENGINE_API Scene;
 
@@ -218,6 +221,14 @@ namespace jasperengine {
         Loading,
         Finished,
         Failed
+    };
+
+    // Project Settings > Player > Threading (project.yaml `threading:`). -1 is Auto.
+    struct ThreadingSettings {
+        int workers = -1;                // job system workers: applies when it starts (next launch)
+        int reservedFrameWorkers = -1;   // workers kept free of Background work: applies live
+        int ioThreads = -1;              // asset reader threads: applies when the reader service starts
+        double webPumpBudgetMs = 4.0;    // single-thread mode: Background work per frame, live
     };
 
     class JASPERENGINE_API Engine {
@@ -274,6 +285,8 @@ namespace jasperengine {
         static uint64_t gameFrames;
         static std::atomic<bool> simulationHeld;
         static bool clampNextDelta;
+        // pauseGameEvents: the editor's Pause (and edit mode), which stops the scheduler's game clocks
+        static bool gameEventsPaused;
 
         static std::atomic<bool> viewLoaded;
         static std::atomic<bool> paused;
@@ -340,6 +353,10 @@ namespace jasperengine {
         static std::vector<Scene*> getSceneLayers();
 
         static void pauseGameEvents(bool pause);
+        static bool areGameEventsPaused();
+        // One frame of the scheduler's Game (scaled), Unscaled and Frames clocks, unless the
+        // game is paused, held or its events are (the editor's Pause). True when they ran.
+        static bool advanceGameClocks(Scheduler& scheduler, double frameTime);
         
         static int getCanvasWidth();
         static int getCanvasHeight();
@@ -403,6 +420,8 @@ namespace jasperengine {
         static void beginFrameStats();
         static void addDrawStats(uint32_t instances, uint64_t triangles);
         static const FrameStats& getFrameStats();
+        // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
+        static uint32_t getPendingDrawCalls();
 
         // Upper bound (in seconds) for the value returned by getDeltatime() and used by the update loop. Default 0.25.
         static float getMaxDeltatime();
@@ -446,8 +465,17 @@ namespace jasperengine {
         // inside systemDraw(): scenes are updating, a stack must not be torn down
         static bool isFrameRunning();
 
+        // The most workers Background (asset) jobs may occupy at once: the job system's gate,
+        // changed live. 0 returns to the reserve-derived maximum.
         static void setMaxResourceLoadingThreads(size_t maxThreads);
+        // Asset jobs queued or running, queued reads included: 0 only once loading is idle.
         static size_t getQueuedResourceCount();
+
+        // Starts the job system and the asset reader service with these settings when they
+        // are not running yet; once running, the reserve and the pump budget apply live and
+        // the thread counts on the next launch. The generated game main calls it first.
+        static void setThreadingSettings(const ThreadingSettings& settings);
+        static const ThreadingSettings& getThreadingSettings();
 
         static void setFramebuffer(Framebuffer* framebuffer);
         static Framebuffer* getFramebuffer();
@@ -459,6 +487,8 @@ namespace jasperengine {
         // Callbacks scripts left on a scene's components. Needed before the code behind them
         // goes away, like the editor unloading the project library
         static void clearComponentSubscriptions(Scene* scene);
+        // Deprecated (kept one release for C++ glue generated before owner keys): scans every
+        // event for tags containing substring. Use SubscriptionOwnerIndex::releaseOwner.
         static void removeSubscriptionsByTag(const std::string& substring);
 
 #ifdef JASPERENGINE_EDITOR

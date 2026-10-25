@@ -240,6 +240,41 @@ async def test_property_override_apply_revert(ed: Editor):
     ed.check(close_to(await get_vec3(ed, a_lid, "Transform", "scale"), [2, 2, 2]), "redo of apply")
 
 
+async def test_undo_overrides(ed: Editor):
+    """S24 R31 / AC14: each value-changing edit of a prefab instance's GameObject records its
+    override; undo gives back the value and the override list exactly, redo the edit's."""
+    b, b_lid = S["b"], S["b_lid"]
+
+    async def snapshot():
+        # the GameObject's own values (the world transform follows a frame later)
+        got = await ed.call("get_entity", scene=SCENE, entity=b_lid)
+        value = {k: got.get(k) for k in ("name", "active", "tag", "layer")}
+        value["components"] = got.get("components")
+        return value, await overrides(ed, b)
+
+    edits = [
+        ("set_properties", {"entity": b_lid, "values": {"transform": {"position": [0, 4, 0]}}}),
+        ("set_transform", {"entity": b_lid, "scale": [3, 3, 3]}),
+        ("rename_entity", {"entity": b_lid, "name": "Lid Renamed"}),
+        ("set_entity_state", {"entity": b_lid, "active": False}),
+        ("add_component", {"entity": b_lid, "component": "light"}),
+        ("reset_component", {"entity": b_lid, "component": "transform"}),
+    ]
+    for tool, args in edits:
+        before_value, before_overrides = await snapshot()
+        await ed.call(tool, scene=SCENE, **args)
+        edit_value, edit_overrides = await snapshot()
+        ed.check(edit_overrides != before_overrides, f"{tool}: no override recorded: {edit_overrides}")
+        await undo(ed)
+        value, listed = await snapshot()
+        ed.check_eq(value, before_value, f"{tool}: undo value")
+        ed.check_eq(listed, before_overrides, f"{tool}: undo overrides")
+        await redo(ed)
+        value, listed = await snapshot()
+        ed.check_eq(listed, edit_overrides, f"{tool}: redo overrides")
+        await undo(ed)
+
+
 async def test_other_override_kinds(ed: Editor):
     b, b_lid = S["b"], S["b_lid"]
     # state (name), added component, added GameObject, removed GameObject

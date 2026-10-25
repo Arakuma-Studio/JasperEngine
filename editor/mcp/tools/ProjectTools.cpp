@@ -13,7 +13,10 @@
 //                          (replaces add_project_scene / set_start_scene)
 //   edit_project_build_file  read / write ProjectBuild.cmake (replaces update_project_build_file)
 #include "McpTools.h"
+#include "log/Logger.h"
+#include "DocumentFile.h"
 
+#include "mcp/McpDataSafety.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -200,7 +203,8 @@ fs::path untitledScenePath(Project* project, const SceneProject& scene, const fs
 // Saves prefab stages, scenes with unsaved changes (untitled ones into untitledDir) and the
 // code editor's buffers. Fills `saved` with what it saved.
 // saveUntitled: also untitled scenes without changes (a new project's scene), so they reach the build.
-bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntitled, Json& saved, std::string& error) {
+bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntitled, Json& saved, std::string& error,
+        DegradedSavePolicy policy = DegradedSavePolicy::Refuse, Json* refused = nullptr) {
     Project* project = ctx.project();
     saved = {{"scenes", Json::array()}, {"prefab_stages", Json::array()}, {"scripts", false}};
 
@@ -217,8 +221,13 @@ bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntit
         PrefabStage* stage = project->getPrefabStageAt(i);
         if (!stage || !project->hasUnsavedPrefabStage(stage->sceneProject.id)) continue;
         std::string message;
-        if (!project->saveSceneNow(stage->sceneProject.id, {}, &message)) {
+        SaveResult result = SaveResult::Failed;
+        if (!project->saveSceneNow(stage->sceneProject.id, {}, &message, policy, &result)) {
             error = "Could not save the prefab open in Prefab Mode: " + message;
+            if (result == SaveResult::RefusedDegraded && refused) {
+                const Prefab* prefab = project->getPrefab(stage->assetPath);
+                if (prefab) *refused = degradedDocumentError(stage->assetPath.generic_string(), prefab->loadReport);
+            }
             return false;
         }
         saved["prefab_stages"].push_back(stage->sceneProject.id);
@@ -236,8 +245,13 @@ bool saveEverything(McpContext& ctx, const fs::path& untitledDir, bool saveUntit
         fs::path target;
         if (scene->filepath.empty()) target = untitledScenePath(project, *scene, untitledDir);
         std::string message;
-        if (!project->saveSceneNow(id, target, &message)) {
+        SaveResult result = SaveResult::Failed;
+        if (!project->saveSceneNow(id, target, &message, policy, &result)) {
             error = "Could not save scene " + std::to_string(id) + " \"" + scene->name + "\": " + message;
+            if (result == SaveResult::RefusedDegraded && refused) {
+                SceneProject* after = project->getScene(id);
+                if (after) *refused = degradedDocumentError(after->filepath.generic_string(), after->loadReport);
+            }
             return false;
         }
         SceneProject* after = project->getScene(id);
@@ -455,11 +469,29 @@ void saveProjectTool(const CallPtr& call) {
         }
     }
 
+    // documents that did not load completely are written only when the agent accepts the loss
+    const bool allowDataLoss = args.value("allow_data_loss", false);
+    const DegradedSavePolicy policy = allowDataLoss ? DegradedSavePolicy::SaveAnyway : DegradedSavePolicy::Refuse;
     Json saved;
+    Json refused;
     std::string error;
-    if (!saveEverything(ctx, sceneDir, true, saved, error)) {
-        call->fail(error, Json{{"unsaved", unsavedState(ctx)}});
+    if (!saveEverything(ctx, sceneDir, true, saved, error, policy, &refused)) {
+        Json data = refused.is_object() ? refused : Json::object();
+        data["unsaved"] = unsavedState(ctx);
+        call->fail(refused.is_object() ? error + " Pass allow_data_loss=true to write anyway." : error, data);
         return;
+    }
+    const LoadReport& projectReport = project->getProjectLoadReport();
+    if (projectReport.dropped() > 0) {
+        if (!allowDataLoss) {
+            Json data = degradedDocumentError("project.yaml", projectReport);
+            data["saved"] = saved;
+            call->fail("project.yaml did not load completely (" + std::to_string(projectReport.dropped()) +
+                       " value(s) this editor could not read); the scenes were saved, project.yaml was not. Pass "
+                       "allow_data_loss=true to write it anyway.", data);
+            return;
+        }
+        project->saveProjectFile(DegradedSavePolicy::SaveAnyway);
     }
 
     const std::string name = args.value("name", "");
@@ -510,6 +542,8 @@ const EnumMap<Scaling> scalingModes[] = {
     {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
+const EnumMap<ShadowTier> shadowTiers[] = {
+    {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
 const EnumMap<AndroidOrientation> androidOrientations[] = {
@@ -972,6 +1006,67 @@ const std::vector<Setting>& settingsTable() {
         }
         add(boolField("player.async_loading", "Load the start scene asynchronously behind the loading scene.",
                       [](Project& p) -> bool& { return p.getLoadingSettings().asyncLoading; }));
+        // ---- threading (Project Settings > Player > Threading)
+        {
+            struct ThreadCount {
+                const char* key;
+                const char* description;
+                int minimum;
+                int maximum;
+                int ThreadingProjectSettings::*field;
+            };
+            const ThreadCount counts[] = {
+                {"player.threading.workers", "Job system workers: -1 Auto, 1-15. Applies on the next launch.", 1, 15, &ThreadingProjectSettings::workers},
+                {"player.threading.reserved_frame_workers", "Workers kept free of Background work: -1 Auto, 0-4. Applies live.", 0, 4, &ThreadingProjectSettings::reservedFrameWorkers},
+                {"player.threading.io_threads", "Asset reader threads: -1 Auto, 0-4. Applies on the next launch.", 0, 4, &ThreadingProjectSettings::ioThreads},
+            };
+            for (const ThreadCount& count : counts) {
+                Setting s;
+                s.key = count.key;
+                s.type = "int";
+                s.description = count.description;
+                const auto field = count.field;
+                const int minimum = count.minimum;
+                const int maximum = count.maximum;
+                s.get = [field](McpContext& ctx) { return Json(ctx.project()->getThreadingSettings().*field); };
+                s.set = [field, minimum, maximum](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                    long long v;
+                    if (!readInt(value, -1, maximum, v, error)) return false;
+                    if (v >= 0 && v < minimum) {
+                        error = "must be -1 (Auto) or " + std::to_string(minimum) + "-" + std::to_string(maximum);
+                        return false;
+                    }
+                    if (apply) {
+                        ThreadingProjectSettings settings = ctx.project()->getThreadingSettings();
+                        settings.*field = static_cast<int>(v);
+                        ctx.project()->setThreadingSettings(settings);
+                    }
+                    return true;
+                };
+                add(s);
+            }
+        }
+        {
+            Setting s;
+            s.key = "player.threading.web_pump_budget_ms";
+            s.type = "number";
+            s.description = "Web builds without threads: Background job time per frame (ms, 0.5-50).";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getThreadingSettings().webPumpBudgetMs); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.5, 50.0, v, error)) return false;
+                if (apply) {
+                    ThreadingProjectSettings settings = ctx.project()->getThreadingSettings();
+                    settings.webPumpBudgetMs = static_cast<float>(v);
+                    ctx.project()->setThreadingSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("player.threading.web_multithreaded", "Web export also builds a pthreads player, picked when the page is cross-origin isolated.",
+                        [](Project& p) { return p.getThreadingSettings().webMultithreaded; },
+                        [](Project& p, bool v) { ThreadingProjectSettings settings = p.getThreadingSettings(); settings.webMultithreaded = v; p.setThreadingSettings(settings); }));
         add(boolSetting("player.pack_native_resources", "Experimental: pack assets and Lua into resources.pak in native builds instead of copying folders.",
                         [](Project& p) { return p.shouldPackNativeResources(); }, [](Project& p, bool v) { p.setPackNativeResources(v); }));
 
@@ -1200,10 +1295,59 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         }
+        // graphics.shadow_tier.<platform>: the shadow quality tier a scene of Quality Auto renders with
+        for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+            Setting s;
+            s.key = std::string("graphics.shadow_tier.") + Project::getShadowTierPlatformName(platform);
+            s.type = "enum";
+            s.values = enumNames(shadowTiers);
+            s.description = std::string("Shadow quality tier of ") + Project::getShadowTierPlatformName(platform) +
+                            " builds (and of the editor on it) for scenes whose shadow Quality is Auto: low, medium, high, ultra "
+                            "(default " + ShadowTiers::getName(ShadowTiers::defaultTier(platform)) + "; docs/rendering/shadows.md).";
+            s.get = [platform](McpContext& ctx) { return Json(enumName(shadowTiers, ctx.project()->getShadowTier(platform))); };
+            s.set = [platform](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                ShadowTier tier;
+                if (!parseEnum(shadowTiers, value, tier, error)) return false;
+                if (apply) ctx.project()->setShadowTier(platform, tier);
+                return true;
+            };
+            add(s);
+        }
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
+
+        // ---- player logging
+        {
+            Setting s;
+            s.key = "player.logging.level";
+            s.type = "enum";
+            s.description = "The lowest level the built game logs.";
+            s.values = {"trace", "debug", "info", "warn", "error", "off"};
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getPlayerLogging().level); };
+            s.set = [values = s.values](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error)) return false;
+                if (std::find(values.begin(), values.end(), text) == values.end()) {
+                    error = "\"" + text + "\" is not one of trace, debug, info, warn, error, off";
+                    return false;
+                }
+                if (apply) {
+                    PlayerLoggingSettings logging = ctx.project()->getPlayerLogging();
+                    logging.level = text;
+                    ctx.project()->setPlayerLogging(logging);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        add(boolSetting("player.logging.file", "Desktop builds also write <userdata>/logs/player.log.",
+                        [](Project& p) { return p.getPlayerLogging().fileLog; },
+                        [](Project& p, bool v) { PlayerLoggingSettings l = p.getPlayerLogging(); l.fileLog = v; p.setPlayerLogging(l); }));
+        add(boolSetting("player.logging.backtrace", "Errors in the built game record their call stack.",
+                        [](Project& p) { return p.getPlayerLogging().backtrace; },
+                        [](Project& p, bool v) { PlayerLoggingSettings l = p.getPlayerLogging(); l.backtrace = v; p.setPlayerLogging(l); }));
 
         // ---- physics
         add(boolSetting("physics.enabled", "3D physics (Jolt). Off leaves Rigidbodies and joints out of builds.",
@@ -1477,6 +1621,90 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         };
+        // Preferences > Logging (saved to settings.yaml at once, like the dialog's OK)
+        auto loggingPreference = [&add](Setting s, std::function<bool(LoggingSettings&, const Json&, std::string&)> apply,
+                                        std::function<Json(const LoggingSettings&)> read) {
+            s.preference = true;
+            s.get = [read](McpContext&) { return read(AppSettings::getLoggingSettings()); };
+            s.set = [apply](McpContext&, const Json& value, bool commit, std::string& error) {
+                LoggingSettings settings = AppSettings::getLoggingSettings();
+                if (!apply(settings, value, error)) return false;
+                if (commit) {
+                    AppSettings::setLoggingSettings(settings);
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(std::move(s));
+        };
+        auto levelName = [](const Json& value, std::string& level, std::string& error) {
+            LogLevel parsed;
+            if (!value.is_string() || !parseLogLevel(value.get<std::string>().c_str(), parsed)) {
+                error = "must be a level: trace, debug, info, warn, error, fatal or off";
+                return false;
+            }
+            level = logLevelName(parsed);
+            return true;
+        };
+        {
+            Setting s;
+            s.key = "preferences.logging.levels";
+            s.type = "object";
+            s.description = "Preferences > Logging: category levels, {\"render\": \"debug\"}. Setting merges (\"info\" resets a category, {} "
+                            "resets all); categories not listed log at Info.";
+            loggingPreference(s, [levelName](LoggingSettings& settings, const Json& value, std::string& error) {
+                if (!value.is_object()) {
+                    error = "must be an object {\"category\": \"level\"}";
+                    return false;
+                }
+                if (value.empty()) {
+                    settings.categoryLevels.clear();
+                    return true;
+                }
+                for (const auto& [category, level] : value.items()) {
+                    std::string name;
+                    if (!levelName(level, name, error)) {
+                        error = category + ": " + error;
+                        return false;
+                    }
+                    if (name == "info") settings.categoryLevels.erase(category);
+                    else settings.categoryLevels[category] = name;
+                }
+                return true;
+            }, [](const LoggingSettings& settings) {
+                Json map = Json::object();
+                for (const auto& [category, level] : settings.categoryLevels) map[category] = level;
+                return map;
+            });
+        }
+        {
+            Setting s;
+            s.key = "preferences.logging.file_level";
+            s.type = "enum";
+            s.values = {"trace", "debug", "info", "warn", "error", "fatal", "off"};
+            s.description = "Preferences > Logging: the lowest level written to editor.log.";
+            loggingPreference(s, [levelName](LoggingSettings& settings, const Json& value, std::string& error) {
+                return levelName(value, settings.fileLevel, error);
+            }, [](const LoggingSettings& settings) { return Json(settings.fileLevel); });
+        }
+        {
+            Setting s;
+            s.key = "preferences.logging.backtrace_on_error";
+            s.type = "bool";
+            s.description = "Preferences > Logging: errors record their call stack (editor.log).";
+            loggingPreference(s, [](LoggingSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.backtraceOnError, error);
+            }, [](const LoggingSettings& settings) { return Json(settings.backtraceOnError); });
+        }
+        {
+            Setting s;
+            s.key = "preferences.logging.show_source";
+            s.type = "bool";
+            s.description = "Preferences > Logging: file:line in the Console's details and editor.log.";
+            loggingPreference(s, [](LoggingSettings& settings, const Json& value, std::string& error) {
+                return readBool(value, settings.showSource, error);
+            }, [](const LoggingSettings& settings) { return Json(settings.showSource); });
+        }
         stringPreference("preferences.cmake_path", "External Tools: cmake executable (\"\" = from PATH).",
                          [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
         stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",
@@ -1932,11 +2160,9 @@ void editProjectBuildFileTool(const CallPtr& call) {
     if (content.empty()) {
         fs::remove(path, ec);
     } else {
-        std::ofstream out(path, std::ios::binary | std::ios::trunc);
-        out << content;
-        out.close();
-        if (!out) {
-            call->fail("Could not write ProjectBuild.cmake.");
+        const io::WriteResult written = DocumentFiles::write(path, content);
+        if (!written.ok()) {
+            call->fail(DocumentFiles::saveFailureMessage("ProjectBuild.cmake", written));
             return;
         }
     }
@@ -2021,7 +2247,8 @@ void registerProjectTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"path", string("Temporary project: Save As to this empty absolute dir.")},
             {"name", string("Rename the project.")},
-            {"untitled_scene_dir", withDefault(string(""), "")}
+            {"untitled_scene_dir", withDefault(string(""), "")},
+            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
         });
         tool.allowedWhilePlaying = false;
         tool.handler = saveProjectTool;

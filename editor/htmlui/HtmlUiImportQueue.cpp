@@ -24,9 +24,8 @@ void ImportQueue::stop(){
         stopping = true;
         queue.clear();
     }
-    wake.notify_all();
-    if (worker.joinable())
-        worker.join();
+    strand.cancelPending();
+    strand.waitIdle();
 }
 
 ImportedResource ImportQueue::runImport(const ImportJob& job){
@@ -76,10 +75,8 @@ bool ImportQueue::enqueue(ImportJob job, bool manual){
         }
         states[key] = ImportStatus{ImportStatus::State::Queued, ""};
         queue.push_back(std::move(job));
-        if (!worker.joinable())
-            worker = std::thread(&ImportQueue::work, this);
     }
-    wake.notify_one();
+    strand.push([this]{ importNext(); });
     return true;
 }
 
@@ -112,8 +109,8 @@ bool ImportQueue::takeFinishedBatch(Batch& batch){
 }
 
 void ImportQueue::waitIdle(){
-    std::unique_lock<std::mutex> lock(mutex);
-    idle.wait(lock, [this]{ return (queue.empty() && running.empty()) || stopping; });
+    // helps run the strand's steps (single-thread mode included)
+    strand.waitIdle();
 }
 
 void ImportQueue::clearSession(){
@@ -126,35 +123,29 @@ void ImportQueue::clearSession(){
     }
 }
 
-void ImportQueue::work(){
+void ImportQueue::importNext(){
     std::unique_lock<std::mutex> lock(mutex);
-    while (true){
-        wake.wait(lock, [this]{ return stopping || !queue.empty(); });
-        if (stopping)
-            break;
-        ImportJob job = std::move(queue.front());
-        queue.pop_front();
-        const std::string key = ImportManifest::normalizeUrl(job.url);
-        running = key;
-        states[key].state = ImportStatus::State::Importing;
-        lock.unlock();
+    if (stopping || queue.empty())
+        return;
+    ImportJob job = std::move(queue.front());
+    queue.pop_front();
+    const std::string key = ImportManifest::normalizeUrl(job.url);
+    running = key;
+    states[key].state = ImportStatus::State::Importing;
+    lock.unlock();
 
-        ImportedResource result = runner(job);
+    ImportedResource result = runner(job);
 
-        lock.lock();
-        ImportStatus& status = states[key];
-        status.state = result.ok ? ImportStatus::State::Imported : ImportStatus::State::Failed;
-        status.error = result.ok ? std::string() : result.error;
-        running.clear();
-        finished.results.push_back(std::move(result));
-        for (const std::string& document : job.documents){
-            if (std::find(finished.documents.begin(), finished.documents.end(), document) == finished.documents.end())
-                finished.documents.push_back(document);
-        }
-        if (queue.empty()){
-            batchReady = true;
-            idle.notify_all();
-        }
+    lock.lock();
+    ImportStatus& status = states[key];
+    status.state = result.ok ? ImportStatus::State::Imported : ImportStatus::State::Failed;
+    status.error = result.ok ? std::string() : result.error;
+    running.clear();
+    finished.results.push_back(std::move(result));
+    for (const std::string& document : job.documents){
+        if (std::find(finished.documents.begin(), finished.documents.end(), document) == finished.documents.end())
+            finished.documents.push_back(document);
     }
-    idle.notify_all();
+    if (queue.empty())
+        batchReady = true;
 }

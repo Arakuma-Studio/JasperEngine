@@ -8,8 +8,11 @@
 #include "Input.h"
 #include "FileData.h"
 #include "thread/ResourceProgress.h"
+#include "jobs/JobTypes.h"
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
+#include "render/shadow/ShadowTypes.h"
+#include "render/shadow/ShadowTiers.h"
 
 using namespace jasperengine;
 
@@ -40,8 +43,35 @@ namespace luabridge
         }
     };
 
+    // Asset path fields (AssetRef, ShaderRef) are plain path strings in Lua. Assigning one
+    // gives a reference without a GUID, as assigning a path does in C++.
+    template <class T>
+    struct AssetPathStack
+    {
+        [[nodiscard]] static Result push(lua_State* L, const T& ref)
+        {
+            return Stack<std::string>::push(L, ref.path);
+        }
+
+        [[nodiscard]] static TypeResult<T> get(lua_State* L, int index)
+        {
+            auto result = Stack<std::string>::get(L, index);
+            if (! result)
+                return result.error();
+            return T(std::move(*result));
+        }
+
+        [[nodiscard]] static bool isInstance(lua_State* L, int index)
+        {
+            return Stack<std::string>::isInstance(L, index);
+        }
+    };
+
+    template<> struct Stack<AssetRef> : AssetPathStack<AssetRef>{};
+    template<> struct Stack<ShaderRef> : AssetPathStack<ShaderRef>{};
+
     template<> struct Stack<Scaling> : EnumWrapper<Scaling>{};
-    template<> struct Stack<Platform> : EnumWrapper<Platform>{};
+    template<> struct Stack<jasperengine::Platform> : EnumWrapper<jasperengine::Platform>{};  // qualified: the editor has a Platform class too
     template<> struct Stack<GraphicBackend> : EnumWrapper<GraphicBackend>{};
     template<> struct Stack<TextureStrategy> : EnumWrapper<TextureStrategy>{};
     template<> struct Stack<TextureType> : EnumWrapper<TextureType>{};
@@ -63,6 +93,7 @@ namespace luabridge
     template<> struct Stack<EntityPool> : EnumWrapper<EntityPool>{};
 
     template<> struct Stack<ResourceType> : EnumWrapper<ResourceType>{};
+    template<> struct Stack<jobs::Lane> : EnumWrapper<jobs::Lane>{};
 
     template<> struct Stack<RotationOrder> : EnumWrapper<RotationOrder>{};
 
@@ -73,6 +104,11 @@ namespace luabridge
     template<> struct Stack<LightShading> : EnumWrapper<LightShading>{};
     template<> struct Stack<ShadowCaster2DShape> : EnumWrapper<ShadowCaster2DShape>{};
     template<> struct Stack<ShadowQuality> : EnumWrapper<ShadowQuality>{};
+    // 3D shadows (S10)
+    template<> struct Stack<ShadowType> : EnumWrapper<ShadowType>{};
+    template<> struct Stack<ShadowUpdateMode> : EnumWrapper<ShadowUpdateMode>{};
+    template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
+    template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};

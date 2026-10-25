@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectUtils.h"
+#include "io/AtomicFile.h"
 
 #include "Out.h"
 #include "Catalog.h"
 #include "Stream.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
+#include "pool/TextureDataPool.h"
 #include "util/ProjectChecks.h"
 #include "script/LuaBinding.h"
 #include "System.h"
@@ -118,6 +120,15 @@ bool splitTrailingDuplicateNumber(const std::string& name, std::string& baseName
 }
 
 void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
+    static const char* const id = "editor:resources:default_sky";
+    // Decoded once: the pool keeps the first faces and ignores later ones, whose pixels (not owned
+    // by TextureData) would leak, about 7 MB for every scene decoded with the default sky
+    const std::shared_ptr<std::array<TextureData, 6>> cached = TextureDataPool::get(id);
+    if (cached && cached->at(0).getData()) {
+        outTexture.setCubeDatas(id, cached->at(4), cached->at(5), cached->at(1), cached->at(0), cached->at(2), cached->at(3));
+        return;
+    }
+
     TextureData skyBack;
     TextureData skyBottom;
     TextureData skyFront;
@@ -132,8 +143,8 @@ void editor::ProjectUtils::setDefaultSkyTexture(Texture& outTexture) {
     skyRight.loadTextureFromMemory(Daylight_Box_Right_png, Daylight_Box_Right_png_len);
     skyTop.loadTextureFromMemory(Daylight_Box_Top_png, Daylight_Box_Top_png_len);
 
-    outTexture.setId("editor:resources:default_sky");
-    outTexture.setCubeDatas("editor:resources:default_sky", skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
+    outTexture.setId(id);
+    outTexture.setCubeDatas(id, skyFront, skyBack, skyLeft, skyRight, skyTop, skyBottom);
 }
 
 namespace {
@@ -331,12 +342,10 @@ bool editor::ProjectUtils::writeShaderFork(const ShaderForkPlan& plan) {
         if (std::filesystem::exists(path, ec) || ec)
             return false;
 
-        std::ofstream f(path, std::ios::trunc);
-        if (!f.is_open())
+        if (!io::writeFileAtomic(path, content).ok())
             return false;
         written.push_back(path);
-        f << content;
-        return static_cast<bool>(f);
+        return true;
     };
 
     bool success = writeFile(plan.vertPath, plan.vertContent) &&
@@ -751,7 +760,6 @@ std::string editor::ProjectUtils::makeUniqueEntityName(Scene* scene, const std::
 size_t editor::ProjectUtils::getTransformIndex(EntityRegistry* registry, Entity entity){
     Signature signature = registry->getSignature(entity);
     if (signature.test(registry->getComponentId<Transform>())) {
-        Transform& transform = registry->getComponent<Transform>(entity);
         auto transforms = registry->getComponentArray<Transform>();
         return transforms->getIndex(entity);
     }
@@ -1811,6 +1819,11 @@ ScriptPropertyValue editor::ProjectUtils::luaValueToScriptPropertyValue(lua_Stat
         // None: a prefab is dragged onto the property in the Inspector
         return ScriptPropertyValue(PrefabAsset());
     }
+
+    case ScriptPropertyType::Asset: {
+        // a default path ("textures/hero.png"), else None
+        return ScriptPropertyValue(AssetRef(lua_isstring(L, idx) ? std::string(lua_tostring(L, idx)) : std::string()));
+    }
     }
 
     return ScriptPropertyValue{};
@@ -1951,6 +1964,8 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
                         prop.type = ScriptPropertyType::Color4;
                     }else if (typeLower == "prefab" || typeLower == "prefabasset"){
                         prop.type = ScriptPropertyType::Prefab;
+                    }else if (typeLower == "asset" || typeLower == "assetref"){
+                        prop.type = ScriptPropertyType::Asset;
                     }else if (typeLower == "entity" || typeLower == "entitypointer" || typeLower == "pointer"){
                         prop.type = ScriptPropertyType::EntityReference;
                     }else{
@@ -1959,6 +1974,13 @@ static void parseLuaPropertiesTable(lua_State* L, ScriptEntry& entry) {
                     }
                 } else {
                     prop.type = ScriptPropertyType::Float;
+                }
+                lua_pop(L, 1);
+
+                // Asset properties: the asset type they take (assetType = "texture", ...)
+                lua_getfield(L, -1, "assetType");
+                if (prop.type == ScriptPropertyType::Asset && lua_isstring(L, -1)) {
+                    prop.assetType = lua_tostring(L, -1);
                 }
                 lua_pop(L, 1);
 

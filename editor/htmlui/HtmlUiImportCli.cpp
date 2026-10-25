@@ -8,6 +8,7 @@
 
 #include "htmlui/compat/Diagnostics.h"
 #include "htmlui/compat/ImportManifest.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <ostream>
@@ -111,7 +112,7 @@ int jasperengine::editor::htmlui::runImportUi(int argc, char** argv, const std::
     }
 
     std::error_code ec;
-    fs::path projectRoot = fs::absolute(fs::u8path(options.project), ec).lexically_normal();
+    fs::path projectRoot = fs::absolute(editor::FileUtils::pathFromUtf8(options.project), ec).lexically_normal();
     if (projectRoot.filename() == "project.yaml")
         projectRoot = projectRoot.parent_path();
     if (!fs::is_regular_file(projectRoot / "project.yaml", ec)){
@@ -127,7 +128,7 @@ int jasperengine::editor::htmlui::runImportUi(int argc, char** argv, const std::
     // documents: relative to the working directory, else to the project
     std::vector<std::string> documents;
     for (const std::string& given : options.documents){
-        fs::path path = fs::u8path(given);
+        fs::path path = editor::FileUtils::pathFromUtf8(given);
         if (path.is_relative()){
             const fs::path fromCwd = fs::absolute(path, ec);
             path = fs::is_regular_file(fromCwd, ec) ? fromCwd : projectRoot / path;

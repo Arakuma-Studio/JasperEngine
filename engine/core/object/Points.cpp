@@ -289,7 +289,7 @@ void Points::addSpriteFrame(int id, const std::string& name, Rect rect){
             pointscomp.needReload = true;
         }
     }else{
-        Log::error("Cannot set frame id %s less than 0 or greater than %i", name.c_str(), pointscomp.framesRect.size());
+        Log::error("Cannot set frame id %s less than 0 or greater than %zu", name.c_str(), pointscomp.framesRect.size());
     }
 }
 
@@ -301,7 +301,7 @@ void Points::addSpriteFrame(const std::string& name, float x, float y, float wid
     if (pointscomp.framesRect.validIndex(id)){
         addSpriteFrame(id, name, Rect(x, y, width, height));
     }else{
-        Log::error("Cannot set frame %s. Sprite frames reached limit of %i", name.c_str(), pointscomp.framesRect.size());
+        Log::error("Cannot set frame %s. Sprite frames reached limit of %zu", name.c_str(), pointscomp.framesRect.size());
     }
 }
 
@@ -393,7 +393,7 @@ bool Points::removeShaderUniform(const std::string& name){
 Vector4 Points::getShaderParam(const std::string& name) const{
     PointsComponent& points = getComponent<PointsComponent>();
 
-    return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, name);
+    return ShaderLibraryValues::getParam(points.shaderUniforms, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, name);
 }
 
 void Points::setShaderTexture(const std::string& name, const std::string& path){
@@ -414,14 +414,14 @@ void Points::setShaderFeature(const std::string& define, bool enabled){
     PointsComponent& points = getComponent<PointsComponent>();
 
     // features are compiled in: another shader variant
-    if (ShaderLibraryValues::setFeature(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define, enabled))
+    if (ShaderLibraryValues::setFeature(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, define, enabled))
         points.needReload = true;
 }
 
 bool Points::isShaderFeatureEnabled(const std::string& define) const{
     PointsComponent& points = getComponent<PointsComponent>();
 
-    return ShaderLibraryValues::isFeatureEnabled(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader, define);
+    return ShaderLibraryValues::isFeatureEnabled(points.shaderFeatures, points.customShader.empty() ? scene->getDefaultCustomShader(ShaderType::POINTS) : points.customShader.path, define);
 }
 
 void Points::setBlendMode(MaterialBlendMode blendMode){

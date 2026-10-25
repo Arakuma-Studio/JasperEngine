@@ -149,7 +149,15 @@ namespace jasperengine {
         // restores it from IndexedDB after it starts; what is written before that is lost.
         virtual bool isUserDataLoaded();
 
+        // The engine logs through Logger (log/Logger.h), not through this: it is only called
+        // by a PlatformSink, which an override of installLogSinks adds. The default prints
+        // "(ERROR): msg" to stdout.
         virtual void platformLog(const int type, const char *fmt, va_list args);
+        // Adds the game's log sinks when the engine starts (Engine::systemInit): by default
+        // the platform's (installPlatformLogSinks: the console, logcat, the browser console,
+        // os_log, the debugger, and the project's player.log when enabled). A System that
+        // overrides platformLog adds a PlatformSink here to keep receiving messages.
+        virtual void installLogSinks();
 
         virtual bool getBoolForKey(const char *key, bool defaultValue);
         virtual int getIntegerForKey(const char *key, int defaultValue);

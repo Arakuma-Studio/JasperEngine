@@ -28,7 +28,10 @@ namespace jasperengine::editor {
         int m_scalingModeIndex = 0;
         int m_textureStrategyIndex = 0;
         bool m_vsyncEnabled = true;
+        PlayerLoggingSettings m_playerLogging;
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
+        // the shadow quality tier of each platform (Engine::Platform order), as ShadowTier ints
+        int m_shadowTiers[6] = {2, 0, 1, 0, 2, 2};
         int m_windowModeIndex = 0;
         int m_windowWidth = 0;
         int m_windowHeight = 0;
@@ -46,6 +49,7 @@ namespace jasperengine::editor {
         std::unordered_map<std::string, Texture> m_thumbnailTextures;
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
         LoadingSettings m_loadingSettings;
+        ThreadingProjectSettings m_threading;
         fs::path m_assetsDir;
         fs::path m_luaDir;
         std::vector<fs::path> m_scriptDirs;

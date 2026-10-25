@@ -165,6 +165,7 @@ namespace jasperengine{
         HTMLUI_GRADIENT, // HTML UI linear/radial/conic gradients (RmlUi CompileShader)
         HTMLUI_POST,     // HTML UI fullscreen passes: layer composite, filters, masks (exclusive variants)
         UI_EFFECT,       // HTML UI effects (phase 5): one per effect and form, the effect in the custom-shader id
+        SHADOW_CACHE,    // the shadow cache's depth copy and slot clear; 'Vis' the atlas debug view (RenderSystem)
         HTMLUI_PRIM      // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
     };
 
@@ -294,7 +295,8 @@ namespace jasperengine{
         GBUFFERALBEDOTEXTURE, // linear base color (rgb) + hasIBL flag (a)
         SHADOW2DATLAS,       // 1D polar shadow rows (one per 2D light)
         SPOTMASKATLAS,       // projected spot masks, one horizontal tile per 3D light slot
-        BONES
+        BONES,
+        SHADOWATLASRAW       // the projective shadow atlas's raw depths (a second view: PCSS)
     };
 
     enum class TextureType {

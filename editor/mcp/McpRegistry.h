@@ -47,6 +47,9 @@ namespace jasperengine::editor::mcp {
         ToolAnnotations annotations;
         bool allowedWhilePlaying = true;       // the server refuses the call during play if false
         ToolActivity activity = ToolActivity::Auto;  // busy policy (see ToolActivity)
+        // The call's undo steps are the agent's (S24 R24): edit tools always; a control tool
+        // whose steps are edits of the user's state too (select_entities) sets this
+        bool attributesUndo = false;
         std::function<void(CallPtr)> handler;  // runs on the MAIN thread
     };
 

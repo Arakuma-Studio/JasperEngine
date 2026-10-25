@@ -18,8 +18,12 @@
 
 namespace jasperengine::editor {
     class Workspace;
+    class StreamTestAccess;
 
     class Stream {
+        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream)
+        friend class StreamTestAccess;
+
     private:
 
         static std::string sceneTypeToString(SceneType type);
@@ -249,6 +253,15 @@ namespace jasperengine::editor {
         static ScriptProperty decodeScriptProperty(const YAML::Node& node);
 
     public:
+        // Asset references (S04 §6.5): a scalar path keeps its key and gains a sibling
+        // "<key>Guid"; a shader reference's sibling holds "<vertGuid>|<fragGuid>"
+        static void encodeAssetRef(YAML::Node& node, const std::string& key, const AssetRef& ref);
+        static AssetRef decodeAssetRef(const YAML::Node& node, const std::string& key);
+        static void encodeShaderRef(YAML::Node& node, const std::string& key, const ShaderRef& ref);
+        static ShaderRef decodeShaderRef(const YAML::Node& node, const std::string& key);
+        static std::string shaderRefGuids(const ShaderRef& ref);
+        static void parseShaderRefGuids(const std::string& text, ShaderRef& ref);
+
         // GameObject state next to the name: active, tag and layer
         static void encodeEntityState(YAML::Node& entityNode, const Entity entity, const EntityRegistry* registry);
         static void decodeEntityState(Entity entity, EntityRegistry* registry, const YAML::Node& entityNode);
@@ -344,7 +357,11 @@ namespace jasperengine::editor {
         static YAML::Node encodeMaterial(const Material& material, bool embedTextureData = true);
         static Material decodeMaterial(const YAML::Node& node, const Material* oldMaterial = nullptr);
 
+        // The components of `signature`, with what the entity's file held that this editor does
+        // not read (StreamPreserved.h)
         static YAML::Node encodeComponents(const Entity entity, const EntityRegistry* registry, Signature signature);
+        // The live values only
+        static YAML::Node encodeComponentsLive(const Entity entity, const EntityRegistry* registry, Signature signature);
         static void decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode);
 
         static YAML::Node encodeTransform(const Transform& transform);

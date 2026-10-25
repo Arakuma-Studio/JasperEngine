@@ -1,0 +1,18 @@
+{
+  "_comment": "Budgets of je-bench-jobs and je-bench-memory (docs/specs/S06-jobs-memory.md R23-R26), measured with min(8, hardware threads - 2) workers on the build server's Linux x64 Release build. check_bench.py fails on a miss.",
+  "je-bench-jobs": {
+    "submit_throughput_jobs_per_s": {"min": 3000000, "spec": "R23 empty-job submit+execute from one producer"},
+    "parallel_for_dispatch_ns": {"max": 150, "spec": "R23 parallelFor of 1 unit, 0 helpers"},
+    "submit_round_trip_p99_us": {"max": 20, "spec": "R23 submit + wait on an idle pool, p99"},
+    "parallel_for_speedup_ratio": {"min": 0.7, "spec": "R24 parallelFor over 1M units of ~1us: speedup / (workers+1)"},
+    "nested_parallel_for_speedup_ratio": {"min": 0.6, "spec": "R24 nested 64x64 from 8 worker jobs: speedup / (workers+1)"},
+    "nested_parallel_for_deadlocks": {"max": 0, "spec": "R24 zero deadlocks over 1000 iterations"},
+    "frame_protection_p99_ms": {"max": 3.5, "spec": "R25 High parallelFor of 8x1ms under 200 Heavy 20ms jobs, p99"}
+  },
+  "je-bench-memory": {
+    "arena_allocate_64b_ns": {"max": 5, "spec": "R26 Arena 64B allocation, average"},
+    "object_pool_new_delete_ns": {"max": 25, "spec": "R26 ObjectPool new+delete"},
+    "range_allocator_alloc_free_p99_ns": {"max": 250, "spec": "R26 RangeAllocator allocate+free with 10k live ranges, p99"},
+    "stats_and_hooks_overhead_pct": {"max": 2, "spec": "R26 stats per job, one thread (bounds the share of R23), median of 41 paired trials"}
+  }
+}

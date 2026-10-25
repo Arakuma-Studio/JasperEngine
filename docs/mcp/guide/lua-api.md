@@ -106,6 +106,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color3"` | `Vector3` | `{r, g, b}` |
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
+| `"asset"`, `"assetref"` (with `assetType = "texture"`, `"model"`, `"audio"`, ...) | `AssetRef`, or `nil` when left None | a path (`"textures/hero.png"`), or none |
 | `"entity"`, `"entitypointer"`, `"pointer"` | the first enabled Lua script instance on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
@@ -333,7 +334,9 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `graphicBackend` | ro | `GraphicBackend.*` |
 | `openGL` | ro | bool |
 | `asyncLoading` | rw | |
-| `isViewLoaded()`, `getQueuedResourceCount()`, `setMaxResourceLoadingThreads(n)`, `startAsyncThread()`, `commitThreadQueue()`, `endAsyncThread()`, `isAsyncThread()` | static fn | |
+| `isViewLoaded()`, `startAsyncThread()`, `commitThreadQueue()`, `endAsyncThread()`, `isAsyncThread()` | static fn | |
+| `getQueuedResourceCount()` | static fn | asset jobs queued or running (reads included): 0 only once loading is idle |
+| `setMaxResourceLoadingThreads(n)` | static fn | the most workers asset (Background) jobs take at once, applied live; 0 = derived from the reserved frame workers |
 | `framebuffer` | rw | |
 | `clearAllSubscriptions()`, `clearComponentSubscriptions()` | static fn | do not call from gameplay scripts |
 | event objects (`onUpdate`, `onFixedUpdate`, ... see 1.3) | static props | use via `RegisterEngineEvent` |
@@ -381,14 +384,40 @@ Constants (static properties, integers, no parentheses):
 - Gamepad axes: `Input.GAMEPAD_AXIS_LEFT_X`, `_LEFT_Y`, `_RIGHT_X`, `_RIGHT_Y`,
   `_LEFT_TRIGGER`, `_RIGHT_TRIGGER`, `_LAST`.
 
+### 2.2.1 Jobs (static, read-only)
+
+The engine's job system runs asset loading and engine work on worker threads. Lua states are
+single-threaded, so scripts never submit jobs; these only report.
+
+| Function | Returns |
+|---|---|
+| `Jobs.getWorkerCount()` | worker threads (0 in single-thread mode: web without threads) |
+| `Jobs.isSingleThreaded()` | bool |
+| `Jobs.getQueuedCount(lane)` | jobs queued in `JobLane.High`, `JobLane.Normal` or `JobLane.Background` |
+| `Jobs.getRunningCount(lane)` | jobs running in that lane |
+
+`ThreadPoolManager` is deprecated (one release): `ThreadPoolManager.getInstance():getQueueSize()`
+returns the Background lane's queue; `initialize` and `shutdown` warn once and do nothing.
+
 ### 2.3 Log (static, one string argument each)
 
-`Log.print(s)`, `Log.verbose(s)`, `Log.debug(s)`, `Log.warn(s)`, `Log.error(s)`.
+`Log.print(s)` (= `Log.info(s)`), `Log.verbose(s)` (trace), `Log.debug(s)` (debug builds
+only), `Log.warn(s)`, `Log.error(s)`.
 Pass ONE string: `Log.print("score " .. tostring(n))` or `Log.print(string.format("%d", n))`.
 Plain Lua `print(...)` goes to the engine log too, as an info line (the editor's Console, in
 Play and at edit time; a game's platform log in an exported build): it takes any number of
-values of any type and joins them with tabs, like standard Lua. `Log.*` add the warn / error
-levels.
+values of any type and joins them with tabs, like standard Lua. `Log.*` add the levels.
+
+Lua's records are in the `lua` category and carry the chunk and line they were logged from
+(the Console's details pane, `read_console`'s `source`). More than 200 identical messages a
+second are held back and summed up in one `suppressed N similar messages` line.
+
+- `Log.category(name)`: a category of your own, created on first use, with
+  `:trace(s) :debug(s) :info(s) :warn(s) :error(s)` (`local net = Log.category("net")`,
+  `net:warn("lag")`). The Console filters by category.
+- `Log.setLevel(level [, category])`: the lowest level logged (`"trace"`, `"debug"`, `"info"`,
+  `"warn"`, `"error"`, `"fatal"`, `"off"`) for `lua` or the named category; false for an
+  unknown level name. `Log.getLevel([category])` reads it back.
 
 ### 2.4 UserSettings (static, persistent key/value)
 
@@ -459,6 +488,24 @@ if b then GameObject.destroy(b, 2.0) end
 
 A `"Prefab"` script property left at None is `nil`: check before instantiating.
 
+### 2.7.1 Asset / AssetRef (asset identity)
+
+Every asset has a GUID that survives renames and moves (`jasper://docs/assets`). `Asset` answers
+from the editor's asset database in Play and from the build's `assetmap.bin` in exported games.
+Paths are relative to the assets directory for textures, models, audio, fonts, UI documents and
+data files, and to the project for scenes, prefabs, materials, shaders and scripts.
+
+| Name | Kind |
+|---|---|
+| `Asset.path(guid)` | static fn: the current path, or `nil` (a former GUID or a sub-asset's resolves too) |
+| `Asset.guid(path)` | static fn: the GUID, or `nil` |
+| `Asset.exists(guidOrPath)` | static fn: boolean |
+| `Asset.ref(guidOrPath)` | static fn: an `AssetRef` |
+| `guid`, `path`, `type` (`"texture"`, `"model"`, ...), `valid` | `AssetRef` ro properties |
+| `isValid()`, `==`, `tostring()` | `AssetRef` method, metamethods |
+
+Component path fields (`AudioSource.filename`, `Model.filename`...) stay plain strings in Lua.
+
 ### 2.8 SceneManager (static)
 
 `SceneManager.loadScene(idOrName)`, `addChildScene(idOrName)`, `removeChildScene(idOrName)`,
@@ -490,7 +537,7 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
@@ -533,8 +580,36 @@ if hit.hit then local e = hit.body end
 `Color.linearTosRGB(...)`, `Color.sRGBToLinear(...)`: accept `Vector3`, `Vector4`, `(r,g,b)`
 or `(r,g,b,a)`.
 
-No timer API is bound: accumulate `Engine.deltatime` in `self`, or use
-`GameObject.destroy(obj, delay)` for delayed destruction, or Tweens/Actions.
+### 2.13 Timer (static): delayed calls, repeats, coroutines
+
+```lua
+local h = Timer.after(2.0, function() self:explode() end, { owner = self })   -- once, in 2 s of game time
+Timer.every(0.5, function() self:blink() end, { count = 10, owner = self })    -- 10 times
+Timer.nextFrame(fn [, opts]);  Timer.afterFrames(3, fn [, opts]);  Timer.afterFixedSteps(1, fn [, opts])
+local co = Timer.run(function()              -- a coroutine the scheduler drives
+    Timer.wait(1.0)                          -- game seconds (or the run's clock)
+    Timer.waitRealtime(0.5)                  -- wall-clock seconds, even while paused
+    Timer.waitFrames(2)                      -- simulated frames
+    Timer.waitFixedStep()                    -- one fixed update
+    Timer.waitUntil(function() return self.ready end)   -- checked once per frame
+end, { owner = self })
+h:cancel(); h:isActive(); co:cancel(); co:isActive(); Timer.cancelAll(self)
+```
+
+- Options: `owner` (cancelled when that script goes away), `clock` (`"game"`: scaled by
+  `Engine.timeScale`, the default; `"unscaled"`; `"real"`), `count` (every), `catchUp` (every:
+  after a stall, up to 8 missed periods at once; by default a repeat fires at most once a frame
+  and keeps its phase).
+- The game and unscaled clocks run only while the game runs: not in the editor's Pause (Step
+  advances one frame), not while loading or held. Timers run after the scenes' update, before
+  `onPostUpdate`; fixed-step ones after each fixed update.
+- `Timer.run` starts at once and runs up to its first wait. `Timer.wait*` outside `Timer.run`
+  raises `Timer.wait must be called inside Timer.run`.
+- An error in a callback or coroutine is reported with its traceback (in the editor it pauses
+  Play, like an error in an event) and cancels that timer or coroutine.
+- Without an owner a timer lives until Play stops. `list_timers` (MCP) shows what is pending.
+
+For delayed destruction `GameObject.destroy(obj, delay)` also works; tweens are Actions.
 
 ---
 
@@ -675,7 +750,7 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `enabled` | rw |
 | `setTexture(path)` | method |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
-| `castShadows`, `receiveShadows`, `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
+| `castShadows`, `receiveShadows`, `staticShadowCaster` (cached in the static shadow layer, `jasper://docs/shadows`), `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
 | `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods |
 | `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |
@@ -782,10 +857,16 @@ cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
 
 Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
-`cameraFar`, `automaticShadowCamera`, `numCascades`, `cullingMask`, `shading`
+`cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
 (`LightShading.*`, the stage evaluating it on MIXED-lighting materials); methods
 `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRange(r)`,
 `setIntensity(i)`, `setShadows(b)`, `setShadowCameraNearFar(n, f)`.
+Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`), `shadowStrength`
+(0-1), `shadowBias` and `shadowNormalBias` (shadow texels), `shadowResolution` (0: the tier's),
+`cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
+distance), `shadowDistance` (metres, 0: the scene's or the tier's), `shadowAngularDiameter`
+(degrees), `shadowSourceRadius` (metres), `shadowUpdateMode` (`ShadowUpdateMode.AUTO/EVERY_FRAME/ON_DEMAND`);
+`requestShadowUpdate()` redraws an On Demand light's maps.
 
 Light2D rw: `enabled`, `color` (Vector3), `intensity`, `range`, `falloff`, `height`,
 `shadows`, `shadowBias`, `shadowSoftness`, `mapResolution`; methods `setColor(r,g,b)`,
@@ -1035,6 +1116,7 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `Joint3DType` | `FIXED`, `DISTANCE`, `POINT`, `HINGE`, `CONE`, `PRISMATIC`, `SWINGTWIST`, `SIXDOF`, `PATH`, `GEAR`, `RACKANDPINON`, `PULLEY` |
 | `CameraType` | `CAMERA_UI`, `CAMERA_ORTHO`, `CAMERA_PERSPECTIVE` |
 | `LightType` | `DIRECTIONAL`, `POINT`, `SPOT` |
+| `JobLane` | `High`, `Normal`, `Background` |
 | `EaseType` | `LINEAR`, `STEP`, `QUAD_IN/OUT/IN_OUT`, `CUBIC_*`, `QUART_*`, `QUINT_*`, `SINE_*`, `EXPO_*`, `CIRC_*`, `ELASTIC_*`, `BACK_*`, `BOUNCE_*` (each `_IN`, `_OUT`, `_IN_OUT`), `CUSTOM` |
 | `ActionState` | `Running`, `Paused`, `Stopped` |
 | `AudioSourceState` | `Playing`, `Paused`, `Stopped` |
@@ -1145,8 +1227,12 @@ Rigidbody wrappers by index.
     `init`; use `Engine.preferredCanvasWidth/Height` there.
 20. **`Log.*` take a single string**; build messages with `..`/`tostring`/`string.format`.
 21. **`onDestroy` is only for runtime destruction**; to clean up when play stops nothing is
-    called. Event subscriptions are cleaned up automatically.
+    called. Event subscriptions (`RegisterEvent`/`RegisterEngineEvent`, with or without a tag)
+    are removed automatically when the script goes away.
 22. **Colors** on wrappers (`setColor`, `color`, Button colors) are sRGB 0..1 values;
     raw component fields (`UIComponent.color`, `ButtonComponent.colorNormal`) are linear.
 23. **Integers**: entity ids, indices and enum values are integers; do not pass fractional
     numbers to them (`math.floor` first).
+24. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
+    Play stops) and calls into a script that is gone. With `owner = self` it dies with the
+    script, like the script's event subscriptions.

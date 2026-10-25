@@ -786,10 +786,11 @@ editor::RendererPlatform rendererPlatform() {
 
 #endif
 
-void processMessages(bool waitForMessage) {
-    if (waitForMessage)
+// waitSeconds > 0: an idle loop sleeps until a message or then (the editor scheduler's next timer)
+void processMessages(double waitSeconds) {
+    if (waitSeconds > 0.0)
         MsgWaitForMultipleObjectsEx(
-            0, nullptr, 100, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+            0, nullptr, static_cast<DWORD>(waitSeconds * 1000.0), QS_ALLINPUT, MWMO_INPUTAVAILABLE);
     MSG message{};
     while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
         if (message.message == WM_QUIT) {
@@ -824,7 +825,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         shutdownWindow();
         return -1;
     }
-    processMessages(false);
+    processMessages(0.0);
 
     if (NFD_Init() != NFD_OKAY) {
         std::fprintf(stderr, "Error: NFD_Init failed: %s\n", NFD_GetError());
@@ -846,7 +847,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     installViewportHooks(platformIO);
 
     app.setup();
-    processMessages(false);
+    processMessages(0.0);
     int clientWidth = 0;
     int clientHeight = 0;
     WindowWin::getClientSize(clientWidth, clientHeight);
@@ -860,7 +861,7 @@ int editor::Backend::init(int argc, char* argv[]) {
         shutdownWindow();
         return -1;
     }
-    processMessages(false);
+    processMessages(0.0);
 
     backend->editorFrame.init(*backend->renderer, app, []() {
         ImGui_ImplWin32_NewFrame();
@@ -890,7 +891,7 @@ int editor::Backend::init(int argc, char* argv[]) {
     };
 
     app.setLoadingPump([&](bool render) {
-        processMessages(false);
+        processMessages(0.0);
         if (render && !backend->shouldClose)
             renderFrame(true);
     });
@@ -916,7 +917,7 @@ int editor::Backend::init(int argc, char* argv[]) {
 
     backend->liveResizeFrame = [&]() { renderFrame(true); };
     while (!backend->shouldClose) {
-        processMessages(backend->editorFrame.isIdle());
+        processMessages(backend->editorFrame.isIdle() ? app.idleWaitSeconds(0.1) : 0.0);
         if (backend->shouldClose) break;
         app.processProjectChange();
         if (backend->shouldClose) break;

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "command/Command.h"
+#include "command/CommandNames.h"
 #include "Project.h"
 #include "command/PrefabEditUndo.h"
 #include <cstdint>
@@ -31,6 +32,16 @@ namespace jasperengine::editor{
         void undo() override;
 
         bool mergeWith(Command* otherCommand) override;
+
+        // "Rename Player → Hero"
+        std::string describe() const override { return "Rename " + oldName + CommandNames::ARROW + newName; }
+        const char* typeName() const override { return "EntityNameCmd"; }
+        bool isNoOp() const override { return oldName == newName; }
+        void collectKeepCommands(KeepContext& context) const override;
+
+        uint32_t getSceneId() const { return sceneId; }
+        Entity getEntity() const { return entity; }
+        const std::string& getNewName() const { return newName; }
     };
 
 }

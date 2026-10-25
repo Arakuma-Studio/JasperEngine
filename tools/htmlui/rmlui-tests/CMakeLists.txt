@@ -16,7 +16,8 @@ project(RmlUiForkTests VERSION 6.3 LANGUAGES C CXX)
 
 include("${PROJECT_SOURCE_DIR}/CMake/Utilities.cmake")
 
-set(CMAKE_CXX_STANDARD 17)
+# the standard the engine compiles the fork at (JASPERENGINE_CXX_STANDARD)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # upstream's defaults for set_common_target_options
 set(RMLUI_COMPILER_OPTIONS ON)

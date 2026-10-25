@@ -72,6 +72,30 @@ namespace jasperengine::editor {
     };
 
     class ProjectWindow {
+    public:
+        // What the window showed in its last frame, in window pixels: the listing's entries,
+        // the search box and the S04 items of an open context menu (editor_status reports it,
+        // so a test or an agent can click them for real)
+        struct UiRect {
+            float x = 0, y = 0, w = 0, h = 0;
+        };
+        struct UiTreeNode {
+            std::string path;          // project-relative ("." the project)
+            UiRect rect;               // a click shows the folder in the listing
+            float arrowX = 0, arrowY = 0;  // a click there opens or closes the node
+            bool open = false;
+        };
+        struct UiState {
+            bool drawn = false;
+            std::vector<UiTreeNode> tree;
+            std::string directory;     // project-relative
+            std::string search;
+            std::string selected;
+            UiRect searchBox;
+            std::vector<std::pair<std::string, UiRect>> entries;
+            std::vector<std::pair<std::string, UiRect>> contextMenu;
+        };
+
     private:
         Project* project;
         CodeEditor* codeEditor;
@@ -147,6 +171,10 @@ namespace jasperengine::editor {
         char searchBuffer[128];
         std::string searchText;
 
+        UiState uiState;      // the last frame's
+        UiState uiBuilding;   // this frame's
+        static UiRect lastItemRect();
+
         bool isRenaming;
         bool renameSelectPending;
         std::string fileBeingRenamed;
@@ -201,7 +229,10 @@ namespace jasperengine::editor {
         ModelRender modelRender;
 
         // Thumbnail generation
-        std::thread thumbnailThread;
+        // thumbnail generation: one request per step of a Background strand
+        jobs::SerialQueue thumbnails{"thumbnails", jobs::Lane::Background};
+        std::atomic<bool> thumbnailStepScheduled{false};
+        bool thumbnailWarmupDone = false; // the strand's steps only
         std::mutex thumbnailMutex;
         std::queue<ThumbnailRequest> thumbnailQueue;
         std::atomic<bool> stopThumbnailThread;
@@ -282,7 +313,10 @@ namespace jasperengine::editor {
         static bool writeImageThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath);
 
         void queueThumbnailGeneration(const fs::path& filePath, FileType type, bool forceRegenerate = false);
-        void thumbnailWorker();
+        void thumbnailStep();
+        void scheduleThumbnailStep();
+        // state a thumbnail step waits on changed: wakes cancelThumbnailWork's wait, schedules a step
+        void notifyThumbnailWork();
         ImTextureID getThumbnailTexture(const std::string& thumbnailPath, int& outWidth, int& outHeight);
         void evictThumbnailTexture(const std::string& thumbnailKey);
         void enforceThumbnailCacheLimit();
@@ -325,6 +359,8 @@ namespace jasperengine::editor {
         // videos the engine does not play, converted into targetDir by FFmpeg on a worker (phase 6)
         static void importVideos(const std::vector<fs::path>& videos, const fs::path& targetDir);
         fs::path getCurrentPath() const { return currentPath; }
+
+        const UiState& getUiState() const { return uiState; }
         void saveEntityFile(const fs::path& directory, const char* entityContent, size_t contentLen);
 
         void show();

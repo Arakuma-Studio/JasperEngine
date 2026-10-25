@@ -156,7 +156,8 @@ namespace {
         return seekFile(file, 0);
     }
 
-    bool loadPack(const std::string& filename) {
+    // (games only: the editor reads the project's files, loadPackOnce)
+    [[maybe_unused]] bool loadPack(const std::string& filename) {
         FILE* file = System::instance().platformFopen(filename.c_str(), "rb");
         if (!file) return false;
 

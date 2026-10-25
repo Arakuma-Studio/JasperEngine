@@ -161,11 +161,18 @@ namespace jasperengine::editor {
         // The encode of a default-constructed component, what Add Component gives
         static YAML::Node encodeDefaultComponent(ComponentType type);
 
+        // What copyGameObjects would copy, as a clip a PasteEntitiesCmd takes, without touching
+        // the clipboard (Play Mode Changes keeps GameObjects made while playing). Null when
+        // nothing can be copied.
+        static std::shared_ptr<GameObjectsClip> snapshotGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& entities);
+
     private:
         // copyGameObjects, also handing back the encode of each copied root that is not a
-        // lone prefab member: the same Stream::encodeEntity a delete snapshots it with
+        // lone prefab member: the same Stream::encodeEntity a delete snapshots it with;
+        // clipOut gets the clip, and write false leaves the clipboard alone
         static bool copyGameObjects(Project* project, uint32_t sceneId, const std::vector<Entity>& entities,
-                                    std::unordered_map<Entity, YAML::Node>* encodedRoots);
+                                    std::unordered_map<Entity, YAML::Node>* encodedRoots,
+                                    std::shared_ptr<GameObjectsClip>* clipOut = nullptr, bool write = true);
     };
 
 }

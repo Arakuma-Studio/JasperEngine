@@ -467,3 +467,84 @@ async def test_scene_camera_3d(ed: Editor):
     # play's default is the start scene, not the selected Cam3D
     st = await ed.call("get_play_state")
     ed.check_eq(st.get("play_would_start", {}).get("name"), "Main Scene", f"default play scene: {st!r}")
+
+
+# -- Play Mode Changes (S24 R26-R30, R39; AC13) -----------------------------------------------
+
+SPAWNER = """---@class PlaySpawner : ScriptInstance
+local PlaySpawner = { properties = {} }
+
+function PlaySpawner:init()
+    local go = GameObject(self.scene)
+    go.name = "Spawned By Script"
+end
+
+return PlaySpawner
+"""
+
+
+async def test_play_change_review():
+    """Edits made while playing are offered after Stop: the authored light's intensity and cube's
+    position, a GameObject made by create_entity, and an edit of a script-spawned GameObject
+    (that one can't be kept). Keeping the light's only gives it its play value, the cube keeps
+    its edit value; one undo gives the light back its edit value. keep_changes all keeps a
+    GameObject made while playing."""
+    async with Editor(create=True, name="Play Changes CI") as ed:
+        made = await ed.call("create_scene", name="PlayChanges", type="3D", path="scenes/PlayChanges")
+        scene = made["scene"]["id"]
+        await ed.call("select_scene", scene=scene)
+        light = (await ed.call("create_entity", scene=scene, type="point_light", name="Lamp"))["entity_id"]
+        cube = (await ed.call("create_entity", scene=scene, type="box", name="Crate"))["entity_id"]
+        host = (await ed.call("create_entity", scene=scene, type="empty", name="Host"))["entity_id"]
+        await ed.call("create_script", kind="lua", name="PlaySpawner", content=SPAWNER, scene=scene, entity=host)
+        edit_intensity = (await ed.call("get_entity", scene=scene, entity=light, components=["light"],
+                                        properties=["intensity"]))["components"]["light"]["intensity"]
+        await ed.call("save_scene", scene=scene)
+
+        started = await ed.call("play", action="start", scene=scene)
+        ed.check_eq(started["state"], "playing", f"play start: {started}")
+        await ed.call("wait", frames=3)
+        await ed.call("set_properties", scene=scene, entity=light, values={"light": {"intensity": edit_intensity + 4}})
+        await ed.call("set_transform", scene=scene, entity=cube, position=[4, 0, 0])
+        await ed.call("create_entity", scene=scene, type="empty", name="Made In Play")
+        spawned = await ed.call("find_entities", scene=scene, name="Spawned By Script", runtime=True)
+        ed.check(spawned["entities"], f"the script's GameObject: {spawned}")
+        await ed.call("set_properties", scene=scene, entity=spawned["entities"][0]["id"],
+                      values={"transform": {"position": [9, 9, 9]}})
+
+        stopped = await ed.call("play", action="stop")
+        ed.check_eq(stopped["state"], "stopped", "stop")
+        ed.check_eq(stopped["pending_play_changes"], 4, f"pending rows: {stopped}")
+        state = await ed.call("get_play_state")
+        ed.check_eq(state["pending_play_changes"], 4, "get_play_state")
+
+        rows = (await ed.call("get_play_changes", scene=scene))["rows"]
+        ed.check_eq(len(rows), 4, f"rows: {rows}")
+        by_name = {(r["game_object"] or {}).get("name"): r for r in rows}
+        ed.check(by_name["Spawned By Script"]["keepable"] is False, f"script-spawned: {by_name['Spawned By Script']}")
+        ed.check_eq(by_name["Spawned By Script"].get("reason"), "Created by a script during Play", "reason")
+        ed.check(by_name["Lamp"]["keepable"] and by_name["Crate"]["keepable"] and by_name["Made In Play"]["keepable"],
+                 f"keepable rows: {rows}")
+        ed.check_eq(by_name["Made In Play"]["kind"], "created", "created row")
+
+        kept = await ed.call("apply_play_changes", scene=scene, ids=[by_name["Lamp"]["id"]])
+        ed.check(kept.get("undo", {}).get("name", "").startswith("Apply Play Mode Changes"), f"one step: {kept}")
+        intensity = (await ed.call("get_entity", scene=scene, entity=light, components=["light"],
+                                   properties=["intensity"]))["components"]["light"]["intensity"]
+        ed.check(abs(intensity - (edit_intensity + 4)) < 1e-3, f"the light has its play value: {intensity}")
+        pos = (await ed.call("get_entity", scene=scene, entity=cube, components=["transform"]))["components"]["transform"]["position"]
+        ed.check(abs(pos[0]) < 1e-3, f"the cube keeps its edit value: {pos}")
+        ed.check_eq((await ed.call("get_play_state"))["pending_play_changes"], 0, "the rest was discarded")
+
+        await ed.call("undo", scope="scene", scene=scene)
+        intensity = (await ed.call("get_entity", scene=scene, entity=light, components=["light"],
+                                   properties=["intensity"]))["components"]["light"]["intensity"]
+        ed.check(abs(intensity - edit_intensity) < 1e-3, f"undo: the edit value: {intensity}")
+
+        # keep_changes all: a GameObject made while playing exists after Stop
+        await ed.call("play", action="start", scene=scene)
+        await ed.call("create_entity", scene=scene, type="box", name="Kept From Play")
+        stopped = await ed.call("play", action="stop", keep_changes="all")
+        ed.check(stopped.get("kept_changes", {}).get("kept", 0) >= 1, f"kept: {stopped}")
+        found = await ed.call("find_entities", scene=scene, name="Kept From Play")
+        ed.check(found["entities"], f"the GameObject made while playing exists after Stop: {found}")

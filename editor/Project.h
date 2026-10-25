@@ -12,17 +12,29 @@
 #include "Generator.h"
 #include "Configs.h"
 #include "util/Prefab.h"
+#include "LoadReport.h"
+#include "StreamMigrations.h"
+#include "SceneBackup.h"
+#include "io/ScopedFileLock.h"
+#include <optional>
 #include "util/AssetDatabase.h"
+#include "asset/AssetIndex.h"
+#include "asset/AssetMap.h"
+#include "asset/AssetRefSchema.h"
+#include "asset/MissingAssetTracker.h"
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
 #include "util/HtmlUIWatcher.h"
 #include "util/Util.h"
+#include "render/shadow/ShadowTiers.h"
 
 #include "yaml-cpp/yaml.h"
 
 #include <filesystem>
 #include <chrono>
+#include <future>
+#include "jobs/JobSystem.h"
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -64,6 +76,15 @@ namespace jasperengine::editor{
         BEFORE,
         AFTER,
         INTO
+    };
+
+    // Where a selection change comes from (Project::setSelection): the user (a standalone
+    // change is an undo step), an undo/redo putting a stored selection back, or forced
+    // (GameObjects destroyed, a scene reloaded). Only User changes are recorded.
+    enum class SelectionCause{
+        User,
+        Restore,
+        Forced
     };
 
     enum class TabType{
@@ -173,6 +194,12 @@ namespace jasperengine::editor{
         // A scene of Project::instantiatePrefabPreview (a thumbnail): its Missing Prefabs are
         // not reported
         bool prefabPreview = false;
+        // What its file's load could not read (docs/data-safety.md): with dropped issues
+        // outstanding, saves to its own file are gated and autosave is off
+        LoadReport loadReport;
+        // SHA-1 of the file's bytes as last loaded or saved by this session (a crash backup
+        // applies to exactly these bytes)
+        std::string diskSha1;
     };
 
     // Unity's Prefab Mode, Context: how the scene an In Context prefab stage was opened from
@@ -564,11 +591,28 @@ namespace jasperengine::editor{
 
     using ComponentRecovery = std::map<std::string, ComponentRecoveryEntry>;
 
+    // Project Settings > Player > Logging (project.yaml "playerLogging"). The defaults are what
+    // games did before: everything from Info on to the platform log, no file, no backtraces.
+    struct PlayerLoggingSettings {
+        std::string level = "info";      // trace, debug, info, warn, error, off
+        bool fileLog = false;            // desktop: <userdata>/logs/player.log, 1 MB x 2
+        bool backtrace = false;          // errors record their call stack
+
+        bool operator==(const PlayerLoggingSettings& other) const {
+            return level == other.level && fileLog == other.fileLog && backtrace == other.backtrace;
+        }
+    };
+
     class Project{
     private:
 
         Conector conector;
         Generator generator;
+        // Play's startup and stop jobs (process channel): waited for when the project goes
+        jobs::Task<void> playStartupTask;
+        jobs::Task<void> playStopTask;
+        // the scene save writing on the io-write channel
+        jobs::Task<void> sceneSaveTask;
 
         std::string name;
 
@@ -577,7 +621,10 @@ namespace jasperengine::editor{
         Scaling scalingMode;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
+        PlayerLoggingSettings playerLogging;
         int htmlUiMsaaSamples;
+        // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
+        ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -611,14 +658,62 @@ namespace jasperengine::editor{
         IOSProjectSettings iosProjectSettings;
         AndroidProjectSettings androidProjectSettings;
         CommandHistory projectHistory;
+        uint64_t selectionGesture = 1;
+        bool selectionGestureHeld = false;
+        void installUndoHooks();
 
         uint32_t startSceneId;
         LoadingSettings loadingSettings;
+        ThreadingProjectSettings threadingSettings;
         TerrainEditorSettings terrainEditorSettings;
         bool simulateTouch;
 
         // True while project.yaml holds the only copy of this user's editor state
         bool workspaceMigrationPending = false;
+        // What project.yaml's load could not read: dropped issues gate its saves
+        LoadReport projectLoadReport;
+        // Scenes whose last saveScene the save gate refused (Save All goes on past them)
+        std::unordered_set<uint32_t> refusedSaves;
+        int prefabSaveScopeDepth = 0;
+        DegradedSavePolicy prefabSaveScopePolicy = DegradedSavePolicy::Refuse;
+        std::vector<std::filesystem::path> refusedPrefabSaves;
+
+        // Data safety state (ProjectDataSafety.cpp)
+        std::unique_ptr<io::ScopedFileLock> projectLock;
+        bool ignoreProjectLock = false;
+        bool skipProjectLock = false;
+        bool projectLockedFailure = false;
+        std::string projectLockMessage;
+        struct AutosaveScene {
+            float lastWrite = 0.0f;
+            float interval = 0.0f;
+            // the last backup's bytes, as its worker thread wrote them
+            struct Written {
+                std::mutex mutex;
+                std::string sha1;
+                bool writing = false;
+            };
+            std::shared_ptr<Written> written = std::make_shared<Written>();
+        };
+        std::unordered_map<uint32_t, AutosaveScene> autosaveScenes;
+        float autosaveClock = 0.0f;
+        float autosaveNextCheck = 0.0f;
+        std::shared_ptr<std::atomic<int>> autosaveWritesInFlight = std::make_shared<std::atomic<int>>(0);
+        std::optional<RecoveryChoice> nextRecoveryChoice;
+        RecoveryOutcome lastRecovery;
+
+        // loadProject: false when another live editor holds the project and the host says no
+        bool takeProjectLock(const std::filesystem::path& path);
+        // R12: the temps of dead processes into .jasperengine/backup/orphans
+        void sweepOrphanedTemporaryFiles();
+        // loadScene: the bytes to load instead of the file's (Restore), false to load the file
+        bool resolveSceneRecovery(const std::filesystem::path& relativePath, std::string& restoredBytes);
+        // R17: untitled backups of dead sessions, offered once when the project opens
+        void offerUntitledBackups();
+        // After an explicit save or a Discard: the scene's backup has nothing left to protect
+        void deleteSceneBackup(const SceneProject& sceneProject, const std::filesystem::path& previousPath);
+        // The backup of one scene or prefab stage, if due
+        void autosaveDocument(SceneProject& sceneProject, BackupKind kind, const std::filesystem::path& source, float interval);
 
         // True while the model describes what is on disk at projectPath.
         // createTempProject() resets it and then points projectPath at the project it
@@ -734,9 +829,13 @@ namespace jasperengine::editor{
             std::filesystem::file_time_type writeTime{};
             std::uintmax_t size = 0;
             YAML::Node node;
+            std::string sha1;
+            MigrationResult migration;
         };
         std::map<std::filesystem::path, PrefabFileCache> prefabFileCache;
-        YAML::Node loadPrefabFile(const std::filesystem::path& fullPath);
+        // The parsed and migrated file (its migrations and a newer format go into the installed
+        // load report each time); sha1, when given, receives the bytes' SHA-1
+        YAML::Node loadPrefabFile(const std::filesystem::path& fullPath, std::string* sha1 = nullptr);
         // getPrefabFileBase: the base each .prefab file names (empty: an original), by the
         // file's time and size, looked at again at most once a second
         struct PrefabBaseCache {
@@ -752,8 +851,26 @@ namespace jasperengine::editor{
         // GUID <-> path of the prefab files (and later other asset types)
         AssetDatabase assetDatabase;
         std::chrono::steady_clock::time_point lastAssetRefreshTime;
+        // the poll's disk walk, an S06 Background job (R23); applied on the main thread
+        jobs::Task<AssetDatabase::DiskScan> assetScan;
+        std::chrono::steady_clock::duration lastAssetScanDuration{};
+        void waitForAssetScan();
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;
+        // Who references what (S04): closed files from disk, documents with unsaved edits from memory
+        AssetIndex assetIndex;
+        MissingAssetTracker missingAssets;
+        // Lua's Asset module (AssetMap) in the editor and its Play: answered by the database
+        class EditorAssetResolver : public AssetMap::Resolver {
+        public:
+            explicit EditorAssetResolver(const Project* project) : project(project) {}
+            ~EditorAssetResolver() override { AssetMap::setResolver(nullptr); }
+            bool findPath(const Guid& guid, std::string& path, AssetType& type) const override;
+            Guid findGuid(const std::string& path) const override;
+        private:
+            const Project* project;
+        };
+        EditorAssetResolver assetResolver{this};
 
         // What the database reports changed: moved prefabs get their new path everywhere in
         // memory, removed ones leave Missing Prefab instances behind, added ones relink them
@@ -854,12 +971,6 @@ namespace jasperengine::editor{
                           const fs::path& currentPath, fs::path& updatedPath);
         static bool remapRelativeString(const fs::path& oldRelative, const fs::path& newRelative,
                         const std::string& currentPath, std::string& updatedPath);
-        static bool remapScriptEntryPaths(ScriptEntry& scriptEntry, const fs::path& oldRelative,
-                          const fs::path& newRelative);
-        // Absolute paths: Lua entries match against the Lua root, C++ entries against the project.
-        bool remapScriptPathsInRegistry(EntityRegistry* registry, const fs::path& oldPath,
-                        const fs::path& newPath);
-        bool cleanupScriptPathsInRegistry(EntityRegistry* registry, const fs::path& deletedPath);
         // Runs transform over every stored asset reference (component textures and cubemap
         // faces, model and sound filenames, text fonts), rewriting the value in place.
         static bool visitAssetPathsInRegistry(EntityRegistry* registry, const std::function<bool(std::string&)>& transform);
@@ -871,17 +982,6 @@ namespace jasperengine::editor{
         // Reads every .material file of the project, calls visit on it and writes back the
         // ones visit changed (returns true for)
         bool visitMaterialFiles(const std::function<bool(Material&)>& visit);
-        // A transform of fork references over a material's shader and its extra pass's
-        static bool applyToMaterialShaders(Material& material, const std::function<bool(std::string&)>& transform);
-        // Runs an asset transform over every scene, prefab and material file,
-        // marking what changed.
-        void applyAssetPathChange(const std::function<bool(std::string&)>& transform);
-        // Applies a transform to the customShader of every renderable component (Mesh/UI/
-        // Points/Lines/Sky) and the scene defaults across all scenes and prefabs, and to the
-        // fork shader of every submesh material and extra pass there and in .material files,
-        // flagging shader or mesh reloads and marking affected scenes/prefabs modified. The
-        // transform mutates the value in place and returns whether it changed.
-        void applyCustomShaderPathChange(const std::function<bool(std::string&)>& transform);
         bool removeMissingChildSceneReferences(SceneProject& sceneProject);
         bool detachChildSceneFromParents(uint32_t childSceneId, const std::set<uint32_t>& skippedSceneIds);
 
@@ -891,10 +991,12 @@ namespace jasperengine::editor{
         void runPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const LocalBuildSettings& buildSettings);
         void failPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const std::string& message,
                      const std::string& alertTitle = "", const std::string& alertMessage = "");
-        bool saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews = true);
+        bool saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews = true,
+                DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         bool saveSceneForPlayStartup(SceneProject* sceneProject);
         bool saveLoadedSceneOnStop(SceneProject* loadedSceneProject, SceneProject* editorScene, bool keepModified);
-        bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true);
+        bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
+                DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         void writeSceneSource(const SceneProject* sceneProject);
         bool hasMissingSceneSources() const;
         void writeMissingSceneSources();
@@ -966,6 +1068,9 @@ namespace jasperengine::editor{
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
+        ~Project();
+        Project(const Project&) = delete;
+        Project& operator=(const Project&) = delete;
 
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
@@ -974,6 +1079,7 @@ namespace jasperengine::editor{
         // variants of every light capacity tier, see ShaderVariantCollector)
         bool scriptsSetLightCapacity() const;
         // a project script sets the scene's post-processing (both states of its colour variant bit ship)
+        bool scriptsSetShadowQuality() const;
         bool scriptsSetPostProcessing() const;
         // the PostProcessingSettings switches project scripts name (ShaderVariantCollector::
         // getScriptableEffectFields), for the uber variants an export ships
@@ -1001,11 +1107,23 @@ namespace jasperengine::editor{
         void setVSyncEnabled(bool enabled);
         bool isVSyncEnabled() const;
 
+        // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
+        void setPlayerLogging(const PlayerLoggingSettings& settings);
+        const PlayerLoggingSettings& getPlayerLogging() const;
+
         // MSAA samples of the HTML UI targets (1, 2, 4 or 8; others round down to one of
         // them), applied to the editor's documents at once and written into exports
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
+
+        // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
+        // editor's scenes at once and written into exports (docs/rendering/shadows.md)
+        void setShadowTier(int platform, ShadowTier tier);
+        ShadowTier getShadowTier(int platform) const;
+        // lower-case platform names of the setting: macos, ios, web, android, linux, windows
+        static const char* getShadowTierPlatformName(int platform);
+        static int findShadowTierPlatform(const std::string& name);
 
         void setWindowMode(WindowMode windowMode);
         WindowMode getWindowMode() const;
@@ -1030,6 +1148,8 @@ namespace jasperengine::editor{
 
         void setAssetsDir(const std::filesystem::path& assetsDir);
         std::filesystem::path getAssetsDir() const;
+        // Scans the project's assets (S04): every asset gets its GUID before anything references it
+        void openAssetDatabase();
 
         void setLuaDir(const std::filesystem::path& luaDir);
         std::filesystem::path getLuaDir() const;
@@ -1102,8 +1222,6 @@ namespace jasperengine::editor{
         Util::CustomShaderPaths resolveCustomShaderFiles(const std::string& customShader) const;
         // reads a fork file as the shader compilers and manifests see it
         bool readShaderFile(const std::string& relative, std::string& content) const;
-        // the project-relative files a fork path can name: itself and, under the assets directory
-        std::vector<std::string> shaderFileCandidates(const std::string& relative) const;
 
         // Applies new roots: referenced files outside them are moved in keeping their
         // layout, then every stored reference is rewritten and saved.
@@ -1154,6 +1272,12 @@ namespace jasperengine::editor{
         void setStartSceneId(uint32_t sceneId);
 
         LoadingSettings& getLoadingSettings();
+        const ThreadingProjectSettings& getThreadingSettings() const;
+        // Stores them and applies what applies live (the reserve, the web pump budget) to
+        // the editor's job system; the worker and reader counts apply on the next launch
+        void setThreadingSettings(const ThreadingProjectSettings& settings);
+        // the runtime form (Engine::setThreadingSettings)
+        static ThreadingSettings toEngineThreading(const ThreadingProjectSettings& settings);
         const LoadingSettings& getLoadingSettings() const;
 
         TerrainEditorSettings& getTerrainEditorSettings();
@@ -1175,11 +1299,55 @@ namespace jasperengine::editor{
         void deleteSceneProject(SceneProject* sceneProject);
         void loadSceneProjectData(SceneProject* sceneProject, const YAML::Node& sceneNode);
         bool saveProject(bool userCalled = false, std::function<void()> callback = nullptr);
-        bool saveProjectFile();
+        // project.yaml; refused (RefusedDegraded) while its load report has dropped issues
+        bool saveProjectFile(DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         // Per-user editor state (.jasperengine/user/workspace.yaml), never project.yaml
         bool saveWorkspaceFile();
 
         bool loadProject(const std::filesystem::path path, bool updateLastOpened = true);
+
+        // ---- data safety (editor/project/ProjectDataSafety.cpp, docs/data-safety.md) ----
+
+        // One editor per project: loadProject takes .jasperengine/user/editor.lock. With the
+        // lock ignored (--ignore-lock) a busy lock only warns.
+        void setIgnoreProjectLock(bool ignore);
+        // A session that never writes the project (CLI checks and exports): no lock at all
+        void setSkipProjectLock(bool skip);
+        // The last loadProject failed because another live editor holds the project
+        bool wasProjectLocked() const;
+        const std::string& getProjectLockMessage() const;
+        // The lock's file, and whether this editor holds it (false on a file system without locks)
+        std::filesystem::path getProjectLockPath() const;
+        bool holdsProjectLock() const;
+
+        // Scene Auto Save (R13-R15), from the editor loop every frame; userInteracting while an
+        // ImGui item or a gizmo drag is active (the backup waits for the next frame)
+        void tickAutosave(float deltaSeconds, bool userInteracting);
+        // The autosave interval in effect for a scene (it doubles when encoding it is slow)
+        float getAutosaveInterval(uint32_t sceneId) const;
+
+        // What the next scene load does with a usable crash backup, instead of asking the host
+        // (MCP open_scene recovery=...); cleared by that load
+        void setNextRecoveryChoice(RecoveryChoice choice);
+        const RecoveryOutcome& getLastRecovery() const;
+        // Every backup of the project (scenes, untitled scenes, prefabs) with its status
+        std::vector<SceneBackupInfo> listSceneBackups() const;
+        // Deletes the backup of an open scene (or of a project-relative scene path)
+        bool discardSceneBackup(uint32_t sceneId);
+        bool discardSceneBackup(const std::filesystem::path& scenePath);
+        // The recovery modal's Restore: the open scene takes the backup's content, keeps its
+        // path, is modified, starts with an empty undo history
+        bool restoreSceneFromBackup(uint32_t sceneId);
+        // An untitled scene's backup back as an untitled, modified scene
+        bool restoreUntitledBackup(const SceneBackupInfo& backup);
+        // What project.yaml's load could not read
+        const LoadReport& getProjectLoadReport() const { return projectLoadReport; }
+        // R30: Play and Export build from the live scene, without the components only its file
+        // holds; one warning names how many (false when there are none)
+        bool warnPreservedNotInBuild(const SceneProject& sceneProject) const;
+        // A clean end of the session (project switch, quit): this process's backups are
+        // deleted (R16), the lock released
+        void endProjectSession();
 
         void refreshLinkedMaterials(bool force = false);
 
@@ -1205,28 +1373,19 @@ namespace jasperengine::editor{
 
         //=== end Linked Material part ===
 
-        //=== File path remapping ===
-
-        void remapMaterialFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapSceneFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapPrefabFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapScriptFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapAssetFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
-        void cleanupMaterialFilePath(const std::filesystem::path& deletedPath);
-        void cleanupSceneFilePath(const std::filesystem::path& deletedPath);
-        void cleanupPrefabFilePath(const std::filesystem::path& deletedPath);
-        void cleanupScriptFilePath(const std::filesystem::path& deletedPath);
-        void cleanupAssetFilePath(const std::filesystem::path& deletedPath);
-        void cleanupShaderFilePath(const std::filesystem::path& deletedPath);
-
-        //=== end File path remapping ===
-
         void checkUnsavedAndExecute(uint32_t sceneId, std::function<void()> action);
 
         void saveScene(uint32_t sceneId, std::function<void(bool)> callback = nullptr);
-        bool saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true);
-        void saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback = nullptr);
+        // A scene save that would drop what its file's load could not read is refused
+        // (SaveResult::RefusedDegraded, nothing written) unless policy is SaveAnyway; Save As to
+        // another file is not (docs/data-safety.md)
+        bool saveSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
+                DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
+        void saveSceneToPathAsync(uint32_t sceneId, const std::filesystem::path& path, std::function<void(bool)> callback = nullptr,
+                DegradedSavePolicy policy = DegradedSavePolicy::Refuse);
+        // True when saving the scene to path (its own file when empty) would drop data its load
+        // report holds
+        bool isSceneSaveGated(const SceneProject* sceneProject, const std::filesystem::path& path = {}) const;
         void saveAllScenes(std::function<void(bool)> callback = nullptr);
         void saveLastSelectedScene(std::function<void(bool)> callback = nullptr);
 
@@ -1234,6 +1393,8 @@ namespace jasperengine::editor{
         // False when the scene could not be read, which does not mean it is gone:
         // the file may be unreadable only in this checkout
         bool loadScene(fs::path filepath, bool opened, bool isNewScene = true, bool loadSceneData = true);
+        // An untitled scene from a document's text (a crash backup of one): modified, no path
+        uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
         void removeScene(uint32_t sceneId);
@@ -1267,7 +1428,8 @@ namespace jasperengine::editor{
         // pathIfUntitled is where a scene never saved goes (".scene" added when missing,
         // folders created); a saved scene stays in its own file (a different path is an
         // error: there is no Save As). A prefab stage's id saves its prefab asset.
-        bool saveSceneNow(uint32_t sceneId, const std::filesystem::path& pathIfUntitled = {}, std::string* error = nullptr);
+        bool saveSceneNow(uint32_t sceneId, const std::filesystem::path& pathIfUntitled = {}, std::string* error = nullptr,
+                DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
         // New Project, then Save Project into dir: the project `name` (empty: dir's name) in
         // dir (created when missing; one holding a project.yaml is an error), with one
         // untitled 3D scene, becomes the current project. Does not ask about the current
@@ -1369,6 +1531,7 @@ namespace jasperengine::editor{
         uint32_t getSelectedSceneForProperties() const;
 
         bool isTempProject() const;
+        bool isEditorTempProject() const;
         bool isTempUnsavedProject() const;
         std::filesystem::path getProjectPath() const;
         std::filesystem::path getProjectInternalPath() const;
@@ -1393,6 +1556,20 @@ namespace jasperengine::editor{
         // What the running scene made for itself: listed while playing, destroyed by Stop,
         // and never part of the authored entities a file keeps
         std::vector<Entity> getPlayCreatedEntities(const SceneProject* sceneProject) const;
+
+        // Every write to a scene's selection: the GameObjects in order, the active one last.
+        // A User change outside a command is an undo step ("Select Player", R15) unless the
+        // timeline has a redo tail or Record Selection in Undo is off; changes made while a
+        // command runs belong to that command's step.
+        void setSelection(uint32_t sceneId, const SelectionState& state, SelectionCause cause = SelectionCause::User);
+        SelectionState getSelection(uint32_t sceneId) const;
+        // Selection changes until the end are one undo step (a box select drag); otherwise the
+        // changes of one frame are (nextSelectionFrame, called once per editor frame)
+        void beginSelectionGesture();
+        void endSelectionGesture();
+        void nextSelectionFrame();
+        // Editor Settings > Undo > Record Selection in Undo
+        static bool recordSelectionInUndo;
 
         void replaceSelectedEntities(uint32_t sceneId, std::vector<Entity> selectedEntities);
         // A running scene and its Stop destroy entities the Hierarchy lets the user select
@@ -1430,6 +1607,47 @@ namespace jasperengine::editor{
         // reference that points outside the prefab (cross-scene, or a non-member local
         // entity). Such references cannot be shared, so overriding keeps and persists them.
         static void overrideExternalRefComponents(EntityRegistry* scene, Prefab::Instance& instance);
+
+        //=== Asset identity (S04, editor/project/ProjectAssets.cpp) ===
+
+        AssetIndex& getAssetIndex() { return assetIndex; }
+        const AssetIndex& getAssetIndex() const { return assetIndex; }
+        // The Missing Assets lists, brought up to date with the database and the index
+        MissingAssetTracker& getMissingAssets();
+        // The roots reference hints are relative to (assets and Lua directories), project-relative
+        AssetIndex::Roots getAssetRoots() const;
+        std::string assetHintToProjectPath(const std::string& hint, AssetPathBase base) const;
+        std::string projectPathToAssetHint(const std::string& projectRelative, AssetPathBase base) const;
+        // A reference to the asset at a path (relative to base), with its GUID
+        AssetRef makeAssetRef(const std::string& hint, AssetPathBase base) const;
+        // Resolves every reference of a loaded scene, prefab stage or registry (S04 R10).
+        // loading: references read from a file (a reference without a GUID is a legacy one);
+        // otherwise references edited in memory (a path without a GUID is the file at the
+        // path, a path-fallback binding takes the file's GUID, as it is about to be saved).
+        // True when a path hint changed (the owner is then modified).
+        bool resolveSceneAssetRefs(SceneProject& sceneProject, bool loading);
+        // Before a file moves or goes: the references of the loaded documents that name an
+        // asset only by path (assigned since the last save) get its GUID, so they follow it
+        void bindLoadedAssetRefs();
+        bool resolveRegistryAssetRefs(EntityRegistry* registry, bool loading);
+        // The identity keys (guid, formerGuids) a scene, prefab or material file is written
+        // with, put at the top of its root; returns the GUID (a new one for a new file)
+        Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);
+        // Writes a .material file with its identity (and registers it), through S03's material
+        // save: a file that did not read completely is refused (RefusedDegraded, why in error)
+        // unless the policy accepts the loss
+        SaveResult writeMaterialFile(const std::filesystem::path& relativePath, const Material& material,
+                                     DegradedSavePolicy policy = DegradedSavePolicy::Refuse, std::string* error = nullptr);
+        // The edges of the loaded documents, unsaved edits included (the index overlay)
+        void collectMemoryEdges(std::unordered_map<Guid, std::vector<DepEdge>>& edges);
+        // After assets moved: the path hints of the loaded documents follow their GUIDs
+        void refreshAssetHints();
+        // What a file operation (AssetOps) or the refresh found changed reaches the editor:
+        // prefabs in memory, the dependency index, the loaded documents' hints
+        void onAssetFilesChanged(const std::vector<AssetDatabase::Change>& changes);
+        // A scene file or a directory holding some moved: the scene list and the open tabs
+        // follow (project.yaml is written); false when no scene was there
+        bool moveSceneFileHints(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
 
         //=== Prefab part ===
 
@@ -1503,7 +1721,13 @@ namespace jasperengine::editor{
         bool isStandalonePrefab(const std::filesystem::path& filepath) const;
         std::vector<std::filesystem::path> findPrefabFiles() const;
 
-        void savePrefabToDisk(const std::filesystem::path& filepath);
+        // Refused (RefusedDegraded, nothing written) while the prefab's load report has dropped
+        // issues, unless policy is SaveAnyway
+        SaveResult savePrefabToDisk(const std::filesystem::path& filepath, DegradedSavePolicy policy = DegradedSavePolicy::Refuse);
+        // While an API call (an MCP tool) edits prefab assets: the policy of the saves it
+        // causes, and the assets the gate refused to write (endPrefabSaveScope returns them)
+        void beginPrefabSaveScope(DegradedSavePolicy policy);
+        std::vector<std::filesystem::path> endPrefabSaveScope();
 
         Prefab* getPrefab(const std::filesystem::path& filepath);
         const Prefab* getPrefab(const std::filesystem::path& filepath) const;
@@ -1910,7 +2134,10 @@ namespace jasperengine::editor{
         void closePrefabStages(size_t depth, std::function<void(bool)> done = nullptr, int choice = 0);
         // Writes the stage into its asset (version 3) and refreshes the asset's instances in
         // every loaded scene; scenes not loaded read the file when they load
-        bool savePrefabStage(uint32_t sceneId);
+        // A stage whose asset did not load completely asks the host first (Refuse when headless)
+        bool savePrefabStage(uint32_t sceneId, DegradedSavePolicy policy = DegradedSavePolicy::Refuse);
+        // The stage's asset has dropped load issues: its saves are gated, Auto Save is paused
+        bool isPrefabStageDegraded(uint32_t sceneId) const;
         bool isPrefabStage(uint32_t sceneId) const;
         // Inside Prefab Mode every edit is an edit of the asset, not an instance override
         bool isEditingPrefabAsset(const SceneProject* sceneProject) const;

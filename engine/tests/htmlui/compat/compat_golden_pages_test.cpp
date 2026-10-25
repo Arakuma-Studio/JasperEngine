@@ -264,7 +264,7 @@ TEST(CompatGoldenReferences, CompleteAndConsistent){
         ASSERT_TRUE(readText(pagesDirectory() + "/" + name + ".html", html));
         for (const LayoutBox& box : layout.elements)
             EXPECT_NE(html.find("id=\"" + box.id + "\""), std::string::npos) << box.id;
-        for (const std::string& feature : layout.requires)
+        for (const std::string& feature : layout.requiredFeatures)
             EXPECT_TRUE(missingForkFeatures({feature}, hc::ForkFeatures::all()).empty()) << feature;
     }
 }
@@ -319,7 +319,7 @@ TEST_P(CompatGoldenPages, MatchesChromium){
     ASSERT_TRUE(browser.render(engineNoText, false)) << "the page did not draw without text";
     ASSERT_TRUE(savePng(artifacts + "/" + name + ".notext.png", engineNoText));
 
-    const std::vector<std::string> missing = missingForkFeatures(reference.requires, hc::ForkFeatures::present());
+    const std::vector<std::string> missing = missingForkFeatures(reference.requiredFeatures, hc::ForkFeatures::present());
     if (!missing.empty()){
         std::string list;
         for (const std::string& feature : missing)

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include <optional>
+#include "log/Logger.h"
 
 #include "lua.hpp"
 
@@ -14,6 +16,7 @@
 #include "SceneManager.h"
 #include "PrefabManager.h"
 #include "PrefabAsset.h"
+#include "asset/AssetMap.h"
 #include "Input.h"
 #include "System.h"
 #include "registry/PhysicsLayers.h"
@@ -43,6 +46,18 @@
 #include "object/EntityHandle.h"
 
 using namespace jasperengine;
+
+namespace {
+    // What Log.category(name) returns: a category's trace/debug/info/warn/error
+    struct LuaLogCategory {
+        LogCategory* category;
+    };
+
+    void luaLog(lua_State* L, LogLevel level, const LogCategory& category, const char* text) {
+        if (!Logger::shouldLog(level, category)) return;
+        LuaBinding::logFromLua(L, level, category, text ? std::string_view(text) : std::string_view("(nil)"));
+    }
+}
 
 // LayerMask.getMask("Default", "Enemies") or LayerMask.getMask({"Default", "Enemies"}).
 // Unity returns an int: layer 31 makes it negative, as there.
@@ -494,6 +509,36 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("LOW", ShadowQuality::LOW)
         .addVariable("MEDIUM", ShadowQuality::MEDIUM)
         .addVariable("HIGH", ShadowQuality::HIGH)
+        .addVariable("AUTO", ShadowQuality::AUTO)
+        .addVariable("ULTRA", ShadowQuality::ULTRA)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowType")
+        .addVariable("NONE", ShadowType::NONE)
+        .addVariable("HARD", ShadowType::HARD)
+        .addVariable("SOFT", ShadowType::SOFT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowUpdateMode")
+        .addVariable("AUTO", ShadowUpdateMode::AUTO)
+        .addVariable("EVERY_FRAME", ShadowUpdateMode::EVERY_FRAME)
+        .addVariable("ON_DEMAND", ShadowUpdateMode::ON_DEMAND)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CascadeSplitMode")
+        .addVariable("AUTO", CascadeSplitMode::AUTO)
+        .addVariable("MANUAL", CascadeSplitMode::MANUAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowTier")
+        .addVariable("LOW", ShadowTier::LOW)
+        .addVariable("MEDIUM", ShadowTier::MEDIUM)
+        .addVariable("HIGH", ShadowTier::HIGH)
+        .addVariable("ULTRA", ShadowTier::ULTRA)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -932,6 +977,53 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("__tostring", [](const PrefabAsset* self) { return "PrefabAsset(" + self->getPath() + ")"; })
         .endClass();
 
+    // Asset identity (S04): what an Asset script property holds, and Asset.ref returns
+    luabridge::getGlobalNamespace(L)
+        .beginClass<ScriptAssetRef>("AssetRef")
+        .addProperty("guid", &ScriptAssetRef::getGuid)
+        .addProperty("path", &ScriptAssetRef::getPath)
+        .addProperty("type", &ScriptAssetRef::getType)
+        .addProperty("valid", &ScriptAssetRef::isValid)
+        .addFunction("isValid", &ScriptAssetRef::isValid)
+        .addFunction("__eq", &ScriptAssetRef::operator==)
+        .addFunction("__tostring", [](const ScriptAssetRef* self) { return "AssetRef(" + self->getPath() + ")"; })
+        .endClass();
+
+    // Asset.path(guid) -> string|nil, Asset.guid(path) -> string|nil,
+    // Asset.exists(guidOrPath) -> bool, Asset.ref(guidOrPath) -> AssetRef
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("Asset")
+        .addFunction("path", +[](lua_State* state) -> int {
+            const char* text = luaL_checkstring(state, 1);
+            std::string path;
+            if (Guid::isValidText(text) && AssetMap::findPath(Guid::parse(text), path)) {
+                lua_pushstring(state, path.c_str());
+            } else {
+                lua_pushnil(state);
+            }
+            return 1;
+        })
+        .addFunction("guid", +[](lua_State* state) -> int {
+            const Guid guid = AssetMap::findGuid(luaL_checkstring(state, 1));
+            if (guid.isNull()) {
+                lua_pushnil(state);
+            } else {
+                lua_pushstring(state, guid.str().c_str());
+            }
+            return 1;
+        })
+        .addFunction("exists", +[](lua_State* state) -> int {
+            lua_pushboolean(state, ScriptAssetRef::make(luaL_checkstring(state, 1)).isValid());
+            return 1;
+        })
+        .addFunction("ref", +[](lua_State* state) -> int {
+            if (!luabridge::push<ScriptAssetRef>(state, ScriptAssetRef::make(luaL_checkstring(state, 1)))) {
+                lua_pushnil(state);
+            }
+            return 1;
+        })
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginClass<FunctionSubscribe<void()>>("FunctionSubscribe_V")
         .addFunction("__call", &FunctionSubscribe<void()>::call)
@@ -1275,7 +1367,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             }),
             luabridge::overload<Material*, const std::string&, const Vector3&, lua_State*>(+[](Material* self, const std::string& name, const Vector3& value, lua_State* L) {
                 // a colour given as (r, g, b) is opaque
-                const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+                const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
                 ShaderUniforms::set(self->shaderParams, name, LuaBinding::getShaderParamValue(shader, name, value));
             }),
             luabridge::overload<Material*, const std::string&, const Vector2&>(+[](Material* self, const std::string& name, const Vector2& value) {
@@ -1285,7 +1377,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
                 ShaderUniforms::set(self->shaderParams, name, Vector4(value, 0.0f, 0.0f, 0.0f));
             }))
         .addFunction("getShaderParam", +[](const Material* self, const std::string& name, lua_State* L) -> Vector4 {
-            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
             return ShaderLibraryValues::getParam(self->shaderParams, shader, name);
         })
         .addFunction("removeShaderParam", +[](Material* self, const std::string& name) -> bool {
@@ -1310,11 +1402,11 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         })
         // a @feature on or off, or a @keywords value ("GROUP_VALUE") chosen
         .addFunction("setShaderFeature", +[](Material* self, const std::string& define, bool enabled, lua_State* L) {
-            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
             ShaderLibraryValues::setFeature(self->shaderFeatures, shader, define, enabled);
         })
         .addFunction("isShaderFeatureEnabled", +[](const Material* self, const std::string& define, lua_State* L) -> bool {
-            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader;
+            const std::string shader = self->shader.empty() ? LuaBinding::getMaterialDrawnShader(L, 1) : self->shader.path;
             return ShaderLibraryValues::isFeatureEnabled(self->shaderFeatures, shader, define);
         })
         .endClass();
@@ -1415,6 +1507,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<float, float, float>(&Scene::setBackgroundColor),
             luabridge::overload<float, float, float, float>(&Scene::setBackgroundColor))
         .addProperty("shadowQuality", &Scene::getShadowQuality, &Scene::setShadowQuality)
+        .addProperty("shadowDistance", &Scene::getShadowDistance, &Scene::setShadowDistance)
+        .addProperty("shadowFadeFraction", &Scene::getShadowFadeFraction, &Scene::setShadowFadeFraction)
+        .addProperty("shadowCascadeBlend", &Scene::isShadowCascadeBlend, &Scene::setShadowCascadeBlend)
+        .addProperty("effectiveShadowTier", &Scene::getEffectiveShadowTier)
         .addProperty("lightState", &Scene::getLightState, &Scene::setLightState)
         .addProperty("globalIlluminationColor", &Scene::getGlobalIlluminationColor, (void (Scene::*)(Vector3))&Scene::setGlobalIllumination)
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)
@@ -1482,13 +1578,50 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addFunction("getUISystem", [] (Scene* self, lua_State* L) { return self->getSystem<UISystem>().get(); })
         .endClass();
 
+    // Log.*: category lua, with the calling chunk and line. debug is compiled out of release
+    // builds as before; Log.category(name) gives a category's own trace...error
     luabridge::getGlobalNamespace(L)
         .beginClass<Log>("Log")
-        .addStaticFunction("print", [] (const char* text) { Log::print("%s", text ? text : "(nil)"); })
-        .addStaticFunction("verbose", [] (const char* text) { Log::verbose("%s", text ? text : "(nil)"); })
-        .addStaticFunction("debug", [] (const char* text) { Log::debug("%s", text ? text : "(nil)"); })
-        .addStaticFunction("warn", [] (const char* text) { Log::warn("%s", text ? text : "(nil)"); })
-        .addStaticFunction("error", [] (const char* text) { Log::error("%s", text ? text : "(nil)"); })
+        .addStaticFunction("print", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
+        .addStaticFunction("info", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Info, logCategoryLua(), text); })
+        .addStaticFunction("verbose", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Trace, logCategoryLua(), text); })
+        .addStaticFunction("debug", [] (const char* text, lua_State* L) {
+        #ifndef NDEBUG
+            luaLog(L, LogLevel::Debug, logCategoryLua(), text);
+        #else
+            (void)text; (void)L;
+        #endif
+        })
+        .addStaticFunction("warn", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, logCategoryLua(), text); })
+        .addStaticFunction("error", [] (const char* text, lua_State* L) { luaLog(L, LogLevel::Error, logCategoryLua(), text); })
+        // false (and a warning) for an unknown level name
+        .addStaticFunction("setLevel", [] (const std::string& level, std::optional<std::string> category, lua_State* L) {
+            LogLevel value;
+            if (!parseLogLevel(level.c_str(), value)) {
+                luaLog(L, LogLevel::Warn, logCategoryLua(),
+                       ("Log.setLevel: unknown level '" + level + "' (trace, debug, info, warn, error, fatal, off)").c_str());
+                return false;
+            }
+            Logger::setCategoryLevel(category ? Logger::registerCategory(*category, LogLevel::Info) : logCategoryLua(), value);
+            return true;
+        })
+        .addStaticFunction("getLevel", [] (std::optional<std::string> category) -> std::string {
+            const LogCategory* found = category ? Logger::findCategory(*category) : &logCategoryLua();
+            return logLevelName(found ? Logger::categoryLevel(*found) : Logger::defaultLevel());
+        })
+        .addStaticFunction("category", [] (const std::string& name) {
+            return LuaLogCategory{&Logger::registerCategory(name, LogLevel::Info)};
+        })
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<LuaLogCategory>("LogCategory")
+        .addProperty("name", [] (const LuaLogCategory* self) { return std::string(self->category->name); })
+        .addFunction("trace", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Trace, *self->category, text); })
+        .addFunction("debug", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Debug, *self->category, text); })
+        .addFunction("info", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Info, *self->category, text); })
+        .addFunction("warn", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Warn, *self->category, text); })
+        .addFunction("error", [] (LuaLogCategory* self, const char* text, lua_State* L) { luaLog(L, LogLevel::Error, *self->category, text); })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
