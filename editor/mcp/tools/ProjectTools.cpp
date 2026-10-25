@@ -542,6 +542,10 @@ const EnumMap<Scaling> scalingModes[] = {
     {"crop", Scaling::CROP}, {"stretch", Scaling::STRETCH}, {"native", Scaling::NATIVE}};
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
+const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
+    {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
+const EnumMap<ShadowTier> shadowTiers[] = {
+    {"low", ShadowTier::LOW}, {"medium", ShadowTier::MEDIUM}, {"high", ShadowTier::HIGH}, {"ultra", ShadowTier::ULTRA}};
 const EnumMap<WindowMode> windowModes[] = {
     {"windowed", WindowMode::WINDOWED}, {"maximized", WindowMode::MAXIMIZED}, {"fullscreen", WindowMode::FULLSCREEN}};
 const EnumMap<AndroidOrientation> androidOrientations[] = {
@@ -1293,10 +1297,50 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         }
+        // graphics.shadow_tier.<platform>: the shadow quality tier a scene of Quality Auto renders with
+        for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+            Setting s;
+            s.key = std::string("graphics.shadow_tier.") + Project::getShadowTierPlatformName(platform);
+            s.type = "enum";
+            s.values = enumNames(shadowTiers);
+            s.description = std::string("Shadow quality tier of ") + Project::getShadowTierPlatformName(platform) +
+                            " builds (and of the editor on it) for scenes whose shadow Quality is Auto: low, medium, high, ultra "
+                            "(default " + ShadowTiers::getName(ShadowTiers::defaultTier(platform)) + "; docs/rendering/shadows.md).";
+            s.get = [platform](McpContext& ctx) { return Json(enumName(shadowTiers, ctx.project()->getShadowTier(platform))); };
+            s.set = [platform](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                ShadowTier tier;
+                if (!parseEnum(shadowTiers, value, tier, error)) return false;
+                if (apply) ctx.project()->setShadowTier(platform, tier);
+                return true;
+            };
+            add(s);
+        }
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
+        // the tiers of volumetric fog and clouds per platform group
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.atmosphere_quality_desktop", "quality.atmosphere_quality_mobile", "quality.atmosphere_quality_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "enum";
+            s.values = enumNames(atmosphereQualities);
+            s.description = std::string("Atmosphere Quality (volumetric fog and clouds: off, low, medium, high) of ") + groups[group] + ".";
+            s.get = [group](McpContext& ctx) { return Json(enumName(atmosphereQualities, ctx.project()->getAtmosphereQuality()[group])); };
+            s.set = [group](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                AtmosphereQuality quality;
+                if (!parseEnum(atmosphereQualities, value, quality, error)) return false;
+                if (apply) {
+                    std::array<AtmosphereQuality, 3> all = ctx.project()->getAtmosphereQuality();
+                    all[group] = quality;
+                    ctx.project()->setAtmosphereQuality(all);
+                }
+                return true;
+            };
+            add(s);
+        }
 
         // ---- player logging
         {

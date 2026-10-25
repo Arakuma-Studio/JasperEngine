@@ -509,6 +509,36 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("LOW", ShadowQuality::LOW)
         .addVariable("MEDIUM", ShadowQuality::MEDIUM)
         .addVariable("HIGH", ShadowQuality::HIGH)
+        .addVariable("AUTO", ShadowQuality::AUTO)
+        .addVariable("ULTRA", ShadowQuality::ULTRA)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowType")
+        .addVariable("NONE", ShadowType::NONE)
+        .addVariable("HARD", ShadowType::HARD)
+        .addVariable("SOFT", ShadowType::SOFT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowUpdateMode")
+        .addVariable("AUTO", ShadowUpdateMode::AUTO)
+        .addVariable("EVERY_FRAME", ShadowUpdateMode::EVERY_FRAME)
+        .addVariable("ON_DEMAND", ShadowUpdateMode::ON_DEMAND)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CascadeSplitMode")
+        .addVariable("AUTO", CascadeSplitMode::AUTO)
+        .addVariable("MANUAL", CascadeSplitMode::MANUAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadowTier")
+        .addVariable("LOW", ShadowTier::LOW)
+        .addVariable("MEDIUM", ShadowTier::MEDIUM)
+        .addVariable("HIGH", ShadowTier::HIGH)
+        .addVariable("ULTRA", ShadowTier::ULTRA)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
@@ -609,6 +639,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("HTMLUI_GRADIENT", ShaderType::HTMLUI_GRADIENT)
         .addVariable("HTMLUI_POST", ShaderType::HTMLUI_POST)
         .addVariable("UI_EFFECT", ShaderType::UI_EFFECT)
+        .addVariable("ATMOSPHERE_DEPTH", ShaderType::ATMOSPHERE_DEPTH)
+        .addVariable("VOLUMETRIC_FOG", ShaderType::VOLUMETRIC_FOG)
+        .addVariable("ATMOSPHERE_DENOISE", ShaderType::ATMOSPHERE_DENOISE)
+        .addVariable("VOLUMETRIC_CLOUDS", ShaderType::VOLUMETRIC_CLOUDS)
+        .addVariable("SKY_COMPOSITE", ShaderType::SKY_COMPOSITE)
+        .addVariable("VOLUMETRIC_COMPOSITE", ShaderType::VOLUMETRIC_COMPOSITE)
         .endNamespace();
 
     // Shader variants by spec ("mesh:Uv1,Vc4"), or by type and property bits; an
@@ -727,6 +763,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("viewRect", &Engine::getViewRect)
         .addStaticProperty("scalingMode", &Engine::getScalingMode, &Engine::setScalingMode)
         .addStaticProperty("textureStrategy", &Engine::getTextureStrategy, &Engine::setTextureStrategy)
+        .addStaticFunction("setAtmosphereQuality", &Engine::setAtmosphereQuality)
+        .addStaticFunction("getAtmosphereQuality", &Engine::getAtmosphereQuality)
+        .addStaticFunction("resetAtmosphereQuality", &Engine::resetAtmosphereQuality)
         .addStaticProperty("callMouseInTouchEvent", &Engine::isCallMouseInTouchEvent, &Engine::setCallMouseInTouchEvent)
         .addStaticProperty("callTouchInMouseEvent", &Engine::isCallTouchInMouseEvent, &Engine::setCallTouchInMouseEvent)
         .addStaticFunction("setCallTouchInMouseEvent", &Engine::setCallTouchInMouseEvent)
@@ -1476,6 +1515,10 @@ void LuaBinding::registerCoreClasses(lua_State *L){
             luabridge::overload<float, float, float>(&Scene::setBackgroundColor),
             luabridge::overload<float, float, float, float>(&Scene::setBackgroundColor))
         .addProperty("shadowQuality", &Scene::getShadowQuality, &Scene::setShadowQuality)
+        .addProperty("shadowDistance", &Scene::getShadowDistance, &Scene::setShadowDistance)
+        .addProperty("shadowFadeFraction", &Scene::getShadowFadeFraction, &Scene::setShadowFadeFraction)
+        .addProperty("shadowCascadeBlend", &Scene::isShadowCascadeBlend, &Scene::setShadowCascadeBlend)
+        .addProperty("effectiveShadowTier", &Scene::getEffectiveShadowTier)
         .addProperty("lightState", &Scene::getLightState, &Scene::setLightState)
         .addProperty("globalIlluminationColor", &Scene::getGlobalIlluminationColor, (void (Scene::*)(Vector3))&Scene::setGlobalIllumination)
         .addProperty("globalIlluminationIntensity", &Scene::getGlobalIlluminationIntensity, (void (Scene::*)(float))&Scene::setGlobalIllumination)

@@ -523,3 +523,80 @@ The `gpuMs` value is present when S15 timings exist.
   through the shared medium (R10).
 - **Sky colour mode for procedural skies** without `horizonColor`. **Default:** use the fog colour
   and show an inspector warning.
+
+## Deviations
+
+- **No scene format version bump (R26, AC15).** S03 landed with the rule that adding an optional
+  component or field needs no version bump: every new key is registered in
+  `editor/StreamSchema.cpp` (`knownFieldKeys`, the `FogType` table's `height`, the new enum
+  tables), so an older editor keeps a height fog's fields and the two new components as unknown
+  data and writes them back (S03 preservation), and a newer one reads old scenes with the
+  defaults. A bump would only make older editors refuse to save. The new Fog and Light fields are
+  written only when they differ from their defaults, so distance-fog scenes save byte-identically.
+  Tests: `editor/tests/stream/StreamAtmosphereTest.cpp`, `StreamSchemaTest` (every component's
+  keys known).
+- **Golden images live with the engine's GPU tests.** S02 put rendering goldens in
+  `engine/tests/core/golden/` (`*Gpu` suites on the headless device, glcore and Vulkan), so the
+  AC4/AC5/AC6/AC8 images are `atmosphere_*.png` there, checked by
+  `engine/tests/core/render/AtmosphereGpuTest.cpp`, not under `tools/mcp/tests/golden/`. AC1's
+  legacy goldens (`atmosphere_legacy_*.png`, `AtmosphereLegacyFogGpuTest.cpp`) were rendered by
+  the engine before S12 and must match exactly. The MCP tests (`test_atmosphere.py`,
+  `test_atmosphere_editor.py`) cover the agent and editor features.
+- **Sky pixels under volumetric fog (R6).** The marched fog in front of the sky is drawn over the
+  sky fill (the physically right result, and where light shafts show against the sky), so the
+  handoff invariant holds for surfaces; AC5 is measured on a view of geometry.
+- **Handoff by replacement, not by split (§6.3, R5, R6, R10).** Blending a marched near segment
+  over surfaces fogged from the volumetric distance on is a display-space blend (the colour
+  targets hold display-encoded colour), which is far from the analytic fog for half-transparent
+  fog (about 16/255 in the AC5 scene). Instead every opaque surface takes the analytic fog over
+  its whole ray, and `Atmosphere/VolumetricComposite` replaces the analytic near part [0, m] with
+  the marched one: `colour' = ((colour T_c + C) - A) k + V`, `k = T_v / T_a`, A, V and C the
+  analytic, marched and Screen cloud layers (A computed per full-resolution pixel in the
+  composite). Where the march equals the analytic fog, k = 1 and V = A: the image is unchanged
+  (AC5 measures 0.5-0.8/255). It draws twice, with a new `BlendMode::SUBTRACT_PREMULTIPLIED`
+  (reverse subtract) for the part of the correction below zero, then premultiplied. The block's
+  `start_handoff_maxDist_inscatter.y` is `start_volumetric_maxDist_inscatter.y`: the distance the
+  pass marched.
+- **Sun shadow (§6.4).** The light shafts sample S10's interface: the volumetric fog includes
+  `includes/shadow_sampling.glsl` and calls `sampleDirectionalShadow1(worldPos)` on the camera
+  pass's `u_fs_shadow_data` and projective atlas (its cascades, depth bias and distance fade);
+  the S12 stand-in block `u_fs_sunShadow` is gone.
+- **Height fog without a variant bit (§6.2, R17).** S10 took mesh bit 5 ('Shq') and the 32-bit
+  mesh key has no other free bit, so the fogged mesh variants ('Fog', for MESH) compile the height
+  fog in (`HAS_HEIGHT_FOG`) and `includes/fog.glsl` picks it at run time from `u_fs_heightFog`
+  (colour mode -1: a distance fog). A distance fog keeps its own math (AC1 goldens, exact on
+  glcore); its fogged meshes pay one uniform branch per fragment. With the 64-bit shader keys
+  (origin/main) a bit could gate it again. Shader cache v35.
+- **Pass timings (AC10).** S15 has not landed, and the timing reference (server E) renders in
+  software. `atmosphere_bench.py --runs 3 --relative` measured each feature there as a share of
+  the no-atmosphere frame against its budget's share of a 60 fps frame (method and table in
+  `docs/mcp/guide/atmosphere.md`, data in `tools/performance/results/`): height fog, Sky Composite
+  and Low clouds within, every VRAM budget within; the volumetric fog (all tiers) and Medium/High
+  clouds over (1.5-10x), which this method overstates for fragment-bound passes. The GPU budgets
+  remain open for the reference-GPU run with S15's timings.
+- **Preset field.** The clouds' `preset` shows the last look applied; editing a field does not
+  switch it to Custom.
+- **Determinism hash (AC9).** The bake's SHA-256 is pinned for x86-64 Linux builds; on other
+  toolchains the test checks that two bakes are identical (libm may round differently).
+- **Bake budget scales with the workers (AC9).** `AtmosphereNoiseTest` allows
+  250 ms x max(1, 4 / background workers): the bake is spread over S06's Background lane, so a
+  shared CI host with fewer workers gets proportionally more time.
+- **Web gate (AC14).** `tools/web/gates/atmosphere.json` checks the Low-tier valley scene's centre
+  pixel and the tier's console line in a WebGL2 browser; the forced RGBA8 path is compared with
+  the float one by `AtmosphereGpu.LowPrecisionTargetsMatchFloatOnes` (glcore).
+- **Vulkan goldens (AC11).** The goldens are glcore's. The Vulkan run (lavapipe) holds the
+  atmosphere goldens to AC11's cross-backend bound (mean 3/255, 95% of pixels within 8/255: the
+  Low Sky Map's thin horizon edges move, 2.7% of `atmosphere_clouds_cloudy_low`) and the legacy
+  fog goldens to 1/255 (the unchanged mesh shaders round a few fogged pixels the other way there;
+  the no-fog scene matches to the bit).
+- **D3D11/Metal compile (AC11).** Checked on Linux with the engine's shader compiler (glslang +
+  SPIRV-Cross, as an export does): every atmosphere program and the height fog mesh variants for
+  GLSL 410, GLSL 300 es, HLSL 5, MSL macOS/iOS and SPIR-V (`editor/tests/shader/
+  AtmosphereShaderBuildTest.cpp`; the editor CLI `shaders --backend all`). The HLSL march takes
+  about 0.25 s to produce; the driver's own D3D compile on Windows was not timed.
+- **Noise bake without workers.** A web build without threads bakes on the main thread, each
+  frame half the wall time the rest of the frame took (4 to 250 ms), so a slow frame does not
+  stretch the bake: the debug WebGL2 gate on SwiftShader (about 1 fps) went from no ready line in
+  900 s to ready in 54 s (bake 44 s).
+- **Not covered by a dedicated test:** water refraction under fog (AC16 relies on the water pass
+  sampling the fogged scene colour, unchanged by S12), and the AC10 reference-hardware run.

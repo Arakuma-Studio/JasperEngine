@@ -545,6 +545,18 @@ namespace {
         makeFastProperty<LightComponent, unsigned int, &LightComponent::numShadowCascades>("numShadowCascades", PropertyType::UInt, UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         // read by RenderSystem when it picks each mesh's lights
         makeFastProperty<LightComponent, LightShading, &LightComponent::shading>("shading", PropertyType::Enum, UpdateFlags_None),
+        // shadows (docs/rendering/shadows.md): what the maps depend on reaches RenderSystem
+        // through the light's settings hash every frame, the rest is read by the receivers
+        makeFastProperty<LightComponent, bool, &LightComponent::softShadows>("softShadows", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowStrength>("shadowStrength", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowNormalBias>("shadowNormalBias", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, CascadeSplitMode, &LightComponent::cascadeSplitMode>("cascadeSplitMode", PropertyType::Enum, UpdateFlags_LightShadowCamera),
+        makeFastProperty<LightComponent, Vector3, &LightComponent::cascadeSplits>("cascadeSplits", PropertyType::Vector3, UpdateFlags_LightShadowCamera),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowDistance>("shadowDistance", PropertyType::Float, UpdateFlags_LightShadowCamera),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowAngularDiameter>("shadowAngularDiameter", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::shadowSourceRadius>("shadowSourceRadius", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LightComponent, ShadowUpdateMode, &LightComponent::shadowUpdateMode>("shadowUpdateMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<LightComponent, float, &LightComponent::volumetricIntensity>("volumetricIntensity", PropertyType::Float, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kLight2DProperties[] = {
@@ -572,6 +584,59 @@ namespace {
         makeFastProperty<FogComponent, float, &FogComponent::density>("density", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<FogComponent, float, &FogComponent::linearStart>("linearStart", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<FogComponent, float, &FogComponent::linearEnd>("linearEnd", PropertyType::Float, UpdateFlags_None),
+        // the height fog (type HEIGHT; RenderSystem switches the variants and depth programs itself)
+        makeFastProperty<FogComponent, FogColorMode, &FogComponent::colorMode>("colorMode", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::attenuationDistance>("attenuationDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::baseHeight>("baseHeight", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::maximumHeight>("maximumHeight", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::startDistance>("startDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::maxFogDistance>("maxFogDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::maxOpacity>("maxOpacity", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::directionalInscattering>("directionalInscattering", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::anisotropy>("anisotropy", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, bool, &FogComponent::skyFill>("skyFill", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::skyFillAngle>("skyFillAngle", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, bool, &FogComponent::volumetric>("volumetric", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::volumetricDistance>("volumetricDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, bool, &FogComponent::lightShafts>("lightShafts", PropertyType::Bool, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::noiseIntensity>("noiseIntensity", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, float, &FogComponent::noiseScale>("noiseScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<FogComponent, Vector3, &FogComponent::wind>("wind", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<FogComponent, AtmosphereQualityOverride, &FogComponent::qualityOverride>("qualityOverride", PropertyType::Enum, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kLocalVolumetricFogProperties[] = {
+        makeFastProperty<LocalVolumetricFogComponent, FogVolumeShape, &LocalVolumetricFogComponent::shape>("shape", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, Vector3, &LocalVolumetricFogComponent::size>("size", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, float, &LocalVolumetricFogComponent::attenuationDistance>("attenuationDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, Vector3, &LocalVolumetricFogComponent::albedo>("albedo", PropertyType::Vector3, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, float, &LocalVolumetricFogComponent::blendDistance>("blendDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, FogVolumeFalloff, &LocalVolumetricFogComponent::falloff>("falloff", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, float, &LocalVolumetricFogComponent::noiseIntensity>("noiseIntensity", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, float, &LocalVolumetricFogComponent::noiseScale>("noiseScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<LocalVolumetricFogComponent, Vector3, &LocalVolumetricFogComponent::scrollSpeed>("scrollSpeed", PropertyType::Vector3, UpdateFlags_None),
+    };
+
+    static const FastPropertyDescriptor kVolumetricCloudsProperties[] = {
+        makeFastProperty<VolumetricCloudsComponent, CloudsPreset, &VolumetricCloudsComponent::preset>("preset", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, CloudsRendering, &VolumetricCloudsComponent::rendering>("rendering", PropertyType::Enum, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::coverage>("coverage", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::density>("density", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::shapeScale>("shapeScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::shapeFactor>("shapeFactor", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::erosionFactor>("erosionFactor", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::erosionScale>("erosionScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::bottomAltitude>("bottomAltitude", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::altitudeRange>("altitudeRange", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::earthCurvature>("earthCurvature", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::windDirection>("windDirection", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::windSpeed>("windSpeed", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, Texture, &VolumetricCloudsComponent::weatherMap>("weatherMap", PropertyType::Texture, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::weatherMapScale>("weatherMapScale", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::sunLightDimmer>("sunLightDimmer", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::ambientLightDimmer>("ambientLightDimmer", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, float, &VolumetricCloudsComponent::maxDistance>("maxDistance", PropertyType::Float, UpdateFlags_None),
+        makeFastProperty<VolumetricCloudsComponent, AtmosphereQualityOverride, &VolumetricCloudsComponent::qualityOverride>("qualityOverride", PropertyType::Enum, UpdateFlags_None),
     };
 
     static const FastPropertyDescriptor kMirrorProperties[] = {
@@ -729,6 +794,8 @@ namespace {
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveIBL>("receiveIBL", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::castShadows>("castShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, bool, &MeshComponent::receiveShadows>("receiveShadows", PropertyType::Bool, UpdateFlags_Mesh_Reload),
+        // which shadow layer it is cached in (RenderSystem's caster registry reads it every frame)
+        makeFastProperty<MeshComponent, bool, &MeshComponent::staticShadowCaster>("staticShadowCaster", PropertyType::Bool, UpdateFlags_None),
         makeFastProperty<MeshComponent, bool, &MeshComponent::lodEnabled>("lodEnabled", PropertyType::Bool, UpdateFlags_Mesh_Reload),
         makeFastProperty<MeshComponent, float, &MeshComponent::lodBias>("lodBias", PropertyType::Float, UpdateFlags_None),
         makeFastProperty<MeshComponent, bool, &MeshComponent::renderInReflectionProbes>("renderInReflectionProbes", PropertyType::Bool, UpdateFlags_Reflection_Probe_Recapture_All),
@@ -1579,6 +1646,14 @@ namespace {
 
     PropertyData resolveFogPropertyFast(void* comp, const std::string& propertyName) {
         return resolveDirectProperties(static_cast<FogComponent*>(comp), propertyName, kFogProperties);
+    }
+
+    PropertyData resolveLocalVolumetricFogPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<LocalVolumetricFogComponent*>(comp), propertyName, kLocalVolumetricFogProperties);
+    }
+
+    PropertyData resolveVolumetricCloudsPropertyFast(void* comp, const std::string& propertyName) {
+        return resolveDirectProperties(static_cast<VolumetricCloudsComponent*>(comp), propertyName, kVolumetricCloudsProperties);
     }
 
     PropertyData resolveMirrorPropertyFast(void* comp, const std::string& propertyName) {
@@ -2567,6 +2642,14 @@ namespace {
         enumerateFromDescriptors(comp, ps, kFogProperties);
     }
 
+    void enumerateLocalVolumetricFogProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kLocalVolumetricFogProperties);
+    }
+
+    void enumerateVolumetricCloudsProperties(void* comp, std::map<std::string, PropertyData>& ps) {
+        enumerateFromDescriptors(comp, ps, kVolumetricCloudsProperties);
+    }
+
     void enumerateMirrorProperties(void* comp, std::map<std::string, PropertyData>& ps) {
         enumerateFromDescriptors(comp, ps, kMirrorProperties);
     }
@@ -3292,6 +3375,8 @@ namespace {
         {ComponentType::TerrainComponent, &findComponentPtr<TerrainComponent>, &resolveTerrainPropertyFast, &enumerateTerrainProperties},
         {ComponentType::LightComponent, &findComponentPtr<LightComponent>, &resolveLightPropertyFast, &enumerateLightProperties},
         {ComponentType::FogComponent, &findComponentPtr<FogComponent>, &resolveFogPropertyFast, &enumerateFogProperties},
+        {ComponentType::LocalVolumetricFogComponent, &findComponentPtr<LocalVolumetricFogComponent>, &resolveLocalVolumetricFogPropertyFast, &enumerateLocalVolumetricFogProperties},
+        {ComponentType::VolumetricCloudsComponent, &findComponentPtr<VolumetricCloudsComponent>, &resolveVolumetricCloudsPropertyFast, &enumerateVolumetricCloudsProperties},
         {ComponentType::MirrorComponent, &findComponentPtr<MirrorComponent>, &resolveMirrorPropertyFast, &enumerateMirrorProperties},
         {ComponentType::ReflectionProbeComponent, &findComponentPtr<ReflectionProbeComponent>, &resolveReflectionProbePropertyFast, &enumerateReflectionProbeProperties},
         {ComponentType::UIDocumentComponent, &findComponentPtr<UIDocumentComponent>, &resolveUIDocumentPropertyFast, &enumerateUIDocumentProperties},
@@ -3488,6 +3573,10 @@ std::string computeComponentName(editor::ComponentType component){
         name = "ColorTweenComponent";
     }else if(component == ComponentType::FogComponent){
         name = "FogComponent";
+    }else if(component == ComponentType::LocalVolumetricFogComponent){
+        name = "LocalVolumetricFogComponent";
+    }else if(component == ComponentType::VolumetricCloudsComponent){
+        name = "VolumetricCloudsComponent";
     }else if(component == ComponentType::MirrorComponent){
         name = "MirrorComponent";
     }else if(component == ComponentType::ReflectionProbeComponent){
@@ -3634,6 +3723,8 @@ std::string editor::Catalog::getComponentDisplayName(ComponentType component){
         case ComponentType::ShadowCaster2DComponent: return "Shadow Caster 2D";
         case ComponentType::ReflectionProbeComponent: return "Reflection Probe";
         case ComponentType::UIDocumentComponent: return "UI Document";
+        case ComponentType::LocalVolumetricFogComponent: return "Local Volumetric Fog";
+        case ComponentType::VolumetricCloudsComponent: return "Volumetric Clouds";
     }
     return getComponentName(component);
 }
@@ -3693,6 +3784,8 @@ const char* editor::Catalog::getComponentIcon(ComponentType component){
         case ComponentType::ShadowCaster2DComponent: return ICON_FA_CIRCLE_HALF_STROKE;
         case ComponentType::ReflectionProbeComponent: return ICON_FA_CIRCLE_DOT;
         case ComponentType::UIDocumentComponent: return ICON_FA_FILE_CODE;
+        case ComponentType::LocalVolumetricFogComponent: return ICON_FA_SMOG;
+        case ComponentType::VolumetricCloudsComponent: return ICON_FA_CLOUD;
     }
     return ICON_FA_PUZZLE_PIECE;
 }
@@ -3736,6 +3829,10 @@ ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, Comp
             return registry->getComponentId<ColorTweenComponent>();
         case ComponentType::FogComponent:
             return registry->getComponentId<FogComponent>();
+        case ComponentType::LocalVolumetricFogComponent:
+            return registry->getComponentId<LocalVolumetricFogComponent>();
+        case ComponentType::VolumetricCloudsComponent:
+            return registry->getComponentId<VolumetricCloudsComponent>();
         case ComponentType::MirrorComponent:
             return registry->getComponentId<MirrorComponent>();
         case ComponentType::ReflectionProbeComponent:
@@ -3842,6 +3939,10 @@ editor::ComponentType editor::Catalog::getComponentType(const std::string& compo
         return ComponentType::ColorTweenComponent;
     }else if(normalizedName == "fog"){
         return ComponentType::FogComponent;
+    }else if(normalizedName == "localvolumetricfog"){
+        return ComponentType::LocalVolumetricFogComponent;
+    }else if(normalizedName == "volumetricclouds"){
+        return ComponentType::VolumetricCloudsComponent;
     }else if(normalizedName == "mirror"){
         return ComponentType::MirrorComponent;
     }else if(normalizedName == "reflectionprobe"){
@@ -3997,6 +4098,12 @@ std::vector<editor::ComponentType> editor::Catalog::findComponents(EntityRegistr
     }
     if (registry->findComponent<FogComponent>(entity)){
         ret.push_back(ComponentType::FogComponent);
+    }
+    if (registry->findComponent<LocalVolumetricFogComponent>(entity)){
+        ret.push_back(ComponentType::LocalVolumetricFogComponent);
+    }
+    if (registry->findComponent<VolumetricCloudsComponent>(entity)){
+        ret.push_back(ComponentType::VolumetricCloudsComponent);
     }
     if (registry->findComponent<MirrorComponent>(entity)){
         ret.push_back(ComponentType::MirrorComponent);
@@ -5042,6 +5149,18 @@ void editor::Catalog::copyComponent(EntityRegistry* sourceRegistry, Entity sourc
         case ComponentType::FogComponent: {
             YAML::Node encoded = Stream::encodeFogComponent(sourceRegistry->getComponent<FogComponent>(sourceEntity));
             targetRegistry->getComponent<FogComponent>(targetEntity) = Stream::decodeFogComponent(encoded);
+            break;
+        }
+
+        case ComponentType::LocalVolumetricFogComponent: {
+            YAML::Node encoded = Stream::encodeLocalVolumetricFogComponent(sourceRegistry->getComponent<LocalVolumetricFogComponent>(sourceEntity));
+            targetRegistry->getComponent<LocalVolumetricFogComponent>(targetEntity) = Stream::decodeLocalVolumetricFogComponent(encoded);
+            break;
+        }
+
+        case ComponentType::VolumetricCloudsComponent: {
+            YAML::Node encoded = Stream::encodeVolumetricCloudsComponent(sourceRegistry->getComponent<VolumetricCloudsComponent>(sourceEntity));
+            targetRegistry->getComponent<VolumetricCloudsComponent>(targetEntity) = Stream::decodeVolumetricCloudsComponent(encoded);
             break;
         }
 

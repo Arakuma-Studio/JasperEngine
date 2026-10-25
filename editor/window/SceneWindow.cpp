@@ -10,6 +10,7 @@
 #include "Input.h"
 #include "external/IconsFontAwesome6.h"
 #include "Backend.h"
+#include "subsystem/RenderSystem.h"
 #include "util/Util.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
@@ -1946,7 +1947,22 @@ void editor::SceneWindow::drawGizmosMenu(SceneProject& sceneProject) {
         if (sceneProject.sceneType == SceneType::SCENE_3D) {
             drawSettingRow(ICON_FA_CLONE " Disable face culling", sceneProject.displaySettings.disableFaceCulling);
         }
+        if (sceneProject.sceneType == SceneType::SCENE_3D) {
+            // the shadow debug views (editor only, not saved; MCP shadows_debug_view)
+            static const char* const debugViews[] = {"None", "Cascades", "Shadow Factor", "Texel Density", "Cache", "Atlas"};
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("%s", ICON_FA_CIRCLE_HALF_STROKE " Shadow debug");
+            ImGui::TableSetColumnIndex(1);
+            int view = static_cast<int>(sceneProject.scene->getShadowDebugView());
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##ShadowDebugView", &view, debugViews, IM_ARRAYSIZE(debugViews))) {
+                sceneProject.scene->setShadowDebugView(static_cast<ShadowDebugView>(view));
+                sceneProject.needUpdateRender = true;
+            }
+        }
         drawSettingRow(ICON_FA_SMOG " Disable fog", sceneProject.displaySettings.disableFog);
+        drawSettingRow(ICON_FA_CLOUD " Disable clouds", sceneProject.displaySettings.disableClouds);
         if (sceneProject.sceneType != SceneType::SCENE_UI) {
             drawSettingRow(ICON_FA_WAND_MAGIC_SPARKLES " Show post-processing", sceneProject.displaySettings.showPostProcessing);
         }
@@ -2342,7 +2358,23 @@ void editor::SceneWindow::show() {
                     drawList->AddRect(ImVec2(imageMin.x + frameInset, imageMin.y + frameInset), ImVec2(imageMax.x - frameInset, imageMax.y - frameInset), IM_COL32(255, 219, 51, 235), 0.0f, 0, Theme::dpi(2.0f));
                 } else {
                     // Black until the first render creates the framebuffer.
+                    const ImVec2 canvasMin = ImGui::GetCursorScreenPos();
                     Widgets::image(previewTex, canvasAvail, IM_COL32(0, 0, 0, 255));
+
+                    // the Atlas shadow debug view: the shadow atlases over the bottom-left corner
+                    if (sceneProject.sceneType == SceneType::SCENE_3D && sceneProject.scene->getShadowDebugView() == ShadowDebugView::ATLAS) {
+                        if (TextureRender* atlas = sceneProject.scene->getSystem<RenderSystem>()->getShadowAtlasDebugTexture()) {
+                            const float atlasWidth = std::min(canvasAvail.x, (float)atlas->getWidth());
+                            const float atlasHeight = atlasWidth * (float)atlas->getHeight() / std::max((float)atlas->getWidth(), 1.0f);
+                            const ImVec2 pMin(canvasMin.x, canvasMin.y + canvasAvail.y - atlasHeight);
+                            const ImVec2 pMax(canvasMin.x + atlasWidth, canvasMin.y + canvasAvail.y);
+                            // GL stores render targets bottom-up
+                            const bool flip = Engine::isOpenGL();
+                            ImGui::GetWindowDrawList()->AddImage(Backend::getImGuiTexture(atlas), pMin, pMax,
+                                                                 ImVec2(0.0f, flip ? 1.0f : 0.0f), ImVec2(1.0f, flip ? 0.0f : 1.0f));
+                            sceneProject.needUpdateRender = true;
+                        }
+                    }
                 }
 
                 const bool transitioning = sceneProject.playState == ScenePlayState::SAVING

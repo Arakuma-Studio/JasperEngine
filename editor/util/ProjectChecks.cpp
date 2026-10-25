@@ -1459,6 +1459,21 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
         check.ok = true;
         if (built) *built = data;
+        // a fork written before the fragment-stage shadows (docs/rendering/shadows.md): it still
+        // works for directional and spot lights, its point lights cast no shadows. Read from its
+        // sources: the blocks are only in the variants that receive shadows.
+        if (!effect && !ShaderReference::isLibrary(use.base) && use.shaderType == static_cast<int>(ShaderType::MESH)) {
+            const Util::CustomShaderPaths files = project->resolveCustomShaderFiles(use.base);
+            for (const std::string& file : {files.frag, files.vert}) {
+                std::string source;
+                if (!file.empty() && readFile(project->getProjectPath() / file, source) &&
+                        (source.find("u_fs_shadows") != std::string::npos || source.find("v_lightProjPos") != std::string::npos)) {
+                    check.findings.push_back({"shader", file, 0, 0, "warning",
+                                              "legacy shadow interface: re-fork to get point shadows, blend and PCSS"});
+                    break;
+                }
+            }
+        }
         if (effect) {
             // the parameter block the shader declares is the manifest's
             std::vector<std::string> mismatches;

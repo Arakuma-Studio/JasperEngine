@@ -144,6 +144,7 @@ SokolTexture::SokolTexture(){
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
     streamBytes = 0;
+    aliasImage = false;
 }
 
 SokolTexture::SokolTexture(const SokolTexture& rhs) = default;
@@ -157,6 +158,8 @@ sg_image_type SokolTexture::getTextureType(TextureType textureType){
         return SG_IMAGETYPE_CUBE;
     }else if (textureType == TextureType::TEXTURE_ARRAY){
         return SG_IMAGETYPE_ARRAY;
+    }else if (textureType == TextureType::TEXTURE_3D){
+        return SG_IMAGETYPE_3D;
     }
 
     return _SG_IMAGETYPE_DEFAULT;
@@ -407,6 +410,42 @@ bool SokolTexture::createTexture(
         return true;
 
     return false;
+}
+
+bool SokolTexture::createTexture3D(
+            const std::string& label, int width, int height, int depth, const void* data, size_t size,
+            TextureFilter filter, TextureWrap wrap){
+    if (width <= 0 || height <= 0 || depth <= 0 || !data || size != (size_t)width * (size_t)height * (size_t)depth * 4){
+        Log::error("3D texture '%s': invalid size %i x %i x %i (%zu bytes)", label.c_str(), width, height, depth, size);
+        return false;
+    }
+
+    sg_image_desc imageDesc = {};
+    imageDesc.type = SG_IMAGETYPE_3D;
+    imageDesc.width = width;
+    imageDesc.height = height;
+    imageDesc.num_slices = depth;
+    imageDesc.pixel_format = SG_PIXELFORMAT_RGBA8;
+    imageDesc.data.mip_levels[0].ptr = data;
+    imageDesc.data.mip_levels[0].size = size;
+    imageDesc.label = label.c_str();
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = getFilter(filter);
+    samplerDesc.mag_filter = getFilter(filter);
+    samplerDesc.wrap_u = getWrap(wrap);
+    samplerDesc.wrap_v = getWrap(wrap);
+    samplerDesc.wrap_w = getWrap(wrap);
+
+    if (Engine::isAsyncThread()){
+        image = SokolCmdQueue::add_command_make_image(imageDesc);
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        image = sg_make_image(imageDesc);
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label.c_str());
+    return image.id != SG_INVALID_ID && sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
 bool SokolTexture::createDynamicTexture(const std::string& label, int width, int height){
@@ -691,6 +730,30 @@ bool SokolTexture::createFramebufferTexture(
     return false;
 }
 
+bool SokolTexture::createAliasView(const SokolTexture& source, const char* label){
+    destroyTexture();
+    if (source.image.id == SG_INVALID_ID)
+        return false;
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_NEAREST;
+    samplerDesc.mag_filter = SG_FILTER_NEAREST;
+    samplerDesc.mipmap_filter = SG_FILTER_NEAREST;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.label = label;
+
+    image = source.image;
+    aliasImage = true;
+    if (Engine::isAsyncThread()){
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label);
+    return sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 void SokolTexture::destroyTexture(){
     if (view.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){
@@ -699,9 +762,9 @@ void SokolTexture::destroyTexture(){
             sg_destroy_view(view);
         }
     }
-    if (image.id != SG_INVALID_ID)
+    if (image.id != SG_INVALID_ID && !aliasImage)
         untrackImage(image);
-    if (image.id != SG_INVALID_ID && sg_isvalid()){
+    if (image.id != SG_INVALID_ID && !aliasImage && sg_isvalid()){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
@@ -720,6 +783,7 @@ void SokolTexture::destroyTexture(){
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
     streamBytes = 0;
+    aliasImage = false;
 }
 
 uint32_t SokolTexture::getGLHandler() const{
