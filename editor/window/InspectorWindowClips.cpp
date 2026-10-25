@@ -262,6 +262,11 @@ namespace{
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
         ImGui::BeginChild(id, ImVec2(std::max(width, 1.0f), ImGui::GetFrameHeight()), false,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        // a narrow field shows the tag as a lock (the tooltip names the reference)
+        if (suffix && ImGui::CalcTextSize(text.c_str()).x + ImGui::CalcTextSize(suffix).x + ImGui::GetStyle().ItemSpacing.x + 4 >
+                ImGui::GetContentRegionAvail().x){
+            suffix = ICON_FA_LOCK;
+        }
         const float suffixWidth = suffix ? ImGui::CalcTextSize(suffix).x + ImGui::GetStyle().ItemSpacing.x : 0.0f;
         const float textWidth = ImGui::CalcTextSize(text.c_str()).x + suffixWidth;
         ImGui::SetCursorPosX(std::max(0.0f, ImGui::GetContentRegionAvail().x - textWidth - 2));
@@ -583,7 +588,8 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
                 // R8: a deleted clip keeps its reference (undoing the delete relinks it)
                 drawFileLabel("clipfile", inspectorclips::missingClipText(entry.clip), entry.clip, &warning, fieldWidth);
             }else{
-                drawFileLabel("clipfile", inspectorclips::clipFieldText(entry.clip), entry.clip, nullptr, fieldWidth,
+                drawFileLabel("clipfile", inspectorclips::clipFieldText(entry.clip),
+                              subClip ? entry.clip + " (Read-Only: Extract to .anim to edit it)" : entry.clip, nullptr, fieldWidth,
                               subClip ? "(Read-Only)" : nullptr);
             }
             ImGui::EndGroup();
@@ -1065,6 +1071,7 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
         newData.length = automatic ? -1.0f : data.effectiveLength();
         commit(newData, automatic ? "Clip Length Auto" : "Clip Length", "");
     }
+    UIProbe::item("clipAsset.lengthAuto");
     ImGui::SetItemTooltip("Auto: the clip ends at its last key or event");
     ImGui::SameLine();
     if (automatic){
