@@ -142,35 +142,53 @@ namespace {
     }();
 
     void publishMonitors(){
+        // the per-frame monitors, each looked up at its first value (monitors are never removed)
+        auto handle = [](MonitorHandle& monitor, const char* name, MonitorUnit unit){
+            if (!monitor)
+                monitor = monitorHandle(name, unit);
+            return monitor;
+        };
+        static MonitorHandle m0 = nullptr;
+        static MonitorHandle m1 = nullptr;
+        static MonitorHandle m2 = nullptr;
+        static MonitorHandle m3 = nullptr;
+        static MonitorHandle m4 = nullptr;
+        static MonitorHandle m5 = nullptr;
+        static MonitorHandle m6 = nullptr;
+        static MonitorHandle m7 = nullptr;
+        static MonitorHandle m8 = nullptr;
+        static MonitorHandle m9 = nullptr;
+        static MonitorHandle m10 = nullptr;
+        static MonitorHandle m11 = nullptr;
         const FrameTimeSample frame = FrameTimes::latest();
-        counter("FPS", frame.fps, MonitorUnit::Quantity);
-        counter("CPU frame ms", frame.cpuMs, MonitorUnit::TimeMs);
+        counter(handle(m0, "FPS", MonitorUnit::Quantity), frame.fps);
+        counter(handle(m1, "CPU frame ms", MonitorUnit::TimeMs), frame.cpuMs);
         // the newest frame whose GPU time arrived
         for (size_t i = FrameTimes::size(); i-- > 0 && FrameTimes::size() - i <= 8;){
             const FrameTimeSample sample = FrameTimes::at(i);
             if (sample.gpuMs >= 0.0f){
-                counter("GPU frame ms", sample.gpuMs, MonitorUnit::TimeMs);
+                counter(handle(m2, "GPU frame ms", MonitorUnit::TimeMs), sample.gpuMs);
                 break;
             }
         }
         const Engine::FrameStats& stats = Engine::getFrameStats();
-        counter("Draw calls", stats.drawCalls, MonitorUnit::Quantity);
-        counter("Instances", stats.instances, MonitorUnit::Quantity);
-        counter("Triangles", (double)stats.triangles, MonitorUnit::Quantity);
+        counter(handle(m3, "Draw calls", MonitorUnit::Quantity), stats.drawCalls);
+        counter(handle(m4, "Instances", MonitorUnit::Quantity), stats.instances);
+        counter(handle(m5, "Triangles", MonitorUnit::Quantity), (double)stats.triangles);
         const BackendFrameCounters backend = SystemRender::getBackendFrameCounters();
         if (backend.valid){
-            counter("Passes", backend.passes, MonitorUnit::Quantity);
-            counter("Pipelines applied", backend.pipelines, MonitorUnit::Quantity);
-            counter("Uniform bytes", backend.uniformBytes, MonitorUnit::Memory);
-            counter("Image upload bytes", backend.imageUploadBytes, MonitorUnit::Memory);
-            counter("Buffer upload bytes", backend.bufferUploadBytes, MonitorUnit::Memory);
+            counter(handle(m6, "Passes", MonitorUnit::Quantity), backend.passes);
+            counter(handle(m7, "Pipelines applied", MonitorUnit::Quantity), backend.pipelines);
+            counter(handle(m8, "Uniform bytes", MonitorUnit::Memory), backend.uniformBytes);
+            counter(handle(m9, "Image upload bytes", MonitorUnit::Memory), backend.imageUploadBytes);
+            counter(handle(m10, "Buffer upload bytes", MonitorUnit::Memory), backend.bufferUploadBytes);
         }
         uint32_t htmlDraws = 0;
         for (Scene* scene : Engine::getSceneLayers()){
             if (auto documents = scene->getSystem<UIDocumentSystem>())
                 htmlDraws += documents->getRenderStats().drawCalls;
         }
-        counter("HTML UI draws", htmlDraws, MonitorUnit::Quantity);
+        counter(handle(m11, "HTML UI draws", MonitorUnit::Quantity), htmlDraws);
         // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
         // the frame rate
         const auto now = std::chrono::steady_clock::now();

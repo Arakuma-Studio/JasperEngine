@@ -148,6 +148,10 @@ namespace jasperengine::profiler {
     // JE_PROFILE_COUNTER: a value of the current frame (any thread; the last one in a frame wins)
     JASPERENGINE_API void counter(const char* name, double value);
     JASPERENGINE_API void counter(const char* name, double value, MonitorUnit unit);
+    // a monitor looked up once (the engine's own, set every frame): no lock, no name lookup
+    using MonitorHandle = void*;
+    JASPERENGINE_API MonitorHandle monitorHandle(const char* name, MonitorUnit unit);
+    JASPERENGINE_API void counter(MonitorHandle monitor, double value);
 
     struct MonitorInfo {
         std::string name;

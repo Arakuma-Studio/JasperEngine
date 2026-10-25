@@ -881,6 +881,20 @@ void profiler::counter(const char* name, double value){
     monitor->pending.store(true, std::memory_order_release);
 }
 
+profiler::MonitorHandle profiler::monitorHandle(const char* name, MonitorUnit unit){
+    return name ? findMonitor(name, unit, true) : nullptr;
+}
+
+void profiler::counter(MonitorHandle handle, double value){
+    Monitor* monitor = static_cast<Monitor*>(handle);
+    if (!monitor)
+        return;
+    uint64_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(double));
+    monitor->pendingBits.store(bits, std::memory_order_relaxed);
+    monitor->pending.store(true, std::memory_order_release);
+}
+
 void profiler::counter(const char* name, double value, MonitorUnit unit){
     if (!name)
         return;
