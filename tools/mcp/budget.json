@@ -39,16 +39,16 @@
     },
     "exceptions": {
         "place_with_physics": {
-            "limit": 3493,
-            "reason": "upstream (Physics Placement), predates its merge into oe-port: 3493 chars measured on the upstream sync"
+            "limit": 3609,
+            "reason": "upstream (Physics Placement), predates its merge into oe-port: 3493 chars measured on the upstream sync, 3609 with S31's schema conventions (nested objects say additionalProperties)"
         },
         "synthesize_texture": {
-            "limit": 3400,
-            "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3400 chars measured on the upstream sync"
+            "limit": 3519,
+            "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3400 chars measured on the upstream sync, 3519 with S31's schema conventions (nested objects say additionalProperties)"
         },
         "edit_lattice": {
-            "limit": 2030,
-            "reason": "upstream (lattice deformer), predates its merge into oe-port: 2030 chars measured on the upstream sync"
+            "limit": 2058,
+            "reason": "upstream (lattice deformer), predates its merge into oe-port: 2030 chars measured on the upstream sync, 2058 with S31's schema conventions (nested objects say additionalProperties)"
         },
         "edit_animation": {
             "limit": 3340,
