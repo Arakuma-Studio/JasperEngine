@@ -12,7 +12,10 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ModelSubClips.h"
 
+#include "tiny_gltf.h"
+
 #include <algorithm>
+#include <mutex>
 
 using namespace jasperengine;
 
@@ -47,7 +50,9 @@ static void fadeOutModelAnimations(Scene* scene, const ModelComponent& model, En
 
 // The entity animation of the model named `name` (-1 when none): its entity name (the first of
 // that name, as before), else the sub-clip name the Inspector shows for it, so that the second
-// of two glTF animations both named "Wave" (entities "Wave", "Wave") is "Wave 2"
+// of two glTF animations both named "Wave" (entities "Wave", "Wave") is "Wave 2". The sub-clip
+// names come from the file's animation names, as the Inspector's (an entity renamed since keeps
+// its file name there); without the parse (or another count), from the entity names.
 static int findModelAnimationIndex(Scene* scene, const ModelComponent& model, const std::string& name){
     std::vector<std::string> entityNames(model.animations.size());
     for (int i = 0; i < (int)model.animations.size(); i++){
@@ -61,7 +66,14 @@ static int findModelAnimationIndex(Scene* scene, const ModelComponent& model, co
         }
     }
     // the loader names an unnamed animation "Animation <i>" itself: its entity name is never empty
-    std::vector<std::string> subClipNames = anim::subClipNames(entityNames);
+    std::vector<std::string> fileNames = entityNames;
+    if (model.gltfModel){
+        std::lock_guard<std::recursive_mutex> lock(MeshSystem::getPooledGLTFMutex());
+        if (model.gltfModel->animations.size() == model.animations.size()){
+            for (size_t i = 0; i < fileNames.size(); i++) fileNames[i] = model.gltfModel->animations[i].name;
+        }
+    }
+    std::vector<std::string> subClipNames = anim::subClipNames(fileNames);
     for (int i = 0; i < (int)subClipNames.size(); i++){
         if (!entityNames[i].empty() && subClipNames[i] == name){
             return i;

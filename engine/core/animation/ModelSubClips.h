@@ -80,8 +80,8 @@ namespace jasperengine::anim{
                                        std::vector<ClipWarning>& warnings, std::string* error);
 
     // the same from a model file (asset-relative path): the ModelPool's parse when the model is
-    // loaded, else one parse of the file kept for the next calls (the last file parsed this way),
-    // so the N sub-clips of a library file cost one parse
+    // loaded, else one parse of the file kept for the next calls (the last file parsed this way, its
+    // animation data only), so the N sub-clips of a library file cost one parse
     JASPERENGINE_API bool listModelFileClips(const std::string& modelPath, std::vector<ModelClipInfo>& out, std::string* error);
     JASPERENGINE_API bool buildModelSubClip(const std::string& reference, ClipData& out,
                                             std::vector<ClipWarning>& warnings, std::string* error);

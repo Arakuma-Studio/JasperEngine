@@ -710,6 +710,13 @@ TEST(ModelSubClips, ModelFindsDuplicateAnimationNamesByTheirSubClipNames){
     model.playAnimation("Wave");
     EXPECT_TRUE(started(animations[3]));
     EXPECT_FALSE(started(animations[4]));
+
+    // FX4 (final fixes review M4): "Wave 2" comes from the file's names, as in the Inspector, so
+    // renaming the first entity leaves the second reachable as "Wave 2"
+    scene.setEntityName(animations[3], "Dance");
+    EXPECT_EQ(model.findAnimation("Wave 2").getEntity(), animations[4]);
+    EXPECT_EQ(model.findAnimation("Dance").getEntity(), animations[3]);
+    scene.setEntityName(animations[3], "Wave");
 }
 
 // Blend shape weights and model (re)loads (MeshComponent::morphWeightsSet): a freshly loaded model

@@ -14,11 +14,16 @@
 
 #include "Scene.h"
 #include "animation/AnimationClip.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/ModelSubClips.h"
 #include "object/Model.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimationClipPoolTesting.h"
 #include "pool/ModelPool.h"
 #include "subsystem/MeshSystem.h"
+
+#include "json.hpp"
+#include "tiny_gltf.h"
 
 #include <fstream>
 #include <iterator>
@@ -182,6 +187,67 @@ TEST_F(SubClipPool, ConcurrentFirstLoadsShareOneClip){
     EXPECT_EQ(AnimationClipPool::getOrLoad(clip("Idle")), clips[0]);
     EXPECT_EQ(AnimationClipPool::getGeneration(clip("Idle")), generation) << "a cache hit keeps the generation";
     EXPECT_EQ(AnimationClipPool::size(), 1u);
+}
+
+namespace {
+
+    std::string decodeBase64(const std::string& text){
+        static const std::string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string out;
+        int value = 0, bits = -8;
+        for (char c : text){
+            const size_t digit = alphabet.find(c);
+            if (digit == std::string::npos) break;
+            value = (value << 6) + (int)digit;
+            bits += 6;
+            if (bits >= 0){
+                out.push_back((char)((value >> bits) & 0xFF));
+                bits -= 8;
+            }
+        }
+        return out;
+    }
+
+}
+
+// FX4 (final fixes review M2, M3): the kept parse holds only the animation data (clips built from
+// it equal the full parse's), and is stamped with the files it was read from: rewriting a .gltf's
+// external .bin without an invalidate is read again
+TEST_F(SubClipPool, KeptParseIsTrimmedAndStampsItsExternalBuffers){
+    // the fixture with its buffer in an external .bin
+    nlohmann::json gltf = nlohmann::json::parse(heroText());
+    const std::string uri = gltf["buffers"][0]["uri"].get<std::string>();
+    const std::string bin = decodeBase64(uri.substr(uri.find(',') + 1));
+    ASSERT_EQ(bin.size(), gltf["buffers"][0]["byteLength"].get<size_t>());
+    const std::string folder = model.substr(0, model.rfind('/') + 1);
+    gltf["buffers"][0]["uri"] = "hero.bin";
+    const std::string external = folder + "external.gltf";
+    animtest::writeAsset(folder + "hero.bin", bin);
+    animtest::writeAsset(external, gltf.dump());
+
+    tinygltf::Model full;
+    std::string error;
+    ASSERT_TRUE(MeshSystem::parseGLTFFile(external, full, &error)) << error;
+    const size_t before = getModelFileParseCount();
+    for (int index = 0; index < (int)full.animations.size(); index++){
+        ClipData fromCache, fromFull;
+        std::vector<ClipWarning> warnings;
+        std::vector<anim::ModelClipInfo> infos;
+        ASSERT_TRUE(anim::listModelFileClips(external, infos, &error)) << error;
+        ASSERT_TRUE(anim::buildModelSubClip(external + "#" + infos[index].name, fromCache, warnings, &error)) << error;
+        ASSERT_TRUE(anim::buildSubClip(full, index, fromFull, warnings, &error)) << error;
+        fromFull.source.path = fromCache.source.path;     // the file form names its model
+        EXPECT_EQ(anim::writeClip(fromCache), anim::writeClip(fromFull)) << "animation " << index << " from the trimmed parse";
+    }
+    EXPECT_EQ(getModelFileParseCount(), before + 1) << "one parse for every list and build";
+
+    // the .bin rewritten (a new time), no invalidate: read again
+    animtest::writeAsset(folder + "hero.bin", bin);
+    std::vector<anim::ModelClipInfo> infos;
+    ASSERT_TRUE(anim::listModelFileClips(external, infos, &error)) << error;
+    EXPECT_EQ(getModelFileParseCount(), before + 2) << "the external buffer's stamp changed";
+    ASSERT_TRUE(anim::listModelFileClips(external, infos, &error)) << error;
+    EXPECT_EQ(getModelFileParseCount(), before + 2) << "unchanged since: the kept parse";
 }
 
 // Engine review I1: the sub-clips of a model no scene has loaded (an animation library file) share
