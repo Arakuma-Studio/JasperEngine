@@ -414,6 +414,7 @@ NON_TOOL_WORDS = {
     "cost_note",
     "degraded_document",        # the error code of a save that would drop data (docs/data-safety.md)
     "project_locked",           # the error of `mcp --project` on a project another editor has open
+    "mobile_adaptive",          # a post-processing preset (list_post_processing_presets), not a parameter
 }
 
 
