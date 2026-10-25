@@ -635,4 +635,8 @@ Each backend test is parameterised over `{Native, Polling}`.
   that are new to the database still write 10,000 metas on the main thread (S04 R1, ~3 s on the
   build server): `test_bulk_checkout` therefore creates its files first and measures the burst
   that rewrites them, as a checkout of files the project has does (their metas come along), and
-  asks `editor_status` for the whole 10 s, also after the watcher settled.
+  asks `editor_status` for the whole 10 s, also after the watcher settled. On the S05 side a text
+  file (`.txt`, `.md`, `.yaml`...) not open in the code editor skips the reload stamps (no stat or
+  byte compare for 10,000 data files) and the Project window classifies a thumbnail by extension
+  before it stats the file: slowest `editor_status` 0.42 s with the watcher's flush delivering
+  the burst inside the call (R7), on the shared server.
