@@ -3,6 +3,9 @@
 
 // W3: console logs (read_console, clear_console)
 #include "McpTools.h"
+#include "Project.h"
+#include "reload/HotReloadService.h"
+#include "util/SourceLocation.h"
 #include "PlayViewCommon.h"
 
 #include "mcp/McpCall.h"
@@ -67,6 +70,36 @@ Json consoleEntryJson(const LogEntry& entry, size_t maxChars) {
         {"frame", entry.frame}
     };
     if (!entry.file.empty()) json["source"] = {{"file", entry.file}, {"line", entry.line}};
+    // the file locations it names (click-to-source, S23 R27): the logger's source first
+    std::vector<SourceLocation> found;
+    if (!entry.file.empty() && entry.line > 0) {
+        SourceLocation source;
+        source.path = entry.file;
+        source.line = static_cast<int>(entry.line);
+        found.push_back(source);
+    }
+    for (const SourceLocation& location : findSourceLocations(entry.message)) {
+        if (!found.empty() && found[0].path == location.path && found[0].line == location.line) continue;
+        found.push_back(location);
+    }
+    if (!found.empty()) {
+        SourceRoots roots;
+        if (Project* project = HotReloadService::get().getProject()) {
+            roots.project = project->getProjectPath();
+            roots.lua = project->getLuaPath();
+            roots.assets = project->getAssetsPath();
+        }
+        Json locations = Json::array();
+        for (const SourceLocation& location : found) {
+            const ResolvedSource resolved = resolveSourceLocation(location.path, roots);
+            Json item = {{"file", resolved.inProject ? resolved.projectPath : location.path}, {"line", location.line},
+                         {"in_project", resolved.inProject && resolved.exists}};
+            if (location.column > 0) item["column"] = location.column;
+            if (resolved.inProject && resolved.projectPath != location.path) item["as_written"] = location.path;
+            locations.push_back(std::move(item));
+        }
+        json["locations"] = std::move(locations);
+    }
     return json;
 }
 

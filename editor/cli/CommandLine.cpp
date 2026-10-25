@@ -46,6 +46,7 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "util/EditorScripts.h"
 #include "htmlui/HtmlUiImportCli.h"
 #include "htmlui/effects/EffectManifest.h"
 #include "htmlui/effects/EffectRegistry.h"
@@ -2299,10 +2300,30 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
         const std::vector<std::string> engineGlobals = ProjectChecks::engineLuaGlobals();
         const fs::path luaRoot = ProjectChecks::luaRootFromProjectFile(root);
         size_t count = 0;
+        // the scenes and prefabs, as text: an editor script attached to a GameObject is a mistake
+        std::vector<std::pair<std::string, std::string>> documents;
+        for (const fs::path& document : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+            std::string text;
+            if (ProjectChecks::readFile(document, text)) documents.push_back({ProjectChecks::projectRelative(root, document), std::move(text)});
+        }
         for (const fs::path& file : luaFiles) {
             std::string code;
             if (!ProjectChecks::readFile(file, code)) continue;
             count++;
+            // an editor script (S23): its syntax only (it runs when its menu item is clicked)
+            if (EditorScripts::isLuaEditorScript(file.lexically_relative(root), code)) {
+                const std::string rel = ProjectChecks::projectRelative(root, file);
+                const ProjectChecks::LuaSyntax syntax = ProjectChecks::checkLuaSyntax(code, rel);
+                if (!syntax.ok) run.findings.push_back({"lua", rel, syntax.line, 0, "error", syntax.message});
+                const std::string luaRelative = file.lexically_relative(luaRoot).generic_string();
+                for (const auto& [document, text] : documents) {
+                    if (text.find(luaRelative) != std::string::npos) {
+                        run.findings.push_back({"lua", rel, 0, 0, "warning", "an editor script (Editor/ with ---@menu annotations) is attached to a "
+                                                "GameObject in " + document + ": it does not run in the game"});
+                    }
+                }
+                continue;
+            }
             lua_State* L = ProjectChecks::newIsolatedLuaState(luaRoot, engineGlobals);
             const ProjectChecks::LuaScriptCheck check = ProjectChecks::checkLuaScript(code, ProjectChecks::projectRelative(root, file), L);
             ProjectChecks::closeIsolatedLuaState(L);

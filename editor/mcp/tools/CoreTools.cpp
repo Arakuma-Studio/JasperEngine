@@ -15,6 +15,7 @@
 #include "mcp/McpSchema.h"
 #include "mcp/McpServer.h"
 #include "mcp/McpUndo.h"
+#include "util/ScriptStatus.h"
 
 #include "App.h"
 #include "EditorVersion.h"
@@ -619,6 +620,7 @@ void editorStatusTool(const CallPtr& call) {
         {"waiting_calls", status.pendingCalls},
         {"auto_sync", McpAutoSync::get().stats()},
         {"file_watcher", fileWatcherJson()},
+        {"scripts", ScriptStatus::get().toJson()},
         {"frame_ms", app.takeFrameStats()},
         {"dialog", dialog},
         {"ui", ui},

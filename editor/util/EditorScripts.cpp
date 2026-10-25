@@ -820,6 +820,17 @@ bool EditorScripts::isLuaEditorScript(const fs::path& projectRelative, const std
     return isEditorFolderPath(projectRelative) && hasAnnotation(code);
 }
 
+bool EditorScripts::isEditorOnlyScript(const fs::path& absolute, const fs::path& projectRoot){
+    const fs::path rel = absolute.lexically_normal().lexically_relative(projectRoot.lexically_normal());
+    if (rel.empty() || *rel.begin() == ".." || !isEditorFolderPath(rel)) return false;
+    const std::string text = FileUtils::pathToUtf8(absolute);
+    const bool lua = Util::isLuaFile(text);
+    if (!lua && !Util::isSourceFile(text)) return false;
+    std::string code;
+    if (!ProjectChecks::readFile(absolute, code)) return false;
+    return lua ? hasAnnotation(code) : code.find("JE_MENU_ITEM(") != std::string::npos;
+}
+
 std::vector<EditorMenuItem> EditorScripts::parseLua(const std::string& code, const std::string& file){
     std::vector<EditorMenuItem> items;
     std::vector<EditorMenuItem> waiting;     // annotations above the next function

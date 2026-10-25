@@ -415,39 +415,38 @@ string(APPEND font_awesome_names "};\n")
 file(WRITE "${GENERATED_DIR}/font_awesome_names.h.in" "${font_awesome_names}")
 configure_file("${GENERATED_DIR}/font_awesome_names.h.in" "${GENERATED_DIR}/font_awesome_names.h" COPYONLY)
 
-# Generate engine API suggestions header from Lua bindings and C++ headers
+# The engine's Lua API, described once (tools/lua_api, S23 R29): one parser reads the bindings
+# and the engine headers into lua-api.json, and three emitters read only that JSON: the LuaLS
+# stubs the editor writes into every project (.jasperengine/engine-api/lua, see
+# Generator::writeEditorTooling; the .lua files are also left in the build tree), the code
+# editor's completion header and the Markdown reference (with the JSON, in lua_api_data.h: the
+# jasper://lua-api resource and `doc lua-api-reference`). Rebuilt only when the bindings, the
+# engine headers, the stub fragments or tools/lua_api change.
 set(BINDING_DIR "${CMAKE_SOURCE_DIR}/engine/core/script/binding")
 set(ENGINE_CORE_DIR "${CMAKE_SOURCE_DIR}/engine/core")
 set(API_SUGGESTIONS_HEADER "${GENERATED_DIR}/engine_api_suggestions.h")
-set(GENERATE_API_SCRIPT "${CMAKE_SOURCE_DIR}/generate_api_suggestions.py")
+set(LUA_STUBS_HEADER "${GENERATED_DIR}/engine_lua_stubs.h")
+set(LUA_STUBS_DIR "${GENERATED_DIR}/engine-api-lua")
+set(LUA_API_JSON "${GENERATED_DIR}/lua-api.json")
+set(LUA_API_DATA_HEADER "${GENERATED_DIR}/lua_api_data.h")
+set(LUA_API_MARKDOWN "${GENERATED_DIR}/lua-api-reference.md")
 
 file(GLOB BINDING_FILES CONFIGURE_DEPENDS "${BINDING_DIR}/*.cpp")
 # hand-written LuaLS fragments appended to the generated stubs (parameter-table shapes ...)
 file(GLOB BINDING_STUB_FRAGMENTS CONFIGURE_DEPENDS "${BINDING_DIR}/stubs/*.lua")
 file(GLOB_RECURSE ENGINE_HEADERS CONFIGURE_DEPENDS "${ENGINE_CORE_DIR}/*.h")
+file(GLOB LUA_API_SCRIPTS CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tools/lua_api/*.py")
 
 add_custom_command(
-    OUTPUT ${API_SUGGESTIONS_HEADER}
-    COMMAND ${Python3_EXECUTABLE} ${GENERATE_API_SCRIPT}
-            ${BINDING_DIR} ${API_SUGGESTIONS_HEADER} ${ENGINE_CORE_DIR}
-    DEPENDS ${GENERATE_API_SCRIPT} ${BINDING_FILES} ${ENGINE_HEADERS}
-    COMMENT "Generating engine_api_suggestions.h from Lua bindings and C++ headers"
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-
-# LuaLS annotation stubs of the Lua API, embedded in the editor, which writes them into every
-# project (.jasperengine/engine-api/lua, see Generator::writeEditorTooling). The .lua files
-# are also left in the build tree for inspection.
-set(LUA_STUBS_HEADER "${GENERATED_DIR}/engine_lua_stubs.h")
-set(LUA_STUBS_DIR "${GENERATED_DIR}/engine-api-lua")
-set(GENERATE_LUA_STUBS_SCRIPT "${CMAKE_SOURCE_DIR}/generate_lua_stubs.py")
-
-add_custom_command(
-    OUTPUT ${LUA_STUBS_HEADER}
-    COMMAND ${Python3_EXECUTABLE} ${GENERATE_LUA_STUBS_SCRIPT}
-            ${BINDING_DIR} ${ENGINE_CORE_DIR} ${LUA_STUBS_HEADER} --out-dir ${LUA_STUBS_DIR}
-    DEPENDS ${GENERATE_LUA_STUBS_SCRIPT} ${BINDING_FILES} ${BINDING_STUB_FRAGMENTS} ${ENGINE_HEADERS}
-    COMMENT "Generating Lua API stubs (engine_lua_stubs.h) from Lua bindings and C++ headers"
+    OUTPUT ${LUA_API_JSON} ${LUA_STUBS_HEADER} ${API_SUGGESTIONS_HEADER} ${LUA_API_DATA_HEADER}
+    COMMAND ${CMAKE_COMMAND} -E env "PYTHONPATH=${CMAKE_SOURCE_DIR}/tools"
+            ${Python3_EXECUTABLE} -m lua_api all
+            --binding-dir ${BINDING_DIR} --core-dir ${ENGINE_CORE_DIR} --json ${LUA_API_JSON}
+            --stubs-header ${LUA_STUBS_HEADER} --stubs-dir ${LUA_STUBS_DIR}
+            --suggestions-header ${API_SUGGESTIONS_HEADER}
+            --markdown ${LUA_API_MARKDOWN} --data-header ${LUA_API_DATA_HEADER}
+    DEPENDS ${LUA_API_SCRIPTS} ${BINDING_FILES} ${BINDING_STUB_FRAGMENTS} ${ENGINE_HEADERS}
+    COMMENT "Describing the Lua API (lua-api.json) and writing its stubs, completion and reference"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -582,7 +581,7 @@ set_property(
 
 include_directories (${EDITOR_DIR})
 
-add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER})
+add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER} ${LUA_API_DATA_HEADER})
 
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
@@ -705,6 +704,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EditorFingerprint.cpp
     ${EDITOR_DIR}/util/EditorScripts.cpp
     ${EDITOR_DIR}/util/ExternalCodeEditor.cpp
+    ${EDITOR_DIR}/util/LuaApiData.cpp
     ${EDITOR_DIR}/util/NumericExpression.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp

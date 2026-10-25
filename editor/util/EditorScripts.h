@@ -94,6 +94,10 @@ namespace jasperengine::editor {
         // an annotation (runtime scripts in Editor/ folders stay runtime scripts)
         static bool isEditorFolderPath(const std::filesystem::path& projectRelative);
         static bool isLuaEditorScript(const std::filesystem::path& projectRelative, const std::string& code);
+        // An editor-only script file (absolute): a Lua editor script, or a .cpp under Editor/
+        // with a JE_MENU_ITEM. Never exported, never in the game's (or Play's) script build,
+        // never require()d at runtime.
+        static bool isEditorOnlyScript(const std::filesystem::path& absolute, const std::filesystem::path& projectRoot);
         // The annotations of a Lua editor script / the JE_MENU_ITEMs of a C++ file
         static std::vector<EditorMenuItem> parseLua(const std::string& code, const std::string& file);
         static std::vector<EditorMenuItem> parseCpp(const std::string& code, const std::string& file);

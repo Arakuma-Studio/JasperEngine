@@ -71,6 +71,11 @@ void registerTestKind() {
     GraphRegistry::get().registerKind(kind);
 }
 
+// the graph model's ordered JSON as the MCP replies' JSON
+Json toMcp(const graph::Json& value) {
+    return Json::parse(value.dump());
+}
+
 bool readGraph(const CallPtr& call, fs::path& file, std::string& text, Graph& out, graph::LoadReport& report) {
     std::string error;
     if (!McpRefs::resolveProjectPath(call->ctx().project(), call->args().value("path", std::string()), file, error, true)) {
@@ -91,7 +96,7 @@ bool readGraph(const CallPtr& call, fs::path& file, std::string& text, Graph& ou
 
 Json issuesJson(const std::vector<graph::Issue>& issues) {
     Json out = Json::array();
-    for (const graph::Issue& issue : issues) out.push_back(graph::toJson(issue));
+    for (const graph::Issue& issue : issues) out.push_back(toMcp(graph::toJson(issue)));
     return out;
 }
 
@@ -111,7 +116,7 @@ std::string errorKey(const graph::Issue& issue) {
 void listGraphKindsTool(const CallPtr& call) {
     Json kinds = Json::array();
     for (const std::string& id : GraphRegistry::get().kindIds()) {
-        if (auto kind = GraphRegistry::get().kind(id)) kinds.push_back(graph::toJson(*kind));
+        if (auto kind = GraphRegistry::get().kind(id)) kinds.push_back(toMcp(graph::toJson(*kind)));
     }
     call->ok(std::to_string(kinds.size()) + " graph kind(s).", Json{{"kinds", kinds}});
 }
@@ -124,7 +129,7 @@ void listGraphNodeTypesTool(const CallPtr& call) {
         return;
     }
     Json types = Json::array();
-    for (const graph::NodeTypeDesc& type : kind->nodeTypes) types.push_back(graph::toJson(type));
+    for (const graph::NodeTypeDesc& type : kind->nodeTypes) types.push_back(toMcp(graph::toJson(type)));
     call->ok(std::to_string(types.size()) + " node type(s) of " + id + ".", Json{{"kind", id}, {"node_types", types}});
 }
 
@@ -134,7 +139,7 @@ void getGraphTool(const CallPtr& call) {
     Graph g;
     graph::LoadReport report;
     if (!readGraph(call, file, text, g, report)) return;
-    Json data = {{"graph", graph::toJson(g)}, {"issue_count", graph::validate(g).size()}};
+    Json data = {{"graph", toMcp(graph::toJson(g))}, {"issue_count", graph::validate(g).size()}};
     const Json loaded = reportJson(report);
     if (!loaded.empty()) data["load"] = loaded;
     call->ok(g.kind + " graph: " + std::to_string(g.nodes.size()) + " node(s), " + std::to_string(g.edges.size()) + " edge(s).", data);
@@ -191,7 +196,7 @@ void editGraphTool(const CallPtr& call) {
     const std::vector<graph::Issue> issues = graph::validate(g);
     Json added = Json::array();
     for (const graph::Issue& issue : issues) {
-        if (issue.severity == graph::Severity::Error && !errorsBefore.count(errorKey(issue))) added.push_back(graph::toJson(issue));
+        if (issue.severity == graph::Severity::Error && !errorsBefore.count(errorKey(issue))) added.push_back(toMcp(graph::toJson(issue)));
     }
     const std::string undoName = names.size() == 1 ? names.front() : "Edit Graph (" + std::to_string(names.size()) + " Changes)";
     Json data = {{"issues", issuesJson(issues)}, {"applied", names.size()}, {"undo_name", undoName}, {"dry_run", dryRun}};
@@ -203,7 +208,7 @@ void editGraphTool(const CallPtr& call) {
         return;
     }
     if (dryRun) {
-        data["graph"] = graph::toJson(g);
+        data["graph"] = toMcp(graph::toJson(g));
         call->ok("Dry run: " + std::to_string(names.size()) + " op(s) apply, " + std::to_string(issues.size()) + " issue(s); nothing was written.", data);
         return;
     }

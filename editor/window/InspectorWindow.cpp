@@ -3,6 +3,7 @@
 
 #include "InspectorWindow.h"
 #include "util/EditorScripts.h"
+#include "util/NumericExpression.h"
 #include "command/PlayChangeReview.h"
 #include "command/type/RemovePreservedComponentCmd.h"
 #include "StreamPreserved.h"
@@ -2854,6 +2855,52 @@ bool editor::InspectorWindow::propertyHeader(std::string label, float secondColS
     return button;
 }
 
+namespace {
+
+    // Numeric fields of a row (S23 R25-R26): its unit and the selection size for the
+    // expression hook, and a multi-edit expression that differs per object (+=, L(), R())
+    // applied to each object from the value it had when the field was activated
+    std::map<ImGuiID, std::vector<double>>& multiEditBases() {
+        static std::map<ImGuiID, std::vector<double>> bases;
+        return bases;
+    }
+
+    template<class Draw>
+    bool numericField(NumericUnit unit, size_t objects, bool integer, Draw&& draw) {
+        NumericFieldScope scope(unit, static_cast<int>(objects), integer);
+        return draw();
+    }
+
+    template<class Current>
+    std::vector<double> perObjectValues(bool edited, const std::vector<Entity>& entities, Current&& current, NumericUnit unit, bool integer = false) {
+        std::vector<double> out;
+        const ImGuiID id = ImGui::GetItemID();
+        auto& bases = multiEditBases();
+        if (ImGui::IsItemActivated() && entities.size() > 1) {
+            std::vector<double> base;
+            for (Entity entity : entities) base.push_back(static_cast<double>(current(entity)));
+            bases[id] = std::move(base);
+        }
+        std::string text;
+        if (edited && entities.size() > 1 && NumericExpression::takeMultiEdit(text)) {
+            std::vector<double> currents;
+            auto it = bases.find(id);
+            if (it != bases.end() && it->second.size() == entities.size()) {
+                currents = it->second;
+            } else {
+                for (Entity entity : entities) currents.push_back(static_cast<double>(current(entity)));
+            }
+            NumericContext context;
+            context.unit = unit;
+            context.integer = integer;
+            if (!NumericExpression::evaluateForObjects(text, currents, context, out)) out.clear();
+        }
+        if (ImGui::IsItemDeactivated()) bases.erase(id);
+        return out;
+    }
+
+}
+
 bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cpType, std::string id, std::string label, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings){
     bool result = true;
 
@@ -2955,8 +3002,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosX = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, settings.format)){
+        const bool edited_x = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, settings.format); });
+        const std::vector<double> perObject_x = perObjectValues(edited_x, entities, [&](Entity e) { return eValue[e].x; }, settings.unit);
+        if (edited_x){
+            size_t objectIndex_x = 0;
             for (Entity& entity : entities){
+                if (!perObject_x.empty()) newValue.x = static_cast<float>(perObject_x[objectIndex_x++]);
                 Vector2 nextValue(newValue.x, eValue[entity].y);
                 if (clampNonNegativeTilePosition){
                     nextValue.x = std::max(0.0f, nextValue.x);
@@ -2991,8 +3042,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosY = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, settings.format)){
+        const bool edited_y = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, settings.format); });
+        const std::vector<double> perObject_y = perObjectValues(edited_y, entities, [&](Entity e) { return eValue[e].y; }, settings.unit);
+        if (edited_y){
+            size_t objectIndex_y = 0;
             for (Entity& entity : entities){
+                if (!perObject_y.empty()) newValue.y = static_cast<float>(perObject_y[objectIndex_y++]);
                 Vector2 nextValue(eValue[entity].x, newValue.y);
                 if (clampNonNegativeTilePosition){
                     nextValue.x = std::max(0.0f, nextValue.x);
@@ -3125,8 +3180,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosX = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, min, max, settings.format)){
+        const bool edited_x = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, min, max, settings.format); });
+        const std::vector<double> perObject_x = perObjectValues(edited_x, entities, [&](Entity e) { return eValue[e].x; }, settings.unit);
+        if (edited_x){
+            size_t objectIndex_x = 0;
             for (Entity& entity : entities){
+                if (!perObject_x.empty()) newValue.x = static_cast<float>(perObject_x[objectIndex_x++]);
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(newValue.x, eValue[entity].y, eValue[entity].z), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3156,8 +3215,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosY = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, min, max, settings.format)){
+        const bool edited_y = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, min, max, settings.format); });
+        const std::vector<double> perObject_y = perObjectValues(edited_y, entities, [&](Entity e) { return eValue[e].y; }, settings.unit);
+        if (edited_y){
+            size_t objectIndex_y = 0;
             for (Entity& entity : entities){
+                if (!perObject_y.empty()) newValue.y = static_cast<float>(perObject_y[objectIndex_y++]);
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, newValue.y, eValue[entity].z), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3187,8 +3250,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosZ = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, min, max, settings.format)){
+        const bool edited_z = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, min, max, settings.format); });
+        const std::vector<double> perObject_z = perObjectValues(edited_z, entities, [&](Entity e) { return eValue[e].z; }, settings.unit);
+        if (edited_z){
+            size_t objectIndex_z = 0;
             for (Entity& entity : entities){
+                if (!perObject_z.empty()) newValue.z = static_cast<float>(perObject_z[objectIndex_z++]);
                 cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, newValue.z), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3273,8 +3340,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosX = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, settings.format)){
+        const bool edited_x = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, settings.format); });
+        const std::vector<double> perObject_x = perObjectValues(edited_x, entities, [&](Entity e) { return eValue[e].x; }, settings.unit);
+        if (edited_x){
+            size_t objectIndex_x = 0;
             for (Entity& entity : entities){
+                if (!perObject_x.empty()) newValue.x = static_cast<float>(perObject_x[objectIndex_x++]);
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(newValue.x, eValue[entity].y, eValue[entity].z, eValue[entity].w), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3304,8 +3375,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosY = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, settings.format)){
+        const bool edited_y = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, settings.format); });
+        const std::vector<double> perObject_y = perObjectValues(edited_y, entities, [&](Entity e) { return eValue[e].y; }, settings.unit);
+        if (edited_y){
+            size_t objectIndex_y = 0;
             for (Entity& entity : entities){
+                if (!perObject_y.empty()) newValue.y = static_cast<float>(perObject_y[objectIndex_y++]);
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(eValue[entity].x, newValue.y, eValue[entity].z, eValue[entity].w), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3335,8 +3410,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosZ = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, 0.0f, 0.0f, settings.format)){
+        const bool edited_z = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, 0.0f, 0.0f, settings.format); });
+        const std::vector<double> perObject_z = perObjectValues(edited_z, entities, [&](Entity e) { return eValue[e].z; }, settings.unit);
+        if (edited_z){
+            size_t objectIndex_z = 0;
             for (Entity& entity : entities){
+                if (!perObject_z.empty()) newValue.z = static_cast<float>(perObject_z[objectIndex_z++]);
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(eValue[entity].x, eValue[entity].y, newValue.z, eValue[entity].w), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3366,8 +3445,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosW = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_w_"+id).c_str(), &(newValue.w), settings.stepSize, 0.0f, 0.0f, settings.format)){
+        const bool edited_w = numericField(settings.unit, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_w_"+id).c_str(), &(newValue.w), settings.stepSize, 0.0f, 0.0f, settings.format); });
+        const std::vector<double> perObject_w = perObjectValues(edited_w, entities, [&](Entity e) { return eValue[e].w; }, settings.unit);
+        if (edited_w){
+            size_t objectIndex_w = 0;
             for (Entity& entity : entities){
+                if (!perObject_w.empty()) newValue.w = static_cast<float>(perObject_w[objectIndex_w++]);
                 cmd = new PropertyCmd<Vector4>(project, sceneProject->id, entity, cpType, id, Vector4(eValue[entity].x, eValue[entity].y, eValue[entity].z, newValue.w), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3452,8 +3535,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosX = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, (std::string(settings.format) + "°").c_str())){
+        const bool edited_x = numericField(NumericUnit::Degrees, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, (std::string(settings.format) + "°").c_str()); });
+        const std::vector<double> perObject_x = perObjectValues(edited_x, entities, [&](Entity e) { return eValue[e].x; }, NumericUnit::Degrees);
+        if (edited_x){
+            size_t objectIndex_x = 0;
             for (Entity& entity : entities){
+                if (!perObject_x.empty()) newValue.x = static_cast<float>(perObject_x[objectIndex_x++]);
                 cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(newValue.x, eValue[entity].y, eValue[entity].z, order), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3483,8 +3570,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosY = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, "%.2f°")){
+        const bool edited_y = numericField(NumericUnit::Degrees, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, "%.2f°"); });
+        const std::vector<double> perObject_y = perObjectValues(edited_y, entities, [&](Entity e) { return eValue[e].y; }, NumericUnit::Degrees);
+        if (edited_y){
+            size_t objectIndex_y = 0;
             for (Entity& entity : entities){
+                if (!perObject_y.empty()) newValue.y = static_cast<float>(perObject_y[objectIndex_y++]);
                 cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, newValue.y, eValue[entity].z, order), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3514,8 +3605,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Store cursor position before drawing the input
         ImVec2 inputPosZ = ImGui::GetCursorScreenPos();
 
-        if (ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, 0.0f, 0.0f, "%.2f°")){
+        const bool edited_z = numericField(NumericUnit::Degrees, entities.size(), false, [&]() { return ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, 0.0f, 0.0f, "%.2f°"); });
+        const std::vector<double> perObject_z = perObjectValues(edited_z, entities, [&](Entity e) { return eValue[e].z; }, NumericUnit::Degrees);
+        if (edited_z){
+            size_t objectIndex_z = 0;
             for (Entity& entity : entities){
+                if (!perObject_z.empty()) newValue.z = static_cast<float>(perObject_z[objectIndex_z++]);
                 cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, eValue[entity].y, newValue.z, order), settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -3773,8 +3868,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-        if (ImGui::DragFloat(("##input_float_"+id).c_str(), &newValue, settings.stepSize, v_min, v_max, newFormat.c_str())){
+        const NumericUnit floatUnit = type == RowPropertyType::HalfCone ? NumericUnit::Degrees : settings.unit;
+        const bool editedFloat = numericField(floatUnit, entities.size(), false, [&]() {
+            return ImGui::DragFloat(("##input_float_"+id).c_str(), &newValue, settings.stepSize, v_min, v_max, newFormat.c_str());
+        });
+        const std::vector<double> perObjectFloat = perObjectValues(editedFloat, entities, [&](Entity e) { return eValue[e]; }, floatUnit);
+        if (editedFloat){
+            size_t objectIndexFloat = 0;
             for (Entity& entity : entities){
+                if (!perObjectFloat.empty()) newValue = static_cast<float>(perObjectFloat[objectIndexFloat++]);
                 if (type == RowPropertyType::HalfCone){
                     cmd = new PropertyCmd<float>(project, sceneProject->id, entity, cpType, id, cos(Angle::defaultToRad(newValue / 2)), settings.onValueChanged);
                 }else{
@@ -3998,10 +4100,19 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         // Clamp (drag and typed) only when a real range is configured; otherwise stay
         // unbounded as before (ImGui treats min == max as "no limit").
         const bool clampInt = settings.intMax > settings.intMin;
-        if (ImGui::DragInt(("##input_int_"+id).c_str(), &newValue, static_cast<int>(ceil(settings.stepSize)),
-                           clampInt ? settings.intMin : 0, clampInt ? settings.intMax : 0, "%d",
-                           clampInt ? ImGuiSliderFlags_AlwaysClamp : 0)){
+        const bool editedInt = numericField(settings.unit, entities.size(), true, [&]() {
+            return ImGui::DragInt(("##input_int_"+id).c_str(), &newValue, static_cast<int>(ceil(settings.stepSize)),
+                                  clampInt ? settings.intMin : 0, clampInt ? settings.intMax : 0, "%d",
+                                  clampInt ? ImGuiSliderFlags_AlwaysClamp : 0);
+        });
+        const std::vector<double> perObjectInt = perObjectValues(editedInt, entities, [&](Entity e) { return eValue[e]; }, settings.unit, true);
+        if (editedInt){
+            size_t objectIndexInt = 0;
             for (Entity& entity : entities){
+                if (!perObjectInt.empty()) {
+                    newValue = static_cast<int>(perObjectInt[objectIndexInt++]);
+                    if (clampInt) newValue = std::clamp(newValue, settings.intMin, settings.intMax);
+                }
                 cmd = new PropertyCmd<int>(project, sceneProject->id, entity, cpType, id, newValue, settings.onValueChanged);
                 CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
             }
@@ -5755,6 +5866,7 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
 
     beginTable(cpType, getLabelSize("billboard"));
 
+    settingsPos.unit = NumericUnit::Meters;
     propertyRow(RowPropertyType::Vector3, cpType, "position", "Position", sceneProject, entities, settingsPos);
     propertyRow(RowPropertyType::Quat, cpType, "rotation", "Rotation", sceneProject, entities);
     propertyRow(RowPropertyType::Vector3, cpType, "scale", "Scale", sceneProject, entities);

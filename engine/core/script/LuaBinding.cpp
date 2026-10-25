@@ -595,6 +595,29 @@ int LuaBinding::luaRegisterEngineEvent(lua_State* L) {
     return luaRegisterEventImpl(L, eventIndex, 1, methodName, tag, true);
 }
 
+namespace {
+    // An editor script (S23: a file under a folder named Editor with ---@menu, ---@toolbar or
+    // ---@validate annotations) belongs to the editor: a game never require()s it
+    bool isEditorScriptModule(const std::string& chunkPath, Data& data){
+        bool editorFolder = false;
+        size_t start = 0;
+        while (start < chunkPath.size()) {
+            const size_t slash = chunkPath.find('/', start);
+            if (slash == std::string::npos) break;
+            std::string part = chunkPath.substr(start, slash - start);
+            std::transform(part.begin(), part.end(), part.begin(), [](unsigned char c){ return std::tolower(c); });
+            if (part == "editor") editorFolder = true;
+            start = slash + 1;
+        }
+        if (!editorFolder) return false;
+        const std::string_view text(reinterpret_cast<const char*>(data.getMemPtr()), data.length());
+        for (const char* annotation : {"---@menu ", "---@toolbar ", "---@validate "}) {
+            if (text.find(annotation) != std::string_view::npos) return true;
+        }
+        return false;
+    }
+}
+
 int LuaBinding::moduleLoader(lua_State *L) {
     
     const char *filename = lua_tostring(L, 1);
@@ -610,6 +633,10 @@ int LuaBinding::moduleLoader(lua_State *L) {
 
     filepath = std::string("lua://") + filename + ".lua";
     filedata.open(filepath.c_str());
+    if (filedata.getMemPtr() != NULL && isEditorScriptModule(chunkPath, filedata)) {
+        lua_pushfstring(L, "\n\t'%s' is an editor script (an Editor folder with ---@menu annotations): only the editor runs it", chunkPath.c_str());
+        return 1;
+    }
     if (filedata.getMemPtr() != NULL) {
         
         luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
@@ -620,6 +647,10 @@ int LuaBinding::moduleLoader(lua_State *L) {
 
     filepath = "lua://" + std::string("lua") + System::instance().getDirSeparator() + filename + ".lua";
     filedata.open(filepath.c_str());
+    if (filedata.getMemPtr() != NULL && isEditorScriptModule("lua/" + chunkPath, filedata)) {
+        lua_pushfstring(L, "\n\t'lua/%s' is an editor script (an Editor folder with ---@menu annotations): only the editor runs it", chunkPath.c_str());
+        return 1;
+    }
     if (filedata.getMemPtr() != NULL) {
         
         luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),

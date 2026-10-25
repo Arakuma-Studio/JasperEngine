@@ -15,6 +15,8 @@
 #include "engine_lua_stubs.h"
 #include "util/ProjectChecks.h"
 #include "util/EditorFingerprint.h"
+#include "util/EditorScripts.h"
+#include "util/LuaApiData.h"
 #include "util/MsBuildProgress.h"
 #include "util/HtmlUiExamples.h"
 #include "json.hpp"
@@ -1087,6 +1089,10 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
                 if (!it->is_regular_file() || !Util::isSourceFile(it->path().string())) {
                     continue;
                 }
+                // the C++ editor scripts build into an editor-only library of their own
+                if (EditorScripts::isEditorOnlyScript(it->path(), projectPath)) {
+                    continue;
+                }
 
                 const fs::path relativePath = fs::relative(it->path(), projectPath, ec);
                 const bool insideProject = !ec && !relativePath.empty() && *relativePath.begin() != "..";
@@ -1479,6 +1485,8 @@ void editor::Generator::writeLuaScriptStubs(const fs::path& projectPath, const f
         for (const fs::path& file : ProjectChecks::findProjectFiles(projectPath, {".lua"})) {
             const std::string name = file.stem().string();
             if (!Util::isInsidePath(file, luaRoot) || !isLuaIdentifier(name) || engineNames.count(name)) continue;
+            // an editor script is no script class (and reading its properties would run it)
+            if (EditorScripts::isEditorOnlyScript(file, projectPath)) continue;
             classes.emplace(name, file);
         }
         std::set<std::string> scriptClasses;
@@ -1980,6 +1988,10 @@ void editor::Generator::writeEditorTooling(const fs::path& projectPath, const fs
         const fs::path pluginRelative = relativeInternalPath / "engine-api" / luastubs::luaLsPlugin.name;
         writeLuaApiStubs(projectPath / stubsRelative);
         writeLuaLsPlugin(projectPath / pluginRelative);
+        // the Lua API as data (S23 R46), next to the stubs: for tools and agents
+        if (!FileUtils::writeIfChanged(projectPath / relativeInternalPath / "engine-api" / "lua-api.json", LuaApiData::jsonText())) {
+            Out::warning("Could not write engine-api/lua-api.json");
+        }
         writeLuaRc(projectPath, stubsRelative.generic_string(), pluginRelative.generic_string(),
                    (relativeInternalPath / "engine-api" / "html-ui-examples").generic_string());
         writeCompileDatabase(projectPath, projectInternalPath, cxxStandard, scriptDirs);

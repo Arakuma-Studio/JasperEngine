@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Exporter.h"
+#include "util/EditorScripts.h"
 #include "asset/AssetFileWrite.h"
 #include "asset/AssetMap.h"
 #include "asset/AssetTypes.h"
@@ -2030,8 +2031,9 @@ bool editor::Exporter::copyAssets() {
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
         if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
 
-        // Skip Lua sources already shipped in the lua tree
+        // Skip Lua sources already shipped in the lua tree, and editor scripts
         if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(entry.path().lexically_normal())) continue;
+        if (isLuaSourceFile(entry.path()) && EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
 
         // A different file at a path the lua tree already has: Android merges both trees
         // into one assets root and fails on the duplicate, so only one of them can ship.
@@ -2189,6 +2191,8 @@ bool editor::Exporter::copyLua() {
 
         if (luaRootIsAssetsRoot && !isLuaSourceFile(entry.path())) continue;
         if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) continue;
+        // editor scripts (Editor/ with ---@menu annotations) never ship
+        if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
 
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
@@ -2318,6 +2322,8 @@ bool editor::Exporter::copyCppScripts() {
                     continue;
                 }
                 if (!it->is_regular_file() || !isCppSourceFile(it->path())) continue;
+                // the C++ editor scripts are the editor's, never a game's
+                if (EditorScripts::isEditorOnlyScript(it->path(), projectRoot)) continue;
 
                 const fs::path relPath = projectRelativePath(it->path());
                 if (relPath.empty() || !copiedPaths.insert(it->path().string()).second) continue;
