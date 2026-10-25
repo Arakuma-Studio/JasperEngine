@@ -345,7 +345,8 @@ async def test_manifest_and_authoring_rules():
     check((LIBRARY / "LICENSE-lucide.txt").is_file() and "ISC License" in (LIBRARY / "LICENSE-lucide.txt").read_text(),
           "LICENSE-lucide.txt with the ISC license")
     keys = {"name", "title", "example", "description", "demonstrates", "html", "css", "lua", "assets", "viewports", "checks"}
-    check_types = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast", "min_size"}
+    check_types = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast", "min_size",
+                   "virtual_window", "tooltip", "selected"}
     for name, entry in ENTRIES.items():
         where = f"examples.json {name}"
         check(set(entry) == keys, f"{where}: keys {sorted(entry)}")
@@ -869,6 +870,8 @@ async def server_browser_after(ed: Editor, n: str) -> None:
     regions = await lua(ed, f"local m = {doc_lua(n)}:getDataModel('browser'); return m.servers[1].region, m.servers[#m.servers].region, m.shown")
     check(regions[:2] == ["EU", "EU"] and 0 < regions[2] < 10000, f"the Europe chip filters: {regions}")
     await ed.console_since(None, limit=1)
+    # (the chip has the focus: a row click gives it back to the table)
+    await click(ed, n, '.htmlui-row[aria-rowindex="2"]', frames_after=10)
     await ed.call("send_input", events=[{"type": "key", "key": "down"}, {"type": "key", "key": "enter"}], frames_after=5)
     check(await lua(ed, f"return {view}.activeIndex") == [3], "Down moves the selection")
     check(any(m.startswith("servers: joining ") for m in await console_messages(ed)), "Enter joins the selected server")

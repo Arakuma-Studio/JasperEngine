@@ -2657,7 +2657,9 @@ class Builder:
             if visible:
                 self.unresolve(c, m, 'getter takes arguments')
         if cpp_type is None:
-            self.unresolve(c, m, 'getter return type not inferred')
+            # (an override names the type a lambda's return cannot say)
+            if (c.name, m.name) not in PROPERTY_OVERRIDES:
+                self.unresolve(c, m, 'getter return type not inferred')
             m.lua_type = 'any'
         else:
             base, stars = bare_type(cpp_type)

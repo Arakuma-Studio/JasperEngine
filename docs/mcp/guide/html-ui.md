@@ -898,7 +898,12 @@ return HudUI
   `object('HUD', 'UIDocument'):getDataModel('hud').health = 25`; read them back with
   `inspect_ui {"models": true}`.
 
-## Long lists (virtual views)
+## Widgets
+
+Engine elements and behaviours a browser leaves to JavaScript libraries: virtual lists, tooltips,
+drag and drop, Markdown.
+
+### Long lists (virtual views)
 
 `data-for` makes one element per item: fine for dozens, slow for thousands (more than 500
 reports `HTMLUI-HTML-0031`). A virtual view makes only the rows on screen, plus a few
@@ -952,7 +957,7 @@ millisecond per frame.
   it, and `edit_ui_view` drives it in play (`scroll_to`, `select`, `activate`, `expand`, `collapse`,
   `sort`; 0-based indices).
 
-## Tooltips
+### Tooltips
 
 `title="..."` shows its text after 0.5 s of hover, 16 px below the pointer (above when there is
 no room), as in a browser. Moving to another element with a tooltip within 0.5 s shows the next
@@ -970,7 +975,7 @@ on leave, press, wheel, a key, a drag start and removal.
   everything. `tooltipshow` / `tooltiphide` fire on the source.
 - MCP: `inspect_ui` reports `tooltip`, `assert_ui {"kind": "tooltip", "text": "..."}`.
 
-## Drag and drop
+### Drag and drop
 
 HTML5 drag and drop: `draggable="true"` sources, `event.dataTransfer`, `dropzone` targets.
 
@@ -980,8 +985,11 @@ HTML5 drag and drop: `draggable="true"` sources, `event.dataTransfer`, `dropzone
 ```
 
 ```lua
-pick = function(event, i) event.dataTransfer:setData("item", { from = i + 1 }); event.dataTransfer.effectAllowed = "move" end,
-drop = function(event, i) swap(event.dataTransfer:getData("item").from, i + 1) end,
+-- functions of the data model ("inv"); i is data-for's 0-based index
+local handlers = {
+    pick = function(event, i) event.dataTransfer:setData("item", { from = i + 1 }); event.dataTransfer.effectAllowed = "move" end,
+    drop = function(event, i) swap(event.dataTransfer:getData("item").from, i + 1) end,
+}
 ```
 
 - Events, in order: `dragstart` and `drag` on the source; `dragenter`, `dragover` (on entry and on
@@ -1012,7 +1020,7 @@ drop = function(event, i) swap(event.dataTransfer:getData("item").from, i + 1) e
 - MCP: `send_input` drags with `to_target`; `inspect_ui` reports `drag` (source, target, types,
   allowed).
 
-## Markdown
+### Markdown
 
 ```html
 <markdown>
@@ -1758,15 +1766,15 @@ your document: `<stem>.css`, `<stem>_assets/`, `scripts/<Stem>UI.lua`), read the
 | `pause_menu` | Escape toggles a blurred overlay (`backdrop-filter`) and `Engine.timeScale`; anime entrance | visible, text_fits, no_overlap, within_viewport, contrast, min_size |
 | `hud` | health and shield bars, score and timer, minimap, ammo, ability cooldowns, damage flash; data binding (`{{ }}`, `data-style-width`, `data-class-*`) | within_viewport, no_overlap, text_fits, contrast with background, visible |
 | `inventory` | a CSS grid of slots from `data-for`, HTML5 drag and drop (`draggable`, `dropzone`, `dataTransfer`, the ghost and drop classes), rich tooltips from `setTooltip`, equipment | count, no_overlap, within_parent, within_viewport, text_fits, visible |
-| `server_browser` | 10 000 servers in a `<table-view>`: sort, resizable columns, region chips, keyboard and gamepad selection, row and header tooltips, a details panel | min_size, no_overlap, text_fits, visible, within_parent, within_viewport |
-| `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, visible, within_parent, within_viewport |
-| `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, visible, within_parent, within_viewport |
 | `settings` | tabs, sliders, switches, selects, key bindings; two-way `data-value`/`data-checked` | visible, no_overlap, min_size, text_fits, within_parent, within_viewport |
 | `dialogue` | portrait, typewriter text, choices; `onUpdate` timing | text_fits, within_viewport, contrast, no_overlap, min_size |
 | `shop` | filter chips, cards with `data-for` + `data-if`, buy buttons disabled by `data-attr-disabled`, a quantity dialog, an animated gold counter | text_fits, no_overlap, within_parent, contrast, min_size, within_viewport |
 | `toasts` | toasts created from Lua (`createElement`, `appendChild`), enter and exit animations | within_viewport, no_overlap, text_fits, contrast |
 | `loading` | progress bar, Lottie spinner, rotating tips, "press any key" | visible, text_fits, within_viewport |
 | `video_menu` | a title screen over a looping `<video autoplay muted loop>` (`object-fit: cover`) under a gradient scrim; a toggle pauses the video from Lua, its label follows the `play`/`pause` events, an `error` leaves the gradient | count, visible, text_fits, no_overlap, within_viewport, contrast, min_size |
+| `server_browser` | 10 000 servers in a `<table-view>`: sort, resizable columns, region chips, keyboard and gamepad selection, row and header tooltips, a details panel | min_size, no_overlap, text_fits, visible, within_parent, within_viewport |
+| `chat_log` | Markdown messages of any height in a `<list-view item-height="auto" anchor="end">`, a composer, teammates writing on game time | contrast, min_size, visible, within_parent, within_viewport |
+| `quest_log` | chapters and quests in a `<tree-view>` with keyboard and gamepad navigation, a `<markdown src>` journal | text_fits, visible, within_parent, within_viewport |
 | `blank` | an empty page with a heading (the default template; no script) | visible |
 
 Each example's Lua class is `<Name>UI`, gets the document with

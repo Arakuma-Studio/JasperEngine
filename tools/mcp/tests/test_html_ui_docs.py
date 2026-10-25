@@ -50,6 +50,7 @@ SECTIONS = [
     "CSS",
     "Lua API",
     "Data binding",
+    "Widgets",
     "Animation",
     "Images, SVG, Lottie, fonts, icons",
     "Input and focus",
@@ -185,6 +186,9 @@ def placeholder_asset(path: Path) -> None:
         shutil.copy(FIXTURES / "video" / "testcard.webm", path)
     elif ext in (".ttf", ".otf"):
         shutil.copy(REPO / "libs" / "imgui" / "misc" / "fonts" / "Karla-Regular.ttf", path)
+    elif ext in (".md", ".markdown"):
+        # a <markdown src> (S17)
+        path.write_text("# Notes\n\nSome *text*.\n")
     elif ext == ".frag":
         # a project effect (phase 5): the guide's own text block of that effect
         found = [b["code"] for b in guide_blocks() if b["lang"] == "text" and f"// @effect     {path.stem}\n" in b["code"]]
@@ -412,7 +416,9 @@ async def test_guide_names_exist(ed: Editor):
     collect(settings)
     # result fields and enum values the guide explains (outputs, not inputs)
     outputs = {"external_changes", "ui_reloaded", "stylesheet_only", "render_target", "load_count", "sort_order",
-               "fit_width", "fit_height", "zero_size"}
+               "fit_width", "fit_height", "zero_size",
+               # S17: inspect_ui's widget fields and the html_ui tool group
+               "pool_bound", "selected_keys", "html_ui"}
     unknown = sorted(w for w in backticked_words(guide_text())
                      if w not in ed.tool_names and w not in words and w not in outputs and w not in SEND_INPUT_EVENT_WORDS)
     ed.check(not unknown, f"the guide names unknown tools/parameters: {unknown}")

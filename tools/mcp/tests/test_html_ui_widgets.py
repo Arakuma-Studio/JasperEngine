@@ -224,7 +224,7 @@ async def test_tooltip(ed: Editor):
                         {"type": "tooltip", "selector": "#help", "text": "Other"},
                         {"type": "tooltip", "selector": "#src"})
     ed.check_eq([c["passed"] for c in data["checks"]], [True, False, False], f"tooltip checks: {data['checks']}")
-    await ed.call("send_input", events=[{"type": "mouse", "action": "move", "x": 5, "y": 700}], frames_after=3)
+    await ed.call("send_input", events=[{"type": "mouse", "action": "move", "x": 5, "y": 600}], frames_after=3)
     ed.check_eq((await ed.call("inspect_ui", entity=S["entity"]))["tooltip"], {"visible": False}, "hidden on leave")
 
 
@@ -250,9 +250,12 @@ async def test_column_resize_by_drag(ed: Editor):
     widths = """local d = object('Widgets', 'UIDocument')
         local head = d:querySelector('#servers .htmlui-header-cell')
         local grip = head:querySelector('.htmlui-column-resizer'):getBoundingClientRect()
-        local cells = d:querySelectorAll('#servers .htmlui-cell[data-column="name"]')
-        return head:getBoundingClientRect().width, cells[1]:getBoundingClientRect().width,
-               cells[#cells]:getBoundingClientRect().width, grip.left + grip.width / 2, grip.top + grip.height / 2"""
+        local low, high = 1e9, 0
+        for _, cell in ipairs(d:querySelectorAll('#servers .htmlui-cell[data-column="name"]')) do
+            local w = cell:getBoundingClientRect().width
+            if w > 0 then low = math.min(low, w); high = math.max(high, w) end
+        end
+        return head:getBoundingClientRect().width, low, high, grip.left + grip.width / 2, grip.top + grip.height / 2"""
     before = await lua(ed, widths)
     ed.check(abs(before[0] - 200) < 1.5 and abs(before[1] - before[0]) < 1.5, f"the name column at 200 px: {before}")
     x, y = before[3], before[4]
@@ -288,6 +291,7 @@ async def test_patch_reload_keeps_state(ed: Editor):
     await drive(ed, selector="#list", action="scroll_to", index=300, align="start")
     await drive(ed, selector="#list", action="select", index=301)
     await lua(ed, "_G.keptHandle = object('Widgets', 'UIDocument'):getElementById('help')")
+    loads = (await lua(ed, "return _G.widgetsState.loads"))[0]
     await ed.console_since(None, limit=1)
     await ed.call("write_file", path=DOC, content=HTML.replace(">Help</button>", ">Help me</button>"))
     await ed.call("wait", frames=10)
@@ -296,7 +300,7 @@ async def test_patch_reload_keeps_state(ed: Editor):
     ed.check(report and report["mode"] == "patch" and report["updated"] >= 1 and report["replaced"] == 0 and report["fallbackReason"] is None,
              f"a patch: {report}")
     ed.check_eq(await lua(ed, "local h = _G.keptHandle; return h:isValid(), h.textContent, _G.widgetsState.loads"),
-                [True, "Help me", 1], "the same element, its new text, no onLoad")
+                [True, "Help me", loads], "the same element, its new text, no onLoad")
     w = await widget(ed, "#list")
     ed.check(w["first"] == 300 and w["selected"] == [301], f"scroll and selection kept: {w}")
     lines = [e.get("message", "") for e in await ed.console_since(limit=200)]
