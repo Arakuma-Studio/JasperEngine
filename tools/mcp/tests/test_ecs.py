@@ -20,6 +20,10 @@ TIMEOUT = 900
 EVIDENCE = Path(__file__).resolve().parents[3] / "build" / "evidence"
 
 SYSTEMS = ["ActionSystem", "MeshSystem", "UISystem", "UIDocumentSystem", "RenderSystem", "PhysicsSystem", "AudioSystem"]
+# every scene system in schedule order: upstream's lattice deformer and fluid simulation systems
+# too (the timing checks stay on SYSTEMS: those two have nothing to do in these scenes)
+ALL_SYSTEMS = ["ActionSystem", "MeshSystem", "LatticeSystem", "UISystem", "UIDocumentSystem", "FluidSystem", "RenderSystem",
+               "PhysicsSystem", "AudioSystem"]
 
 
 def type_count(stats, name):
@@ -188,7 +192,7 @@ async def test_system_schedule_and_options(ed: Editor):
     edit = await ed.call("get_system_schedule")
     for name in ("FixedUpdate", "Update", "Draw"):
         waves = phase(edit, name)
-        ed.check_eq([[s["name"] for s in wave] for wave in waves], [[s] for s in SYSTEMS], f"{name}: one wave each, in order")
+        ed.check_eq([[s["name"] for s in wave] for wave in waves], [[s] for s in ALL_SYSTEMS], f"{name}: one wave each, in order")
     ed.check_eq(phase(edit, "PostUpdate"), [], "no PostUpdate systems")
     action = system_entry(edit, "Update", "ActionSystem")
     ed.check_in("exclusive", action["resources"])
@@ -245,7 +249,7 @@ async def test_systems_window(ed: Editor):
         await ed.call("wait", seconds=1)
         shown = await ed.call("focus_window", window="systems")
         ed.check(shown["shown"], f"the Systems window is shown: {shown}")
-        ed.check_eq(sorted(row["system"] for row in shown["rows"] if row["phase"] == "Update"), sorted(SYSTEMS),
+        ed.check_eq(sorted(row["system"] for row in shown["rows"] if row["phase"] == "Update"), sorted(ALL_SYSTEMS),
                     "the table's Update rows")
         shot = await ed.call_raw("screenshot", {"view": "editor", "save_path": str(EVIDENCE / "systems-window.png")})
         ed.check(not shot.is_error and shot.images, f"editor screenshot: {shot.text[:300]}")
