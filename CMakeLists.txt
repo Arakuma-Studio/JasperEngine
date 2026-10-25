@@ -545,6 +545,12 @@ else()
     list(APPEND IMGUI_SOURCES ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
 endif()
 
+# tinyexpr evaluates the expressions typed into numeric fields (editor/util/NumericExpression):
+# x^y^z is x^(y^z) and log is the natural logarithm, as in Unity and most calculators
+set(TINYEXPR_SOURCES libs/tinyexpr/tinyexpr.c)
+set_property(SOURCE ${TINYEXPR_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${EXTERNAL_WARNING_FLAG})
+set_property(SOURCE ${TINYEXPR_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS TE_POW_FROM_RIGHT TE_NAT_LOG)
+
 # ImGui has no target of its own; only one of these backends builds per platform
 set_property(
     SOURCE
@@ -674,6 +680,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/TextReferences.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/NumericExpression.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
@@ -825,6 +832,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
 
     ${IMGUI_SOURCES}
+    ${TINYEXPR_SOURCES}
     ${BACKEND_SOURCES}
 )
 
@@ -851,6 +859,7 @@ function(configure_jasperengine_editor_target target_name)
     target_include_directories(${target_name} SYSTEM PRIVATE
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
+        libs/tinyexpr
         ${OPENGL_INCLUDE_DIR}
     )
 

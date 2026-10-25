@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "util/NumericExpression.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
 
@@ -1781,6 +1782,9 @@ void editor::App::setup() {
 
     io.ConfigWindowsMoveFromTitleBarOnly = true;
 
+    // math in every numeric field (2*1.5, 25cm, +=10): libs/imgui/JASPER_PATCHES.md
+    NumericExpression::installImGuiHook();
+
     // Persist the docking layout next to settings.yaml at a stable absolute
     // path, so it survives restarts regardless of the working directory or
     // build type. (initializeSettings() above has already set the config dir.)
@@ -2265,6 +2269,9 @@ void editor::App::show(){
     Backend::setGameCursorInSceneRect(gameWindow->isGameCursorInView());
 
     loadingWindow->show();
+
+    // an expression typed into a numeric field that did not evaluate
+    NumericExpression::drawErrorTooltip();
 
     // Keep the persisted tab list in sync with the live tab order so a user's
     // drag-reordering of scene/code tabs is saved (and restored on next launch).
