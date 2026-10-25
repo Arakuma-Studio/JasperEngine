@@ -93,7 +93,9 @@ TEST(ForkFeatures, PresentFeatures){
                                       .with(ForkFeature::RegisteredProperties, true)    // phase 5, p5-property
                                       .with(ForkFeature::Justify, true)                 // p6-justify (P6-J1)
                                       .with(ForkFeature::TextIndent, true)              // p6-justify (P6-J2)
-                                      .with(ForkFeature::LineClamp, true);              // phase 6, p6-line-clamp (P6-L1)
+                                      .with(ForkFeature::LineClamp, true)               // phase 6, p6-line-clamp (P6-L1)
+                                      .with(ForkFeature::RowAliases, true)              // S17 (P7-D)
+                                      .with(ForkFeature::LayoutBoundary, true);         // S17 (P7-L)
     for (size_t i = 0; i < (size_t)ForkFeature::Count; i++)
         EXPECT_EQ(present.has((ForkFeature)i), expected.has((ForkFeature)i)) << forkFeatureName((ForkFeature)i);
     EXPECT_EQ(present, expected);

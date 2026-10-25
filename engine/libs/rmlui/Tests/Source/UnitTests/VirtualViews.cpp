@@ -18,7 +18,7 @@ const String rows_rml = R"(
 <rml>
 <head>
 <style>
-	body { display: block; width: 400px; height: 300px; }
+	body { display: block; width: 400px; height: 300px; font-family: LatoLatin; }
 	div, p, span { display: block; }
 </style>
 </head>
@@ -230,7 +230,7 @@ TEST_CASE("VirtualViews.inert_template")
 
 	const String rml = R"(
 <rml>
-<head></head>
+<head><style>body { font-family: LatoLatin; }</style></head>
 <body>
 <div id="view"><template><p class="row">{{ item.name }}<b>!</b></p></template><span id="next">next</span></div>
 <div id="empty"><template id="t2" class="c"></template></div>
