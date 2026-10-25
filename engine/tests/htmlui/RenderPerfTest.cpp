@@ -44,6 +44,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -83,6 +84,7 @@ namespace {
         double frameMs = 0.0;                // median wall time
         double gatherMs = 0.0;               // median
         size_t gatherLive = 0, gatherCapacity = 0;
+        std::array<uint32_t, (size_t)RmlRenderer::RunBreak::COUNT> runBreaks{};   // the last frame's
     };
 
     double median(std::vector<double> values){
@@ -129,6 +131,7 @@ namespace {
                 continue;
             const HtmlUIRenderStats& stats = runner.renderer()->getStats();
             run.last = stats;
+            run.runBreaks = runner.renderer()->getLastRunBreaks();
             run.maxDraws = std::max(run.maxDraws, stats.drawCalls);
             run.maxStencilDraws = std::max(run.maxStencilDraws, stats.stencilDraws);
             run.maxLayers = std::max(run.maxLayers, stats.layersPushed);
@@ -191,6 +194,15 @@ namespace {
                     name.c_str(), baseline.maxDraws, s16.maxDraws, baseline.maxStencilDraws, s16.maxStencilDraws, baseline.maxLayers,
                     s16.maxLayers, baseline.maxBoxShadowTextures, s16.maxBoxShadowTextures, baseline.engineMs, s16.engineMs, baseline.frameMs,
                     s16.frameMs);
+        // what started the S16 runs (RmlRenderer::RunBreak), when it batched
+        const auto& b = s16.runBreaks;
+        using RB = RmlRenderer::RunBreak;
+        std::printf("[ ui-bench ] %-24s runs after a command %u, kind %u, clip/layer %u, transform %u, texture %u, scissor %u\n", "",
+                    b[(size_t)RB::COMMAND], b[(size_t)RB::KIND], b[(size_t)RB::CLIP], b[(size_t)RB::TRANSFORM], b[(size_t)RB::TEXTURE],
+                    b[(size_t)RB::SCISSOR]);
+        results()[name]["s16"]["runBreaks"] = {{"command", b[(size_t)RB::COMMAND]}, {"kind", b[(size_t)RB::KIND]}, {"clip", b[(size_t)RB::CLIP]},
+                                               {"transform", b[(size_t)RB::TRANSFORM]}, {"texture", b[(size_t)RB::TEXTURE]},
+                                               {"scissor", b[(size_t)RB::SCISSOR]}};
         std::ofstream out(resultsFile());
         out << results().dump(2) << "\n";
     }

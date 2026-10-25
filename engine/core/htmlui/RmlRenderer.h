@@ -20,6 +20,7 @@
 #include "render/Render.h"
 #include "render/TextureRender.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -317,6 +318,11 @@ namespace jasperengine {
         double getLastGatherMs() const;
         size_t getGatherLiveBytes() const;
         size_t getGatherCapacityBytes() const;
+        // why the last plan started each run (benchmarks): after a command that ends runs (layers,
+        // composites, shaders, stencil masks, large geometry) or first, another kind (vertices or
+        // instances), another clip or layer, transform, texture, or a scissor it cannot share
+        enum class RunBreak : uint8_t { NONE, COMMAND, KIND, CLIP, TRANSFORM, TEXTURE, SCISSOR, COUNT };
+        const std::array<uint32_t, (size_t)RunBreak::COUNT>& getLastRunBreaks() const { return runBreaks; }
         // the font engine's per-frame text counters, added to this frame's statistics
         void addTextStats(uint32_t glyphsRasterized, uint32_t textRegenerations, uint32_t textEffectFallbacks, uint32_t atlasEvictions);
         // sokol ids of every buffer and image the renderer owns right now
@@ -668,6 +674,7 @@ namespace jasperengine {
         std::vector<uint32_t> pendingChunks;              // chunks to gather after planning
         std::unordered_map<uint64_t, CachedChunk> runCache, nextRunCache;
         std::vector<std::unique_ptr<GatherPage>> gatherPages;
+        std::array<uint32_t, (size_t)RunBreak::COUNT> runBreaks{};   // the last plan's new runs, by why
         int activeClipScope = -1;            // the replay's current non-stencil scope (-1: none)
         ClipParams noClip;
         ClipParams clipScratch;

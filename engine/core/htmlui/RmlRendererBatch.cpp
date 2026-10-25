@@ -719,6 +719,7 @@ void RmlRenderer::planClipScopes(){
 //-------------------------------------------------------------------------------------------
 
 void RmlRenderer::planRuns(){
+    runBreaks.fill(0);
     batchRuns.clear();
     batchChunks.clear();
     batchMembers.clear();
@@ -840,37 +841,45 @@ void RmlRenderer::planRuns(){
             free = insideRect(bounds, own);
         }
 
-        auto joins = [&](){
-            if (!run || run->kind != kind || run->layer != layer || run->stencil != stencil || (stencil && run->stencilRef != ref) ||
-                run->transformId != runTransformId || run->scope != analyticScope)
-                return false;
+        // why it does not join the current run (RunBreak), NONE when it does
+        auto joins = [&]() -> RunBreak {
+            if (!run)
+                return RunBreak::COMMAND;
+            if (run->kind != kind)
+                return RunBreak::KIND;
+            if (run->layer != layer || run->stencil != stencil || (stencil && run->stencilRef != ref) || run->scope != analyticScope)
+                return RunBreak::CLIP;
+            if (run->transformId != runTransformId)
+                return RunBreak::TRANSFORM;
             if (texture != run->texture){
                 if (kind == RunKind::INSTANCES){
                     // an untextured instance draws with any texture bound; a textured one takes the run's
                     if (texture && (run->texture || !run->allUntextured))
-                        return false;
+                        return RunBreak::TEXTURE;
                 }else if (!texture){
                     // untextured vertices read the run texture's white texels
                     if (!run->texture->hasWhiteTexel)
-                        return false;
+                        return RunBreak::TEXTURE;
                 }else if (run->texture || !run->allUntextured || !texture->hasWhiteTexel){
-                    return false;
+                    return RunBreak::TEXTURE;
                 }
             }
-            if (run->scissorSet)
-                return free ? insideRect(bounds, run->scissor) : own == run->scissor;
-            if (free)
-                return true;
-            if (!run->freeBoundsValid)
-                return true;
-            RectF u;
-            u.x0 = run->freeBounds.Left();
-            u.y0 = run->freeBounds.Top();
-            u.x1 = run->freeBounds.Right();
-            u.y1 = run->freeBounds.Bottom();
-            return insideRect(u, own);
+            bool inside = true;
+            if (run->scissorSet){
+                inside = free ? insideRect(bounds, run->scissor) : own == run->scissor;
+            }else if (!free && run->freeBoundsValid){
+                RectF u;
+                u.x0 = run->freeBounds.Left();
+                u.y0 = run->freeBounds.Top();
+                u.x1 = run->freeBounds.Right();
+                u.y1 = run->freeBounds.Bottom();
+                inside = insideRect(u, own);
+            }
+            return inside ? RunBreak::NONE : RunBreak::SCISSOR;
         };
-        if (!joins()){
+        const RunBreak reason = joins();
+        if (reason != RunBreak::NONE){
+            runBreaks[(size_t)reason]++;
             flush();
             batchRuns.emplace_back();
             run = &batchRuns.back();
