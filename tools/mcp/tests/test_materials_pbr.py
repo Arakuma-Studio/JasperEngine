@@ -33,7 +33,8 @@ TIMEOUT = 5400
 
 REPO = harness.REPO
 KHRONOS = REPO / "engine" / "tests" / "render" / "assets" / "khronos"
-GOLDEN_DIR = REPO / "engine" / "tests" / "render" / "golden" / "s11"
+# (JASPER_S11_GOLDEN_DIR: compare with the goldens of another directory)
+GOLDEN_DIR = Path(os.environ.get("JASPER_S11_GOLDEN_DIR") or REPO / "engine" / "tests" / "render" / "golden" / "s11")
 UPDATE_GOLDEN = "1" in (os.environ.get("JASPER_TEST_UPDATE_GOLDEN"), os.environ.get("JASPER_RENDER_UPDATE_GOLDEN"))
 GOLDEN_SIZE = (480, 270)
 
@@ -687,7 +688,7 @@ async def test_khronos_models(ed: Editor):
                 (ed.scratch.root / f"{model}.actual.png").write_bytes(pngdiff.encode(small))
                 (ed.scratch.root / f"{model}.diff.png").write_bytes(diff or b"")
                 ed.keep = True
-            ed.check(ok, f"{model}: {fraction * 100:.2f}% of the pixels differ from {golden.relative_to(REPO)}")
+            ed.check(ok, f"{model}: {fraction * 100:.2f}% of the pixels differ from {golden}")
         else:
             missing_goldens.append(model)
 
