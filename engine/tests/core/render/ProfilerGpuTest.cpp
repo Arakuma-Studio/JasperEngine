@@ -54,9 +54,10 @@ namespace {
 
         bool render(){
             Scene* current = &scene;
+            // the first GPU test of a run also waits for the runtime shader builds
             return GpuEnvironment::runFrames([current](){
                 return current->getSystem<RenderSystem>()->isAllLoaded();
-            });
+            }, 5000);
         }
     };
 
