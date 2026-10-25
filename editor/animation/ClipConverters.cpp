@@ -178,6 +178,161 @@ namespace {
         }
     }
 
+    const float TIME_EPSILON = anim::ANIM_TIME_EPSILON * 10.0f;
+    // the width of the jump a looping track makes where its cycle restarts inside the clip's
+    // cycle (keys closer than 1e-6 s merge: the clip can't jump in zero time)
+    const float WRAP_JUMP = 1e-5f;
+
+    // One converted track's raw value at `time` (its own keys, sampled as the runtime does)
+    bool sampleTrackValue(const ClipTrackData& track, float time, std::vector<float>& out){
+        ClipData single;
+        single.tracks.push_back(track);
+        single.tracks.back().loop = false;
+        single.tracks.back().relative = false;
+        std::shared_ptr<const AnimationClip> clip = AnimationClip::build(single);
+        if (clip->getTracks().empty()) return false;
+        anim::TrackSample sample;
+        if (!anim::sampleTrack(clip->getTracks()[0], time, sample)) return false;
+        out.clear();
+        switch (track.channel){
+            case ClipChannel::Position:
+            case ClipChannel::Scale:
+                out = {sample.vector.x, sample.vector.y, sample.vector.z};
+                break;
+            case ClipChannel::Rotation:
+                out.resize(4);
+                quaternionToXYZW(sample.rotation, out.data());
+                break;
+            case ClipChannel::Morph:
+                out = sample.weights;
+                break;
+            case ClipChannel::Lattice:
+                for (const Vector3& offset : sample.offsets){
+                    out.push_back(offset.x);
+                    out.push_back(offset.y);
+                    out.push_back(offset.z);
+                }
+                break;
+            case ClipChannel::Property:
+                return false;
+        }
+        return true;
+    }
+
+    bool sameValue(const ClipKey& a, const ClipKey& b, ClipChannel channel){
+        if (a.value.size() != b.value.size()) return false;
+        bool same = true;
+        bool negated = channel == ClipChannel::Rotation;   // q and -q are one rotation
+        for (size_t i = 0; i < a.value.size(); i++){
+            same = same && std::fabs(a.value[i] - b.value[i]) <= 1e-6f;
+            negated = negated && std::fabs(a.value[i] + b.value[i]) <= 1e-6f;
+        }
+        return same || negated;
+    }
+
+    // A looping track whose frame starts at `start` (> 0): the entity loops its keys over their
+    // own period P from `start` on (ActionSystem: fmod of the track time), the clip's looping
+    // track from clip time 0. The keys rotated by start mod P over [0, P] make the clip's loop
+    // the entity's from `start` on (exactly, where the cycle point falls on a key or in a linear,
+    // stepped or non-rotation cubic segment). Before `start` the clip already plays the cycle.
+    // False with `reason` when it can't be represented.
+    bool rotateLoopTrack(ClipTrackData& track, float start, std::string& reason){
+        std::vector<ClipKey> keys = track.keys;
+        for (ClipKey& key : keys) key.time -= start;
+        const float period = keys.back().time;
+        track.keys = keys;
+        if (period <= TIME_EPSILON) return true;
+        if (keys.front().time > TIME_EPSILON){
+            // before its first key the track shows that key
+            if (keys.front().hasTangents()){
+                reason = "a cubic looping track whose first key is after 0 can't be offset in a clip";
+                return false;
+            }
+            ClipKey first = keys.front();
+            first.time = 0.0f;
+            first.ease = EaseType::STEP;
+            keys.insert(keys.begin(), first);
+        }
+        const double phase = std::fmod((double)start, (double)period);
+        if (phase <= TIME_EPSILON || period - phase <= TIME_EPSILON){
+            track.keys = keys;
+            return true;
+        }
+        const float cut = (float)(period - phase);    // the track time at clip time 0
+        const float shift = (float)phase;
+        size_t j = 0;
+        while (j + 1 < keys.size() && keys[j + 1].time <= cut + TIME_EPSILON) j++;
+
+        ClipKey split;
+        if (std::fabs(keys[j].time - cut) <= TIME_EPSILON){
+            split = keys[j];
+        }else{
+            const ClipKey& from = keys[j];
+            const ClipKey& to = keys[j + 1];
+            const bool cubic = from.hasTangents() && to.hasTangents();
+            if (cubic && track.channel == ClipChannel::Rotation){
+                reason = "its cycle point falls inside a cubic rotation segment, which can't be split exactly";
+                return false;
+            }
+            if (!cubic && from.ease != EaseType::LINEAR && from.ease != EaseType::STEP){
+                reason = "its cycle point falls inside an eased segment, which can't be split exactly";
+                return false;
+            }
+            split = from;
+            split.time = cut;
+            if (from.ease == EaseType::STEP && !cubic){
+                split.value = from.value;
+            }else if (!sampleTrackValue(track, cut, split.value)){
+                reason = "it can't be sampled";
+                return false;
+            }
+            if (cubic){
+                // the derivative of the segment's Hermite curve at the cut (units per second)
+                const float h = to.time - from.time;
+                const float u = (cut - from.time) / h;
+                const float d00 = 6 * u * u - 6 * u, d10 = 3 * u * u - 4 * u + 1, d01 = -6 * u * u + 6 * u, d11 = 3 * u * u - 2 * u;
+                split.inTangent.assign(from.value.size(), 0.0f);
+                for (size_t i = 0; i < from.value.size(); i++){
+                    split.inTangent[i] = (d00 * from.value[i] + d10 * h * from.outTangent[i] + d01 * to.value[i] + d11 * h * to.inTangent[i]) / h;
+                }
+                split.outTangent = split.inTangent;
+            }
+        }
+
+        std::vector<ClipKey> rotated;
+        ClipKey head = split;
+        head.time = 0.0f;
+        rotated.push_back(head);
+        for (size_t k = j + 1; k < keys.size(); k++){
+            ClipKey key = keys[k];
+            key.time -= cut;
+            rotated.push_back(key);
+        }
+        // the entity's own wrap: from the last key back to the first, at clip time `shift`
+        ClipKey& last = rotated.back();
+        ClipKey first = keys.front();
+        first.time = shift;
+        if (sameValue(last, first, track.channel)){
+            first.inTangent = last.inTangent;
+            rotated.back() = first;
+        }else{
+            last.ease = EaseType::STEP;
+            first.time = shift + WRAP_JUMP;
+            rotated.push_back(first);
+        }
+        for (size_t k = 1; k <= j; k++){
+            ClipKey key = keys[k];
+            key.time += shift;
+            if (std::fabs(keys[k].time - cut) <= TIME_EPSILON) break;   // the split key itself
+            rotated.push_back(key);
+        }
+        ClipKey tail = split;
+        tail.time = (float)period;
+        rotated.push_back(tail);
+        track.keys = rotated;
+        return true;
+    }
+
     // the absolute file of a clip or model path as callers give it (absolute, project-relative
     // or asset-relative)
     fs::path absoluteFile(Project* project, const std::string& path){
@@ -191,6 +346,38 @@ namespace {
         return inProject;
     }
 
+}
+
+Entity ClipConverters::defaultConvertRoot(Scene* scene, Entity animation){
+    if (!scene || animation == NULL_ENTITY || !scene->isEntityCreated(animation)) return NULL_ENTITY;
+    const ActionComponent* own = scene->findComponent<ActionComponent>(animation);
+    if (own && own->target != NULL_ENTITY && scene->isEntityCreated(own->target)) return own->target;
+    const AnimationComponent* component = scene->findComponent<AnimationComponent>(animation);
+    if (!component) return NULL_ENTITY;
+    // the lowest common Transform ancestor (or self) of the keyframe tracks' targets
+    std::vector<Entity> common;
+    bool first = true;
+    for (const ActionFrame& frame : component->actions){
+        if (frame.action == NULL_ENTITY || !scene->isEntityCreated(frame.action)) continue;
+        if (!scene->findComponent<KeyframeTracksComponent>(frame.action)) continue;
+        const ActionComponent* action = scene->findComponent<ActionComponent>(frame.action);
+        if (!action || action->target == NULL_ENTITY || !scene->isEntityCreated(action->target)) continue;
+        std::vector<Entity> chain;   // the topmost ancestor first
+        for (Entity current = action->target; current != NULL_ENTITY && chain.size() < 65536;){
+            chain.insert(chain.begin(), current);
+            const Transform* transform = scene->findComponent<Transform>(current);
+            current = transform ? transform->parent : NULL_ENTITY;
+        }
+        if (first){
+            common = chain;
+            first = false;
+        }else{
+            size_t n = 0;
+            while (n < common.size() && n < chain.size() && common[n] == chain[n]) n++;
+            common.resize(n);
+        }
+    }
+    return common.empty() ? NULL_ENTITY : common.back();
 }
 
 bool ClipConverters::clipPath(Scene* scene, Entity root, Entity entity, std::string& out){
@@ -245,8 +432,7 @@ bool ClipConverters::convertEntityAnimation(Scene* scene, Entity animation, Enti
         return fail(error, nameOf(scene, animation) + " is not an Animation (no AnimationComponent)");
     }
     if (root == NULL_ENTITY){
-        const ActionComponent* action = scene->findComponent<ActionComponent>(animation);
-        root = action ? action->target : NULL_ENTITY;
+        root = defaultConvertRoot(scene, animation);
     }
     if (root == NULL_ENTITY || !scene->isEntityCreated(root)){
         return fail(error, "the Animation " + nameOf(scene, animation) + " has no target: choose the root its clip plays on");
@@ -259,13 +445,24 @@ bool ClipConverters::convertEntityAnimation(Scene* scene, Entity animation, Enti
 
     float actionsEnd = 0.0f;   // the loop length of an Animation without a duration
     for (const ActionFrame& frame : frames){
-        const Entity entity = frame.action;
-        if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)) continue;
-        const ActionComponent* action = scene->findComponent<ActionComponent>(entity);
+        if (frame.action == NULL_ENTITY || !scene->isEntityCreated(frame.action)) continue;
+        const ActionComponent* action = scene->findComponent<ActionComponent>(frame.action);
         const float speed = action ? action->speed : 1.0f;
         if (actions && speed > 0.0f){
             actionsEnd = std::max(actionsEnd, frame.startTime + actions->getFrameDuration(frame) / speed);
         }
+    }
+    // where a looping Animation starts over (the clip's length)
+    const float cycle = duration >= 0.0f ? duration : actionsEnd;
+
+    for (const ActionFrame& frame : frames){
+        const Entity entity = frame.action;
+        if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)){
+            report.notConverted.push_back("Action (missing GameObject)");
+            continue;
+        }
+        const ActionComponent* action = scene->findComponent<ActionComponent>(entity);
+        const float speed = action ? action->speed : 1.0f;
 
         const KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(entity);
         const bool isTrack = keyframe && (scene->findComponent<TranslateTracksComponent>(entity) ||
@@ -339,33 +536,74 @@ bool ClipConverters::convertEntityAnimation(Scene* scene, Entity animation, Enti
                 out.tracks.push_back(track);
             }
         }
-        // before its frame starts the entity track leaves the target as it is: a step key at 0
-        // holds that value (relative tracks: no change) until the first key
-        for (size_t t = before; t < out.tracks.size(); t++){
+        // before its frame starts the entity track leaves the target as it is
+        const float start = frame.startTime;
+        bool dropped = false;
+        for (size_t t = before; t < out.tracks.size(); ){
             ClipTrackData& track = out.tracks[t];
-            if (track.keys.empty() || track.keys.front().time <= anim::ANIM_TIME_EPSILON * 10.0f) continue;
-            if (track.keys.front().hasTangents()){
-                warn(report.warnings, "", label + ": starts at " + clipNumber(track.keys.front().time) +
-                     " s; a cubic track holds its first key from 0 in the clip");
+            if (track.keys.empty() || start <= TIME_EPSILON){
+                t++;
                 continue;
+            }
+            if (track.loop){
+                // the entity loops the keys from `start` on: the clip's loop rotated to that phase
+                std::string reason;
+                if (!rotateLoopTrack(track, start, reason)){
+                    report.notConverted.push_back(label + " (" + anim::channelName(track.channel) + " loops from " +
+                                                  clipNumber(start) + " s: " + reason + ")");
+                    out.tracks.erase(out.tracks.begin() + (long)t);
+                    dropped = true;
+                    continue;
+                }
+                warn(report.warnings, "", label + ": loops from " + clipNumber(start) + " s; before that the clip already "
+                     "plays its cycle where the entity Animation shows the scene value" + std::string(loop ? " (every cycle)" : ""));
+                t++;
+                continue;
+            }
+            if (track.keys.front().hasTangents()){
+                warn(report.warnings, "", label + ": starts at " + clipNumber(start) +
+                     " s; a cubic track holds its first key from 0 in the clip");
+                t++;
+                continue;
+            }
+            // from the frame's start the track shows key 0 until key 0's own time
+            if (track.keys.front().time > start + TIME_EPSILON){
+                ClipKey first = track.keys.front();
+                first.time = start;
+                first.ease = EaseType::STEP;
+                track.keys.insert(track.keys.begin(), first);
             }
             ClipKey hold;
             hold.time = 0.0f;
             hold.ease = EaseType::STEP;
-            if (track.relative){
+            bool held = false;
+            if (loop && cycle > start){
+                // every cycle but the first starts from what the previous one ended with
+                held = sampleTrackValue(track, cycle, hold.value);
+                if (held){
+                    warn(report.warnings, "", label + ": starts at " + clipNumber(start) + " s in a looping Animation; before "
+                         "that the clip holds the value the cycle ends with (the entity Animation shows the scene value "
+                         "instead in its first cycle)");
+                }
+            }else if (track.relative){
                 if (track.channel == ClipChannel::Position) hold.value = {0.0f, 0.0f, 0.0f};
                 else if (track.channel == ClipChannel::Rotation) hold.value = {0.0f, 0.0f, 0.0f, 1.0f};
                 else hold.value = {1.0f, 1.0f, 1.0f};
-            }else if (!anim::readChannelValue(scene, target, track.channel, track.points, hold.value)){
-                continue;
+                held = true;
+            }else{
+                held = anim::readChannelValue(scene, target, track.channel, track.points, hold.value);
             }
-            if (track.channel == ClipChannel::Morph) hold.value.resize(track.keys.front().value.size(), 0.0f);
-            track.keys.insert(track.keys.begin(), hold);
+            if (held){
+                if (track.channel == ClipChannel::Morph) hold.value.resize(track.keys.front().value.size(), 0.0f);
+                track.keys.insert(track.keys.begin(), hold);
+            }
+            t++;
         }
         if (out.tracks.size() > before){
             report.convertedTracks += out.tracks.size() - before;
-            report.convertedTrackEntities.push_back(entity);
-        }else{
+            // an entity with a channel left out stays (Remove the converted tracks keeps it)
+            if (!dropped) report.convertedTrackEntities.push_back(entity);
+        }else if (!dropped){
             report.notConverted.push_back(label + " (no keys)");
         }
     }

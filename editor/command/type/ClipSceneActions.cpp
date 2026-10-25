@@ -11,6 +11,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/ClipValidation.h"
 #include "animation/ClipBinding.h"
 #include "animation/ModelSubClips.h"
 #include "animation/PlayerModelLayout.h"
@@ -114,6 +115,40 @@ namespace {
         return fs::u8path(entry.clip).stem().u8string();
     }
 
+    std::string readText(const fs::path& path){
+        std::string text;
+        readWhole(path, text);
+        return text;
+    }
+
+    // "n/m tracks bind" for each clip that doesn't bind fully on `target` (a model sub-clip dropped
+    // on a bone, a clip of another rig)
+    void warnBindings(Project* project, uint32_t sceneId, Entity target, const std::vector<AnimationPlayerClip>& entries,
+                      ClipActionResult& result){
+        SceneProject* sceneProject = project->getScene(sceneId);
+        for (const AnimationPlayerClip& entry : entries){
+            ClipData data;
+            std::vector<ClipWarning> ignored;
+            std::string failure;
+            if (anim::isSubClipReference(entry.clip)){
+                if (!anim::buildModelSubClip(entry.clip, data, ignored, &failure)) continue;
+            }else{
+                const anim::ClipParseResult parsed = anim::parseClip(readText(project->resolveAssetPath(fs::u8path(entry.clip))));
+                if (!parsed.ok()) continue;
+                data = *parsed.data;
+            }
+            const ClipValidationReport report = ClipValidation::validateInScene(project, sceneProject, data, target);
+            if (report.resolved < report.total){
+                ClipWarning warning;
+                warning.path = entry.clip;
+                warning.message = std::to_string(report.resolved) + "/" + std::to_string(report.total) + " tracks bind on " +
+                                  nameOf(sceneProject->scene, target) +
+                                  (report.legacyModelLayout ? " (a model under it is in the legacy layout)" : "");
+                result.warnings.push_back(warning);
+            }
+        }
+    }
+
     // ---- the hooks' UI (native save dialog, alerts) ----
 
     // a save dialog for a new .anim; empty when cancelled. `directory` project-relative.
@@ -165,8 +200,7 @@ namespace {
                 report("Convert to Clip", false, ClipActionResult(), error);
                 return;
             }
-            const ActionComponent* action = scene->findComponent<ActionComponent>(animation);
-            const Entity root = action ? action->target : NULL_ENTITY;
+            const Entity root = ClipConverters::defaultConvertRoot(scene, animation);
             const std::string path = askClipPath(project, ClipConverters::defaultClipDirectory(project, sceneId, root),
                                                  scene->getEntityName(animation));
             if (path.empty()) return;
@@ -228,6 +262,9 @@ namespace {
             const bool ok = ClipSceneActions::addClipsToPlayer(project, sceneId, target, paths, result, error);
             if (ok){
                 editor::Out::info("%s", result.status.c_str());
+                for (const ClipWarning& warning : result.warnings){
+                    editor::Out::warning("%s: %s", warning.path.c_str(), warning.message.c_str());
+                }
             }else{
                 editor::Out::error("Clip drop: %s", error.c_str());
             }
@@ -310,12 +347,8 @@ bool ClipSceneActions::runStep(Project* project, uint32_t sceneId, const std::ve
     Scene* scene = project->getScene(sceneId)->scene;
     std::vector<Entity> legacy;
     if (playerRoot != NULL_ENTITY && scene->isEntityCreated(playerRoot)){
-        // root included (as "")
-        for (const auto& entry : anim::descendantPaths(scene, playerRoot)){
-            const Entity entity = entry.second;
-            const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
-            if (model && !model->loadedFilename.empty() && model->nodesIdMapping.empty()) legacy.push_back(entity);
-        }
+        // (MeshSystem::needsNodeHierarchyReload without the player, which may not be there yet)
+        legacy = ClipValidation::validate(ClipData(), scene, playerRoot).legacyModels;
     }
     // the history executes it, and deletes it when that fails
     if (!CommandHandle::get(sceneId)->addCommand(command)){
@@ -364,8 +397,7 @@ bool ClipSceneActions::convertToClip(Project* project, uint32_t sceneId, Entity 
     std::error_code ec;
     if (fs::exists(absolute, ec)) return fail(error, "'" + projectRelative(project, absolute) + "' already exists");
     if (root == NULL_ENTITY){
-        const ActionComponent* action = scene->findComponent<ActionComponent>(animation);
-        root = action ? action->target : NULL_ENTITY;
+        root = ClipConverters::defaultConvertRoot(scene, animation);
     }
 
     ClipData data;
@@ -575,20 +607,29 @@ bool ClipSceneActions::addClipsToPlayer(Project* project, uint32_t sceneId, Enti
         std::error_code ec;
         if (!fs::is_regular_file(file, ec)) return fail(error, "'" + clip + "' does not exist");
         if (!project->isInsideAssetsPath(file)) return fail(error, "'" + clip + "' is outside the assets folder");
+        const anim::ClipParseResult parsed = anim::parseClip(readText(file));
+        if (!parsed.ok()) return fail(error, "'" + clip + "' is not a valid animation clip (" + parsed.error.toString() + ")");
         entries.push_back(entry);
     }
 
     std::vector<Command*> commands;
     appendPlayerCommands(project, sceneId, target, entries, commands, result);
     if (commands.empty()){
+        // already listed; a legacy-layout model under the player is still switched (R3)
+        if (!PlayerModelLayout::modelsNeedingReload(project, sceneId, target).empty()){
+            if (!runStep(project, sceneId, {}, {}, target, result, error)) return false;
+        }
         result.status = "The Animation Player of " + nameOf(scene, target) + " already lists " +
-                        (entries.size() == 1 ? "that clip" : "those clips");
+                        (entries.size() == 1 ? "that clip" : "those clips") +
+                        (result.reloadedModels ? std::string(" (the model reloaded in its node hierarchy, one scene undo step)") : std::string());
+        warnBindings(project, sceneId, target, entries, result);
         return true;
     }
     if (!runStep(project, sceneId, {}, std::move(commands), target, result, error)) return false;
     result.status = std::string(result.addedPlayer ? "Added an Animation Player to " : "The Animation Player of ") + nameOf(scene, target) +
                     (result.addedPlayer ? " with " : " lists ") + std::to_string(result.appended) + " more clip" +
                     (result.appended == 1 ? "" : "s") + " (one scene undo step)";
+    warnBindings(project, sceneId, target, entries, result);
     return true;
 }
 

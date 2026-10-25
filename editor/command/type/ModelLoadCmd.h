@@ -82,6 +82,15 @@ namespace jasperengine::editor{
         };
         std::vector<ParkedEntity> parkedEntities;
         std::vector<MovedPart> movedParts;
+        // An action of the user's (a track of an entity Animation, a tween) whose target is a model
+        // node: kept out of the rebuild's delete (an action is a virtual child of its target) and
+        // pointed at the rebuilt node of the same glTF node; undo gives it its old target back
+        struct RetargetedAction {
+            Entity action = NULL_ENTITY;
+            Entity oldTarget = NULL_ENTITY;
+            NodeRef node;
+        };
+        std::vector<RetargetedAction> retargetedActions;
 
         // The generated mesh entities are destroyed before the load, so their submesh edits are
         // taken aside here. Empty when the asset itself changed.
@@ -95,6 +104,11 @@ namespace jasperengine::editor{
 
         void recordArrangement(SceneProject* sceneProject, const ModelComponent& model);
         void restoreArrangement(SceneProject* sceneProject, const ModelComponent& model);
+        void recordRetargets(Scene* scene, const ModelComponent& model);
+        // the actions point at nothing while the old nodes go and the new ones come
+        void detachRetargets(Scene* scene);
+        void applyRetargets(Scene* scene, const ModelComponent& model);
+        void restoreRetargets(Scene* scene);
         void parkEntities(SceneProject* sceneProject);
         void unparkEntities(SceneProject* sceneProject);
 
