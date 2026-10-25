@@ -74,3 +74,28 @@ integrator.
 - `export_check.py`: the HTML5 and Android source exports carry all 63 shaders the scenes need
   (42 of them built-in Lit lobe / Lit Quality / mobile-tier variants) in their GLSL ES 3.00
   header; the only ones left out are S10's `Shq` shadow variants, which GLES3 builds never use.
+
+### AC11: benchmark on server E (software: llvmpipe, 4 vCPU)
+
+`jasperengine-editor benchmark --project build/pbr-extended --scene <s> --lit-quality <q> --warmup 30
+--frames 120` (editor viewport 752x362), average frame time in ms:
+
+| Scene | Standard | High | High / Standard | vs Lit Baseline (Standard) |
+|---|---|---|---|---|
+| Lit Baseline | 466 | 466 | 1.001 | 1.000 |
+| Lobes Off | 465 | 465 | 1.001 | 0.999 |
+| Lobe Clearcoat | 465 | 467 | 1.004 | 0.999 |
+| Lobe Sheen | 470 | 469 | 0.997 | 1.010 |
+| Lobe Anisotropy | 465 | 465 | 1.000 | 0.998 |
+| Lobe Iridescence | 468 | 471 | 1.007 | 1.005 |
+| Lobe Transmission | 1119 | 1122 | 1.002 | 2.403 |
+| Lobe Specular | 465 | 465 | 1.001 | 0.998 |
+| Lobe Hex | 434 | 448 | 1.034 | 0.931 |
+| Terrain Baseline | 16 | 16 | 0.999 | 1.000 |
+| Hex Terrain | 16 | 16 | 0.998 | 1.001 |
+
+On this software renderer the 200-sphere scenes are bound by the vertex work (238k triangles,
+196 draws), which hides most fragment cost: Lobes Off is within 0.1% of Lit Baseline, the lobes
+within 1%, High within 0-3.4% of Standard. Transmission costs 2.4x: every transmissive sphere
+draws in the transparent queue over the scene-colour copy. Absolute and fragment-bound
+numbers (the R13 ratios, hex terrain against the 1.35x bound) come from the GPU campaign.
