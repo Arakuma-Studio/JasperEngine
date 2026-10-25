@@ -328,13 +328,14 @@ return S
 
 TEST_F(LuaReloadTest, ModulePatchedInPlace) {
     ASSERT_EQ(lua(R"(
-package.loaded["reloadutil"] = nil
-package.preload["reloadutil"] = function()
+-- (the engine's searchers replace package.preload: the module is in package.loaded, as
+-- require leaves it)
+package.loaded["reloadutil"] = (function()
     local M = { counter = 5 }
     function M.greet() return "old" end
     function M.removed() return true end
     return M
-end
+end)()
 local util = require("reloadutil")
 util.counter = 9
 reloadHolder = { util = util }
@@ -352,7 +353,7 @@ return M
     EXPECT_TRUE(truth("reloadHolder.util.removed == nil"));
     EXPECT_TRUE(truth("require('reloadutil') == reloadHolder.util"));
     EXPECT_EQ(report.removed, std::vector<std::string>({"removed"}));
-    ASSERT_EQ(lua("package.loaded['reloadutil'] = nil; package.preload['reloadutil'] = nil"), "");
+    ASSERT_EQ(lua("package.loaded['reloadutil'] = nil"), "");
 }
 
 TEST_F(LuaReloadTest, ModuleSyntaxErrorKeepsOld) {
