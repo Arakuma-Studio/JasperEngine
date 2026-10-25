@@ -7,6 +7,7 @@
 #include "util/ScriptReloadService.h"
 #include "util/ScriptStatus.h"
 #include "util/EditorScripts.h"
+#include "profiler/Profile.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
 
@@ -26,6 +27,10 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/profiler/FrameDebuggerWindow.h"
+#include "window/profiler/ProfilerWindow.h"
+#include "profiler/FrameTimes.h"
+#include "profiler/Profiler.h"
 #include "window/PlayModeChangesWindow.h"
 #include "window/UndoHistoryWindow.h"
 #include "command/PlayChangeReview.h"
@@ -142,6 +147,8 @@ editor::App::App(){
     missingAssetsWindow = new MissingAssetsWindow(&project);
     assetReferencesWindow = new AssetReferencesWindow(&project);
     jobsMemoryWindow = new JobsMemoryWindow();
+    profilerWindow = new ProfilerWindow(this);
+    frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
     playModeChangesWindow = new PlayModeChangesWindow(&project);
     // Stop found edits that can be kept: the window opens, or after an agent's Stop the
@@ -287,6 +294,8 @@ enum class AppMenuCommand : uint32_t {
     MigrateAssetReferences,
     ToggleAssetReferences,
     ToggleJobsMemory,
+    ToggleProfiler,
+    ToggleFrameDebugger,
     ToggleUndoHistory,
     TogglePlayModeChanges,
     FocusScene,
@@ -706,6 +715,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             menuCommand(AppMenuCommand::ToggleAssetReferences, windowMenuLabel(AssetReferencesWindow::WINDOW_NAME))
         }),
         menuSubmenu("Analysis", {
+            menuShortcut(AppMenuCommand::ToggleProfiler, windowMenuLabel(ProfilerWindow::WINDOW_NAME), "Ctrl+7"),
+            menuCommand(AppMenuCommand::ToggleFrameDebugger, windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
             menuCommand(AppMenuCommand::ToggleSystems, windowMenuLabel(SystemsWindow::WINDOW_NAME)),
             menuCommand(AppMenuCommand::ToggleJobsMemory, windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
         }),
@@ -861,6 +872,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTerrain:
             showEditorWindow(terrainEditWindow);
+            break;
+        case AppMenuCommand::ToggleProfiler:
+            showEditorWindow(profilerWindow);
+            break;
+        case AppMenuCommand::ToggleFrameDebugger:
+            showEditorWindow(frameDebuggerWindow);
             break;
         case AppMenuCommand::ToggleSystems:
             showEditorWindow(systemsWindow);
@@ -1100,7 +1117,7 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
                 "Ctrl+Shift+P    Pause / Resume (F6 pauses)\n\n"
                 "WINDOWS\n"
                 "Ctrl+1 Scene   Ctrl+3 Inspector   Ctrl+4 Hierarchy\n"
-                "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+Shift+C Console\n\n"
+                "Ctrl+5 Project   Ctrl+6 Animation   Ctrl+7 Profiler   Ctrl+Shift+C Console\n\n"
                 "SCENE VIEW\n"
                 "W / E / R    Move / Rotate / Scale\n"
                 "T    Toggle local / global transforms\n"
@@ -1341,6 +1358,7 @@ void editor::App::showFooter(){
         char statText[160];
         const Engine::FrameStats& frameStats = Engine::getFrameStats();
         snprintf(statText, sizeof(statText), ICON_FA_GAUGE_HIGH " %.1f FPS  %.2f ms", fps, deltaMs);
+        const size_t fpsIndicator = indicators.size();
         indicators.emplace_back(statText, textCol);
         snprintf(statText, sizeof(statText), ICON_FA_CUBES " %u  " ICON_FA_DRAW_POLYGON " %llu",
                  frameStats.drawCalls, (unsigned long long)frameStats.triangles);
@@ -1411,6 +1429,15 @@ void editor::App::showFooter(){
                 }
                 if (ImGui::IsItemClicked()) {
                     showEditorWindow(missingAssetsWindow);
+                }
+            }
+            if (i == fpsIndicator) {
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+                    ImGui::SetTooltip("Open Window > Analysis > Profiler");
+                }
+                if (ImGui::IsItemClicked()) {
+                    showEditorWindow(profilerWindow);
                 }
             }
         }
@@ -2295,6 +2322,7 @@ void editor::App::show(){
             if (chord(true, false, false, ImGuiKey_4)) run(AppMenuCommand::ToggleHierarchy);
             if (chord(true, false, false, ImGuiKey_5)) run(AppMenuCommand::ToggleProject);
             if (chord(true, false, false, ImGuiKey_6)) run(AppMenuCommand::ToggleAnimation);
+            if (chord(true, false, false, ImGuiKey_7)) run(AppMenuCommand::ToggleProfiler);
             if (chord(true, true, false, ImGuiKey_C)) run(AppMenuCommand::ToggleConsole);
         }
     }
@@ -2397,6 +2425,8 @@ void editor::App::show(){
     missingAssetsWindow->show();
     assetReferencesWindow->show();
     jobsMemoryWindow->show();
+    profilerWindow->show();
+    frameDebuggerWindow->show();
     undoHistoryWindow->show();
     playModeChangesWindow->show();
     codeEditor->show();
@@ -2509,6 +2539,16 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--out") {
             if (const char* value = requireValue(i, "--out"))
                 benchmarkOut = CommandLine::absoluteArgPath(value);
+        } else if (arg == "--gpu-passes") {
+            benchmarkGpuPasses = true;
+        } else if (arg == "--profile") {
+            benchmarkProfile = true;
+        } else if (arg == "--profile-capture" || arg.rfind("--profile-capture=", 0) == 0) {
+            const char* value = arg.size() > 17 ? argv[i] + 18 : requireValue(i, "--profile-capture");
+            if (value && value[0])
+                benchmarkCapturePath = CommandLine::absoluteArgPath(value);
+            else if (value)
+                failBenchmark("--profile-capture needs a file path");
         } else if (arg == "-h" || arg == "--help") {
             continue;
         } else {
@@ -2573,7 +2613,15 @@ bool editor::App::consumeBenchmarkExit() {
 void editor::App::engineInit(int argc, char** argv) {
     parseBenchmarkArgs(argc, argv);
     reportLoadingProgress("Initializing engine...");
-    Engine::systemInit(argc, argv, new editor::Platform(&project));
+    // the editor's loop marks the frames (EditorFrame::run), not each Engine::systemDraw
+    FrameTimes::setExternalFrames(true);
+    // the profiler's command line (--profile, --profile-capture, --profile-frames), wherever it
+    // was given (CommandLine::takeProfilerFlags); a benchmark captures its measured frames itself
+    std::vector<char*> engineArgs(argv, argv + argc);
+    std::vector<std::string> profilerFlags = benchmarkEnabled ? std::vector<std::string>() : CommandLine::takenProfilerFlags();
+    for (std::string& flag : profilerFlags)
+        engineArgs.push_back(flag.data());
+    Engine::systemInit((int)engineArgs.size(), engineArgs.data(), new editor::Platform(&project));
 
     Engine::pauseGameEvents(true);
 
@@ -2953,7 +3001,7 @@ void editor::App::engineRender(){
     auto sceneNeedsRender = [&](SceneProject& sp, bool isSelected) -> bool {
         bool active = sp.needUpdateRender;
         bool gaugeAnimating = false;
-        if (benchmarkEnabled) active = true;
+        if (benchmarkEnabled || wantsContinuousFrames()) active = true;
         // A running play session must advance and redraw its simulation every frame.
         // (unless a held simulation, which only draws on demand like a paused one)
         if (sp.playState == ScenePlayState::PLAYING && !Engine::isSimulationHeld()) active = true;
@@ -3329,6 +3377,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         target->destroy();
         target->setWidth((unsigned int)width);
         target->setHeight((unsigned int)height);
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "Game view");
         target->create();
     }
 
@@ -3501,6 +3550,9 @@ void editor::App::tickBenchmark() {
         return;
 
     if (benchmarkPhase == 1) {
+        // GPU timing runs from the warmup on, so its first (partial) frames are not measured
+        if (benchmarkPhaseFrames == 0 && benchmarkGpuPasses)
+            SystemRender::acquireGpuTiming();
         if (++benchmarkPhaseFrames >= benchmarkWarmupFrames) {
             benchmarkPhase = 2;
             benchmarkPhaseFrames = 0;
@@ -3508,6 +3560,21 @@ void editor::App::tickBenchmark() {
             benchmarkDraws.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
+            benchmarkCpuMs.clear();
+            benchmarkGpuFrameMs.clear();
+            benchmarkGpuPassList.clear();
+            // the frames drawn from the next one on are the measured ones
+            benchmarkFirstFrame = FrameTimes::currentFrame() + 1;
+            // --profile: the measured frames record (the profiler's overhead, tools/perf/profiler_overhead.py)
+            if (benchmarkProfile)
+                profiler::setEnabled(true);
+            benchmarkGpuCollected = benchmarkFirstFrame - 1;
+            if (!benchmarkCapturePath.empty()) {
+                if (!benchmarkGpuPasses)
+                    SystemRender::acquireGpuTiming();
+                profiler::setGpuSemantics(SystemRender::getGpuTimingState().semantics);
+                benchmarkCaptureId = profiler::startCapture((uint32_t)std::min(benchmarkMeasureFrames, 600));
+            }
             benchmarkMeasureStart = std::chrono::steady_clock::now();
         }
         return;
@@ -3519,8 +3586,64 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
-        if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames)
+        collectBenchmarkGpuFrame();
+        if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames) {
+            benchmarkLastFrame = FrameTimes::currentFrame();
+            benchmarkPhase = 3;
+            benchmarkDrainFrames = 0;
+        }
+        return;
+    }
+
+    if (benchmarkPhase == 3) {
+        // the GPU times of the last measured frames, and the capture, arrive a few frames late
+        collectBenchmarkGpuFrame();
+        profiler::CaptureInfo capture;
+        const bool captureDone = !benchmarkCaptureId || !profiler::captureInfo(benchmarkCaptureId, capture) || capture.complete;
+        const bool gpuDone = !benchmarkGpuPasses || benchmarkGpuCollected >= benchmarkLastFrame;
+        if ((captureDone && gpuDone) || ++benchmarkDrainFrames > 60)
             finishBenchmark();
+    }
+}
+
+// The newest frame whose GPU times all arrived, once, while it is a measured one: each pass
+// label's time (its passes summed) and count, and the frame's GPU time
+void editor::App::collectBenchmarkGpuFrame() {
+    if (!benchmarkGpuPasses)
+        return;
+    const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true);
+    if (list.frame <= benchmarkGpuCollected || list.frame < benchmarkFirstFrame || list.gpuPending)
+        return;
+    if (benchmarkLastFrame && list.frame > benchmarkLastFrame)
+        return;
+    bool timed = false;
+    for (const PassRecord& pass : list.passes)
+        timed = timed || pass.gpuValid;
+    if (!timed)
+        return;
+    benchmarkGpuCollected = list.frame;
+    if (list.gpuFrameValid)
+        benchmarkGpuFrameMs.push_back(list.gpuFrameMs);
+    const size_t sampleIndex = benchmarkGpuFrameMs.size() - (list.gpuFrameValid ? 1 : 0);
+    for (BenchmarkPass& pass : benchmarkGpuPassList) {
+        pass.frameMs.resize(sampleIndex + 1, 0.0);
+        pass.counts.resize(sampleIndex + 1, 0.0);
+    }
+    for (const PassRecord& pass : list.passes) {
+        if (!pass.gpuValid)
+            continue;
+        auto it = std::find_if(benchmarkGpuPassList.begin(), benchmarkGpuPassList.end(),
+                               [&](const BenchmarkPass& entry) { return entry.label == pass.label; });
+        if (it == benchmarkGpuPassList.end()) {
+            BenchmarkPass entry;
+            entry.label = pass.label;
+            entry.frameMs.assign(sampleIndex + 1, 0.0);
+            entry.counts.assign(sampleIndex + 1, 0.0);
+            benchmarkGpuPassList.push_back(entry);
+            it = benchmarkGpuPassList.end() - 1;
+        }
+        it->frameMs[sampleIndex] += pass.gpuMs;
+        it->counts[sampleIndex] += 1.0;
     }
 }
 
@@ -3554,6 +3677,28 @@ void editor::App::finishBenchmark() {
 
     const double wallFps = (elapsed > 0.0 && n > 0) ? static_cast<double>(n) / elapsed : 0.0;
 
+    // the measured frames' CPU time (FrameTimes: the editor loop's work, presenting excluded)
+    benchmarkCpuMs.clear();
+    for (const FrameTimeSample& sample : FrameTimes::snapshot()) {
+        if (sample.frame >= benchmarkFirstFrame && (benchmarkLastFrame == 0 || sample.frame <= benchmarkLastFrame))
+            benchmarkCpuMs.push_back(sample.cpuMs);
+    }
+    auto stat = [](std::vector<double> values, double p) {
+        if (values.empty())
+            return 0.0;
+        std::sort(values.begin(), values.end());
+        const double position = p * static_cast<double>(values.size() - 1);
+        const size_t low = static_cast<size_t>(position);
+        const size_t high = std::min(low + 1, values.size() - 1);
+        return values[low] + (values[high] - values[low]) * (position - static_cast<double>(low));
+    };
+    auto mean = [](const std::vector<double>& values) {
+        double sum = 0.0;
+        for (double value : values)
+            sum += value;
+        return values.empty() ? 0.0 : sum / static_cast<double>(values.size());
+    };
+
     SceneProject* selected = project.getScene(benchmarkSceneId);
     const int width = selected && sceneWindow ? sceneWindow->getWidth(selected->id) : 0;
     const int height = selected && sceneWindow ? sceneWindow->getHeight(selected->id) : 0;
@@ -3577,8 +3722,45 @@ void editor::App::finishBenchmark() {
          << "  \"avgMs\": " << (wallFps > 0.0 ? 1000.0 / wallFps : 0.0) << ",\n"
          << "  \"avgDrawCalls\": " << avgDraws << ",\n"
          << "  \"avgInstances\": " << avgInstances << ",\n"
-         << "  \"avgTriangles\": " << avgTris << "\n"
-         << "}\n";
+         << "  \"avgTriangles\": " << avgTris << ",\n"
+         << "  \"profiling\": " << (benchmarkProfile ? "true" : "false") << ",\n";
+    json.precision(3);
+    json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
+         << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    if (benchmarkGpuPasses) {
+        const GpuTimingState gpu = SystemRender::getGpuTimingState();
+        json << ",\n  \"gpu\": {\n"
+             << "    \"available\": " << (gpu.available ? "true" : "false") << ",\n"
+             << "    \"reason\": \"" << jsonEscape(gpu.reason) << "\",\n"
+             << "    \"backend\": \"" << jsonEscape(SystemRender::getBackendName()) << "\",\n"
+             << "    \"device\": \"" << jsonEscape(SystemRender::getDeviceName()) << "\",\n"
+             << "    \"semantics\": \"" << jsonEscape(gpu.semantics) << "\",\n"
+             << "    \"frameIsSum\": " << (gpu.frameIsSum ? "true" : "false") << ",\n"
+             << "    \"frames\": " << benchmarkGpuFrameMs.size() << ",\n"
+             << "    \"frameMs\": {\"median\": " << stat(benchmarkGpuFrameMs, 0.5) << ", \"p95\": " << stat(benchmarkGpuFrameMs, 0.95)
+             << ", \"mean\": " << mean(benchmarkGpuFrameMs) << "},\n"
+             << "    \"passes\": [";
+        for (size_t i = 0; i < benchmarkGpuPassList.size(); i++) {
+            const BenchmarkPass& pass = benchmarkGpuPassList[i];
+            json << (i ? ",\n" : "\n") << "      {\"label\": \"" << jsonEscape(pass.label) << "\", \"perFrame\": " << stat(pass.counts, 0.5)
+                 << ", \"medianMs\": " << stat(pass.frameMs, 0.5) << ", \"p95Ms\": " << stat(pass.frameMs, 0.95)
+                 << ", \"meanMs\": " << mean(pass.frameMs) << "}";
+        }
+        json << (benchmarkGpuPassList.empty() ? "]\n" : "\n    ]\n") << "  }";
+        SystemRender::releaseGpuTiming();
+    }
+    if (benchmarkCaptureId) {
+        std::string error;
+        if (profiler::saveCapture(benchmarkCaptureId, benchmarkCapturePath.string(), &error)) {
+            json << ",\n  \"profileCapture\": \"" << jsonEscape(benchmarkCapturePath.string()) << "\"";
+            std::cerr << "Profiler capture written: " << benchmarkCapturePath.string() << "\n";
+        } else {
+            failBenchmark("the profiler capture was not written: " + error);
+        }
+        if (!benchmarkGpuPasses)
+            SystemRender::releaseGpuTiming();
+    }
+    json << "\n}\n";
 
     const std::string text = json.str();
     std::cout << text;
@@ -3640,6 +3822,19 @@ bool editor::App::consumeRedrawRequest() {
 
 void editor::App::requestFrame() {
     frameRequested = true;
+}
+
+void editor::App::requestContinuousFrames(double seconds) {
+    const auto until = std::chrono::steady_clock::now() +
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(seconds));
+    if (until > continuousFramesUntil)
+        continuousFramesUntil = until;
+}
+
+bool editor::App::wantsContinuousFrames() const {
+    if (profiler::activeCapture() != 0)
+        return true;
+    return std::chrono::steady_clock::now() < continuousFramesUntil;
 }
 
 bool editor::App::consumeFrameRequest() {

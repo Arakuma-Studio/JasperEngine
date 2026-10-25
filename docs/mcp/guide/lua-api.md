@@ -617,6 +617,28 @@ h:cancel(); h:isActive(); co:cancel(); co:isActive(); Timer.cancelAll(self)
 
 For delayed destruction `GameObject.destroy(obj, delay)` also works; tweens are Actions.
 
+### 2.14 Profiler (static): samples, counters, frame statistics
+
+```lua
+Profiler.beginSample("AI think")             -- a scope in Window > Analysis > Profiler (CPU Usage)
+self:think()
+Profiler.endSample()
+local path = Profiler.sample("Pathfind", function() return self:findPath() end)   -- fn's results
+Profiler.counter("Enemies alive", #self.enemies)   -- a monitor (the Monitors module, get_frame_times)
+Profiler.enabled = true                      -- start recording (read it to know whether it records)
+local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?}
+```
+
+- Samples nest. An `endSample` without its `beginSample` is ignored (logged once). An error in
+  `Profiler.sample`'s function is rethrown after the sample closes.
+- Every Lua callback runs inside a `Lua` scope (the CPU chart's Scripts); with Deep Profile Lua
+  (the Profiler's toolbar, `capture_profile deep_lua`) each callback gets a scope of its own,
+  named by its chunk and line.
+- `frameStats().gpuMs` is there only while GPU timing runs (the Profiler records, an agent called
+  `get_gpu_passes`); GPU times arrive a few frames late.
+- In a release game (no profiler) the functions do nothing, `enabled` stays false, and
+  `frameStats()` still works.
+
 ---
 
 ## 3. Math

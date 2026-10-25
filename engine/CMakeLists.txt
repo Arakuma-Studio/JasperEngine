@@ -805,6 +805,27 @@ option(JASPERENGINE_HTMLUI_DEBUGGER "Compile the RmlUi debugger into the HTML UI
 if(JASPERENGINE_HTMLUI_DEBUGGER)
     add_definitions(-DJASPERENGINE_HTMLUI_DEBUGGER)
 endif()
+# The profiler (core/profiler, renders/sokol pass recorder and VRAM tracker, spec S15): the
+# editor, Debug builds, the unit tests and Development Build exports have it; release games
+# leave it out, and its macros compile to nothing there (docs/profiling.md)
+option(JASPERENGINE_DEVELOPMENT_BUILD "A Development Build: a Release game with the profiler and its --profile options" OFF)
+if(JASPERENGINE_SHARED OR JASPERENGINE_TESTS OR JASPERENGINE_DEVELOPMENT_BUILD OR CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(JASPERENGINE_PROFILER_DEFAULT ON)
+else()
+    set(JASPERENGINE_PROFILER_DEFAULT OFF)
+endif()
+option(JASPERENGINE_PROFILER "Compile the CPU/GPU profiler, the frame pass recorder and the VRAM tracker" ${JASPERENGINE_PROFILER_DEFAULT})
+# Tracy remote profiling of a running development game (desktop and Android, libs/tracy)
+option(JASPERENGINE_TRACY "Send the profiler's zones, frames and plots to Tracy" OFF)
+if(JASPERENGINE_TRACY)
+    if(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        message(FATAL_ERROR "JASPERENGINE_TRACY is for desktop and Android builds; web and iOS profile with capture files (docs/profiling.md)")
+    endif()
+    if(NOT JASPERENGINE_PROFILER)
+        message(FATAL_ERROR "JASPERENGINE_TRACY needs JASPERENGINE_PROFILER")
+    endif()
+    add_subdirectory(libs/tracy)
+endif()
 add_subdirectory(libs/lunasvg)
 add_subdirectory(libs/thorvg)
 add_subdirectory(libs/rmlui)
@@ -1103,6 +1124,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
     core/script/binding/GameObjectClassesLua.cpp
+    core/script/binding/ProfilerClassesLua.cpp
     core/script/binding/ThreadClassesLua.cpp
     core/script/binding/HtmlUIVectorLua.cpp
     core/script/binding/HtmlUIMediaLua.cpp
@@ -1142,6 +1164,10 @@ set(JASPERENGINE_SRCS
     core/jobs/Primitives.cpp
     core/jobs/SerialQueue.cpp
     core/jobs/SlabPool.cpp
+    core/profiler/EngineProfiling.cpp
+    core/profiler/FrameTimes.cpp
+    core/profiler/GpuMemory.cpp
+    core/profiler/Profiler.cpp
     core/memory/Arena.cpp
     core/memory/MemoryStats.cpp
     core/memory/ObjectPool.cpp
@@ -1203,6 +1229,10 @@ set(RENDER_SOKOL_SRC
     renders/sokol/SokolShader.cpp
     renders/sokol/SokolCmdQueue.cpp
     renders/sokol/SokolFramebuffer.cpp
+    renders/sokol/SokolPassPreview.cpp
+    renders/sokol/SokolPassRecorder.cpp
+    renders/sokol/SokolTraceHub.cpp
+    renders/sokol/SokolVramTracker.cpp
 )
 
 # The engine build a C++ script library must be made for (ToolchainFingerprint.h): the
@@ -1238,9 +1268,15 @@ target_compile_definitions(jasperengine
     PUBLIC
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
+        JASPERENGINE_PROFILER=$<BOOL:${JASPERENGINE_PROFILER}>
+        JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
+        JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
+if(JASPERENGINE_TRACY)
+    target_link_libraries(jasperengine PUBLIC TracyClient)
+endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(jasperengine PRIVATE Threads::Threads)

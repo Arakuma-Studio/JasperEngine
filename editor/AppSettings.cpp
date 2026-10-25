@@ -130,6 +130,7 @@ bool AppSettings::multiViewportEnabled = false;
 bool AppSettings::editorVSyncEnabled = true;
 PanelVisibilitySettings AppSettings::panelVisibility;
 GameViewSettings AppSettings::gameViewSettings;
+ProfilerSettings AppSettings::profilerSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
@@ -356,6 +357,27 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
             }
+            if (editorNode["profiler"]) {
+                auto profilerNode = editorNode["profiler"];
+                ProfilerSettings& p = profilerSettings;
+                if (profilerNode["budget_fps"]) p.budgetFps = std::clamp(profilerNode["budget_fps"].as<int>(), 0, 1000);
+                if (profilerNode["cpu"]) p.showCpu = profilerNode["cpu"].as<bool>();
+                if (profilerNode["gpu"]) p.showGpu = profilerNode["gpu"].as<bool>();
+                if (profilerNode["rendering"]) p.showRendering = profilerNode["rendering"].as<bool>();
+                if (profilerNode["memory"]) p.showMemory = profilerNode["memory"].as<bool>();
+                if (profilerNode["monitors_module"]) p.showMonitors = profilerNode["monitors_module"].as<bool>();
+                if (profilerNode["cpu_view"]) p.cpuView = std::clamp(profilerNode["cpu_view"].as<int>(), 0, 1);
+                if (profilerNode["sort_column"]) p.sortColumn = std::clamp(profilerNode["sort_column"].as<int>(), 0, 4);
+                if (profilerNode["sort_ascending"]) p.sortAscending = profilerNode["sort_ascending"].as<bool>();
+                if (profilerNode["pause_on_spike"]) p.pauseOnSpike = profilerNode["pause_on_spike"].as<bool>();
+                if (profilerNode["pause_over_ms"]) p.pauseOverMs = std::clamp(profilerNode["pause_over_ms"].as<float>(), 1.0f, 10000.0f);
+                if (profilerNode["memory_group"]) p.memoryGroup = std::clamp(profilerNode["memory_group"].as<int>(), 0, 1);
+                if (profilerNode["monitors"] && profilerNode["monitors"].IsSequence()) {
+                    p.monitors.clear();
+                    for (const auto& item : profilerNode["monitors"]) p.monitors.push_back(item.as<std::string>());
+                }
+                if (profilerNode["debugger_mode"]) p.debuggerMode = std::clamp(profilerNode["debugger_mode"].as<int>(), 0, 5);
+            }
         }
 
         // The former AI assistant's "ai_assistant" section is ignored (and dropped on save)
@@ -552,6 +574,22 @@ bool AppSettings::saveSettings() {
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
         editorNode["game_view"] = gameNode;
+        YAML::Node profilerNode;
+        profilerNode["budget_fps"] = profilerSettings.budgetFps;
+        profilerNode["cpu"] = profilerSettings.showCpu;
+        profilerNode["gpu"] = profilerSettings.showGpu;
+        profilerNode["rendering"] = profilerSettings.showRendering;
+        profilerNode["memory"] = profilerSettings.showMemory;
+        profilerNode["monitors_module"] = profilerSettings.showMonitors;
+        profilerNode["cpu_view"] = profilerSettings.cpuView;
+        profilerNode["sort_column"] = profilerSettings.sortColumn;
+        profilerNode["sort_ascending"] = profilerSettings.sortAscending;
+        profilerNode["pause_on_spike"] = profilerSettings.pauseOnSpike;
+        profilerNode["pause_over_ms"] = profilerSettings.pauseOverMs;
+        profilerNode["memory_group"] = profilerSettings.memoryGroup;
+        for (const std::string& monitor : profilerSettings.monitors) profilerNode["monitors"].push_back(monitor);
+        profilerNode["debugger_mode"] = profilerSettings.debuggerMode;
+        editorNode["profiler"] = profilerNode;
         settingsData["editor"] = editorNode;
 
         // MCP server
@@ -1035,6 +1073,16 @@ GameViewSettings AppSettings::getGameViewSettings() {
 
 void AppSettings::setGameViewSettings(const GameViewSettings& settings) {
     gameViewSettings = settings;
+    saveSettings();
+}
+
+ProfilerSettings AppSettings::getProfilerSettings() {
+    return profilerSettings;
+}
+
+void AppSettings::setProfilerSettings(const ProfilerSettings& settings) {
+    if (settings == profilerSettings) return;
+    profilerSettings = settings;
     saveSettings();
 }
 

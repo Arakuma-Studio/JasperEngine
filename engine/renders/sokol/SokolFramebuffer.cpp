@@ -4,6 +4,7 @@
 #include "SokolFramebuffer.h"
 #include "Log.h"
 #include "SokolCmdQueue.h"
+#include "SokolPassPreview.h"
 #include "SokolPipelineCache.h"
 #include "Engine.h"
 #include "render/FramebufferRender.h"
@@ -393,6 +394,7 @@ void SokolFramebuffer::initializeAttachments(size_t faces){
         }else{
             sg_begin_pass(pass);
             sg_end_pass();
+            SokolPassPreview::afterEndPass();
             SokolPipelineCache::invalidateApplied();
         }
     }
