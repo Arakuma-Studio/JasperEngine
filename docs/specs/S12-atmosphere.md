@@ -567,10 +567,13 @@ The `gpuMs` value is present when S15 timings exist.
   (colour mode -1: a distance fog). A distance fog keeps its own math (AC1 goldens, exact on
   glcore); its fogged meshes pay one uniform branch per fragment. With the 64-bit shader keys
   (origin/main) a bit could gate it again. Shader cache v35.
-- **Pass timings (AC10).** S15 has not landed: passes are labelled, `get_atmosphere_info` lists
-  them, and `tools/performance/atmosphere_bench.py` measures frame time with each feature on and
-  off (it reads `gpuMs` once S15 provides it). The perf-lab run on the reference hardware is
-  still to be made; `docs/mcp/guide/atmosphere.md` states the budgets.
+- **Pass timings (AC10).** S15 has not landed, and the timing reference (server E) renders in
+  software. `atmosphere_bench.py --runs 3 --relative` measured each feature there as a share of
+  the no-atmosphere frame against its budget's share of a 60 fps frame (method and table in
+  `docs/mcp/guide/atmosphere.md`, data in `tools/performance/results/`): height fog, Sky Composite
+  and Low clouds within, every VRAM budget within; the volumetric fog (all tiers) and Medium/High
+  clouds over (1.5-10x), which this method overstates for fragment-bound passes. The GPU budgets
+  remain open for the reference-GPU run with S15's timings.
 - **Preset field.** The clouds' `preset` shows the last look applied; editing a field does not
   switch it to Custom.
 - **Determinism hash (AC9).** The bake's SHA-256 is pinned for x86-64 Linux builds; on other

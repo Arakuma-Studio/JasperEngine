@@ -142,8 +142,37 @@ class):
 
 The depth pre-pass the volumetric fog draws when nothing else made the depth is reported apart.
 `tools/performance/atmosphere_bench.py` measures them (300 frames of
-`tools/fixtures/atmosphere/bench.scene`, the median per `Atmosphere/*` pass); its results on the
-reference machines are recorded here when that perf-lab run is made.
+`tools/fixtures/atmosphere/bench.scene`, the median per `Atmosphere/*` pass once S15's GPU
+timings exist).
+
+### Measured on the benchmark server E (2026-10-25)
+
+E (4 dedicated vCPU, nothing else running) renders in software (Mesa llvmpipe), so its
+milliseconds say nothing about a GPU. Method (`atmosphere_bench.py --runs 3 --relative`): each
+configuration's frame time (median of 300 frames, Game view 904×509, no vsync), median of 3 runs
+in new editors (runs within 1%); a feature's cost is its frame minus its baseline's, taken as a
+share of the frame without any atmosphere (248.8 ms), and compared with the budget's share of a
+60 fps frame (budget / 16.67 ms: the reference GPU is taken to draw the scene without atmosphere
+in that frame). "Sky Composites" is the cost in units of one trivial full-screen pass on E. VRAM is
+scaled to 1080p (view-sized targets only). Raw data:
+`tools/performance/results/atmosphere_bench_E_2026-10-25.json`.
+
+| Feature | Cost on E | Share | Budget share | Sky Composites | VRAM @1080p | Result |
+|---|---|---|---|---|---|---|
+| Height fog (over linear) | 0.85 ms | 0.3% | 0.6% (desktop), 1.8% (mobile) | 0.6 | 1.4 MB | within |
+| Sky Composite | 1.46 ms | 0.6% | 0.9% | 1.0 | 1.4 MB | within |
+| Volumetric fog Low | 45.1 ms | 18.1% | 9.0% (mobile) | 31 | 3.4 MB (≤ 4) | over 2.0× |
+| Volumetric fog Medium | 153.6 ms | 61.7% | 6.0% | 105 | 11.8 MB (≤ 16) | over 10× |
+| Volumetric fog High | 268.2 ms | 107.8% | 10.8% | 184 | 11.8 MB (≤ 24) | over 10× |
+| Clouds Low (Sky Map) | 7.9 ms | 3.2% | 3.6% (mobile) | 5.4 | 2.9 MB (≤ 4) | within |
+| Clouds Medium (Sky Map) | 107.5 ms | 43.2% | 4.8% | 74 | 7.4 MB (≤ 16) | over 9× |
+| Clouds High (Screen) | 57.7 ms | 23.2% | 15.0% | 40 | 3.9 MB (≤ 24) | over 1.5× |
+
+Every VRAM budget holds. By this method the marches (volumetric fog at every tier, clouds Medium
+and High) exceed their time budgets. The method weighs per-pixel work against a frame whose cost
+on a CPU rasteriser is mostly elsewhere, and a software 3D-texture fetch costs many times a
+GPU's, so it overstates fragment-bound passes; it does not prove a GPU budget either way. AC10's
+GPU budgets still need the reference-GPU run with S15's pass timings.
 
 ## Agents
 
