@@ -15,6 +15,7 @@ namespace jasperengine::editor {
     class GameWindow;
     class AnimationWindow;
     class TerrainEditWindow;
+    class SystemsWindow;
     class PlayInput;
 }
 
@@ -42,6 +43,7 @@ namespace jasperengine::editor::mcp {
         GameWindow* gameWindow() const;
         AnimationWindow* animationWindow() const;
         TerrainEditWindow* terrainEditWindow() const;
+        SystemsWindow* systemsWindow() const;
         PlayInput* playInput() const;
 
         // A scene is playing, paused, loading or stopping

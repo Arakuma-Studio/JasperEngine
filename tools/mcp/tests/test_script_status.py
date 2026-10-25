@@ -126,3 +126,22 @@ async def test_settings_round_trip(ed: Editor):
     ed.check_eq(status["settings"]["reload_cpp_during_play"], False, "C++ reload back")
     bad = await ed.call("script_status", expect_error=True, changes_while_playing="sometimes")
     ed.check_in("stop_and_reload", bad, "lists the policies")
+
+
+async def test_scripting_tool_group(ed: Editor):
+    """The S23 tools are the "scripting" group (S31): hidden from the default listing, listed once
+    enabled, callable by name either way"""
+    names = ("reload_scripts", "script_status", "list_editor_menus", "run_editor_menu", "evaluate_expression",
+             "list_graph_kinds", "list_graph_node_types", "get_graph", "validate_graph", "edit_graph")
+    default = {t.name for t in await ed.tools(groups=None)}
+    for name in names:
+        ed.check(name not in default, f"{name} is hidden until scripting is enabled")
+    value = await ed.call("evaluate_expression", expression="2^3^2")
+    ed.check_eq(value["value"], 512, "a hidden group's tool is still callable")
+    await ed.call("tool_groups", enable=["scripting"])
+    try:
+        listed = {t.name for t in await ed.tools(groups=None)}
+        for name in names:
+            ed.check(name in listed, f"{name} is listed once scripting is enabled")
+    finally:
+        await ed.call("tool_groups", disable=["scripting"])

@@ -1874,16 +1874,16 @@ void registerBuildTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Build;  // busy policy (McpServer::busyRefusal)
         tool.title = "Build Project";
         tool.description =
-            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first build compiles "
-            "the engine: many minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
+            "File > Build Settings > Build, as a job. desktop: a player for this computer (the first one compiles "
+            "the engine: minutes); web: WebAssembly (needs emsdk); source: a standalone C++/CMake project. "
             "Saves all scenes first. Past timeout_seconds a {job_id} (get_job). Result: output_dir, artifacts, "
             "executable, errors [{file, line, message}], warnings, log_file. Don't edit scenes or play meanwhile.";
         tool.inputSchema = object({
             {"mode", withDefault(stringEnum("", {"desktop", "web", "source"}), "desktop")},
             {"output_dir", string("Absolute, outside the project. Default: last for mode.")},
             {"overwrite", withDefault(boolean("source: allow a non-empty output_dir."), false)},
-            {"start_scene", sceneRef("Also becomes the project's start scene. Default: project's.")},
-            {"allow_missing_assets", withDefault(boolean("Build even when it references missing assets (list_missing_assets)."), false)},
+            {"start_scene", sceneRef("Also set as the start scene. Default: project's.")},
+            {"allow_missing_assets", withDefault(boolean("Build despite missing assets (list_missing_assets)."), false)},
             {"graphics_api", string("desktop: opengl/vulkan/d3d11/metal-macos (per OS); web: opengles. Remembered.")},
             {"platform", stringEnum("source: shader target platform.", {"windows", "macos", "linux", "android", "ios", "web"})},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},

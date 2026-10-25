@@ -28,6 +28,8 @@ option(JASPERENGINE_HTMLUI_TESTS "Build jasperengine-htmlui-tests" OFF)
 # (engine/tests/core, against the static engine, with the job system and allocator benchmarks
 # je-bench-jobs and je-bench-memory), jasperengine-editor-tests in the editor build
 option(JASPERENGINE_TESTS "Build the unit-test target of this build tree" OFF)
+# the S07 ECS benchmark (tools/performance/run-ecs-bench.py), standalone engine builds only
+option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -921,6 +923,9 @@ set(JASPERENGINE_SRCS
     core/buffer/IndexBuffer.cpp
     core/buffer/InterleavedBuffer.cpp
     core/ecs/ComponentManager.cpp
+    core/ecs/ChangeTracking.cpp
+    core/ecs/CommandBuffer.cpp
+    core/ecs/SystemScheduler.cpp
     core/htmlui/HtmlUI.cpp
     core/htmlui/HtmlUIClock.cpp
     core/htmlui/HtmlUIContext.cpp
@@ -1497,6 +1502,10 @@ if(JASPERENGINE_HTMLUI_TESTS)
 endif()
 if(JASPERENGINE_TESTS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     add_subdirectory(tests/core)
+endif()
+
+if(JASPERENGINE_ECS_BENCH)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../tools/performance/EcsBench.cmake)
 endif()
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)

@@ -57,7 +57,8 @@ namespace jasperengine {
         // Destroys the GameObject and its children after the update of this frame, or
         // `delay` seconds of game time later
         static void destroy(Scene* scene, Entity entity, float delay = 0.0f);
-        // ...now
+        // ...now; inside a callback dispatch or a system wave (StructuralDeferScope) when the
+        // dispatch is over
         static void destroyImmediate(Scene* scene, Entity entity);
 
         // The scene a prefab goes to when none is given (Unity's active scene): the scene

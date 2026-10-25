@@ -3794,6 +3794,12 @@ bool editor::Catalog::hasEnabledProperty(ComponentType component){
     return component == ComponentType::ShadowCaster2DComponent || findEnabledGetter(component) != nullptr;
 }
 
+void editor::Catalog::markChanged(EntityRegistry* registry, Entity entity, ComponentType compType) {
+    if (registry && registry->isEntityCreated(entity)) {
+        registry->markChanged(getComponentId(registry, compType), entity);
+    }
+}
+
 ComponentId editor::Catalog::getComponentId(const EntityRegistry* registry, ComponentType compType) {
     using namespace jasperengine;
     switch (compType) {

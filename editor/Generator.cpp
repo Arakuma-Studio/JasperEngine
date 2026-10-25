@@ -1568,7 +1568,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "JasperEngine Editor embeds an MCP server: build scenes, prefabs, UI and project settings, and playtest, through its tools instead of editing `*.scene`/`*.prefab`/`project.yaml` by hand "
                      "(the open editor would overwrite such edits). Start it with `jasperengine-editor mcp --project <this directory>` as a stdio MCP server, "
                      "or attach to an editor that is already open over HTTP (Editor Settings > MCP, `http://127.0.0.1:47615/mcp` by default). "
-                     "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools.\n\n";
+                     "The server's instructions and the `jasper://guide` / `jasper://docs/...` resources explain the tools. "
+                     "From a shell, `jasperengine-editor call <tool> [--flags]` runs any of them (`call <tool> --help` lists its parameters; `--project <this directory>` starts a one-shot headless editor when none has the project open).\n\n";
     agentsContent += "- Scripts, shaders and other text files: edit them on disk with your own tools. The editor picks the changes up automatically before every MCP tool call "
                      "(the call's result lists them under `external_changes`, with problems such as Lua syntax errors); no sync step is needed.\n";
     agentsContent += "- Lua API: one stub file per engine class in `" + (engineApiRelativePath / "lua").generic_string() + "/`, and the class of each project script (its properties as fields) in `" +

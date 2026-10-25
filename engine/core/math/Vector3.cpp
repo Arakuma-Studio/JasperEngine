@@ -17,13 +17,6 @@ const Vector3 Vector3::UNIT_Z( 0, 0, 1 );
 const Vector3 Vector3::UNIT_SCALE(1, 1, 1);
 
 
-Vector3::Vector3()
-        : x(0), y(0), z(0) {
-}
-
-Vector3::Vector3( const float nx, const float ny, const float nz ) : x(nx), y(ny), z(nz) {}
-
-Vector3::Vector3( const Vector3& v ) : x(v.x), y(v.y), z(v.z) {}
 
 Vector3::Vector3( const float v[3] ) : x(v[0]), y(v[1]), z(v[2]) {}
 
@@ -47,14 +40,6 @@ float Vector3::operator [] ( unsigned i ) const{
 
 float& Vector3::operator [] ( unsigned i ){
     return *(&x+i);
-}
-
-Vector3& Vector3::operator = ( const Vector3& v ){
-    x = v.x;
-    y = v.y;
-    z = v.z;
-    
-    return *this;
 }
 
 bool Vector3::operator == ( const Vector3& v ) const{
