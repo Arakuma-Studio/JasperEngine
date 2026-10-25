@@ -978,6 +978,8 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectValue.cpp
     core/asset/AssetMap.cpp
     core/asset/Guid.cpp
+    core/graph/Graph.cpp
+    core/graph/GraphRegistry.cpp
     core/io/AssetIOService.cpp
     core/io/Data.cpp
     core/io/File.cpp
