@@ -12,8 +12,11 @@
 // - Invariants:
 //   * convertEntityAnimation keeps keyframe tracks only (times shifted by the frame's startTime,
 //     targets as paths relative to `root`: the actual entities, R3), maps loop/duration to
-//     wrap/length; tweens, sprite animations, particles and nested animations are listed in
-//     `notConverted`. Sampling the clip on `root` gives the entity animation's values.
+//     wrap/length; tweens, sprite animations, particles, nested animations and missing actions
+//     are listed in `notConverted`. Sampling the clip on `root` gives the entity animation's
+//     values; where the format can't say the same (before a late frame: the scene value in a
+//     looping Animation's first cycle, a looping track's cycle; a cubic track's first key) a
+//     warning says so, and a looping track that can't be offset exactly is not converted.
 //   * extractModelSubClip copies the sub-clip with `source` {kind "model", path, name} set and
 //     a new GUID; the model is not touched.
 //   * nothing here writes files or the scene.
@@ -78,6 +81,10 @@ namespace jasperengine::editor{
         // the last key; `loop` gives wrap loop
         static bool bakeChannels(Scene* scene, Entity root, const std::vector<BakedChannel>& channels, float length, bool loop,
                                  ClipData& out, std::string* error);
+
+        // The root Convert to Clip uses when none is chosen: the Animation's target, else the lowest
+        // common Transform ancestor of its tracks' targets (a top-level Animation has no target)
+        static Entity defaultConvertRoot(Scene* scene, Entity animation);
 
         // The path a clip binds `entity` by when `root` plays it (R3: from the actual entities).
         // Parts of a model in the legacy layout get their node-hierarchy path (the layout an

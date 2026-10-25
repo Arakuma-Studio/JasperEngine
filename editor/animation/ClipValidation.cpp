@@ -164,52 +164,151 @@ namespace {
         }
     }
 
-    // Lua method names a script defines: `function T:name(`, `function T.name(`, `T.name = function`
-    void parseLuaFunctions(const std::string& text, std::set<std::string>& out){
+    // `text` without its Lua comments (`-- ...` lines and `--[[ ]]` / `--[==[ ]==]` blocks);
+    // strings are kept as they are, so a "--" inside one is not a comment
+    std::string stripLuaComments(const std::string& text){
+        std::string out;
+        out.reserve(text.size());
+        // the "]==]" that closes a long bracket opened at `at` ("[==["), empty when none is
+        auto longBracketClose = [&](size_t at) -> std::string {
+            if (at >= text.size() || text[at] != '[') return std::string();
+            size_t i = at + 1;
+            while (i < text.size() && text[i] == '=') i++;
+            if (i >= text.size() || text[i] != '[') return std::string();
+            return "]" + std::string(i - at - 1, '=') + "]";
+        };
+        size_t i = 0;
+        while (i < text.size()){
+            const char c = text[i];
+            if (c == '"' || c == '\''){
+                size_t j = i + 1;
+                while (j < text.size() && text[j] != c && text[j] != '\n'){
+                    if (text[j] == '\\') j++;
+                    j++;
+                }
+                j = std::min(j + 1, text.size());
+                out.append(text, i, j - i);
+                i = j;
+                continue;
+            }
+            if (c == '['){
+                const std::string close = longBracketClose(i);
+                if (!close.empty()){
+                    const size_t end = text.find(close, i);
+                    const size_t j = end == std::string::npos ? text.size() : end + close.size();
+                    out.append(text, i, j - i);
+                    i = j;
+                    continue;
+                }
+            }
+            if (c == '-' && i + 1 < text.size() && text[i + 1] == '-'){
+                const std::string close = longBracketClose(i + 2);
+                if (!close.empty()){
+                    const size_t end = text.find(close, i + 2);
+                    i = end == std::string::npos ? text.size() : end + close.size();
+                    out += ' ';
+                }else{
+                    const size_t end = text.find('\n', i);
+                    i = end == std::string::npos ? text.size() : end;
+                }
+                continue;
+            }
+            out += c;
+            i++;
+        }
+        return out;
+    }
+
+    // Lua method names a script defines on `owner` (its class or module table; empty: any
+    // table): `function owner:name(`, `function owner.name(`, `owner.name = function`
+    void parseLuaFunctions(const std::string& source, const std::string& owner, std::set<std::string>& out){
+        const std::string text = stripLuaComments(source);
         auto isIdentifier = [](char c){ return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+        auto ownerMatches = [&](const std::string& table){ return owner.empty() || table == owner; };
         const std::string keyword = "function";
         size_t at = 0;
         while ((at = text.find(keyword, at)) != std::string::npos){
             const size_t start = at;
             at += keyword.size();
             if ((start > 0 && isIdentifier(text[start - 1])) || (at < text.size() && isIdentifier(text[at]))) continue;
-            // `function a.b:c(` : the last identifier before '('
+            // `function a.b:c(`: the last identifier before '(' and the table it is on
             size_t i = at;
             while (i < text.size() && (text[i] == ' ' || text[i] == '\t')) i++;
-            size_t nameStart = i;
             std::string last;
-            bool qualified = false;
+            std::string table;
             while (i < text.size()){
-                nameStart = i;
+                const size_t nameStart = i;
                 while (i < text.size() && isIdentifier(text[i])) i++;
                 if (i == nameStart) break;
-                last = text.substr(nameStart, i - nameStart);
+                const std::string name = text.substr(nameStart, i - nameStart);
                 if (i < text.size() && (text[i] == '.' || text[i] == ':')){
-                    qualified = true;
+                    table = name;
                     i++;
                     continue;
                 }
+                last = name;
                 break;
             }
             size_t paren = i;
             while (paren < text.size() && (text[paren] == ' ' || text[paren] == '\t')) paren++;
             if (!last.empty() && paren < text.size() && text[paren] == '('){
-                if (qualified) out.insert(last);
+                if (!table.empty() && ownerMatches(table)) out.insert(last);
                 continue;
             }
-            // `T.name = function(`: the identifier before " = "
+            // `T.name = function(`: the identifier before " = " and its table
             size_t back = start;
             while (back > 0 && (text[back - 1] == ' ' || text[back - 1] == '\t')) back--;
-            if (back > 0 && text[back - 1] == '='){
+            if (back > 0 && text[back - 1] == '=' && (back < 2 || (text[back - 2] != '=' && text[back - 2] != '~' &&
+                                                                    text[back - 2] != '<' && text[back - 2] != '>'))){
                 back--;
                 while (back > 0 && (text[back - 1] == ' ' || text[back - 1] == '\t')) back--;
                 const size_t end = back;
                 while (back > 0 && isIdentifier(text[back - 1])) back--;
                 if (back < end && back > 0 && (text[back - 1] == '.' || text[back - 1] == ':')){
-                    out.insert(text.substr(back, end - back));
+                    const size_t tableEnd = back - 1;
+                    size_t tableStart = tableEnd;
+                    while (tableStart > 0 && isIdentifier(text[tableStart - 1])) tableStart--;
+                    if (ownerMatches(text.substr(tableStart, tableEnd - tableStart))){
+                        out.insert(text.substr(back, end - back));
+                    }
                 }
             }
         }
+    }
+
+    // the paths of `paths` nearest to `path` (descendantPaths of the root, read once per report)
+    std::vector<std::string> nearestIn(const std::vector<std::pair<std::string, Entity>>& paths, const std::string& path, size_t max){
+        std::vector<std::string> out;
+        if (max == 0) return out;
+        struct Candidate{
+            size_t distance;
+            size_t nameDistance;
+            size_t order;
+            std::string path;
+        };
+        std::vector<Candidate> candidates;
+        const std::string name = lastSegment(path);
+        for (size_t i = 0; i < paths.size(); i++){
+            const std::string& candidate = paths[i].first;
+            if (candidate.empty() || candidate == path) continue;
+            const size_t distance = editDistance(path, candidate);
+            const size_t nameDistance = editDistance(name, lastSegment(candidate));
+            // nothing in common: no suggestion
+            if (distance >= std::max(path.size(), candidate.size()) && nameDistance >= std::max(name.size(), lastSegment(candidate).size())){
+                continue;
+            }
+            // the same name somewhere else (another parent) is the best guess
+            candidates.push_back({std::min(distance, nameDistance == 0 ? (size_t)0 : distance), nameDistance, i, candidate});
+        }
+        std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b){
+            if (a.distance != b.distance) return a.distance < b.distance;
+            if (a.nameDistance != b.nameDistance) return a.nameDistance < b.nameDistance;
+            return a.order < b.order;
+        });
+        for (size_t i = 0; i < candidates.size() && out.size() < max; i++){
+            out.push_back(candidates[i].path);
+        }
+        return out;
     }
 
 }
@@ -234,7 +333,7 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
     const bool bound = registry && root != NULL_ENTITY && registry->isEntityCreated(root);
     if (!bound) report.root = NULL_ENTITY;
 
-    std::vector<std::pair<std::string, Entity>> existing;   // descendantPaths, on the first missing path
+    std::vector<std::pair<std::string, Entity>> existing;   // descendantPaths, read on the first missing path
     bool existingRead = false;
     Entity legacyModel = NULL_ENTITY;
 
@@ -287,7 +386,7 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
                 existingRead = true;
             }
             track.status = TrackBindingStatus::MissingPath;
-            track.nearest = nearestPaths(registry, root, clipTrack.path, options.maxNearest);
+            track.nearest = nearestIn(existing, clipTrack.path, options.maxNearest);
             std::string missing = segments.size() > resolution.resolvedSegments ? segments[resolution.resolvedSegments].name : "";
             track.message = label + ": no GameObject at " + quotedPath(clipTrack.path);
             if (!missing.empty() && resolution.resolvedSegments > 0){
@@ -453,50 +552,26 @@ std::vector<std::string> ClipValidation::scriptFunctions(Project* project, Scene
     const ScriptComponent* scripts = scene->scene->findComponent<ScriptComponent>(entity);
     if (!scripts) return {};
     for (const ScriptEntry& entry : scripts->scripts){
-        if (entry.type != ScriptType::LUA || entry.path.empty()) continue;
+        // the engine calls methods on enabled Lua scripts only
+        if (entry.type != ScriptType::LUA || entry.path.empty() || !entry.enabled) continue;
         std::filesystem::path file = project ? project->resolveLuaPath(std::filesystem::u8path(entry.path))
                                              : std::filesystem::u8path(entry.path);
         std::ifstream in(file, std::ios::binary);
         if (!in) continue;
         const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        parseLuaFunctions(text, found);
+        // methods of the script's own table (named like its class); a script whose table is
+        // named otherwise: methods of any table
+        std::set<std::string> own;
+        parseLuaFunctions(text, entry.className, own);
+        if (own.empty()) parseLuaFunctions(text, std::string(), own);
+        found.insert(own.begin(), own.end());
     }
     return std::vector<std::string>(found.begin(), found.end());
 }
 
 std::vector<std::string> ClipValidation::nearestPaths(EntityRegistry* registry, Entity root, const std::string& path, size_t max){
-    std::vector<std::string> out;
-    if (!registry || root == NULL_ENTITY || max == 0) return out;
-    struct Candidate{
-        size_t distance;
-        size_t nameDistance;
-        size_t order;
-        std::string path;
-    };
-    std::vector<Candidate> candidates;
-    const std::string name = lastSegment(path);
-    const std::vector<std::pair<std::string, Entity>> paths = anim::descendantPaths(registry, root);
-    for (size_t i = 0; i < paths.size(); i++){
-        const std::string& candidate = paths[i].first;
-        if (candidate.empty() || candidate == path) continue;
-        const size_t distance = editDistance(path, candidate);
-        const size_t nameDistance = editDistance(name, lastSegment(candidate));
-        // nothing in common: no suggestion
-        if (distance >= std::max(path.size(), candidate.size()) && nameDistance >= std::max(name.size(), lastSegment(candidate).size())){
-            continue;
-        }
-        // the same name somewhere else (another parent) is the best guess
-        candidates.push_back({std::min(distance, nameDistance == 0 ? (size_t)0 : distance), nameDistance, i, candidate});
-    }
-    std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b){
-        if (a.distance != b.distance) return a.distance < b.distance;
-        if (a.nameDistance != b.nameDistance) return a.nameDistance < b.nameDistance;
-        return a.order < b.order;
-    });
-    for (size_t i = 0; i < candidates.size() && out.size() < max; i++){
-        out.push_back(candidates[i].path);
-    }
-    return out;
+    if (!registry || root == NULL_ENTITY) return {};
+    return nearestIn(anim::descendantPaths(registry, root), path, max);
 }
 
 std::string ClipValidation::trackLabel(const ClipTrackData& track){

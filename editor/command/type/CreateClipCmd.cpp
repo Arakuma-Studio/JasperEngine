@@ -91,6 +91,8 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
 
 bool CreateClipCmd::execute(){
     failure.clear();
+    // the files the last undo kept because the user changed them: a redo keeps them too
+    const std::vector<fs::path> keptByUndo = keptFiles;
     keptFiles.clear();
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     if (!sceneProject || !sceneProject->scene){
@@ -104,6 +106,16 @@ bool CreateClipCmd::execute(){
     for (size_t i = 0; i < files.size(); i++){
         const File& file = files[i];
         std::error_code ec;
+        if (std::find(keptByUndo.begin(), keptByUndo.end(), file.path) != keptByUndo.end() && fs::is_regular_file(file.path, ec)){
+            std::string current;
+            if (readWhole(file.path, current) && current != file.content){
+                // not written over: the edits stay, and the next undo leaves the file alone
+                keptFiles.push_back(file.path);
+                editor::Out::warning("Kept '%s': it changed since this step wrote it, so redo leaves it as it is",
+                                     FileUtils::pathToGenericUtf8(file.path).c_str());
+                continue;
+            }
+        }
         written[i].existed = fs::is_regular_file(file.path, ec);
         if (written[i].existed && !readWhole(file.path, written[i].previous)){
             restoreFiles(i, false);
@@ -170,7 +182,7 @@ void CreateClipCmd::undo(){
     if (!sceneProject){
         return;
     }
-    keptFiles.clear();
+    // (keptFiles holds what this execute left alone: still kept)
     PlayerModelLayout::undoReloads(layoutReloads);
     for (size_t i = sceneCommands.size(); i-- > 0;){
         sceneCommands[i]->undo();
@@ -183,7 +195,7 @@ void CreateClipCmd::undo(){
 
 bool CreateClipCmd::affectsStructure() const{
     // a layout reload rebuilds the model's GameObjects
-    if (playerRoot != NULL_ENTITY) return true;
+    if (!layoutReloads.empty()) return true;
     for (const std::unique_ptr<Command>& command : sceneCommands){
         if (command->affectsStructure()) return true;
     }
