@@ -24,11 +24,17 @@
 #include "profiler/FrameTimes.h"
 #include "profiler/GpuMemory.h"
 #include "profiler/Profiler.h"
+#include "util/Base64.h"
+#include "util/GraphicUtils.h"
+
+#include "stb_image_resize2.h"
+#include "stb_image_write.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <cstring>
 #include <map>
 
 namespace jasperengine::editor::mcp {
@@ -481,7 +487,7 @@ void getCpuProfileTool(const CallPtr& call){
                 continue;
             total++;
             if ((int)rows.size() < maxRows)
-                rows.push_back({{"name", row.name}, {"depth", row.depth}, {"total_ms", round3(row.totalMs)},
+                rows.push_back({{"name", row.name}, {"path", row.path}, {"depth", row.depth}, {"total_ms", round3(row.totalMs)},
                                 {"self_ms", round3(row.selfMs)}, {"calls", row.calls}});
         }
     }else if (view == "flat"){
@@ -723,6 +729,172 @@ void getGpuPassesTool(const CallPtr& call){
     });
 }
 
+// ------------------------------------------------------------------ capture_pass_output
+
+const char* const PREVIEW_MODES[] = {"color", "alpha", "depth", "r", "g", "b"};
+
+void capturePassOutputTool(const CallPtr& call){
+    const Json& args = call->args();
+    uint32_t tag = FRAME_TAG;
+    std::string viewName;
+    if (!resolveView(call, tag, viewName))
+        return;
+    const PassList list = SystemRender::getPassList(tag, false);
+    if (list.passes.empty()){
+        call->fail("The " + viewName + " view has not drawn in a recorded frame (is its tab shown?).");
+        return;
+    }
+    // the pass: an index in the frame, or a label (its first pass, or `occurrence`)
+    const PassRecord* pass = nullptr;
+    const Json& which = args["pass"];
+    if (which.is_number_integer()){
+        const long long index = which.get<long long>();
+        if (index >= 0 && index < (long long)list.passes.size())
+            pass = &list.passes[(size_t)index];
+    }else if (which.is_string()){
+        uint32_t wanted = args.value("occurrence", 0u);
+        for (const PassRecord& candidate : list.passes){
+            if (candidate.label == which.get<std::string>() && wanted-- == 0){
+                pass = &candidate;
+                break;
+            }
+        }
+    }
+    if (!pass){
+        std::string labels;
+        for (const PassRecord& candidate : list.passes)
+            labels += (labels.empty() ? "" : ", ") + std::to_string(candidate.index) + " " + candidate.label;
+        call->fail("No such pass in the " + viewName + " view's frame. Passes: " + labels + ".");
+        return;
+    }
+    uint32_t occurrence = 0;
+    for (const PassRecord& candidate : list.passes){
+        if (candidate.index < pass->index && std::strcmp(candidate.label, pass->label) == 0)
+            occurrence++;
+    }
+    const std::string attachmentName = args.value("attachment", std::string(pass->numColors == 0 && pass->depth.used ? "depth" : "color0"));
+    int attachment = -1;
+    if (attachmentName == "depth")
+        attachment = 4;
+    else if (attachmentName.size() == 6 && attachmentName.rfind("color", 0) == 0 && attachmentName[5] >= '0' && attachmentName[5] <= '3')
+        attachment = attachmentName[5] - '0';
+    if (attachment < 0){
+        call->fail("attachment must be color0..color3 or depth.");
+        return;
+    }
+    const std::string modeName = args.value("mode", std::string(attachment == 4 ? "depth" : "color"));
+    int mode = -1;
+    for (int m = 0; m < 6; m++){
+        if (modeName == PREVIEW_MODES[m])
+            mode = m;
+    }
+    if (mode < 0){
+        call->fail("mode must be color, alpha, depth, r, g or b.");
+        return;
+    }
+    const int maxWidth = std::clamp(args.value("max_width", 512), 16, 1024);
+    Json header = {{"view", viewName}, {"frame", list.frame}, {"pass", {{"index", pass->index}, {"label", pass->label}, {"occurrence", occurrence}}},
+                   {"attachment", attachmentName}, {"mode", modeName}};
+    // refused at once where it is known: the window, MSAA depth
+    if (pass->swapchain){
+        header["preview_unavailable"] = true;
+        header["reason"] = "swapchain pass: it draws into the window, which has no image to preview";
+        call->ok("Preview unavailable: " + header["reason"].get<std::string>() + ".", header);
+        return;
+    }
+
+    PassPreviewRequest request;
+    request.viewTag = tag;
+    request.label = pass->label;
+    request.occurrence = occurrence;
+    request.attachment = attachment;
+    request.mode = mode;
+    request.maxSize = 1024;
+    request.depthMin = 0.0f;
+    request.depthMax = 1.0f;
+    const uint64_t before = SystemRender::getPassPreview().serial;
+    SystemRender::requestPassPreview(request);
+    App& app = call->ctx().app();
+    app.requestContinuousFrames(1.0);
+    call->waitUntil([before, &app](){
+        app.requestContinuousFrames(1.0);
+        return SystemRender::getPassPreview().serial > before;
+    }, 8000, [call, header, mode, maxWidth](bool timedOut) mutable {
+        const PassPreviewResult result = SystemRender::getPassPreview();
+        if (timedOut){
+            SystemRender::cancelPassPreview();
+            call->fail("The pass did not draw again within 8 s (or its preview shader is still building).", header);
+            return;
+        }
+        if (result.unavailable){
+            header["preview_unavailable"] = true;
+            header["reason"] = result.reason;
+            call->ok("Preview unavailable: " + result.reason + ".", header);
+            return;
+        }
+        std::vector<uint8_t> rgba;
+        if (!GraphicUtils::readRenderPixels(SystemRender::getPassPreviewTarget(), result.width, result.height, rgba)){
+            call->fail("The preview could not be read back.", header);
+            return;
+        }
+        const size_t count = (size_t)result.width * result.height;
+        // depth: the exact range of what the pass wrote maps to black..white
+        if (mode == 2 && count){
+            uint8_t low = 255, high = 0;
+            for (size_t i = 0; i < count; i++){
+                low = std::min(low, rgba[i * 4]);
+                high = std::max(high, rgba[i * 4]);
+            }
+            header["depth_range_8bit"] = {low, high};
+            if (high > low){
+                for (size_t i = 0; i < count; i++){
+                    const uint8_t v = (uint8_t)((rgba[i * 4] - low) * 255 / (high - low));
+                    rgba[i * 4] = rgba[i * 4 + 1] = rgba[i * 4 + 2] = v;
+                }
+            }
+        }
+        std::vector<uint8_t> rgb(count * 3);
+        for (size_t i = 0; i < count; i++){
+            rgb[i * 3] = rgba[i * 4];
+            rgb[i * 3 + 1] = rgba[i * 4 + 1];
+            rgb[i * 3 + 2] = rgba[i * 4 + 2];
+        }
+        int width = result.width, height = result.height;
+        if (width > maxWidth){
+            const int scaledHeight = std::max(1, (int)((long long)height * maxWidth / width));
+            std::vector<uint8_t> scaled((size_t)maxWidth * scaledHeight * 3);
+            if (stbir_resize_uint8_srgb(rgb.data(), width, height, 0, scaled.data(), maxWidth, scaledHeight, 0, STBIR_RGB)){
+                rgb.swap(scaled);
+                width = maxWidth;
+                height = scaledHeight;
+            }
+        }
+        std::vector<uint8_t> png;
+        auto append = [](void* context, void* data, int size){
+            auto* bytes = static_cast<std::vector<uint8_t>*>(context);
+            bytes->insert(bytes->end(), static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
+        };
+        if (!stbi_write_png_to_func(append, &png, width, height, 3, rgb.data(), width * 3)){
+            call->fail("The preview could not be encoded.", header);
+            return;
+        }
+        header["width"] = width;
+        header["height"] = height;
+        header["source_width"] = result.sourceWidth;
+        header["source_height"] = result.sourceHeight;
+        header["format"] = result.format;
+        header["resolved"] = result.resolved;
+        header["preview_frame"] = result.frame;
+        ToolResult reply = ToolResult::success("Pass " + std::to_string(header["pass"]["index"].get<uint32_t>()) + " \"" +
+            header["pass"]["label"].get<std::string>() + "\" " + header["attachment"].get<std::string>() + " (" + result.format + ", " +
+            std::to_string(result.sourceWidth) + "x" + std::to_string(result.sourceHeight) + ") as " + header["mode"].get<std::string>() + ".", header);
+        ToolImage image;
+        image.data = Base64::encode(png.data(), png.size());
+        reply.images.push_back(std::move(image));
+        call->reply(std::move(reply));
+    });
+}
+
 // ------------------------------------------------------------------ get_vram_report
 
 void getVramReportTool(const CallPtr& call){
@@ -907,6 +1079,26 @@ void registerProfilerTools(McpRegistry& registry){
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = getVramReportTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "capture_pass_output";
+        tool.title = "Capture Pass Output";
+        tool.description =
+            "An image of what one pass of the frame wrote (get_gpu_passes lists them): pass index or label (+occurrence), an "
+            "attachment, mode color|alpha|depth (min-max normalised)|r|g|b. MSAA colour reads its resolve image; swapchain and "
+            "MSAA depth passes reply preview_unavailable with the reason.";
+        tool.inputSchema = object({
+            {"view", viewSchema()},
+            {"pass", Json{{"type", Json::array({"integer", "string"})}, {"description", "Index or label."}}},
+            {"occurrence", withDefault(integer("With a label: which of its passes.", 0, 4096), 0)},
+            {"attachment", stringEnum("Default color0 (depth when none).", {"color0", "color1", "color2", "color3", "depth"})},
+            {"mode", stringEnum("Default color (depth for depth).", {"color", "alpha", "depth", "r", "g", "b"})},
+            {"max_width", withDefault(integer("", 16, 1024), 512)}
+        }, {"pass"});
+        tool.annotations.readOnly = true;
+        tool.handler = capturePassOutputTool;
         registry.addTool(std::move(tool));
     }
     {

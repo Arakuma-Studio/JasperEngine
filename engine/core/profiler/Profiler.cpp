@@ -23,6 +23,7 @@
 #include <mutex>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 
 #if defined(_WIN32)
     #ifndef WIN32_LEAN_AND_MEAN
@@ -743,6 +744,20 @@ void profiler::recordGpuFrame(uint64_t frameIndex, uint32_t viewTag, uint64_t co
         if (it->index < frameIndex)
             break;
     }
+#if JASPERENGINE_TRACY
+    // Tracy: a plot per pass ("GPU/<label>"), no GPU zones; Tracy keeps the name pointers
+    if (gameFrame){
+        static std::unordered_set<std::string> plotNames;
+        for (size_t i = 0; i < count; i++){
+            if (!passes[i].valid)
+                continue;
+            const std::string& name = *plotNames.insert("GPU/" + passes[i].label).first;
+            TracyPlot(name.c_str(), passes[i].gpuMs);
+        }
+        if (frameValid)
+            TracyPlot("GPU frame ms", frameGpuMs);
+    }
+#endif
     for (auto& capture : s.captures){
         if (capture->info.loaded)
             continue;

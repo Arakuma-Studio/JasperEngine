@@ -14,6 +14,7 @@
 namespace jasperengine{
 
     class TextureRender;
+    class FramebufferRender;
 
     // what the device supports, queried once the render system is set up
     struct RenderFeatures {
@@ -87,6 +88,7 @@ namespace jasperengine{
         static void cancelPassPreview();
         static PassPreviewResult getPassPreview();
         static TextureRender* getPassPreviewTexture();
+        static FramebufferRender* getPassPreviewTarget();
 
         static void scheduleCleanup(void (*cleanupFunc)(void* cleanupData), void* cleanupData, int32_t numFramesToDefer = 0);
         static void addQueueCommand(void (*custom_cb)(void* custom_data), void* custom_data);

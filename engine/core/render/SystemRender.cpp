@@ -181,3 +181,7 @@ TextureRender* SystemRender::getPassPreviewTexture(){
 void SystemRender::setVulkanHostQueryReset(bool enabled){
     SokolSystem::setVulkanHostQueryReset(enabled);
 }
+
+FramebufferRender* SystemRender::getPassPreviewTarget(){
+    return SokolPassPreview::target();
+}

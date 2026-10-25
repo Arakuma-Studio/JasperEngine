@@ -23,6 +23,7 @@
 namespace jasperengine{
 
     class TextureRender;
+    class FramebufferRender;
 
     class SokolPassPreview{
     public:
@@ -32,6 +33,7 @@ namespace jasperengine{
         static PassPreviewResult result();
         // the preview target's colour (the editor shows it, MCP reads it back); null before the first
         static TextureRender* texture();
+        static FramebufferRender* target();
 
         // our pass-ending sites: right after sg_end_pass
         static void afterEndPass();

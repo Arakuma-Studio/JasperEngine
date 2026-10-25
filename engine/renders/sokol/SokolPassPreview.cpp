@@ -231,6 +231,11 @@ TextureRender* SokolPassPreview::texture(){
     return s.target.isCreated() ? &s.target.getColorTexture() : nullptr;
 }
 
+FramebufferRender* SokolPassPreview::target(){
+    State& s = state();
+    return s.target.isCreated() ? &s.target : nullptr;
+}
+
 void SokolPassPreview::afterEndPass(){
     State& s = state();
     if (!s.requested || s.blitting)

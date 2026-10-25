@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "profiler/Profile.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
 
@@ -3201,6 +3202,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
         target->destroy();
         target->setWidth((unsigned int)width);
         target->setHeight((unsigned int)height);
+        JE_GPU_ALLOC_SCOPE(RenderTargets, "Game view");
         target->create();
     }
 
