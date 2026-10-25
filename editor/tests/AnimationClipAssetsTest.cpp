@@ -20,12 +20,15 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
+#include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
+#include "command/type/CreatePrefabCmd.h"
 #include "command/type/CopyFileCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/RenameFileCmd.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimationClipPoolTesting.h"
+#include "Stream.h"
 #include "util/AssetDatabase.h"
 #include "util/Util.h"
 
@@ -782,4 +785,25 @@ TEST_F(AnimationClipAssets, ASavedSceneOpensWithARenamedClip) {
     std::string error;
     EXPECT_TRUE(AnimationClipPool::getOrLoad(project()->resolveAssetPath(player.clips[0].clip).string(), &error)) << error;
     opened->isModified = false;
+}
+
+// Reverting a prefab instance's override of its clips reloads the player (as a decode does)
+TEST_F(AnimationClipAssets, RevertingAClipOverrideReloadsThePlayer) {
+    const std::string dir = folder("revert");
+    PlayerScene scene = playerScene({entry(dir + "/a.anim")});
+    const uint32_t sceneId = scene.sceneProject->id;
+    CommandHandle::get(sceneId)->addCommandNoMerge(new CreatePrefabCmd(project(), sceneId, fs::path(dir) / "Hero.prefab",
+        Stream::encodeEntity(scene.entity, scene.sceneProject->scene, project(), scene.sceneProject)));
+    ASSERT_TRUE(project()->isPrefabInstanceRoot(sceneId, scene.entity));
+
+    for (const std::vector<std::string>& properties : {std::vector<std::string>{"clips"}, std::vector<std::string>{}}) {
+        scene.player().clips = {entry(dir + "/b.anim")};
+        ASSERT_TRUE(project()->recordPrefabEdit(sceneId, scene.entity, ComponentType::AnimationPlayerComponent, {"clips"}));
+        scene.player().needsLoad = false;
+        ASSERT_TRUE(project()->revertPropertyOverride(sceneId, scene.entity, ComponentType::AnimationPlayerComponent, properties));
+        ASSERT_EQ(scene.player().clips.size(), 1u);
+        EXPECT_EQ(scene.player().clips[0].clip, dir + "/a.anim");
+        EXPECT_TRUE(scene.player().needsLoad) << (properties.empty() ? "whole component" : "clips");
+    }
+    scene.sceneProject->isModified = false;
 }

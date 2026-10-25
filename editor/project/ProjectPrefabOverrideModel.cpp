@@ -559,6 +559,17 @@ bool editor::Project::revertPropertyOverride(uint32_t sceneId, Entity entity, Co
         copyProperties(source, scene, entity, type, names, ref.path.string());
     }
     Catalog::updateEntity(scene, entity, Catalog::getComponentStructuralUpdateFlags(type));
+    // a reverted clip list or pose animation loads again, as a decode does (the whole-component
+    // copy also brings the prefab's own runtime flags)
+    if (type == ComponentType::AnimationPlayerComponent) {
+        if (AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity)) {
+            player->needsLoad = true;
+        }
+    } else if (type == ComponentType::PoseAnimatorComponent) {
+        if (PoseAnimatorComponent* animator = scene->findComponent<PoseAnimatorComponent>(entity)) {
+            animator->needsLoad = true;
+        }
+    }
     clearPropertyOverride(sceneId, entity, type, whole ? std::vector<std::string>{} : properties);
     if (CameraTextureLink::isLinkSourceType(type)) {
         CameraTextureLink::resolve(scene);
