@@ -276,6 +276,9 @@ editor::SceneRender3D::~SceneRender3D(){
     // the pose overlays and ghosts first: they live in this scene and the tools layer
     poseViewport.reset();
 
+    // a gizmo the scene destroyed is not deleted through an id that may be another entity's now
+    dropGoneGizmos();
+
     delete lines;
     delete selLines;
 
@@ -1715,6 +1718,21 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
 
     // Draw central direction line
     lo.lines->addLine(position, endPos, Vector4(0.8, 0.8, 0.8, 1.0));
+}
+
+void editor::SceneRender3D::dropGoneGizmos(){
+    SceneRender::dropGoneGizmos();
+
+    dropGoneGizmos(lightObjects, &LightObjects::icon, &LightObjects::lines);
+    dropGoneGizmos(cameraObjects, &CameraObjects::icon, &CameraObjects::lines);
+    dropGoneGizmos(soundObjects, &SoundObjects::icon);
+    dropGoneGizmos(bodyObjects, &BodyObjects::lines);
+    dropGoneGizmos(jointLines);
+    dropGoneGizmos(boneLines);
+    dropGoneGizmos(linePointLines);
+    dropGoneGizmos(polygonPointLines);
+    dropGoneGizmos(trackLines);
+    dropGoneGizmos(reflectionProbeLines);
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
