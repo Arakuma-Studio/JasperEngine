@@ -6,6 +6,7 @@
 // .jetrace.json round trip, monitors and the always-on frame-time ring.
 
 #include "jobs/JobSystem.h"
+#include "profiler/EngineProfiling.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
 
@@ -17,6 +18,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -310,6 +312,29 @@ TEST(FrameTimes, RingKeepsTheNewestFrames){
     FrameTimes::setGpuMs(newest.frame, 1.5, true);
     EXPECT_FLOAT_EQ(FrameTimes::latest().gpuMs, 1.5f);
     EXPECT_TRUE(FrameTimes::latest().flags & FrameTimes::FLAG_GPU_SUM);
+}
+
+TEST_F(Profiler, CommandLineCaptureWritesItsFile){
+    // a development game's --profile-capture (R38): armed once the scenes are loaded, written
+    // when its frames are in
+    profiler::setEnabled(false);
+    test::TempDir dir;
+    const std::string path = (dir.path() / "cli.jetrace.json").string();
+    profiler::engineInit({"game", "--profile-capture=" + path, "--profile-frames", "3"});
+    for (int frame = 0; frame < 4; frame++){
+        nextFrame();
+        profiler::engineFrameEnd(false);   // loading: nothing yet
+    }
+    EXPECT_FALSE(std::filesystem::exists(path));
+    for (int frame = 0; frame < 20 && !std::filesystem::exists(path); frame++){
+        {
+            JE_PROFILE_SCOPE("TestCli");
+        }
+        nextFrame();
+        profiler::engineFrameEnd(true);
+    }
+    profiler::engineShutdown();
+    EXPECT_TRUE(std::filesystem::exists(path)) << "after 20 loaded frames";
 }
 
 TEST(ProfilerBench, ScopePair){

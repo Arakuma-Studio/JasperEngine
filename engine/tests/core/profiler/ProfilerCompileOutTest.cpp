@@ -16,11 +16,11 @@
 
 namespace {
     int sideEffects = 0;
-    const char* touch(){
+    [[maybe_unused]] const char* touch(){
         sideEffects++;
         return "touched";
     }
-    double touchValue(){
+    [[maybe_unused]] double touchValue(){
         sideEffects++;
         return 1.0;
     }

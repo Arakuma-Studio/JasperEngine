@@ -269,6 +269,7 @@ void profiler::engineFrameEnd(bool scenesLoaded){
         if (cliCapture){
             SystemRender::acquireGpuTiming();
             setGpuSemantics(SystemRender::getGpuTimingState().semantics);
+            Log::print("Profiler capture started: %u frames for %s", commandLine.captureFrames, commandLine.capturePath.c_str());
         }
         return;
     }
