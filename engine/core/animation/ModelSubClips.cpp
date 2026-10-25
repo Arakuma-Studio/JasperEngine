@@ -358,18 +358,25 @@ namespace{
         // stat'ed without the lock
         if (cached && stampsCurrent(cachedFiles)) return read(*cached);
 
-        // parsed without the lock (other files' reads go on meanwhile); stamped before parsing, so
-        // a write during the parse is seen next time
+        // parsed without the lock (other files' reads go on meanwhile). The main file is stamped
+        // before parsing, so a write during the parse is seen next time; the external buffers are
+        // known only from the parse: one written since the parse started (its time not before the
+        // start, also within a coarse timestamp's tick) keeps this parse out of the cache.
         const std::string mainFile = parsedFile(modelPath);
         FileStamps files = {{mainFile, fileStamp(mainFile)}};
+        const std::filesystem::file_time_type parseStart = std::filesystem::file_time_type::clock::now();
         std::shared_ptr<tinygltf::Model> parsed = std::make_shared<tinygltf::Model>();
         std::string parseError;
         const bool ok = MeshSystem::parseGLTFFile(modelPath, *parsed, &parseError);
+        bool cacheable = ok;
         if (ok){
             const std::filesystem::path folder = std::filesystem::path(mainFile).parent_path();
             for (const tinygltf::Buffer& buffer : parsed->buffers){
                 if (buffer.uri.empty() || buffer.uri.rfind("data:", 0) == 0 || buffer.uri.find('%') != std::string::npos) continue;
                 const std::string file = (folder / std::filesystem::u8path(buffer.uri)).lexically_normal().generic_string();
+                std::error_code ec;
+                const std::filesystem::file_time_type written = std::filesystem::last_write_time(file, ec);
+                if (!ec && written >= parseStart) cacheable = false;
                 files.push_back({file, fileStamp(file)});
             }
             trimToAnimations(*parsed);
@@ -377,7 +384,7 @@ namespace{
         {
             std::lock_guard<std::mutex> lock(cache.mutex);
             cache.parses++;
-            if (ok && cache.epoch == epoch){
+            if (cacheable && cache.epoch == epoch){
                 cache.key = key;
                 cache.files = std::move(files);
                 cache.model = parsed;

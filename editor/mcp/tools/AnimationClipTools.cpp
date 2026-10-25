@@ -339,10 +339,13 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
     Json missing = Json::array();
     Json ambiguous = Json::array();
     std::string fileText;
+    bool fileRead = false;
     std::set<std::pair<std::string, ClipChannel>> taken;
     if (clip && clip->data) {
         std::ifstream in(clip->file, std::ios::binary);
-        fileText.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        fileRead = in.good();
+        if (fileRead) fileText.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        fileRead = fileRead && !in.bad() && !fileText.empty();
         for (const ClipTrackData& track : clip->data->tracks) taken.insert({track.path, track.channel});
     }
     bool notCanonical = false;
@@ -405,6 +408,9 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
         out["fix_with"] = "write_file {path: <clip>, edits: [missing[i].fix, ...]} renames those paths to their fix_path, keys and tangents "
                           "kept; the fix targets differ from each other and from the clip's tracks, so they apply together (check each "
                           "fix_path is the bone you mean; every user of the clip changes: copy it first with move_asset {copy: true})";
+    } else if (notCanonical && !fileRead) {
+        out["fix_with"] = "no fix: could not read the clip file; rename the paths with edit_animation (the old track's keys under the new "
+                          "path, keys: [] under the old one)";
     } else if (notCanonical) {
         out["fix_with"] = "no fix: the file is not in the editor's canonical layout (written by hand); rename the paths with edit_animation "
                           "(the old track's keys under the new path, keys: [] under the old one), which also rewrites the file canonically";
