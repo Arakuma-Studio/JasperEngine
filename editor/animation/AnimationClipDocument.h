@@ -112,6 +112,10 @@ namespace jasperengine::editor{
         // Called after a WriteFilesCmd of a document ran, was undone or redone (the MCP server
         // sets it to its file sync: asset database, Project window, McpAutoSync stamps)
         static void setFilesWrittenHook(std::function<void(const std::vector<std::filesystem::path>&)> hook);
+        // What a document's WriteFilesCmd does after it ran, was undone or redone, for another
+        // command that writes .anim files (CreateClipCmd, T2d): the asset database learns the
+        // files (registered, or cleaned when gone), filesChanged, then the files-written hook
+        static void filesWritten(Project* project, const std::vector<std::filesystem::path>& paths);
 
         // The text commit() would write for `data` (normalized, canonical)
         static std::string fileText(const ClipData& data);

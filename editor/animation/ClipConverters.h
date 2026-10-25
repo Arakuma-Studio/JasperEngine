@@ -25,6 +25,7 @@
 #include "ecs/Entity.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -77,6 +78,18 @@ namespace jasperengine::editor{
         // the last key; `loop` gives wrap loop
         static bool bakeChannels(Scene* scene, Entity root, const std::vector<BakedChannel>& channels, float length, bool loop,
                                  ClipData& out, std::string* error);
+
+        // The path a clip binds `entity` by when `root` plays it (R3: from the actual entities).
+        // Parts of a model in the legacy layout get their node-hierarchy path (the layout an
+        // Animation Player reloads such a model in: anim::modelNodePaths). False when `entity` is
+        // not `root` or under it, or a name on the way can't be addressed.
+        static bool clipPath(Scene* scene, Entity root, Entity entity, std::string& out);
+
+        // The Animation Player entry of a clip: `clip` a .anim path (absolute, project- or
+        // asset-relative) or "<model>#<clip>"; .anim entries carry the file's GUID (when known)
+        static AnimationPlayerClip playerEntry(Project* project, const std::string& clip);
+        // the clip entry form of a file: asset-relative, '/' separated
+        static std::string assetRelative(Project* project, const std::filesystem::path& path);
 
         // A free .anim path in `directory` (project-relative) for `stem` ("Walk.anim", "Walk 2.anim"...)
         static std::string uniqueClipPath(Project* project, const std::string& directory, const std::string& stem);

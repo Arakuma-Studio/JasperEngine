@@ -537,3 +537,7 @@ clip test files, then merge to pose-animation/main.
   to another state, or `stop`), at which point it is removed and rewound. So `onFinish → crossFade("idle")` blends from
   the end pose with no dip toward rest, and with nothing else playing the last pose stays (Unity keeps the pose).
   `play(name)` of a held state restarts it from 0; `stop(name)` releases it immediately (pose kept, nothing written).
+- **R5b Undo routing (coordinator decision after the T3a review, I1):** Ctrl+Z / Ctrl+Y go to the project history only
+  when the newest undoable step across the scene and project histories is a clip commit made by the Animation window or
+  Record (tracked by the controller with each history's position), whatever window has focus; otherwise they go where
+  they always went. Record mode never steals a scene undo.
