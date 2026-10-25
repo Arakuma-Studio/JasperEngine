@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -329,7 +330,9 @@ namespace {
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         bool cancelled = true;
         for (const auto& run : runs) cancelled = cancelled && run->finished() && run->result().status == ts::Status::Cancelled;
-        std::exit(stopped && seconds < 2.0 && cancelled && finished == 0 ? 0 : 1);
+        // _Exit: the answer is the exit code; the engine S02's TestMain runs (and the editor's
+        // static App) are not torn down, which LeakSanitizer at exit() would report as leaks
+        std::_Exit(stopped && seconds < 2.0 && cancelled && finished == 0 ? 0 : 1);
     }
 
 }
