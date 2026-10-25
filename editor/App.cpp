@@ -3,6 +3,9 @@
 
 #include "App.h"
 #include "util/NumericExpression.h"
+#include "util/EditorFingerprint.h"
+#include "util/ScriptReloadService.h"
+#include "util/ScriptStatus.h"
 #include "asset/AssetRefEditor.h"
 #include "util/Scheduler.h"
 
@@ -1784,6 +1787,11 @@ void editor::App::setup() {
 
     // math in every numeric field (2*1.5, 25cm, +=10): libs/imgui/JASPER_PATCHES.md
     NumericExpression::installImGuiHook();
+    // scripts: the compile status the toolbar badge shows, the reload of what is saved while
+    // a scene plays, and the toolchain the C++ script libraries must match (S23)
+    ScriptStatus::get().followBuilds();
+    ScriptReloadService::get().attach(&project);
+    checkEditorEngineFingerprint();
 
     // Persist the docking layout next to settings.yaml at a stable absolute
     // path, so it survives restarts regardless of the working directory or
@@ -2721,6 +2729,8 @@ void editor::App::pollExternalChanges(){
     reloads.setPaused(mcp::McpAutoSync::get().writingCallInFlight());
     bool wake = FileWatchService::get().pump(PUMP_BUDGET_MS);
     wake = reloads.update() || wake;
+    wake = ScriptStatus::get().update() || wake;
+    wake = ScriptReloadService::get().busy() || wake;
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
     // the asset database's walk a watcher batch started (S04 refresh, no poll)
     project.updateAssetScan();
@@ -2769,6 +2779,9 @@ void editor::App::engineRender(){
 
 
     processMainThreadTasks();
+    // scripts saved while a scene plays swap in here, at the frame boundary (no Lua runs now)
+    ScriptStatus::get().update();
+    ScriptReloadService::get().update();
     project.updateGeneratedSources();
     // Prefab Mode's Auto Save waits for the edit in progress (a drag, a field being typed)
     project.updatePrefabStages(ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsAnyItemActive()

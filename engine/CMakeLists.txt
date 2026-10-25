@@ -1204,7 +1204,8 @@ set(RENDER_SOKOL_SRC
 # editor's version string, on this one file only so a new commit does not rebuild the engine
 if(DEFINED JASPERENGINE_EDITOR_VERSION)
     set_source_files_properties(core/script/ToolchainFingerprint.cpp PROPERTIES
-        COMPILE_DEFINITIONS "JASPERENGINE_ABI_VERSION=\"${JASPERENGINE_EDITOR_VERSION}\"")
+        COMPILE_DEFINITIONS "JASPERENGINE_ABI_VERSION=\"${JASPERENGINE_EDITOR_VERSION}\""
+        SKIP_UNITY_BUILD_INCLUSION ON)
 endif()
 
 add_library(

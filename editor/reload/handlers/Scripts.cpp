@@ -3,8 +3,8 @@
 //
 // Scripts (S05 R11): in edit mode the script properties of every GameObject using a changed
 // script are parsed again, Lua is syntax-checked and lua-language-server's stubs are written.
-// While a scene plays, a Lua change goes to S23's hook when one is registered; otherwise it
-// waits for Play to stop (Play restores the scene from a snapshot). A C++ change marks the
+// While a scene plays, a script change goes to S23's hook (ScriptReloadService), which reloads
+// it during Play or leaves it for Play to stop (Play restores the scene from a snapshot). A C++ change marks the
 // scripts as needing a build, as before. Open code editor buffers follow the disk.
 
 #include "ReloadHandlers.h"
@@ -84,10 +84,11 @@ void reload::reloadScripts(Context& ctx, const std::vector<fs::path>& filesIn, b
 
     std::set<fs::path> checkedLua;
     if (ctx.playing) {
-        // Lua: S23's hook takes it now, else it waits for Play to stop; C++ waits for the build
+        // S23's hook takes a Lua change now (a C++ one too when C++ reload is on), else it
+        // waits for Play to stop; C++ otherwise waits for the next Play's build
         std::vector<fs::path> waiting;
         for (const fs::path& path : changed) {
-            if (Util::isLuaFile(watch::pathToUtf8(path)) && ctx.service.handleScriptInPlay(path)) {
+            if (ctx.service.handleScriptInPlay(path)) {
                 ctx.service.recordDone("script", path, 0.0);
                 continue;
             }

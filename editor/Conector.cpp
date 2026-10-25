@@ -5,6 +5,8 @@
 #include "Conector.h"
 
 #include "editor/Out.h"
+#include "util/EditorFingerprint.h"
+#include "util/ScriptStatus.h"
 
 #include <iostream>
 #include <chrono>
@@ -21,7 +23,6 @@
 using namespace jasperengine;
 
 editor::Conector::Conector(){
-    libHandle = nullptr;
 }
 
 editor::Conector::~Conector(){
@@ -58,8 +59,24 @@ void editor::Conector::unloadSharedLibrary(void* libHandle) {
     std::cout << "Library unloaded successfully.\n";
 }
 
-bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
-    disconnect();
+void* editor::Conector::findSymbol(void* handle, const char* name) const {
+    if (!handle) return nullptr;
+    #ifdef _WIN32
+        return reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(handle), name));
+    #else
+        dlerror();
+        void* found = dlsym(handle, name);
+        dlerror();
+        return found;
+    #endif
+}
+
+void* editor::Conector::symbol(size_t generation, const char* name) const {
+    return generation < libraries.size() ? findSymbol(libraries[generation].handle, name) : nullptr;
+}
+
+bool editor::Conector::loadGeneration(const fs::path& buildPath, const std::string& libName, Library& out){
+    lastCheck = LoadCheck();
 
     #ifdef _WIN32
         const std::string ext = ".dll";
@@ -72,8 +89,26 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
 
     fs::path fullLibPath = buildPath / fs::path(libPath);
     if (!fs::exists(fullLibPath)) {
-        Out::error("Library file not found: %s", libPath.c_str());
+        lastCheck.message = "Library file not found: " + libPath;
+        Out::error("%s", lastCheck.message.c_str());
         return false;
+    }
+
+    // The toolchain fingerprint, read from the file before anything of it runs (a mismatched
+    // library's static initializers would already crash in dlopen)
+    const ToolchainFingerprint& host = editorToolchainFingerprint();
+    const ScriptLibraryCheck before = checkScriptLibrary(fullLibPath, host);
+    lastCheck.mismatches = before.mismatches;
+    ScriptStatus::get().setFingerprint(before.ok, before.mismatches);
+    if (!before.ok) {
+        lastCheck.refused = true;
+        lastCheck.message = before.message;
+        Out::error("%s", before.message.c_str());
+        return false;
+    }
+    if (!before.message.empty()) {
+        lastCheck.message = before.message;
+        Out::warning("%s", before.message.c_str());
     }
 
     // Load a freshly-named COPY of the built library rather than the build
@@ -106,9 +141,12 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
         std::error_code dirEc;
         fs::create_directories(dir, dirEc);
 
-        // Best-effort sweep of copies left behind by previous sessions/crashes.
-        // Still-mapped files fail to remove and are simply skipped.
+        // Best-effort sweep of copies left behind by previous sessions/crashes. Copies this
+        // Play still has mapped (earlier generations) stay.
         for (const auto& entry : fs::directory_iterator(dir, dirEc)) {
+            bool inUse = false;
+            for (const Library& library : libraries) inUse = inUse || library.copy == entry.path();
+            if (inUse) continue;
             std::error_code rmEc;
             fs::remove(entry.path(), rmEc);
         }
@@ -124,127 +162,150 @@ bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
     }
 
     if (copyPath.empty()) {
-        Out::error("Failed to stage a loadable copy of the script library; aborting to avoid running stale code");
+        lastCheck.message = "Failed to stage a loadable copy of the script library; aborting to avoid running stale code";
+        Out::error("%s", lastCheck.message.c_str());
         return false;
     }
 
-    libHandle = loadSharedLibrary(copyPath.string());
-    if (!libHandle) {
+    void* handle = loadSharedLibrary(copyPath.string());
+    if (!handle) {
         std::error_code rmEc;
         fs::remove(copyPath, rmEc);
+        lastCheck.message = "Failed to load the script library " + copyPath.filename().string();
         return false;
     }
 
-    loadedLibCopy = copyPath;
+    // ...and the export, compared after loading: both must match
+    using FingerprintFn = const ToolchainFingerprint* (*)();
+    auto exported = reinterpret_cast<FingerprintFn>(findSymbol(handle, "jasper_scriptToolchainFingerprint"));
+    const ToolchainFingerprint* libraryFingerprint = exported ? exported() : nullptr;
+    ScriptLibraryCheck after;
+    if (!libraryFingerprint) {
+        after.ok = false;
+        after.message = "Refused script library: it exports no toolchain fingerprint (jasper_scriptToolchainFingerprint), rebuild it";
+    } else {
+        after = checkFingerprint(*libraryFingerprint, host);
+    }
+    if (!after.ok) {
+        unloadSharedLibrary(handle);
+        std::error_code rmEc;
+        fs::remove(copyPath, rmEc);
+        lastCheck.refused = true;
+        lastCheck.message = after.message;
+        lastCheck.mismatches = after.mismatches;
+        ScriptStatus::get().setFingerprint(false, after.mismatches);
+        Out::error("%s", after.message.c_str());
+        return false;
+    }
+
+    out.handle = handle;
+    out.copy = copyPath;
+    lastCheck.ok = true;
+    return true;
+}
+
+bool editor::Conector::connect(const fs::path& buildPath, std::string libName){
+    disconnect();
+    Library library;
+    if (!loadGeneration(buildPath, libName, library)) {
+        if (lastCheck.refused) ScriptStatus::get().setCpp(CppScriptState::Refused, {}, lastCheck.message);
+        return false;
+    }
+    libraries.push_back(library);
+    current = 0;
+    makeLatestCurrent();
+    Out::info("Successfully connected to library");
+    return true;
+}
+
+bool editor::Conector::connectNext(const fs::path& buildPath, const std::string& libName){
+    if (libraries.empty()) return connect(buildPath, libName);
+    if (libraries.size() >= MAX_GENERATIONS) {
+        lastCheck = LoadCheck();
+        lastCheck.message = "This Play has loaded " + std::to_string(MAX_GENERATIONS) + " script libraries: stop Play to reload again";
+        return false;
+    }
+    Library library;
+    if (!loadGeneration(buildPath, libName, library)) return false;
+    libraries.push_back(library);
+    return true;
+}
+
+void editor::Conector::makeLatestCurrent(){
+    if (libraries.empty()) return;
+    current = libraries.size() - 1;
+    void* handle = libraries[current].handle;
 
     // GameObjects a script instantiates or destroys start and stop their C++ scripts
     // through these (generated with initScripts)
     using EntityScriptsFunc = ObjectManager::ScriptHook;
-    #ifdef _WIN32
-        EntityScriptsFunc initEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(GetProcAddress(static_cast<HMODULE>(libHandle), "initEntityScripts"));
-        EntityScriptsFunc cleanupEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(GetProcAddress(static_cast<HMODULE>(libHandle), "cleanupEntityScripts"));
-    #else
-        EntityScriptsFunc initEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(dlsym(libHandle, "initEntityScripts"));
-        EntityScriptsFunc cleanupEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(dlsym(libHandle, "cleanupEntityScripts"));
-        dlerror();
-    #endif
+    EntityScriptsFunc initEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(findSymbol(handle, "initEntityScripts"));
+    EntityScriptsFunc cleanupEntityScriptsFn = reinterpret_cast<EntityScriptsFunc>(findSymbol(handle, "cleanupEntityScripts"));
     if (!initEntityScriptsFn || !cleanupEntityScriptsFn) {
         Out::warning("The script library has no initEntityScripts/cleanupEntityScripts: C++ scripts of instantiated GameObjects will not run");
     }
     ObjectManager::setCppScriptHooks(initEntityScriptsFn, cleanupEntityScriptsFn);
-
-    Out::info("Successfully connected to library");
-    return true;
 }
 
 void editor::Conector::disconnect(){
     // the code behind them goes with the library
     ObjectManager::setCppScriptHooks(nullptr, nullptr);
 
-    if (libHandle) {
-        unloadSharedLibrary(libHandle);
-        libHandle = nullptr;
-
-        Out::info("Disconnected from library successfully");
-    }
-
-    if (!loadedLibCopy.empty()) {
+    // every generation of this Play, newest first
+    for (auto it = libraries.rbegin(); it != libraries.rend(); ++it) {
+        unloadSharedLibrary(it->handle);
         // Safe to unlink even if the OS kept the library mapped: on POSIX the
         // inode outlives the directory entry, and on Windows this is best-effort.
         std::error_code ec;
-        fs::remove(loadedLibCopy, ec);
-        loadedLibCopy.clear();
+        fs::remove(it->copy, ec);
     }
+    if (!libraries.empty()) Out::info("Disconnected from library successfully");
+    libraries.clear();
+    current = 0;
 }
 
 void editor::Conector::init(Scene* scene){
-    if (!libHandle) {
+    if (libraries.empty()) {
         Out::error("Cannot execute: Not connected to library");
         return;
     }
 
     using InitScriptsFunc = void (*)(Scene*);
-    #ifdef _WIN32
-        InitScriptsFunc initScriptsFn = reinterpret_cast<InitScriptsFunc>(GetProcAddress(static_cast<HMODULE>(libHandle), "initScripts"));
-        if (!initScriptsFn) {
-            Out::error("Failed to find function 'initScripts' in the library (Error code: %lu)", GetLastError());
-        }
-    #else
-        dlerror(); // clear any existing error
-        InitScriptsFunc initScriptsFn = reinterpret_cast<InitScriptsFunc>(dlsym(libHandle, "initScripts"));
-        const char* err = dlerror();
-        if (err) {
-            Out::error("Failed to find function 'initScripts' in the library (Error: %s)", err);
-            initScriptsFn = nullptr;
-        }
-    #endif
-
-    if (initScriptsFn) {
-        try {
-            initScriptsFn(scene);
-        } catch (const std::exception& e) {
-            Out::error("Exception in initScripts(): %s", e.what());
-        } catch (...) {
-            Out::error("Unknown exception in initScripts()");
-        }
+    InitScriptsFunc initScriptsFn = reinterpret_cast<InitScriptsFunc>(findSymbol(libraries[current].handle, "initScripts"));
+    if (!initScriptsFn) {
+        Out::error("Failed to find function 'initScripts' in the library");
+        return;
+    }
+    try {
+        initScriptsFn(scene);
+    } catch (const std::exception& e) {
+        Out::error("Exception in initScripts(): %s", e.what());
+    } catch (...) {
+        Out::error("Unknown exception in initScripts()");
     }
 }
 
 void editor::Conector::cleanup(Scene* scene){
-    if (!libHandle) {
+    if (libraries.empty()) {
         Out::error("Cannot cleanup: Not connected to library");
         return;
     }
 
     using CleanupScriptsFunc = void (*)(Scene*);
-    #ifdef _WIN32
-        CleanupScriptsFunc cleanupScriptsFn = reinterpret_cast<CleanupScriptsFunc>(GetProcAddress(static_cast<HMODULE>(libHandle), "cleanupScripts"));
-        if (!cleanupScriptsFn) {
-            Out::error("Failed to find function 'cleanupScripts' in the library (Error code: %lu)", GetLastError());
-        }
-    #else
-        dlerror(); // clear any existing error
-        CleanupScriptsFunc cleanupScriptsFn = reinterpret_cast<CleanupScriptsFunc>(dlsym(libHandle, "cleanupScripts"));
-        const char* err = dlerror();
-        if (err) {
-            Out::error("Failed to find function 'cleanupScripts' in the library (Error: %s)", err);
-            cleanupScriptsFn = nullptr;
-        }
-    #endif
-
-    if (cleanupScriptsFn) {
-        try {
-            cleanupScriptsFn(scene);
-        } catch (const std::exception& e) {
-            Out::error("Exception in cleanupScripts(): %s", e.what());
-        } catch (...) {
-            Out::error("Unknown exception in cleanupScripts()");
-        }
-    } else {
+    CleanupScriptsFunc cleanupScriptsFn = reinterpret_cast<CleanupScriptsFunc>(findSymbol(libraries[current].handle, "cleanupScripts"));
+    if (!cleanupScriptsFn) {
         Out::warning("Cleanup function not found in library");
+        return;
+    }
+    try {
+        cleanupScriptsFn(scene);
+    } catch (const std::exception& e) {
+        Out::error("Exception in cleanupScripts(): %s", e.what());
+    } catch (...) {
+        Out::error("Unknown exception in cleanupScripts()");
     }
 }
 
 bool editor::Conector::isLibraryConnected() const {
-    return libHandle != nullptr;
+    return !libraries.empty();
 }

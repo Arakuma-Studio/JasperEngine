@@ -680,10 +680,14 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/asset/TextReferences.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
+    ${EDITOR_DIR}/util/EditorFingerprint.cpp
+    ${EDITOR_DIR}/util/ExternalCodeEditor.cpp
     ${EDITOR_DIR}/util/NumericExpression.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
+    ${EDITOR_DIR}/util/ScriptReloadService.cpp
+    ${EDITOR_DIR}/util/ScriptStatus.cpp
     ${EDITOR_DIR}/util/SourceLocation.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
@@ -845,6 +849,12 @@ endif()
 if(WIN32)
     list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/util/MsBuildProgress.cpp)
 endif()
+
+# The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
+# editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)
+set_source_files_properties(${EDITOR_DIR}/util/EditorFingerprint.cpp PROPERTIES
+    COMPILE_DEFINITIONS "JASPERENGINE_ABI_VERSION=\"${JASPERENGINE_EDITOR_VERSION}\""
+    SKIP_UNITY_BUILD_INCLUSION ON)
 
 # Unity build: these sources keep generic file-local helpers (lower, trim, Target, sceneArg, ...) in
 # anonymous namespaces, one helper set per file, so they never share a unity unit

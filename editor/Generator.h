@@ -7,6 +7,7 @@
 #include <functional>
 #include <string>
 #include <filesystem>
+#include "util/Signal.h"
 #include <vector>
 #include <atomic>
 #include <mutex>
@@ -131,9 +132,41 @@ namespace jasperengine::editor {
         LayerCollisionRows layerCollisionMatrix2D = allLayersCollide();
     };
 
+    // A script build's state, published by every Generator (Play, compile_scripts, C++ reload,
+    // the C++ editor scripts) through Generator::buildEvents(), from the build's thread
+    struct ScriptBuildEvent {
+        enum class Kind { Started, Progress, Finished };
+        Kind kind = Kind::Started;
+        std::string row;                     // "cpp" (the scripts) or "editor" (C++ editor scripts)
+        float fraction = -1.0f;              // Progress: 0..1, -1 unknown
+        bool success = false;                // Finished
+        bool cancelled = false;
+        double seconds = 0.0;
+        fs::path projectPath;
+        std::vector<std::string> output;     // Finished: the build's lines (diagnostics are read from them)
+    };
+
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
     private:
+        // what the build's events name (setStatusRow)
+        std::string statusRow = "cpp";
+        // the arguments of the last writeSourceFiles, for rewriteScriptSources
+        struct SourceFileArgs {
+            bool valid = false;
+            fs::path projectPath, projectInternalPath, assetsPath, luaPath;
+            std::string libName;
+            std::vector<SceneScriptSource> scriptFiles;
+            std::vector<SceneBuildInfo> scenes;
+            std::vector<PrefabSceneInfo> prefabs;
+            bool vsyncEnabled = true;
+            WindowSettings windowSettings;
+            std::vector<fs::path> scriptDirs;
+            int cxxStandard = 20;
+        };
+        SourceFileArgs lastSourceArgs;
+        // the script sources' toolchain fingerprint (S23 R15): the marker and the export
+        static std::string scriptFingerprintSource();
         // the build on the process channel, or one running inline in a channel job
         jobs::Task<void> buildTask;
         std::atomic<int> inlineBuilds{0};
@@ -229,6 +262,19 @@ namespace jasperengine::editor {
         // Requests cancellation without blocking: the running process is terminated, a build
         // not started yet never runs. waitForBuildToComplete() then returns once it ended.
         void cancelBuild();
+
+        // The script builds' events (any thread; ScriptStatus subscribes)
+        static ThreadSafeSignal<const ScriptBuildEvent&>& buildEvents();
+        // "cpp" (default) or "editor": the status row this generator's builds update
+        void setStatusRow(const std::string& row) { statusRow = row; }
+        // A C++ reload during Play (S23 R10): the init/cleanup script sources and SCRIPT_SOURCES
+        // written again for these scripts (their classes or DPROPERTYs changed), everything
+        // else as the last configure() wrote it. False before any configure().
+        bool rewriteScriptSources(const std::vector<SceneScriptSource>& scriptFiles);
+        // The script sources of the last configure() (what the loaded library was built from)
+        const std::vector<SceneScriptSource>& lastScriptSources() const { return lastSourceArgs.scriptFiles; }
+        // A build output line's progress: "[12/50]" (Ninja), "[ 45%]" (Make); false otherwise
+        static bool parseBuildProgress(const std::string& line, float& fraction);
     };
 }
 
