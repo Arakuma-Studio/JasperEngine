@@ -297,19 +297,23 @@ namespace jasperengine::editor{
         // gizmos the Scene view first drew while playing as made by the game): hiding or
         // updating it throws, and its id may already be another entity's. An overlay of this
         // scene that is no longer marked as one is gone too (the mark goes with its entity).
-        bool isGizmoGone(const EntityHandle* gizmo) const;
+        // render: this scene's RenderSystem (the overlay marks)
+        bool isGizmoGone(const EntityHandle* gizmo, const RenderSystem& render) const;
         // Deletes a gizmo; a gone one without touching the scene (it no longer owns its entity)
-        void deleteGizmo(EntityHandle* gizmo) const;
+        void deleteGizmo(EntityHandle* gizmo, const RenderSystem& render) const;
         // Every per-entity gizmo whose own entity is gone is forgotten (update() makes it again
         // while what it annotates is there), so no pass touches it: run before the gizmo maps
-        // are used (update, hideAllGizmos, the destructors)
+        // are used (update, hideAllGizmos, the destructors). The views' single gizmos (selection,
+        // terrain brush, physics, grid, tile and document lines, the editor camera) are not
+        // swept: they are made with the view, before any Play, so the Play snapshot lists them as
+        // alive before Play and Stop never destroys them, and nothing else destroys them.
         virtual void dropGoneGizmos();
 
         template<typename T>
-        void dropGoneGizmos(std::map<Entity, T*>& gizmos){
+        void dropGoneGizmos(std::map<Entity, T*>& gizmos, const RenderSystem& render){
             for (auto it = gizmos.begin(); it != gizmos.end();){
-                if (isGizmoGone(it->second)){
-                    deleteGizmo(it->second);
+                if (isGizmoGone(it->second, render)){
+                    deleteGizmo(it->second, render);
                     it = gizmos.erase(it);
                 }else{
                     ++it;
@@ -319,11 +323,11 @@ namespace jasperengine::editor{
 
         // gizmos made of several objects (icon and lines): one gone drops them all
         template<typename V, typename... Parts>
-        void dropGoneGizmos(std::map<Entity, V>& gizmos, Parts... parts){
+        void dropGoneGizmos(std::map<Entity, V>& gizmos, const RenderSystem& render, Parts... parts){
             for (auto it = gizmos.begin(); it != gizmos.end();){
                 V& gizmo = it->second;
-                if ((isGizmoGone(gizmo.*parts) || ...)){
-                    (deleteGizmo(gizmo.*parts), ...);
+                if ((isGizmoGone(gizmo.*parts, render) || ...)){
+                    (deleteGizmo(gizmo.*parts, render), ...);
                     it = gizmos.erase(it);
                 }else{
                     ++it;

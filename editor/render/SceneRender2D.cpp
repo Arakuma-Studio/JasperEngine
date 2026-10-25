@@ -751,17 +751,18 @@ void editor::SceneRender2D::updateGridLines(){
 void editor::SceneRender2D::dropGoneGizmos(){
     SceneRender::dropGoneGizmos();
 
-    dropGoneGizmos(containerLines);
-    dropGoneGizmos(bodyLines);
-    dropGoneGizmos(jointLines);
-    dropGoneGizmos(light2DLines);
-    dropGoneGizmos(shadowCaster2DLines);
-    dropGoneGizmos(linePointLines);
-    dropGoneGizmos(polygonPointLines);
-    dropGoneGizmos(trackLines);
-    dropGoneGizmos(cameraObjects, &CameraObjects::icon, &CameraObjects::lines);
-    dropGoneGizmos(soundObjects, &SoundObjects::icon);
-    dropGoneGizmos(light2DObjects, &Light2DObjects::icon);
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(containerLines, render);
+    dropGoneGizmos(bodyLines, render);
+    dropGoneGizmos(jointLines, render);
+    dropGoneGizmos(light2DLines, render);
+    dropGoneGizmos(shadowCaster2DLines, render);
+    dropGoneGizmos(linePointLines, render);
+    dropGoneGizmos(polygonPointLines, render);
+    dropGoneGizmos(trackLines, render);
+    dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
+    dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
+    dropGoneGizmos(light2DObjects, render, &Light2DObjects::icon);
 }
 
 void editor::SceneRender2D::hideAllGizmos(){

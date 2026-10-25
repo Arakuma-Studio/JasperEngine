@@ -46,7 +46,7 @@ namespace {
 
 }
 
-bool editor::SceneRender::isGizmoGone(const EntityHandle* gizmo) const{
+bool editor::SceneRender::isGizmoGone(const EntityHandle* gizmo, const RenderSystem& render) const{
     if (!gizmo){
         return false;
     }
@@ -56,18 +56,19 @@ bool editor::SceneRender::isGizmoGone(const EntityHandle* gizmo) const{
         return true;
     }
     // the tools layers' gizmos carry no mark
-    return gizmoScene == scene && !scene->getSystem<RenderSystem>()->isEditorOverlay(entity);
+    return gizmoScene == scene && !render.isEditorOverlay(entity);
 }
 
-void editor::SceneRender::deleteGizmo(EntityHandle* gizmo) const{
-    if (gizmo && isGizmoGone(gizmo)){
+void editor::SceneRender::deleteGizmo(EntityHandle* gizmo, const RenderSystem& render) const{
+    if (gizmo && isGizmoGone(gizmo, render)){
         gizmo->setEntityOwned(false);
     }
     delete gizmo;
 }
 
 void editor::SceneRender::dropGoneGizmos(){
-    dropGoneGizmos(latticeCages, &LatticeCageLines::overlay, &LatticeCageLines::depth);
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(latticeCages, render, &LatticeCageLines::overlay, &LatticeCageLines::depth);
 }
 
 void editor::SceneRender::ensureOverlayLines(std::map<Entity, LineRenderer*>& lines, Entity entity){

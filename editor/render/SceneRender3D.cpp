@@ -1723,16 +1723,17 @@ void editor::SceneRender3D::createSpotLightCones(Entity entity, const Transform&
 void editor::SceneRender3D::dropGoneGizmos(){
     SceneRender::dropGoneGizmos();
 
-    dropGoneGizmos(lightObjects, &LightObjects::icon, &LightObjects::lines);
-    dropGoneGizmos(cameraObjects, &CameraObjects::icon, &CameraObjects::lines);
-    dropGoneGizmos(soundObjects, &SoundObjects::icon);
-    dropGoneGizmos(bodyObjects, &BodyObjects::lines);
-    dropGoneGizmos(jointLines);
-    dropGoneGizmos(boneLines);
-    dropGoneGizmos(linePointLines);
-    dropGoneGizmos(polygonPointLines);
-    dropGoneGizmos(trackLines);
-    dropGoneGizmos(reflectionProbeLines);
+    const RenderSystem& render = *scene->getSystem<RenderSystem>();
+    dropGoneGizmos(lightObjects, render, &LightObjects::icon, &LightObjects::lines);
+    dropGoneGizmos(cameraObjects, render, &CameraObjects::icon, &CameraObjects::lines);
+    dropGoneGizmos(soundObjects, render, &SoundObjects::icon);
+    dropGoneGizmos(bodyObjects, render, &BodyObjects::lines);
+    dropGoneGizmos(jointLines, render);
+    dropGoneGizmos(boneLines, render);
+    dropGoneGizmos(linePointLines, render);
+    dropGoneGizmos(polygonPointLines, render);
+    dropGoneGizmos(trackLines, render);
+    dropGoneGizmos(reflectionProbeLines, render);
 }
 
 void editor::SceneRender3D::hideAllGizmos(){
