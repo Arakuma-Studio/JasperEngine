@@ -11,6 +11,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipInspectorHooks.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/ClipBinding.h"
 #include "animation/ModelSubClips.h"
 #include "animation/PlayerModelLayout.h"
 #include "command/CommandHandle.h"
@@ -304,11 +305,27 @@ bool ClipSceneActions::runStep(Project* project, uint32_t sceneId, const std::ve
     command->setNoMerge();
     auto failure = std::make_shared<std::string>();
     command->reportFailureTo(failure);
+    // the models on or under the player's root without their node hierarchy now (the player's
+    // AddComponentCmd or this command reloads them)
+    Scene* scene = project->getScene(sceneId)->scene;
+    std::vector<Entity> legacy;
+    if (playerRoot != NULL_ENTITY && scene->isEntityCreated(playerRoot)){
+        // root included (as "")
+        for (const auto& entry : anim::descendantPaths(scene, playerRoot)){
+            const Entity entity = entry.second;
+            const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+            if (model && !model->loadedFilename.empty() && model->nodesIdMapping.empty()) legacy.push_back(entity);
+        }
+    }
     // the history executes it, and deletes it when that fails
     if (!CommandHandle::get(sceneId)->addCommand(command)){
         return fail(error, failure->empty() ? std::string("the step failed") : *failure);
     }
-    result.reloadedModels = command->getReloadedModels();
+    result.reloadedModels = 0;
+    for (Entity entity : legacy){
+        const ModelComponent* model = scene->isEntityCreated(entity) ? scene->findComponent<ModelComponent>(entity) : nullptr;
+        if (model && !model->nodesIdMapping.empty()) result.reloadedModels++;
+    }
     return true;
 }
 

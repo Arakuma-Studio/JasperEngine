@@ -924,6 +924,7 @@ TEST_F(ClipConverters_, DroppedClipsAddOrReuseAPlayer) {
     ASSERT_TRUE(scene->getComponent<ModelComponent>(tpose).nodesIdMapping.empty());
     ASSERT_TRUE(ClipSceneActions::addClipsToPlayer(project(), sceneId, tpose, {"models/hero.gltf#Walk"}, result, error)) << error;
     EXPECT_FALSE(scene->getComponent<ModelComponent>(tpose).nodesIdMapping.empty());
+    EXPECT_EQ(result.reloadedModels, 1u);
     ASSERT_TRUE(history(sceneId)->undo());
     EXPECT_TRUE(scene->getComponent<ModelComponent>(tpose).nodesIdMapping.empty());
     EXPECT_FALSE(scene->findComponent<AnimationPlayerComponent>(tpose));
@@ -1015,6 +1016,7 @@ TEST_F(ClipConverters_, BakeToClipOnALegacyLayoutModel) {
     ASSERT_TRUE(PoseBaker::bakeToClip(project(), sceneId, hero, *document, "lift", "", clipBake, error)) << error;
     EXPECT_EQ(clipBake.clip, dir + "/lift.anim");
     EXPECT_FALSE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty()) << "reloaded in the node hierarchy";
+    EXPECT_EQ(clipBake.reloadedModels, 1u);
     const ClipData data = readClipFile(root() / clipBake.clip);
     ClipValidationReport report = ClipValidation::validateInScene(project(), project()->getScene(sceneId), data, hero);
     EXPECT_FALSE(report.legacyModelLayout);
