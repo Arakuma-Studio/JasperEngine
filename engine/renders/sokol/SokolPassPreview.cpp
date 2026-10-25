@@ -240,9 +240,13 @@ void SokolPassPreview::afterEndPass(){
     State& s = state();
     if (!s.requested || s.blitting)
         return;
-    const PassRecord* pass = SokolPassRecorder::lastEndedPass();
-    if (!pass || pass->hidden)
+    const PassRecord* ended = SokolPassRecorder::lastEndedPass();
+    if (!ended || ended->hidden)
         return;
+    // a copy: the blit begins a pass of its own, which the recorder appends to the list this
+    // record is in (a reallocation would leave a pointer into it dangling)
+    const PassRecord copy = *ended;
+    const PassRecord* pass = &copy;
     // occurrences count from each frame's first pass of the view
     const uint64_t frame = FrameTimes::currentFrame();
     if (frame != s.countFrame){
