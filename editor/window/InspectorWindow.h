@@ -94,6 +94,28 @@ namespace jasperengine::editor{
         std::vector<Entity> excludeEntities;
     };
 
+    // One row the Inspector drew (get_inspector_layout, docs/specs/S08-reflection.md R28): the
+    // property it edits, its label and widget, the group heading it sits under, whether the
+    // selection's values differ, and whether it is read-only (drawn disabled) or hidden
+    struct InspectorLayoutRow{
+        ComponentType component = ComponentType::Transform;
+        std::string path;
+        std::string label;
+        std::string kind;
+        std::string group;
+        bool mixed = false;
+        bool readOnly = false;
+        bool visible = true;
+    };
+
+    // What one frame of the Inspector drew for the selection
+    struct InspectorLayout{
+        int frame = -1;     // ImGui frame count
+        uint32_t sceneId = 0;
+        std::vector<Entity> entities;
+        std::vector<InspectorLayoutRow> rows;
+    };
+
     class InspectorWindow{
     private:
         Project* project;
@@ -509,6 +531,22 @@ namespace jasperengine::editor{
         // a foldout of a component's rows (an ImGui tree node, open by default)
         bool beginFoldout(const char* label);
         void endFoldout();
+        // ImGui::SeparatorText that also names the group of the rows below it (the layout)
+        void separatorText(const char* label);
+
+        // ---- the layout of the frame being drawn (get_inspector_layout)
+        InspectorLayout layoutDrawing;
+        InspectorLayout layoutLast;
+        // set while a component's body draws: its rows go into the layout
+        bool layoutRecording = false;
+        ComponentType layoutComponent = ComponentType::Transform;
+        // the group headings open around the row being drawn: the component's separator, then
+        // each foldout (a separator inside a foldout renames that level)
+        std::vector<std::string> layoutGroups;
+        void beginLayoutComponent(ComponentType cpType);
+        void endLayoutComponent();
+        void recordLayoutRow(RowPropertyType type, ComponentType cpType, const std::string& id, const std::string& label,
+                             SceneProject* sceneProject, const std::vector<Entity>& entities, bool visible = true);
         void drawReflectionProbeComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -567,6 +605,13 @@ namespace jasperengine::editor{
         void requestAddComponent();
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
+        // The rows of the last frame the Inspector was drawn (get_inspector_layout)
+        const InspectorLayout& getLastLayout() const;
+        // "Float", "Color3L"...: the widget a row draws
+        static const char* rowPropertyTypeName(RowPropertyType type);
+        // The selection's values of a property differ (lanes of vectors and colours compared
+        // one by one, floats within 1e-4, as the rows show them)
+        static bool propertyValuesDiffer(SceneProject* sceneProject, ComponentType cpType, const std::string& id, const std::vector<Entity>& entities);
     private:
         bool addComponentRequested = false;
     };

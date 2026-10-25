@@ -64,7 +64,7 @@ void editor::InspectorWindow::drawLightShadows(ComponentType cpType, SceneProjec
     const ShadowTierSettings& tierSettings = ShadowTiers::getSettings(tier);
     const bool hardOnly = scene->getShadowQuality() == ShadowQuality::NONE;
 
-    ImGui::SeparatorText("Shadows");
+    separatorText("Shadows");
     beginTable(cpType, getLabelSize("Angular Diameter"), "shadow_settings_table");
 
     // Shadow Type: shadows and softShadows together, one undo step

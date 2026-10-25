@@ -26,6 +26,7 @@
 #include "subsystem/MeshSystem.h"
 #include "util/EntityClipboard.h"
 #include "util/Prefab.h"
+#include "window/InspectorWindow.h"
 #include "window/dialog/ComponentAddDialog.h"
 
 #include <algorithm>
@@ -406,6 +407,81 @@ void setPropertiesTool(const CallPtr& call) {
     data["values"] = readBack(project, current, entities[0], changes);
     call->ok("Set " + std::to_string(changes.size()) + " propert" + (changes.size() == 1 ? "y" : "ies") + " on " +
              std::to_string(entities.size()) + " GameObject(s) (one undo step). New values: " + data["values"].dump(), data);
+}
+
+// ------------------------------------------------------------------ get_inspector_layout
+
+// The rows the Inspector drew for the selection (S08 R28), read two frames after the call so a
+// selection made just before it is drawn
+void getInspectorLayoutTool(const CallPtr& call) {
+    const Json& args = call->args();
+    Project* project = call->ctx().project();
+    InspectorWindow* inspector = call->ctx().inspectorWindow();
+    if (!inspector || !inspector->isOpen()) {
+        call->fail("The Inspector is closed: focus_window {\"window\": \"inspector\"} opens it.");
+        return;
+    }
+    SceneProject* scene = sceneArg(call);
+    if (!scene) return;
+    const uint32_t sceneId = scene->id;
+    std::vector<Entity> asked;
+    if ((args.contains("entity") && !args["entity"].is_null()) || (args.contains("entities") && !args["entities"].is_null())) {
+        std::string error;
+        if (!McpRefs::resolveEntityArgs(scene, args, asked, error)) {
+            call->fail(error);
+            return;
+        }
+        std::vector<Entity> selected = project->getSelectedEntities(sceneId);
+        std::vector<Entity> wanted = asked;
+        std::sort(selected.begin(), selected.end());
+        std::sort(wanted.begin(), wanted.end());
+        wanted.erase(std::unique(wanted.begin(), wanted.end()), wanted.end());
+        if (selected != wanted) {
+            call->fail("get_inspector_layout reads what the Inspector draws for the selection: select_entities those "
+                       "GameObjects first.");
+            return;
+        }
+    }
+    call->afterFrames(2, [call, inspector, sceneId]() {
+        Project* project = call->ctx().project();
+        const InspectorLayout& layout = inspector->getLastLayout();
+        if (layout.frame < 0 || layout.frame + 3 < ImGui::GetFrameCount()) {
+            call->fail("The Inspector was not drawn on the last frames (a hidden tab?): focus_window {\"window\": \"inspector\"}.");
+            return;
+        }
+        if (layout.sceneId != sceneId) {
+            call->fail("The Inspector shows scene " + std::to_string(layout.sceneId) + ", not " + std::to_string(sceneId) +
+                       ": select_scene first.");
+            return;
+        }
+        SceneProject* scene = project->getScene(sceneId);
+        Json entities = Json::array();
+        for (Entity entity : layout.entities) entities.push_back(McpRefs::entityJson(scene, entity));
+        Json rows = Json::array();
+        std::string text = std::to_string(layout.rows.size()) + " row(s) for " + std::to_string(layout.entities.size()) + " GameObject(s):";
+        std::string lastComponent;
+        for (const InspectorLayoutRow& row : layout.rows) {
+            const std::string component = McpRefs::componentName(row.component);
+            rows.push_back({
+                {"component", component},
+                {"path", row.path},
+                {"label", row.label},
+                {"kind", row.kind},
+                {"group", row.group},
+                {"mixed", row.mixed},
+                {"read_only", row.readOnly},
+                {"visible", row.visible}
+            });
+            if (!row.visible) continue;
+            if (component != lastComponent) {
+                text += "\n" + component + ":";
+                lastComponent = component;
+            }
+            text += " " + row.label + (row.mixed ? " (mixed)" : "") + (row.readOnly ? " (read-only)" : "") + ",";
+        }
+        if (!text.empty() && text.back() == ',') text.pop_back();
+        call->ok(text, Json{{"scene_id", sceneId}, {"entities", entities}, {"rows", rows}});
+    });
 }
 
 // ------------------------------------------------------------------ set_transform
@@ -994,6 +1070,24 @@ void registerComponentTools(McpRegistry& registry) {
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = listComponentTypesTool;
+        registry.addTool(std::move(tool));
+    }
+    {
+        ToolDef tool;
+        tool.name = "get_inspector_layout";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
+        tool.title = "Get Inspector Layout";
+        tool.description =
+            "The rows the Inspector drew for the selection on the last frame: [{component, path, label, kind, group, "
+            "mixed, read_only, visible}] in drawing order. entities: must be the selection (select_entities first).";
+        tool.inputSchema = object({
+            {"scene", sceneRef()},
+            {"entity", entityRef()},
+            {"entities", entities()}
+        });
+        tool.annotations.readOnly = true;
+        tool.annotations.idempotent = true;
+        tool.handler = getInspectorLayoutTool;
         registry.addTool(std::move(tool));
     }
     {

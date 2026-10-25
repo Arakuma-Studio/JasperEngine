@@ -2857,6 +2857,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
     if (entities.empty()){
         return false;
     }
+    recordLayoutRow(type, cpType, id, label, sceneProject, entities);
 
     constexpr float compThreshold = 1e-4;
     constexpr float zeroThreshold = 1e-4;
@@ -6891,7 +6892,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             }
         }
         std::string submeshLabel = submeshGenerated ? ("Submesh " + std::to_string(s) + " (Internal)") : ("Submesh " + std::to_string(s));
-        ImGui::SeparatorText(submeshLabel.c_str());
+        separatorText(submeshLabel.c_str());
 
         ImVec2 separatorMin = ImGui::GetItemRectMin();
         ImVec2 separatorMax = ImGui::GetItemRectMax();
@@ -7014,10 +7015,10 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             endTable();
             }
 
-            ImGui::SeparatorText("Surface");
+            separatorText("Surface");
             drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
 
-            ImGui::SeparatorText("Extra pass");
+            separatorText("Extra pass");
             drawMaterialExtraPassRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
         }
 
@@ -7166,14 +7167,14 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     endTable();
 
     if (entities.size() != 1) {
-        ImGui::SeparatorText("Animations");
+        separatorText("Animations");
         ImGui::TextDisabled("Select a single GameObject to edit animations");
         return;
     }
 
     ModelComponent& model = sceneProject->scene->getComponent<ModelComponent>(entities[0]);
 
-    ImGui::SeparatorText("Animations");
+    separatorText("Animations");
 
     beginTable(cpType, getLabelSize("Animation 00"), "model_animations_header");
     propertyHeader("Animations", -1, false, false);
@@ -7329,7 +7330,7 @@ void editor::InspectorWindow::drawScrollbarComponent(ComponentType cpType, Scene
     propertyRow(RowPropertyType::Float_0_1, cpType, "step", "Step", sceneProject, entities, settingsFloat);
     endTable();
 
-    ImGui::SeparatorText("Bar margin");
+    separatorText("Bar margin");
     beginTable(cpType, getLabelSize("Margin Bottom"), "scrollbar_bar_margin");
     propertyRow(RowPropertyType::Int, cpType, "barMarginLeft", "Margin Left", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Int, cpType, "barMarginRight", "Margin Right", sceneProject, entities, settingsInt);
@@ -7373,7 +7374,7 @@ void editor::InspectorWindow::drawProgressbarComponent(ComponentType cpType, Sce
     propertyRow(RowPropertyType::Float_0_1, cpType, "value", "Value", sceneProject, entities, settingsFloat);
     endTable();
 
-    ImGui::SeparatorText("Fill margin");
+    separatorText("Fill margin");
     beginTable(cpType, getLabelSize("Margin Bottom"), "progressbar_fill_margin");
     propertyRow(RowPropertyType::Int, cpType, "fillMarginLeft", "Margin Left", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Int, cpType, "fillMarginRight", "Margin Right", sceneProject, entities, settingsInt);
@@ -7408,12 +7409,12 @@ void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, Scen
     propertyRow(RowPropertyType::Bool, cpType, "password", "Password", sceneProject, entities, settings);
     endTable();
 
-    ImGui::SeparatorText("Content");
+    separatorText("Content");
     beginTable(cpType, getLabelSize("Placeholder"), "inputfield_content");
     propertyRow(RowPropertyType::String, cpType, "placeholder", "Placeholder", sceneProject, entities, settings);
     endTable();
 
-    ImGui::SeparatorText("Cursor");
+    separatorText("Cursor");
     beginTable(cpType, getLabelSize("Cursor Width"), "inputfield_cursor");
     propertyRow(RowPropertyType::Float, cpType, "cursorBlink", "Blink", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::Float, cpType, "cursorWidth", "Width", sceneProject, entities, settingsFloat);
@@ -7422,7 +7423,7 @@ void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, Scen
     propertyRow(RowPropertyType::Color4L, cpType, "placeholderColor", "Placeholder Color", sceneProject, entities, settings);
     endTable();
 
-    ImGui::SeparatorText("Selection");
+    separatorText("Selection");
     beginTable(cpType, getLabelSize("Selection Anchor"), "inputfield_selection");
     propertyRow(RowPropertyType::Int, cpType, "cursorIndex", "Cursor Index", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Int, cpType, "selectionAnchor", "Selection Anchor", sceneProject, entities, settingsInt);
@@ -7485,7 +7486,7 @@ void editor::InspectorWindow::drawPanelComponent(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Bool, cpType, "canBringToFront", "Can Bring To Front", sceneProject, entities, settings);
     endTable();
 
-    ImGui::SeparatorText("Header margin");
+    separatorText("Header margin");
     beginTable(cpType, getLabelSize("Margin Bottom"), "panel_header_margin");
     propertyRow(RowPropertyType::Bool, cpType, "defaultHeaderMargin", "Default Margin", sceneProject, entities, settings);
     propertyRow(RowPropertyType::Int, cpType, "headerMarginLeft", "Margin Left", sceneProject, entities, settingsInt);
@@ -7507,19 +7508,19 @@ void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProje
     propertyRow(RowPropertyType::Bool, cpType, "multiline", "Multiline", sceneProject, entities);
     endTable();
 
-    ImGui::SeparatorText("Fixed size");
+    separatorText("Fixed size");
     beginTable(cpType, getLabelSize("Height"), "text_settings_fixed");
     propertyRow(RowPropertyType::Bool, cpType, "fixedWidth", "Width", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "fixedHeight", "Height", sceneProject, entities);
     endTable();
 
-    ImGui::SeparatorText("Pivot");
+    separatorText("Pivot");
     beginTable(cpType, getLabelSize("Baseline"), "text_settings_pivot");
     propertyRow(RowPropertyType::Bool, cpType, "pivotBaseline", "Baseline", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "pivotCentered", "Center", sceneProject, entities);
     endTable();
 
-    ImGui::SeparatorText("Advanced settings");
+    separatorText("Advanced settings");
     beginTable(cpType, getLabelSize("Max. text size"), "text_settings_size");
     propertyRow(RowPropertyType::UInt, cpType, "maxTextSize", "Max. text size", sceneProject, entities, settingsInt);
     endTable();
@@ -7629,7 +7630,7 @@ void editor::InspectorWindow::drawLayoutGroupComponent(ComponentType cpType, Sce
         }
 
         for (unsigned int b = 0; b < numBoxes; b++){
-            ImGui::SeparatorText(("Box " + std::to_string(b + 1)).c_str());
+            separatorText(("Box " + std::to_string(b + 1)).c_str());
 
             beginTable(cpType, getLabelSize("Rect Height"), "box_popup_" + std::to_string(b));
 
@@ -7657,7 +7658,7 @@ void editor::InspectorWindow::drawLayoutGroupComponent(ComponentType cpType, Sce
     }
 
     if (showWrapSettings) {
-        ImGui::SeparatorText("Wrap settings");
+        separatorText("Wrap settings");
         beginTable(cpType, getLabelSize("Use All Space"), "wrap_settings");
         propertyRow(RowPropertyType::Bool, cpType, "useAllWrapSpace", "Use All Space", sceneProject, entities);
         propertyRow(RowPropertyType::UInt, cpType, "wrapCellWidth", "Cell Width", sceneProject, entities, settingsCellSize);
@@ -7668,7 +7669,7 @@ void editor::InspectorWindow::drawLayoutGroupComponent(ComponentType cpType, Sce
 }
 
 void editor::InspectorWindow::drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    ImGui::SeparatorText("Nine-patch rect");
+    separatorText("Nine-patch rect");
 
     if (entities.size() == 1) {
         if (UIComponent* ui = sceneProject->scene->findComponent<UIComponent>(entities[0])){
@@ -7731,7 +7732,7 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
             }
         }
 
-        ImGui::SeparatorText("Sprite Frames");
+        separatorText("Sprite Frames");
 
         // Frame count from numFramesRect
         int activeFrameCount = (int)sprite.numFramesRect;
@@ -7828,7 +7829,7 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
                 std::string frameGroupStr = "frame_" + std::to_string(i);
                 std::string prefix = "framesRect[" + std::to_string(i) + "]";
 
-                ImGui::SeparatorText(frameLabel.c_str());
+                separatorText(frameLabel.c_str());
 
                 beginTable(cpType, getLabelSize("Frame"), frameGroupStr);
 
@@ -8003,7 +8004,7 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
             }
         }
     } else {
-        ImGui::SeparatorText("Sprite Frames");
+        separatorText("Sprite Frames");
         ImGui::TextDisabled("Select a single GameObject to edit sprite frames");
     }
 }
@@ -8105,7 +8106,7 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
         RowSettings filterSettings;
         filterSettings.enumEntries = &entriesTextureFilter;
 
-        ImGui::SeparatorText("Render Target");
+        separatorText("Render Target");
         beginTable(cpType, getLabelSize("Height"), "camera_framebuffer");
         propertyRow(RowPropertyType::UInt, cpType, "framebufferWidth", "Width", sceneProject, entities, sizeSettings);
         propertyRow(RowPropertyType::UInt, cpType, "framebufferHeight", "Height", sceneProject, entities, sizeSettings);
@@ -8344,7 +8345,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         }
     }
 
-    ImGui::SeparatorText("Playback");
+    separatorText("Playback");
 
     beginTable(cpType, getLabelSize("Inaudible Must Tick"), "audio_playback_settings");
 
@@ -8371,7 +8372,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
     endTable();
 
     if (show3DSettings){
-        ImGui::SeparatorText("3D Audio Source Settings");
+        separatorText("3D Audio Source Settings");
 
         beginTable(cpType, getLabelSize("Max Distance"), "audio_3d_settings");
 
@@ -8421,7 +8422,7 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         }
 
         // --- Tile Rects Section ---
-        ImGui::SeparatorText("Tile Rects");
+        separatorText("Tile Rects");
 
         int activeTileRectCount = (int)tilemap.numTilesRect;
 
@@ -8542,7 +8543,7 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
                 std::string groupStr = "tilerect_" + std::to_string(i);
                 std::string prefix = "tilesRect[" + std::to_string(i) + "]";
 
-                ImGui::SeparatorText(label.c_str());
+                separatorText(label.c_str());
 
                 beginTable(cpType, getLabelSize("Name"), groupStr);
 
@@ -8727,7 +8728,7 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
         }
 
         // --- Tiles Section ---
-        ImGui::SeparatorText("Tiles");
+        separatorText("Tiles");
 
         int activeTileCount = (int)tilemap.numTiles;
 
@@ -8782,10 +8783,10 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
                 // sub-selected in the scene viewport: same marking as occluder points
                 if (isTileSelected) {
                     ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
-                    ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + label).c_str());
+                    separatorText((std::string(ICON_FA_CARET_RIGHT) + " " + label).c_str());
                     ImGui::PopStyleColor();
                 } else {
-                    ImGui::SeparatorText(label.c_str());
+                    separatorText(label.c_str());
                 }
                 if (isLastHeaderRowClicked()) {
                     syncSubSelection(sceneProject, entities[0], (int)i, -1);
@@ -8894,14 +8895,14 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
         }
     }
 
-    ImGui::SeparatorText("Maps");
+    separatorText("Maps");
     beginTable(cpType, getLabelSize("Height Map"), "terrain_maps");
     propertyRow(RowPropertyType::Texture, cpType, "heightMap", "Height Map", sceneProject, entities, textureSettings);
     endTable();
 
     // The Terrain window owns adding and removing these, so here they are only listed
     if (!terrain.blendMaps.empty()){
-        ImGui::SeparatorText("Blend Maps");
+        separatorText("Blend Maps");
         beginTable(cpType, getLabelSize("Blend Map 1"), "terrain_blendmaps");
         for (size_t i = 0; i < terrain.blendMaps.size(); i++){
             const std::string property = "blendMaps[" + std::to_string(i) + "]";
@@ -8915,7 +8916,7 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
         RowSettings settingsLayerFloat;
         settingsLayerFloat.secondColSize = 6 * ImGui::GetFontSize();
 
-        ImGui::SeparatorText("Layers");
+        separatorText("Layers");
         for (size_t i = 0; i < terrain.surfaceLayers.size(); i++){
             const std::string property = "surfaceLayers[" + std::to_string(i) + "]";
             const std::string label = "Layer " + std::to_string(i + 1);
@@ -8977,7 +8978,7 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
     settingsLevels.intMin = 1;
     settingsLevels.intMax = 9;
 
-    ImGui::SeparatorText("Mesh Resolution");
+    separatorText("Mesh Resolution");
     beginTable(cpType, getLabelSize("Root Grid Size"), "terrain_shape");
     propertyRow(RowPropertyType::FloatPositive, cpType, "terrainSize", "Size", sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::FloatPositive, cpType, "maxHeight", "Max Height", sceneProject, entities, settingsFloat);
@@ -8987,13 +8988,13 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
     propertyRow(RowPropertyType::Vector2, cpType, "offset", "Offset", sceneProject, entities);
     endTable();
 
-    ImGui::SeparatorText("Texturing");
+    separatorText("Texturing");
     beginTable(cpType, getLabelSize("Detail Tiles"), "terrain_tiling");
     propertyRow(RowPropertyType::FloatPositive, cpType, "textureBaseTiles", "Base Tiles", sceneProject, entities, settingsResolution);
     propertyRow(RowPropertyType::FloatPositive, cpType, "textureDetailTiles", "Detail Tiles", sceneProject, entities, settingsResolution);
     endTable();
 
-    ImGui::SeparatorText("Ranges");
+    separatorText("Ranges");
     beginTable(cpType, getLabelSize("Auto Ranges"), "terrain_ranges_auto");
     propertyRow(RowPropertyType::Bool, cpType, "autoSetRanges", "Auto Ranges", sceneProject, entities);
     endTable();
@@ -9072,7 +9073,7 @@ void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, ScenePr
     propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
     endTable();
 
-    ImGui::SeparatorText("Shadow settings");
+    separatorText("Shadow settings");
 
     RowSettings settingsBias;
     settingsBias.stepSize = 0.001f;
@@ -9118,7 +9119,7 @@ void editor::InspectorWindow::drawShadowCaster2DComponent(ComponentType cpType, 
             pointsCmd = cmd;
         };
 
-        ImGui::SeparatorText("Points");
+        separatorText("Points");
 
         // point sub-selected in the scene viewport (click on a handle)
         int selectedPoint = -1;
@@ -9192,11 +9193,158 @@ void editor::InspectorWindow::drawShadowCaster2DComponent(ComponentType cpType, 
 }
 
 bool editor::InspectorWindow::beginFoldout(const char* label){
-    return ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+    const bool open = ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+    if (open && layoutRecording){
+        layoutGroups.emplace_back(label);
+    }
+    return open;
 }
 
 void editor::InspectorWindow::endFoldout(){
     ImGui::TreePop();
+    if (layoutRecording && !layoutGroups.empty()){
+        layoutGroups.pop_back();
+    }
+}
+
+void editor::InspectorWindow::separatorText(const char* label){
+    separatorText(label);
+    if (layoutRecording){
+        if (layoutGroups.empty()){
+            layoutGroups.emplace_back(label);
+        }else{
+            layoutGroups.back() = label;
+        }
+    }
+}
+
+void editor::InspectorWindow::beginLayoutComponent(ComponentType cpType){
+    layoutRecording = true;
+    layoutComponent = cpType;
+    layoutGroups.clear();
+}
+
+void editor::InspectorWindow::endLayoutComponent(){
+    layoutRecording = false;
+    layoutGroups.clear();
+}
+
+const editor::InspectorLayout& editor::InspectorWindow::getLastLayout() const{
+    return layoutLast;
+}
+
+const char* editor::InspectorWindow::rowPropertyTypeName(RowPropertyType type){
+    switch (type){
+        case RowPropertyType::Label: return "Label";
+        case RowPropertyType::Bool: return "Bool";
+        case RowPropertyType::String: return "String";
+        case RowPropertyType::MultilineString: return "MultilineString";
+        case RowPropertyType::Float: return "Float";
+        case RowPropertyType::Double: return "Double";
+        case RowPropertyType::FloatPositive: return "FloatPositive";
+        case RowPropertyType::DoublePositive: return "DoublePositive";
+        case RowPropertyType::Float_0_1: return "Float_0_1";
+        case RowPropertyType::Vector2: return "Vector2";
+        case RowPropertyType::Vector3: return "Vector3";
+        case RowPropertyType::Vector4: return "Vector4";
+        case RowPropertyType::Quat: return "Quat";
+        case RowPropertyType::Color3L: return "Color3L";
+        case RowPropertyType::Color4L: return "Color4L";
+        case RowPropertyType::Int: return "Int";
+        case RowPropertyType::UInt: return "UInt";
+        case RowPropertyType::Material: return "Material";
+        case RowPropertyType::Texture: return "Texture";
+        case RowPropertyType::TextureCube: return "TextureCube";
+        case RowPropertyType::HalfCone: return "HalfCone";
+        case RowPropertyType::UIntSlider: return "UIntSlider";
+        case RowPropertyType::IntSlider: return "IntSlider";
+        case RowPropertyType::Direction: return "Direction";
+        case RowPropertyType::Enum: return "Enum";
+        case RowPropertyType::Ease: return "Ease";
+        case RowPropertyType::Custom: return "Custom";
+        case RowPropertyType::LocalEntity: return "LocalEntity";
+        case RowPropertyType::ExternalEntity: return "ExternalEntity";
+        case RowPropertyType::Font: return "Font";
+        case RowPropertyType::Asset: return "Asset";
+        case RowPropertyType::LayerMask: return "LayerMask";
+    }
+    return "Custom";
+}
+
+namespace {
+
+    bool floatsDiffer(const float* a, const float* b, size_t lanes){
+        for (size_t i = 0; i < lanes; i++){
+            if (std::fabs(a[i] - b[i]) > 1e-4f){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Two values of one property differ the way the Inspector shows a mixed value
+    bool propertyValueDiffers(const editor::PropertyData& a, const editor::PropertyData& b){
+        using editor::PropertyType;
+        if (!a.ref || !b.ref || a.type != b.type){
+            return a.type != b.type;
+        }
+        switch (a.type){
+            case PropertyType::Bool: return *static_cast<bool*>(a.ref) != *static_cast<bool*>(b.ref);
+            case PropertyType::Int:
+            case PropertyType::Enum: return *static_cast<int*>(a.ref) != *static_cast<int*>(b.ref);
+            case PropertyType::UInt:
+            case PropertyType::Entity: return *static_cast<unsigned int*>(a.ref) != *static_cast<unsigned int*>(b.ref);
+            case PropertyType::Float: return floatsDiffer(static_cast<float*>(a.ref), static_cast<float*>(b.ref), 1);
+            case PropertyType::Double: return std::fabs(*static_cast<double*>(a.ref) - *static_cast<double*>(b.ref)) > 1e-4;
+            case PropertyType::Vector2: return floatsDiffer(static_cast<float*>(a.ref), static_cast<float*>(b.ref), 2);
+            case PropertyType::Vector3: return floatsDiffer(static_cast<float*>(a.ref), static_cast<float*>(b.ref), 3);
+            case PropertyType::Vector4: return floatsDiffer(static_cast<float*>(a.ref), static_cast<float*>(b.ref), 4);
+            case PropertyType::Quat: return floatsDiffer(&static_cast<Quaternion*>(a.ref)->w, &static_cast<Quaternion*>(b.ref)->w, 4);
+            case PropertyType::String: return *static_cast<std::string*>(a.ref) != *static_cast<std::string*>(b.ref);
+            case PropertyType::Asset: return static_cast<AssetRef*>(a.ref)->path != static_cast<AssetRef*>(b.ref)->path;
+            case PropertyType::Shader: return static_cast<ShaderRef*>(a.ref)->path != static_cast<ShaderRef*>(b.ref)->path;
+            case PropertyType::Texture: return *static_cast<Texture*>(a.ref) != *static_cast<Texture*>(b.ref);
+            case PropertyType::Font: return *static_cast<FontArray*>(a.ref) != *static_cast<FontArray*>(b.ref);
+            case PropertyType::Ease: return *static_cast<Ease*>(a.ref) != *static_cast<Ease*>(b.ref);
+            case PropertyType::Material: return *static_cast<Material*>(a.ref) != *static_cast<Material*>(b.ref);
+            case PropertyType::EntityReference:
+                return static_cast<EntityReference*>(a.ref)->entity != static_cast<EntityReference*>(b.ref)->entity ||
+                       static_cast<EntityReference*>(a.ref)->sceneId != static_cast<EntityReference*>(b.ref)->sceneId;
+            case PropertyType::Custom: return false;
+        }
+        return false;
+    }
+
+}
+
+bool editor::InspectorWindow::propertyValuesDiffer(SceneProject* sceneProject, ComponentType cpType, const std::string& id, const std::vector<Entity>& entities){
+    if (!sceneProject || !sceneProject->scene || entities.size() < 2){
+        return false;
+    }
+    const PropertyData first = Catalog::findProperty(sceneProject->scene, entities[0], cpType, id);
+    for (size_t i = 1; i < entities.size(); i++){
+        if (propertyValueDiffers(first, Catalog::findProperty(sceneProject->scene, entities[i], cpType, id))){
+            return true;
+        }
+    }
+    return false;
+}
+
+void editor::InspectorWindow::recordLayoutRow(RowPropertyType type, ComponentType cpType, const std::string& id, const std::string& label,
+                                              SceneProject* sceneProject, const std::vector<Entity>& entities, bool visible){
+    if (!layoutRecording){
+        return;
+    }
+    InspectorLayoutRow row;
+    row.component = cpType;
+    row.path = id;
+    row.label = label;
+    row.kind = rowPropertyTypeName(type);
+    row.group = layoutGroups.empty() ? std::string() : layoutGroups.back();
+    row.mixed = propertyValuesDiffer(sceneProject, cpType, id, entities);
+    row.readOnly = (ImGui::GetCurrentContext()->CurrentItemFlags & ImGuiItemFlags_Disabled) != 0;
+    row.visible = visible;
+    layoutDrawing.rows.push_back(std::move(row));
 }
 
 void editor::InspectorWindow::drawAtmospherePresetsMenu(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -9726,7 +9874,7 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
     const std::vector<HtmlUIMessage>& messages = documents->getDocumentMessages(entity);
     std::string header = "Messages";
     if (!messages.empty()) header += " (" + std::to_string(messages.size()) + ")";
-    ImGui::SeparatorText(header.c_str());
+    separatorText(header.c_str());
     if (messages.empty()) {
         ImGui::TextDisabled(document.filename.empty() ? "No document" : (documents->isDocumentLoaded(entity) ? "No warnings or errors" : "Not loaded yet"));
         return;
@@ -9779,7 +9927,7 @@ void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType,
     propertyRow(RowPropertyType::Int, cpType, "priority", "Priority", sceneProject, entities);
     endTable();
 
-    ImGui::SeparatorText("Influence");
+    separatorText("Influence");
     beginTable(cpType, getLabelSize("Blend Distance"), "reflection_probe_influence");
     propertyRow(RowPropertyType::Vector3, cpType, "boxOffset", "Box Offset", sceneProject, entities, boxOffsetSettings);
     propertyRow(RowPropertyType::Vector3, cpType, "boxSize", "Box Size", sceneProject, entities);
@@ -9800,7 +9948,7 @@ void editor::InspectorWindow::drawReflectionProbeComponent(ComponentType cpType,
         }
     }
 
-    ImGui::SeparatorText("Capture");
+    separatorText("Capture");
     beginTable(cpType, std::max(getLabelSize("Resolution"), getLabelSize("Culling Mask")), "reflection_probe_capture");
     propertyRow(RowPropertyType::UIntSlider, cpType, "resolution", "Resolution", sceneProject, entities, resolutionSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "nearClip", "Near", sceneProject, entities, floatSettings);
@@ -10487,7 +10635,7 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             // Display script properties if available
             if (!script.properties.empty()) {
-                ImGui::SeparatorText("Properties");
+                separatorText("Properties");
 
                 ImGui::BeginDisabled(!enabled && !mixed);
 
@@ -10596,7 +10744,7 @@ void editor::InspectorWindow::drawSkyboxComponent(ComponentType cpType, ScenePro
 
     drawCustomShaderRow(cpType, ShaderType::SKYBOX, sceneProject, entities);
 
-    ImGui::SeparatorText("Skybox Settings");
+    separatorText("Skybox Settings");
 
     beginTable(cpType, getLabelSize("Rotation"), "sky_settings");
 
@@ -10635,7 +10783,7 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
     endTable();
 
     if (entities.size() != 1) {
-        ImGui::SeparatorText("Instances");
+        separatorText("Instances");
         ImGui::TextDisabled("Select a single GameObject to edit instances");
         return;
     }
@@ -10653,7 +10801,7 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
         ImGui::PopStyleColor();
     }
 
-    ImGui::SeparatorText("Instances");
+    separatorText("Instances");
 
     beginTable(cpType, getLabelSize("Instances"), "instanced_mesh_instances_header");
     prefabRowProperty = "instances";
@@ -10701,10 +10849,10 @@ void editor::InspectorWindow::drawInstancedMeshComponent(ComponentType cpType, S
         // sub-selected in the scene viewport: same marking as occluder points
         if (isInstanceSelected) {
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
-            ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + instanceLabel).c_str());
+            separatorText((std::string(ICON_FA_CARET_RIGHT) + " " + instanceLabel).c_str());
             ImGui::PopStyleColor();
         } else {
-            ImGui::SeparatorText(instanceLabel.c_str());
+            separatorText(instanceLabel.c_str());
         }
         if (isLastHeaderRowClicked()) {
             syncSubSelection(sceneProject, entities[0], -1, (int)i);
@@ -10796,7 +10944,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
             std::vector<ParticleBurst>* bursts = static_cast<std::vector<ParticleBurst>*>(burstProp.ref);
             std::vector<ParticleBurst>* defBursts = static_cast<std::vector<ParticleBurst>*>(burstProp.def);
 
-            ImGui::SeparatorText("Bursts");
+            separatorText("Bursts");
             if (bursts) {
                 bool defChanged = defBursts && *bursts != *defBursts;
                 beginTable(cpType, getLabelSize("Bursts"), "particle_burst_header");
@@ -10866,7 +11014,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
             }
         }
     } else {
-        ImGui::SeparatorText("Bursts");
+        separatorText("Bursts");
         ImGui::TextDisabled("Select a single GameObject to edit bursts");
     }
 
@@ -10881,13 +11029,13 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     if (initializersOpen) {
         ImGui::Unindent(subsectionIndent);
 
-        ImGui::SeparatorText("Life");
+        separatorText("Life");
         beginTable(cpType, getLabelSize("Max Life"), "life_table");
         propertyRow(RowPropertyType::Float, cpType, "lifeInitializer.minLife", "Min Life", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "lifeInitializer.maxLife", "Max Life", sceneProject, entities, settingsFloat);
         endTable();
 
-        ImGui::SeparatorText("Position");
+        separatorText("Position");
         RowSettings settingsShape;
         settingsShape.enumEntries = &entriesEmitterShape;
         beginTable(cpType, getLabelSize("Cone Height"), "position_initializer_table");
@@ -10913,48 +11061,48 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         }
         endTable();
 
-        ImGui::SeparatorText("Velocity");
+        separatorText("Velocity");
         beginTable(cpType, getLabelSize("Max Velocity"), "velocity_initializer_table");
         propertyRow(RowPropertyType::Vector3, cpType, "velocityInitializer.minVelocity", "Min Velocity", sceneProject, entities);
         propertyRow(RowPropertyType::Vector3, cpType, "velocityInitializer.maxVelocity", "Max Velocity", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Acceleration");
+        separatorText("Acceleration");
         beginTable(cpType, getLabelSize("Max Acceleration"), "acceleration_initializer_table");
         propertyRow(RowPropertyType::Vector3, cpType, "accelerationInitializer.minAcceleration", "Min Acceleration", sceneProject, entities);
         propertyRow(RowPropertyType::Vector3, cpType, "accelerationInitializer.maxAcceleration", "Max Acceleration", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Color");
+        separatorText("Color");
         beginTable(cpType, getLabelSize("Use sRGB"), "color_initializer_table");
         propertyRow(RowPropertyType::Color3L, cpType, "colorInitializer.minColor", "Min Color", sceneProject, entities);
         propertyRow(RowPropertyType::Color3L, cpType, "colorInitializer.maxColor", "Max Color", sceneProject, entities);
         propertyRow(RowPropertyType::Bool, cpType, "colorInitializer.useSRGB", "Use sRGB", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Alpha");
+        separatorText("Alpha");
         beginTable(cpType, getLabelSize("Max Alpha"), "alpha_initializer_table");
         propertyRow(RowPropertyType::Float, cpType, "alphaInitializer.minAlpha", "Min Alpha", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "alphaInitializer.maxAlpha", "Max Alpha", sceneProject, entities, settingsFloat);
         endTable();
 
-        ImGui::SeparatorText("Size");
+        separatorText("Size");
         beginTable(cpType, getLabelSize("Max Size"), "size_initializer_table");
         propertyRow(RowPropertyType::Float, cpType, "sizeInitializer.minSize", "Min Size", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "sizeInitializer.maxSize", "Max Size", sceneProject, entities, settingsFloat);
         endTable();
 
-        ImGui::SeparatorText("Sprite");
+        separatorText("Sprite");
         drawParticleFrameList(cpType, "spriteInitializer.frames", "sprite_initializer_frames", sceneProject, entities);
 
-        ImGui::SeparatorText("Rotation");
+        separatorText("Rotation");
         beginTable(cpType, getLabelSize("Shortest Path"), "rotation_initializer_table");
         propertyRow(RowPropertyType::Quat, cpType, "rotationInitializer.minRotation", "Min Rotation", sceneProject, entities);
         propertyRow(RowPropertyType::Quat, cpType, "rotationInitializer.maxRotation", "Max Rotation", sceneProject, entities);
         propertyRow(RowPropertyType::Bool, cpType, "rotationInitializer.shortestPath", "Shortest Path", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Scale");
+        separatorText("Scale");
         beginTable(cpType, getLabelSize("Max Scale"), "scale_initializer_table");
         propertyRow(RowPropertyType::Vector3, cpType, "scaleInitializer.minScale", "Min Scale", sceneProject, entities);
         propertyRow(RowPropertyType::Vector3, cpType, "scaleInitializer.maxScale", "Max Scale", sceneProject, entities);
@@ -10974,7 +11122,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
     if (modifiersOpen) {
         ImGui::Unindent(subsectionIndent);
 
-        ImGui::SeparatorText("Position");
+        separatorText("Position");
         beginTable(cpType, getLabelSize("From Position"), "position_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "positionModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "positionModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -10983,7 +11131,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         propertyRow(RowPropertyType::Vector3, cpType, "positionModifier.toPosition", "To Position", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Velocity");
+        separatorText("Velocity");
         beginTable(cpType, getLabelSize("From Velocity"), "velocity_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "velocityModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "velocityModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -10992,7 +11140,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         propertyRow(RowPropertyType::Vector3, cpType, "velocityModifier.toVelocity", "To Velocity", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Acceleration");
+        separatorText("Acceleration");
         beginTable(cpType, getLabelSize("From Acceleration"), "acceleration_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "accelerationModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "accelerationModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -11001,7 +11149,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         propertyRow(RowPropertyType::Vector3, cpType, "accelerationModifier.toAcceleration", "To Acceleration", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Color");
+        separatorText("Color");
         beginTable(cpType, getLabelSize("Mod sRGB"), "color_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "colorModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "colorModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -11020,7 +11168,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
                 ParticleColorGradient* gradient = static_cast<ParticleColorGradient*>(gradProp.ref);
                 ParticleColorGradient* defGradient = static_cast<ParticleColorGradient*>(gradProp.def);
 
-                ImGui::SeparatorText("Color Gradient");
+                separatorText("Color Gradient");
                 if (gradient) {
                     bool defChanged = defGradient && !(*gradient == *defGradient);
                     beginTable(cpType, getLabelSize("Stops"), "particle_gradient_header");
@@ -11099,11 +11247,11 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
                 endTable();
             }
         } else {
-            ImGui::SeparatorText("Color Gradient");
+            separatorText("Color Gradient");
             ImGui::TextDisabled("Select a single GameObject to edit color gradient");
         }
 
-        ImGui::SeparatorText("Alpha");
+        separatorText("Alpha");
         beginTable(cpType, getLabelSize("From Alpha"), "alpha_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "alphaModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "alphaModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -11112,7 +11260,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         propertyRow(RowPropertyType::Float, cpType, "alphaModifier.toAlpha", "To Alpha", sceneProject, entities, settingsFloat);
         endTable();
 
-        ImGui::SeparatorText("Size");
+        separatorText("Size");
         beginTable(cpType, getLabelSize("From Size"), "size_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "sizeModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "sizeModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -11121,7 +11269,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         propertyRow(RowPropertyType::Float, cpType, "sizeModifier.toSize", "To Size", sceneProject, entities, settingsFloat);
         endTable();
 
-        ImGui::SeparatorText("Sprite");
+        separatorText("Sprite");
         beginTable(cpType, getLabelSize("From Time"), "sprite_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "spriteModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "spriteModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -11129,7 +11277,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         endTable();
         drawParticleFrameList(cpType, "spriteModifier.frames", "sprite_modifier_frames", sceneProject, entities);
 
-        ImGui::SeparatorText("Rotation");
+        separatorText("Rotation");
         beginTable(cpType, getLabelSize("Mod Shortest"), "rotation_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "rotationModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "rotationModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -11139,7 +11287,7 @@ void editor::InspectorWindow::drawParticleSystemComponent(ComponentType cpType, 
         propertyRow(RowPropertyType::Bool, cpType, "rotationModifier.shortestPath", "Mod Shortest", sceneProject, entities);
         endTable();
 
-        ImGui::SeparatorText("Scale");
+        separatorText("Scale");
         beginTable(cpType, getLabelSize("From Scale"), "scale_modifier_table");
         propertyRow(RowPropertyType::Float, cpType, "scaleModifier.fromTime", "From Time", sceneProject, entities, settingsFloat);
         propertyRow(RowPropertyType::Float, cpType, "scaleModifier.toTime", "To Time", sceneProject, entities, settingsFloat);
@@ -11170,7 +11318,7 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
     drawCustomShaderRow(cpType, ShaderType::POINTS, sceneProject, entities);
 
     if (entities.size() != 1) {
-        ImGui::SeparatorText("Points");
+        separatorText("Points");
         ImGui::TextDisabled("Select a single GameObject to edit points");
         return;
     }
@@ -11178,7 +11326,7 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
     Entity entity = entities[0];
     PointsComponent& pts = sceneProject->scene->getComponent<PointsComponent>(entity);
 
-    ImGui::SeparatorText("Points");
+    separatorText("Points");
 
     beginTable(cpType, getLabelSize("Points"), "points_header");
     propertyHeader("Points", -1, false, false);
@@ -11224,7 +11372,7 @@ void editor::InspectorWindow::drawPointsComponent(ComponentType cpType, ScenePro
         std::string pointGroupStr = "point_" + std::to_string(i);
         std::string pointLabel = "[" + std::to_string(i) + "] Point " + std::to_string(i);
 
-        ImGui::SeparatorText(pointLabel.c_str());
+        separatorText(pointLabel.c_str());
 
         beginTable(cpType, getLabelSize("Position"), pointGroupStr);
         propertyHeader("Point", -1, false, false);
@@ -11298,7 +11446,7 @@ void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, Sc
     drawCustomShaderRow(cpType, ShaderType::LINES, sceneProject, entities);
 
     if (entities.size() != 1) {
-        ImGui::SeparatorText("Lines");
+        separatorText("Lines");
         ImGui::TextDisabled("Select a single GameObject to edit lines");
         return;
     }
@@ -11306,7 +11454,7 @@ void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, Sc
     Entity entity = entities[0];
     LineRendererComponent& lines = sceneProject->scene->getComponent<LineRendererComponent>(entity);
 
-    ImGui::SeparatorText("Lines");
+    separatorText("Lines");
 
     beginTable(cpType, getLabelSize("Lines"), "lines_header");
     propertyHeader("Lines", -1, false, false);
@@ -11359,10 +11507,10 @@ void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, Sc
         // sub-selected in the scene viewport: same marking as occluder points
         if (isLineSelected) {
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
-            ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + lineLabel).c_str());
+            separatorText((std::string(ICON_FA_CARET_RIGHT) + " " + lineLabel).c_str());
             ImGui::PopStyleColor();
         } else {
-            ImGui::SeparatorText(lineLabel.c_str());
+            separatorText(lineLabel.c_str());
         }
 
         beginTable(cpType, getLabelSize("Point A"), lineGroupStr);
@@ -11428,7 +11576,7 @@ void editor::InspectorWindow::drawLineRendererComponent(ComponentType cpType, Sc
 
 void editor::InspectorWindow::drawPolygonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     if (entities.size() != 1) {
-        ImGui::SeparatorText("Vertices");
+        separatorText("Vertices");
         ImGui::TextDisabled("Select a single GameObject to edit polygon vertices");
         return;
     }
@@ -11436,7 +11584,7 @@ void editor::InspectorWindow::drawPolygonComponent(ComponentType cpType, ScenePr
     Entity entity = entities[0];
     PolygonComponent& polygon = sceneProject->scene->getComponent<PolygonComponent>(entity);
 
-    ImGui::SeparatorText("Vertices");
+    separatorText("Vertices");
 
     beginTable(cpType, getLabelSize("Vertices"), "polygon_points_header");
     propertyHeader("Vertices", -1, false, false);
@@ -11488,10 +11636,10 @@ void editor::InspectorWindow::drawPolygonComponent(ComponentType cpType, ScenePr
         // sub-selected in the scene viewport: same marking as occluder/line points
         if (vertexSelected) {
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
-            ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + pointLabel).c_str());
+            separatorText((std::string(ICON_FA_CARET_RIGHT) + " " + pointLabel).c_str());
             ImGui::PopStyleColor();
         } else {
-            ImGui::SeparatorText(pointLabel.c_str());
+            separatorText(pointLabel.c_str());
         }
 
         beginTable(cpType, getLabelSize("Position"), pointGroupStr);
@@ -11558,7 +11706,7 @@ void editor::InspectorWindow::drawMeshPolygonComponent(ComponentType cpType, Sce
 
     if (entities.size() == 1) {
         MeshPolygonComponent& polygon = sceneProject->scene->getComponent<MeshPolygonComponent>(entities[0]);
-        ImGui::SeparatorText("Size");
+        separatorText("Size");
         beginTable(cpType, getLabelSize("Height"));
         propertyHeader("Width", -1, false, false);
         ImGui::Text("%u", polygon.width);
@@ -11568,7 +11716,7 @@ void editor::InspectorWindow::drawMeshPolygonComponent(ComponentType cpType, Sce
     }
 
     if (entities.size() != 1) {
-        ImGui::SeparatorText("Vertices");
+        separatorText("Vertices");
         ImGui::TextDisabled("Select a single GameObject to edit mesh polygon vertices");
         return;
     }
@@ -11576,7 +11724,7 @@ void editor::InspectorWindow::drawMeshPolygonComponent(ComponentType cpType, Sce
     Entity entity = entities[0];
     MeshPolygonComponent& polygon = sceneProject->scene->getComponent<MeshPolygonComponent>(entity);
 
-    ImGui::SeparatorText("Vertices");
+    separatorText("Vertices");
 
     beginTable(cpType, getLabelSize("Vertices"), "mesh_polygon_points_header");
     propertyHeader("Vertices", -1, false, false);
@@ -11628,10 +11776,10 @@ void editor::InspectorWindow::drawMeshPolygonComponent(ComponentType cpType, Sce
         // sub-selected in the scene viewport: same marking as occluder/line points
         if (vertexSelected) {
             ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
-            ImGui::SeparatorText((std::string(ICON_FA_CARET_RIGHT) + " " + pointLabel).c_str());
+            separatorText((std::string(ICON_FA_CARET_RIGHT) + " " + pointLabel).c_str());
             ImGui::PopStyleColor();
         } else {
-            ImGui::SeparatorText(pointLabel.c_str());
+            separatorText(pointLabel.c_str());
         }
 
         beginTable(cpType, getLabelSize("Position"), pointGroupStr);
@@ -11724,7 +11872,7 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
     propertyRow(RowPropertyType::Enum, cpType, "type", "Body Type", sceneProject, entities, settingsBodyType);
     endTable();
 
-    ImGui::SeparatorText("Colliders");
+    separatorText("Colliders");
     ImGui::Text("Colliders: %zu", body.numColliders);
 
     static int createCollider2DType = (int)Collider2DType::POLYGON;
@@ -11835,7 +11983,7 @@ void editor::InspectorWindow::drawRigidbody2DComponent(ComponentType cpType, Sce
         Rigidbody2DComponent& bodyRef = sceneProject->scene->getComponent<Rigidbody2DComponent>(entities[0]);
         Collider2D& shape = bodyRef.colliders[s];
 
-        ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
+        separatorText(("Collider " + std::to_string(s + 1)).c_str());
         ImGui::PushID((int)s);
         if (ImGui::Button("Remove Collider")){
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
@@ -12202,7 +12350,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
     }
     endTable();
 
-    ImGui::SeparatorText("Colliders");
+    separatorText("Colliders");
     ImGui::Text("Colliders: %zu", body.numColliders);
 
     static int createCollider3DType = (int)Collider3DType::BOX;
@@ -12306,7 +12454,7 @@ void editor::InspectorWindow::drawRigidbodyComponent(ComponentType cpType, Scene
         const float physicsOffset = (shape.position * bodyScale).length();
         const bool suspiciousSingleShapeOffset = bodyRef.numColliders == 1 && physicsOffset > Stream::MAX_SINGLE_SHAPE_PHYSICS_OFFSET;
 
-        ImGui::SeparatorText(("Collider " + std::to_string(s + 1)).c_str());
+        separatorText(("Collider " + std::to_string(s + 1)).c_str());
         ImGui::PushID((int)s);
         if (ImGui::Button("Remove Collider")){
             MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
@@ -12756,7 +12904,7 @@ void editor::InspectorWindow::drawJoint2DComponent(ComponentType cpType, ScenePr
         joint2DTableLabel = "Target";
     }
 
-    ImGui::SeparatorText("Joint settings");
+    separatorText("Joint settings");
     std::string joint2DTypeTableId = "joint2d_type_settings_" + std::to_string((int)joint.type);
     beginTable(cpType, getLabelSize(joint2DTableLabel), joint2DTypeTableId);
 
@@ -12849,7 +12997,7 @@ void editor::InspectorWindow::drawJoint3DComponent(ComponentType cpType, ScenePr
             break;
     }
 
-    ImGui::SeparatorText("Joint settings");
+    separatorText("Joint settings");
     std::string joint3DTypeTableId = "joint3d_type_settings_" + std::to_string((int)joint.type);
     beginTable(cpType, getLabelSize(joint3DTableLabel), joint3DTypeTableId);
 
@@ -13722,7 +13870,7 @@ void editor::InspectorWindow::drawSpriteAnimationComponent(ComponentType cpType,
     endTable();
 
     if (entities.size() != 1) {
-        ImGui::SeparatorText("Animation Frames");
+        separatorText("Animation Frames");
         ImGui::TextDisabled("Select a single GameObject to edit sprite animation frames");
         return;
     }
@@ -13751,7 +13899,7 @@ void editor::InspectorWindow::drawSpriteAnimationComponent(ComponentType cpType,
     bool countsMatch = spriteAnim.framesSize == spriteAnim.framesTimeSize;
     bool canAddFrame = spriteAnim.frames.validIndex(visibleFrameCount) && spriteAnim.framesTime.validIndex(visibleFrameCount);
 
-    ImGui::SeparatorText("Animation Frames");
+    separatorText("Animation Frames");
 
     beginTable(cpType, getLabelSize("Animation Frames"), "sprite_animation_frames_header");
     propertyHeader("Animation Frames", -1, false, false);
@@ -13836,7 +13984,7 @@ void editor::InspectorWindow::drawSpriteAnimationComponent(ComponentType cpType,
             frameLabel += "Missing frame";
         }
 
-        ImGui::SeparatorText(frameLabel.c_str());
+        separatorText(frameLabel.c_str());
 
         beginTable(cpType, getLabelSize("Interval (ms)"), frameGroupStr);
         propertyHeader("Frame", -1, false, false);
@@ -13996,7 +14144,7 @@ void editor::InspectorWindow::drawAnimationComponent(ComponentType cpType, Scene
 
     AnimationComponent& anim = sceneProject->scene->getComponent<AnimationComponent>(entities[0]);
 
-    ImGui::SeparatorText("Actions");
+    separatorText("Actions");
 
     beginTable(cpType, getLabelSize("Actions"), "animation_actions_header");
     prefabRowProperty = "actions";
@@ -14750,6 +14898,17 @@ void editor::InspectorWindow::show(){
     if (nameFocusFrames > 0) nameFocusFrames--;
     const bool openAddComponent = std::exchange(addComponentRequested, false);
 
+    // this frame's rows replace the last frame's when the window is done
+    layoutDrawing = InspectorLayout();
+    layoutDrawing.frame = ImGui::GetFrameCount();
+    struct LayoutFinish{
+        InspectorWindow* window;
+        ~LayoutFinish(){
+            window->layoutRecording = false;
+            window->layoutLast = std::move(window->layoutDrawing);
+        }
+    } layoutFinish{this};
+
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();
     SceneProject* sceneProject = project->getScene(propertiesSceneId);
     if (!sceneProject) {
@@ -14762,6 +14921,8 @@ void editor::InspectorWindow::show(){
     }
 
     std::vector<Entity> entities = project->getSelectedEntities(sceneProject->id);
+    layoutDrawing.sceneId = sceneProject->id;
+    layoutDrawing.entities = entities;
 
     const bool previewSelectionMatches = actionPreviewing
             && sceneProject->id == actionPreviewSceneId
@@ -14839,6 +15000,7 @@ void editor::InspectorWindow::show(){
                 beginPrefabComponent(sceneProject, entities, cpType, compReadOnly);
                 // Disable non-script components while playing
                 if (compReadOnly) ImGui::BeginDisabled(true);
+                beginLayoutComponent(cpType);
 
                 if (cpType == ComponentType::Transform){
                     drawTransform(cpType, sceneProject, entities);
@@ -14952,6 +15114,7 @@ void editor::InspectorWindow::show(){
                     drawInstancedMeshComponent(cpType, sceneProject, entities);
                 }
 
+                endLayoutComponent();
                 if (compReadOnly) ImGui::EndDisabled();
                 endPrefabComponent();
             }
