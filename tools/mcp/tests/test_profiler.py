@@ -120,7 +120,7 @@ async def test_capture_pass_output(ed: Editor):
     await red_scene(ed)
     r = await ed.call("get_gpu_passes")
     # the scene's opaque colour pass: one of the passes into a colour target (the Scene view also
-    # draws the editor's own layers) shows the red plane at its centre
+    # draws the editor's own layers) shows the red plane
     colour = [p for p in r["passes"] if any(t["attachment"] == "color0" for t in p["targets"])]
     ed.check(colour, "a pass with a colour target")
     centres = []
@@ -128,12 +128,13 @@ async def test_capture_pass_output(ed: Editor):
         shot = await ed.call_raw("capture_pass_output", {"pass": p["index"], "attachment": "color0", "mode": "color"})
         ed.check(not shot.is_error and shot.images, f"an image of pass {p['index']} {p['label']}: {shot.text}")
         w, h, n, rows = decode_png(shot.images[0][0])
-        centre = list(rows[h // 2][(w // 2) * n:(w // 2) * n + 3])
-        centres.append((p["index"], p["label"], p["draws"], centre))
-        if abs(centre[0] - 255) <= 3 and centre[1] <= 3 and centre[2] <= 3:
+        # a quarter in from the left: the plane, not the box at the centre
+        pixel = list(rows[h // 2][(w // 4) * n:(w // 4) * n + 3])
+        centres.append((p["index"], p["label"], p["draws"], pixel))
+        if abs(pixel[0] - 255) <= 3 and pixel[1] <= 3 and pixel[2] <= 3:
             break
     else:
-        ed.fail(f"no colour pass shows the red plane at its centre: {centres}")
+        ed.fail(f"no colour pass shows the red plane: {centres}")
     depth_pass = [p for p in r["passes"] if any(t["attachment"] == "depth" and t.get("samples", 1) == 1 for t in p["targets"])]
     if depth_pass:
         target = max(depth_pass, key=lambda p: p["draws"])
@@ -183,25 +184,25 @@ async def test_profiler_capture(ed: Editor):
 
 
 async def test_frame_times_spikes(ed: Editor):
-    """A script that busy-waits every 30th frame (AC11: 50 ms; here 200 ms, so a slow software-rendered
-    frame of a loaded build server is never taken for a spike)."""
+    """A script that busy-waits every 30th frame (AC11: 50 ms; here 1 s, so a slow software-rendered
+    frame of a loaded build server, up to a few hundred ms, is never taken for a spike)."""
     scene = await red_scene(ed)
     await ed.call("play", action="start", scene=scene)
     await ed.call("eval_lua", code="""
         local function spike()
             local t = os.clock()
-            while os.clock() - t < 0.2 do end
+            while os.clock() - t < 1.0 do end
             Timer.afterFrames(30, spike)
         end
         Timer.afterFrames(30, spike)
         return true""")
     await ed.call("wait", frames=130)
-    r = await ed.call("get_frame_times", window=120, min_frame_ms=150, monitors=["FPS", "Draw calls"])
+    r = await ed.call("get_frame_times", window=120, min_frame_ms=800, monitors=["FPS", "Draw calls"])
     await ed.call("play", action="stop")
     ed.check(r["spike_count"] >= 3, f"spikes: {r['spike_count']} {r.get('spikes')}")
     ed.check(r["spike_interval_frames"] is not None and abs(r["spike_interval_frames"] - 30) <= 1,
              f"spike interval {r['spike_interval_frames']}: {r.get('spikes')}")
-    ed.check(r["summary"]["frame_ms"]["max"] >= 150, "the max is a spike")
+    ed.check(r["summary"]["frame_ms"]["max"] >= 800, "the max is a spike")
     ed.check(len(r["monitors"]["FPS"]["series"]) > 0, "the FPS monitor's series")
     await ed.check_error("get_frame_times", {"monitors": ["No such monitor"]}, contains="Monitors:")
 
