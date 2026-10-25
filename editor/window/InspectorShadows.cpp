@@ -10,6 +10,7 @@
 #include "InspectorWindow.h"
 
 #include "Catalog.h"
+#include "reflect/Enums.h"
 #include "Theme.h"
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -30,16 +31,9 @@ using namespace jasperengine;
 
 namespace {
 
-    std::vector<editor::EnumEntry> entriesShadowUpdateMode = {
-        { (int)ShadowUpdateMode::AUTO, "Auto" },
-        { (int)ShadowUpdateMode::EVERY_FRAME, "Every Frame" },
-        { (int)ShadowUpdateMode::ON_DEMAND, "On Demand" }
-    };
-
-    std::vector<editor::EnumEntry> entriesCascadeSplitMode = {
-        { (int)CascadeSplitMode::AUTO, "Auto" },
-        { (int)CascadeSplitMode::MANUAL, "Manual" }
-    };
+    // the dropdowns of the light's enums: their reflection tables (editor/reflect/Enums.cpp)
+    std::vector<editor::EnumEntry>& entriesShadowUpdateMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowUpdateMode);
+    std::vector<editor::EnumEntry>& entriesCascadeSplitMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCascadeSplitMode);
 
     const char* const shadowTypeNames[] = { "No Shadows", "Hard Shadows", "Soft Shadows" };
     const unsigned int resolutionValues[] = { 0, 256, 512, 1024, 2048, 4096 };

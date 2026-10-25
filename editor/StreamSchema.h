@@ -9,11 +9,14 @@
 // name table of every enum read from YAML. A key or value outside these tables is reported by
 // the load report and preserved (StreamPreserved.h) instead of being dropped silently.
 //
-// The tables are hand-kept until reflection (S08) replaces them. tools/check_stream_keys.py
-// checks that every key a decoder reads is listed, StreamSchemaTest that every key an encoder
-// writes is. A spec that adds a serialized key adds it here too (docs/data-safety.md).
+// The components' keys and enum names come from their reflection tables (editor/reflect,
+// docs/specs/S08-reflection.md): a field added to a table is known here. The rest are hand-kept:
+// tools/check_stream_keys.py checks that every key a decoder reads is listed, StreamSchemaTest
+// that every key an encoder writes is. A spec that adds a serialized key outside the component
+// tables adds it here too (docs/data-safety.md).
 
 #include "Catalog.h"
+#include "reflect/Reflect.h"
 #include "Project.h"
 #include "Generator.h"
 #include "window/TerrainEditWindow.h"
@@ -23,6 +26,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -37,10 +41,22 @@ namespace jasperengine::editor {
             E value;
             const char* name;
         };
-        using Normalizer = std::string (*)(const std::string&);
+        using Normalizer = std::string (*)(std::string_view);
 
         EnumTable(const char* typeName, std::vector<Name> names, E fallback, std::vector<Name> aliases = {}, Normalizer normalize = nullptr):
                 typeName_(typeName), names_(std::move(names)), aliases_(std::move(aliases)), fallback_(fallback), normalize_(normalize) {
+            for (const Name& name : names_)
+                nameList_.emplace_back(name.name);
+        }
+
+        // The names of a component enum's table (its YAML tokens and their aliases)
+        explicit EnumTable(const reflect::EnumDesc& desc):
+                typeName_(desc.cppType), fallback_(static_cast<E>(desc.fallback)), normalize_(desc.normalize) {
+            for (const reflect::EnumItem& item : desc.items) {
+                names_.push_back({static_cast<E>(item.value), item.token});
+                for (const char* alias : item.aliases)
+                    aliases_.push_back({static_cast<E>(item.value), alias});
+            }
             for (const Name& name : names_)
                 nameList_.emplace_back(name.name);
         }

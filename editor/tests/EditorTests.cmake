@@ -8,7 +8,8 @@
 
 file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp)
+    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
 # crash handler (editor/tests/util/LogCrashHelper.cpp)

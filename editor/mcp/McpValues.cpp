@@ -33,6 +33,7 @@
 #include "util/CameraTextureLink.h"
 #include "util/EntityClipboard.h"
 #include "util/Util.h"
+#include "reflect/Enums.h"
 
 #include <algorithm>
 #include <cctype>
@@ -43,6 +44,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <set>
 
 namespace fs = std::filesystem;
@@ -187,114 +189,30 @@ long long integralValue(const Json& value) {
 
 using EnumOptions = McpValues::EnumOptions;
 
-const EnumOptions& anchorPresetOptions() {
-    static const EnumOptions options = {
-        {(int)AnchorPreset::NONE, "none", "None"},
-        {(int)AnchorPreset::TOP_LEFT, "top_left", "Top Left"},
-        {(int)AnchorPreset::TOP_RIGHT, "top_right", "Top Right"},
-        {(int)AnchorPreset::BOTTOM_LEFT, "bottom_left", "Bottom Left"},
-        {(int)AnchorPreset::BOTTOM_RIGHT, "bottom_right", "Bottom Right"},
-        {(int)AnchorPreset::CENTER_LEFT, "center_left", "Center Left"},
-        {(int)AnchorPreset::CENTER_TOP, "center_top", "Center Top"},
-        {(int)AnchorPreset::CENTER_RIGHT, "center_right", "Center Right"},
-        {(int)AnchorPreset::CENTER_BOTTOM, "center_bottom", "Center Bottom"},
-        {(int)AnchorPreset::CENTER, "center", "Center"},
-        {(int)AnchorPreset::LEFT_WIDE, "left_wide", "Left Wide"},
-        {(int)AnchorPreset::TOP_WIDE, "top_wide", "Top Wide"},
-        {(int)AnchorPreset::RIGHT_WIDE, "right_wide", "Right Wide"},
-        {(int)AnchorPreset::BOTTOM_WIDE, "bottom_wide", "Bottom Wide"},
-        {(int)AnchorPreset::VERTICAL_CENTER_WIDE, "vertical_center_wide", "Vertical Center Wide"},
-        {(int)AnchorPreset::HORIZONTAL_CENTER_WIDE, "horizontal_center_wide", "Horizontal Center Wide"},
-        {(int)AnchorPreset::FULL_LAYOUT, "full_layout", "Full Layout"}
-    };
+// The options of a component enum: its table's MCP tokens and labels, in the Inspector's order,
+// hidden values left out (docs/specs/S08-reflection.md R5); `mask` keeps the values a field offers
+const EnumOptions& tableOptions(const reflect::EnumDesc& desc, uint64_t mask = 0) {
+    static std::mutex mutex;
+    static std::map<std::pair<const reflect::EnumDesc*, uint64_t>, EnumOptions> tables;
+    std::lock_guard<std::mutex> lock(mutex);
+    EnumOptions& options = tables[{&desc, mask}];
+    if (options.empty()) {
+        for (const reflect::EnumItem* item : reflect::enums::offered(desc, mask)) {
+            options.push_back({item->value, reflect::enumMcpToken(*item), item->label});
+        }
+    }
     return options;
 }
 
-const EnumOptions& pivotPresetOptions() {
-    static const EnumOptions options = {
-        {(int)PivotPreset::CENTER, "center", "Center"},
-        {(int)PivotPreset::TOP_CENTER, "top_center", "Top Center"},
-        {(int)PivotPreset::BOTTOM_CENTER, "bottom_center", "Bottom Center"},
-        {(int)PivotPreset::LEFT_CENTER, "left_center", "Left Center"},
-        {(int)PivotPreset::RIGHT_CENTER, "right_center", "Right Center"},
-        {(int)PivotPreset::TOP_LEFT, "top_left", "Top Left"},
-        {(int)PivotPreset::BOTTOM_LEFT, "bottom_left", "Bottom Left"},
-        {(int)PivotPreset::TOP_RIGHT, "top_right", "Top Right"},
-        {(int)PivotPreset::BOTTOM_RIGHT, "bottom_right", "Bottom Right"}
-    };
-    return options;
-}
 
-const EnumOptions& orientationOptions() {
-    static_assert(static_cast<int>(ScrollbarType::VERTICAL) == static_cast<int>(ProgressbarType::VERTICAL));
-    static_assert(static_cast<int>(ScrollbarType::HORIZONTAL) == static_cast<int>(ProgressbarType::HORIZONTAL));
-    static const EnumOptions options = {
-        {(int)ScrollbarType::VERTICAL, "vertical", "Vertical"},
-        {(int)ScrollbarType::HORIZONTAL, "horizontal", "Horizontal"}
-    };
-    return options;
-}
 
-const EnumOptions& actionStateOptions() {
-    static const EnumOptions options = {
-        {(int)ActionState::Running, "running", "Running"},
-        {(int)ActionState::Paused, "paused", "Paused"},
-        {(int)ActionState::Stopped, "stopped", "Stopped"}
-    };
-    return options;
-}
 
-const EnumOptions& lightTypeOptions() {
-    static const EnumOptions options = {
-        {(int)LightType::DIRECTIONAL, "directional", "Directional"},
-        {(int)LightType::POINT, "point", "Point"},
-        {(int)LightType::SPOT, "spot", "Spot"}
-    };
-    return options;
-}
 
-const EnumOptions& shadowCasterShapeOptions() {
-    static const EnumOptions options = {
-        {(int)ShadowCaster2DShape::AUTO_QUAD, "auto_quad", "Auto Quad"},
-        {(int)ShadowCaster2DShape::POLYGON, "polygon", "Polygon"}
-    };
-    return options;
-}
 
-const EnumOptions& cullingModeOptions() {
-    static const EnumOptions options = {
-        {(int)CullingMode::BACK, "back", "Back"},
-        {(int)CullingMode::FRONT, "front", "Front"}
-    };
-    return options;
-}
 
-const EnumOptions& fogTypeOptions() {
-    static const EnumOptions options = {
-        {(int)FogType::LINEAR, "linear", "Linear"},
-        {(int)FogType::EXPONENTIAL, "exponential", "Exponential"},
-        {(int)FogType::EXPONENTIALSQUARED, "exponential_squared", "Exponential Squared"},
-        {(int)FogType::HEIGHT, "height", "Height"}
-    };
-    return options;
-}
 
-const EnumOptions& fogColorModeOptions() {
-    static const EnumOptions options = {
-        {(int)FogColorMode::COLOR, "color", "Constant Color"},
-        {(int)FogColorMode::SKY, "sky", "Sky Color"}
-    };
-    return options;
-}
 
-const EnumOptions& atmosphereQualityOverrideOptions() {
-    static const EnumOptions options = {
-        {(int)AtmosphereQualityOverride::PROJECT, "project", "Project"},
-        {(int)AtmosphereQualityOverride::LOW, "low", "Low"},
-        {(int)AtmosphereQualityOverride::MEDIUM, "medium", "Medium"}
-    };
-    return options;
-}
+
 
 const EnumOptions& atmosphereQualityOptions() {
     static const EnumOptions options = {
@@ -306,382 +224,41 @@ const EnumOptions& atmosphereQualityOptions() {
     return options;
 }
 
-const EnumOptions& fogVolumeShapeOptions() {
-    static const EnumOptions options = {
-        {(int)FogVolumeShape::BOX, "box", "Box"},
-        {(int)FogVolumeShape::SPHERE, "sphere", "Sphere"}
-    };
-    return options;
-}
 
-const EnumOptions& fogVolumeFalloffOptions() {
-    static const EnumOptions options = {
-        {(int)FogVolumeFalloff::LINEAR, "linear", "Linear"},
-        {(int)FogVolumeFalloff::EXPONENTIAL, "exponential", "Exponential"}
-    };
-    return options;
-}
 
-const EnumOptions& cloudsPresetOptions() {
-    static const EnumOptions options = {
-        {(int)CloudsPreset::CUSTOM, "custom", "Custom"},
-        {(int)CloudsPreset::SPARSE, "sparse", "Sparse"},
-        {(int)CloudsPreset::CLOUDY, "cloudy", "Cloudy"},
-        {(int)CloudsPreset::OVERCAST, "overcast", "Overcast"},
-        {(int)CloudsPreset::STORMY, "stormy", "Stormy"}
-    };
-    return options;
-}
 
-const EnumOptions& cloudsRenderingOptions() {
-    static const EnumOptions options = {
-        {(int)CloudsRendering::AUTO, "auto", "Automatic"},
-        {(int)CloudsRendering::SKY_MAP, "sky_map", "Sky Map"},
-        {(int)CloudsRendering::SCREEN, "screen", "Screen"}
-    };
-    return options;
-}
 
-const EnumOptions& probeModeOptions() {
-    static const EnumOptions options = {
-        {(int)ReflectionProbeMode::STATIC, "static", "Static"},
-        {(int)ReflectionProbeMode::DYNAMIC, "dynamic", "Dynamic"}
-    };
-    return options;
-}
 
-const EnumOptions& probeUpdateModeOptions() {
-    static const EnumOptions options = {
-        {(int)ReflectionProbeUpdateMode::ON_LOAD, "on_load", "On Load"},
-        {(int)ReflectionProbeUpdateMode::ON_MOVE, "on_move", "On Move"},
-        {(int)ReflectionProbeUpdateMode::INTERVAL, "interval", "Interval"},
-        {(int)ReflectionProbeUpdateMode::MANUAL, "manual", "Manual"}
-    };
-    return options;
-}
 
-const EnumOptions& uiDocumentRenderModeOptions() {
-    static const EnumOptions options = {
-        {(int)UIDocumentRenderMode::SCREEN, "screen", "Screen"},
-        {(int)UIDocumentRenderMode::TEXTURE, "texture", "Texture"}
-    };
-    return options;
-}
 
-const EnumOptions& cameraTypeOptions() {
-    static const EnumOptions options = {
-        {(int)CameraType::CAMERA_ORTHO, "orthographic", "Orthographic"},
-        {(int)CameraType::CAMERA_PERSPECTIVE, "perspective", "Perspective"}
-    };
-    return options;
-}
 
-// framebuffers have no mipmaps
-const EnumOptions& framebufferFilterOptions() {
-    static const EnumOptions options = {
-        {(int)TextureFilter::NEAREST, "nearest", "Nearest"},
-        {(int)TextureFilter::LINEAR, "linear", "Linear"}
-    };
-    return options;
-}
 
-const EnumOptions& textureFilterOptions() {
-    static const EnumOptions options = {
-        {(int)TextureFilter::NEAREST, "nearest", "Nearest"},
-        {(int)TextureFilter::LINEAR, "linear", "Linear"},
-        {(int)TextureFilter::NEAREST_MIPMAP_NEAREST, "nearest_mipmap_nearest", "Nearest Mipmap Nearest"},
-        {(int)TextureFilter::NEAREST_MIPMAP_LINEAR, "nearest_mipmap_linear", "Nearest Mipmap Linear"},
-        {(int)TextureFilter::LINEAR_MIPMAP_NEAREST, "linear_mipmap_nearest", "Linear Mipmap Nearest"},
-        {(int)TextureFilter::LINEAR_MIPMAP_LINEAR, "linear_mipmap_linear", "Linear Mipmap Linear"}
-    };
-    return options;
-}
 
-const EnumOptions& textureWrapOptions() {
-    static const EnumOptions options = {
-        {(int)TextureWrap::REPEAT, "repeat", "Repeat"},
-        {(int)TextureWrap::MIRRORED_REPEAT, "mirrored_repeat", "Mirrored Repeat"},
-        {(int)TextureWrap::CLAMP_TO_EDGE, "clamp_to_edge", "Clamp to Edge"},
-        {(int)TextureWrap::CLAMP_TO_BORDER, "clamp_to_border", "Clamp to Border"}
-    };
-    return options;
-}
 
-const EnumOptions& textureAlphaBorderOptions() {
-    static const EnumOptions options = {
-        {(int)TextureAlphaBorder::AUTO, "auto", "Auto"},
-        {(int)TextureAlphaBorder::FIX, "fix", "Fix"},
-        {(int)TextureAlphaBorder::KEEP, "keep", "Keep"}
-    };
-    return options;
-}
 
-const EnumOptions& audioStateOptions() {
-    static const EnumOptions options = {
-        {(int)AudioSourceState::Playing, "playing", "Playing"},
-        {(int)AudioSourceState::Paused, "paused", "Paused"},
-        {(int)AudioSourceState::Stopped, "stopped", "Stopped"}
-    };
-    return options;
-}
 
-const EnumOptions& audioAttenuationOptions() {
-    static const EnumOptions options = {
-        {(int)AudioSourceAttenuation::NO_ATTENUATION, "no_attenuation", "No Attenuation"},
-        {(int)AudioSourceAttenuation::INVERSE_DISTANCE, "inverse_distance", "Inverse Distance"},
-        {(int)AudioSourceAttenuation::LINEAR_DISTANCE, "linear_distance", "Linear Distance"},
-        {(int)AudioSourceAttenuation::EXPONENTIAL_DISTANCE, "exponential_distance", "Exponential Distance"}
-    };
-    return options;
-}
 
-const EnumOptions& joint2DTypeOptions() {
-    static const EnumOptions options = {
-        {(int)Joint2DType::DISTANCE, "distance", "Distance"},
-        {(int)Joint2DType::REVOLUTE, "revolute", "Revolute"},
-        {(int)Joint2DType::PRISMATIC, "prismatic", "Prismatic"},
-        {(int)Joint2DType::MOUSE, "mouse", "Mouse"},
-        {(int)Joint2DType::WHEEL, "wheel", "Wheel"},
-        {(int)Joint2DType::WELD, "weld", "Weld"},
-        {(int)Joint2DType::MOTOR, "motor", "Motor"}
-    };
-    return options;
-}
 
-const EnumOptions& joint3DTypeOptions() {
-    static const EnumOptions options = {
-        {(int)Joint3DType::FIXED, "fixed", "Fixed"},
-        {(int)Joint3DType::DISTANCE, "distance", "Distance"},
-        {(int)Joint3DType::POINT, "point", "Point"},
-        {(int)Joint3DType::HINGE, "hinge", "Hinge"},
-        {(int)Joint3DType::CONE, "cone", "Cone"},
-        {(int)Joint3DType::PRISMATIC, "prismatic", "Prismatic"},
-        {(int)Joint3DType::SWINGTWIST, "swing_twist", "Swing Twist"},
-        {(int)Joint3DType::SIXDOF, "six_dof", "Six DOF"},
-        {(int)Joint3DType::PATH, "path", "Path"},
-        {(int)Joint3DType::GEAR, "gear", "Gear"},
-        {(int)Joint3DType::RACKANDPINON, "rack_and_pinion", "Rack and Pinion"},
-        {(int)Joint3DType::PULLEY, "pulley", "Pulley"}
-    };
-    return options;
-}
 
-const EnumOptions& layoutGroupTypeOptions() {
-    static const EnumOptions options = {
-        {(int)LayoutGroupType::VERTICAL, "vertical", "Vertical"},
-        {(int)LayoutGroupType::HORIZONTAL, "horizontal", "Horizontal"},
-        {(int)LayoutGroupType::VERTICAL_WRAP, "vertical_wrap", "Vertical Wrap"},
-        {(int)LayoutGroupType::HORIZONTAL_WRAP, "horizontal_wrap", "Horizontal Wrap"}
-    };
-    return options;
-}
 
-const EnumOptions& alphaModeOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialAlphaMode::AUTO, "auto", "Auto"},
-        {(int)MaterialAlphaMode::ALPHA_OPAQUE, "opaque", "Opaque"},
-        {(int)MaterialAlphaMode::MASK, "mask", "Mask"},
-        {(int)MaterialAlphaMode::BLEND, "blend", "Blend"}
-    };
-    return options;
-}
 
-// Shader library render state (Material, UI/Points/LineRenderer) and lighting. NONE blends
-// nothing: it reads "opaque" (the "None" label still parses)
-const EnumOptions& blendModeOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialBlendMode::AUTO, "auto", "Auto"},
-        {(int)MaterialBlendMode::NONE, "opaque", "None"},
-        {(int)MaterialBlendMode::ALPHA, "alpha", "Alpha"},
-        {(int)MaterialBlendMode::PREMULTIPLIED, "premultiplied", "Premultiplied"},
-        {(int)MaterialBlendMode::ADDITIVE, "additive", "Additive"},
-        {(int)MaterialBlendMode::MULTIPLY, "multiply", "Multiply"}
-    };
-    return options;
-}
 
-const EnumOptions& materialCullModeOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialCullMode::AUTO, "auto", "Auto"},
-        {(int)MaterialCullMode::BACK, "back", "Back"},
-        {(int)MaterialCullMode::FRONT, "front", "Front"},
-        {(int)MaterialCullMode::OFF, "off", "Off"}
-    };
-    return options;
-}
 
-const EnumOptions& depthWriteOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialDepthWrite::AUTO, "auto", "Auto"},
-        {(int)MaterialDepthWrite::ENABLED, "on", "Enabled"},
-        {(int)MaterialDepthWrite::DISABLED, "off", "Disabled"}
-    };
-    return options;
-}
 
-const EnumOptions& depthTestOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialDepthTest::AUTO, "auto", "Auto"},
-        {(int)MaterialDepthTest::LESS, "less", "Less"},
-        {(int)MaterialDepthTest::LESS_EQUAL, "less_equal", "Less Equal"},
-        {(int)MaterialDepthTest::EQUAL, "equal", "Equal"},
-        {(int)MaterialDepthTest::GREATER_EQUAL, "greater_equal", "Greater Equal"},
-        {(int)MaterialDepthTest::GREATER, "greater", "Greater"},
-        {(int)MaterialDepthTest::NOT_EQUAL, "not_equal", "Not Equal"},
-        {(int)MaterialDepthTest::ALWAYS, "always", "Always"}
-    };
-    return options;
-}
 
-const EnumOptions& materialLightingOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialLighting::AUTO, "auto", "Auto"},
-        {(int)MaterialLighting::PIXEL, "pixel", "Per Pixel"},
-        {(int)MaterialLighting::VERTEX, "vertex", "Per Vertex"},
-        {(int)MaterialLighting::MIXED, "mixed", "Mixed"},
-        {(int)MaterialLighting::NONE, "none", "None"}
-    };
-    return options;
-}
 
-// phase 2: stencil test, stencil ops and the extra pass order
-const EnumOptions& stencilCompareOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialStencilCompare::AUTO, "auto", "Auto"},
-        {(int)MaterialStencilCompare::DISABLED, "disabled", "Off"},
-        {(int)MaterialStencilCompare::NEVER, "never", "Never"},
-        {(int)MaterialStencilCompare::LESS, "less", "Less"},
-        {(int)MaterialStencilCompare::EQUAL, "equal", "Equal"},
-        {(int)MaterialStencilCompare::LESS_EQUAL, "less_equal", "Less Equal"},
-        {(int)MaterialStencilCompare::GREATER, "greater", "Greater"},
-        {(int)MaterialStencilCompare::NOT_EQUAL, "not_equal", "Not Equal"},
-        {(int)MaterialStencilCompare::GREATER_EQUAL, "greater_equal", "Greater Equal"},
-        {(int)MaterialStencilCompare::ALWAYS, "always", "Always"}
-    };
-    return options;
-}
 
-const EnumOptions& stencilOpOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialStencilOp::KEEP, "keep", "Keep"},
-        {(int)MaterialStencilOp::ZERO, "zero", "Zero"},
-        {(int)MaterialStencilOp::REPLACE, "replace", "Replace"},
-        {(int)MaterialStencilOp::INCR_CLAMP, "incr_clamp", "Increment"},
-        {(int)MaterialStencilOp::DECR_CLAMP, "decr_clamp", "Decrement"},
-        {(int)MaterialStencilOp::INVERT, "invert", "Invert"},
-        {(int)MaterialStencilOp::INCR_WRAP, "incr_wrap", "Increment Wrap"},
-        {(int)MaterialStencilOp::DECR_WRAP, "decr_wrap", "Decrement Wrap"}
-    };
-    return options;
-}
 
-const EnumOptions& passOrderOptions() {
-    static const EnumOptions options = {
-        {(int)MaterialPassOrder::AFTER, "after", "After"},
-        {(int)MaterialPassOrder::BEFORE, "before", "Before"}
-    };
-    return options;
-}
 
-const EnumOptions& lightShadingOptions() {
-    static const EnumOptions options = {
-        {(int)LightShading::BOTH, "both", "Both"},
-        {(int)LightShading::PIXEL, "pixel", "Per Pixel"},
-        {(int)LightShading::VERTEX, "vertex", "Per Vertex"}
-    };
-    return options;
-}
 
-const EnumOptions& cascadeSplitModeOptions() {
-    static const EnumOptions options = {
-        {(int)CascadeSplitMode::AUTO, "auto", "Auto"},
-        {(int)CascadeSplitMode::MANUAL, "manual", "Manual"}
-    };
-    return options;
-}
 
-const EnumOptions& shadowUpdateModeOptions() {
-    static const EnumOptions options = {
-        {(int)ShadowUpdateMode::AUTO, "auto", "Auto"},
-        {(int)ShadowUpdateMode::EVERY_FRAME, "every_frame", "Every Frame"},
-        {(int)ShadowUpdateMode::ON_DEMAND, "on_demand", "On Demand"}
-    };
-    return options;
-}
 
-const EnumOptions& primitiveTypeOptions() {
-    static const EnumOptions options = {
-        {(int)PrimitiveType::TRIANGLES, "triangles", "Triangles"},
-        {(int)PrimitiveType::TRIANGLE_STRIP, "triangle_strip", "Triangle Strip"},
-        {(int)PrimitiveType::POINTS, "points", "Points"},
-        {(int)PrimitiveType::LINES, "lines", "Lines"}
-    };
-    return options;
-}
 
-const EnumOptions& bodyTypeOptions() {
-    static const EnumOptions options = {
-        {(int)BodyType::STATIC, "static", "Static"},
-        {(int)BodyType::KINEMATIC, "kinematic", "Kinematic"},
-        {(int)BodyType::DYNAMIC, "dynamic", "Dynamic"}
-    };
-    return options;
-}
 
-const EnumOptions& motionQualityOptions() {
-    static const EnumOptions options = {
-        {(int)RigidbodyMotionQuality::DISCRETE, "discrete", "Discrete"},
-        {(int)RigidbodyMotionQuality::LINEAR_CAST, "linear_cast", "Linear Cast"}
-    };
-    return options;
-}
 
-const EnumOptions& collider2DTypeOptions() {
-    static const EnumOptions options = {
-        {(int)Collider2DType::POLYGON, "polygon", "Polygon"},
-        {(int)Collider2DType::CIRCLE, "circle", "Circle"},
-        {(int)Collider2DType::CAPSULE, "capsule", "Capsule"},
-        {(int)Collider2DType::SEGMENT, "segment", "Segment"},
-        {(int)Collider2DType::CHAIN, "chain", "Chain"}
-    };
-    return options;
-}
 
-const EnumOptions& collider3DTypeOptions() {
-    static const EnumOptions options = {
-        {(int)Collider3DType::BOX, "box", "Box"},
-        {(int)Collider3DType::SPHERE, "sphere", "Sphere"},
-        {(int)Collider3DType::CAPSULE, "capsule", "Capsule"},
-        {(int)Collider3DType::TAPERED_CAPSULE, "tapered_capsule", "Tapered Capsule"},
-        {(int)Collider3DType::CYLINDER, "cylinder", "Cylinder"},
-        {(int)Collider3DType::CONVEX_HULL, "convex_hull", "Convex Hull"},
-        {(int)Collider3DType::MESH, "mesh", "Mesh"},
-        {(int)Collider3DType::HEIGHTFIELD, "heightfield", "Heightfield"}
-    };
-    return options;
-}
 
-const EnumOptions& collider3DSourceOptions() {
-    static const EnumOptions options = {
-        {(int)Collider3DSource::NONE, "none", "None"},
-        {(int)Collider3DSource::RAW_VERTICES, "raw_vertices", "Raw Vertices"},
-        {(int)Collider3DSource::RAW_MESH, "raw_mesh", "Raw Mesh"},
-        {(int)Collider3DSource::ENTITY_MESH, "entity_mesh", "GameObject Mesh"},
-        {(int)Collider3DSource::ENTITY_HEIGHTFIELD, "entity_heightfield", "GameObject Heightfield"}
-    };
-    return options;
-}
 
-const EnumOptions& emitterShapeOptions() {
-    static const EnumOptions options = {
-        {(int)ParticleEmitterShape::Box, "box", "Box"},
-        {(int)ParticleEmitterShape::Sphere, "sphere", "Sphere"},
-        {(int)ParticleEmitterShape::Hemisphere, "hemisphere", "Hemisphere"},
-        {(int)ParticleEmitterShape::Circle, "circle", "Circle"},
-        {(int)ParticleEmitterShape::Cone, "cone", "Cone"}
-    };
-    return options;
-}
 
 const EnumOptions& lightStateOptions() {
     static const EnumOptions options = {
@@ -904,41 +481,7 @@ std::string McpValues::propertyTypeName(PropertyType type) {
 // ==================================================================== enums
 
 const McpValues::EnumOptions& McpValues::easeOptions() {
-    static const EnumOptions options = {
-        {(int)EaseType::LINEAR, "linear", "Linear"},
-        {(int)EaseType::STEP, "step", "Step"},
-        {(int)EaseType::QUAD_IN, "quad_in", "Quad In"},
-        {(int)EaseType::QUAD_OUT, "quad_out", "Quad Out"},
-        {(int)EaseType::QUAD_IN_OUT, "quad_in_out", "Quad In Out"},
-        {(int)EaseType::CUBIC_IN, "cubic_in", "Cubic In"},
-        {(int)EaseType::CUBIC_OUT, "cubic_out", "Cubic Out"},
-        {(int)EaseType::CUBIC_IN_OUT, "cubic_in_out", "Cubic In Out"},
-        {(int)EaseType::QUART_IN, "quart_in", "Quart In"},
-        {(int)EaseType::QUART_OUT, "quart_out", "Quart Out"},
-        {(int)EaseType::QUART_IN_OUT, "quart_in_out", "Quart In Out"},
-        {(int)EaseType::QUINT_IN, "quint_in", "Quint In"},
-        {(int)EaseType::QUINT_OUT, "quint_out", "Quint Out"},
-        {(int)EaseType::QUINT_IN_OUT, "quint_in_out", "Quint In Out"},
-        {(int)EaseType::SINE_IN, "sine_in", "Sine In"},
-        {(int)EaseType::SINE_OUT, "sine_out", "Sine Out"},
-        {(int)EaseType::SINE_IN_OUT, "sine_in_out", "Sine In Out"},
-        {(int)EaseType::EXPO_IN, "expo_in", "Expo In"},
-        {(int)EaseType::EXPO_OUT, "expo_out", "Expo Out"},
-        {(int)EaseType::EXPO_IN_OUT, "expo_in_out", "Expo In Out"},
-        {(int)EaseType::CIRC_IN, "circ_in", "Circ In"},
-        {(int)EaseType::CIRC_OUT, "circ_out", "Circ Out"},
-        {(int)EaseType::CIRC_IN_OUT, "circ_in_out", "Circ In Out"},
-        {(int)EaseType::ELASTIC_IN, "elastic_in", "Elastic In"},
-        {(int)EaseType::ELASTIC_OUT, "elastic_out", "Elastic Out"},
-        {(int)EaseType::ELASTIC_IN_OUT, "elastic_in_out", "Elastic In Out"},
-        {(int)EaseType::BACK_IN, "back_in", "Back In"},
-        {(int)EaseType::BACK_OUT, "back_out", "Back Out"},
-        {(int)EaseType::BACK_IN_OUT, "back_in_out", "Back In Out"},
-        {(int)EaseType::BOUNCE_IN, "bounce_in", "Bounce In"},
-        {(int)EaseType::BOUNCE_OUT, "bounce_out", "Bounce Out"},
-        {(int)EaseType::BOUNCE_IN_OUT, "bounce_in_out", "Bounce In Out"}
-    };
-    return options;
+    return tableOptions(reflect::enums::kEaseType);
 }
 
 const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
@@ -948,26 +491,28 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"shadow_debug_view", &shadowDebugViewOptions()},
         {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
-        {"texture_filter", &textureFilterOptions()},
-        {"framebuffer_filter", &framebufferFilterOptions()},
-        {"texture_wrap", &textureWrapOptions()},
-        {"texture_alpha_border", &textureAlphaBorderOptions()},
-        {"material_alpha_mode", &alphaModeOptions()},
-        {"material_blend_mode", &blendModeOptions()},
-        {"material_cull_mode", &materialCullModeOptions()},
-        {"material_depth_write", &depthWriteOptions()},
-        {"material_depth_test", &depthTestOptions()},
-        {"material_lighting", &materialLightingOptions()},
-        {"material_stencil_compare", &stencilCompareOptions()},
-        {"material_stencil_op", &stencilOpOptions()},
-        {"material_pass_order", &passOrderOptions()},
-        {"light_shading", &lightShadingOptions()},
-        {"primitive_type", &primitiveTypeOptions()},
-        {"body_type", &bodyTypeOptions()},
-        {"collider2d_type", &collider2DTypeOptions()},
-        {"collider3d_type", &collider3DTypeOptions()},
-        {"light_type", &lightTypeOptions()},
-        {"camera_type", &cameraTypeOptions()},
+        {"texture_filter", &tableOptions(reflect::enums::kTextureFilter)},
+        // framebuffers have no mipmaps
+        {"framebuffer_filter", &tableOptions(reflect::enums::kTextureFilter,
+                                             reflect::enums::bit((int)TextureFilter::NEAREST) | reflect::enums::bit((int)TextureFilter::LINEAR))},
+        {"texture_wrap", &tableOptions(reflect::enums::kTextureWrap)},
+        {"texture_alpha_border", &tableOptions(reflect::enums::kTextureAlphaBorder)},
+        {"material_alpha_mode", &tableOptions(reflect::enums::kMaterialAlphaMode)},
+        {"material_blend_mode", &tableOptions(reflect::enums::kMaterialBlendMode)},
+        {"material_cull_mode", &tableOptions(reflect::enums::kMaterialCullMode)},
+        {"material_depth_write", &tableOptions(reflect::enums::kMaterialDepthWrite)},
+        {"material_depth_test", &tableOptions(reflect::enums::kMaterialDepthTest)},
+        {"material_lighting", &tableOptions(reflect::enums::kMaterialLighting)},
+        {"material_stencil_compare", &tableOptions(reflect::enums::kMaterialStencilCompare)},
+        {"material_stencil_op", &tableOptions(reflect::enums::kMaterialStencilOp)},
+        {"material_pass_order", &tableOptions(reflect::enums::kMaterialPassOrder)},
+        {"light_shading", &tableOptions(reflect::enums::kLightShading)},
+        {"primitive_type", &tableOptions(reflect::enums::kPrimitiveType)},
+        {"body_type", &tableOptions(reflect::enums::kBodyType)},
+        {"collider2d_type", &tableOptions(reflect::enums::kCollider2DType)},
+        {"collider3d_type", &tableOptions(reflect::enums::kCollider3DType)},
+        {"light_type", &tableOptions(reflect::enums::kLightType)},
+        {"camera_type", &tableOptions(reflect::enums::kCameraType)},
         {"atmosphere_quality", &atmosphereQualityOptions()},
         {"ease", &easeOptions()}
     };
@@ -976,122 +521,11 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
 }
 
 const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, const std::string& propertyName) {
-    const std::string name = stripIndices(propertyName);
-    if (name == "easings[]") return &easeOptions();
-    switch (component) {
-        case ComponentType::RectTransformComponent:
-            if (name == "anchorPreset") return &anchorPresetOptions();
-            break;
-        case ComponentType::PanelComponent:
-            if (name == "titleAnchorPreset") return &anchorPresetOptions();
-            break;
-        case ComponentType::ScrollbarComponent:
-        case ComponentType::ProgressbarComponent:
-            if (name == "type") return &orientationOptions();
-            break;
-        case ComponentType::SpriteComponent:
-            if (name == "pivotPreset") return &pivotPresetOptions();
-            break;
-        case ComponentType::ActionComponent:
-            if (name == "state") return &actionStateOptions();
-            break;
-        case ComponentType::LightComponent:
-            if (name == "type") return &lightTypeOptions();
-            if (name == "shading") return &lightShadingOptions();
-            if (name == "cascadeSplitMode") return &cascadeSplitModeOptions();
-            if (name == "shadowUpdateMode") return &shadowUpdateModeOptions();
-            break;
-        case ComponentType::UIComponent:
-        case ComponentType::PointsComponent:
-        case ComponentType::LineRendererComponent:
-            if (name == "blendMode") return &blendModeOptions();
-            if (name == "depthWrite") return &depthWriteOptions();
-            if (name == "stencil.compare") return &stencilCompareOptions();
-            if (name == "stencil.pass" || name == "stencil.fail" || name == "stencil.depthFail") return &stencilOpOptions();
-            break;
-        case ComponentType::ShadowCaster2DComponent:
-            if (name == "shape") return &shadowCasterShapeOptions();
-            break;
-        case ComponentType::FogComponent:
-            if (name == "type") return &fogTypeOptions();
-            if (name == "colorMode") return &fogColorModeOptions();
-            if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
-            break;
-        case ComponentType::LocalVolumetricFogComponent:
-            if (name == "shape") return &fogVolumeShapeOptions();
-            if (name == "falloff") return &fogVolumeFalloffOptions();
-            break;
-        case ComponentType::VolumetricCloudsComponent:
-            if (name == "preset") return &cloudsPresetOptions();
-            if (name == "rendering") return &cloudsRenderingOptions();
-            if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
-            break;
-        case ComponentType::ReflectionProbeComponent:
-            if (name == "mode") return &probeModeOptions();
-            if (name == "updateMode") return &probeUpdateModeOptions();
-            break;
-        case ComponentType::UIDocumentComponent:
-            if (name == "renderMode") return &uiDocumentRenderModeOptions();
-            break;
-        case ComponentType::CameraComponent:
-            if (name == "type") return &cameraTypeOptions();
-            if (name == "framebufferFilter") return &framebufferFilterOptions();
-            break;
-        case ComponentType::AudioSourceComponent:
-            if (name == "state") return &audioStateOptions();
-            if (name == "attenuationModel") return &audioAttenuationOptions();
-            break;
-        case ComponentType::Joint2DComponent:
-            if (name == "type") return &joint2DTypeOptions();
-            break;
-        case ComponentType::Joint3DComponent:
-            if (name == "type") return &joint3DTypeOptions();
-            break;
-        case ComponentType::LayoutGroupComponent:
-            if (name == "type") return &layoutGroupTypeOptions();
-            break;
-        case ComponentType::MeshComponent:
-            if (name == "submeshes[].material.alphaMode") return &alphaModeOptions();
-            if (name == "submeshes[].material.blendMode") return &blendModeOptions();
-            if (name == "submeshes[].material.cullMode") return &materialCullModeOptions();
-            if (name == "submeshes[].material.depthWrite") return &depthWriteOptions();
-            if (name == "submeshes[].material.depthTest") return &depthTestOptions();
-            if (name == "submeshes[].material.lighting") return &materialLightingOptions();
-            // phase 2: the material's stencil, and its extra pass's state (the same names)
-            for (const char* base : {"submeshes[].material.", "submeshes[].material.extraPass."}) {
-                const size_t length = std::strlen(base);
-                if (name.compare(0, length, base) != 0) continue;
-                const std::string field = name.substr(length);
-                if (field == "stencil.compare") return &stencilCompareOptions();
-                if (field == "stencil.pass" || field == "stencil.fail" || field == "stencil.depthFail") return &stencilOpOptions();
-                if (length > 21) {
-                    if (field == "blendMode") return &blendModeOptions();
-                    if (field == "cullMode") return &materialCullModeOptions();
-                    if (field == "depthWrite") return &depthWriteOptions();
-                    if (field == "depthTest") return &depthTestOptions();
-                    if (field == "order") return &passOrderOptions();
-                }
-            }
-            if (name == "submeshes[].primitiveType") return &primitiveTypeOptions();
-            if (name == "cullingMode") return &cullingModeOptions();
-            break;
-        case ComponentType::Rigidbody2DComponent:
-            if (name == "type") return &bodyTypeOptions();
-            if (name == "colliders[].type") return &collider2DTypeOptions();
-            break;
-        case ComponentType::RigidbodyComponent:
-            if (name == "type") return &bodyTypeOptions();
-            if (name == "motionQuality") return &motionQualityOptions();
-            if (name == "colliders[].type") return &collider3DTypeOptions();
-            if (name == "colliders[].source") return &collider3DSourceOptions();
-            break;
-        case ComponentType::ParticleSystemComponent:
-            if (name == "positionInitializer.shape") return &emitterShapeOptions();
-            break;
-        default:
-            break;
-    }
-    return nullptr;
+    // the field's enum table ("colliders[2].type": the colliders' type field)
+    const reflect::ComponentDesc* desc = reflect::find(component);
+    const reflect::FieldDesc* field = desc ? reflect::findField(*desc, propertyName) : nullptr;
+    if (!field || !field->enumDesc) return nullptr;
+    return &tableOptions(*field->enumDesc, field->enumMask);
 }
 
 Json McpValues::enumToJson(int value, const EnumOptions& options) {

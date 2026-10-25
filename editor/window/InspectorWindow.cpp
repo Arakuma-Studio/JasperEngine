@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "InspectorWindow.h"
+#include "reflect/Reflect.h"
+#include "reflect/Enums.h"
 #include "command/PlayChangeReview.h"
 #include "command/type/RemovePreservedComponentCmd.h"
 #include "StreamPreserved.h"
@@ -118,296 +120,47 @@ static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType
     }
 }
 
-static std::vector<editor::EnumEntry> entriesPrimitiveType = {
-    { (int)PrimitiveType::TRIANGLES, "Triangles" },
-    { (int)PrimitiveType::TRIANGLE_STRIP, "Triangle Strip" },
-    { (int)PrimitiveType::POINTS, "Points" },
-    { (int)PrimitiveType::LINES, "Lines" }
-};
-
-static std::vector<editor::EnumEntry> entriesMaterialAlphaMode = {
-    { (int)MaterialAlphaMode::AUTO, "Auto" },
-    { (int)MaterialAlphaMode::ALPHA_OPAQUE, "Opaque" },
-    { (int)MaterialAlphaMode::MASK, "Mask" },
-    { (int)MaterialAlphaMode::BLEND, "Blend" }
-};
-
-static std::vector<editor::EnumEntry> entriesPivotPreset = {
-    { (int)PivotPreset::CENTER, "Center" },
-    { (int)PivotPreset::TOP_CENTER, "Top Center" },
-    { (int)PivotPreset::BOTTOM_CENTER, "Bottom Center" },
-    { (int)PivotPreset::LEFT_CENTER, "Left Center" },
-    { (int)PivotPreset::RIGHT_CENTER, "Right Center" },
-    { (int)PivotPreset::TOP_LEFT, "Top Left" },
-    { (int)PivotPreset::BOTTOM_LEFT, "Bottom Left" },
-    { (int)PivotPreset::TOP_RIGHT, "Top Right" },
-    { (int)PivotPreset::BOTTOM_RIGHT, "Bottom Right" }
-};
-
-static std::vector<editor::EnumEntry> entriesAnchorPreset = {
-    { (int)AnchorPreset::NONE, "None" },
-    { (int)AnchorPreset::TOP_LEFT, "Top Left" },
-    { (int)AnchorPreset::TOP_RIGHT, "Top Right" },
-    { (int)AnchorPreset::BOTTOM_LEFT, "Bottom Left" },
-    { (int)AnchorPreset::BOTTOM_RIGHT, "Bottom Right" },
-    { (int)AnchorPreset::CENTER_LEFT, "Center Left" },
-    { (int)AnchorPreset::CENTER_TOP, "Center Top" },
-    { (int)AnchorPreset::CENTER_RIGHT, "Center Right" },
-    { (int)AnchorPreset::CENTER_BOTTOM, "Center Bottom" },
-    { (int)AnchorPreset::CENTER, "Center" },
-    { (int)AnchorPreset::LEFT_WIDE, "Left Wide" },
-    { (int)AnchorPreset::TOP_WIDE, "Top Wide" },
-    { (int)AnchorPreset::RIGHT_WIDE, "Right Wide" },
-    { (int)AnchorPreset::BOTTOM_WIDE, "Bottom Wide" },
-    { (int)AnchorPreset::VERTICAL_CENTER_WIDE, "Vertical Center Wide" },
-    { (int)AnchorPreset::HORIZONTAL_CENTER_WIDE, "Horizontal Center Wide" },
-    { (int)AnchorPreset::FULL_LAYOUT, "Full Layout" }
-};
-
-static std::vector<editor::EnumEntry> entriesLightType = {
-    { (int)LightType::DIRECTIONAL, "Directional" },
-    { (int)LightType::POINT, "Point" },
-    { (int)LightType::SPOT, "Spot" }
-};
-
-static std::vector<editor::EnumEntry> entriesShadowCaster2DShape = {
-    { (int)ShadowCaster2DShape::AUTO_QUAD, "Auto Quad" },
-    { (int)ShadowCaster2DShape::POLYGON, "Polygon" }
-};
-
-static std::vector<editor::EnumEntry> entriesLightShading = {
-    { (int)LightShading::BOTH, "Both" },
-    { (int)LightShading::PIXEL, "Per Pixel" },
-    { (int)LightShading::VERTEX, "Per Vertex" }
-};
-
-static std::vector<editor::EnumEntry> entriesCullingMode = {
-    { (int)CullingMode::BACK, "Back" },
-    { (int)CullingMode::FRONT, "Front" }
-};
-
-static std::vector<editor::EnumEntry> entriesFogType = {
-    { (int)FogType::LINEAR, "Linear" },
-    { (int)FogType::EXPONENTIAL, "Exponential" },
-    { (int)FogType::EXPONENTIALSQUARED, "Exponential Squared" },
-    { (int)FogType::HEIGHT, "Height" }
-};
-
-static std::vector<editor::EnumEntry> entriesFogColorMode = {
-    { (int)FogColorMode::COLOR, "Constant Color" },
-    { (int)FogColorMode::SKY, "Sky Color" }
-};
-
-static std::vector<editor::EnumEntry> entriesAtmosphereQualityOverride = {
-    { (int)AtmosphereQualityOverride::PROJECT, "Project" },
-    { (int)AtmosphereQualityOverride::LOW, "Low" },
-    { (int)AtmosphereQualityOverride::MEDIUM, "Medium" }
-};
-
-static std::vector<editor::EnumEntry> entriesFogVolumeShape = {
-    { (int)FogVolumeShape::BOX, "Box" },
-    { (int)FogVolumeShape::SPHERE, "Sphere" }
-};
-
-static std::vector<editor::EnumEntry> entriesFogVolumeFalloff = {
-    { (int)FogVolumeFalloff::LINEAR, "Linear" },
-    { (int)FogVolumeFalloff::EXPONENTIAL, "Exponential" }
-};
-
-static std::vector<editor::EnumEntry> entriesCloudsRendering = {
-    { (int)CloudsRendering::AUTO, "Automatic" },
-    { (int)CloudsRendering::SKY_MAP, "Sky Map" },
-    { (int)CloudsRendering::SCREEN, "Screen" }
-};
-
-static std::vector<editor::EnumEntry> entriesReflectionProbeMode = {
-    { (int)ReflectionProbeMode::STATIC, "Static" },
-    { (int)ReflectionProbeMode::DYNAMIC, "Dynamic" }
-};
-
-static std::vector<editor::EnumEntry> entriesReflectionProbeUpdateMode = {
-    { (int)ReflectionProbeUpdateMode::ON_LOAD, "On Load" },
-    { (int)ReflectionProbeUpdateMode::ON_MOVE, "On Move" },
-    { (int)ReflectionProbeUpdateMode::INTERVAL, "Interval" },
-    { (int)ReflectionProbeUpdateMode::MANUAL, "Manual" }
-};
-
-static std::vector<editor::EnumEntry> entriesCameraType = {
-    { (int)CameraType::CAMERA_ORTHO, "Orthographic" },
-    { (int)CameraType::CAMERA_PERSPECTIVE, "Perspective" }
-};
-
+// the dropdowns of the component enums: their reflection tables' labels and Inspector order
+// (editor/reflect/Enums.cpp)
+static std::vector<editor::EnumEntry>& entriesPrimitiveType = *editor::InspectorWindow::enumEntries(reflect::enums::kPrimitiveType);
+static std::vector<editor::EnumEntry>& entriesMaterialAlphaMode = *editor::InspectorWindow::enumEntries(reflect::enums::kMaterialAlphaMode);
+static std::vector<editor::EnumEntry>& entriesPivotPreset = *editor::InspectorWindow::enumEntries(reflect::enums::kPivotPreset);
+static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWindow::enumEntries(reflect::enums::kLightType);
+static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(reflect::enums::kShadowCaster2DShape);
+static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(reflect::enums::kLightShading);
+static std::vector<editor::EnumEntry>& entriesCullingMode = *editor::InspectorWindow::enumEntries(reflect::enums::kCullingMode);
+static std::vector<editor::EnumEntry>& entriesFogType = *editor::InspectorWindow::enumEntries(reflect::enums::kFogType);
+static std::vector<editor::EnumEntry>& entriesFogColorMode = *editor::InspectorWindow::enumEntries(reflect::enums::kFogColorMode);
+static std::vector<editor::EnumEntry>& entriesAtmosphereQualityOverride = *editor::InspectorWindow::enumEntries(reflect::enums::kAtmosphereQualityOverride);
+static std::vector<editor::EnumEntry>& entriesCloudsRendering = *editor::InspectorWindow::enumEntries(reflect::enums::kCloudsRendering);
+static std::vector<editor::EnumEntry>& entriesReflectionProbeMode = *editor::InspectorWindow::enumEntries(reflect::enums::kReflectionProbeMode);
+static std::vector<editor::EnumEntry>& entriesReflectionProbeUpdateMode = *editor::InspectorWindow::enumEntries(reflect::enums::kReflectionProbeUpdateMode);
+static std::vector<editor::EnumEntry>& entriesCameraType = *editor::InspectorWindow::enumEntries(reflect::enums::kCameraType);
 // render-target framebuffers have no mipmaps, so only the non-mipmap filters apply
-static std::vector<editor::EnumEntry> entriesTextureFilter = {
-    { (int)TextureFilter::NEAREST, "Nearest" },
-    { (int)TextureFilter::LINEAR, "Linear" }
-};
-
+static std::vector<editor::EnumEntry>& entriesTextureFilter = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureFilter, reflect::enums::bit((int)TextureFilter::NEAREST) | reflect::enums::bit((int)TextureFilter::LINEAR));
 // full filter set for a texture's minification (mipmap variants trigger mipmap generation)
-static std::vector<editor::EnumEntry> entriesTextureMinFilter = {
-    { (int)TextureFilter::NEAREST, "Nearest" },
-    { (int)TextureFilter::LINEAR, "Linear" },
-    { (int)TextureFilter::NEAREST_MIPMAP_NEAREST, "Nearest Mipmap Nearest" },
-    { (int)TextureFilter::NEAREST_MIPMAP_LINEAR, "Nearest Mipmap Linear" },
-    { (int)TextureFilter::LINEAR_MIPMAP_NEAREST, "Linear Mipmap Nearest" },
-    { (int)TextureFilter::LINEAR_MIPMAP_LINEAR, "Linear Mipmap Linear" }
-};
-
-static std::vector<editor::EnumEntry> entriesTextureWrap = {
-    { (int)TextureWrap::REPEAT, "Repeat" },
-    { (int)TextureWrap::MIRRORED_REPEAT, "Mirrored Repeat" },
-    { (int)TextureWrap::CLAMP_TO_EDGE, "Clamp to Edge" },
-    { (int)TextureWrap::CLAMP_TO_BORDER, "Clamp to Border" }
-};
-
-static std::vector<editor::EnumEntry> entriesTextureAlphaBorder = {
-    { (int)TextureAlphaBorder::AUTO, "Auto" },
-    { (int)TextureAlphaBorder::FIX, "Fix" },
-    { (int)TextureAlphaBorder::KEEP, "Keep" }
-};
-
-static std::vector<editor::EnumEntry> entriesEmitterShape = {
-    { (int)ParticleEmitterShape::Box, "Box" },
-    { (int)ParticleEmitterShape::Sphere, "Sphere" },
-    { (int)ParticleEmitterShape::Hemisphere, "Hemisphere" },
-    { (int)ParticleEmitterShape::Circle, "Circle" },
-    { (int)ParticleEmitterShape::Cone, "Cone" }
-};
-
-static std::vector<editor::EnumEntry> entriesAudioAttenuation = {
-    { (int)AudioSourceAttenuation::NO_ATTENUATION, "No Attenuation" },
-    { (int)AudioSourceAttenuation::INVERSE_DISTANCE, "Inverse Distance" },
-    { (int)AudioSourceAttenuation::LINEAR_DISTANCE, "Linear Distance" },
-    { (int)AudioSourceAttenuation::EXPONENTIAL_DISTANCE, "Exponential Distance" }
-};
-
-static std::vector<editor::EnumEntry> entriesUIDocumentRenderMode = {
-    { (int)UIDocumentRenderMode::SCREEN, "Screen" },
-    { (int)UIDocumentRenderMode::TEXTURE, "Texture" }
-};
-
-static std::vector<editor::EnumEntry> entriesAudioState = {
-    { (int)AudioSourceState::Playing, "Playing" },
-    { (int)AudioSourceState::Paused, "Paused" },
-    { (int)AudioSourceState::Stopped, "Stopped" }
-};
-
-static std::vector<editor::EnumEntry> entriesBodyType = {
-    { (int)BodyType::STATIC, "Static" },
-    { (int)BodyType::KINEMATIC, "Kinematic" },
-    { (int)BodyType::DYNAMIC, "Dynamic" }
-};
-
-static std::vector<editor::EnumEntry> entriesRigidbodyMotionQuality = {
-    { (int)RigidbodyMotionQuality::DISCRETE, "Discrete" },
-    { (int)RigidbodyMotionQuality::LINEAR_CAST, "Linear Cast" }
-};
-
-static std::vector<editor::EnumEntry> entriesCollider2DType = {
-    { (int)Collider2DType::POLYGON, "Polygon" },
-    { (int)Collider2DType::CIRCLE, "Circle" },
-    { (int)Collider2DType::CAPSULE, "Capsule" },
-    { (int)Collider2DType::SEGMENT, "Segment" },
-    { (int)Collider2DType::CHAIN, "Chain" }
-};
-
-static std::vector<editor::EnumEntry> entriesCollider3DType = {
-    { (int)Collider3DType::BOX, "Box" },
-    { (int)Collider3DType::SPHERE, "Sphere" },
-    { (int)Collider3DType::CAPSULE, "Capsule" },
-    { (int)Collider3DType::TAPERED_CAPSULE, "Tapered Capsule" },
-    { (int)Collider3DType::CYLINDER, "Cylinder" },
-    { (int)Collider3DType::CONVEX_HULL, "Convex Hull" },
-    { (int)Collider3DType::MESH, "Mesh" },
-    { (int)Collider3DType::HEIGHTFIELD, "Heightfield" }
-};
-
-static std::vector<editor::EnumEntry> entriesCollider3DSourceConvexHull = {
-    { (int)Collider3DSource::RAW_VERTICES, "Raw Vertices" },
-    { (int)Collider3DSource::ENTITY_MESH, "GameObject Mesh" }
-};
-
-static std::vector<editor::EnumEntry> entriesCollider3DSourceMesh = {
-    { (int)Collider3DSource::RAW_MESH, "Raw Mesh" },
-    { (int)Collider3DSource::ENTITY_MESH, "GameObject Mesh" }
-};
-
-static std::vector<editor::EnumEntry> entriesCollider3DSourceHeightfield = {
-    { (int)Collider3DSource::ENTITY_HEIGHTFIELD, "GameObject Heightfield" }
-};
-
-static std::vector<editor::EnumEntry> entriesJoint2DType = {
-    { (int)Joint2DType::DISTANCE, "Distance" },
-    { (int)Joint2DType::REVOLUTE, "Revolute" },
-    { (int)Joint2DType::PRISMATIC, "Prismatic" },
-    { (int)Joint2DType::MOUSE, "Mouse" },
-    { (int)Joint2DType::WHEEL, "Wheel" },
-    { (int)Joint2DType::WELD, "Weld" },
-    { (int)Joint2DType::MOTOR, "Motor" }
-};
-
-static std::vector<editor::EnumEntry> entriesJoint3DType = {
-    { (int)Joint3DType::FIXED, "Fixed" },
-    { (int)Joint3DType::DISTANCE, "Distance" },
-    { (int)Joint3DType::POINT, "Point" },
-    { (int)Joint3DType::HINGE, "Hinge" },
-    { (int)Joint3DType::CONE, "Cone" },
-    { (int)Joint3DType::PRISMATIC, "Prismatic" },
-    { (int)Joint3DType::SWINGTWIST, "Swing Twist" },
-    { (int)Joint3DType::SIXDOF, "Six DOF" },
-    { (int)Joint3DType::PATH, "Path" },
-    { (int)Joint3DType::GEAR, "Gear" },
-    { (int)Joint3DType::RACKANDPINON, "Rack and Pinion" },
-    { (int)Joint3DType::PULLEY, "Pulley" }
-};
-
+static std::vector<editor::EnumEntry>& entriesTextureMinFilter = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureFilter);
+static std::vector<editor::EnumEntry>& entriesTextureWrap = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureWrap);
+static std::vector<editor::EnumEntry>& entriesTextureAlphaBorder = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureAlphaBorder);
+static std::vector<editor::EnumEntry>& entriesEmitterShape = *editor::InspectorWindow::enumEntries(reflect::enums::kParticleEmitterShape);
+static std::vector<editor::EnumEntry>& entriesAudioAttenuation = *editor::InspectorWindow::enumEntries(reflect::enums::kAudioSourceAttenuation);
+static std::vector<editor::EnumEntry>& entriesUIDocumentRenderMode = *editor::InspectorWindow::enumEntries(reflect::enums::kUIDocumentRenderMode);
+static std::vector<editor::EnumEntry>& entriesAudioState = *editor::InspectorWindow::enumEntries(reflect::enums::kAudioSourceState);
+static std::vector<editor::EnumEntry>& entriesBodyType = *editor::InspectorWindow::enumEntries(reflect::enums::kBodyType);
+static std::vector<editor::EnumEntry>& entriesRigidbodyMotionQuality = *editor::InspectorWindow::enumEntries(reflect::enums::kRigidbodyMotionQuality);
+static std::vector<editor::EnumEntry>& entriesCollider2DType = *editor::InspectorWindow::enumEntries(reflect::enums::kCollider2DType);
+static std::vector<editor::EnumEntry>& entriesCollider3DType = *editor::InspectorWindow::enumEntries(reflect::enums::kCollider3DType);
+static std::vector<editor::EnumEntry>& entriesCollider3DSourceConvexHull = *editor::InspectorWindow::enumEntries(reflect::enums::kCollider3DSource, reflect::enums::bit((int)Collider3DSource::RAW_VERTICES) | reflect::enums::bit((int)Collider3DSource::ENTITY_MESH));
+static std::vector<editor::EnumEntry>& entriesCollider3DSourceMesh = *editor::InspectorWindow::enumEntries(reflect::enums::kCollider3DSource, reflect::enums::bit((int)Collider3DSource::RAW_MESH) | reflect::enums::bit((int)Collider3DSource::ENTITY_MESH));
+static std::vector<editor::EnumEntry>& entriesCollider3DSourceHeightfield = *editor::InspectorWindow::enumEntries(reflect::enums::kCollider3DSource, reflect::enums::bit((int)Collider3DSource::ENTITY_HEIGHTFIELD));
+static std::vector<editor::EnumEntry>& entriesJoint2DType = *editor::InspectorWindow::enumEntries(reflect::enums::kJoint2DType);
+static std::vector<editor::EnumEntry>& entriesJoint3DType = *editor::InspectorWindow::enumEntries(reflect::enums::kJoint3DType);
 static std::vector<int> cascadeValues = { 1, 2, 3, 4, 5, 6 };
-static std::vector<int> po2Values = { 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384 };
 // reflection probe captures are clamped to [16, 1024] in RenderSystem
 static std::vector<int> probeResolutionValues = { 16, 32, 64, 128, 256, 512, 1024 };
 
-static std::vector<editor::EnumEntry> entriesActionState = {
-    { (int)ActionState::Running, "Running" },
-    { (int)ActionState::Paused, "Paused" },
-    { (int)ActionState::Stopped, "Stopped" }
-};
-
-static std::vector<editor::EnumEntry> entriesEaseType = {
-    { (int)EaseType::LINEAR, "Linear" },
-    { (int)EaseType::STEP, "Step" },
-    { (int)EaseType::QUAD_IN, "Quad In" },
-    { (int)EaseType::QUAD_OUT, "Quad Out" },
-    { (int)EaseType::QUAD_IN_OUT, "Quad In Out" },
-    { (int)EaseType::CUBIC_IN, "Cubic In" },
-    { (int)EaseType::CUBIC_OUT, "Cubic Out" },
-    { (int)EaseType::CUBIC_IN_OUT, "Cubic In Out" },
-    { (int)EaseType::QUART_IN, "Quart In" },
-    { (int)EaseType::QUART_OUT, "Quart Out" },
-    { (int)EaseType::QUART_IN_OUT, "Quart In Out" },
-    { (int)EaseType::QUINT_IN, "Quint In" },
-    { (int)EaseType::QUINT_OUT, "Quint Out" },
-    { (int)EaseType::QUINT_IN_OUT, "Quint In Out" },
-    { (int)EaseType::SINE_IN, "Sine In" },
-    { (int)EaseType::SINE_OUT, "Sine Out" },
-    { (int)EaseType::SINE_IN_OUT, "Sine In Out" },
-    { (int)EaseType::EXPO_IN, "Expo In" },
-    { (int)EaseType::EXPO_OUT, "Expo Out" },
-    { (int)EaseType::EXPO_IN_OUT, "Expo In Out" },
-    { (int)EaseType::CIRC_IN, "Circ In" },
-    { (int)EaseType::CIRC_OUT, "Circ Out" },
-    { (int)EaseType::CIRC_IN_OUT, "Circ In Out" },
-    { (int)EaseType::ELASTIC_IN, "Elastic In" },
-    { (int)EaseType::ELASTIC_OUT, "Elastic Out" },
-    { (int)EaseType::ELASTIC_IN_OUT, "Elastic In Out" },
-    { (int)EaseType::BACK_IN, "Back In" },
-    { (int)EaseType::BACK_OUT, "Back Out" },
-    { (int)EaseType::BACK_IN_OUT, "Back In Out" },
-    { (int)EaseType::BOUNCE_IN, "Bounce In" },
-    { (int)EaseType::BOUNCE_OUT, "Bounce Out" },
-    { (int)EaseType::BOUNCE_IN_OUT, "Bounce In Out" },
-    { (int)EaseType::CUSTOM, "Custom" }
-};
-
+static std::vector<editor::EnumEntry>& entriesActionState = *editor::InspectorWindow::enumEntries(reflect::enums::kActionState);
+static std::vector<editor::EnumEntry>& entriesEaseType = *editor::InspectorWindow::enumEntries(reflect::enums::kEaseType);
 std::vector<editor::InspectorWindow::DirtyMaterialEntry> editor::InspectorWindow::dirtyMaterials;
 
 static bool isLastHeaderRowClicked() {
@@ -7270,119 +7023,6 @@ void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject
     drawCustomShaderRow(cpType, ShaderType::UI, sceneProject, entities);
 }
 
-void editor::InspectorWindow::drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings settings;
-    settings.onValueChanged = [sceneProject, entities](){
-        for (const Entity& entity : entities){
-            if (ButtonComponent* button = sceneProject->scene->findComponent<ButtonComponent>(entity)){
-                button->needUpdateButton = true;
-            }
-        }
-    };
-
-    beginTable(cpType, getLabelSize("Texture Disabled"));
-    propertyRow(RowPropertyType::LocalEntity, cpType, "label", "Label", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Bool, cpType, "disabled", "Disabled", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Texture, cpType, "textureNormal", "Texture Normal", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Texture, cpType, "textureHovered", "Texture Hovered", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Texture, cpType, "texturePressed", "Texture Pressed", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Texture, cpType, "textureDisabled", "Texture Disabled", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Color4L, cpType, "colorNormal", "Color Normal", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Color4L, cpType, "colorHovered", "Color Hovered", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Color4L, cpType, "colorPressed", "Color Pressed", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Color4L, cpType, "colorDisabled", "Color Disabled", sceneProject, entities, settings);
-    endTable();
-}
-
-void editor::InspectorWindow::drawScrollbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    static std::vector<editor::EnumEntry> entriesScrollbarType = {
-        { (int)ScrollbarType::VERTICAL, "Vertical" },
-        { (int)ScrollbarType::HORIZONTAL, "Horizontal" }
-    };
-
-    RowSettings settings;
-    settings.onValueChanged = [sceneProject, entities](){
-        for (const Entity& entity : entities){
-            if (ScrollbarComponent* scrollbar = sceneProject->scene->findComponent<ScrollbarComponent>(entity)){
-                scrollbar->needUpdateScrollbar = true;
-            }
-        }
-    };
-
-    RowSettings settingsEnum;
-    settingsEnum.enumEntries = &entriesScrollbarType;
-    settingsEnum.onValueChanged = settings.onValueChanged;
-
-    RowSettings settingsFloat;
-    settingsFloat.stepSize = 0.01f;
-    settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-    settingsFloat.onValueChanged = settings.onValueChanged;
-
-    RowSettings settingsInt;
-    settingsInt.stepSize = 1.0f;
-    settingsInt.secondColSize = 6 * ImGui::GetFontSize();
-    settingsInt.onValueChanged = settings.onValueChanged;
-
-    beginTable(cpType, getLabelSize("Bar Size"));
-    propertyRow(RowPropertyType::LocalEntity, cpType, "bar", "Bar", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsEnum);
-    propertyRow(RowPropertyType::Float_0_1, cpType, "barSize", "Bar Size", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::Float_0_1, cpType, "step", "Step", sceneProject, entities, settingsFloat);
-    endTable();
-
-    separatorText("Bar margin");
-    beginTable(cpType, getLabelSize("Margin Bottom"), "scrollbar_bar_margin");
-    propertyRow(RowPropertyType::Int, cpType, "barMarginLeft", "Margin Left", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "barMarginRight", "Margin Right", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "barMarginTop", "Margin Top", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "barMarginBottom", "Margin Bottom", sceneProject, entities, settingsInt);
-    endTable();
-}
-
-void editor::InspectorWindow::drawProgressbarComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    static std::vector<editor::EnumEntry> entriesProgressbarType = {
-        { (int)ProgressbarType::VERTICAL, "Vertical" },
-        { (int)ProgressbarType::HORIZONTAL, "Horizontal" }
-    };
-
-    RowSettings settings;
-    settings.onValueChanged = [sceneProject, entities](){
-        for (const Entity& entity : entities){
-            if (ProgressbarComponent* progressbar = sceneProject->scene->findComponent<ProgressbarComponent>(entity)){
-                progressbar->needUpdateProgressbar = true;
-            }
-        }
-    };
-
-    RowSettings settingsEnum;
-    settingsEnum.enumEntries = &entriesProgressbarType;
-    settingsEnum.onValueChanged = settings.onValueChanged;
-
-    RowSettings settingsFloat;
-    settingsFloat.stepSize = 0.01f;
-    settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-    settingsFloat.onValueChanged = settings.onValueChanged;
-
-    RowSettings settingsInt;
-    settingsInt.stepSize = 1.0f;
-    settingsInt.secondColSize = 6 * ImGui::GetFontSize();
-    settingsInt.onValueChanged = settings.onValueChanged;
-
-    beginTable(cpType, getLabelSize("Value"));
-    propertyRow(RowPropertyType::LocalEntity, cpType, "fill", "Fill", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsEnum);
-    propertyRow(RowPropertyType::Float_0_1, cpType, "value", "Value", sceneProject, entities, settingsFloat);
-    endTable();
-
-    separatorText("Fill margin");
-    beginTable(cpType, getLabelSize("Margin Bottom"), "progressbar_fill_margin");
-    propertyRow(RowPropertyType::Int, cpType, "fillMarginLeft", "Margin Left", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "fillMarginRight", "Margin Right", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "fillMarginTop", "Margin Top", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "fillMarginBottom", "Margin Bottom", sceneProject, entities, settingsInt);
-    endTable();
-}
-
 void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     RowSettings settings;
     settings.onValueChanged = [sceneProject, entities](){
@@ -7449,151 +7089,8 @@ void editor::InspectorWindow::drawInputFieldComponent(ComponentType cpType, Scen
     }
 }
 
-void editor::InspectorWindow::drawPanelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings settings;
-    settings.onValueChanged = [sceneProject, entities](){
-        for (const Entity& entity : entities){
-            if (PanelComponent* panel = sceneProject->scene->findComponent<PanelComponent>(entity)){
-                panel->needUpdatePanel = true;
-            }
-        }
-    };
-
-    RowSettings settingsEnum;
-    settingsEnum.enumEntries = &entriesAnchorPreset;
-    settingsEnum.onValueChanged = settings.onValueChanged;
-
-    RowSettings settingsUInt;
-    settingsUInt.stepSize = 1.0f;
-    settingsUInt.secondColSize = 6 * ImGui::GetFontSize();
-    settingsUInt.onValueChanged = settings.onValueChanged;
-
-    RowSettings settingsInt;
-    settingsInt.stepSize = 1.0f;
-    settingsInt.secondColSize = 6 * ImGui::GetFontSize();
-    settingsInt.onValueChanged = settings.onValueChanged;
-
-    beginTable(cpType, getLabelSize("Can Bring To Front"));
-    propertyRow(RowPropertyType::LocalEntity, cpType, "headerimage", "Header Image", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "headercontainer", "Header Container", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::LocalEntity, cpType, "headertext", "Header Text", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Enum, cpType, "titleAnchorPreset", "Title Anchor", sceneProject, entities, settingsEnum);
-    propertyRow(RowPropertyType::UInt, cpType, "minWidth", "Min Width", sceneProject, entities, settingsUInt);
-    propertyRow(RowPropertyType::UInt, cpType, "minHeight", "Min Height", sceneProject, entities, settingsUInt);
-    propertyRow(RowPropertyType::Int, cpType, "resizeMargin", "Resize Margin", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Bool, cpType, "canMove", "Can Move", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Bool, cpType, "canResize", "Can Resize", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Bool, cpType, "canBringToFront", "Can Bring To Front", sceneProject, entities, settings);
-    endTable();
-
-    separatorText("Header margin");
-    beginTable(cpType, getLabelSize("Margin Bottom"), "panel_header_margin");
-    propertyRow(RowPropertyType::Bool, cpType, "defaultHeaderMargin", "Default Margin", sceneProject, entities, settings);
-    propertyRow(RowPropertyType::Int, cpType, "headerMarginLeft", "Margin Left", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "headerMarginRight", "Margin Right", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "headerMarginTop", "Margin Top", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Int, cpType, "headerMarginBottom", "Margin Bottom", sceneProject, entities, settingsInt);
-    endTable();
-}
-
-void editor::InspectorWindow::drawTextComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings settingsInt;
-    settingsInt.stepSize = 1.0f;
-    settingsInt.secondColSize = 6 * ImGui::GetFontSize();
-
-    beginTable(cpType, getLabelSize("Multiline"));
-    propertyRow(RowPropertyType::MultilineString, cpType, "text", "Text", sceneProject, entities);
-    propertyRow(RowPropertyType::Font, cpType, "font", "Font", sceneProject, entities);
-    propertyRow(RowPropertyType::UInt, cpType, "fontSize", "FontSize", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Bool, cpType, "multiline", "Multiline", sceneProject, entities);
-    endTable();
-
-    separatorText("Fixed size");
-    beginTable(cpType, getLabelSize("Height"), "text_settings_fixed");
-    propertyRow(RowPropertyType::Bool, cpType, "fixedWidth", "Width", sceneProject, entities);
-    propertyRow(RowPropertyType::Bool, cpType, "fixedHeight", "Height", sceneProject, entities);
-    endTable();
-
-    separatorText("Pivot");
-    beginTable(cpType, getLabelSize("Baseline"), "text_settings_pivot");
-    propertyRow(RowPropertyType::Bool, cpType, "pivotBaseline", "Baseline", sceneProject, entities);
-    propertyRow(RowPropertyType::Bool, cpType, "pivotCentered", "Center", sceneProject, entities);
-    endTable();
-
-    separatorText("Advanced settings");
-    beginTable(cpType, getLabelSize("Max. text size"), "text_settings_size");
-    propertyRow(RowPropertyType::UInt, cpType, "maxTextSize", "Max. text size", sceneProject, entities, settingsInt);
-    endTable();
-}
-
-void editor::InspectorWindow::drawRectTransformComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings settingsInt;
-    settingsInt.stepSize = 1.0f;
-    settingsInt.secondColSize = 6 * ImGui::GetFontSize();
-
-    RowSettings settingsAnchorPreset;
-    settingsAnchorPreset.enumEntries = &entriesAnchorPreset;
-
-    RowSettings settingsAnchorPoint;
-    settingsAnchorPoint.stepSize = 0.01f;
-    settingsAnchorPoint.secondColSize = 6 * ImGui::GetFontSize();
-
-    RowSettings settingsOffset;
-    settingsOffset.stepSize = 1.0f;
-    settingsOffset.secondColSize = 6 * ImGui::GetFontSize();
-
-    RowSettings settingsPositionOffset;
-    settingsPositionOffset.stepSize = 1.0f;
-    settingsPositionOffset.secondColSize = 6 * ImGui::GetFontSize();
-
-    RowSettings settingsPivot;
-    settingsPivot.stepSize = 0.01f;
-    settingsPivot.secondColSize = 6 * ImGui::GetFontSize();
-    settingsPivot.help = "Scale and rotation center: (0, 0) is the top-left corner, (0.5, 0.5) the center";
-
-    beginTable(cpType, getLabelSize("Position Offset"));
-    propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
-    propertyRow(RowPropertyType::Bool, cpType, "usingAnchors", "Use Anchors", sceneProject, entities);
-    bool showAnchorProperties = true;
-    bool disableAnchorDetails = false;
-    for (const Entity& entity : entities){
-        const RectTransformComponent& layout = sceneProject->scene->getComponent<RectTransformComponent>(entity);
-        if (layout.usingAnchors){
-            showAnchorProperties = false;
-        }
-        if (layout.anchorPreset != AnchorPreset::NONE){
-            disableAnchorDetails = true;
-        }
-    }
-
-    if (!showAnchorProperties){
-        propertyRow(RowPropertyType::Enum, cpType, "anchorPreset", "Preset", sceneProject, entities, settingsAnchorPreset);
-        ImGui::BeginDisabled(disableAnchorDetails);
-        propertyRow(RowPropertyType::Float_0_1, cpType, "anchorPointLeft", "Anchor Left", sceneProject, entities, settingsAnchorPoint);
-        propertyRow(RowPropertyType::Float_0_1, cpType, "anchorPointTop", "Anchor Top", sceneProject, entities, settingsAnchorPoint);
-        propertyRow(RowPropertyType::Float_0_1, cpType, "anchorPointRight", "Anchor Right", sceneProject, entities, settingsAnchorPoint);
-        propertyRow(RowPropertyType::Float_0_1, cpType, "anchorPointBottom", "Anchor Bottom", sceneProject, entities, settingsAnchorPoint);
-        propertyRow(RowPropertyType::Int, cpType, "anchorOffsetLeft", "Offset Left", sceneProject, entities, settingsOffset);
-        propertyRow(RowPropertyType::Int, cpType, "anchorOffsetTop", "Offset Top", sceneProject, entities, settingsOffset);
-        propertyRow(RowPropertyType::Int, cpType, "anchorOffsetRight", "Offset Right", sceneProject, entities, settingsOffset);
-        propertyRow(RowPropertyType::Int, cpType, "anchorOffsetBottom", "Offset Bottom", sceneProject, entities, settingsOffset);
-        ImGui::EndDisabled();
-    }
-    propertyRow(RowPropertyType::Vector2, cpType, "positionOffset", "Position Offset", sceneProject, entities, settingsPositionOffset);
-    propertyRow(RowPropertyType::Vector2, cpType, "pivot", "Pivot", sceneProject, entities, settingsPivot);
-    propertyRow(RowPropertyType::Bool, cpType, "ignoreScissor", "Ignore Scissor", sceneProject, entities);
-    propertyRow(RowPropertyType::Bool, cpType, "ignoreEvents", "Ignore Events", sceneProject, entities);
-    endTable();
-}
-
 void editor::InspectorWindow::drawLayoutGroupComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    static std::vector<editor::EnumEntry> entriesLayoutGroupType = {
-        { (int)LayoutGroupType::VERTICAL, "Vertical" },
-        { (int)LayoutGroupType::HORIZONTAL, "Horizontal" },
-        { (int)LayoutGroupType::VERTICAL_WRAP, "Vertical Wrap" },
-        { (int)LayoutGroupType::HORIZONTAL_WRAP, "Horizontal Wrap" }
-    };
+    std::vector<editor::EnumEntry>& entriesLayoutGroupType = *enumEntries(reflect::enums::kLayoutGroupType);
 
     RowSettings settingsLayoutGroupType;
     settingsLayoutGroupType.enumEntries = &entriesLayoutGroupType;
@@ -9058,39 +8555,6 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     drawLightShadows(cpType, sceneProject, entities);
 }
 
-void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings settingsFloat;
-    settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-
-    RowSettings settingsHeight = settingsFloat;
-    settingsHeight.help = "Virtual Z height of the light above the 2D plane. Gives normal maps a direction to respond to; 0 disables normal response (pure radial light).";
-
-    beginTable(cpType, getLabelSize("Intensity"));
-    propertyRow(RowPropertyType::Float, cpType, "intensity", "Intensity", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::Float, cpType, "range", "Range", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::Float, cpType, "falloff", "Falloff", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::Float, cpType, "height", "Height", sceneProject, entities, settingsHeight);
-    propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
-    endTable();
-
-    separatorText("Shadow settings");
-
-    RowSettings settingsBias;
-    settingsBias.stepSize = 0.001f;
-    settingsBias.secondColSize = 6 * ImGui::GetFontSize();
-    settingsBias.format = "%.4f";
-
-    RowSettings settingsMapRes;
-    settingsMapRes.sliderValues = &po2Values;
-
-    beginTable(cpType, getLabelSize("Map Resolution"), "shadow2d_settings_table");
-    propertyRow(RowPropertyType::Bool, cpType, "shadows", "Enabled", sceneProject, entities);
-    propertyRow(RowPropertyType::Float, cpType, "shadowBias", "Bias", sceneProject, entities, settingsBias);
-    propertyRow(RowPropertyType::Float, cpType, "shadowSoftness", "Softness", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::UIntSlider, cpType, "mapResolution", "Map Resolution", sceneProject, entities, settingsMapRes);
-    endTable();
-}
-
 void editor::InspectorWindow::drawShadowCaster2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     ShadowCaster2DComponent& occluder = sceneProject->scene->getComponent<ShadowCaster2DComponent>(entities[0]);
 
@@ -9208,7 +8672,7 @@ void editor::InspectorWindow::endFoldout(){
 }
 
 void editor::InspectorWindow::separatorText(const char* label){
-    separatorText(label);
+    ImGui::SeparatorText(label);
     if (layoutRecording){
         if (layoutGroups.empty()){
             layoutGroups.emplace_back(label);
@@ -9526,52 +8990,6 @@ void editor::InspectorWindow::drawFogComponent(ComponentType cpType, SceneProjec
     }
 }
 
-void editor::InspectorWindow::drawLocalVolumetricFogComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    LocalVolumetricFogComponent& volume = sceneProject->scene->getComponent<LocalVolumetricFogComponent>(entities[0]);
-    (void)volume;
-
-    RowSettings settingsFloat;
-    settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-    RowSettings settingsShape;
-    settingsShape.enumEntries = &entriesFogVolumeShape;
-    RowSettings settingsSize;
-    settingsSize.help = "The volume's size (m) before the Transform's scale.";
-    RowSettings settingsAttenuation = settingsFloat;
-    settingsAttenuation.help = "The distance (m) light travels in the volume's fog before 63% of it is absorbed. Smaller: denser fog.";
-    RowSettings settingsAlbedo;
-    settingsAlbedo.help = "The colour the volume's fog scatters.";
-    RowSettings settingsBlend = settingsFloat;
-    settingsBlend.help = "The density fades in over this distance (m) inside the volume's edge.";
-    RowSettings settingsFalloff;
-    settingsFalloff.enumEntries = &entriesFogVolumeFalloff;
-    RowSettings settingsNoise = settingsFloat;
-    settingsNoise.help = "How much a 3D noise varies the density (0..1).";
-    RowSettings settingsNoiseScale = settingsFloat;
-    settingsNoiseScale.help = "The size (m) of the noise's features.";
-    RowSettings settingsScroll;
-    settingsScroll.help = "The speed (m/s) the noise drifts at.";
-
-    beginTable(cpType, getLabelSize("Attenuation Distance"));
-    propertyRow(RowPropertyType::Enum, cpType, "shape", "Shape", sceneProject, entities, settingsShape);
-    propertyRow(RowPropertyType::Vector3, cpType, "size", "Size", sceneProject, entities, settingsSize);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "attenuationDistance", "Attenuation Distance", sceneProject, entities, settingsAttenuation);
-    propertyRow(RowPropertyType::Color3L, cpType, "albedo", "Albedo", sceneProject, entities, settingsAlbedo);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "blendDistance", "Blend Distance", sceneProject, entities, settingsBlend);
-    propertyRow(RowPropertyType::Enum, cpType, "falloff", "Falloff", sceneProject, entities, settingsFalloff);
-    propertyRow(RowPropertyType::Float_0_1, cpType, "noiseIntensity", "Noise Intensity", sceneProject, entities, settingsNoise);
-    propertyRow(RowPropertyType::FloatPositive, cpType, "noiseScale", "Noise Scale", sceneProject, entities, settingsNoiseScale);
-    propertyRow(RowPropertyType::Vector3, cpType, "scrollSpeed", "Scroll Speed", sceneProject, entities, settingsScroll);
-    endTable();
-
-    // it shows through the scene's volumetric fog only
-    FogComponent* fog = sceneProject->scene->findComponentFromIndex<FogComponent>(0);
-    if (!fog || fog->type != FogType::HEIGHT || !fog->volumetric){
-        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION);
-        ImGui::SameLine();
-        ImGui::TextWrapped("Local Volumetric Fog shows through volumetric fog only: add a Fog of Type Height and turn its Volumetric Fog on.");
-    }
-}
-
 void editor::InspectorWindow::drawVolumetricCloudsComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     VolumetricCloudsComponent& clouds = sceneProject->scene->getComponent<VolumetricCloudsComponent>(entities[0]);
 
@@ -9679,15 +9097,6 @@ void editor::InspectorWindow::drawVolumetricCloudsComponent(ComponentType cpType
         ImGui::SameLine();
         ImGui::TextWrapped("A scene draws its first Volumetric Clouds only: these are not drawn.");
     }
-}
-
-void editor::InspectorWindow::drawMirrorComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings normalSettings;
-    normalSettings.help = "Reflecting surface normal in local space (the mirror plane is this normal at the GameObject's position). Flip its sign if the reflection clips the wrong side. The reflection camera is created automatically.";
-
-    beginTable(cpType, getLabelSize("Normal"));
-    propertyRow(RowPropertyType::Direction, cpType, "normal", "Normal", sceneProject, entities, normalSettings);
-    endTable();
 }
 
 void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -13211,7 +12620,7 @@ void editor::InspectorWindow::updateParticlePreviewSnapshot(YAML::Node& componen
     const std::string componentName = Catalog::getComponentName(ComponentType::ParticleSystemComponent, true);
 
     // Full re-encode so any future fields are automatically preserved.
-    YAML::Node encoded = Stream::encodeParticleSystemComponent(particles);
+    YAML::Node encoded = reflect::encodeValue(ComponentType::ParticleSystemComponent, &particles);
 
     // "emitter" is mutated by the runtime (forced true on actionStart, forced false when a
     // non-looping system runs out). Restoring the live runtime value would silently switch
@@ -13232,23 +12641,12 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
         if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
             continue;
         }
-        if (auto* comp = scene->findComponent<TweenComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::TweenComponent, true)] = Stream::encodeTweenComponent(*comp);
-        }
-        if (auto* comp = scene->findComponent<PositionTweenComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::PositionTweenComponent, true)] = Stream::encodePositionTweenComponent(*comp);
-        }
-        if (auto* comp = scene->findComponent<RotationTweenComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::RotationTweenComponent, true)] = Stream::encodeRotationTweenComponent(*comp);
-        }
-        if (auto* comp = scene->findComponent<ScaleTweenComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::ScaleTweenComponent, true)] = Stream::encodeScaleTweenComponent(*comp);
-        }
-        if (auto* comp = scene->findComponent<ColorTweenComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::ColorTweenComponent, true)] = Stream::encodeColorTweenComponent(*comp);
-        }
-        if (auto* comp = scene->findComponent<AlphaTweenComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::AlphaTweenComponent, true)] = Stream::encodeAlphaTweenComponent(*comp);
+        for (ComponentType type : {ComponentType::TweenComponent, ComponentType::PositionTweenComponent, ComponentType::RotationTweenComponent,
+                                   ComponentType::ScaleTweenComponent, ComponentType::ColorTweenComponent, ComponentType::AlphaTweenComponent}) {
+            const reflect::ComponentDesc* desc = reflect::find(type);
+            if (void* comp = desc->find(scene, state.entity)) {
+                state.components[desc->key] = reflect::encode(*desc, comp, reflect::EncodeContext{});
+            }
         }
         if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
             updateParticlePreviewSnapshot(state.components, *comp);
@@ -13485,14 +12883,6 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
     }
 
     ImGui::EndDisabled();
-}
-
-void editor::InspectorWindow::drawTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("Duration"));
-    propertyRow(RowPropertyType::FloatPositive, cpType, "duration", "Duration", sceneProject, entities);
-    propertyRow(RowPropertyType::Bool, cpType, "loop", "Loop", sceneProject, entities);
-    propertyRow(RowPropertyType::Ease, cpType, "function", "Ease", sceneProject, entities);
-    endTable();
 }
 
 void editor::InspectorWindow::drawPositionTweenComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -14342,26 +13732,6 @@ void editor::InspectorWindow::drawAnimationComponent(ComponentType cpType, Scene
     }
 }
 
-void editor::InspectorWindow::drawPrefabComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("Path"));
-    propertyRow(RowPropertyType::Label, cpType, "name", "Name", sceneProject, entities);
-    propertyRow(RowPropertyType::Label, cpType, "path", "Path", sceneProject, entities);
-    propertyRow(RowPropertyType::Label, cpType, "guid", "GUID", sceneProject, entities);
-    endTable();
-}
-
-void editor::InspectorWindow::drawBoneComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings settingsModel;
-    settingsModel.entityFilter.set(sceneProject->scene->getComponentId<ModelComponent>());
-    beginTable(cpType, getLabelSize("Bind Rotation"));
-    propertyRow(RowPropertyType::LocalEntity, cpType, "model", "Model", sceneProject, entities, settingsModel);
-    propertyRow(RowPropertyType::Int, cpType, "index", "Index", sceneProject, entities);
-    propertyRow(RowPropertyType::Vector3, cpType, "bindPosition", "Bind Position", sceneProject, entities);
-    propertyRow(RowPropertyType::Quat, cpType, "bindRotation", "Bind Rotation", sceneProject, entities);
-    propertyRow(RowPropertyType::Vector3, cpType, "bindScale", "Bind Scale", sceneProject, entities);
-    endTable();
-}
-
 void editor::InspectorWindow::drawKeyframeTracksComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     KeyframeTracksComponent& comp = sceneProject->scene->getComponent<KeyframeTracksComponent>(entities[0]);
 
@@ -15002,116 +14372,11 @@ void editor::InspectorWindow::show(){
                 if (compReadOnly) ImGui::BeginDisabled(true);
                 beginLayoutComponent(cpType);
 
-                if (cpType == ComponentType::Transform){
-                    drawTransform(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::MeshComponent){
-                    drawMeshComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ModelComponent){
-                    drawModelComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::UIComponent){
-                    drawUIComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ButtonComponent){
-                    drawButtonComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ScrollbarComponent){
-                    drawScrollbarComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ProgressbarComponent){
-                    drawProgressbarComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::InputFieldComponent){
-                    drawInputFieldComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::PanelComponent){
-                    drawPanelComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::PolygonComponent){
-                    drawPolygonComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::MeshPolygonComponent){
-                    drawMeshPolygonComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::TextComponent){
-                    drawTextComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::RectTransformComponent){
-                    drawRectTransformComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::LayoutGroupComponent){
-                    drawLayoutGroupComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ImageComponent){
-                    drawImageComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::SpriteComponent){
-                    drawSpriteComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::TilemapComponent){
-                    drawTilemapComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::TerrainComponent){
-                    drawTerrainComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::LightComponent){
-                    drawLightComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::Light2DComponent){
-                    drawLight2DComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ShadowCaster2DComponent){
-                    drawShadowCaster2DComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::FogComponent){
-                    drawFogComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::MirrorComponent){
-                    drawMirrorComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::LocalVolumetricFogComponent){
-                    drawLocalVolumetricFogComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::VolumetricCloudsComponent){
-                    drawVolumetricCloudsComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ReflectionProbeComponent){
-                    drawReflectionProbeComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::UIDocumentComponent){
-                    drawUIDocumentComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::CameraComponent){
-                    drawCameraComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::AudioSourceComponent){
-                    drawAudioComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::SkyboxComponent){
-                    drawSkyboxComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ScriptComponent){
-                    drawScriptComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::Rigidbody2DComponent){
-                    drawRigidbody2DComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::RigidbodyComponent){
-                    drawRigidbodyComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::Joint2DComponent){
-                    drawJoint2DComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::Joint3DComponent){
-                    drawJoint3DComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ActionComponent){
-                    drawActionComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::TweenComponent){
-                    drawTweenComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::PositionTweenComponent){
-                    drawPositionTweenComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::RotationTweenComponent){
-                    drawRotationTweenComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ScaleTweenComponent){
-                    drawScaleTweenComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ColorTweenComponent){
-                    drawColorTweenComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::AlphaTweenComponent){
-                    drawAlphaTweenComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::SpriteAnimationComponent){
-                    drawSpriteAnimationComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::AnimationComponent){
-                    drawAnimationComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::PrefabComponent){
-                    drawPrefabComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::BoneComponent){
-                    drawBoneComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::KeyframeTracksComponent){
-                    drawKeyframeTracksComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::TranslateTracksComponent){
-                    drawTranslateTracksComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::RotateTracksComponent){
-                    drawRotateTracksComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ScaleTracksComponent){
-                    drawScaleTracksComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::MorphTracksComponent){
-                    drawMorphTracksComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::ParticleSystemComponent){
-                    drawParticleSystemComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::LineRendererComponent){
-                    drawLineRendererComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::PointsComponent){
-                    drawPointsComponent(cpType, sceneProject, entities);
-                }else if (cpType == ComponentType::InstancedMeshComponent){
-                    drawInstancedMeshComponent(cpType, sceneProject, entities);
+                // its own drawer, or the rows of its reflection table (InspectorDefault.cpp)
+                if (ComponentDrawer drawer = componentDrawer(cpType)){
+                    (this->*drawer)(cpType, sceneProject, entities);
+                }else{
+                    drawDefaultComponent(cpType, sceneProject, entities);
                 }
 
                 endLayoutComponent();

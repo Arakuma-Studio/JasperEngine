@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "reflect/Reflect.h"
 #include "command/Command.h"
 #include "command/CommandNames.h"
 #include "command/EntityEdit.h"
@@ -70,33 +71,16 @@ namespace jasperengine::editor{
     // Component types the Hierarchy tree reads nothing from: it caches names, signature
     // icons, hierarchy and prefab/lock state, not component values. Opt-out list, so
     // anything unlisted stays structural.
+    // What a component's reflection table says of a property (a field's NonStructural flag, else
+    // its component's: geometry and payloads dragged continuously in the viewport, UI sizes, the
+    // Transform's position, rotation and scale, a document's placement and input)
     inline bool isNonStructuralProperty(ComponentType type, const std::string& propertyName){
-        switch (type){
-            // Geometry and sub-selection payloads, dragged continuously in the viewport.
-            case ComponentType::InstancedMeshComponent:
-            case ComponentType::TilemapComponent:
-            case ComponentType::LineRendererComponent:
-            case ComponentType::PointsComponent:
-            case ComponentType::PolygonComponent:
-            case ComponentType::MeshPolygonComponent:
-            case ComponentType::ShadowCaster2DComponent:
-            case ComponentType::TranslateTracksComponent:
-            case ComponentType::RotateTracksComponent:
-            case ComponentType::ScaleTracksComponent:
-            // Sizes written by the UI resize drag.
-            case ComponentType::RectTransformComponent:
-            case ComponentType::SpriteComponent:
-            case ComponentType::TextComponent:
-                return true;
-            // Document placement and input; filename and render settings reload the document.
-            case ComponentType::UIDocumentComponent:
-                return propertyName == "sortOrder" || propertyName == "enabled" || propertyName == "interactive" || propertyName == "pixelRatio";
-            // Transform.parent drives tree order and lock state.
-            case ComponentType::Transform:
-                return propertyName == "position" || propertyName == "rotation" || propertyName == "scale";
-            default:
-                return false;
+        const reflect::ComponentDesc* desc = reflect::find(type);
+        if (!desc){
+            return false;
         }
+        const reflect::FieldDesc* field = reflect::findField(*desc, propertyName);
+        return field ? !reflect::isStructural(*desc, *field) : !desc->structural;
     }
 
     template<typename T>

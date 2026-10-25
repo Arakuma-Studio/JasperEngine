@@ -162,10 +162,6 @@ namespace jasperengine::editor{
     };
 
     class Catalog{
-    private:
-
-        static std::string removeComponentSuffix(std::string str);
-
     public:
         Catalog();
 

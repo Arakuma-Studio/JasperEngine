@@ -3,6 +3,8 @@
 
 #include "StreamSchema.h"
 
+#include "reflect/Enums.h"
+
 #include <algorithm>
 #include <cctype>
 #include <map>
@@ -12,21 +14,6 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
-
-    // Easing names are read case-insensitively, with '-' for '_' (the AI editor actions and
-    // hand-written files use both)
-    std::string normalizeEaseName(const std::string& text) {
-        std::string normalized;
-        normalized.reserve(text.size());
-        for (char ch : text) {
-            if (ch == '-') {
-                normalized.push_back('_');
-            } else {
-                normalized.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
-            }
-        }
-        return normalized;
-    }
 
     const std::vector<std::string> noKeys;
 
@@ -51,66 +38,10 @@ namespace {
 
 }
 
-// Top-level keys each component's decoder reads (tools/check_stream_keys.py --print lists them)
+// Top-level keys each component's decoder reads: its table's (editor/reflect, knownKeys)
 const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type) {
-    static const std::map<ComponentType, std::vector<std::string>> tables = {
-        {ComponentType::ActionComponent, {"ownedTarget", "speed", "state", "target"}},
-        {ComponentType::AlphaTweenComponent, {"endAlpha", "startAlpha"}},
-        {ComponentType::AnimationComponent, {"actions", "defaultFadeTime", "duration", "loop", "ownedActions"}},
-        {ComponentType::AudioSourceComponent, {"attenuationModel", "attenuationRolloffFactor", "dopplerFactor", "enableClocked", "enabled", "filename", "inaudibleBehaviorKill", "inaudibleBehaviorMustTick", "looping", "loopingPoint", "maxDistance", "minDistance", "pan", "protectVoice", "speed", "state", "volume"}},
-        {ComponentType::BoneComponent, {"bindPosition", "bindRotation", "bindScale", "index", "model", "offsetMatrix"}},
-        {ComponentType::ButtonComponent, {"colorDisabled", "colorHovered", "colorNormal", "colorPressed", "disabled", "label", "textureDisabled", "textureHovered", "textureNormal", "texturePressed"}},
-        {ComponentType::CameraComponent, {"aspect", "autoResize", "bottomClip", "cullingMask", "depthTest", "enabled", "farClip", "framebufferFilter", "framebufferHeight", "framebufferWidth", "leftClip", "nearClip", "renderToTexture", "rightClip", "target", "topClip", "transparentSort", "type", "up", "useTarget", "yfov"}},
-        {ComponentType::ColorTweenComponent, {"endColor", "startColor", "useSRGB"}},
-        {ComponentType::FogComponent, {"anisotropy", "attenuationDistance", "baseHeight", "color", "colorMode", "density", "directionalInscattering", "lightShafts", "linearEnd", "linearStart", "maxFogDistance", "maxOpacity", "maximumHeight", "noiseIntensity", "noiseScale", "qualityOverride", "skyFill", "skyFillAngle", "startDistance", "type", "volumetric", "volumetricDistance", "wind"}},
-        {ComponentType::ImageComponent, {"patchMarginBottom", "patchMarginLeft", "patchMarginRight", "patchMarginTop", "textureScaleFactor"}},
-        {ComponentType::InputFieldComponent, {"cursor", "cursorBlink", "cursorColor", "cursorIndex", "cursorWidth", "disabled", "password", "passwordChar", "placeholder", "placeholderColor", "selection", "selectionAnchor", "selectionColor", "text"}},
-        {ComponentType::InstancedMeshComponent, {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"}},
-        {ComponentType::Joint2DComponent, {"anchorA", "anchorB", "autoAnchors", "axis", "bodyA", "bodyB", "enabled", "rope", "target", "type"}},
-        {ComponentType::Joint3DComponent, {"anchor", "anchorA", "anchorB", "autoAnchors", "axis", "axisX", "axisY", "bodyA", "bodyB", "enabled", "fixedPointA", "fixedPointB", "hinge", "hingeA", "hingeB", "isLooping", "limitsMax", "limitsMin", "normal", "normalHalfConeAngle", "numTeethGear", "numTeethGearA", "numTeethGearB", "numTeethRack", "pathPoints", "pathPosition", "planeAxis", "planeHalfConeAngle", "rackLength", "slider", "twistAxis", "twistMaxAngle", "twistMinAngle", "type"}},
-        {ComponentType::KeyframeTracksComponent, {"easings", "index", "interpolation", "times"}},
-        {ComponentType::LayoutGroupComponent, {"fillAvailableSpace", "type", "useAllWrapSpace", "wrapCellHeight", "wrapCellWidth"}},
-        {ComponentType::Light2DComponent, {"color", "enabled", "falloff", "height", "intensity", "mapResolution", "range", "shadowBias", "shadowSoftness", "shadows"}},
-        {ComponentType::LightComponent, {"automaticShadowCamera", "cascadeSplitMode", "cascadeSplits", "color", "cullingMask", "direction", "enabled", "innerConeCos", "intensity", "mapResolution", "numShadowCascades", "outerConeCos", "range", "shading", "shadowAngularDiameter", "shadowBias", "shadowCameraNearFar", "shadowDistance", "shadowNormalBias", "shadowSourceRadius", "shadowStrength", "shadowUpdateMode", "shadows", "softShadows", "spotMask", "type", "volumetricIntensity", "worldDirection"}},
-        {ComponentType::LineRendererComponent, {"blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "maxLines", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil"}},
-        {ComponentType::MeshComponent, {"aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"}},
-        {ComponentType::MeshPolygonComponent, {"automaticFlipY", "flipY", "height", "points", "width"}},
-        {ComponentType::MirrorComponent, {"normal"}},
-        {ComponentType::ModelComponent, {"animations", "bonesIdMapping", "bonesNameMapping", "enabled", "filename", "mergeStaticMeshes", "meshNodesMapping", "nodesIdMapping", "skeleton"}},
-        {ComponentType::MorphTracksComponent, {"inTangents", "outTangents", "values"}},
-        {ComponentType::PanelComponent, {"canBringToFront", "canMove", "canResize", "defaultHeaderMargin", "headerMarginBottom", "headerMarginLeft", "headerMarginRight", "headerMarginTop", "headercontainer", "headerimage", "headertext", "minHeight", "minWidth", "resizeMargin", "titleAnchorPreset"}},
-        {ComponentType::ParticleSystemComponent, {"accelerationInitializer", "accelerationModifier", "alphaInitializer", "alphaModifier", "bursts", "colorGradient", "colorInitializer", "colorModifier", "emitter", "enabled", "lifeInitializer", "localSpace", "loop", "maxParticles", "maxPerUpdate", "positionInitializer", "positionModifier", "rate", "rotationInitializer", "rotationModifier", "scaleInitializer", "scaleModifier", "sizeInitializer", "sizeModifier", "spriteInitializer", "spriteModifier", "velocityInitializer", "velocityModifier"}},
-        {ComponentType::PointsComponent, {"autoTransparency", "blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "framesRect", "maxPoints", "points", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil", "texture", "transparent"}},
-        {ComponentType::PolygonComponent, {"points"}},
-        {ComponentType::PositionTweenComponent, {"endPosition", "startPosition"}},
-        {ComponentType::PrefabComponent, {"guid", "name", "path"}},
-        {ComponentType::ProgressbarComponent, {"fill", "fillMarginBottom", "fillMarginLeft", "fillMarginRight", "fillMarginTop", "type", "value"}},
-        {ComponentType::RectTransformComponent, {"anchorOffsetBottom", "anchorOffsetLeft", "anchorOffsetRight", "anchorOffsetTop", "anchorPointBottom", "anchorPointLeft", "anchorPointRight", "anchorPointTop", "anchorPreset", "containerBoxIndex", "height", "ignoreEvents", "ignoreScissor", "panel", "pivot", "positionOffset", "scissor", "usingAnchors", "width"}},
-        {ComponentType::ReflectionProbeComponent, {"blendDistance", "boxOffset", "boxSize", "cullingMask", "farClip", "includeSky", "intensity", "mode", "nearClip", "priority", "resolution", "texture", "updateInterval", "updateMode"}},
-        {ComponentType::Rigidbody2DComponent, {"colliders", "enabled", "numColliders", "type"}},
-        {ComponentType::RigidbodyComponent, {"allowedDOFs", "colliders", "enabled", "friction", "gravityFactor", "motionQuality", "numColliders", "restitution", "sensor", "type"}},
-        {ComponentType::RotateTracksComponent, {"inTangents", "outTangents", "values"}},
-        {ComponentType::RotationTweenComponent, {"endRotation", "shortestPath", "startRotation"}},
-        {ComponentType::ScaleTracksComponent, {"inTangents", "outTangents", "values"}},
-        {ComponentType::ScaleTweenComponent, {"endScale", "startScale"}},
-        {ComponentType::ScriptComponent, {"scripts"}},
-        {ComponentType::ScrollbarComponent, {"bar", "barMarginBottom", "barMarginLeft", "barMarginRight", "barMarginTop", "barSize", "step", "type"}},
-        {ComponentType::ShadowCaster2DComponent, {"closed", "enabled", "points", "shape"}},
-        {ComponentType::SkyboxComponent, {"blendMode", "color", "customShader", "depthWrite", "rotation", "shaderFeatures", "shaderTextures", "shaderUniforms", "texture", "useDefaultTexture", "visible"}},
-        {ComponentType::SpriteAnimationComponent, {"frames", "framesTime", "loop"}},
-        {ComponentType::SpriteComponent, {"automaticFlipY", "enabled", "flipY", "framesRect", "height", "pivotPreset", "textureScaleFactor", "width"}},
-        {ComponentType::TerrainComponent, {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"}},
-        {ComponentType::TextComponent, {"fixedHeight", "fixedWidth", "font", "fontGuid", "fontSize", "maxTextSize", "multiline", "pivotBaseline", "pivotCentered", "text"}},
-        {ComponentType::TilemapComponent, {"automaticFlipY", "enabled", "flipY", "height", "reserveTiles", "textureScaleFactor", "tiles", "tilesRect", "width"}},
-        {ComponentType::Transform, {"billboard", "billboardRotation", "cylindricalBillboard", "fakeBillboard", "localMatrix", "modelMatrix", "normalMatrix", "position", "rotation", "scale", "visible", "worldPosition", "worldRotation", "worldScale"}},
-        {ComponentType::TranslateTracksComponent, {"inTangents", "outTangents", "values"}},
-        {ComponentType::TweenComponent, {"duration", "function", "loop"}},
-        {ComponentType::UIComponent, {"aabb", "automaticFlipY", "blendMode", "buffer", "color", "colorWrite", "customShader", "depthWrite", "enabled", "flipY", "focused", "indices", "minBufferCount", "minIndicesCount", "pointerMoved", "primitiveType", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil", "texture", "vertexCount", "worldAABB"}},
-        {ComponentType::UIDocumentComponent, {"enabled", "filename", "inputSurface", "interactive", "pixelRatio", "renderMode", "sortOrder", "textureHeight", "textureWidth"}},
-        {ComponentType::LocalVolumetricFogComponent, {"albedo", "attenuationDistance", "blendDistance", "falloff", "noiseIntensity", "noiseScale", "scrollSpeed", "shape", "size"}},
-        {ComponentType::VolumetricCloudsComponent, {"altitudeRange", "ambientLightDimmer", "bottomAltitude", "coverage", "density", "earthCurvature", "erosionFactor", "erosionScale", "maxDistance", "preset", "qualityOverride", "rendering", "shapeFactor", "shapeScale", "sunLightDimmer", "weatherMap", "weatherMapScale", "windDirection", "windSpeed"}},
-    };
-    return lookup(tables, type);
+    const reflect::ComponentDesc* desc = reflect::find(type);
+    return desc ? reflect::knownKeys(*desc) : noKeys;
 }
 
 const std::vector<std::string>& StreamSchema::knownNestedKeys(NestedKind kind) {
@@ -216,34 +147,12 @@ bool StreamSchema::findComponentType(const std::string& name, ComponentType& typ
 // ---- enum tables (the names written first, older spellings as aliases) ----
 
 const EnumTable<ActionState>& StreamSchema::actionState() {
-    static const EnumTable<ActionState> table("ActionState", {
-        {ActionState::Running, "Running"},
-        {ActionState::Paused, "Paused"},
-        {ActionState::Stopped, "Stopped"},
-    }, ActionState::Stopped);
+    static const EnumTable<ActionState> table(reflect::enums::kActionState);
     return table;
 }
 
 const EnumTable<AnchorPreset>& StreamSchema::anchorPreset() {
-    static const EnumTable<AnchorPreset> table("AnchorPreset", {
-        {AnchorPreset::NONE, "NONE"},
-        {AnchorPreset::TOP_LEFT, "TOP_LEFT"},
-        {AnchorPreset::TOP_RIGHT, "TOP_RIGHT"},
-        {AnchorPreset::BOTTOM_LEFT, "BOTTOM_LEFT"},
-        {AnchorPreset::BOTTOM_RIGHT, "BOTTOM_RIGHT"},
-        {AnchorPreset::CENTER_LEFT, "CENTER_LEFT"},
-        {AnchorPreset::CENTER_TOP, "CENTER_TOP"},
-        {AnchorPreset::CENTER_RIGHT, "CENTER_RIGHT"},
-        {AnchorPreset::CENTER_BOTTOM, "CENTER_BOTTOM"},
-        {AnchorPreset::CENTER, "CENTER"},
-        {AnchorPreset::LEFT_WIDE, "LEFT_WIDE"},
-        {AnchorPreset::TOP_WIDE, "TOP_WIDE"},
-        {AnchorPreset::RIGHT_WIDE, "RIGHT_WIDE"},
-        {AnchorPreset::BOTTOM_WIDE, "BOTTOM_WIDE"},
-        {AnchorPreset::VERTICAL_CENTER_WIDE, "VERTICAL_CENTER_WIDE"},
-        {AnchorPreset::HORIZONTAL_CENTER_WIDE, "HORIZONTAL_CENTER_WIDE"},
-        {AnchorPreset::FULL_LAYOUT, "FULL_LAYOUT"},
-    }, AnchorPreset::NONE);
+    static const EnumTable<AnchorPreset> table(reflect::enums::kAnchorPreset);
     return table;
 }
 
@@ -316,30 +225,17 @@ const EnumTable<AttributeType>& StreamSchema::attributeType() {
 }
 
 const EnumTable<AudioSourceAttenuation>& StreamSchema::audioSourceAttenuation() {
-    static const EnumTable<AudioSourceAttenuation> table("AudioSourceAttenuation", {
-        {AudioSourceAttenuation::NO_ATTENUATION, "no_attenuation"},
-        {AudioSourceAttenuation::INVERSE_DISTANCE, "inverse_distance"},
-        {AudioSourceAttenuation::LINEAR_DISTANCE, "linear_distance"},
-        {AudioSourceAttenuation::EXPONENTIAL_DISTANCE, "exponential_distance"},
-    }, AudioSourceAttenuation::NO_ATTENUATION);
+    static const EnumTable<AudioSourceAttenuation> table(reflect::enums::kAudioSourceAttenuation);
     return table;
 }
 
 const EnumTable<AudioSourceState>& StreamSchema::audioSourceState() {
-    static const EnumTable<AudioSourceState> table("AudioSourceState", {
-        {AudioSourceState::Playing, "playing"},
-        {AudioSourceState::Paused, "paused"},
-        {AudioSourceState::Stopped, "stopped"},
-    }, AudioSourceState::Stopped);
+    static const EnumTable<AudioSourceState> table(reflect::enums::kAudioSourceState);
     return table;
 }
 
 const EnumTable<BodyType>& StreamSchema::bodyType() {
-    static const EnumTable<BodyType> table("BodyType", {
-        {BodyType::STATIC, "static"},
-        {BodyType::KINEMATIC, "kinematic"},
-        {BodyType::DYNAMIC, "dynamic"},
-    }, BodyType::STATIC);
+    static const EnumTable<BodyType> table(reflect::enums::kBodyType);
     return table;
 }
 
@@ -362,140 +258,57 @@ const EnumTable<BufferUsage>& StreamSchema::bufferUsage() {
 }
 
 const EnumTable<CameraType>& StreamSchema::cameraType() {
-    static const EnumTable<CameraType> table("CameraType", {
-        {CameraType::CAMERA_UI, "camera_ui"},
-        {CameraType::CAMERA_ORTHO, "camera_ortho"},
-        {CameraType::CAMERA_PERSPECTIVE, "camera_perspective"},
-    }, CameraType::CAMERA_PERSPECTIVE);
+    static const EnumTable<CameraType> table(reflect::enums::kCameraType);
     return table;
 }
 
 const EnumTable<Collider2DType>& StreamSchema::collider2DType() {
-    static const EnumTable<Collider2DType> table("Collider2DType", {
-        {Collider2DType::POLYGON, "polygon"},
-        {Collider2DType::CIRCLE, "circle"},
-        {Collider2DType::CAPSULE, "capsule"},
-        {Collider2DType::SEGMENT, "segment"},
-        {Collider2DType::CHAIN, "chain"},
-    }, Collider2DType::POLYGON);
+    static const EnumTable<Collider2DType> table(reflect::enums::kCollider2DType);
     return table;
 }
 
 const EnumTable<Collider3DType>& StreamSchema::collider3DType() {
-    static const EnumTable<Collider3DType> table("Collider3DType", {
-        {Collider3DType::SPHERE, "sphere"},
-        {Collider3DType::BOX, "box"},
-        {Collider3DType::CAPSULE, "capsule"},
-        {Collider3DType::TAPERED_CAPSULE, "tapered_capsule"},
-        {Collider3DType::CYLINDER, "cylinder"},
-        {Collider3DType::CONVEX_HULL, "convex_hull"},
-        {Collider3DType::MESH, "mesh"},
-        {Collider3DType::HEIGHTFIELD, "heightfield"},
-    }, Collider3DType::SPHERE);
+    static const EnumTable<Collider3DType> table(reflect::enums::kCollider3DType);
     return table;
 }
 
 const EnumTable<CullingMode>& StreamSchema::cullingMode() {
-    static const EnumTable<CullingMode> table("CullingMode", {
-        {CullingMode::BACK, "back"},
-        {CullingMode::FRONT, "front"},
-    }, CullingMode::BACK);
+    static const EnumTable<CullingMode> table(reflect::enums::kCullingMode);
     return table;
 }
 
 const EnumTable<EaseType>& StreamSchema::easeType() {
-    static const EnumTable<EaseType> table("EaseType", {
-        {EaseType::LINEAR, "LINEAR"},
-        {EaseType::QUAD_IN, "QUAD_IN"},
-        {EaseType::QUAD_OUT, "QUAD_OUT"},
-        {EaseType::QUAD_IN_OUT, "QUAD_IN_OUT"},
-        {EaseType::CUBIC_IN, "CUBIC_IN"},
-        {EaseType::CUBIC_OUT, "CUBIC_OUT"},
-        {EaseType::CUBIC_IN_OUT, "CUBIC_IN_OUT"},
-        {EaseType::QUART_IN, "QUART_IN"},
-        {EaseType::QUART_OUT, "QUART_OUT"},
-        {EaseType::QUART_IN_OUT, "QUART_IN_OUT"},
-        {EaseType::QUINT_IN, "QUINT_IN"},
-        {EaseType::QUINT_OUT, "QUINT_OUT"},
-        {EaseType::QUINT_IN_OUT, "QUINT_IN_OUT"},
-        {EaseType::SINE_IN, "SINE_IN"},
-        {EaseType::SINE_OUT, "SINE_OUT"},
-        {EaseType::SINE_IN_OUT, "SINE_IN_OUT"},
-        {EaseType::EXPO_IN, "EXPO_IN"},
-        {EaseType::EXPO_OUT, "EXPO_OUT"},
-        {EaseType::EXPO_IN_OUT, "EXPO_IN_OUT"},
-        {EaseType::CIRC_IN, "CIRC_IN"},
-        {EaseType::CIRC_OUT, "CIRC_OUT"},
-        {EaseType::CIRC_IN_OUT, "CIRC_IN_OUT"},
-        {EaseType::ELASTIC_IN, "ELASTIC_IN"},
-        {EaseType::ELASTIC_OUT, "ELASTIC_OUT"},
-        {EaseType::ELASTIC_IN_OUT, "ELASTIC_IN_OUT"},
-        {EaseType::BACK_IN, "BACK_IN"},
-        {EaseType::BACK_OUT, "BACK_OUT"},
-        {EaseType::BACK_IN_OUT, "BACK_IN_OUT"},
-        {EaseType::BOUNCE_IN, "BOUNCE_IN"},
-        {EaseType::BOUNCE_OUT, "BOUNCE_OUT"},
-        {EaseType::BOUNCE_IN_OUT, "BOUNCE_IN_OUT"},
-        {EaseType::STEP, "STEP"},
-        {EaseType::CUSTOM, "CUSTOM"},
-    }, EaseType::LINEAR, {}, normalizeEaseName);
+    static const EnumTable<EaseType> table(reflect::enums::kEaseType);
     return table;
 }
 
 const EnumTable<FogType>& StreamSchema::fogType() {
-    static const EnumTable<FogType> table("FogType", {
-        {FogType::LINEAR, "linear"},
-        {FogType::EXPONENTIAL, "exponential"},
-        {FogType::EXPONENTIALSQUARED, "exponential_squared"},
-        {FogType::HEIGHT, "height"},
-    }, FogType::LINEAR, {
-        {FogType::EXPONENTIALSQUARED, "exponentialsquared"},
-        {FogType::EXPONENTIALSQUARED, "exponentialSquared"},
-    });
+    static const EnumTable<FogType> table(reflect::enums::kFogType);
     return table;
 }
 
 const EnumTable<FogColorMode>& StreamSchema::fogColorMode() {
-    static const EnumTable<FogColorMode> table("FogColorMode", {
-        {FogColorMode::COLOR, "color"},
-        {FogColorMode::SKY, "sky"},
-    }, FogColorMode::COLOR);
+    static const EnumTable<FogColorMode> table(reflect::enums::kFogColorMode);
     return table;
 }
 
 const EnumTable<FogVolumeShape>& StreamSchema::fogVolumeShape() {
-    static const EnumTable<FogVolumeShape> table("FogVolumeShape", {
-        {FogVolumeShape::BOX, "box"},
-        {FogVolumeShape::SPHERE, "sphere"},
-    }, FogVolumeShape::BOX);
+    static const EnumTable<FogVolumeShape> table(reflect::enums::kFogVolumeShape);
     return table;
 }
 
 const EnumTable<FogVolumeFalloff>& StreamSchema::fogVolumeFalloff() {
-    static const EnumTable<FogVolumeFalloff> table("FogVolumeFalloff", {
-        {FogVolumeFalloff::LINEAR, "linear"},
-        {FogVolumeFalloff::EXPONENTIAL, "exponential"},
-    }, FogVolumeFalloff::LINEAR);
+    static const EnumTable<FogVolumeFalloff> table(reflect::enums::kFogVolumeFalloff);
     return table;
 }
 
 const EnumTable<CloudsPreset>& StreamSchema::cloudsPreset() {
-    static const EnumTable<CloudsPreset> table("CloudsPreset", {
-        {CloudsPreset::CUSTOM, "custom"},
-        {CloudsPreset::SPARSE, "sparse"},
-        {CloudsPreset::CLOUDY, "cloudy"},
-        {CloudsPreset::OVERCAST, "overcast"},
-        {CloudsPreset::STORMY, "stormy"},
-    }, CloudsPreset::CLOUDY);
+    static const EnumTable<CloudsPreset> table(reflect::enums::kCloudsPreset);
     return table;
 }
 
 const EnumTable<CloudsRendering>& StreamSchema::cloudsRendering() {
-    static const EnumTable<CloudsRendering> table("CloudsRendering", {
-        {CloudsRendering::AUTO, "auto"},
-        {CloudsRendering::SKY_MAP, "sky_map"},
-        {CloudsRendering::SCREEN, "screen"},
-    }, CloudsRendering::AUTO);
+    static const EnumTable<CloudsRendering> table(reflect::enums::kCloudsRendering);
     return table;
 }
 
@@ -510,61 +323,27 @@ const EnumTable<AtmosphereQuality>& StreamSchema::atmosphereQuality() {
 }
 
 const EnumTable<AtmosphereQualityOverride>& StreamSchema::atmosphereQualityOverride() {
-    static const EnumTable<AtmosphereQualityOverride> table("AtmosphereQualityOverride", {
-        {AtmosphereQualityOverride::PROJECT, "project"},
-        {AtmosphereQualityOverride::LOW, "low"},
-        {AtmosphereQualityOverride::MEDIUM, "medium"},
-    }, AtmosphereQualityOverride::PROJECT);
+    static const EnumTable<AtmosphereQualityOverride> table(reflect::enums::kAtmosphereQualityOverride);
     return table;
 }
 
 const EnumTable<Joint2DType>& StreamSchema::joint2DType() {
-    static const EnumTable<Joint2DType> table("Joint2DType", {
-        {Joint2DType::DISTANCE, "distance"},
-        {Joint2DType::REVOLUTE, "revolute"},
-        {Joint2DType::PRISMATIC, "prismatic"},
-        {Joint2DType::MOUSE, "mouse"},
-        {Joint2DType::WHEEL, "wheel"},
-        {Joint2DType::WELD, "weld"},
-        {Joint2DType::MOTOR, "motor"},
-    }, Joint2DType::DISTANCE);
+    static const EnumTable<Joint2DType> table(reflect::enums::kJoint2DType);
     return table;
 }
 
 const EnumTable<Joint3DType>& StreamSchema::joint3DType() {
-    static const EnumTable<Joint3DType> table("Joint3DType", {
-        {Joint3DType::FIXED, "fixed"},
-        {Joint3DType::DISTANCE, "distance"},
-        {Joint3DType::POINT, "point"},
-        {Joint3DType::HINGE, "hinge"},
-        {Joint3DType::CONE, "cone"},
-        {Joint3DType::PRISMATIC, "prismatic"},
-        {Joint3DType::SWINGTWIST, "swingtwist"},
-        {Joint3DType::SIXDOF, "sixdof"},
-        {Joint3DType::PATH, "path"},
-        {Joint3DType::GEAR, "gear"},
-        {Joint3DType::RACKANDPINON, "rackandpinion"},
-        {Joint3DType::PULLEY, "pulley"},
-    }, Joint3DType::FIXED);
+    static const EnumTable<Joint3DType> table(reflect::enums::kJoint3DType);
     return table;
 }
 
 const EnumTable<LayoutGroupType>& StreamSchema::layoutGroupType() {
-    static const EnumTable<LayoutGroupType> table("LayoutGroupType", {
-        {LayoutGroupType::VERTICAL, "vertical"},
-        {LayoutGroupType::HORIZONTAL, "horizontal"},
-        {LayoutGroupType::VERTICAL_WRAP, "vertical_wrap"},
-        {LayoutGroupType::HORIZONTAL_WRAP, "horizontal_wrap"},
-    }, LayoutGroupType::VERTICAL);
+    static const EnumTable<LayoutGroupType> table(reflect::enums::kLayoutGroupType);
     return table;
 }
 
 const EnumTable<LightShading>& StreamSchema::lightShading() {
-    static const EnumTable<LightShading> table("LightShading", {
-        {LightShading::BOTH, "BOTH"},
-        {LightShading::PIXEL, "PIXEL"},
-        {LightShading::VERTEX, "VERTEX"},
-    }, LightShading::BOTH);
+    static const EnumTable<LightShading> table(reflect::enums::kLightShading);
     return table;
 }
 
@@ -578,169 +357,77 @@ const EnumTable<LightState>& StreamSchema::lightState() {
 }
 
 const EnumTable<LightType>& StreamSchema::lightType() {
-    static const EnumTable<LightType> table("LightType", {
-        {LightType::DIRECTIONAL, "directional"},
-        {LightType::POINT, "point"},
-        {LightType::SPOT, "spot"},
-    }, LightType::DIRECTIONAL);
+    static const EnumTable<LightType> table(reflect::enums::kLightType);
     return table;
 }
 
 const EnumTable<MaterialAlphaMode>& StreamSchema::materialAlphaMode() {
-    static const EnumTable<MaterialAlphaMode> table("MaterialAlphaMode", {
-        {MaterialAlphaMode::AUTO, "AUTO"},
-        {MaterialAlphaMode::ALPHA_OPAQUE, "ALPHA_OPAQUE"},
-        {MaterialAlphaMode::MASK, "MASK"},
-        {MaterialAlphaMode::BLEND, "BLEND"},
-    }, MaterialAlphaMode::AUTO);
+    static const EnumTable<MaterialAlphaMode> table(reflect::enums::kMaterialAlphaMode);
     return table;
 }
 
 const EnumTable<MaterialBlendMode>& StreamSchema::materialBlendMode() {
-    static const EnumTable<MaterialBlendMode> table("MaterialBlendMode", {
-        {MaterialBlendMode::AUTO, "AUTO"},
-        {MaterialBlendMode::NONE, "NONE"},
-        {MaterialBlendMode::ALPHA, "ALPHA"},
-        {MaterialBlendMode::PREMULTIPLIED, "PREMULTIPLIED"},
-        {MaterialBlendMode::ADDITIVE, "ADDITIVE"},
-        {MaterialBlendMode::MULTIPLY, "MULTIPLY"},
-    }, MaterialBlendMode::AUTO, {
-        {MaterialBlendMode::NONE, "OPAQUE"},
-    });
+    static const EnumTable<MaterialBlendMode> table(reflect::enums::kMaterialBlendMode);
     return table;
 }
 
 const EnumTable<MaterialCullMode>& StreamSchema::materialCullMode() {
-    static const EnumTable<MaterialCullMode> table("MaterialCullMode", {
-        {MaterialCullMode::AUTO, "AUTO"},
-        {MaterialCullMode::BACK, "BACK"},
-        {MaterialCullMode::FRONT, "FRONT"},
-        {MaterialCullMode::OFF, "OFF"},
-    }, MaterialCullMode::AUTO);
+    static const EnumTable<MaterialCullMode> table(reflect::enums::kMaterialCullMode);
     return table;
 }
 
 const EnumTable<MaterialDepthTest>& StreamSchema::materialDepthTest() {
-    static const EnumTable<MaterialDepthTest> table("MaterialDepthTest", {
-        {MaterialDepthTest::AUTO, "AUTO"},
-        {MaterialDepthTest::LESS, "LESS"},
-        {MaterialDepthTest::LESS_EQUAL, "LESS_EQUAL"},
-        {MaterialDepthTest::EQUAL, "EQUAL"},
-        {MaterialDepthTest::GREATER_EQUAL, "GREATER_EQUAL"},
-        {MaterialDepthTest::GREATER, "GREATER"},
-        {MaterialDepthTest::NOT_EQUAL, "NOT_EQUAL"},
-        {MaterialDepthTest::ALWAYS, "ALWAYS"},
-    }, MaterialDepthTest::AUTO);
+    static const EnumTable<MaterialDepthTest> table(reflect::enums::kMaterialDepthTest);
     return table;
 }
 
 const EnumTable<MaterialDepthWrite>& StreamSchema::materialDepthWrite() {
-    static const EnumTable<MaterialDepthWrite> table("MaterialDepthWrite", {
-        {MaterialDepthWrite::AUTO, "AUTO"},
-        {MaterialDepthWrite::ENABLED, "ENABLED"},
-        {MaterialDepthWrite::DISABLED, "DISABLED"},
-    }, MaterialDepthWrite::AUTO);
+    static const EnumTable<MaterialDepthWrite> table(reflect::enums::kMaterialDepthWrite);
     return table;
 }
 
 const EnumTable<MaterialLighting>& StreamSchema::materialLighting() {
-    static const EnumTable<MaterialLighting> table("MaterialLighting", {
-        {MaterialLighting::AUTO, "AUTO"},
-        {MaterialLighting::PIXEL, "PIXEL"},
-        {MaterialLighting::VERTEX, "VERTEX"},
-        {MaterialLighting::MIXED, "MIXED"},
-        {MaterialLighting::NONE, "NONE"},
-    }, MaterialLighting::AUTO);
+    static const EnumTable<MaterialLighting> table(reflect::enums::kMaterialLighting);
     return table;
 }
 
 const EnumTable<MaterialPassOrder>& StreamSchema::materialPassOrder() {
-    static const EnumTable<MaterialPassOrder> table("MaterialPassOrder", {
-        {MaterialPassOrder::BEFORE, "BEFORE"},
-        {MaterialPassOrder::AFTER, "AFTER"},
-    }, MaterialPassOrder::AFTER);
+    static const EnumTable<MaterialPassOrder> table(reflect::enums::kMaterialPassOrder);
     return table;
 }
 
 const EnumTable<MaterialStencilCompare>& StreamSchema::materialStencilCompare() {
-    static const EnumTable<MaterialStencilCompare> table("MaterialStencilCompare", {
-        {MaterialStencilCompare::AUTO, "AUTO"},
-        {MaterialStencilCompare::DISABLED, "DISABLED"},
-        {MaterialStencilCompare::NEVER, "NEVER"},
-        {MaterialStencilCompare::LESS, "LESS"},
-        {MaterialStencilCompare::EQUAL, "EQUAL"},
-        {MaterialStencilCompare::LESS_EQUAL, "LESS_EQUAL"},
-        {MaterialStencilCompare::GREATER, "GREATER"},
-        {MaterialStencilCompare::NOT_EQUAL, "NOT_EQUAL"},
-        {MaterialStencilCompare::GREATER_EQUAL, "GREATER_EQUAL"},
-        {MaterialStencilCompare::ALWAYS, "ALWAYS"},
-    }, MaterialStencilCompare::AUTO);
+    static const EnumTable<MaterialStencilCompare> table(reflect::enums::kMaterialStencilCompare);
     return table;
 }
 
 const EnumTable<MaterialStencilOp>& StreamSchema::materialStencilOp() {
-    static const EnumTable<MaterialStencilOp> table("MaterialStencilOp", {
-        {MaterialStencilOp::KEEP, "KEEP"},
-        {MaterialStencilOp::ZERO, "ZERO"},
-        {MaterialStencilOp::REPLACE, "REPLACE"},
-        {MaterialStencilOp::INCR_CLAMP, "INCR_CLAMP"},
-        {MaterialStencilOp::DECR_CLAMP, "DECR_CLAMP"},
-        {MaterialStencilOp::INVERT, "INVERT"},
-        {MaterialStencilOp::INCR_WRAP, "INCR_WRAP"},
-        {MaterialStencilOp::DECR_WRAP, "DECR_WRAP"},
-    }, MaterialStencilOp::KEEP);
+    static const EnumTable<MaterialStencilOp> table(reflect::enums::kMaterialStencilOp);
     return table;
 }
 
 const EnumTable<ParticleEmitterShape>& StreamSchema::particleEmitterShape() {
-    static const EnumTable<ParticleEmitterShape> table("ParticleEmitterShape", {
-        {ParticleEmitterShape::Box, "Box"},
-        {ParticleEmitterShape::Sphere, "Sphere"},
-        {ParticleEmitterShape::Hemisphere, "Hemisphere"},
-        {ParticleEmitterShape::Circle, "Circle"},
-        {ParticleEmitterShape::Cone, "Cone"},
-    }, ParticleEmitterShape::Box);
+    static const EnumTable<ParticleEmitterShape> table(reflect::enums::kParticleEmitterShape);
     return table;
 }
 
 const EnumTable<PivotPreset>& StreamSchema::pivotPreset() {
-    static const EnumTable<PivotPreset> table("PivotPreset", {
-        {PivotPreset::CENTER, "center"},
-        {PivotPreset::TOP_CENTER, "top_center"},
-        {PivotPreset::BOTTOM_CENTER, "bottom_center"},
-        {PivotPreset::LEFT_CENTER, "left_center"},
-        {PivotPreset::RIGHT_CENTER, "right_center"},
-        {PivotPreset::TOP_LEFT, "top_left"},
-        {PivotPreset::BOTTOM_LEFT, "bottom_left"},
-        {PivotPreset::TOP_RIGHT, "top_right"},
-        {PivotPreset::BOTTOM_RIGHT, "bottom_right"},
-    }, PivotPreset::BOTTOM_LEFT);
+    static const EnumTable<PivotPreset> table(reflect::enums::kPivotPreset);
     return table;
 }
 
 const EnumTable<PrimitiveType>& StreamSchema::primitiveType() {
-    static const EnumTable<PrimitiveType> table("PrimitiveType", {
-        {PrimitiveType::TRIANGLES, "triangles"},
-        {PrimitiveType::TRIANGLE_STRIP, "triangle_strip"},
-        {PrimitiveType::POINTS, "points"},
-        {PrimitiveType::LINES, "lines"},
-    }, PrimitiveType::TRIANGLES);
+    static const EnumTable<PrimitiveType> table(reflect::enums::kPrimitiveType);
     return table;
 }
 
 const EnumTable<ProgressbarType>& StreamSchema::progressbarType() {
-    static const EnumTable<ProgressbarType> table("ProgressbarType", {
-        {ProgressbarType::VERTICAL, "vertical"},
-        {ProgressbarType::HORIZONTAL, "horizontal"},
-    }, ProgressbarType::HORIZONTAL);
+    static const EnumTable<ProgressbarType> table(reflect::enums::kProgressbarType);
     return table;
 }
 
 const EnumTable<RigidbodyMotionQuality>& StreamSchema::rigidbodyMotionQuality() {
-    static const EnumTable<RigidbodyMotionQuality> table("RigidbodyMotionQuality", {
-        {RigidbodyMotionQuality::LINEAR_CAST, "linear_cast"},
-        {RigidbodyMotionQuality::DISCRETE, "discrete"},
-    }, RigidbodyMotionQuality::DISCRETE);
+    static const EnumTable<RigidbodyMotionQuality> table(reflect::enums::kRigidbodyMotionQuality);
     return table;
 }
 
@@ -792,30 +479,17 @@ const EnumTable<ScriptPropertyType>& StreamSchema::scriptPropertyType() {
 }
 
 const EnumTable<ScriptType>& StreamSchema::scriptType() {
-    static const EnumTable<ScriptType> table("ScriptType", {
-        {ScriptType::CPP, "cpp"},
-        {ScriptType::LUA, "lua"},
-    }, ScriptType::CPP, {
-        {ScriptType::LUA, "script_lua"},
-        {ScriptType::CPP, "subclass"},
-        {ScriptType::CPP, "script_class"},
-    });
+    static const EnumTable<ScriptType> table(reflect::enums::kScriptType);
     return table;
 }
 
 const EnumTable<ScrollbarType>& StreamSchema::scrollbarType() {
-    static const EnumTable<ScrollbarType> table("ScrollbarType", {
-        {ScrollbarType::VERTICAL, "vertical"},
-        {ScrollbarType::HORIZONTAL, "horizontal"},
-    }, ScrollbarType::VERTICAL);
+    static const EnumTable<ScrollbarType> table(reflect::enums::kScrollbarType);
     return table;
 }
 
 const EnumTable<ShadowCaster2DShape>& StreamSchema::shadowCaster2DShape() {
-    static const EnumTable<ShadowCaster2DShape> table("ShadowCaster2DShape", {
-        {ShadowCaster2DShape::AUTO_QUAD, "autoquad"},
-        {ShadowCaster2DShape::POLYGON, "polygon"},
-    }, ShadowCaster2DShape::AUTO_QUAD);
+    static const EnumTable<ShadowCaster2DShape> table(reflect::enums::kShadowCaster2DShape);
     return table;
 }
 
@@ -832,19 +506,12 @@ const EnumTable<ShadowQuality>& StreamSchema::shadowQuality() {
 }
 
 const EnumTable<ShadowUpdateMode>& StreamSchema::shadowUpdateMode() {
-    static const EnumTable<ShadowUpdateMode> table("ShadowUpdateMode", {
-        {ShadowUpdateMode::AUTO, "auto"},
-        {ShadowUpdateMode::EVERY_FRAME, "everyFrame"},
-        {ShadowUpdateMode::ON_DEMAND, "onDemand"},
-    }, ShadowUpdateMode::AUTO);
+    static const EnumTable<ShadowUpdateMode> table(reflect::enums::kShadowUpdateMode);
     return table;
 }
 
 const EnumTable<CascadeSplitMode>& StreamSchema::cascadeSplitMode() {
-    static const EnumTable<CascadeSplitMode> table("CascadeSplitMode", {
-        {CascadeSplitMode::AUTO, "auto"},
-        {CascadeSplitMode::MANUAL, "manual"},
-    }, CascadeSplitMode::AUTO);
+    static const EnumTable<CascadeSplitMode> table(reflect::enums::kCascadeSplitMode);
     return table;
 }
 
@@ -902,23 +569,12 @@ const EnumTable<TerrainBrushShape>& StreamSchema::terrainBrushShape() {
 }
 
 const EnumTable<TextureAlphaBorder>& StreamSchema::textureAlphaBorder() {
-    static const EnumTable<TextureAlphaBorder> table("TextureAlphaBorder", {
-        {TextureAlphaBorder::FIX, "fix"},
-        {TextureAlphaBorder::KEEP, "keep"},
-        {TextureAlphaBorder::AUTO, "auto"},
-    }, TextureAlphaBorder::AUTO);
+    static const EnumTable<TextureAlphaBorder> table(reflect::enums::kTextureAlphaBorder);
     return table;
 }
 
 const EnumTable<TextureFilter>& StreamSchema::textureFilter() {
-    static const EnumTable<TextureFilter> table("TextureFilter", {
-        {TextureFilter::NEAREST, "nearest"},
-        {TextureFilter::LINEAR, "linear"},
-        {TextureFilter::NEAREST_MIPMAP_NEAREST, "nearest_mipmap_nearest"},
-        {TextureFilter::NEAREST_MIPMAP_LINEAR, "nearest_mipmap_linear"},
-        {TextureFilter::LINEAR_MIPMAP_NEAREST, "linear_mipmap_nearest"},
-        {TextureFilter::LINEAR_MIPMAP_LINEAR, "linear_mipmap_linear"},
-    }, TextureFilter::LINEAR);
+    static const EnumTable<TextureFilter> table(reflect::enums::kTextureFilter);
     return table;
 }
 
@@ -932,37 +588,22 @@ const EnumTable<TextureStrategy>& StreamSchema::textureStrategy() {
 }
 
 const EnumTable<TextureWrap>& StreamSchema::textureWrap() {
-    static const EnumTable<TextureWrap> table("TextureWrap", {
-        {TextureWrap::REPEAT, "repeat"},
-        {TextureWrap::MIRRORED_REPEAT, "mirrored_repeat"},
-        {TextureWrap::CLAMP_TO_EDGE, "clamp_to_edge"},
-        {TextureWrap::CLAMP_TO_BORDER, "clamp_to_border"},
-    }, TextureWrap::REPEAT);
+    static const EnumTable<TextureWrap> table(reflect::enums::kTextureWrap);
     return table;
 }
 
 const EnumTable<UIDocumentRenderMode>& StreamSchema::uiDocumentRenderMode() {
-    static const EnumTable<UIDocumentRenderMode> table("UIDocumentRenderMode", {
-        {UIDocumentRenderMode::TEXTURE, "texture"},
-        {UIDocumentRenderMode::SCREEN, "screen"},
-    }, UIDocumentRenderMode::SCREEN);
+    static const EnumTable<UIDocumentRenderMode> table(reflect::enums::kUIDocumentRenderMode);
     return table;
 }
 
 const EnumTable<UIEventState>& StreamSchema::uiEventState() {
-    static const EnumTable<UIEventState> table("UIEventState", {
-        {UIEventState::NOT_SET, "not_set"},
-        {UIEventState::ENABLED, "true"},
-        {UIEventState::DISABLED, "false"},
-    }, UIEventState::NOT_SET);
+    static const EnumTable<UIEventState> table(reflect::enums::kUIEventState);
     return table;
 }
 
 const EnumTable<WindingOrder>& StreamSchema::windingOrder() {
-    static const EnumTable<WindingOrder> table("WindingOrder", {
-        {WindingOrder::CCW, "ccw"},
-        {WindingOrder::CW, "cw"},
-    }, WindingOrder::CCW);
+    static const EnumTable<WindingOrder> table(reflect::enums::kWindingOrder);
     return table;
 }
 
