@@ -292,6 +292,8 @@ void editor::HierarchyWindow::applyEntitySelection(uint32_t sceneId, Entity enti
     selectedScenes.clear();
     project->setSelectedSceneForProperties(sceneId);
     clearSubSelectionForEntity(sceneId, entity);
+    // a user selection makes the GameObject the inspected object (animation clips 9.R30)
+    project->clearInspectedAsset();
 
     selectionAnchorSceneId = sceneId;
     selectionAnchorEntity = entity;
@@ -1907,6 +1909,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
     if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGui::IsAnyItemHovered() && ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows)) {
         project->clearAllSelections(project->getSelectedSceneId());
+        project->clearInspectedAsset();
         selectedScenes.clear();
         project->setSelectedSceneForProperties(project->getSelectedSceneId());
         resetEntitySelectionAnchor();

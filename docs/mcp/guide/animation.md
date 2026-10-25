@@ -25,13 +25,17 @@ format; `edit_pose_animation` can bake them into a clip (`bake: {model, clip: tr
    values: {animationplayer: {clips: [{clip: "assets/anim/bob.anim"}]}}}` (or `set_properties`
    on an existing player: `clips`, `clips[0].wrap`, `defaultClip`, `playAutomatically`, `speed`).
 3. Read the numbers headless: `get_animation {clip, times: [0, 0.25, 0.5]}` samples every track
-   with the runtime sampler (`samples.tracks[i].values[n]` is the value at `times[n]`).
+   with the runtime sampler (`samples.tracks[i].values[n]` is the track's value at `times[n]`,
+   the clip's wrap applied, or the wrap of `root`'s player entry: `samples.wrap_used`). A
+   relative track gives its own offset / factor there, not the posed value (that is the preview).
 4. Look at it: `preview_animation {animation: "Hero", action: "seek", time: 0.5}` poses the
    scene (edit mode, nothing saved), returns `bound` (the local transforms of up to 8 bound
-   paths) and `unresolved`; then `frame_entity` + `screenshot {view: "scene"}`. Always finish
-   with `preview_animation {animation: "Hero", action: "stop"}` (restores the scene).
-5. Run it: `play` → `wait {game_seconds: 1}` → `get_runtime_entity` on a bound child (its
-   Transform moved), Console for event handler errors → `stop`.
+   paths; `bound_total` counts them all) and `unresolved`; then `frame_entity` + `screenshot
+   {view: "scene"}`. `action: "play"` plays it in the editor (every frame, looped whatever the
+   wrap; `wait_ms` waits before answering). Always finish with `preview_animation {animation:
+   "Hero", action: "stop"}` (restores the scene).
+5. Run it: `play {action: "start"}` → `wait {game_seconds: 1}` → `get_runtime_entity` on a bound
+   child (its Transform moved), `read_console` for event handler errors → `play {action: "stop"}`.
 
 `get_animation {entity: "Hero"}` lists the player's states (`players[0].states: [{name, clip,
 wrap}]`) and a binding report per state; use it after renames or when retargeting a clip.
@@ -102,8 +106,9 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   `lattice_index_out_of_range`, `morph_index_out_of_range`, `legacy_model_layout`,
   `unaddressable_name`. Tracks bound to the first of several same-named siblings are listed in
   `ambiguous` (write `Name#N`). `legacy_models` lists models loaded without their node
-  hierarchy (their bones can't bind): adding the root's Animation Player reloads them (one scene
-  step; `legacy_fix` says how).
+  hierarchy (their bones can't bind): `add_component {entity: <root>, component:
+  "animationplayer"}` adds the player, or with one already there reloads the models, its
+  settings kept (one scene step; `legacy_fix` says it).
 - Missing paths are not errors: shared clips may target rigs that are not loaded. At runtime an
   unresolved track is skipped; renames and reparents rebind live.
 - With `root`, a track may give `target` (a GameObject ref) instead of `path`: it is turned into
@@ -115,8 +120,8 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 
 | channel | value | notes |
 |---|---|---|
-| `position`, `scale` | `[x, y, z]` local | `relative: true` adds to the target's pose when the state starts |
-| `rotation` | `[x, y, z, w]`, `{"euler": [x, y, z]}` degrees or `{"quat": [...]}` | written as quaternions; a turn over 180 degrees between two keys needs middle keys |
+| `position`, `scale` | `[x, y, z]` local | `relative: true`: position adds to the rest (scene) value, scale multiplies it (`[1, 1, 1]` = unchanged) |
+| `rotation` | `[x, y, z, w]`, `{"euler": [x, y, z]}` degrees or `{"quat": [...]}` | written as quaternions; with both `euler` and `quat` (a key read from a result) `euler` wins; `relative`: multiplies the rest rotation; a turn over 180 degrees between two keys needs middle keys |
 | `morph` | `[w0, w1, ...]` one weight per morph target | shorter arrays mean 0 for the rest |
 | `lattice` | `points` (below) | the path is the cage (the lattice GameObject), not the mesh |
 
@@ -129,7 +134,8 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 - Per track: `mode: "replace"` (default: the track's keys become these) or `"merge"` (keys at
   the same time within 1 ms are replaced, others added); `loop: true` repeats the track's own
   keys inside a longer clip; `keys: []` with mode replace removes the track.
-- A track is identified by path + channel: giving the same pair edits that track.
+- A track is identified by path + channel: giving the same pair edits that track. Its keys are
+  `{path, target, channel, keys, mode, loop, relative}`; other keys are refused.
 - Results return keys as `{time, value | points, ease}` (`ease` only when not linear, `in`/`out`
   for tangent keys of imported model clips), rotations as `{quat, euler}`; `max_keys` caps the
   keys listed per track (`key_count` is the real count).
@@ -139,8 +145,9 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 `events: [{time, function, args}]` (`args`: up to 8 numbers, strings or booleans) with
 `events_mode: "replace"` (default: the list becomes these; `[]` clears) or `"merge"` (same time
 and function replaced, others added). An event fires when a playing state's time crosses it
-(forward, backward and across loops, once per crossing, even at low frame rates), and only for
-the dominant state during a crossfade (no double footsteps). It calls, in order:
+(forward, backward and across loops, once per crossing, even at low frame rates), for every
+state with weight > 0 that is not fading out: during a crossfade only the incoming clip fires,
+even at low weight, and every state of a `blend` fires. It calls, in order:
 
 1. every `onEvent` subscriber of the player with ONE `AnimationEvent` value:
    `event.functionName`, `event.args` (a 1-based table), `event.state`, `event.time`;
@@ -176,12 +183,16 @@ Playback (Unity legacy semantics), from Lua (`GameObject(...):getAnimationPlayer
 
 - `play(name)` stops the others and plays `name` from 0; `play(name, fade)` = `crossFade`.
 - `crossFade(name[, fade])` fades the others out and `name` in; `blend(name, weight[, fade])`
-  moves one state's weight; `queue(name[, fade])` plays after the current states finish.
+  moves one state's weight; `queue(name[, fade])` plays after the current states finish (a
+  loop / ping_pong state finishes at the end of its current cycle; queuing with nothing playing
+  plays at once; `play`, `crossFade` and `stop` clear the queue).
 - `stop()` / `stop(name)`, `rewind([name])`, `sample()` (apply the current times once),
   `isPlaying([name])`, `getState(name)` (`time`, `normalizedTime`, `speed`, `weight`, `wrap`,
   `enabled` writable; `length`, `clip`, `name`), `addClip(path[, name])`, `removeClip(name)`,
   `getClipCount()`, `getClipName(i)`, properties `speed`, `defaultClip`, `defaultFadeTime`,
   `playAutomatically`, `enabled`, `isLoaded()`, callbacks `onEvent`, `onFinish(state)`.
+- `onFinish(state)` fires when a `once` state ends and when a `clamp_forever` state first
+  reaches its end.
 - A `once` state that reaches its end fires `onFinish`, stops advancing (`isPlaying` is false)
   and **holds its last pose** at its weight until a fade or `stop` releases it, so `onFinish →
   crossFade("Idle")` blends from the end pose. With nothing playing, the last pose stays.
@@ -190,7 +201,8 @@ Playback (Unity legacy semantics), from Lua (`GameObject(...):getAnimationPlayer
 - `Model:playAnimation(name[, fade])` and `stopAnimations()` use the model's Animation Player
   when it has one (else its entity animations).
 - `preview_animation` drives the editor preview of a player's clip: `state` picks the clip
-  (default: the default clip), `action` play / pause / seek / stop, `wait_ms` lets it play.
+  (default: the default clip), `action` play / pause / seek / stop, `wait_ms` lets it play. The
+  preview loops the clip whatever its wrap; Play mode follows the wrap.
 
 ## edit_animation: clip mode and scene mode
 
@@ -211,15 +223,17 @@ Playback (Unity legacy semantics), from Lua (`GameObject(...):getAnimationPlayer
 
 Clip mode arguments: `clip`, `create` (`{}` a new file; `{from: <entity Animation>}` converts
 its keyframe tracks into the file and gives the Animation's target, or `root`, an Animation
-Player playing it; `{from: "assets/models/hero.gltf#Walk"}` extracts a model clip into an
-editable file), `tracks`, `events`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`,
-`scene` (of `root` / `from`), `max_keys`. `create` fails when the file exists; without it the
-file must exist. A call is all or nothing.
+Player playing it, and `remove_tracks: true` also removes the converted tracks from the
+Animation; `{from: "assets/models/hero.gltf#Walk"}` extracts a model clip into an editable
+file), `tracks`, `events`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`, `scene` (of
+`root` / `from`), `max_keys`. `create` fails when the file exists; without it the file must
+exist. A call is all or nothing; a setting given with its current value is a no-change, not an
+error (retries are safe).
 
 Results: `{clip, created, length, wrap, frame_rate, tracks: [{index, path, channel, key_count,
-keys, loop, relative}], events, changes, warnings, users, bindings?}`. `users` counts the
-Animation Player entries in open scenes and prefabs that play the file: the text says the edit
-changes all of them.
+keys, loop, relative}], events, changes, warnings, users, bindings?}`. `users` lists the
+Animation Player entries in open scenes and loaded prefabs that play the file (`{scene, entity,
+entry, state}`; closed scenes are not counted): the text says the edit changes all of them.
 
 Undo: a clip edit (and create, extract) is ONE **project** undo step (`undo {scope:
 "project"}`); the component that references the clip is a scene step. `create {from: <entity>}`
@@ -235,8 +249,9 @@ the scope.
   `edit_animation {clip: "assets/anim/walk.anim", create: {from: "assets/models/hero.gltf#Walk"}}`.
 - An entity Animation converts with `create: {from: <the Animation GameObject>}`: keyframe tracks
   only (tweens, sprite animations, particles and nested animations stay in the Animation and are
-  listed in `changes`); the old Animation keeps playing too, delete it (`delete_entity`) when the
-  player replaces it.
+  listed in `changes`). Its converted tracks stay in the Animation unless `create.remove_tracks:
+  true`: when that Animation plays (autoplay, `Model:playAnimation`) it writes the same channels
+  as the clip (a warning says so); remove the tracks, or the Animation (`delete_entities`).
 - A pose animation bakes to a clip: `edit_pose_animation {path, bake: {model, clip: true}}`
   (`clip` may be an `.anim` path) writes the mapped bones' rotations and the hips' position and
   adds the clip to the model's Animation Player.
@@ -252,7 +267,9 @@ an optional `start_time`; `tweens: [{type, from, to, duration, ease, loop, ping_
 `type` position, rotation, scale, color or alpha; `from` defaults to the target's current value;
 `ping_pong` goes there and back in twice the duration; a rotation tween with `spin: true` turns
 `from` by `angle` degrees (default 360) around `axis` (default `[0, 1, 0]`) instead of reaching
-`to`; a track's `loop` starts it over after its last key. `add_actions` nests existing actions;
+`to` (for turns over 180 degrees, instead of middle keys); a track's `loop` starts it over after
+its last key; a `relative` track there offsets from the target's pose when it starts (an
+anchored UI element moves by its layout offset). `add_actions` nests existing actions;
 `set_frames` / `remove_actions` use the indices before the call; `loop`, `duration` (-1: until
 the actions end), `autoplay`, `speed` set the Animation. One scene undo step per call.
 
@@ -261,7 +278,10 @@ the actions end), `autoplay`, `speed` set the Animation. One scene undo step per
 - Paths with the root's own name (`"Hero/Hips"` on Hero): paths start BELOW the root; `""` is
   the root.
 - A lattice track on the mesh: the path is the cage GameObject.
-- Keys only at 0 and 180 degrees: the rotation takes the short way or flips; add a middle key.
+- Keys only at 0 and 180 degrees: the rotation takes the short way or flips; add a middle key
+  (entity Animations: or a rotation tween with `spin`).
+- Relative scale keys of `[0, 0, 0]` for "unchanged": relative scale multiplies, use `[1, 1, 1]`.
+- Editing a key read from a result: change `euler` (it wins over `quat`), or send only one.
 - Expecting `once` clips to snap back: they hold the last pose (use `stop`, or `loop`).
 - Editing a model clip: it is read-only; extract it first.
 - Events on a script of a child: handlers run on the scripts of the player's own GameObject.

@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: MIT
 
 // The Inspector's animation clip sections (animation clips spec 4.2, 9.R7/R8/R14/R30/R45):
-// - the Animation Player section (clip list, default clip, settings, Bindings foldout, the live
+// - the Animation Player section (default clip, clip list, settings, Bindings foldout, the live
 //   states while playing);
 // - the asset section of the inspected .anim (or of a model's read-only sub-clips): settings,
 //   tracks, events, preview model, users, warnings; edits go through AnimationClipDocument (project
 //   history);
-// - the Model section's clip rows and the AnimationComponent section's clip buttons.
+// - the Model section's clip buttons and rows and the AnimationComponent section's clip buttons.
 // Window actions (open, convert, extract, use player, create) are AnimationClipInspectorHooks:
 // a button shows once its hook is set. Owner: T2c.
 
@@ -20,10 +20,12 @@
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipValidation.h"
 #include "animation/ModelSubClips.h"
+#include "animation/PreviewOwner.h"
 #include "command/CommandHandle.h"
 #include "command/type/ClipSceneActions.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/ModelComponent.h"
 #include "external/IconsFontAwesome6.h"
@@ -32,6 +34,7 @@
 #include "util/UIProbe.h"
 #include "util/Util.h"
 #include "Out.h"
+#include "Scene.h"
 #include "Theme.h"
 
 #include "imgui.h"
@@ -42,6 +45,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -64,13 +68,21 @@ std::string inspectorclips::clipFieldText(const std::string& clip){
     return fs::path(clip).filename().generic_string();
 }
 
-std::string inspectorclips::missingClipText(const std::string& clip){
-    std::string name = clipFieldText(clip);
+std::string inspectorclips::missingClipTooltip(const std::string& clip){
     anim::SubClipReference reference;
     if (anim::parseSubClipReference(clip, reference)){
-        name += " in " + fs::path(reference.model).filename().generic_string();
+        return "Missing: " + reference.model + " has no animation \"" + reference.clip + "\" (renamed or removed in the model)";
     }
-    return "Missing (" + name + ")";
+    return "Missing: " + clip + " (deleted or moved outside the project; undo the delete to relink)";
+}
+
+bool inspectorclips::subClipNamed(const std::vector<std::string>& subClipNames, const std::string& clip){
+    if (std::find(subClipNames.begin(), subClipNames.end(), clip) != subClipNames.end()) return true;
+    // a number is an index when no animation has that name (ModelSubClips' reading rule)
+    if (clip.empty() || clip.size() > 9 || !std::all_of(clip.begin(), clip.end(), [](unsigned char c){ return std::isdigit(c) != 0; })){
+        return false;
+    }
+    return std::stoul(clip) < subClipNames.size();
 }
 
 const char* inspectorclips::wrapLabel(ClipWrapMode wrap){
@@ -84,14 +96,64 @@ const char* inspectorclips::wrapLabel(ClipWrapMode wrap){
     return "Default";
 }
 
+const char* inspectorclips::channelLabel(ClipChannel channel){
+    switch (channel){
+        case ClipChannel::Position: return "Position";
+        case ClipChannel::Rotation: return "Rotation";
+        case ClipChannel::Scale: return "Scale";
+        case ClipChannel::Morph: return "Morph";
+        case ClipChannel::Lattice: return "Lattice";
+        case ClipChannel::Property: return "Property";
+    }
+    return "";
+}
+
 std::string inspectorclips::formatSeconds(float seconds){
     char buffer[32];
     std::snprintf(buffer, sizeof(buffer), "%.2f s", std::isfinite(seconds) ? seconds : 0.0f);
     return buffer;
 }
 
-std::string inspectorclips::usersText(size_t count){
-    return std::to_string(count) + (count == 1 ? " user" : " users") + " in open scenes";
+std::string inspectorclips::usersText(size_t sceneUsers, size_t prefabUsers){
+    std::string text = std::to_string(sceneUsers) + (sceneUsers == 1 ? " user" : " users") + " in open scenes";
+    if (prefabUsers > 0){
+        text += ", " + std::to_string(prefabUsers) + " in loaded prefabs";
+    }
+    return text;
+}
+
+namespace{
+
+    // a byte position that does not split a UTF-8 sequence (moved back to its lead byte)
+    size_t utf8Boundary(const std::string& text, size_t position){
+        while (position > 0 && position < text.size() && (static_cast<unsigned char>(text[position]) & 0xC0) == 0x80){
+            position--;
+        }
+        return position;
+    }
+
+}
+
+std::string inspectorclips::elideMiddle(const std::string& text, float maxWidth, const TextWidth& width){
+    if (text.empty() || width(text) <= maxWidth) return text;
+    // keep a third at the start and the rest at the end, shrinking until it fits
+    for (size_t kept = text.size() - 1; kept > 0; kept--){
+        const size_t head = utf8Boundary(text, kept / 3);
+        const size_t tailStart = utf8Boundary(text, text.size() - (kept - kept / 3));
+        if (tailStart < head) continue;
+        const std::string candidate = text.substr(0, head) + "..." + text.substr(tailStart);
+        if (width(candidate) <= maxWidth) return candidate;
+    }
+    return "...";
+}
+
+std::string inspectorclips::elideStart(const std::string& text, float maxWidth, const TextWidth& width){
+    if (text.empty() || width(text) <= maxWidth) return text;
+    for (size_t kept = text.size() - 1; kept > 0; kept--){
+        const std::string candidate = "..." + text.substr(utf8Boundary(text, text.size() - kept));
+        if (width(candidate) <= maxWidth) return candidate;
+    }
+    return "...";
 }
 
 bool inspectorclips::reportChecked(const ClipValidationReport& report){
@@ -119,31 +181,45 @@ bool inspectorclips::trackHasProblem(const TrackReport& track){
            track.status != TrackBindingStatus::NotSampled;
 }
 
+size_t inspectorclips::problemCount(const ClipValidationReport& report){
+    size_t count = report.legacyModelLayout ? 1 : 0;
+    for (const TrackReport& track : report.tracks){
+        // the legacy layout counts once, not per track it hides
+        if (trackHasProblem(track) && track.status != TrackBindingStatus::LegacyModelLayout) count++;
+    }
+    for (const EventReport& event : report.events){
+        if (event.status == EventHandlerStatus::NotFound) count++;
+    }
+    return count;
+}
+
+namespace{
+
+    std::string leafName(const std::string& path){
+        if (path.empty()) return "(root)";
+        const size_t slash = path.rfind('/');
+        return slash == std::string::npos ? path : path.substr(slash + 1);
+    }
+
+}
+
 std::string inspectorclips::trackProblemText(const TrackReport& track){
-    // the validation's own line (it starts with the track label and names the nearest path)
-    if (!track.message.empty()){
-        return track.message;
+    std::string text = leafName(track.path) + " : " + channelLabel(track.channel) + ": ";
+    switch (track.status){
+        case TrackBindingStatus::MissingPath: text += "missing"; break;
+        case TrackBindingStatus::DuplicateSiblingName: text += "several siblings share a name"; break;
+        case TrackBindingStatus::MissingComponent: text += "nothing to animate on the GameObject"; break;
+        case TrackBindingStatus::LatticeIndexOutOfRange: text += "lattice points outside the cage"; break;
+        case TrackBindingStatus::MorphIndexOutOfRange: text += "more weights than morph targets"; break;
+        case TrackBindingStatus::LegacyModelLayout: text += "under a legacy-layout model"; break;
+        case TrackBindingStatus::UnaddressableName: text += "a name on the path can't be addressed"; break;
+        default: text += "not bound"; break;
     }
-    std::string text = (track.path.empty() ? std::string("(root)") : track.path) + " : " + anim::channelName(track.channel) + ": ";
-    std::string why;
-    {
-        switch (track.status){
-            case TrackBindingStatus::MissingPath: why = "no GameObject at this path"; break;
-            case TrackBindingStatus::DuplicateSiblingName: why = "several siblings have this name"; break;
-            case TrackBindingStatus::MissingComponent: why = "the GameObject has nothing this channel animates"; break;
-            case TrackBindingStatus::LatticeIndexOutOfRange: why = "lattice points outside the cage"; break;
-            case TrackBindingStatus::MorphIndexOutOfRange: why = "more weights than the mesh has morph targets"; break;
-            case TrackBindingStatus::LegacyModelLayout: why = "the model is in the legacy layout"; break;
-            case TrackBindingStatus::UnaddressableName: why = "a name on the path can't be addressed"; break;
-            default: why = "not bound"; break;
-        }
-    }
-    text += why;
-    if (!track.nearest.empty() && why.find("did you mean") == std::string::npos){
+    if (!track.nearest.empty()){
         text += " (did you mean ";
         for (size_t i = 0; i < track.nearest.size(); i++){
             if (i > 0) text += i + 1 == track.nearest.size() ? " or " : ", ";
-            text += track.nearest[i].empty() ? std::string("(root)") : track.nearest[i];
+            text += leafName(track.nearest[i]);
         }
         text += "?)";
     }
@@ -223,12 +299,170 @@ std::vector<Entity> inspectorclips::topLevelEntities(EntityRegistry* registry, c
     return roots;
 }
 
+std::vector<Entity> inspectorclips::actionPreviewEntities(Scene* scene, Entity action){
+    std::vector<Entity> touched;
+    if (!scene) return touched;
+    std::unordered_set<Entity> seen;
+    std::function<void(Entity)> walk = [&](Entity e){
+        if (e == NULL_ENTITY || !scene->isEntityCreated(e) || !seen.insert(e).second) return;
+        touched.push_back(e);
+        if (ActionComponent* component = scene->findComponent<ActionComponent>(e)){
+            walk(component->target);
+        }
+        if (AnimationComponent* animation = scene->findComponent<AnimationComponent>(e)){
+            for (const ActionFrame& frame : animation->actions){
+                walk(frame.action);
+            }
+        }
+    };
+    walk(action);
+    return touched;
+}
+
+std::vector<int> inspectorclips::acquirePreviewOwners(uint32_t sceneId, Scene* scene, Entity action, std::function<void()> stop){
+    std::vector<int> tokens;
+    for (Entity root : topLevelEntities(scene, actionPreviewEntities(scene, action))){
+        // the roots don't overlap one another: acquiring one never stops this preview's other owners
+        const PreviewOwner::Token token = PreviewOwner::acquire(sceneId, root, scene, "Inspector action preview", stop);
+        if (token != 0) tokens.push_back(token);
+    }
+    return tokens;
+}
+
+inspectorclips::InspectedObjectTracker::Result inspectorclips::InspectedObjectTracker::update(const fs::path& asset, uint32_t newSceneId,
+                                                                                            const std::vector<Entity>& newSelection){
+    Result result;
+    const bool selectionChanged = known && (newSceneId != sceneId || newSelection != selection);
+    // an asset set before this frame: one set in this frame is the latest click and wins
+    result.clearAsset = selectionChanged && !asset.empty() && asset == assetSeen;
+    result.changed = selectionChanged || asset != assetSeen;
+    known = true;
+    sceneId = newSceneId;
+    selection = newSelection;
+    assetSeen = result.clearAsset ? fs::path() : asset;
+    return result;
+}
+
+// ---- the sections' state ----
+
+namespace jasperengine::editor{
+
+    struct InspectorClipState{
+        struct DocumentEntry{
+            std::weak_ptr<AnimationClipDocument> document;
+            std::string error;
+            double retryAt = 0.0;
+        };
+        struct ModelClipsEntry{
+            int64_t stamp = 0;
+            int checkedFrame = -1;
+            double retryAt = 0.0;
+            bool failed = false;
+            std::vector<anim::ModelClipInfo> clips;
+        };
+        struct UsersEntry{
+            double retryAt = 0.0;
+            std::vector<ClipUser> users;
+        };
+        struct BindingsEntry{
+            uint64_t revision = 0;
+            uint64_t hierarchy = 0;
+            uint64_t names = 0;
+            double checkedAt = 0.0;
+            ClipValidationReport report;
+        };
+        struct ExistsEntry{
+            bool exists = false;
+            double retryAt = 0.0;
+        };
+
+        fs::path project;
+        std::map<std::string, DocumentEntry> documents;
+        std::map<std::string, ModelClipsEntry> modelClips;
+        std::map<std::string, UsersEntry> users;
+        std::map<std::string, BindingsEntry> bindings;
+        std::map<std::string, ExistsEntry> exists;
+        // the inspected asset's asset-relative form (fs::relative stats; once per asset)
+        fs::path relativeOf;
+        std::string relative;
+
+        inspectorclips::InspectedObjectTracker tracker;
+
+        // a model picked or dropped on an entry: the "Model Clip" popup chooses its animation
+        std::string subClipModel;
+        size_t subClipEntry = 0;
+        std::string subClipEntryClip;       // the entry's clip when the popup opened (still that entry?)
+        size_t subClipEntryCount = 0;
+        Entity subClipEntity = NULL_ENTITY;
+        uint32_t subClipScene = 0;
+        bool subClipPopupRequested = false;
+
+        std::string playerError;
+        std::string assetError;
+        std::string modelAssetClip;         // the model asset section's selected sub-clip
+
+        // a clip setting being dragged: committed once when the drag ends
+        bool editingFrameRate = false;
+        int pendingFrameRate = 30;
+        bool editingLength = false;
+        float pendingLength = 0.0f;
+
+        void forgetProject(const fs::path& path){
+            if (project == path) return;
+            // another project: its documents are gone (AnimationClipDocument::closeAll)
+            documents.clear();
+            modelClips.clear();
+            users.clear();
+            bindings.clear();
+            exists.clear();
+            relativeOf.clear();
+            relative.clear();
+            project = path;
+        }
+    };
+
+    void InspectorClipStateDeleter::operator()(InspectorClipState* state) const{
+        delete state;
+    }
+
+}
+
+InspectorClipState& editor::InspectorWindow::clipState(){
+    if (!clipStatePtr){
+        clipStatePtr.reset(new InspectorClipState());
+    }
+    clipStatePtr->forgetProject(project->getProjectPath());
+    return *clipStatePtr;
+}
+
+void editor::InspectorWindow::trackInspectedObject(){
+    InspectorClipState& state = clipState();
+    uint32_t sceneId = project->getSelectedSceneForProperties();
+    if (!project->getScene(sceneId)){
+        sceneId = project->getSelectedSceneId();
+    }
+    const inspectorclips::InspectedObjectTracker::Result result =
+        state.tracker.update(project->getInspectedAsset(), sceneId, project->getSelectedEntities(sceneId));
+    if (result.clearAsset){
+        project->clearInspectedAsset();
+    }
+    if (result.changed){
+        // error lines belong to what was shown
+        state.playerError.clear();
+        state.assetError.clear();
+    }
+}
+
 // ---- file helpers ----
 
 namespace{
 
     constexpr double CLIP_RETRY_SECONDS = 1.0;
+    // validation re-runs at most this often, whatever changes (a spawn per frame in play mode)
+    constexpr double BINDINGS_MIN_SECONDS = 0.25;
     constexpr size_t MAX_PROBLEM_ROWS = 24;
+
+    const ImVec4 OK_COLOR(0.45f, 0.8f, 0.45f, 1.0f);
 
     // the asset-relative form (what components store) of a path inside the assets folder; empty
     // when it is outside
@@ -256,35 +490,41 @@ namespace{
         return guid;
     }
 
-    // the clip's file (the model of a sub-clip) is on disk
-    bool clipFileExists(Project* project, const std::string& clip){
-        if (clip.empty()) return false;
-        anim::SubClipReference reference;
-        const std::string file = anim::parseSubClipReference(clip, reference) ? reference.model : clip;
-        std::error_code ec;
-        return fs::is_regular_file(project->resolveAssetPath(file), ec);
+    float textWidth(const std::string& text){
+        return ImGui::CalcTextSize(text.c_str()).x;
     }
 
-    // a file field like the Model and Pose Animator ones: the name right-aligned on the label colour
-    void drawFileLabel(const char* id, const std::string& text, const std::string& tooltip, const ImVec4* color, float width, const char* suffix = nullptr){
+    float iconButtonWidth(const char* icon){
+        return ImGui::CalcTextSize(icon).x + ImGui::GetStyle().FramePadding.x * 2;
+    }
+
+    // a file field like the Model and Pose Animator ones, left-aligned: the text elided in the
+    // middle (the file name keeps its end), an optional icon before it and a tag after it (the
+    // tag becomes a lock when the field is narrow)
+    void drawFileLabel(const char* id, const std::string& text, const std::string& tooltip, const ImVec4* color, float width,
+                       const char* icon = nullptr, const char* tag = nullptr){
         ImGui::PushStyleColor(ImGuiCol_ChildBg, Theme::Colors::filenameLabel);
         ImGui::BeginChild(id, ImVec2(std::max(width, 1.0f), ImGui::GetFrameHeight()), false,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-        // a narrow field shows the tag as a lock (the tooltip names the reference)
-        if (suffix && ImGui::CalcTextSize(text.c_str()).x + ImGui::CalcTextSize(suffix).x + ImGui::GetStyle().ItemSpacing.x + 4 >
-                ImGui::GetContentRegionAvail().x){
-            suffix = ICON_FA_LOCK;
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        float available = ImGui::GetContentRegionAvail().x - ImGui::GetStyle().FramePadding.x * 2;
+        if (tag && textWidth(text) + textWidth(tag) + spacing > available){
+            tag = ICON_FA_LOCK;
         }
-        const float suffixWidth = suffix ? ImGui::CalcTextSize(suffix).x + ImGui::GetStyle().ItemSpacing.x : 0.0f;
-        const float textWidth = ImGui::CalcTextSize(text.c_str()).x + suffixWidth;
-        ImGui::SetCursorPosX(std::max(0.0f, ImGui::GetContentRegionAvail().x - textWidth - 2));
-        ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
+        if (icon) available -= textWidth(icon) + spacing;
+        if (tag) available -= textWidth(tag) + spacing;
+        const std::string shown = inspectorclips::elideMiddle(text, std::max(available, 0.0f), textWidth);
+        ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().FramePadding.x, ImGui::GetStyle().FramePadding.y));
         if (color) ImGui::PushStyleColor(ImGuiCol_Text, *color);
-        ImGui::TextUnformatted(text.c_str());
-        if (color) ImGui::PopStyleColor();
-        if (suffix){
+        if (icon){
+            ImGui::TextUnformatted(icon);
             ImGui::SameLine();
-            ImGui::TextDisabled("%s", suffix);
+        }
+        ImGui::TextUnformatted(shown.c_str());
+        if (color) ImGui::PopStyleColor();
+        if (tag){
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", tag);
         }
         ImGui::EndChild();
         ImGui::PopStyleColor();
@@ -293,116 +533,161 @@ namespace{
         }
     }
 
-    float iconButtonWidth(const char* icon){
-        return ImGui::CalcTextSize(icon).x + ImGui::GetStyle().FramePadding.x * 2;
-    }
-
-    // the .anim and model files a "resource_files" payload carries (other files are ignored)
-    std::vector<std::string> clipFilesOf(const ImGuiPayload* payload){
+    // the files of a "resource_files" payload that `accept` takes
+    std::vector<std::string> payloadFiles(const ImGuiPayload* payload, const std::function<bool(const std::string&)>& accept){
         std::vector<std::string> files;
+        if (!payload || !payload->IsDataType("resource_files")) return files;
         for (const std::string& file : Util::getStringsFromPayload(payload)){
-            if (Util::isAnimationClipFile(file) || Util::isModelFile(file)) files.push_back(file);
+            if (accept(file)) files.push_back(file);
         }
         return files;
     }
 
-}
-
-// ---- clip documents and model clips, cached per frame ----
-
-std::shared_ptr<AnimationClipDocument> editor::InspectorWindow::findClipDocument(const std::string& clip, std::string* error){
-    if (clip.empty()){
-        if (error) *error = "no clip";
-        return nullptr;
+    bool isClipOrModelFile(const std::string& file){
+        return Util::isAnimationClipFile(file) || Util::isModelFile(file);
     }
-    if (clipCacheProject != project->getProjectPath()){
-        // another project: its documents are gone (AnimationClipDocument::closeAll)
-        clipDocuments.clear();
-        modelClipsCache.clear();
-        clipUsersCache.clear();
-        bindingsCache.clear();
-        clipCacheProject = project->getProjectPath();
+
+    bool isModelOrPrefabFile(const std::string& file){
+        return Util::isModelFile(file) || Util::isPrefabFile(file);
     }
-    const double now = ImGui::GetTime();
-    ClipDocumentEntry& entry = clipDocuments[clip];
-    if (std::shared_ptr<AnimationClipDocument> document = entry.document.lock()){
-        if (document->exists()){
-            return document;
+
+    // a drag in flight carries a file `accept` takes: only then the item becomes a drop target
+    // (no highlight for a texture over a clip field)
+    bool draggingFiles(const std::function<bool(const std::string&)>& accept){
+        return !payloadFiles(ImGui::GetDragDropPayload(), accept).empty();
+    }
+
+    // ---- caches (per frame work stays a map lookup; see InspectorClipState) ----
+
+    std::shared_ptr<AnimationClipDocument> findClipDocument(Project* project, InspectorClipState& state, const std::string& clip, std::string* error){
+        if (clip.empty()){
+            if (error) *error = "no clip";
+            return nullptr;
         }
-    }else if (!entry.error.empty() && now < entry.retryAt){
-        if (error) *error = entry.error;
-        return nullptr;
-    }
-    std::string why;
-    std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, clip, &why);
-    entry.document = document;
-    entry.error = document ? std::string() : (why.empty() ? std::string("can't open the clip") : why);
-    entry.retryAt = now + CLIP_RETRY_SECONDS;
-    if (!document && error) *error = entry.error;
-    if (clipDocuments.size() > 256){
-        clipDocuments.clear();
-    }
-    return document;
-}
-
-const std::vector<anim::ModelClipInfo>& editor::InspectorWindow::modelClipsOf(const std::string& model){
-    static const std::vector<anim::ModelClipInfo> none;
-    if (model.empty()) return none;
-    const double now = ImGui::GetTime();
-    std::error_code ec;
-    const fs::path full = project->resolveAssetPath(model);
-    const int64_t stamp = fs::is_regular_file(full, ec) ? (int64_t)fs::last_write_time(full, ec).time_since_epoch().count() : 0;
-    auto it = modelClipsCache.find(model);
-    if (it != modelClipsCache.end() && it->second.stamp == stamp && (now < it->second.retryAt || !it->second.failed)){
-        return it->second.clips;
-    }
-    if (modelClipsCache.size() > 64){
-        modelClipsCache.clear();
-    }
-    ModelClipsEntry& entry = modelClipsCache[model];
-    entry.stamp = stamp;
-    entry.retryAt = now + CLIP_RETRY_SECONDS;
-    entry.clips.clear();
-    entry.failed = !stamp || !anim::listModelFileClips(model, entry.clips, nullptr);
-    return entry.clips;
-}
-
-const std::vector<ClipUser>& editor::InspectorWindow::clipUsersOf(const std::string& clip){
-    const double now = ImGui::GetTime();
-    auto it = clipUsersCache.find(clip);
-    if (it == clipUsersCache.end() || now >= it->second.retryAt){
-        if (clipUsersCache.size() > 64) clipUsersCache.clear();
-        ClipUsersEntry& entry = clipUsersCache[clip];
-        entry.users = findClipUsers(project, clip);
+        const double now = ImGui::GetTime();
+        InspectorClipState::DocumentEntry& entry = state.documents[clip];
+        if (std::shared_ptr<AnimationClipDocument> document = entry.document.lock()){
+            if (document->exists()){
+                return document;
+            }
+        }else if (!entry.error.empty() && now < entry.retryAt){
+            if (error) *error = entry.error;
+            return nullptr;
+        }
+        std::string why;
+        std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project, clip, &why);
+        entry.document = document;
+        entry.error = document ? std::string() : (why.empty() ? std::string("can't open the clip") : why);
         entry.retryAt = now + CLIP_RETRY_SECONDS;
-        return entry.users;
+        if (!document && error) *error = entry.error;
+        if (state.documents.size() > 256){
+            state.documents.clear();
+        }
+        return document;
     }
-    return it->second.users;
-}
 
-const ClipValidationReport& editor::InspectorWindow::clipBindingsOf(SceneProject* sceneProject, Entity root, const std::string& clip,
-                                                                   AnimationClipDocument& document){
-    const std::string key = std::to_string(sceneProject->id) + ":" + std::to_string(root) + ":" + clip;
-    Scene* scene = sceneProject->scene;
-    const uint64_t hierarchy = scene->hierarchyRevision();
-    const uint64_t names = scene->nameRevision();
-    const double now = ImGui::GetTime();
-    auto it = bindingsCache.find(key);
-    if (it != bindingsCache.end() && it->second.revision == document.revision() && it->second.hierarchy == hierarchy &&
-            it->second.names == names && now < it->second.retryAt){
-        return it->second.report;
+    const std::vector<anim::ModelClipInfo>& modelClipsOf(Project* project, InspectorClipState& state, const std::string& model){
+        static const std::vector<anim::ModelClipInfo> none;
+        if (model.empty()) return none;
+        const int frame = ImGui::GetFrameCount();
+        auto it = state.modelClips.find(model);
+        if (it != state.modelClips.end() && it->second.checkedFrame == frame){
+            return it->second.clips;
+        }
+        const double now = ImGui::GetTime();
+        std::error_code ec;
+        const fs::path full = project->resolveAssetPath(model);
+        const int64_t stamp = fs::is_regular_file(full, ec) ? (int64_t)fs::last_write_time(full, ec).time_since_epoch().count() : 0;
+        if (it != state.modelClips.end() && it->second.stamp == stamp && (now < it->second.retryAt || !it->second.failed)){
+            it->second.checkedFrame = frame;
+            return it->second.clips;
+        }
+        if (state.modelClips.size() > 64){
+            state.modelClips.clear();
+        }
+        InspectorClipState::ModelClipsEntry& entry = state.modelClips[model];
+        entry.stamp = stamp;
+        entry.checkedFrame = frame;
+        entry.retryAt = now + CLIP_RETRY_SECONDS;
+        entry.clips.clear();
+        entry.failed = !stamp || !anim::listModelFileClips(model, entry.clips, nullptr);
+        return entry.clips;
     }
-    if (bindingsCache.size() > 64){
-        bindingsCache.clear();
+
+    std::vector<std::string> namesOf(const std::vector<anim::ModelClipInfo>& clips){
+        std::vector<std::string> names;
+        for (const anim::ModelClipInfo& info : clips) names.push_back(info.name);
+        return names;
     }
-    BindingsEntry& entry = bindingsCache[key];
-    entry.revision = document.revision();
-    entry.hierarchy = hierarchy;
-    entry.names = names;
-    // the scripts on the root may change without a hierarchy change (handlers)
-    entry.retryAt = now + CLIP_RETRY_SECONDS;
-    entry.report = ClipValidation::validateInScene(project, sceneProject, document.data(), root);
-    return entry.report;
+
+    // the clip is there: an .anim file on disk, or a model on disk naming that animation (I3);
+    // checked at most once a second per reference
+    bool clipExists(Project* project, InspectorClipState& state, const std::string& clip){
+        if (clip.empty()) return false;
+        const double now = ImGui::GetTime();
+        auto it = state.exists.find(clip);
+        if (it != state.exists.end() && now < it->second.retryAt){
+            return it->second.exists;
+        }
+        anim::SubClipReference reference;
+        const bool subClip = anim::parseSubClipReference(clip, reference);
+        std::error_code ec;
+        bool exists = fs::is_regular_file(project->resolveAssetPath(subClip ? reference.model : clip), ec);
+        if (exists && subClip){
+            const std::vector<anim::ModelClipInfo>& clips = modelClipsOf(project, state, reference.model);
+            // a model that can't be listed is not called missing (the Bindings line says why)
+            const auto listed = state.modelClips.find(reference.model);
+            if (listed != state.modelClips.end() && !listed->second.failed){
+                exists = inspectorclips::subClipNamed(namesOf(clips), reference.clip);
+            }
+        }
+        if (state.exists.size() > 256) state.exists.clear();
+        state.exists[clip] = {exists, now + CLIP_RETRY_SECONDS};
+        return exists;
+    }
+
+    const std::vector<ClipUser>& clipUsersOf(Project* project, InspectorClipState& state, const std::string& clip){
+        const double now = ImGui::GetTime();
+        auto it = state.users.find(clip);
+        if (it == state.users.end() || now >= it->second.retryAt){
+            if (state.users.size() > 64) state.users.clear();
+            InspectorClipState::UsersEntry& entry = state.users[clip];
+            entry.users = findClipUsers(project, clip);
+            entry.retryAt = now + CLIP_RETRY_SECONDS;
+            return entry.users;
+        }
+        return it->second.users;
+    }
+
+    const ClipValidationReport& clipBindingsOf(Project* project, InspectorClipState& state, SceneProject* sceneProject, Entity root,
+                                               const std::string& clip, AnimationClipDocument& document){
+        const std::string key = std::to_string(sceneProject->id) + ":" + std::to_string(root) + ":" + clip;
+        Scene* scene = sceneProject->scene;
+        const uint64_t hierarchy = scene->hierarchyRevision();
+        const uint64_t names = scene->nameRevision();
+        const double now = ImGui::GetTime();
+        auto it = state.bindings.find(key);
+        if (it != state.bindings.end()){
+            const bool same = it->second.revision == document.revision() && it->second.hierarchy == hierarchy && it->second.names == names;
+            // unchanged: once a second (the root's scripts may change the handlers); changed: at
+            // most every BINDINGS_MIN_SECONDS
+            const double age = now - it->second.checkedAt;
+            if ((same && age < CLIP_RETRY_SECONDS) || (!same && age < BINDINGS_MIN_SECONDS)){
+                return it->second.report;
+            }
+        }
+        if (state.bindings.size() > 64){
+            state.bindings.clear();
+        }
+        InspectorClipState::BindingsEntry& entry = state.bindings[key];
+        entry.revision = document.revision();
+        entry.hierarchy = hierarchy;
+        entry.names = names;
+        entry.checkedAt = now;
+        entry.report = ClipValidation::validateInScene(project, sceneProject, document.data(), root);
+        return entry.report;
+    }
+
 }
 
 // ---- Animation Player section ----
@@ -430,37 +715,81 @@ void editor::InspectorWindow::setPlayerClipEntry(ComponentType cpType, SceneProj
     CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
 }
 
-// A picked or dropped file for entry `index` (SIZE_MAX: a new entry): an .anim is set at once, a
-// model asks which of its animations (the "Model Clip" popup). False when it can't be used.
-bool editor::InspectorWindow::usePlayerClipFile(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::string& file){
-    const std::string relative = assetRelativePath(project, fs::path(file));
-    if (relative.empty()){
-        playerClipError = "The clip must be an .anim file or a model (.gltf, .glb, .fbx) inside the assets folder.";
-        return false;
+// Removes an entry; the default clip naming its state goes back to "the first clip" in the same step
+void editor::InspectorWindow::removePlayerClipEntry(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index){
+    AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
+    if (!player || index >= player->clips.size()) return;
+    const std::vector<std::string> states = anim::playerStateNames(player->clips);
+    std::vector<AnimationPlayerClip> clips = player->clips;
+    clips.erase(clips.begin() + (long)index);
+    MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+    multiCmd->addPropertyCmd<std::vector<AnimationPlayerClip>>(project, sceneProject->id, entity, cpType, "clips", clips);
+    if (!player->defaultClip.empty() && player->defaultClip == states[index]){
+        multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "defaultClip", std::string());
     }
-    if (Util::isAnimationClipFile(relative)){
-        setPlayerClipEntry(cpType, sceneProject, entity, index, relative);
-        return true;
-    }
-    if (Util::isModelFile(relative)){
-        if (modelClipsOf(relative).empty()){
-            playerClipError = "'" + relative + "' has no animations.";
-            return false;
+    multiCmd->setNoMerge();
+    CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+}
+
+// Picked or dropped files for entry `index` (SIZE_MAX: new entries): .anim files are set (one
+// step), the first model asks which of its animations (the "Model Clip" popup). False when
+// nothing could be used.
+bool editor::InspectorWindow::usePlayerClipFiles(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index,
+                                                 const std::vector<std::string>& files){
+    InspectorClipState& state = clipState();
+    AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
+    if (!player) return false;
+    std::vector<std::string> clips;
+    std::string model;
+    std::vector<std::string> rejected;
+    for (const std::string& file : files){
+        const std::string relative = assetRelativePath(project, fs::path(file));
+        if (!relative.empty() && Util::isAnimationClipFile(relative)){
+            clips.push_back(relative);
+        }else if (!relative.empty() && Util::isModelFile(relative) && model.empty()){
+            model = relative;
+        }else{
+            rejected.push_back(fs::path(file).filename().string());
         }
-        playerSubClipModel = relative;
-        playerSubClipEntry = index;
-        playerSubClipEntity = entity;
-        playerSubClipScene = sceneProject->id;
-        playerSubClipPopupRequested = true;
-        return true;
     }
-    playerClipError = "The clip must be an .anim file or a model (.gltf, .glb, .fbx) inside the assets folder.";
-    return false;
+    if (index != SIZE_MAX && !clips.empty()){
+        // one file for one entry
+        setPlayerClipEntry(cpType, sceneProject, entity, index, clips[0]);
+        model.clear();
+    }else if (!clips.empty()){
+        std::vector<AnimationPlayerClip> entries = player->clips;
+        for (const std::string& clip : clips){
+            AnimationPlayerClip entry;
+            entry.clip = clip;
+            entry.guid = clipGuidOf(project, clip);
+            entries.push_back(entry);
+        }
+        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
+            new PropertyCmd<std::vector<AnimationPlayerClip>>(project, sceneProject->id, entity, cpType, "clips", entries));
+    }
+    if (!model.empty()){
+        if (modelClipsOf(project, state, model).empty()){
+            rejected.push_back(fs::path(model).filename().string() + " (no animations)");
+        }else{
+            player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
+            state.subClipModel = model;
+            state.subClipEntry = index;
+            state.subClipEntryClip = player && index < player->clips.size() ? player->clips[index].clip : std::string();
+            state.subClipEntryCount = player ? player->clips.size() : 0;
+            state.subClipEntity = entity;
+            state.subClipScene = sceneProject->id;
+            state.subClipPopupRequested = true;
+        }
+    }
+    if (!rejected.empty()){
+        std::string names;
+        for (const std::string& name : rejected) names += (names.empty() ? "" : ", ") + name;
+        state.playerError = "Not a clip: " + names + ". A clip is an .anim file or a model (.gltf, .glb, .fbx) inside the assets folder.";
+    }
+    return !clips.empty() || state.subClipPopupRequested;
 }
 
 void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    RowSettings defaultClipSettings;
-    defaultClipSettings.help = "The state that plays automatically; empty = the first clip.";
     RowSettings autoSettings;
     autoSettings.help = "The default clip plays when the game starts (or the GameObject is instantiated).";
     RowSettings speedSettings;
@@ -469,6 +798,11 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     RowSettings fadeSettings;
     fadeSettings.secondColSize = 6 * ImGui::GetFontSize();
     fadeSettings.help = "Seconds of the crossfade when play(name, fade), crossFade(name) or Model:playAnimation give none.";
+
+    // Unity's order: the default clip ("Animation"), the list, then the settings
+    beginTable(cpType, getLabelSize("Play Automatically"), "player_default");
+    drawPlayerDefaultClipRow(cpType, sceneProject, entities);
+    endTable();
 
     if (entities.size() == 1){
         drawAnimationPlayerClips(cpType, sceneProject, entities[0]);
@@ -480,11 +814,6 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
     }
 
     beginTable(cpType, getLabelSize("Play Automatically"), "player_settings");
-    if (entities.size() == 1){
-        drawPlayerDefaultClipRow(cpType, sceneProject, entities[0]);
-    }else{
-        propertyRow(RowPropertyType::String, cpType, "defaultClip", "Default Clip", sceneProject, entities, defaultClipSettings);
-    }
     propertyRow(RowPropertyType::Bool, cpType, "playAutomatically", "Play Automatically", sceneProject, entities, autoSettings);
     propertyRow(RowPropertyType::Float, cpType, "speed", "Speed", sceneProject, entities, speedSettings);
     propertyRow(RowPropertyType::FloatPositive, cpType, "defaultFadeTime", "Default Fade", sceneProject, entities, fadeSettings);
@@ -500,6 +829,7 @@ void editor::InspectorWindow::drawAnimationPlayerComponent(ComponentType cpType,
 }
 
 void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity){
+    InspectorClipState& state = clipState();
     Scene* scene = sceneProject->scene;
     AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity);
     if (!player) return;
@@ -508,15 +838,13 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
     const std::vector<std::string> states = anim::playerStateNames(clips);
     const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
     const AnimationClipInspectorHooks& hooks = animationClipInspectorHooks();
-
-    ImGui::SeparatorText("Clips");
+    const float labelWidth = getLabelSize("Play Automatically");
 
     // count, + Add Clip (a drop target too: dropped clips are appended), Create New Clip...
-    const float labelWidth = getLabelSize("Play Automatically");
     beginTable(cpType, labelWidth, "player_clips_header");
     prefabRowProperty = "clips";
     propertyHeader("Clips", -1, false, false);
-    prefabRowProperty.clear();
+    ImGui::AlignTextToFramePadding();
     ImGui::Text("%zu", clips.size());
     if (drawSummaryAddButton(ICON_FA_PLUS " Add Clip##player_clip_add")){
         std::vector<AnimationPlayerClip> newClips = clips;
@@ -525,29 +853,10 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
             new PropertyCmd<std::vector<AnimationPlayerClip>>(project, sceneProject->id, entity, cpType, "clips", newClips));
     }
     UIProbe::item("player.addClip");
-    ImGui::SetItemTooltip("Add an entry to the clip list (or drop .anim files here)");
-    if (stopped && ImGui::BeginDragDropTarget()){
+    ImGui::SetItemTooltip("Add an entry to the clip list (or drop .anim files and models here)");
+    if (stopped && draggingFiles(isClipOrModelFile) && ImGui::BeginDragDropTarget()){
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
-            const std::vector<std::string> files = clipFilesOf(payload);
-            // several .anim files: one undo step
-            std::vector<AnimationPlayerClip> newClips = clips;
-            bool added = false;
-            for (const std::string& file : files){
-                const std::string relative = assetRelativePath(project, fs::path(file));
-                if (!relative.empty() && Util::isAnimationClipFile(relative)){
-                    AnimationPlayerClip entry;
-                    entry.clip = relative;
-                    entry.guid = clipGuidOf(project, relative);
-                    newClips.push_back(entry);
-                    added = true;
-                }
-            }
-            if (added){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-                    new PropertyCmd<std::vector<AnimationPlayerClip>>(project, sceneProject->id, entity, cpType, "clips", newClips));
-            }else if (!files.empty()){
-                usePlayerClipFile(cpType, sceneProject, entity, SIZE_MAX, files[0]);
-            }
+            usePlayerClipFiles(cpType, sceneProject, entity, SIZE_MAX, payloadFiles(payload, isClipOrModelFile));
         }
         ImGui::EndDragDropTarget();
     }
@@ -568,43 +877,43 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
         beginTable(cpType, labelWidth, "player_clips");
         for (size_t i = 0; i < clips.size(); i++){
             const AnimationPlayerClip& entry = clips[i];
-            const std::string prefix = "clips[" + std::to_string(i) + "]";
             const bool subClip = inspectorclips::isSubClip(entry.clip);
-            const bool exists = clipFileExists(project, entry.clip);
+            const bool exists = clipExists(project, state, entry.clip);
             ImGui::PushID((int)i);
 
-            // state name | file field, picker, clear, open, remove
-            prefabRowProperty = prefix + ".clip";
+            // state name | file field, picker, clear (open, extract, show, remove: the row menu).
+            // The row's Apply/Revert is the whole entry: clip and guid go together (R8)
+            prefabRowProperty = "clips[" + std::to_string(i) + "]";
             propertyHeader(states[i].empty() ? "Clip " + std::to_string(i) : states[i], -1, false, false);
-            prefabRowProperty.clear();
 
-            const char* openIcon = ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE;
-            float buttons = iconButtonWidth(ICON_FA_FOLDER_OPEN) + iconButtonWidth(ICON_FA_XMARK) + iconButtonWidth(ICON_FA_TRASH_CAN) +
-                            ImGui::GetStyle().ItemSpacing.x * 3;
-            if (hooks.openClip){
-                buttons += iconButtonWidth(openIcon) + ImGui::GetStyle().ItemSpacing.x;
-            }
+            const float buttons = iconButtonWidth(ICON_FA_FOLDER_OPEN) + iconButtonWidth(ICON_FA_XMARK) + ImGui::GetStyle().ItemSpacing.x * 2;
             const float fieldWidth = ImGui::GetContentRegionAvail().x - buttons;
+            const std::string menuHint = "\nRight-click for more";
 
             ImGui::BeginGroup();
             if (entry.clip.empty()){
                 const ImVec4 disabled = ImGui::GetStyle().Colors[ImGuiCol_TextDisabled];
-                drawFileLabel("clipfile", "< None >", "", &disabled, fieldWidth);
+                drawFileLabel("clipfile", "< None >", "Right-click for more", &disabled, fieldWidth);
             }else if (!exists){
                 // R8: a deleted clip keeps its reference (undoing the delete relinks it)
-                drawFileLabel("clipfile", inspectorclips::missingClipText(entry.clip), entry.clip, &warning, fieldWidth);
+                drawFileLabel("clipfile", inspectorclips::clipFieldText(entry.clip), inspectorclips::missingClipTooltip(entry.clip) + menuHint,
+                              &warning, fieldWidth, ICON_FA_TRIANGLE_EXCLAMATION);
             }else{
-                drawFileLabel("clipfile", inspectorclips::clipFieldText(entry.clip),
-                              subClip ? entry.clip + " (Read-Only: Extract to .anim to edit it)" : entry.clip, nullptr, fieldWidth,
-                              subClip ? "(Read-Only)" : nullptr);
+                std::string tooltip = entry.clip;
+                if (subClip) tooltip += "\n(Read-Only: Extract to .anim in the row menu to edit it)";
+                drawFileLabel("clipfile", inspectorclips::clipFieldText(entry.clip), tooltip + menuHint, nullptr, fieldWidth,
+                              nullptr, subClip ? "(Read-Only)" : nullptr);
             }
             ImGui::EndGroup();
-            if (stopped && ImGui::BeginDragDropTarget()){
+            UIProbe::item("player.clip." + std::to_string(i));
+            // the field is a child window: hover by its rectangle
+            if (ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()) && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
+                    ImGui::IsMouseReleased(ImGuiMouseButton_Right)){
+                ImGui::OpenPopup("clip_row_menu");
+            }
+            if (stopped && draggingFiles(isClipOrModelFile) && ImGui::BeginDragDropTarget()){
                 if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
-                    const std::vector<std::string> files = clipFilesOf(payload);
-                    if (!files.empty()){
-                        usePlayerClipFile(cpType, sceneProject, entity, i, files[0]);
-                    }
+                    usePlayerClipFiles(cpType, sceneProject, entity, i, payloadFiles(payload, isClipOrModelFile));
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -614,7 +923,7 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
                 const std::string path = editor::FileDialogs::openFileDialog(project->getAssetsPath().string(),
                                                                              FILE_DIALOG_ANIMATION_CLIP | FILE_DIALOG_MODEL);
                 if (!path.empty()){
-                    usePlayerClipFile(cpType, sceneProject, entity, i, path);
+                    usePlayerClipFiles(cpType, sceneProject, entity, i, {path});
                 }
             }
             ImGui::SetItemTooltip("Choose an .anim file or a model's animation");
@@ -625,52 +934,56 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
             }
             ImGui::EndDisabled();
             ImGui::SetItemTooltip("None: keep the entry without a clip");
-            if (hooks.openClip){
-                ImGui::SameLine();
-                ImGui::BeginDisabled(!exists || !stopped);
-                if (ImGui::Button((std::string(openIcon) + "##clip_open").c_str())){
+
+            bool removed = false;
+            if (ImGui::BeginPopup("clip_row_menu")){
+                ImGui::TextDisabled("%s", states[i].empty() ? "Clip" : states[i].c_str());
+                ImGui::Separator();
+                if (hooks.openClip && ImGui::MenuItem("Open in Animation Window", nullptr, false, exists && stopped)){
                     hooks.openClip(project, sceneProject->id, entity, entry.clip);
                 }
-                ImGui::EndDisabled();
-                ImGui::SetItemTooltip("Open in the Animation window");
+                if (subClip && hooks.extractSubClip && ImGui::MenuItem("Extract to .anim...", nullptr, false, exists && stopped)){
+                    hooks.extractSubClip(project, sceneProject->id, entity, entry.clip);
+                }
+                if (ImGui::MenuItem("Show in Project", nullptr, false, exists)){
+                    anim::SubClipReference reference;
+                    const std::string file = anim::parseSubClipReference(entry.clip, reference) ? reference.model : entry.clip;
+                    revealAssetInProject(project->resolveAssetPath(file));
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem("Clear", nullptr, false, !entry.clip.empty() || !entry.guid.empty())){
+                    setPlayerClipEntry(cpType, sceneProject, entity, i, "");
+                }
+                if (ImGui::MenuItem("Remove")){
+                    removePlayerClipEntry(cpType, sceneProject, entity, i);
+                    removed = true;
+                }
+                UIProbe::item("player.clipMenu.remove");
+                ImGui::EndPopup();
             }
-            ImGui::SameLine();
-            bool removed = false;
-            if (ImGui::Button(ICON_FA_TRASH_CAN "##clip_remove")){
-                std::vector<AnimationPlayerClip> newClips = clips;
-                newClips.erase(newClips.begin() + (long)i);
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-                    new PropertyCmd<std::vector<AnimationPlayerClip>>(project, sceneProject->id, entity, cpType, "clips", newClips));
-                removed = true;
-            }
-            ImGui::SetItemTooltip("Remove the clip from the list");
             if (removed){
                 ImGui::PopID();
                 break;
             }
 
-            // state name (empty = the file / sub-clip name)
-            RowSettings nameSettings;
-            nameSettings.indent = true;
-            nameSettings.help = "The state name scripts play; empty = \"" + anim::defaultStateName(entry) + "\".";
-            propertyRow(RowPropertyType::String, cpType, prefix + ".name", "Name", sceneProject, {entity}, nameSettings);
+            drawPlayerClipNameRow(cpType, sceneProject, entity, i);
 
             // wrap: a one-byte enum (PropertyCmd<ClipWrapMode>, never the int Enum row)
             ClipWrapMode clipWrap = ClipWrapMode::Once;
             bool clipWrapKnown = false;
             if (exists){
-                if (std::shared_ptr<AnimationClipDocument> document = findClipDocument(entry.clip, nullptr)){
+                if (std::shared_ptr<AnimationClipDocument> document = findClipDocument(project, state, entry.clip, nullptr)){
                     clipWrap = document->data().wrap;
                     clipWrapKnown = true;
                 }
             }
+            const std::string prefix = "clips[" + std::to_string(i) + "]";
             const std::string defaultLabel = clipWrapKnown ? std::string("Default (") + inspectorclips::wrapLabel(clipWrap) + ")" : std::string("Default");
             prefabRowProperty = prefix + ".wrap";
             if (propertyHeader("Wrap", -1, entry.wrap != ClipWrapMode::Default, false, true)){
                 CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
                     new PropertyCmd<ClipWrapMode>(project, sceneProject->id, entity, cpType, prefix + ".wrap", ClipWrapMode::Default));
             }
-            prefabRowProperty.clear();
             const std::string current = entry.wrap == ClipWrapMode::Default ? defaultLabel : inspectorclips::wrapLabel(entry.wrap);
             if (ImGui::BeginCombo("##clip_wrap", current.c_str())){
                 for (ClipWrapMode wrap : {ClipWrapMode::Default, ClipWrapMode::Once, ClipWrapMode::Loop, ClipWrapMode::PingPong, ClipWrapMode::ClampForever}){
@@ -690,19 +1003,27 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
     }
 
     // a model was picked or dropped: which of its animations
-    if (playerSubClipPopupRequested){
-        playerSubClipPopupRequested = false;
+    if (state.subClipPopupRequested){
+        state.subClipPopupRequested = false;
         ImGui::OpenPopup("Model Clip##player_subclip");
     }
     if (ImGui::BeginPopup("Model Clip##player_subclip")){
-        ImGui::TextDisabled("%s", fs::path(playerSubClipModel).filename().string().c_str());
+        ImGui::TextDisabled("%s", fs::path(state.subClipModel).filename().string().c_str());
         ImGui::Separator();
-        for (const anim::ModelClipInfo& info : modelClipsOf(playerSubClipModel)){
+        // a copy: setPlayerClipEntry may refresh the caches
+        const std::vector<anim::ModelClipInfo> modelClips = modelClipsOf(project, state, state.subClipModel);
+        for (const anim::ModelClipInfo& info : modelClips){
             const std::string label = info.name + "##subclip" + std::to_string(info.index);
-            if (ImGui::Selectable(label.c_str())){
-                if (playerSubClipScene == sceneProject->id && playerSubClipEntity == entity){
-                    setPlayerClipEntry(cpType, sceneProject, entity, playerSubClipEntry,
-                                       anim::formatSubClipReference(playerSubClipModel, info.name));
+            if (ImGui::Selectable(label.c_str()) && state.subClipScene == sceneProject->id && state.subClipEntity == entity){
+                // still the entry the popup was opened for (an undo or remove meanwhile moves it)
+                AnimationPlayerComponent* current = scene->findComponent<AnimationPlayerComponent>(entity);
+                const bool append = state.subClipEntry == SIZE_MAX;
+                const bool same = current && current->clips.size() == state.subClipEntryCount &&
+                                  (append || (state.subClipEntry < current->clips.size() && current->clips[state.subClipEntry].clip == state.subClipEntryClip));
+                if (same){
+                    setPlayerClipEntry(cpType, sceneProject, entity, state.subClipEntry, anim::formatSubClipReference(state.subClipModel, info.name));
+                }else{
+                    state.playerError = "The clip list changed while choosing: pick the model again.";
                 }
             }
             ImGui::SameLine();
@@ -711,155 +1032,269 @@ void editor::InspectorWindow::drawAnimationPlayerClips(ComponentType cpType, Sce
         ImGui::EndPopup();
     }
 
-    if (!playerClipError.empty()){
+    if (!state.playerError.empty()){
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
-        ImGui::TextWrapped("%s", playerClipError.c_str());
+        ImGui::TextWrapped("%s", state.playerError.c_str());
         ImGui::PopStyleColor();
-        ImGui::SameLine();
-        if (ImGui::SmallButton(ICON_FA_XMARK "##player_clip_error")){
-            playerClipError.clear();
+        if (ImGui::SmallButton(ICON_FA_XMARK " Dismiss##player_clip_error")){
+            state.playerError.clear();
         }
     }
 }
 
-void editor::InspectorWindow::drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, Entity entity){
+// The entry's state name: empty = the file / sub-clip name, shown as the hint (with the alias a
+// taken name gets). A rename of the default clip's state renames defaultClip in the same step.
+void editor::InspectorWindow::drawPlayerClipNameRow(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index){
     AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
-    if (!player) return;
-    const std::string defaultClip = player->defaultClip;
+    if (!player || index >= player->clips.size()) return;
+    const AnimationPlayerClip entry = player->clips[index];
     const std::vector<std::string> states = anim::playerStateNames(player->clips);
+    const std::string defaultClip = player->defaultClip;
+    const std::string prefix = "clips[" + std::to_string(index) + "]";
+
+    // the commands of a new name (+ the default clip following it)
+    auto nameCommand = [&](const std::string& name){
+        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+        multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, cpType, prefix + ".name", name);
+        if (!defaultClip.empty() && defaultClip == states[index]){
+            std::vector<AnimationPlayerClip> renamed = player->clips;
+            renamed[index].name = name;
+            multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "defaultClip", anim::playerStateNames(renamed)[index]);
+        }
+        return multiCmd;
+    };
+
+    prefabRowProperty = prefix + ".name";
+    if (propertyHeader("Name", -1, !entry.name.empty(), false, true)){
+        MultiPropertyCmd* multiCmd = nameCommand("");
+        multiCmd->setNoMerge();
+        CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+        return;
+    }
+
+    // the hint: the state name scripts play now (a taken name gets " 2": say so)
+    const std::string base = entry.name.empty() ? anim::defaultStateName(entry) : entry.name;
+    std::string hint = states[index];
+    if (states[index] != base){
+        hint += " (\"" + base + "\" is taken)";
+    }
+    const std::string help = "The state name scripts play (play, crossFade, getState). Empty = \"" + anim::defaultStateName(entry) +
+                             "\", the file or sub-clip name.";
+    const float helpWidth = textWidth("(?)") + ImGui::GetStyle().ItemSpacing.x;
+    char buffer[256];
+    std::snprintf(buffer, sizeof(buffer), "%s", entry.name.c_str());
+    ImGui::SetNextItemWidth(std::max(1.0f, ImGui::GetContentRegionAvail().x - helpWidth));
+    if (ImGui::InputTextWithHint("##clip_name", hint.c_str(), buffer, sizeof(buffer))){
+        cmd = nameCommand(buffer);
+        CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+    }
+    if (ImGui::IsItemDeactivatedAfterEdit() && cmd){
+        cmd->setNoMerge();
+        cmd = nullptr;
+    }
+    ImGui::SameLine();
+    helpMarker(help);
+}
+
+// The Default Clip combo (states of the player; empty = the first clip). Several GameObjects
+// sharing the same state list edit theirs together; otherwise a text row.
+void editor::InspectorWindow::drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
+    std::vector<std::string> states;
+    std::string defaultClip;
+    bool mixedDefault = false;
+    bool sameStates = true;
+    for (size_t e = 0; e < entities.size(); e++){
+        AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entities[e]);
+        if (!player) return;
+        const std::vector<std::string> own = anim::playerStateNames(player->clips);
+        if (e == 0){
+            states = own;
+            defaultClip = player->defaultClip;
+        }else{
+            sameStates = sameStates && own == states;
+            mixedDefault = mixedDefault || player->defaultClip != defaultClip;
+        }
+    }
+    if (!sameStates){
+        RowSettings settings;
+        settings.help = "The state that plays automatically; empty = the first clip.";
+        propertyRow(RowPropertyType::String, cpType, "defaultClip", "Default Clip", sceneProject, entities, settings);
+        return;
+    }
+    auto setDefault = [&](const std::string& value){
+        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
+        for (Entity entity : entities){
+            multiCmd->addPropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "defaultClip", value);
+        }
+        multiCmd->setNoMerge();
+        CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+    };
 
     prefabRowProperty = "defaultClip";
-    if (propertyHeader("Default Clip", -1, !defaultClip.empty())){
-        CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-            new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "defaultClip", ""));
+    if (propertyHeader("Default Clip", -1, !defaultClip.empty() || mixedDefault)){
+        setDefault("");
     }
-    prefabRowProperty.clear();
 
     const bool known = defaultClip.empty() || std::find(states.begin(), states.end(), defaultClip) != states.end();
     const std::string firstLabel = states.empty() ? std::string("None") : "First Clip (" + states[0] + ")";
-    const std::string preview = defaultClip.empty() ? firstLabel : (known ? defaultClip : defaultClip + " (not in the list)");
-    if (!known) ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
+    const std::string preview = mixedDefault ? std::string("---") :
+                                (defaultClip.empty() ? firstLabel : (known ? defaultClip : defaultClip + " (not in the list)"));
+    if (!known && !mixedDefault) ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::WarningText);
     const bool open = ImGui::BeginCombo("##player_default_clip", preview.c_str());
-    if (!known) ImGui::PopStyleColor();
+    if (!known && !mixedDefault) ImGui::PopStyleColor();
+    UIProbe::item("player.defaultClip");
     if (open){
-        if (ImGui::Selectable(firstLabel.c_str(), defaultClip.empty()) && !defaultClip.empty()){
-            CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-                new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "defaultClip", ""));
+        if (ImGui::Selectable(firstLabel.c_str(), defaultClip.empty() && !mixedDefault) && (!defaultClip.empty() || mixedDefault)){
+            setDefault("");
         }
         for (size_t i = 0; i < states.size(); i++){
             const std::string label = states[i] + "##default" + std::to_string(i);
-            if (ImGui::Selectable(label.c_str(), states[i] == defaultClip) && states[i] != defaultClip){
-                CommandHandle::get(project->getSelectedSceneId())->addCommandNoMerge(
-                    new PropertyCmd<std::string>(project, sceneProject->id, entity, cpType, "defaultClip", states[i]));
+            if (ImGui::Selectable(label.c_str(), states[i] == defaultClip && !mixedDefault) && (states[i] != defaultClip || mixedDefault)){
+                setDefault(states[i]);
             }
         }
         ImGui::EndCombo();
     }
-    ImGui::SetItemTooltip("The state that plays automatically; empty = the first clip");
+    ImGui::SetItemTooltip("The state that plays automatically (Unity's Animation field); empty = the first clip");
 }
 
 void editor::InspectorWindow::drawAnimationPlayerBindings(SceneProject* sceneProject, Entity entity){
+    InspectorClipState& state = clipState();
     AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity);
     if (!player || player->clips.empty()) return;
     const std::vector<AnimationPlayerClip> clips = player->clips;
     const std::vector<std::string> states = anim::playerStateNames(clips);
     const ImVec4 warning = Theme::Colors::WarningText;
 
-    const bool bindingsOpen = ImGui::TreeNodeEx("Bindings##player_bindings", ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding);
+    // the reports (cached; validation runs at most every 0.25 s) also while the foldout is
+    // closed, so its header can say what is wrong
+    struct Row{
+        std::shared_ptr<AnimationClipDocument> document;
+        const ClipValidationReport* report = nullptr;
+        std::string error;
+        bool missing = false;
+    };
+    std::vector<Row> rows(clips.size());
+    size_t problems = 0;
+    bool anyChecked = false;
+    for (size_t i = 0; i < clips.size(); i++){
+        Row& row = rows[i];
+        if (clips[i].clip.empty()) continue;
+        if (!clipExists(project, state, clips[i].clip)){
+            row.missing = true;
+            problems++;
+            continue;
+        }
+        row.document = findClipDocument(project, state, clips[i].clip, &row.error);
+        if (!row.document){
+            problems++;
+            continue;
+        }
+        row.report = &clipBindingsOf(project, state, sceneProject, entity, clips[i].clip, *row.document);
+        problems += inspectorclips::problemCount(*row.report);
+        anyChecked = anyChecked || inspectorclips::reportChecked(*row.report);
+    }
+
+    std::string label;
+    if (problems > 0){
+        label = std::string("Bindings  " ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(problems) + (problems == 1 ? " problem" : " problems");
+        // the first time the foldout shows with problems it opens
+        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+        ImGui::PushStyleColor(ImGuiCol_Text, warning);
+    }else{
+        label = anyChecked ? "Bindings (all bound)" : "Bindings (unchecked)";
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    }
+    const bool open = ImGui::TreeNodeEx((label + "##player_bindings").c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding);
+    ImGui::PopStyleColor();
     UIProbe::item("player.bindings");
-    if (!bindingsOpen){
+    if (!open){
         return;
     }
     for (size_t i = 0; i < clips.size(); i++){
-        const AnimationPlayerClip& entry = clips[i];
+        const Row& row = rows[i];
         ImGui::PushID((int)i);
-        if (entry.clip.empty()){
+        if (clips[i].clip.empty()){
             ImGui::TextDisabled("%s: no clip", states[i].c_str());
-            ImGui::PopID();
-            continue;
-        }
-        if (!clipFileExists(project, entry.clip)){
-            ImGui::TextColored(warning, "%s: %s", states[i].c_str(), inspectorclips::missingClipText(entry.clip).c_str());
-            ImGui::PopID();
-            continue;
-        }
-        std::string error;
-        std::shared_ptr<AnimationClipDocument> document = findClipDocument(entry.clip, &error);
-        if (!document){
-            ImGui::TextColored(Theme::Colors::ErrorText, "%s: %s", states[i].c_str(), error.c_str());
-            ImGui::PopID();
-            continue;
-        }
-        const ClipValidationReport& report = clipBindingsOf(sceneProject, entity, entry.clip, *document);
-        const bool checked = inspectorclips::reportChecked(report);
-        const std::string summary = inspectorclips::bindingsSummary(report);
-        const bool problems = !report.ok() || report.legacyModelLayout;
-        if (problems){
-            ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " %s: %s", states[i].c_str(), summary.c_str());
-        }else if (!checked){
-            ImGui::TextDisabled("%s: %s", states[i].c_str(), summary.c_str());
-            ImGui::SetItemTooltip("The bindings are not checked yet");
+        }else if (row.missing){
+            // the row above shows it
+            ImGui::TextDisabled("%s: missing clip", states[i].c_str());
+        }else if (!row.document){
+            ImGui::TextColored(Theme::Colors::ErrorText, "%s: %s", states[i].c_str(), row.error.c_str());
         }else{
-            ImGui::Text("%s: %s", states[i].c_str(), summary.c_str());
-        }
+            const ClipValidationReport& report = *row.report;
+            const std::string summary = inspectorclips::bindingsSummary(report);
+            const bool checked = inspectorclips::reportChecked(report);
+            if (inspectorclips::problemCount(report) > 0){
+                ImGui::TextColored(warning, ICON_FA_TRIANGLE_EXCLAMATION " %s: %s", states[i].c_str(), summary.c_str());
+            }else if (!checked){
+                ImGui::TextDisabled("%s: %s", states[i].c_str(), summary.c_str());
+                ImGui::SetItemTooltip("The bindings are not checked");
+            }else{
+                ImGui::TextColored(OK_COLOR, ICON_FA_CHECK);
+                ImGui::SameLine();
+                ImGui::Text("%s: %s", states[i].c_str(), summary.c_str());
+            }
 
-        ImGui::Indent();
-        size_t shown = 0;
-        size_t hidden = 0;
-        if (report.legacyModelLayout){
-            // R3: the fix reloads the models in the node hierarchy (one scene step); the
-            // warnings below say why
-            ImGui::BeginDisabled(sceneProject->playState != ScenePlayState::STOPPED);
-            if (ImGui::SmallButton(ICON_FA_ARROWS_ROTATE " Reload Models in Node Hierarchy")){
-                ClipActionResult result;
-                std::string failure;
-                if (!ClipSceneActions::reloadModelsForPlayer(project, sceneProject->id, entity, result, failure)){
-                    playerClipError = failure.empty() ? std::string("The models could not be reloaded") : failure;
+            ImGui::Indent();
+            size_t shown = 0;
+            size_t hidden = 0;
+            if (report.legacyModelLayout){
+                // R3: the fix reloads the models in the node hierarchy (one scene step); the
+                // warnings below say why
+                ImGui::BeginDisabled(sceneProject->playState != ScenePlayState::STOPPED);
+                if (ImGui::Button(ICON_FA_ARROWS_ROTATE " Reload Models in Node Hierarchy", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
+                    ClipActionResult result;
+                    std::string failure;
+                    if (!ClipSceneActions::reloadModelsForPlayer(project, sceneProject->id, entity, result, failure)){
+                        state.playerError = failure.empty() ? std::string("The models could not be reloaded") : failure;
+                    }
                 }
+                ImGui::EndDisabled();
+                ImGui::SetItemTooltip("Reload the models under this GameObject with their glTF nodes as GameObjects, so clip paths bind (one undo step)");
             }
-            ImGui::EndDisabled();
-            ImGui::SetItemTooltip("Reload the models under this GameObject with their glTF nodes as GameObjects, so clip paths bind (one undo step)");
-        }
-        for (const TrackReport& track : report.tracks){
-            if (!inspectorclips::trackHasProblem(track) || (report.legacyModelLayout && track.status == TrackBindingStatus::LegacyModelLayout)){
-                continue;
+            for (const TrackReport& track : report.tracks){
+                if (!inspectorclips::trackHasProblem(track) || (report.legacyModelLayout && track.status == TrackBindingStatus::LegacyModelLayout)){
+                    continue;
+                }
+                if (shown >= MAX_PROBLEM_ROWS){
+                    hidden++;
+                    continue;
+                }
+                ImGui::PushStyleColor(ImGuiCol_Text, warning);
+                ImGui::TextWrapped("%s", inspectorclips::trackProblemText(track).c_str());
+                ImGui::PopStyleColor();
+                ImGui::SetItemTooltip("%s", (track.message.empty() ? track.path : track.message).c_str());
+                shown++;
             }
-            if (shown >= MAX_PROBLEM_ROWS){
-                hidden++;
-                continue;
+            const std::vector<ClipEventData>& events = row.document->data().events;
+            for (const EventReport& event : report.events){
+                if (event.status != EventHandlerStatus::NotFound) continue;
+                if (shown >= MAX_PROBLEM_ROWS){
+                    hidden++;
+                    continue;
+                }
+                const float time = event.event < events.size() ? events[event.event].time : 0.0f;
+                ImGui::PushStyleColor(ImGuiCol_Text, warning);
+                ImGui::TextWrapped("%s", inspectorclips::eventProblemText(event, time).c_str());
+                ImGui::PopStyleColor();
+                shown++;
             }
-            ImGui::PushStyleColor(ImGuiCol_Text, warning);
-            ImGui::TextWrapped("%s", inspectorclips::trackProblemText(track).c_str());
-            ImGui::PopStyleColor();
-            shown++;
-        }
-        const std::vector<ClipEventData>& events = document->data().events;
-        for (const EventReport& event : report.events){
-            if (event.status != EventHandlerStatus::NotFound) continue;
-            if (shown >= MAX_PROBLEM_ROWS){
-                hidden++;
-                continue;
+            for (const ClipWarning& clipWarning : report.warnings){
+                if (shown >= MAX_PROBLEM_ROWS){
+                    hidden++;
+                    continue;
+                }
+                ImGui::PushStyleColor(ImGuiCol_Text, warning);
+                ImGui::TextWrapped("%s%s%s", clipWarning.path.c_str(), clipWarning.path.empty() ? "" : ": ", clipWarning.message.c_str());
+                ImGui::PopStyleColor();
+                shown++;
             }
-            const float time = event.event < events.size() ? events[event.event].time : 0.0f;
-            ImGui::PushStyleColor(ImGuiCol_Text, warning);
-            ImGui::TextWrapped("%s", inspectorclips::eventProblemText(event, time).c_str());
-            ImGui::PopStyleColor();
-            shown++;
-        }
-        for (const ClipWarning& clipWarning : report.warnings){
-            if (shown >= MAX_PROBLEM_ROWS){
-                hidden++;
-                continue;
+            if (hidden > 0){
+                ImGui::TextDisabled("... and %zu more", hidden);
             }
-            ImGui::PushStyleColor(ImGuiCol_Text, warning);
-            ImGui::TextWrapped("%s%s%s", clipWarning.path.c_str(), clipWarning.path.empty() ? "" : ": ", clipWarning.message.c_str());
-            ImGui::PopStyleColor();
-            shown++;
+            ImGui::Unindent();
         }
-        if (hidden > 0){
-            ImGui::TextDisabled("... and %zu more", hidden);
-        }
-        ImGui::Unindent();
         ImGui::PopID();
     }
     ImGui::TreePop();
@@ -881,6 +1316,7 @@ void editor::InspectorWindow::drawAnimationPlayerStates(ComponentType cpType, Sc
         ImGui::PushID((int)i);
         ImGui::TableNextRow();
         ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
         if (info.playing){
             ImGui::TextUnformatted(ICON_FA_PLAY);
         }else{
@@ -890,16 +1326,19 @@ void editor::InspectorWindow::drawAnimationPlayerStates(ComponentType cpType, Sc
         ImGui::TextUnformatted(states[i].c_str());
         ImGui::TableNextColumn();
         if (!info.error.empty()){
+            ImGui::AlignTextToFramePadding();
             ImGui::TextColored(Theme::Colors::ErrorText, "%s", info.error.c_str());
         }else if (!info.loaded){
+            ImGui::AlignTextToFramePadding();
             ImGui::TextDisabled("Loading...");
         }else{
             char overlay[64];
             std::snprintf(overlay, sizeof(overlay), "%.2f / %.2f s", info.time, info.length);
-            const float weightWidth = ImGui::CalcTextSize("w 0.00").x + ImGui::GetStyle().ItemSpacing.x;
+            const float weightWidth = textWidth("w 0.00") + ImGui::GetStyle().ItemSpacing.x;
             const float fraction = info.length > 0.0f ? std::clamp(info.time / info.length, 0.0f, 1.0f) : 0.0f;
             ImGui::ProgressBar(fraction, ImVec2(std::max(1.0f, ImGui::GetContentRegionAvail().x - weightWidth), 0), overlay);
             ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
             if (info.weight > 0.0f){
                 ImGui::Text("w %.2f", info.weight);
             }else{
@@ -917,21 +1356,25 @@ void editor::InspectorWindow::drawAnimationPlayerStates(ComponentType cpType, Sc
 // ---- the inspected asset (.anim, or a model's clips) ----
 
 bool editor::InspectorWindow::drawInspectedAsset(){
+    InspectorClipState& state = clipState();
     const fs::path asset = project->getInspectedAsset();
     if (asset.empty()) return false;
-    std::error_code ec;
-    if (!fs::is_regular_file(asset, ec)) return false;
     const std::string file = asset.string();
-    if (Util::isAnimationClipFile(file)){
-        drawClipAsset(asset);
+    const bool clip = Util::isAnimationClipFile(file);
+    if (!clip && !Util::isModelFile(file)) return false;
+    if (state.relativeOf != asset){
+        state.relativeOf = asset;
+        state.relative = assetRelativePath(project, asset);
+    }
+    // gone (deleted, moved outside): the scene selection again
+    if (state.relative.empty() || !clipExists(project, state, state.relative)) return false;
+    if (clip){
+        drawClipAsset(asset, state.relative);
         return true;
     }
-    if (Util::isModelFile(file)){
-        const std::string relative = assetRelativePath(project, asset);
-        if (!relative.empty() && !modelClipsOf(relative).empty()){
-            drawModelClipsAsset(asset, relative);
-            return true;
-        }
+    if (!modelClipsOf(project, state, state.relative).empty()){
+        drawModelClipsAsset(asset, state.relative);
+        return true;
     }
     return false;
 }
@@ -940,62 +1383,67 @@ void editor::InspectorWindow::drawAssetHeader(const char* icon, const fs::path& 
     ImGui::AlignTextToFramePadding();
     ImGui::TextUnformatted(icon);
     ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-    const std::string name = asset.filename().string();
+    const float kindWidth = textWidth(kind) + ImGui::GetStyle().ItemSpacing.x;
+    const float nameSpace = ImGui::GetContentRegionAvail().x - kindWidth;
+    // a long name is elided (the kind stays while there is room for it)
+    const bool showKind = nameSpace > textWidth("M...M.anim");
+    const std::string name = inspectorclips::elideMiddle(asset.filename().string(), showKind ? nameSpace : ImGui::GetContentRegionAvail().x, textWidth);
     ImGui::TextUnformatted(name.c_str());
     UIProbe::item("asset.header");
     ImGui::SetItemTooltip("%s", project->normalizeToProjectRelative(asset).generic_string().c_str());
-    const float kindWidth = ImGui::CalcTextSize(kind).x;
-    ImGui::SameLine();
-    const float space = ImGui::GetContentRegionAvail().x - kindWidth;
-    if (space > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + space);
-    ImGui::TextDisabled("%s", kind);
+    if (showKind){
+        ImGui::SameLine();
+        const float space = ImGui::GetContentRegionAvail().x - textWidth(kind);
+        if (space > 0.0f) ImGui::SetCursorPosX(ImGui::GetCursorPosX() + space);
+        ImGui::TextDisabled("%s", kind);
+    }
     ImGui::Separator();
 }
 
-void editor::InspectorWindow::drawClipAsset(const fs::path& asset){
+void editor::InspectorWindow::drawClipAsset(const fs::path& asset, const std::string& reference){
     drawAssetHeader(ICON_FA_FILM, asset, "Animation Clip");
     std::string error;
-    std::shared_ptr<AnimationClipDocument> document = findClipDocument(asset.generic_string(), &error);
+    std::shared_ptr<AnimationClipDocument> document = findClipDocument(project, clipState(), asset.generic_string(), &error);
     if (!document){
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
         ImGui::TextWrapped("%s", error.c_str());
         ImGui::PopStyleColor();
         return;
     }
-    const std::string reference = assetRelativePath(project, asset);
-    drawClipDocument(*document, reference.empty() ? document->path() : reference);
+    drawClipDocument(*document, reference);
 }
 
 void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const std::string& model){
+    InspectorClipState& state = clipState();
     drawAssetHeader(ICON_FA_CUBE, asset, "Model");
-    const std::vector<anim::ModelClipInfo> clips = modelClipsOf(model);
+    const std::vector<anim::ModelClipInfo> clips = modelClipsOf(project, state, model);
 
     ImGui::SeparatorText("Animation Clips");
     ImGui::TextDisabled("Read-only clips of the model: Extract to .anim to edit one.");
-    if (std::none_of(clips.begin(), clips.end(), [&](const anim::ModelClipInfo& info){ return info.name == modelAssetClip; })){
-        modelAssetClip = clips.empty() ? std::string() : clips[0].name;
+    if (std::none_of(clips.begin(), clips.end(), [&](const anim::ModelClipInfo& info){ return info.name == state.modelAssetClip; })){
+        state.modelAssetClip = clips.empty() ? std::string() : clips[0].name;
     }
     if (ImGui::BeginTable("model_asset_clips", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)){
         ImGui::TableSetupColumn("Clip");
-        ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("000.00 s").x + ImGui::GetStyle().CellPadding.x * 2);
+        ImGui::TableSetupColumn("Length", ImGuiTableColumnFlags_WidthFixed, textWidth("000.00 s") + ImGui::GetStyle().CellPadding.x * 2);
         for (const anim::ModelClipInfo& info : clips){
             ImGui::TableNextRow();
             ImGui::TableNextColumn();
             const std::string label = info.name + "##model_asset_clip" + std::to_string(info.index);
-            if (ImGui::Selectable(label.c_str(), info.name == modelAssetClip, ImGuiSelectableFlags_SpanAllColumns)){
-                modelAssetClip = info.name;
+            if (ImGui::Selectable(label.c_str(), info.name == state.modelAssetClip, ImGuiSelectableFlags_SpanAllColumns)){
+                state.modelAssetClip = info.name;
             }
             ImGui::TableNextColumn();
             ImGui::TextDisabled("%s", inspectorclips::formatSeconds(info.duration).c_str());
         }
         ImGui::EndTable();
     }
-    if (modelAssetClip.empty()) return;
+    if (state.modelAssetClip.empty()) return;
 
-    const std::string reference = anim::formatSubClipReference(model, modelAssetClip);
-    ImGui::SeparatorText(modelAssetClip.c_str());
+    const std::string reference = anim::formatSubClipReference(model, state.modelAssetClip);
+    ImGui::SeparatorText(state.modelAssetClip.c_str());
     std::string error;
-    std::shared_ptr<AnimationClipDocument> document = findClipDocument(reference, &error);
+    std::shared_ptr<AnimationClipDocument> document = findClipDocument(project, state, reference, &error);
     if (!document){
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
         ImGui::TextWrapped("%s", error.c_str());
@@ -1006,8 +1454,9 @@ void editor::InspectorWindow::drawModelClipsAsset(const fs::path& asset, const s
 }
 
 // The settings, tracks, events, users and warnings of one clip document. Edits commit through
-// the document (one project undo step each; a drag merges into one).
+// the document (one project undo step each; a drag commits once when it ends).
 void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, const std::string& reference){
+    InspectorClipState& state = clipState();
     const AnimationClipInspectorHooks& hooks = animationClipInspectorHooks();
     const bool readOnly = document.isReadOnly();
     const bool playing = project->isAnyScenePlaying();
@@ -1015,13 +1464,13 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
     const ClipData& data = document.data();
     const ImVec4 warning = Theme::Colors::WarningText;
 
-    auto commit = [&](const ClipData& newData, const std::string& undoName, const std::string& mergeKey){
+    auto commit = [&](const ClipData& newData, const std::string& undoName){
         std::string error;
-        if (!document.commit(newData, undoName, mergeKey, &error)){
-            clipAssetError = error.empty() ? std::string("The clip could not be written") : error;
-            Out::error("%s: %s", document.path().c_str(), clipAssetError.c_str());
+        if (!document.commit(newData, undoName, "", &error)){
+            state.assetError = error.empty() ? std::string("The clip could not be written") : error;
+            Out::error("%s: %s", document.path().c_str(), state.assetError.c_str());
         }else{
-            clipAssetError.clear();
+            state.assetError.clear();
         }
     };
 
@@ -1029,14 +1478,13 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
     if (hooks.openClip || (readOnly && hooks.extractSubClip)){
         ImGui::BeginDisabled(playing);
         if (hooks.openClip){
-            if (ImGui::Button(ICON_FA_FILM " Open in Animation Window##clip_asset_open")){
+            if (ImGui::Button(ICON_FA_FILM " Open in Animation Window##clip_asset_open", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
                 hooks.openClip(project, 0, NULL_ENTITY, reference);
             }
             ImGui::SetItemTooltip("Edit the clip in the Animation window");
         }
         if (readOnly && hooks.extractSubClip){
-            if (hooks.openClip) ImGui::SameLine();
-            if (ImGui::Button(ICON_FA_FILE_EXPORT " Extract to .anim##clip_asset_extract")){
+            if (ImGui::Button(ICON_FA_FILE_EXPORT " Extract to .anim...##clip_asset_extract", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
                 hooks.extractSubClip(project, 0, NULL_ENTITY, reference);
             }
             ImGui::SetItemTooltip("Write the clip to an editable .anim file (keeps its source)");
@@ -1048,21 +1496,27 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
     }
 
     ImGui::SeparatorText("Settings");
-    const float labelWidth = getLabelSize("Preview Model");
-    beginTable(ComponentType::AnimationPlayerComponent, labelWidth, "clip_asset_settings");
+    // its own table (beginTable names tables per component: this one is "..._clip_asset_settings")
+    beginTable(ComponentType::AnimationPlayerComponent, getLabelSize("Preview Model"), "clip_asset_settings");
     ImGui::BeginDisabled(readOnly);
 
-    // Frame Rate (Unity's Sample Rate): the window's frame grid; key times stay in seconds
+    // Frame Rate (Unity's Sample Rate, whole frames): the window's frame grid; key times stay in
+    // seconds. Committed once when the drag or the typed value ends.
     propertyHeader("Frame Rate");
-    float frameRate = data.frameRate;
-    if (ImGui::DragFloat("##clip_frame_rate", &frameRate, 0.5f, 1.0f, 240.0f, "%.0f fps", ImGuiSliderFlags_AlwaysClamp)){
-        if (frameRate != data.frameRate && frameRate > 0.0f){
-            ClipData newData = data;
-            newData.frameRate = frameRate;
-            commit(newData, "Clip Frame Rate", "inspector.frameRate#" + std::to_string(clipDragSerial));
-        }
+    int frameRate = state.editingFrameRate ? state.pendingFrameRate : (int)std::lround(data.frameRate);
+    if (ImGui::DragInt("##clip_frame_rate", &frameRate, 0.2f, 1, 240, "%d fps", ImGuiSliderFlags_AlwaysClamp)){
+        state.editingFrameRate = true;
+        state.pendingFrameRate = frameRate;
     }
-    if (ImGui::IsItemDeactivated()) clipDragSerial++;
+    if (ImGui::IsItemDeactivated()){
+        if (state.editingFrameRate && (float)state.pendingFrameRate != data.frameRate){
+            ClipData newData = data;
+            newData.frameRate = (float)state.pendingFrameRate;
+            commit(newData, "Clip Frame Rate");
+        }
+        state.editingFrameRate = false;
+    }
+    UIProbe::item("clipAsset.frameRate");
     ImGui::SetItemTooltip("Samples per second of the Animation window's frame grid (key times are kept in seconds)");
 
     propertyHeader("Wrap Mode");
@@ -1071,20 +1525,20 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
             if (ImGui::Selectable(inspectorclips::wrapLabel(wrap), wrap == data.wrap) && wrap != data.wrap){
                 ClipData newData = data;
                 newData.wrap = wrap;
-                commit(newData, "Clip Wrap Mode", "");
+                commit(newData, "Clip Wrap Mode");
             }
         }
         ImGui::EndCombo();
     }
     ImGui::SetItemTooltip("How the clip wraps when a player entry's wrap is Default");
 
-    // Length: automatic (the last key or event) or explicit
+    // Length: automatic (the last key or event) or explicit (at least one frame)
     propertyHeader("Length");
     bool automatic = !data.hasExplicitLength();
     if (ImGui::Checkbox("Auto##clip_length_auto", &automatic)){
         ClipData newData = data;
-        newData.length = automatic ? -1.0f : data.effectiveLength();
-        commit(newData, automatic ? "Clip Length Auto" : "Clip Length", "");
+        newData.length = automatic ? -1.0f : std::max(data.effectiveLength(), 1.0f / std::max(data.frameRate, 1.0f));
+        commit(newData, automatic ? "Clip Length Auto" : "Clip Length");
     }
     UIProbe::item("clipAsset.lengthAuto");
     ImGui::SetItemTooltip("Auto: the clip ends at its last key or event");
@@ -1093,16 +1547,21 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("%s", inspectorclips::formatSeconds(data.effectiveLength()).c_str());
     }else{
-        float length = data.length;
+        const float minimum = 1.0f / std::max(data.frameRate, 1.0f);
+        float length = state.editingLength ? state.pendingLength : data.length;
         ImGui::SetNextItemWidth(-1);
-        if (ImGui::DragFloat("##clip_length", &length, 0.01f, 0.0f, 3600.0f, "%.3f s", ImGuiSliderFlags_AlwaysClamp)){
-            if (length != data.length && length >= 0.0f){
-                ClipData newData = data;
-                newData.length = length;
-                commit(newData, "Clip Length", "inspector.length#" + std::to_string(clipDragSerial));
-            }
+        if (ImGui::DragFloat("##clip_length", &length, 0.01f, minimum, 3600.0f, "%.2f s", ImGuiSliderFlags_AlwaysClamp)){
+            state.editingLength = true;
+            state.pendingLength = length;
         }
-        if (ImGui::IsItemDeactivated()) clipDragSerial++;
+        if (ImGui::IsItemDeactivated()){
+            if (state.editingLength && state.pendingLength != data.length){
+                ClipData newData = data;
+                newData.length = std::max(state.pendingLength, minimum);
+                commit(newData, "Clip Length");
+            }
+            state.editingLength = false;
+        }
     }
 
     // Preview Model: what a target-less Animation window previews the clip on (a model or prefab)
@@ -1114,14 +1573,14 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
         const ImVec4 disabled = ImGui::GetStyle().Colors[ImGuiCol_TextDisabled];
         auto setPreviewModel = [&](const std::string& file){
             const std::string relative = file.empty() ? std::string() : assetRelativePath(project, fs::path(file));
-            if (!file.empty() && (relative.empty() || !(Util::isModelFile(relative) || Util::isPrefabFile(relative)))){
-                clipAssetError = "The preview model must be a model or a prefab inside the assets folder.";
+            if (!file.empty() && (relative.empty() || !isModelOrPrefabFile(relative))){
+                state.assetError = "The preview model must be a model or a prefab inside the assets folder.";
                 return;
             }
             if (relative == data.previewModel) return;
             ClipData newData = data;
             newData.previewModel = relative;
-            commit(newData, "Clip Preview Model", "");
+            commit(newData, "Clip Preview Model");
         };
         ImGui::BeginGroup();
         if (data.previewModel.empty()){
@@ -1130,9 +1589,9 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
             drawFileLabel("clip_preview_model", fs::path(data.previewModel).filename().string(), data.previewModel, nullptr, fieldWidth);
         }
         ImGui::EndGroup();
-        if (!readOnly && ImGui::BeginDragDropTarget()){
+        if (!readOnly && draggingFiles(isModelOrPrefabFile) && ImGui::BeginDragDropTarget()){
             if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
-                const std::vector<std::string> files = Util::getStringsFromPayload(payload);
+                const std::vector<std::string> files = payloadFiles(payload, isModelOrPrefabFile);
                 if (!files.empty()) setPreviewModel(files[0]);
             }
             ImGui::EndDragDropTarget();
@@ -1153,13 +1612,13 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
     ImGui::EndDisabled();
     endTable();
 
-    if (!clipAssetError.empty()){
+    if (!state.assetError.empty()){
         ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
-        ImGui::TextWrapped("%s", clipAssetError.c_str());
+        ImGui::TextWrapped("%s", state.assetError.c_str());
         ImGui::PopStyleColor();
     }
 
-    // Tracks: path : channel, key count
+    // Tracks: path : channel (elided from the start, full in the tooltip), key count
     ImGui::SeparatorText(("Tracks (" + std::to_string(data.tracks.size()) + ")").c_str());
     if (data.tracks.empty()){
         ImGui::TextDisabled("No tracks: add properties in the Animation window.");
@@ -1167,7 +1626,7 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
                                 ImVec2(0, std::min((float)data.tracks.size() + 1.0f, 12.0f) * ImGui::GetTextLineHeightWithSpacing() + 4))){
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableSetupColumn("Path : Channel");
-        ImGui::TableSetupColumn("Keys", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("Keys 0000").x);
+        ImGui::TableSetupColumn("Keys", ImGuiTableColumnFlags_WidthFixed, textWidth("Keys 0000"));
         ImGui::TableHeadersRow();
         ImGuiListClipper clipper;
         clipper.Begin((int)data.tracks.size());
@@ -1176,12 +1635,10 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
                 const ClipTrackData& track = data.tracks[(size_t)i];
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();
-                const std::string label = track.path.empty() ? std::string("(root) : ") + anim::channelName(track.channel) : ClipValidation::trackLabel(track);
-                ImGui::TextUnformatted(label.c_str());
-                if (track.channel == ClipChannel::Property){
-                    ImGui::SameLine();
-                    ImGui::TextDisabled("(not played)");
-                }
+                std::string label = (track.path.empty() ? std::string("(root)") : track.path) + " : " + inspectorclips::channelLabel(track.channel);
+                if (track.channel == ClipChannel::Property) label += " (not played)";
+                ImGui::TextUnformatted(inspectorclips::elideStart(label, ImGui::GetContentRegionAvail().x, textWidth).c_str());
+                ImGui::SetItemTooltip("%s", label.c_str());
                 ImGui::TableNextColumn();
                 ImGui::Text("%zu", track.keys.size());
             }
@@ -1194,7 +1651,7 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
     if (data.events.empty()){
         ImGui::TextDisabled("No events: add them on the Animation window's events lane.");
     }else if (ImGui::BeginTable("clip_asset_events", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV)){
-        ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("0000.00 s").x);
+        ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed, textWidth("0000.00 s"));
         ImGui::TableSetupColumn("Function");
         for (const ClipEventData& event : data.events){
             ImGui::TableNextRow();
@@ -1206,10 +1663,13 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
         ImGui::EndTable();
     }
 
-    // Users: the Animation Player entries in open scenes and loaded prefabs (R45)
-    const std::vector<ClipUser>& users = clipUsersOf(reference);
+    // Users: the Animation Player entries in open scenes and loaded prefabs (R45); a scene
+    // user is a link that selects its GameObject
+    const std::vector<ClipUser> users = clipUsersOf(project, state, reference);
+    size_t prefabUsers = 0;
+    for (const ClipUser& user : users) prefabUsers += user.prefabAsset ? 1 : 0;
     ImGui::SeparatorText("Users");
-    ImGui::TextUnformatted(inspectorclips::usersText(users.size()).c_str());
+    ImGui::TextUnformatted(inspectorclips::usersText(users.size() - prefabUsers, prefabUsers).c_str());
     ImGui::Indent();
     size_t listed = 0;
     for (const ClipUser& user : users){
@@ -1217,13 +1677,36 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
             ImGui::TextDisabled("... and %zu more", users.size() - MAX_PROBLEM_ROWS);
             break;
         }
-        SceneProject* userScene = user.sceneId ? project->getScene(user.sceneId) : nullptr;
-        std::string where = user.prefabAsset ? fs::path(user.prefabPath).filename().string() : (userScene ? userScene->name : std::string("?"));
-        std::string entityName;
+        ImGui::PushID((int)listed);
+        if (user.prefabAsset){
+            ImGui::BulletText("%s (prefab asset), clip %zu", fs::path(user.prefabPath).filename().string().c_str(), user.entry);
+            ImGui::PopID();
+            continue;
+        }
+        SceneProject* userScene = project->getScene(user.sceneId);
+        std::string entityName = "GameObject";
+        std::string stateName;
         if (userScene && userScene->scene && userScene->scene->isEntityCreated(user.entity)){
             entityName = userScene->scene->getEntityName(user.entity);
+            if (AnimationPlayerComponent* player = userScene->scene->findComponent<AnimationPlayerComponent>(user.entity)){
+                const std::vector<std::string> states = anim::playerStateNames(player->clips);
+                if (user.entry < states.size()) stateName = states[user.entry];
+            }
         }
-        ImGui::BulletText("%s: %s (clip %zu)", where.c_str(), entityName.empty() ? "GameObject" : entityName.c_str(), user.entry);
+        const std::string text = (userScene ? userScene->name : std::string("?")) + ": " + entityName +
+                                 (stateName.empty() ? std::string() : " (" + stateName + ")");
+        ImGui::Bullet();
+        if (userScene && userScene->id == project->getSelectedSceneId() && userScene->scene->isEntityCreated(user.entity)){
+            if (ImGui::Selectable(text.c_str())){
+                project->replaceSelectedEntities(user.sceneId, {user.entity});
+                project->setSelectedSceneForProperties(user.sceneId);
+                project->clearInspectedAsset();
+            }
+            ImGui::SetItemTooltip("Select the GameObject");
+        }else{
+            ImGui::TextUnformatted(text.c_str());
+        }
+        ImGui::PopID();
     }
     ImGui::Unindent();
 
@@ -1255,19 +1738,63 @@ void editor::InspectorWindow::drawClipDocument(AnimationClipDocument& document, 
 
 // ---- Model section: the model file's clips (spec 4.2, 9.R15) ----
 
-void editor::InspectorWindow::drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity){
+float editor::InspectorWindow::modelRowClipButtonsWidth() const{
+    const AnimationClipInspectorHooks& hooks = animationClipInspectorHooks();
+    float width = 0.0f;
+    if (hooks.addToAnimationPlayer) width += iconButtonWidth(ICON_FA_FILM) + ImGui::GetStyle().ItemSpacing.x;
+    if (hooks.extractSubClip) width += iconButtonWidth(ICON_FA_FILE_EXPORT) + ImGui::GetStyle().ItemSpacing.x;
+    return width;
+}
+
+// Add to Animation Player (disabled when the player lists it) and Extract to .anim of one sub-clip
+void editor::InspectorWindow::drawModelRowClipButtons(SceneProject* sceneProject, Entity model, const std::string& subClip, const std::string& entityName){
+    const AnimationClipInspectorHooks& hooks = animationClipInspectorHooks();
+    ModelComponent* component = sceneProject->scene->findComponent<ModelComponent>(model);
+    if (!component) return;
+    const std::string reference = anim::formatSubClipReference(component->filename, subClip);
+    const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
+    const AnimationPlayerComponent* player = sceneProject->scene->findComponent<AnimationPlayerComponent>(model);
+    const bool listed = player && std::any_of(player->clips.begin(), player->clips.end(),
+                                              [&](const AnimationPlayerClip& entry){ return entry.clip == reference; });
+    const std::string which = entityName.empty() || entityName == subClip ? "\"" + subClip + "\"" :
+                              "\"" + subClip + "\" (the clip of entity animation \"" + entityName + "\")";
+    bool first = true;
+    ImGui::BeginDisabled(!stopped);
+    if (hooks.addToAnimationPlayer){
+        ImGui::BeginDisabled(listed);
+        if (ImGui::Button(ICON_FA_FILM "##model_clip_add")){
+            hooks.addToAnimationPlayer(project, sceneProject->id, model, reference);
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)){
+            ImGui::SetTooltip("%s", listed ? "Already in the Animation Player" :
+                              ("Add sub-clip " + which + " to the Animation Player" + (player ? "" : " (adds one)")).c_str());
+        }
+        first = false;
+    }
+    if (hooks.extractSubClip){
+        if (!first) ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_FILE_EXPORT "##model_clip_extract")){
+            hooks.extractSubClip(project, sceneProject->id, model, reference);
+        }
+        ImGui::SetItemTooltip("Extract sub-clip %s to an editable .anim", which.c_str());
+    }
+    ImGui::EndDisabled();
+}
+
+// Use Animation Player, and the rows of the sub-clips no entity animation row stands for (all
+// of them when the model has no entity animations)
+void editor::InspectorWindow::drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity, const std::vector<std::string>& shownInRows){
+    InspectorClipState& state = clipState();
     ModelComponent* model = sceneProject->scene->findComponent<ModelComponent>(entity);
     if (!model || model->filename.empty()) return;
     const std::string filename = model->filename;
     const bool animationEntities = model->animationEntities;
-    const std::vector<anim::ModelClipInfo> clips = modelClipsOf(filename);
+    const std::vector<anim::ModelClipInfo> clips = modelClipsOf(project, state, filename);
     if (clips.empty()) return;
     const AnimationClipInspectorHooks& hooks = animationClipInspectorHooks();
     const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
-    const bool hasPlayer = sceneProject->scene->findComponent<AnimationPlayerComponent>(entity) != nullptr;
 
-    ImGui::SeparatorText("Model Clips");
-    UIProbe::item("model.clips");
     if (hooks.useAnimationPlayer && animationEntities){
         ImGui::BeginDisabled(!stopped);
         if (ImGui::Button(ICON_FA_FILM " Use Animation Player##model_use_player", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
@@ -1276,66 +1803,45 @@ void editor::InspectorWindow::drawModelClipRows(ComponentType cpType, SceneProje
         UIProbe::item("model.usePlayer");
         ImGui::EndDisabled();
         ImGui::SetItemTooltip("Play the model's clips with an Animation Player: removes the entity animations (one undo step)");
-    }else if (!animationEntities){
-        ImGui::TextDisabled("Played by an Animation Player (no entity animations).");
     }
 
-    const float labelWidth = getLabelSize("Animation 00");
-    beginTable(cpType, labelWidth, "model_clips");
+    std::vector<anim::ModelClipInfo> rest;
     for (const anim::ModelClipInfo& info : clips){
+        if (std::find(shownInRows.begin(), shownInRows.end(), info.name) == shownInRows.end()) rest.push_back(info);
+    }
+    if (rest.empty()) return;
+
+    ImGui::SeparatorText("Model Clips");
+    UIProbe::item("model.clips");
+    if (!animationEntities){
+        ImGui::TextDisabled("Played by an Animation Player (no entity animations).");
+    }
+    const float buttons = modelRowClipButtonsWidth();
+    beginTable(cpType, getLabelSize("Animation 00"), "model_clips");
+    for (const anim::ModelClipInfo& info : rest){
         ImGui::PushID(info.index);
-        const std::string reference = anim::formatSubClipReference(filename, info.name);
         propertyHeader(info.name, -1, false, false);
         // the value cell: the length, the buttons right-aligned
         const float cellStartX = ImGui::GetCursorPosX();
         const float cellWidth = ImGui::GetContentRegionAvail().x;
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("%s", inspectorclips::formatSeconds(info.duration).c_str());
-        ImGui::SetItemTooltip("%s: %zu channels", reference.c_str(), info.channels);
-
-        float buttons = 0.0f;
-        if (hooks.addToAnimationPlayer) buttons += iconButtonWidth(ICON_FA_PLUS) + ImGui::GetStyle().ItemSpacing.x;
-        if (hooks.extractSubClip) buttons += iconButtonWidth(ICON_FA_FILE_EXPORT) + ImGui::GetStyle().ItemSpacing.x;
-        if (hooks.openClip) buttons += iconButtonWidth(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE) + ImGui::GetStyle().ItemSpacing.x;
+        ImGui::SetItemTooltip("%s: %zu channels", anim::formatSubClipReference(filename, info.name).c_str(), info.channels);
         if (buttons > 0.0f){
             ImGui::SameLine();
             const float x = cellStartX + cellWidth - buttons + ImGui::GetStyle().ItemSpacing.x;
             if (x > ImGui::GetCursorPosX()) ImGui::SetCursorPosX(x);
+            drawModelRowClipButtons(sceneProject, entity, info.name, "");
         }
-        ImGui::BeginDisabled(!stopped);
-        bool first = true;
-        if (hooks.addToAnimationPlayer){
-            if (ImGui::Button(ICON_FA_PLUS "##model_clip_add")){
-                hooks.addToAnimationPlayer(project, sceneProject->id, entity, reference);
-            }
-            ImGui::SetItemTooltip(hasPlayer ? "Add to Animation Player" : "Add to Animation Player (adds one)");
-            first = false;
-        }
-        if (hooks.extractSubClip){
-            if (!first) ImGui::SameLine();
-            if (ImGui::Button(ICON_FA_FILE_EXPORT "##model_clip_extract")){
-                hooks.extractSubClip(project, sceneProject->id, entity, reference);
-            }
-            ImGui::SetItemTooltip("Extract to .anim (an editable copy)");
-            first = false;
-        }
-        if (hooks.openClip){
-            if (!first) ImGui::SameLine();
-            if (ImGui::Button(ICON_FA_ARROW_UP_RIGHT_FROM_SQUARE "##model_clip_open")){
-                hooks.openClip(project, sceneProject->id, entity, reference);
-            }
-            ImGui::SetItemTooltip("Open in the Animation window (read-only)");
-        }
-        ImGui::EndDisabled();
         ImGui::PopID();
     }
     endTable();
 }
 
-// the sub-clip names of the Model's file, for the entity animations table's labels
+// the sub-clip names of the Model's file by animation index, for the entity animations table
 std::vector<std::string> editor::InspectorWindow::modelSubClipNames(const std::string& model){
     std::vector<std::string> names;
-    for (const anim::ModelClipInfo& info : modelClipsOf(model)){
+    for (const anim::ModelClipInfo& info : modelClipsOf(project, clipState(), model)){
         if (info.index >= 0 && (size_t)info.index >= names.size()) names.resize((size_t)info.index + 1);
         if (info.index >= 0) names[(size_t)info.index] = info.name;
     }
@@ -1348,16 +1854,16 @@ void editor::InspectorWindow::drawAnimationClipButtons(SceneProject* sceneProjec
     const AnimationClipInspectorHooks& hooks = animationClipInspectorHooks();
     if (!hooks.openEntityAnimation && !hooks.convertToClip) return;
     const bool stopped = sceneProject->playState == ScenePlayState::STOPPED;
+    ImGui::SeparatorText("Clip");
     ImGui::BeginDisabled(!stopped);
     if (hooks.openEntityAnimation){
-        if (ImGui::Button(ICON_FA_FILM " Open in Animation window##animation_open")){
+        if (ImGui::Button(ICON_FA_FILM " Open in Animation Window##animation_open", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
             hooks.openEntityAnimation(project, sceneProject->id, entity);
         }
         ImGui::SetItemTooltip("Edit this animation in the Animation window");
-        if (hooks.convertToClip) ImGui::SameLine();
     }
     if (hooks.convertToClip){
-        if (ImGui::Button(ICON_FA_FILE_EXPORT " Convert to Clip...##animation_convert")){
+        if (ImGui::Button(ICON_FA_FILE_EXPORT " Convert to Clip...##animation_convert", ImVec2(ImGui::GetContentRegionAvail().x, 0))){
             hooks.convertToClip(project, sceneProject->id, entity);
         }
         UIProbe::item("animation.convert");

@@ -7143,7 +7143,9 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     beginTable(cpType, getLabelSize("Animation 00"), "model_animations_header");
     propertyHeader("Animations", -1, false, false);
     ImGui::Text("%zu", model.animations.size());
-    if (drawSummaryAddButton("Add Animation##model_animations_add")) {
+    // a model played by an Animation Player has no entity animations (R15)
+    if (drawSummaryAddButton("Add Animation##model_animations_add", 0.0f, model.animationEntities,
+                             "The model is played by an Animation Player (no entity animations)")) {
         MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
         for (Entity entity : entities) {
             if (ModelComponent* modelComp = sceneProject->scene->findComponent<ModelComponent>(entity)) {
@@ -7158,18 +7160,24 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     endTable();
 
     if (model.animations.empty()) {
-        drawModelClipRows(cpType, sceneProject, entities[0]);
+        drawModelClipRows(cpType, sceneProject, entities[0], {});
         return;
     }
 
     // the loader's entities keep duplicate glTF names: the rows show the sub-clip names
     const std::vector<std::string> subClipNames = modelSubClipNames(model.filename);
 
+    // the rows standing for a sub-clip carry its clip buttons (Add to Animation Player, Extract)
+    const float clipButtonsWidth = modelRowClipButtonsWidth();
+    std::vector<std::string> shownInRows;
+
     const float animationFirstColSize = getLabelSize("Animation 00");
     const float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
     const float deleteButtonWidth = ImGui::CalcTextSize(ICON_FA_TRASH_CAN).x + clearButtonFramePadding * 2.0f;
     const float rowSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float valueColWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x - animationFirstColSize - ImGui::GetStyle().CellPadding.x * 2.0f);
+    // the label column beginTable gives the table (Unity's ~40% label width), so the rows' buttons fit
+    const float labelColWidth = std::max(animationFirstColSize, std::min(ImGui::GetContentRegionAvail().x * 0.4f, Theme::dpi(180.0f)));
+    const float valueColWidth = std::max(0.0f, ImGui::GetContentRegionAvail().x - labelColWidth - ImGui::GetStyle().CellPadding.x * 4.0f);
 
     beginTable(cpType, animationFirstColSize, "model_animations");
 
@@ -7179,18 +7187,31 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
         std::string propId = "animations[" + std::to_string(i) + "]";
         Entity animEntity = model.animations[i];
         std::string animationLabel = "Animation " + std::to_string(i);
+        std::string rowSubClip;
+        std::string rowEntityName;
         if (animEntity != NULL_ENTITY && sceneProject->scene->isEntityCreated(animEntity)) {
             if (sceneProject->scene->findComponent<AnimationComponent>(animEntity)) {
-                std::string entityName = sceneProject->scene->getEntityName(animEntity);
-                animationLabel = inspectorclips::modelAnimationRowLabel(entityName, subClipNames, i, animationLabel);
+                rowEntityName = sceneProject->scene->getEntityName(animEntity);
+                animationLabel = inspectorclips::modelAnimationRowLabel(rowEntityName, subClipNames, i, animationLabel);
+                if (i < subClipNames.size() && animationLabel == subClipNames[i] &&
+                    std::find(shownInRows.begin(), shownInRows.end(), animationLabel) == shownInRows.end()) {
+                    rowSubClip = animationLabel;
+                    shownInRows.push_back(rowSubClip);
+                }
             }
         }
+        const float rowButtons = rowSubClip.empty() ? 0.0f : clipButtonsWidth;
 
         RowSettings settingsAnimation;
         settingsAnimation.entityFilter.set(sceneProject->scene->getComponentId<AnimationComponent>());
-        settingsAnimation.secondColSize = std::max(0.0f, valueColWidth - deleteButtonWidth - rowSpacing);
+        settingsAnimation.secondColSize = std::max(0.0f, valueColWidth - deleteButtonWidth - rowSpacing - rowButtons);
 
         propertyRow(RowPropertyType::LocalEntity, cpType, propId, animationLabel, sceneProject, entities, settingsAnimation);
+
+        if (!rowSubClip.empty() && rowButtons > 0.0f) {
+            ImGui::SameLine();
+            drawModelRowClipButtons(sceneProject, entities[0], rowSubClip, rowEntityName);
+        }
 
         ImGui::SameLine();
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
@@ -7226,7 +7247,7 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
 
     endTable();
 
-    drawModelClipRows(cpType, sceneProject, entities[0]);
+    drawModelClipRows(cpType, sceneProject, entities[0], shownInRows);
 }
 
 void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -12775,36 +12796,10 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
     ActionComponent* actionComp = scene->findComponent<ActionComponent>(entity);
     if (!actionComp) return;
 
-    // The entities the preview writes: the action, its target, an animation's actions and
-    // their targets (the same walk as the snapshot below)
-    std::vector<Entity> touched;
-    {
-        std::unordered_set<Entity> seen;
-        std::function<void(Entity)> walk = [&](Entity e) {
-            if (e == NULL_ENTITY || !scene->isEntityCreated(e) || !seen.insert(e).second) return;
-            touched.push_back(e);
-            if (ActionComponent* ac = scene->findComponent<ActionComponent>(e)) {
-                walk(ac->target);
-            }
-            if (AnimationComponent* anim = scene->findComponent<AnimationComponent>(e)) {
-                for (const ActionFrame& frame : anim->actions) {
-                    walk(frame.action);
-                }
-            }
-        };
-        walk(entity);
-    }
-
     // One pose owner per root (animation clips 9.R7): an Animation window or Pose window preview
-    // of these entities stops (and restores) before the snapshot is taken from the scene
+    // of the entities the preview writes stops (and restores) before the snapshot is taken
     releaseActionPreviewOwners();
-    for (Entity root : inspectorclips::topLevelEntities(scene, touched)) {
-        const PreviewOwner::Token token = PreviewOwner::acquire(sceneProject->id, root, scene, "Inspector action preview",
-                                                                [this]() { stopActionPreviewIfActive(); });
-        if (token != 0) {
-            actionPreviewOwners.push_back(token);
-        }
-    }
+    actionPreviewOwners = inspectorclips::acquirePreviewOwners(sceneProject->id, scene, entity, [this]() { stopActionPreviewIfActive(); });
     actionComp = scene->findComponent<ActionComponent>(entity);
     if (!actionComp) {
         releaseActionPreviewOwners();
@@ -12994,6 +12989,9 @@ void editor::InspectorWindow::drawActionComponent(ComponentType cpType, ScenePro
                 actionPreviewStates.clear();
                 actionPreviewing = false;
                 actionPreviewPlaying = false;
+                actionPreviewEntity = NULL_ENTITY;
+                actionPreviewSceneId = 0;
+                releaseActionPreviewOwners();
             }
         }
 
@@ -15631,33 +15629,10 @@ void editor::InspectorWindow::drawLatticeTracksComponent(ComponentType cpType, S
     }
 }
 
-// Unity's activeObject (animation clips spec 9.R30): the Project window sets the inspected asset
-// on a click; a scene selection change (or a click in the Hierarchy) after that shows the scene
-// selection again. Runs every frame, also while the window is closed.
-void editor::InspectorWindow::trackInspectedObject(){
-    uint32_t sceneId = project->getSelectedSceneForProperties();
-    if (!project->getScene(sceneId)) {
-        sceneId = project->getSelectedSceneId();
+void editor::InspectorWindow::revealAssetInProject(const std::filesystem::path& absolutePath){
+    if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
+        projectWindow->revealAsset(absolutePath);
     }
-    std::vector<Entity> selection = project->getSelectedEntities(sceneId);
-    const std::filesystem::path& asset = project->getInspectedAsset();
-    // an asset set before this frame (one set in this frame is the latest click)
-    const bool assetShown = !asset.empty() && asset == inspectedAssetSeen;
-    bool sceneClick = false;
-    if (assetShown && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-        const ImGuiWindow* hovered = GImGui->HoveredWindow;
-        const ImGuiWindow* root = hovered ? hovered->RootWindow : nullptr;
-        sceneClick = root && root->Name && std::strcmp(root->Name, HierarchyWindow::WINDOW_NAME) == 0;
-    }
-    const bool selectionChanged = inspectedSelectionKnown &&
-        (sceneId != inspectedSelectionScene || selection != inspectedSelection);
-    if (assetShown && (selectionChanged || sceneClick)) {
-        project->clearInspectedAsset();
-    }
-    inspectedSelectionKnown = true;
-    inspectedSelectionScene = sceneId;
-    inspectedSelection = std::move(selection);
-    inspectedAssetSeen = project->getInspectedAsset();
 }
 
 void editor::InspectorWindow::show(){

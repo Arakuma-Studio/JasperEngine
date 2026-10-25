@@ -164,8 +164,9 @@ void AnimationWindowClip::update(double dt, bool clipModeShown, bool focused){
     if (!notice.empty() && ImGui::GetTime() - noticeAt > 8.0) notice.clear();
     if (!controllerUsed) return;
     AnimationClipController& c = controller();
-    // (a second update in the same frame, e.g. from an App per-frame hook, is ignored by the controller)
-    c.update(dt);
+    // (the App's per-frame hook, AnimationClipAppHooks::frame, runs the controller's update: playback,
+    // re-applies, deferred stops, also while this window is closed)
+    (void)dt;
     c.setTakesKeys(clipModeShown && focused);
 }
 

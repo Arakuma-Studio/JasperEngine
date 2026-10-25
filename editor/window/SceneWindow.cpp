@@ -267,6 +267,8 @@ bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, 
             }
             project->addSelectedEntity(hitSceneId, hitEntity);
             project->setSelectedSceneForProperties(hitSceneId);
+            // a user selection makes the GameObject the inspected object (animation clips 9.R30)
+            project->clearInspectedAsset();
             if (HierarchyWindow* structure = Backend::getApp().getHierarchyWindow()) {
                 structure->revealEntity(hitSceneId, hitEntity);
             }
@@ -276,6 +278,7 @@ bool editor::SceneWindow::selectObjectByRay(uint32_t sceneId, float x, float y, 
 
         project->clearAllSelections(sceneId);
         project->setSelectedSceneForProperties(sceneId);
+        project->clearInspectedAsset();
         project->syncSceneRenderEditLayer(sceneId);
     }
 
@@ -1644,6 +1647,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
+                project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);
             }
 

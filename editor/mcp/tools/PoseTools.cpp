@@ -1353,7 +1353,8 @@ bool bakeClip(Project* project, SceneProject* scene, Entity model, PoseAnimation
     PoseClipBakeResult result;
     if (!PoseBaker::bakeToClip(project, scene->id, model, document, name, clipPath, result, error)) return false;
     out = {{"clip", result.clip}, {"name", result.name}, {"created", result.created}, {"added_player", result.addedPlayer},
-           {"entry", result.entry}, {"frames", result.frames}, {"tracks", result.tracks}, {"length", r4(result.length)}};
+           {"entry", result.entry}, {"frames", result.frames}, {"tracks", result.tracks}, {"length", r4(result.length)},
+           {"source", document.path()}};
     text = PoseBaker::clipBakeStatusLine(document.path(), result) + " (one scene undo step: the clip file and the Animation Player of \"" +
            scene->scene->getEntityName(model) + "\"; undo scope scene)";
     return true;

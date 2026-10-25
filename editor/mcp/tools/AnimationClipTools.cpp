@@ -31,6 +31,9 @@
 #include "component/AnimationPlayerComponent.h"
 #include "component/LatticeComponent.h"
 #include "component/LatticeTracksComponent.h"
+#include "component/ModelComponent.h"
+#include "command/type/DeleteEntityCmd.h"
+#include "command/type/PropertyCmd.h"
 #include "component/Transform.h"
 #include "subsystem/ActionSystem.h"
 #include "util/FileUtils.h"
@@ -42,6 +45,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <map>
 #include <memory>
 #include <set>
@@ -345,8 +349,8 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report) {
         Json models = Json::array();
         for (Entity model : report.legacyModels) models.push_back(scene ? McpRefs::entityJson(scene, model) : Json(model));
         out["legacy_models"] = models;
-        out["legacy_fix"] = "add the root's Animation Player (add_component animationplayer; one it already has: remove_component, "
-                            "then add_component with its clips): its models reload with their node hierarchy in that scene step, then the paths bind";
+        out["legacy_fix"] = "add_component {entity: <root>, component: animationplayer} (no player: adds one; with one: reloads its "
+                            "models in their node hierarchy, settings kept), one scene step; then the paths bind";
     }
     if (unchecked) out["unchecked"] = true;
     if (!report.warnings.empty()) out["warnings"] = warningsJson(report.warnings);
@@ -450,7 +454,8 @@ bool applySettings(EditContext& ctx, const Json& args, ClipData& data, std::stri
             error = "wrap " + args["wrap"].dump() + " is not valid: use " + wrapNames() + ".";
             return false;
         }
-        if (wrap != data.wrap) ctx.changes.push_back(std::string("wrap ") + anim::wrapName(data.wrap) + " -> " + anim::wrapName(wrap));
+        ctx.changes.push_back(wrap != data.wrap ? std::string("wrap ") + anim::wrapName(data.wrap) + " -> " + anim::wrapName(wrap)
+                                                : std::string("wrap ") + anim::wrapName(wrap) + " (unchanged)");
         data.wrap = wrap;
     }
     if (has(args, "frame_rate")) {
@@ -460,14 +465,20 @@ bool applySettings(EditContext& ctx, const Json& args, ClipData& data, std::stri
             error = "frame_rate must be 1 to 240 samples per second (keys stay in seconds; it is the snapping grid).";
             return false;
         }
-        if (rate != data.frameRate) ctx.changes.push_back("frame_rate " + fmt(data.frameRate) + " -> " + fmt(rate));
+        ctx.changes.push_back(rate != data.frameRate ? "frame_rate " + fmt(data.frameRate) + " -> " + fmt(rate)
+                                                     : "frame_rate " + fmt(rate) + " (unchanged)");
         data.frameRate = rate;
     }
     if (has(args, "length")) {
         float length = 0.0f;
         if (!readNumber(args["length"], "length", length, error)) return false;
+        if (length == 0.0f) {
+            error = "length must be > 0 seconds, or -1 for automatic (the last key or event).";
+            return false;
+        }
         if (length < 0.0f) length = -1.0f;
-        if (length != data.length) ctx.changes.push_back(length < 0.0f ? std::string("length automatic (last key or event)") : "length " + fmt(length) + " s");
+        const std::string what = length < 0.0f ? std::string("length automatic (last key or event)") : "length " + fmt(length) + " s";
+        ctx.changes.push_back(length != data.length ? what : what + " (unchanged)");
         data.length = length;
     }
     return true;
@@ -553,6 +564,13 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
     if (has(item, "name")) {
         error = where + ".name: a clip track is named by its path and channel.";
         return false;
+    }
+    for (auto it = item.begin(); it != item.end(); ++it) {
+        static const std::set<std::string> keys = {"path", "target", "channel", "keys", "mode", "loop", "relative"};
+        if (!keys.count(it.key())) {
+            error = where + ": unknown key \"" + it.key() + "\" (a clip track is {path, target, channel, keys, mode, loop, relative}).";
+            return false;
+        }
     }
     // the binding path
     std::string path;
@@ -851,6 +869,7 @@ bool applyEvents(EditContext& ctx, const Json& args, ClipData& data, std::string
 }
 
 bool applyEdits(EditContext& ctx, const Json& args, ClipData& data, std::string& error) {
+    const float lengthBefore = data.effectiveLength();
     if (!applySettings(ctx, args, data, error)) return false;
     if (has(args, "tracks")) {
         if (!args["tracks"].is_array()) {
@@ -861,7 +880,13 @@ bool applyEdits(EditContext& ctx, const Json& args, ClipData& data, std::string&
             if (!applyTrack(ctx, args["tracks"][t], t, data, error)) return false;
         }
     }
-    return applyEvents(ctx, args, data, error);
+    if (!applyEvents(ctx, args, data, error)) return false;
+    if (!data.hasExplicitLength() && data.effectiveLength() != lengthBefore && !data.events.empty() &&
+        data.events.back().time >= data.effectiveLength() - anim::ANIM_TIME_EPSILON) {
+        ctx.changes.push_back("length now " + fmt(data.effectiveLength()) + " s (the event at " + fmt(data.events.back().time) +
+                              " s; set length to keep it shorter)");
+    }
+    return true;
 }
 
 // The root GameObject: `root` (or `entity` for get_animation) in `scene`
@@ -942,14 +967,59 @@ bool createFromEntity(const CallPtr& call, EditContext& ctx, const Json& from, c
         call->fail(error + " (nothing was changed)");
         return false;
     }
+    const Json& create = args["create"];
+    const bool removeTracks = create.is_object() && create.contains("remove_tracks") && create["remove_tracks"].is_boolean() &&
+                              create["remove_tracks"].get<bool>();
+    // where it came from (Convert's `source`: the scene file)
+    if (data.source.empty()) {
+        data.source.kind = "entity";
+        data.source.name = scene->scene->getEntityName(animation);
+    }
+    if (!scene->filepath.empty()) {
+        data.source.path = projectRel(project, scene->filepath.is_absolute() ? scene->filepath : project->getProjectPath() / scene->filepath);
+    }
     std::vector<ClipWarning> warnings = report.warnings;
     ClipData normalized = data;
     anim::normalize(normalized, &warnings);
+    Json warningList = warningsJson(warnings);
+    if (!insideAssets(project, absolute)) {
+        warningList.push_back(relative + " is outside the assets folder: an Animation Player in a game cannot load it");
+    }
 
     std::vector<Command*> commands;
     ClipActionResult result;
-    ClipSceneActions::appendPlayerCommands(project, scene->id, root, {ClipConverters::playerEntry(project, relative)}, commands, result);
     const std::string content = ClipSceneActions::newClipText(project, data);
+    AnimationPlayerClip entry = ClipConverters::playerEntry(project, relative);
+    entry.guid = anim::readClipGuid(content);
+    ClipSceneActions::appendPlayerCommands(project, scene->id, root, {entry}, commands, result);
+    size_t removed = 0;
+    if (removeTracks && !report.convertedTrackEntities.empty()) {
+        // as Convert to Clip's "Remove the converted tracks": the frames, then their entities
+        std::vector<ActionFrame> kept;
+        for (const ActionFrame& frame : scene->scene->getComponent<AnimationComponent>(animation).actions) {
+            const auto& converted = report.convertedTrackEntities;
+            if (std::find(converted.begin(), converted.end(), frame.action) == converted.end()) kept.push_back(frame);
+        }
+        commands.push_back(new PropertyCmd<std::vector<ActionFrame>>(project, scene->id, animation, ComponentType::AnimationComponent,
+                                                                     "actions", kept));
+        commands.push_back(new DeleteEntityCmd(project, scene->id, report.convertedTrackEntities, true));
+        removed = report.convertedTrackEntities.size();
+        ctx.changes.push_back("removed the " + std::to_string(removed) + " converted track(s) from the Animation");
+    } else if (!report.convertedTrackEntities.empty()) {
+        // two writers on the same channels when the Animation plays (it autoplays, or a model's
+        // animation Model:playAnimation finds)
+        const ActionComponent* action = scene->scene->findComponent<ActionComponent>(animation);
+        bool modelAnimation = false;
+        if (const ModelComponent* model = scene->scene->findComponent<ModelComponent>(root)) {
+            modelAnimation = std::find(model->animations.begin(), model->animations.end(), animation) != model->animations.end();
+        }
+        const std::string name = scene->scene->getEntityName(animation);
+        warningList.push_back("the entity Animation \"" + name + "\" keeps its " + std::to_string(report.convertedTrackEntities.size()) +
+                              " converted track(s), which also animate these channels when it plays" +
+                              (action && action->state == ActionState::Running ? std::string(" (it autoplays)") :
+                               modelAnimation ? std::string(" (Model:playAnimation can play it)") : std::string("")) +
+                              ": pass create.remove_tracks, or delete it (delete_entities)");
+    }
     if (!ClipSceneActions::runStep(project, scene->id, {{relative, content}}, commands, root, result, error)) {
         call->fail("create.from: " + error);
         return false;
@@ -959,12 +1029,13 @@ bool createFromEntity(const CallPtr& call, EditContext& ctx, const Json& from, c
         call->fail("create.from: the clip was written but can't be read back: " + error);
         return false;
     }
-    (void)absolute;
     out = clipJson(project, document->path(), document->data(), false, 20);
-    out["warnings"] = warningsJson(warnings);
+    out["warnings"] = warningList;
     out["player"] = McpRefs::entityJson(scene, root);
     out["added_player"] = result.addedPlayer;
-    text = " (one scene undo step: the file and the Animation Player of \"" + scene->scene->getEntityName(root) + "\"; undo scope scene)";
+    out["removed_tracks"] = removed;
+    text = " (one scene undo step: the file and the Animation Player of \"" + scene->scene->getEntityName(root) + "\"" +
+           (removed ? std::string(", the converted tracks removed") : std::string()) + "; undo scope scene)";
     return true;
 }
 
@@ -1025,7 +1096,8 @@ void editClip(const CallPtr& call) {
         call->fail(error);
         return;
     }
-    const bool creating = has(args, "create");
+    // create: false reads as no create
+    const bool creating = has(args, "create") && !(args["create"].is_boolean() && !args["create"].get<bool>());
     std::error_code ec;
     const bool exists = fs::exists(absolute, ec);
     Json from;
@@ -1034,16 +1106,39 @@ void editClip(const CallPtr& call) {
         if (create.is_boolean() && create.get<bool>()) {
             // create: true reads as create: {}
         } else if (!create.is_object()) {
-            call->fail("create must be an object {from?}: from an entity Animation GameObject (Convert) or a model clip \"assets/models/hero.gltf#Walk\" (Extract); {} makes an empty clip.");
+            call->fail("create must be an object {from?, remove_tracks?}: from an entity Animation GameObject (Convert) or a model clip \"assets/models/hero.gltf#Walk\" (Extract); {} makes an empty clip.");
             return;
         } else {
             for (auto it = create.begin(); it != create.end(); ++it) {
-                if (it.key() != "from") {
-                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?}).");
+                if (it.key() != "from" && it.key() != "remove_tracks") {
+                    call->fail("create: unknown key \"" + it.key() + "\" (create is {from?, remove_tracks?}).");
                     return;
                 }
             }
             if (create.contains("from")) from = create["from"];
+            if (create.contains("remove_tracks")) {
+                anim::SubClipReference reference;
+                if (!create["remove_tracks"].is_boolean()) {
+                    call->fail("create.remove_tracks must be true or false.");
+                    return;
+                }
+                if (from.is_null() || (from.is_string() && anim::parseSubClipReference(from.get<std::string>(), reference))) {
+                    call->fail("create.remove_tracks removes the converted tracks of create.from's entity Animation: it needs from: <an Animation GameObject>.");
+                    return;
+                }
+            }
+            // a path given as from: a clip file (copy it) or a model without "#<animation>"
+            if (from.is_string()) {
+                const std::string given = from.get<std::string>();
+                anim::SubClipReference reference;
+                const std::string extension = lower(fs::u8path(given).extension().string());
+                if (!anim::parseSubClipReference(given, reference) && (extension == ".anim" || anim::isModelFilePath(given))) {
+                    call->fail("create.from takes an entity Animation GameObject or a model clip \"<model>#<animation>\" (e.g. \"" +
+                               (anim::isModelFilePath(given) ? given : std::string("assets/models/hero.gltf")) + "#Walk\"); copy a clip with "
+                               "move_asset {path, to, copy: true}.");
+                    return;
+                }
+            }
         }
         if (exists) {
             call->fail("create: " + relative + " already exists; leave out create to edit it.");
@@ -1086,7 +1181,7 @@ void editClip(const CallPtr& call) {
             out["created"] = true;
             out["changes"] = ctx.changes;
             const std::vector<ClipUser> users = findClipUsers(project, relative);
-            out["users"] = users.size();
+            out["users"] = usersJson(project, users);
             const Json bindings = bindingsFor(project, ctx.scene, ctx.root, AnimationClipDocument::open(project, relative, nullptr)->data(), users);
             if (!bindings.is_null()) out["bindings"] = bindings;
             std::string summary = relative + ": created, " + plural(out["tracks"].size(), "track") + ", " + fmt(out["length"].get<double>()) + " s, " +
@@ -1144,14 +1239,14 @@ void editClip(const CallPtr& call) {
         warningList.push_back(relative + " is outside the assets folder: an Animation Player in a game cannot load it");
     }
     out["warnings"] = warningList;
-    out["users"] = users.size();
+    out["users"] = usersJson(project, users);
     const Json bindings = bindingsFor(project, ctx.scene, ctx.root, document->data(), users);
     if (!bindings.is_null()) out["bindings"] = bindings;
 
     std::string text = document->path() + ": " + (creating ? "created, " : "") + plural(document->data().tracks.size(), "track") + ", " +
                        fmt(document->data().effectiveLength()) + " s, " + anim::wrapName(document->data().wrap);
     text += users.empty() ? std::string("; no Animation Player uses it yet (set_properties clips)") :
-                            "; shared by " + plural(users.size(), "component") + " (the edit changes every one)";
+                            "; shared by " + std::to_string(users.size()) + (users.size() == 1 ? " Animation Player entry" : " Animation Player entries") + " in open scenes and prefabs (the edit changes every user)";
     text += changed ? " (one project undo step: undo scope project)" : " (no change: nothing written)";
     for (const std::string& line : ctx.changes) text += "\n" + line;
     for (const Json& warning : warningList) text += "\nwarning: " + warning.get<std::string>();
@@ -1209,9 +1304,22 @@ void getClip(const CallPtr& call) {
         Json tracks = Json::array();
         const std::vector<AnimationClip::Track>& runtimeTracks = clip->getTracks();
         std::vector<std::vector<anim::TrackSample>> perTime;
+        // the root's Animation Player entry of this clip may override its wrap (clips[i].wrap)
+        ClipWrapMode wrap = clip->getWrap();
+        if (root != NULL_ENTITY) {
+            if (const AnimationPlayerComponent* player = scene->scene->findComponent<AnimationPlayerComponent>(root)) {
+                for (const AnimationPlayerClip& entry : player->clips) {
+                    if (entry.wrap == ClipWrapMode::Default || entry.clip.empty()) continue;
+                    if (AnimationClipDocument::open(project, entryClipJson(project, entry.clip), nullptr) == document) {
+                        wrap = entry.wrap;
+                        break;
+                    }
+                }
+            }
+        }
         for (float t : at) {
             std::vector<anim::TrackSample> samples;
-            ActionSystem::sampleClip(*clip, anim::wrapClipTime(t, clip->getLength(), clip->getWrap()), samples);
+            ActionSystem::sampleClip(*clip, anim::wrapClipTime(t, clip->getLength(), wrap), samples);
             perTime.push_back(samples);
         }
         for (size_t i = 0; i < runtimeTracks.size(); i++) {
@@ -1255,7 +1363,8 @@ void getClip(const CallPtr& call) {
         }
         Json timesOut = Json::array();
         for (float t : at) timesOut.push_back(r6(t));
-        out["samples"] = {{"times", timesOut}, {"tracks", tracks}};
+        // relative tracks give their own offsets / factors (not the posed values)
+        out["samples"] = {{"times", timesOut}, {"wrap_used", anim::wrapName(wrap)}, {"tracks", tracks}};
         sampled = "; sampled at " + std::to_string(at.size()) + " time(s) (samples)";
     }
 
@@ -1356,7 +1465,14 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
                 return true;
             }
         }
-    } else if (!controller.getDocument()) {
+    } else if (!controller.getDocument() || controller.getStateName().empty()) {
+        // bound before this GameObject had its clips (the Animation window binds on selection):
+        // open the default clip now
+        const AnimationPlayerComponent& player = engineScene->getComponent<AnimationPlayerComponent>(root);
+        const std::string state = std::find(names.begin(), names.end(), player.defaultClip) != names.end() ? player.defaultClip : names.front();
+        controller.openState(state, nullptr);
+    }
+    if (!controller.getDocument()) {
         call->fail("\"" + engineScene->getEntityName(root) + "\"'s clip \"" + controller.getStateName() +
                    "\" can't be opened (missing file?): pass state, or fix clips with set_properties.");
         return true;
@@ -1385,33 +1501,30 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
                      {"clip", c.getClipPath()}, {"previewing", c.isPreviewing()}, {"playing", c.isPlaying()},
                      {"time", r6(c.getTime())}, {"length", r6(c.getLength())}};
         Json bound = Json::array();
-        for (const AnimationClipController::BoundTransform& t : c.sampledBoundTransforms(8)) {
+        const std::vector<AnimationClipController::BoundTransform> all = c.sampledBoundTransforms(std::numeric_limits<size_t>::max());
+        for (size_t i = 0; i < all.size() && i < 8; i++) {
+            const AnimationClipController::BoundTransform& t = all[i];
             bound.push_back({{"path", t.path}, {"position", McpValues::toJson(t.position)}, {"rotation", McpValues::toJson(t.rotation)},
                              {"scale", McpValues::toJson(t.scale)}});
         }
         data["bound"] = bound;
+        data["bound_total"] = all.size();
         data["unresolved"] = c.getUnresolvedPaths();
+        // the preview loops the clip whatever its wrap (the window's playback); Play mode follows wrap
         std::string text = "Clip preview: " + action + " \"" + c.getStateName() + "\" (" + c.getClipPath() + ") at " + fmt(c.getTime()) + " s" +
-                           (c.isPreviewing() ? "" : ", not previewing (the scene shows its saved pose)") + "; " +
-                           plural(bound.size(), "bound transform") + " sampled";
+                           (c.isPreviewing() ? "" : ", not previewing (the scene shows its saved pose)") +
+                           (c.isPlaying() ? ", playing (looped, whatever the wrap)" : "") + "; " +
+                           (all.size() > bound.size() ? std::to_string(bound.size()) + " of " + std::to_string(all.size()) + " bound transforms"
+                                                      : plural(bound.size(), "bound transform")) + " sampled";
         if (!c.getUnresolvedPaths().empty()) text += "; unresolved paths: " + std::to_string(c.getUnresolvedPaths().size());
         call->ok(text, data);
     };
     const int waitMs = std::clamp(args.contains("wait_ms") && args["wait_ms"].is_number() ? args["wait_ms"].get<int>() : 0, 0, 30000);
-    if (waitMs > 0 && action == "play") {
-        // the preview advances each frame for the wait (the Animation window drives it while it
-        // shows; this does it only when nothing else moved the playhead since the last frame)
+    if (waitMs > 0) {
+        // the App's per-frame hook advances a playing preview (AnimationClipAppHooks::frame)
         auto start = std::make_shared<std::chrono::steady_clock::time_point>(std::chrono::steady_clock::now());
-        auto last = std::make_shared<std::chrono::steady_clock::time_point>(*start);
-        auto lastTime = std::make_shared<float>(controller.getTime());
-        call->waitUntil([project, start, last, lastTime, waitMs]() {
-            AnimationClipController& c = AnimationClipController::shared(project);
-            const auto now = std::chrono::steady_clock::now();
-            const double dt = std::chrono::duration<double>(now - *last).count();
-            *last = now;
-            if (c.isPlaying() && c.getTime() == *lastTime) c.update(dt);
-            *lastTime = c.getTime();
-            return now - *start >= std::chrono::milliseconds(waitMs);
+        call->waitUntil([start, waitMs]() {
+            return std::chrono::steady_clock::now() - *start >= std::chrono::milliseconds(waitMs);
         }, waitMs + 5000, [report](bool) { report(); });
         return true;
     }

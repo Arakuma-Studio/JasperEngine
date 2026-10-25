@@ -78,7 +78,8 @@ namespace jasperengine::editor{
         bool openState(const std::string& state, std::string* error);
         // something to show without a selection: a clip opened target-less
         bool hasTargetlessClip() const;
-        // every frame (also while the window is hidden or closed): the controller's update
+        // every frame (also while the window is hidden or closed): the notice timeout and the
+        // controller's takesKeys (its update runs from the App's per-frame hook)
         void update(double dt, bool clipModeShown, bool focused);
         // the window closed or left clip mode: the preview restores
         void stopPreview();
