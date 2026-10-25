@@ -3,8 +3,8 @@
 
 // S13's test project: the post FX of a game on a phone's GPU path (GLES3 / WebGL2). A lit box on
 // a floor drawn through the uber pass with the VHS tape, the Lens film grain, film damage and
-// halation (its own two passes, bloom being off), with dynamic resolution on. After eight frames
-// it logs what the renderer applies; tools/android-emulator-test.sh checks the lines
+// halation (its own two passes, bloom being off), with dynamic resolution on. Once the uber pass
+// runs it logs what the renderer applies; tools/android-emulator-test.sh checks the lines
 // (ANDROID_PROJECT=post-fx tools/build.sh android, then android-expect.txt).
 
 #include "JasperEngine.h"
@@ -46,12 +46,18 @@ JASPERENGINE_INIT void init(){
     post.dynamicResolutionEnabled = true;
     scene.setPostProcessing(post);
 
-    // logged at the 8th frame: before the web gate's "ready" (frame 15), after the controller's
-    // first measurements
+    // logged once the uber pass runs and dynamic resolution has measured a frame (the variant may
+    // still be building at first: runtime shaders on a phone), or after 600 frames as it is then
     Engine::onUpdate.add("postFxTest", [](){
-        if (++frames != 8)
+        if (frames < 0)
             return;
+        frames++;
         RenderSystem* render = scene.getSystem<RenderSystem>().get();
+        const bool settled = render->getActivePostProcessingTiers().uber && render->getDynamicResolutionStatus().running &&
+                             std::string(render->getDynamicResolutionStatus().source) != "none";
+        if (!settled && frames < 600)
+            return;
+        frames = -1;
         const PostProcessingTiers& tiers = render->getActivePostProcessingTiers();
         Log::print("[postfx] uber %d features 0x%x chain %d", tiers.uber ? 1 : 0, tiers.uberFeatures, tiers.halationChain ? 1 : 0);
         const DynamicResolutionStatus status = render->getDynamicResolutionStatus();
