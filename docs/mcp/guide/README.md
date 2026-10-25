@@ -8,6 +8,7 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 
 | File | Resource | Contents |
 |---|---|---|
+| [lua-scripting.md](lua-scripting.md) | `jasper://docs/lua-scripting` | writing a Lua script: a complete script, property types, events, properties vs methods, time, what Lua lacks (the guide's Lua section is its digest) |
 | [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls (checked against `engine/core/script/binding/*`) |
 | [cpp-scripting.md](cpp-scripting.md) | `jasper://docs/cpp-scripting` | C++ script kinds, DPROPERTY, event macros, includes, script dirs, ProjectBuild.cmake |
 | [data-safety.md](data-safety.md) | `jasper://docs/data-safety` | atomic saves, load reports (preserved/dropped issues, did-you-mean), the degraded_document save refusal and allow_data_loss, Auto Save backups and open_scene recovery, the project lock |

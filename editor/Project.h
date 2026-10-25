@@ -17,6 +17,7 @@
 #include "SceneBackup.h"
 #include "io/ScopedFileLock.h"
 #include <optional>
+#include "io/watch/FileWatcher.h"
 #include "util/AssetDatabase.h"
 #include "asset/AssetIndex.h"
 #include "asset/AssetMap.h"
@@ -25,7 +26,6 @@
 #include "util/ScriptParser.h"
 #include "util/ScopedDefaultEntityPool.h"
 #include "util/CxxStandards.h"
-#include "util/HtmlUIWatcher.h"
 #include "util/Util.h"
 #include "physics/PlacementSettings.h"
 #include "render/shadow/ShadowTiers.h"
@@ -40,6 +40,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <span>
 #include <tuple>
 #include <atomic>
 #include <future>
@@ -747,7 +748,6 @@ namespace jasperengine::editor{
 
         // Prefab Mode: the open prefab stages, bottom first (editor/PrefabStage.cpp)
         std::vector<std::unique_ptr<PrefabStage>> prefabStages;
-        HtmlUIWatcher htmlUIWatcher;
         bool prefabAutoSave = true;
         PrefabContextVisibility prefabContextVisibility = PrefabContextVisibility::Gray;
         // Saved from a stage while a scene played: the scene restored by Stop follows them then
@@ -833,7 +833,6 @@ namespace jasperengine::editor{
         using MaterialLinkKey = std::tuple<uint32_t, Entity, unsigned int>;
         struct MaterialLinkEntry {
             std::string filePath;
-            std::filesystem::file_time_type lastWriteTime;
         };
 
         std::filesystem::path projectPath;
@@ -841,8 +840,7 @@ namespace jasperengine::editor{
         mutable std::filesystem::path tempCheckPath;
         mutable bool tempCheckResult = false;
         std::map<MaterialLinkKey, MaterialLinkEntry> materialFileLinks;
-        std::chrono::steady_clock::time_point lastMaterialRefreshTime;
-        static constexpr double materialRefreshIntervalSec = 0.2;
+        bool watchFiles = false;
 
         std::map<std::filesystem::path, Prefab> prefabAssets;
 
@@ -873,10 +871,11 @@ namespace jasperengine::editor{
 
         // GUID <-> path of the prefab files (and later other asset types)
         AssetDatabase assetDatabase;
-        std::chrono::steady_clock::time_point lastAssetRefreshTime;
-        // the poll's disk walk, an S06 Background job (R23); applied on the main thread
+        // the walk of the disk refresh(scan) compares, an S06 Background job (R23) started when
+        // the file watcher reports a change (S05: no poll); applied on the main thread
         jobs::Task<AssetDatabase::DiskScan> assetScan;
-        std::chrono::steady_clock::duration lastAssetScanDuration{};
+        // a watcher batch arrived: walk again (after the walk in flight, if any)
+        bool assetScanRequested = false;
         void waitForAssetScan();
         // Found while resolving references (in the middle of an import), applied on refresh
         std::vector<AssetDatabase::Change> pendingAssetChanges;
@@ -1416,7 +1415,6 @@ namespace jasperengine::editor{
         // deleted (R16), the lock released
         void endProjectSession();
 
-        void refreshLinkedMaterials(bool force = false);
         // Reimports changed FBX files of the scenes' models and reloads them
         void refreshFbxImports();
         // Imports an FBX into its .glb when that is missing or stale, or always when forced. Any thread.
@@ -1431,14 +1429,16 @@ namespace jasperengine::editor{
         bool flushFbxReloads(std::string& error);
         // For exports, with all scenes loaded: makes the imports of their FBX models current or fails
         bool prepareFbxModelsForExport(std::string& error);
+        // The .material files submeshes are linked to (project-relative). Their changes on
+        // disk reach the links through the hot reload (editor/reload, S05).
+        std::vector<std::string> getLinkedMaterialFiles() const;
+        // `relativePath` was read again: every submesh linked to it takes `material`
+        void applyLinkedMaterialFile(const std::string& relativePath, const Material& material);
 
         //=== HTML UI hot reload ===
-        // The scenes whose documents the HtmlUIWatcher checks: the loaded scenes, Prefab Mode
+        // The scenes whose HTML UI documents hot reload (editor/reload): the loaded scenes, Prefab Mode
         // stages and the playing copies of child scenes
         std::vector<SceneProject*> getHtmlUIScenes();
-        HtmlUIWatcher& getHtmlUIWatcher();
-        // the code editor saved a file: the watcher checks now (any file; it filters itself)
-        void notifyHtmlUIFileSaved(const std::filesystem::path& path);
 
         void updateGeneratedSources();
         void markGeneratedSourcesDirty();
@@ -1478,6 +1478,13 @@ namespace jasperengine::editor{
         uint32_t loadUntitledScene(const std::string& text, const std::string& displayName);
         void openScene(fs::path filepath, bool closePrevious = true);
         void closeScene(uint32_t sceneId, bool systemClose = false);
+        // The open scene (or prefab stage) is read again from its file, its unsaved changes
+        // dropped (the hot reload's Reload, S05 R11; not an undo step). False (and `error`)
+        // while a scene plays or when the file cannot be read (the open copy stays).
+        bool reloadSceneFromDisk(uint32_t sceneId, std::string* error = nullptr);
+        // The editor (and its MCP server) watch the open project's files; the CLI commands do
+        // not (no watcher thread for a one-shot export or check). Off by default.
+        void setWatchFiles(bool watch) { watchFiles = watch; }
         void removeScene(uint32_t sceneId);
 
         //=== Non-interactive scene and project APIs (MCP server, CLI) ===
@@ -1590,6 +1597,9 @@ namespace jasperengine::editor{
         // Flushes compiled forked-shader caches and flags meshes that use a custom
         // shader for reload, so editing a shader source file updates the viewport.
         void invalidateCustomShaders();
+        // Only the forks `which` names (their custom shader name): the hot reload of some shader
+        // files keeps every other fork bound (S05 R11)
+        void invalidateCustomShaders(const std::function<bool(const std::string& fork)>& which);
 
         SceneProject* getScene(uint32_t sceneId);
         const SceneProject* getScene(uint32_t sceneId) const;
@@ -1749,10 +1759,18 @@ namespace jasperengine::editor{
         // Resolves a PrefabComponent in place (path updated, a missing guid filled in);
         // false when missing. pathChanged reports a path the GUID moved.
         bool resolvePrefabReference(PrefabComponent& component, bool* pathChanged = nullptr);
-        // External changes to prefab files (moved, copied, deleted or edited outside the
-        // editor). Called every frame, looks at most every two seconds unless forced; does
-        // nothing while a scene plays.
+        // Assets moved, copied, deleted or edited outside the editor (S04 refresh: moves keep
+        // their GUIDs and record redirects, orphan metas are adopted). Called every frame: it
+        // applies the walk the file watcher's last changes started (applyFileChanges), and
+        // starts none of its own (no poll). `force` (Assets > Refresh, a tool answering from
+        // the database) looks at the disk now. Does nothing while a scene plays.
         void refreshAssetDatabase(bool force = false);
+        // Every editor loop iteration: starts or applies the walk the watcher asked for
+        void updateAssetScan() { refreshAssetDatabase(false); }
+        // Files added, removed, renamed or edited on disk by another program (the file
+        // watcher, S05 R14): the database looks at the disk again, on a Background job. False
+        // while a scene plays (nothing applied: refreshAssetDatabase after Play).
+        bool applyFileChanges(std::span<const FileChange> changes);
         // A prefab file or a directory holding some appeared (a copy, a deleted file put back
         // by an undo): they are registered, and Missing Prefab instances they resolve relinked
         void importPrefabFiles(const std::filesystem::path& path, bool copy = false, std::map<std::string, std::string>* copyGuids = nullptr);

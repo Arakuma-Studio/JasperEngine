@@ -137,6 +137,10 @@ CodeEditor* EditorHost::getCodeEditor() const {
     return nullptr;
 }
 
+ProjectWindow* EditorHost::getProjectWindow() const {
+    return nullptr;
+}
+
 ImageViewerWindow* EditorHost::getImageViewerWindow() const {
     return nullptr;
 }

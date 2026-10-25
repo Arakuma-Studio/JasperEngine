@@ -452,6 +452,7 @@ include_directories (${JASPERENGINE_ROOT}/core/buffer)
 include_directories (${JASPERENGINE_ROOT}/core/component)
 include_directories (${JASPERENGINE_ROOT}/core/ecs)
 include_directories (${JASPERENGINE_ROOT}/core/io)
+include_directories (${JASPERENGINE_ROOT}/core/io/watch)
 include_directories (${JASPERENGINE_ROOT}/core/manager)
 include_directories (${JASPERENGINE_ROOT}/core/math)
 include_directories (${JASPERENGINE_ROOT}/core/object)
@@ -573,6 +574,9 @@ set(JASPERENGINE_TEXSYNTH_SOURCES
 set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
+    ${EDITOR_DIR}/cli/SchemaArgs.cpp
+    ${EDITOR_DIR}/cli/McpClient.cpp
+    ${EDITOR_DIR}/cli/CallCommand.cpp
     ${EDITOR_DIR}/App.cpp
     ${EDITOR_DIR}/AppSettings.cpp
     ${EDITOR_DIR}/Theme.cpp
@@ -619,6 +623,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpRefs.cpp
     ${EDITOR_DIR}/mcp/McpRegistry.cpp
     ${EDITOR_DIR}/mcp/McpSchema.cpp
+    ${EDITOR_DIR}/mcp/McpToolGroups.cpp
+    ${EDITOR_DIR}/mcp/McpInstances.cpp
+    ${EDITOR_DIR}/mcp/McpSocket.cpp
     ${EDITOR_DIR}/mcp/McpServer.cpp
     ${EDITOR_DIR}/mcp/McpTransportHttp.cpp
     ${EDITOR_DIR}/mcp/McpTransportStdio.cpp
@@ -628,6 +635,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/McpLaunch.cpp
     ${EDITOR_DIR}/mcp/EngineApiContext.cpp
     ${EDITOR_DIR}/mcp/TerrainMaps.cpp
+    ${EDITOR_DIR}/mcp/tools/McpTools.cpp
     ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
@@ -664,6 +672,18 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/EntityClipboard.cpp
     ${EDITOR_DIR}/util/EntityPath.cpp
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
+    ${EDITOR_DIR}/reload/HotReloadService.cpp
+    ${EDITOR_DIR}/window/StatusBar.cpp
+    ${EDITOR_DIR}/reload/handlers/Assets.cpp
+    ${EDITOR_DIR}/reload/handlers/Audio.cpp
+    ${EDITOR_DIR}/reload/handlers/Common.cpp
+    ${EDITOR_DIR}/reload/handlers/Fonts.cpp
+    ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
+    ${EDITOR_DIR}/reload/handlers/Materials.cpp
+    ${EDITOR_DIR}/reload/handlers/Models.cpp
+    ${EDITOR_DIR}/reload/handlers/Scripts.cpp
+    ${EDITOR_DIR}/reload/handlers/Shaders.cpp
+    ${EDITOR_DIR}/reload/handlers/Textures.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
     ${EDITOR_DIR}/asset/AssetFileWrite.cpp
@@ -686,7 +706,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/HtmlUiExamples.cpp
     ${EDITOR_DIR}/util/ScriptParser.cpp
     ${EDITOR_DIR}/util/ScriptEvents.cpp
-    ${EDITOR_DIR}/util/HtmlUIWatcher.cpp
     ${EDITOR_DIR}/util/HtmlUITemplates.cpp
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
@@ -741,6 +760,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/UndoHistoryWindow.cpp
     ${EDITOR_DIR}/window/SceneWindow.cpp
     ${EDITOR_DIR}/window/PrefabStageBar.cpp
+    ${EDITOR_DIR}/window/ExternalChangeBar.cpp
     ${EDITOR_DIR}/window/GameWindow.cpp
     ${EDITOR_DIR}/window/MainToolbar.cpp
     ${EDITOR_DIR}/window/PlayInput.cpp

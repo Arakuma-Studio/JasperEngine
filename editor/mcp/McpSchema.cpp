@@ -98,10 +98,13 @@ Json vec4(const std::string& description) { return fixedVector(4, description); 
 
 // The two shapes in words (McpValues validates them): an anyOf of both costs ~200 characters more
 Json quat(const std::string& description) {
-    return {
-        {"type", {"array", "object"}},
-        {"description", description.empty() ? "[x,y,z,w] or {\"euler\":[x,y,z]} degrees." : description}
-    };
+    return described({
+        {"anyOf", Json::array({
+            fixedVector(4, ""),
+            {{"type", "object"}, {"properties", {{"euler", fixedVector(3, "")}}}, {"required", {"euler"}},
+             {"additionalProperties", false}}
+        })}
+    }, description);
 }
 
 Json color(const std::string& description) {

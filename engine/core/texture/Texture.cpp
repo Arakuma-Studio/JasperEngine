@@ -62,7 +62,7 @@ Texture::Texture(const std::string& id, TextureData data): Texture(){
 
     this->data = std::make_shared<std::array<TextureData,6>>();
     this->data->at(0) = data;
-    this->data = TextureDataPool::get(id, *this->data.get());
+    adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 }
 
 namespace {
@@ -94,6 +94,8 @@ Texture::Texture(const Texture& rhs){
         pathGuids[i] = rhs.pathGuids[i];
     }
     data = rhs.data;
+    dataGeneration = rhs.dataGeneration;
+    checkedEpoch = rhs.checkedEpoch;
     numFaces = rhs.numFaces;
     loadFromPath = rhs.loadFromPath;
     releaseDataAfterLoad = rhs.releaseDataAfterLoad;
@@ -119,6 +121,8 @@ Texture& Texture::operator=(const Texture& rhs){
             pathGuids[i] = rhs.pathGuids[i];
         }
         data = rhs.data;
+        dataGeneration = rhs.dataGeneration;
+        checkedEpoch = rhs.checkedEpoch;
         numFaces = rhs.numFaces;
         loadFromPath = rhs.loadFromPath;
         releaseDataAfterLoad = rhs.releaseDataAfterLoad;
@@ -211,7 +215,7 @@ void Texture::setData(const std::string& id, TextureData data){
 
     this->data = std::make_shared<std::array<TextureData,6>>();
     this->data->at(0) = data;
-    this->data = TextureDataPool::get(id, *this->data.get());
+    adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 
     this->render = TexturePool::get(getRenderId());
 }
@@ -221,7 +225,7 @@ void Texture::setId(const std::string& id){
     clearPathGuids(pathGuids);
     if (!id.empty()) {
         this->render = TexturePool::get(getRenderId());
-        this->data = TextureDataPool::get(id);
+        adoptPoolData(TextureDataPool::get(id));
     }
 }
 
@@ -343,7 +347,7 @@ void Texture::setCubeDatas(const std::string& id, TextureData front, TextureData
     this->data->at(0) = right;
     this->data->at(2) = up;
     this->data->at(3) = down;
-    this->data = TextureDataPool::get(id, *this->data.get());
+    adoptPoolData(TextureDataPool::get(id, *this->data.get()));
 
     this->render = TexturePool::get(getRenderId());
 }
@@ -398,6 +402,29 @@ std::string Texture::buildPathTextureId() const {
     return pathId;
 }
 
+void Texture::adoptPoolData(std::shared_ptr<std::array<TextureData,6>> pooled) const {
+    data = std::move(pooled);
+    dataGeneration = TextureDataPool::generation(id);
+    checkedEpoch = TextureDataPool::getReplaceEpoch();
+}
+
+void Texture::refreshFromPool() const {
+    const uint32_t epoch = TextureDataPool::getReplaceEpoch();
+    if (epoch == checkedEpoch || id.empty() || framebuffer) {
+        return;
+    }
+    checkedEpoch = epoch;
+    const uint32_t generation = TextureDataPool::generation(id);
+    if (generation == dataGeneration) {
+        return;
+    }
+    // hot reloaded: the new pixels for this copy too (undo history, prefab caches...)
+    if (std::shared_ptr<std::array<TextureData,6>> pooled = TextureDataPool::get(id)) {
+        data = std::move(pooled);
+        dataGeneration = generation;
+    }
+}
+
 TextureLoadResult Texture::load() {
     TextureLoadResult result;
     result.id = id;
@@ -407,12 +434,14 @@ TextureLoadResult Texture::load() {
         return result;
     }
 
+    refreshFromPool();
+
     // Refresh from the data pool if we don't have a local reference yet, skipping
     // a released entry that other Texture copies keep alive while it is replaced.
     if (!data) {
         std::shared_ptr<std::array<TextureData,6>> pooledData = TextureDataPool::get(id);
         if (hasTexturePixels(pooledData, numFaces)) {
-            data = pooledData;
+            adoptPoolData(pooledData);
         }
     }
 
@@ -448,7 +477,7 @@ TextureLoadResult Texture::load() {
         }
         result = TextureDataPool::loadFromFile(id, aPaths, numFaces, isAlphaBorderFixed());
         if (result && result.data) {
-            data = result.data;
+            adoptPoolData(result.data);
             needLoad = false;
         } else if (result.state == ResourceLoadState::Failed) {
             needLoad = false;
@@ -572,10 +601,12 @@ void Texture::setPathGuid(size_t index, const Guid& guid){
 }
 
 TextureData& Texture::getData(size_t index) const{
+    refreshFromPool();
     return data->at(index);
 }
 
 bool Texture::hasData() const{
+    refreshFromPool();
     return data != nullptr;
 }
 
@@ -603,6 +634,7 @@ unsigned int Texture::getWidth() const{
     if (this->framebuffer){
         return framebuffer->getWidth();
     }
+    refreshFromPool();
     if (data){
         return static_cast<unsigned int>(data->at(0).getOriginalWidth());
     }
@@ -617,6 +649,7 @@ unsigned int Texture::getHeight() const{
     if (this->framebuffer){
         return framebuffer->getHeight();
     }
+    refreshFromPool();
     if (data){
         return static_cast<unsigned int>(data->at(0).getOriginalHeight());
     }
@@ -628,6 +661,7 @@ unsigned int Texture::getHeight() const{
 }
 
 bool Texture::isTransparent() const{
+    refreshFromPool();
     if (data){
         return getData().isTransparent();
     }

@@ -511,6 +511,7 @@ void registerConsoleTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "wait_for_log";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Wait for Log";
         tool.description =
             "Wait until something matching is logged after `since` (a read_console next_cursor): returns the first "
@@ -532,6 +533,7 @@ void registerConsoleTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "set_log_level";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Set Log Level";
         tool.description =
             "Set a log level: of a category (or every category), or with sink of one sink (console, file, memory = "
@@ -549,6 +551,7 @@ void registerConsoleTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "get_log_config";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Get Log Config";
         tool.description =
             "The logger: categories with their levels, sinks with theirs, drop and rate-limit counters, queue use.";
@@ -562,6 +565,7 @@ void registerConsoleTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "list_timers";
+        tool.group = "diagnostics";  // S31 tool groups: listed once enabled, callable always
         tool.title = "List Timers";
         tool.description =
             "Pending timers (Lua Timer, engine and editor scheduler) per clock, and the 100 nearest with name, owner "

@@ -238,7 +238,7 @@ class Scratch:
 
     @classmethod
     def make(cls, project: str | Path | None = None, create: bool = False,
-             prefix: str = "jasper-mcp-") -> "Scratch":
+             prefix: str = "jasper-mcp-", settings: dict[str, Any] | None = None) -> "Scratch":
         root = Path(tempfile.mkdtemp(prefix=prefix))
         home = root / "home"
         home.mkdir()
@@ -250,13 +250,15 @@ class Scratch:
             if not (src / "project.yaml").exists():
                 raise HarnessError(f"{src} has no project.yaml")
             shutil.copytree(src, proj, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-        settings: dict[str, Any] = {
+        extra_settings = settings
+        settings = {
             "window": {"width": 1600, "height": 900, "maximized": True},
             "mcp": {"http_token": HTTP_TOKEN},
         }
         if not create:
             settings["last_project_path"] = str(proj)
             settings["recent_projects"] = [str(proj)]
+        settings.update(extra_settings or {})
         (root / "settings.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))
         return cls(root=root, project=proj, home=home, stderr_log=root / "editor.stderr.log")
 
@@ -267,7 +269,8 @@ class Scratch:
 def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch",
                 command: list[str] | None = None, display: str | None = None,
                 headless: bool = True, extra_args: list[str] | None = None,
-                inherit_display: bool = False, ui_probe: bool = False) -> tuple[list[str], dict[str, str], Path]:
+                inherit_display: bool = False, extra_env: dict[str, str] | None = None,
+                ui_probe: bool = False) -> tuple[list[str], dict[str, str], Path]:
     """argv, environment and cwd of `<editor> mcp ...` for this scratch dir.
 
     Also used by tests that need a raw subprocess (e.g. the stdout purity test).
@@ -299,6 +302,7 @@ def launch_spec(scratch: Scratch, *, create: bool = False, name: str = "Scratch"
         env["JASPER_UI_PROBE"] = str(scratch.root / "ui-probe.json")
     else:
         env.pop("JASPER_UI_PROBE", None)
+    env.update(extra_env or {})
     return cmd + args, env, scratch.root
 
 
@@ -371,6 +375,8 @@ class Editor:
               "none"    inherit the caller's DISPLAY (a visible editor on a desktop)
     command   editor command (default: editor_command()); fake=True uses tools/mcp/fake_server.py
     extra_args  appended to the `mcp` command line
+    env       extra environment variables of the editor (stdio mode)
+    settings  extra top-level keys of the scratch settings.yaml (stdio mode), e.g. {"mcp": {...}}
     startup_timeout  seconds for the editor to answer initialize
     call_timeout     default seconds per tool call
     keep      keep the scratch dir even on success
@@ -381,7 +387,8 @@ class Editor:
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
                  url: str | None = None, token: str | None = None, xvfb: str | None = None,
                  command: list[str] | None = None, fake: bool | None = None,
-                 extra_args: list[str] | None = None, startup_timeout: float = 180.0,
+                 extra_args: list[str] | None = None, env: dict[str, str] | None = None,
+                 settings: dict[str, Any] | None = None, startup_timeout: float = 180.0,
                  call_timeout: float = 300.0, keep: bool | None = None, label: str = "",
                  scratch_prefix: str | None = None, ui_probe: bool = False):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
@@ -398,6 +405,8 @@ class Editor:
             raise HarnessError(f"xvfb must be editor, harness or none, not {self.xvfb_mode!r}")
         self.command = command or (fake_editor_command() if fake else None)
         self.extra_args = extra_args or []
+        self.extra_env = env or {}
+        self.extra_settings = settings or {}
         self.startup_timeout = startup_timeout
         self.call_timeout = call_timeout
         self.keep = _env_flag("JASPER_KEEP_SCRATCH") if keep is None else keep
@@ -449,7 +458,7 @@ class Editor:
             streams = await self._stack.enter_async_context(streamable_http_client(self.url, http_client=http))
         else:
             extra = {"prefix": self.scratch_prefix} if self.scratch_prefix else {}
-            self.scratch = Scratch.make(self.project_src, create=self.create, **extra)
+            self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":
@@ -457,7 +466,8 @@ class Editor:
                 display = self._xvfb.start()
             argv, env, cwd = launch_spec(
                 self.scratch, create=self.create, name=self.name, command=self.command,
-                display=display, extra_args=self.extra_args, inherit_display=inherit, ui_probe=self.ui_probe)
+                display=display, extra_args=self.extra_args, inherit_display=inherit, extra_env=self.extra_env,
+                ui_probe=self.ui_probe)
             self.argv = argv
             self._stderr_file = open(self.scratch.stderr_log, "w", buffering=1)
             params = StdioServerParameters(command=argv[0], args=argv[1:], env=env, cwd=str(cwd))
@@ -495,18 +505,24 @@ class Editor:
 
     # -- tools -------------------------------------------------------------
 
-    async def tools(self) -> list[Any]:
-        """tools/list (all pages). Items are mcp Tool objects (.name, .description, .input_schema)."""
+    async def tools(self, groups: str | list[str] | None = "all") -> list[Any]:
+        """tools/list (all pages). Items are mcp Tool objects (.name, .description, .input_schema, .meta).
+
+        groups: the tool groups to list (params._meta["jasper/groups"]): "all" (default: every
+        registered tool, so tests never need tool_groups first), a list of group names, or None
+        for what the session lists by default (core plus the groups it enabled)."""
         tools: list[Any] = []
         cursor = None
+        meta = {"jasper/groups": groups} if groups is not None else None
         while True:
-            params = types.PaginatedRequestParams(cursor=cursor) if cursor else None
+            params = types.PaginatedRequestParams(cursor=cursor, _meta=meta) if cursor or meta else None
             r = await self.session.list_tools(params=params)
             tools += list(r.tools)
             cursor = getattr(r, "next_cursor", None)
             if not cursor:
                 break
-        self.tool_list = tools
+        if groups == "all":
+            self.tool_list = tools
         return tools
 
     @property
@@ -713,8 +729,11 @@ class RawEditor:
 
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
                  xvfb: str | None = None, command: list[str] | None = None, keep: bool | None = None,
-                 extra_args: list[str] | None = None):
+                 extra_args: list[str] | None = None, env: dict[str, str] | None = None,
+                 settings: dict[str, Any] | None = None):
         self.project_src, self.create, self.name = project, create, name
+        self.extra_env = env or {}
+        self.extra_settings = settings or {}
         self.xvfb_mode = xvfb or os.environ.get("JASPER_XVFB", "editor")
         self.command = command
         self.extra_args = extra_args or []
@@ -731,14 +750,14 @@ class RawEditor:
         self._new = asyncio.Event()
 
     async def __aenter__(self) -> "RawEditor":
-        self.scratch = Scratch.make(self.project_src, create=self.create)
+        self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings)
         display = None
         if self.xvfb_mode == "harness":
             self._xvfb = Xvfb()
             display = self._xvfb.start()
         argv, env, cwd = launch_spec(self.scratch, create=self.create, name=self.name, command=self.command,
                                      display=display, extra_args=self.extra_args,
-                                     inherit_display=self.xvfb_mode == "none")
+                                     inherit_display=self.xvfb_mode == "none", extra_env=self.extra_env)
         self._stderr = open(self.scratch.stderr_log, "w")
         self.proc = await asyncio.create_subprocess_exec(
             *argv, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=self._stderr,
@@ -845,6 +864,138 @@ class RawEditor:
                 print(f"[harness] scratch kept: {self.scratch.root}", file=sys.stderr)
             else:
                 self.scratch.remove()
+
+
+# ---------------------------------------------------------------------------
+# Raw Streamable HTTP access (transport-level tests)
+
+
+def free_port() -> int:
+    """A TCP port on 127.0.0.1 that nothing listens on right now."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@dataclass
+class HttpAnswer:
+    status: int
+    headers: dict[str, str]           # lower-case names
+    messages: list[dict]              # JSON-RPC messages of the body (one, or the SSE events)
+    body: str
+
+    @property
+    def sse(self) -> bool:
+        return self.headers.get("content-type", "").startswith("text/event-stream")
+
+    @property
+    def response(self) -> dict | None:
+        """The JSON-RPC response (the last message with an id)."""
+        for m in reversed(self.messages):
+            if "id" in m and ("result" in m or "error" in m):
+                return m
+        return None
+
+    def notifications(self, method: str | None = None) -> list[dict]:
+        return [m for m in self.messages if "id" not in m and (method is None or m.get("method") == method)]
+
+
+class HttpSession:
+    """The editor's MCP over Streamable HTTP with no client library in between: one JSON-RPC
+    message per POST (http.client), the Mcp-Session-Id kept after initialize.
+
+        http = HttpSession(port)
+        http.initialize()
+        a = http.request("tools/call", {"name": "tool_groups", "arguments": {}}, sse=True)
+        a.sse, a.notifications("notifications/tools/list_changed"), a.response["result"]
+    """
+
+    def __init__(self, port: int, *, token: str | None = None, host: str = "127.0.0.1"):
+        self.port, self.token, self.host = port, token, host
+        self.session_id: str | None = None
+        self._next_id = 0
+
+    def post(self, message: dict | str, *, sse: bool = True, headers: dict[str, str] | None = None,
+             timeout: float = 120.0) -> HttpAnswer:
+        import http.client
+        conn = http.client.HTTPConnection(self.host, self.port, timeout=timeout)
+        try:
+            h = {"Content-Type": "application/json",
+                 "Accept": "application/json, text/event-stream" if sse else "application/json"}
+            if self.token:
+                h["Authorization"] = f"Bearer {self.token}"
+            if self.session_id:
+                h["Mcp-Session-Id"] = self.session_id
+            h.update(headers or {})
+            body = message if isinstance(message, str) else json.dumps(message)
+            conn.request("POST", "/mcp", body=body.encode(), headers=h)
+            r = conn.getresponse()
+            text = r.read().decode("utf-8", errors="replace")
+            hdrs = {k.lower(): v for k, v in r.getheaders()}
+        finally:
+            conn.close()
+        msgs: list[dict] = []
+        if hdrs.get("content-type", "").startswith("text/event-stream"):
+            for event in text.replace("\r\n", "\n").split("\n\n"):
+                data = "\n".join(line[5:].lstrip() for line in event.split("\n") if line.startswith("data:"))
+                if data:
+                    msgs.append(json.loads(data))
+        elif text.strip():
+            with contextlib.suppress(ValueError):
+                value = json.loads(text)
+                if isinstance(value, dict):
+                    msgs.append(value)
+        return HttpAnswer(r.status, hdrs, msgs, text)
+
+    def request(self, method: str, params: dict | None = None, *, sse: bool = True,
+                timeout: float = 120.0) -> HttpAnswer:
+        self._next_id += 1
+        msg: dict[str, Any] = {"jsonrpc": "2.0", "id": self._next_id, "method": method}
+        if params is not None:
+            msg["params"] = params
+        return self.post(msg, sse=sse, timeout=timeout)
+
+    def notify(self, method: str, params: dict | None = None) -> HttpAnswer:
+        msg: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            msg["params"] = params
+        return self.post(msg)
+
+    def initialize(self, version: str = "2025-11-25") -> dict:
+        a = self.request("initialize", {"protocolVersion": version, "capabilities": {},
+                                        "clientInfo": {"name": "jasper-harness-http", "version": "1"}})
+        if a.status != 200 or not a.response or "result" not in a.response:
+            raise HarnessError(f"HTTP initialize failed: {a.status} {a.body[:300]}")
+        self.session_id = a.headers.get("mcp-session-id")
+        self.notify("notifications/initialized")
+        return a.response["result"]
+
+
+async def wait_for_port(port: int, timeout: float = 60.0) -> None:
+    """Until something accepts connections on 127.0.0.1:port."""
+    import socket
+    deadline = time.monotonic() + timeout
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.0)
+            if s.connect_ex(("127.0.0.1", port)) == 0:
+                return
+        if time.monotonic() > deadline:
+            raise HarnessError(f"nothing listens on port {port} after {timeout}s")
+        await asyncio.sleep(0.2)
+
+
+def tool_meta(tool: Any) -> dict:
+    """A listed tool's _meta as a dict ({"jasper/group", "jasper/module"} from this editor)."""
+    meta = getattr(tool, "meta", None)
+    if meta is None:
+        return {}
+    if isinstance(meta, dict):
+        return meta
+    with contextlib.suppress(Exception):
+        return dict(meta.model_dump(by_alias=True))
+    return {}
 
 
 # ---------------------------------------------------------------------------

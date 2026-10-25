@@ -37,7 +37,7 @@ namespace jasperengine::editor::mcp::schema {
     Json vec2(const std::string& description);
     Json vec3(const std::string& description);
     Json vec4(const std::string& description);
-    // [x,y,z,w], or {"euler":[x,y,z]} in degrees (empty description: a default one)
+    // [x,y,z,w], or {"euler":[x,y,z]} in degrees (the instructions' Addressing explains it)
     Json quat(const std::string& description = {});
     // [r,g,b] or [r,g,b,a], 0-1
     Json color(const std::string& description = {});
@@ -52,7 +52,8 @@ namespace jasperengine::editor::mcp::schema {
     Json entityRef(const std::string& description = {});
     // An array of GameObject references
     Json entities(const std::string& description = {});
-    // Component type name as Catalog::getComponentType accepts (transform, mesh, rigidbody2d...)
+    // Component type name as Catalog::getComponentType accepts (transform, mesh, rigidbody2d...);
+    // empty description = none (the instructions' Addressing explains component names)
     Json componentName(const std::string& description = {});
     // Project-relative asset path (the description should say which kind of asset)
     Json assetPath(const std::string& description);

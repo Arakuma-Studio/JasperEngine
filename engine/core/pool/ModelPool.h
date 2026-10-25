@@ -7,6 +7,7 @@
 #include "Export.h"
 #include <map>
 #include <memory>
+#include <cstdint>
 #include <string>
 
 namespace tinygltf { class Model; }
@@ -22,6 +23,7 @@ namespace jasperengine{
     private:
         static models_t& getMap();
         static obj_models_t& getObjMap();
+        static std::map<std::string, uint32_t>& getGenerations();
 
     public:
         static std::shared_ptr<tinygltf::Model> getGLTF(const std::string& id);
@@ -32,6 +34,12 @@ namespace jasperengine{
         static void removeObj(const std::string& id);
         // Drops the entry even while others hold it, so the next load parses the file again
         static void invalidate(const std::string& id);
+
+        // Hot reload (S05 R13): the entry becomes the new parse and the id's generation goes
+        // up (one counter for both formats). Main thread.
+        static void replaceGLTF(const std::string& id, std::shared_ptr<tinygltf::Model> model);
+        static void replaceObj(const std::string& id, std::shared_ptr<ObjModelData> model);
+        static uint32_t generation(const std::string& id);
 
         // necessary for engine shutdown
         static void clear();

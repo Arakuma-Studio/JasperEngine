@@ -3549,6 +3549,7 @@ void registerPlayTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "get_play_changes";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Get Play Mode Changes";
         tool.description =
             "After play stop: the edits made while playing that can be kept, rows {id, kind, game_object, component, "
@@ -3563,6 +3564,7 @@ void registerPlayTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "apply_play_changes";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Apply Play Mode Changes";
         tool.description =
             "Keep chosen play-mode changes (ids from get_play_changes, or all) as one undo step on the restored scene; "
@@ -3579,6 +3581,7 @@ void registerPlayTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "discard_play_changes";
+        tool.group = "editor_ux";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Discard Play Mode Changes";
         tool.description = "Drop the play-mode changes waiting after a Stop.";
         tool.inputSchema = object({{"scene", sceneRef()}});

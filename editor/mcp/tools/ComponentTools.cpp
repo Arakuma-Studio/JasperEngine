@@ -881,11 +881,11 @@ void registerComponentTools(McpRegistry& registry) {
         tool.title = "Set Properties";
         tool.description =
             "Set component properties on GameObjects in one undo step (prefab overrides recorded); returns the "
-            "values read back. Values as the guide's Addressing says, plus colors \"#RRGGBB[AA]\", texture "
-            "{\"camera\": <entity>} (render texture), material: a fields object or a .material path (links it), "
-            "null clears a reference, custom values (colliders, frames, scripts...) as get_entity returns them. "
-            "Lists: {component, property, insert: value, index?} / {..., remove: index}. Paths index "
-            "(\"submeshes[0].material.baseColorFactor\").";
+            "values read back. Colors also \"#RRGGBB[AA]\"; enums/eases by name; textures/fonts/models by asset path "
+            "(texture {\"camera\": <entity>} = render texture); material: fields object or a .material path (links "
+            "it); GameObject refs or null; Prefab script properties a .prefab path; custom values (colliders, "
+            "frames, scripts...) as get_entity returns them. Lists: {component, property, insert: value, index?} / "
+            "{..., remove: index}. Paths index (\"submeshes[0].material.baseColorFactor\").";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},

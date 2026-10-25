@@ -110,6 +110,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | Code | Location | Used for |
 |---|---|---|
 | `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed) | `editor/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03) |
+| `Engine/Modules/FileWatcher` (FileWatcher, FileIdentity), `Engine/Include/Assets/ExpectedWriteLedger.h` (+ its tests), `Engine/Modules/AssetCore/.../SharedFileRead.*` (adapted, headers kept) | `engine/core/io/watch/`, `engine/tests/core/io/watch/ExpectedWriteLedgerTest.cpp` | the file watcher's rename pairing and delete hold, file identities, the self-write ledger, share-delete reads on Windows (S05) |
 | `Engine/Modules/AssetCore/Source/GUID.cpp`: `GUID::Derive`, `FnvHash`, `SplitMix64` (adapted) | `engine/core/asset/Guid.cpp` (`Guid::derive`) | deterministic sub-asset GUIDs (asset identity, S04) |
 | `Modules/Memory` (`Arena`, `ScratchScope`, `ObjectPool`, `RangeAllocator`, `SerialUseCheck`, `AddressSanitizer`), adapted | `engine/core/memory/` | the allocators, adapted to our naming and stats registry (S06) |
 | `Modules/JobSystem` (`ParallelForCore`, `ParallelAlgorithms`, `JobCounter`, `JobChannel`, the `WorkStealingThreadPool` lane contracts), adapted | `engine/core/jobs/` | parallelFor, counters, blocking channels; the scheduler itself is our own (S06) |

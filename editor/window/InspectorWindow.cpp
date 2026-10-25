@@ -475,8 +475,9 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
         }
         if (saved == SaveResult::Saved) {
 
+            // the other submeshes linked to the file follow through the hot reload (the
+            // save is the editor's own write, delivered to it: S05 R10)
             project->linkMaterialFile(entry.sceneId, entry.entity, entry.submeshIndex, entry.relativePath);
-            project->refreshLinkedMaterials(true);
 
             if (ProjectWindow* projectWindow = Backend::getApp().getProjectWindow()) {
                 projectWindow->notifyResourceFileChanged(absolutePath);

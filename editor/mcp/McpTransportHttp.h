@@ -24,7 +24,7 @@ namespace jasperengine::editor::mcp {
     //    file, made the first time HTTP is enabled; the MCP window copies it), compared in
     //    constant time
     //  - POST /mcp: one JSON-RPC message. Requests answer application/json, or
-    //    text/event-stream (progress notifications, then the response) when the client
+    //    text/event-stream (notifications such as progress or tools/list_changed, then the response) when the client
     //    accepts it and sent a progressToken. Notifications/responses answer 202.
     //  - GET /mcp: 405 (no server-initiated stream). DELETE /mcp ends a legacy session.
     //  - Up to 2025-11-25: Mcp-Session-Id is issued at initialize and required afterwards.

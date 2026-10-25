@@ -37,10 +37,12 @@ bool Event::waitFor(double milliseconds){
     return jobs::detail::timedWait(cv, lock, toDuration(milliseconds), [this]{ return signalled; });
 }
 
-Semaphore::Semaphore(uint32_t initial): count(initial){
+// (qualified: util/ThreadUtils.h has a jasperengine::Semaphore too, which a unity build of this
+// file next to one including Engine.h makes ambiguous)
+jobs::Semaphore::Semaphore(uint32_t initial): count(initial){
 }
 
-void Semaphore::release(uint32_t n){
+void jobs::Semaphore::release(uint32_t n){
     std::lock_guard<std::mutex> lock(mutex);
     count += n;
     if (n == 1)
@@ -49,13 +51,13 @@ void Semaphore::release(uint32_t n){
         cv.notify_all();
 }
 
-void Semaphore::acquire(){
+void jobs::Semaphore::acquire(){
     std::unique_lock<std::mutex> lock(mutex);
     cv.wait(lock, [this]{ return count > 0; });
     count--;
 }
 
-bool Semaphore::tryAcquire(){
+bool jobs::Semaphore::tryAcquire(){
     std::lock_guard<std::mutex> lock(mutex);
     if (count == 0)
         return false;
@@ -63,7 +65,7 @@ bool Semaphore::tryAcquire(){
     return true;
 }
 
-bool Semaphore::tryAcquireFor(double milliseconds){
+bool jobs::Semaphore::tryAcquireFor(double milliseconds){
     std::unique_lock<std::mutex> lock(mutex);
     if (!jobs::detail::timedWait(cv, lock, toDuration(milliseconds), [this]{ return count > 0; }))
         return false;

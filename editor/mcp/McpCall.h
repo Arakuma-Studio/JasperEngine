@@ -18,6 +18,8 @@ namespace jasperengine::editor::mcp {
 
     class McpContext;
     class McpServer;
+    struct McpSession;
+    using SessionPtr = std::shared_ptr<McpSession>;
 
     struct ToolImage {
         std::string data;                   // base64
@@ -81,17 +83,28 @@ namespace jasperengine::editor::mcp {
         // Milliseconds since the call was created
         double elapsedMs() const;
 
+        // The client session the call came from (a call inside a batch: the batch's); null
+        // for calls the editor makes itself
+        SessionPtr session() const;
+        // A notification (tools/list_changed...) to the client, in this call's reply stream:
+        // stdio sends it at once, HTTP inside the SSE response when the client accepts
+        // text/event-stream. False when it can't reach the client. Thread-safe.
+        bool notifyClient(const Json& notification);
+
         // Server side
         void setProgressSink(ProgressSink sink);
         // Adjusts the result right before completion (runs on the completing thread)
         void setFinalizer(std::function<void(ToolResult&)> fn) { finalizer = std::move(fn); }
         void requestCancel() { isCancelled = true; }
-        // A call run inside another (batch): cancelling the parent cancels it too
+        // A call run inside another (batch): cancelling the parent cancels it too, and its
+        // session and client notifications are the parent's
         void setParent(const std::shared_ptr<McpCall>& parent) { parentCall = parent; }
         // From a client the MCP window's "Allow changes" switch applies to (HTTP): with
         // changes off, only read-only tools run. Nested calls inherit it.
         void setChangesGated(bool gated) { gatedChanges = gated; }
         bool changesGated() const { return gatedChanges; }
+        void setSession(SessionPtr clientSession) { callSession = std::move(clientSession); }
+        void setNotifier(std::function<bool(const Json&)> fn);
 
         // Unique per editor session (the undo steps' attribution)
         uint64_t serial() const { return callSerial; }
@@ -111,6 +124,8 @@ namespace jasperengine::editor::mcp {
         Json arguments;
         Completion completion;
         ProgressSink progressSink;
+        std::function<bool(const Json&)> notifier;
+        SessionPtr callSession;
         std::function<void(ToolResult&)> finalizer;
         std::mutex progressMutex;
         std::atomic<bool> isCompleted{false};

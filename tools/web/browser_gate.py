@@ -299,6 +299,8 @@ def main() -> int:
     parser.add_argument("--transcript", type=Path, help="write the console transcript here too")
     parser.add_argument("--baseline", type=Path, help="JSON: rgb, tolerance (the canvas centre pixel), isolated")
     parser.add_argument("--expect", action="append", default=[], help="fail unless a console line contains this (repeatable)")
+    parser.add_argument("--query", action="append", default=[],
+                        help="extra name=value added to the page URL's query (repeatable), e.g. jasperengine_watch_probe=1")
     parser.add_argument("--eval", dest="evaluate", help="JS expression evaluated in the page after the run; its value is printed")
     parser.add_argument("--no-isolation", action="store_true",
                         help="serve without COOP/COEP (a threaded build cannot start then: the red control)")
@@ -313,7 +315,7 @@ def main() -> int:
 
     server = make_server(args.root, 0, cross_origin_isolation=not args.no_isolation, quiet=True)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?{READY_QUERY}"
+    page_url = f"http://127.0.0.1:{server.server_port}/{args.page}?" + "&".join([READY_QUERY] + args.query)
 
     chrome_path = find_chrome()
     cdp_port = free_port()

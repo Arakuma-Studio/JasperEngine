@@ -5,6 +5,8 @@
 
 #include "io/AtomicFile.h"
 
+#include "io/watch/FileWatchService.h"
+
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -144,11 +146,31 @@ public:
 
     // std::filesystem::rename with the publish retry policy (a file another program holds open
     // on Windows, an indexer): io::renameWithRetry, throwing like the original on failure
+    // The rename is the editor's own: the file watcher does not report it back (S05 R10).
     static void renameWithRetry(const std::filesystem::path& from, const std::filesystem::path& to) {
         std::error_code ec;
+        ScopedExpectedWrite write(to);
         if (!io::renameWithRetry(from, to, ec)) {
             throw std::filesystem::filesystem_error("rename", from, to, ec);
         }
+        write.reportedMoved(from, to);
+    }
+
+    // What the editor made at `path` (a file, or a folder and what it holds) or removed from
+    // it: its own writes, which the file watcher does not report back (S05 R10)
+    static void reportWritten(const std::filesystem::path& path) {
+        ScopedExpectedWrite write(path, true);
+        write.reported(path);
+        std::error_code ec;
+        if (!std::filesystem::is_directory(path, ec)) return;
+        for (std::filesystem::recursive_directory_iterator it(path, std::filesystem::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end; it.increment(ec)) {
+            write.reported(it->path());
+        }
+    }
+    static void reportRemoved(const std::filesystem::path& path) {
+        ScopedExpectedWrite write(path, true);
+        write.reportedRemoved(path);
     }
 
     // Copies a file over another the atomic way: into a temporary sibling, then published

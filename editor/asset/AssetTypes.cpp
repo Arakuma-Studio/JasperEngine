@@ -41,7 +41,7 @@ namespace {
         return table;
     }
 
-    std::string lowerExtension(const fs::path& path) {
+    std::string assetTypeExtension(const fs::path& path) {
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return ext;
@@ -61,7 +61,7 @@ const editor::AssetTypeInfo* editor::AssetTypes::find(const fs::path& projectRel
     if (projectRelative.empty() || isMetaFile(projectRelative) || isExcludedFile(projectRelative)) {
         return nullptr;
     }
-    const std::string ext = lowerExtension(projectRelative);
+    const std::string ext = assetTypeExtension(projectRelative);
     if (ext.empty()) {
         return nullptr;
     }
@@ -88,7 +88,7 @@ const editor::AssetTypeInfo& editor::AssetTypes::info(AssetType type) {
 }
 
 bool editor::AssetTypes::isMetaFile(const fs::path& path) {
-    return lowerExtension(path) == metaExtension;
+    return assetTypeExtension(path) == metaExtension;
 }
 
 fs::path editor::AssetTypes::metaPathFor(const fs::path& assetPath) {

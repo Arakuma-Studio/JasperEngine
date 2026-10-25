@@ -1793,7 +1793,7 @@ void registerSceneTools(McpRegistry& registry) {
             {"scene", sceneRef()},
             {"path", assetPath(".scene path.")},
             {"all", withDefault(boolean(""), false)},
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)}
+            {"allow_data_loss", boolean("")}
         });
         tool.allowedWhilePlaying = false;
         tool.annotations.idempotent = true;
@@ -1803,6 +1803,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "get_load_report";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Get Load Report";
         tool.description =
             "What the scene's load could not read: issues with kind, file:line, did-you-mean and fate (preserved: "
@@ -1815,6 +1816,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "list_scene_backups";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
         tool.title = "List Scene Backups";
         tool.description =
             "Auto Save backups with status (usable: open_scene recovery=restore; stale: the file changed).";
@@ -1826,6 +1828,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "discard_scene_backup";
+        tool.group = "data_safety";  // S31 tool groups: listed once enabled, callable always
         tool.title = "Discard Scene Backup";
         tool.description = "Deletes a scene's Auto Save backup.";
         tool.inputSchema = object({{"scene", sceneRef()}}, {"scene"});
@@ -1957,6 +1960,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "inspect_color_lut";
+        tool.group = "rendering_fx";  // S13: listed once tool_groups enables it, callable always
         tool.title = "Inspect Color LUT";
         tool.description =
             "Read a colour LUT file (.cube, or an image strip) as post_processing.lut_texture would: ok, error (one line "
@@ -1971,6 +1975,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "get_post_processing_status";
+        tool.group = "rendering_fx";  // S13: listed once tool_groups enables it, callable always
         tool.title = "Get Post-processing Status";
         tool.description =
             "What the scene's renderer applies now: tail_color, uber, uber_features, render_scale (settings) and "
@@ -1985,6 +1990,7 @@ void registerSceneTools(McpRegistry& registry) {
     {
         ToolDef tool;
         tool.name = "set_post_processing_debug";
+        tool.group = "rendering_fx";  // S13: listed once tool_groups enables it, callable always
         tool.title = "Set Post-processing Debug";
         tool.description =
             "Editor-only, unsaved pins for deterministic captures: time_seconds (the uber effects' time: grain, VHS, "

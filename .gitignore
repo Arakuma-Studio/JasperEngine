@@ -77,4 +77,6 @@ $RECYCLE.BIN/
 
 # Python bytecode from importing tools/*.py
 __pycache__/
-.claude/
+# Claude Code: the contributor rules are tracked (AGENTS.md), personal settings are not
+.claude/*
+!.claude/rules/

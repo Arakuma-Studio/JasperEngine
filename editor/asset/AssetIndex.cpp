@@ -24,15 +24,15 @@ using Json = nlohmann::json;
 
 namespace {
 
-    constexpr int cacheVersion = 1;
+    constexpr int indexCacheVersion = 1;
 
-    std::string lowerExtension(const std::string& path) {
+    std::string indexExtension(const std::string& path) {
         std::string ext = fs::path(path).extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return ext;
     }
 
-    std::string joinRelative(const std::string& root, const std::string& path) {
+    std::string indexJoinRelative(const std::string& root, const std::string& path) {
         if (root.empty() || root == ".") {
             return fs::path(path).lexically_normal().generic_string();
         }
@@ -47,7 +47,7 @@ namespace {
         time = ec ? 0 : static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(stamp.time_since_epoch()).count());
     }
 
-    Json edgeJson(const DepEdge& edge) {
+    Json indexEdgeJson(const DepEdge& edge) {
         Json item;
         if (!edge.target.isNull()) item["t"] = edge.target.str();
         item["p"] = edge.targetPath;
@@ -113,8 +113,8 @@ std::string AssetIndex::toProjectRelative(const Roots& roots, AssetPathBase base
     const std::string path = sub ? container : hint;
     std::string relative;
     switch (base) {
-        case AssetPathBase::Assets: relative = joinRelative(roots.assetsDir, path); break;
-        case AssetPathBase::Lua: relative = joinRelative(roots.luaDir, path); break;
+        case AssetPathBase::Assets: relative = indexJoinRelative(roots.assetsDir, path); break;
+        case AssetPathBase::Lua: relative = indexJoinRelative(roots.luaDir, path); break;
         case AssetPathBase::Project: relative = fs::path(path).lexically_normal().generic_string(); break;
     }
     return sub ? relative + "#" + key : relative;
@@ -138,7 +138,7 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::UIDocument: case AssetType::Stylesheet: case AssetType::Shader: case AssetType::Model:
             return true;
         case AssetType::Script:
-            return lowerExtension(relativePath) == ".lua";
+            return indexExtension(relativePath) == ".lua";
         default:
             return false;
     }
@@ -184,7 +184,7 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
         if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
     };
     const std::string directory = fs::path(relativePath).parent_path().generic_string();
-    auto besideFile = [&](const std::string& target) { return joinRelative(directory, target); };
+    auto besideFile = [&](const std::string& target) { return indexJoinRelative(directory, target); };
 
     try {
         switch (type) {
@@ -217,7 +217,7 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
             case AssetType::Stylesheet: {
                 std::string text;
                 if (!assetio::readFile(full, text)) break;
-                const std::vector<TextReference> references = type == AssetType::UIDocument && lowerExtension(relativePath) != ".css"
+                const std::vector<TextReference> references = type == AssetType::UIDocument && indexExtension(relativePath) != ".css"
                     ? TextReferences::scanHtml(text) : TextReferences::scanCss(text);
                 for (const TextReference& reference : references) {
                     addText(reference, besideFile(reference.target));
@@ -229,9 +229,9 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                 if (!assetio::readFile(full, text)) break;
                 for (const TextReference& reference : TextReferences::scanLua(text)) {
                     const std::string module = TextReferences::luaModulePath(reference.target);
-                    std::string target = joinRelative(roots.luaDir, module);
+                    std::string target = indexJoinRelative(roots.luaDir, module);
                     if (!database.lookupPath(target).found()) {
-                        const std::string init = joinRelative(roots.luaDir, module.substr(0, module.size() - 4) + "/init.lua");
+                        const std::string init = indexJoinRelative(roots.luaDir, module.substr(0, module.size() - 4) + "/init.lua");
                         if (database.lookupPath(init).found()) target = init;
                     }
                     addText(reference, target);
@@ -243,7 +243,7 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                 if (!assetio::readFile(full, text)) break;
                 for (const TextReference& reference : TextReferences::scanShader(text)) {
                     std::string target = besideFile(reference.target);
-                    for (const std::string& candidate : {target, joinRelative(std::string(), reference.target), joinRelative(roots.assetsDir, reference.target)}) {
+                    for (const std::string& candidate : {target, indexJoinRelative(std::string(), reference.target), indexJoinRelative(roots.assetsDir, reference.target)}) {
                         if (database.lookupPath(candidate).found()) {
                             target = candidate;
                             break;
@@ -345,7 +345,7 @@ void AssetIndex::loadCache() {
         return;
     }
     Json root = Json::parse(text, nullptr, false);
-    if (!root.is_object() || root.value("version", 0) != cacheVersion || !root.contains("referrers")) {
+    if (!root.is_object() || root.value("version", 0) != indexCacheVersion || !root.contains("referrers")) {
         return;
     }
     std::lock_guard<std::mutex> lock(mutex);
@@ -375,13 +375,13 @@ void AssetIndex::saveCache() const {
             item["sz"] = referrer.size;
             item["mt"] = referrer.writeTime;
             Json edges = Json::array();
-            for (const DepEdge& edge : referrer.edges) edges.push_back(edgeJson(edge));
+            for (const DepEdge& edge : referrer.edges) edges.push_back(indexEdgeJson(edge));
             item["e"] = edges;
             list.push_back(item);
         }
     }
     Json root;
-    root["version"] = cacheVersion;
+    root["version"] = indexCacheVersion;
     root["referrers"] = list;
     assetio::writeFile(cacheFile(), root.dump() + "\n", assetio::Durability::Cache);
 }

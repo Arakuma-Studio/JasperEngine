@@ -2475,6 +2475,7 @@ void editor::SceneWindow::show() {
             if (isStage) {
                 drawPrefabStageBar(sceneProject);
             }
+            drawExternalChangeBar(sceneProject);
 
             // Scene view toolbar (Unity style): view-specific controls only. Play and the
             // transform tools live in the main toolbar. Full-height buttons vertically

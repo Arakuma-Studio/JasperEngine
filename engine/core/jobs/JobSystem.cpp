@@ -93,7 +93,7 @@ namespace{
 
     struct ThreadState {
         int slot = -1;
-        Scheduler* workerOf = nullptr;
+        jobs::detail::Scheduler* workerOf = nullptr;
         int workerIndex = -1;
         bool isMain = false;
         BodyContext body;
@@ -211,7 +211,7 @@ int jobs::detail::currentSlotIndex(ThreadKind kind, const char* name){
     return -1;
 }
 
-int jobs::detail::currentWorkerIndex(const Scheduler* scheduler){
+int jobs::detail::currentWorkerIndex(const jobs::detail::Scheduler* scheduler){
     return threadState.workerOf == scheduler ? threadState.workerIndex : -1;
 }
 
@@ -251,7 +251,7 @@ void jobs::detail::releaseGate(ExternalGate* gate){
 
 // ---- BodyScope
 
-BodyScope::BodyScope(Scheduler* scheduler, const Runnable* item, CancelState* cancel, ChannelState* channel){
+BodyScope::BodyScope(jobs::detail::Scheduler* scheduler, const Runnable* item, CancelState* cancel, ChannelState* channel){
     ThreadState& state = threadState;
     saved = state.body;
     state.body.scheduler = scheduler;
@@ -592,7 +592,7 @@ void jobs::detail::releaseTask(TaskState* task) noexcept{
 }
 
 void jobs::detail::waitTask(TaskState* task){
-    Scheduler* scheduler = task->scheduler;
+    jobs::detail::Scheduler* scheduler = task->scheduler;
     if (scheduler){
         scheduler->waitTask(task);
         return;
@@ -635,7 +635,7 @@ const char* jobs::laneName(Lane lane){
 
 // ---- Scheduler
 
-Scheduler::Scheduler(JobSystem* owner, const Config& configuration):
+jobs::detail::Scheduler::Scheduler(JobSystem* owner, const Config& configuration):
     owner(owner), config(configuration),
     workerCount(thread::resolveWorkerCount(configuration.workers)),
     gate(thread::resolveWorkerCount(configuration.workers),
@@ -652,11 +652,11 @@ Scheduler::Scheduler(JobSystem* owner, const Config& configuration):
     lastSampleNs = startNs;
 }
 
-Scheduler::~Scheduler(){
+jobs::detail::Scheduler::~Scheduler(){
     shutdown();
 }
 
-void Scheduler::onGateRelease(){
+void jobs::detail::Scheduler::onGateRelease(){
     if (sleepers.load(std::memory_order_seq_cst) > 0 && (backgroundDefault.count() || backgroundHeavy.count()))
         wake(1);
     if (gateListenerCount.load(std::memory_order_acquire) > 0){
@@ -666,20 +666,20 @@ void Scheduler::onGateRelease(){
     }
 }
 
-void Scheduler::addGateListener(void* context, void (*callback)(void*)){
+void jobs::detail::Scheduler::addGateListener(void* context, void (*callback)(void*)){
     std::lock_guard<std::mutex> lock(gateListenerMutex);
     gateListeners.emplace_back(context, callback);
     gateListenerCount.store((int)gateListeners.size(), std::memory_order_release);
 }
 
-void Scheduler::removeGateListener(void* context){
+void jobs::detail::Scheduler::removeGateListener(void* context){
     std::lock_guard<std::mutex> lock(gateListenerMutex);
     gateListeners.erase(std::remove_if(gateListeners.begin(), gateListeners.end(),
         [context](const std::pair<void*, void (*)(void*)>& listener){ return listener.first == context; }), gateListeners.end());
     gateListenerCount.store((int)gateListeners.size(), std::memory_order_release);
 }
 
-bool Scheduler::failPending(TaskState* task, std::exception_ptr error){
+bool jobs::detail::Scheduler::failPending(TaskState* task, std::exception_ptr error){
     if (!tryClaim(task))
         return false;
     task->ops->discard(task);
@@ -688,7 +688,7 @@ bool Scheduler::failPending(TaskState* task, std::exception_ptr error){
     return true;
 }
 
-void Scheduler::start(){
+void jobs::detail::Scheduler::start(){
     workers.reserve((size_t)workerCount);
     for (int i = 0; i < workerCount; i++){
         auto worker = std::make_unique<Worker>();
@@ -703,7 +703,7 @@ void Scheduler::start(){
     }
 }
 
-Lane Scheduler::clampLane(Lane lane) const{
+Lane jobs::detail::Scheduler::clampLane(Lane lane) const{
     const BodyContext& body = threadState.body;
     if (!body.inBody)
         return lane;
@@ -711,7 +711,7 @@ Lane Scheduler::clampLane(Lane lane) const{
     return (uint8_t)body.lane > (uint8_t)lane ? body.lane : lane;
 }
 
-void Scheduler::wake(size_t count, bool force){
+void jobs::detail::Scheduler::wake(size_t count, bool force){
     if (singleThread)
         return;
     std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -735,7 +735,7 @@ void Scheduler::wake(size_t count, bool force){
         sleepCv.notify_one();
 }
 
-void Scheduler::enqueue(Runnable* item){
+void jobs::detail::Scheduler::enqueue(Runnable* item){
     if (item->kind == RunnableKind::Job && (item->tags & Tag::Asset))
         assetJobs.fetch_add(1, std::memory_order_relaxed);
     switch (item->lane){
@@ -760,7 +760,7 @@ void Scheduler::enqueue(Runnable* item){
     wake(1);
 }
 
-void Scheduler::publishJob(Job* job){
+void jobs::detail::Scheduler::publishJob(Job* job){
     if (stopWorkers.load(std::memory_order_acquire)){
         // after the drain: must-run work runs on the caller
         runBareJob(job);
@@ -771,7 +771,7 @@ void Scheduler::publishJob(Job* job){
         drainQueues();
 }
 
-void Scheduler::publishBatch(Job* const* jobs, size_t count, Lane lane, GateClass gateClass){
+void jobs::detail::Scheduler::publishBatch(Job* const* jobs, size_t count, Lane lane, GateClass gateClass){
     if (count == 0)
         return;
     if (lane == Lane::Background){
@@ -795,7 +795,7 @@ void Scheduler::publishBatch(Job* const* jobs, size_t count, Lane lane, GateClas
         drainQueues();
 }
 
-void Scheduler::publishTask(TaskState* task, const TaskRef* deps, size_t depCount){
+void jobs::detail::Scheduler::publishTask(TaskState* task, const TaskRef* deps, size_t depCount){
     task->scheduler = this;
     if (task->tags & Tag::Asset)
         assetJobs.fetch_add(1, std::memory_order_relaxed);
@@ -852,7 +852,7 @@ void Scheduler::publishTask(TaskState* task, const TaskRef* deps, size_t depCoun
     }
 }
 
-void Scheduler::resolveDep(TaskState* task, bool failed){
+void jobs::detail::Scheduler::resolveDep(TaskState* task, bool failed){
     if (failed && task->policy == DepPolicy::RequireSuccess){
         task->depFailed.store(1, std::memory_order_release);
         // cascades through finalize to its own dependents
@@ -869,7 +869,7 @@ void Scheduler::resolveDep(TaskState* task, bool failed){
     }
 }
 
-void Scheduler::onReady(TaskState* task){
+void jobs::detail::Scheduler::onReady(TaskState* task){
     if (shuttingDown.load(std::memory_order_seq_cst) && !(task->flags & kFlagPreAdmitted)){
         cancelPending(task);
         return;
@@ -882,12 +882,12 @@ void Scheduler::onReady(TaskState* task){
     enqueue(task);
 }
 
-bool Scheduler::tryClaim(TaskState* task){
+bool jobs::detail::Scheduler::tryClaim(TaskState* task){
     uint8_t expected = (uint8_t)TaskStatus::Pending;
     return task->status.compare_exchange_strong(expected, (uint8_t)TaskStatus::Running, std::memory_order_acq_rel);
 }
 
-bool Scheduler::cancelPending(TaskState* task){
+bool jobs::detail::Scheduler::cancelPending(TaskState* task){
     if (!tryClaim(task))
         return false;
     task->ops->discard(task);
@@ -895,7 +895,7 @@ bool Scheduler::cancelPending(TaskState* task){
     return true;
 }
 
-void Scheduler::runClaimed(TaskState* task){
+void jobs::detail::Scheduler::runClaimed(TaskState* task){
     const int slot = currentSlotIndex();
     task->runner.store(slot, std::memory_order_release);
     if (shuttingDown.load(std::memory_order_acquire) && !(task->flags & (kFlagChannel))){
@@ -912,7 +912,7 @@ void Scheduler::runClaimed(TaskState* task){
     finalize(task, ok ? TaskStatus::Completed : TaskStatus::Failed);
 }
 
-void Scheduler::finalize(TaskState* task, TaskStatus status){
+void jobs::detail::Scheduler::finalize(TaskState* task, TaskStatus status){
     if (task->tags & Tag::Asset)
         assetJobs.fetch_sub(1, std::memory_order_relaxed);
     if (status == TaskStatus::Failed)
@@ -934,7 +934,7 @@ void Scheduler::finalize(TaskState* task, TaskStatus status){
     }
 }
 
-void Scheduler::runBareJob(Job* job){
+void jobs::detail::Scheduler::runBareJob(Job* job){
     if (job->flags & kFlagInternal){
         // a counter visit or a strand drain: the job it runs opens its own body
         job->ops->run(job);
@@ -958,7 +958,7 @@ void Scheduler::runBareJob(Job* job){
     discardJob(job);
 }
 
-void Scheduler::countExecuted(int worker){
+void jobs::detail::Scheduler::countExecuted(int worker){
     if (worker >= 0){
         // the worker's own counter: a plain increment, no locked instruction per job
         std::atomic<uint64_t>& executed = workers[(size_t)worker]->executed;
@@ -968,7 +968,7 @@ void Scheduler::countExecuted(int worker){
     }
 }
 
-void Scheduler::execute(Runnable* item){
+void jobs::detail::Scheduler::execute(Runnable* item){
     if (item->kind == RunnableKind::Job){
         runBareJob(static_cast<Job*>(item));
         return;
@@ -981,7 +981,7 @@ void Scheduler::execute(Runnable* item){
 
 // ---- workers
 
-uint32_t Scheduler::localBacklog() const{
+uint32_t jobs::detail::Scheduler::localBacklog() const{
     // summed on demand: a shared counter would be written by every worker for every job
     uint32_t total = 0;
     for (const auto& worker : workers)
@@ -989,7 +989,7 @@ uint32_t Scheduler::localBacklog() const{
     return total;
 }
 
-bool Scheduler::hasWork() const{
+bool jobs::detail::Scheduler::hasWork() const{
     // pairs with the fence in wake(): a sleeper counted itself before looking, a producer
     // published before looking for sleepers, so one of them sees the other
     std::atomic_thread_fence(std::memory_order_seq_cst);
@@ -1002,7 +1002,7 @@ bool Scheduler::hasWork() const{
     return false;
 }
 
-Runnable* Scheduler::popBackground(Worker& worker, int& slotClass){
+Runnable* jobs::detail::Scheduler::popBackground(Worker& worker, int& slotClass){
     slotClass = -1;
     if (Runnable* item = backgroundAdmitted.pop())
         return item;
@@ -1024,7 +1024,7 @@ Runnable* Scheduler::popBackground(Worker& worker, int& slotClass){
     return nullptr;
 }
 
-Runnable* Scheduler::steal(Worker& worker){
+Runnable* jobs::detail::Scheduler::steal(Worker& worker){
     const int count = workerCount;
     for (int k = 1; k < count; k++){
         Worker& victim = *workers[(size_t)((worker.index + k) % count)];
@@ -1038,7 +1038,7 @@ Runnable* Scheduler::steal(Worker& worker){
     return nullptr;
 }
 
-Runnable* Scheduler::takeNormal(Worker& worker){
+Runnable* jobs::detail::Scheduler::takeNormal(Worker& worker){
     if (!normal.hasItems())
         return nullptr;
     // a run of the backlog (up to a batch) moves to this worker's deque in one take, and the
@@ -1061,7 +1061,7 @@ Runnable* Scheduler::takeNormal(Worker& worker){
     return batch[0];
 }
 
-Runnable* Scheduler::findWork(Worker& worker, int& slotClass){
+Runnable* jobs::detail::Scheduler::findWork(Worker& worker, int& slotClass){
     slotClass = -1;
     if (Runnable* item = high.pop())
         return item;
@@ -1082,7 +1082,7 @@ Runnable* Scheduler::findWork(Worker& worker, int& slotClass){
     return nullptr;
 }
 
-void Scheduler::workerMain(Worker& worker){
+void jobs::detail::Scheduler::workerMain(Worker& worker){
     char name[24];
     std::snprintf(name, sizeof(name), "je-worker-%d", worker.index);
     thread::setCurrentName(name);
@@ -1151,7 +1151,7 @@ void Scheduler::workerMain(Worker& worker){
 
 // ---- waiting
 
-TaskState* Scheduler::helpTarget(TaskState* task){
+TaskState* jobs::detail::Scheduler::helpTarget(TaskState* task){
     // descends to the first unfinished dependency that is not itself blocked on others:
     // every task on the path stays alive (each holds its dependencies through its links)
     TaskState* current = task;
@@ -1176,14 +1176,14 @@ TaskState* Scheduler::helpTarget(TaskState* task){
     return current;
 }
 
-void Scheduler::reportWaitCycle(TaskState* task, const char* what){
+void jobs::detail::Scheduler::reportWaitCycle(TaskState* task, const char* what){
     char message[256];
     std::snprintf(message, sizeof(message), "wait cycle: a wait on job '%s' %s; it can never complete",
                   task->name ? task->name : "job", what);
     fatal(message);
 }
 
-bool Scheduler::confirmWaitCycle(TaskState* task){
+bool jobs::detail::Scheduler::confirmWaitCycle(TaskState* task){
     // the chain: the thread running `task` -> the task it is parked on -> its runner ...
     const int self = threadState.slot;
     if (self < 0)
@@ -1200,7 +1200,7 @@ bool Scheduler::confirmWaitCycle(TaskState* task){
     return false;
 }
 
-void Scheduler::park(TaskState* task, double timeoutMs){
+void jobs::detail::Scheduler::park(TaskState* task, double timeoutMs){
     if (!thread::canBlock()){
         spinWait();
         return;
@@ -1212,7 +1212,7 @@ void Scheduler::park(TaskState* task, double timeoutMs){
     task->parked.fetch_sub(1, std::memory_order_seq_cst);
 }
 
-void Scheduler::waitTask(TaskState* task){
+void jobs::detail::Scheduler::waitTask(TaskState* task){
     if (isTerminal(statusOf(task)))
         return;
     WaitHookScope hookScope(WaitKind::Task);
@@ -1289,7 +1289,7 @@ void Scheduler::waitTask(TaskState* task){
 
 // ---- single-thread mode
 
-void Scheduler::pump(double budgetMs){
+void jobs::detail::Scheduler::pump(double budgetMs){
     if (!singleThread)
         return;
     for (;;){
@@ -1326,7 +1326,7 @@ void Scheduler::pump(double budgetMs){
 
 // ---- shutdown
 
-void Scheduler::drainQueues(){
+void jobs::detail::Scheduler::drainQueues(){
     for (;;){
         Runnable* item = high.pop();
         if (!item) item = normal.pop();
@@ -1353,7 +1353,7 @@ void Scheduler::drainQueues(){
     }
 }
 
-void Scheduler::shutdown(){
+void jobs::detail::Scheduler::shutdown(){
     std::lock_guard<std::mutex> guard(shutdownMutex);
     if (shutdownDone.load(std::memory_order_acquire))
         return;
@@ -1404,7 +1404,7 @@ void Scheduler::shutdown(){
 
 // ---- strands
 
-void Scheduler::strandPush(StrandState* strand, TaskState* task){
+void jobs::detail::Scheduler::strandPush(StrandState* strand, TaskState* task){
     task->scheduler = this;
     task->owner = strand;
     if (task->tags & Tag::Asset)
@@ -1433,7 +1433,7 @@ void Scheduler::strandPush(StrandState* strand, TaskState* task){
         publishStrandDrain(strand);
 }
 
-void Scheduler::publishStrandDrain(StrandState* strand){
+void jobs::detail::Scheduler::publishStrandDrain(StrandState* strand){
     strand->refs.fetch_add(1, std::memory_order_relaxed);
     Job* job = makeJob([strand](){
         strand->scheduler->strandDrain(strand);
@@ -1442,7 +1442,7 @@ void Scheduler::publishStrandDrain(StrandState* strand){
     publishJob(job);
 }
 
-void Scheduler::strandRunItem(StrandState* strand, TaskState* task){
+void jobs::detail::Scheduler::strandRunItem(StrandState* strand, TaskState* task){
     if (tryClaim(task))
         runClaimed(task);
     {
@@ -1461,7 +1461,7 @@ namespace{
     }
 }
 
-void Scheduler::strandDrain(StrandState* strand){
+void jobs::detail::Scheduler::strandDrain(StrandState* strand){
     TaskState* task = nullptr;
     {
         std::lock_guard<std::mutex> lock(strand->mutex);
@@ -1494,7 +1494,7 @@ void Scheduler::strandDrain(StrandState* strand){
     releaseStrand(strand);
 }
 
-bool Scheduler::strandHelp(StrandState* strand){
+bool jobs::detail::Scheduler::strandHelp(StrandState* strand){
     TaskState* task = nullptr;
     {
         std::lock_guard<std::mutex> lock(strand->mutex);
@@ -1522,7 +1522,7 @@ bool Scheduler::strandHelp(StrandState* strand){
     return true;
 }
 
-void Scheduler::strandCancelPending(StrandState* strand){
+void jobs::detail::Scheduler::strandCancelPending(StrandState* strand){
     TaskState* list = nullptr;
     size_t count = 0;
     {
@@ -1544,7 +1544,7 @@ void Scheduler::strandCancelPending(StrandState* strand){
     }
 }
 
-void Scheduler::strandWaitIdle(StrandState* strand){
+void jobs::detail::Scheduler::strandWaitIdle(StrandState* strand){
     WaitHookScope hookScope(WaitKind::Strand);
     for (;;){
         {
@@ -1567,12 +1567,12 @@ void Scheduler::strandWaitIdle(StrandState* strand){
 
 // ---- channels
 
-void Scheduler::channelRegister(ChannelState* channel){
+void jobs::detail::Scheduler::channelRegister(ChannelState* channel){
     std::lock_guard<std::mutex> lock(blockingMutex);
     channels.push_back(channel);
 }
 
-void Scheduler::channelUnregister(ChannelState* channel){
+void jobs::detail::Scheduler::channelUnregister(ChannelState* channel){
     std::vector<TaskState*> abandoned;
     {
         std::unique_lock<std::mutex> lock(blockingMutex);
@@ -1594,7 +1594,7 @@ void Scheduler::channelUnregister(ChannelState* channel){
     }
 }
 
-void Scheduler::channelSubmit(ChannelState* channel, TaskState* task){
+void jobs::detail::Scheduler::channelSubmit(ChannelState* channel, TaskState* task){
     task->scheduler = this;
     task->owner = channel;
     if (task->tags & Tag::Asset)
@@ -1641,7 +1641,7 @@ void Scheduler::channelSubmit(ChannelState* channel, TaskState* task){
     }
 }
 
-void Scheduler::blockingThreadMain(int index){
+void jobs::detail::Scheduler::blockingThreadMain(int index){
     char name[24];
     std::snprintf(name, sizeof(name), "je-block-%d", index);
     thread::setCurrentName(name);
@@ -1690,7 +1690,7 @@ void Scheduler::blockingThreadMain(int index){
     }
 }
 
-void Scheduler::runChannelsInline(){
+void jobs::detail::Scheduler::runChannelsInline(){
     for (;;){
         TaskState* task = nullptr;
         {
@@ -1722,7 +1722,7 @@ void Scheduler::runChannelsInline(){
 
 // ---- counters
 
-void Scheduler::publishCounterJob(CounterQueue* queue, Job* job, Lane lane){
+void jobs::detail::Scheduler::publishCounterJob(CounterQueue* queue, Job* job, Lane lane){
     job->lane = clampLane(lane);
     {
         std::lock_guard<std::mutex> lock(queue->mutex);
@@ -1768,7 +1768,7 @@ void jobs::detail::releaseCounterQueue(CounterQueue* queue) noexcept{
 
 // ---- stats
 
-void Scheduler::sampleFrame(){
+void jobs::detail::Scheduler::sampleFrame(){
     std::lock_guard<std::mutex> lock(statsMutex);
     const uint64_t now = nowNs();
     const uint64_t wall = now > lastSampleNs ? now - lastSampleNs : 1;
@@ -1791,7 +1791,7 @@ void Scheduler::sampleFrame(){
     lastSampleNs = now;
 }
 
-Stats Scheduler::stats(int windowFrames) const{
+Stats jobs::detail::Scheduler::stats(int windowFrames) const{
     Stats result;
     result.workers = workerCount;
     result.singleThread = singleThread;
@@ -1878,7 +1878,7 @@ Stats Scheduler::stats(int windowFrames) const{
     return result;
 }
 
-std::vector<float> Scheduler::workerHistory(int worker) const{
+std::vector<float> jobs::detail::Scheduler::workerHistory(int worker) const{
     std::vector<float> history;
     std::lock_guard<std::mutex> lock(statsMutex);
     if (worker < 0 || worker >= (int)workers.size())
@@ -1893,16 +1893,16 @@ std::vector<float> Scheduler::workerHistory(int worker) const{
 
 // ---- exported detail entry points
 
-void jobs::detail::publishTask(Scheduler* scheduler, TaskState* task, const TaskRef* deps, size_t depCount){
+void jobs::detail::publishTask(jobs::detail::Scheduler* scheduler, TaskState* task, const TaskRef* deps, size_t depCount){
     scheduler->publishTask(task, deps, depCount);
 }
 
-void jobs::detail::publishJob(Scheduler* scheduler, Job* job){
+void jobs::detail::publishJob(jobs::detail::Scheduler* scheduler, Job* job){
     job->lane = scheduler->clampLane(job->lane);
     scheduler->publishJob(job);
 }
 
-Scheduler* jobs::detail::schedulerOf(JobSystem* system){
+jobs::detail::Scheduler* jobs::detail::schedulerOf(JobSystem* system){
     return (system ? system : &jobs::system())->getScheduler();
 }
 
@@ -1916,7 +1916,7 @@ void jobs::detail::publishCounterJob(JobSystem* system, CounterQueue* queue, Job
 
 // ---- JobSystem
 
-JobSystem::JobSystem(const Config& config): scheduler(new Scheduler(this, config)){
+JobSystem::JobSystem(const Config& config): scheduler(new jobs::detail::Scheduler(this, config)){
     scheduler->start();
     channels[0] = std::make_unique<JobChannel>("process", 2, this);
     channels[1] = std::make_unique<JobChannel>("io-write", 1, this);

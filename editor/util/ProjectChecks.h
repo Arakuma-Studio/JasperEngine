@@ -275,7 +275,7 @@ namespace jasperengine::editor {
         // effect's manifest is checked first (HTMLUI-FX-0014 effect-manifest at its line, no
         // compile then); a compile error is HTMLUI-FX-0015 effect-shader-compile at the .frag
         // line, and the compiled variant is checked against the manifest (its parameter block)
-        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey);
+        static ShaderCheck runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey, ShaderData* built = nullptr);
         // {shader, type, ok, errors, log} (log and errors only on failure); a UI effect adds
         // effect, form (paint/filter) and, on failure, code
         static nlohmann::json toJson(const ShaderCheck& check);

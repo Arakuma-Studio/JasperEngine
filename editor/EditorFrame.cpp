@@ -178,6 +178,10 @@ bool EditorFrame::run(EditorFrameState& state){
         renderer->present();
     }
     renderer->purgeTextures();
+    // a frame that drew (the editor window, or only its views: headless, minimized)
+    if (frameReady || renderRequested){
+        app->recordFrameTime((frameMonotonicSeconds() - frameStart) * 1000.0);
+    }
 
     // Unfocused and minimized frames have no vsync to pace them. A benchmark measures
     // uncapped frames, focused or not.

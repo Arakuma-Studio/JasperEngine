@@ -1459,7 +1459,7 @@ bool checkUiEffectManifest(editor::Project* project, const editor::ProjectChecks
 
 } // namespace
 
-editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey) {
+editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project* project, const ShaderUse& use, ShaderKey shaderKey, ShaderData* built) {
     ShaderCheck check;
     check.use = use;
     const bool effect = isUiEffectUse(use);
@@ -1478,6 +1478,7 @@ editor::ProjectChecks::ShaderCheck editor::ProjectChecks::runShaderCheck(Project
         ShaderBuilder builder;
         ShaderData data = builder.buildShaderForExport(shaderKey, project, ShaderPool::getShaderBackend());
         check.ok = true;
+        if (built) *built = data;
         // a fork written before the fragment-stage shadows (docs/rendering/shadows.md): it still
         // works for directional and spot lights, its point lights cast no shadows. Read from its
         // sources: the blocks are only in the variants that receive shadows.

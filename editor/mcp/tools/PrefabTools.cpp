@@ -2031,7 +2031,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "gets it. target: one of parent's apply_targets (an outer prefab gets it as an override of its "
             "nested instance). Written when the scene is saved.";
         tool.inputSchema = object({
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)},
+            {"allow_data_loss", boolean("")},
             {"scene", sceneRef()},
             {"entity", entityRef("GameObject to add (with children).")},
             {"parent", entityRef("Instance GameObject (default: current parent).")},
@@ -2050,7 +2050,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "(a nested instance root leaves the outer prefab). For this instance only, delete it. Written when the "
             "scene is saved.";
         tool.inputSchema = object({
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)},
+            {"allow_data_loss", boolean("")},
             {"scene", sceneRef()},
             {"entity", entityRef("Instance member (not the root).")}
         }, {"entity"});
@@ -2098,7 +2098,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "target: one of the entry's apply_targets (default the innermost; an outer one applies it as an "
             "override there). Written when a scene using the prefab is saved.";
         tool.inputSchema = object({
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)},
+            {"allow_data_loss", boolean("")},
             {"action", stringEnum("", {"apply", "revert"})},
             {"scene", sceneRef()},
             {"entity", entityRef()},
@@ -2127,7 +2127,7 @@ void registerPrefabTools(McpRegistry& registry) {
             "prefab root). Edits change the asset; nested instances record overrides. auto_save (default on) "
             "writes ~0.35 s after an edit; save writes now. close keeps depth stages. status lists stages.";
         tool.inputSchema = object({
-            {"allow_data_loss", withDefault(boolean("Save even if unread data is lost."), false)},
+            {"allow_data_loss", boolean("")},
             {"action", withDefault(stringEnum("", {"open", "close", "save", "status"}), "status")},
             {"prefab", assetPath("open: .prefab; with entity: another level of its chain.")},
             {"scene", sceneRef("open: entity's scene; save: stage (default: shown).")},

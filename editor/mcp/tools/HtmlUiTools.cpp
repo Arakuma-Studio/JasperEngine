@@ -1854,9 +1854,9 @@ void registerHtmlUiTools(McpRegistry& registry) {
             "kept unless overwrite. Returns the files and the first load's diagnostics.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
-            {"parent", entityRef("Default: scene root.")},
-            {"name", string("Default: the file name.")},
-            {"html", assetPath(".html in the assets dir, e.g. assets/ui/menu.html.")},
+            {"parent", entityRef()},
+            {"name", string("Default: from the file name.")},
+            {"html", assetPath(".html in the assets dir.")},
             {"template", withDefault(stringEnum("", HtmlUiExamples::names()), "blank")},
             {"script", boolean("Attach the template's Lua (default: examples yes, blank no).")},
             {"sort_order", integer("", -32768, 32767)},

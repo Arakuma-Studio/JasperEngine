@@ -19,6 +19,7 @@ namespace jasperengine {
 namespace jasperengine::editor {
 
     class CodeEditor;
+    class ProjectWindow;
     class ImageViewerWindow;
     class InspectorWindow;
 
@@ -117,6 +118,7 @@ namespace jasperengine::editor {
 
         virtual InspectorWindow* getInspectorWindow() const;
         virtual CodeEditor* getCodeEditor() const;
+        virtual ProjectWindow* getProjectWindow() const;
         virtual ImageViewerWindow* getImageViewerWindow() const;
     };
 

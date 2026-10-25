@@ -157,7 +157,18 @@ For HTTP, use `{"mcpServers": {"jasper": {"url": "http://127.0.0.1:47615/mcp",
 VS Code reads `.vscode/mcp.json` and uses a `servers` key with
 `"type": "stdio"` or `"type": "http"`.
 
+### From a shell: `jasperengine-editor call`
+
+Without an MCP client (CI scripts, hooks, a terminal), run any tool through the editor binary:
+`jasperengine-editor call --project <dir> create_entity --name Box --type box`. It attaches to
+the editor that has the project open (or `--port N`), else starts a one-shot headless one.
+Flags, `--help` and validation come from each tool's schema; `--json` prints one envelope per
+call; exit codes 0 ok, 1 tool error, 2 usage, 3 connection, 4 internal. See [cli.md](cli.md).
+
 ### Developing JasperEngine itself
+
+Agents working on the engine read the repository's `AGENTS.md` and `CLAUDE.md` (build, test,
+run an isolated editor, land a change); a game project has its own, generated `AGENTS.md`.
 
 The repository root has a `.mcp.json` that runs the editor from your build output:
 
@@ -188,24 +199,30 @@ Agents edit code with their own tools, not through MCP file tools:
   properties included: the editor writes each script's class from its `properties` table
   (`.jasperengine/engine-api/lua/scripts/<Name>.lua`). See
   [guide/editor-integration.md](guide/editor-integration.md).
-- **Changes are picked up automatically.** Before every tool call the server looks for Lua,
-  C++, shader, `.material`, HTML UI (`.html`, `.htm`, `.css`) and asset files (images and
-  `.svg`, fonts `.ttf`/`.otf`, `.json`/`.lottie`) changed on disk since the last call (a stat
-  scan of the project, skipping hidden folders such as `.jasperengine` and `.git`, `build`,
-  `node_modules` and `trash`). If any changed, the editor reloads clean code editor buffers,
-  re-parses script properties, compiles the shader forks that use a changed shader, refreshes
-  materials, textures and the Project window, and that call's result carries
-  `external_changes: {changed, added, removed, problems: [{path, line, message}]}` and one
-  text line. UI documents that use a changed file reload before the tool runs, in edit mode
-  and while playing (a stylesheet change restyles in place, keeping elements and listeners),
-  once even though the editor's own watcher also sees the change: `external_changes` then
-  lists them in `ui_reloaded`, and their findings (and those of a changed `.html`/`.css` no
-  document uses) as `problems` with `col`, `severity`, `code` and `suggestion`, the same as
-  `jasperengine-editor check --ui`. Other changes made while a scene plays are listed as
-  `deferred` and picked up when play stops. Files the MCP tools write themselves are not reported. `.scene`, `.prefab`,
-  `project.yaml` and the terrain maps the terrain tools write are not watched: edit them with
-  the tools. `sync_files` forces a full
-  rescan; `editor_status.auto_sync` shows the scan's size and cost.
+- **Changes are picked up automatically.** The editor watches the project folder (inotify,
+  ReadDirectoryChangesW, FSEvents, or polling; hidden folders such as `.jasperengine` and `.git`,
+  `build`, `node_modules` and `trash` skipped) and reloads what an edit touches as it lands
+  ([../hot-reload.md](../hot-reload.md)). Before every tool call the server also takes the
+  watcher's changes since the last call (after a flush; when the watcher is off or degraded,
+  a stat scan of the project) for Lua, C++, shader, `.material`, HTML UI (`.html`, `.htm`,
+  `.css`) and asset files (images and `.svg`, fonts `.ttf`/`.otf`, `.json`/`.lottie`). If any
+  changed, the editor reloads clean code editor buffers, re-parses script properties, compiles
+  the shader forks that use a changed shader, reloads materials, textures, models, audio and
+  fonts and refreshes the Project window, waits for those reloads (10 s at most), and that
+  call's result carries `external_changes: {changed, added, removed, source, reloaded,
+  pending, problems: [{path, line, message}]}` and one text line. A reload that failed keeps
+  the previous version and is a problem. A change the watcher reloaded already is reported
+  once and reloaded once. UI documents that use a changed file reload before the tool runs,
+  in edit mode and while playing (a stylesheet change restyles in place, keeping elements and
+  listeners): `external_changes` lists them in `ui_reloaded`, and their findings (and those of
+  a changed `.html`/`.css` no document uses) as `problems` with `col`, `severity`, `code` and
+  `suggestion`, the same as `jasperengine-editor check --ui`. Script changes made while a scene
+  plays are listed as `deferred` and picked up when play stops. Files the MCP tools write
+  themselves are not reported. `.scene`, `.prefab`, `project.yaml` and the terrain maps the
+  terrain tools write are not picked up: edit them with the tools (an open scene changed on
+  disk is never reloaded on its own). `sync_files` forces a full rescan (`wait`,
+  `rebuild_models`, `auto_refresh`); `editor_status.file_watcher` shows the watcher and the
+  reloads, `editor_status.auto_sync` the pick-up's source, size and cost.
 - Validate without playing: `check_script`, `check_shader`, `compile_scripts`, or
   `jasperengine-editor check` from a shell (see [checks.md](checks.md)). As a Claude Code
   PostToolUse hook (or Codex hook), `jasperengine-editor check --project "$CLAUDE_PROJECT_DIR" --hook`
@@ -253,12 +270,20 @@ no effect there.
 ## Tool reference
 
 The tool list is generated: [TOOLS.md](TOOLS.md) is written by `tools/mcp/gen_tool_docs.py`
-from the editor's `tools/list`, grouped by module, with each tool's description and
-parameters. Regenerate it after you change tools:
+from the editor's `tools/list` (every group), in sections by module, with each tool's group,
+description and parameters. Regenerate it after you change tools (`--check` tells whether
+it is stale):
 
 ```sh
 uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/gen_tool_docs.py
 ```
+
+**Tool groups.** `tools/list` shows the `core` tools plus the groups a session enabled. The
+`tool_groups` tool lists the groups and enables or disables them for the session; the
+editor then sends `notifications/tools/list_changed`. A hidden tool is still callable by
+name, directly or inside `batch`, so a client that ignores the notification loses nothing.
+`jasperengine-editor mcp --tool-groups a,b|all` and the Editor Settings key
+`mcp.tool_groups` choose the groups sessions start with.
 
 Main ideas:
 
@@ -284,13 +309,16 @@ Main ideas:
   See [../jobs-memory.md](../jobs-memory.md).
 
 Tool definitions (name, description, input schema) are sent to the agent in every session,
-so keep them lean: `tools/mcp/tool_budget.py` prints each tool's size and the total (target:
-under ~100K characters, about 25K tokens; the HTML UI tools brought it to ~99K, the UI effects
-tools of phase 5 to ~99.8K and the lattice tools to ~100.5K, paid by trimming: new tools must pay for themselves). Shared conventions (scene/entity references, value
-shapes, undo) belong in the server instructions (`McpInstructions.cpp`), not in every tool.
+so keep them lean. [conventions.md](conventions.md) has the rules every tool follows (names,
+schemas, groups) and the budget: the default listing (`core`) stays within 100,000 characters
+(about 25K tokens) and 150 tools, each group within 15,000 characters and 12 tools, each tool
+within 1,500 characters; `tools/mcp/budget.json` holds the limits and `tool_budget.py --check`
+gates them. Shared conventions (scene/entity references, value shapes, undo) belong in the
+server instructions (`McpInstructions.cpp`), not in every tool.
 
 ```sh
-uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py [--top 20]
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py [--top 20] [--groups all]
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py --check tools/mcp/budget.json
 ```
 
 ## Troubleshooting

@@ -41,6 +41,11 @@ namespace jasperengine::editor {
         int m_autosaveInterval = 60;
         static void openInFileManager(const std::filesystem::path& folder);
         bool m_htmlUiAutoImport = true;
+        // Asset Pipeline (S05 R26)
+        bool m_autoRefresh = true;
+        int m_fileWatcher = 0;            // 0 Auto, 1 Native, 2 Polling
+        float m_pollingInterval = 1.0f;   // seconds
+        bool m_logReloads = true;
         bool m_htmlUiVerboseDiagnostics = false;
         float m_codeEditorFontSize = 0.0f;
         int m_undoMaxSteps = AppSettings::defaultUndoMaxSteps;
@@ -62,6 +67,7 @@ namespace jasperengine::editor {
         void drawSettings();
         void drawGeneralSettings();
         void drawCodeEditorSettings();
+        void drawAssetPipelineSettings();
         void drawUndoSettings();
         void drawLatticeSettings();
         void drawExternalToolsSettings();

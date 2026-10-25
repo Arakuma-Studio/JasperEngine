@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "reload/HotReloadService.h"
 #include "asset/AssetRefSchema.h"
 #include "asset/AssetFileWrite.h"
 #include "util/CrashHook.h"
@@ -252,8 +253,9 @@ editor::Project::Project(){
 }
 
 editor::Project::~Project(){
-    // the jobs capture the project
+    // the jobs capture the project (the asset walk its database)
     fbxImportScan.wait();
+    waitForAssetScan();
     playStartupTask.wait();
     playStopTask.wait();
     sceneSaveTask.wait();
@@ -633,11 +635,6 @@ void editor::Project::linkMaterialFile(uint32_t sceneId, Entity entity, unsigned
     MaterialLinkKey key{sceneId, entity, submeshIndex};
     MaterialLinkEntry entry;
     entry.filePath = fs::path(filePath).lexically_normal().generic_string();
-
-    fs::path absolutePath = projectPath / entry.filePath;
-    std::error_code ec;
-    entry.lastWriteTime = fs::last_write_time(absolutePath, ec);
-
     materialFileLinks[key] = entry;
 }
 
@@ -822,135 +819,34 @@ std::vector<editor::SceneProject*> editor::Project::getHtmlUIScenes() {
     return result;
 }
 
-editor::HtmlUIWatcher& editor::Project::getHtmlUIWatcher() {
-    return htmlUIWatcher;
+std::vector<std::string> editor::Project::getLinkedMaterialFiles() const {
+    std::set<std::string> files;
+    for (const auto& [key, entry] : materialFileLinks) {
+        files.insert(entry.filePath);
+    }
+    return std::vector<std::string>(files.begin(), files.end());
 }
 
-void editor::Project::notifyHtmlUIFileSaved(const std::filesystem::path& path) {
-    (void)path;
-    htmlUIWatcher.requestCheck();
-}
+void editor::Project::applyLinkedMaterialFile(const std::string& relativePath, const Material& fileMaterial) {
+    const std::string filePath = fs::path(relativePath).lexically_normal().generic_string();
+    Material updatedMaterial = fileMaterial;
+    updatedMaterial.name = filePath;
 
-void editor::Project::refreshLinkedMaterials(bool force) {
-    if (materialFileLinks.empty()) {
-        return;
-    }
-
-    // Throttle: only check every materialRefreshIntervalSec seconds
-    auto now = std::chrono::steady_clock::now();
-    double elapsed = std::chrono::duration<double>(now - lastMaterialRefreshTime).count();
-    if (!force && elapsed < materialRefreshIntervalSec) {
-        return;
-    }
-    lastMaterialRefreshTime = now;
-
-    if (projectPath.empty() || !fs::exists(projectPath)) {
-        materialFileLinks.clear();
-        return;
-    }
-
-    // Collect changed files and stale entries
-    struct ChangedFile {
-        std::string filePath;
-        Material updatedMaterial;
-    };
-    std::unordered_map<std::string, ChangedFile> changedFiles;
-    std::vector<MaterialLinkKey> staleKeys;
-
-    for (auto& [key, linkEntry] : materialFileLinks) {
-        uint32_t keySceneId = std::get<0>(key);
-        Entity keyEntity = std::get<1>(key);
-        unsigned int keySubmeshIndex = std::get<2>(key);
-
-        // Find the scene
-        SceneProject* sceneProject = nullptr;
-        for (auto& sp : scenes) {
-            if (sp.id == keySceneId) {
-                sceneProject = &sp;
-                break;
-            }
-        }
-        if (!sceneProject || !sceneProject->scene) {
-            staleKeys.push_back(key);
-            continue;
-        }
-
-        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(keyEntity);
+    for (auto it = materialFileLinks.begin(); it != materialFileLinks.end();) {
+        const auto [keySceneId, keyEntity, keySubmeshIndex] = it->first;
+        SceneProject* sceneProject = getScene(keySceneId);
+        MeshComponent* mesh = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<MeshComponent>(keyEntity) : nullptr;
         if (!mesh || keySubmeshIndex >= mesh->numSubmeshes) {
-            staleKeys.push_back(key);
+            it = materialFileLinks.erase(it);
             continue;
         }
-
-        // If the material name no longer matches the linked file (e.g. after undo), remove the link
-        std::string currentName = fs::path(mesh->submeshes[keySubmeshIndex].material.name).lexically_normal().generic_string();
-        if (currentName != linkEntry.filePath) {
-            staleKeys.push_back(key);
+        // the material no longer names the linked file (an undo, say): the link is gone
+        const std::string currentName = fs::path(mesh->submeshes[keySubmeshIndex].material.name).lexically_normal().generic_string();
+        if (currentName != it->second.filePath) {
+            it = materialFileLinks.erase(it);
             continue;
         }
-
-        fs::path absolutePath = projectPath / linkEntry.filePath;
-        if (!fs::exists(absolutePath)) {
-            staleKeys.push_back(key);
-            continue;
-        }
-
-        std::error_code ec;
-        auto writeTime = fs::last_write_time(absolutePath, ec);
-        if (ec) {
-            continue;
-        }
-
-        if (writeTime != linkEntry.lastWriteTime) {
-            linkEntry.lastWriteTime = writeTime;
-
-            // Only load the file once per unique path
-            if (changedFiles.find(linkEntry.filePath) == changedFiles.end()) {
-                try {
-                    YAML::Node materialNode = DocumentFiles::read(absolutePath, DocumentKind::Material).root;
-                    Material updatedMaterial = Stream::decodeMaterial(materialNode);
-                    updatedMaterial.name = linkEntry.filePath;
-                    changedFiles[linkEntry.filePath] = {linkEntry.filePath, updatedMaterial};
-                } catch (const std::exception& e) {
-                    Out::error("Error reloading linked material file '%s': %s", absolutePath.string().c_str(), e.what());
-                }
-            }
-        }
-    }
-
-    // Remove stale entries
-    for (const auto& key : staleKeys) {
-        materialFileLinks.erase(key);
-    }
-
-    // Apply changes
-    for (auto& [key, linkEntry] : materialFileLinks) {
-        uint32_t keySceneId = std::get<0>(key);
-        Entity keyEntity = std::get<1>(key);
-        unsigned int keySubmeshIndex = std::get<2>(key);
-
-        auto changedIt = changedFiles.find(linkEntry.filePath);
-        if (changedIt == changedFiles.end()) {
-            continue;
-        }
-
-        SceneProject* sceneProject = nullptr;
-        for (auto& sp : scenes) {
-            if (sp.id == keySceneId) {
-                sceneProject = &sp;
-                break;
-            }
-        }
-        if (!sceneProject || !sceneProject->scene) {
-            continue;
-        }
-
-        MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(keyEntity);
-        if (!mesh || keySubmeshIndex >= mesh->numSubmeshes) {
-            continue;
-        }
-
-        const Material& updatedMaterial = changedIt->second.updatedMaterial;
-        if (mesh->submeshes[keySubmeshIndex].material != updatedMaterial) {
+        if (it->second.filePath == filePath && mesh->submeshes[keySubmeshIndex].material != updatedMaterial) {
             // a new shader, features or render state reload the mesh, parameters its uniforms
             const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(mesh->submeshes[keySubmeshIndex].material, updatedMaterial);
             mesh->submeshes[keySubmeshIndex].material = updatedMaterial;
@@ -959,6 +855,7 @@ void editor::Project::refreshLinkedMaterials(bool force) {
             sceneProject->needUpdateRender = true;
             sceneProject->isModified = true;
         }
+        ++it;
     }
 }
 
@@ -3303,23 +3200,30 @@ void editor::Project::buildStandaloneShaderCache() {
 }
 
 void editor::Project::invalidateCustomShaders() {
+    invalidateCustomShaders([](const std::string&) { return true; });
+}
+
+void editor::Project::invalidateCustomShaders(const std::function<bool(const std::string& fork)>& which) {
     // Drop the editor's compiled cache for forked shaders, free their GPU handles, and
     // flag every renderable that uses one so RenderSystem recompiles it on the next draw.
-    editor::ShaderBuilder::invalidateCustomShaders();
-    ShaderPool::destroyCustomShaders();
+    editor::ShaderBuilder::invalidateCustomShaders(which);
+    ShaderPool::destroyCustomShaders(which);
     // fork manifests are read again from the edited files
-    ShaderManifests::clearForks();
+    ShaderManifests::clearForks(which);
 
+    auto fork = [&which](const std::string& shader) {
+        return !shader.empty() && !ShaderReference::isLibrary(shader) && which(shader);
+    };
     for (auto& sceneProject : getScenes()) {
         if (!sceneProject.scene)
             continue;
         Scene* scene = sceneProject.scene;
         // a component rides on a fork either via its own customShader or the scene default
-        bool sceneMesh = !scene->getDefaultMeshShader().empty();
-        bool sceneUI = !scene->getDefaultUIShader().empty();
-        bool scenePoints = !scene->getDefaultPointsShader().empty();
-        bool sceneLines = !scene->getDefaultLinesShader().empty();
-        bool sceneSky = !scene->getDefaultSkyShader().empty();
+        bool sceneMesh = fork(scene->getDefaultMeshShader());
+        bool sceneUI = fork(scene->getDefaultUIShader());
+        bool scenePoints = fork(scene->getDefaultPointsShader());
+        bool sceneLines = fork(scene->getDefaultLinesShader());
+        bool sceneSky = fork(scene->getDefaultSkyShader());
 
         // needReload is only consumed while the scene draws, and the idle loop skips
         // scenes that are not flagged, so the redraw has to be requested here. Saving a
@@ -3336,25 +3240,26 @@ void editor::Project::invalidateCustomShaders() {
                 // a material or its extra pass can name a fork too (library shaders do not change)
                 bool materialFork = false;
                 for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
-                    const std::string& shader = mesh->submeshes[s].material.shader;
-                    const std::string& pass = mesh->submeshes[s].material.extraPass->shader;
-                    materialFork = materialFork || (!shader.empty() && !ShaderReference::isLibrary(shader));
-                    materialFork = materialFork || (!pass.empty() && !ShaderReference::isLibrary(pass));
+                    materialFork = materialFork || fork(mesh->submeshes[s].material.shader);
+                    materialFork = materialFork || fork(mesh->submeshes[s].material.extraPass->shader);
                 }
-                flagReload(mesh->needReload, sceneMesh || materialFork || !mesh->customShader.empty() || !mesh->customDepthShader.empty());
+                flagReload(mesh->needReload, sceneMesh || materialFork || fork(mesh->customShader) || fork(mesh->customDepthShader));
             }
             if (UIComponent* ui = scene->findComponent<UIComponent>(entity))
-                flagReload(ui->needReload, sceneUI || !ui->customShader.empty());
+                flagReload(ui->needReload, sceneUI || fork(ui->customShader));
             if (PointsComponent* pts = scene->findComponent<PointsComponent>(entity))
-                flagReload(pts->needReload, scenePoints || !pts->customShader.empty());
+                flagReload(pts->needReload, scenePoints || fork(pts->customShader));
             if (LineRendererComponent* ln = scene->findComponent<LineRendererComponent>(entity))
-                flagReload(ln->needReload, sceneLines || !ln->customShader.empty());
+                flagReload(ln->needReload, sceneLines || fork(ln->customShader));
             if (SkyboxComponent* sky = scene->findComponent<SkyboxComponent>(entity))
-                flagReload(sky->needReload, sceneSky || !sky->customShader.empty());
+                flagReload(sky->needReload, sceneSky || fork(sky->customShader));
         }
 
         // post-process passes hold their shader directly, so the chain is rebuilt whole
-        if (!scene->getPostProcessPasses().empty()) {
+        bool postFork = false;
+        for (const PostProcessPass& pass : scene->getPostProcessPasses())
+            postFork = postFork || fork(pass.shader);
+        if (postFork) {
             scene->getSystem<RenderSystem>()->needReloadPostProcess();
             sceneProject.needUpdateRender = true;
         }
@@ -3584,9 +3489,6 @@ bool editor::Project::loadScene(fs::path filepath, bool opened, bool isNewScene,
                         Material fileMaterial = Stream::decodeMaterial(materialNode);
                         fileMaterial.name = AssetRef(normalizedPath, material.name.guid);
 
-                        std::error_code ec;
-                        materialFileLinks[MaterialLinkKey{targetScene->id, entity, submeshIndex}].lastWriteTime = fs::last_write_time(materialPath, ec);
-
                         if (material != fileMaterial) {
                             const uint64_t updateFlags = Catalog::getMaterialUpdateFlags(material, fileMaterial);
                             material = fileMaterial;
@@ -3799,6 +3701,50 @@ void editor::Project::openSceneInternal(fs::path filepath, uint32_t sceneToClose
             // Do nothing
         }
     );
+}
+
+bool editor::Project::reloadSceneFromDisk(uint32_t sceneId, std::string* error) {
+    auto fail = [error](const std::string& message) {
+        if (error) *error = message;
+        return false;
+    };
+    if (isAnyScenePlaying()) return fail("A scene is playing: stop it to reload a file from disk.");
+    SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject || sceneProject->filepath.empty()) return fail("The scene has no file to reload.");
+    fs::path fullPath = sceneProject->filepath;
+    if (fullPath.is_relative()) fullPath = getProjectPath() / fullPath;
+
+    if (getPrefabStage(sceneId)) {
+        // Prefab Mode: the stage is left without saving and opened on the file again
+        const fs::path prefab = fullPath;
+        const size_t depth = getPrefabStageDepth(sceneId);
+        closePrefabStages(depth > 0 ? depth - 1 : 0, [this, prefab](bool closed) {
+            if (closed) openPrefabStage(prefab);
+        }, 2);
+        return true;
+    }
+
+    // read it first: a file that does not parse leaves the open copy as it is
+    try {
+        DocumentFiles::read(fullPath, DocumentKind::Scene);
+    } catch (const std::exception& e) {
+        return fail(std::string("Cannot reload ") + sceneProject->name + ": " + e.what());
+    }
+    const bool selected = selectedScene == sceneId;
+    editor::getEditorHost().clearSceneWindowState(sceneId);
+    deleteSceneProject(sceneProject);
+    // the steps were made on the copy the file replaces (S24 R23, as when a scene closes)
+    CommandHandle::remove(sceneId);
+    if (!loadScene(fullPath, true, false)) return fail("Cannot reload " + fullPath.filename().string() + ": it did not load (see the Console).");
+    sceneProject = getScene(sceneId);
+    if (sceneProject) {
+        sceneProject->isModified = false;
+        sceneProject->needUpdateRender = true;
+    }
+    if (selected) setSelectedSceneId(sceneId);
+    markParentScenesNeedUpdate(sceneId);
+    Out::info("Reloaded \"%s\" from disk", fullPath.filename().string().c_str());
+    return true;
 }
 
 void editor::Project::closeScene(uint32_t sceneId, bool systemClose) {
@@ -4741,6 +4687,8 @@ void editor::Project::resetConfigs() {
     terrainEditorSettings = {};
     physicsPlacementSettings = {};
     simulateTouch = false;
+    // nothing reloads into a project that is going (S05)
+    HotReloadService::get().stopWatching();
     projectPath.clear();
     AssetMap::setResolver(nullptr);
     waitForAssetScan();
@@ -4749,7 +4697,6 @@ void editor::Project::resetConfigs() {
     pendingAssetChanges.clear();
     materialFileLinks.clear();
     tabs.clear();
-    lastMaterialRefreshTime = std::chrono::steady_clock::time_point{};
     projectHistory.clear();
     PlayChangeReview::get().discardAll();
 
@@ -5333,6 +5280,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
             modelLoaded = true;
             openAssetDatabase();
+            if (watchFiles) HotReloadService::get().startWatching(*this);
             saveProject();
             createNewScene("New Scene", SceneType::SCENE_3D);
             copyEngineApiToProject();
@@ -5621,6 +5569,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     // The asset files (and their GUIDs) are under the new root now
     if (oldPath != path) {
         openAssetDatabase();
+        if (watchFiles) HotReloadService::get().startWatching(*this);
     }
 
     // the temporary project saved somewhere of its own is locked there (R10)
@@ -5708,6 +5657,8 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
             setAssetsDir(projectNode["assetsDir"].as<std::string>());
         }
         openAssetDatabase();
+        // what changes on disk from now on reloads (S05)
+        if (watchFiles) HotReloadService::get().startWatching(*this);
         // the temps of saves a crash interrupted, found by that walk (R12)
         sweepOrphanedTemporaryFiles();
 
