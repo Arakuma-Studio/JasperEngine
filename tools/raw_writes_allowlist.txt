@@ -37,7 +37,6 @@ editor/Exporter.cpp :: fs::copy_file(sdkRoot / "jasperengine.py" :: export stagi
 editor/Exporter.cpp :: fs::copy_file(src / "shaderlib.h" :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(resolveProjectFile(project, source), target :: export staging (S30)
 editor/Exporter.cpp :: if (!ec) fs::copy_file(source, target :: export staging (S30)
-editor/Exporter.cpp :: fs::copy_file(src, threadsDir / (appName + ext) :: export staging (S30): the multithreaded web build's files
 editor/Exporter.cpp :: fs::copy_file(glbPath, importPath :: export staging (S30): the FBX imports a build ships
 
 # the game's own file API (File::open for writing, used by scripts): it streams
