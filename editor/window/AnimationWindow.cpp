@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationWindow.h"
+#include "AnimationWindowClip.h"
 
 #include "imgui_internal.h"
 #include "external/IconsFontAwesome6.h"
@@ -42,6 +43,7 @@
 #include "util/LatticeTrackKeys.h"
 #include "lattice/LatticeEditorOps.h"
 #include "lattice/LatticeSolver.h"
+#include "animation/PreviewOwner.h"
 
 #include <algorithm>
 #include <cmath>
@@ -109,6 +111,7 @@ constexpr float kLogicalMinTimelineBlockWidth = 10.0f;
 // Display-only lanes for short blocks that overlap after DPI min-width
 // inflation. Does not write ActionFrame::track.
 void assignVisualSubLanes(const std::vector<ActionFrame>& actions,
+                          const std::vector<uint32_t>& lanes,
                           const std::vector<float>& visualEndPx,
                           uint32_t numTracks,
                           float pixelsPerSecond,
@@ -118,7 +121,7 @@ void assignVisualSubLanes(const std::vector<ActionFrame>& actions,
     outLaneCount.assign(numTracks, 1);
     std::vector<std::vector<size_t>> byTrack(numTracks);
     for (size_t i = 0; i < actions.size(); i++) {
-        uint32_t track = actions[i].track;
+        uint32_t track = lanes[i];
         if (track >= numTracks) {
             continue;
         }
@@ -212,6 +215,9 @@ editor::AnimationWindow::AnimationWindow(Project* project){
 
     selectedEntity = NULL_ENTITY;
     selectedSceneId = 0;
+
+    clipMode = std::make_unique<AnimationWindowClip>(project);
+    installClipHooks();
 }
 
 
@@ -227,6 +233,9 @@ void editor::AnimationWindow::setOpen(bool open){
     windowOpen = false;
     focusRequested = false;
     isWindowVisible = false;
+
+    // the clip preview restores with the window (spec 9.R6)
+    clipMode->stopPreview();
 
     SceneProject* previewSceneProject = project->getScene(selectedSceneId);
     if (isDraggingKey || isDraggingFrame || isResizingFrame) {
@@ -491,11 +500,15 @@ float editor::AnimationWindow::getAnimationDuration(const AnimationComponent& an
     return duration;
 }
 
-void editor::AnimationWindow::autoAssignTracks(AnimationComponent& anim, SceneProject* sceneProject) const {
+void editor::AnimationWindow::autoAssignTracks(const AnimationComponent& anim, SceneProject* sceneProject) {
     Scene* scene = sceneProject->scene;
+    viewLanes.resize(anim.actions.size());
+    for (size_t i = 0; i < anim.actions.size(); i++) {
+        viewLanes[i] = anim.actions[i].track;
+    }
     // Overlap uses the same logical minimum as a 1x display. Drawing still
     // inflates short blocks by DPI, but packing must not depend on it or the
-    // clip's tracks change just from opening the window on another monitor.
+    // clip's lanes change just from opening the window on another monitor.
     const float minimumLayoutDuration = kLogicalMinTimelineBlockWidth / std::max(pixelsPerSecond, 1.0f);
     auto layoutFrameEnd = [&](const ActionFrame& frame) {
         return frame.startTime + std::max(effectiveFrameDuration(frame, scene), minimumLayoutDuration);
@@ -525,10 +538,10 @@ void editor::AnimationWindow::autoAssignTracks(AnimationComponent& anim, ScenePr
             return a < b;
         });
 
-        // Greedy lane packing
+        // Greedy lane packing, for display only (spec 9.R31: the scene is not written)
         std::vector<float> laneEnds;
         for (size_t idx : sorted) {
-            ActionFrame& frame = anim.actions[idx];
+            const ActionFrame& frame = anim.actions[idx];
             float frameEnd = layoutFrameEnd(frame);
             int lane = -1;
             for (int l = 0; l < (int)laneEnds.size(); l++) {
@@ -542,10 +555,19 @@ void editor::AnimationWindow::autoAssignTracks(AnimationComponent& anim, ScenePr
                 lane = (int)laneEnds.size();
                 laneEnds.push_back(frameEnd);
             }
-            frame.track = (uint32_t)lane;
+            viewLanes[idx] = (uint32_t)lane;
         }
-        sceneProject->isModified = true;
     }
+}
+
+uint32_t editor::AnimationWindow::laneOf(const AnimationComponent& anim, size_t frameIndex) const {
+    if (isDraggingFrame && draggingLane >= 0 && (int)frameIndex == draggingFrameIndex) {
+        return (uint32_t)draggingLane;
+    }
+    if (viewLanes.size() == anim.actions.size() && frameIndex < viewLanes.size()) {
+        return viewLanes[frameIndex];
+    }
+    return frameIndex < anim.actions.size() ? anim.actions[frameIndex].track : 0;
 }
 
 namespace {
@@ -883,13 +905,13 @@ void editor::AnimationWindow::finishTimelineDrag(Scene* scene, SceneProject* sce
         if (validFrame) {
             ActionFrame& frame = anim->actions[draggingFrameIndex];
             bool timeChanged = frame.startTime != dragStartTime;
-            bool trackChanged = frame.track != dragStartTrack;
+            // the lane is the view's (spec 9.R31): only an explicit move to another lane writes it
+            bool trackChanged = draggingLane >= 0 && (uint32_t)draggingLane != dragStartTrack;
             if (timeChanged || trackChanged) {
                 float finalStartTime = frame.startTime;
-                uint32_t finalTrack = frame.track;
+                uint32_t finalTrack = (uint32_t)std::max(0, draggingLane);
 
                 frame.startTime = dragStartTime;
-                frame.track = dragStartTrack;
 
                 if (timeChanged && trackChanged) {
                     auto* multiCmd = new MultiPropertyCmd();
@@ -920,6 +942,7 @@ void editor::AnimationWindow::finishTimelineDrag(Scene* scene, SceneProject* sce
         }
         isDraggingFrame = false;
         draggingFrameIndex = -1;
+        draggingLane = -1;
     }
 
     if (refreshPreview && timingChanged && isPreviewing) {
@@ -1353,6 +1376,18 @@ void editor::AnimationWindow::startPreview(Scene* scene) {
         return;
     }
 
+    // the Pose window, a clip preview or the Inspector's action preview of this hierarchy
+    // restore first (spec 9.R7)
+    {
+        const ActionComponent* rootAction = scene->findComponent<ActionComponent>(selectedEntity);
+        const Entity root = rootAction && rootAction->target != NULL_ENTITY && scene->isEntityCreated(rootAction->target)
+            ? rootAction->target : selectedEntity;
+        PreviewOwner::release(previewOwnerToken);
+        previewOwnerToken = PreviewOwner::acquire(selectedSceneId, root, scene, "Animation window (entity Animation)", [this]() {
+            stopTransientPreviews();
+        });
+    }
+
     previewState.clear();
     previewAnimations.clear();
 
@@ -1461,6 +1496,7 @@ void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProje
     isPreviewing = false;
     isDraggingFrame = false;
     draggingFrameIndex = -1;
+    draggingLane = -1;
     isDraggingKey = false;
     isResizingFrame = false;
     resizingFrameIndex = -1;
@@ -1468,12 +1504,22 @@ void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProje
     if (sceneProject) {
         sceneProject->needUpdateRender = true;
     }
+    PreviewOwner::release(previewOwnerToken);
+    previewOwnerToken = 0;
 }
 
 void editor::AnimationWindow::clearSceneState(uint32_t sceneId) {
+    clipMode->sceneClosed(sceneId);
+    if (lastSelectionScene == sceneId) {
+        lastSelectionScene = 0;
+        lastSelection.clear();
+    }
     if (!isPreviewing || selectedSceneId != sceneId) {
         return;
     }
+    // the scene is gone: forget the ownership without restoring
+    PreviewOwner::release(previewOwnerToken);
+    previewOwnerToken = 0;
 
     // The scene is already deleted, drop the snapshots instead of restoring them
     previewState.clear();
@@ -1697,6 +1743,11 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
 
     ImGui::SetNextItemWidth(std::max(minWidth, desiredWidth));
     if (ImGui::BeginCombo("##anim_entity_combo", currentLabel.c_str())) {
+        // the selected GameObject's clips (its Animation Player's states) and Create New Clip...
+        const std::vector<Entity> sceneSelection = project->getSelectedEntities(sceneProject->id);
+        if (!sceneSelection.empty() && clipMode->drawEntityModeEntries(sceneProject, sceneSelection.front())) {
+            clipModeActive = true;
+        }
         for (int i = 0; i < (int)animations->size(); i++) {
             Entity entity = animations->getEntity(i);
             std::string label = getAnimationEntityLabel(entity, scene);
@@ -1803,7 +1854,7 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
 
         char infoBuf[256];
         snprintf(infoBuf, sizeof(infoBuf), "Frame %d | Track %u | Start %.2fs | Duration %.2fs%s | %s",
-                 selectedFrameIndex, frame.track, frame.startTime, frameDur, autoTag, actionLabel.c_str());
+                 selectedFrameIndex, laneOf(anim, (size_t)selectedFrameIndex), frame.startTime, frameDur, autoTag, actionLabel.c_str());
 
         float infoWidth = ImGui::CalcTextSize(infoBuf).x;
         float cursorX = ImGui::GetCursorPosX();
@@ -1827,7 +1878,7 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
         ImGui::TextDisabled("%s", infoBuf);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Frame %d\nTrack: %u\nStart: %.2fs\nDuration: %.2fs%s\nAction: %s",
-                              selectedFrameIndex, frame.track, frame.startTime, frameDur, autoTag, actionLabel.c_str());
+                              selectedFrameIndex, laneOf(anim, (size_t)selectedFrameIndex), frame.startTime, frameDur, autoTag, actionLabel.c_str());
         }
     }
 
@@ -1929,7 +1980,7 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
         // If a frame is selected, add to the same track, otherwise track 0
         uint32_t targetTrack = 0;
         if (selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()) {
-            targetTrack = anim.actions[selectedFrameIndex].track;
+            targetTrack = laneOf(anim, (size_t)selectedFrameIndex);
         }
         Entity target = scene->findComponent<ActionComponent>(selectedEntity)
             ? scene->getComponent<ActionComponent>(selectedEntity).target
@@ -2130,10 +2181,10 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
 
     // Find highest track
     uint32_t maxTrack = 0;
-    for (const auto& frame : anim.actions) {
-        if (frame.track > maxTrack) {
-            maxTrack = frame.track;
-        }
+    std::vector<uint32_t> lanes(anim.actions.size());
+    for (size_t i = 0; i < anim.actions.size(); i++) {
+        lanes[i] = laneOf(anim, i);
+        maxTrack = std::max(maxTrack, lanes[i]);
     }
     // Always draw at least 3 tracks, or maxTrack + 2 to give space to drag down
     uint32_t numTracks = std::max((uint32_t)3, maxTrack + 2);
@@ -2151,12 +2202,12 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
     }
     std::vector<int> subLane;
     std::vector<int> trackLaneCount;
-    assignVisualSubLanes(anim.actions, visualEndPx, numTracks, pixelsPerSecond, subLane, trackLaneCount);
+    assignVisualSubLanes(anim.actions, lanes, visualEndPx, numTracks, pixelsPerSecond, subLane, trackLaneCount);
 
     // 1. Draw track backgrounds and the property list (Unity's left pane): each
     // track is a row named after what it animates, "Target : Property".
     const int selectedTrack = allowSelection && selectedFrameIndex >= 0 && selectedFrameIndex < (int)anim.actions.size()
-        ? (int)anim.actions[selectedFrameIndex].track : -1;
+        ? (int)lanes[(size_t)selectedFrameIndex] : -1;
     const uint32_t addPropertyTrack = anim.actions.empty() ? 0 : maxTrack + 1;
     for (uint32_t t = 0; t < numTracks; t++) {
         float trackY = canvasPos.y + rulerHeight + t * (trackHeight + trackPadding);
@@ -2195,9 +2246,9 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
 
         const ActionFrame* firstFrame = nullptr;
         int frameCount = 0;
-        for (const ActionFrame& frame : anim.actions) {
-            if (frame.track != t) continue;
-            if (!firstFrame) firstFrame = &frame;
+        for (size_t i = 0; i < anim.actions.size(); i++) {
+            if (lanes[i] != t) continue;
+            if (!firstFrame) firstFrame = &anim.actions[i];
             frameCount++;
         }
         if (!firstFrame) continue;
@@ -2223,7 +2274,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
     // 2. Draw blocks
     for (size_t i = 0; i < anim.actions.size(); i++) {
         ActionFrame& frame = anim.actions[i];
-        float trackY = canvasPos.y + rulerHeight + frame.track * (trackHeight + trackPadding);
+        float trackY = canvasPos.y + rulerHeight + lanes[i] * (trackHeight + trackPadding);
         float frameDur = effectiveFrameDuration(frame, scene);
         if (allowSelection && frame.duration <= 0.0f && isDraggingKey
             && selectedKeyFrameIndex == (int)i) {
@@ -2231,7 +2282,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             frameDur = std::max(frameDur, keyDragTime);
         }
 
-        int laneCount = (frame.track < numTracks) ? trackLaneCount[frame.track] : 1;
+        int laneCount = (lanes[i] < numTracks) ? trackLaneCount[lanes[i]] : 1;
         int lane = subLane[i];
         float innerTop = trackY + metrics.inset;
         float innerBot = trackY + trackHeight - metrics.inset;
@@ -2427,7 +2478,8 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
                         isDraggingFrame = true;
                         draggingFrameIndex = (int)i;
                         dragStartTime = frame.startTime;
-                        dragStartTrack = frame.track;
+                        dragStartTrack = lanes[i];
+                        draggingLane = (int)lanes[i];
                     }
                 }
             }
@@ -2593,7 +2645,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             for (size_t i = 0; i < anim.actions.size(); i++) {
                 if ((int)i == draggingFrameIndex) continue;
                 const auto& a = anim.actions[i];
-                if ((int)a.track == track) {
+                if ((int)laneOf(anim, i) == track) {
                     occupied.push_back({a.startTime, a.startTime + effectiveFrameDuration(a, scene)});
                 }
             }
@@ -2630,9 +2682,9 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
         };
 
         float validPos = findValidPosition(snappedStart, newTrack);
+        // live and view only until the release commits it (finishTimelineDrag)
         frame.startTime = validPos;
-        frame.track = newTrack;
-        sceneProject->isModified = true;
+        draggingLane = newTrack;
     }
 
     // Handle frame resizing
@@ -2658,7 +2710,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
         for (size_t i = 0; i < anim.actions.size(); i++) {
             if ((int)i == resizingFrameIndex) continue;
             const auto& a = anim.actions[i];
-            if (a.track != frame.track) continue;
+            if (laneOf(anim, i) != laneOf(anim, (size_t)resizingFrameIndex)) continue;
             float aEnd = a.startTime + effectiveFrameDuration(a, scene);
             if (aEnd <= resizeStartTime + 0.001f) {
                 neighborLeftEnd = std::max(neighborLeftEnd, aEnd);
@@ -2681,7 +2733,6 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             frame.startTime = newStart;
             frame.duration = endTime - newStart;
         }
-        sceneProject->isModified = true;
     }
 
     if ((isDraggingKey || isDraggingFrame || isResizingFrame)
@@ -2810,6 +2861,10 @@ bool editor::AnimationWindow::drawPlayhead(ImVec2 canvasPos, ImVec2 canvasSize, 
 }
 
 void editor::AnimationWindow::show() {
+    // the clip controller runs every frame (playback, re-applies after scene edits); clip mode
+    // tells it again below whether the window takes its keys
+    clipMode->update(ImGui::GetIO().DeltaTime, false, false);
+
     if (!windowOpen) {
         isWindowVisible = false;
         return;
@@ -2881,6 +2936,19 @@ void editor::AnimationWindow::show() {
         currentTime = 0;
     }
 
+    // Clip mode or entity mode, from the selection (animation clips spec 4.4, 9.R31)
+    if (updateMode(sceneProject)) {
+        if (isPreviewing) {
+            restorePreviewScene();
+        }
+        drawClipMode(sceneProject);
+        ImGui::End();
+        if (wasOpen && !windowOpen) {
+            setOpen(false);
+        }
+        return;
+    }
+
     // Collect all entities with AnimationComponent in the scene
     auto animations = scene->getComponentArray<AnimationComponent>();
     if (animations->size() == 0) {
@@ -2890,7 +2958,7 @@ void editor::AnimationWindow::show() {
         }
         selectedEntity = NULL_ENTITY;
         selectedSceneId = 0;
-        ImGui::TextDisabled("No Animation in this scene. Add an Animation component to a GameObject to begin animating.");
+        ImGui::TextDisabled("No Animation in this scene. Select a GameObject to create an Animation Clip for it, or add an Animation component.");
         ImGui::End();
         if (wasOpen && !windowOpen) {
             setOpen(false);
@@ -2907,32 +2975,9 @@ void editor::AnimationWindow::show() {
         selectedEntity = NULL_ENTITY;
     }
 
-    // Auto-select from scene selection if user clicked a new animation entity
-    // We only update if the selected entities in the project changed to avoid overriding combo selection
-    static std::vector<Entity> lastSceneSelectedEntities;
-    std::vector<Entity> selectedEntities = project->getSelectedEntities(sceneProject->id);
+    // (a selected Animation entity was picked up by updateMode, per scene)
 
-    if (selectedEntities != lastSceneSelectedEntities) {
-        lastSceneSelectedEntities = selectedEntities;
-        bool foundAnimation = false;
-        for (Entity entity : selectedEntities) {
-            if (scene->findComponent<AnimationComponent>(entity)) {
-                if (selectedEntity != entity) {
-                    selectEntity(entity, sceneProject->id);
-                }
-                if (!isWindowVisible) {
-                    hasNotification = true;
-                }
-                foundAnimation = true;
-                break;
-            }
-        }
-        if (!foundAnimation) {
-            hasNotification = false;
-        }
-    }
-
-    // Default to first animation entity if nothing selected
+    // Default to first animation entity if nothing selected (entity mode only, R31)
     if (selectedEntity == NULL_ENTITY) {
         selectedEntity = animations->getEntity(0);
         selectedSceneId = sceneProject->id;
@@ -3013,8 +3058,18 @@ void editor::AnimationWindow::show() {
 
     // Draw toolbar
     drawToolbar(ImGui::GetContentRegionAvail().x, *animComp, scene, sceneProject);
+    // The toolbar can switch to clip mode (the dropdown's clip entries)
+    if (clipModeActive) {
+        ImGui::End();
+        if (wasOpen && !windowOpen) {
+            setOpen(false);
+        }
+        return;
+    }
     // The toolbar can add an AnimationComponent, which can move this one
     animComp = &scene->getComponent<AnimationComponent>(selectedEntity);
+    // and change its frames: the lanes are laid out again
+    autoAssignTracks(*animComp, sceneProject);
 
     ImGui::Separator();
 
@@ -3068,7 +3123,7 @@ void editor::AnimationWindow::show() {
     float blockContentWidth = 0.0f;
     for (size_t frameIndex = 0; frameIndex < displayAnim->actions.size(); frameIndex++) {
         const ActionFrame& frame = displayAnim->actions[frameIndex];
-        maxDisplayTrack = std::max(maxDisplayTrack, frame.track);
+        maxDisplayTrack = std::max(maxDisplayTrack, laneOf(*displayAnim, frameIndex));
         float blockStartPx = frame.startTime * pixelsPerSecond;
         float frameDuration = effectiveFrameDuration(frame, scene);
         if (displayEntity == selectedEntity && frame.duration <= 0.0f && isDraggingKey
@@ -3303,5 +3358,21 @@ void editor::AnimationWindow::seekPreviewExternal(Scene* scene, SceneProject* sc
 }
 
 void editor::AnimationWindow::stopTransientPreviews(){
-    // TODO(T3b): stop the entity-mode preview (restore its snapshot) when one runs
+    // the entity-mode preview restores its snapshot before a save, play, scene switch or close
+    // (spec 9.R6); the clip mode's is the controller's (AnimationClipAppHooks::stopTransientPreviews)
+    if (!isPreviewing) {
+        return;
+    }
+    isPlaying = false;
+    SceneProject* previewSceneProject = project->getScene(selectedSceneId);
+    if (previewSceneProject && previewSceneProject->scene) {
+        stopPreview(previewSceneProject->scene, previewSceneProject);
+    } else {
+        previewState.clear();
+        previewAnimations.clear();
+        previewPrimary = NULL_ENTITY;
+        isPreviewing = false;
+        PreviewOwner::release(previewOwnerToken);
+        previewOwnerToken = 0;
+    }
 }
