@@ -4,6 +4,7 @@
 #ifndef LUA_FUNCTIONBASE_H
 #define LUA_FUNCTIONBASE_H
 
+#include <memory>
 #include <string>
 #include "math/Vector3.h"
 
@@ -18,6 +19,8 @@ namespace jasperengine{
     class Contact3D;
     class CollideShapeResult3D;
 
+    namespace lua_reload { struct CallbackRecord; }
+
     // the base function wrapper class
     class LuaFunctionBase{
 
@@ -29,6 +32,9 @@ namespace jasperengine{
         // the virtual machine and the registry reference to the function
         lua_State *m_vm;
         int m_func;
+        // the generation of the chunk that defined the function: once a hot reload retired
+        // it (the function is the old code's), calls do nothing (LuaReload)
+        std::shared_ptr<lua_reload::CallbackRecord> m_record;
 
         // push the function from the registry
         void push_function(lua_State *vm, int func);

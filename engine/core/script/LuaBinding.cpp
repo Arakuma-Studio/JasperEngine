@@ -19,6 +19,7 @@
 #include "manager/ObjectManager.h"
 #include "component/ScriptComponent.h"
 #include "ScriptProperty.h"
+#include "LuaReload.h"
 #include "object/EntityHandle.h"
 #include "object/GameObject.h"
 #include "object/Mesh.h"
@@ -518,7 +519,31 @@ int LuaBinding::luaRegisterEventImpl(lua_State* L, int eventIndex, int selfIndex
         return lua_error(L);
     }
 
+    // a hot reload during Play replays it against the new method (LuaReload)
+    lua_reload::recordRegistration(L, selfIndex, eventIndex, methodName, lua_tostring(L, tagIndex), guardActive);
+
     return 0;
+}
+
+bool LuaBinding::replayScriptEvent(lua_State* L, int eventIndex, int selfIndex, const std::string& method,
+                                   const std::string& tag, bool guarded, std::string& error) {
+    eventIndex = lua_absindex(L, eventIndex);
+    selfIndex = lua_absindex(L, selfIndex);
+    lua_pushcfunction(L, [](lua_State* Linner) -> int {
+        // (event, self, method, tag, guarded)
+        return luaRegisterEventImpl(Linner, 1, 2, lua_tostring(Linner, 3), lua_tostring(Linner, 4), lua_toboolean(Linner, 5) != 0);
+    });
+    lua_pushvalue(L, eventIndex);
+    lua_pushvalue(L, selfIndex);
+    lua_pushstring(L, method.c_str());
+    lua_pushstring(L, tag.c_str());
+    lua_pushboolean(L, guarded);
+    if (lua_pcall(L, 5, 0, 0) != LUA_OK) {
+        error = getLuaStackErrorString(L, -1);
+        lua_pop(L, 1);
+        return false;
+    }
+    return true;
 }
 
 // Generic: RegisterEvent(self, event, methodName [, tag])
@@ -578,13 +603,17 @@ int LuaBinding::moduleLoader(lua_State *L) {
     
     std::string filepath;
     Data filedata;
-    
+    // chunks are named "@<path>" (standard Lua message form), with forward slashes
+    std::string chunkPath(lua_tostring(L, 1));
+    std::replace(chunkPath.begin(), chunkPath.end(), '.', '/');
+    chunkPath += ".lua";
+
     filepath = std::string("lua://") + filename + ".lua";
     filedata.open(filepath.c_str());
     if (filedata.getMemPtr() != NULL) {
         
         luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
-                        filepath.c_str());
+                        lua_reload::chunkName(chunkPath).c_str());
         
         return 1;
     }
@@ -594,7 +623,7 @@ int LuaBinding::moduleLoader(lua_State *L) {
     if (filedata.getMemPtr() != NULL) {
         
         luaL_loadbuffer(L, (const char *) filedata.getMemPtr(), filedata.length(),
-                        filepath.c_str());
+                        lua_reload::chunkName("lua/" + chunkPath).c_str());
         
         return 1;
     }
@@ -632,14 +661,16 @@ void LuaBinding::init(){
     std::string luafile_subdir = std::string("lua://") + luadir + "main.lua";
 
     Data filedata;
+    std::string chunk = lua_reload::chunkName("main.lua");
 
     //First try open on root assets dir
     if (filedata.open(luafile.c_str()) != FileErrors::FILEDATA_OK){
         //Second try to open on lua dir
         filedata.open(luafile_subdir.c_str());
+        chunk = lua_reload::chunkName("lua/main.lua");
     }
 
-    if (luaL_loadbuffer(L,(const char*)filedata.getMemPtr(),filedata.length(), luafile.c_str()) == 0){
+    if (luaL_loadbuffer(L,(const char*)filedata.getMemPtr(),filedata.length(), chunk.c_str()) == 0){
         if(pcallWithTraceback(L, 0, LUA_MULTRET) != 0){
             logLuaError("Lua Error: %s", getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
@@ -760,6 +791,7 @@ namespace {
 
 void LuaBinding::cleanup(){
     clearScriptChunks(luastate);
+    lua_reload::clearGenerations();
     if (luastate) {
         lua_close(luastate);
         luastate = NULL;
@@ -873,6 +905,7 @@ void LuaBinding::clearLoadedProjectModules() {
     lua_State* L = luastate;
     // scripts may have changed since: compiled again
     clearScriptChunks(L);
+    lua_reload::clearGenerations();
     if (!L) return;
 
     std::set<std::string> loadedModules;
@@ -901,7 +934,8 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
             return false;
         }
 
-        int loadStatus = luaL_loadbuffer(L, (const char*)filedata.getMemPtr(), filedata.length(), scriptEntry.path.c_str());
+        const std::string chunkName = lua_reload::chunkName(scriptEntry.path.str());
+        int loadStatus = luaL_loadbuffer(L, (const char*)filedata.getMemPtr(), filedata.length(), chunkName.c_str());
         if (loadStatus != LUA_OK) {
             logLuaError("Failed to load Lua file '%s': %s", scriptEntry.path.c_str(), getLuaStackErrorString(L, -1).c_str());
             lua_pop(L, 1);
@@ -948,31 +982,8 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
     for (auto& prop : scriptEntry.properties) {
         if (prop.type == ScriptPropertyType::EntityReference) {
             lua_pushnil(L);
-            lua_setfield(L, -2, prop.name.c_str());
-            continue;
-        }
-        if (std::holds_alternative<bool>(prop.value)) {
-            lua_pushboolean(L, std::get<bool>(prop.value));
-        } else if (std::holds_alternative<int>(prop.value)) {
-            lua_pushinteger(L, std::get<int>(prop.value));
-        } else if (std::holds_alternative<float>(prop.value)) {
-            lua_pushnumber(L, std::get<float>(prop.value));
-        } else if (std::holds_alternative<std::string>(prop.value)) {
-            lua_pushstring(L, std::get<std::string>(prop.value).c_str());
-        } else if (std::holds_alternative<Vector2>(prop.value)) {
-            if (!luabridge::push<Vector2>(L, std::get<Vector2>(prop.value))) lua_pushnil(L);
-        } else if (std::holds_alternative<Vector3>(prop.value)) {
-            if (!luabridge::push<Vector3>(L, std::get<Vector3>(prop.value))) lua_pushnil(L);
-        } else if (std::holds_alternative<Vector4>(prop.value)) {
-            if (!luabridge::push<Vector4>(L, std::get<Vector4>(prop.value))) lua_pushnil(L);
-        } else if (std::holds_alternative<PrefabAsset>(prop.value) && !std::get<PrefabAsset>(prop.value).isEmpty()) {
-            // a prefab property left at None stays nil
-            if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(prop.value))) lua_pushnil(L);
-        } else if (std::holds_alternative<AssetRef>(prop.value) && std::get<AssetRef>(prop.value).isSet()) {
-            // an asset property left at None stays nil
-            if (!luabridge::push<ScriptAssetRef>(L, ScriptAssetRef(std::get<AssetRef>(prop.value)))) lua_pushnil(L);
         } else {
-            lua_pushnil(L);
+            pushScriptPropertyValue(L, scene, prop);
         }
         lua_setfield(L, -2, prop.name.c_str());
     }
@@ -991,6 +1002,55 @@ bool LuaBinding::createLuaScriptInstance(lua_State* L, Scene* scene, Entity enti
 
     lua_pop(L, 1); // pop module
     return true;
+}
+
+void LuaBinding::setScriptChunk(lua_State* L, const std::string& path, int index) {
+    lua_pushvalue(L, index);
+    const int ref = luaL_ref(L, LUA_REGISTRYINDEX);
+    auto chunk = scriptChunks.find(path);
+    if (chunk != scriptChunks.end()) {
+        luaL_unref(L, LUA_REGISTRYINDEX, chunk->second);
+        chunk->second = ref;
+    } else {
+        scriptChunks.emplace(path, ref);
+    }
+}
+
+void LuaBinding::pushScriptPropertyValue(lua_State* L, Scene* scene, const ScriptProperty& prop) {
+    const ScriptPropertyValue& value = prop.value;
+    if (prop.type == ScriptPropertyType::EntityReference) {
+        bool found = false;
+        if (std::holds_alternative<EntityReference>(value)) {
+            const EntityReference& entRef = std::get<EntityReference>(value);
+            if (entRef.entity != NULL_ENTITY) {
+                Scene* targetScene = entRef.sceneId != 0 ? SceneManager::getScenePtr(entRef.sceneId) : scene;
+                found = pushScriptObject(L, targetScene, entRef.entity, prop.ptrTypeName);
+            }
+        }
+        if (!found) lua_pushnil(L);
+    } else if (std::holds_alternative<bool>(value)) {
+        lua_pushboolean(L, std::get<bool>(value));
+    } else if (std::holds_alternative<int>(value)) {
+        lua_pushinteger(L, std::get<int>(value));
+    } else if (std::holds_alternative<float>(value)) {
+        lua_pushnumber(L, std::get<float>(value));
+    } else if (std::holds_alternative<std::string>(value)) {
+        lua_pushstring(L, std::get<std::string>(value).c_str());
+    } else if (std::holds_alternative<Vector2>(value)) {
+        if (!luabridge::push<Vector2>(L, std::get<Vector2>(value))) lua_pushnil(L);
+    } else if (std::holds_alternative<Vector3>(value)) {
+        if (!luabridge::push<Vector3>(L, std::get<Vector3>(value))) lua_pushnil(L);
+    } else if (std::holds_alternative<Vector4>(value)) {
+        if (!luabridge::push<Vector4>(L, std::get<Vector4>(value))) lua_pushnil(L);
+    } else if (std::holds_alternative<PrefabAsset>(value) && !std::get<PrefabAsset>(value).isEmpty()) {
+        // a prefab property left at None stays nil
+        if (!luabridge::push<PrefabAsset>(L, std::get<PrefabAsset>(value))) lua_pushnil(L);
+    } else if (std::holds_alternative<AssetRef>(value) && std::get<AssetRef>(value).isSet()) {
+        // an asset property left at None stays nil
+        if (!luabridge::push<ScriptAssetRef>(L, ScriptAssetRef(std::get<AssetRef>(value)))) lua_pushnil(L);
+    } else {
+        lua_pushnil(L);
+    }
 }
 
 bool LuaBinding::pushScriptObject(lua_State* L, Scene* scene, Entity entity, const std::string& className) {

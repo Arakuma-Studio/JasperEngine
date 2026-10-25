@@ -1085,6 +1085,7 @@ set(JASPERENGINE_SRCS
     core/render/shadow/ShadowTypes.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
+    core/script/LuaReload.cpp
     core/script/LuaScript.cpp
     core/script/ScriptBase.cpp
     core/script/ScriptProperty.cpp

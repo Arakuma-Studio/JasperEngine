@@ -115,8 +115,9 @@ namespace jasperengine {
             return hash;
         }
 
-        // The engine build and the defines that change its layouts
-        constexpr uint32_t engineAbiHash(){
+        // The engine build and the defines that change its layouts. Internal linkage (static):
+        // each translation unit computes its own, from its own defines.
+        static constexpr uint32_t engineAbiHash(){
             uint32_t hash = fnv1a(JASPERENGINE_ABI_VERSION);
 #if defined(JASPERENGINE_PHYSICS_2D)
             hash = fnv1a("|PHYSICS_2D", hash);
@@ -138,8 +139,9 @@ namespace jasperengine {
 
     }
 
-    // The toolchain of the calling translation unit
-    constexpr ToolchainFingerprint currentToolchainFingerprint(){
+    // The toolchain of the calling translation unit (internal linkage: never merged with
+    // another translation unit's, which may have other defines)
+    static constexpr ToolchainFingerprint currentToolchainFingerprint(){
         using namespace toolchain;
         ToolchainFingerprint fp{};
         fp.format = FORMAT;
