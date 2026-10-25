@@ -216,7 +216,9 @@
 #include "lattice/LatticeSolver.h"
 #include "lattice/LatticePresets.h"
 #include "lattice/LatticeRender.h"
-// animation clips: the public part (AnimationPlayerRuntime.h and ModelSubClips.h are internal)
+// animation clips: the public part. In anim::, ClipBinding.h (binding paths) and
+// KeyframeSampling.h (the samplers; ActionSystem::sampleClip returns their TrackSample) are public
+// too; AnimationPlayerRuntime.h and ModelSubClips.h are internal
 #include "animation/ClipTypes.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"

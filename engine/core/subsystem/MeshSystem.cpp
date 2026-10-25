@@ -47,6 +47,38 @@ using namespace jasperengine;
 namespace {
     thread_local int g_imageDecodeMaxDimension = 0;
 
+    // loadGLTF's node walk (getLegacyRootTransform repeats it on a loaded model): each node's
+    // parent (the last node listing it as a child, -1 for none) and the nodes that own a mesh, in
+    // index order
+    void collectGLTFNodes(const tinygltf::Model& gltf, std::map<int, int>& nodesParent, std::vector<int>& meshNodes){
+        for (size_t i = 0; i < gltf.nodes.size(); i++){
+            nodesParent[static_cast<int>(i)] = -1;
+        }
+        for (size_t i = 0; i < gltf.nodes.size(); i++){
+            if (gltf.nodes[i].mesh >= 0){
+                meshNodes.push_back(static_cast<int>(i));
+            }
+            for (int child : gltf.nodes[i].children){
+                nodesParent[child] = static_cast<int>(i);
+            }
+        }
+    }
+
+    // the node whose global matrix places the model entity: the default scene's first root, else
+    // the first mesh node (-1 without one)
+    int gltfRootTransformNode(const tinygltf::Model& gltf, const std::vector<int>& meshNodes){
+        if (!gltf.scenes.empty()){
+            const int sceneIdx = gltf.defaultScene >= 0 ? gltf.defaultScene : 0;
+            if (sceneIdx < (int)gltf.scenes.size() && !gltf.scenes[sceneIdx].nodes.empty()){
+                const int node = gltf.scenes[sceneIdx].nodes[0];
+                if (node >= 0 && node < (int)gltf.nodes.size()){
+                    return node;
+                }
+            }
+        }
+        return meshNodes.empty() ? -1 : meshNodes[0];
+    }
+
     // the largest sprite grid a lattice can ask for (LatticeModifierComponent::subdivisions)
     constexpr int SPRITE_MAX_GRID = 64;
 
@@ -4762,27 +4794,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     // Build parent map and collect all nodes that own a mesh primitive.
     int meshNode    = -1; // first skinned mesh node — used for skeleton lookup
-    int transformNode = -1; // scene root — used for initial entity transform
     std::vector<int> meshNodes;
     std::map<int, int> nodesParent;
-
-    for (size_t i = 0; i < model.gltfModel->nodes.size(); i++) {
-        nodesParent[static_cast<int>(i)] = -1;
-    }
-
-    for (size_t i = 0; i < model.gltfModel->nodes.size(); i++) {
-        const tinygltf::Node& node = model.gltfModel->nodes[i];
-
-        if (node.mesh >= 0) {
-            meshNodes.push_back(static_cast<int>(i));
-            if (meshNode < 0 && node.skin >= 0) {
-                meshNode = static_cast<int>(i);
-            }
-        }
-
-        for (int child : node.children) {
-            nodesParent[child] = static_cast<int>(i);
-        }
+    collectGLTFNodes(*model.gltfModel, nodesParent, meshNodes);
+    for (int nodeIdx : meshNodes) {
+        if (model.gltfModel->nodes[nodeIdx].skin >= 0) { meshNode = nodeIdx; break; }
     }
 
     if (meshNodes.empty()) {
@@ -4834,15 +4850,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     }
 
     // Prefer the GLTF scene root for the entity transform; fall back to the first mesh node.
-    if (!model.gltfModel->scenes.empty()) {
-        int sceneIdx = model.gltfModel->defaultScene >= 0 ? model.gltfModel->defaultScene : 0;
-        if (isValidGLTFIndex(sceneIdx, model.gltfModel->scenes) && !model.gltfModel->scenes[sceneIdx].nodes.empty()) {
-            transformNode = model.gltfModel->scenes[sceneIdx].nodes[0];
-        }
-    }
-    if (transformNode < 0) {
-        transformNode = meshNodes[0];
-    }
+    const int transformNode = gltfRootTransformNode(*model.gltfModel, meshNodes);
 
     Matrix4 matrix = getGLTFMeshGlobalMatrix(transformNode, model, nodesParent);
 
@@ -6339,35 +6347,17 @@ bool MeshSystem::getLegacyRootTransform(Entity entity, Matrix4& sceneRoot){
     const tinygltf::Model& gltf = *model->gltfModel;
     std::map<int, int> nodesParent;
     std::vector<int> meshNodes;
+    collectGLTFNodes(gltf, nodesParent, meshNodes);
     bool anyNodeSkinned = false;
-    for (size_t i = 0; i < gltf.nodes.size(); i++){
-        nodesParent[static_cast<int>(i)] = -1;
+    for (int nodeIdx : meshNodes){
+        anyNodeSkinned = anyNodeSkinned || gltf.nodes[nodeIdx].skin >= 0;
     }
-    for (size_t i = 0; i < gltf.nodes.size(); i++){
-        if (gltf.nodes[i].mesh >= 0){
-            meshNodes.push_back(static_cast<int>(i));
-            anyNodeSkinned = anyNodeSkinned || gltf.nodes[i].skin >= 0;
-        }
-        for (int child : gltf.nodes[i].children){
-            nodesParent[child] = static_cast<int>(i);
-        }
-    }
-    // loadGLTF's condition for the root transform on the entity (child meshes of a static
-    // multi-mesh model carry their whole global matrix instead)
+    // loadGLTF's condition for the root transform on the entity in the legacy layout (`!useChildEntities
+    // || anyNodeSkinned`: child meshes of a static multi-mesh model carry their whole global matrix)
     if (meshNodes.empty() || (meshNodes.size() > 1 && !anyNodeSkinned)){
         return false;
     }
-    int transformNode = -1;
-    if (!gltf.scenes.empty()){
-        int sceneIdx = gltf.defaultScene >= 0 ? gltf.defaultScene : 0;
-        if (isValidGLTFIndex(sceneIdx, gltf.scenes) && !gltf.scenes[sceneIdx].nodes.empty()){
-            transformNode = gltf.scenes[sceneIdx].nodes[0];
-        }
-    }
-    if (!isValidGLTFIndex(transformNode, gltf.nodes)){
-        transformNode = meshNodes[0];
-    }
-    sceneRoot = getGLTFMeshGlobalMatrix(transformNode, *model, nodesParent);
+    sceneRoot = getGLTFMeshGlobalMatrix(gltfRootTransformNode(gltf, meshNodes), *model, nodesParent);
     return true;
 }
 

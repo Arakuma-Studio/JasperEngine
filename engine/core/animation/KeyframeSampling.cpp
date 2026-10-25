@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <cfloat>
-#include <algorithm>
 #include <cmath>
 
 using namespace jasperengine;
@@ -306,15 +305,6 @@ namespace {
         return true;
     }
 
-}
-
-void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,
-                                bool includeStart, std::vector<size_t>& out){
-    std::vector<CrossedEvent> crossed;
-    collectCrossedEvents(clip, wrap, fromTime, toTime, includeStart, crossed);
-    for (const CrossedEvent& event : crossed){
-        out.push_back(event.index);
-    }
 }
 
 void anim::collectCrossedEvents(const AnimationClip& clip, ClipWrapMode wrap, float fromTime, float toTime,

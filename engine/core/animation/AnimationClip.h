@@ -9,7 +9,6 @@
 //   * AnimationClip: the immutable runtime form built once from a ClipData (AnimationClip::build),
 //     shared through AnimationClipPool by every player and preview: per-track typed arrays in
 //     contiguous storage that KeyframeSampling reads with key cursors held by the caller.
-// - Owner: T0 (types); T1a implements build/toData and the IO that fills ClipData.
 // - Thread-safety: ClipData is a plain value. An AnimationClip never changes after build, so any
 //   thread may read it (the pool hands out shared_ptr<const AnimationClip>).
 // - Invariants of a ClipData that came out of the loader (parseClip / buildSubClip):

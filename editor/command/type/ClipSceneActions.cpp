@@ -448,7 +448,8 @@ bool ClipSceneActions::convertToClip(Project* project, uint32_t sceneId, Entity 
 }
 
 bool ClipSceneActions::extractSubClip(Project* project, uint32_t sceneId, Entity model, const std::string& subClip,
-                                      const std::string& clipPath, bool usePlayer, ClipActionResult& result, std::string& error){
+                                      const std::string& clipPath, bool usePlayer, ClipActionResult& result, std::string& error,
+                                      const ClipData* edited){
     result = ClipActionResult();
     if (!project) return fail(error, "no project");
     fs::path absolute;
@@ -457,10 +458,14 @@ bool ClipSceneActions::extractSubClip(Project* project, uint32_t sceneId, Entity
     const std::string reference = ClipConverters::playerEntry(project, subClip).clip;
     ClipData data;
     std::string failure;
-    if (!ClipConverters::extractModelSubClip(reference, data, result.warnings, &failure)) return fail(error, failure);
     anim::SubClipReference parsed;
     anim::parseSubClipReference(reference, parsed);
-    data.previewModel = parsed.model;
+    if (edited){
+        data = *edited;
+    }else{
+        if (!ClipConverters::extractModelSubClip(reference, data, result.warnings, &failure)) return fail(error, failure);
+        data.previewModel = parsed.model;
+    }
     result.clip = projectRelative(project, absolute);
     std::error_code ec;
     const bool exists = fs::exists(absolute, ec);

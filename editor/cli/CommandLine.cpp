@@ -2089,12 +2089,13 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
     const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
         std::vector<std::pair<std::string, std::string>> entries;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
         try {
             collectPlayerClips(YAML::LoadFile(file.string()), entries);
-        } catch (const std::exception&) {
+        } catch (const std::exception& e) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", std::string("could not read Animation Player entries: ") + e.what()});
             continue;
         }
-        const std::string rel = ProjectChecks::projectRelative(root, file);
         std::set<std::string> reported;
         for (const auto& [clip, guid] : entries) {
             if (clip.empty() || !reported.insert(clip).second) continue;
@@ -2102,7 +2103,16 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
             const bool subClip = anim::parseSubClipReference(clip, reference);
             const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
             std::error_code ec;
-            if (fs::is_regular_file(target, ec)) continue;
+            if (fs::is_regular_file(target, ec)) {
+                // the editor resolves the GUID first: an entry whose GUID names another clip plays that one
+                auto named = subClip || guid.empty() ? guids.end() : guids.find(guid);
+                if (named != guids.end() && named->second != ProjectChecks::projectRelative(root, target)) {
+                    check.findings.push_back({"anim", rel, 0, 0, "warning", "an Animation Player's clip '" + clip + "' has the GUID of '" +
+                                              named->second + "', which the editor plays (it resolves the GUID first): set the entry's clip "
+                                              "again in the editor, or fix the guid"});
+                }
+                continue;
+            }
             if (subClip) {
                 check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "' but the model '" +
                                           reference.model + "' does not exist"});

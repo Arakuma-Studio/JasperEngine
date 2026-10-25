@@ -141,7 +141,7 @@ TEST(ClipIO, UnityYamlIsRefusedWithTheGuideText){
     EXPECT_EQ(result.error.line, 0);
     EXPECT_EQ(std::string(anim::unityYamlRefusal()),
               "This is a Unity .anim (YAML). JasperEngine clips are JSON {\"format\": \"jasperengine.anim\"}: "
-              "create one with Create > Animation Clip or edit_animation {clip, create}.");
+              "create one with Assets > Create > Animation Clip or edit_animation {clip, create}.");
     EXPECT_FALSE(anim::parseClip("--- !u!74 &7400000\nAnimationClip:\n").ok());
 }
 

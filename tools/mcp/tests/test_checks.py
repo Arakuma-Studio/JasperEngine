@@ -389,6 +389,41 @@ async def test_cli_anims():
         check("anims" in data["checked"], f"the default set checks clips: {data['checked']}")
 
 
+OTHER_GUID = "fedcba9876543210fedcba9876543210"
+# an entry whose path exists but whose GUID names another clip (the editor plays the GUID's file)
+GUID_SCENE = """name: Guids
+entities:
+  - name: Mover
+    components:
+      animationplayer:
+        clips:
+          - clip: assets/anim/other.anim
+            guid: 0123456789abcdef0123456789abcdef
+          - clip: assets/anim/good.anim
+            guid: 0123456789abcdef0123456789abcdef
+"""
+
+
+async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
+    with scratch_project() as project:
+        write(project, "assets/anim/good.anim", GOOD_CLIP)
+        write(project, "assets/anim/other.anim", GOOD_CLIP.replace(CLIP_GUID, OTHER_GUID))
+        write(project, "Guids.scene", GUID_SCENE)
+        write(project, "Broken.prefab", "name: Broken\nentities: [ {name: A\n")
+        code, data = run_json(project, "--anims")
+        found = {}
+        for f in data["findings"]:
+            found.setdefault(f["path"], []).append((f["severity"], f["message"]))
+        scene = found.get("Guids.scene", [])
+        check_eq(len(scene), 1, f"one finding: the entry whose GUID names another clip (the matching one is fine): {scene}")
+        check(scene and scene[0][0] == "warning" and "'assets/anim/other.anim' has the GUID of 'assets/anim/good.anim'" in scene[0][1],
+              f"GUID/path mismatch: {scene}")
+        prefab = found.get("Broken.prefab", [])
+        check(len(prefab) == 1 and prefab[0][0] == "warning" and "could not read Animation Player entries" in prefab[0][1],
+              f"a YAML that fails to parse is reported, not skipped: {prefab}")
+        check_eq(code, 0, f"warnings only: exit 0: {data}")
+
+
 # ---------------------------------------------------------------------------- CLI: shaders
 
 async def test_cli_shaders():
