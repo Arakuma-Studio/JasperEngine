@@ -9,6 +9,7 @@
 #include "animation/AnimationClipAppHooks.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
+#include "animation/ClipConverters.h"
 #include "animation/KeyframeSampling.h"
 #include "animation/ModelSubClips.h"
 #include "component/AnimationPlayerComponent.h"
@@ -88,17 +89,13 @@ namespace{
             hooks.stopTransientPreviews = [](){
                 for (auto& entry : controllers()) entry.second->stopTransientPreviews();
             };
-            hooks.ownsUndo = [](const ClipUndoFocus& focus){
-                for (auto& entry : controllers()){
-                    if (entry.second->ownsUndo(focus)) return true;
-                }
-                return false;
+            // by the one history timeline, with or without a controller: the Inspector's clip
+            // commits count too (R5c)
+            hooks.ownsUndo = [](const ClipUndoFocus&){
+                return AnimationClipController::newestUndoIsClipCommit(nullptr);
             };
-            hooks.ownsRedo = [](const ClipUndoFocus& focus){
-                for (auto& entry : controllers()){
-                    if (entry.second->ownsRedo(focus)) return true;
-                }
-                return false;
+            hooks.ownsRedo = [](const ClipUndoFocus&){
+                return AnimationClipController::newestRedoIsClipCommit(nullptr);
             };
             hooks.takesKeys = [](){
                 for (auto& entry : controllers()){
@@ -126,8 +123,9 @@ namespace{
 
     // R5b: when each history's undoable steps were taken, to find the newest across the scene
     // and project histories. Kept from CommandHistory::onSceneModified (every add, merge, insert,
-    // undo and redo) and beforeStep (an undo or redo follows), both chained after the App's own
-    // listeners when the first controller is made (the App sets them at startup).
+    // undo and redo) and beforeStep (an undo or redo follows), chained after the App's own
+    // listeners by App::engineInit (installHistoryTimeline) or, without the App (tests, CLI),
+    // when the first controller is made or the first clip commit is marked.
     struct HistoryTimeline{
         struct Steps{
             std::vector<uint64_t> stamps;   // per position: when that step was done
@@ -193,11 +191,18 @@ namespace{
         steps.last = position;
     }
 
-    void installTimeline(Project* project){
-        HistoryTimeline& t = timeline();
-        if (project) t.project = project;
-        if (t.installed) return;
-        t.installed = true;
+    // after a scene undo or redo: the Animation Player entries it gave back (an old path hint
+    // of a clip renamed or moved since) point at their clips by GUID again (9.R8), so the
+    // Inspector, the window and the edit preview find them without a reopen
+    void resolveClipRefsAfterStep(size_t id){
+        Project* project = timeline().project;
+        if (!project || id == NULL_PROJECT_SCENE) return;
+        SceneProject* sceneProject = project->getScene((uint32_t)id);
+        if (!sceneProject || !sceneProject->scene || sceneProject->playState != ScenePlayState::STOPPED) return;
+        if (project->resolveRegistryClipRefs(sceneProject->scene, true)) sceneProject->isModified = true;
+    }
+
+    void chainTimeline(){
         std::function<void(size_t, bool)> modified = CommandHistory::onSceneModified;
         CommandHistory::onSceneModified = [modified](size_t id, bool structural){
             if (modified) modified(id, structural);
@@ -208,6 +213,19 @@ namespace{
             if (before) before(id);
             timeline().stepping.insert(id);
         };
+        std::function<void(size_t)> after = CommandHistory::afterStep;
+        CommandHistory::afterStep = [after](size_t id){
+            if (after) after(id);
+            resolveClipRefsAfterStep(id);
+        };
+    }
+
+    void installTimeline(Project* project){
+        HistoryTimeline& t = timeline();
+        if (project) t.project = project;
+        if (t.installed) return;
+        t.installed = true;
+        chainTimeline();
     }
 
     // the next redoable step of a history: when it was undone (0: none, or before the timeline)
@@ -241,6 +259,19 @@ namespace{
     bool finite(float value){
         return std::isfinite(value);
     }
+
+    // `entity` is a part of a model under `root` in the legacy layout: its path changes when an
+    // Animation Player reloads the model in its node hierarchy (R3), so a key made on it now would
+    // stop binding then (Record and Add Property refuse it and say why)
+    bool legacyModelPart(Scene* scene, Entity root, Entity entity){
+        std::string now;
+        std::string later;
+        if (!anim::relativePath(scene, root, entity, now)) return false;
+        return ClipConverters::clipPath(scene, root, entity, later) && later != now;
+    }
+
+    const char* const LEGACY_PART_REASON = "is part of a model in the legacy layout: reload it in its node hierarchy first "
+                                           "(the Animation window's banner), or its keys would stop binding then";
 
     // the key of a track nearest `time` within `tolerance`, -1 when none
     int nearestKey(const ClipTrackData& track, float time, float tolerance){
@@ -680,7 +711,8 @@ std::shared_ptr<AnimationClipDocument> AnimationClipController::getDocument() co
 }
 
 const std::string& AnimationClipController::getClipPath() const{
-    return clipPath;
+    // the document follows a rename or move of its file (AnimationClipDocument::filesMoved)
+    return document ? document->path() : clipPath;
 }
 
 const std::string& AnimationClipController::getStateName() const{
@@ -752,7 +784,7 @@ bool AnimationClipController::startPreview(std::string* error){
         if (target == NULL_ENTITY){
             const std::string& model = document->data().previewModel;
             return fail(error, model.empty()
-                ? "nothing to preview on: select a GameObject, or set the clip's Preview on model (preview.model)"
+                ? "nothing to preview on: select a GameObject, or set the clip's Preview Model (preview.model)"
                 : "nothing to preview on: no instance of '" + model + "' (the clip's preview model) in the open scene");
         }
     }
@@ -814,8 +846,12 @@ void AnimationClipController::endPreview(bool write){
     shownValues.clear();
     previewSceneId = 0;
     previewRoot = NULL_ENTITY;
-    // Record keys into the preview: it ends with it (Unity)
-    if (recording) setRecording(false);
+    // Record keys into the preview: it ends with it (Unity); one ended by a save or Play says so
+    if (recording){
+        setRecording(false);
+        if (transientStop) recordStoppedNotice = true;
+    }
+    transientStop = false;
     ClipRecordHooks::endAllGestures();
     PreviewOwner::release(ownerToken);
     ownerToken = 0;
@@ -1188,23 +1224,67 @@ bool AnimationClipController::commitEdit(const ClipData& data, const std::string
     if (!editable(error)) return false;
     // keep the document across the commit: its listener may run stopPreview()
     std::shared_ptr<AnimationClipDocument> edited = document;
-    const uint64_t clockBefore = timeline().clock;
+    const uint64_t clockBefore = clipCommitClock(project);
     std::vector<ClipWarning> warnings;
     if (!edited->commit(data, undoName, mergeKey, error, &warnings)) return false;
     lastWarnings = warnings;
-    // the preview shows the new revision through the document's listener
-    lastActionWasClipEdit = true;
-    // the project step it made (or merged into) is a clip commit (R5b)
+    // the preview shows the new revision through the document's listener; the project step it
+    // made (or merged into) is a clip commit (R5b)
+    markClipCommit(clockBefore);
+    return true;
+}
+
+uint64_t AnimationClipController::clipCommitClock(Project* project){
+    installTimeline(project);
+    return timeline().clock;
+}
+
+void AnimationClipController::markClipCommit(uint64_t clockBefore){
     HistoryTimeline& t = timeline();
     CommandHistory* history = historyOf(NULL_PROJECT_SCENE);
     auto steps = t.histories.find(NULL_PROJECT_SCENE);
-    if (history && steps != t.histories.end()){
-        const size_t position = history->position();
-        if (position > 0 && position <= steps->second.stamps.size() && steps->second.stamps[position - 1] > clockBefore){
-            steps->second.clip[position - 1] = true;
-        }
+    if (!history || steps == t.histories.end()) return;
+    const size_t position = history->position();
+    if (position > 0 && position <= steps->second.stamps.size() && steps->second.stamps[position - 1] > clockBefore){
+        steps->second.clip[position - 1] = true;
     }
-    return true;
+}
+
+void AnimationClipController::installHistoryTimeline(Project* project){
+    HistoryTimeline& t = timeline();
+    if (project) t.project = project;
+    // the App has just set CommandHistory's listeners (replacing an earlier chain, if any)
+    t.installed = true;
+    chainTimeline();
+}
+
+bool AnimationClipController::newestUndoIsClipCommit(Project* project){
+    if (!project) project = timeline().project;
+    if (!project || historyOf(NULL_PROJECT_SCENE) != project->getProjectCommandHistory()) return false;
+    bool clip = false;
+    const uint64_t projectStep = topStep(NULL_PROJECT_SCENE, &clip);
+    if (!clip) return false;
+    const uint32_t selected = project->getSelectedSceneId();
+    const uint64_t sceneStep = selected != NULL_PROJECT_SCENE ? topStep(selected, nullptr) : 0;
+    return projectStep > sceneStep;
+}
+
+bool AnimationClipController::newestRedoIsClipCommit(Project* project){
+    if (!project) project = timeline().project;
+    if (!project || historyOf(NULL_PROJECT_SCENE) != project->getProjectCommandHistory()) return false;
+    bool clip = false;
+    const uint64_t projectStep = redoStep(NULL_PROJECT_SCENE, &clip);
+    if (!clip || projectStep == 0) return false;
+    const uint32_t selected = project->getSelectedSceneId();
+    // newer than the scene's next redo and than its last new step (a scene edit made after the
+    // undo is the newest action: Ctrl+Y does not jump back to the clip; scene redos do not count)
+    const uint64_t sceneRedo = selected != NULL_PROJECT_SCENE ? redoStep(selected, nullptr) : 0;
+    uint64_t sceneNew = 0;
+    if (selected != NULL_PROJECT_SCENE){
+        auto steps = timeline().histories.find(selected);
+        if (steps != timeline().histories.end()) sceneNew = steps->second.lastNew;
+    }
+    return projectStep > sceneRedo && projectStep > sceneNew;
 }
 
 bool AnimationClipController::currentTrackValue(const ClipTrackData& track, std::vector<float>& out) const{
@@ -1270,6 +1350,14 @@ bool AnimationClipController::addProperty(const std::string& path, ClipChannel c
         return fail(error, valueRoot(&sceneProject) == NULL_ENTITY
             ? "no GameObject is bound to read the current value from"
             : "no GameObject with that component at '" + path + "' under the bound root");
+    }
+    {
+        SceneProject* sceneProject = nullptr;
+        const Entity at = valueRoot(&sceneProject);
+        const Entity entity = sceneProject ? anim::resolvePath(sceneProject->scene, at, path) : NULL_ENTITY;
+        if (entity != NULL_ENTITY && legacyModelPart(sceneProject->scene, at, entity)){
+            return fail(error, "'" + path + "' " + LEGACY_PART_REASON);
+        }
     }
     setKeyAt(track, time, value);
     data.tracks.push_back(track);
@@ -1674,6 +1762,12 @@ bool AnimationClipController::isRecording() const{
     return recording;
 }
 
+bool AnimationClipController::takeRecordStoppedNotice(){
+    const bool notice = recordStoppedNotice;
+    recordStoppedNotice = false;
+    return notice;
+}
+
 bool AnimationClipController::recordClaims(uint32_t id, Entity entity, ClipChannel channel) const{
     if (!recording || !isPreviewing() || id != previewSceneId || channel == ClipChannel::Property) return false;
     if (!document || document->isReadOnly() || !document->exists()) return false;
@@ -1683,7 +1777,13 @@ bool AnimationClipController::recordClaims(uint32_t id, Entity entity, ClipChann
     std::string path;
     if (!anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
     std::vector<float> value;
-    return anim::readChannelValue(sceneProject->scene, entity, channel, {}, value);
+    if (!anim::readChannelValue(sceneProject->scene, entity, channel, {}, value)) return false;
+    if (legacyModelPart(sceneProject->scene, previewRoot, entity)){
+        // a scene edit then, and the window says why
+        ClipRecordHooks::note("Record leaves '" + sceneProject->scene->getEntityName(entity) + "' alone: it " + LEGACY_PART_REASON);
+        return false;
+    }
+    return true;
 }
 
 bool AnimationClipController::recordAnimates(uint32_t id, Entity entity, ClipChannel channel) const{
@@ -1752,18 +1852,20 @@ void AnimationClipController::recordValue(uint32_t id, Entity entity, const Clip
     }
     setKeyAt(track, time, keyValue);
     std::string error;
-    if (!commitEdit(data, "Record", mergeKey, &error)) Out::warning("Record: %s", error.c_str());
+    if (commitEdit(data, "Record", mergeKey, &error)) return;
+    // nothing was keyed: said once per gesture (its merge key), in the Console and the window
+    if (!mergeKey.empty() && mergeKey == failedRecordKey) return;
+    failedRecordKey = mergeKey;
+    Out::warning("Record: %s", error.c_str());
+    ClipRecordHooks::note("Record could not key this edit: " + error);
 }
 
 // ---- App integration ----
 
 void AnimationClipController::stopTransientPreviews(){
+    // (a stop deferred by a running save keeps the flag until update() finishes it)
+    transientStop = previewing;
     stopPreview();
-}
-
-bool AnimationClipController::ownsUndo(bool sceneViewFocused) const{
-    (void)sceneViewFocused;
-    return newestStepIsClipEdit();
 }
 
 bool AnimationClipController::ownsUndo(const ClipUndoFocus& focus) const{
@@ -1773,30 +1875,11 @@ bool AnimationClipController::ownsUndo(const ClipUndoFocus& focus) const{
 }
 
 bool AnimationClipController::newestStepIsClipEdit() const{
-    if (!project || historyOf(NULL_PROJECT_SCENE) != project->getProjectCommandHistory()) return false;
-    bool clip = false;
-    const uint64_t projectStep = topStep(NULL_PROJECT_SCENE, &clip);
-    if (!clip) return false;
-    const uint32_t selected = project->getSelectedSceneId();
-    const uint64_t sceneStep = selected != NULL_PROJECT_SCENE ? topStep(selected, nullptr) : 0;
-    return projectStep > sceneStep;
+    return project && newestUndoIsClipCommit(project);
 }
 
 bool AnimationClipController::newestRedoIsClipEdit() const{
-    if (!project || historyOf(NULL_PROJECT_SCENE) != project->getProjectCommandHistory()) return false;
-    bool clip = false;
-    const uint64_t projectStep = redoStep(NULL_PROJECT_SCENE, &clip);
-    if (!clip || projectStep == 0) return false;
-    const uint32_t selected = project->getSelectedSceneId();
-    // newer than the scene's next redo and than its last new step (a scene edit made after the
-    // undo is the newest action: Ctrl+Y does not jump back to the clip; scene redos do not count)
-    const uint64_t sceneRedo = selected != NULL_PROJECT_SCENE ? redoStep(selected, nullptr) : 0;
-    uint64_t sceneNew = 0;
-    if (selected != NULL_PROJECT_SCENE){
-        auto steps = timeline().histories.find(selected);
-        if (steps != timeline().histories.end()) sceneNew = steps->second.lastNew;
-    }
-    return projectStep > sceneRedo && projectStep > sceneNew;
+    return project && newestRedoIsClipCommit(project);
 }
 
 bool AnimationClipController::ownsRedo(const ClipUndoFocus& focus) const{
@@ -1878,10 +1961,6 @@ void AnimationClipController::writePending(){
         if (std::find(session.written.begin(), session.written.end(), entry) == session.written.end()) session.written.push_back(entry);
         anim::writeChannelValue(scene, entity, value.channel, value.points, value.value);
     }
-}
-
-void AnimationClipController::setLastActionWasClipEdit(bool clipEdit){
-    lastActionWasClipEdit = clipEdit;
 }
 
 void AnimationClipController::setTakesKeys(bool takes){

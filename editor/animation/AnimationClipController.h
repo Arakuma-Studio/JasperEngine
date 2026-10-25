@@ -158,47 +158,6 @@ namespace jasperengine::editor{
         bool retargetTrack(size_t track, const std::string& newPath, std::string* error);
         // any other edit of the clip data (events lane, settings): one commit
         bool commit(const ClipData& data, const std::string& undoName, const std::string& mergeKey, std::string* error);
-
-        // ---- record ----
-
-        void setRecording(bool recording);
-        bool isRecording() const;
-
-        // ---- App integration (AnimationClipAppHooks) ----
-
-        void stopTransientPreviews();
-        bool ownsUndo(bool sceneViewFocused) const;
-        // the last action in the window was a pure clip edit (project history) or a scene step
-        void setLastActionWasClipEdit(bool clipEdit);
-        void sceneClosed(uint32_t sceneId);
-
-        // ---- additions (T3a) ----
-
-        // `entity` or its nearest ancestor with an Animation Player (the root clip mode binds),
-        // NULL_ENTITY when none
-        static Entity findPlayerRoot(EntityRegistry* registry, Entity entity);
-        // What the preview writes: the bound root, or for a clip opened without one the instance
-        // of its preview.model found in the selected scene when the preview started (a GameObject
-        // whose Model is that file, or an instance root of that prefab; the selected GameObject
-        // first). NULL_ENTITY / 0 while not previewing.
-        Entity getPreviewRoot() const;
-        uint32_t getPreviewSceneId() const;
-        // paths of the open clip's tracks that did not resolve in the last preview write
-        const std::vector<std::string>& getUnresolvedPaths() const;
-        // the App's undo routing (AnimationClipAppHooks::ownsUndo), spec 9.R5b: the newest
-        // undoable step across the project history and the selected scene's is a clip commit of
-        // this controller, whatever has focus (newestStepIsClipEdit; ownsUndo(bool) answers the
-        // same; setLastActionWasClipEdit no longer routes anything)
-        bool ownsUndo(const ClipUndoFocus& focus) const;
-        // the window sets it every frame: it is focused in clip mode and handles its keys
-        // (AnimationClipAppHooks::takesKeys)
-        void setTakesKeys(bool takes);
-        bool takesKeys() const;
-        // the time key edits use (the playhead), in seconds
-        void setTime(float time);
-
-        // ---- additions (T3a review round 1) ----
-
         // keyTracks / keyAll / keyModified reporting where the keys they wrote are now (`keyed`
         // optional, one ref per keyed track)
         bool keyTracks(const std::vector<size_t>& tracks, float time, const std::string& mergeKey,
@@ -214,20 +173,8 @@ namespace jasperengine::editor{
         bool setPendingValue(size_t track, const std::vector<float>& value, std::string* error);
         bool hasPendingValue(size_t track) const;
         void clearPendingValues();
-        // R5b: the newest undoable step across the project history and the selected scene's is
-        // a clip commit of this controller (the window's edits, Record): Ctrl+Z / Ctrl+Y go to the
-        // project history, whatever window has focus (both ownsUndo forms answer this)
-        bool newestStepIsClipEdit() const;
-
-        // ---- additions (T3a review round 2) ----
-
-        // R5b for redo: the newest redoable step (the one undone last) across the project history
-        // and the selected scene's is a clip commit of this controller: Ctrl+Y goes to the project
-        // history (AnimationClipAppHooks::ownsRedo), independently of where Ctrl+Z goes
-        bool newestRedoIsClipEdit() const;
-        bool ownsRedo(const ClipUndoFocus& focus) const;
-
-        // ---- additions (T3c review round 1) ----
+        // the time key edits use (the playhead), in seconds
+        void setTime(float time);
 
         // A key drag giving each dragged key an ABSOLUTE value (ClipKey::value layout, the drag
         // base's width; rotations are normalized): `dragIndex` is the key's position in the list
@@ -243,6 +190,61 @@ namespace jasperengine::editor{
         // the clip as it was when the drag began (valid while isDraggingKeys())
         const ClipData& dragBaseData() const;
 
+        // ---- record ----
+
+        void setRecording(bool recording);
+        bool isRecording() const;
+        // A save, Play or Prefab Mode Auto Save stopped the preview and with it Record (Unity's
+        // Record keys into the preview): true once after that, for the window's notice
+        bool takeRecordStoppedNotice();
+
+        // ---- binding and preview root ----
+
+        // `entity` or its nearest ancestor with an Animation Player (the root clip mode binds),
+        // NULL_ENTITY when none
+        static Entity findPlayerRoot(EntityRegistry* registry, Entity entity);
+        // What the preview writes: the bound root, or for a clip opened without one the instance
+        // of its preview.model found in the selected scene when the preview started (a GameObject
+        // whose Model is that file, or an instance root of that prefab; the selected GameObject
+        // first). NULL_ENTITY / 0 while not previewing.
+        Entity getPreviewRoot() const;
+        uint32_t getPreviewSceneId() const;
+        // paths of the open clip's tracks that did not resolve in the last preview write
+        const std::vector<std::string>& getUnresolvedPaths() const;
+
+        // ---- App integration (AnimationClipAppHooks) ----
+
+        void stopTransientPreviews();
+        void sceneClosed(uint32_t sceneId);
+        // the window sets it every frame: it is focused in clip mode and handles its keys
+        // (AnimationClipAppHooks::takesKeys)
+        void setTakesKeys(bool takes);
+        bool takesKeys() const;
+
+        // ---- undo routing (spec 9.R5b / R5c) ----
+        // Ctrl+Z / Ctrl+Y and Edit > Undo / Redo go to the project history when the newest
+        // undoable (for redo: the one undone last) step across the project history and the
+        // selected scene's is a clip commit made through the editor UI, whatever window has
+        // focus (AnimationClipAppHooks::ownsUndo / ownsRedo); Record never steals a scene undo.
+        // Clip commits: this controller's edits (the window, Record, Retarget) and the ones the
+        // UI marks with markClipCommit (the Inspector's .anim asset section, Extract / Create
+        // file writes). MCP tools never mark theirs.
+
+        bool ownsUndo(const ClipUndoFocus& focus) const;
+        bool ownsRedo(const ClipUndoFocus& focus) const;
+        bool newestStepIsClipEdit() const;
+        bool newestRedoIsClipEdit() const;
+        // the same for `project` (null: the timeline's), with or without a controller
+        static bool newestUndoIsClipCommit(Project* project);
+        static bool newestRedoIsClipCommit(Project* project);
+        // A clip commit made outside the controller: take the clock before it, mark after it.
+        // The project step made (or merged into) since `clockBefore` is a clip commit.
+        static uint64_t clipCommitClock(Project* project);
+        static void markClipCommit(uint64_t clockBefore);
+        // App::engineInit, right after it sets CommandHistory's listeners: the history timeline
+        // (and the clip references re-resolved after a scene undo / redo) chained after them
+        static void installHistoryTimeline(Project* project);
+
     private:
         struct Snapshot;
         Project* project = nullptr;
@@ -256,7 +258,7 @@ namespace jasperengine::editor{
         bool previewing = false;
         bool playing = false;
         bool recording = false;
-        bool lastActionWasClipEdit = false;
+        bool recordStoppedNotice = false;
         // the drag's base clip and keys (beginKeyDrag)
         bool dragging = false;
         ClipData dragBase;
@@ -278,6 +280,8 @@ namespace jasperengine::editor{
         bool needsApply = false;
         // stopPreview() while the scene was being saved: update() finishes it
         bool stopPending = false;
+        // the running stop came from stopTransientPreviews (a save, Play, Auto Save)
+        bool transientStop = false;
         bool windowKeys = false;
         int lastUpdateFrame = -1;
         std::vector<std::string> unresolved;
@@ -302,6 +306,8 @@ namespace jasperengine::editor{
         std::vector<PendingValue> pending;
         float pendingTime = 0.0f;
         std::vector<ClipWarning> lastWarnings;
+        // the merge key of the last Record edit that could not be committed (warned once)
+        std::string failedRecordKey;
         void writePending();
 
         SceneProject* sceneProjectOf(uint32_t id) const;

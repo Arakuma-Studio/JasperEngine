@@ -6,13 +6,14 @@
 #include "Out.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/ClipEditorUtil.h"
+#include "command/type/ClipSceneActions.h"
 #include "util/FileUtils.h"
 
 #include <algorithm>
 #include <cerrno>
 #include <cstring>
-#include <fstream>
-#include <iterator>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -21,12 +22,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    bool readWhole(const fs::path& path, std::string& content){
-        std::ifstream in(path, std::ios::binary);
-        if (!in) return false;
-        content.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
-        return true;
-    }
+    using clipui::readWholeFile;
 
 }
 
@@ -61,12 +57,19 @@ void CreateClipCmd::restoreFiles(size_t count, bool checkBytes){
         if (checkBytes){
             std::string current;
             const bool exists = fs::is_regular_file(file.path, ec);
-            if (!exists || !readWhole(file.path, current) || current != file.content){
+            if (!exists || !readWholeFile(file.path, current) || current != file.content){
                 // changed (or deleted) since it was written: not this step's to take back (R4)
                 if (exists){
                     keptFiles.push_back(file.path);
                     editor::Out::warning("Kept '%s': it changed after it was written, so undo leaves it as it is",
                                          FileUtils::pathToGenericUtf8(file.path).c_str());
+                }else{
+                    const fs::path moved = movedTo(file);
+                    if (!moved.empty()){
+                        keptFiles.push_back(moved);
+                        editor::Out::warning("Kept '%s': the clip this step wrote moved there, so undo leaves it as it is",
+                                             FileUtils::pathToGenericUtf8(moved).c_str());
+                    }
                 }
                 continue;
             }
@@ -99,6 +102,8 @@ bool CreateClipCmd::execute(){
         return fail("the scene is not open");
     }
     wasModified = sceneProject->isModified;
+    // a redo (or a step built while a preview ran) changes the player's hierarchy from its rest
+    ClipSceneActions::stopPreviewsFor(sceneId, {playerRoot});
 
     // the files, all or nothing; what is there now is what undo gives back
     written.assign(files.size(), Written());
@@ -106,9 +111,13 @@ bool CreateClipCmd::execute(){
     for (size_t i = 0; i < files.size(); i++){
         const File& file = files[i];
         std::error_code ec;
-        if (std::find(keptByUndo.begin(), keptByUndo.end(), file.path) != keptByUndo.end() && fs::is_regular_file(file.path, ec)){
+        const bool exists = fs::is_regular_file(file.path, ec);
+        const bool kept = std::find(keptByUndo.begin(), keptByUndo.end(), file.path) != keptByUndo.end();
+        // a new file this step created, back with other bytes (a project redo recreated it)
+        const bool recreated = executedOnce && i < existedFirst.size() && !existedFirst[i];
+        if ((kept || recreated) && exists){
             std::string current;
-            if (readWhole(file.path, current) && current != file.content){
+            if (readWholeFile(file.path, current) && current != file.content){
                 // not written over: the edits stay, and the next undo leaves the file alone
                 keptFiles.push_back(file.path);
                 editor::Out::warning("Kept '%s': it changed since this step wrote it, so redo leaves it as it is",
@@ -116,8 +125,23 @@ bool CreateClipCmd::execute(){
                 continue;
             }
         }
-        written[i].existed = fs::is_regular_file(file.path, ec);
-        if (written[i].existed && !readWhole(file.path, written[i].previous)){
+        if (executedOnce && !exists){
+            const fs::path moved = movedTo(file);
+            if (!moved.empty()){
+                // renamed or moved since: no second file with its GUID at the old path (the
+                // entries this step gives back follow the GUID to it, 9.R8)
+                keptFiles.push_back(moved);
+                editor::Out::warning("Kept '%s': the clip this step wrote moved there, so redo doesn't write it again at '%s'",
+                                     FileUtils::pathToGenericUtf8(moved).c_str(), FileUtils::pathToGenericUtf8(file.path).c_str());
+                continue;
+            }
+        }
+        if (!executedOnce){
+            if (existedFirst.size() < files.size()) existedFirst.resize(files.size(), false);
+            existedFirst[i] = exists;
+        }
+        written[i].existed = exists;
+        if (written[i].existed && !readWholeFile(file.path, written[i].previous)){
             restoreFiles(i, false);
             return fail("can't read " + FileUtils::pathToGenericUtf8(file.path) + " (its content is kept for undo); nothing was written");
         }
@@ -174,7 +198,19 @@ bool CreateClipCmd::execute(){
     sceneProject = project->getScene(sceneId);
     if (sceneProject) sceneProject->isModified = true;
     if (!files.empty()) notifyFiles();
+    executedOnce = true;
     return true;
+}
+
+fs::path CreateClipCmd::movedTo(const File& file) const{
+    const std::string guid = anim::readClipGuid(file.content);
+    if (!project || !anim::isClipGuid(guid)) return fs::path();
+    const fs::path relative = project->getAssetDatabase().getPath(guid);
+    if (relative.empty()) return fs::path();
+    const fs::path absolute = (project->getProjectPath() / relative).lexically_normal();
+    std::error_code ec;
+    if (absolute == file.path.lexically_normal() || !fs::is_regular_file(absolute, ec)) return fs::path();
+    return absolute;
 }
 
 void CreateClipCmd::undo(){
@@ -182,6 +218,7 @@ void CreateClipCmd::undo(){
     if (!sceneProject){
         return;
     }
+    ClipSceneActions::stopPreviewsFor(sceneId, {playerRoot});
     // (keptFiles holds what this execute left alone: still kept)
     PlayerModelLayout::undoReloads(layoutReloads);
     for (size_t i = sceneCommands.size(); i-- > 0;){

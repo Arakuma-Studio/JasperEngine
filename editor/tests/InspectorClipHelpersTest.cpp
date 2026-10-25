@@ -97,7 +97,7 @@ TEST(InspectorClipHelpers, WrapAndChannelLabelsAndSeconds) {
     EXPECT_STREQ(inspectorclips::wrapLabel(ClipWrapMode::PingPong), "Ping Pong");
     EXPECT_STREQ(inspectorclips::wrapLabel(ClipWrapMode::ClampForever), "Clamp Forever");
     EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Position), "Position");
-    EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Morph), "Morph");
+    EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Morph), "Blend Shapes") << "the Animation window's name";
     EXPECT_EQ(inspectorclips::formatSeconds(1.25f), "1.25 s");
     EXPECT_EQ(inspectorclips::formatSeconds(std::numeric_limits<float>::quiet_NaN()), "0.00 s");
 }

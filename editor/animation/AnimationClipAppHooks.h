@@ -44,9 +44,9 @@ namespace jasperengine::editor{
         // before a scene save, play, scene switch/close: the clip mode's previews restore their
         // snapshots (R6)
         std::function<void()> stopTransientPreviews;
-        // Ctrl/Cmd+Z/Y (and Edit > Undo/Redo) go to the project history: the window has focus and
-        // its last action was a pure clip edit, or Record is on and the Scene view or Inspector has
-        // focus (R4/R5)
+        // Ctrl/Cmd+Z (and Edit > Undo) go to the project history: the newest undoable step across
+        // the scene and project histories is a clip commit made through the editor UI, whatever
+        // window has focus (R5b/R5c: AnimationClipController's history timeline)
         std::function<bool(const ClipUndoFocus& focus)> ownsUndo;
         // (R5b, T3a round 2) the same for Ctrl/Cmd+Y / Shift+Z and Edit > Redo, decided on its own:
         // the newest redoable step (the one undone last) across the scene and project histories

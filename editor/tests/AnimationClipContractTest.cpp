@@ -183,7 +183,7 @@ TEST(AnimationClipContract, Controller){
     EXPECT_FALSE(controller.isRecording());
     EXPECT_TRUE(controller.getDocument() == nullptr);
     EXPECT_TRUE(controller.sampledBoundTransforms().empty());
-    EXPECT_FALSE(controller.ownsUndo(false));
+    EXPECT_FALSE(controller.ownsUndo(ClipUndoFocus()));
     controller.stopTransientPreviews();
     controller.stopPreview();
     std::string error;

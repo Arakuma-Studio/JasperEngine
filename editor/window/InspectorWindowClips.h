@@ -18,6 +18,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -26,7 +28,34 @@ namespace jasperengine{
     class Scene;
 }
 
+namespace jasperengine::editor{
+    class AnimationClipDocument;
+    class Project;
+}
+
 namespace jasperengine::editor::inspectorclips{
+
+    // The Inspector's clip documents by the reference it draws (a player entry's clip, an asset
+    // path): per frame a map lookup; a reference that failed to open is tried again after
+    // `retrySeconds`. A cached document is returned only while it is still the file the
+    // reference named: a rename or move takes the document object along
+    // (AnimationClipDocument::filesMoved), and the old path then names another file or none.
+    class ClipDocumentCache{
+    public:
+        std::shared_ptr<AnimationClipDocument> find(Project* project, const std::string& clip, double now, double retrySeconds,
+                                                    std::string* error);
+        void clear() { entries.clear(); }
+        size_t size() const { return entries.size(); }
+
+    private:
+        struct Entry{
+            std::weak_ptr<AnimationClipDocument> document;
+            std::string path;               // the document's path() when cached
+            std::string error;
+            double retryAt = 0.0;
+        };
+        std::map<std::string, Entry> entries;
+    };
 
     // "<model>#<clip>"
     bool isSubClip(const std::string& clip);
@@ -38,7 +67,8 @@ namespace jasperengine::editor::inspectorclips{
     bool subClipNamed(const std::vector<std::string>& subClipNames, const std::string& clip);
     // "Default", "Once", "Loop", "Ping Pong", "Clamp Forever"
     const char* wrapLabel(ClipWrapMode wrap);
-    // "Position", "Rotation", "Scale", "Morph", "Lattice", "Property" (the window's row names)
+    // "Position", "Rotation", "Scale", "Blend Shapes", "Lattice", "Property": the window's row names
+    // too (clipui::channelLabel)
     const char* channelLabel(ClipChannel channel);
     // "1.25 s"
     std::string formatSeconds(float seconds);
