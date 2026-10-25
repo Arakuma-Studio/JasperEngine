@@ -56,6 +56,13 @@ bool editor::MoveEntityOrderCmd::execute(){
 
     ProjectUtils::moveEntityOrderByTarget(sceneProject->scene, sceneProject->entities, source, target, type, oldParent, oldIndex, hasTransform);
 
+    if (!executed){
+        PlayerModelLayout::ensureNodeHierarchyForPlayer(project, sceneId, source, layoutReloads);
+    }else{
+        PlayerModelLayout::redoReloads(layoutReloads);
+    }
+    executed = true;
+
     sceneProject->isModified = true;
 
     return true;
@@ -63,6 +70,9 @@ bool editor::MoveEntityOrderCmd::execute(){
 
 void editor::MoveEntityOrderCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
+
+    // the model reloads ran after the move
+    PlayerModelLayout::undoReloads(layoutReloads);
 
     ProjectUtils::moveEntityOrderByIndex(sceneProject->scene, sceneProject->entities, source, oldParent, oldIndex, hasTransform);
 

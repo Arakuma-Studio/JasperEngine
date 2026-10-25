@@ -10,6 +10,7 @@
 #include "command/PrefabEditUndo.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
+#include "math/Matrix4.h"
 #include "subsystem/MeshSystem.h"
 #include "yaml-cpp/yaml.h"
 
@@ -40,6 +41,12 @@ namespace jasperengine::editor{
         bool wasModified;
         PrefabEditUndo prefabUndo;
         bool isNewModel = false;
+        // A reload that switches the model to the node-hierarchy layout (animation clips spec 9.R3),
+        // decided on the first run (the old component a redo starts from no longer says how it was
+        // loaded), and the glTF scene root's matrix the legacy model entity stood in for
+        bool switchesLayout = false;
+        bool movesLegacyRoot = false;
+        Matrix4 legacyRoot;
         bool reuseHierarchy = false;
         bool asyncPending = false;
         std::shared_ptr<std::atomic<bool>> cancelFlag;
