@@ -62,6 +62,7 @@ async def test_doc_blocks_compile_and_run(ed: Editor):
     files = doctest.doc_files(ROOT)
     ed.check(files, "the Lua docs are found")
     compiled = 0
+    failures = []
     for path in files:
         rel = os.path.relpath(path, ROOT)
         for line, _run, code in doctest.blocks(path):
@@ -69,16 +70,18 @@ async def test_doc_blocks_compile_and_run(ed: Editor):
             # check_script also runs the top level: a block that needs a script's self fails
             # there, after it compiled
             errors = [e for e in r.get("errors", []) if not e.get("message", "").startswith("runtime error at load")]
-            ed.check(r.get("ok") is not False or not errors, f"{rel}:{line}: does not compile: {r}")
+            if r.get("ok") is False and errors:
+                failures.append(f"{rel}:{line + errors[0].get('line', 1) - 1}: does not compile: {errors[0].get('message')}")
             compiled += 1
     ed.check(compiled > 0, "some blocks were compiled")
+    ed.check(not failures, "\n".join(failures))
 
     runs = doctest.runtime_blocks(files, ROOT)
     ed.check(runs, "the docs have ```lua run blocks")
     made = await ed.call("create_scene", name="Doc Fixture", type="3D", path="scenes/DocFixture")
     scene = made["scene"]["id"]
     await ed.call("create_entity", scene=scene, type="box", name="Box")
-    await ed.call("save_scene", scene=scene)
+    await ed.call("save_scene", scene=scene, path="scenes/DocFixture.scene")
     started = await ed.call("play", action="start", scene=scene)
     ed.check_eq(started["state"], "playing", "the fixture plays")
     try:

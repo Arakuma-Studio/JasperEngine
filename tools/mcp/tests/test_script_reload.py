@@ -62,7 +62,7 @@ async def setup(ed: Editor) -> dict:
     made = await ed.call("create_script", kind="lua", name="Counter", content=COUNTER.format(add=1, extra=""),
                          scene=S["scene"], entity=ent["entity_id"])
     S["path"] = made["path"]
-    await ed.call("save_scene", scene=S["scene"])
+    await ed.call("save_scene", scene=S["scene"], path="scenes/Reload.scene")
     await ed.call("save_project")
     return S
 
@@ -177,15 +177,18 @@ async def test_reload_after_stopping_play_defers(ed: Editor):
     path = ed.project / s["path"]
     path.write_text(COUNTER.format(add=10, extra=""))
     deferred = None
+    seen = []
     for _ in range(20):
         r = await ed.call_raw("get_play_state")
         changes = (r.structured or {}).get("external_changes") or {}
         if changes:
-            deferred = changes.get("deferred")
+            seen.append(changes)
             ed.check("script_reload" not in changes, f"no reload during Play: {changes}")
-            break
+            deferred = deferred or changes.get("deferred")
+            if deferred:
+                break
         await asyncio.sleep(0.2)
-    ed.check(deferred, "external_changes.deferred says the script waits for Play to stop")
+    ed.check(deferred, f"external_changes.deferred says the script waits for Play to stop: {seen}")
     ed.check_eq((await rising_by(ed)) % 1, 0, "the old code runs")
     step = await rising_by(ed)
     ed.check(step < 10 * 4, f"still the old code (rose by {step})")

@@ -65,7 +65,7 @@ class LuaApiJson(unittest.TestCase):
     def test_schema(self):
         check_schema(self, api())
         names = {c['name'] for c in api()['classes']}
-        for expected in ('Vector3', 'Engine', 'GameObject', 'Scene', 'UIElement', 'Timer'):
+        for expected in ('Vector3', 'Engine', 'GameObject', 'Scene', 'UIElement', 'Input'):
             self.assertIn(expected, names)
 
     def test_deterministic(self):

@@ -75,7 +75,7 @@ async def test_cpp_status_states(ed: Editor):
     ent = await ed.call("create_entity", scene=scene, type="empty", name="Spinner")
     await ed.call("create_script", kind="cpp_script", name="Spinner", scene=scene, entity=ent["entity_id"],
                   header_content=HEADER, source_content=SOURCE)
-    await ed.call("save_scene", scene=scene)
+    await ed.call("save_scene", scene=scene, path="scenes/Status.scene")
     seen: list[str] = []
     status = await status_until(ed, {"stale"}, 20, seen)
     ed.check_eq(status["cpp"]["state"], "stale", f"a new .cpp: stale ({seen})")

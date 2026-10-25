@@ -88,7 +88,7 @@ async def make_project(ed: Editor) -> dict:
     ent = await ed.call("create_entity", scene=scene, type="empty", name="Mover")
     await ed.call("create_script", kind="cpp_script", name="Mover", scene=scene, entity=ent["entity_id"],
                   header_content=HEADER, source_content=SOURCE.replace("{version}", "1"))
-    await ed.call("save_scene", scene=scene)
+    await ed.call("save_scene", scene=scene, path="scenes/Movers.scene")
     await ed.call("save_project")
     return {"scene": scene, "entity": ent["entity_id"]}
 

@@ -36,7 +36,10 @@ PATH = "graphs/Blend.testgraph"
 
 
 async def write_graph(ed: Editor, graph=GRAPH):
-    await ed.call("write_file", path=PATH, content=json.dumps(graph, indent=2) + "\n")
+    # (write_file takes known text types only: a graph kind's extension is the kind's)
+    target = ed.project / PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(graph, indent=2) + "\n")
 
 
 async def test_graph_tools():

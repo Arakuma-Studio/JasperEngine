@@ -95,7 +95,7 @@ async def setup(ed: Editor) -> dict:
     S["b"] = (await ed.call("create_entity", scene=S["scene"], type="box", name="B"))["entity_id"]
     await ed.call("set_transform", scene=S["scene"], entity=S["a"], position=[0, 0, 0])
     await ed.call("set_transform", scene=S["scene"], entity=S["b"], position=[2, 5, 0])
-    await ed.call("save_scene", scene=S["scene"])
+    await ed.call("save_scene", scene=S["scene"], path="scenes/Menus.scene")
     await ed.call("save_project")
     return S
 
