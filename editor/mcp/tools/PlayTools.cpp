@@ -3421,6 +3421,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth}
         });
         tool.handler = waitTool;
+        // runs the game, changes nothing (busy policy: McpServer::busyRefusal)
+        tool.activity = ToolActivity::Control;
         registry.addTool(std::move(tool));
     }
 
@@ -3537,6 +3539,8 @@ void registerPlayTools(McpRegistry& registry) {
             {"max_width", maxWidth}
         }, {"events"});
         tool.handler = sendInputTool;
+        // input into the running game, changes nothing (busy policy: McpServer::busyRefusal)
+        tool.activity = ToolActivity::Control;
         registry.addTool(std::move(tool));
     }
 }

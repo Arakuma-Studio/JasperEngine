@@ -161,6 +161,10 @@ namespace jasperengine::editor{
         std::set<ShaderKey> shaderKeys;
         std::vector<ChildSceneRef> childScenes;
         std::vector<SceneScriptSource> cppScripts;
+        // While the scene is closed: the write time of the file cppScripts were read from
+        // (Project::collectClosedSceneCppScripts), so an unchanged file is not read again
+        bool cppScriptsRead = false;
+        fs::file_time_type cppScriptsReadStamp{};
         std::vector<PrefabSceneInfo> prefabs;
         // FBX model path -> the import its saved model parts were built from
         std::map<std::string, std::string> imports;
@@ -581,7 +585,11 @@ namespace jasperengine::editor{
 
     using ComponentRecovery = std::map<std::string, ComponentRecoveryEntry>;
 
+    // editor/tests/PlayStartupScenesTest.cpp: builds a play session around a scenes vector
+    struct PlaySessionTestAccess;
+
     class Project{
+        friend struct PlaySessionTestAccess;
     private:
 
         Conector conector;
@@ -673,11 +681,18 @@ namespace jasperengine::editor{
 
         struct PlayRuntimeScene {
             uint32_t sourceSceneId = NULL_PROJECT_SCENE;
-            SceneProject* runtime = nullptr; // Scene used by the Engine while playing
-            bool ownedRuntime = false;       // true when runtime was cloned and must be deleted
+            // The Play copy (ownedRuntime), on the heap; null for the played scene itself, an
+            // element of `scenes` that a scene added or removed meanwhile moves: runtimeOf()
+            SceneProject* copy = nullptr;
+            bool ownedRuntime = false;       // true when the scene used is a copy, deleted with the session
             bool initialized = false;        // true when scripts and library are initialized
             bool initializing = false;       // true while its scripts run, to stop re-entrant init
         };
+
+        // The scene a runtime entry plays (the Engine's while playing): its copy, or the played
+        // scene found by id now (null if it is gone)
+        SceneProject* runtimeOf(const PlayRuntimeScene& entry);
+        Scene* runtimeSceneOf(const PlayRuntimeScene& entry);
 
         struct PlaySession {
             uint32_t mainSceneId = NULL_PROJECT_SCENE;
@@ -689,6 +704,7 @@ namespace jasperengine::editor{
 
         mutable std::mutex playSessionMutex;
         std::shared_ptr<PlaySession> activePlaySession;
+        size_t closedSceneScriptReads = 0;
 
         // Single-frame advance while paused (see step())
         uint32_t stepSceneId = NULL_PROJECT_SCENE;
@@ -1306,6 +1322,12 @@ namespace jasperengine::editor{
         void remapShaderFilePath(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         void cleanupMaterialFilePath(const std::filesystem::path& deletedPath);
         void cleanupSceneFilePath(const std::filesystem::path& deletedPath);
+        // A scene file the project lists is deletedPath or under it (a folder)
+        bool hasSceneFileUnder(const std::filesystem::path& deletedPath) const;
+        // While Play runs (or starts or stops) no scene leaves the project: the session finds the
+        // played scene by id and runs it in place. True, with a warning and an alert naming
+        // `what`, when that refuses it now.
+        bool refuseSceneRemovalWhilePlaying(const std::string& what) const;
         void cleanupPrefabFilePath(const std::filesystem::path& deletedPath);
         void cleanupScriptFilePath(const std::filesystem::path& deletedPath);
         void cleanupAssetFilePath(const std::filesystem::path& deletedPath);
@@ -2054,6 +2076,14 @@ namespace jasperengine::editor{
         // Play mode is starting (its scene LOADING): the startup compiles shaders and C++
         // scripts from the scenes as they were when it read them
         bool isPlayStarting() const;
+
+        // A closed scene's C++ scripts (Play builds them: SceneManager can load the scene while
+        // playing), read from its file once per version of it (its write time): a scene without
+        // any, as in a Lua-only project, would otherwise be decoded again on every Play. True if
+        // it read the file now.
+        bool collectClosedSceneCppScripts(SceneProject& sceneProject);
+        // How many times that read a scene file (tests)
+        size_t getClosedSceneScriptReads() const { return closedSceneScriptReads; }
 
         void start(uint32_t sceneId);
         void pause(uint32_t sceneId);

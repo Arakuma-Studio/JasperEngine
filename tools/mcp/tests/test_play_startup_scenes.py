@@ -11,7 +11,7 @@ open in its own tab) several times, stopping during the startup too.
 
 from __future__ import annotations
 
-from harness import Editor
+from harness import Editor, find_key
 
 EDITOR = {"create": True, "name": "Play Startup Scenes"}
 TIMEOUT = 600
@@ -58,25 +58,35 @@ async def test_edits_refused_while_play_starts(ed: Editor):
         ("create_entity", {"scene": child, "name": "TooEarly", "type": "cube"}),
         ("set_transform", {"scene": main, "entity": "MainProbe", "position": [5, 5, 5]}),
         ("open_project", {"path": str(ed.scratch.root / "no-such-project")}),
+        ("eval_lua", {"code": "return 1", "allow_edit_mode": True}),
+        # these only drive the game: not refused for the startup (they answer about it themselves)
+        ("wait", {"frames": 1}),
+        ("send_input", {"events": [{"type": "key", "key": "space"}]}),
         ("get_play_state", {}),
     ])
     try:
         ed.check(results[0]["ok"], f"play started: {results[0]}")
-        for item in results[1:3]:
-            ed.check(not item["ok"] and "Play mode is starting" in item["text"],
+        job = find_key(results[0], "job_id") or results[0]["text"].split("job ")[1].split(")")[0]
+        for item in results[1:3] + [results[4]]:
+            ed.check(not item["ok"] and "is refused while Play mode is starting" in item["text"],
                      f"{item['tool']} refused while Play starts: {item}")
+            ed.check(item["text"].startswith("This call") and f'get_job with job_id "{job}"' in item["text"],
+                     f"{item['tool']}: neutral wording, the play job to poll: {item['text']}")
         # (a project switch is refused while any scene plays or starts)
         ed.check(not results[3]["ok"] and ("Play mode is starting" in results[3]["text"] or "playing" in results[3]["text"]),
                  f"open_project refused while Play starts: {results[3]}")
-        ed.check(results[4]["ok"] and "loading" in results[4]["text"].lower(), f"still starting: {results[4]}")
+        for item in results[5:7]:
+            ed.check("refused while Play mode is starting" not in item["text"], f"{item['tool']} not refused: {item}")
+        ed.check(results[7]["ok"] and "loading" in results[7]["text"].lower(), f"still starting: {results[7]}")
         # joining the startup waits for it
         started = await ed.call("play", action="start", scene=main)
         ed.check_eq(started["state"], "playing", f"started: {started}")
     finally:
         await ed.call("play", action="stop")
     await ed.check_error("get_entity", {"scene": child, "entity": "TooEarly"})
-    pos = (await ed.call("get_entity", scene=main, entity="MainProbe"))
-    ed.check("5" not in str(pos.get("transform", {}).get("position", "")), f"the refused move did nothing: {pos}")
+    probe = await ed.call("get_entity", scene=main, entity="MainProbe")
+    position = [round(v, 4) for v in find_key(probe, "position")]
+    ed.check_eq(position, [2, 1, 0], "the refused move did nothing")
     # edits work again once stopped
     await ed.call("create_entity", scene=child, name="AfterStop", type="cube")
     await ed.call("delete_entities", scene=child, entity="AfterStop")

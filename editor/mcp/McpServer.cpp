@@ -1012,12 +1012,28 @@ std::string McpServer::busyRefusal(ToolActivity activity, Json* info, bool forAg
     // or lost on Stop; another project would pull the scenes from under it
     if ((activity == ToolActivity::Edit || activity == ToolActivity::ProjectSwitch) && appPtr) {
         if (const Project* project = appPtr->getProject(); project && project->isPlayStarting()) {
-            if (info) *info = Json{{"job_id", nullptr}, {"kind", "play_startup"}, {"title", "Play mode startup"}, {"holds", "play_startup"}};
-            return std::string(what) + " is refused while Play mode is starting (shaders and scripts are being "
-                   "built from the scenes as Play read them)." +
-                   (forAgent ? " Wait for it: poll get_play_state until the state is playing (then change the "
-                               "running game) or stopped, or stop it with play {action: \"stop\"}, then retry."
-                             : " Wait for Play mode to start or stop it, then try again.");
+            JobPtr playJob;
+            for (const JobPtr& job : jobList.list()) {
+                if (job->kind() == "play" && job->status() == JobStatus::Running) {
+                    playJob = job;
+                    break;
+                }
+            }
+            if (info) {
+                *info = Json{{"job_id", playJob ? Json(playJob->id()) : Json(nullptr)}, {"kind", "play_startup"},
+                             {"title", "Play mode startup"}, {"holds", "play_startup"}};
+            }
+            const std::string subject = activity == ToolActivity::ProjectSwitch ? std::string(what)
+                                                                                : std::string("This call (it can change the project)");
+            std::string text = subject + " is refused while Play mode is starting (shaders and scripts are being "
+                               "built from the scenes as Play read them).";
+            if (!forAgent) {
+                return text + " Wait for Play mode to start or stop it, then try again.";
+            }
+            text += playJob ? " Wait for it: poll get_job with job_id \"" + playJob->id() + "\" until its status is no longer "
+                              "running (or get_play_state until playing or stopped)"
+                            : " Wait for it: poll get_play_state until the state is playing or stopped";
+            return text + ", or stop it with play {action: \"stop\"}, then retry (while playing, change the running game).";
         }
     }
     return {};
