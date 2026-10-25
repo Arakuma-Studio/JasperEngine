@@ -14,6 +14,12 @@ namespace{
     const char* const tonemapValues[] = {"NONE", "ACES", "NEUTRAL", "REINHARD", "AGX", nullptr};
     const char* const monochromeNames[] = {"grayscale", "sepia", nullptr};
     const char* const monochromeValues[] = {"GRAYSCALE", "SEPIA", nullptr};
+    const char* const filmGrainTypeNames[] = {"classic", "lens", "filmic", nullptr};
+    const char* const filmGrainTypeValues[] = {"CLASSIC", "LENS", "FILMIC", nullptr};
+    const char* const filmGateMaskNames[] = {"none", "rounded", "academy_137", "widescreen_185", "anamorphic_239", nullptr};
+    const char* const filmGateMaskValues[] = {"NONE", "ROUNDED", "ACADEMY_137", "WIDESCREEN_185", "ANAMORPHIC_239", nullptr};
+    const char* const lutEncodingNames[] = {"auto", "srgb", "linear", "logc3", "acescct", "cineon", "davinci_intermediate", nullptr};
+    const char* const lutEncodingValues[] = {"AUTO", "SRGB", "LINEAR", "LOGC3", "ACESCCT", "CINEON", "DAVINCI_INTERMEDIATE", nullptr};
 
     using F = PostProcessingSettings::Field;
     using T = PostProcessingSettings::FieldType;
@@ -38,8 +44,10 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(lift, "lift", T::Vector3, -1.0f, 1.0f, "lift [r,g,b]: added to the shadows (0 none)"),
         PP_FIELD(gamma, "gamma", T::Vector3, 0.1f, 4.0f, "gamma [r,g,b]: midtones (1 none, above brightens)"),
         PP_FIELD(gain, "gain", T::Vector3, 0.0f, 4.0f, "gain [r,g,b]: scales the colour (1 none)"),
-        PP_FIELD(lutTexture, "lut_texture", T::Asset, 0.0f, 0.0f, "project image of a LUT strip (N*N x N), display colour in and out (\"\" none)"),
-        PP_FIELD(lutContribution, "lut_contribution", T::Float, 0.0f, 1.0f, "how much of the LUT strip applies (0..1)"),
+        PP_FIELD(lutTexture, "lut_texture", T::Asset, 0.0f, 0.0f, "project LUT: an image strip (N*N x N, display colour) or a .cube file (\"\" none)"),
+        PP_FIELD(lutContribution, "lut_contribution", T::Float, 0.0f, 1.0f, "how much of the LUT applies (0..1)"),
+        PP_ENUM(lutInputEncoding, "lut_input_encoding", lutEncodingNames, "LutInputEncoding", lutEncodingValues,
+                "a .cube LUT's input: auto (from its title and range), srgb, linear (display), logc3, acescct, cineon, davinci_intermediate (scene, before the tone mapping)"),
         PP_FIELD(lutSize, "lut_size", T::Int, 16.0f, 32.0f, "side of the engine's colour LUT: 16 or 32"),
         PP_FIELD(monochromeEnabled, "monochrome_enabled", T::Bool, 0.0f, 1.0f, "grayscale or sepia"),
         PP_ENUM(monochromeMode, "monochrome_mode", monochromeNames, "MonochromeMode", monochromeValues, "monochrome look: grayscale, sepia"),
@@ -67,6 +75,33 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(filmGrainEnabled, "film_grain_enabled", T::Bool, 0.0f, 1.0f, "film grain (uber pass)"),
         PP_FIELD(filmGrainIntensity, "film_grain_intensity", T::Float, 0.0f, 1.0f, "grain amount (0..1)"),
         PP_FIELD(filmGrainResponse, "film_grain_response", T::Float, 0.0f, 1.0f, "less grain in bright areas (0..1)"),
+        PP_ENUM(filmGrainType, "film_grain_type", filmGrainTypeNames, "FilmGrainType", filmGrainTypeValues,
+                "grain pattern: classic (per pixel), lens (FidelityFX Lens cells), filmic (5x5 particle lattice, desktop / high-end)"),
+        PP_FIELD(filmGrainSize, "film_grain_size", T::Float, 0.25f, 8.0f, "grain size in pixels (lens, filmic)"),
+        PP_FIELD(filmGrainColored, "film_grain_colored", T::Bool, 0.0f, 1.0f, "one grain per colour channel (filmic)"),
+        PP_FIELD(filmFrameRate, "film_frame_rate", T::Float, 1.0f, 120.0f, "film frames per second: how often the lens / filmic grain and the film damage change"),
+        PP_FIELD(vhsEnabled, "vhs_enabled", T::Bool, 0.0f, 1.0f, "VHS tape look (uber pass; FXAA and sharpen do not run with it)"),
+        PP_FIELD(vhsIntensity, "vhs_intensity", T::Float, 0.0f, 1.0f, "how much of the VHS look applies (0..1)"),
+        PP_FIELD(vhsWobble, "vhs_wobble", T::Float, 0.0f, 2.0f, "line wobble of the tape's wow and flutter (0..2)"),
+        PP_FIELD(vhsTracking, "vhs_tracking", T::Float, 0.0f, 2.0f, "tracking error bands rolling down the picture (0..2)"),
+        PP_FIELD(vhsColorBleed, "vhs_color_bleed", T::Float, 0.0f, 2.0f, "horizontal colour bleed of the tape's narrow chroma (0..2)"),
+        PP_FIELD(vhsTapeNoise, "vhs_tape_noise", T::Float, 0.0f, 2.0f, "tape noise (0..2)"),
+        PP_FIELD(vhsChromaStreaks, "vhs_chroma_streaks", T::Float, 0.0f, 2.0f, "coloured streaks along the lines (0..2)"),
+        PP_FIELD(vhsDropouts, "vhs_dropouts", T::Float, 0.0f, 2.0f, "white dropout specks of worn tape (0..2)"),
+        PP_FIELD(vhsScanlines, "vhs_scanlines", T::Float, 0.0f, 2.0f, "scanline darkening (0..2)"),
+        PP_FIELD(vhsInterference, "vhs_interference", T::Float, 0.0f, 2.0f, "rolling interference bars (0..2)"),
+        PP_FIELD(vhsGlitches, "vhs_glitches", T::Float, 0.0f, 2.0f, "signal glitches: line tears and colour bursts (0..2)"),
+        PP_FIELD(vhsSpeed, "vhs_speed", T::Float, 0.0f, 4.0f, "animation speed of the tape (0..4)"),
+        PP_FIELD(filmDamageEnabled, "film_damage_enabled", T::Bool, 0.0f, 1.0f, "film damage: hairs, scratches, dust, gate weave and mask (uber pass)"),
+        PP_FIELD(filmDamageIntensity, "film_damage_intensity", T::Float, 0.0f, 4.0f, "strength of the hairs, scratches and dust (0..4)"),
+        PP_FIELD(filmHairAmount, "film_hair_amount", T::Float, 0.0f, 8.0f, "hair candidates per film frame (0..8, 0 none)"),
+        PP_FIELD(filmScratchAmount, "film_scratch_amount", T::Float, 0.0f, 8.0f, "scratch candidates per film frame (0..8, 0 none)"),
+        PP_FIELD(filmDustAmount, "film_dust_amount", T::Float, 0.0f, 8.0f, "dust candidates per film frame (0..8, 0 none)"),
+        PP_FIELD(filmDustSize, "film_dust_size", T::Float, 0.5f, 24.0f, "dust size in pixels"),
+        PP_FIELD(filmGateWeave, "film_gate_weave", T::Float, 0.0f, 1.0f, "the gate's weave, 0..1 of a projector's (0.75 / 0.5 px, 0.08 degrees)"),
+        PP_ENUM(filmGateMask, "film_gate_mask", filmGateMaskNames, "FilmGateMask", filmGateMaskValues,
+                "film gate frame: none, rounded, academy_137, widescreen_185, anamorphic_239"),
+        PP_FIELD(filmGateMaskFeather, "film_gate_mask_feather", T::Float, 0.0f, 256.0f, "feather of the gate mask's edge in pixels"),
         PP_FIELD(sharpenEnabled, "sharpen_enabled", T::Bool, 0.0f, 1.0f, "sharpen (uber pass)"),
         PP_FIELD(sharpenIntensity, "sharpen_intensity", T::Float, 0.0f, 1.0f, "sharpen amount (0..1)"),
         PP_FIELD(bloomEnabled, "bloom_enabled", T::Bool, 0.0f, 1.0f, "bloom (quarter-resolution chain + uber pass)"),
@@ -78,8 +113,17 @@ const std::vector<PostProcessingSettings::Field>& PostProcessingSettings::getFie
         PP_FIELD(blurEnabled, "blur_enabled", T::Bool, 0.0f, 1.0f, "blurred copy of the scene (quarter-resolution chain)"),
         PP_FIELD(blurRadius, "blur_radius", T::Float, 0.0f, 4.0f, "blur radius"),
         PP_FIELD(blurIntensity, "blur_intensity", T::Float, 0.0f, 1.0f, "how much the screen shows the blur (0 only the texture)"),
+        PP_FIELD(halationEnabled, "halation_enabled", T::Bool, 0.0f, 1.0f, "halation: film's red glow around highlights (bloom's chain, or 2 small passes without bloom)"),
+        PP_FIELD(halationIntensity, "halation_intensity", T::Float, 0.0f, 2.0f, "halation strength (0..2)"),
+        PP_FIELD(halationThreshold, "halation_threshold", T::Float, 0.0f, 1.0f, "display brightness where halation starts (0..1; bloom's threshold while bloom is on)"),
+        PP_FIELD(halationRadius, "halation_radius", T::Float, 0.0f, 1.0f, "halation radius: mix of the 1/4 and 1/8 levels (0..1)"),
+        PP_FIELD(halationTint, "halation_tint", T::Vector3, 0.0f, 1.0f, "halation colour [r,g,b] (sRGB)"),
         PP_FIELD(renderScale, "render_scale", T::Float, 0.5f, 1.0f, "3D scene resolution, 0.5..1 of the output (the main camera's UI too; a layer scene's HUD stays native)"),
         PP_FIELD(msaaSamples, "msaa_samples", T::Int, 1.0f, 4.0f, "multisampling of the scene target: 1, 2 or 4"),
+        PP_FIELD(dynamicResolutionEnabled, "dynamic_resolution_enabled", T::Bool, 0.0f, 1.0f,
+                 "dynamic resolution: in Play and exported games the render scale moves between the min scale and render_scale to hold the target frame rate"),
+        PP_FIELD(dynamicResolutionMinScale, "dynamic_resolution_min_scale", T::Float, 0.5f, 1.0f, "lowest render scale dynamic resolution goes to (0.5..1)"),
+        PP_FIELD(dynamicResolutionTargetFps, "dynamic_resolution_target_fps", T::Int, 0.0f, 240.0f, "frame rate dynamic resolution holds (0: the display's refresh rate, else 60)"),
     };
     return fields;
 }
@@ -127,8 +171,12 @@ void PostProcessingSettings::clamp(){
     }
     lutSize = lutSize > 16 ? 32 : 16;
     msaaSamples = msaaSamples >= 4 ? 4 : (msaaSamples >= 2 ? 2 : 1);
+    dynamicResolutionTargetFps = std::min(std::max(dynamicResolutionTargetFps, 0), 240);
     if ((int)tonemap < 0 || (int)tonemap > (int)TonemapMode::AGX) tonemap = TonemapMode::NONE;
     if ((int)monochromeMode < 0 || (int)monochromeMode > (int)MonochromeMode::SEPIA) monochromeMode = MonochromeMode::GRAYSCALE;
+    if ((int)filmGrainType < 0 || (int)filmGrainType > (int)FilmGrainType::FILMIC) filmGrainType = FilmGrainType::CLASSIC;
+    if ((int)filmGateMask < 0 || (int)filmGateMask > (int)FilmGateMask::ANAMORPHIC_239) filmGateMask = FilmGateMask::NONE;
+    if ((int)lutInputEncoding < 0 || (int)lutInputEncoding > (int)LutInputEncoding::DAVINCI_INTERMEDIATE) lutInputEncoding = LutInputEncoding::AUTO;
 }
 
 bool PostProcessPass::setTexture(const std::string& uniform, const std::string& path){

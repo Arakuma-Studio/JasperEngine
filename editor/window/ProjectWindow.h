@@ -45,7 +45,8 @@ namespace jasperengine::editor {
         AUDIO,
         FONT,
         HTML,
-        CSS
+        CSS,
+        COLOR_LUT
     };
 
     struct FileEntry {
@@ -141,6 +142,7 @@ namespace jasperengine::editor {
         Texture fontIcon;
         Texture htmlIcon;
         Texture cssIcon;
+        Texture lutIcon;
         // Bounded cache of GPU thumbnail textures; must stay well below the
         // sokol image/sampler pool sizes (2048), which are shared with scenes
         static constexpr size_t MAX_THUMBNAIL_TEXTURES = 512;
@@ -326,6 +328,11 @@ namespace jasperengine::editor {
         void saveMaterialFile(const fs::path& directory, const char* materialContent, size_t contentLen, const MaterialPayload* sourceMaterial = nullptr);
 
         fs::path uniqueRelativePath(const fs::path& directory, const std::string& baseName, const std::string& extension);
+
+        // a .cube colour LUT (S13): its summary for the tooltip (read once through the LUT
+        // cache), and a double-click's assignment to the open scene's Color Grading (one undo step)
+        std::string colorLutTooltip(const fs::path& filePath);
+        void assignColorLut(const fs::path& filePath);
 
     public:
         static constexpr const char* WINDOW_NAME = "Project";

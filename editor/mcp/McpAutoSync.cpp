@@ -154,7 +154,7 @@ McpAutoSync& McpAutoSync::get() {
 }
 
 bool McpAutoSync::isTrackedFile(const std::string& path) {
-    if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path)) return true;
+    if (Util::isScriptFile(path) || Util::isShaderFile(path) || Util::isMaterialFile(path) || Util::isColorLutFile(path)) return true;
     if (isUiCodeFile(path) || isAssetFile(path)) return true;
     const std::string ext = lowerExtension(path);
     return ext == ".c" || ext == ".inl";

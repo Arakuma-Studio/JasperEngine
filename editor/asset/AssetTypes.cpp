@@ -36,6 +36,7 @@ namespace {
             {{AssetType::Script, AssetIdentity::Sidecar, AssetPathBase::Project, false, false},
                 {".lua", ".cpp", ".cc", ".cxx", ".h", ".hh", ".hpp", ".hxx"}},
             {{AssetType::Data, AssetIdentity::Sidecar, AssetPathBase::Assets, false, true}, {".json", ".txt", ".csv", ".xml", ".bytes"}},
+            {{AssetType::ColorLut, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".cube"}},
         };
         return table;
     }

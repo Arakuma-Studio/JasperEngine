@@ -318,6 +318,7 @@ TEST(ModelReloadTests, HierarchyMismatchIsReportedNotRebuilt) {
 TEST(HotReloadKinds, FilesByKind) {
     EXPECT_EQ(reload::kindOf("a/b.PNG"), "texture");
     EXPECT_EQ(reload::kindOf("a/b.svg"), "texture");
+    EXPECT_EQ(reload::kindOf("a/b.cube"), "texture");
     EXPECT_EQ(reload::kindOf("a/b.glb"), "model");
     EXPECT_EQ(reload::kindOf("a/b.material"), "material");
     EXPECT_EQ(reload::kindOf("a/b.glsl"), "shader");

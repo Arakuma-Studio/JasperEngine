@@ -275,6 +275,39 @@ def run_stats(windows: list[dict]) -> tuple[int, float, float]:
     return frames, median, max(w["max"] for w in windows)
 
 
+LUT = "assets/hr/grade.cube"
+
+
+def cube_bytes(rgb, size: int = 2) -> bytes:
+    """A .cube LUT that maps every colour to `rgb` (S13's colour LUT asset)."""
+    rows = ['TITLE "hot reload grade"', f"LUT_3D_SIZE {size}"]
+    rows += ["%.6f %.6f %.6f" % tuple(c / 255 for c in rgb)] * (size ** 3)
+    return ("\n".join(rows) + "\n").encode()
+
+
+async def test_external_lut_edit_reloads(ed: Editor):
+    """S13's .cube LUTs reload like textures: the scene's post-processing grade follows a
+    safe-save of its .cube with no MCP call in between."""
+    safe_save(ed.project / LUT, cube_bytes(BLUE))
+    await ed.call("set_scene_settings", scene=STATE["scene"], settings={
+        "post_processing.color_grading_enabled": True, "post_processing.lut_texture": LUT,
+        "post_processing.lut_contribution": 1.0})
+    try:
+        got = await wait_centre(ed, BLUE)
+        ed.check(close(got, BLUE, 12), f"the grade maps the sprite to blue: {got}")
+        await console_mark(ed)
+        safe_save(ed.project / LUT, cube_bytes(YELLOW))
+        time.sleep(1.5)   # no MCP call: only the watcher can reload it
+        asked = time.time()
+        entries = await ed.console_since(contains="[Hot Reload] Reloaded " + LUT)
+        ed.check(entries, "no [Hot Reload] line for the LUT")
+        ed.check(min(e["time"] for e in entries) < asked, f"the reload happened before the call: {entries!r} (asked {asked})")
+        got = await wait_centre(ed, YELLOW)
+        ed.check(close(got, YELLOW, 12), f"the grade follows the edited .cube: {got}")
+    finally:
+        await ed.call("set_scene_settings", scene=STATE["scene"], settings={"post_processing.color_grading_enabled": False})
+
+
 async def test_reload_hitch(ed: Editor):
     """AC19: a 2048x2048 PNG reloaded 20 times at 200 ms intervals while the view redraws
     continuously (the scene plays): the reload adds no frame more than 16 ms over the run's

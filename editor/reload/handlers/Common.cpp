@@ -20,7 +20,8 @@ std::string reload::kindOf(const fs::path& path) {
     const std::string text = watch::pathToUtf8(path);
     const std::string ext = watch::lowerExtension(path);
     if (path.filename() == "project.yaml") return "project";
-    if (Util::isImageFile(text)) return "texture";
+    // a .cube LUT is a texture of the post-processing (S13: the renderer caches it by path)
+    if (Util::isImageFile(text) || Util::isColorLutFile(text)) return "texture";
     if (Util::isModelFile(text) || ext == ".fbx") return "model";
     if (Util::isMaterialFile(text)) return "material";
     if (Util::isShaderFile(text)) return "shader";
