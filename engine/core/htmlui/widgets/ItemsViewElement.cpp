@@ -1582,6 +1582,33 @@ void ItemsViewElement::ProcessDefaultAction(Rml::Event& event){
     }
 }
 
+// ---------------------------------------------------------------- live patch
+
+void ItemsViewElement::onDocumentPatched(const std::unordered_set<int>& changedTemplates){
+    if (!structureReady)
+        return;
+    auto changed = [&](Rml::Element* element){
+        if (!element)
+            return false;
+        const Rml::Variant* index = element->GetAttribute(compat::LuaHooks::kTemplateAttribute);
+        return index && changedTemplates.count(std::atoi(index->Get<Rml::String>().c_str())) > 0;
+    };
+    bool remake = changed(templateElement);
+    for (Column& column : columns){
+        remake |= changed(column.cellTemplate);
+        column.cellRml.clear();
+    }
+    rowRml.clear();
+    if (remake){
+        for (Row& row : pool)
+            clearRowContent(row);
+        rebindAll = true;
+    }
+    windowDirty = true;
+    if (Rml::Context* context = GetContext())
+        context->RequestNextUpdate(0);
+}
+
 // ---------------------------------------------------------------- state
 
 ItemsViewElement::State ItemsViewElement::getState() const{

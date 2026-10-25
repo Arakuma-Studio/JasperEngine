@@ -39,6 +39,13 @@ namespace jasperengine::htmlui {
         // elements RmlUi made since the runtime was registered (Plugin::OnElementCreate)
         static uint64_t elementsCreated();
 
+        // The authored elements (S17 R27): those a document's parse made (between RmlUi's document
+        // open and load), and those the live patch inserts (markAuthored). The rows of virtual
+        // views, data-for copies, cloneNode copies and what scripts add are not.
+        static bool isAuthored(const Rml::Element* element);
+        // the element and its descendants
+        static void markAuthored(Rml::Element* element);
+
         // a runtime diagnostic about an element of a compat document: located by its
         // data-htmlui-loc, kept with the document's diagnostics, logged (non-Info) once
         static void reportElement(Rml::Element* element, Code code, const std::string& message, const std::string& suggestion);

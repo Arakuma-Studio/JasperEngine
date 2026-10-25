@@ -16,6 +16,7 @@
 #include "htmlui/RmlFontEngine.h"
 #include "htmlui/compat/DocumentLoader.h"
 #include "htmlui/compat/ImportManifest.h"
+#include "object/ui/HtmlUIScriptInternal.h"
 #include "htmlui/effects/EffectRegistry.h"
 
 #include <RmlUi/Core/Context.h>
@@ -30,6 +31,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <functional>
 #include <limits>
@@ -453,6 +455,10 @@ std::vector<std::string> UIDocumentSystem::getDocumentFiles(Entity entity) const
 }
 
 void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
+    reloadDocument(entity, preserveState, reloadMode);
+}
+
+void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState, UIReloadMode mode){
     UIDocumentComponent* component = scene->findComponent<UIDocumentComponent>(entity);
     if (!component)
         return;
@@ -464,6 +470,17 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
         loadDocumentNow(entity);
         return;
     }
+
+    // S17: an .html document is patched in place when it can be
+    UIReloadReport report;
+    report.mode = "rebuild";
+    report.file = normalizeHtmlUIPath(component->filename);
+    if (mode == UIReloadMode::PATCH && getCompiledDocument(entity)){
+        if (patchDocument(entity, report))
+            return;
+        report.mode = "rebuild";
+    }
+    const auto rebuildStart = std::chrono::steady_clock::now();
 
     Rml::ElementDocument* oldDocument = it->second;
     HtmlUIContext* oldContext = documentContext(entity);   // p1-rtt: the screen's or its own
@@ -530,6 +547,9 @@ void UIDocumentSystem::reloadDocument(Entity entity, bool preserveState){
     // 5. notify: onUnload then onLoad, fired at the end of the next update
     scriptDocumentLoaded(entity);
     compatRunScripts();   // p2-html: the document's <script type="text/lua"> run again
+
+    report.ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - rebuildStart).count();
+    finishReload(entity, std::move(report));
 }
 
 void UIDocumentSystem::reloadStyleSheets(Entity entity){
@@ -580,6 +600,77 @@ void UIDocumentSystem::reloadStyleSheets(Entity entity){
     record.loadCount++;
 
     documentContext(entity)->update();
+}
+
+bool UIDocumentSystem::reloadInPlace(Entity entity, const std::function<bool()>& work){
+    auto it = documents.find(entity);
+    if (it == documents.end())
+        return false;
+    HtmlUIReloadState& state = getReloadState();
+    HtmlUIReloadState::Document& record = state.documents[entity];
+    const std::map<std::string, HtmlUIReloadState::Stamp> before = HtmlUIReloadState::stampsOf(record.files);
+    std::vector<std::string> opened;
+    bool done = false;
+    {
+        HtmlUIFileLog::Scope scope(&opened, [&record](HtmlUIFileLog::Level level, const std::string& text){
+            HtmlUIReloadState::addMessage(record, level, text);
+        });
+        done = work();
+    }
+    if (!done)
+        return false;
+    for (const std::string& path : compatDependencies(it->second))
+        appendUnique(record.files, path);
+    for (const HtmlUIReference& reference : collectHtmlUIReferences(record.filename)){
+        if (!reference.remote && !reference.outsideAssets)
+            appendUnique(record.files, reference.path);
+    }
+    for (const std::string& path : opened)
+        appendUnique(record.files, path);
+    if (loadedHook())
+        loadedHook()(entity);
+    state.recordStamps(record, before);
+    record.loadCount++;
+    return true;
+}
+
+void UIDocumentSystem::finishReload(Entity entity, UIReloadReport report){
+    // R37: one Console line per reload
+    std::string line;
+    char ms[32];
+    std::snprintf(ms, sizeof(ms), "%.1f", report.ms);
+    if (report.mode == "patch"){
+        line = "Patched " + report.file + ": " + std::to_string(report.updated) + " updated, " + std::to_string(report.inserted) + " inserted, " +
+               std::to_string(report.removed) + " removed, " + std::to_string(report.replaced) + " replaced, " +
+               std::to_string(report.runtimeKept) + " runtime nodes kept (" + ms + " ms)";
+    }else{
+        line = "Rebuilt " + report.file + " (" + ms + " ms)";
+        if (!report.fallbackReason.empty())
+            line += ": " + report.fallbackReason;
+    }
+    Log::print("[HTML UI] %s", line.c_str());
+    if (reloadState){
+        auto it = reloadState->documents.find(entity);
+        if (it != reloadState->documents.end())
+            HtmlUIReloadState::addMessage(it->second, HtmlUIFileLog::Level::Info, line);
+    }
+    if (report.mode == "patch")
+        getScriptState().reloads.push_back({entity, report});
+    reloadReports[entity] = std::move(report);
+}
+
+void UIDocumentSystem::setReloadMode(UIReloadMode mode){
+    reloadMode = mode;
+}
+
+UIReloadMode UIDocumentSystem::getReloadMode() const{
+    return reloadMode;
+}
+
+const UIReloadReport& UIDocumentSystem::getLastReloadReport(Entity entity) const{
+    static const UIReloadReport none;
+    auto it = reloadReports.find(entity);
+    return it != reloadReports.end() ? it->second : none;
 }
 
 void UIDocumentSystem::reloadTexture(const std::string& path){

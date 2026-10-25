@@ -180,6 +180,9 @@ namespace jasperengine::htmlui {
 
         // the source data view's notification (ItemsSourceView, during the data model update)
         void onModelChanged();
+        // a live patch reload bound the document to a new compile (S17 R28): the templates are read
+        // again; rows of a template in `changedTemplates` (new indices) get their content anew
+        void onDocumentPatched(const std::unordered_set<int>& changedTemplates);
 
     protected:
         void OnUpdate() override;

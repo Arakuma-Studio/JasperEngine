@@ -22,9 +22,11 @@
 #include <RmlUi/Core/Factory.h>
 #include <RmlUi/Core/Plugin.h>
 
+#include <algorithm>
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -39,12 +41,25 @@ namespace {
     class WidgetsPlugin final : public Rml::Plugin {
     public:
         int GetEventClasses() override { return EVT_BASIC | EVT_DOCUMENT | EVT_ELEMENT; }
-        void OnElementCreate(Rml::Element*) override { created++; }
-        void OnElementDestroy(Rml::Element* element) override { TooltipManager::elementDestroyed(element); }
+        void OnElementCreate(Rml::Element* element) override{
+            created++;
+            if (parsing > 0)
+                authored.insert(element);
+        }
+        void OnElementDestroy(Rml::Element* element) override{
+            TooltipManager::elementDestroyed(element);
+            if (!authored.empty())
+                authored.erase(element);
+        }
+        // a document's parse: the elements it makes are authored
+        void OnDocumentOpen(Rml::Context*, const Rml::String&) override { parsing++; }
+        void OnDocumentLoad(Rml::ElementDocument*) override { parsing = std::max(0, parsing - 1); }
         void OnDocumentUnload(Rml::ElementDocument* document) override { TooltipManager::documentUnloaded(document); }
         void OnContextDestroy(Rml::Context* context) override { WidgetsRuntime::contextDestroyed(context); }
 
         uint64_t created = 0;
+        int parsing = 0;
+        std::unordered_set<const Rml::Element*> authored;
     };
 
     struct Runtime {
@@ -118,6 +133,8 @@ void WidgetsRuntime::releaseAll(){
     // RmlUi forgot the instancers and plugins at shutdown (every context, with its sessions, went before)
     TooltipManager::releaseAll();
     DragDropSession::releaseAll();
+    r.plugin.authored.clear();
+    r.plugin.parsing = 0;
     r.reported.clear();
     r.registered = false;
 }
@@ -126,6 +143,8 @@ void WidgetsRuntime::update(Rml::Context* context){
     Runtime& r = runtime();
     if (!context || !r.registered)
         return;
+    // no parse spans two frames (a document that failed to parse never reported its load)
+    r.plugin.parsing = 0;
     DragDropSession::update(context);
     TooltipManager::update(context);
     // a scan costs a query per document: only after enough elements were made to pass the limit
@@ -147,6 +166,18 @@ void WidgetsRuntime::contextDestroyed(Rml::Context* context){
 
 uint64_t WidgetsRuntime::elementsCreated(){
     return runtime().plugin.created;
+}
+
+bool WidgetsRuntime::isAuthored(const Rml::Element* element){
+    return element && runtime().plugin.authored.count(element) > 0;
+}
+
+void WidgetsRuntime::markAuthored(Rml::Element* element){
+    if (!element)
+        return;
+    runtime().plugin.authored.insert(element);
+    for (int i = 0; i < element->GetNumChildren(); i++)
+        markAuthored(element->GetChild(i));
 }
 
 void WidgetsRuntime::reportElement(Rml::Element* element, Code code, const std::string& message, const std::string& suggestion){

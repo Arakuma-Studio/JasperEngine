@@ -23,6 +23,8 @@
 #include "object/ui/UIElement.h"
 #include "object/ui/UIElementInternal.h"
 #include "object/ui/UIItemsView.h"
+#include "component/UIDocumentComponent.h"
+#include "Scene.h"
 #include "htmlui/widgets/DragDropSession.h"
 #include "htmlui/widgets/TooltipManager.h"
 
@@ -524,6 +526,85 @@ namespace {
         return 1;
     }
 
+    // ---- reloads ----
+
+    void pushReport(lua_State* L, const UIReloadReport& report){
+        lua_createtable(L, 0, 12);
+        auto field = [L](const char* name, int value){ lua_pushinteger(L, value); lua_setfield(L, -2, name); };
+        lua_pushstring(L, report.mode.c_str());
+        lua_setfield(L, -2, "mode");
+        lua_pushstring(L, report.file.c_str());
+        lua_setfield(L, -2, "file");
+        field("kept", report.kept);
+        field("updated", report.updated);
+        field("inserted", report.inserted);
+        field("removed", report.removed);
+        field("replaced", report.replaced);
+        field("runtimeKept", report.runtimeKept);
+        field("scriptsRerun", report.scriptsRerun);
+        if (report.fallbackReason.empty())
+            lua_pushnil(L);
+        else
+            lua_pushstring(L, report.fallbackReason.c_str());
+        lua_setfield(L, -2, "fallbackReason");
+        lua_pushnumber(L, report.ms);
+        lua_setfield(L, -2, "ms");
+        lua_createtable(L, (int)report.causes.size(), 0);
+        for (size_t i = 0; i < report.causes.size(); i++){
+            lua_pushstring(L, report.causes[i].c_str());
+            lua_rawseti(L, -2, (lua_Integer)i + 1);
+        }
+        lua_setfield(L, -2, "causes");
+    }
+
+    // doc.onReload = function(report) ... end (nil removes it)
+    void setOnReload(UIDocument* self, lua_State* L){
+        UIDocumentComponent& component = self->getComponent<UIDocumentComponent>();
+        if (!lua_isfunction(L, -1)){
+            component.onReload = nullptr;
+            component.onReloadLua.reset();
+            return;
+        }
+        auto fn = std::make_shared<HtmlUILuaRef>(L, lua_gettop(L));
+        component.onReloadLua = fn;
+        component.onReload = [fn](const UIReloadReport& report){
+            lua_State* L = LuaBinding::getLuaState();
+            if (!pushFunction(L, *fn))
+                return;
+            pushReport(L, report);
+            callLua(L, 1, 0, "onReload");
+        };
+    }
+
+    luabridge::LuaRef getOnReload(const UIDocument* self, lua_State* L){
+        const UIDocumentComponent* component = self->getScene()->findComponent<UIDocumentComponent>(self->getEntity());
+        if (!component || !component->onReloadLua || !component->onReloadLua->push(L))
+            return luabridge::LuaRef(L);
+        return luabridge::LuaRef::fromStack(L);
+    }
+
+    // doc:reload() / doc:reload{mode = "rebuild"|"patch"}
+    int documentReload(lua_State* L){
+        UIDocument* self = luabridge::detail::Userdata::get<UIDocument>(L, 1, false);
+        if (!self)
+            return 0;
+        if (!lua_istable(L, 2)){
+            self->reload();
+            return 0;
+        }
+        lua_getfield(L, 2, "mode");
+        const char* mode = lua_type(L, -1) == LUA_TSTRING ? lua_tostring(L, -1) : nullptr;
+        if (!mode)
+            self->reload();
+        else if (std::strcmp(mode, "rebuild") == 0)
+            self->reload(UIReloadMode::REBUILD);
+        else if (std::strcmp(mode, "patch") == 0)
+            self->reload(UIReloadMode::PATCH);
+        else
+            return luaL_error(L, "UIDocument.reload: mode must be \"patch\" or \"rebuild\"");
+        return 0;
+    }
+
     UIElement elementArgument(lua_State* L, int index){
         if (!luabridge::detail::Userdata::isInstance<UIElement>(L, index))
             return UIElement();
@@ -667,6 +748,15 @@ void LuaBinding::registerHtmlUIWidgetClasses(lua_State *L){
         .beginClass<UIDocument>("UIDocument")
         .addProperty("tooltip", [](const UIDocument* self) -> UIDocumentTooltip { return UIDocumentTooltip{*self}; })
         .addStaticFunction("markdownToHtml", &UIDocument::markdownToHtml)
+        .addFunction("reload", &documentReload)
+        .addProperty("onReload", &getOnReload, &setOnReload)
+        .addProperty("lastReloadReport", [](const UIDocument* self, lua_State* L) -> luabridge::LuaRef {
+            const UIReloadReport report = self->getLastReloadReport();
+            if (report.mode.empty())
+                return luabridge::LuaRef(L);
+            pushReport(L, report);
+            return luabridge::LuaRef::fromStack(L);
+        })
         .endClass();
 
 #endif //DISABLE_LUA_BINDINGS

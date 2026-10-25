@@ -8,6 +8,7 @@
 #include "UIElement.h"
 #include "UIEvent.h"
 #include "UIDataModel.h"
+#include "UIReloadReport.h"
 #include "UIValue.h"
 #include "htmlui/compat/Diagnostics.h"
 
@@ -57,6 +58,12 @@ namespace jasperengine{
         const std::string& getFilename() const;
         bool load(const std::string& filename);          // loads now (when the view is loaded); false if it failed
         void reload();                                   // loads it again, keeping scroll, focus, form values and id-ed listeners
+        // S17: an .html document is patched in place (UIReloadMode::PATCH: every element, listener and
+        // handle that is still in it stays) or loaded again (REBUILD, as reload() before)
+        void reload(UIReloadMode mode);
+        // after a patch reload; the last reload's report
+        void setOnReload(std::function<void(const UIReloadReport&)> callback);
+        UIReloadReport getLastReloadReport() const;
         bool isLoaded() const;
 
         void show(); void hide();

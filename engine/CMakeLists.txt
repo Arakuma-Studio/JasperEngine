@@ -1120,6 +1120,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemRender.cpp
     core/subsystem/UIDocumentSystemInput.cpp
     core/subsystem/UIDocumentSystemScript.cpp
+    core/subsystem/UIDocumentSystemPatch.cpp
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp

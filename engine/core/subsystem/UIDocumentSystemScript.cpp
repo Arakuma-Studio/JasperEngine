@@ -385,6 +385,14 @@ void HtmlUIScriptState::fireNotifications(){
             component->onUnload.call();
         }
     }
+    // S17: the patch reloads (the document stayed: no onUnload/onLoad)
+    std::vector<Reload> patched = std::move(reloads);
+    reloads.clear();
+    for (const Reload& reload : patched){
+        UIDocumentComponent* component = system->scene->findComponent<UIDocumentComponent>(reload.entity);
+        if (component && component->onReload)
+            component->onReload(reload.report);
+    }
 }
 
 UIDataModel HtmlUIScriptState::makeHandle(HtmlUIDataModelRecord* record){
