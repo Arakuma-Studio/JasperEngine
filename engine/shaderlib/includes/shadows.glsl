@@ -1,6 +1,11 @@
-// 3D shadow maps: projective atlas (directional cascades and spots) and point atlas. The
-// blocks, textures and v_lightProjPos are declared by includes/lights.glsl (fragment stage,
-// USE_SHADOWS), or by a fork declaring the legacy u_fs_lighting block before including this.
+// Legacy 3D shadow entry points (shadowCalculationPCF, shadowCascadedCalculationPCF,
+// shadowCubeCalculationPCF), for forks of mesh.vert/mesh.frag written before the
+// fragment-stage shadows (docs/rendering/shadows.md): such a fork declares the legacy
+// u_fs_shadows and u_fs_point_shadows blocks, the u_shadowAtlas / u_shadowPointAtlas textures
+// and the v_lightProjPos[] varyings its vertex stage writes (u_vs_shadows), then includes this.
+// The engine still fills those blocks for directional and spot lights. Point lights read as lit:
+// their maps moved to a depth atlas these functions cannot read (re-fork to get them, the
+// cascade blend and PCSS). New shaders use lightShadow (includes/lights.glsl).
 #ifndef SHADOWS_GLSL
 #define SHADOWS_GLSL
 
@@ -16,16 +21,9 @@
 
 // The PCF bounds come from a uniform, so every backend clamps them to the range
 // the engine can set: a loop the GPU cannot bound is a device hang, not a glitch.
-#ifdef IS_HLSL
-// HLSL unrolls any loop holding a texture lookup, so the PCF bound has to be a
-// constant and its taps multiply with the light and cascade loops around it.
-// Capping keeps that compilable: MEDIUM and HIGH quality render as LOW here.
-const int MAX_PCF_RADIUS = 1;   // 3x3 kernel
-const int MAX_PCF_RINGS = 1;    // center + 1 ring
-#else
-const int MAX_PCF_RADIUS = 3;   // 7x7 kernel, ShadowQuality::HIGH
-const int MAX_PCF_RINGS = 3;    // center + 3 rings, ShadowQuality::HIGH
-#endif
+// Every lookup takes explicit LOD 0, so no backend has to unroll these loops.
+const int MAX_PCF_RADIUS = 3;   // 7x7 kernel
+const int MAX_PCF_RINGS = 3;    // center + 3 rings
 
 struct Shadow{
     float maxBias;
@@ -116,15 +114,15 @@ vec4 getShadowCubeMap(int baseIndex, vec3 coords) {
     vec2 inset = 0.5 / vec2(uPointShadows.bias_texSize_nearFar[slot].y);
     uv = clamp(uv, inset, 1.0 - inset);
     vec2 atlasUV = getShadowAtlasUV(rect, uv);
-    return texture(sampler2D(u_shadowPointAtlas, u_shadowPointAtlas_smp), atlasUV);
+    return textureLod(sampler2D(u_shadowPointAtlas, u_shadowPointAtlas_smp), atlasUV, 0.0);
 }
 
 float shadowCompare(int shadowMapIndex, float currentDepth, float bias, vec2 texCoords){
     vec4 rect = uShadows.atlasRect[shadowMapIndex];
     vec2 atlasUV = getShadowAtlasUV(rect, texCoords);
-    float visibility = texture(
+    float visibility = textureLod(
         sampler2DShadow(u_shadowAtlas, u_shadowAtlas_smp),
-        vec3(atlasUV, currentDepth - bias));
+        vec3(atlasUV, currentDepth - bias), 0.0);
     return 1.0 - visibility;
 }
 
@@ -157,7 +155,6 @@ float shadowCalculationAux(int shadowMapIndex, Shadow shadowConf, float NdotL){
         vec2 base = floor(texelPos);
         vec2 f = texelPos - base;
 
-        // constant bound: HLSL unrolls any loop holding a texture lookup
         for (int kx = 0; kx <= MAX_PCF_RADIUS; ++kx) {
             if (kx > pcfRadius) break;
             float wx0 = (kx == 0) ? 1.0 - f.x : 1.0;
@@ -253,12 +250,8 @@ float shadowCubeCalculationPCF(int shadowMapIndex, vec3 fragToLight, float NdotL
         float diskRadius = length( fragToLight ) * 0.0005;
 
         shadow += shadowCubeCompare(shadowMapIndex, currentDepth, bias, fragToLight);
-        // Constant bound for HLSL, same reasoning as the 2D kernel above
-        #ifdef IS_HLSL
         for (int r = 1; r <= MAX_PCF_RINGS; ++r){
-        #else
-        for (int r = 1; r <= pcfRings; ++r){
-        #endif
+            if (r > pcfRings) break;
             float ringRadius = diskRadius * float(r) / float(pcfRings);
             for (int i = 0; i < 8; ++i){
                 shadow += shadowCubeCompare(shadowMapIndex, currentDepth, bias, fragToLight + ringOffsets[i] * ringRadius);

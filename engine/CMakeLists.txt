@@ -1058,6 +1058,12 @@ set(JASPERENGINE_SRCS
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/render/shadow/CascadeFit.cpp
+    core/render/shadow/ShadowCache.cpp
+    core/render/shadow/ShadowCasterRegistry.cpp
+    core/render/shadow/ShadowSlotPlanner.cpp
+    core/render/shadow/ShadowTiers.cpp
+    core/render/shadow/ShadowTypes.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
     core/script/LuaScript.cpp
@@ -1087,6 +1093,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/MeshSystem.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
+    core/subsystem/RenderSystemShadows.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp

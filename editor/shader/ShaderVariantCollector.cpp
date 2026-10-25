@@ -178,7 +178,28 @@ namespace {
         return (e.lights ? 1u : 0u) | (e.shadows ? 2u : 0u) | (e.ibl ? 4u : 0u) | (e.reflectionProbes ? 8u : 0u) |
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
-            (e.postColor ? (1u << 21) : 0u);
+            (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u);
+    }
+
+    // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
+    // the scene's variants can be in: a tier the scene sets, both under Auto (the platform's
+    // tier, which an export filters per backend: ShadowTiers::cooksHighFilters) and when a
+    // script sets the quality
+    std::vector<bool> shadowHQStates(Scene* scene, bool scriptsSetShadowQuality){
+        if (scriptsSetShadowQuality)
+            return {false, true};
+        switch (scene->getShadowQuality()){
+            case ShadowQuality::NONE:
+            case ShadowQuality::LOW:
+            case ShadowQuality::MEDIUM:
+                return {false};
+            case ShadowQuality::HIGH:
+            case ShadowQuality::ULTRA:
+                return {true};
+            case ShadowQuality::AUTO:
+                break;
+        }
+        return {false, true};
     }
 
     // the states of the post-processing colour bit (RenderSystem::getPostProcessingTiers) the
@@ -194,7 +215,8 @@ namespace {
     // spawned in it. A skybox's environment maps light meshes only once they are built, so
     // the setups without them are reachable too (an asynchronous load draws before that).
     std::vector<MeshShaderEnvironment> reachableEnvironments(Scene* scene, uint32_t sceneFacts, const std::vector<uint32_t>& prefabFacts,
-                                                             bool allLightCapacities, const std::vector<bool>& postColor){
+                                                             bool allLightCapacities, const std::vector<bool>& postColor,
+                                                             const std::vector<bool>& shadowHQ){
         std::set<uint32_t> reached{sceneFacts};
         std::vector<uint32_t> pending{sceneFacts};
         while (!pending.empty()){
@@ -218,17 +240,21 @@ namespace {
         std::set<uint32_t> distinct;
         for (uint32_t facts : withLoading){
             for (bool postColorOn : postColor){
-                MeshShaderEnvironment environment = toEnvironment(facts, scene);
-                environment.postColor = postColorOn;
-                if (distinct.insert(environmentBits(environment)).second){
-                    environments.push_back(environment);
-                }
-                // a script setting maxLightsPerObject reaches the other capacity tiers
-                if (allLightCapacities && environment.lights){
-                    for (int capacity : {4, 8, 16}){
-                        environment.lightCapacity = capacity;
-                        if (distinct.insert(environmentBits(environment)).second){
-                            environments.push_back(environment);
+                for (bool highFilters : shadowHQ){
+                    MeshShaderEnvironment environment = toEnvironment(facts, scene);
+                    environment.postColor = postColorOn;
+                    // the bit only exists on variants receiving shadows
+                    environment.shadowsHQ = highFilters && environment.shadows;
+                    if (distinct.insert(environmentBits(environment)).second){
+                        environments.push_back(environment);
+                    }
+                    // a script setting maxLightsPerObject reaches the other capacity tiers
+                    if (allLightCapacities && environment.lights){
+                        for (int capacity : {4, 8, 16}){
+                            environment.lightCapacity = capacity;
+                            if (distinct.insert(environmentBits(environment)).second){
+                                environments.push_back(environment);
+                            }
                         }
                     }
                 }
@@ -918,7 +944,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
                                                   const std::vector<ShaderVariantContent>& prefabContents,
                                                   std::set<ShaderKey>& keys, const fs::path& projectRoot,
                                                   bool allLightCapacities, bool scriptsSetPostProcessing,
-                                                  const std::vector<std::string>& scriptPostProcessingFields){
+                                                  const std::vector<std::string>& scriptPostProcessingFields,
+                                                  bool scriptsSetShadowQuality){
     if (!scene || !sceneContent.registry){
         return;
     }
@@ -938,7 +965,8 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
         }
     }
 
-    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor);
+    const std::vector<MeshShaderEnvironment> environments = reachableEnvironments(scene, sceneFacts, prefabFacts, allLightCapacities, postColor,
+                                                                                  shadowHQStates(scene, scriptsSetShadowQuality));
 
     Collector collector(scene, environments, postColor, keys);
     collector.collect(sceneContent);
@@ -994,6 +1022,11 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (blur){
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 1u));
         keys.insert(ShaderPool::getShaderKey(ShaderType::BLOOM, 4u));
+    }
+    // a light casting 3D shadows copies the static shadow cache back and clears slots with the
+    // shadow cache's program (RenderSystem::renderShadowMaps)
+    if (allFacts & FACT_SHADOW_LIGHTS){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW_CACHE, 0));
     }
     // 2D lights with shadows render occluder segments through the shadow2d pass, once an
     // occluder exists (a script can spawn one, so the light alone asks for it)

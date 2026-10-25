@@ -68,6 +68,10 @@ void TextureRender::updateTexture(const void* data, size_t size){
     backend.updateTexture(data, size);
 }
 
+bool TextureRender::createAliasView(const TextureRender& source, const char* label){
+    return backend.createAliasView(source.backend, label);
+}
+
 void TextureRender::destroyTexture(){
     backend.destroyTexture();
     transparent = false;

@@ -93,6 +93,10 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Source/Engine/Rendering/DynamicResolutionController.cpp` and its header (adapted) | `engine/core/render/DynamicResolutionController.*` | the GPU law of dynamic resolution (S13) |
 | `Engine/Modules/Rendering/Shaders/vhs.frag`, `vhs_interference.frag`, `vhs_signal_glitches.frag` (adapted, with the punikonta notice below) | `engine/shaderlib/includes/post_vhs.glsl` | the uber pass's VHS tape (S13) |
 | `CubeLutFileParserTests.cpp` and `Tests/Fixtures/CubeLut/*.cube`, `DynamicResolutionControllerTests.cpp` (ported) | `engine/tests/core/util/CubeLutTest.cpp`, `engine/tests/core/fixtures/cubelut/`, `engine/tests/core/render/DynamicResolutionControllerTest.cpp` | test cases and fixtures (tests only, never shipped) |
+| `Source/Engine/Rendering/ShadowMapRenderFeature.cpp` (`SliceBoundingSphereRadius`, `CascadeLightUp`, `GetCascadeFitTuning`), adapted | `engine/core/render/shadow/CascadeFit.*` | the cascades' bounding-sphere fit, the near-vertical light basis and the fit freeze bands (S10) |
+| `PointShadowAtlasPlanner` (importance ranking, sticky slots, challenge margin and cooldown), adapted | `engine/core/render/shadow/ShadowSlotPlanner.cpp` | shadow slots by importance (S10) |
+| Shader includes `shadow_receiver_plane.glsl`, `shadow_filter.glsl` (`GE_VogelDisk`), `shadow_sampling.glsl` (`GE_PoissonRotation`), `shadow_cascade_blend.glsl`, `shadow_distance_fade.glsl`, `shadow_pcss_decisions.glsl`, adapted with every depth comparison inverted | `engine/shaderlib/includes/shadow_sampling.glsl`, `engine/shaderlib/includes/shadow_pcss_decisions.glsl` | the receiver-plane bias, the Vogel filter, the cascade blend and fade, PCSS (S10) |
+| `ShadowPcssDecisionTests`, ported | `engine/tests/core/render/PcssDecisionTest.cpp` | the PCSS decision tests (tests only, never shipped) |
 
 The VHS tape of the uber pass (`engine/shaderlib/includes/post_vhs.glsl`, S13) is adapted from
 OpenEngine's port of punikonta's Godot VHS shader ([godot-shader-crt-vhs](https://github.com/punikonta/godot-shader-crt-vhs),
