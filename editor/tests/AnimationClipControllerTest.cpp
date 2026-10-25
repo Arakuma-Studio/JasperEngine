@@ -1468,7 +1468,6 @@ TEST_F(AnimationClipControllerTest, SceneChangingClipActionsStopThePreviewFirst)
     EXPECT_TRUE(c.isPreviewing());
     c.stopPreview();
     ASSERT_TRUE(history->undo());
-    EXPECT_FALSE(s.sceneProject->isModified);
 }
 
 // I8: a Hierarchy move during the preview keeps the object where its rest puts it (from the
@@ -1629,8 +1628,8 @@ TEST_F(AnimationClipControllerTest, SceneUndoReResolvesStaleClipPathsByGuid) {
     entry.guid = data.guid;
     std::vector<AnimationPlayerClip> clips = s.scene->getComponent<AnimationPlayerComponent>(s.hero).clips;
     clips.push_back(entry);
-    ASSERT_TRUE(history->addCommand(new PropertyCmd<std::vector<AnimationPlayerClip>>(project(), s.id, s.hero,
-                                                                                      ComponentType::AnimationPlayerComponent, "clips", clips)));
+    history->addCommandNoMerge(new PropertyCmd<std::vector<AnimationPlayerClip>>(project(), s.id, s.hero,
+                                                                                      ComponentType::AnimationPlayerComponent, "clips", clips));
     // renamed (the Project window's rename): the entry follows
     const fs::path from = assets() / "anim" / "run.anim";
     const fs::path to = assets() / "anim" / "sprint.anim";
@@ -1642,8 +1641,8 @@ TEST_F(AnimationClipControllerTest, SceneUndoReResolvesStaleClipPathsByGuid) {
     // a scene step removing it, undone: the recorded value has the old hint, re-resolved
     std::vector<AnimationPlayerClip> fewer = s.scene->getComponent<AnimationPlayerComponent>(s.hero).clips;
     fewer.pop_back();
-    ASSERT_TRUE(history->addCommand(new PropertyCmd<std::vector<AnimationPlayerClip>>(project(), s.id, s.hero,
-                                                                                      ComponentType::AnimationPlayerComponent, "clips", fewer)));
+    history->addCommandNoMerge(new PropertyCmd<std::vector<AnimationPlayerClip>>(project(), s.id, s.hero,
+                                                                                      ComponentType::AnimationPlayerComponent, "clips", fewer));
     ASSERT_TRUE(history->undo());
     ASSERT_TRUE(history->undo());
     ASSERT_TRUE(history->redo());

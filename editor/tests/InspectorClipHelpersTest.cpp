@@ -151,9 +151,9 @@ TEST(InspectorClipHelpers, ProblemRowsAreShortWithTheNearestLeaf) {
     missing.message = "Hero/mixamorig:Hips/mixamorig:Spne : position: no GameObject at '...': did you mean '...'?";
     EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean mixamorig:Spine?)");
     missing.nearest = {"A/Hand", "A/Hand2", ""};
-    EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean Hand, Hand2 or (root)?)");
+    EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean Hand, Hand2 or (Root)?)");
     EXPECT_EQ(inspectorclips::trackProblemText(track("", ClipChannel::Morph, TrackBindingStatus::MissingComponent)),
-              "(root) : Morph: nothing to animate on the GameObject");
+              "(Root) : Blend Shapes: nothing to animate on the GameObject");
 }
 
 TEST(InspectorClipHelpers, EventTexts) {

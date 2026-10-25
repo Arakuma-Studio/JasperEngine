@@ -522,7 +522,10 @@ bool editor::ModelLoadCmd::execute(){
     // of the model (the clip and entity modes, the Inspector's, a pose): they restore first (9.R7)
     if (!createEntityCmd && entity != NULL_ENTITY) {
         SceneProject* previewed = project->getScene(sceneId);
-        if (previewed && previewed->scene && previewed->scene->isEntityCreated(entity)) PoseEditSession::suspendActiveFor(sceneId, {entity});
+        const ModelComponent* loaded = previewed && previewed->scene && previewed->scene->isEntityCreated(entity)
+            ? previewed->scene->findComponent<ModelComponent>(entity) : nullptr;
+        // (a first load has nothing a preview shows yet: the previews go on, Record too)
+        if (loaded && !loaded->loadedFilename.empty()) PoseEditSession::suspendActiveFor(sceneId, {entity});
     }
     // An FBX loads from its import, created here the first time
     if (!project->prepareModelFile(modelPath)) {
@@ -715,7 +718,7 @@ void editor::ModelLoadCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
     Scene* scene = sceneProject->scene;
     // the reload rebuilds (and records) the model from its rest, not from a preview (clips 9.R7)
-    if (entity != NULL_ENTITY && scene->isEntityCreated(entity)) PoseEditSession::suspendActiveFor(sceneId, {entity});
+    if (!isNewModel && entity != NULL_ENTITY && scene->isEntityCreated(entity)) PoseEditSession::suspendActiveFor(sceneId, {entity});
 
     if (asyncPending) {
         // Async load still in flight — cancel it; no sub-entities have been created yet
