@@ -539,8 +539,10 @@ colour is multiplied by the element's `opacity`):
 .ready { font-effect: glow(2px 6px 0px 0px #40ff40); }
 ```
 
-Each blurred shadow, glow or blur of a text draws through an offscreen layer: fine for titles
-and counters, not for long body text.
+Shadows, outlines, glows, blurs and blurred `text-shadow`s up to 0.3 em are drawn on the GPU
+from distance-field glyphs, sharp at any pixel ratio and without layers; larger ones (and the
+first frame before those glyphs exist) are drawn the old way, through an offscreen layer or CPU
+glyphs.
 
 ### CSS units, fonts and icons
 
@@ -589,7 +591,7 @@ is the global `document`.
 
 | Group | Members |
 |---|---|
-| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
+| Document | `doc:getElementById(id)`, `doc:querySelector(sel)`, `doc:querySelectorAll(sel)` (CSS selectors, rewritten like the stylesheet), `doc.body`, `doc.documentElement` (`<html>`), `doc.title`, `doc:createElement(tag)`, `doc:createTextNode(text)`, `doc:addEventListener/removeEventListener`, `doc:createDataModel(name, table)`, `doc:getDataModel(name)`, `doc:removeDataModel(name)`, `doc:show()`, `doc:hide()`, `doc.visible`, `doc.sortOrder`, `doc.filename`, `doc:load(file)`, `doc:reload()`, `doc.loaded`, `doc.onLoad`, `doc.onUnload`, `doc:getDiagnostics()`, `doc:getRenderStats()` (the last frame's draw, batching and atlas counters: `drawCalls`, `runsMerged`, `stencilDraws`, `atlasBytes`, ...), `doc:setColorScheme("dark")`, `doc:setReducedMotion(true)`, `doc:getTargetTexture()`, `doc:getUIDocumentComponent()`, `UIDocument.setDebuggerVisible(bool)` |
 | Tree | `id`, `tagName` (`"DIV"`; lower case in `.rml`), `localName` (`"div"`), `className`, `parentElement`, `children` (array), `firstElementChild`, `lastElementChild`, `nextElementSibling`, `previousElementSibling`, `childElementCount`, `querySelector`, `querySelectorAll`, `closest`, `matches`, `contains` |
 | Mutation | `appendChild(el)`, `insertBefore(el, ref)` (nil appends), `removeChild(el)`, `replaceChild(new, old)`, `remove()`, `cloneNode(deep)` |
 | Content | `textContent` (text, never parsed), `innerHTML`/`outerHTML` (HTML, parsed and rewritten like the document), `insertAdjacentHTML(position, html)`, `content` (`<template>`: `tpl.content:cloneNode(true)`, then `appendChild` it) |
@@ -1465,6 +1467,13 @@ Read-only, edit mode and play. Returns:
 - `"styles": ["color", "font-size"]`: those computed values on every element;
 - `"screenshot": true`: the Game view cropped to the matches, outlined;
 - `"file": "assets/ui/x.css"`: a file's diagnostics without a live document;
+- `"render_stats": true`: the last frame of the document's context, every counter by its name
+  (`drawCalls`, `geometrySubmitted`, `runsMerged`, `runCacheHits`, `instancesDrawn`,
+  `stencilDraws`, `stencilClipsElided`, `analyticClips`, `boxShadowTextures`, `layersPushed`,
+  `glyphsRasterized`, `msdfGlyphsPending`, `textRegenerations`, `textEffectFallbacks`,
+  `atlasBytes`, `atlasEvictions`, ...); with `"detail": "full"` each element also has
+  `paint: {path: "primitive" | "mesh", reason}` and, with text, `raster: {mode: "bitmap" | "msdf" |
+  "stretched", scale}`;
 - a `<video>`'s entry has `media`: `currentSrc`, `currentTime`, `duration`, `paused`, `ended`,
   `seeking`, `loop`, `muted`, `volume`, `playbackRate`, `readyState`, `networkState`,
   `videoWidth`/`videoHeight`, `frame` (the index on screen), `droppedFrames`, `decodeMs`,
@@ -1588,12 +1597,28 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   `font-size`): transforms and opacity change one value per frame, layout properties lay the
   document out again. For a bar animated every frame, `transform: scaleX()` beats `width`; a
   width set once per event (the HUD above) is fine.
-- **Layers cost passes.** A static document without filters, masks or shadows is one offscreen
-  pass and uploads nothing per frame. Every `filter`, `backdrop-filter`, `mask-image`, blurred
-  `box-shadow` and blurred `text-shadow` draws through extra offscreen passes (a blur 4 to 6, a
-  backdrop blur a few more), and `opacity` below 1 on an element with several children draws
-  it into a layer: keep them on the few elements that need them, and do not blur long body
-  text.
+- **Layers cost passes.** A static document without filters or masks is one offscreen pass and
+  uploads nothing per frame. Every `filter`, `backdrop-filter` and `mask-image` draws through
+  extra offscreen passes (a blur 4 to 6, a backdrop blur a few more), and `opacity` below 1 on an
+  element with several children draws it into a layer: keep them on the few elements that need
+  them. Box shadows, blurred `text-shadow`s and `font-effect`s do not need layers (below).
+- **Draws are batched.** Consecutive boxes and text of the same clip and transform are one draw:
+  a list of 500 cards with rounded borders, box shadows and two labels each is a handful of draws.
+  Solid backgrounds, `solid` borders (one colour per rounded corner), `solid` and `auto` outlines
+  and every `box-shadow` (blur, spread, inset, several) are drawn as antialiased shapes, without
+  shadow textures. What keeps the old (still correct, slower) mesh path: gradients and images as
+  backgrounds, `dashed`/`dotted`/`double`/... borders, borders of two colours meeting on a curve,
+  `background-clip` other than `border-box`, a `box-shadow` under `opacity` (`inspect_ui` detail
+  full says why per element: `paint`). Rounded `overflow` clips whose content stays clear of the
+  corners (padding at least the radius) cost nothing; one or two rounded clips the content reaches
+  are clipped in the shaders; deeper nesting uses the stencil (more draws).
+- **Text follows its on-screen size.** Text under `transform: scale()`, at a fractional pixel
+  ratio or on a scaled canvas is rasterized at its real size (as sharp as that font size); while
+  a scale animates it draws from distance-field glyphs and is rasterized again once it rests
+  (6 frames later). `text-rendering: optimizeSpeed` keeps the old stretched bitmap (cheapest),
+  `geometricPrecision` always draws distance fields (any size, 3D, no re-rasterization).
+  `text-shadow` blurs and `font-effect` outlines, glows and blurs up to 0.3 em are drawn from the
+  distance glyphs without layers; larger ones fall back to layers (or CPU glyphs).
 - **Keep documents small**: hundreds of elements, not thousands. Long lists: page or window
   them in Lua. One document per screen; hide the screens you do not show (`doc:hide()`, or a
   class with `display: none`) instead of destroying and rebuilding them.
@@ -1604,9 +1629,19 @@ its listeners in a method called from `init` and registered on `doc.onLoad`.
   documents redraw only when they change.
 - Anti-aliasing: Project Settings > Graphics > HTML UI MSAA (`graphics.html_ui_msaa_samples`:
   1, 2, 4 or 8, default 4; devices that cannot multisample use 1).
+- Project Settings > Graphics > HTML UI also has *Glyph Atlas Budget (MiB)*
+  (`graphics.html_ui_glyph_atlas_mib`: 0 = the platform's default, 24 MiB on desktop and 12 on
+  Android, iOS and the web, else 4-256; pages of glyphs not drawn lately are cleared when text needs
+  more, and a warning `HTMLUI-GEN-0007` says when that happens all the time), *SDF Primitives*
+  (`graphics.html_ui_sdf_primitives`) and *Transform-Aware Text*
+  (`graphics.html_ui_transform_aware_text`), both on by default; all three are undoable and go
+  into exports.
 - Measure: the Game view's statistics overlay (`configure_game_view {"show_stats": true}`)
-  shows the documents' passes, draws and pipeline switches of the last frame
-  (`UIDocumentSystem::getRenderStats()` in C++).
+  shows the documents' passes, draws (merged), instances, stencil draws and the glyph atlas of
+  the last frame; `inspect_ui {"render_stats": true}` returns every counter of the document's
+  context, `doc:getRenderStats()` the same table in Lua (an in-game HUD),
+  `UIDocumentSystem::getRenderStats()` in C++, and `jasperengine-editor benchmark --ui-stats`
+  their averages.
 
 ## C++
 
