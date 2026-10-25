@@ -226,6 +226,23 @@ TEST_P(FileWatchServiceTests, StoppedConsumersStartOver) {
     EXPECT_EQ(journal[0].path, dir.path);
 }
 
+TEST_P(FileWatchServiceTests, JournalAfterARestartReadsItsOwnChanges) {
+    startWatching();
+    writeText(dir.path / "before.txt", "x");
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    service.stop();
+    startWatching();
+    // the sequence goes on past the restart: the new changes are read where they were written
+    uint64_t cursor = service.journalHead();
+    ASSERT_GT(cursor, 1u);
+    writeText(dir.path / "after.txt", "x");
+    ASSERT_TRUE(service.flush(timeLimit(ms(1000))));
+    std::vector<FileChange> journal = service.journalSince(cursor);
+    EXPECT_NE(pathsOf(journal).find("after.txt"), std::string::npos) << pathsOf(journal);
+    EXPECT_EQ(pathsOf(journal).find("before.txt"), std::string::npos) << pathsOf(journal);
+    EXPECT_GE(service.externalChangesSince(cursor), 1u);
+}
+
 TEST_P(FileWatchServiceTests, IdleCostsNothing) {
     startWatching();
     // let the self-test and the first pass finish
