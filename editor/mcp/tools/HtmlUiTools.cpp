@@ -1836,11 +1836,11 @@ bool elementCenter(McpContext& ctx, const Json& documentRef, const std::string& 
 
 // ------------------------------------------------------------------ registration
 
-// ------------------------------------------------------------------ ui_widget (S17 R41)
+// ------------------------------------------------------------------ edit_ui_view (S17 R41)
 
-// ui_widget {entity, selector, action, index|key|column}: drives a virtual view in play (runtime only,
+// edit_ui_view {entity, selector, action, index|key|column}: drives a virtual view in play (runtime only,
 // not undoable): scroll_to, select, activate, expand, collapse, sort. Indices are 0-based.
-void uiWidgetTool(const CallPtr& call) {
+void editUiViewTool(const CallPtr& call) {
     const Json& args = call->args();
     static const char* const actions[] = {"scroll_to", "select", "activate", "expand", "collapse", "sort"};
     const std::string action = args.value("action", std::string());
@@ -1861,7 +1861,7 @@ void uiWidgetTool(const CallPtr& call) {
         Project* project = call->ctx().project();
         SceneProject* sp = targetScene(project, target);
         if (!isPlaying(project) || !isRunning(sp->playState)) {
-            call->fail("ui_widget acts on a playing document (its views' data come from Lua): start play first.");
+            call->fail("edit_ui_view acts on a playing document (its views' data come from Lua): start play first.");
             return;
         }
         UIDocument document(sp->scene, target.entity);
@@ -2030,8 +2030,8 @@ void registerHtmlUiTools(McpRegistry& registry) {
 
     {
         ToolDef tool;
-        tool.name = "ui_widget";
-        tool.title = "Drive UI Widget";
+        tool.name = "edit_ui_view";
+        tool.title = "Edit UI View";
         tool.description =
             "Drive a list-view, grid-view, tree-view or table-view of a playing HTML UI document (runtime only, not "
             "undoable): scroll_to (align), select, activate (its activate event), expand / collapse (tree), sort (table: "
@@ -2052,7 +2052,7 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.allowedWhilePlaying = true;
         tool.activity = ToolActivity::Control;
         tool.group = "html_ui";   // S17: a group tool (docs/mcp/conventions.md)
-        tool.handler = uiWidgetTool;
+        tool.handler = editUiViewTool;
         registry.addTool(std::move(tool));
     }
 

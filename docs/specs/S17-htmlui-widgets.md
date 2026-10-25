@@ -566,5 +566,8 @@ doc.onReload = function(report) print(report.updated, report.fallbackReason) end
 - **AC13's mobile check is not recorded.** No reference phone was available; the gates ran on the
   benchmark host E (`docs/html-ui/s17-acceptance.md`) and the Android build ran on the emulator
   (SwiftShader: no frame-time meaning).
-- **`ui_widget` is in an `html_ui` tool group (S31, merged after the spec).** New tools go into a
+- **`edit_ui_view` is in an `html_ui` tool group (S31, merged after the spec).** New tools go into a
   non-core group; `tool_groups {"enable": ["html_ui"]}` lists it, a call by name works either way.
+- **`ui_widget` is named `edit_ui_view` (R41).** S31's convention (merged after the spec) names a
+  new tool verb_noun, `edit_<thing>` for a multi-operation tool; its parameters and actions are
+  R41's.

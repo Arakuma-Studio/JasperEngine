@@ -1,5 +1,5 @@
 """The HTML UI widgets through MCP (S17 R39-R41, AC14): inspect_ui's widget, tooltip, drag and reload
-fields; assert_ui's virtual_window, tooltip and selected checks; ui_widget's actions (scroll_to, select,
+fields; assert_ui's virtual_window, tooltip and selected checks; edit_ui_view's actions (scroll_to, select,
 activate, expand, collapse, sort) and its refusals; a send_input drag in the inventory example that
 swaps two slots (read back with inspect_ui's models); a column resize by a send_input drag; a patch
 reload that keeps Lua state, with its Console line.
@@ -118,8 +118,8 @@ async def widget(ed: Editor, selector: str) -> dict:
 
 
 async def drive(ed: Editor, **args) -> dict:
-    r = await ed.call_raw("ui_widget", {"entity": S["entity"], **args})
-    ed.check(not r.is_error, f"ui_widget {args}: {r.text[:300]}")
+    r = await ed.call_raw("edit_ui_view", {"entity": S["entity"], **args})
+    ed.check(not r.is_error, f"edit_ui_view {args}: {r.text[:300]}")
     return r.structured
 
 
@@ -142,13 +142,13 @@ async def test_setup_and_play(ed: Editor):
 
     # a group tool (S31): hidden until the session enables html_ui, callable by name either way
     default = {t.name for t in await ed.tools(groups=None)}
-    ed.check("ui_widget" not in default, "ui_widget is hidden until html_ui is enabled")
+    ed.check("edit_ui_view" not in default, "edit_ui_view is hidden until html_ui is enabled")
     await ed.call("tool_groups", enable=["html_ui"])
-    ed.check("ui_widget" in {t.name for t in await ed.tools(groups=None)}, "listed once html_ui is enabled")
+    ed.check("edit_ui_view" in {t.name for t in await ed.tools(groups=None)}, "listed once html_ui is enabled")
 
-    # edit mode: ui_widget refuses (the views' data come from Lua)
-    r = await ed.call_raw("ui_widget", {"entity": S["entity"], "selector": "#list", "action": "scroll_to", "index": 5})
-    ed.check(r.is_error and "start play first" in r.text, f"ui_widget in edit mode: {r.text}")
+    # edit mode: edit_ui_view refuses (the views' data come from Lua)
+    r = await ed.call_raw("edit_ui_view", {"entity": S["entity"], "selector": "#list", "action": "scroll_to", "index": 5})
+    ed.check(r.is_error and "start play first" in r.text, f"edit_ui_view in edit mode: {r.text}")
 
     await ed.console_since(None, limit=1)
     ed.check(await ed.call("play", action="start", scene=S["scene"], fixed_fps=60), "play started")
@@ -199,8 +199,8 @@ async def test_ui_widget_actions(ed: Editor):
                        ({"selector": "#list", "action": "select", "key": "nope"}, "no item has the key"),
                        ({"selector": "#servers", "action": "sort", "column": "nope"}, "no sortable column"),
                        ({"selector": "#list", "action": "jump"}, "action must be")):
-        r = await ed.call_raw("ui_widget", {"entity": S["entity"], **args})
-        ed.check(r.is_error and text in r.text, f"ui_widget {args}: {r.text}")
+        r = await ed.call_raw("edit_ui_view", {"entity": S["entity"], **args})
+        ed.check(r.is_error and text in r.text, f"edit_ui_view {args}: {r.text}")
 
 
 async def test_assert_widget_checks(ed: Editor):

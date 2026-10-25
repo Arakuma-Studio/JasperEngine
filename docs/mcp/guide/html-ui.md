@@ -949,7 +949,7 @@ millisecond per frame.
   rows do nothing, use `gap` (grid) or padding inside the row.
 - MCP: `inspect_ui` reports each view's `widget` (kind, count, first..last, pool, selection),
   `assert_ui {"kind": "virtual_window", "max_pool": 30}` and `{"kind": "selected", ...}` check
-  it, and `ui_widget` drives it in play (`scroll_to`, `select`, `activate`, `expand`, `collapse`,
+  it, and `edit_ui_view` drives it in play (`scroll_to`, `select`, `activate`, `expand`, `collapse`,
   `sort`; 0-based indices).
 
 ## Tooltips
@@ -1659,7 +1659,7 @@ at other sizes. Typical sets:
 | Settings, forms | `text_fits` of labels, `within_parent` of rows, `min_size` of controls |
 | Toasts, lists | `no_overlap`, `within_viewport` with the most entries shown |
 
-### `ui_widget`
+### `edit_ui_view`
 
 In the `html_ui` tool group (`tool_groups {"enable": ["html_ui"]}` lists it; a call by name
 works either way). Drives a virtual view of a playing document (runtime only, not undoable): `{"selector": "#servers",
