@@ -156,7 +156,7 @@ async def test_validate_and_errors(ed: Editor):
     s = await setup(ed)
     await ed.call("select_entities", scene=s["scene"], entities=[])
     # the validator runs when a menu opens; run_editor_menu runs the item regardless, with an empty selection
-    r = await ed.call("run_editor_menu", path="GameObject/Test/Raise Selected", scene=s["scene"], selection=[])
+    r = await ed.call("run_editor_menu", path="GameObject/Test/Raise Selected", scene=s["scene"])
     ed.check_in("raised 0", r["log"], "nothing selected: nothing moved")
     ed.check("undo_group" not in r or not r["undo_group"].get("undo"), f"no edit, no undo step: {r}")
     hello = await ed.call("run_editor_menu", path="Tools/Test/Say Hello", scene=s["scene"])

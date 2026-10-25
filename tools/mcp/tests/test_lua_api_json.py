@@ -35,7 +35,7 @@ async def test_lua_api_resource(ed: Editor):
     for key in ("format", "formatVersion", "hash", "engineVersion", "classes", "enums", "globals", "events"):
         ed.check(key in api, f"lua-api.json has {key}: {sorted(api)[:20]}")
     names = {c["name"] for c in api["classes"]}
-    for name in ("Vector3", "Scene", "Object"):
+    for name in ("Vector3", "Scene", "GameObject", "Engine"):
         ed.check(name in names, f"class {name} is listed")
     ed.check_eq(api.get("unresolved", []), [], "nothing unresolved")
     one = json.loads(await read_text(ed, "jasper://lua-api?class=Vector3"))
@@ -66,7 +66,10 @@ async def test_doc_blocks_compile_and_run(ed: Editor):
         rel = os.path.relpath(path, ROOT)
         for line, _run, code in doctest.blocks(path):
             r = await ed.call("check_script", code=code, language="lua")
-            ed.check(r.get("ok") is not False, f"{rel}:{line}: does not compile: {r}")
+            # check_script also runs the top level: a block that needs a script's self fails
+            # there, after it compiled
+            errors = [e for e in r.get("errors", []) if not e.get("message", "").startswith("runtime error at load")]
+            ed.check(r.get("ok") is not False or not errors, f"{rel}:{line}: does not compile: {r}")
             compiled += 1
     ed.check(compiled > 0, "some blocks were compiled")
 

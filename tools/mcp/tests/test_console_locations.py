@@ -48,8 +48,9 @@ async def test_lua_runtime_error_location_opens(ed: Editor):
     await ed.call("save_scene", scene=scene)
     cursor = (await ed.call("read_console", limit=1))["next_cursor"]
     await ed.call("play", action="start", scene=scene)
-    await ed.call("wait", frames=10)
-    await ed.call("play", action="stop")
+    # the error stops Play (a script crash): the wait ends with it
+    await ed.call_raw("wait", {"frames": 10})
+    await ed.call_raw("play", {"action": "stop"})
 
     console = await ed.call("read_console", since=cursor, limit=500, types=["error"])
     errors = [e for e in console["entries"] if "Faulty" in e.get("message", "")]

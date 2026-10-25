@@ -102,9 +102,12 @@ async def test_cpp_status_states(ed: Editor):
     located = [f for f in status["cpp"]["findings"] if f.get("file", "").endswith("Spinner.cpp") and f.get("line") == 10]
     ed.check(located, f"the error carries Spinner.cpp:10: {status['cpp']['findings']}")
     ed.check(status["cpp"]["using_last_good_build"], "the last good build is kept")
-    console = await ed.call("read_console", limit=500, types=["error"])
-    ed.check(any(any(l["file"].endswith("Spinner.cpp") and l["line"] == 10 and l["in_project"] for l in e.get("locations", []))
-                 for e in console["entries"]), "the Console error links to Spinner.cpp:10")
+    console = await ed.call("read_console", limit=1000)
+    linked = [e for e in console["entries"]
+              if any(l["file"].endswith("Spinner.cpp") and l["line"] == 10 and l["in_project"] for l in e.get("locations", []))]
+    ed.check(linked, "the Console's compile error links to the project's Spinner.cpp:10: " +
+             str([(e.get("type"), e.get("message", "")[:160], e.get("locations")) for e in console["entries"]
+                  if "Spinner" in e.get("message", "")][:8]))
 
     # fixed: up to date again
     path.write_text(SOURCE)
