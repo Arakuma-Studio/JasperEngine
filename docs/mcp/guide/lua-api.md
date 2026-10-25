@@ -115,7 +115,7 @@ Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera
 `Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
-`InputField`, `Bone`, `Fog`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
+`InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `Rigidbody2D`, `Joint2D`,
 `Rigidbody`, `Joint3D`, `Action`, `Tween`, `AlphaTween`, `ColorTween`, `PositionTween`,
 `RotationTween`, `ScaleTween`, `Animation`, `ParticleSystem`, `SpriteAnimation`,
 `MorphTracks`, `RotateTracks`, `ScaleTracks`, `TranslateTracks`, `EntityHandle`.
@@ -320,6 +320,7 @@ Mass: `self.body:getMass()` (method, kg). To get a target acceleration `a` in po
 | `setCanvasSize(w, h)` | static fn | |
 | `viewRect` | ro | `Rect` |
 | `scalingMode` | rw | `Scaling.*` |
+| `setAtmosphereQuality(q)`, `getAtmosphereQuality()`, `resetAtmosphereQuality()` | fn | the volumetric fog and clouds tier (`AtmosphereQuality.*`): overrides the project's per-platform one until reset |
 | `textureStrategy` | rw | `TextureStrategy.*` |
 | `useDegrees` | rw | default `true`: all engine angles are degrees |
 | `scene` | rw | main scene (also `Engine.getScene()`, `Engine.setScene(s)`) |
@@ -668,14 +669,14 @@ Class hierarchy (methods/properties are inherited):
 ```
 EntityHandle
  |- GameObject
- |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, Bone, Points, LineRenderer
+ |   |- Camera, Light, Light2D, ShadowCaster2D, ReflectionProbe, LocalVolumetricFog, Bone, Points, LineRenderer
  |   |- Mesh
  |   |   |- Primitive -> Mirror
  |   |   |- Sprite, Tilemap, Model, MeshPolygon, Terrain
  |   |- RectTransform
  |       |- Text, Polygon, LayoutGroup
  |       |- Image -> Button, Panel, Scrollbar, Progressbar, InputField
- |- AudioSource, Rigidbody2D, Rigidbody, Fog, Skybox
+ |- AudioSource, Rigidbody2D, Rigidbody, Fog, VolumetricClouds, Skybox
  |- Action -> Tween (AlphaTween, ColorTween, PositionTween, RotationTween, ScaleTween),
              ParticleSystem, SpriteAnimation, Animation, MorphTracks, RotateTracks,
              ScaleTracks, TranslateTracks
@@ -1048,7 +1049,26 @@ Color/Alpha/Size/Rotation/Scale/Sprite. Plus Action `start()`, `stop()`, `pause(
   `wrapCellWidth`, `wrapCellHeight`; ro `contentWidth`, `contentHeight`; `resize()`.
 - `ShadowCaster2D`: rw `shape` (`ShadowCaster2DShape.AUTO_QUAD` / `POLYGON`), `closed`,
   `enabled`; `addVertex(x, y)`, `clearVertices()`, `getVertexCount()`.
-- `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`.
+- `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`. Height fog
+  (`type = FogType.HEIGHT`, see `jasper://docs/atmosphere`): rw `colorMode` (`FogColorMode.*`),
+  `attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
+  `maxOpacity`, `directionalInscattering`, `anisotropy`, `skyFill`, `skyFillAngle`; volumetric
+  fog: rw `volumetric`, `volumetricDistance`, `lightShafts`, `noiseIntensity`, `noiseScale`,
+  `wind` (Vector3, also `setWind(x, y, z)`), `qualityOverride` (`AtmosphereQualityOverride.*`);
+  `applyPreset(id)` ("morning_haze", "ground_mist", "mountain_valley", "horizon_haze", "night";
+  false for an unknown id). Colours are sRGB here, linear in the component.
+- `LocalVolumetricFog` (GameObject, `LocalVolumetricFog(scene)`): rw `shape`
+  (`FogVolumeShape.*`), `size` (Vector3, before the Transform's scale; also `setSize(x, y, z)`),
+  `attenuationDistance`, `albedo` (also `setAlbedo(r, g, b)`), `blendDistance`, `falloff`
+  (`FogVolumeFalloff.*`), `noiseIntensity`, `noiseScale`, `scrollSpeed`. Shows only through a
+  height fog's volumetric fog.
+- `VolumetricClouds` (`VolumetricClouds(scene)`; a scene draws its first): rw `preset`
+  (`CloudsPreset.*`: setting it applies the look), `rendering` (`CloudsRendering.*`), `coverage`,
+  `density`, `shapeScale`, `shapeFactor`, `erosionFactor`, `erosionScale`, `bottomAltitude`,
+  `altitudeRange`, `earthCurvature`, `windDirection`, `windSpeed`, `weatherMap` (image path, ""
+  for the built-in map), `weatherMapScale`, `sunLightDimmer`, `ambientLightDimmer`,
+  `maxDistance`, `qualityOverride`.
+- `Light`: also rw `volumetricIntensity` (point and spot lights in High quality volumetric fog).
 - `Skybox`: `setTextures(...)`, `setTexture(...)`, rw `color`, `alpha`, `rotation`.
 - `Terrain`, `ReflectionProbe`, `Mirror`, `Bone`: editor-configured; see bindings. A Terrain's painted layers (`TerrainSurfaceLayer`) also have `hexTiling` (anti-repetition of the flat projection) and `hexRotation` (0..1).
 - `ObjectRender.getLivePipelineCount()` (static, diagnostics): the render pipelines objects
@@ -1144,7 +1164,14 @@ Full guide: `jasper://docs/html-ui` ("Scripting"). Browser names and semantics.
 | `LayoutGroupType` | `VERTICAL`, `HORIZONTAL`, `VERTICAL_WRAP`, `HORIZONTAL_WRAP` |
 | `ScrollbarType`, `ProgressbarType` | `VERTICAL`, `HORIZONTAL` |
 | `ParticleEmitterShape` | `Box`, `Sphere`, `Hemisphere`, `Circle`, `Cone` |
-| `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED` |
+| `FogType` | `LINEAR`, `EXPONENTIAL`, `EXPONENTIALSQUARED`, `HEIGHT` |
+| `FogColorMode` | `COLOR`, `SKY` |
+| `FogVolumeShape` | `BOX`, `SPHERE` |
+| `FogVolumeFalloff` | `LINEAR`, `EXPONENTIAL` |
+| `CloudsPreset` | `CUSTOM`, `SPARSE`, `CLOUDY`, `OVERCAST`, `STORMY` |
+| `CloudsRendering` | `AUTO`, `SKY_MAP`, `SCREEN` |
+| `AtmosphereQuality` | `OFF`, `LOW`, `MEDIUM`, `HIGH` |
+| `AtmosphereQualityOverride` | `PROJECT`, `LOW`, `MEDIUM` |
 | `RotationOrder` | `XYZ`, `XZY`, `YXZ`, `YZX`, `ZXY`, `ZYX` |
 | `RayFilter` | `BODY_2D`, `BODY_3D`, `BOUNDS` |
 | `Scaling` | `FITWIDTH`, `FITHEIGHT`, `LETTERBOX`, `CROP`, `STRETCH`, `NATIVE` |

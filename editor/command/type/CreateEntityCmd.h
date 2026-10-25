@@ -69,7 +69,9 @@ namespace jasperengine::editor{
         MESH_POLYGON,
         TERRAIN,
         REFLECTION_PROBE,
-        UI_DOCUMENT
+        UI_DOCUMENT,
+        LOCAL_VOLUMETRIC_FOG,
+        VOLUMETRIC_CLOUDS
     };
 
     class CreateEntityCmd: public Command{

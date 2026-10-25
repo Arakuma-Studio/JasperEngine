@@ -130,7 +130,7 @@ TEST(Compat, CorpusRoundTrip) {
         EXPECT_EQ(encodeSceneText(again), first) << "a second round trip changed the file";
 
         // written by the editor (a scene saved with its build data): only the version line is new
-        // (or the same, for a scene already saved with one).
+        // (a scene the current editor saved has it already).
         // Hand-written fixtures and scenes holding prefab instances (their members come from the
         // prefab files, which this test does not load) are normalised by their first save.
         const bool editorWritten = original.find("\nmaxValues:") != std::string::npos &&

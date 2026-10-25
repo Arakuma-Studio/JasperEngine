@@ -412,7 +412,7 @@ bool RenderSystem::emptyTexturesCreated = false;
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 
-RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
+RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
 
@@ -474,6 +474,8 @@ void RenderSystem::load(){
     hasLights = false;
     hasShadows = false;
     hasFog = false;
+    heightFogActive = false;
+    atmosphereDepthPrograms = false;
     hasIBL = false;
     hasReflectionProbes = false;
     hasMultipleCameras = false;
@@ -519,6 +521,8 @@ void RenderSystem::destroy(){
     destroyPostProcess();
     destroyUber();
     destroyBloomPrograms();
+    atmosphere.destroy();
+    primaryView.atmosphere.destroy();
     if (postLinearSampler.isCreated())
         postLinearSampler.destroyTexture();
     rv().postSceneFramebuffer.destroy();
@@ -1082,7 +1086,7 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
     Vector4 fogColorType = fs_fog.color_type;
     Vector4 fogDensityStartEnd = fs_fog.density_start_end;
 #ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && rv().disableFog){
+    if (rv().disableFog){
         // exponential fog of density 0: a factor of 1 everywhere, no fog
         fogColorType = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         fogDensityStartEnd = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1813,16 +1817,16 @@ void RenderSystem::processLights2D(){
 
 bool RenderSystem::loadAndProcessFog(){
 
-    FogComponent* fog = disableFog ? nullptr : scene->findComponentFromIndex<FogComponent>(0);
+    FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
     const bool hadFog = hasFog;
     hasFog = false;
     if (fog){
         hasFog = true;
 
+        // the height fog reads its own block (u_fs_heightFog, in the fogged mesh variants): this one
+        // stays a linear fog's
         int fogTypeI = 0;
-        if (fog->type == FogType::LINEAR){
-            fogTypeI = 0;
-        }else if (fog->type == FogType::EXPONENTIAL){
+        if (fog->type == FogType::EXPONENTIAL){
             fogTypeI = 1;
         }else if (fog->type == FogType::EXPONENTIALSQUARED){
             fogTypeI = 2;
@@ -1899,7 +1903,9 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
         std::shared_ptr<TextureRender> irradiance = std::make_shared<TextureRender>();
         std::shared_ptr<TextureRender> prefiltered = std::make_shared<TextureRender>();
 
-        if (IBLEnvironment::generate(texId, *(texResult.data), *irradiance, *prefiltered)){
+        IBLEnvironment::HorizonRing horizonRing;
+        if (IBLEnvironment::generate(texId, *(texResult.data), *irradiance, *prefiltered, &horizonRing)){
+            AtmosphereRenderer::storeHorizonRing(texId, horizonRing);
             sky.irradianceMap = irradiance;
             sky.prefilteredMap = prefiltered;
             sky.envMapsLoaded = true;
@@ -2275,6 +2281,14 @@ void RenderSystem::renderReflectionProbeCapture(){
         }
     }
 
+    // the face's height fog and atmosphere: analytic fog, the sky fill and the Sky Map clouds
+    // (no volumetric passes off the view's camera)
+    const Rect captureViewport(0.0f, 0.0f, (float)resolution, (float)resolution);
+    AtmosphereRenderer::PassPlan capturePlan = atmosphere.planPass(captureCamera, false, probe->includeSky);
+    if (capturePlan.any())
+        atmosphere.renderPassTargets(capturePlan, captureCamera, captureTransform, nullptr, false, resolution, resolution);
+    atmosphere.fillHeightFog(passHeightFog, captureCamera, captureTransform, captureViewport, resolution, isRenderingFlipped(captureCamera), 0.0f);
+
     // the opaque meshes in the order a camera pass draws them: sortPriority (stencil masks
     // before their readers, occluders before through-walls outlines), then nearest first
     std::vector<OpaqueRenderData>& opaqueRenders = opaqueQueue;
@@ -2301,6 +2315,8 @@ void RenderSystem::renderReflectionProbeCapture(){
     for (const OpaqueRenderData& opaque : opaqueRenders){
         drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, captureCamera, captureTransform, PIP_RTT_INVERT, opaque.instmesh, opaque.terrain, opaque.tilemap, mainTerrainView());
     }
+    if (capturePlan.any())
+        atmosphere.drawComposites(capturePlan, PIP_RTT_INVERT, 1, captureViewport, resolution, isRenderingFlipped(captureCamera), captureCamera, captureTransform);
 
     runtime.capturePass.endRenderPass();
     capturingReflectionProbe = false;
@@ -2366,6 +2382,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.ibl = hasIBL;
     environment.reflectionProbes = hasReflectionProbes;
     environment.fog = hasFog;
+    environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
     environment.ssao = scene->isSSAOEnabled();
@@ -3084,7 +3101,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
     // pass, so its uniforms and build errors show up in the editor.
-    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth;
+    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth
+                        || environment.atmosphereDepth;
     variant.depth = variant.depthPass || inputs.customDepthShader;
     if (variant.depth){
         // a library depth program gets the inputs its manifest requires, as the color pass
@@ -3180,6 +3198,8 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
     if (bindings.slotBlurredScene.first != -1)
         render.addTexture(bindings.slotBlurredScene, ShaderStageType::FRAGMENT, &emptyBlack);
+    // the height fog's block of the pass (a fogged variant of a height fog scene)
+    bindings.slotFSHeightFog = shaderData.getUniformBlockIndexByName("u_fs_heightFog");
 
     // the textures the manifest declares, else (a shader without one) the ones set by name
     auto addTexture = [&](const std::string& uniform, int fallback){
@@ -4007,6 +4027,8 @@ void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBind
         render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSizeFS, &passFrame);
     applyPostColor(render, bindings);
     applyBlurredScene(render, bindings);
+    if (bindings.slotFSHeightFog != -1)
+        render.applyUniformBlock(bindings.slotFSHeightFog, sizeof(height_fog_t), &passHeightFog);
 }
 
 void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -4744,14 +4766,44 @@ void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
 }
 
 void RenderSystem::setDisableFog(bool disableFog){
-    if (this->disableFog == disableFog){
-        return;
-    }
-    this->disableFog = disableFog;
-
-    // fog is a shader variant
-    needReloadMeshVariants();
+#ifdef JASPERENGINE_EDITOR
+    primaryView.disableFog = disableFog;
+#else
+    (void)disableFog;
+#endif
 }
+
+void RenderSystem::setDisableClouds(bool disableClouds){
+    primaryView.disableClouds = disableClouds;
+}
+
+void RenderSystem::setPreviewAtmosphereQuality(int quality){
+    primaryView.atmosphereQuality = quality;
+}
+
+const AtmosphereInfo& RenderSystem::getAtmosphereInfo(uint32_t viewId){
+#ifdef JASPERENGINE_EDITOR
+    if (viewId != 0){
+        // the newer of the view's own frames and the frames the view was drawn as the frame's
+        const AtmosphereInfo* newest = nullptr;
+        auto view = secondaryViews.find(viewId);
+        if (view != secondaryViews.end())
+            newest = &view->second->atmosphere.info;
+        auto kept = keptAtmosphereInfo.find(viewId);
+        if (kept != keptAtmosphereInfo.end() && (!newest || kept->second.frame > newest->frame))
+            newest = &kept->second;
+        if (newest)
+            return *newest;
+    }
+#endif
+    return primaryView.atmosphere.info;
+}
+
+#ifdef JASPERENGINE_EDITOR
+void RenderSystem::keepAtmosphereInfo(uint32_t viewId){
+    keptAtmosphereInfo[viewId] = primaryView.atmosphere.info;
+}
+#endif
 
 void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
     primaryView.postProcessing = !disablePostProcessing;
@@ -6453,7 +6505,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
         static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
         render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
@@ -7077,7 +7129,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 #ifdef JASPERENGINE_EDITOR
                 // exponential fog of density 0: a factor of 1 everywhere, no fog
                 static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
                 render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
@@ -10671,6 +10723,9 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
         count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)));
     }
+
+    // the atmosphere's passes (their shaders, the clouds' noise bake)
+    count(!atmosphere.isLoading());
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){
@@ -11731,6 +11786,18 @@ void RenderSystem::update(double dt){
     updateSpotMaskAtlas(numLights);
     loadLights2D();
     loadAndProcessFog();
+    // the atmosphere (height fog, volumetric fog and clouds): the fogged mesh variants carry the
+    // height fog (chosen by u_fs_heightFog), and the volumetric passes need depth programs on
+    // every opaque mesh
+    atmosphere.update(dt);
+    heightFogActive = hasFog && atmosphere.hasHeightFog();
+    {
+        const bool depthPrograms = atmosphere.needsDepthPrograms();
+        if (depthPrograms != atmosphereDepthPrograms){
+            atmosphereDepthPrograms = depthPrograms;
+            needReloadMeshVariants();
+        }
+    }
 
     // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();
@@ -12500,6 +12567,11 @@ void RenderSystem::drawCameras(bool includeMain){
         passShadows = nullptr;
     }
 
+    // what the view's atmosphere ran (get_atmosphere_info), its unused targets freed; a
+    // secondary view ends its own after its camera (drawView)
+    if (includeMain)
+        atmosphere.endFrame();
+
     drawCount++;
     rv().sceneInputDraws++;
     releaseUnusedCameraShadows();
@@ -12761,11 +12833,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         passMsaa = msaaPipelineSamples;
 
     // The colour target of the pass (null: the swapchain), its size and viewport, as the
-    // branches below pick them: the scene inputs are made to match it
+    // branches below pick them: the scene inputs and the atmosphere's targets are made to
+    // match it
     Rect sceneInputViewport;
     unsigned int sceneInputTargetWidth = 0;
     unsigned int sceneInputTargetHeight = 0;
-    if (sceneInputs){
+    {
         if (useSSR){
             sceneInputTargetWidth = rv().ssrWidth;
             sceneInputTargetHeight = rv().ssrHeight;
@@ -12795,7 +12868,30 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             sceneInputTargetWidth = target ? (unsigned int)target->getWidth() : (unsigned int)System::instance().getScreenWidth();
             sceneInputTargetHeight = target ? (unsigned int)target->getHeight() : (unsigned int)System::instance().getScreenHeight();
         }
-        sceneInputStats.passes++;
+        if (sceneInputs)
+            sceneInputStats.passes++;
+    }
+
+    // The atmosphere (docs/specs/S12-atmosphere.md): what this pass draws of it, and before
+    // its colour pass the reduced-resolution passes (volumetric fog, Screen clouds, the Sky
+    // Map's refresh). The volumetric passes read the packed depth of the pass: an effect's
+    // above, else a depth pre-pass of their own the scene inputs then share.
+    AtmosphereRenderer::PassPlan atmospherePlan = atmosphere.planPass(camera, isMainCamera, sortsByDistance(camera));
+    float atmosphereMarched = 0.0f;
+    if (atmospherePlan.any()){
+        bool forcedDepth = false;
+        if (atmospherePlan.needsDepth() && !sharedSceneDepth && atmosphereDepthPrograms){
+            const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
+            const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
+            if (SceneInputTarget* depthTarget = ensureSceneInputTarget(false, depthWidth, depthHeight)){
+                renderOpaqueDepth(camera, depthTarget->framebuffer, depthWidth, depthHeight, isMainCamera ? 0 : -1,
+                                  isMainCamera ? &rv().lodView : nullptr, perCameraMVP ? &cameraTransform : nullptr);
+                sharedSceneDepth = &depthTarget->framebuffer.getRender().getColorTexture();
+                forcedDepth = true;
+            }
+        }
+        atmosphereMarched = atmosphere.renderPassTargets(atmospherePlan, camera, cameraTransform, sharedSceneDepth, forcedDepth,
+                                                         (unsigned int)sceneInputViewport.getWidth(), (unsigned int)sceneInputViewport.getHeight());
     }
     // the scene colour is copied out of an offscreen colour target (the swapchain cannot be read)
     const bool copySceneColorPending = (sceneInputs & ShaderRequire_SceneColor) && offscreenTarget;
@@ -12942,6 +13038,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                                    passResolution.x > 0.0f ? 1.0f / passResolution.x : 0.0f,
                                    passResolution.y > 0.0f ? 1.0f / passResolution.y : 0.0f);
 
+    // the height fog of this colour pass (u_fs_heightFog of the fogged mesh variants: a distance
+    // fog's says so), with the distance its volumetric fog marched (the composite replaces that
+    // part of the analytic fog)
+    const bool passFlipped = isRenderingFlipped(camera);
+    atmosphere.fillHeightFog(passHeightFog, camera, cameraTransform, colorPassViewport, sceneInputTargetHeight, passFlipped, atmosphereMarched);
+
     // the post-processing colour of this colour pass: the scene's for the post-processed camera
     // (the main camera of the base layer, as the post-process chain; not mirrors, probes or other
     // render-to-texture cameras), neutral for the others (updatePassFrame)
@@ -12960,7 +13062,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         const bool fullCopy = scene->getSceneColorScale() == SceneColorScale::FULL;
         const unsigned int copyWidth = fullCopy ? (unsigned int)colorPassViewport.getWidth() : std::max(1u, (unsigned int)colorPassViewport.getWidth() / 2);
         const unsigned int copyHeight = fullCopy ? (unsigned int)colorPassViewport.getHeight() : std::max(1u, (unsigned int)colorPassViewport.getHeight() / 2);
-        fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, isRenderingFlipped(camera), copyWidth, copyHeight);
+        fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, passFlipped, copyWidth, copyHeight);
     }
     auto takeSceneColor = [&](){
         sceneColorPending = false;
@@ -13067,6 +13169,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
         passSubmeshQueue = SubmeshQueue::ALL;
+        // the atmosphere over the opaque scene: the sky composite (Sky Map clouds and the sky
+        // fill on the sky's pixels), then the Screen clouds and the volumetric fog; what is
+        // drawn after (transparents) takes the analytic fog alone
+        if (atmospherePlan.any())
+            atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
         // the opaque queue and the sky are drawn
         if (sceneColorPending){
             takeSceneColor();
@@ -13486,6 +13593,7 @@ RenderSystem::RenderView& RenderSystem::getSecondaryView(uint32_t viewId){
 }
 
 void RenderSystem::destroyRenderView(RenderView& view){
+    view.atmosphere.destroy();
     view.ssaoDepthFramebuffer.destroy();
     view.ssaoFramebuffer.destroy();
     view.ssaoBlurFramebuffer.destroy();
@@ -14122,6 +14230,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     view.disableFog = desc.disableFog;
     view.disableFaceCulling = desc.disableFaceCulling;
     view.postProcessing = desc.postProcessing;
+    view.disableClouds = desc.disableClouds;
+    view.atmosphereQuality = desc.atmosphereQuality;
 
     activeView = &view;
 
@@ -14206,6 +14316,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     pass.renderToTexture = false;
     pass.terrainView = view.sharesPrimaryCamera ? 0 : TERRAIN_PASS_VIEW;
     renderCameraPass(pass);
+    atmosphere.endFrame();
 
     passObjects = nullptr;
     passExcludedEntity = NULL_ENTITY;

@@ -100,9 +100,9 @@ TEST(ShaderVariantCollection, AddsEachVariantOnce){
 
 TEST(ShaderVariantCollection, KeysAreNormalized){
     ShaderVariantCollection collection;
-    EXPECT_TRUE(collection.addKey(ShaderPool::getShaderKey(ShaderType::MESH, 0x1 | (1u << 5))));
-    EXPECT_TRUE(collection.contains(ShaderType::MESH, 0x1));
-    EXPECT_FALSE(collection.add(ShaderType::MESH, 0x1));
+    EXPECT_TRUE(collection.addKey(ShaderPool::getShaderKey(ShaderType::UI, 0x1 | (1u << 5))));
+    EXPECT_TRUE(collection.contains(ShaderType::UI, 0x1));
+    EXPECT_FALSE(collection.add(ShaderType::UI, 0x1));
 }
 
 TEST(ShaderVariantCollection, CustomShadersAreSeparateVariants){
