@@ -154,7 +154,7 @@ static const settingsui::Category projectCategories[] = {
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
     {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants shadows shadow tier quality "
                      "html ui msaa anti-aliasing antialiasing"},
-    {"Quality", "", "vsync"},
+    {"Quality", "", "vsync atmosphere quality volumetric fog clouds desktop mobile web"},
     {"Physics", "", "3d physics jolt rigidbody"},
     {"Physics 2D", "", "2d physics box2d rigidbody 2d"},
     {"Scripting", "", "lua directory script directories c++ standard"},
@@ -884,6 +884,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_scalingModeIndex = findScalingIndex(project->getScalingMode());
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
+    for (int i = 0; i < 3; i++)
+        m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
     m_playerLogging = project->getPlayerLogging();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
@@ -1443,6 +1445,18 @@ void ProjectSettingsWindow::drawQualitySettings() {
         endSettingsRow("Synchronize Play mode and supported desktop builds to the display refresh rate. "
             "The editor window follows Preferences > General > Editor VSync. "
             "macOS Metal exports remain synchronized.");
+
+        // the tiers of volumetric fog and clouds (docs/mcp/guide/atmosphere.md)
+        static const char* const qualityNames[] = {"Off", "Low", "Medium", "High"};
+        static const char* const rows[3] = {"Atmosphere Quality (Desktop)", "Atmosphere Quality (Mobile)", "Atmosphere Quality (Web)"};
+        static const char* const ids[3] = {"##AtmosphereDesktop", "##AtmosphereMobile", "##AtmosphereWeb"};
+        static const char* const tooltips[3] = {
+            "Volumetric fog and volumetric clouds on Windows, macOS and Linux (and the editor's views). Off: neither; "
+            "Low, Medium, High: their resolution, steps, light and volume counts. Height fog and the sky fill are never tiered.",
+            "Volumetric fog and volumetric clouds on Android and iOS.",
+            "Volumetric fog and volumetric clouds in HTML5 builds."};
+        for (int i = 0; i < 3; i++)
+            drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
     });
 }
 
@@ -2098,6 +2112,8 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setScalingMode(scalingModeValues[m_scalingModeIndex]);
     m_project->setTextureStrategy(textureStrategyValues[m_textureStrategyIndex]);
     m_project->setVSyncEnabled(m_vsyncEnabled);
+    m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
+                                     (AtmosphereQuality)m_atmosphereQuality[2]});
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {

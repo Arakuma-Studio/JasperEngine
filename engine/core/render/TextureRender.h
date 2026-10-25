@@ -27,6 +27,11 @@ namespace jasperengine {
                 ColorFormat colorFormat, TextureType type, int numFaces, void* data[], size_t size[],
                 TextureFilter minFilter, TextureFilter magFilter, TextureWrap wrapU, TextureWrap wrapV);
 
+        // a 3D texture: width x height x depth RGBA8 texels (x fastest, then y, then the
+        // slices), linear or nearest and repeat or clamp on every axis, no mipmaps
+        bool createTexture3D(const std::string& label, int width, int height, int depth, const void* data, size_t size,
+                             TextureFilter filter, TextureWrap wrap);
+
         // creates a cubemap with custom (pre-filtered) mipmap data,
         // data[level] must contain all 6 faces in one contiguous block
         bool createTextureCubeWithMips(

@@ -97,6 +97,9 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `PointShadowAtlasPlanner` (importance ranking, sticky slots, challenge margin and cooldown), adapted | `engine/core/render/shadow/ShadowSlotPlanner.cpp` | shadow slots by importance (S10) |
 | Shader includes `shadow_receiver_plane.glsl`, `shadow_filter.glsl` (`GE_VogelDisk`), `shadow_sampling.glsl` (`GE_PoissonRotation`), `shadow_cascade_blend.glsl`, `shadow_distance_fade.glsl`, `shadow_pcss_decisions.glsl`, adapted with every depth comparison inverted | `engine/shaderlib/includes/shadow_sampling.glsl`, `engine/shaderlib/includes/shadow_pcss_decisions.glsl` | the receiver-plane bias, the Vogel filter, the cascade blend and fade, PCSS (S10) |
 | `ShadowPcssDecisionTests`, ported | `engine/tests/core/render/PcssDecisionTest.cpp` | the PCSS decision tests (tests only, never shipped) |
+| `Engine/Modules/Rendering/Shaders/Includes/height_fog_term.glsl` (closed-form height fog optical depth, after [SanielX/Height-Fog](https://github.com/SanielX/Height-Fog), MIT, commit `ab6f8278`), rewritten | `engine/shaderlib/includes/height_fog.glsl`, `engine/core/render/AtmosphereMath.cpp` | the height fog (S12) |
+| `Engine/Modules/HeightFog/Source/HeightFogEffectPresets.cpp` (looks re-derived) | `engine/core/render/AtmospherePresets.cpp` | the Fog presets (S12) |
+| `Engine/Modules/VolumetricClouds/Shaders/volumetric_clouds_march.frag` and `volumetric_clouds_worley.glsl` / `_noise.comp` (after [SebLague/Clouds](https://github.com/SebLague/Clouds), MIT, Copyright (c) 2019 Sebastian Lague), ported and extended | `engine/shaderlib/volumetric_clouds.frag`, `engine/core/render/AtmosphereNoise.cpp` | the volumetric clouds' march and CPU noise bake (S12) |
 
 The VHS tape of the uber pass (`engine/shaderlib/includes/post_vhs.glsl`, S13) is adapted from
 OpenEngine's port of punikonta's Godot VHS shader ([godot-shader-crt-vhs](https://github.com/punikonta/godot-shader-crt-vhs),

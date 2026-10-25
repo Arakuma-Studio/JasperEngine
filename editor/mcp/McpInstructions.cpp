@@ -186,6 +186,11 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
+- Atmosphere (jasper://docs/atmosphere): a Fog of type "height" is physically based height fog
+  (volumetric: true adds light shafts and Local Volumetric Fog volumes near the camera);
+  create_entity volumetric_clouds adds clouds. apply_atmosphere_preset sets a look
+  (list_atmosphere_presets); get_atmosphere_info says what ran (tier, passes, resolution).
+  Atmosphere Quality is per platform (project settings quality.atmosphere_quality_*).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
