@@ -103,6 +103,7 @@ std::string extensionOf(const fs::path& path) {
 std::string assetType(const fs::path& path) {
     const std::string p = path.string();
     if (Util::isImageFile(p)) return "texture";
+    if (Util::isColorLutFile(p)) return "color_lut";
     if (Util::isModelFile(p)) return "model";
     if (Util::isAudioFile(p)) return "audio";
     if (Util::isFontFile(p)) return "font";
@@ -678,7 +679,8 @@ Json syncFiles(McpContext& ctx, const std::vector<fs::path>& changedIn, bool ful
         changedRel.push_back(rel);
         if (Util::isShaderFile(rel)) anyShader = true;
         if (Util::isMaterialFile(rel)) anyMaterial = true;
-        if (Util::isImageFile(rel)) images.insert(rel);
+        // images and .cube LUTs (the post-processing's LUT is either)
+        if (Util::isImageFile(rel) || Util::isColorLutFile(rel)) images.insert(rel);
     }
     bool firstFull = full && !notes.empty();
 

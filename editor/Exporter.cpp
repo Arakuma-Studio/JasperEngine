@@ -14,10 +14,14 @@
 #include "Stream.h"
 #include "util/Base64.h"
 #include "util/FbxImporter.h"
+#include "util/CubeLut.h"
+#include "io/AtomicFile.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
 #include "util/MsBuildProgress.h"
 #include "util/ShaderHeaderBuilder.h"
 #include "pool/ShaderPool.h"
+#include "subsystem/RenderSystem.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "render/shadow/ShadowTiers.h"
@@ -45,6 +49,7 @@
 #include <iterator>
 #include <map>
 #include <set>
+#include <sstream>
 #include <vector>
 
 using namespace jasperengine;
@@ -2295,9 +2300,42 @@ bool editor::Exporter::copyAssets() {
 
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
+
+        // A .cube colour LUT ships cooked (S13 R25): <name>.jlut, float16 with the 3D table at most
+        // 33^3, which the game loads in place of the .cube. One that does not parse ships as it
+        // is, so the game logs the same error the editor does
+        if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) continue;
+
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
+    return true;
+}
+
+bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& destination) {
+    std::ifstream in(source, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    CubeLut lut;
+    std::string error;
+    std::vector<uint8_t> bytes;
+    if (!in || !parseCubeLut(text.str(), lut, error) || !writeJlut(lut, bytes)) {
+        Out::warning("%s ships uncooked: %s", source.filename().string().c_str(), error.empty() ? "it could not be read" : error.c_str());
+        return false;
+    }
+    fs::path cooked = destination;
+    cooked.replace_extension(".jlut");
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    const io::WriteResult written = io::writeFileAtomic(cooked, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), options);
+    if (!written.ok()) {
+        Out::warning("%s ships uncooked: %s", source.filename().string().c_str(), written.message.c_str());
+        return false;
+    }
+    // a .cube left from an earlier export would shadow nothing (the game prefers the .jlut), but
+    // it is not part of this one
+    std::error_code ec;
+    fs::remove(destination, ec);
     return true;
 }
 
@@ -4234,6 +4272,10 @@ bool editor::Exporter::shipsWebGLFluid() const {
     return shipsFluidComponent() || shipsFluidEffect();
 }
 
+const char* editor::Exporter::postFxLicensePath() {
+    return "licenses/post-fx-LICENSE.txt";
+}
+
 namespace {
 
     // the notice at `relative` (under the export's root) when `ship`, copied from `source`;
@@ -4281,11 +4323,22 @@ bool editor::Exporter::writeEffectLicense() {
         setError("The fluid simulation notice: " + error);
         return false;
     }
+    // The uber pass's VHS tape and film simulation adapt MIT code (punikonta's VHS shader,
+    // OpenEngine's film-simulation package with AMD's FidelityFX Lens grain): a build with such
+    // a variant ships their notices (engine/shaderlib/includes/LICENSE.post-fx.txt)
+    const uint64_t postFxBits = UBER_VHS | UBER_FILM_DAMAGE | UBER_GRAIN_LENS | UBER_GRAIN_FILMIC;
+    const bool postFx = std::any_of(config.selectedShaderKeys.begin(), config.selectedShaderKeys.end(), [postFxBits](ShaderKey key) {
+        return ShaderPool::getShaderTypeFromKey(key) == ShaderType::BLIT && (ShaderPool::getPropertiesFromKey(key) & postFxBits) != 0;
+    });
+    if (!writeNotice(postFx, config.targetDir, postFxLicensePath(), config.targetDir / "shaderlib" / "includes" / "LICENSE.post-fx.txt", error)) {
+        setError("The post FX notice: " + error);
+        return false;
+    }
     return true;
 }
 
 bool editor::Exporter::copyLicenses() {
-    for (const char* relative : {effectLicensePath(), fluidLicensePath()}) {
+    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath()}) {
         const fs::path source = config.targetDir / relative;
         const fs::path target = config.destinationDir / relative;
         std::error_code ec;

@@ -179,6 +179,8 @@ namespace jasperengine::editor {
         bool checkHtmlUIReferences();
         bool copyGenerated();
         bool copyAssets();
+        // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
+        bool cookColorLut(const fs::path& source, const fs::path& destination);
         // S04: a reference of the build's scenes (and the prefabs and materials they use) that
         // resolves to no asset fails the export, listing each one, unless allowMissingAssets
         bool checkMissingAssets();
@@ -206,6 +208,8 @@ namespace jasperengine::editor {
         // not needed): shaders.com-LICENSE.txt when the shaders contain a UI effect (phase-5
         // spec 3.16), webgl-fluid-simulation-LICENSE.txt when they run Pavel Dobryakov's fluid
         // (shipsWebGLFluid). copyLicenses: the build's to the destination.
+        // licenses/post-fx-LICENSE.txt likewise when they contain an uber pass with the VHS tape,
+        // film damage or the Lens / Filmic grain (S13: adapted MIT shader code)
         bool writeEffectLicense();
         bool copyLicenses();
         // the paths the export writes the notices to, relative to its root
@@ -217,6 +221,7 @@ namespace jasperengine::editor {
         bool shipsWebGLFluid() const;
         bool shipsFluidComponent() const;
         bool shipsFluidEffect() const;
+        static const char* postFxLicensePath();
 
         // Aggregates SceneMaxValues across all project scenes into the capacities that
         // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).

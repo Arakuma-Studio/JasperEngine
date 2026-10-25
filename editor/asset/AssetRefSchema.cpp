@@ -31,6 +31,12 @@ using namespace jasperengine::editor;
 
 namespace {
 
+    // post-processing's LUT is an image strip or a .cube (S13): a .cube path expects a colour LUT,
+    // anything else the row's texture
+    AssetType lutExpectedType(const std::string& path) {
+        return Util::isColorLutFile(path) ? AssetType::ColorLut : AssetType::Unknown;
+    }
+
     using Scope = AssetRefScope;
     using Shape = AssetRefShape;
     using Base = AssetPathBase;
@@ -686,7 +692,8 @@ namespace {
                         if (row.path == "scripts[].path" && parent) {
                             lua = scalar(parent["type"]) == "lua";
                         }
-                        found(row, AssetRef(scalar(value), guid), field, 0, lua ? AssetPathBase::Lua : AssetPathBase::Project, lua);
+                        const AssetType expected = row.path == "postProcessing.lutTexture" ? lutExpectedType(scalar(value)) : AssetType::Unknown;
+                        found(row, AssetRef(scalar(value), guid), field, 0, lua ? AssetPathBase::Lua : AssetPathBase::Project, lua, expected);
                         break;
                     }
                     case AssetRefShape::Shader: {
@@ -967,7 +974,8 @@ bool AssetRefSchema::forEachSceneSettingsRef(Scene& scene, const AssetRefVisitor
     }
 
     PostProcessingSettings settings = scene.getPostProcessing();
-    if (visit.asset(settings.lutTexture, documentRow(Scope::SceneSettings, "postProcessing.lutTexture"), "postProcessing.lutTexture") ||
+    if (visit.asset(settings.lutTexture, documentRow(Scope::SceneSettings, "postProcessing.lutTexture"), "postProcessing.lutTexture",
+                    AssetPathBase::Project, false, lutExpectedType(settings.lutTexture.path)) ||
         settings.lutTexture != scene.getPostProcessing().lutTexture) {
         scene.setPostProcessing(settings);
     }

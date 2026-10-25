@@ -1940,6 +1940,21 @@ OVERRIDES[('Mesh', 'getMaterial')] = {
     'overloads': [([], 'Material'), ([('submesh', 'integer')], 'Material')],
 }
 
+# S13: dynamic resolution as the renderer applies it (a table built in the binding)
+OVERRIDES[('Scene', 'getDynamicResolution')] = {
+    'doc': ['Dynamic resolution as the renderer applies it: `scale` (the render scale drawn at), `source`',
+            '("gpu", "frame" or "none": the law of the last measurement), `smoothedMs` / `targetMs`, and',
+            '`enabled`, `running`, `idle` (why not), `overridden`, `minScale`, `maxScale`, `saturatedLow`, `ineffective`,',
+            '`acceptedChanges`, `probeSeconds`.'],
+    'overloads': [([], '{enabled: boolean, running: boolean, idle: string, overridden: boolean, scale: number, minScale: number, '
+                       'maxScale: number, source: string, smoothedMs: number, targetMs: number, saturatedLow: boolean, '
+                       'ineffective: boolean, acceptedChanges: integer, probeSeconds: number}')],
+}
+OVERRIDES[('Scene', 'setDynamicResolutionOverride')] = {
+    'doc': ['Pins the main camera\'s render scale (0.5..1) over dynamic resolution while the game runs; nil releases it.'],
+    'overloads': [([('scale', 'number|nil')], '')],
+}
+
 # Properties whose getter returns a LuaRef: (Lua type, a copy)
 PROPERTY_OVERRIDES = {
     ('Mesh', 'material'): ('Material', True),

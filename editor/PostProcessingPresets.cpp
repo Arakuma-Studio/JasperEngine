@@ -3,11 +3,16 @@
 
 #include "PostProcessingPresets.h"
 
+#include "Project.h"
+#include "command/CommandGroup.h"
+#include "command/CommandNames.h"
+#include "command/type/ScenePropertyCmd.h"
 #include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 
 namespace jasperengine::editor {
 
@@ -42,6 +47,13 @@ std::vector<PostProcessingPreset> makePostProcessingPresets() {
         presets.push_back({"mobile", "Mobile",
                            "Phones and tablets: neutral tone mapping and a light grade (16^3 LUT), FXAA, faint bloom. "
                            "One uber pass plus the quarter-resolution bloom chain.", s});
+
+        // the same, with the render scale following the frame cost
+        s.dynamicResolutionEnabled = true;
+        s.dynamicResolutionMinScale = 0.6f;
+        presets.push_back({"mobile_adaptive", "Mobile Adaptive",
+                           "Mobile, plus dynamic resolution: in the game the render scale drops to as low as 0.6 to hold "
+                           "the frame rate, and climbs back when there is headroom.", s});
     }
 
     {
@@ -106,6 +118,51 @@ std::vector<PostProcessingPreset> makePostProcessingPresets() {
                            "and grain. One uber pass.", s});
     }
 
+    // 35 mm film: a soft curve, a warm grade, film grain cells, the red glow of halation
+    // around highlights, a little dust and gate weave
+    {
+        PostProcessingSettings s;
+        s.tonemap = TonemapMode::NEUTRAL;
+        s.colorGradingEnabled = true;
+        s.temperature = 0.12f;
+        s.contrast = 1.06f;
+        s.saturation = 0.92f;
+        s.lift = Vector3(0.02f, 0.015f, 0.0f);
+        s.gain = Vector3(1.03f, 1.0f, 0.96f);
+        s.vignetteEnabled = true;
+        s.vignetteIntensity = 0.25f;
+        s.vignetteSmoothness = 0.6f;
+        s.filmGrainEnabled = true;
+        s.filmGrainIntensity = 0.25f;
+        s.filmGrainType = FilmGrainType::LENS;
+        s.filmGrainSize = 1.5f;
+        s.halationEnabled = true;
+        s.halationIntensity = 0.5f;
+        s.filmDamageEnabled = true;
+        s.filmDamageIntensity = 0.8f;
+        s.filmHairAmount = 0.1f;
+        s.filmScratchAmount = 0.2f;
+        s.filmDustAmount = 1.5f;
+        s.filmGateWeave = 0.3f;
+        presets.push_back({"film", "Film",
+                           "35 mm film: neutral tone mapping, a warm grade, Lens film grain, halation, light damage (dust, "
+                           "hairs, gate weave) and a vignette. One uber pass plus halation's two small passes.", s});
+    }
+
+    // a worn tape: the VHS look with its defaults, light grain and a slightly faded grade
+    {
+        PostProcessingSettings s;
+        s.colorGradingEnabled = true;
+        s.contrast = 0.95f;
+        s.saturation = 0.85f;
+        s.vhsEnabled = true;
+        s.filmGrainEnabled = true;
+        s.filmGrainIntensity = 0.1f;
+        presets.push_back({"vhs", "VHS Tape",
+                           "A played tape: colour bleed, wobble, tracking bands, tape noise, dropouts and scanlines, with "
+                           "light grain and a faded grade. One uber pass.", s});
+    }
+
     return presets;
 }
 
@@ -153,6 +210,8 @@ const PostProcessingPreset* findPostProcessingPreset(const std::string& idOrName
     // "stylized", "crt", "crt retro"
     if (wanted == "stylized") return findPostProcessingPreset("stylised");
     if (wanted == "crt" || wanted == "crt-retro") return findPostProcessingPreset("crt_retro");
+    if (wanted == "vhs tape" || wanted == "vhs_tape") return findPostProcessingPreset("vhs");
+    if (wanted == "mobile-adaptive" || wanted == "adaptive") return findPostProcessingPreset("mobile_adaptive");
     return nullptr;
 }
 
@@ -165,7 +224,7 @@ const PostProcessingPreset* matchPostProcessingPreset(const PostProcessingSettin
 
 PostProcessingCostTier getPostProcessingCostTier(const PostProcessingSettings& onlyThisEffect) {
     const PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(onlyThisEffect);
-    if (tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR)) return PostProcessingCostTier::CHAIN;
+    if (tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR | UBER_HALATION)) return PostProcessingCostTier::CHAIN;
     if (tiers.uber) return PostProcessingCostTier::UBER;
     if (tiers.tailColor) return PostProcessingCostTier::IN_SHADER;
     return PostProcessingCostTier::NONE;
@@ -181,7 +240,8 @@ const char* getPostProcessingCostTierLabel(PostProcessingCostTier tier) {
                    "the upscale blit drawn anyway).";
         case PostProcessingCostTier::CHAIN:
             return "T2, a chain from a quarter of the resolution plus the uber pass that composites it: bloom is 7 small "
-                   "passes (about 0.17 of a screen); blur 1 + 2 x ceil(radius) (3 at radius 1, 5 to radius 2, 7 above).";
+                   "passes (about 0.17 of a screen); blur 1 + 2 x ceil(radius) (3 at radius 1, 5 to radius 2, 7 above); "
+                   "halation reads bloom's chain (no pass) or, without bloom, runs 2 small passes (about 0.08 of a screen).";
         case PostProcessingCostTier::NONE:
             break;
     }
@@ -199,6 +259,116 @@ std::string describeUberFeatures(uint32_t uberFeatures) {
     return text;
 }
 
+bool isCubeLutPath(const std::string& path) {
+    return path.size() > 5 && lowerCase(path.substr(path.size() - 5)) == ".cube";
+}
+
+PostProcessingRowState getPostProcessingRowState(const PostProcessingSettings& settings, const std::string& snakeName,
+                                                 bool fixedResolution) {
+    PostProcessingRowState state;
+    const bool vhs = settings.vhsEnabled && settings.vhsIntensity > 0.0f;
+    if (snakeName == "lut_input_encoding") {
+        state.shown = isCubeLutPath(settings.lutTexture);
+    } else if (snakeName == "film_grain_size") {
+        state.shown = settings.filmGrainType != FilmGrainType::CLASSIC;
+    } else if (snakeName == "film_grain_colored") {
+        state.shown = settings.filmGrainType == FilmGrainType::FILMIC;
+    } else if (snakeName == "fxaa_enabled" || snakeName == "sharpen_enabled" || snakeName == "sharpen_intensity") {
+        if (vhs) {
+            state.inactiveReason = "Inactive while VHS is on: the tape's colour bleed already filters the image horizontally.";
+            state.inactiveTag = "inactive while VHS is on";
+        }
+    } else if (snakeName == "halation_threshold") {
+        if (settings.bloomEnabled && settings.bloomIntensity > 0.0f) {
+            state.inactiveReason = "Bloom is on: halation reuses the bloom chain's levels, so Bloom's Threshold applies.";
+            state.inactiveTag = "Bloom's threshold applies";
+        }
+    } else if (snakeName == "dynamic_resolution_enabled" || snakeName == "dynamic_resolution_min_scale" ||
+               snakeName == "dynamic_resolution_target_fps") {
+        if (fixedResolution) {
+            state.inactiveReason = "Inactive while Fixed Resolution is on: the scene renders at its fixed size.";
+            state.inactiveTag = "inactive with Fixed Resolution";
+        }
+    }
+    return state;
+}
+
+const char* getLutInputEncodingName(LutInputEncoding encoding) {
+    switch (encoding) {
+        case LutInputEncoding::AUTO: return "Auto";
+        case LutInputEncoding::SRGB: return "sRGB";
+        case LutInputEncoding::LINEAR: return "Linear";
+        case LutInputEncoding::LOGC3: return "LogC3";
+        case LutInputEncoding::ACESCCT: return "ACEScct";
+        case LutInputEncoding::CINEON: return "Cineon";
+        case LutInputEncoding::DAVINCI_INTERMEDIATE: return "DaVinci Intermediate";
+    }
+    return "Auto";
+}
+
+std::string describeLutInputEncoding(LutInputEncoding setting, const CubeLut* lut, const std::string& error) {
+    if (!lut) return error.empty() ? std::string("No LUT loaded") : "Not loaded: " + error;
+    std::string reason;
+    const LutInputEncoding resolved = resolveEncoding(setting, *lut, &reason);
+    const char* stage = stageOf(resolved, *lut) == LutStage::SCENE ? "scene stage, before the tone mapping" : "display stage";
+    if (setting == LutInputEncoding::AUTO)
+        return std::string("Auto: ") + getLutInputEncodingName(resolved) + " (" + reason + "; " + stage + ")";
+    return std::string(getLutInputEncodingName(resolved)) + " (" + stage + ")";
+}
+
+Command* makePostProcessingCommand(Project* project, uint32_t sceneId, const PostProcessingSettings& settings, const std::string& label) {
+    Command* command = new ScenePropertyCmd<PostProcessingSettings>(project, sceneId, "post_processing", settings);
+    if (label.empty()) return command;
+    std::vector<std::unique_ptr<Command>> commands;
+    commands.emplace_back(command);
+    return new CommandGroup(std::move(commands), label + " (" + CommandNames::scene(project, sceneId) + ")", false);
+}
+
+std::string describeColorLut(const CubeLut* lut, const std::string& error) {
+    if (!lut) return "Color LUT: " + (error.empty() ? std::string("not loaded") : "does not load: " + error);
+    std::string text = lut->fromStrip ? "Color LUT (image strip)" : "Color LUT (.cube)";
+    if (!lut->title.empty()) text += "\nTitle: " + lut->title;
+    char line[160];
+    if (lut->size1D > 0) {
+        std::snprintf(line, sizeof(line), "\n1D table: %d entries, input %g to %g", lut->size1D, lut->in1D[0], lut->in1D[1]);
+        text += line;
+    }
+    if (lut->size3D > 0) {
+        std::snprintf(line, sizeof(line), "\n3D table: %d^3, input %g to %g", lut->size3D, lut->in3D[0], lut->in3D[1]);
+        text += line;
+    }
+    text += "\nInput encoding: " + describeLutInputEncoding(LutInputEncoding::AUTO, lut, error);
+    return text;
+}
+
+std::string describeDynamicResolution(const DynamicResolutionStatus& status, std::vector<std::string>& warnings) {
+    if (!status.enabled && !status.overridden) return std::string();
+    char text[160];
+    if (status.overridden) {
+        std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (pinned)", status.scale);
+        return text;
+    }
+    if (!status.running) return std::string("Dynamic resolution idle: ") + status.idle;
+    const std::string source = status.source;
+    if (source == "gpu") {
+        std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (GPU %.1f / %.1f ms)", status.scale, status.smoothedMs, status.targetMs);
+    } else if (source == "frame") {
+        if (status.probeSeconds > 0.0f)
+            std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (frame law: probing in %.0f s)", status.scale, std::ceil(status.probeSeconds));
+        else
+            std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (frame law: %.1f / %.1f ms)", status.scale, status.smoothedMs, status.targetMs);
+    } else {
+        std::snprintf(text, sizeof(text), "Dynamic resolution %.2f (measuring)", status.scale);
+    }
+    if (status.saturatedLow)
+        warnings.push_back("Dynamic resolution is at Min Scale and still over the target: the cost the scale does not move "
+                           "(CPU, geometry, post chain) misses the frame alone.");
+    if (status.ineffective)
+        warnings.push_back("Dynamic resolution judged the scale ineffective for this content (it saves too little): it holds "
+                           "Render Scale until the cost changes.");
+    return text;
+}
+
 PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& settings, const std::vector<PostProcessPass>& passes,
                                               bool fixedResolution) {
     PostProcessingCost cost;
@@ -208,9 +378,10 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
     const bool scaled = scale < 0.999f;
     const bool bloom = (tiers.uberFeatures & UBER_BLOOM) != 0;
     const bool blur = (tiers.uberFeatures & UBER_BLUR) != 0;
+    const bool halation = (tiers.uberFeatures & UBER_HALATION) != 0;
     cost.inShader = tiers.tailColor;
     cost.uber = tiers.uber;
-    cost.chain = bloom || blur;
+    cost.chain = bloom || blur || halation;
     cost.sceneShading = area;
 
     // the enabled user passes and their resolution scales (PostProcessPass::getAppliedScale)
@@ -252,6 +423,12 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
     if (msaaBlit) engine.passes.push_back({"MSAA resolve blit to the screen", 1, 1.0f, true});
     if (bloom) addChain(engine, "bloom", area);
     if (blur) addChain(engine, "blur", area, RenderSystem::getBlurLevels(settings.blurRadius));
+    // halation without bloom: its threshold prefilter to 1/4 and one level down to 1/8 (with
+    // bloom it reads bloom's levels)
+    if (tiers.halationChain) {
+        engine.passes.push_back({"halation prefilter", 1, area / 16.0f, false});
+        engine.passes.push_back({"halation down", 1, area / 64.0f, false});
+    }
     if (tiers.uber) engine.passes.push_back({"uber", 1, 1.0f, true});
     total(engine);
 
@@ -278,6 +455,9 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
     custom(UBER_EDGE, "edge detect");
     custom(UBER_SHARPEN, "sharpen");
     custom(UBER_BLUR, "blur");
+    custom(UBER_VHS, "VHS");
+    custom(UBER_FILM_DAMAGE, "film damage");
+    custom(UBER_HALATION, "halation");
     if (userPasses > 0) urp.passes.push_back({"user pass (renderer feature)", userPasses, area * userPasses, !scaled});
     if (post) urp.passes.push_back({"uber", 1, area, !scaled});
     if (fxaa && scaled) urp.passes.push_back({"FXAA scaling setup", 1, area, false});
@@ -316,6 +496,16 @@ PostProcessingCost estimatePostProcessingCost(const PostProcessingSettings& sett
               "multisampled target's memory and bandwidth."
             : "MSAA: the samples resolve in tile memory at the end of the scene pass, into the target the effects read (no "
               "pass of its own). Desktop GPUs pay the multisampled target's memory and bandwidth.");
+    }
+    if (settings.colorGradingEnabled && settings.lutContribution > 0.0f && isCubeLutPath(settings.lutTexture)) {
+        cost.notes.push_back("The .cube LUT is baked into the colour LUT on the CPU (URP's Color Lookup): no pass and no GPU cost.");
+    }
+    if (tiers.dynamicResolution) {
+        const float minScale = std::min(std::max(settings.dynamicResolutionMinScale, 0.5f), tiers.renderScale);
+        char text[200];
+        std::snprintf(text, sizeof(text), "Dynamic resolution: scene shading varies between min^2 and max^2 of native (%.0f%% to %.0f%%) "
+                      "with the frame cost, in the game only.", minScale * minScale * 100.0f, tiers.renderScale * tiers.renderScale * 100.0f);
+        cost.notes.push_back(text);
     }
     if (!cost.urpCustom.empty()) {
         std::string names;

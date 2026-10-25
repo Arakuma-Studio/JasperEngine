@@ -226,8 +226,8 @@ before editing: keep its declarations, includes, varyings and output, change the
 end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
 forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
 Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
-post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
-(jasper://docs/post-processing).
+post_processing.<field>; get_post_processing_status says what applies (mobile, LUTs:
+jasper://docs/post-processing).
 Textures from examples (tileable, inpainted, PBR sets): synthesize_texture
 (jasper://docs/texture-synthesis). GPU fluid: create_entity type fluid_simulation
 (jasper://docs/fluid). Bend/squash: edit_lattice (jasper://docs/lattice).
