@@ -322,11 +322,11 @@ bool editor::PoseBaker::bake(Project* project, uint32_t sceneId, Entity model, P
     return true;
 }
 
-bool editor::PoseBaker::bakeAnimatorAsset(Project* project, uint32_t sceneId, Entity model, const std::string& animation,
-                                          PoseBakeResult& result, std::string& error){
+// the document of the pose animation a Pose Animator plays (`animation` as the component stores it)
+static std::shared_ptr<editor::PoseAnimationDocument> animatorDocument(editor::Project* project, const std::string& animation, std::string& error){
     if (animation.empty()){
         error = "the Pose Animator has no animation";
-        return false;
+        return nullptr;
     }
     // the component stores the path as the runtime loads it: relative to the assets folder
     const std::filesystem::path file = project->resolveAssetPath(std::filesystem::u8path(animation)).lexically_normal();
@@ -336,11 +336,25 @@ bool editor::PoseBaker::bakeAnimatorAsset(Project* project, uint32_t sceneId, En
 #else
     const std::string path = file.u8string();
 #endif
-    std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, path, &error);
+    return editor::PoseAnimationDocument::open(project, path, &error);
+}
+
+bool editor::PoseBaker::bakeAnimatorAsset(Project* project, uint32_t sceneId, Entity model, const std::string& animation,
+                                          PoseBakeResult& result, std::string& error){
+    std::shared_ptr<PoseAnimationDocument> document = animatorDocument(project, animation, error);
     if (!document){
         return false;
     }
     return bake(project, sceneId, model, *document, "", result, error);
+}
+
+bool editor::PoseBaker::bakeAnimatorAssetToClip(Project* project, uint32_t sceneId, Entity model, const std::string& animation,
+                                                PoseClipBakeResult& result, std::string& error){
+    std::shared_ptr<PoseAnimationDocument> document = animatorDocument(project, animation, error);
+    if (!document){
+        return false;
+    }
+    return bakeToClip(project, sceneId, model, *document, "", "", result, error);
 }
 
 std::string editor::PoseBaker::bakeStatusLine(const std::string& animation, const PoseBakeResult& result){
@@ -487,7 +501,7 @@ std::string editor::PoseBaker::clipBakeStatusLine(const std::string& animation, 
 
 namespace {
 
-    // The Pose Animator Inspector section's Bake button
+    // The Pose Animator Inspector section's Bake menu (Bake into Scene, Bake to Animation Clip)
     struct InstallBakeHook {
         InstallBakeHook(){
             editor::poseInspectorHooks().bake = [](editor::Project* project, uint32_t sceneId, Entity model, const std::string& animation){
@@ -498,6 +512,15 @@ namespace {
                     return;
                 }
                 editor::Out::info("%s", editor::PoseBaker::bakeStatusLine(animation, result).c_str());
+            };
+            editor::poseInspectorHooks().bakeToClip = [](editor::Project* project, uint32_t sceneId, Entity model, const std::string& animation){
+                std::string error;
+                editor::PoseClipBakeResult result;
+                if (!editor::PoseBaker::bakeAnimatorAssetToClip(project, sceneId, model, animation, result, error)){
+                    editor::Out::error("Bake of '%s' to an Animation Clip failed: %s", animation.c_str(), error.c_str());
+                    return;
+                }
+                editor::Out::info("%s", editor::PoseBaker::clipBakeStatusLine(animation, result).c_str());
             };
         }
     } installBakeHook;

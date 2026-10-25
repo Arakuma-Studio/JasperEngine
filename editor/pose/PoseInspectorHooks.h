@@ -20,9 +20,12 @@ namespace jasperengine::editor{
     class Project;
 
     struct PoseInspectorHooks{
-        // Bake `animation` into an Animation clip of the model entity (one scene undo step).
-        // Called in edit mode only; reports its own errors.
+        // Bake `animation` into the scene: an entity Animation of the model (one scene undo step;
+        // the Bake menu's "Bake into Scene"). Called in edit mode only; reports its own errors.
         std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> bake;
+        // Bake `animation` to an Animation Clip (<name>.anim next to it, listed in the model's
+        // Animation Player; one scene undo step; the Bake menu's primary "Bake to Animation Clip")
+        std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> bakeToClip;
         // Open `animation` in the Pose Animation window, bound to the model entity
         std::function<void(Project* project, uint32_t sceneId, Entity model, const std::string& animation)> open;
         // (A posed bone's Transform written by a scene command goes back to its rest first: the Pose

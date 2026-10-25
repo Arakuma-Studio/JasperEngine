@@ -3036,7 +3036,9 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             // Record keys a claimed Transform channel instead (animation clips 9.R5)
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(newValue.x, eValue[entity].y, eValue[entity].z)); })){
                 for (Entity& entity : entities){
-                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(newValue.x, eValue[entity].y, eValue[entity].z), settings.onValueChanged);
+                    auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(newValue.x, eValue[entity].y, eValue[entity].z), settings.onValueChanged);
+                    rowCmd->setShownComponents(0b110);   // y and z as shown: x is the edit
+                    cmd = rowCmd;
                     CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                 }
             }
@@ -3070,7 +3072,9 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             // Record keys a claimed Transform channel instead (animation clips 9.R5)
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(eValue[entity].x, newValue.y, eValue[entity].z)); })){
                 for (Entity& entity : entities){
-                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, newValue.y, eValue[entity].z), settings.onValueChanged);
+                    auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, newValue.y, eValue[entity].z), settings.onValueChanged);
+                    rowCmd->setShownComponents(0b101);   // x and z as shown: y is the edit
+                    cmd = rowCmd;
                     CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                 }
             }
@@ -3104,7 +3108,9 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             // Record keys a claimed Transform channel instead (animation clips 9.R5)
             if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(eValue[entity].x, eValue[entity].y, newValue.z)); })){
                 for (Entity& entity : entities){
-                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, newValue.z), settings.onValueChanged);
+                    auto* rowCmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, newValue.z), settings.onValueChanged);
+                    rowCmd->setShownComponents(0b011);   // x and y as shown: z is the edit
+                    cmd = rowCmd;
                     CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
                 }
             }
@@ -5517,7 +5523,9 @@ bool editor::InspectorWindow::setMorphWeight(SceneProject* sceneProject, const s
         target.after[(size_t)index] = value;
         targets.push_back(target);
     }
-    Command* command = new editor::MorphWeightsCmd(project, sceneProject->id, targets);
+    auto* weightsCommand = new editor::MorphWeightsCmd(project, sceneProject->id, targets);
+    weightsCommand->setEditedWeights({(size_t)index});   // the row's weight is the edit, the others as shown
+    Command* command = weightsCommand;
     if (!CommandHandle::get(sceneProject->id)->addCommand(command)) return false;
     morphEditScene = sceneProject->id;
     return true;
@@ -5542,9 +5550,12 @@ void editor::InspectorWindow::drawBlendShapes(SceneProject* sceneProject, const 
     }
     if (meshes.empty() || meshes.size() != entities.size()) return;
 
-    // the target names of the first mesh's model (the ModelComponent on it or an ancestor)
+    // the target names of the first mesh (its own, from the model file: two meshes of a model can
+    // name their targets differently), else its model's (the ModelComponent on it or an ancestor)
     std::map<int, std::string> names;
-    Entity owner = meshes.front();
+    const std::vector<std::string>& ownNames = scene->getComponent<MeshComponent>(meshes.front()).morphTargetNames;
+    for (size_t i = 0; i < ownNames.size(); i++) names[(int)i] = ownNames[i];
+    Entity owner = ownNames.empty() ? meshes.front() : NULL_ENTITY;
     for (int depth = 0; owner != NULL_ENTITY && depth < 256; depth++){
         if (const ModelComponent* model = scene->findComponent<ModelComponent>(owner)){
             for (const auto& entry : model->morphNameMapping) names[entry.second] = entry.first;
@@ -5553,9 +5564,7 @@ void editor::InspectorWindow::drawBlendShapes(SceneProject* sceneProject, const 
         const Transform* transform = scene->findComponent<Transform>(owner);
         owner = transform ? transform->parent : NULL_ENTITY;
     }
-    // the meshes' own target count (their morph position attributes); the names are the model's
-    // (glTF targetNames, kept per model: a model whose meshes name their targets differently shows
-    // the last mesh's names)
+    // the meshes' own target count (their morph position attributes)
     int count = 0;
     for (Entity entity : meshes){
         const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
@@ -9850,11 +9859,30 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
             if (hooks.bake) ImGui::SameLine();
         }
         if (hooks.bake) {
+            // as the Pose Animation window's Bake: to a shared Animation Clip (primary) or into the scene
             ImGui::BeginDisabled(!stopped);
-            if (ImGui::Button(ICON_FA_FILM " Bake##poseanimator_bake")) {
-                hooks.bake(project, sceneProject->id, entity, animator.animation);
+            if (ImGui::Button(ICON_FA_FILM " Bake " ICON_FA_CARET_DOWN "##poseanimator_bake")) {
+                ImGui::OpenPopup("##poseanimator_bake_menu");
             }
-            ImGui::SetItemTooltip("Bake the pose animation into an Animation clip of this Model (one undo step)");
+            UIProbe::item("poseanimator.bake");
+            ImGui::SetItemTooltip("Bake the pose animation to an Animation Clip (.anim, shared) or into the scene (one undo step)");
+            if (ImGui::BeginPopup("##poseanimator_bake_menu")) {
+                if (hooks.bakeToClip) {
+                    if (ImGui::MenuItem(ICON_FA_FILM " Bake to Animation Clip")) {
+                        hooks.bakeToClip(project, sceneProject->id, entity, animator.animation);
+                    }
+                    UIProbe::item("poseanimator.bakeMenu.clip");
+                    ImGui::SetItemTooltip("Writes <name>.anim next to the pose animation (baking again updates it) and lists it in the\n"
+                                          "Model's Animation Player: one clip any character with the same bones can play.");
+                }
+                if (ImGui::MenuItem(ICON_FA_DIAGRAM_PROJECT " Bake into Scene")) {
+                    hooks.bake(project, sceneProject->id, entity, animator.animation);
+                }
+                UIProbe::item("poseanimator.bakeMenu.scene");
+                ImGui::SetItemTooltip("Bake to an Animation of this Model in the scene (baking again updates it).\n"
+                                      "Plays with Model:playAnimation(name) and in the Animation window.");
+                ImGui::EndPopup();
+            }
             ImGui::EndDisabled();
         }
         ImGui::EndDisabled();

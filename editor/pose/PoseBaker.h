@@ -61,6 +61,9 @@ namespace jasperengine::editor{
         // assets folder) under the default name
         static bool bakeAnimatorAsset(Project* project, uint32_t sceneId, Entity model, const std::string& animation,
                                       PoseBakeResult& result, std::string& error);
+        // the same to an Animation Clip (bakeToClip with the default name and path)
+        static bool bakeAnimatorAssetToClip(Project* project, uint32_t sceneId, Entity model, const std::string& animation,
+                                            PoseClipBakeResult& result, std::string& error);
         // Bake to Animation Clip: `clipPath` project-relative .anim; empty: "<name>.anim" next to
         // the pose animation (`name` empty: its file stem). An existing file there is rewritten
         // (its GUID kept) only when it was baked from this pose animation; otherwise a free name

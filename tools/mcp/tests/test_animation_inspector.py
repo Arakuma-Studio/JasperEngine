@@ -320,3 +320,42 @@ async def test_animation_component_buttons(ed: Editor):
     await ed.call("focus_window", window="inspector")
     await ui.reveal("animation.convert")
     await shot(ed, "09-animation-component")
+
+
+async def test_pose_animator_bake_menu(ed: Editor):
+    """The Pose Animator section's Bake offers what the Pose window's does: Bake to Animation Clip (a shared
+    .anim next to the pose animation, listed in the Model's Animation Player) and Bake into Scene (an entity
+    Animation); each one scene undo step."""
+    ui = Ui(ed)
+    walk = "assets/anim/inspector_walk.poseanim"
+    await ed.call("edit_pose_animation", path=walk, create={"preview_model": "assets/models/hero_tpose.gltf"}, ops=[
+        {"op": "add_pose", "name": "Up", "hold": 0.1, "angles": {"left_upper_arm.raise": 60}},
+        {"op": "add_pose", "name": "Down", "hold": 0.1, "angles": {"left_upper_arm.raise": 10}}])
+    await ed.call("add_component", entity="Hero", component="poseanimator", values={"poseanimator": {"animation": walk}})
+    await ed.call("select_entities", entities=["Hero"])
+    await ed.call("focus_window", window="inspector")
+
+    async def bake_menu(item: str):
+        rect = await ui.reveal("poseanimator.bake")
+        await ui.click(*center(rect))
+        await ui.frames(5)
+        entry = await ed.ui_rect(item)
+        ed.check(entry, f"the Bake menu shows {item}: {sorted(ed.ui_items())}")
+        await shot(ed, "10-pose-bake-menu")
+        await ui.click(*center(entry))
+        await ui.frames(5)
+
+    await bake_menu("poseanimator.bakeMenu.clip")
+    clip = ed.project / "assets/anim/inspector_walk.anim"
+    ed.check(clip.is_file(), "Bake to Animation Clip writes the .anim next to the pose animation")
+    got = json.dumps(await ed.call("get_entity", entity="Hero", components=["animationplayer"]))
+    ed.check("inspector_walk.anim" in got, f"listed in the Hero's Animation Player: {got[:600]}")
+    await ed.call("undo", scope="scene")
+    ed.check(not clip.is_file(), "one scene undo step (the file it wrote goes with it)")
+
+    await bake_menu("poseanimator.bakeMenu.scene")
+    found = json.dumps(await ed.call("find_entities", name="inspector_walk"))
+    ed.check("inspector_walk" in found, f"Bake into Scene makes the entity Animation: {found[:400]}")
+    await ed.call("undo", scope="scene")
+    ed.check("inspector_walk" not in json.dumps(await ed.call("find_entities", name="inspector_walk")), "one scene undo step")
+    await ed.call("remove_component", entity="Hero", component="poseanimator")
