@@ -18,10 +18,12 @@
 #include "animation/ModelSubClips.h"
 #include "command/type/ClipSceneActions.h"
 #include "component/AnimationPlayerComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/ScriptComponent.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
+#include "util/Util.h"
 
 #include <chrono>
 #include <map>
@@ -441,12 +443,18 @@ std::vector<std::string> AnimationWindowClip::componentLabels(size_t trackIndex)
         case ClipChannel::Morph: {
             size_t width = 0;
             for (const ClipKey& key : track.keys) width = std::max(width, key.value.size());
-            // morph target names of the bound mesh's model (name -> index)
+            // morph target names of the bound mesh (its own), else of its model (name -> index)
             std::map<int, std::string> names;
             Scene* scene = valueScene();
             Entity entity = NULL_ENTITY;
             for (const TrackReport& entry : report.tracks){
                 if (entry.track == trackIndex) entity = entry.entity;
+            }
+            if (scene && entity != NULL_ENTITY && scene->isEntityCreated(entity)){
+                if (const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity)){
+                    for (size_t i = 0; i < mesh->morphTargetNames.size(); i++) names[(int)i] = mesh->morphTargetNames[i];
+                    if (!mesh->morphTargetNames.empty()) entity = NULL_ENTITY;
+                }
             }
             for (int depth = 0; scene && entity != NULL_ENTITY && depth < 256; depth++){
                 if (!scene->isEntityCreated(entity)) break;
@@ -625,6 +633,49 @@ bool AnimationWindowClip::createNewClip(SceneProject* sceneProject, const std::s
     selection.clear();
     selectEvent(-1);
     setNotice("Created " + fs::u8path(result.clip).filename().u8string() + " (one scene undo step)", false);
+    return true;
+}
+
+bool AnimationWindowClip::dropClips(SceneProject* sceneProject, Entity fallback, const std::vector<std::string>& paths, std::string* error){
+    std::vector<std::string> clips;
+    for (const std::string& path : paths){
+        if (Util::isAnimationClipFile(path)) clips.push_back(path);
+    }
+    if (clips.empty()){
+        if (error) *error = "only animation clips (.anim) can be dropped on the Animation window";
+        return false;
+    }
+    AnimationClipController& c = controller();
+    Entity root = NULL_ENTITY;
+    if (sceneProject && sceneProject->scene){
+        if (c.getSceneId() == sceneProject->id && c.getRoot() != NULL_ENTITY && sceneProject->scene->isEntityCreated(c.getRoot())){
+            root = c.getRoot();
+        }else if (fallback != NULL_ENTITY && sceneProject->scene->isEntityCreated(fallback)){
+            const Entity playerRoot = AnimationClipController::findPlayerRoot(sceneProject->scene, fallback);
+            root = playerRoot != NULL_ENTITY ? playerRoot : fallback;
+        }
+    }
+    if (root == NULL_ENTITY){
+        // nothing to animate: the clip opens on its own (edits the file), as from the Project window
+        return open(0, NULL_ENTITY, clips.front(), error);
+    }
+    if (sceneProject->playState != ScenePlayState::STOPPED){
+        if (error) *error = "stop the game to add clips to the Animation Player of " + sceneProject->scene->getEntityName(root);
+        return false;
+    }
+    // the clips join the player in one scene step; the preview goes back first
+    c.stopPreview();
+    ClipActionResult result;
+    std::string failure;
+    if (!ClipSceneActions::addClipsToPlayer(project, sceneProject->id, root, clips, result, failure)){
+        if (error) *error = failure;
+        return false;
+    }
+    c.setLastActionWasClipEdit(false);
+    if (!open(sceneProject->id, result.player, clips.front(), error)) return false;
+    std::string status = result.status;
+    for (const ClipWarning& warning : result.warnings) status += "; " + warning.message;
+    setNotice(status, !result.warnings.empty());
     return true;
 }
 

@@ -189,6 +189,10 @@ namespace jasperengine::editor{
         // the selection `selected` of `sceneProject` decides the mode (also the test hook)
         void applySelection(SceneProject* sceneProject, const std::vector<Entity>& selected);
         void drawClipMode(SceneProject* sceneProject);
+        // .anim files dropped anywhere on the window (spec 4.1): they join the bound or selected
+        // GameObject's Animation Player (one scene step) and the first opens in clip mode
+        bool dropClipFiles(SceneProject* sceneProject, const std::vector<std::string>& paths, std::string* error);
+        void acceptClipDrop(SceneProject* sceneProject);
         void installClipHooks();
         bool handleTestHook(const nlohmann::json& hook, nlohmann::json& out, std::string& error);
 

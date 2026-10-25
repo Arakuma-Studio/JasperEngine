@@ -618,3 +618,37 @@ async def test_entity_mode_lanes_and_previews(ed: Editor):
     st = await hook(ed, entity="Hero")
     ed.check_eq((st["mode"], st["clip"]), ("clip", CLIP), f"clip mode again: {st}")
     await shot(ed, "08-clip-mode-final")
+
+
+async def test_drop_clip_on_the_window(ed: Editor):
+    """Spec 4.1: a .anim dropped on the Animation window opens it for the bound GameObject: added to its
+    Animation Player (one scene step; a player is added when it has none, a listed clip is reused), or
+    target-less when nothing is bound; other files are refused."""
+    dropper = (await ed.call("create_entity", name="Dropper", type="cube", position=[-3, 0, 0]))["entity_id"]
+    await ed.call("save_scene", scene="Main Scene")
+    st = await hook(ed, entity="Dropper")
+    ed.check(st["empty_state"], f"the empty state of Dropper: {st}")
+    st = await hook(ed, drop=["assets/anim/walk.anim"])
+    ed.check_eq((st["mode"], st["root"], st["clip"], st["state"]), ("clip", "Dropper", "assets/anim/walk.anim", "walk"),
+                f"the drop opens the clip as the new player's state: {st}")
+    ed.check(st["has_player"] and st["states"] == ["walk"], f"a player was added listing it: {st}")
+    ed.check(await modified(ed), "a scene step")
+    await ed.call("undo", scope="scene")
+    entity = json.dumps(await ed.call("get_entity", entity=dropper, detail="full"))
+    ed.check("animationplayer" not in entity.lower().replace(" ", ""), f"one undo step: the player is gone: {entity}")
+    # a player with clips: appended (a state of its own), and the same file again reuses its entry
+    st = await hook(ed, entity="Walker", drop=[str(ed.project / "assets/anim/walk.anim")])
+    ed.check_eq((st["root"], st["state"]), ("Walker", "walk"), f"opened as Walker's new state (an absolute path): {st}")
+    ed.check_eq(st["states"], ["Walk", "walk"], "appended after the player's own clip")
+    st = await hook(ed, drop=["assets/anim/walk.anim"])
+    ed.check_eq((st["states"], st["state"]), (["Walk", "walk"], "walk"), f"a listed clip is reused: {st}")
+    await ed.call("undo", scope="scene")
+    st = await hook(ed, entity="Walker")
+    ed.check_eq(st["states"], ["Walk"], f"the second drop made no step of its own: {st}")
+    # nothing bound (a clip open target-less): target-less too (the file is edited, nothing is added)
+    st = await hook(ed, entity=None, clip="assets/models/hero_animated.gltf#Walk")
+    ed.check(st["targetless"], f"nothing bound: {st}")
+    st = await hook(ed, drop=["assets/anim/walk.anim"])
+    ed.check(st["targetless"] and st["clip"] == "assets/anim/walk.anim", f"target-less: {st}")
+    await ed.check_error("focus_window", {"window": "animation", "animation": {"drop": ["Main Scene.scene"]}}, contains=".anim")
+    await ed.call("delete_entities", entities=[dropper])

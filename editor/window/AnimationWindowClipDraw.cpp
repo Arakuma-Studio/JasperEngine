@@ -1336,14 +1336,17 @@ void AnimationWindowClip::handleShortcuts(){
         if (!ok && !error.empty()) setNotice(error, true);
         error.clear();
     };
+    // Ctrl is the command key as in the rest of the editor (App's Ctrl+Z / Ctrl+S / Ctrl+D): on
+    // macOS ImGui's ConfigMacOSXBehaviors (on by default there) swaps the modifiers, so Cmd is
+    // io.KeyCtrl and the Control key io.KeySuper; a chord with the other one is not a shortcut
     const bool plain = !io.KeyCtrl && !io.KeyAlt && !io.KeySuper;
     if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Space, false)) togglePlay(project->getSelectedScene());
     if (plain && ImGui::IsKeyPressed(ImGuiKey_K, false)) report(keyAt(io.KeyShift, &error));
-    if (!io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Comma, true)){
+    if (!io.KeyCtrl && !io.KeySuper && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Comma, true)){
         if (io.KeyAlt) stepKey(-1);
         else stepFrame(-1);
     }
-    if (!io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Period, true)){
+    if (!io.KeyCtrl && !io.KeySuper && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Period, true)){
         if (io.KeyAlt) stepKey(1);
         else stepFrame(1);
     }
@@ -1351,7 +1354,7 @@ void AnimationWindowClip::handleShortcuts(){
         if (!selectedRefs.empty()) report(deleteSelected(&error));
         else if (selectedEvent >= 0) report(deleteEvent(selectedEvent, &error));
     }
-    if (io.KeyCtrl && !io.KeyShift && !io.KeyAlt){
+    if (io.KeyCtrl && !io.KeySuper && !io.KeyShift && !io.KeyAlt){
         if (ImGui::IsKeyPressed(ImGuiKey_C, false)) copySelected();
         if (ImGui::IsKeyPressed(ImGuiKey_V, false)) report(paste(snapToFrame(c.getTime()), &error));
         if (ImGui::IsKeyPressed(ImGuiKey_D, false)) report(duplicateSelected(&error));

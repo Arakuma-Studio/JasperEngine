@@ -2974,6 +2974,10 @@ void editor::AnimationWindow::show() {
         currentTime = 0;
     }
 
+    if (isWindowVisible) {
+        acceptClipDrop(sceneProject);
+    }
+
     // Clip mode or entity mode, from the selection (animation clips spec 4.4, 9.R31)
     if (updateMode(sceneProject)) {
         if (isPreviewing) {

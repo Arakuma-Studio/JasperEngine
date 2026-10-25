@@ -24,6 +24,12 @@
 #include "component/AnimationComponent.h"
 #include "animation/PreviewOwner.h"
 #include "util/EntityPath.h"
+#include "util/FileUtils.h"
+#include "util/Util.h"
+
+#include "imgui_internal.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -160,6 +166,42 @@ void editor::AnimationWindow::drawClipMode(SceneProject* sceneProject){
     clipMode->draw(sceneProject, focused);
 }
 
+bool editor::AnimationWindow::dropClipFiles(SceneProject* sceneProject, const std::vector<std::string>& paths, std::string* error){
+    // entity mode has no bound GameObject: the selected one (not an entity Animation) takes the clips
+    Entity fallback = NULL_ENTITY;
+    if (!clipModeActive && sceneProject && sceneProject->scene){
+        const std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        if (!selected.empty() && sceneProject->scene->isEntityCreated(selected.front()) &&
+            !sceneProject->scene->findComponent<AnimationComponent>(selected.front())){
+            fallback = selected.front();
+        }
+    }
+    // the entity preview restores before the scene step
+    if (!clipModeActive && isPreviewing) stopTransientPreviews();
+    if (!clipMode->dropClips(sceneProject, fallback, paths, error)) return false;
+    clipModeActive = true;
+    return true;
+}
+
+void editor::AnimationWindow::acceptClipDrop(SceneProject* sceneProject){
+    // the whole window is a target for .anim files (smaller targets inside it win their drops)
+    const ImVec2 min = ImGui::GetWindowPos();
+    const ImVec2 size = ImGui::GetWindowSize();
+    if (!ImGui::BeginDragDropTargetCustom(ImRect(min, ImVec2(min.x + size.x, min.y + size.y)), ImGui::GetID("##anim_clip_files_drop"))){
+        return;
+    }
+    const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+    if (payload && payload->IsDataType("resource_files")){
+        const std::vector<std::string> paths = Util::getStringsFromPayload(payload);
+        const bool clips = std::any_of(paths.begin(), paths.end(), [](const std::string& path){ return Util::isAnimationClipFile(path); });
+        if (clips && ImGui::AcceptDragDropPayload("resource_files")){
+            std::string error;
+            if (!dropClipFiles(sceneProject, paths, &error)) Out::error("Animation window: can't take the dropped clip: " + error);
+        }
+    }
+    ImGui::EndDragDropTarget();
+}
+
 bool editor::AnimationWindow::handleTestHook(const nlohmann::json& hook, nlohmann::json& out, std::string& error){
     if (!hook.is_object()){
         error = "an object {entity, clip, root, state, time, preview, select, drag, ...} (see test_animation_window.py)";
@@ -222,6 +264,23 @@ bool editor::AnimationWindow::handleTestHook(const nlohmann::json& hook, nlohman
         clipModeActive = true;
         if (!clipMode->open(sceneProject->id, root, hook["clip"].get<std::string>(), &error)){
             error = "clip: " + error;
+            return false;
+        }
+    }
+    // .anim files dropped on the window (project-relative or absolute paths)
+    if (hook.contains("drop")){
+        std::vector<std::string> paths;
+        const nlohmann::json& drop = hook["drop"];
+        for (const nlohmann::json& path : drop.is_array() ? drop : nlohmann::json::array({drop})){
+            if (!path.is_string()){
+                error = "drop: a path or a list of paths of the files dropped";
+                return false;
+            }
+            const std::filesystem::path given = std::filesystem::u8path(path.get<std::string>());
+            paths.push_back(FileUtils::pathToGenericUtf8((given.is_absolute() ? given : project->getProjectPath() / given).lexically_normal()));
+        }
+        if (!dropClipFiles(sceneProject, paths, &error)){
+            error = "drop: " + error;
             return false;
         }
     }

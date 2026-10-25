@@ -84,6 +84,11 @@ namespace jasperengine::editor{
         bool open(uint32_t sceneId, Entity root, const std::string& clip, std::string* error);
         // a state of the bound player (the entity mode's dropdown)
         bool openState(const std::string& state, std::string* error);
+        // .anim files dropped on the window (spec 4.1): with a GameObject bound in `sceneProject`
+        // (clip mode's root, else `fallback`) they join its Animation Player (added when it has
+        // none; one scene undo step, clips it lists already are reused) and the first opens as
+        // its state; with none the first opens target-less
+        bool dropClips(SceneProject* sceneProject, Entity fallback, const std::vector<std::string>& paths, std::string* error);
         // something to show without a selection: a clip opened target-less
         bool hasTargetlessClip() const;
         // every frame (also while the window is hidden or closed): the notice timeout and the

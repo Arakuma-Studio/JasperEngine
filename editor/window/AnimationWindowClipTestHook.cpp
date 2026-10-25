@@ -52,7 +52,7 @@ namespace {
         "remove_track", "rebind", "frame_rate", "snap_keys", "time_format", "preview_model", "add_event", "select_event",
         "event", "drag_event", "delete_event", "create_clip", "extract", "input", "list_paths", "event_editor", "entity_play",
         "entity_mode_entries", "entity_move_frame", "brief", "view", "curve_visible", "frame_curves", "curve_drag", "record",
-        "gizmo", "inspector", "morph", "lattice_drag", "curve_select"};
+        "gizmo", "inspector", "morph", "lattice_drag", "curve_select", "drop"};
 
     Json argJson(const AnimationEventArg& arg){
         if (std::holds_alternative<double>(arg)) return std::get<double>(arg);
@@ -207,7 +207,7 @@ bool AnimationWindowClip::checkHookKeys(const Json& hook, bool clipActions, std:
         }
         const bool windowKey = it.key() == "entity" || it.key() == "entity_animation" || it.key() == "clip" || it.key() == "root" ||
                                it.key() == "entity_play" || it.key() == "entity_mode_entries" ||
-                               it.key() == "entity_move_frame" || it.key() == "brief";
+                               it.key() == "entity_move_frame" || it.key() == "brief" || it.key() == "drop";
         if (!clipActions && !windowKey){
             error = it.key() + ": the window is in entity mode (select a GameObject with an Animation Player, or open a clip)";
             return false;
