@@ -5,8 +5,7 @@
 // - Purpose: the shared cache of runtime clips: one shared_ptr<const AnimationClip> per
 //   normalized key, for .anim files (read through Data::open, so resource packs work) and model
 //   sub-clips ("<model>#<name|index>", built by ModelSubClips and keyed "<model key>#<index>").
-// - Owner: T0 (API); T1a implements it (+ Engine::clearPools / clearUnusedPools hooks and the
-//   ModelPool::invalidate lock), T1c the sub-clip branch of getOrLoad.
+// - Engine::clearPools / clearUnusedPools clear it with the other pools.
 // - Thread-safety: every function takes the pool mutex; loads of different keys may run
 //   concurrently (play startup and the shader-variant probe run off the main thread). A clip a
 //   caller holds stays valid after invalidate/clear (shared ownership). Details:
@@ -39,9 +38,9 @@
 //     changes; revision() increases on any change of any key (a cheap per-frame "anything?").
 //   * failures are not cached: getOrLoad tries again on the next call (callers throttle, the
 //     players every 1 s, PoseAnimator style).
-// - Test (T1a): invalidate through AnimationClipDocument::absolutePath() reaches a clip a player
+// - Tested: invalidate through AnimationClipDocument::absolutePath() reaches a clip a player
 //   loaded through the asset-relative component path.
-// - Sub-clip branch (implemented by T1a around T1c's builders): the alias table comes from
+// - Sub-clip branch: the alias table comes from
 //   anim::listModelFileClips(model), the clip from anim::buildModelSubClip("<model>#<name>")
 //   with the name of the resolved index. The builders read the pooled tinygltf model under the
 //   pooled-glTF mutex (MeshSystem::getPooledGLTFMutex), never under the pool mutex.

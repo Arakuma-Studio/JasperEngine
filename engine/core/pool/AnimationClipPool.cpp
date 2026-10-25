@@ -9,8 +9,8 @@
 #include "animation/ModelSubClips.h"
 #include "io/Data.h"
 #include "io/FileData.h"
+#include "subsystem/MeshSystem.h"
 
-#include <filesystem>
 #include <map>
 #include <mutex>
 
@@ -39,7 +39,9 @@ namespace{
         uint64_t clearEpoch = 0;
         std::map<std::string, ModelAliases> models;   // by model key
         uint64_t revision = 0;
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
         AnimationClipPoolTestHooks hooks;
+#endif
     };
 
     // never destroyed: players may release clips during static destruction
@@ -48,9 +50,11 @@ namespace{
         return *pool;
     }
 
+    // a .anim path's key: MeshSystem's model key rule (FileData::getSystemPath, lexically normal,
+    // generic separators), so the sub-clip keys and MeshSystem::invalidateModelFile's agree
     std::string pathKey(const std::string& path){
         if (path.empty()) return std::string();
-        return std::filesystem::path(FileData::getSystemPath(path)).lexically_normal().generic_string();
+        return MeshSystem::getModelFilenameKey(path);
     }
 
     // the entry key of a sub-clip index: "<model key>#<index>"
@@ -131,12 +135,14 @@ namespace{
     // cleared) since the load started; a clip cached meanwhile by another load wins.
     std::shared_ptr<const AnimationClip> insert(PoolState& pool, const std::string& key, const LoadStamp& stamp,
                                                 std::shared_ptr<const AnimationClip> clip){
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
         std::function<void(const std::string&)> beforeInsert;
         {
             std::lock_guard<std::mutex> lock(pool.mutex);
             beforeInsert = pool.hooks.beforeInsert;
         }
         if (beforeInsert) beforeInsert(key);
+#endif
 
         std::lock_guard<std::mutex> lock(pool.mutex);
         auto existing = pool.entries.find(key);
@@ -196,11 +202,13 @@ namespace{
 
 }
 
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
 void jasperengine::setAnimationClipPoolTestHooks(const AnimationClipPoolTestHooks& hooks){
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     pool.hooks = hooks;
 }
+#endif
 
 std::string AnimationClipPool::getKey(const std::string& path){
     Reference ref = reference(path);
@@ -241,7 +249,8 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     }
 
     // A model sub-clip: the model's alias table first (filled once per model), then the entry
-    // of the animation index (the builders are T1c's ModelSubClips). Everything resolved
+    // of the animation index (ModelSubClips' builders: one parse of a model that is not in the
+    // ModelPool serves the table and every index). Everything resolved
     // through a table is stamped with the table's epoch, so an invalidateModel (a reimport that
     // may reorder animations) during the load keeps the result out of the cache.
     anim::SubClipReference parsed;
@@ -251,7 +260,9 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     ModelAliases aliases;
     bool known = false;
     LoadStamp tableStamp;
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
     AnimationClipPoolTestHooks hooks;
+#endif
     {
         std::lock_guard<std::mutex> lock(pool.mutex);
         auto model = pool.models.find(modelKey);
@@ -260,12 +271,18 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
             known = true;
         }
         tableStamp = stampLocked(pool, aliasKey);
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
         hooks = pool.hooks;
+#endif
     }
     if (!known){
         std::vector<anim::ModelClipInfo> infos;
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
         bool listed = hooks.listModelClips ? hooks.listModelClips(parsed.model, infos, error)
                                            : anim::listModelFileClips(parsed.model, infos, error);
+#else
+        bool listed = anim::listModelFileClips(parsed.model, infos, error);
+#endif
         if (!listed) return nullptr;
         for (const anim::ModelClipInfo& info : infos){
             if (info.index < 0) continue;
@@ -306,8 +323,12 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     std::vector<ClipWarning> buildWarnings;
     std::string name = (size_t)index < aliases.names.size() ? aliases.names[index] : std::to_string(index);
     std::string build = anim::formatSubClipReference(parsed.model, name);
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
     bool built = hooks.buildSubClip ? hooks.buildSubClip(build, data, buildWarnings, error)
                                     : anim::buildModelSubClip(build, data, buildWarnings, error);
+#else
+    bool built = anim::buildModelSubClip(build, data, buildWarnings, error);
+#endif
     if (!built) return nullptr;
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data, buildWarnings, nullptr);
     std::shared_ptr<const AnimationClip> cached = insert(pool, key, stamp, clip);
@@ -348,6 +369,9 @@ void AnimationClipPool::invalidate(const std::string& path){
 }
 
 void AnimationClipPool::invalidateModel(const std::string& modelPath){
+    if (modelPath.empty()) return;
+    // the builders' own parse of the file first: a load after this reads the file again
+    anim::dropModelFileParse(modelPath);
     std::string modelKey = pathKey(modelPath);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
@@ -355,6 +379,7 @@ void AnimationClipPool::invalidateModel(const std::string& modelPath){
 }
 
 void AnimationClipPool::clear(){
+    anim::dropModelFileParse(std::string());
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     for (const auto& entry : pool.entries){
@@ -369,6 +394,7 @@ void AnimationClipPool::clear(){
 }
 
 void AnimationClipPool::clearUnused(){
+    anim::dropModelFileParse(std::string());
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     bool changed = false;

@@ -5,13 +5,13 @@
 // - Purpose: glTF/FBX animations as read-only sub-asset clips: references "<model>#<name>" (or
 //   "#<index>" when unnamed), their names, and the builder that turns one animation of a model
 //   into ClipData with paths relative to the model root.
-// - Owner: T0 (API; the reference functions isModelFilePath / isSubClipReference /
-//   parseSubClipReference / formatSubClipReference are implemented); T1c implements the rest. AnimationClipPool calls the builder on request (never
-//   loadGLTF); the editor's Extract (ClipConverters) and get_asset_info use the same functions.
-// - Thread-safety: the reference/name functions are pure. buildModelSubClip / listModelClips
+// - AnimationClipPool calls the builder on request (never loadGLTF); the editor's Extract
+//   (ClipConverters) and get_asset_info use the same functions.
+// - Thread-safety: the reference/name functions are pure. buildModelSubClip / listModelFileClips
 //   may run on any thread (the shader-variant probe loads models off the UI thread): they read
-//   the model through the ModelPool / MeshSystem::loadGLTFFile, hold the pooled-glTF mutex
-//   while reading the shared tinygltf::Model, and keep no reference to it afterwards.
+//   the model through the ModelPool (holding the pooled-glTF mutex while reading the shared
+//   tinygltf::Model, no reference kept afterwards) or their own parse of the file, kept behind a
+//   mutex and never changed once kept (see dropModelFileParse).
 // - Invariants:
 //   * a reference splits at the first '#' that follows a ".gltf", ".glb" or ".fbx" extension
 //     (case-insensitive): model file names may contain '#'.
@@ -79,10 +79,15 @@ namespace jasperengine::anim{
     JASPERENGINE_API bool buildSubClip(const tinygltf::Model& model, int animationIndex, ClipData& out,
                                        std::vector<ClipWarning>& warnings, std::string* error);
 
-    // the same from a model file (asset-relative path; loads it through the ModelPool)
+    // the same from a model file (asset-relative path): the ModelPool's parse when the model is
+    // loaded, else one parse of the file kept for the next calls (the last file parsed this way),
+    // so the N sub-clips of a library file cost one parse
     JASPERENGINE_API bool listModelFileClips(const std::string& modelPath, std::vector<ModelClipInfo>& out, std::string* error);
     JASPERENGINE_API bool buildModelSubClip(const std::string& reference, ClipData& out,
                                             std::vector<ClipWarning>& warnings, std::string* error);
+    // drops the kept parse of `modelPath` (every file when empty): AnimationClipPool::invalidateModel
+    // (MeshSystem::invalidateModelFile / invalidateModelParse), clear and clearUnused call it
+    JASPERENGINE_API void dropModelFileParse(const std::string& modelPath);
 
 }
 
