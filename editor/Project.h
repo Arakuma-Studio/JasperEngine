@@ -653,6 +653,9 @@ namespace jasperengine::editor{
         ShaderOverrides shaderOverrides;
         SourceCodeExportSettings sourceCodeExportSettings;
         DesktopExportSettings desktopExportSettings;
+        // Build Settings > Development Build (S15 R39): a Release game with the profiler and its
+        // --profile options (export: developmentBuild, default off)
+        bool developmentBuild = false;
         ApplicationSettings applicationSettings;
         WebProjectSettings webProjectSettings;
         LinuxProjectSettings linuxProjectSettings;
@@ -1248,6 +1251,8 @@ namespace jasperengine::editor{
         const SourceCodeExportSettings& getSourceCodeExportSettings() const;
         DesktopExportSettings& getDesktopExportSettings();
         const DesktopExportSettings& getDesktopExportSettings() const;
+        bool isDevelopmentBuild() const { return developmentBuild; }
+        void setDevelopmentBuild(bool enabled) { developmentBuild = enabled; }
         ApplicationSettings& getApplicationSettings();
         const ApplicationSettings& getApplicationSettings() const;
 

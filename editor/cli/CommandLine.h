@@ -4,6 +4,8 @@
 #pragma once
 
 #include <filesystem>
+#include <string>
+#include <vector>
 
 namespace jasperengine::editor {
 
@@ -54,6 +56,13 @@ namespace jasperengine::editor {
         // A --project argument (a project directory or its project.yaml) as the absolute,
         // normalized project directory (absoluteArgPath)
         static std::filesystem::path projectArgPath(const std::filesystem::path& path);
+
+        // The profiler's options (--profile, --profile-capture <path>, --profile-frames <n>, also
+        // with "="), anywhere on the command line: main() removes them before the subcommands
+        // parse theirs, and the engine gets them at start (App::engineInit); the capture path is
+        // made absolute. False with a message on stderr for a flag without its value.
+        static bool takeProfilerFlags(std::vector<char*>& args);
+        static const std::vector<std::string>& takenProfilerFlags();
     };
 
 }

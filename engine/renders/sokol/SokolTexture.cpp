@@ -833,6 +833,33 @@ bool SokolTexture::createAliasView(const SokolTexture& source, const char* label
     return sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
 }
 
+bool SokolTexture::createImageAliasView(uint32_t imageId, int mipLevel, const char* label){
+    destroyTexture();
+    const sg_image source = {imageId};
+    if (imageId == SG_INVALID_ID || sg_query_image_state(source) != SG_RESOURCESTATE_VALID)
+        return false;
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_NEAREST;
+    samplerDesc.mag_filter = SG_FILTER_NEAREST;
+    samplerDesc.mipmap_filter = SG_FILTER_NEAREST;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_w = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.label = label;
+
+    image = source;
+    aliasImage = true;
+    sampler = sg_make_sampler(samplerDesc);
+    sg_view_desc viewDesc = {};
+    viewDesc.texture.image = image;
+    viewDesc.texture.mip_levels.base = mipLevel;
+    viewDesc.texture.mip_levels.count = 1;
+    viewDesc.label = label;
+    view = sg_make_view(viewDesc);
+    return sampler.id != SG_INVALID_ID && sg_query_view_state(view) == SG_RESOURCESTATE_VALID;
+}
+
 void SokolTexture::destroyTexture(){
     if (view.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "object/Camera.h"
+#include "render/FramebufferRender.h"
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -25,6 +26,10 @@ namespace jasperengine::editor {
         // framebuffer is not created or the readback fails.
         static bool encodeFramebufferPng(Framebuffer* framebuffer, std::vector<uint8_t>& out, bool flipY = false,
                                          int maxWidth = 0, int* outWidth = nullptr, int* outHeight = nullptr);
+
+        // A colour target's pixels, RGBA8 rows top first (the Frame Debugger's pass preview read
+        // back for MCP). Synchronous, main thread. False when it is not created or the read fails.
+        static bool readRenderPixels(FramebufferRender* render, int width, int height, std::vector<uint8_t>& rgba);
 
         static Vector2 getRectTransformCenter(Scene* scene, Entity entity, const RectTransformComponent& layout);
     };

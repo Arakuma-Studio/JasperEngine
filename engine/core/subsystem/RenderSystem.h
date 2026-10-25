@@ -1573,6 +1573,9 @@ namespace jasperengine{
 		float dynamicResolutionOverride = 0.0f;
 		// > 0: GPU milliseconds given to the controller in place of a measurement (MCP fake_gpu_ms)
 		float dynamicResolutionFakeGpuMs = 0.0f;
+		// running, it keeps the GPU timer on for its GPU law (S15 R5)
+		bool dynamicResolutionGpuTiming = false;
+		void setDynamicResolutionGpuTiming(bool on);
 		// >= 0: the uber pass's time pinned, seconds (MCP set_post_processing_debug time_seconds)
 		double postDebugTime = -1.0;
 		// the controller's tick for the frame

@@ -1,0 +1,6 @@
+# JASPERENGINE_FRAME_STATS=1 lines of tools/fixtures/post-processing before S15 (spec S15 AC9), the
+# "Frame stats (frame N): " prefix left out (N depends on how long loading took). Line 1: the
+# plain run; line 2: with JASPERENGINE_FRAME_STATS_ACTIONS=1. tools/smoke-test.sh with
+# SMOKE_FRAME_STATS_BASELINE=engine/tests/data/framestats_baseline.txt checks them.
+3 passes, 56 draws, 56 pipelines applied, 56 bindings applied, 230 uniform uploads (92992 bytes); images 19 alive (19 made, 0 made last frame), pipelines 88 alive (88 made), views 26 alive (26 made); pass list: camera rtt 480x270, camera 1280x720, camera layer 1280x720
+3 passes, 56 draws, 56 pipelines applied, 56 bindings applied, 230 uniform uploads (92992 bytes); images 19 alive (19 made, 0 made last frame), pipelines 88 alive (88 made), views 26 alive (26 made); pass list: camera rtt 480x270 {clear, depth discard}, camera 1280x720 {clear, depth discard}, camera layer 1280x720 {load, depth discard}
