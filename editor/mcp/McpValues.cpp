@@ -205,16 +205,6 @@ const EnumOptions& tableOptions(const reflect::EnumDesc& desc, uint64_t mask = 0
     return options;
 }
 
-
-
-
-
-
-
-
-
-
-
 const EnumOptions& atmosphereQualityOptions() {
     static const EnumOptions options = {
         {(int)AtmosphereQuality::OFF, "off", "Off"},
@@ -224,42 +214,6 @@ const EnumOptions& atmosphereQualityOptions() {
     };
     return options;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const EnumOptions& lightStateOptions() {
     static const EnumOptions options = {
@@ -482,7 +436,8 @@ std::string McpValues::propertyTypeName(PropertyType type) {
 // ==================================================================== enums
 
 const McpValues::EnumOptions& McpValues::easeOptions() {
-    return tableOptions(reflect::enums::kEaseType);
+    // a custom curve is a script's function: MCP offers the named eases only
+    return tableOptions(reflect::enums::kEaseType, ~reflect::enums::bit((int)EaseType::CUSTOM));
 }
 
 const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
@@ -526,6 +481,7 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
     const reflect::ComponentDesc* desc = reflect::find(component);
     const reflect::FieldDesc* field = desc ? reflect::findField(*desc, propertyName) : nullptr;
     if (!field || !field->enumDesc) return nullptr;
+    if (field->enumDesc == &reflect::enums::kEaseType && !field->enumMask) return &easeOptions();
     return &tableOptions(*field->enumDesc, field->enumMask);
 }
 

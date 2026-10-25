@@ -434,17 +434,9 @@ namespace jasperengine::editor {
         static YAML::Node encodeSpriteAnimationComponent(const SpriteAnimationComponent& spriteanim);
         static SpriteAnimationComponent decodeSpriteAnimationComponent(const YAML::Node& node, const SpriteAnimationComponent* oldSpriteanim = nullptr);
 
-        static YAML::Node encodeKeyframeTracksComponent(const KeyframeTracksComponent& tracks);
-        static KeyframeTracksComponent decodeKeyframeTracksComponent(const YAML::Node& node, const KeyframeTracksComponent* oldTracks = nullptr);
 
-        static YAML::Node encodeTranslateTracksComponent(const TranslateTracksComponent& tracks);
-        static TranslateTracksComponent decodeTranslateTracksComponent(const YAML::Node& node, const TranslateTracksComponent* oldTracks = nullptr);
 
-        static YAML::Node encodeRotateTracksComponent(const RotateTracksComponent& tracks);
-        static RotateTracksComponent decodeRotateTracksComponent(const YAML::Node& node, const RotateTracksComponent* oldTracks = nullptr);
 
-        static YAML::Node encodeScaleTracksComponent(const ScaleTracksComponent& tracks);
-        static ScaleTracksComponent decodeScaleTracksComponent(const YAML::Node& node, const ScaleTracksComponent* oldTracks = nullptr);
 
         static YAML::Node encodeMorphTracksComponent(const MorphTracksComponent& tracks);
         static MorphTracksComponent decodeMorphTracksComponent(const YAML::Node& node, const MorphTracksComponent* oldTracks = nullptr);

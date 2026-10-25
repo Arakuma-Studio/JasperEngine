@@ -5206,60 +5206,6 @@ SpriteAnimationComponent editor::Stream::decodeSpriteAnimationComponent(const YA
     return spriteanim;
 }
 
-// ── AnimationComponent ──
-
-YAML::Node editor::Stream::encodeKeyframeTracksComponent(const KeyframeTracksComponent& tracks) {
-    YAML::Node node;
-
-    node["index"] = tracks.index;
-    node["interpolation"] = tracks.interpolation;
-
-    YAML::Node timesNode;
-    for (float t : tracks.times) {
-        timesNode.push_back(t);
-    }
-    node["times"] = timesNode;
-
-    // Imported linear tracks keep this list empty, while explicit entries from
-    // the Properties editor must survive a save even when they are linear.
-    if (!tracks.easings.empty()) {
-        YAML::Node easingsNode;
-        for (EaseType e : tracks.easings) {
-            easingsNode.push_back(easeTypeToString(e));
-        }
-        node["easings"] = easingsNode;
-    }
-
-    return node;
-}
-
-KeyframeTracksComponent editor::Stream::decodeKeyframeTracksComponent(const YAML::Node& node, const KeyframeTracksComponent* oldTracks) {
-    KeyframeTracksComponent tracks;
-
-    if (oldTracks) {
-        tracks = *oldTracks;
-    }
-
-    if (node["index"]) tracks.index = YamlNumbers::as<int>(node["index"]);
-    if (node["interpolation"]) tracks.interpolation = YamlNumbers::as<float>(node["interpolation"]);
-
-    if (node["times"]) {
-        tracks.times.clear();
-        for (const YAML::Node& t : node["times"]) {
-            tracks.times.push_back(YamlNumbers::as<float>(t));
-        }
-    }
-
-    tracks.easings.clear();
-    if (node["easings"]) {
-        for (const YAML::Node& e : node["easings"]) {
-            tracks.easings.push_back(decodeEnumValue(e, StreamSchema::easeType()));
-        }
-    }
-
-    return tracks;
-}
-
 // Value/tangent list plumbing shared by the keyframe track components below
 template<typename T, typename EncodeFn>
 static YAML::Node encodeList(const std::vector<T>& values, EncodeFn encodeValue) {
@@ -5276,22 +5222,6 @@ static void decodeListInto(const YAML::Node& node, std::vector<T>& values, Decod
     for (const YAML::Node& v : node) {
         values.push_back(decodeValue(v));
     }
-}
-
-static YAML::Node encodeFloatList(const std::vector<float>& values) {
-    YAML::Node node;
-    for (float f : values) {
-        node.push_back(f);
-    }
-    return node;
-}
-
-static std::vector<float> decodeFloatList(const YAML::Node& node) {
-    std::vector<float> values;
-    for (const YAML::Node& f : node) {
-        values.push_back(editor::YamlNumbers::as<float>(f));
-    }
-    return values;
 }
 
 // Encodes values plus the optional Hermite tangents (GLTF CUBICSPLINE clips);
@@ -5324,52 +5254,20 @@ static void decodeTrackLists(const YAML::Node& node, Tracks& tracks, DecodeFn de
     }
 }
 
-YAML::Node editor::Stream::encodeTranslateTracksComponent(const TranslateTracksComponent& tracks) {
-    return encodeTrackLists(tracks, encodeVector3);
-}
-
-TranslateTracksComponent editor::Stream::decodeTranslateTracksComponent(const YAML::Node& node, const TranslateTracksComponent* oldTracks) {
-    TranslateTracksComponent tracks;
-
-    if (oldTracks) {
-        tracks = *oldTracks;
+static YAML::Node encodeFloatList(const std::vector<float>& values) {
+    YAML::Node node;
+    for (float f : values) {
+        node.push_back(f);
     }
-
-    decodeTrackLists(node, tracks, decodeVector3);
-
-    return tracks;
+    return node;
 }
 
-YAML::Node editor::Stream::encodeRotateTracksComponent(const RotateTracksComponent& tracks) {
-    return encodeTrackLists(tracks, encodeQuaternion);
-}
-
-RotateTracksComponent editor::Stream::decodeRotateTracksComponent(const YAML::Node& node, const RotateTracksComponent* oldTracks) {
-    RotateTracksComponent tracks;
-
-    if (oldTracks) {
-        tracks = *oldTracks;
+static std::vector<float> decodeFloatList(const YAML::Node& node) {
+    std::vector<float> values;
+    for (const YAML::Node& f : node) {
+        values.push_back(editor::YamlNumbers::as<float>(f));
     }
-
-    decodeTrackLists(node, tracks, decodeQuaternion);
-
-    return tracks;
-}
-
-YAML::Node editor::Stream::encodeScaleTracksComponent(const ScaleTracksComponent& tracks) {
-    return encodeTrackLists(tracks, encodeVector3);
-}
-
-ScaleTracksComponent editor::Stream::decodeScaleTracksComponent(const YAML::Node& node, const ScaleTracksComponent* oldTracks) {
-    ScaleTracksComponent tracks;
-
-    if (oldTracks) {
-        tracks = *oldTracks;
-    }
-
-    decodeTrackLists(node, tracks, decodeVector3);
-
-    return tracks;
+    return values;
 }
 
 YAML::Node editor::Stream::encodeMorphTracksComponent(const MorphTracksComponent& tracks) {

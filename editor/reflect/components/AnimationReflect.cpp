@@ -168,7 +168,8 @@ namespace {
         JE_FIELD(BoneComponent, offsetMatrix, .ops = &kOffsetMatrixOps, .flags = Derived | Hidden),
     };
 
-    // ---------------------------------------------------------------- tracks and sprite animation (their own codecs)
+    // ---------------------------------------------------------------- tracks and sprite animation (the sprite animation
+    // and the morph tracks keep their own codecs: a counted array, lists of lists)
 
     constexpr FieldDesc kSpriteAnimationFields[] = {
         JE_FIELD(SpriteAnimationComponent, loop),
@@ -183,18 +184,21 @@ namespace {
 
     constexpr uint32_t kTrackList = ListWhole | ListElements | ListTemplate;
 
+    // the times always written ("~" when empty); the easings only when set (imported linear
+    // tracks keep none), read as empty when absent
     constexpr FieldDesc kKeyframeTracksFields[] = {
         JE_FIELD(KeyframeTracksComponent, index, .flags = NoDefault),
         JE_FIELD(KeyframeTracksComponent, interpolation),
-        JE_FIELD(KeyframeTracksComponent, times, .flags = kTrackList, .unit = Unit::Seconds),
-        JE_FIELD(KeyframeTracksComponent, easings, .enumDesc = &enums::kEaseType, .flags = kTrackList),
+        JE_FIELD(KeyframeTracksComponent, times, .flags = kTrackList | NullIfEmpty, .unit = Unit::Seconds),
+        JE_FIELD(KeyframeTracksComponent, easings, .enumDesc = &enums::kEaseType, .flags = kTrackList | OmitIfDefault),
     };
 
-    // values, and the Hermite tangents of a GLTF CUBICSPLINE clip (kept beside them by key edits)
+    // values ("~" when empty), and the Hermite tangents of a GLTF CUBICSPLINE clip (kept beside
+    // them by key edits): written only when set, read as empty when absent
 #define JE_TRACK_FIELDS(T) \
-        JE_FIELD(T, values, .flags = kTrackList), \
-        JE_FIELD(T, inTangents, .flags = ListWhole), \
-        JE_FIELD(T, outTangents, .flags = ListWhole)
+        JE_FIELD(T, values, .flags = kTrackList | NullIfEmpty), \
+        JE_FIELD(T, inTangents, .flags = ListWhole | OmitIfDefault), \
+        JE_FIELD(T, outTangents, .flags = ListWhole | OmitIfDefault)
 
     constexpr FieldDesc kTranslateTracksFields[] = {JE_TRACK_FIELDS(TranslateTracksComponent)};
     constexpr FieldDesc kRotateTracksFields[] = {JE_TRACK_FIELDS(RotateTracksComponent)};
@@ -204,10 +208,6 @@ namespace {
 #undef JE_TRACK_FIELDS
 
     const ComponentCodec kSpriteAnimationCodec = JE_STREAM_CODEC(SpriteAnimationComponent, encodeSpriteAnimationComponent, decodeSpriteAnimationComponent);
-    const ComponentCodec kKeyframeTracksCodec = JE_STREAM_CODEC(KeyframeTracksComponent, encodeKeyframeTracksComponent, decodeKeyframeTracksComponent);
-    const ComponentCodec kTranslateTracksCodec = JE_STREAM_CODEC(TranslateTracksComponent, encodeTranslateTracksComponent, decodeTranslateTracksComponent);
-    const ComponentCodec kRotateTracksCodec = JE_STREAM_CODEC(RotateTracksComponent, encodeRotateTracksComponent, decodeRotateTracksComponent);
-    const ComponentCodec kScaleTracksCodec = JE_STREAM_CODEC(ScaleTracksComponent, encodeScaleTracksComponent, decodeScaleTracksComponent);
     const ComponentCodec kMorphTracksCodec = JE_STREAM_CODEC(MorphTracksComponent, encodeMorphTracksComponent, decodeMorphTracksComponent);
 
 
@@ -301,76 +301,40 @@ const ComponentDesc kSpriteAnimationDesc{
     .extraKeys = kSpriteAnimationKnownKeys,
 };
 
-namespace {
-
-    // the keys its codec reads
-    constexpr const char* kKeyframeTracksKnownKeys[] = {"easings", "index", "interpolation", "times"};
-
-}
-
 const ComponentDesc kKeyframeTracksDesc{
     .type = ComponentType::KeyframeTracksComponent, .cppName = "KeyframeTracksComponent", .key = "keyframetracks",
     .displayName = "Keyframe Tracks", .icon = ICON_FA_KEY,
     .body = JE_STRUCT_DESC(KeyframeTracksComponent, "KeyframeTracksComponent", kKeyframeTracksFields),
     .hasEnabled = false, .structural = true, JE_COMPONENT_ACCESS(KeyframeTracksComponent),
-    .codec = &kKeyframeTracksCodec,
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createKeyframeTracksComponent),
-    .extraKeys = kKeyframeTracksKnownKeys,
 };
-
-namespace {
-
-    // the keys its codec reads
-    constexpr const char* kTranslateTracksKnownKeys[] = {"inTangents", "outTangents", "values"};
-
-}
 
 const ComponentDesc kTranslateTracksDesc{
     .type = ComponentType::TranslateTracksComponent, .cppName = "TranslateTracksComponent", .key = "translatetracks",
     .displayName = "Position Tracks", .icon = ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT,
     .body = JE_STRUCT_DESC(TranslateTracksComponent, "TranslateTracksComponent", kTranslateTracksFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(TranslateTracksComponent),
-    .codec = &kTranslateTracksCodec,
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createTranslateTracksComponent),
-    .extraKeys = kTranslateTracksKnownKeys,
 };
-
-namespace {
-
-    // the keys its codec reads
-    constexpr const char* kRotateTracksKnownKeys[] = {"inTangents", "outTangents", "values"};
-
-}
 
 const ComponentDesc kRotateTracksDesc{
     .type = ComponentType::RotateTracksComponent, .cppName = "RotateTracksComponent", .key = "rotatetracks",
     .displayName = "Rotation Tracks", .icon = ICON_FA_CIRCLE_NOTCH,
     .body = JE_STRUCT_DESC(RotateTracksComponent, "RotateTracksComponent", kRotateTracksFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(RotateTracksComponent),
-    .codec = &kRotateTracksCodec,
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createRotateTracksComponent),
-    .extraKeys = kRotateTracksKnownKeys,
 };
-
-namespace {
-
-    // the keys its codec reads
-    constexpr const char* kScaleTracksKnownKeys[] = {"inTangents", "outTangents", "values"};
-
-}
 
 const ComponentDesc kScaleTracksDesc{
     .type = ComponentType::ScaleTracksComponent, .cppName = "ScaleTracksComponent", .key = "scaletracks",
     .displayName = "Scale Tracks", .icon = ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER,
     .body = JE_STRUCT_DESC(ScaleTracksComponent, "ScaleTracksComponent", kScaleTracksFields),
     .hasEnabled = false, .structural = false, JE_COMPONENT_ACCESS(ScaleTracksComponent),
-    .codec = &kScaleTracksCodec,
     .decodeApply = DecodeApply::MarkOnly,
     .codegen = JE_FACTORY_CODEGEN(createScaleTracksComponent),
-    .extraKeys = kScaleTracksKnownKeys,
 };
 
 namespace {

@@ -160,6 +160,10 @@ PARITY_COMPONENT(ColorTween)
 PARITY_COMPONENT(AlphaTween)
 PARITY_COMPONENT(Animation)
 PARITY_COMPONENT(Bone)
+PARITY_COMPONENT(KeyframeTracks)
+PARITY_COMPONENT(TranslateTracks)
+PARITY_COMPONENT(RotateTracks)
+PARITY_COMPONENT(ScaleTracks)
 
 // PostProcessingSettings (R15): the scene's post-processing block written and read through its
 // reflection fields gives the text and values of the hand-written codec
