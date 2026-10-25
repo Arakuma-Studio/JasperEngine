@@ -54,6 +54,8 @@ namespace jasperengine::editor::reload {
     // Lua and C++ scripts: script properties, Lua syntax, lua-language-server stubs
     // (`all`: every attached script, a full sync)
     void reloadScripts(Context& ctx, const std::vector<std::filesystem::path>& files, bool all);
+    // Whether the code editor has a buffer of `path`
+    bool isOpenInCodeEditor(const std::filesystem::path& path);
     // Open code editor buffers of `files` (all buffers when `all`)
     void reloadCodeEditorBuffers(Context& ctx, const std::vector<std::filesystem::path>& files, bool all);
     // HTML UI documents reading a changed file (html/css, images, fonts, json/lottie, effects)

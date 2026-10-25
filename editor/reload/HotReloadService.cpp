@@ -311,6 +311,9 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         }
         const std::string kind = reload::kindOf(change.path);
         if (kind.empty()) continue;
+        // a text file reloads only the code editor's buffer of it: with none open there is
+        // nothing to stamp or read (a checkout of 10,000 data files)
+        if (kind == "text" && !reload::isOpenInCodeEditor(change.path)) continue;
         // reloaded already (by the watcher, a tool's own sync, another call's pick-up): reported,
         // not done again (the shared applied-stamp table, R29)
         if (!options.force && !options.full && isCurrent(change) && kind != "scene" && kind != "project") {

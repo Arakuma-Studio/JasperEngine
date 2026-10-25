@@ -621,9 +621,18 @@ Each backend test is parameterised over `{Native, Polling}`.
   rules tell a move with its meta, a rename without it (orphan adoption), a copy and an edit
   apart. A scan older than the database's last change is walked again. S04's 2 s poll is
   removed: nothing walks the disk without a watcher batch, Assets > Refresh or a tool answering
-  from the database (`refreshAssetDatabase(true)`); an MCP call's pick-up refreshes at once.
+  from the database (`refreshAssetDatabase(true)`, which S04's tools call first). An MCP
+  call's pick-up starts the walk like the watcher does instead of walking on the main thread.
   S05's per-path `AssetDatabase::refreshFile` and the prefab-only rename path are gone. S04's
   file operations report to the ledger (`assetio::renameFile`, `AssetOps::copy` and
   `removeCopy`; metas through `io::writeFileAtomic`'s publish listener), so they are not echoed.
   Tests: `HotReloadServiceTests.ExternalRenameKeepsTheGuidThroughTheWatcher` (with and without
   the meta) and `HotReloadServiceTests.NoAssetPollWithoutTheWatcher`.
+  AC20 with S04: `refresh(scan)` runs on the main thread, and S04 rebuilt its whole redirect
+  index after every new file (10,000 new files: 4.3 s) and read every changed file's meta. It now
+  indexes each new entry alone (one rebuild at the end: 3.2 s) and reads no meta whose time and
+  size did not change (R21's rule; a checkout of 10,000 known files reads none). 10,000 files
+  that are new to the database still write 10,000 metas on the main thread (S04 R1, ~3 s on the
+  build server): `test_bulk_checkout` therefore creates its files first and measures the burst
+  that rewrites them, as a checkout of files the project has does (their metas come along), and
+  asks `editor_status` for the whole 10 s, also after the watcher settled.

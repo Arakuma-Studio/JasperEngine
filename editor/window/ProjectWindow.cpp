@@ -307,14 +307,15 @@ void editor::ProjectWindow::handleExternalDragLeave() {
 }
 
 void editor::ProjectWindow::notifyResourceFileChanged(const fs::path& filePath) {
-    std::error_code ec;
-    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
-        return;
-    }
-
+    // by extension first: most changed files have no thumbnail (no stat for them)
     FileType type = classifyThumbnailFileType(filePath);
 
     if (type == FileType::NONE) {
+        return;
+    }
+
+    std::error_code ec;
+    if (!fs::exists(filePath, ec) || ec || fs::is_directory(filePath, ec) || ec) {
         return;
     }
 

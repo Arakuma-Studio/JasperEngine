@@ -194,7 +194,7 @@ void editor::Project::refreshAssetDatabase(bool force) {
     onAssetFilesChanged(changes);
 }
 
-bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges, bool now) {
+bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges) {
     if (!assetDatabase.isOpen() || projectPath.empty()) {
         return true;
     }
@@ -205,13 +205,11 @@ bool editor::Project::applyFileChanges(std::span<const FileChange> fileChanges, 
         return true;
     }
     // S04's refresh tells the cases apart (a move that carried its meta, a file renamed
-    // without it, a copy, an edit): a batch asks for a walk of the disk, not per-path updates
-    if (now) {
-        refreshAssetDatabase(true);
-    } else {
-        assetScanRequested = true;
-        updateAssetScan();
-    }
+    // without it, a copy, an edit): a batch asks for a walk of the disk, not per-path updates.
+    // The walk is a Background job (an MCP call's pick-up too: a tool answering from the
+    // database refreshes it first)
+    assetScanRequested = true;
+    updateAssetScan();
     return true;
 }
 

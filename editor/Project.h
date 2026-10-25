@@ -1671,10 +1671,9 @@ namespace jasperengine::editor{
         // Every editor loop iteration: starts or applies the walk the watcher asked for
         void updateAssetScan() { refreshAssetDatabase(false); }
         // Files added, removed, renamed or edited on disk by another program (the file
-        // watcher, S05 R14): the database looks at the disk again, on a Background job, or now
-        // when `now` (an MCP call waiting for its pick-up). False while a scene plays (nothing
-        // applied: refreshAssetDatabase after Play).
-        bool applyFileChanges(std::span<const FileChange> changes, bool now = false);
+        // watcher, S05 R14): the database looks at the disk again, on a Background job. False
+        // while a scene plays (nothing applied: refreshAssetDatabase after Play).
+        bool applyFileChanges(std::span<const FileChange> changes);
         // A prefab file or a directory holding some appeared (a copy, a deleted file put back
         // by an undo): they are registered, and Missing Prefab instances they resolve relinked
         void importPrefabFiles(const std::filesystem::path& path, bool copy = false, std::map<std::string, std::string>* copyGuids = nullptr);

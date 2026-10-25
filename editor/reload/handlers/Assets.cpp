@@ -30,8 +30,7 @@ void reload::applyAssetChanges(Context& ctx, const std::vector<FileChange>& chan
         if (ctx.playing) ctx.service.refreshAssetsAfterPlay();
         else ctx.project.refreshAssetDatabase(true);
     } else if (!external.empty()) {
-        // an MCP call's pick-up answers from the database next: it looks at the disk now
-        if (!ctx.project.applyFileChanges(external, ctx.options.fromMcp)) ctx.service.refreshAssetsAfterPlay();
+        if (!ctx.project.applyFileChanges(external)) ctx.service.refreshAssetsAfterPlay();
         for (const FileChange& change : external) {
             if (change.kind == FileChangeKind::Modified && !change.directory && Util::isPrefabFile(watch::pathToUtf8(change.path))) {
                 ctx.service.recordDone("prefab", change.path, 0.0);

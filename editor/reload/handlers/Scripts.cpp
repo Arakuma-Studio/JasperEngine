@@ -56,6 +56,11 @@ namespace {
 
 }
 
+bool reload::isOpenInCodeEditor(const fs::path& path) {
+    CodeEditor* editor = getEditorHost().getCodeEditor();
+    return editor && editor->isFileOpen(path.string());
+}
+
 void reload::reloadCodeEditorBuffers(Context& ctx, const std::vector<fs::path>& files, bool all) {
     CodeEditor* editor = getEditorHost().getCodeEditor();
     if (!editor || (files.empty() && !all)) return;

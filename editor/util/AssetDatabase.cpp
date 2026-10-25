@@ -477,6 +477,22 @@ void editor::AssetDatabase::reindexRedirects() {
     version++;
 }
 
+void editor::AssetDatabase::indexRedirectsOf(const std::string& relative) {
+    auto it = byPath.find(relativeKeyOf(relative));
+    if (it == byPath.end()) {
+        return;
+    }
+    for (const Guid& former : it->second.formerGuids) {
+        if (!byGuid.count(former)) {
+            byFormer[former] = it->first;
+        }
+    }
+    for (const SubAsset& sub : it->second.subAssets) {
+        bySubAsset[sub.guid] = {it->first, sub.key};
+    }
+    version++;
+}
+
 bool editor::AssetDatabase::guidInUse(const Guid& guid) const {
     return byGuid.count(guid) || byFormer.count(guid) || bySubAsset.count(guid);
 }
@@ -1329,6 +1345,22 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
             continue;
         }
         dirty = true;
+        if (sidecar && metaSame && known.hasMeta) {
+            // only the content changed: the identity is in the meta, which did not (R21's rule:
+            // a meta is read when its size or time changed), so a checkout reads no metas
+            Entry updated = known;
+            updated.writeTime = time;
+            updated.size = size;
+            updated.hasContentHash = false;
+            if (refreshSubAssets(updated, &known)) {
+                writeIdentity(updated);
+                statFile(AssetTypes::metaPathFor(relative).generic_string(), updated.metaWriteTime, updated.metaSize);
+            }
+            changes.push_back({Change::Type::Modified, updated.guid.str(), relative, {}});
+            insert(std::move(updated));
+            queueHash(relative);
+            continue;
+        }
         Entry updated;
         const bool identified = readIdentity(relative, type, updated, nullptr);
         if (!identified) {
@@ -1430,14 +1462,14 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
             if (entry.hasMeta) statFile(AssetTypes::metaPathFor(relative).generic_string(), entry.metaWriteTime, entry.metaSize);
             changes.push_back({Change::Type::Added, entry.guid.str(), relative, {}});
             insert(std::move(entry));
-            reindexRedirects();
+            indexRedirectsOf(relative);
             queueHash(relative);
             continue;
         }
         if (refreshSubAssets(entry, nullptr)) writeIdentity(entry);
         changes.push_back({Change::Type::Added, entry.guid.str(), relative, {}});
         insert(std::move(entry));
-        reindexRedirects();
+        indexRedirectsOf(relative);
         queueHash(relative);
     }
 
@@ -1455,7 +1487,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         Entry entry = identify(relative, type, legacyGuid(relative));
         changes.push_back({Change::Type::Added, entry.guid.str(), relative, {}});
         insert(std::move(entry));
-        reindexRedirects();
+        indexRedirectsOf(relative);
         queueHash(relative);
     }
 
