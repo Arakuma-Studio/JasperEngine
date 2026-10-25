@@ -372,7 +372,11 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     if (prop & (1 << 9))  defs.push_back({"HAS_VERTEX_COLOR_VEC3", "1"});     // 'Vc3'
     if (prop & (1 << 10)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});     // 'Vc4'
     if (prop & (1 << 11)) defs.push_back({"HAS_TEXTURERECT", "1"});           // 'Txr'
-    if (prop & (1 << 12)) defs.push_back({"HAS_FOG", "1"});                   // 'Fog'
+    if (prop & (1 << 12)) {                                                    // 'Fog'
+        defs.push_back({"HAS_FOG", "1"});
+        // the height fog, chosen by its block at run time (includes/fog.glsl, S12)
+        defs.push_back({"HAS_HEIGHT_FOG", "1"});
+    }
     if (prop & (1 << 13)) defs.push_back({"HAS_SKINNING", "1"});              // 'Ski'
     if (prop & (1 << 14)) defs.push_back({"HAS_MORPHTARGET", "1"});           // 'Mta'
     if (prop & (1 << 15)) defs.push_back({"HAS_MORPHNORMAL", "1"});           // 'Mnr'
@@ -464,7 +468,8 @@ void addLinesPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, co
 void addUberPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint32_t prop) {
     static const char* const defines[] = {"UBER_FXAA", "UBER_CHROMATIC", "UBER_PIXELATE", "UBER_CRT", "UBER_EDGE", "UBER_GRAIN",
                                           "UBER_SHARPEN", "UBER_LUT", "UBER_VIGNETTE", "UBER_DITHER", "UBER_BLOOM", "UBER_BLUR",
-                                          "UBER_UPSCALE"};
+                                          "UBER_UPSCALE", "UBER_VHS", "UBER_HALATION", "UBER_FILM_DAMAGE", "UBER_GRAIN_LENS",
+                                          "UBER_GRAIN_FILMIC"};
     for (int bit = 0; bit < (int)(sizeof(defines) / sizeof(defines[0])); bit++) {
         if (prop & (1u << bit)) defs.push_back({defines[bit], "1"});
     }
@@ -584,12 +589,40 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint32
             args.defines.push_back({"JFX_STEP_FORM", "1"});
         if (scatterForm)
             args.defines.push_back({"JFX_SCATTER_FORM", "1"});
+    }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "atmosphere_depth.frag";
+    }else if (shaderType == ShaderType::VOLUMETRIC_FOG){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_fog.frag";
+    }else if (shaderType == ShaderType::ATMOSPHERE_DENOISE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "atmosphere_denoise.frag";
+    }else if (shaderType == ShaderType::VOLUMETRIC_CLOUDS){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_clouds.frag";
+    }else if (shaderType == ShaderType::SKY_COMPOSITE){
+        // at the far plane: the depth test passes on the sky pixels only
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "sky_composite.frag";
+        args.defines.push_back({"FULLSCREEN_AT_FAR", "1"});
+    }else if (shaderType == ShaderType::VOLUMETRIC_COMPOSITE){
+        args.vert_file = "fullscreen.vert";
+        args.frag_file = "volumetric_composite.frag";
     }else{
         return false;
     }
 
     if (shaderType == ShaderType::MESH || shaderType == ShaderType::GBUFFER){
         args.defines.push_back({"MAX_TERRAIN_LAYERS", std::to_string(MAX_TERRAIN_LAYERS)});
+    }
+    if (shaderType == ShaderType::VOLUMETRIC_FOG){
+        // the light shafts sample S10's directional cascades (includes/shadow_sampling.glsl)
+        args.defines.push_back({"MAX_SHADOW_ATLAS_SLOTS", std::to_string(MAX_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_POINT_SHADOW_ATLAS_SLOTS", std::to_string(MAX_POINT_SHADOW_ATLAS_SLOTS)});
+        args.defines.push_back({"MAX_SHADOWCASCADES", std::to_string(MAX_SHADOWCASCADES)});
+        args.defines.push_back({"MAX_POINT_SHADOW_LIGHTS", std::to_string(MAX_POINT_SHADOW_LIGHTS)});
+        args.defines.push_back({"SHADOW_CUBE_FACES", std::to_string(SHADOW_CUBE_FACES)});
     }
     if (shaderType == ShaderType::MESH){
         args.defines.push_back({"MAX_LIGHTS", std::to_string(MAX_LIGHTS)}); // legacy u_fs_lighting

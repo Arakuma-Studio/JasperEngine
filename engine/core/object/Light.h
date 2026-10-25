@@ -24,6 +24,10 @@ namespace jasperengine{
         void setShading(LightShading shading);
         LightShading getShading() const;
 
+        // how much of this point or spot light the volumetric fog scatters (0: none)
+        void setVolumetricIntensity(float volumetricIntensity);
+        float getVolumetricIntensity() const;
+
         Light(Scene* scene);
         Light(Scene* scene, Entity entity);
         virtual ~Light();

@@ -13,6 +13,10 @@ void main() {
         // texel this fragment writes is at the flipped coordinate
         v_texcoord.y = 1.0 - v_texcoord.y;
     #endif
+    #ifdef FULLSCREEN_AT_FAR
+        // on the far plane (window depth 1): a LESS_EQUAL test passes where nothing was drawn
+        gl_Position.z = 1.0;
+    #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range
         gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;

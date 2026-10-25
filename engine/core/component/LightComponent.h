@@ -89,6 +89,10 @@ namespace jasperengine{
 
         LightShading shading = LightShading::BOTH;
 
+        // how much a point or spot light lights the volumetric fog (High atmosphere quality;
+        // 0: none). The sun's share of the fog is the Fog's directional inscattering.
+        float volumetricIntensity = 1.0f;
+
         // Shadows (docs/rendering/shadows.md). Unity's Shadow Type is shadows + softShadows:
         // No Shadows, Hard Shadows (one bilinear comparison) or Soft Shadows (the tier's filter)
         bool shadows = false;

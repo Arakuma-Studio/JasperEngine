@@ -67,7 +67,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::LineRendererComponent, "Draws line segments"},
             {ComponentType::PointsComponent, "Draws a point cloud"},
             {ComponentType::SkyboxComponent, "Skybox cube map and scene environment"},
-            {ComponentType::FogComponent, "Distance fog"},
+            {ComponentType::FogComponent, "Distance or height fog, optionally volumetric"},
             {ComponentType::MirrorComponent, "Planar reflection surface"},
             {ComponentType::ReflectionProbeComponent, "Local environment reflection"},
             {ComponentType::Light2DComponent, "2D light with radius falloff"},
@@ -75,6 +75,8 @@ ComponentAddDialog::ComponentAddDialog() {
         }},
         {"Effects", ICON_FA_FIRE, {
             {ComponentType::ParticleSystemComponent, "Emits and animates particles"},
+            {ComponentType::LocalVolumetricFogComponent, "A box or sphere of extra volumetric fog"},
+            {ComponentType::VolumetricCloudsComponent, "Raymarched clouds lit by the sun and the sky"},
         }},
         {"Physics", ICON_FA_CUBE, {
             {ComponentType::RigidbodyComponent, "Rigidbody with colliders, simulated by Jolt"},

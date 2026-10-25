@@ -138,6 +138,30 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::SHADOW_CACHE;
         return true;
     }
+    if (typeToken == "atmospheredepth") {
+        shaderType = ShaderType::ATMOSPHERE_DEPTH;
+        return true;
+    }
+    if (typeToken == "volumetricfog") {
+        shaderType = ShaderType::VOLUMETRIC_FOG;
+        return true;
+    }
+    if (typeToken == "atmospheredenoise") {
+        shaderType = ShaderType::ATMOSPHERE_DENOISE;
+        return true;
+    }
+    if (typeToken == "volumetricclouds") {
+        shaderType = ShaderType::VOLUMETRIC_CLOUDS;
+        return true;
+    }
+    if (typeToken == "skycomposite") {
+        shaderType = ShaderType::SKY_COMPOSITE;
+        return true;
+    }
+    if (typeToken == "volumetriccomposite") {
+        shaderType = ShaderType::VOLUMETRIC_COMPOSITE;
+        return true;
+    }
     if (typeToken == "htmluiprim") {
         shaderType = ShaderType::HTMLUI_PRIM;
         return true;
@@ -498,6 +522,12 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::HTMLUI_POST: return lowerCase ? "htmluipost" : "HTML UI Post";
         case ShaderType::UI_EFFECT: return lowerCase ? "uieffect" : "UI Effect";
         case ShaderType::SHADOW_CACHE: return lowerCase ? "shadowcache" : "Shadow Cache";
+        case ShaderType::ATMOSPHERE_DEPTH: return lowerCase ? "atmospheredepth" : "Atmosphere Depth";
+        case ShaderType::VOLUMETRIC_FOG: return lowerCase ? "volumetricfog" : "Volumetric Fog";
+        case ShaderType::ATMOSPHERE_DENOISE: return lowerCase ? "atmospheredenoise" : "Atmosphere Denoise";
+        case ShaderType::VOLUMETRIC_CLOUDS: return lowerCase ? "volumetricclouds" : "Volumetric Clouds";
+        case ShaderType::SKY_COMPOSITE: return lowerCase ? "skycomposite" : "Sky Composite";
+        case ShaderType::VOLUMETRIC_COMPOSITE: return lowerCase ? "volumetriccomposite" : "Volumetric Composite";
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
@@ -532,7 +562,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         case ShaderType::SSR_BLUR: return 0;
         case ShaderType::COMPOSITE: return 0;
         case ShaderType::SHADOW2D: return 0;
-        case ShaderType::BLIT:   return 13;
+        case ShaderType::BLIT:   return 18;
         case ShaderType::BLOOM:  return 4;
         case ShaderType::HTMLUI: return 1;
         case ShaderType::HTMLUI_GRADIENT: return 0;
@@ -681,6 +711,11 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 10: return shortName ? "Blm" : "Bloom";
             case 11: return shortName ? "Blr" : "Blur";
             case 12: return shortName ? "Scl" : "Upscale";
+            case 13: return shortName ? "Vhs" : "VHS";
+            case 14: return shortName ? "Hal" : "Halation";
+            case 15: return shortName ? "Fdm" : "Film Damage";
+            case 16: return shortName ? "Gln" : "Film Grain Lens";
+            case 17: return shortName ? "Gfm" : "Film Grain Filmic";
         }
     } else if (shaderType == ShaderType::BLOOM) {
         // the pass of the bloom and blur chain (bloom.frag); 0 is the dual-filter downsample

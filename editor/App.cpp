@@ -3031,6 +3031,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     // the runtime manages its own layers while it plays
     sceneRender->setChildSceneLayers({});
+    // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
+    if (sceneProject.scene)
+        sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
@@ -3166,6 +3169,7 @@ void editor::App::renderGameViewSecondary(SceneProject& sceneProject) {
 
     std::vector<Engine::ViewLayer> layers;
     layers.push_back({sceneProject.scene, cameraEntity, viewRect, false, true, false, (float)canvasWidth, (float)canvasHeight});
+    layers.back().atmosphereQuality = gameWindow->getSettings().atmosphereQuality;
 
     for (const ChildSceneRef& childSceneRef : sceneProject.childScenes) {
         SceneProject* childScene = project.getScene(childSceneRef.id);
@@ -3241,8 +3245,15 @@ void editor::App::renderGameViewPass(SceneProject& sceneProject) {
         childScene->getSystem<RenderSystem>()->update(0);
     }
     sceneRender->updateRenderSystem();
+    // the Game view's atmosphere: the scene's fog and clouds whatever the Scene view's toggles
+    // show, at its Preview Atmosphere Quality
+    RenderSystem* renderSystem = sceneProject.scene->getSystem<RenderSystem>().get();
+    renderSystem->setDisableFog(false);
+    renderSystem->setDisableClouds(false);
+    renderSystem->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
 
     Engine::systemDraw();
+    renderSystem->keepAtmosphereInfo(GAME_VIEW_ID);
 
     Engine::setCanvasSize(editCanvasWidth, editCanvasHeight);
     Engine::setScalingMode(editScaling);
@@ -3883,10 +3894,14 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      and post-process shaders (HTMLUI_GRADIENT, HTMLUI_POST), HTML UI effects (UI_EFFECT),
     //      library effects named by their custom-shader id; the ShaderType values of HTMLUI ...
     //      UI_EFFECT moved after BLOOM.
-    // v34: HTML UI rendering cost (S16): htmlui.vert/.frag gain the document position and
+    // v34: (the S12 branch only: mesh bit 5 as a height fog bit; S10 has it as 'Shq')
+    // v35: atmosphere (S12): the fogged mesh variants (HAS_FOG) carry the height fog
+    //      (HAS_HEIGHT_FOG, u_fs_heightFog), so every cached 'Fog' variant is stale; the
+    //      atmosphere pass types after S10's SHADOW_CACHE.
+    // v36: HTML UI rendering cost (S16): htmlui.vert/.frag gain the document position and
     //      u_fs_htmluiClip (analytic clip, R8 coverage textures); HTMLUI_PRIM (instanced SDF
-    //      boxes, borders, shadows and glyph quads) appended after SHADOW_CACHE.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v34";
+    //      boxes, borders, shadows and glyph quads) appended after the atmosphere types.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v36";
 }
 
 void editor::App::pushTabNotificationStyle(){

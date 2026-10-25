@@ -411,7 +411,7 @@ bool RenderSystem::emptyTexturesCreated = false;
 TextureRender* RenderSystem::frameBlurredScene = nullptr;
 blurred_scene_t RenderSystem::frameBlurredSceneBlock;
 
-RenderSystem::RenderSystem(Scene* scene): SubSystem(scene){
+RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     instanceViewsDirty = true;
     signature.set(scene->getComponentId<Transform>());
 
@@ -471,6 +471,8 @@ void RenderSystem::load(){
     hasLights = false;
     hasShadows = false;
     hasFog = false;
+    heightFogActive = false;
+    atmosphereDepthPrograms = false;
     hasIBL = false;
     hasReflectionProbes = false;
     hasMultipleCameras = false;
@@ -516,6 +518,8 @@ void RenderSystem::destroy(){
     destroyPostProcess();
     destroyUber();
     destroyBloomPrograms();
+    atmosphere.destroy();
+    primaryView.atmosphere.destroy();
     if (postLinearSampler.isCreated())
         postLinearSampler.destroyTexture();
     rv().postSceneFramebuffer.destroy();
@@ -523,6 +527,7 @@ void RenderSystem::destroy(){
     rv().postSceneHeight = 0;
     rv().bloomTargets.destroy();
     rv().blurTargets.destroy();
+    rv().halationTargets.destroy();
     rv().msaaFramebuffer.destroy();
     rv().msaaWidth = 0;
     rv().msaaHeight = 0;
@@ -1069,7 +1074,7 @@ void RenderSystem::fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, cons
     Vector4 fogColorType = fs_fog.color_type;
     Vector4 fogDensityStartEnd = fs_fog.density_start_end;
 #ifdef JASPERENGINE_EDITOR
-    if (rv().secondary && rv().disableFog){
+    if (rv().disableFog){
         // exponential fog of density 0: a factor of 1 everywhere, no fog
         fogColorType = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
         fogDensityStartEnd = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
@@ -1798,16 +1803,16 @@ void RenderSystem::processLights2D(){
 
 bool RenderSystem::loadAndProcessFog(){
 
-    FogComponent* fog = disableFog ? nullptr : scene->findComponentFromIndex<FogComponent>(0);
+    FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
     const bool hadFog = hasFog;
     hasFog = false;
     if (fog){
         hasFog = true;
 
+        // the height fog reads its own block (u_fs_heightFog, in the fogged mesh variants): this one
+        // stays a linear fog's
         int fogTypeI = 0;
-        if (fog->type == FogType::LINEAR){
-            fogTypeI = 0;
-        }else if (fog->type == FogType::EXPONENTIAL){
+        if (fog->type == FogType::EXPONENTIAL){
             fogTypeI = 1;
         }else if (fog->type == FogType::EXPONENTIALSQUARED){
             fogTypeI = 2;
@@ -1884,7 +1889,9 @@ void RenderSystem::updateSkyEnvironment(SkyboxComponent& sky){
         std::shared_ptr<TextureRender> irradiance = std::make_shared<TextureRender>();
         std::shared_ptr<TextureRender> prefiltered = std::make_shared<TextureRender>();
 
-        if (IBLEnvironment::generate(texId, *(texResult.data), *irradiance, *prefiltered)){
+        IBLEnvironment::HorizonRing horizonRing;
+        if (IBLEnvironment::generate(texId, *(texResult.data), *irradiance, *prefiltered, &horizonRing)){
+            AtmosphereRenderer::storeHorizonRing(texId, horizonRing);
             sky.irradianceMap = irradiance;
             sky.prefilteredMap = prefiltered;
             sky.envMapsLoaded = true;
@@ -2260,6 +2267,14 @@ void RenderSystem::renderReflectionProbeCapture(){
         }
     }
 
+    // the face's height fog and atmosphere: analytic fog, the sky fill and the Sky Map clouds
+    // (no volumetric passes off the view's camera)
+    const Rect captureViewport(0.0f, 0.0f, (float)resolution, (float)resolution);
+    AtmosphereRenderer::PassPlan capturePlan = atmosphere.planPass(captureCamera, false, probe->includeSky);
+    if (capturePlan.any())
+        atmosphere.renderPassTargets(capturePlan, captureCamera, captureTransform, nullptr, false, resolution, resolution);
+    atmosphere.fillHeightFog(passHeightFog, captureCamera, captureTransform, captureViewport, resolution, isRenderingFlipped(captureCamera), 0.0f);
+
     // the opaque meshes in the order a camera pass draws them: sortPriority (stencil masks
     // before their readers, occluders before through-walls outlines), then nearest first
     std::vector<OpaqueRenderData>& opaqueRenders = opaqueQueue;
@@ -2286,6 +2301,8 @@ void RenderSystem::renderReflectionProbeCapture(){
     for (const OpaqueRenderData& opaque : opaqueRenders){
         drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, captureCamera, captureTransform, PIP_RTT_INVERT, opaque.instmesh, opaque.terrain, opaque.tilemap, mainTerrainView());
     }
+    if (capturePlan.any())
+        atmosphere.drawComposites(capturePlan, PIP_RTT_INVERT, 1, captureViewport, resolution, isRenderingFlipped(captureCamera), captureCamera, captureTransform);
 
     runtime.capturePass.endRenderPass();
     capturingReflectionProbe = false;
@@ -2351,6 +2368,7 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.ibl = hasIBL;
     environment.reflectionProbes = hasReflectionProbes;
     environment.fog = hasFog;
+    environment.atmosphereDepth = atmosphereDepthPrograms;
     environment.lights2D = hasLights2D;
     environment.shadows2D = hasShadows2D;
     environment.ssao = scene->isSSAOEnabled();
@@ -2978,7 +2996,8 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the depth shader feeds shadow maps (casters) and the SSAO depth pre-pass
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
     // pass, so its uniforms and build errors show up in the editor.
-    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth;
+    variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth
+                        || environment.atmosphereDepth;
     variant.depth = variant.depthPass || inputs.customDepthShader;
     if (variant.depth){
         // a library depth program gets the inputs its manifest requires, as the color pass
@@ -3074,6 +3093,8 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
     if (bindings.slotBlurredScene.first != -1)
         render.addTexture(bindings.slotBlurredScene, ShaderStageType::FRAGMENT, &emptyBlack);
+    // the height fog's block of the pass (a fogged variant of a height fog scene)
+    bindings.slotFSHeightFog = shaderData.getUniformBlockIndexByName("u_fs_heightFog");
 
     // the textures the manifest declares, else (a shader without one) the ones set by name
     auto addTexture = [&](const std::string& uniform, int fallback){
@@ -3206,29 +3227,56 @@ void RenderSystem::updatePassFrame(const CameraComponent& camera, const Transfor
 }
 
 PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings){
+    // the LUT only matters when it applies (its stage decides curve or grade)
+    std::shared_ptr<const CubeLut> lut;
+    if (settings.colorGradingEnabled && !settings.lutTexture.empty() && settings.lutContribution > 0.0f)
+        lut = getCachedColorLut(settings.lutTexture);
+    return getPostProcessingTiers(settings, lut.get());
+}
+
+PostProcessingTiers RenderSystem::getPostProcessingTiers(const PostProcessingSettings& settings, const CubeLut* lut){
     PostProcessingTiers tiers;
     tiers.renderScale = std::min(std::max(settings.renderScale, 0.5f), 1.0f);
     tiers.msaaSamples = settings.msaaSamples >= 4 ? 4 : (settings.msaaSamples >= 2 ? 2 : 1);
 
     uint32_t features = 0;
-    if (settings.fxaaEnabled) features |= UBER_FXAA;
+    // VHS replaces the scene tap and filters the lines itself: no FXAA or sharpen with it
+    const bool vhs = settings.vhsEnabled && settings.vhsIntensity > 0.0f;
+    if (vhs) features |= UBER_VHS;
+    if (settings.fxaaEnabled && !vhs) features |= UBER_FXAA;
     if (settings.chromaticAberrationEnabled && settings.chromaticAberrationIntensity > 0.0f) features |= UBER_CHROMATIC;
     if (settings.pixelateEnabled && settings.pixelateSize > 1.0f) features |= UBER_PIXELATE;
     if (settings.crtEnabled) features |= UBER_CRT;
     if (settings.edgeDetectEnabled && settings.edgeDetectIntensity > 0.0f) features |= UBER_EDGE;
-    if (settings.filmGrainEnabled && settings.filmGrainIntensity > 0.0f) features |= UBER_GRAIN;
-    if (settings.sharpenEnabled && settings.sharpenIntensity > 0.0f) features |= UBER_SHARPEN;
+    if (settings.filmGrainEnabled && settings.filmGrainIntensity > 0.0f){
+        features |= UBER_GRAIN;
+        if (settings.filmGrainType == FilmGrainType::LENS) features |= UBER_GRAIN_LENS;
+        if (settings.filmGrainType == FilmGrainType::FILMIC) features |= UBER_GRAIN_FILMIC;
+    }
+    if (settings.sharpenEnabled && settings.sharpenIntensity > 0.0f && !vhs) features |= UBER_SHARPEN;
     if (settings.bloomEnabled && settings.bloomIntensity > 0.0f) features |= UBER_BLOOM;
     if (settings.blurEnabled) features |= UBER_BLUR;
+    if (settings.halationEnabled && settings.halationIntensity > 0.0f){
+        features |= UBER_HALATION;
+        tiers.halationChain = !(features & UBER_BLOOM);
+    }
+    // film damage at its neutral values (no hair, scratch or dust, no weave, no mask) is nothing
+    if (settings.filmDamageEnabled && ((settings.filmDamageIntensity > 0.0f && (settings.filmHairAmount > 0.0f ||
+            settings.filmScratchAmount > 0.0f || settings.filmDustAmount > 0.0f)) || settings.filmGateWeave > 0.0f ||
+            settings.filmGateMask != FilmGateMask::NONE))
+        features |= UBER_FILM_DAMAGE;
 
-    const bool curve = PostColorLut::hasCurve(settings);
-    const bool grade = PostColorLut::hasGrade(settings);
+    const bool curve = PostColorLut::hasCurve(settings, lut);
+    const bool grade = PostColorLut::hasGrade(settings, lut);
     const bool vignette = settings.vignetteEnabled && settings.vignetteIntensity > 0.0f;
     const bool dither = settings.ditherEnabled;
 
     // (msaaSamples does not run the uber pass: the multisampled scene target resolves into
-    // whatever offscreen target the camera draws to, see the phase 4 spec's notes 5.2)
-    tiers.uber = features != 0 || tiers.renderScale < 1.0f;
+    // whatever offscreen target the camera draws to, see the phase 4 spec's notes 5.2). Dynamic
+    // resolution keeps it on at any scale, so a scale reaching 1 never changes the tiers, the
+    // in-shader colour's variant or the objects (fixed resolution turns it off)
+    tiers.dynamicResolution = settings.dynamicResolutionEnabled;
+    tiers.uber = features != 0 || tiers.renderScale < 1.0f || tiers.dynamicResolution;
     if (tiers.uber){
         // the grade, vignette and dither move to the uber pass (after the bloom composite and
         // the chromatic aberration, so they are graded once); exposure and the curve stay in
@@ -3264,10 +3312,10 @@ void RenderSystem::bakePostColorLut(TextureRender& texture, int& textureSize, Po
     // the shaper domain's k (the display domain has none)
     float shaper = 1.0f;
     if (stage != PostColorLut::Stage::GRADE){
-        shaper = getPostColorShaper(settings, n);
+        shaper = getPostColorShaper(settings, n, postLut.get());
         postTailShaper = shaper;
     }
-    PostColorLut::bake(settings, postLutStrip.size > 1 ? &postLutStrip : nullptr, stage, n, postLutPixels, shaper);
+    PostColorLut::bake(settings, postLut.get(), stage, n, postLutPixels, shaper);
     texture.updateTexture(postLutPixels.data(), postLutPixels.size());
 }
 
@@ -3277,7 +3325,14 @@ void RenderSystem::applyPostProcessing(){
     postProcessingDirty = false;
 
     const PostProcessingSettings& settings = scene->getPostProcessing();
-    const PostProcessingTiers tiers = getPostProcessingTiers(settings);
+    // the user's LUT, read once per path through the shared cache (a missing or malformed one
+    // is logged and left out); its stage decides whether it changes the curve or the grade
+    const std::string lutPath = (settings.colorGradingEnabled && settings.lutContribution > 0.0f) ? settings.lutTexture.path : std::string();
+    if (lutPath != postLutPath){
+        postLutPath = lutPath;
+        postLut = getCachedColorLut(lutPath);
+    }
+    const PostProcessingTiers tiers = getPostProcessingTiers(settings, postLut.get());
 
     // a new uber variant applies once it is built (or failed): until then the frame keeps the
     // tiers it draws with (its uber variant, its in-shader colour), instead of frames without
@@ -3295,16 +3350,8 @@ void RenderSystem::applyPostProcessing(){
     // chain's programs (their targets go in renderCameraPass)
     if (!tiers.uber && uberLoaded)
         destroyUber();
-    if (!(tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR)))
+    if (!(tiers.uberFeatures & (UBER_BLOOM | UBER_BLUR | UBER_HALATION)))
         destroyBloomPrograms();
-
-    // the user's LUT strip, read once per path (a missing or malformed one is logged and left out)
-    const std::string stripPath = settings.colorGradingEnabled ? settings.lutTexture.path : std::string();
-    if (stripPath != postLutStripPath){
-        postLutStripPath = stripPath;
-        if (!PostColorLut::loadStrip(stripPath, postLutStrip))
-            postLutStrip = PostColorLut::Strip();
-    }
 
     // the in-shader LUT: exposure, curve and (without the uber pass) the grade
     if (tiers.tailColor){
@@ -3398,12 +3445,14 @@ void RenderSystem::setPassPostColor(const post_color_t& postColor){
     }
 }
 
-float RenderSystem::getPostColorShaper(const PostProcessingSettings& settings, int lutSide){
+float RenderSystem::getPostColorShaper(const PostProcessingSettings& settings, int lutSide, const CubeLut* lut){
     // the shaper s = sqrt(x / (x + k)) puts linear 1 near s = 0.71 (k = 1). Tone mapping NONE
     // clips at x = 2^-exposure: a kink that linear filtering between two texels rounds off
     // (white 245/255 at side 16), so there k moves the clip point onto the texel nearest 0.71.
-    // The curves are smooth there and keep k = 1.
-    if (settings.tonemap != TonemapMode::NONE || lutSide < 2)
+    // The curves are smooth there and keep k = 1, and so does a scene-stage LUT (it moves the
+    // clip point wherever its look puts it)
+    LutStage stage = LutStage::DISPLAY;
+    if (settings.tonemap != TonemapMode::NONE || lutSide < 2 || (PostColorLut::getLutStage(settings, lut, stage) && stage == LutStage::SCENE))
         return 1.0f;
     const float last = (float)(lutSide - 1);
     const float c = std::round(0.70710678f * last) / last;
@@ -3501,6 +3550,8 @@ bool RenderSystem::loadUber(uint32_t features){
     uberSlotLut = shaderData.getTextureIndexByName("u_colorLut");
     uberSlotBloom = shaderData.getTextureIndexByName("u_bloomTexture");
     uberSlotBlur = shaderData.getTextureIndexByName("u_blurTexture");
+    uberSlotHalation = shaderData.getTextureIndexByName("u_halationTexture");
+    uberSlotHalationWide = shaderData.getTextureIndexByName("u_halationWideTexture");
     if (!uberRender.endLoad(PIP_RTT | PIP_DEFAULT, false, true, CullingMode::BACK, WindingOrder::CCW)){
         uberShader.reset();
         uberFeatures = 0;
@@ -3526,6 +3577,8 @@ void RenderSystem::destroyUber(){
     uberSlotLut = {-1, -1};
     uberSlotBloom = {-1, -1};
     uberSlotBlur = {-1, -1};
+    uberSlotHalation = {-1, -1};
+    uberSlotHalationWide = {-1, -1};
 }
 
 bool RenderSystem::ensurePostSceneFramebuffer(unsigned int width, unsigned int height){
@@ -3556,6 +3609,57 @@ TextureRender* RenderSystem::linearSampler(){
                                         TextureFilter::LINEAR, TextureFilter::LINEAR, TextureWrap::CLAMP_TO_EDGE, TextureWrap::CLAMP_TO_EDGE);
     }
     return &postLinearSampler;
+}
+
+namespace{
+    // the film damage's hash (includes/post_film.glsl filmHash11), for what the CPU draws per film frame
+    float filmHash11(float p){
+        p = p * 0.1031f;
+        p -= std::floor(p);
+        p *= p + 33.33f;
+        p *= p + p;
+        return p - std::floor(p);
+    }
+}
+
+void RenderSystem::fillUberFilm(const PostProcessingSettings& settings, double time, float viewportWidth, float viewportHeight){
+    // VHS: its parts, and the tape's time at its speed (wrapped as the uber time is)
+    fs_uber.vhs0 = Vector4(settings.vhsIntensity, settings.vhsWobble, settings.vhsTracking, settings.vhsColorBleed);
+    fs_uber.vhs1 = Vector4(settings.vhsTapeNoise, settings.vhsChromaStreaks, settings.vhsDropouts, settings.vhsScanlines);
+    fs_uber.vhs2 = Vector4(settings.vhsInterference, settings.vhsGlitches, (float)std::fmod(time * settings.vhsSpeed, 1000.0), 0.0f);
+    // halation: a colour picked in sRGB, added in linear light like the bloom
+    const Vector3 tint = Color::sRGBToLinear(settings.halationTint) * settings.halationIntensity;
+    fs_uber.halation = Vector4(tint.x, tint.y, tint.z, settings.halationRadius);
+
+    // the film frame the grain and the damage hold (wrapped where the shaders' hashes stay exact)
+    const float filmFrame = (float)std::fmod(std::floor(time * std::max(settings.filmFrameRate, 1.0f)), 4096.0);
+    fs_uber.film = Vector4(settings.filmGrainSize, settings.filmGrainColored ? 1.0f : 0.0f, filmFrame, settings.filmDustSize);
+    fs_uber.damage = Vector4(settings.filmDamageIntensity, settings.filmHairAmount, settings.filmScratchAmount, settings.filmDustAmount);
+
+    // the gate's weave of this film frame: up to 0.75 / 0.5 output pixels and 0.08 degrees at 1
+    const float weave = settings.filmGateWeave;
+    const float angle = (filmHash11(filmFrame + 73.0f) * 2.0f - 1.0f) * 0.08f * weave * 0.0174532925f; // radians
+    fs_uber.gateWeave = Vector4((filmHash11(filmFrame + 11.0f) * 2.0f - 1.0f) * 0.75f * weave,
+                                (filmHash11(filmFrame + 37.0f) * 2.0f - 1.0f) * 0.5f * weave, std::cos(angle), std::sin(angle));
+
+    // the gate mask: a box inset from the output's edges, of the gate's aspect ratio inside it
+    fs_uber.gateMask = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    if (settings.filmGateMask != FilmGateMask::NONE){
+        const float inset = std::min(viewportWidth, viewportHeight) * 0.015f;
+        const float availableWidth = std::max(viewportWidth - 2.0f * inset, 1.0f);
+        const float availableHeight = std::max(viewportHeight - 2.0f * inset, 1.0f);
+        float halfWidth = availableWidth * 0.5f;
+        float halfHeight = availableHeight * 0.5f;
+        if (settings.filmGateMask != FilmGateMask::ROUNDED){
+            const float aspect = settings.filmGateMask == FilmGateMask::ACADEMY_137 ? 1.37f :
+                                 (settings.filmGateMask == FilmGateMask::WIDESCREEN_185 ? 1.85f : 2.39f);
+            if (availableWidth / availableHeight > aspect)
+                halfWidth = availableHeight * aspect * 0.5f;
+            else
+                halfHeight = availableWidth / aspect * 0.5f;
+        }
+        fs_uber.gateMask = Vector4(halfWidth, halfHeight, 0.07f * std::min(halfWidth, halfHeight), std::max(settings.filmGateMaskFeather, 0.25f));
+    }
 }
 
 void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight,
@@ -3600,6 +3704,10 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
             uberRender.addTexture(uberSlotBloom, ShaderStageType::FRAGMENT, uberBloomTexture ? uberBloomTexture : &emptyBlack);
         if (uberSlotBlur.first != -1)
             uberRender.addTexture(uberSlotBlur, ShaderStageType::FRAGMENT, uberBlurTexture ? uberBlurTexture : source);
+        if (uberSlotHalation.first != -1)
+            uberRender.addTexture(uberSlotHalation, ShaderStageType::FRAGMENT, uberHalationTexture ? uberHalationTexture : &emptyBlack);
+        if (uberSlotHalationWide.first != -1)
+            uberRender.addTexture(uberSlotHalationWide, ShaderStageType::FRAGMENT, uberHalationWideTexture ? uberHalationWideTexture : &emptyBlack);
 
         const Vector4 uvScaleOffset = flipGL ? Vector4(1.0f, 0.0f, -1.0f, 1.0f) : Vector4(1.0f, 0.0f, 1.0f, 0.0f);
         const float sw = (float)std::max(sourceWidth, 1u);
@@ -3613,8 +3721,10 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         fs_uber.outputTexel = Vector4(1.0f / vw, 1.0f / vh, vw, vh);
         fs_uber.effects = Vector4(settings.chromaticAberrationIntensity, settings.pixelateSize, settings.filmGrainIntensity, settings.filmGrainResponse);
         fs_uber.crt = Vector4(settings.crtScanlines, settings.crtMask, settings.crtCurvature, settings.crtVignette);
+        // the effects' time: the frame's, or the one set_post_processing_debug pins
+        const double time = postDebugTime >= 0.0 ? postDebugTime : (double)frameTime;
         fs_uber.edgeSharpenTime = Vector4(settings.edgeDetectThreshold, settings.edgeDetectIntensity, settings.sharpenIntensity,
-                                          (float)std::fmod(frameTime, 1000.0));
+                                          (float)std::fmod(time, 1000.0));
         fs_uber.edgeColorDither = Vector4(settings.edgeDetectColor.x, settings.edgeDetectColor.y, settings.edgeDetectColor.z,
                                           settings.ditherEnabled ? 1.0f / 255.0f : 0.0f);
         float falloffScale = 0.0f;
@@ -3629,6 +3739,7 @@ void RenderSystem::renderUber(TextureRender* source, unsigned int sourceWidth, u
         fs_uber.bloomBlur = Vector4(tint.x * settings.bloomIntensity, tint.y * settings.bloomIntensity, tint.z * settings.bloomIntensity,
                                     uberBlurTexture ? settings.blurIntensity : 0.0f);
         fs_uber.sampling = Vector4(nearestSource ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
+        fillUberFilm(settings, time, vw, vh);
 
         uberRender.applyUniformBlock(uberSlotVSParams, sizeof(vs_uber_t), &vs_uber);
         uberRender.applyUniformBlock(uberSlotFSParams, sizeof(fs_uber_t), &fs_uber);
@@ -3662,6 +3773,7 @@ void RenderSystem::PostChainTargets::destroy(){
     sourceWidth = 0;
     sourceHeight = 0;
     levels = -1;
+    upLevels = true;
 }
 
 bool RenderSystem::loadBloomProgram(BloomProgramKind kind){
@@ -3712,10 +3824,11 @@ void RenderSystem::destroyBloomPrograms(){
     }
 }
 
-bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels){
+bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned int sourceWidth, unsigned int sourceHeight, int levels, bool upLevels){
     if (sourceWidth == 0 || sourceHeight == 0)
         return false;
-    if (targets.isCreated() && targets.sourceWidth == sourceWidth && targets.sourceHeight == sourceHeight && targets.levels == levels)
+    if (targets.isCreated() && targets.sourceWidth == sourceWidth && targets.sourceHeight == sourceHeight && targets.levels == levels &&
+            targets.upLevels == upLevels)
         return true;
 
     // made again in place: a new size or level count replaces the old targets (no pile-up)
@@ -3725,7 +3838,7 @@ bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned in
         const unsigned int divisor = 4u << level;
         const unsigned int width = std::max(1u, sourceWidth / divisor);
         const unsigned int height = std::max(1u, sourceHeight / divisor);
-        Framebuffer* sizes[2] = {&targets.down[level], level < levels ? &targets.up[level] : nullptr};
+        Framebuffer* sizes[2] = {&targets.down[level], (upLevels && level < levels) ? &targets.up[level] : nullptr};
         for (Framebuffer* framebuffer : sizes){
             if (!framebuffer)
                 continue;
@@ -3748,6 +3861,7 @@ bool RenderSystem::ensurePostChainTargets(PostChainTargets& targets, unsigned in
     targets.sourceWidth = sourceWidth;
     targets.sourceHeight = sourceHeight;
     targets.levels = levels;
+    targets.upLevels = upLevels;
     return true;
 }
 
@@ -3883,6 +3997,29 @@ TextureRender* RenderSystem::renderBlurChain(TextureRender* source, unsigned int
     return &from->getRender().getColorTexture();
 }
 
+bool RenderSystem::renderHalationChain(TextureRender* source, unsigned int sourceWidth, unsigned int sourceHeight, bool nearestSource){
+    if (!loadBloomProgram(BLOOM_PREFILTER_THRESHOLD) || !loadBloomProgram(BLOOM_DOWN))
+        return false;
+    PostChainTargets& targets = rv().halationTargets;
+    if (!ensurePostChainTargets(targets, sourceWidth, sourceHeight, 1, false))
+        return false;
+
+    // the bloom's threshold curve on halation's display threshold (squared into the chain's
+    // gamma-2 domain), a soft knee of half of it
+    const float threshold = scene->getPostProcessing().halationThreshold * scene->getPostProcessing().halationThreshold;
+    const float knee = threshold * 0.5f + 1e-5f;
+    fs_bloom.curve = Vector4(threshold - knee, 2.0f * knee, 0.25f / knee, threshold);
+    fs_bloom.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    renderBloomPass(BLOOM_PREFILTER_THRESHOLD, "halation prefilter", source, sourceWidth, sourceHeight, nullptr, targets.down[0],
+                    Vector4(1.0f / (float)sourceWidth, 1.0f / (float)sourceHeight, 0.0f, 0.0f), nearestSource ? linearSampler() : nullptr);
+    Framebuffer& from = targets.down[0];
+    renderBloomPass(BLOOM_DOWN, "halation down", &from.getRender().getColorTexture(), from.getWidth(), from.getHeight(), nullptr,
+                    targets.down[1], Vector4(1.0f / (float)from.getWidth(), 1.0f / (float)from.getHeight(), 0.0f, 0.0f));
+    uberHalationTexture = &targets.down[0].getRender().getColorTexture();
+    uberHalationWideTexture = &targets.down[1].getRender().getColorTexture();
+    return true;
+}
+
 void RenderSystem::applyBlurredScene(ObjectRender& render, const ShaderLibraryBindings& bindings){
     if (bindings.slotFSBlurredScene != -1){
         static const blurred_scene_t none = {Vector4(0.0f, 0.0f, 0.0f, 0.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
@@ -3900,6 +4037,8 @@ void RenderSystem::applyFrameBlock(ObjectRender& render, const ShaderLibraryBind
         render.applyUniformBlock(bindings.slotFSFrame, bindings.frameSizeFS, &passFrame);
     applyPostColor(render, bindings);
     applyBlurredScene(render, bindings);
+    if (bindings.slotFSHeightFog != -1)
+        render.applyUniformBlock(bindings.slotFSHeightFog, sizeof(height_fog_t), &passHeightFog);
 }
 
 void RenderSystem::applyPostColor(ObjectRender& render, const ShaderLibraryBindings& bindings){
@@ -4602,17 +4741,157 @@ void RenderSystem::setDisableFaceCulling(bool disableFaceCulling){
 }
 
 void RenderSystem::setDisableFog(bool disableFog){
-    if (this->disableFog == disableFog){
-        return;
-    }
-    this->disableFog = disableFog;
-
-    // fog is a shader variant
-    needReloadMeshVariants();
+#ifdef JASPERENGINE_EDITOR
+    primaryView.disableFog = disableFog;
+#else
+    (void)disableFog;
+#endif
 }
+
+void RenderSystem::setDisableClouds(bool disableClouds){
+    primaryView.disableClouds = disableClouds;
+}
+
+void RenderSystem::setPreviewAtmosphereQuality(int quality){
+    primaryView.atmosphereQuality = quality;
+}
+
+const AtmosphereInfo& RenderSystem::getAtmosphereInfo(uint32_t viewId){
+#ifdef JASPERENGINE_EDITOR
+    if (viewId != 0){
+        // the newer of the view's own frames and the frames the view was drawn as the frame's
+        const AtmosphereInfo* newest = nullptr;
+        auto view = secondaryViews.find(viewId);
+        if (view != secondaryViews.end())
+            newest = &view->second->atmosphere.info;
+        auto kept = keptAtmosphereInfo.find(viewId);
+        if (kept != keptAtmosphereInfo.end() && (!newest || kept->second.frame > newest->frame))
+            newest = &kept->second;
+        if (newest)
+            return *newest;
+    }
+#endif
+    return primaryView.atmosphere.info;
+}
+
+#ifdef JASPERENGINE_EDITOR
+void RenderSystem::keepAtmosphereInfo(uint32_t viewId){
+    keptAtmosphereInfo[viewId] = primaryView.atmosphere.info;
+}
+#endif
 
 void RenderSystem::setDisablePostProcessing(bool disablePostProcessing){
     primaryView.postProcessing = !disablePostProcessing;
+}
+
+float RenderSystem::getAppliedRenderScale() const{
+    // a pinned scale applies where dynamic resolution may run (Play and the game, never the
+    // editor's edit mode)
+    if (dynamicResolutionOverride > 0.0f && !Engine::areGameEventsPaused())
+        return dynamicResolutionOverride;
+    return dynamicResolutionRunning ? dynamicResolutionScale : postTiers.renderScale;
+}
+
+DynamicResolutionStatus RenderSystem::getDynamicResolutionStatus() const{
+    DynamicResolutionStatus status;
+    status.enabled = scene && scene->getPostProcessing().dynamicResolutionEnabled;
+    status.running = dynamicResolutionRunning;
+    status.idle = dynamicResolutionRunning ? "" : (status.enabled ? dynamicResolutionIdle : "off");
+    status.overridden = dynamicResolutionOverride > 0.0f && !Engine::areGameEventsPaused();
+    status.scale = getAppliedRenderScale();
+    status.maxScale = postTiers.renderScale;
+    status.minScale = status.maxScale;
+    if (dynamicResolutionRunning){
+        const DynamicResolutionController::Stats& stats = dynamicResolution.getStats();
+        status.minScale = dynamicResolution.getConfig().minScale;
+        status.maxScale = dynamicResolution.getConfig().maxScale;
+        status.source = dynamicResolutionSourceName(stats.source);
+        status.smoothedMs = stats.smoothedMs;
+        status.targetMs = dynamicResolution.getConfig().targetMs;
+        status.saturatedLow = stats.saturatedLow;
+        status.ineffective = stats.scalingIneffective;
+        status.acceptedChanges = stats.acceptedChanges;
+        status.probeSeconds = stats.source == DynamicResolutionSource::FRAME ? stats.probeRemainingSeconds : 0.0f;
+    }
+    return status;
+}
+
+void RenderSystem::setDynamicResolutionOverride(float scale){
+    dynamicResolutionOverride = (scale > 0.0f && std::isfinite(scale)) ? std::min(std::max(scale, 0.5f), 1.0f) : 0.0f;
+}
+
+void RenderSystem::setDynamicResolutionFakeGpuMs(float milliseconds){
+    dynamicResolutionFakeGpuMs = (milliseconds > 0.0f && std::isfinite(milliseconds)) ? milliseconds : 0.0f;
+}
+
+void RenderSystem::setPostProcessingDebugTime(double seconds){
+    postDebugTime = (seconds >= 0.0 && std::isfinite(seconds)) ? seconds : -1.0;
+}
+
+void RenderSystem::updateDynamicResolution(){
+    const PostProcessingSettings& settings = scene->getPostProcessing();
+    // the frame's own view of the main scene, post-processed, with the uber pass drawing at a
+    // render scale (fixed resolution draws at its own size)
+    // the editor's edit mode (and its Pause) pauses the game's events; an exported game never
+    // does. Leaving Play (or pausing it) releases what its scripts and tests pinned
+    const bool editPaused = Engine::areGameEventsPaused();
+    if (editPaused && !dynamicResolutionEditPaused){
+        dynamicResolutionOverride = 0.0f;
+        dynamicResolutionFakeGpuMs = 0.0f;
+    }
+    dynamicResolutionEditPaused = editPaused;
+    if (!postTiers.dynamicResolution || !postTiers.uber)
+        dynamicResolutionIdle = "off";
+    else if (editPaused)
+        dynamicResolutionIdle = "edit mode";
+    else if (Engine::getMainScene() != scene)
+        dynamicResolutionIdle = "not the main scene";
+    else if (!primaryView.postProcessing)
+        dynamicResolutionIdle = "the view is not post-processed";
+    else if (scene->isFixedResolutionEnabled() && !disableFixedResolution)
+        dynamicResolutionIdle = "fixed resolution";
+    else
+        dynamicResolutionIdle = "";
+    const bool run = dynamicResolutionIdle[0] == '\0';
+    const bool connected = dynamicResolutionConnected;
+    dynamicResolutionConnected = false;
+    if (!run){
+        dynamicResolutionRunning = false;
+        dynamicResolutionScale = postTiers.renderScale;
+        return;
+    }
+
+    // the target: the frame rate asked for (no platform reports the display's yet: 60)
+    DynamicResolutionConfig config;
+    config.targetMs = 1000.0f / (float)(settings.dynamicResolutionTargetFps > 0 ? settings.dynamicResolutionTargetFps : 60);
+    config.maxScale = postTiers.renderScale;
+    config.minScale = std::min(std::max(settings.dynamicResolutionMinScale, 0.5f), config.maxScale);
+    const Rect view = targetViewRect();
+    const unsigned int viewWidth = (unsigned int)std::max(view.getWidth(), 0.0f);
+    const unsigned int viewHeight = (unsigned int)std::max(view.getHeight(), 0.0f);
+    // turned on, a new target or range, a resized view: the cost history means nothing
+    if (!dynamicResolutionRunning || config.targetMs != dynamicResolutionConfig.targetMs || config.minScale != dynamicResolutionConfig.minScale ||
+            config.maxScale != dynamicResolutionConfig.maxScale || viewWidth != dynamicResolutionViewWidth || viewHeight != dynamicResolutionViewHeight){
+        dynamicResolutionConfig = config;
+        dynamicResolutionViewWidth = viewWidth;
+        dynamicResolutionViewHeight = viewHeight;
+        dynamicResolution.configure(config);
+        dynamicResolution.reset(config.maxScale);
+        dynamicResolutionRunning = true;
+        dynamicResolutionScale = dynamicResolution.getScale();
+        return;
+    }
+
+    // the last frame: its period and CPU time, and its GPU time when there is one
+    DynamicResolutionSample sample;
+    sample.framePeriodMs = (float)(Engine::getFramePeriod() * 1000.0);
+    sample.cpuBusyMs = (float)(Engine::getFrameCpuTime() * 1000.0);
+    sample.gpuMs = dynamicResolutionFakeGpuMs;
+    sample.appliedScale = dynamicResolutionScale;
+    sample.scaleIsConnected = connected;
+    sample.valid = connected && sample.framePeriodMs > 0.0f;
+    const float deltaSeconds = (float)std::min(Engine::getFramePeriod(), 0.25);
+    dynamicResolutionScale = dynamicResolution.update(sample, deltaSeconds, ++dynamicResolutionFrame);
 }
 
 void RenderSystem::setDisableFixedResolution(bool disableFixedResolution){
@@ -6287,7 +6566,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
         static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+        render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
         render.applyUniformBlock(extra.slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
@@ -6910,7 +7189,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 #ifdef JASPERENGINE_EDITOR
                 // exponential fog of density 0: a factor of 1 everywhere, no fog
                 static fs_fog_t noFog = {Vector4(0.0f, 0.0f, 0.0f, 1.0f), Vector4(0.0f, 0.0f, 0.0f, 0.0f)};
-                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().secondary && rv().disableFog) ? &noFog : &fs_fog);
+                render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, (rv().disableFog) ? &noFog : &fs_fog);
 #else
                 render.applyUniformBlock(mesh.submeshes[i].slotFSFog, sizeof(float) * 8, &fs_fog);
 #endif
@@ -8336,9 +8615,12 @@ void RenderSystem::needUpdatePostProcessing(){
 }
 
 void RenderSystem::invalidatePostProcessTextures(){
-    // applyPostProcessing reads the strip again when its path differs from this one
-    postLutStripPath.clear();
-    postLutStrip = PostColorLut::Strip();
+    // applyPostProcessing reads the LUT again when its path differs from this one (the cache
+    // forgets the file too)
+    if (!postLutPath.empty())
+        invalidateColorLutCache(postLutPath);
+    postLutPath.clear();
+    postLut.reset();
     postProcessingDirty = true;
     postProcessNeedReload = true;
 }
@@ -10474,6 +10756,9 @@ void RenderSystem::getLoadCount(size_t& loaded, size_t& total) const{
         const SkyboxComponent& sky = skyArray->getComponentFromIndex(0);
         count(sky.loaded || (!sky.loadCalled && isShaderUnavailable(sky.shader, ShaderType::SKYBOX, sky.shaderProperties, sky.customShaderId)));
     }
+
+    // the atmosphere's passes (their shaders, the clouds' noise bake)
+    count(!atmosphere.isLoading());
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){
@@ -11526,6 +11811,18 @@ void RenderSystem::update(double dt){
     updateSpotMaskAtlas(numLights);
     loadLights2D();
     loadAndProcessFog();
+    // the atmosphere (height fog, volumetric fog and clouds): the fogged mesh variants carry the
+    // height fog (chosen by u_fs_heightFog), and the volumetric passes need depth programs on
+    // every opaque mesh
+    atmosphere.update(dt);
+    heightFogActive = hasFog && atmosphere.hasHeightFog();
+    {
+        const bool depthPrograms = atmosphere.needsDepthPrograms();
+        if (depthPrograms != atmosphereDepthPrograms){
+            atmosphereDepthPrograms = depthPrograms;
+            needReloadMeshVariants();
+        }
+    }
 
     // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();
@@ -12031,6 +12328,7 @@ void RenderSystem::selectCameraTerrain(CameraComponent& camera, Transform& camer
 // shadow rows and the reflection probe face of the frame.
 void RenderSystem::drawFramePasses(){
     frameTime = (float)Engine::getSystemTime();
+    updateDynamicResolution();
 
 #ifdef JASPERENGINE_EDITOR
     passDrawsOverlays = false;
@@ -12282,6 +12580,11 @@ void RenderSystem::drawCameras(bool includeMain){
         passShadows = nullptr;
     }
 
+    // what the view's atmosphere ran (get_atmosphere_info), its unused targets freed; a
+    // secondary view ends its own after its camera (drawView)
+    if (includeMain)
+        atmosphere.endFrame();
+
     drawCount++;
     rv().sceneInputDraws++;
     releaseUnusedCameraShadows();
@@ -12381,8 +12684,14 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }else{
             const float baseWidth = pass.renderToTexture ? (float)camera.framebuffer->getWidth() : viewRect.getWidth();
             const float baseHeight = pass.renderToTexture ? (float)camera.framebuffer->getHeight() : viewRect.getHeight();
-            uberSceneWidth = (unsigned int)std::max(1L, std::lround(baseWidth * postTiers.renderScale));
-            uberSceneHeight = (unsigned int)std::max(1L, std::lround(baseHeight * postTiers.renderScale));
+            // the frame's own view takes dynamic resolution's scale (or a pinned one); other
+            // views (the editor's Scene view while playing) the settings'
+            const bool frameView = &rv() == &primaryView;
+            const float renderScale = frameView ? getAppliedRenderScale() : postTiers.renderScale;
+            uberSceneWidth = (unsigned int)std::max(1L, std::lround(baseWidth * renderScale));
+            uberSceneHeight = (unsigned int)std::max(1L, std::lround(baseHeight * renderScale));
+            if (frameView && !pass.renderToTexture)
+                dynamicResolutionConnected = true;
             // its source target is made below, unless the post-process chain's output is it
             useUber = true;
         }
@@ -12394,6 +12703,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             rv().bloomTargets.destroy();
         if (!(postTiers.uberFeatures & UBER_BLUR) && rv().blurTargets.isCreated())
             rv().blurTargets.destroy();
+        // halation's own chain only without bloom (with it, it reads bloom's levels)
+        if (!postTiers.halationChain && rv().halationTargets.isCreated())
+            rv().halationTargets.destroy();
         // so do the uber pass's scene target (not made with fixed resolution: the uber pass
         // reads that target), the multisampled target and the linear sampler a NEAREST fixed
         // resolution is read through. By the settings, not this pass: the editor's Scene view
@@ -12543,11 +12855,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         passMsaa = msaaPipelineSamples;
 
     // The colour target of the pass (null: the swapchain), its size and viewport, as the
-    // branches below pick them: the scene inputs are made to match it
+    // branches below pick them: the scene inputs and the atmosphere's targets are made to
+    // match it
     Rect sceneInputViewport;
     unsigned int sceneInputTargetWidth = 0;
     unsigned int sceneInputTargetHeight = 0;
-    if (sceneInputs){
+    {
         if (useSSR){
             sceneInputTargetWidth = rv().ssrWidth;
             sceneInputTargetHeight = rv().ssrHeight;
@@ -12577,7 +12890,30 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             sceneInputTargetWidth = target ? (unsigned int)target->getWidth() : (unsigned int)System::instance().getScreenWidth();
             sceneInputTargetHeight = target ? (unsigned int)target->getHeight() : (unsigned int)System::instance().getScreenHeight();
         }
-        sceneInputStats.passes++;
+        if (sceneInputs)
+            sceneInputStats.passes++;
+    }
+
+    // The atmosphere (docs/specs/S12-atmosphere.md): what this pass draws of it, and before
+    // its colour pass the reduced-resolution passes (volumetric fog, Screen clouds, the Sky
+    // Map's refresh). The volumetric passes read the packed depth of the pass: an effect's
+    // above, else a depth pre-pass of their own the scene inputs then share.
+    AtmosphereRenderer::PassPlan atmospherePlan = atmosphere.planPass(camera, isMainCamera, sortsByDistance(camera));
+    float atmosphereMarched = 0.0f;
+    if (atmospherePlan.any()){
+        bool forcedDepth = false;
+        if (atmospherePlan.needsDepth() && !sharedSceneDepth && atmosphereDepthPrograms){
+            const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
+            const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
+            if (SceneInputTarget* depthTarget = ensureSceneInputTarget(false, depthWidth, depthHeight)){
+                renderOpaqueDepth(camera, depthTarget->framebuffer, depthWidth, depthHeight, isMainCamera ? 0 : -1,
+                                  isMainCamera ? &rv().lodView : nullptr, perCameraMVP ? &cameraTransform : nullptr);
+                sharedSceneDepth = &depthTarget->framebuffer.getRender().getColorTexture();
+                forcedDepth = true;
+            }
+        }
+        atmosphereMarched = atmosphere.renderPassTargets(atmospherePlan, camera, cameraTransform, sharedSceneDepth, forcedDepth,
+                                                         (unsigned int)sceneInputViewport.getWidth(), (unsigned int)sceneInputViewport.getHeight());
     }
     // the scene colour is copied out of an offscreen colour target (the swapchain cannot be read)
     const bool copySceneColorPending = (sceneInputs & ShaderRequire_SceneColor) && offscreenTarget;
@@ -12724,6 +13060,12 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                                    passResolution.x > 0.0f ? 1.0f / passResolution.x : 0.0f,
                                    passResolution.y > 0.0f ? 1.0f / passResolution.y : 0.0f);
 
+    // the height fog of this colour pass (u_fs_heightFog of the fogged mesh variants: a distance
+    // fog's says so), with the distance its volumetric fog marched (the composite replaces that
+    // part of the analytic fog)
+    const bool passFlipped = isRenderingFlipped(camera);
+    atmosphere.fillHeightFog(passHeightFog, camera, cameraTransform, colorPassViewport, sceneInputTargetHeight, passFlipped, atmosphereMarched);
+
     // the post-processing colour of this colour pass: the scene's for the post-processed camera
     // (the main camera of the base layer, as the post-process chain; not mirrors, probes or other
     // render-to-texture cameras), neutral for the others (updatePassFrame)
@@ -12742,7 +13084,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         const bool fullCopy = scene->getSceneColorScale() == SceneColorScale::FULL;
         const unsigned int copyWidth = fullCopy ? (unsigned int)colorPassViewport.getWidth() : std::max(1u, (unsigned int)colorPassViewport.getWidth() / 2);
         const unsigned int copyHeight = fullCopy ? (unsigned int)colorPassViewport.getHeight() : std::max(1u, (unsigned int)colorPassViewport.getHeight() / 2);
-        fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, isRenderingFlipped(camera), copyWidth, copyHeight);
+        fillSceneInputs(camera, colorPassViewport, sceneInputTargetHeight, passFlipped, copyWidth, copyHeight);
     }
     auto takeSceneColor = [&](){
         sceneColorPending = false;
@@ -12849,6 +13191,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
         passSubmeshQueue = SubmeshQueue::ALL;
+        // the atmosphere over the opaque scene: the sky composite (Sky Map clouds and the sky
+        // fill on the sky's pixels), then the Screen clouds and the volumetric fog; what is
+        // drawn after (transparents) takes the analytic fog alone
+        if (atmospherePlan.any())
+            atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
         // the opaque queue and the sky are drawn
         if (sceneColorPending){
             takeSceneColor();
@@ -13065,6 +13412,19 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // below), when the loaded variant composites them
         uberBloomTexture = (uberFeatures & UBER_BLOOM) ? renderBloomChain(sourceTexture, sourceWidth, sourceHeight, nearestSource) : nullptr;
         uberBlurTexture = (uberFeatures & UBER_BLUR) ? renderBlurChain(sourceTexture, sourceWidth, sourceHeight, nearestSource) : nullptr;
+        // halation: the bloom chain's 1/4 and 1/8 levels on the way down, or its own two passes
+        uberHalationTexture = nullptr;
+        uberHalationWideTexture = nullptr;
+        if (uberFeatures & UBER_HALATION){
+            if (uberFeatures & UBER_BLOOM){
+                if (uberBloomTexture){
+                    uberHalationTexture = &rv().bloomTargets.down[0].getRender().getColorTexture();
+                    uberHalationWideTexture = &rv().bloomTargets.down[1].getRender().getColorTexture();
+                }
+            }else{
+                renderHalationChain(sourceTexture, sourceWidth, sourceHeight, nearestSource);
+            }
+        }
         if (pass.renderToTexture){
             renderUber(sourceTexture, sourceWidth, sourceHeight, &camera.framebuffer->getRender(),
                        Rect(0, 0, (float)camera.framebuffer->getWidth(), (float)camera.framebuffer->getHeight()), nearestSource);
@@ -13076,6 +13436,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         }
         uberBloomTexture = nullptr;
         uberBlurTexture = nullptr;
+        uberHalationTexture = nullptr;
+        uberHalationWideTexture = nullptr;
     // Fixed game resolution: upscale the offscreen scene color to the view
     // rect of the real destination. Layer scenes draw after this (load
     // action), so overlaid UI scenes stay at native resolution.
@@ -13268,6 +13630,7 @@ RenderSystem::RenderView& RenderSystem::getSecondaryView(uint32_t viewId){
 }
 
 void RenderSystem::destroyRenderView(RenderView& view){
+    view.atmosphere.destroy();
     view.ssaoDepthFramebuffer.destroy();
     view.ssaoFramebuffer.destroy();
     view.ssaoBlurFramebuffer.destroy();
@@ -13299,6 +13662,7 @@ void RenderSystem::destroyRenderView(RenderView& view){
         frameBlurredScene = nullptr;
     view.bloomTargets.destroy();
     view.blurTargets.destroy();
+    view.halationTargets.destroy();
     view.msaaFramebuffer.destroy();
     view.msaaWidth = 0;
     view.msaaHeight = 0;
@@ -13904,6 +14268,8 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     view.disableFog = desc.disableFog;
     view.disableFaceCulling = desc.disableFaceCulling;
     view.postProcessing = desc.postProcessing;
+    view.disableClouds = desc.disableClouds;
+    view.atmosphereQuality = desc.atmosphereQuality;
 
     activeView = &view;
 
@@ -13988,6 +14354,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
     pass.renderToTexture = false;
     pass.terrainView = view.sharesPrimaryCamera ? 0 : TERRAIN_PASS_VIEW;
     renderCameraPass(pass);
+    atmosphere.endFrame();
 
     passObjects = nullptr;
     passExcludedEntity = NULL_ENTITY;

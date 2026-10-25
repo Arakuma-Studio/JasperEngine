@@ -186,6 +186,11 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - 3D: meshes (box, sphere, plane, model files), lights, skybox, fog, terrain. Cameras look at
   their target by default (useTarget): the GameObject's rotation is ignored until you call
   disableTarget() (orbiting: jasper://docs/lua-api, Camera).
+- Atmosphere (jasper://docs/atmosphere): a Fog of type "height" is physically based height fog
+  (volumetric: true adds light shafts and Local Volumetric Fog volumes near the camera);
+  create_entity volumetric_clouds adds clouds. apply_atmosphere_preset sets a look
+  (list_atmosphere_presets); get_atmosphere_info says what ran (tier, passes, resolution).
+  Atmosphere Quality is per platform (project settings quality.atmosphere_quality_*).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
@@ -235,9 +240,10 @@ when nothing fits: fork_shader copies the built-in shader and sets customShader.
 before editing: keep its declarations, includes, varyings and output, change the math near the
 end of main(), parameters in its u_fs_customParams block (set_shader_uniform); rules and depth
 forks: jasper://docs/shaders. A failing shader draws as the built-in one (error in the Console).
-Post-processing (main camera only): apply_post_processing_preset, then set_scene_settings
-post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
-(jasper://docs/post-processing).
+Post-processing (main camera only): apply_post_processing_preset (film, vhs, mobile_adaptive...),
+then set_scene_settings post_processing.<field>; get_post_processing_status reads what applies,
+inspect_color_lut a .cube. Mobile: in-shader colour, low render scale or dynamic resolution, few
+passes (jasper://docs/post-processing).
 Shadows: a light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in shadow
 texels, 1 is right almost always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
 the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).

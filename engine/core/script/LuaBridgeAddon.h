@@ -11,6 +11,9 @@
 #include "jobs/JobTypes.h"
 #include "texture/Material.h"
 #include "component/UIDocumentComponent.h"
+#include "component/FogComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
 #include "render/shadow/ShadowTiers.h"
 
@@ -98,6 +101,13 @@ namespace luabridge
     template<> struct Stack<RotationOrder> : EnumWrapper<RotationOrder>{};
 
     template<> struct Stack<FogType> : EnumWrapper<FogType>{};
+    template<> struct Stack<FogColorMode> : EnumWrapper<FogColorMode>{};
+    template<> struct Stack<FogVolumeShape> : EnumWrapper<FogVolumeShape>{};
+    template<> struct Stack<FogVolumeFalloff> : EnumWrapper<FogVolumeFalloff>{};
+    template<> struct Stack<CloudsPreset> : EnumWrapper<CloudsPreset>{};
+    template<> struct Stack<CloudsRendering> : EnumWrapper<CloudsRendering>{};
+    template<> struct Stack<AtmosphereQuality> : EnumWrapper<AtmosphereQuality>{};
+    template<> struct Stack<AtmosphereQualityOverride> : EnumWrapper<AtmosphereQualityOverride>{};
     template<> struct Stack<CameraType> : EnumWrapper<CameraType>{};
     template<> struct Stack<FrustumPlane> : EnumWrapper<FrustumPlane>{};
     template<> struct Stack<LightType> : EnumWrapper<LightType>{};
@@ -112,6 +122,9 @@ namespace luabridge
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
     template<> struct Stack<TonemapMode> : EnumWrapper<TonemapMode>{};
     template<> struct Stack<MonochromeMode> : EnumWrapper<MonochromeMode>{};
+    template<> struct Stack<FilmGrainType> : EnumWrapper<FilmGrainType>{};
+    template<> struct Stack<FilmGateMask> : EnumWrapper<FilmGateMask>{};
+    template<> struct Stack<LutInputEncoding> : EnumWrapper<LutInputEncoding>{};
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
 

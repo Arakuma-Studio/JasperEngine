@@ -74,6 +74,9 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+bool Engine::atmosphereQualityOverridden = false;
+AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
 bool Engine::callMouseInTouchEvent = false;
@@ -85,6 +88,8 @@ bool Engine::ignoreEventsHandledByUI = true;
 bool Engine::uiEventReceived = false;
 
 uint64_t Engine::lastTime = 0;
+double Engine::framePeriod = 0.0;
+double Engine::frameCpuTime = 0.0;
 double Engine::updateTimeCount = 0;
 
 double Engine::deltatime = 0;
@@ -594,6 +599,45 @@ Platform Engine::getPlatform(){
 #endif
 }
 
+void Engine::setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web){
+    atmosphereQualityDefaults[0] = desktop;
+    atmosphereQualityDefaults[1] = mobile;
+    atmosphereQualityDefaults[2] = web;
+}
+
+AtmosphereQuality Engine::getAtmosphereQualityDefault(Platform platform){
+    switch (platform){
+        case Platform::iOS:
+        case Platform::Android:
+            return atmosphereQualityDefaults[1];
+        case Platform::Web:
+            return atmosphereQualityDefaults[2];
+        default:
+            return atmosphereQualityDefaults[0];
+    }
+}
+
+AtmosphereQuality Engine::getAtmosphereQualityDefault(){
+    return getAtmosphereQualityDefault(getPlatform());
+}
+
+void Engine::setAtmosphereQuality(AtmosphereQuality quality){
+    atmosphereQualityOverride = quality;
+    atmosphereQualityOverridden = true;
+}
+
+AtmosphereQuality Engine::getAtmosphereQuality(){
+    return atmosphereQualityOverridden ? atmosphereQualityOverride : getAtmosphereQualityDefault();
+}
+
+void Engine::resetAtmosphereQuality(){
+    atmosphereQualityOverridden = false;
+}
+
+bool Engine::isAtmosphereQualityOverridden(){
+    return atmosphereQualityOverridden;
+}
+
 GraphicBackend Engine::getGraphicBackend(){
 #if defined(SOKOL_GLCORE)
     return GraphicBackend::GLCORE;
@@ -625,6 +669,14 @@ bool Engine::isOpenGL(){
 
 float Engine::getFramerate(){
     return framerate;
+}
+
+double Engine::getFramePeriod(){
+    return framePeriod;
+}
+
+double Engine::getFrameCpuTime(){
+    return frameCpuTime;
 }
 
 float Engine::getDeltatime(){
@@ -1324,7 +1376,9 @@ void Engine::systemDraw(){
 
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
+    const uint64_t frameStart = lastTime;
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
+    framePeriod = rawDelta;
 
     // Cap the delta exposed to gameplay (Engine::getDeltatime) and the update loop.
     // Anything bigger than maxDeltatime gets clamped; the simulation effectively
@@ -1449,6 +1503,7 @@ void Engine::systemDraw(){
     endCompositeFramebuffer();
 
     SystemRender::commit();
+    frameCpuTime = stm_sec(stm_since(frameStart));
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -1509,6 +1564,8 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.disableFog = layer.disableFog;
         desc.disableFaceCulling = layer.disableFaceCulling;
         desc.postProcessing = layer.postProcessing;
+        desc.disableClouds = layer.disableClouds;
+        desc.atmosphereQuality = layer.atmosphereQuality;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);

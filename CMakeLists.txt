@@ -625,6 +625,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/PrefabTools.cpp
     ${EDITOR_DIR}/mcp/tools/PlayTools.cpp
     ${EDITOR_DIR}/mcp/tools/ViewTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AtmosphereTools.cpp
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
@@ -775,6 +776,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentValuesCmd.cpp
+    ${EDITOR_DIR}/command/type/AtmospherePresetCmd.cpp
     ${EDITOR_DIR}/command/type/MoveEntityOrderCmd.cpp
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveChildSceneCmd.cpp

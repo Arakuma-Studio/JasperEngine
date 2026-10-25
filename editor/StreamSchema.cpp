@@ -62,7 +62,7 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::ButtonComponent, {"colorDisabled", "colorHovered", "colorNormal", "colorPressed", "disabled", "label", "textureDisabled", "textureHovered", "textureNormal", "texturePressed"}},
         {ComponentType::CameraComponent, {"aspect", "autoResize", "bottomClip", "cullingMask", "depthTest", "enabled", "farClip", "framebufferFilter", "framebufferHeight", "framebufferWidth", "leftClip", "nearClip", "renderToTexture", "rightClip", "target", "topClip", "transparentSort", "type", "up", "useTarget", "yfov"}},
         {ComponentType::ColorTweenComponent, {"endColor", "startColor", "useSRGB"}},
-        {ComponentType::FogComponent, {"color", "density", "linearEnd", "linearStart", "type"}},
+        {ComponentType::FogComponent, {"anisotropy", "attenuationDistance", "baseHeight", "color", "colorMode", "density", "directionalInscattering", "lightShafts", "linearEnd", "linearStart", "maxFogDistance", "maxOpacity", "maximumHeight", "noiseIntensity", "noiseScale", "qualityOverride", "skyFill", "skyFillAngle", "startDistance", "type", "volumetric", "volumetricDistance", "wind"}},
         {ComponentType::ImageComponent, {"patchMarginBottom", "patchMarginLeft", "patchMarginRight", "patchMarginTop", "textureScaleFactor"}},
         {ComponentType::InputFieldComponent, {"cursor", "cursorBlink", "cursorColor", "cursorIndex", "cursorWidth", "disabled", "password", "passwordChar", "placeholder", "placeholderColor", "selection", "selectionAnchor", "selectionColor", "text"}},
         {ComponentType::InstancedMeshComponent, {"cullDistance", "cullInstances", "distanceFade", "enabled", "fadeEnd", "fadeStart", "instancedBillboard", "instancedCylindricalBillboard", "instances", "maxInstances"}},
@@ -71,7 +71,7 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::KeyframeTracksComponent, {"easings", "index", "interpolation", "times"}},
         {ComponentType::LayoutGroupComponent, {"fillAvailableSpace", "type", "useAllWrapSpace", "wrapCellHeight", "wrapCellWidth"}},
         {ComponentType::Light2DComponent, {"color", "enabled", "falloff", "height", "intensity", "mapResolution", "range", "shadowBias", "shadowSoftness", "shadows"}},
-        {ComponentType::LightComponent, {"automaticShadowCamera", "cascadeSplitMode", "cascadeSplits", "color", "cullingMask", "direction", "enabled", "innerConeCos", "intensity", "mapResolution", "numShadowCascades", "outerConeCos", "range", "shading", "shadowAngularDiameter", "shadowBias", "shadowCameraNearFar", "shadowDistance", "shadowNormalBias", "shadowSourceRadius", "shadowStrength", "shadowUpdateMode", "shadows", "softShadows", "spotMask", "type", "worldDirection"}},
+        {ComponentType::LightComponent, {"automaticShadowCamera", "cascadeSplitMode", "cascadeSplits", "color", "cullingMask", "direction", "enabled", "innerConeCos", "intensity", "mapResolution", "numShadowCascades", "outerConeCos", "range", "shading", "shadowAngularDiameter", "shadowBias", "shadowCameraNearFar", "shadowDistance", "shadowNormalBias", "shadowSourceRadius", "shadowStrength", "shadowUpdateMode", "shadows", "softShadows", "spotMask", "type", "volumetricIntensity", "worldDirection"}},
         {ComponentType::LineRendererComponent, {"blendMode", "colorWrite", "customShader", "depthWrite", "enabled", "lines", "maxLines", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil"}},
         {ComponentType::MeshComponent, {"aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodBias", "lodEnabled", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"}},
         {ComponentType::MeshPolygonComponent, {"automaticFlipY", "flipY", "height", "points", "width"}},
@@ -107,6 +107,8 @@ const std::vector<std::string>& StreamSchema::knownFieldKeys(ComponentType type)
         {ComponentType::TweenComponent, {"duration", "function", "loop"}},
         {ComponentType::UIComponent, {"aabb", "automaticFlipY", "blendMode", "buffer", "color", "colorWrite", "customShader", "depthWrite", "enabled", "flipY", "focused", "indices", "minBufferCount", "minIndicesCount", "pointerMoved", "primitiveType", "shaderFeatures", "shaderTextures", "shaderUniforms", "stencil", "texture", "vertexCount", "worldAABB"}},
         {ComponentType::UIDocumentComponent, {"enabled", "filename", "inputSurface", "interactive", "pixelRatio", "renderMode", "sortOrder", "textureHeight", "textureWidth"}},
+        {ComponentType::LocalVolumetricFogComponent, {"albedo", "attenuationDistance", "blendDistance", "falloff", "noiseIntensity", "noiseScale", "scrollSpeed", "shape", "size"}},
+        {ComponentType::VolumetricCloudsComponent, {"altitudeRange", "ambientLightDimmer", "bottomAltitude", "coverage", "density", "earthCurvature", "erosionFactor", "erosionScale", "maxDistance", "preset", "qualityOverride", "rendering", "shapeFactor", "shapeScale", "sunLightDimmer", "weatherMap", "weatherMapScale", "windDirection", "windSpeed"}},
     };
     return lookup(tables, type);
 }
@@ -134,7 +136,7 @@ const std::vector<std::string>& StreamSchema::knownRootKeys(RootKind kind) {
             "addedTo", "childIndex", "parentRegistryEntity", "prefabRootRegistryEntity", "prefabPath"}},
         // the editor state an older project.yaml held (Workspace::adoptLegacyProjectState) and
         // its build settings (AppSettings, build.yaml) are read too
-        {RootKind::Project, {"formatVersion", "android", "application", "assetsDir", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "name", "packNativeResources", "physics2D", "physics3D", "runtimeShaders", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
+        {RootKind::Project, {"formatVersion", "android", "application", "assetsDir", "atmosphereQuality", "canvasHeight", "canvasWidth", "cxxStandard", "export", "graphics", "htmlUiGlyphAtlasMiB", "htmlUiMsaaSamples", "htmlUiSdfPrimitives", "htmlUiTransformAwareText", "ignoredLayerCollisions", "ios", "layers", "linux", "loading", "luaDir", "macos", "name", "packNativeResources", "physics2D", "physics3D", "runtimeShaders", "scalingMode", "scenes", "scriptDirs", "standalonePrefabs", "startSceneId", "tags", "textureStrategy", "versionControlMetadata", "vsync", "web", "windowHeight", "windowIcon", "windowMode", "windowResizable", "windowTitle", "windowWidth", "windows",
             "cmakeBuildJobs", "cmakeCCompiler", "cmakeCxxCompiler", "cmakeGenerator", "selectedScene", "tabs", "terrainEditor"}},
         {RootKind::Material, {}},
         {RootKind::PrefabHeader, {"type", "version", "guid", "formerGuids", "nextEntity", "root", "members", "stripped"}},
@@ -181,7 +183,7 @@ namespace {
     const std::vector<std::pair<std::string, ComponentType>>& componentTypesByName() {
         static const std::vector<std::pair<std::string, ComponentType>> names = [] {
             std::vector<std::pair<std::string, ComponentType>> list;
-            for (int type = (int)ComponentType::Transform; type <= (int)ComponentType::UIDocumentComponent; type++) {
+            for (int type = (int)ComponentType::Transform; type <= (int)LAST_COMPONENT_TYPE; type++) {
                 list.emplace_back(Catalog::getComponentName((ComponentType)type, true), (ComponentType)type);
             }
             return list;
@@ -445,10 +447,74 @@ const EnumTable<FogType>& StreamSchema::fogType() {
         {FogType::LINEAR, "linear"},
         {FogType::EXPONENTIAL, "exponential"},
         {FogType::EXPONENTIALSQUARED, "exponential_squared"},
+        {FogType::HEIGHT, "height"},
     }, FogType::LINEAR, {
         {FogType::EXPONENTIALSQUARED, "exponentialsquared"},
         {FogType::EXPONENTIALSQUARED, "exponentialSquared"},
     });
+    return table;
+}
+
+const EnumTable<FogColorMode>& StreamSchema::fogColorMode() {
+    static const EnumTable<FogColorMode> table("FogColorMode", {
+        {FogColorMode::COLOR, "color"},
+        {FogColorMode::SKY, "sky"},
+    }, FogColorMode::COLOR);
+    return table;
+}
+
+const EnumTable<FogVolumeShape>& StreamSchema::fogVolumeShape() {
+    static const EnumTable<FogVolumeShape> table("FogVolumeShape", {
+        {FogVolumeShape::BOX, "box"},
+        {FogVolumeShape::SPHERE, "sphere"},
+    }, FogVolumeShape::BOX);
+    return table;
+}
+
+const EnumTable<FogVolumeFalloff>& StreamSchema::fogVolumeFalloff() {
+    static const EnumTable<FogVolumeFalloff> table("FogVolumeFalloff", {
+        {FogVolumeFalloff::LINEAR, "linear"},
+        {FogVolumeFalloff::EXPONENTIAL, "exponential"},
+    }, FogVolumeFalloff::LINEAR);
+    return table;
+}
+
+const EnumTable<CloudsPreset>& StreamSchema::cloudsPreset() {
+    static const EnumTable<CloudsPreset> table("CloudsPreset", {
+        {CloudsPreset::CUSTOM, "custom"},
+        {CloudsPreset::SPARSE, "sparse"},
+        {CloudsPreset::CLOUDY, "cloudy"},
+        {CloudsPreset::OVERCAST, "overcast"},
+        {CloudsPreset::STORMY, "stormy"},
+    }, CloudsPreset::CLOUDY);
+    return table;
+}
+
+const EnumTable<CloudsRendering>& StreamSchema::cloudsRendering() {
+    static const EnumTable<CloudsRendering> table("CloudsRendering", {
+        {CloudsRendering::AUTO, "auto"},
+        {CloudsRendering::SKY_MAP, "sky_map"},
+        {CloudsRendering::SCREEN, "screen"},
+    }, CloudsRendering::AUTO);
+    return table;
+}
+
+const EnumTable<AtmosphereQuality>& StreamSchema::atmosphereQuality() {
+    static const EnumTable<AtmosphereQuality> table("AtmosphereQuality", {
+        {AtmosphereQuality::OFF, "off"},
+        {AtmosphereQuality::LOW, "low"},
+        {AtmosphereQuality::MEDIUM, "medium"},
+        {AtmosphereQuality::HIGH, "high"},
+    }, AtmosphereQuality::HIGH);
+    return table;
+}
+
+const EnumTable<AtmosphereQualityOverride>& StreamSchema::atmosphereQualityOverride() {
+    static const EnumTable<AtmosphereQualityOverride> table("AtmosphereQualityOverride", {
+        {AtmosphereQualityOverride::PROJECT, "project"},
+        {AtmosphereQualityOverride::LOW, "low"},
+        {AtmosphereQualityOverride::MEDIUM, "medium"},
+    }, AtmosphereQualityOverride::PROJECT);
     return table;
 }
 

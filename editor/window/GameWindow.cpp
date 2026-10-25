@@ -347,6 +347,24 @@ void editor::GameWindow::drawToolbar() {
     }
     ImGui::SetItemTooltip("Zoom into the game image (double-click resets)");
 
+    // Preview Atmosphere Quality: the tier of volumetric fog and clouds this view shows
+    static const char* const atmosphereLabels[] = {"Project", "Off", "Low", "Medium", "High"};
+    ImGui::SameLine(0, Theme::dpi(12.0f));
+    ImGui::SetNextItemWidth(Theme::dpi(90.0f));
+    const int atmosphereIndex = std::clamp(settings.atmosphereQuality + 1, 0, 4);
+    if (ImGui::BeginCombo("##GameAtmosphere", atmosphereLabels[atmosphereIndex])) {
+        for (int i = 0; i < 5; i++) {
+            if (ImGui::Selectable(atmosphereLabels[i], atmosphereIndex == i)) {
+                settings.atmosphereQuality = i - 1;
+                editPassDirty = true;
+                saveSettings();
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("Preview Atmosphere Quality: the volumetric fog and clouds tier of this view (Project: the project's "
+                          "desktop Atmosphere Quality). A script's Engine.setAtmosphereQuality still wins.");
+
     // The played scene's HTML UI documents (the RmlUi debugger inspects and draws in them)
     UIDocumentSystem* playedDocuments = nullptr;
     const uint32_t playedSceneId = project->getPlaySessionSceneId();

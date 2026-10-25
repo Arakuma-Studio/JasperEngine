@@ -21,7 +21,8 @@ namespace jasperengine::editor{
         FILE_DIALOG_SCRIPT = 1 << 5,
         FILE_DIALOG_PREFAB = 1 << 6,
         FILE_DIALOG_MATERIAL = 1 << 7,
-        FILE_DIALOG_HTML = 1 << 8
+        FILE_DIALOG_HTML = 1 << 8,
+        FILE_DIALOG_COLOR_LUT = 1 << 9
     };
 
     class FileDialogs{
@@ -77,6 +78,9 @@ namespace jasperengine::editor{
                 }
                 if (filterFlags & FILE_DIALOG_HTML) {
                     filterItems.push_back({ "HTML documents", "html,htm,rml" });
+                }
+                if (filterFlags & FILE_DIALOG_COLOR_LUT) {
+                    filterItems.push_back({ "Color LUTs", "cube" });
                 }
 
                 if (!filterItems.empty()) {

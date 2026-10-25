@@ -1,0 +1,15 @@
+{
+  "description": "tools/test-projects/post-fx (WEB_PROJECT=post-fx tools/build.sh web): S13's post FX on WebGL2: the uber pass with the VHS tape, the Lens film grain, film damage and halation on its own chain compiles and draws, and dynamic resolution runs on the frame law (SwiftShader in the web image's headless shell).",
+  "isolated": true,
+  "console": [
+    {
+      "text": "[postfx] uber 1 features 0x1e020 chain 1",
+      "level": "log"
+    },
+    {
+      "text": "[postfx] dynamic resolution running 1 source frame",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

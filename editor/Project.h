@@ -621,6 +621,8 @@ namespace jasperengine::editor{
         Scaling scalingMode;
         TextureStrategy textureStrategy;
         bool vsyncEnabled;
+        // Quality > Atmosphere Quality: desktop, mobile, web
+        std::array<AtmosphereQuality, 3> atmosphereQuality;
         PlayerLoggingSettings playerLogging;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
@@ -1053,6 +1055,7 @@ namespace jasperengine::editor{
         static constexpr Scaling defaultScalingMode = Scaling::FITWIDTH;
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
+        static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
         static constexpr int defaultHtmlUiMsaaSamples = 4;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
@@ -1110,6 +1113,11 @@ namespace jasperengine::editor{
 
         void setVSyncEnabled(bool enabled);
         bool isVSyncEnabled() const;
+
+        // Quality > Atmosphere Quality (volumetric fog and clouds) of desktop, mobile and web
+        // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)
+        void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality);
+        const std::array<AtmosphereQuality, 3>& getAtmosphereQuality() const;
 
         // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
         void setPlayerLogging(const PlayerLoggingSettings& settings);
