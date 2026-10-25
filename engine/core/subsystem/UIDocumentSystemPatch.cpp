@@ -136,7 +136,9 @@ namespace {
                     case ReconcilePlan::Child::Kind::Text:{
                         Rml::Element* text = (child.textIndex >= 0 && child.textIndex < (int)texts.size()) ? texts[(size_t)child.textIndex] : nullptr;
                         if (!text || text->GetParentNode() != element){
-                            cursor = insertAfter(element, cursor, child.node->rml);
+                            // a script took it out (textContent): it comes back only when the author changed it
+                            if (child.textChanged)
+                                cursor = insertAfter(element, cursor, child.node->rml);
                             break;
                         }
                         place(element, text, cursor);
@@ -149,8 +151,9 @@ namespace {
                         const ReconcilePlan::Element& sub = child.element.front();
                         Rml::Element* match = liveOf(sub.oldLoc, element);
                         if (!match){
-                            // a script took it out: the author's element comes back
-                            cursor = insertAfter(element, cursor, sub.node->rml);
+                            // a script took it out: the author's element comes back when the author changed it
+                            if (touched(sub))
+                                cursor = insertAfter(element, cursor, sub.node->rml);
                             break;
                         }
                         place(element, match, cursor);
@@ -169,6 +172,18 @@ namespace {
         int runtimeKept = 0;
 
     private:
+        // the author changed something in the element or below it
+        static bool touched(const ReconcilePlan::Element& step){
+            if (step.changed() || !step.removedChildren.empty())
+                return true;
+            for (const ReconcilePlan::Child& child : step.children){
+                if (child.kind == ReconcilePlan::Child::Kind::Insert || (child.kind == ReconcilePlan::Child::Kind::Text && child.textChanged) ||
+                    (child.kind == ReconcilePlan::Child::Kind::Element && touched(child.element.front())))
+                    return true;
+            }
+            return false;
+        }
+
         Rml::Element* liveOf(int loc, Rml::Element* parent) const{
             auto it = live.find(loc);
             return (it != live.end() && it->second->GetParentNode() == parent) ? it->second : nullptr;
