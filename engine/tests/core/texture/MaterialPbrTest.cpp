@@ -39,8 +39,8 @@ namespace {
         int occlusionTexCoord;
         int emissiveTexCoord;
         int normalTexCoord;
-        std::string name;
-        std::string shader;
+        AssetRef name;
+        ShaderRef shader;
         ShaderUniformValues shaderParams;
         std::vector<std::pair<std::string, Texture>> shaderTextures;
         std::vector<std::string> shaderFeatures;
