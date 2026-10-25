@@ -327,11 +327,9 @@ TEST(ClipIO, QuaternionsNearTheToleranceAreAFixedPoint){
         ClipData data;
         ClipTrackData track;
         track.channel = ClipChannel::Rotation;
-        ClipKey a;
-        a.value = {0, 0, 0, 1};
-        ClipKey b;
-        b.time = 1;
-        b.value = {q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale};
+        // built by key() (a braced list assigned to a fresh key's value trips GCC's -Wnonnull)
+        ClipKey a = key(0, {0, 0, 0, 1});
+        ClipKey b = key(1, {q[0] * scale, q[1] * scale, q[2] * scale, q[3] * scale});
         if (round % 2){
             a.inTangent = {0, 0, 0, 0};
             a.outTangent = {unit(random), 0, 0, 0};
