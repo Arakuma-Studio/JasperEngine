@@ -1192,7 +1192,7 @@ void editor::Project::updateSceneImports(SceneProject* sceneProject) {
         if (!FbxImporter::isFbxFile(model.filename) || !sceneEntities.count(models->getEntity(i))) {
             continue;
         }
-        const std::string key = normalizeToAssetsRelative(resolveAssetPath(FileUtils::pathFromUtf8(model.filename))).generic_string();
+        const std::string key = normalizeToAssetsRelative(resolveAssetPath(FileUtils::pathFromUtf8(model.filename.path))).generic_string();
         const std::string id = model.gltfModel ? FbxImporter::getImportId(*model.gltfModel) : std::string();
         auto it = loaded.emplace(key, id).first;
         if (it->second != id) {

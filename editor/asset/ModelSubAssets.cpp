@@ -165,6 +165,12 @@ bool editor::scanModelFile(const std::filesystem::path& file, ModelContents& con
         }
         return scanModelBytes(ext, header + json, contents);
     }
+    // an FBX (upstream's import, loaded through the glTF it converts into) has no sub-assets
+    // here: nothing to read
+    if (ext != ".gltf" && ext != ".obj") {
+        contents = ModelContents();
+        return false;
+    }
     if (!assetio::readFile(file, bytes)) {
         contents = ModelContents();
         return false;
