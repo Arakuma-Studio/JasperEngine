@@ -359,15 +359,20 @@ namespace{
         for (float& v : key.outTangent) v *= factor;
     }
 
-    // hemisphere continuity along a rotation track: each key on the side of the previous one
-    // (a flipped key's tangents flip with it)
+    // hemisphere continuity along a rotation track: each key on the side of the previous one.
+    // Only for slerp tracks (any sign gives the same rotations there). A Hermite (CUBICSPLINE)
+    // track keeps its signs: its curve is componentwise, and a flipped key changes the segment
+    // into it whatever is done to the tangents (negating the key's in/out tangents with it
+    // keeps only the segments after it), so the clip would sample differently from the glTF
+    // and from the model's entity tracks, which use the values as they are
     void enforceHemisphere(ClipTrackData& track){
+        for (const ClipKey& key : track.keys){
+            if (key.hasTangents()) return;
+        }
         for (size_t k = 1; k < track.keys.size(); k++){
             ClipKey& key = track.keys[k];
             if (quaternionDot(track.keys[k - 1].value, key.value) < 0.0f){
                 negate(key.value);
-                negate(key.inTangent);
-                negate(key.outTangent);
             }
         }
     }

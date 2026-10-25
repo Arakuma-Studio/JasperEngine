@@ -10,6 +10,7 @@
 
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipIO.h"
+#include "animation/KeyframeSampling.h"
 #include "Engine.h"
 
 #include <cmath>
@@ -346,19 +347,62 @@ TEST(ClipIO, QuaternionsNearTheToleranceAreAFixedPoint){
     }
 }
 
-TEST(ClipIO, HemisphereContinuityFlipsKeysAndTheirTangents){
+TEST(ClipIO, HemisphereContinuityFlipsSlerpKeys){
     ClipData data = parseOk(wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"rotation\", \"keys\": ["
-                                     "{\"time\": 0, \"value\": [0, 0, 0, 1], \"in\": [0, 0, 0, 0], \"out\": [0, 1, 0, 0]},"
-                                     "{\"time\": 1, \"value\": [0, -0.6, 0, -0.8], \"in\": [0, 2, 0, 0], \"out\": [0, 0, 0.5, 0]}]}]"));
+                                     "[0, [0, 0, 0, 1]], [1, [0, -0.6, 0, -0.8]], [2, [0, 0, 0, -1]]]}]"));
     ASSERT_EQ(data.tracks.size(), 1u);
     const ClipKey& flipped = data.tracks[0].keys[1];
     EXPECT_FLOAT_EQ(flipped.value[1], 0.6f);
     EXPECT_FLOAT_EQ(flipped.value[3], 0.8f);
-    EXPECT_FLOAT_EQ(flipped.inTangent[1], -2.0f);
-    EXPECT_FLOAT_EQ(flipped.outTangent[2], -0.5f);
+    EXPECT_FLOAT_EQ(data.tracks[0].keys[2].value[3], 1.0f) << "on the side of the flipped key before it";
     std::string text = anim::writeClip(data);
-    EXPECT_NE(text.find("{\"time\": 1, \"value\": [0, 0.6, 0, 0.8], \"in\": [0, -2, 0, 0], \"out\": [0, 0, -0.5, 0]}"),
-              std::string::npos) << text;
+    EXPECT_NE(text.find("[1, [0, 0.6, 0, 0.8]]"), std::string::npos) << text;
+}
+
+// A CUBICSPLINE (Hermite) rotation track keeps its signs: a flipped key would change the segment
+// into it whatever its tangents became, so the clip samples like the glTF / the model's entity
+// tracks (the same sampler over the values as given)
+TEST(ClipIO, HermiteRotationTracksKeepTheirSignsAndSampleAsGiven){
+    const std::string text = wrapClip("\"tracks\": [{\"path\": \"\", \"channel\": \"rotation\", \"keys\": ["
+                                      "{\"time\": 0, \"value\": [0, 0, 0, 1], \"in\": [0, 0, 0, 0], \"out\": [0, 1, 0, 0]},"
+                                      "{\"time\": 1, \"value\": [0, -0.6, 0, -0.8], \"in\": [0, 2, 0, 0], \"out\": [0, 0, 0.5, 0]},"
+                                      "{\"time\": 2, \"value\": [0, 0.6, 0, 0.8], \"in\": [0.5, 0, 0, 0], \"out\": [0, 0, 0, 0]}]}]");
+    ClipData data = parseOk(text);
+    ASSERT_EQ(data.tracks.size(), 1u);
+    ASSERT_EQ(data.tracks[0].keys.size(), 3u);
+    const ClipKey& kept = data.tracks[0].keys[1];
+    EXPECT_EQ(kept.value, (std::vector<float>{0, -0.6f, 0, -0.8f}));
+    EXPECT_EQ(kept.inTangent, (std::vector<float>{0, 2, 0, 0}));
+    EXPECT_EQ(kept.outTangent, (std::vector<float>{0, 0, 0.5f, 0}));
+    EXPECT_EQ(data.tracks[0].keys[2].value, (std::vector<float>{0, 0.6f, 0, 0.8f}));
+    const std::string written = anim::writeClip(data);
+    EXPECT_NE(written.find("{\"time\": 1, \"value\": [0, -0.6, 0, -0.8], \"in\": [0, 2, 0, 0], \"out\": [0, 0, 0.5, 0]}"),
+              std::string::npos) << written;
+    EXPECT_EQ(anim::writeClip(parseOk(written)), written) << "a fixed point";
+
+    // the clip's sample against the entity tracks' sampler over the values and tangents as given
+    std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data);
+    ASSERT_EQ(clip->getTracks().size(), 1u);
+    const float times[] = {0, 1, 2};
+    const float raw[3][3][4] = {   // in, value, out per key (x y z w)
+        {{0, 0, 0, 0}, {0, 0, 0, 1}, {0, 1, 0, 0}},
+        {{0, 2, 0, 0}, {0, -0.6f, 0, -0.8f}, {0, 0, 0.5f, 0}},
+        {{0.5f, 0, 0, 0}, {0, 0.6f, 0, 0.8f}, {0, 0, 0, 0}}};
+    Quaternion ins[3], values[3], outs[3];
+    for (int k = 0; k < 3; k++){
+        ins[k] = quaternionFromXYZW(raw[k][0]);
+        values[k] = quaternionFromXYZW(raw[k][1]);
+        outs[k] = quaternionFromXYZW(raw[k][2]);
+    }
+    for (float t = 0.05f; t < 2.0f; t += 0.1f){
+        anim::TrackSample sample;
+        ASSERT_TRUE(anim::sampleTrack(clip->getTracks()[0], t, sample));
+        const Quaternion expected = anim::sampleQuaternion(anim::locateKey(times, 3, nullptr, 0, t), values, ins, outs);
+        EXPECT_NEAR(sample.rotation.w, expected.w, 1e-6f) << "t " << t;
+        EXPECT_NEAR(sample.rotation.x, expected.x, 1e-6f) << "t " << t;
+        EXPECT_NEAR(sample.rotation.y, expected.y, 1e-6f) << "t " << t;
+        EXPECT_NEAR(sample.rotation.z, expected.z, 1e-6f) << "t " << t;
+    }
 }
 
 TEST(ClipIO, EulerIsReadInEditAnimationsOrderAndWrittenAsQuaternions){
