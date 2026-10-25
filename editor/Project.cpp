@@ -3950,6 +3950,10 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     }
 }
 
+void editor::Project::releaseScenes() {
+    resetConfigs();
+}
+
 void editor::Project::resetConfigs() {
     // Prefab Mode ends with the project (what it had unsaved was offered for saving before)
     while (!prefabStages.empty()) {
