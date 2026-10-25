@@ -546,3 +546,67 @@ path (`ViewTools.cpp` `w3::captureView`) on that target.
   +x% overhead (estimated)" from the measured per-scope cost × event count.
 - **Prebuilt development players (S30)** double the per-platform binaries. *Default:* ship them.
   If S30 cannot, Development Build requires a compiler-based export until it can.
+
+## Deviations
+
+Recorded by the implementation (the branch `feat/s15-profiling`); each is the closest correct
+alternative to what the text above asks.
+
+- **MCP parameter names are snake_case** (S31 R20): `min_frame_ms`, `capture_id`, `deep_lua`,
+  `save_path`, `include_draws`, `max_draws`, `max_rows`, `group_by`, `max_width`. Result keys are
+  snake_case too (`gpu_ms`, `frame_ms`, `spike_interval_frames`). S31's tool groups have not landed
+  on `oe-port`, so the eight tools are in the default listing and their size is added to the
+  existing budget (`test_html_ui_tools.py` `TOTAL_LIMIT`, measured with `tool_budget.py`); they
+  move to the `profiling` group when S31 lands.
+- **An eighth MCP entry point.** §6.6 lists seven tools; `capture_pass_output` is one of them, and
+  `focus_window` gained `profiler` and `frame_debugger` (the UI tests open the panels with it).
+- **The view parameter's default** is the engine's frame (the running game while playing, else
+  the Scene view), not "game": in edit mode the Game view draws only while its tab is shown, so a
+  default of "game" would often find nothing. `"game"` and `"scene"` name the views explicitly.
+- **The sokol extension's API** grew what the engine needs: `sgj_gpu_timer_setup` takes a desc
+  (`disabled`, for `JASPERENGINE_GPU_TIMER=off`), results carry `frame_valid` and `pass_reason`,
+  and the TU exports `sgj_gpu_timer_get_stats`, `sgj_commit_index`, `sgj_pass_valid`,
+  `sgj_pixel_format_name`, `sgj_query_device_memory`, `sgj_device_name` and
+  `sgj_gpu_timer_set_vulkan_host_query_reset` (whoever creates the VkDevice says whether it enabled
+  `hostQueryReset`; both device creators, `VulkanContext` and the editor's renderer, enable it when
+  supported). The four hooks are where §6.1 puts them; as a consequence the GL query of a pass
+  starts after the backend's begin (its load clears are before it) and ends before the MSAA
+  resolve of the backend's end, and the Vulkan timestamps sit inside the dynamic rendering
+  instance. The hooks are installed while a consumer holds the timer and removed otherwise (R26:
+  one null-pointer test per site), not filled at setup.
+- **Metal** samples four points per render encoder (start and end of the vertex and fragment
+  stages; begin = the first that ran, end = the last), because an encoder that only clears runs no
+  vertex stage. The frame time on Metal is always the command buffer's `GPUEndTime -
+  GPUStartTime` (encoder spans overlap; their first-to-last would not be the frame either).
+- **Threads.** S06 has one worker kind (lanes, not separate background threads), so the lanes are
+  "Job Worker #n", "Job Blocking #n" (S06's blocking channel threads) and "Asset Reader #n"; there
+  is no "Job Background #n". The audio callback runs inside SoLoud's/miniaudio's own thread with no
+  engine code, so it has no scopes and no lane. Thread names come from `thread::setCurrentName`
+  (every engine thread names itself there) and the job system's `onThreadStart` hook.
+- **Frames.** A CPU frame is one rendered iteration of the editor loop (`EditorFrame::run`) or one
+  `Engine::systemDraw` in a game; `cpuMs` is its start to the end of its CPU work (before
+  presenting and waiting), `frameMs` its start to the next frame's start.
+- **AC4's compiled-out baseline** is the editor built from the commit before S15: the editor
+  itself cannot be built without the profiler (its panels and tools use it), and release games
+  have no benchmark mode. `tools/perf/profiler_overhead.py` measures the editor with the profiler
+  idle, recording (`benchmark --profile`) and recording with GPU timers (`--profile
+  --gpu-passes`) against it, interleaving the runs.
+- **AC8's tests** are `VramTrackerGpu.CreateDestroyBalances` and `VramTrackerGpu.QueuedCreationKeepsOwner`
+  (a suite that needs a device ends in `Gpu`, docs/testing.md). "Other+untagged ≤ 5%" is read as
+  the bytes the tracker could not classify (category Other): resources made outside a
+  `JE_GPU_ALLOC_SCOPE` still get a category from their usage and an owner from their label;
+  `get_vram_report` reports `untagged_bytes` separately.
+- **AC9's golden log** compares the line after its `Frame stats (frame N): ` prefix (N depends on
+  how long loading took): `tools/ci/check_profiler_smoke.py --frame-stats
+  engine/tests/data/framestats_baseline.txt build/smoke/game.log build/smoke/game-actions.log` after
+  `SMOKE_GAME_ENV=JASPERENGINE_FRAME_STATS=1 SMOKE_GAME_RUNS="actions
+  JASPERENGINE_FRAME_STATS_ACTIONS=1" tools/smoke-test.sh tools/fixtures/post-processing`.
+  The pass recorder records every pass; the frame stats line keeps listing the passes SokolCamera
+  begins, as before, from SokolCamera's own pass descriptions.
+- **The pass preview shader** (`PASS_PREVIEW`, `shaderlib/pass_preview.frag`) is built on demand
+  by the editor and is not exported (games have no Frame Debugger). Depth is linearised with a
+  near/far the Frame Debugger is given (Linear), else mapped through Levels;
+  `capture_pass_output` normalises depth to the exact range it read back on the CPU (the min-max
+  of R12). Its blit is timed by the GPU timer but left out of pass lists.
+- **The Xcode workspace** builds without the profiler (no `JASPERENGINE_PROFILER` definition, the
+  macros compile out): Apple development builds go through CMake.

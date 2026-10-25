@@ -34,6 +34,7 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 

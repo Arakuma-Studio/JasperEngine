@@ -945,14 +945,18 @@ bool sgj_query_device_memory(sgj_device_memory* out) {
     #if defined(_SOKOL_ANY_GL) && !defined(__EMSCRIPTEN__)
         // NVIDIA: total and currently available video memory (KiB); AMD: free texture memory
         const GLenum TOTAL_AVAILABLE_NVX = 0x9048, CURRENT_AVAILABLE_NVX = 0x9049, TEXTURE_FREE_ATI = 0x87FC;
-        bool nvx = false, ati = false;
-        GLint count = 0;
-        glGetIntegerv(GL_NUM_EXTENSIONS, &count);
-        for (GLint i = 0; i < count; i++) {
-            const char* name = (const char*)glGetStringi(GL_EXTENSIONS, (GLuint)i);
-            if (!name) continue;
-            nvx = nvx || std::strcmp(name, "GL_NVX_gpu_memory_info") == 0;
-            ati = ati || std::strcmp(name, "GL_ATI_meminfo") == 0;
+        // the extensions, looked up once (the process keeps its GPU)
+        static bool nvx = false, ati = false, looked_up = false;
+        if (!looked_up) {
+            GLint count = 0;
+            glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+            for (GLint i = 0; i < count; i++) {
+                const char* name = (const char*)glGetStringi(GL_EXTENSIONS, (GLuint)i);
+                if (!name) continue;
+                nvx = nvx || std::strcmp(name, "GL_NVX_gpu_memory_info") == 0;
+                ati = ati || std::strcmp(name, "GL_ATI_meminfo") == 0;
+            }
+            looked_up = true;
         }
         if (nvx) {
             GLint total = 0, available = 0;

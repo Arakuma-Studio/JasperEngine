@@ -3,6 +3,8 @@
 
 #include "SokolVramTracker.h"
 
+#if JASPERENGINE_PROFILER
+
 #include "profiler/GpuMemory.h"
 #include "sokol_gfx.h"
 #include "sokol_gpu_timer.h"
@@ -133,3 +135,5 @@ void SokolVramTracker::onBufferDestroyed(uint32_t buffer){
 const char* SokolVramTracker::imageLabel(uint32_t image){
     return gpumem::label(image, true);
 }
+
+#endif

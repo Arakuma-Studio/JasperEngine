@@ -18,6 +18,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <functional>
 #include <map>
 #include <unordered_map>
@@ -706,17 +707,18 @@ void ProfilerWindow::drawCpuHierarchy(const profiler::Frame& frame){
         const size_t slash = rows[i].path.rfind('/');
         children[slash == std::string::npos ? std::string() : rows[i].path.substr(0, slash)].push_back(i);
     }
-    auto less = [&](size_t a, size_t b){
+    auto ascending = [&](size_t a, size_t b){
         const profiler::TreeRow& x = rows[a];
         const profiler::TreeRow& y = rows[b];
-        bool result;
         switch (settings.sortColumn){
-            case 0: result = x.name < y.name; break;
-            case 2: result = x.selfMs < y.selfMs; break;
-            case 3: result = x.calls < y.calls; break;
-            default: result = x.totalMs < y.totalMs; break;
+            case 0: return x.name < y.name;
+            case 2: return x.selfMs < y.selfMs;
+            case 3: return x.calls < y.calls;
+            default: return x.totalMs < y.totalMs;
         }
-        return settings.sortAscending ? result : !result && !(settings.sortColumn == 0 ? x.name == y.name : false);
+    };
+    auto less = [&](size_t a, size_t b){
+        return settings.sortAscending ? ascending(a, b) : ascending(b, a);
     };
     for (auto& [parent, list] : children)
         std::stable_sort(list.begin(), list.end(), less);
@@ -857,8 +859,8 @@ void ProfilerWindow::drawCpuTimeline(const profiler::Frame& frame){
             if (x1 < origin.x || x0 > origin.x + width)
                 continue;
             const float top = y + rowHeight * (float)interval.depth;
-            const ImU32 color = timeline.thread == cpuThread || cpuThread == 0 ? categoryColor(std::hash<std::string>()(label) % 7)
-                                                                               : categoryColor(std::hash<std::string>()(label) % 7);
+            // a colour per name, so a scope reads the same on every lane
+            const ImU32 color = categoryColor(std::hash<std::string>()(label) % 7);
             draw->AddRectFilled(ImVec2(x0, top), ImVec2(x1, top + rowHeight - 1.0f), color, 1.0f);
             std::string path;
             for (size_t i = 0; i < stack.size(); i++)
@@ -1004,18 +1006,19 @@ void ProfilerWindow::drawMemoryDetail(){
             containsText(gpumem::categoryName(allocation.category), memoryFilter))
             rows.push_back(&allocation);
     }
-    auto less = [&](const gpumem::Allocation* a, const gpumem::Allocation* b){
-        bool result;
+    auto ascending = [&](const gpumem::Allocation* a, const gpumem::Allocation* b){
         switch (memorySortColumn){
-            case 0: result = a->label < b->label; break;
-            case 1: result = a->owner < b->owner; break;
-            case 2: result = a->category < b->category; break;
-            case 3: result = a->kind < b->kind; break;
-            case 4: result = (int64_t)a->width * a->height < (int64_t)b->width * b->height; break;
-            case 5: result = a->format < b->format; break;
-            default: result = a->bytes < b->bytes; break;
+            case 0: return a->label < b->label;
+            case 1: return a->owner < b->owner;
+            case 2: return a->category < b->category;
+            case 3: return a->kind < b->kind;
+            case 4: return (int64_t)a->width * a->height < (int64_t)b->width * b->height;
+            case 5: return a->format < b->format;
+            default: return a->bytes < b->bytes;
         }
-        return memorySortAscending ? result : !result;
+    };
+    auto less = [&](const gpumem::Allocation* a, const gpumem::Allocation* b){
+        return memorySortAscending ? ascending(a, b) : ascending(b, a);
     };
     std::stable_sort(rows.begin(), rows.end(), less);
     // grouped: the group's rows under its header row
