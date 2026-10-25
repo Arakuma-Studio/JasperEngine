@@ -71,20 +71,24 @@ void editor::PoseEditSession::suspendActiveForMove(uint32_t sceneId, Entity sour
     };
     if (session->copiesPosedEntities(sceneId, {source}) || underPosed(oldParent) || underPosed(newParent)){
         session->suspend();
-        // the restore put the bones' rest world back; what hangs below them (the moved prop and
-        // the GameObjects between it and the bone) gets its world from that rest now, parents first
+        // the restore put the bones' rest world back; what hangs below them gets its world from
+        // that rest now, parents first: the moved GameObject with the ones between it and the bone
+        // (the world it keeps), and the new parent's (the world its new local is taken against)
         std::shared_ptr<RenderSystem> render = session->scenePtr->getSystem<RenderSystem>();
-        std::vector<Entity> chain;
-        for (Entity entity = source; entity != NULL_ENTITY && chain.size() < 4096 && !session->ownsEntity(sceneId, entity);){
-            chain.push_back(entity);
-            const Transform* transform = session->scenePtr->findComponent<Transform>(entity);
-            entity = transform ? transform->parent : NULL_ENTITY;
-        }
-        if (render){
+        auto refreshChain = [&](Entity from){
+            std::vector<Entity> chain;
+            for (Entity entity = from; entity != NULL_ENTITY && chain.size() < 4096 && !session->ownsEntity(sceneId, entity);){
+                chain.push_back(entity);
+                const Transform* transform = session->scenePtr->findComponent<Transform>(entity);
+                entity = transform ? transform->parent : NULL_ENTITY;
+            }
+            if (!render) return;
             for (auto it = chain.rbegin(); it != chain.rend(); ++it){
                 if (Transform* transform = session->scenePtr->findComponent<Transform>(*it)) render->updateTransform(*transform, *it);
             }
-        }
+        };
+        refreshChain(source);
+        refreshChain(newParent);
     }
 }
 

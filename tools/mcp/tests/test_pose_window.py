@@ -614,6 +614,31 @@ async def test_reparenting_a_posed_bone_keeps_its_rest_world(ed: Editor):
         await ed.call("undo", scene="Main Scene")
 
 
+async def test_moving_into_a_prop_held_by_a_posed_bone(ed: Editor):
+    """A GameObject moved INTO a prop hanging from a posed bone (keep world): its new local is taken
+    against the prop's rest world, as the same move made without posing."""
+    await leave_posing(ed)
+    await ed.call("create_entity", name="Prop", parent="mixamorig:RightLeg", position=[0.1, 0.0, 0.0])
+    await ed.call("create_entity", name="Item", position=[0.3, 1.0, 0.2])
+    try:
+        await ed.call("move_entity", entity="Item", parent="Prop")
+        idle = await bone_local(ed, "Item")
+        idle_text = await save_text(ed)
+        await ed.call("undo", scene="Main Scene")
+        await pose_again(ed)
+        await ed.call("move_entity", entity="Item", parent="Prop")
+        await ed.call("wait", seconds=0.3)
+        await leave_posing(ed)
+        moved = await bone_local(ed, "Item")
+        ed.check(close(moved[0], idle[0], 1e-4) and all(abs(a - b) <= 1e-4 for a, b in zip(moved[1], idle[1])),
+                 f"the local against the prop's rest world: {moved} vs {idle}")
+        same_file(ed, idle_text, await save_text(ed), "the item moved into the prop")
+        await ed.call("undo", scene="Main Scene")
+    finally:
+        await ed.call("select_entities", entities=["Ground"])
+        await ed.call("undo", scene="Main Scene", steps=2)
+
+
 async def test_moving_a_prop_off_a_posed_bone_keeps_its_rest_world(ed: Editor):
     """A GameObject held by a posed bone (a prop under the right leg, whose world the posed thigh
     moves) reparented to the scene root keeping its world: the rest world, as without posing."""
