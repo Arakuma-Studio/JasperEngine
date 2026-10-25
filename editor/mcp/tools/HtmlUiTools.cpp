@@ -1211,9 +1211,12 @@ bool parseCheck(const Json& item, size_t index, hui::AssertSpec& spec, std::stri
         !integer("min", spec.min) || !integer("max", spec.max) || !real("tolerance", spec.tolerance, 0, 1000) ||
         !real("min_ratio", spec.minRatio, 1, 21) || !real("width", spec.minWidth, 0, 10000) ||
         !real("height", spec.minHeight, 0, 10000) || !flag("unobstructed", spec.unobstructed) ||
-        !flag("allow_scroll", spec.allowScroll) || !flag("single_line", spec.singleLine) || !integer("max_pool", spec.maxPool)) {
+        !flag("allow_scroll", spec.allowScroll) || !flag("single_line", spec.singleLine)) {
         return false;
     }
+    // virtual_window: max is the most rows the view may hold (default its own bound)
+    if (spec.kind == hui::AssertKind::VirtualWindow)
+        spec.maxPool = spec.max;
     if (has(item, "text")) {
         if (!item["text"].is_string()) {
             error = at + ".text must be a string.";
@@ -1959,12 +1962,11 @@ void registerHtmlUiTools(McpRegistry& registry) {
         tool.name = "assert_ui";
         tool.title = "Assert UI Layout";
         tool.description =
-            "Assert the layout of a live HTML/CSS UI document: passed + each failure (element ref, numbers, rects), "
-            "and on failure an image with failing boxes outlined. Checks {type, selector}: exists, count (count|min|max), "
-            "visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), within_parent "
-            "(container), within_viewport, contrast (min_ratio, background where the UI is transparent), min_size "
-            "(width, height), virtual_window (max_pool: a view's rows), tooltip (the source; text), selected (count|min|max). "
-            "viewports: other sizes too. Zero matches fail.";
+            "Assert the layout of a live HTML/CSS UI document: passed + each failure (ref, numbers, rects), and on "
+            "failure an image with failing boxes outlined. Checks {type, selector}: exists, count and selected "
+            "(count|min|max), visible (unobstructed), text_fits (allow_scroll, single_line), no_overlap (with), "
+            "within_parent (container), within_viewport, contrast (min_ratio, background), min_size (width, height), "
+            "virtual_window (max rows), tooltip (text). viewports: other sizes too. Zero matches fail.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef("With the UI Document (default: the only one).")},
@@ -1984,10 +1986,9 @@ void registerHtmlUiTools(McpRegistry& registry) {
                 {"single_line", boolean("")},
                 {"width", number("", 0, 10000)},
                 {"height", number("", 0, 10000)},
-                {"max_pool", integer("virtual_window: default the view's bound.", 0, 100000)},
-                {"text", string("tooltip: the text it holds.")}
+                {"text", string("")}
             }, {"type", "selector"})}}},
-            {"viewports", array(vec2(""), "[[w,h], ...] (max 6); default the current.")},
+            {"viewports", array(vec2(""), "[[w,h]], max 6.")},
             {"screenshot", withDefault(stringEnum("", {"on_failure", "always", "never"}), "on_failure")},
             {"max_width", w3::maxWidthArgSchema(4096, DEFAULT_IMAGE_WIDTH)}
         }, {"checks"});

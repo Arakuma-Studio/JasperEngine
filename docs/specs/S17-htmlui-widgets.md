@@ -571,3 +571,5 @@ doc.onReload = function(report) print(report.updated, report.fallbackReason) end
 - **`ui_widget` is named `edit_ui_view` (R41).** S31's convention (merged after the spec) names a
   new tool verb_noun, `edit_<thing>` for a multi-operation tool; its parameters and actions are
   R41's.
+- **`assert_ui`'s `virtual_window` takes `max`, not `max_pool` (R40).** The check's existing `max`
+  says the most rows; a key of its own did not fit the tool's S31 budget (2,170 characters).

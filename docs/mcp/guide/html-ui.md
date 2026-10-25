@@ -948,7 +948,7 @@ millisecond per frame.
   `.selected` and data bindings. Rows are absolutely positioned inside the view: margins between
   rows do nothing, use `gap` (grid) or padding inside the row.
 - MCP: `inspect_ui` reports each view's `widget` (kind, count, first..last, pool, selection),
-  `assert_ui {"kind": "virtual_window", "max_pool": 30}` and `{"kind": "selected", ...}` check
+  `assert_ui`'s `{"type": "virtual_window", "max": 30}` and `{"type": "selected", ...}` check
   it, and `edit_ui_view` drives it in play (`scroll_to`, `select`, `activate`, `expand`, `collapse`,
   `sort`; 0-based indices).
 
@@ -1645,7 +1645,7 @@ container amber). A failed check is not a tool error. Checks: `exists`, `count` 
 `min`, `max`), `visible` (`unobstructed`: nothing of another document covers it), `text_fits`
 (`single_line`, `allow_scroll`), `no_overlap` (`with`), `within_parent` (`container`),
 `within_viewport`, `contrast` (`min_ratio`, default WCAG AA; `background` where the page is
-transparent), `min_size` (`width`, `height`), `virtual_window` (a view's rows within `max_pool`,
+transparent), `min_size` (`width`, `height`), `virtual_window` (a view's rows within `max`,
 default its own bound), `tooltip` (the selector's tooltip is showing; `text`: it contains that),
 `selected` (a view's selection: `count`, `min`, `max`). Zero matches fail. `viewports` repeats the checks
 at other sizes. Typical sets:

@@ -205,9 +205,9 @@ async def test_ui_widget_actions(ed: Editor):
 
 async def test_assert_widget_checks(ed: Editor):
     data = await checks(ed, {"type": "virtual_window", "selector": "#list"},
-                        {"type": "virtual_window", "selector": "#list", "max_pool": 40},
+                        {"type": "virtual_window", "selector": "#list", "max": 40},
                         {"type": "selected", "selector": "#list", "count": 1},
-                        {"type": "virtual_window", "selector": "#list", "max_pool": 2},
+                        {"type": "virtual_window", "selector": "#list", "max": 2},
                         {"type": "selected", "selector": "#list", "min": 2})
     ed.check_eq([c["passed"] for c in data["checks"]], [True, True, True, False, False], f"virtual_window / selected: {data['checks']}")
     data = await checks(ed, {"type": "virtual_window", "selector": "#help"})
