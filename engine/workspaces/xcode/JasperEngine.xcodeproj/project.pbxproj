@@ -1416,6 +1416,9 @@
 		48544D4C0000000000000039 /* UIDocumentSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000038 /* UIDocumentSystem.cpp */; };
 		48544D4C000000000000003A /* UIDocumentSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000038 /* UIDocumentSystem.cpp */; };
 		48544D4C000000000000003C /* UIDocument.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003B /* UIDocument.h */; };
+		434F4D50495A4B1262D8B139 /* UIReloadReport.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D503E62FB01BD423027 /* UIReloadReport.h */; };
+		434F4D50119CB7F7445AA4AB /* UIDataTransfer.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50B71441D6379B57CB /* UIDataTransfer.h */; };
+		434F4D5075D3FC596936FBB3 /* UIItemsView.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50ACC347246F5AFCBE /* UIItemsView.h */; };
 		48544D4C000000000000003E /* UIDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003D /* UIDocument.cpp */; };
 		48544D4C000000000000003F /* UIDocument.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C000000000000003D /* UIDocument.cpp */; };
 		48544D4C0000000000000041 /* UIElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000040 /* UIElement.h */; };
@@ -1432,7 +1435,9 @@
 		50314C550000000000000011 /* HtmlUIValueDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000010 /* HtmlUIValueDefinition.cpp */; };
 		50314C550000000000000012 /* HtmlUIValueDefinition.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000010 /* HtmlUIValueDefinition.cpp */; };
 		50314C550000000000000015 /* HtmlUIClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000014 /* HtmlUIClassesLua.cpp */; };
+		434F4D502833E380D83BF266 /* HtmlUIWidgetsLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50AA2F597CC6E5CE8D /* HtmlUIWidgetsLua.cpp */; };
 		50314C550000000000000016 /* HtmlUIClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 50314C550000000000000014 /* HtmlUIClassesLua.cpp */; };
+		434F4D507971D8C09095ECB1 /* HtmlUIWidgetsLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50AA2F597CC6E5CE8D /* HtmlUIWidgetsLua.cpp */; };
 		48544D4C0000000000000046 /* UIDocumentComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000045 /* UIDocumentComponent.h */; };
 		48544D4C0000000000000049 /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
 		48544D4C000000000000004A /* BaseXMLParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C0000000000000048 /* BaseXMLParser.cpp */; };
@@ -1923,6 +1928,51 @@
 		48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A6 /* HtmlUIClock.h */; };
 		48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
 		48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002A8 /* HtmlUIClock.cpp */; };
+		434F4D50A3E1EC4D4272C97B /* WidgetsRuntime.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50416EF287A59CA7E3 /* WidgetsRuntime.h */; };
+		434F4D50BCFFED95CD0FD13F /* WidgetsRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509EE760BD1B15803D /* WidgetsRuntime.cpp */; };
+		434F4D50EFE51A328840CA82 /* WidgetsRuntime.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509EE760BD1B15803D /* WidgetsRuntime.cpp */; };
+		434F4D50846A57940A8D4CC6 /* VirtualWindowCore.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50D6EC2A22E21067F2 /* VirtualWindowCore.h */; };
+		434F4D50084E5BA8D7BD13DD /* VirtualWindowCore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5035DC13C84D76B814 /* VirtualWindowCore.cpp */; };
+		434F4D50190B9F30DFAE9707 /* VirtualWindowCore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5035DC13C84D76B814 /* VirtualWindowCore.cpp */; };
+		434F4D501240A0339E02120E /* UIItemsView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FB4BB32B17441F30 /* UIItemsView.cpp */; };
+		434F4D50591EFF3D524BEB21 /* UIItemsView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50FB4BB32B17441F30 /* UIItemsView.cpp */; };
+		434F4D504356797DB31FE78B /* UIElementWidgets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B1CF0748269D8ACD /* UIElementWidgets.cpp */; };
+		434F4D507D889E72FFCD2137 /* UIElementWidgets.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B1CF0748269D8ACD /* UIElementWidgets.cpp */; };
+		434F4D506B091BF8125FA988 /* TreeView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50968D771A89B440B1 /* TreeView.cpp */; };
+		434F4D50F98D8F78A7190E67 /* TreeView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50968D771A89B440B1 /* TreeView.cpp */; };
+		434F4D505E6E0FB4F4E09C55 /* TooltipManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D505ED0B96B6854EE98 /* TooltipManager.h */; };
+		434F4D5041C8580075B0CA11 /* TooltipManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5000CFDEDDC79716FE /* TooltipManager.cpp */; };
+		434F4D50334740514982B0F5 /* TooltipManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5000CFDEDDC79716FE /* TooltipManager.cpp */; };
+		434F4D50E7FCB260EDD3C2DB /* TableView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50556B03334AB0014C /* TableView.cpp */; };
+		434F4D50C50BCEE1A119FB0F /* TableView.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50556B03334AB0014C /* TableView.cpp */; };
+		434F4D50F7EA49A7692C1745 /* PopupPlacement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50AAE933994007A647 /* PopupPlacement.h */; };
+		434F4D50081858B3F8621D0D /* PopupPlacement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5077ACA6872BF9AC62 /* PopupPlacement.cpp */; };
+		434F4D5053D4377878E0CECB /* PopupPlacement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5077ACA6872BF9AC62 /* PopupPlacement.cpp */; };
+		434F4D5027C622C1A83C8BFD /* MarkdownElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50C394F3F23F81932B /* MarkdownElement.h */; };
+		434F4D50AC20CD830572CE12 /* MarkdownElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E1A6A4EB6A96A884 /* MarkdownElement.cpp */; };
+		434F4D50C29874992EC726B7 /* MarkdownElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E1A6A4EB6A96A884 /* MarkdownElement.cpp */; };
+		434F4D50A939004EC3DEF01C /* MarkdownSyntax.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50D49A11DC7350EC04 /* MarkdownSyntax.h */; };
+		434F4D50E2FD7904D2B9DCD3 /* MarkdownParser.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D509B85B6C29951720C /* MarkdownParser.h */; };
+		434F4D50A421998EA495D975 /* MarkdownParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500F8BDABB8B104927 /* MarkdownParser.cpp */; };
+		434F4D504B740A595F99873D /* MarkdownParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D500F8BDABB8B104927 /* MarkdownParser.cpp */; };
+		434F4D50EB047BC7D6D813DA /* MarkdownInlineParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C995CC26AB544891 /* MarkdownInlineParser.cpp */; };
+		434F4D506F65258481E03EDD /* MarkdownInlineParser.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50C995CC26AB544891 /* MarkdownInlineParser.cpp */; };
+		434F4D5084C467C3F0A24D77 /* MarkdownHtml.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50FE4190E75A01F798 /* MarkdownHtml.h */; };
+		434F4D509316350E4F8CEDD4 /* MarkdownHtml.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5022A84B7F2AD5EF1D /* MarkdownHtml.cpp */; };
+		434F4D50E3F0C8E94E1757E3 /* MarkdownHtml.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D5022A84B7F2AD5EF1D /* MarkdownHtml.cpp */; };
+		434F4D50F57857693ECF98F3 /* MarkdownDocument.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D502F16BD60F0617D07 /* MarkdownDocument.h */; };
+		434F4D502BEFDF408C26E85A /* ItemsViewElement.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D508B0AFABC9AA0512E /* ItemsViewElement.h */; };
+		434F4D503D81C03B5CA5E400 /* ItemsViewElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E5BD76C5F85AEB74 /* ItemsViewElement.cpp */; };
+		434F4D50029775030EFC0AEE /* ItemsViewElement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50E5BD76C5F85AEB74 /* ItemsViewElement.cpp */; };
+		434F4D50D79DE2A930491EC1 /* HeightIndex.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50879A5F93405C83D5 /* HeightIndex.h */; };
+		434F4D50AFD131BFDE66B6F8 /* HeightIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50EA59C57ED218D538 /* HeightIndex.cpp */; };
+		434F4D50928480990B02D5B9 /* HeightIndex.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50EA59C57ED218D538 /* HeightIndex.cpp */; };
+		434F4D50784B7AFA8CFE7987 /* DragDropSession.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50A7D1A5F3A182276D /* DragDropSession.h */; };
+		434F4D50DE4CF5316B5BDEA1 /* DragDropSession.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509B101E2188E0AA30 /* DragDropSession.cpp */; };
+		434F4D5036041CB9C7123FDA /* DragDropSession.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D509B101E2188E0AA30 /* DragDropSession.cpp */; };
+		434F4D509F2915AD30EC312A /* TreeReconcile.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D502E6214A2E7015903 /* TreeReconcile.h */; };
+		434F4D504C6498A7482496AC /* TreeReconcile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D60FEA7E14AA9E78 /* TreeReconcile.cpp */; };
+		434F4D5002F85013757D339F /* TreeReconcile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50D60FEA7E14AA9E78 /* TreeReconcile.cpp */; };
 		434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */ = {isa = PBXBuildFile; fileRef = 434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */; };
 		434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
 		434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50A333501C6FB22061 /* EffectSimulator.cpp */; };
@@ -2267,7 +2317,9 @@
 		48544D4C00000000000002BB /* UIDocumentSystemInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */; };
 		48544D4C00000000000002BC /* UIDocumentSystemInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */; };
 		48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
+		434F4D503F409326322B1B8B /* UIDocumentSystemPatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50160937D622F47675 /* UIDocumentSystemPatch.cpp */; };
 		48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */; };
+		434F4D509F4F293F15923DDF /* UIDocumentSystemPatch.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50160937D622F47675 /* UIDocumentSystemPatch.cpp */; };
 		434F4D50538F06695ED71387 /* UIDocumentSystemCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */; };
 		434F4D500A100490707D04BC /* UIDocumentSystemCompat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */; };
 		48544D4C00000000000002D1 /* HtmlUIContextInput.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */; };
@@ -5339,6 +5391,9 @@
 		48544D4C0000000000000036 /* UIDocumentSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystem.h; sourceTree = "<group>"; };
 		48544D4C0000000000000038 /* UIDocumentSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystem.cpp; sourceTree = "<group>"; };
 		48544D4C000000000000003B /* UIDocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocument.h; sourceTree = "<group>"; };
+		434F4D503E62FB01BD423027 /* UIReloadReport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIReloadReport.h; sourceTree = "<group>"; };
+		434F4D50B71441D6379B57CB /* UIDataTransfer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDataTransfer.h; sourceTree = "<group>"; };
+		434F4D50ACC347246F5AFCBE /* UIItemsView.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIItemsView.h; sourceTree = "<group>"; };
 		48544D4C000000000000003D /* UIDocument.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocument.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000040 /* UIElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIElement.h; sourceTree = "<group>"; };
 		48544D4C0000000000000042 /* UIElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIElement.cpp; sourceTree = "<group>"; };
@@ -5352,6 +5407,7 @@
 		50314C550000000000000010 /* HtmlUIValueDefinition.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIValueDefinition.cpp; sourceTree = "<group>"; };
 		50314C550000000000000013 /* HtmlUIClassesLua.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClassesLua.h; sourceTree = "<group>"; };
 		50314C550000000000000014 /* HtmlUIClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClassesLua.cpp; sourceTree = "<group>"; };
+		434F4D50AA2F597CC6E5CE8D /* HtmlUIWidgetsLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIWidgetsLua.cpp; sourceTree = "<group>"; };
 		48544D4C0000000000000045 /* UIDocumentComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentComponent.h; sourceTree = "<group>"; };
 		48544D4C0000000000000048 /* BaseXMLParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = BaseXMLParser.cpp; sourceTree = "<group>"; };
 		48544D4C000000000000004B /* Box.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Box.cpp; sourceTree = "<group>"; };
@@ -5599,6 +5655,35 @@
 		48544D4C0000000000000291 /* librmlui-macos.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "librmlui-macos.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		48544D4C00000000000002A6 /* HtmlUIClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HtmlUIClock.h; sourceTree = "<group>"; };
 		48544D4C00000000000002A8 /* HtmlUIClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIClock.cpp; sourceTree = "<group>"; };
+		434F4D50416EF287A59CA7E3 /* WidgetsRuntime.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WidgetsRuntime.h; sourceTree = "<group>"; };
+		434F4D509EE760BD1B15803D /* WidgetsRuntime.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = WidgetsRuntime.cpp; sourceTree = "<group>"; };
+		434F4D50D6EC2A22E21067F2 /* VirtualWindowCore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VirtualWindowCore.h; sourceTree = "<group>"; };
+		434F4D5035DC13C84D76B814 /* VirtualWindowCore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VirtualWindowCore.cpp; sourceTree = "<group>"; };
+		434F4D50FB4BB32B17441F30 /* UIItemsView.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIItemsView.cpp; sourceTree = "<group>"; };
+		434F4D50B1CF0748269D8ACD /* UIElementWidgets.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIElementWidgets.cpp; sourceTree = "<group>"; };
+		434F4D50968D771A89B440B1 /* TreeView.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TreeView.cpp; sourceTree = "<group>"; };
+		434F4D505ED0B96B6854EE98 /* TooltipManager.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TooltipManager.h; sourceTree = "<group>"; };
+		434F4D5000CFDEDDC79716FE /* TooltipManager.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TooltipManager.cpp; sourceTree = "<group>"; };
+		434F4D50556B03334AB0014C /* TableView.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TableView.cpp; sourceTree = "<group>"; };
+		434F4D50AAE933994007A647 /* PopupPlacement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PopupPlacement.h; sourceTree = "<group>"; };
+		434F4D5077ACA6872BF9AC62 /* PopupPlacement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PopupPlacement.cpp; sourceTree = "<group>"; };
+		434F4D50C394F3F23F81932B /* MarkdownElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MarkdownElement.h; sourceTree = "<group>"; };
+		434F4D50E1A6A4EB6A96A884 /* MarkdownElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MarkdownElement.cpp; sourceTree = "<group>"; };
+		434F4D50D49A11DC7350EC04 /* MarkdownSyntax.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Markdown/MarkdownSyntax.h; sourceTree = "<group>"; };
+		434F4D509B85B6C29951720C /* MarkdownParser.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Markdown/MarkdownParser.h; sourceTree = "<group>"; };
+		434F4D500F8BDABB8B104927 /* MarkdownParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Markdown/MarkdownParser.cpp; sourceTree = "<group>"; };
+		434F4D50C995CC26AB544891 /* MarkdownInlineParser.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Markdown/MarkdownInlineParser.cpp; sourceTree = "<group>"; };
+		434F4D50FE4190E75A01F798 /* MarkdownHtml.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Markdown/MarkdownHtml.h; sourceTree = "<group>"; };
+		434F4D5022A84B7F2AD5EF1D /* MarkdownHtml.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Markdown/MarkdownHtml.cpp; sourceTree = "<group>"; };
+		434F4D502F16BD60F0617D07 /* MarkdownDocument.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Markdown/MarkdownDocument.h; sourceTree = "<group>"; };
+		434F4D508B0AFABC9AA0512E /* ItemsViewElement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ItemsViewElement.h; sourceTree = "<group>"; };
+		434F4D50E5BD76C5F85AEB74 /* ItemsViewElement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ItemsViewElement.cpp; sourceTree = "<group>"; };
+		434F4D50879A5F93405C83D5 /* HeightIndex.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HeightIndex.h; sourceTree = "<group>"; };
+		434F4D50EA59C57ED218D538 /* HeightIndex.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HeightIndex.cpp; sourceTree = "<group>"; };
+		434F4D50A7D1A5F3A182276D /* DragDropSession.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = DragDropSession.h; sourceTree = "<group>"; };
+		434F4D509B101E2188E0AA30 /* DragDropSession.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = DragDropSession.cpp; sourceTree = "<group>"; };
+		434F4D502E6214A2E7015903 /* TreeReconcile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TreeReconcile.h; sourceTree = "<group>"; };
+		434F4D50D60FEA7E14AA9E78 /* TreeReconcile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TreeReconcile.cpp; sourceTree = "<group>"; };
 		434F4D50B23E8A28DF9E3D0F /* EffectSimulator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectSimulator.h; sourceTree = "<group>"; };
 		434F4D50A333501C6FB22061 /* EffectSimulator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = EffectSimulator.cpp; sourceTree = "<group>"; };
 		434F4D503752E7417C733B6D /* EffectValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = EffectValue.h; sourceTree = "<group>"; };
@@ -5825,6 +5910,7 @@
 		48544D4C00000000000002B8 /* UIValue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIValue.h; sourceTree = "<group>"; };
 		48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemInput.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemReload.cpp; sourceTree = "<group>"; };
+		434F4D50160937D622F47675 /* UIDocumentSystemPatch.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemPatch.cpp; sourceTree = "<group>"; };
 		434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UIDocumentSystemCompat.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002D0 /* HtmlUIContextInput.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HtmlUIContextInput.cpp; sourceTree = "<group>"; };
 		48544D4C00000000000002D3 /* RmlKeyMap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RmlKeyMap.h; sourceTree = "<group>"; };
@@ -7072,6 +7158,7 @@
 				7105A56028B305B20092EA05 /* UtilClassesLua.cpp */,
 				50314C550000000000000013 /* HtmlUIClassesLua.h */,
 				50314C550000000000000014 /* HtmlUIClassesLua.cpp */,
+				434F4D50AA2F597CC6E5CE8D /* HtmlUIWidgetsLua.cpp */,
 				564944450D63D10E11014513 /* HtmlUIMediaLua.cpp */,
 				414E494D4500000000000044 /* HtmlUIAnimeLua.cpp */,
 				505645430000000000000178 /* HtmlUIVectorLua.cpp */,
@@ -8181,6 +8268,7 @@
 				48544D4C0000000000000038 /* UIDocumentSystem.cpp */,
 				48544D4C00000000000002BA /* UIDocumentSystemInput.cpp */,
 				48544D4C00000000000002BD /* UIDocumentSystemReload.cpp */,
+				434F4D50160937D622F47675 /* UIDocumentSystemPatch.cpp */,
 				434F4D50B100210E90294042 /* UIDocumentSystemCompat.cpp */,
 				48544D4C00000000000002C0 /* UIDocumentSystemRender.cpp */,
 				48544D4C00000000000002C3 /* UIDocumentSystemScript.cpp */,
@@ -9226,6 +9314,9 @@
 				717AD9832919E1CB007D7DB5 /* RectTransform.h */,
 				717AD9822919E1CB007D7DB5 /* RectTransform.cpp */,
 				48544D4C000000000000003B /* UIDocument.h */,
+				434F4D503E62FB01BD423027 /* UIReloadReport.h */,
+				434F4D50B71441D6379B57CB /* UIDataTransfer.h */,
+				434F4D50ACC347246F5AFCBE /* UIItemsView.h */,
 				48544D4C000000000000003D /* UIDocument.cpp */,
 				48544D4C0000000000000040 /* UIElement.h */,
 				48544D4C0000000000000042 /* UIElement.cpp */,
@@ -9752,6 +9843,8 @@
 				434F4D50C4CB176C6DB42675 /* CompatAtProperty.cpp */,
 				434F4D506DFF6A8119B58E97 /* CompatAtProperty.h */,
 				434F4D50FFEEAF10DDD296D0 /* CompatAtPropertyTypes.h */,
+				434F4D50D60FEA7E14AA9E78 /* TreeReconcile.cpp */,
+				434F4D502E6214A2E7015903 /* TreeReconcile.h */,
 			);
 			path = compat;
 			sourceTree = "<group>";
@@ -9989,6 +10082,40 @@
 			path = media;
 			sourceTree = "<group>";
 		};
+		434F4D5012F57D78BB1B6072 /* widgets */ = {
+			isa = PBXGroup;
+			children = (
+				434F4D509B101E2188E0AA30 /* DragDropSession.cpp */,
+				434F4D50A7D1A5F3A182276D /* DragDropSession.h */,
+				434F4D50EA59C57ED218D538 /* HeightIndex.cpp */,
+				434F4D50879A5F93405C83D5 /* HeightIndex.h */,
+				434F4D50E5BD76C5F85AEB74 /* ItemsViewElement.cpp */,
+				434F4D508B0AFABC9AA0512E /* ItemsViewElement.h */,
+				434F4D502F16BD60F0617D07 /* MarkdownDocument.h */,
+				434F4D5022A84B7F2AD5EF1D /* MarkdownHtml.cpp */,
+				434F4D50FE4190E75A01F798 /* MarkdownHtml.h */,
+				434F4D50C995CC26AB544891 /* MarkdownInlineParser.cpp */,
+				434F4D500F8BDABB8B104927 /* MarkdownParser.cpp */,
+				434F4D509B85B6C29951720C /* MarkdownParser.h */,
+				434F4D50D49A11DC7350EC04 /* MarkdownSyntax.h */,
+				434F4D50E1A6A4EB6A96A884 /* MarkdownElement.cpp */,
+				434F4D50C394F3F23F81932B /* MarkdownElement.h */,
+				434F4D5077ACA6872BF9AC62 /* PopupPlacement.cpp */,
+				434F4D50AAE933994007A647 /* PopupPlacement.h */,
+				434F4D50556B03334AB0014C /* TableView.cpp */,
+				434F4D5000CFDEDDC79716FE /* TooltipManager.cpp */,
+				434F4D505ED0B96B6854EE98 /* TooltipManager.h */,
+				434F4D50968D771A89B440B1 /* TreeView.cpp */,
+				434F4D50B1CF0748269D8ACD /* UIElementWidgets.cpp */,
+				434F4D50FB4BB32B17441F30 /* UIItemsView.cpp */,
+				434F4D5035DC13C84D76B814 /* VirtualWindowCore.cpp */,
+				434F4D50D6EC2A22E21067F2 /* VirtualWindowCore.h */,
+				434F4D509EE760BD1B15803D /* WidgetsRuntime.cpp */,
+				434F4D50416EF287A59CA7E3 /* WidgetsRuntime.h */,
+			);
+			path = widgets;
+			sourceTree = "<group>";
+		};
 		48544D4C0000000000000047 /* htmlui */ = {
 			isa = PBXGroup;
 			children = (
@@ -10032,6 +10159,7 @@
 				434F4D50564A0EBD33D8D4B9 /* compat */,
 				434F4D50147CAC73EC41A50D /* effects */,
 				564944458116A96C5CD0F039 /* media */,
+				434F4D5012F57D78BB1B6072 /* widgets */,
 			);
 			path = htmlui;
 			sourceTree = "<group>";
@@ -11643,6 +11771,19 @@
 				717AD9862919E1CB007D7DB5 /* RectTransform.h in Headers */,
 				48544D4C0000000000000002 /* HtmlUI.h in Headers */,
 				48544D4C00000000000002A7 /* HtmlUIClock.h in Headers */,
+				434F4D50A3E1EC4D4272C97B /* WidgetsRuntime.h in Headers */,
+				434F4D50846A57940A8D4CC6 /* VirtualWindowCore.h in Headers */,
+				434F4D505E6E0FB4F4E09C55 /* TooltipManager.h in Headers */,
+				434F4D50F7EA49A7692C1745 /* PopupPlacement.h in Headers */,
+				434F4D5027C622C1A83C8BFD /* MarkdownElement.h in Headers */,
+				434F4D50A939004EC3DEF01C /* MarkdownSyntax.h in Headers */,
+				434F4D50E2FD7904D2B9DCD3 /* MarkdownParser.h in Headers */,
+				434F4D5084C467C3F0A24D77 /* MarkdownHtml.h in Headers */,
+				434F4D50F57857693ECF98F3 /* MarkdownDocument.h in Headers */,
+				434F4D502BEFDF408C26E85A /* ItemsViewElement.h in Headers */,
+				434F4D50D79DE2A930491EC1 /* HeightIndex.h in Headers */,
+				434F4D50784B7AFA8CFE7987 /* DragDropSession.h in Headers */,
+				434F4D509F2915AD30EC312A /* TreeReconcile.h in Headers */,
 				434F4D507A858F2513B7D0C0 /* EffectSimulator.h in Headers */,
 				434F4D505B1F49763171CF59 /* EffectValue.h in Headers */,
 				434F4D5011BEA07CC8A2964F /* EffectTypes.h in Headers */,
@@ -11759,6 +11900,9 @@
 				48544D4C0000000000000032 /* TextShaper.h in Headers */,
 				48544D4C0000000000000037 /* UIDocumentSystem.h in Headers */,
 				48544D4C000000000000003C /* UIDocument.h in Headers */,
+				434F4D50495A4B1262D8B139 /* UIReloadReport.h in Headers */,
+				434F4D50119CB7F7445AA4AB /* UIDataTransfer.h in Headers */,
+				434F4D5075D3FC596936FBB3 /* UIItemsView.h in Headers */,
 				48544D4C0000000000000041 /* UIElement.h in Headers */,
 				48544D4C00000000000002B3 /* UIDataModel.h in Headers */,
 				48544D4C00000000000002B5 /* UIElementInternal.h in Headers */,
@@ -13668,6 +13812,22 @@
 				713D82B7259D307F00567F9F /* SokolCamera.cpp in Sources */,
 				48544D4C0000000000000004 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002A9 /* HtmlUIClock.cpp in Sources */,
+				434F4D50EFE51A328840CA82 /* WidgetsRuntime.cpp in Sources */,
+				434F4D50190B9F30DFAE9707 /* VirtualWindowCore.cpp in Sources */,
+				434F4D50591EFF3D524BEB21 /* UIItemsView.cpp in Sources */,
+				434F4D507D889E72FFCD2137 /* UIElementWidgets.cpp in Sources */,
+				434F4D50F98D8F78A7190E67 /* TreeView.cpp in Sources */,
+				434F4D50334740514982B0F5 /* TooltipManager.cpp in Sources */,
+				434F4D50C50BCEE1A119FB0F /* TableView.cpp in Sources */,
+				434F4D5053D4377878E0CECB /* PopupPlacement.cpp in Sources */,
+				434F4D50C29874992EC726B7 /* MarkdownElement.cpp in Sources */,
+				434F4D504B740A595F99873D /* MarkdownParser.cpp in Sources */,
+				434F4D506F65258481E03EDD /* MarkdownInlineParser.cpp in Sources */,
+				434F4D50E3F0C8E94E1757E3 /* MarkdownHtml.cpp in Sources */,
+				434F4D50029775030EFC0AEE /* ItemsViewElement.cpp in Sources */,
+				434F4D50928480990B02D5B9 /* HeightIndex.cpp in Sources */,
+				434F4D5036041CB9C7123FDA /* DragDropSession.cpp in Sources */,
+				434F4D5002F85013757D339F /* TreeReconcile.cpp in Sources */,
 				434F4D5022D0B1A30CA129C1 /* EffectSimulator.cpp in Sources */,
 				434F4D503637B31EF1ABE22A /* EffectValue.cpp in Sources */,
 				434F4D5018A8FE224E1B3193 /* EffectSyntax.cpp in Sources */,
@@ -13802,6 +13962,7 @@
 				48544D4C00000000000002D5 /* RmlKeyMap.cpp in Sources */,
 				48544D4C00000000000002D9 /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BE /* UIDocumentSystemReload.cpp in Sources */,
+				434F4D503F409326322B1B8B /* UIDocumentSystemPatch.cpp in Sources */,
 				434F4D50538F06695ED71387 /* UIDocumentSystemCompat.cpp in Sources */,
 				48544D4C00000000000002C1 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C4 /* UIDocumentSystemScript.cpp in Sources */,
@@ -13814,6 +13975,7 @@
 				50314C55000000000000000E /* HtmlUIEventListener.cpp in Sources */,
 				50314C550000000000000011 /* HtmlUIValueDefinition.cpp in Sources */,
 				50314C550000000000000015 /* HtmlUIClassesLua.cpp in Sources */,
+				434F4D502833E380D83BF266 /* HtmlUIWidgetsLua.cpp in Sources */,
 				56494445AF890AB0B5C4882C /* HtmlUIMediaLua.cpp in Sources */,
 				50564543000000000000017B /* DotLottie.cpp in Sources */,
 				50564543000000000000017E /* LottiePlayback.cpp in Sources */,
@@ -14098,6 +14260,22 @@
 				7162FD6025963AE10075B97D /* IndexBuffer.cpp in Sources */,
 				48544D4C0000000000000005 /* HtmlUI.cpp in Sources */,
 				48544D4C00000000000002AA /* HtmlUIClock.cpp in Sources */,
+				434F4D50BCFFED95CD0FD13F /* WidgetsRuntime.cpp in Sources */,
+				434F4D50084E5BA8D7BD13DD /* VirtualWindowCore.cpp in Sources */,
+				434F4D501240A0339E02120E /* UIItemsView.cpp in Sources */,
+				434F4D504356797DB31FE78B /* UIElementWidgets.cpp in Sources */,
+				434F4D506B091BF8125FA988 /* TreeView.cpp in Sources */,
+				434F4D5041C8580075B0CA11 /* TooltipManager.cpp in Sources */,
+				434F4D50E7FCB260EDD3C2DB /* TableView.cpp in Sources */,
+				434F4D50081858B3F8621D0D /* PopupPlacement.cpp in Sources */,
+				434F4D50AC20CD830572CE12 /* MarkdownElement.cpp in Sources */,
+				434F4D50A421998EA495D975 /* MarkdownParser.cpp in Sources */,
+				434F4D50EB047BC7D6D813DA /* MarkdownInlineParser.cpp in Sources */,
+				434F4D509316350E4F8CEDD4 /* MarkdownHtml.cpp in Sources */,
+				434F4D503D81C03B5CA5E400 /* ItemsViewElement.cpp in Sources */,
+				434F4D50AFD131BFDE66B6F8 /* HeightIndex.cpp in Sources */,
+				434F4D50DE4CF5316B5BDEA1 /* DragDropSession.cpp in Sources */,
+				434F4D504C6498A7482496AC /* TreeReconcile.cpp in Sources */,
 				434F4D504F4AFBC2FF2FA6C1 /* EffectSimulator.cpp in Sources */,
 				434F4D5043DC7783C361E7D8 /* EffectValue.cpp in Sources */,
 				434F4D50E16C78090E603422 /* EffectSyntax.cpp in Sources */,
@@ -14232,6 +14410,7 @@
 				48544D4C00000000000002D6 /* RmlKeyMap.cpp in Sources */,
 				48544D4C00000000000002DA /* RmlTextInputHandler.cpp in Sources */,
 				48544D4C00000000000002BF /* UIDocumentSystemReload.cpp in Sources */,
+				434F4D509F4F293F15923DDF /* UIDocumentSystemPatch.cpp in Sources */,
 				434F4D500A100490707D04BC /* UIDocumentSystemCompat.cpp in Sources */,
 				48544D4C00000000000002C2 /* UIDocumentSystemRender.cpp in Sources */,
 				48544D4C00000000000002C5 /* UIDocumentSystemScript.cpp in Sources */,
@@ -14244,6 +14423,7 @@
 				50314C55000000000000000F /* HtmlUIEventListener.cpp in Sources */,
 				50314C550000000000000012 /* HtmlUIValueDefinition.cpp in Sources */,
 				50314C550000000000000016 /* HtmlUIClassesLua.cpp in Sources */,
+				434F4D507971D8C09095ECB1 /* HtmlUIWidgetsLua.cpp in Sources */,
 				56494445A3BD295BDFA4D3FB /* HtmlUIMediaLua.cpp in Sources */,
 				50564543000000000000017C /* DotLottie.cpp in Sources */,
 				50564543000000000000017F /* LottiePlayback.cpp in Sources */,
