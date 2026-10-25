@@ -32,6 +32,7 @@
 #include "texture/TextureData.h"
 #include "util/CameraTextureLink.h"
 #include "util/EntityClipboard.h"
+#include "util/NearestName.h"
 #include "util/Util.h"
 #include "reflect/Enums.h"
 #include "reflect/Reflect.h"
@@ -2188,8 +2189,13 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                     std::string why;
                     if (!editYamlPath(value, edit.property, edit.op, edit.value, edit.index, why, edit.known)) {
                         if (!findYamlPath(value, edit.property)) {
+                            // the nearest property name first (S08 R26)
+                            std::vector<std::string> names;
+                            for (const auto& [name, property] : Catalog::findEntityProperties(scene->scene, entity, component)) {
+                                names.push_back(name);
+                            }
                             error = "Unknown property \"" + edit.property + "\" of " + componentLabel + " on " + label +
-                                    ". Properties: " + propertyNamesText(scene, entity, component) +
+                                    NearestNameSuffix(edit.property, names) + ". Properties: " + propertyNamesText(scene, entity, component) +
                                     " (custom ones also by their scene-file keys, see get_entity detail=\"yaml\").";
                         } else {
                             error = componentLabel + "." + edit.property + " on " + label + ": " + why;

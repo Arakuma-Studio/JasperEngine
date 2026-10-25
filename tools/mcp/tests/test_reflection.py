@@ -9,6 +9,10 @@
 - test_inspector_layout_parity (AC7): get_inspector_layout of a GameObject of each kind, in each
   state its conditional rows depend on, must equal the rows the hand-written drawers drew before
   S08 (golden/inspector_layouts.json).
+- test_schema (AC10): every list_component_types schema is Draft 2020-12 and the get_entity values
+  of each kind validate against it; set_properties refuses out-of-range, unknown and read-only
+  names and renames an alias with a warning.
+- test_multi_edit_undo (AC8): one set_properties on three GameObjects undoes in one step.
 
 JASPER_REFLECTION_UPDATE_GOLDEN=1 rewrites the goldens. They were captured from the editor before
 any component moved onto reflection; re-capture them only from such an editor.
@@ -294,3 +298,89 @@ async def test_inspector_layout_parity(ed: Editor):
             differences.append(f"{key}: row {first}: now {got[first] if first is not None and first < len(got) else None}, "
                                f"golden {want[first] if first is not None and first < len(want) else None}")
     check(not differences, "Inspector layouts differ from the hand drawers':\n" + "\n".join(differences[:30]))
+
+
+# GameObjects whose components' get_entity values are validated against their schemas
+SCHEMA_CASES = [(scene_type, entity_type) for _, scene_type, entity_type, _ in LAYOUT_CASES]
+
+
+def schema_values(props: dict) -> dict:
+    """get_entity values without what only names a value elsewhere: elided long values and the
+    indexed paths ("submeshes[0].x", described by their array's item schema)"""
+    return {name: value for name, value in props.items()
+            if "[" not in name and "." not in name and not (isinstance(value, dict) and "$elided" in value)}
+
+
+async def test_schema(ed: Editor):
+    """AC10: every list_component_types schema is Draft 2020-12, get_entity values validate against
+    it, and set_properties refuses out-of-range, unknown (with a suggestion) and read-only names
+    and renames aliases with a warning (R26)"""
+    import jsonschema
+
+    listing = await ed.call("list_component_types")
+    schemas: dict[str, dict] = {}
+    for entry in listing["components"]:
+        described = await ed.call("list_component_types", component=entry["name"])
+        schema = described["schema"]
+        jsonschema.Draft202012Validator.check_schema(schema)
+        schemas[entry["name"]] = schema
+    check(len(schemas) > 40, f"only {len(schemas)} component schemas")
+
+    problems: list[str] = []
+    scenes: dict[str, int] = {}
+    for scene_type, entity_type in SCHEMA_CASES:
+        if scene_type not in scenes:
+            made = await ed.call("create_scene", name=f"Schema{scene_type}", type=scene_type, path=f"scenes/Schema{scene_type}")
+            scenes[scene_type] = made["scene"]["id"]
+        made = await ed.call_raw("create_entity", {"scene": scenes[scene_type], "type": entity_type})
+        if made.is_error:
+            problems.append(f"create_entity {entity_type}: {made.text[:200]}")
+            continue
+        entity = made.value()["entity_id"]
+        values = await ed.call("get_entity", scene=scenes[scene_type], entity=entity)
+        for component, props in values["components"].items():
+            if component not in schemas:
+                problems.append(f"{entity_type}: no schema for {component}")
+                continue
+            validator = jsonschema.Draft202012Validator(schemas[component])
+            for error in validator.iter_errors(schema_values(props)):
+                problems.append(f"{entity_type}.{component}: {'/'.join(map(str, error.path))}: {error.message[:160]}")
+    check(not problems, "get_entity values outside their schemas:\n" + "\n".join(problems[:30]))
+
+    scene = scenes["3D"]
+    audio = (await ed.call("create_entity", scene=scene, type="audio_source"))["entity_id"]
+    # out of range: the range and the nearest valid value
+    refused = await ed.call_raw("set_properties", {"scene": scene, "entity": audio, "values": {"AudioSource": {"volume": -1}}})
+    check(refused.is_error and "out of range" in refused.text and "nearest valid value is 0" in refused.text,
+          f"out-of-range volume: {refused.text[:300]}")
+    # unknown: the nearest name
+    refused = await ed.call_raw("set_properties", {"scene": scene, "entity": audio, "values": {"AudioSource": {"volme": 0.5}}})
+    check(refused.is_error and "did you mean 'volume'" in refused.text, f"unknown volme: {refused.text[:300]}")
+
+    ui = (await ed.call("create_scene", name="SchemaAliases", type="UI", path="scenes/SchemaAliases"))["scene"]["id"]
+    group = (await ed.call("create_entity", scene=ui, type="layout_group"))["entity_id"]
+    # read-only
+    refused = await ed.call_raw("set_properties", {"scene": ui, "entity": group, "values": {"LayoutGroup": {"numBoxes": 3}}})
+    check(refused.is_error and "read-only" in refused.text, f"read-only numBoxes: {refused.text[:300]}")
+    # an alias: applied under the new name, with a warning
+    renamed = await ed.call("set_properties", scene=ui, entity=group, values={"LayoutGroup": {"fillAvailableSpace": True}})
+    check(renamed.get("warnings") == ["layoutgroup.fillAvailableSpace is now layoutgroup.useAllWrapSpace"],
+          f"alias warning: {renamed.get('warnings')}")
+    now = await ed.call("get_entity", scene=ui, entity=group, properties=["useAllWrapSpace"])
+    check(now["components"]["LayoutGroup"]["useAllWrapSpace"] is True, f"alias not applied: {now['components']}")
+
+
+async def test_multi_edit_undo(ed: Editor):
+    """AC8: one set_properties on three GameObjects is one undo step for all three"""
+    scene = (await ed.call("create_scene", name="MultiEdit", type="3D", path="scenes/MultiEdit"))["scene"]["id"]
+    lights = [(await ed.call("create_entity", scene=scene, type="point_light"))["entity_id"] for _ in range(3)]
+    before = [(await ed.call("get_entity", scene=scene, entity=light, properties=["intensity"]))["components"]["Light"]["intensity"]
+              for light in lights]
+    await ed.call("set_properties", scene=scene, entities=lights, values={"Light": {"intensity": 7.5}})
+    for light in lights:
+        now = await ed.call("get_entity", scene=scene, entity=light, properties=["intensity"])
+        check(now["components"]["Light"]["intensity"] == 7.5, f"GameObject {light}: intensity {now['components']}")
+    await ed.call("undo", scene=scene)
+    after = [(await ed.call("get_entity", scene=scene, entity=light, properties=["intensity"]))["components"]["Light"]["intensity"]
+             for light in lights]
+    check(after == before, f"one undo restored {after}, expected {before}")
