@@ -619,3 +619,15 @@ alternative to what the text above asks.
   is fed the game frame's GPU time (`FrameTimes::latestGpuMs`, the newest of the last 8 frames,
   a few frames late); `fake_gpu_ms` still takes precedence, and without a timer (WebGPU, Firefox,
   a device without timestamps) it uses its frame law as before.
+- **AC4 measured** on the benchmark server E (4 dedicated vCPU, llvmpipe under Xvfb,
+  `vblank_mode=0`), `tools/perf/profiler_overhead.py --runs 9 --frames 600` on
+  `tools/fixtures/post-processing`, against oe-port e92501e14 with the same benchmark fix (below):
+  baseline 10.64 ms, profiler idle 10.72 ms (+0.75 %), recording 10.75 ms (+1.03 %), recording
+  with GPU timers 10.71 ms (+0.66 %). Recording and GPU timing are within their 3 % and 3.5 %; the
+  idle figure is over 0.5 % but inside the run-to-run spread (each configuration's nine runs span
+  2-3 %, the idle runs overlap the baseline's, and idle measured above recording with GPU timers),
+  so on this software device AC4's 0.5 % is neither shown nor refuted; a desktop GPU, where the
+  frame is not software rasterisation on the same cores, is the place to repeat it.
+- **`jasperengine-editor benchmark` is no longer throttled when unfocused**: an X server without a
+  window manager focuses no window, and the editor's unfocused frame-period sleep held every
+  benchmark at 16.3 ms (60 fps) whatever its work.
