@@ -133,3 +133,34 @@ async def test_play_reports_clip_and_pose_problems_at_once(ed: Editor):
     write(clip, CLIP)
     write(pose, '{"format": "jasperengine.poseanim", "version": 1}\n')
     await status(ed)
+
+
+async def test_cli_check_changes_no_clip():
+    """`jasperengine-editor check --shaders` loads the project read-only: a clip without a GUID and
+    a broken clip keep their bytes (no GUID upgrade, the broken one's error keeps its line)."""
+    import shutil
+    import subprocess
+    import tempfile
+
+    import harness
+
+    tmp = Path(tempfile.mkdtemp(prefix="jasper-anim-check-"))
+    try:
+        project = tmp / "project"
+        shutil.copytree(harness.default_fixture(), project, symlinks=True,
+                        ignore=shutil.ignore_patterns(".git", "build"))
+        good = project / "clips" / "plain.anim"
+        broken = project / "clips" / "broken.anim"
+        good.parent.mkdir(parents=True, exist_ok=True)
+        good.write_text(CLIP)
+        broken.write_text(BROKEN_CLIP)
+        cmd = harness.editor_command() + ["check", "--project", str(project), "--shaders", "--anims"]
+        r = subprocess.run(cmd, cwd=str(project), input="", capture_output=True, text=True, timeout=300)
+        if good.read_text() != CLIP or broken.read_text() != BROKEN_CLIP:
+            raise harness.TestFailure(f"check modified the clips (exit {r.returncode}):\n"
+                                      f"plain: {good.read_text()[:300]}\nbroken: {broken.read_text()[:300]}\n"
+                                      f"stderr: {r.stderr[-1500:]}")
+        if "clips/broken.anim" not in r.stdout:
+            raise harness.TestFailure(f"the broken clip is not reported:\n{r.stdout[-2000:]}\n{r.stderr[-1500:]}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

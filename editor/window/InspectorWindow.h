@@ -14,6 +14,9 @@
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
+#include "animation/AnimationClipDocument.h"
+#include "animation/ClipValidation.h"
+#include "animation/ModelSubClips.h"
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
@@ -22,7 +25,10 @@
 #include "soloud_wav.h"
 
 #include <array>
+#include <filesystem>
 #include <functional>
+#include <map>
+#include <memory>
 
 namespace jasperengine::editor{
 
@@ -226,9 +232,82 @@ namespace jasperengine::editor{
         };
         std::vector<ActionPreviewState> actionPreviewStates;
 
+        // PreviewOwner tokens of the action preview's roots (animation clips 9.R7): acquiring them
+        // stops the Animation window or Pose window preview of the same model first
+        std::vector<int> actionPreviewOwners;
+        void releaseActionPreviewOwners();
+
         void startActionPreview(Entity entity, Scene* scene, SceneProject* sceneProject);
         void stopActionPreview(Scene* scene, SceneProject* sceneProject);
         void stopActionPreviewIfActive();
+
+        // ---- animation clips (InspectorWindowClips.cpp; spec 4.2, 9.R30) ----
+        // the inspected object (Unity's activeObject): a scene selection change after the
+        // Project window set an asset shows the selection again
+        bool inspectedSelectionKnown = false;
+        uint32_t inspectedSelectionScene = 0;
+        std::vector<Entity> inspectedSelection;
+        std::filesystem::path inspectedAssetSeen;
+        void trackInspectedObject();
+
+        struct ClipDocumentEntry{
+            std::weak_ptr<AnimationClipDocument> document;
+            std::string error;
+            double retryAt = 0.0;
+        };
+        struct ModelClipsEntry{
+            int64_t stamp = 0;
+            double retryAt = 0.0;
+            bool failed = false;
+            std::vector<anim::ModelClipInfo> clips;
+        };
+        struct ClipUsersEntry{
+            double retryAt = 0.0;
+            std::vector<ClipUser> users;
+        };
+        struct BindingsEntry{
+            uint64_t revision = 0;
+            uint64_t hierarchy = 0;
+            uint64_t names = 0;
+            double retryAt = 0.0;
+            ClipValidationReport report;
+        };
+        std::filesystem::path clipCacheProject;
+        std::map<std::string, ClipDocumentEntry> clipDocuments;
+        std::map<std::string, ModelClipsEntry> modelClipsCache;
+        std::map<std::string, ClipUsersEntry> clipUsersCache;
+        std::map<std::string, BindingsEntry> bindingsCache;
+        // a model picked or dropped on a clip entry: the "Model Clip" popup chooses its animation
+        std::string playerSubClipModel;
+        size_t playerSubClipEntry = 0;
+        Entity playerSubClipEntity = NULL_ENTITY;
+        uint32_t playerSubClipScene = 0;
+        bool playerSubClipPopupRequested = false;
+        std::string playerClipError;
+        std::string clipAssetError;
+        std::string modelAssetClip;     // the model asset section's selected sub-clip
+        int clipDragSerial = 0;         // merge key of one drag of a clip setting
+
+        std::shared_ptr<AnimationClipDocument> findClipDocument(const std::string& clip, std::string* error);
+        const std::vector<anim::ModelClipInfo>& modelClipsOf(const std::string& model);
+        std::vector<std::string> modelSubClipNames(const std::string& model);
+        const std::vector<ClipUser>& clipUsersOf(const std::string& clip);
+        const ClipValidationReport& clipBindingsOf(SceneProject* sceneProject, Entity root, const std::string& clip, AnimationClipDocument& document);
+        void setPlayerClipEntry(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::string& stored);
+        bool usePlayerClipFile(ComponentType cpType, SceneProject* sceneProject, Entity entity, size_t index, const std::string& file);
+        void drawAnimationPlayerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        void drawAnimationPlayerClips(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void drawPlayerDefaultClipRow(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void drawAnimationPlayerBindings(SceneProject* sceneProject, Entity entity);
+        void drawAnimationPlayerStates(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        // the inspected .anim (or model with clips): true when it drew the window's contents
+        bool drawInspectedAsset();
+        void drawAssetHeader(const char* icon, const std::filesystem::path& asset, const char* kind);
+        void drawClipAsset(const std::filesystem::path& asset);
+        void drawModelClipsAsset(const std::filesystem::path& asset, const std::string& model);
+        void drawClipDocument(AnimationClipDocument& document, const std::string& reference);
+        void drawModelClipRows(ComponentType cpType, SceneProject* sceneProject, Entity entity);
+        void drawAnimationClipButtons(SceneProject* sceneProject, Entity entity);
         void updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles);
 
         // Dirty material helpers

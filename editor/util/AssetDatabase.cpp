@@ -140,8 +140,9 @@ bool editor::AssetDatabase::writeGuid(const fs::path& fullPath, const std::strin
     }
     if (isClipFile(fullPath)) {
         // the member replaced or inserted after "version", the rest of the text unchanged; a
-        // file that is not a clip (a Unity YAML .anim, broken JSON) is left alone
-        if (!anim::replaceClipGuid(text, guid)) {
+        // file that is not a clip (a Unity YAML .anim, broken JSON: its error must keep its
+        // line) is left alone
+        if (!anim::parseClip(text).ok() || !anim::replaceClipGuid(text, guid)) {
             return false;
         }
         if (!writeText(fullPath, text)) {
@@ -299,10 +300,11 @@ std::string editor::AssetDatabase::assignNewGuid(const std::string& relative, co
     while (!isGuid(guid) || byGuid.count(guid)) {
         guid = generateGuid();
     }
-    if (!writeGuid(projectPath / relative, guid)) {
-        // a Unity YAML .anim is no JasperEngine clip (it is converted, never referenced): no warning
+    if (!writeFileGuid(relative, guid) && !readOnly) {
+        // a clip that does not parse (a Unity YAML .anim, broken JSON) is reported by the clip
+        // checks, not here
         std::string text;
-        if (!(isClipFile(relative) && readText(projectPath / relative, text) && anim::isUnityYamlClip(text))) {
+        if (!(isClipFile(relative) && readText(projectPath / relative, text) && !anim::parseClip(text).ok())) {
             Out::warning("The GUID of %s is kept in memory only", relative.c_str());
         }
     }
@@ -360,8 +362,20 @@ void editor::AssetDatabase::loadCache(std::unordered_map<std::string, std::strin
     }
 }
 
+bool editor::AssetDatabase::writeFileGuid(const std::string& relative, const std::string& guid) {
+    if (readOnly) {
+        return false;   // in memory only: a check or a headless analysis changes no project file
+    }
+    return writeGuid(projectPath / relative, guid);
+}
+
+void editor::AssetDatabase::setReadOnly(bool value) {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    readOnly = value;
+}
+
 void editor::AssetDatabase::saveCache() const {
-    if (projectPath.empty()) {
+    if (projectPath.empty() || readOnly) {
         return;
     }
     YAML::Emitter out;
@@ -508,13 +522,13 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh() {
             changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
         } else if (guid.empty()) {
             // Written again without its GUID (by another tool): it is still the same asset
-            writeGuid(projectPath / relative, it->second.guid);
+            writeFileGuid(relative, it->second.guid);
             stat(relative, it->second);
             changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
         } else if (isClipFile(relative) && byGuid.count(guid) && byGuid[guid] != relative && fileExists(byGuid[guid])) {
             // A clip rewritten with another existing clip's GUID (JSON copied from it by an agent):
             // still this asset, its references keep finding it
-            writeGuid(projectPath / relative, it->second.guid);
+            writeFileGuid(relative, it->second.guid);
             stat(relative, it->second);
             changes.push_back({Change::Type::Modified, it->second.guid, relative, {}});
         } else {
@@ -694,7 +708,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::importAssets(c
         if (copy && copyGuids) {
             auto recorded = copyGuids->find(relative);
             if (recorded != copyGuids->end() && isGuid(recorded->second) && !byGuid.count(recorded->second)) {
-                if (guid != recorded->second && !writeGuid(projectPath / relative, recorded->second)) {
+                if (guid != recorded->second && !writeFileGuid(relative, recorded->second)) {
                     Out::warning("The GUID of %s is kept in memory only", relative.c_str());
                 }
                 insert(relative, recorded->second);

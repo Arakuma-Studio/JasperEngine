@@ -53,6 +53,9 @@ namespace jasperengine::editor {
         // disk), a GUID found twice stays with the file that had it before (the cache from the
         // last session, else the older file) and the other file gets a new one
         void open(const std::filesystem::path& projectPath);
+        // Read-only (a CLI check, a headless analysis): GUIDs are given in memory only, no asset
+        // file and no cache is ever written. Kept across open/close.
+        void setReadOnly(bool readOnly);
         void close();
         bool isOpen() const;
 
@@ -90,6 +93,7 @@ namespace jasperengine::editor {
 
         // The editor saves scenes (and their prefabs) on a background thread too
         mutable std::recursive_mutex mutex;
+        bool readOnly = false;
         std::filesystem::path projectPath;
         std::map<std::string, Entry> byPath;               // generic relative path -> entry
         std::unordered_map<std::string, std::string> byGuid; // guid -> generic relative path
@@ -103,6 +107,8 @@ namespace jasperengine::editor {
         void stat(const std::string& relative, Entry& entry) const;
         void insert(const std::string& relative, const std::string& guid);
         void erase(const std::string& relative);
+        // writeGuid into a project file, unless read-only
+        bool writeFileGuid(const std::string& relative, const std::string& guid);
         // A GUID no other registered file has, written into the file
         std::string assignNewGuid(const std::string& relative, const std::string& preferred = std::string());
         // Tracked files below a path (the path itself when it is a file), generic relative
