@@ -62,7 +62,8 @@ The lobes are compile-time variants of the built-in Lit, named in its reference
 `PBR_HEX_TILING`, `TERRAIN_HEX_TILING`, one `PBR_<LOBE>_MAP` per bound map, and
 `USE_LIT_QUALITY`. Compiled shaders are stored as `lit_` plus two letters per define. While a
 new variant compiles, the object keeps drawing with the one it had (no frame stall);
-`get_material_variant {entity, submesh}` says which it draws (`ready`), its `defines`, the
+`get_material_variant {entity, submesh}` (tool group `rendering_fx`: `tool_groups
+{enable: ["rendering_fx"]}` lists it) says which it draws (`ready`), its `defines`, the
 `customId`, the maps, what the mobile tier strips, and how many builtin:lit variants the open
 scenes draw (each one is a compile and an exported shader per backend: past 64 it warns).
 Exports precompile them.
