@@ -101,6 +101,9 @@ void getMaterialVariantTool(const CallPtr& call){
         {"material_defines", asked.defines},
         {"customId", customId},
         {"ready", ready},
+        // why it is not: the mesh not loaded or waiting for a reload, or drawing another variant
+        {"state", {{"loaded", mesh->loaded}, {"needReload", mesh->needReload}, {"needVariantReload", mesh->needVariantReload},
+                   {"drawnCustomId", sub.customShaderId}}},
         {"failed", failed},
         {"extensionMaps", {{"used", maps}, {"max", budget}, {"dropped", asked.droppedMaps}}},
         {"mobileStripped", mobile.strippedMaps},
