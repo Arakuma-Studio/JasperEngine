@@ -25,12 +25,13 @@ format; `edit_pose_animation` can bake them into a clip (`bake: {model, clip: tr
    values: {animationplayer: {clips: [{clip: "assets/anim/bob.anim"}]}}}` (or `set_properties`
    on an existing player: `clips`, `clips[0].wrap`, `defaultClip`, `playAutomatically`, `speed`).
 3. Read the numbers headless: `get_animation {clip, times: [0, 0.25, 0.5]}` samples every track
-   with the runtime sampler (`samples.tracks[i].values[n]` is the track's value at `times[n]`,
-   the clip's wrap applied, or the wrap of `root`'s player entry: `samples.wrap_used`). A
-   relative track gives its own offset / factor there, not the posed value (that is the preview).
+   with the runtime sampler (`samples.tracks[k].values[n]` is the value at `times[n]`; its
+   `index` is the track's index in `tracks`; the clip's wrap applied, or the wrap of `root`'s
+   player entry: `samples.wrap_used`). A relative track gives its own offset / factor there, not
+   the posed value (that is the preview).
 4. Look at it: `preview_animation {animation: "Hero", action: "seek", time: 0.5}` poses the
    scene (edit mode, nothing saved), returns `bound` (the local transforms of up to 8 bound
-   paths; `bound_total` counts them all) and `unresolved`; then `frame_entity` + `screenshot
+   paths, each with its `entity`; `bound_total` counts them all) and `unresolved`; then `frame_entity` + `screenshot
    {view: "scene"}`. `action: "play"` plays it in the editor (every frame, looped whatever the
    wrap; `wait_ms` waits before answering). Always finish with `preview_animation {animation:
    "Hero", action: "stop"}` (restores the scene).
@@ -42,7 +43,7 @@ wrap}]`) and a binding report per state; use it after renames or when retargetin
 
 ## The .anim file
 
-UTF-8 JSON, written canonically (fixed key order, 2-space indent, one key per line, tracks
+UTF-8 JSON, written canonically (fixed key order, 2-space indent, one keyframe per line, tracks
 sorted by path then channel, events by time). Writing the same data twice gives the same bytes.
 
 ```json
@@ -81,7 +82,8 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   shorter cuts the tracks. edit_animation `length: -1` returns to automatic.
 - Keys in the file are `[time, value]` or `[time, value, ease]`; `{"time", "value", "ease",
   "in", "out"}` carries Hermite tangents (glTF CUBICSPLINE, units per second).
-- `preview.model` (asset-relative) is what the editor previews a clip on when nothing plays it;
+- `preview.model` (asset-relative) is what the Animation window previews a clip on when nothing
+  plays it (`preview_animation` needs a GameObject whose player lists the clip);
   `source` records where an extracted, converted or baked clip came from. Unknown keys are kept.
 - Writing the file yourself is fine (`write_file`, or your own tools: auto-sync reloads it and
   reports problems in `external_changes.problems` with line and JSON path); `write_file` refuses
@@ -91,17 +93,22 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 ## Binding paths and the root
 
 - A path is the names from the root to the target joined by `/` (`"Hips/Spine/Chest"`); `""`
-  is the root itself. `Name#N` picks the N-th later sibling with the same name (`"Wheel#1"` is
-  the second "Wheel"). Names containing `/` or ending in `#<digits>` can't be addressed.
+  is the root itself. `Name#N` is the same-named sibling that has N earlier ones (`Wheel#1` = the
+  second "Wheel"), as in entity refs. Names containing `/` or ending in `#` or `#<digits>` can't
+  be addressed.
 - The root is the GameObject with the Animation Player. For a model, paths are relative to the
-  model's GameObject exactly as its node hierarchy is built (bones and mesh nodes by their glTF
-  names, `mixamorig:Hips/mixamorig:Spine`). A model under a player always loads with its node
-  hierarchy.
+  model's GameObject and include the glTF scene's root nodes, exactly as the Hierarchy shows them
+  below it: the fixture hero's spine is `Hero/mixamorig:Hips/mixamorig:Spine` (its glTF root
+  node is also named Hero). Read real paths from `get_animation {clip: "<model>#<animation>"}`
+  (`tracks[].path`), from `get_scene_tree`, or pass `target` with `root`. A model under a player
+  loads with its node hierarchy; one already loaded in the legacy layout is listed in
+  `legacy_models`.
 - `root` (edit_animation and get_animation) checks the paths against a real hierarchy and
   returns `bindings: {root, resolved, total, missing: [{path, channel, status, nearest,
-  message}], missing_handlers}`. `nearest` lists existing paths by edit distance: a clip made
-  for Hero on Robot reports `mixamorig:Spine` → nearest `Spine`. Without `root`, edit_animation
-  reports against the first Animation Player that uses the clip.
+  fix, message}], missing_handlers}`. `nearest` lists existing paths by edit distance: a clip
+  made for Hero on Robot reports `Hero/mixamorig:Hips/mixamorig:Spine` → nearest
+  `Robot/pelvis/spine`. Without `root`, edit_animation reports against the first Animation
+  Player that uses the clip.
 - `status`: `missing_path`, `missing_component` (no Transform, no morph targets, no Lattice),
   `lattice_index_out_of_range`, `morph_index_out_of_range`, `legacy_model_layout`,
   `unaddressable_name`. Tracks bound to the first of several same-named siblings are listed in
@@ -111,6 +118,14 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   settings kept (one scene step; `legacy_fix` says it).
 - Missing paths are not errors: shared clips may target rigs that are not loaded. At runtime an
   unresolved track is skipped; renames and reparents rebind live.
+- Fixing a missing path: rename the GameObject to match, or rename the track's path in the file.
+  A `missing_path` with a nearest path carries `fix`, a `write_file` edit that renames it to
+  `nearest[0]` (`fix_with` says so): `write_file {path: "<clip>", edits: [missing[0].fix, ...]}`
+  keeps every key and tangent (check that `nearest[0]` is the bone you mean). By hand: the
+  canonical file has one track per `{"path": "<old>", "channel": "rotation"` line; or read the
+  track (`get_animation {clip, max_keys: 100000}`), send its keys (with their `in`/`out`) under
+  the new path and `keys: []` under the old one in one edit_animation call. Either changes the
+  clip for every user (`users`); copy it first (`move_asset {copy: true}`) to keep the original.
 - With `root`, a track may give `target` (a GameObject ref) instead of `path`: it is turned into
   the path from the root (results always show `path`).
 
@@ -122,7 +137,7 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 |---|---|---|
 | `position`, `scale` | `[x, y, z]` local | `relative: true`: position adds to the rest (scene) value, scale multiplies it (`[1, 1, 1]` = unchanged) |
 | `rotation` | `[x, y, z, w]`, `{"euler": [x, y, z]}` degrees or `{"quat": [...]}` | written as quaternions; with both `euler` and `quat` (a key read from a result) `euler` wins; `relative`: multiplies the rest rotation; a turn over 180 degrees between two keys needs middle keys |
-| `morph` | `[w0, w1, ...]` one weight per morph target | shorter arrays mean 0 for the rest |
+| `morph` | `[w0, w1, ...]` one weight per morph target (at most 8) | shorter arrays mean 0 for the rest |
 | `lattice` | `points` (below) | the path is the cage (the lattice GameObject), not the mesh |
 
 - `ease` is the easing of the segment that starts at the key: `linear` (default), `step`, or
@@ -139,6 +154,11 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
 - Results return keys as `{time, value | points, ease}` (`ease` only when not linear, `in`/`out`
   for tangent keys of imported model clips), rotations as `{quat, euler}`; `max_keys` caps the
   keys listed per track (`key_count` is the real count).
+- Tangents: a key you send with `in`/`out` (both, the value's width) keeps them, and a key sent
+  back unchanged (same time and value, linear) keeps the tangents it had, in `replace` and
+  `merge`; `merge` leaves the keys it does not touch as they are. A key you change without
+  `in`/`out` in a track with tangents gets linear ones (the straight line to its neighbours; a
+  warning says so). Lattice keys have no tangents.
 
 ## Events and Lua scripts
 
@@ -155,6 +175,8 @@ even at low weight, and every state of a `blend` fires. It calls, in order:
    spread as parameters.
 
 ```lua
+local Hero = {}
+
 function Hero:init()
     self.player = GameObject(self.scene, self.entity):getAnimationPlayer()
     self.player.onEvent = function(event)
@@ -165,6 +187,8 @@ end
 
 function Hero:onFootstep(side, strength)   -- called by the event above: ("left", 1)
 end
+
+return Hero
 ```
 
 An event with no subscriber and no method logs a warning once in play mode; `bindings`
@@ -183,7 +207,8 @@ Playback (Unity legacy semantics), from Lua (`GameObject(...):getAnimationPlayer
 
 - `play(name)` stops the others and plays `name` from 0; `play(name, fade)` = `crossFade`.
 - `crossFade(name[, fade])` fades the others out and `name` in; `blend(name, weight[, fade])`
-  moves one state's weight; `queue(name[, fade])` plays after the current states finish (a
+  moves one state's weight (`blend(name, 0, fade)` fades it out); `queue(name[, fade])` plays
+  after the current states finish (a
   loop / ping_pong state finishes at the end of its current cycle; queuing with nothing playing
   plays at once; `play`, `crossFade` and `stop` clear the queue).
 - `stop()` / `stop(name)`, `rewind([name])`, `sample()` (apply the current times once),
@@ -196,10 +221,13 @@ Playback (Unity legacy semantics), from Lua (`GameObject(...):getAnimationPlayer
 - A `once` state that reaches its end fires `onFinish`, stops advancing (`isPlaying` is false)
   and **holds its last pose** at its weight until a fade or `stop` releases it, so `onFinish →
   crossFade("Idle")` blends from the end pose. With nothing playing, the last pose stays.
+  `play(name)` or `blend(name, w > 0)` of a held state restarts it.
 - Blending: channels are weighted and the remainder up to weight 1 is the rest pose (the scene
   value), so fading in from rest does not snap. Negative speeds play backwards.
-- `Model:playAnimation(name[, fade])` and `stopAnimations()` use the model's Animation Player
-  when it has one (else its entity animations).
+- `Model:playAnimation(name[, fade])` and `stopAnimations(fade)` use the model's Animation
+  Player when it has one: a name is a player state first, else the entity animation of that
+  name; an index is a player state (0-based, list order), past the player's states the entity
+  animation of that index (without a player: the entity animations).
 - `preview_animation` drives the editor preview of a player's clip: `state` picks the clip
   (default: the default clip), `action` play / pause / seek / stop, `wait_ms` lets it play. The
   preview loops the clip whatever its wrap; Play mode follows the wrap.
@@ -230,31 +258,48 @@ file), `tracks`, `events`, `events_mode`, `wrap`, `frame_rate`, `length`, `root`
 exist. A call is all or nothing; a setting given with its current value is a no-change, not an
 error (retries are safe).
 
-Results: `{clip, created, length, wrap, frame_rate, tracks: [{index, path, channel, key_count,
-keys, loop, relative}], events, changes, warnings, users, bindings?}`. `users` lists the
-Animation Player entries in open scenes and loaded prefabs that play the file (`{scene, entity,
-entry, state}`; closed scenes are not counted): the text says the edit changes all of them.
+Results: `{clip, created, read_only, length, explicit_length, wrap, frame_rate, tracks: [{index,
+path, channel, key_count, keys, loop, relative, points?}], events, preview_model?, source?,
+changes, warnings, users, users_total?, bindings?}`. `users` lists the Animation Player entries
+in open scenes and loaded prefabs that play the file (`{scene, entity, entry, state}`; a prefab
+user is `{prefab, entry}`; at most 50, `users_total` counts them all; closed scenes are not
+counted): the text says the edit changes all of them. `create {from: <entity>}` adds `player`,
+`added_player`, `removed_tracks`; an extract adds `model_clip_users` (below).
 
 Undo: a clip edit (and create, extract) is ONE **project** undo step (`undo {scope:
-"project"}`); the component that references the clip is a scene step. `create {from: <entity>}`
-and `bake.clip` are ONE **scene** step (the file and the player together). The result text names
-the scope.
+"project"}`); the component that references the clip is a scene step. `create {from: <entity>}`,
+an extract with `root` and `bake.clip` are ONE **scene** step (the file and the player together).
+The result text names the scope. Undoing a `create {from}` deletes the file only if no later edit
+changed it (else the file stays and the console says so).
 
 ## Model clips, converting and baking
 
 - glTF/FBX animations are read-only clips named `<model>#<animation>`
-  (`assets/models/hero.gltf#Walk`; `#<index>` for unnamed ones, `"Walk 2"` for a duplicate
-  name). Reference them in `clips` like files; read them with `get_animation {clip}`
-  (`get_asset_info` on the model lists the animations). To edit one, extract it:
-  `edit_animation {clip: "assets/anim/walk.anim", create: {from: "assets/models/hero.gltf#Walk"}}`.
+  (`assets/models/hero.gltf#Walk`; `#Animation <i>` for unnamed ones (`#<i>` is accepted too),
+  `"Walk 2"` for a duplicate name). Reference them in `clips` like files; read them with
+  `get_animation {clip}` (`get_asset_info` on the model lists the animations). To edit one,
+  extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from:
+  "assets/models/hero.gltf#Walk"}, root: "Hero"}`. With `root` whose Animation Player lists the
+  model clip, those entries switch to the new file (state names kept) in the same call, one
+  scene step, like the Animation window's Extract. Without it the file alone is written (a
+  project step) and the players keep playing the model clip, so edits of the file don't show
+  there: `model_clip_users` lists them; point one at the copy with `set_properties
+  {animationplayer: {"clips[i].clip": "assets/anim/walk.anim"}}` (`get_animation {entity}` shows
+  i).
 - An entity Animation converts with `create: {from: <the Animation GameObject>}`: keyframe tracks
   only (tweens, sprite animations, particles and nested animations stay in the Animation and are
   listed in `changes`). Its converted tracks stay in the Animation unless `create.remove_tracks:
   true`: when that Animation plays (autoplay, `Model:playAnimation`) it writes the same channels
   as the clip (a warning says so); remove the tracks, or the Animation (`delete_entities`).
 - A pose animation bakes to a clip: `edit_pose_animation {path, bake: {model, clip: true}}`
-  (`clip` may be an `.anim` path) writes the mapped bones' rotations and the hips' position and
-  adds the clip to the model's Animation Player.
+  writes the mapped bones' rotations and the hips' position and adds the clip to the model's
+  Animation Player. `true` writes `<name>.anim` next to the `.poseanim`; `clip` may be an `.anim`
+  path instead. Baking again rewrites the clip it baked before (GUID kept); another file of that
+  name makes it take a free one (`walk 2.anim`), and an explicit path that exists is refused. The
+  result's `bake.tracks` is a count (as in the entity bake).
+- No tool does the Inspector's **Use Animation Player** (entity animations replaced by the
+  player): a model with entity animations and a player has two writers; `Model:playAnimation`
+  fades the entity ones out when it plays a player state.
 - `list_assets {type: "animation"}` lists `.anim` and `.poseanim` files; `get_asset_info` on an
   `.anim` shows its settings, tracks, events, warnings and users; `move_asset` keeps the players
   pointing at a moved clip (GUID), `delete_asset` leaves them a Missing reference (undo relinks).
@@ -275,8 +320,10 @@ the actions end), `autoplay`, `speed` set the Animation. One scene undo step per
 
 ## Common mistakes
 
-- Paths with the root's own name (`"Hero/Hips"` on Hero): paths start BELOW the root; `""` is
-  the root.
+- Paths that repeat the root GameObject's own name: paths start below the root (`""` is the
+  root). A model's glTF root node is a real child, often named like the model, so
+  `Hero/mixamorig:Hips` on the Hero model is correct: trust `bindings.nearest`.
+- `undo` without `scope` undoes the scene, not a clip edit (`undo {scope: "project"}`).
 - A lattice track on the mesh: the path is the cage GameObject.
 - Keys only at 0 and 180 degrees: the rotation takes the short way or flips; add a middle key
   (entity Animations: or a rotation tween with `spin`).

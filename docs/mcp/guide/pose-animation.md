@@ -3,7 +3,8 @@
 Pose-to-pose character animation for humanoid models: a few **key poses** written as joint
 angles, snapped between with springy transitions ("feel"), optionally humanised (moving holds,
 in-betweens, sway, follow-through, joint limits). The same asset plays live on a model (Pose
-Animator component, Lua `PoseAnimator`) or bakes to a normal Animation.
+Animator component, Lua `PoseAnimator`), or bakes to a shared Animation Clip (`bake.clip`,
+`jasper://docs/animation`) or a normal Animation.
 
 Tools: `get_pose_animation` (read), `edit_pose_animation` (every change, one project undo step
 per call: `undo {scope: "project"}`) and `render_pose_animation` (pictures of the poses or the
@@ -123,7 +124,13 @@ hips, one key per frame at the frame times, step keys when `step_rate` > 0; its 
 `undo {scope: "scene"}`; baking again rewrites the keys of the same tracks). Play it with
 `Model:playAnimation(name)`; names are per model (the Hero and the Robot can both have "walk"). `bake`
 alone (no ops) re-bakes after edits; `bake` without `path` bakes what the model's Pose Animator plays
-(the Inspector's Bake button). To play it live instead, attach a Pose Animator:
+(the Inspector's Bake button). `bake {model, clip: true}` (or `clip: "assets/anim/walk.anim"`)
+writes a shared `.anim` instead: the mapped bones' rotations and the hips' position, by path from
+the model. `true` writes `<name>.anim` next to the `.poseanim`. It lists the clip in the model's
+Animation Player (adding one), as one scene step (`undo {scope: "scene"}`). Baking again rewrites
+the clip it baked before (GUID kept); an explicit path to another existing file is refused. Prefer
+it for characters: every rig with the same bone names plays it. To play it live instead, attach a
+Pose Animator:
 `add_component {entity: "Hero", component: "poseanimator", values: {poseanimator: {animation:
 "assets/anim/walk.poseanim", autoplay: true}}}` (the same project-relative path the pose tools take).
 `model` is a model file (project-relative path) inside ops (`set_preview_model`, `set_humanoid`) and
