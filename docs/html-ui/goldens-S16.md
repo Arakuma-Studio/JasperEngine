@@ -32,6 +32,10 @@ that every changed golden has its row. More than 60 updates need a separate revi
 | `p1/font_effects` | 233 / 1.016 / 2101 | 0 / 0.000 / 0 | `gpu-text-effect` | outline, glow and shadow drawn from distance glyphs at device resolution (crisper, R17) | n/a (engine scene) |
 | `p1/text_effects_layers` | 178 / 1.285 / 3848 | 0 / 0.000 / 0 | `gpu-text-effect` | the same effects from distance glyphs inside layers and filters | n/a (engine scene) |
 | `p1/texture_effects` | 225 / 0.914 / 752 | 0 / 0.000 / 0 | `gpu-text-effect` | the texture document's rotated label: effects from distance glyphs, its rounded box SDF-antialiased | n/a (engine scene) |
+| `p1/texture_mode` | 222 / 1.702 / 1137 | 0 / 0.000 / 0 | `exact-scale-text` | the texture-mode document's label rasterized at the texture's scale and placed on whole texels (alpha channel of the straight-alpha target) | n/a (engine scene) |
+| `compat/engine/css-rewrites` | fuzzy-bad 0.137 % (1261 px) | 0 / 0.000 / 0 | `gpu-text-effect` | `-webkit-text-stroke` drawn as an outline from distance glyphs; rounded boxes SDF-antialiased | n/a (engine scene) |
+| `compat/engine/hud` | fuzzy-bad 0.237 % (2188 px) | 0 / 0.000 / 0 | `gpu-text-effect` | the bars' text shadows from distance glyphs, the portrait ring's glow an analytic shadow, rounded bars SDF-antialiased | n/a (engine scene) |
+| `compat/engine/toggles` | fuzzy-bad 0.044 % (402 px) | 0 / 0.000 / 0 | `sdf-aa` | the toggles' rounded tracks and knobs antialiased by the SDF | n/a (engine scene) |
 
 ## New goldens
 
