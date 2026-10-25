@@ -391,7 +391,11 @@ void sgj_backend_end_pass(sgj_slot& slot, uint32_t index) {
 }
 
 void sgj_backend_close_slot(sgj_slot& slot) {
-    #if defined(SOKOL_D3D11)
+    #if defined(_SOKOL_ANY_GL)
+        // the queries reach the GPU now, not at the next swap (an offscreen frame may have none)
+        (void)slot;
+        glFlush();
+    #elif defined(SOKOL_D3D11)
         _sg.d3d11.ctx->End(slot.disjoint);
     #elif defined(SOKOL_METAL)
         // the frame time, and the moment the samples can be resolved

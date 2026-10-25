@@ -99,8 +99,14 @@ TEST_F(GpuTimerGpu, EveryPassIsTimed){
     EXPECT_FALSE(idle.enabled);   // off until a consumer asks: no queries
 
     SystemRender::acquireGpuTiming();
-    GpuEnvironment::drawFrames(10);
-    const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true);
+    // the times of a frame arrive a few frames later
+    PassList list;
+    for (int frame = 0; frame < 60; frame++){
+        GpuEnvironment::drawFrames(1);
+        list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, true);
+        if (frame >= 4 && !list.gpuPending && list.gpuFrameValid)
+            break;
+    }
     SystemRender::releaseGpuTiming();
     ASSERT_FALSE(list.passes.empty());
     EXPECT_FALSE(list.gpuPending);

@@ -342,7 +342,15 @@ TEST(ProfilerBench, ScopePair){
         }
     });
     profiler::clearHistory();
-    std::printf("[bench] profiler scope pair %.1f ns recording, %.2f ns off\n", ns, offNs);
+    // what the clock alone costs (two reads a pair)
+    const double clockNs = measure([](){
+        volatile int64_t sink = 0;
+        for (int i = 0; i < pairs; i++){
+            sink = sink + std::chrono::steady_clock::now().time_since_epoch().count();
+            sink = sink + std::chrono::steady_clock::now().time_since_epoch().count();
+        }
+    });
+    std::printf("[bench] profiler scope pair %.1f ns recording (the two clock reads %.1f ns), %.2f ns off\n", ns, clockNs, offNs);
     const double slack = testsupport::perfSlack();
     if (slack > 0.0){
         EXPECT_LE(ns, 50.0 * slack);
