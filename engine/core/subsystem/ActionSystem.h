@@ -46,6 +46,7 @@ namespace jasperengine{
 		struct ChannelRest;
 		struct ClipBindings;
 		struct PlayerStateRuntime;
+		struct QueuedState;
 	}
 
 	class JASPERENGINE_API ActionSystem : public SubSystem {
@@ -204,15 +205,25 @@ namespace jasperengine{
 
 		// players with events or finished states to dispatch
 		std::vector<Entity> playersWithCallbacks;
+		// "<clip>|<function>" of clip events already warned about having no handler (spec 3.5:
+		// once per (clip, function), whatever the number of players)
+		std::unordered_set<std::string> warnedEventHandlers;
 		// AnimationClipPool::revision() seen by the last player update (a change: compare generations)
 		uint64_t playerPoolRevision = 0;
 		// update() is between its clearPoseBlend and flushPoseBlend (samplePlayer then waits for it)
 		bool poseBlendScope = false;
+		// this player update's hierarchy log (EntityRegistry::takeHierarchyLog): the top ancestors
+		// of renamed entities and the destroyed ones, for the bind validation
+		uint64_t playerFrame = 0;
+		std::unordered_set<Entity> renamedTops;
+		std::unordered_set<Entity> destroyedEntities;
+		bool hierarchyLogOverflow = true;
 
 		// loads the states' clips, follows models and the hierarchy (rebinding); false while
 		// waiting for a model under the root to load (R10)
 		bool preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged);
 		void advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt);
+		void startQueuedState(Entity entity, AnimationPlayerComponent& player, const anim::QueuedState& head, float offset, float dt);
 		void samplePlayerStates(AnimationPlayerComponent& player);
 		// one clip at `clipTime` with `weight` into the pose blend, rest values from `rest` (taken
 		// there on the first write of an entity); `written` (optional) gets the entries written

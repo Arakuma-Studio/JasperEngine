@@ -136,63 +136,125 @@ namespace {
             bindings.resolvedCount++;
             if (rest) completeRest(scene, target, restOf(target, *rest), tracks[i].channel);
         }
-        // every entity a resolved path went through (the targets and their ancestors)
+        // every entity a resolved path went through (the targets and their ancestors), with the
+        // "#N" its segment selected it by
         bindings.pathEntities.clear();
         bindings.pathNames.clear();
         bindings.pathParents.clear();
         bindings.pathIndices.clear();
+        bindings.pathSiblingIndices.clear();
+        std::vector<std::pair<Entity, int>> entities;
         for (const auto& entry : cache){
             if (entry.second == NULL_ENTITY) continue;
-            bindings.pathEntities.push_back(entry.second);
+            const size_t slash = entry.first.rfind('/');
+            std::vector<anim::PathSegment> segment;
+            anim::parsePath(slash == std::string::npos ? entry.first : entry.first.substr(slash + 1), segment);
+            entities.push_back({entry.second, segment.empty() ? 0 : segment.back().index});
         }
-        std::sort(bindings.pathEntities.begin(), bindings.pathEntities.end());
-        bindings.pathEntities.erase(std::unique(bindings.pathEntities.begin(), bindings.pathEntities.end()), bindings.pathEntities.end());
-        for (Entity entity : bindings.pathEntities){
-            bindings.pathNames.push_back(scene->getEntityName(entity));
-            bindings.pathParents.push_back(parentOf(scene, entity));
-            bindings.pathIndices.push_back(transformIndex(scene, entity));
+        std::sort(entities.begin(), entities.end());
+        entities.erase(std::unique(entities.begin(), entities.end(),
+                                   [](const std::pair<Entity, int>& a, const std::pair<Entity, int>& b){ return a.first == b.first; }),
+                       entities.end());
+        for (const std::pair<Entity, int>& entry : entities){
+            bindings.pathEntities.push_back(entry.first);
+            bindings.pathNames.push_back(scene->getEntityName(entry.first));
+            bindings.pathParents.push_back(parentOf(scene, entry.first));
+            bindings.pathIndices.push_back(transformIndex(scene, entry.first));
+            bindings.pathSiblingIndices.push_back(entry.second);
+        }
+        // rest entries of entities gone since (M4: a reused id must not inherit them)
+        if (rest){
+            for (auto it = rest->begin(); it != rest->end();){
+                if (!scene->isEntityCreated(it->first)) it = rest->erase(it);
+                else ++it;
+            }
         }
         bindings.rootIndex = transformIndex(scene, root);
         bindings.hierarchyRevision = scene->hierarchyRevision();
         bindings.nameRevision = scene->nameRevision();
+        bindings.destroyRevision = scene->destroyRevision();
         bindings.resolved = true;
     }
 
-    // R9's validation: every entity on a bound path alive, with the parent it had, moved in the
-    // Transform array exactly as the root (a change elsewhere), and with its name (checked when a
-    // name under a parent changed). `failed` gets the ones that changed. True: the bindings hold
-    // (their indices follow the shift).
-    bool validateBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, std::vector<Entity>& failed){
-        const size_t rootIndex = transformIndex(scene, root);
-        if ((rootIndex == SIZE_MAX) != (bindings.rootIndex == SIZE_MAX)) return false;
-        const long long shift = rootIndex == SIZE_MAX ? 0 : (long long)rootIndex - (long long)bindings.rootIndex;
-        const bool checkNames = bindings.nameRevision != scene->nameRevision();
+    // R9's validation: every entity on a bound path is alive, has its parent and its name, and is
+    // still the sibling its "#N" selects. Fast path: every one moved in the Transform array exactly
+    // as the root did (a change elsewhere) with no rename or destroy since the last check: nothing
+    // under the root moved, so nothing resolves differently. Otherwise the exact check: names, and
+    // the earlier same-named siblings counted again (children of a parent lie in its branch, so
+    // they are the entries between the parent and the entity with that parent): a sibling that
+    // appeared, went or was renamed before it fails, a spawn or destroy elsewhere under the rig
+    // does not. `failed` gets the entities that changed; true: the bindings hold.
+    // `namesChanged`: a name under the root may have changed (a rename under its top ancestor, a
+    // destroyed id that can come back, or updates this player missed)
+    bool validateBindings(Scene* scene, Entity root, anim::ClipBindings& bindings, bool namesChanged,
+                          const std::unordered_set<Entity>& destroyed, std::vector<Entity>& failed){
         auto transforms = scene->getComponentArray<Transform>();
         Transform* first = transforms->findComponentFromIndex(0);
-        bool valid = true;
+        const size_t rootIndex = transformIndex(scene, root);
+        if (!namesChanged && !destroyed.empty()){
+            for (Entity entity : bindings.pathEntities){
+                if (destroyed.count(entity)){
+                    namesChanged = true;
+                    break;
+                }
+            }
+        }
+        bool uniform = !namesChanged && (rootIndex == SIZE_MAX) == (bindings.rootIndex == SIZE_MAX);
+        const long long shift = (rootIndex == SIZE_MAX || bindings.rootIndex == SIZE_MAX) ? 0 :
+                                (long long)rootIndex - (long long)bindings.rootIndex;
+        std::vector<Transform*> found(bindings.pathEntities.size(), nullptr);
         for (size_t i = 0; i < bindings.pathEntities.size(); i++){
-            const Entity entity = bindings.pathEntities[i];
-            Transform* transform = transforms->findComponent(entity);
-            bool ok = transform && transform->parent == bindings.pathParents[i] &&
-                      (long long)(transform - first) - (long long)bindings.pathIndices[i] == shift;
-            if (ok && checkNames){
-                ok = scene->getEntityName(entity) == bindings.pathNames[i];
+            Transform* transform = transforms->findComponent(bindings.pathEntities[i]);
+            found[i] = transform;
+            if (!transform || transform->parent != bindings.pathParents[i]){
+                failed.push_back(bindings.pathEntities[i]);
+                continue;
             }
-            if (!ok){
-                failed.push_back(entity);
-                valid = false;
+            if (uniform && (long long)(transform - first) - (long long)bindings.pathIndices[i] != shift) uniform = false;
+        }
+        if (!failed.empty()) return false;
+
+        if (!uniform){
+            for (size_t i = 0; i < bindings.pathEntities.size(); i++){
+                const Entity entity = bindings.pathEntities[i];
+                const Entity parent = bindings.pathParents[i];
+                const std::string& name = bindings.pathNames[i];
+                bool ok = scene->getEntityNameRef(entity) == name;
+                Transform* parentTransform = ok ? transforms->findComponent(parent) : nullptr;
+                if (ok && !parentTransform) ok = false;
+                if (ok){
+                    const size_t index = (size_t)(found[i] - first);
+                    int earlier = 0;
+                    for (size_t j = (size_t)(parentTransform - first) + 1; j < index && earlier <= bindings.pathSiblingIndices[i]; j++){
+                        if (transforms->getComponentFromIndex(j).parent == parent &&
+                            scene->getEntityNameRef(transforms->getEntity(j)) == name){
+                            earlier++;
+                        }
+                    }
+                    ok = earlier == bindings.pathSiblingIndices[i];
+                }
+                if (!ok) failed.push_back(entity);
             }
+            if (!failed.empty()) return false;
         }
-        if (!valid) return false;
-        for (size_t& index : bindings.pathIndices){
-            index = (size_t)((long long)index + shift);
-        }
-        for (size_t& index : bindings.boundIndices){
-            if (index != SIZE_MAX) index = (size_t)((long long)index + shift);
+
+        for (size_t i = 0; i < bindings.pathEntities.size(); i++){
+            bindings.pathIndices[i] = (size_t)(found[i] - first);
         }
         bindings.rootIndex = rootIndex;
         bindings.nameRevision = scene->nameRevision();
+        bindings.destroyRevision = scene->destroyRevision();
         return true;
+    }
+
+    // the top of the Transform hierarchy above `entity` (itself when parentless)
+    Entity topAncestor(Scene* scene, Entity entity){
+        for (int depth = 0; depth < 1024; depth++){
+            const Entity parent = parentOf(scene, entity);
+            if (parent == NULL_ENTITY) break;
+            entity = parent;
+        }
+        return entity;
     }
 
     // the ModelComponents on and under the root, with the file each has loaded (R10)
@@ -215,18 +277,26 @@ namespace {
         }
     }
 
+    // the period after which a queue behind a loop / ping-pong state starts (R17: the end of the
+    // current cycle: a loop's length, a ping-pong's way there and back)
+    double queueCycle(ClipWrapMode wrap, double length){
+        return wrap == ClipWrapMode::PingPong ? 2.0 * length : length;
+    }
+
     // seconds until the state reaches its next end at its speed (R17): once / clamp_forever the
     // clip's end, loop / ping-pong the end of the current cycle; infinite when it never does
     float remainingSeconds(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state){
         const float speed = anim::effectiveSpeed(player, state);
         if (!state.bindings.clip || speed == 0.0f) return std::numeric_limits<float>::infinity();
         const double length = state.bindings.clip->getLength();
+        if (length <= 0.0) return 0.0f;
         const double time = state.time;
         const double rate = std::abs(speed);
         ClipWrapMode wrap = anim::stateWrap(state);
-        if ((wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong) && length > 0.0){
-            const double boundary = speed > 0.0f ? (std::floor(time / length) + 1.0) * length
-                                                 : (std::ceil(time / length) - 1.0) * length;
+        if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
+            const double cycle = queueCycle(wrap, length);
+            const double boundary = speed > 0.0f ? (std::floor(time / cycle) + 1.0) * cycle
+                                                 : (std::ceil(time / cycle) - 1.0) * cycle;
             return (float)(std::abs(boundary - time) / rate);
         }
         const double end = speed > 0.0f ? length : 0.0;
@@ -265,9 +335,10 @@ namespace {
         const double from = state.time;
         double to = from + delta;
         const bool includeStart = state.startedThisUpdate;
-        state.startedThisUpdate = false;
-        // only the states that are not fading out fire (during a crossfade the incoming one)
+        // only the states that are not fading out fire (during a crossfade the incoming one); a
+        // state that starts without weight keeps its start events until it fires or moves on
         const bool fires = state.weight > 0.0f && state.targetWeight > 0.0f;
+        if (fires || delta != 0.0) state.startedThisUpdate = false;
         auto when = [&](double position){
             return delta != 0.0 ? offset + (float)((double)span * std::min(1.0, std::max(0.0, (position - from) / delta))) : offset;
         };
@@ -281,9 +352,15 @@ namespace {
             if (length <= 0.0){
                 to = 0.0;
                 eventsTo = 0.0;
+                // a queue does not wait for a clip without length (M7)
+                if (state.stopAtCycleEnd){
+                    finishing = true;
+                    finishTime = 0.0;
+                }
             }else if (state.stopAtCycleEnd && delta != 0.0){
-                const double boundary = delta > 0.0 ? (std::floor(from / length) + 1.0) * length
-                                                    : (std::ceil(from / length) - 1.0) * length;
+                const double cycle = queueCycle(wrap, length);
+                const double boundary = delta > 0.0 ? (std::floor(from / cycle) + 1.0) * cycle
+                                                    : (std::ceil(from / cycle) - 1.0) * cycle;
                 if (delta > 0.0 ? to >= boundary : to <= boundary){
                     to = boundary;
                     eventsTo = boundary;
@@ -350,12 +427,15 @@ namespace {
     }
 
     // the time a state is sampled at this update, in its clip
-    float sampleTimeOf(const anim::PlayerStateRuntime& state){
-        if (state.finishing) return state.finishTime;
+    float sampleTimeOf(const AnimationPlayerComponent& player, const anim::PlayerStateRuntime& state){
+        if (state.finishing || state.held) return state.finishTime;
         const float length = anim::stateLength(state);
         const ClipWrapMode wrap = anim::stateWrap(state);
         if (wrap == ClipWrapMode::Loop || wrap == ClipWrapMode::PingPong){
-            return anim::wrapClipTime(state.time, length, wrap);
+            const float time = anim::wrapClipTime(state.time, length, wrap);
+            // a loop going backwards reaches its start at the end of the clip (M2)
+            if (wrap == ClipWrapMode::Loop && time == 0.0f && anim::effectiveSpeed(player, state) < 0.0f) return length;
+            return time;
         }
         return std::min(std::max(state.time, 0.0f), length);
     }
@@ -516,6 +596,8 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     bool waiting = false;
     bool reloaded = false;
     bool resolvedAny = false;
+    bool namesKnown = false;
+    bool namesChanged = true;
     for (auto& model : runtime.modelFiles){
         ModelComponent* component = scene->findComponent<ModelComponent>(model.first);
         if (!component){
@@ -583,9 +665,19 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
                 bindings.nextUnresolvedRetry = runtime.clock + UNRESOLVED_RETRY_SECONDS;
             }
         }else if (bindings.hierarchyRevision != revision){
-            // validate, re-resolve only what needs it (R9)
+            // validate, re-resolve only what needs it (R9). Names are compared when something
+            // was renamed under this rig's top, a path entity's id was destroyed, or this player
+            // missed updates (the log only covers the last one)
+            if (!namesKnown){
+                namesKnown = true;
+                namesChanged = hierarchyLogOverflow || !renamedTops.empty();
+                if (!hierarchyLogOverflow && !renamedTops.empty()){
+                    namesChanged = renamedTops.count(topAncestor(scene, entity)) != 0;
+                }
+            }
+            const bool missed = bindings.checkedFrame + 1 != playerFrame;
             std::vector<Entity> failed;
-            if (!validateBindings(scene, entity, bindings, failed)){
+            if (!validateBindings(scene, entity, bindings, namesChanged || missed, destroyedEntities, failed)){
                 // a renamed or moved entity keeps its rest (R2); a destroyed one's goes
                 for (Entity changed : failed){
                     if (!scene->isEntityCreated(changed)) runtime.rest.erase(changed);
@@ -604,6 +696,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
                 bindings.hierarchyRevision = revision;
             }
         }
+        bindings.checkedFrame = playerFrame;
     }
     if (resolvedAny && runtime.modelsRevision != revision){
         collectModels(scene, entity, runtime);
@@ -612,27 +705,76 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
     return true;
 }
 
-void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt){
-    anim::AnimationPlayerRuntime& runtime = *player.runtime;
-    // the player's name for warnings (looked up only when a queued state starts)
-    auto who = [this, entity](){ return scene->getEntityName(entity); };
-    std::vector<anim::PlayerStateRuntime>& states = runtime.states;
+namespace {
 
-    // fades (real time)
-    for (anim::PlayerStateRuntime& state : states){
-        if (!state.enabled) continue;
+    // one fade step of `seconds` (real time); a state faded out with stopOnFadeOut stops
+    void fadeState(anim::PlayerStateRuntime& state, float seconds){
+        if (!state.enabled && !state.held) return;
         if (state.weight != state.targetWeight){
-            const float step = state.fadeSpeed > 0.0f && std::isfinite(state.fadeSpeed) ? state.fadeSpeed * dt : std::abs(state.targetWeight - state.weight);
+            const float step = state.fadeSpeed > 0.0f && std::isfinite(state.fadeSpeed) ? state.fadeSpeed * seconds : std::abs(state.targetWeight - state.weight);
             if (state.weight < state.targetWeight) state.weight = std::min(state.targetWeight, state.weight + step);
             else state.weight = std::max(state.targetWeight, state.weight - step);
         }
-        if (state.weight <= 0.0f && state.targetWeight <= 0.0f && state.stopOnFadeOut){
+        // a held state goes when nothing is left of it (R1b)
+        if (state.weight <= 0.0f && state.targetWeight <= 0.0f && (state.stopOnFadeOut || state.held)){
             anim::stopState(state);
         }
     }
 
+    struct FadeTarget{
+        float targetWeight;
+        float fadeSpeed;
+    };
+
+}
+
+// Starts the queue's head `offset` seconds into the update: a crossfade (fade > 0) or an
+// instant play. The playing state queued again restarts from its start (no copy state in v1, so
+// no crossfade with itself: the others fade). The fades it starts take their first step for the
+// rest of the update now, so its events at 0 fire and the others fade from this frame on (I1, I2).
+void ActionSystem::startQueuedState(Entity entity, AnimationPlayerComponent& player, const anim::QueuedState& head, float offset, float dt){
+    anim::AnimationPlayerRuntime& runtime = *player.runtime;
+    std::vector<anim::PlayerStateRuntime>& states = runtime.states;
+    anim::PlayerStateRuntime& target = states[head.state];
+    const bool restart = target.enabled || target.finishing;
+    const float weight = target.weight;
+
+    std::vector<FadeTarget> before;
+    before.reserve(states.size());
+    for (const anim::PlayerStateRuntime& state : states) before.push_back({state.targetWeight, state.fadeSpeed});
+
+    // the rest of the queue stays queued
+    std::deque<anim::QueuedState> rest;
+    rest.swap(runtime.queue);
+    anim::playState(player, target.name, head.fade, scene->getEntityName(entity));
+    runtime.queue.swap(rest);
+    if (restart && head.fade > 0.0f){
+        anim::startState(player, target);
+        target.weight = std::max(weight, 1e-6f);
+        target.targetWeight = 1.0f;
+        target.fadeSpeed = head.fade > 0.0f ? std::abs(1.0f - target.weight) / head.fade : 0.0f;
+        if (target.fadeSpeed == 0.0f) target.weight = 1.0f;
+    }
+    const float span = std::max(0.0f, dt - offset);
+    for (size_t i = 0; i < states.size(); i++){
+        if (i == head.state || states[i].targetWeight != before[i].targetWeight || states[i].fadeSpeed != before[i].fadeSpeed){
+            fadeState(states[i], span);
+        }
+    }
+}
+
+void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt){
+    anim::AnimationPlayerRuntime& runtime = *player.runtime;
+    std::vector<anim::PlayerStateRuntime>& states = runtime.states;
+
+    // fades (real time), held states included
+    for (anim::PlayerStateRuntime& state : states){
+        fadeState(state, dt);
+    }
+
     // the queue's head waits for the states playing now (R17): they stop at their next end
     std::vector<float> offsets(states.size(), 0.0f);
+    std::vector<char> advanced(states.size(), 0);
     if (!runtime.queue.empty()){
         const anim::QueuedState head = runtime.queue.front();
         float remaining = 0.0f;
@@ -650,11 +792,9 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         if (blocked && head.fade > 0.0f && !headPlaying && head.state < states.size() &&
             std::isfinite(remaining) && remaining - head.fade <= dt){
             runtime.queue.pop_front();
-            std::deque<anim::QueuedState> rest;
-            rest.swap(runtime.queue);
-            anim::playState(player, states[head.state].name, head.fade, who());
-            runtime.queue.swap(rest);
-            offsets[head.state] = std::max(0.0f, remaining - head.fade);
+            const float offset = std::max(0.0f, remaining - head.fade);
+            startQueuedState(entity, player, head, offset, dt);
+            offsets[head.state] = offset;
             // the others still stop at their end
             for (size_t i = 0; i < states.size(); i++){
                 if (i != head.state && states[i].enabled) states[i].stopAtCycleEnd = true;
@@ -666,7 +806,7 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         advanceState(player, runtime, states[i], offsets[i], dt - offsets[i]);
     }
 
-    // a head without a fade (or queued while playing) starts when the last of them ended
+    // a head without a fade (or the playing state queued again) starts when the last of them ended
     while (!runtime.queue.empty()){
         bool blocked = false;
         float ended = 0.0f;
@@ -678,10 +818,7 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
         const anim::QueuedState head = runtime.queue.front();
         runtime.queue.pop_front();
         if (head.state >= states.size()) continue;
-        std::deque<anim::QueuedState> rest;
-        rest.swap(runtime.queue);
-        anim::playState(player, states[head.state].name, head.fade, who());
-        runtime.queue.swap(rest);
+        startQueuedState(entity, player, head, ended, dt);
         advanceState(player, runtime, states[head.state], ended, std::max(0.0f, dt - ended));
         break;
     }
@@ -690,12 +827,23 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
 void ActionSystem::samplePlayerStates(AnimationPlayerComponent& player){
     anim::AnimationPlayerRuntime& runtime = *player.runtime;
     for (anim::PlayerStateRuntime& state : runtime.states){
-        if ((state.enabled || state.finishing) && state.bindings.clip && state.weight > 0.0f){
-            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(state), state.weight, runtime.rest, nullptr);
+        if ((state.enabled || state.finishing || state.held) && state.bindings.clip && state.weight > 0.0f){
+            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(player, state), state.weight, runtime.rest, nullptr);
         }
         if (state.finishing){
-            // a once state ends: rewound, its last pose kept
-            anim::stopState(state);
+            // R1b: an ended state holds its last pose at its weight (not playing, not advancing)
+            // until a fade takes it to 0
+            state.finishing = false;
+            state.enabled = false;
+            state.playing = false;
+            state.held = state.weight > 0.0f;
+            state.stopAtCycleEnd = false;
+            state.startedThisUpdate = false;
+            if (!state.held){
+                anim::stopState(state);
+            }else{
+                state.time = state.finishTime;
+            }
         }
     }
 }
@@ -703,6 +851,22 @@ void ActionSystem::samplePlayerStates(AnimationPlayerComponent& player){
 void ActionSystem::updatePlayers(double dt){
     auto players = scene->getComponentArray<AnimationPlayerComponent>();
     if (players->size() == 0) return;
+
+    // what changed in the hierarchy since the last update (the bind validation's names rule)
+    playerFrame++;
+    {
+        std::vector<Entity> renamed;
+        std::vector<Entity> destroyed;
+        bool overflow = false;
+        scene->takeHierarchyLog(renamed, destroyed, overflow);
+        hierarchyLogOverflow = overflow;
+        renamedTops.clear();
+        destroyedEntities.clear();
+        for (Entity entity : renamed){
+            if (scene->isEntityCreated(entity)) renamedTops.insert(topAncestor(scene, entity));
+        }
+        destroyedEntities.insert(destroyed.begin(), destroyed.end());
+    }
 
     const uint64_t poolRevision = AnimationClipPool::revision();
     const bool poolChanged = poolRevision != playerPoolRevision;
@@ -776,8 +940,7 @@ void ActionSystem::dispatchPlayerCallbacks(){
             const bool scripted = LuaBinding::callLuaScriptMethod(scene, entity, event.functionName, event.args);
             if (!subscribed && !scripted){
                 const std::string key = callback.clip + "|" + event.functionName;
-                if (std::find(runtime->warnedHandlers.begin(), runtime->warnedHandlers.end(), key) == runtime->warnedHandlers.end()){
-                    runtime->warnedHandlers.push_back(key);
+                if (warnedEventHandlers.insert(key).second){
                     Log::warn("Animation Player '%s': clip event '%s' of '%s' has no handler (no onEvent subscriber, no script method)",
                               scene->getEntityName(entity).c_str(), event.functionName.c_str(), callback.clip.c_str());
                 }
@@ -797,8 +960,8 @@ void ActionSystem::samplePlayer(Entity entity){
     clearPoseBlend();
     anim::AnimationPlayerRuntime& runtime = *player->runtime;
     for (anim::PlayerStateRuntime& state : runtime.states){
-        if (state.enabled && state.bindings.clip && state.weight > 0.0f){
-            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(state), state.weight, runtime.rest, nullptr);
+        if ((state.enabled || state.held) && state.bindings.clip && state.weight > 0.0f){
+            accumulateClip(*state.bindings.clip, state.bindings, sampleTimeOf(*player, state), state.weight, runtime.rest, nullptr);
         }
     }
     flushPoseBlend();
@@ -992,4 +1155,5 @@ void ActionSystem::resetPlayers(){
         player.onFinish.clear();
     }
     playersWithCallbacks.clear();
+    warnedEventHandlers.clear();
 }

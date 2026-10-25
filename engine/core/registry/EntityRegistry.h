@@ -85,6 +85,12 @@ namespace jasperengine {
         // see hierarchyRevision() / nameRevision()
         uint64_t hierarchyRev = 0;
         uint64_t nameRev = 0;
+        uint64_t destroyRev = 0;
+        // see takeHierarchyLog()
+        std::vector<Entity> renamedLog;
+        std::vector<Entity> destroyedLog;
+        bool hierarchyLogOverflow = false;
+        void logHierarchyChange(std::vector<Entity>& log, Entity entity);
 
         void moveChildAux(Entity entity, bool increase, bool stopIfFound);
         // true when `entity` had children (now its parent's)
@@ -142,6 +148,8 @@ namespace jasperengine {
 
         void setEntityName(Entity entity, const std::string& name);
         std::string getEntityName(Entity entity) const;
+        // the same without a copy (valid until the entity is renamed or destroyed; "" when unknown)
+        const std::string& getEntityNameRef(Entity entity) const;
 
         // Looks up an existing entity by its name (as shown in the editor Structure panel).
         // Returns the first match, or NULL_ENTITY when no entity has that name.
@@ -192,6 +200,16 @@ namespace jasperengine {
         // and clear(): a player whose bound entities kept their parents and places compares
         // names only when it changed
         uint64_t nameRevision() const;
+        // Increases when an entity with a parent or children is destroyed or recreated, and on
+        // clear(): ids can come back, so a player compares the names of what it bound then
+        uint64_t destroyRevision() const;
+        // For code that changes Transform::parent directly instead of through addEntityChild
+        void hierarchyChanged();
+        // The entities renamed under a parent and the ones destroyed (or recreated) with a parent
+        // or children since the last call, for the Animation Players' validation (ActionSystem
+        // takes it once per update); `overflow` when more happened than the log keeps (or a
+        // clear()): then everything counts as changed
+        void takeHierarchyLog(std::vector<Entity>& renamed, std::vector<Entity>& destroyed, bool& overflow);
 
         void clear();
 

@@ -2074,6 +2074,7 @@ void UISystem::update(double dt){
                         parentcontainer->numBoxes = parentcontainer->numBoxes + 1;
                     }else{
                         transform.parent = NULL_ENTITY;
+                        scene->hierarchyChanged();
                         Log::error("The UI container has exceeded the maximum allowed of %i children. Please, increase MAX_CONTAINER_BOXES value.", MAX_CONTAINER_BOXES);
                     }
                 }
