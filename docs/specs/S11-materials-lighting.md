@@ -655,8 +655,10 @@ with other streams:
    scene-inputs block: transmission variants drop SSAO (they draw in the transparent queue, which
    has none) and 2D lighting, and a variant in a scene with 2D light shadows reserves one of the 3
    map slots (`getPbrVariant(..., reservedMaps)`, shown in the Inspector footer and
-   `get_material_variant`). With a second UV set, a lobe variant carries the UV sets in
-   `u_fs_pbrExt` instead of `u_fs_texCoordSets`. The `builtin_lit` matrix checks both limits.
+   `get_material_variant`). No `u_fs_pbrExt` block: after S12 added `u_fs_heightFog` a lobe
+   variant had no uniform block to spare, so the lobes' values (and, with a second UV set, the
+   UV sets instead of `u_fs_texCoordSets`) are the last members of `u_fs_pbrParams` under
+   `#ifdef PBR_EXT`. The `builtin_lit` matrix checks both limits on six backends.
 3. **13 Khronos models** (§6.7 as verified), goldens written by the MCP test's own scenes
    (`test_khronos_models`), not by a `tools/fixtures/pbr-extended` scene per model: the fixture
    keeps the benchmark scenes and the export check. `JASPER_TEST_UPDATE_GOLDEN=1` (S02's name) and

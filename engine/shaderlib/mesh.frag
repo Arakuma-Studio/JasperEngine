@@ -85,6 +85,11 @@ out vec4 g_finalColor;
     #endif
 #endif
 
+// the built-in Lit's extended lobes (includes/pbr_ext_slots.glsl): their values end this block
+#if defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
+    defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING)
+    #define PBR_EXT
+#endif
 uniform u_fs_pbrParams {
     //Metallic material
     vec4 baseColorFactor;
@@ -102,6 +107,22 @@ uniform u_fs_pbrParams {
     #ifndef MATERIAL_UNLIT
         vec3 emissiveFactor;
         float foliageTransmission;
+    #endif
+    #ifdef PBR_EXT
+        // std140 vec4s (MaterialPbr::getUniformBlock), after the material's
+        vec4 clearcoat;     // factor, roughness, normal scale, -
+        vec4 sheen;         // rgb colour (linear), roughness
+        vec4 anisotropy;    // strength, cos(rotation), sin(rotation), -
+        vec4 iridescence;   // factor, ior, thickness min (nm), thickness max (nm)
+        vec4 transmission;  // factor, volume thickness, attenuation distance (0: none), -
+        vec4 attenuation;   // rgb attenuation colour (linear), -
+        vec4 specular;      // rgb colour (linear), factor
+        vec4 iorHex;        // ior, hex rotation, hex contrast, -
+        #ifdef HAS_UV_SET2
+            // the UV set of each texture (includes/pbr.glsl u_fs_texCoordSets), as floats
+            vec4 set0;
+            vec4 set1;
+        #endif
     #endif
 } pbrParams;
 

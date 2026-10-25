@@ -122,7 +122,8 @@ editable `includes/` folder beside the fork.
 
 A fork of the built-in Mesh shader keeps the material's extended lobes and hex tiling
 (clear coat, sheen, ... `jasper://docs/materials`) and the High Lit Quality when it keeps
-their hooks: `#include "includes/pbr_ext_slots.glsl"` before `includes/pbr.glsl`,
+their hooks: the `#ifdef PBR_EXT` members at the end of `u_fs_pbrParams` (and the `PBR_EXT`
+define before it), `#include "includes/pbr_ext_slots.glsl"` before `includes/pbr.glsl`,
 `includes/specular_aa.glsl` and `includes/pbr_ext.glsl` after `includes/ibl.glsl`, and the
 `#ifdef PBR_*` / `USE_LIT_QUALITY` blocks of `main()` (`pbrExtSurface`, `pbrExtView`,
 `pbrExtEnvironment`, `pbrExtDirect`, `pbrExtTransmission`, `pbrExtComposite`). The engine adds

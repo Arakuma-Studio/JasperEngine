@@ -67,7 +67,7 @@ namespace {
     // the project export setting's default (Project Settings > Graphics > Mobile PBR Tier)
     std::atomic<int> mobileTierValue{(int)PbrTier::REDUCED};
 
-    // u_fs_pbrExt (includes/pbr_ext.glsl): the vec4 each lobe writes
+    // the lobes' members of u_fs_pbrParams (mesh.frag, includes/pbr_ext.glsl): the vec4 each lobe writes
     enum PbrUniformVector{
         UNIFORM_CLEARCOAT = 0,
         UNIFORM_SHEEN = 4,

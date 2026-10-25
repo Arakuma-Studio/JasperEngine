@@ -44,7 +44,7 @@ namespace {
     }
 
     // a fork of the built-in Lit keeps the lobes when it has the S11 hooks (its fragment stage
-    // declares u_fs_pbrExt through includes/pbr_ext_slots.glsl); checked once per file version
+    // includes includes/pbr_ext_slots.glsl, the lobes' values ending its u_fs_pbrParams); checked once per file version
     bool forkHasPbrHooks(const std::filesystem::path& fragFile) {
         static std::map<std::string, std::pair<std::filesystem::file_time_type, bool>> cache;
         std::error_code ec;

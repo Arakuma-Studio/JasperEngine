@@ -5383,12 +5383,26 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         mesh.submeshes[i].slotVSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_PARAMS);
         mesh.submeshes[i].slotFSParams = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_PARAMS);
-        mesh.submeshes[i].slotFSPbrExt = shaderData.getUniformBlockIndexByName("u_fs_pbrExt");
-        mesh.submeshes[i].pbrExtTexCoordSets = false;
+        // a built-in Lit lobe variant: the lobes (and UV sets) end u_fs_pbrParams
+        mesh.submeshes[i].pbrParamsSize = 0;
+        mesh.submeshes[i].pbrExtOffset = 0;
+        mesh.submeshes[i].pbrSetsOffset = -1;
+        if (mesh.submeshes[i].litDefineBits != 0 && mesh.submeshes[i].customShaderId != 0){
+            unsigned int paramsSize = 0;
+            if (const std::vector<ShaderUniform>* members = shaderData.getUniformBlockMembers("u_fs_pbrParams", paramsSize)){
+                for (const ShaderUniform& member : *members){
+                    const std::string name = ShaderData::getUniformShortName(member.name);
+                    if (name == "clearcoat"){
+                        mesh.submeshes[i].pbrParamsSize = (uint16_t)paramsSize;
+                        mesh.submeshes[i].pbrExtOffset = (uint16_t)member.offset;
+                    }else if (name == "set0"){
+                        mesh.submeshes[i].pbrSetsOffset = (int16_t)member.offset;
+                    }
+                }
+            }
+        }
         if (p_hasTexture2){
             mesh.submeshes[i].slotFSTexCoordSets = shaderData.getUniformBlockIndex(UniformBlockType::PBR_FS_TEXCOORDSETS);
-            // an extended lobes variant carries them in u_fs_pbrExt
-            mesh.submeshes[i].pbrExtTexCoordSets = mesh.submeshes[i].slotFSPbrExt != -1 && mesh.submeshes[i].slotFSTexCoordSets == -1;
         }
         if (p_instanceFade){
             mesh.submeshes[i].slotVSFade = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
@@ -7447,7 +7461,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 }
             }
 
-            if (submeshLit){
+            if (mesh.submeshes[i].pbrParamsSize != 0){
+                // a lobe variant's block, with the lobes: below
+            }else if (submeshLit){
                 applyLitMaterialBlock(render, mesh.submeshes[i].slotFSParams, mesh.submeshes[i].material);
             }else if (mesh.submeshes[i].shaderProperties & (1u << 24)){
                 // Unlit alpha-mask variants include the metallic/roughness padding
@@ -7483,20 +7499,30 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 render.applyUniformBlock(mesh.submeshes[i].slotFSTexCoordSets, sizeof(texCoordSets), &texCoordSets);
             }
 
-            if (mesh.submeshes[i].slotFSPbrExt != -1){
-                // with a second UV set the block carries the UV sets after the lobes (a
-                // fragment uniform block less, includes/pbr_ext_slots.glsl)
-                struct { float lobes[MaterialPbr::UNIFORM_FLOATS]; float texCoordSets[8]; } pbrExt;
-                MaterialPbr::getUniformBlock(mesh.submeshes[i].material.pbr, pbrExt.lobes);
-                size_t size = sizeof(pbrExt.lobes);
-                if (mesh.submeshes[i].pbrExtTexCoordSets){
+            if (mesh.submeshes[i].pbrParamsSize != 0 && mesh.submeshes[i].slotFSParams != -1){
+                // u_fs_pbrParams of a lobe variant: the material's prefix, then the lobes, then
+                // (with a second UV set) the UV sets (includes/pbr_ext_slots.glsl)
+                const Submesh& sub = mesh.submeshes[i];
+                alignas(16) unsigned char block[512] = {};
+                const size_t size = std::min<size_t>(sub.pbrParamsSize, sizeof(block));
+                float prefix[12];
+                std::memcpy(prefix, &sub.material, sizeof(prefix));
+                for (int c = 8; c < 11; c++)
+                    prefix[c] *= sub.material.emissiveStrength;
+                std::memcpy(block, prefix, std::min<size_t>(sub.pbrExtOffset, sizeof(prefix)));
+                float lobes[MaterialPbr::UNIFORM_FLOATS];
+                MaterialPbr::getUniformBlock(sub.material.pbr, lobes);
+                if (sub.pbrExtOffset + sizeof(lobes) <= size)
+                    std::memcpy(block + sub.pbrExtOffset, lobes, sizeof(lobes));
+                if (sub.pbrSetsOffset >= 0 && sub.pbrSetsOffset + 8 * sizeof(float) <= size){
                     int32_t sets[8];
                     fillTexCoordSets(sets);
+                    float setsFloat[8];
                     for (int k = 0; k < 8; k++)
-                        pbrExt.texCoordSets[k] = (float)sets[k];
-                    size = sizeof(pbrExt);
+                        setsFloat[k] = (float)sets[k];
+                    std::memcpy(block + sub.pbrSetsOffset, setsFloat, sizeof(setsFloat));
                 }
-                render.applyUniformBlock(mesh.submeshes[i].slotFSPbrExt, size, &pbrExt);
+                render.applyUniformBlock(sub.slotFSParams, size, block);
             }
 
             if (terrain){
@@ -9246,8 +9272,9 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSParams = -1;
         submesh.slotFSParams = -1;
         submesh.slotFSTexCoordSets = -1;
-        submesh.slotFSPbrExt = -1;
-        submesh.pbrExtTexCoordSets = false;
+        submesh.pbrParamsSize = 0;
+        submesh.pbrExtOffset = 0;
+        submesh.pbrSetsOffset = -1;
         submesh.slotVSFade = -1;
         // set only when the variant has them (loadMesh): a reload without must not keep them
         submesh.slotFSFog = -1;

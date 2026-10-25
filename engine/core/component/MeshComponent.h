@@ -219,8 +219,11 @@ namespace jasperengine{
         int slotVSMorphTarget = -1;
         int slotVSTerrain = -1;
         int slotFSTerrainLayers = -1;
-        bool pbrExtTexCoordSets = false; // u_fs_pbrExt carries the UV sets (no u_fs_texCoordSets)
-        int slotFSPbrExt = -1;          // includes/pbr_ext_slots.glsl (the extended lobes, hex tiling)
+        // u_fs_pbrParams of a built-in Lit lobe variant ends with the lobes' values (and the UV
+        // sets with a second set): its size, their offsets (bytes; size 0: no lobes)
+        uint16_t pbrParamsSize = 0;
+        uint16_t pbrExtOffset = 0;
+        int16_t pbrSetsOffset = -1;
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix

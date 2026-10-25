@@ -1,5 +1,5 @@
 // The extended PBR lobes of the built-in Lit (docs/specs/S11-materials-lighting.md): the
-// u_fs_pbrExt block, the extension map slots and the hex tiling taps. Included by mesh.frag
+// lobes' uniforms (in u_fs_pbrParams), the extension map slots and the hex tiling taps. Included by mesh.frag
 // before includes/pbr.glsl; declares nothing without a PBR_* define, so every variant without
 // one is the program it always was.
 //
@@ -16,29 +16,15 @@
 #ifndef PBR_EXT_SLOTS_GLSL
 #define PBR_EXT_SLOTS_GLSL
 
-#if defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
-    defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING)
+#if !defined(PBR_EXT) && (defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || \
+    defined(PBR_IRIDESCENCE) || defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING))
     #define PBR_EXT
 #endif
 
 #ifdef PBR_EXT
-    // std140, 8 vec4 (MaterialPbr::getUniformBlock)
-    uniform u_fs_pbrExt {
-        vec4 clearcoat;     // factor, roughness, normal scale, -
-        vec4 sheen;         // rgb colour (linear), roughness
-        vec4 anisotropy;    // strength, cos(rotation), sin(rotation), -
-        vec4 iridescence;   // factor, ior, thickness min (nm), thickness max (nm)
-        vec4 transmission;  // factor, volume thickness, attenuation distance (0: none), -
-        vec4 attenuation;   // rgb attenuation colour (linear), -
-        vec4 specular;      // rgb colour (linear), factor
-        vec4 iorHex;        // ior, hex rotation, hex contrast, -
-        #ifdef HAS_UV_SET2
-            // the UV set of each texture (includes/pbr.glsl u_fs_texCoordSets, as floats: the
-            // block stays all float), here so that a variant keeps to 8 fragment uniform blocks
-            vec4 set0;
-            vec4 set1;
-        #endif
-    } pbrExt;
+    // the lobes' values are the last members of mesh.frag's u_fs_pbrParams (a lobe variant
+    // takes no uniform block more than the plain one: 8 per stage on every backend)
+    #define pbrExt pbrParams
 #endif
 
 // the slot of each map: the number of maps before it in priority order
