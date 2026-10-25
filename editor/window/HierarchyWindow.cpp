@@ -1887,7 +1887,8 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
 
         // clips onto a GameObject: an Animation Player (added or reused) plays them, one scene
         // step (animation clips spec 4.1; the hook is the converters')
-        if (!node.isScene && !node.isPlayCreated && animationClipAppHooks().dropClips && !project->isAnyScenePlaying()) {
+        // (not a payload the drop above took: a prefab with a clip makes the instance only)
+        if (!allowResourceDragDrop && !node.isScene && !node.isPlayCreated && animationClipAppHooks().dropClips && !project->isAnyScenePlaying()) {
             const ImGuiPayload* peek = ImGui::GetDragDropPayload();
             std::vector<std::string> clips;
             if (peek && peek->IsDataType("resource_files")) {
