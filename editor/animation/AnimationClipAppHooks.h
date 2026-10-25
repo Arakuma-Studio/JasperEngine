@@ -6,22 +6,22 @@
 //   wiring files) need no further edit when the clip tasks land: the clip mode's part of
 //   App::stopTransientPreviews (the entity mode is AnimationWindow::stopTransientPreviews), the
 //   undo/redo routing to the project history, the keys the window takes from the main toolbar,
-//   scene and project close, the main menu's Assets > Create > Animation Clip, clip drag-drop onto
-//   scene objects, and the MCP window test hook of focus_window {window: "animation",
-//   animation: {...}}.
+//   scene and project close, the main menu's Assets > Create > Animation Clip and clip drag-drop
+//   onto scene objects. (The MCP window test hook of focus_window {window: "animation"} went with
+//   the editor's other test-only MCP hooks: the window is tested through real X input, the
+//   public MCP tools and unit tests of the clip mode.)
 // - Owner: T0 (struct + every App/ViewTools call site). Setters: T3a stopTransientPreviews /
 //   ownsUndo / takesKeys / sceneClosed / projectClosed (the AnimationClipController), T2b
 //   createClipAsset, T2d dropClips (T2b's Scene view and Hierarchy drop targets call
-//   App::dispatchClipDrop), T3b windowTestHook.
+//   App::dispatchClipDrop).
 // - Thread-safety: main thread; set once at startup.
 // - Invariants: every hook is optional (unset = the behaviour before clips: the menu item is
-//   hidden, the test hook fails with "not available"); hooks never open modal popups
+//   hidden); hooks never open modal popups
 //   synchronously from the call sites (they run inside the App frame).
 
 #pragma once
 
 #include "ecs/Entity.h"
-#include "json.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -71,10 +71,6 @@ namespace jasperengine::editor{
         // sub-clips are meant) dropped onto `target` of `sceneId`: adds or reuses an Animation
         // Player and appends the clips as one scene step (CreateClipCmd). True when handled.
         std::function<bool(Project* project, uint32_t sceneId, Entity target, const std::vector<std::string>& paths)> dropClips;
-        // MCP focus_window {window: "animation", animation: {...}} (JASPER_MCP_TEST_HOOKS=1 only):
-        // drives the window's clip mode for tests; fills `out` (returned as the result's
-        // `viewport_input`), false + `error` on bad input
-        std::function<bool(Project* project, const nlohmann::json& hook, nlohmann::json& out, std::string& error)> windowTestHook;
         // once per editor frame (App::engineRender, `frame` = ImGui::GetFrameCount()): the clip
         // controller's update(dt, frame), so previews play and deferred stops finish whether
         // or not the Animation window is open (set by AnimationClipController)

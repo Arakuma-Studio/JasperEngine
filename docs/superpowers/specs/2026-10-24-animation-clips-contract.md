@@ -51,7 +51,7 @@ Namespaces: types in public signatures live in `jasperengine` (`AnimationClip`, 
 | hook setters `stopTransientPreviews`, `ownsUndo`, `takesKeys`, `sceneClosed`, `projectClosed` | AnimationClipController | T3a |
 | `createClipAsset`, Project window double-click → `openClip`, `Project::setInspectedAsset` on click, `ProjectWindow::getSelectedPaths` users, `findClipUsers` | ProjectWindow, document | T2b |
 | `dropClips` (and calling `App::dispatchClipDrop` from the Scene view/Hierarchy drop targets) | converters / drop targets | T2d sets, T2b calls |
-| `windowTestHook` (focus_window `animation`; property and gated call wired by T0, +29 B of tool definitions) | window | T3b sets; T4 counts it in R28 |
+| ~~`windowTestHook`~~ (focus_window `animation`): removed in the merge of main (M1) with upstream's test-only MCP hooks; the window is tested by AnimationWindowClipTest.cpp (its actions) and real X input | window | — |
 | channel write notifications in PropertyCmd, ObjectTransformCmd, ComponentValuesCmd, LatticePointsCmd (execute and undo) | command files | T0 (done); morph-row writes: T3c |
 | Inspector action preview acquires PreviewOwner (R7); inspected-object read + clear on scene selection (R30) | InspectorWindow | T2c |
 | `ActionSystem::resetPlayers` call when Play stops | `editor/Project.cpp` | T0 (done) |

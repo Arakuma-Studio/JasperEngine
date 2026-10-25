@@ -1,34 +1,38 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The clip mode's part of the MCP window test hook (focus_window {window: "animation",
-// animation: {...}}, JASPER_MCP_TEST_HOOKS=1 only; AnimationClipAppHooks::windowTestHook, set by
-// AnimationWindowClipMode.cpp, which handles `entity`, `entity_animation`, `clip` and `root`).
-// The actions run the same functions the window's buttons, menus and shortcuts run, in this
-// order: state, time / frame, preview, play, expand, select / box, drag, ease, delete, copy,
-// paste, duplicate, key, add_key, add_property, set_value, remove_track, rebind, frame_rate,
-// snap_keys, time_format, preview_model, add_event, select_event, event, drag_event,
-// delete_event, create_clip, extract, view, curve_visible, frame_curves, curve_drag, record,
-// gizmo, inspector, morph, lattice_drag, input. The result (`viewport_input` of focus_window) is
-// stateJson(): mode, clip, state, rows, missing, selection, time, preview, events, view, curves,
-// recording...
-// `input` queues real key events (Space, K, comma...) handled by the focused window on the next
-// frame. T3c: the record sources run through the same code as the Scene view and the Inspector:
-// `gizmo` through SceneRender::recordGizmoTransform (else the ObjectTransformCmd the drag builds),
-// `inspector` / `morph` through the Inspector's Transform / Blend Shapes row functions, and
+// The editor tests' driver of the Animation window (AnimationWindowClipTest.cpp includes it once):
+// the definitions of AnimationWindowClip::testDrive / testState and AnimationWindow::testDrive /
+// testMoveFrameToLane, which the editor declares and never calls (they exist in the test binary
+// only; the editor has no test hook of its own). testDrive runs, by name, the same functions the
+// window's buttons, menus and shortcuts run, in this order: state, time / frame, preview, play,
+// expand, select / box, drag, ease, delete, copy, paste, duplicate, key, add_key, add_property,
+// set_value, remove_track, rebind, frame_rate, snap_keys, time_format, preview_model, add_event,
+// select_event, event, drag_event, delete_event, create_clip, extract, view, curve_visible,
+// frame_curves, curve_drag, record, gizmo, inspector, morph, lattice_drag, input; testState is the
+// window's state: mode, clip, state, rows, missing, selection, time, preview, events, view, curves,
+// recording... The record sources run through the same code as the Scene view and the Inspector:
+// `gizmo` through SceneRender::buildObjectTransformDrag (recordGizmoTransform, else the
+// ObjectTransformCmd the drag builds), `inspector` / `morph` through the Inspector's Transform /
+// Blend Shapes row functions (an InspectorWindow of the test's project, setDriverInspector), and
 // `lattice_drag` through LatticeEditorOps' continuous edit (the Scene view's lattice point drag).
+// `input` queues ImGui key events for the next drawn frame (AnimationWindowClipTest's frame()).
 
-#include "AnimationWindowClip.h"
-#include "AnimationWindowClipUtil.h"
+#pragma once
 
-#include "AnimationWindowClipCurves.h"
-#include "App.h"
-#include "Backend.h"
+#include "window/AnimationWindowClip.h"
+#include "window/AnimationWindowClipUtil.h"
+#include "window/AnimationWindowClipCurves.h"
+#include "window/AnimationWindow.h"
+
+#include "Out.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipBinding.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "command/CommandHandle.h"
 #include "command/type/ObjectTransformCmd.h"
@@ -36,15 +40,27 @@
 #include "lattice/LatticeEditorOps.h"
 #include "render/SceneRender.h"
 #include "util/EntityPath.h"
+#include "util/FileUtils.h"
 #include "window/InspectorWindow.h"
 
 #include <cmath>
+#include <filesystem>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using Json = nlohmann::json;
 
 namespace {
+
+    InspectorWindow*& driverInspectorSlot(){
+        static InspectorWindow* inspector = nullptr;
+        return inspector;
+    }
+
+    // the Inspector whose row functions `inspector` and `morph` run (one of the test's project)
+    [[maybe_unused]] void setDriverInspector(InspectorWindow* inspector){ driverInspectorSlot() = inspector; }
+    InspectorWindow* driverInspector(){ return driverInspectorSlot(); }
+
 
     const char* const KNOWN_KEYS[] = {
         "entity", "entity_animation", "clip", "root", "state", "time", "frame", "preview", "play", "expand", "select", "add",
@@ -78,9 +94,55 @@ namespace {
         return true;
     }
 
+    bool checkDriverKeys(const Json& hook, bool clipActions, std::string& error){
+        for (auto it = hook.begin(); it != hook.end(); ++it){
+            bool known = false;
+            for (const char* key : KNOWN_KEYS) known = known || it.key() == key;
+            if (!known){
+                std::string valid;
+                for (const char* key : KNOWN_KEYS) valid += (valid.empty() ? "" : ", ") + std::string(key);
+                error = it.key() + ": unknown key (valid: " + valid + ")";
+                return false;
+            }
+            const bool windowKey = it.key() == "entity" || it.key() == "entity_animation" || it.key() == "clip" || it.key() == "root" ||
+                                   it.key() == "entity_play" || it.key() == "entity_mode_entries" ||
+                                   it.key() == "entity_move_frame" || it.key() == "brief" || it.key() == "drop";
+            if (!clipActions && !windowKey){
+                error = it.key() + ": the window is in entity mode (select a GameObject with an Animation Player, or open a clip)";
+                return false;
+            }
+        }
+        return true;
+    }
+
 }
 
-Json AnimationWindowClip::stateJson(SceneProject* sceneProject, bool brief){
+Json AnimationWindowClip::testCurves() const{
+    nlohmann::json out = nlohmann::json::array();
+    std::shared_ptr<AnimationClipDocument> doc = document();
+    if (!doc) return out;
+    const ClipData& data = doc->data();
+    for (size_t t = 0; t < data.tracks.size(); t++){
+        const ClipTrackData& track = data.tracks[t];
+        const std::vector<std::string> names = track.channel == ClipChannel::Morph ? componentLabels(t) : std::vector<std::string>();
+        const std::vector<Vector3>& eulers = trackEulers(t);
+        const size_t count = clipcurves::componentCount(track);
+        for (size_t c = 0; c < count; c++){
+            nlohmann::json values = nlohmann::json::array();
+            nlohmann::json selected = nlohmann::json::array();
+            for (size_t k = 0; k < track.keys.size() && k < 512; k++){
+                const std::vector<float> keyed = clipcurves::keyValues(track, k, eulers);
+                values.push_back(c < keyed.size() ? keyed[c] : 0.0f);
+                if (curvePointSelected(t, k, (int)c)) selected.push_back(track.keys[k].time);
+            }
+            out.push_back({{"track", t}, {"component", c}, {"label", clipcurves::componentLabel(track, c, names)},
+                           {"visible", curveVisible(track, (int)c)}, {"key_values", values}, {"selected", selected}});
+        }
+    }
+    return out;
+}
+
+Json AnimationWindowClip::testState(SceneProject* sceneProject, bool brief){
     (void)sceneProject;
     AnimationClipController& c = controller();
     refreshReport();
@@ -186,7 +248,7 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject, bool brief){
     out["view"] = view == View::Curves ? "curves" : "dopesheet";
     out["label_width"] = labelWidth;
     if (view == View::Curves){
-        out["curves"] = curvesJson();
+        out["curves"] = testCurves();
         out["curve_range"] = {curveMin, curveMax};
     }
     out["recording"] = c.isRecording();
@@ -195,28 +257,8 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject, bool brief){
     return out;
 }
 
-bool AnimationWindowClip::checkHookKeys(const Json& hook, bool clipActions, std::string& error){
-    for (auto it = hook.begin(); it != hook.end(); ++it){
-        bool known = false;
-        for (const char* key : KNOWN_KEYS) known = known || it.key() == key;
-        if (!known){
-            std::string valid;
-            for (const char* key : KNOWN_KEYS) valid += (valid.empty() ? "" : ", ") + std::string(key);
-            error = it.key() + ": unknown key (valid: " + valid + ")";
-            return false;
-        }
-        const bool windowKey = it.key() == "entity" || it.key() == "entity_animation" || it.key() == "clip" || it.key() == "root" ||
-                               it.key() == "entity_play" || it.key() == "entity_mode_entries" ||
-                               it.key() == "entity_move_frame" || it.key() == "brief" || it.key() == "drop";
-        if (!clipActions && !windowKey){
-            error = it.key() + ": the window is in entity mode (select a GameObject with an Animation Player, or open a clip)";
-            return false;
-        }
-    }
-    return true;
-}
 
-bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook, Json& out, std::string& error){
+bool AnimationWindowClip::testDrive(SceneProject* sceneProject, const Json& hook, Json& out, std::string& error){
     AnimationClipController& c = controller();
     refreshBinding();
     auto fail = [&](const std::string& key, const std::string& message){
@@ -417,7 +459,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         if (add.contains("args") && !argsFromJson(add["args"], args, failure)) return fail("add_event", failure);
         const float at = add.contains("time") && add["time"].is_number() ? add["time"].get<float>() : snapToFrame(c.getTime());
         if (!addEvent(at, add.value("function", std::string()), args, &failure)) return fail("add_event", failure);
-        openEventEditorDelay = 4;
+        openEventEditor = true;
     }
     if (hook.contains("select_event")){
         std::shared_ptr<AnimationClipDocument> doc = document();
@@ -460,7 +502,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         if (selectedEvent < 0) return fail("delete_event", "no event selected");
         if (!deleteEvent(selectedEvent, &failure)) return fail("delete_event", failure);
     }
-    if (hook.value("event_editor", false)) openEventEditorDelay = 4;
+    if (hook.value("event_editor", false)) openEventEditor = true;
     if (hook.contains("create_clip")){
         // the empty state's Create... / the dropdown's Create New Clip... without the save dialog
         if (!hook["create_clip"].is_string()) return fail("create_clip", "the new .anim path (project-relative)");
@@ -567,7 +609,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             !vectorOf(edit["value"], value) || (property != "position" && property != "rotation" && property != "scale")){
             return fail("inspector", "{entities: [names], property: position|rotation|scale, value: [x, y, z]}");
         }
-        InspectorWindow* inspector = Backend::getApp().getInspectorWindow();
+        InspectorWindow* inspector = driverInspector();
         if (!inspector) return fail("inspector", "no Inspector");
         const Quaternion rotation(value.x, value.y, value.z, RotationOrder::ZYX);
         auto valueOf = [&](Entity){
@@ -596,7 +638,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             !edit["index"].is_number_integer() || !edit.contains("value") || !edit["value"].is_number()){
             return fail("morph", "{entities: [names], index, value}");
         }
-        InspectorWindow* inspector = Backend::getApp().getInspectorWindow();
+        InspectorWindow* inspector = driverInspector();
         if (!inspector) return fail("morph", "no Inspector");
         // a slider drag: two steps, then the release
         const int index = edit["index"].get<int>();
@@ -720,7 +762,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, false);
         }
     }
-    out = stateJson(sceneProject, hook.value("brief", false));
+    out = testState(sceneProject, hook.value("brief", false));
     for (auto it = extra.begin(); it != extra.end(); ++it) out[it.key()] = it.value();
     if (hook.value("list_paths", false)){
         // what Add Property offers: the addressable paths under the bound (or previewed) root
@@ -730,6 +772,175 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             for (const auto& entry : anim::descendantPaths(scene, valueRoot())) paths.push_back(entry.first);
         }
         out["paths"] = paths;
+    }
+    return true;
+}
+
+// ---- the entity mode's part (AnimationWindow) ----
+
+bool editor::AnimationWindow::testMoveFrameToLane(SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error){
+    Scene* scene = sceneProject ? sceneProject->scene : nullptr;
+    AnimationComponent* anim = scene && selectedEntity != NULL_ENTITY && scene->isEntityCreated(selectedEntity)
+        ? scene->findComponent<AnimationComponent>(selectedEntity) : nullptr;
+    if (!anim || frameIndex >= anim->actions.size()){
+        if (error) *error = "no such frame of the shown Animation";
+        return false;
+    }
+    autoAssignTracks(*anim, sceneProject);
+    // a frame drag released on `lane` at the same time
+    isDraggingFrame = true;
+    draggingFrameIndex = (int)frameIndex;
+    dragStartTime = anim->actions[frameIndex].startTime;
+    dragStartTrack = laneOf(*anim, frameIndex);
+    draggingLane = (int)lane;
+    finishTimelineDrag(scene, sceneProject, true);
+    return true;
+}
+
+bool editor::AnimationWindow::testDrive(const nlohmann::json& hook, nlohmann::json& out, std::string& error){
+    if (!hook.is_object()){
+        error = "an object {entity, clip, root, state, time, preview, select, drag, ...} (see AnimationWindowClipTest.cpp)";
+        return false;
+    }
+    if (!checkDriverKeys(hook, true, error)) return false;
+    SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene){
+        error = "no scene is open";
+        return false;
+    }
+    auto resolve = [&](const nlohmann::json& ref, Entity& entity) -> bool{
+        if (!ref.is_string()){
+            error = "a GameObject name or path (string)";
+            return false;
+        }
+        const std::vector<Entity> found = EntityPath::resolve(*sceneProject, ref.get<std::string>());
+        if (found.size() != 1){
+            error = found.empty() ? "no GameObject '" + ref.get<std::string>() + "'" : "'" + ref.get<std::string>() + "' is ambiguous";
+            return false;
+        }
+        entity = found.front();
+        return true;
+    };
+    setOpen(true);
+    // the selection decides the mode, as a click in the Hierarchy does
+    if (hook.contains("entity")){
+        if (hook["entity"].is_null()){
+            project->clearSelectedEntities(sceneProject->id);
+        }else{
+            Entity entity = NULL_ENTITY;
+            if (!resolve(hook["entity"], entity)){
+                error = "entity: " + error;
+                return false;
+            }
+            project->replaceSelectedEntities(sceneProject->id, {entity});
+        }
+        applySelection(sceneProject, project->getSelectedEntities(sceneProject->id));
+    }
+    if (hook.contains("entity_animation")){
+        Entity animation = NULL_ENTITY;
+        if (!resolve(hook["entity_animation"], animation)){
+            error = "entity_animation: " + error;
+            return false;
+        }
+        openEntityAnimation(sceneProject->id, animation);
+    }
+    // the Project window's double-click (target-less) or the Inspector's open (with root)
+    if (hook.contains("clip")){
+        if (!hook["clip"].is_string()){
+            error = "clip: a .anim path or \"<model>#<clip>\"";
+            return false;
+        }
+        Entity root = NULL_ENTITY;
+        if (hook.contains("root") && !resolve(hook["root"], root)){
+            error = "root: " + error;
+            return false;
+        }
+        stopTransientPreviews();
+        clipModeActive = true;
+        if (!clipMode->open(sceneProject->id, root, hook["clip"].get<std::string>(), &error)){
+            error = "clip: " + error;
+            return false;
+        }
+    }
+    // .anim files dropped on the window (project-relative or absolute paths)
+    if (hook.contains("drop")){
+        std::vector<std::string> paths;
+        const nlohmann::json& drop = hook["drop"];
+        for (const nlohmann::json& path : drop.is_array() ? drop : nlohmann::json::array({drop})){
+            if (!path.is_string()){
+                error = "drop: a path or a list of paths of the files dropped";
+                return false;
+            }
+            const std::filesystem::path given = std::filesystem::u8path(path.get<std::string>());
+            paths.push_back(FileUtils::pathToGenericUtf8((given.is_absolute() ? given : project->getProjectPath() / given).lexically_normal()));
+        }
+        if (!dropClipFiles(sceneProject, paths, &error)){
+            error = "drop: " + error;
+            return false;
+        }
+    }
+    if (hook.contains("entity_play")){
+        // the entity mode's preview (play / stop), as its Play and Stop buttons
+        if (!hook["entity_play"].is_boolean()){
+            error = "entity_play: true plays the entity Animation's preview, false stops it";
+            return false;
+        }
+        if (clipModeActive || selectedEntity == NULL_ENTITY){
+            error = "entity_play: the window is not showing an entity Animation";
+            return false;
+        }
+        if (hook["entity_play"].get<bool>()) externalPlay(selectedEntity, selectedSceneId);
+        else externalStop();
+    }
+    if (hook.contains("entity_move_frame")){
+        const nlohmann::json& move = hook["entity_move_frame"];
+        if (clipModeActive || !move.is_object() || !move.contains("index") || !move.contains("lane") ||
+            !move["index"].is_number_integer() || !move["lane"].is_number_integer() || move["lane"].get<int>() < 0){
+            error = "entity_move_frame: {index, lane} of the shown entity Animation";
+            return false;
+        }
+        if (!testMoveFrameToLane(project->getScene(selectedSceneId), (size_t)move["index"].get<int>(), (uint32_t)move["lane"].get<int>(), &error)){
+            error = "entity_move_frame: " + error;
+            return false;
+        }
+    }
+    if (clipModeActive){
+        try{
+            if (!clipMode->testDrive(sceneProject, hook, out, error)) return false;
+        }catch (const nlohmann::json::exception& e){
+            // a value of the wrong type
+            error = std::string("bad value: ") + e.what();
+            return false;
+        }
+    }else{
+        if (!checkDriverKeys(hook, false, error)) return false;
+        out = clipMode->testState(sceneProject);
+        // entity mode: the clip state is not shown; name the entity Animation
+        out["mode"] = "entity";
+        Scene* scene = sceneProject->scene;
+        out["entity_animation"] = selectedEntity != NULL_ENTITY && scene->isEntityCreated(selectedEntity)
+            ? nlohmann::json(scene->getEntityName(selectedEntity)) : nlohmann::json();
+        out["entity_preview"] = isPreviewing;
+        Scene* shown = project->getScene(selectedSceneId) ? project->getScene(selectedSceneId)->scene : nullptr;
+        nlohmann::json lanes = nlohmann::json::array();
+        nlohmann::json tracks = nlohmann::json::array();
+        if (shown && selectedEntity != NULL_ENTITY && shown->isEntityCreated(selectedEntity)){
+            if (AnimationComponent* anim = shown->findComponent<AnimationComponent>(selectedEntity)){
+                autoAssignTracks(*anim, project->getScene(selectedSceneId));
+                for (size_t i = 0; i < anim->actions.size(); i++){
+                    lanes.push_back(laneOf(*anim, i));
+                    tracks.push_back(anim->actions[i].track);
+                }
+            }
+        }
+        // the lanes shown (view only) and the stored ActionFrame::track values
+        out["entity_lanes"] = lanes;
+        out["entity_tracks"] = tracks;
+    }
+    if (hook.value("entity_mode_entries", false)){
+        // the entity mode dropdown's clip entries for the scene selection (R31)
+        const std::vector<Entity> selected = project->getSelectedEntities(sceneProject->id);
+        out["entity_mode_entries"] = selected.empty() ? std::vector<std::string>() : clipMode->entityModeEntries(sceneProject, selected.front());
     }
     return true;
 }

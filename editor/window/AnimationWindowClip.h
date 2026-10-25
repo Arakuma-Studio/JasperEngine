@@ -7,8 +7,7 @@
 // is in clip mode; the entity mode (AnimationComponent sequences) stays in AnimationWindow.cpp.
 // - Files: AnimationWindowClipSheet.cpp (toolbar, dropdown, empty state, banners, binding rows,
 //   value column, keys, Add Property, Rebind, shortcuts), AnimationWindowClipEvents.cpp (events
-//   lane and event editor), AnimationWindowClipTestHook.cpp (focus_window `animation` hook),
-//   AnimationWindowClipMode.cpp (the AnimationWindow side: mode switch, hooks),
+//   lane and event editor), AnimationWindowClipMode.cpp (the AnimationWindow side: mode switch, hooks),
 //   AnimationWindowClipCurves.cpp (the curves view, T3c), AnimationWindowClipRecord.cpp (Record and
 //   the window's saved settings, T3c).
 // - Curves view (View::Curves, the Dopesheet / Curves toggle at the bottom left): per bound channel
@@ -111,21 +110,23 @@ namespace jasperengine::editor{
         // then runEntityModeRequest acts on it and the window switches to clip mode
         bool drawEntityModeEntries(SceneProject* sceneProject, Entity selected);
         void runEntityModeRequest(SceneProject* sceneProject, Entity selected);
-        // the entries drawEntityModeEntries shows for `selected` (test hook)
+        // the entries drawEntityModeEntries shows for `selected`
         std::vector<std::string> entityModeEntries(SceneProject* sceneProject, Entity selected) const;
 
         // the ImGui ini handler of the window's saved settings (label width, Dopesheet / Curves):
         // the App registers it right after creating the ImGui context (AnimationWindowClipRecord.cpp)
         static void registerSettingsHandler();
 
-        // MCP focus_window {window: "animation", animation: {...}} (AnimationWindowClipTestHook.cpp)
-        bool testHook(SceneProject* sceneProject, const nlohmann::json& hook, nlohmann::json& out, std::string& error);
-        // `brief`: no key times or selected keys listed (counts only: large clips)
-        nlohmann::json stateJson(SceneProject* sceneProject, bool brief = false);
-        // the hook's keys are known ones; `clipActions` false (entity mode): only the window's
-        static bool checkHookKeys(const nlohmann::json& hook, bool clipActions, std::string& error);
+        // The editor tests' driver (editor/tests/AnimationWindowClipDriver.h, defined in the test
+        // binary only: the editor never calls these and has no test hook): `actions` run by name
+        // the functions the window's buttons, menus and shortcuts run; the state as JSON
+        bool testDrive(SceneProject* sceneProject, const nlohmann::json& actions, nlohmann::json& out, std::string& error);
+        nlohmann::json testState(SceneProject* sceneProject, bool brief = false);
 
     private:
+        // the curves list of testState: {track, component, label, visible, key_values, selected}
+        nlohmann::json testCurves() const;
+
         struct Row{
             enum class Kind{ Summary, Track, Component };
             Kind kind = Kind::Track;
@@ -208,7 +209,6 @@ namespace jasperengine::editor{
         uint64_t eventRevision = 0;
         std::weak_ptr<AnimationClipDocument> eventDocument;
         bool openEventEditor = false;
-        int openEventEditorDelay = 0;       // frames until the test hook's open (after its focus)
         float eventDragBase = 0.0f;
         uint64_t eventDragSerial = 0;
         std::string eventMergeKey;
@@ -329,7 +329,8 @@ namespace jasperengine::editor{
         // the preview was on when Record started (leaving Record keeps it, Unity)
         bool previewBeforeRecord = false;
 
-        // the CPU time of draw() (test hook: large clips stay responsive)
+        // the CPU time of draw(): a moving average, the worst and the frames drawn (large clips stay
+        // responsive: AnimationWindowClipTest)
         double drawMs = 0.0;
         double drawMsMax = 0.0;
         uint64_t drawFrames = 0;
@@ -381,7 +382,7 @@ namespace jasperengine::editor{
         void drawRebindPopup();
         void handleShortcuts();
 
-        // ---- actions (UI and test hook) ----
+        // ---- actions (the buttons, menus and shortcuts) ----
         void seek(float time);
         void togglePreview(SceneProject* sceneProject);
         void togglePlay(SceneProject* sceneProject);
@@ -433,14 +434,12 @@ namespace jasperengine::editor{
         std::vector<int> curveDragComponentsOf(size_t track, size_t key) const;
         // the per-track sample cache for the visible range [from, to] at the current zoom
         void refreshCurveCache(float from, float to, float stepTime);
-        // the curves list for the test hook: {track, component, label, visible}
-        nlohmann::json curvesJson() const;
 
         // ---- Record and settings (AnimationWindowClipRecord.cpp) ----
         // Record on (starts the preview) / off (stops it: the scene goes back to its snapshot)
         bool setRecording(SceneProject* sceneProject, bool on, std::string* error);
-        // what Record does now ("" when not recording): `full` the sentence (the tooltip, the test
-        // hook), else the short form of the bottom status
+        // what Record does now ("" when not recording): `full` the sentence (the tooltip), else the
+        // short form of the bottom status
         std::string recordStatus(bool full = true) const;
         // the label column width and the view, kept in the editor layout ini (an ImGui settings
         // handler): loaded on the first frame, saved when they change

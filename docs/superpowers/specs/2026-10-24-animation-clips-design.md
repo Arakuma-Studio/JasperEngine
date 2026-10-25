@@ -382,7 +382,10 @@ sub-clips), lua-api sections, DESIGN.md auto-sync list, AGENTS.md generator bull
   report with nearest, get_animation times, preview bound transforms, write_file validation, external_changes
   problems, move/delete asset, play → runtime movement and events into a Lua script, export emits the component.
   Window/Inspector behaviour through test hooks like test_pose_window.py (record mode keys a gizmo drag, missing rows,
-  Add Property, copy/paste, events lane, read-only sub-clip banner). `test_checks.py` for `--anims`.
+  Add Property, copy/paste, events lane, read-only sub-clip banner). (Merge of main, M1: upstream removed the
+  editor's test-only MCP hooks; the window's logic is the editor unit test AnimationWindowClipTest.cpp, driven
+  through the window's own action functions, and test_animation_window.py / test_animation_record.py keep what
+  needs the real editor, with real X input on the harness' Xvfb and the UI probe.) `test_checks.py` for `--anims`.
 - Existing suites unchanged: test_world, test_lattice_anim, test_pose_*, test_fbx, test_html_ui_tools budget,
   test_autosync instructions, test_docs.
 
@@ -442,7 +445,8 @@ the clarifications below follow it.
     dropdown, empty state, rows, Add Property, keys (multi-select, box, drag, delete, copy/paste/duplicate, context
     menu), events lane, toolbar (frames/seconds, samples, snap), shortcuts, read-only banner + Extract, lanes made
     view-only (R31); `AnimationWindow::stopTransientPreviews` (entity mode, R6); window test hooks through
-    `AnimationClipAppHooks::windowTestHook` (focus_window `animation`, wired by T0) + test_animation_window.py.
+    `AnimationClipAppHooks::windowTestHook` (focus_window `animation`, wired by T0) + test_animation_window.py
+    (removed with the upstream test hooks in the merge of main, M1: see the test plan above).
 11. **T3c Curves view + Record** (after T3b): curves view (sampled curves, vertical key drag, segment ease, F/A), Record
     mode through ClipRecordHooks claims/record at the source call sites (SceneRender gizmo drag, Inspector Transform/morph
     rows, LatticeEditorOps) with the Pose window moved from `beforeTransformWrite` onto the chained `beforeChannelWrite`;

@@ -586,31 +586,6 @@ bool AnimationWindowClip::updateCurveDrag(float rawTimeDelta, float valueDelta, 
     return true;
 }
 
-nlohmann::json AnimationWindowClip::curvesJson() const{
-    nlohmann::json out = nlohmann::json::array();
-    std::shared_ptr<AnimationClipDocument> doc = document();
-    if (!doc) return out;
-    const ClipData& data = doc->data();
-    for (size_t t = 0; t < data.tracks.size(); t++){
-        const ClipTrackData& track = data.tracks[t];
-        const std::vector<std::string> names = track.channel == ClipChannel::Morph ? componentLabels(t) : std::vector<std::string>();
-        const std::vector<Vector3>& eulers = trackEulers(t);
-        const size_t count = clipcurves::componentCount(track);
-        for (size_t c = 0; c < count; c++){
-            nlohmann::json values = nlohmann::json::array();
-            nlohmann::json selected = nlohmann::json::array();
-            for (size_t k = 0; k < track.keys.size() && k < 512; k++){
-                const std::vector<float> keyed = clipcurves::keyValues(track, k, eulers);
-                values.push_back(c < keyed.size() ? keyed[c] : 0.0f);
-                if (curvePointSelected(t, k, (int)c)) selected.push_back(track.keys[k].time);
-            }
-            out.push_back({{"track", t}, {"component", c}, {"label", clipcurves::componentLabel(track, c, names)},
-                           {"visible", curveVisible(track, (int)c)}, {"key_values", values}, {"selected", selected}});
-        }
-    }
-    return out;
-}
-
 void AnimationWindowClip::drawCurves(SceneProject* sceneProject, ImVec2 origin, float labelW, float width, float height){
     (void)sceneProject;
     AnimationClipController& c = controller();

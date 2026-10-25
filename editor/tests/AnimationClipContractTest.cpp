@@ -76,7 +76,6 @@ TEST(AnimationClipContract, HookStructsStartUnset){
     EXPECT_FALSE(app.projectClosed);
     EXPECT_FALSE(app.createClipAsset);
     EXPECT_FALSE(app.dropClips);
-    EXPECT_FALSE(app.windowTestHook);
     ClipUndoFocus focus;
     EXPECT_FALSE(focus.sceneView || focus.inspector || focus.hierarchy || focus.animationWindow);
 

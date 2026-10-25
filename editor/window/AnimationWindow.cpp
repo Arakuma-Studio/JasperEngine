@@ -12,6 +12,7 @@
 #include "Theme.h"
 #include "command/CommandHandle.h"
 #include "command/type/PropertyCmd.h"
+#include "util/UIProbe.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/CreateEntityCmd.h"
 #include "command/type/CreateTrackKeyCmd.h"
@@ -2471,6 +2472,8 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
             ImGui::SetCursorScreenPos(blockMin);
             ImGui::InvisibleButton(("frame_" + std::to_string(i)).c_str(),
                                    ImVec2(blockMax.x - blockMin.x, blockMax.y - blockMin.y));
+            // UI tests drag a frame where the layout puts it
+            UIProbe::item("entity.frame." + std::to_string(i));
 
             // Detect edge hover for resize cursor
             bool hovered = ImGui::IsItemHovered();

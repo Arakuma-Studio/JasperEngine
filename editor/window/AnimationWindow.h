@@ -47,8 +47,6 @@ namespace jasperengine::editor{
             std::vector<uint32_t> lanes;
         };
         std::vector<LaneCache> laneCache;
-        // the test hook's explicit lane move (as a frame drag released on `lane`)
-        bool moveFrameToLane(SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error);
         uint32_t laneOf(const AnimationComponent& anim, size_t frameIndex) const;
 
         // Playback state
@@ -191,7 +189,7 @@ namespace jasperengine::editor{
         // ---- clip mode (AnimationWindowClipMode.cpp) ----
         // the mode for this frame from the selection of `sceneProject` (true: clip mode)
         bool updateMode(SceneProject* sceneProject);
-        // the selection `selected` of `sceneProject` decides the mode (also the test hook)
+        // the selection `selected` of `sceneProject` decides the mode
         void applySelection(SceneProject* sceneProject, const std::vector<Entity>& selected);
         void drawClipMode(SceneProject* sceneProject);
         // .anim files dropped anywhere on the window (spec 4.1): they join the bound or selected
@@ -199,10 +197,17 @@ namespace jasperengine::editor{
         bool dropClipFiles(SceneProject* sceneProject, const std::vector<std::string>& paths, std::string* error);
         void acceptClipDrop(SceneProject* sceneProject);
         void installClipHooks();
-        bool handleTestHook(const nlohmann::json& hook, nlohmann::json& out, std::string& error);
+
+        // the explicit lane move of the editor tests' driver (a frame drag released on `lane`)
+        bool testMoveFrameToLane(SceneProject* sceneProject, size_t frameIndex, uint32_t lane, std::string* error);
 
     public:
         static constexpr const char* WINDOW_NAME = "Animation";
+
+        // The editor tests' driver (editor/tests/AnimationWindowClipDriver.h, defined in the test
+        // binary only: the editor never calls it): the selection / entity Animation / clip / drop /
+        // entity preview of the window, then the clip mode's actions (AnimationWindowClip::testDrive)
+        bool testDrive(const nlohmann::json& actions, nlohmann::json& out, std::string& error);
 
         AnimationWindow(Project* project);
         ~AnimationWindow();

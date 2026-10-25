@@ -72,7 +72,7 @@ namespace jasperengine::editor{
         Gizmo = 1,          // SceneRender's transform gizmo drag
         Inspector,          // the Inspector's Transform / Blend Shapes / lattice Offset rows
         LatticeDrag,        // the Scene view's lattice point drag (LatticeEditorOps continuous edit)
-        Window              // the Animation window and its test hook
+        Window              // the Animation window
     };
 
     using ChannelWriteListener = std::function<void(uint32_t sceneId, Entity entity, ClipChannel channel)>;

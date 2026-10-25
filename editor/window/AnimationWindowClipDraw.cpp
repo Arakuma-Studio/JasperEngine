@@ -96,8 +96,6 @@ void AnimationWindowClip::draw(SceneProject* sceneProject, bool focused){
     refreshReport();
     refreshSelection();
     resolveSelectedEvent();
-    // (the test hook opens the event editor after its own window focus, which would close it)
-    if (openEventEditorDelay > 0 && --openEventEditorDelay == 0) openEventEditor = true;
     drawToolbar(sceneProject);
     if (!document()){
         drawEmptyState(sceneProject);
@@ -130,6 +128,8 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
         ImGui::BeginDisabled(!on && !blocker.empty());
         if (on) ImGui::PushStyleColor(ImGuiCol_Button, Theme::Colors::ButtonActivated);
         if (ImGui::Button("Preview##clip_preview")) togglePreview(sceneProject);
+        // UI tests: the toggle and whether it is on (its highlight)
+        UIProbe::item(on ? "clip.preview.on" : "clip.preview.off");
         if (on) ImGui::PopStyleColor();
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)){
@@ -151,6 +151,7 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
             std::string error;
             if (!setRecording(sceneProject, !on, &error)) setNotice(error, true);
         }
+        UIProbe::item(on ? "clip.record.on" : "clip.record.off");
         ImGui::PopStyleColor(on ? 2 : 1);
         ImGui::EndDisabled();
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)){
@@ -413,6 +414,7 @@ void AnimationWindowClip::drawEmptyState(SceneProject* sceneProject){
     const bool canCreate = sceneProject && sceneProject->id == bound->id && sceneProject->playState == ScenePlayState::STOPPED;
     ImGui::BeginDisabled(!canCreate);
     if (ImGui::Button(button)) askCreateNewClip(sceneProject);
+    UIProbe::item("clip.emptyState.create");
     ImGui::EndDisabled();
     ImGui::SetItemTooltip("Adds an Animation Player to %s (when it has none) and a new clip file (one undo step)", name.c_str());
 }
@@ -885,6 +887,10 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
                 const ImVec2 pts[4] = {ImVec2(x, cy - radius), ImVec2(x + radius, cy), ImVec2(x, cy + radius), ImVec2(x - radius, cy)};
                 rowsList->AddConvexPolyFilled(pts, 4, color(fill, fill.w * keyAlpha));
                 rowsList->AddPolyline(pts, 4, IM_COL32(20, 20, 20, (int)(255 * keyAlpha)), ImDrawFlags_Closed, 1.0f * m.s);
+                // UI tests click a track's key where the layout puts it ("clip.key.<track>.<key>")
+                if (row.kind == Row::Kind::Track && UIProbe::enabled() && x >= keyAreaX && x <= keyAreaX + keyAreaWidth){
+                    UIProbe::rect("clip.key." + std::to_string(keys[i].track) + "." + std::to_string(keys[i].key), x - radius, cy - radius, x + radius, cy + radius);
+                }
                 if (rowHovered && std::fabs(io.MousePos.x - x) <= m.keyHit){
                     hoveredRow = (int)r;
                     hoveredTime = t;
@@ -1049,6 +1055,7 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
         const std::string shown = elideMiddle(text, std::max(10.0f, room));
         const ImVec4 colour = !notice.empty() ? (noticeWarning ? Theme::Colors::WarningText : Theme::Colors::SubtleText) : Theme::Colors::ErrorText;
         ImGui::TextColored(colour, "%s", shown.c_str());
+        if (notice.empty()) UIProbe::item("clip.recordStatus");
         const std::string tip = notice.empty() ? recordStatus(true) : notice;
         if (shown != text || notice.empty()) ImGui::SetItemTooltip("%s", tip.c_str());
     }
