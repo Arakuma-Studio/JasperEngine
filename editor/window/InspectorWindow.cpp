@@ -82,6 +82,9 @@
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
 #include "pose/PoseEditSession.h"
+#include "animation/PreviewOwner.h"
+#include "window/InspectorWindowClips.h"
+#include "component/AnimationPlayerComponent.h"
 #include "action/Action.h"
 #include "pool/TexturePool.h"
 #include "yaml-cpp/yaml.h"
@@ -899,6 +902,7 @@ void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
         actionPreviewStates.clear();
+        releaseActionPreviewOwners();
         actionPreviewing = false;
         actionPreviewPlaying = false;
         actionPreviewEntity = NULL_ENTITY;
@@ -7154,8 +7158,12 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     endTable();
 
     if (model.animations.empty()) {
+        drawModelClipRows(cpType, sceneProject, entities[0]);
         return;
     }
+
+    // the loader's entities keep duplicate glTF names: the rows show the sub-clip names
+    const std::vector<std::string> subClipNames = modelSubClipNames(model.filename);
 
     const float animationFirstColSize = getLabelSize("Animation 00");
     const float clearButtonFramePadding = ImGui::GetStyle().FramePadding.x / 4.0f;
@@ -7174,9 +7182,7 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
         if (animEntity != NULL_ENTITY && sceneProject->scene->isEntityCreated(animEntity)) {
             if (sceneProject->scene->findComponent<AnimationComponent>(animEntity)) {
                 std::string entityName = sceneProject->scene->getEntityName(animEntity);
-                if (!entityName.empty()) {
-                    animationLabel = entityName;
-                }
+                animationLabel = inspectorclips::modelAnimationRowLabel(entityName, subClipNames, i, animationLabel);
             }
         }
 
@@ -7219,6 +7225,8 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
     }
 
     endTable();
+
+    drawModelClipRows(cpType, sceneProject, entities[0]);
 }
 
 void editor::InspectorWindow::drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -12767,6 +12775,42 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
     ActionComponent* actionComp = scene->findComponent<ActionComponent>(entity);
     if (!actionComp) return;
 
+    // The entities the preview writes: the action, its target, an animation's actions and
+    // their targets (the same walk as the snapshot below)
+    std::vector<Entity> touched;
+    {
+        std::unordered_set<Entity> seen;
+        std::function<void(Entity)> walk = [&](Entity e) {
+            if (e == NULL_ENTITY || !scene->isEntityCreated(e) || !seen.insert(e).second) return;
+            touched.push_back(e);
+            if (ActionComponent* ac = scene->findComponent<ActionComponent>(e)) {
+                walk(ac->target);
+            }
+            if (AnimationComponent* anim = scene->findComponent<AnimationComponent>(e)) {
+                for (const ActionFrame& frame : anim->actions) {
+                    walk(frame.action);
+                }
+            }
+        };
+        walk(entity);
+    }
+
+    // One pose owner per root (animation clips 9.R7): an Animation window or Pose window preview
+    // of these entities stops (and restores) before the snapshot is taken from the scene
+    releaseActionPreviewOwners();
+    for (Entity root : inspectorclips::topLevelEntities(scene, touched)) {
+        const PreviewOwner::Token token = PreviewOwner::acquire(sceneProject->id, root, scene, "Inspector action preview",
+                                                                [this]() { stopActionPreviewIfActive(); });
+        if (token != 0) {
+            actionPreviewOwners.push_back(token);
+        }
+    }
+    actionComp = scene->findComponent<ActionComponent>(entity);
+    if (!actionComp) {
+        releaseActionPreviewOwners();
+        return;
+    }
+
     actionPreviewStates.clear();
     actionPreviewEntity = entity;
     actionPreviewSceneId = sceneProject->id;
@@ -12814,8 +12858,18 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
     actionPreviewing = true;
 }
 
+void editor::InspectorWindow::releaseActionPreviewOwners() {
+    // moved out first: a token is released once, also when a release runs a stop
+    const std::vector<int> tokens = std::move(actionPreviewOwners);
+    actionPreviewOwners.clear();
+    for (int token : tokens) {
+        PreviewOwner::release(token);
+    }
+}
+
 void editor::InspectorWindow::stopActionPreviewIfActive() {
     if (!actionPreviewing) {
+        releaseActionPreviewOwners();
         return;
     }
 
@@ -12830,6 +12884,7 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
     actionPreviewSceneId = 0;
+    releaseActionPreviewOwners();
 }
 
 void editor::InspectorWindow::updateParticlePreviewSnapshot(YAML::Node& components, const ParticleSystemComponent& particles) {
@@ -12912,6 +12967,7 @@ void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* scen
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
     actionPreviewSceneId = 0;
+    releaseActionPreviewOwners();
     if (sceneProject) {
         sceneProject->needUpdateRender = true;
     }
@@ -13809,6 +13865,11 @@ void editor::InspectorWindow::drawAnimationComponent(ComponentType cpType, Scene
     propertyRow(RowPropertyType::Bool, cpType, "ownedActions", "Owned actions", sceneProject, entities);
     propertyRow(RowPropertyType::FloatPositive, cpType, "defaultFadeTime", "Fade time", sceneProject, entities);
     endTable();
+
+    // Open in Animation window, Convert to Clip... (animation clips spec 4.2, 4.5)
+    if (entities.size() == 1) {
+        drawAnimationClipButtons(sceneProject, entities[0]);
+    }
 
     AnimationComponent& anim = sceneProject->scene->getComponent<AnimationComponent>(entities[0]);
 
@@ -15570,9 +15631,40 @@ void editor::InspectorWindow::drawLatticeTracksComponent(ComponentType cpType, S
     }
 }
 
+// Unity's activeObject (animation clips spec 9.R30): the Project window sets the inspected asset
+// on a click; a scene selection change (or a click in the Hierarchy) after that shows the scene
+// selection again. Runs every frame, also while the window is closed.
+void editor::InspectorWindow::trackInspectedObject(){
+    uint32_t sceneId = project->getSelectedSceneForProperties();
+    if (!project->getScene(sceneId)) {
+        sceneId = project->getSelectedSceneId();
+    }
+    std::vector<Entity> selection = project->getSelectedEntities(sceneId);
+    const std::filesystem::path& asset = project->getInspectedAsset();
+    // an asset set before this frame (one set in this frame is the latest click)
+    const bool assetShown = !asset.empty() && asset == inspectedAssetSeen;
+    bool sceneClick = false;
+    if (assetShown && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        const ImGuiWindow* hovered = GImGui->HoveredWindow;
+        const ImGuiWindow* root = hovered ? hovered->RootWindow : nullptr;
+        sceneClick = root && root->Name && std::strcmp(root->Name, HierarchyWindow::WINDOW_NAME) == 0;
+    }
+    const bool selectionChanged = inspectedSelectionKnown &&
+        (sceneId != inspectedSelectionScene || selection != inspectedSelection);
+    if (assetShown && (selectionChanged || sceneClick)) {
+        project->clearInspectedAsset();
+    }
+    inspectedSelectionKnown = true;
+    inspectedSelectionScene = sceneId;
+    inspectedSelection = std::move(selection);
+    inspectedAssetSeen = project->getInspectedAsset();
+}
+
 void editor::InspectorWindow::show(){
     // Flush any debounced material file writes
     flushDirtyMaterials(ImGui::GetIO().DeltaTime);
+
+    trackInspectedObject();
 
     // fluid previews keep their Scene view redrawing; they and the Paint Dye brush end with
     // what they work on (FluidEditorTools)
@@ -15605,6 +15697,15 @@ void editor::InspectorWindow::show(){
         UIProbe::rect("inspector", inner.Min.x, inner.Min.y, inner.Max.x, inner.Max.y);
     }
     const bool openAddComponent = std::exchange(addComponentRequested, false);
+
+    // the inspected .anim (or model clips) the Project window's last click chose: drawn instead of
+    // the scene selection, never touching a scene (R30)
+    if (drawInspectedAsset()) {
+        stopSoundPreview();
+        stopActionPreviewIfActive();
+        ImGui::End();
+        return;
+    }
 
     uint32_t propertiesSceneId = project->getSelectedSceneForProperties();
     SceneProject* sceneProject = project->getScene(propertiesSceneId);
@@ -15748,6 +15849,8 @@ void editor::InspectorWindow::show(){
                     drawUIDocumentComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::PoseAnimatorComponent){
                     drawPoseAnimatorComponent(cpType, sceneProject, entities);
+                }else if (cpType == ComponentType::AnimationPlayerComponent){
+                    drawAnimationPlayerComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::CameraComponent){
                     drawCameraComponent(cpType, sceneProject, entities);
                 }else if (cpType == ComponentType::AudioSourceComponent){
