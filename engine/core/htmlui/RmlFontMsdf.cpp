@@ -80,7 +80,16 @@ bool RmlFontMsdf::generate(const FontFace& face, uint32_t glyphIndex, float bold
     // 0.5 where the outline dilated by the bold is, the range each side of it
     const msdfgen::DistanceMapping mapping(msdfgen::Range(-rangeUnits - boldUnits, rangeUnits - boldUnits));
     const msdfgen::SDFTransformation transformation(msdfgen::Projection(msdfgen::Vector2(scale), translate), mapping);
-    msdfgen::generateMTSDF(field, shape, transformation, msdfgen::MSDFGeneratorConfig(true));
+    // generated without error correction, the signs then checked against a scanline fill of the
+    // outline (non-zero: overlapping contours, as variable fonts' static instances have, and contours
+    // orientContours cannot tell apart, would otherwise come out inside out), then corrected
+    msdfgen::ErrorCorrectionConfig noCorrection;
+    noCorrection.mode = msdfgen::ErrorCorrectionConfig::DISABLED;
+    msdfgen::generateMTSDF(field, shape, transformation, msdfgen::MSDFGeneratorConfig(true, noCorrection));
+    // (the field is 0.5 at the bold outline: the outline itself, where the fill changes, is further in)
+    const float outlineValue = (float)((rangeUnits + boldUnits) / (2.0 * rangeUnits));
+    msdfgen::distanceSignCorrection(field, shape, transformation, outlineValue, msdfgen::FILL_NONZERO);
+    msdfgen::msdfErrorCorrection(field, shape, transformation, msdfgen::MSDFGeneratorConfig(true));
 
     // bytes, rows top first (msdfgen's bitmap is bottom first)
     out.width = width;
