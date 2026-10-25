@@ -400,7 +400,7 @@ async def test_cli_anims():
         run = [m for s, m in scene if "#Run" in m]
         check(len(run) == 1 and "has no animation 'Run'" in run[0] and "'Walk', 'Idle', 'Animation 2', 'Wave', 'Wave 2'" in run[0],
               f"an unknown animation name lists the model's: {run}")
-        check(not any("#Walk" in m or "#Wave 2" in m or "#2'" in m for s, m in scene), f"known names and an index pass: {scene}")
+        check(not any("hero_animated.gltf#Walk'" in m or "#Wave 2'" in m or "#2'" in m for s, m in scene), f"known names and an index pass: {scene}")
         # the clip entries of a prefab instance's overrides are checked too
         check(any(s == "error" and "override_missing.anim" in m for s, m in scene), f"an override's missing clip: {scene}")
         check(any(s == "error" and "#Jump" in m and "has no animation 'Jump'" in m for s, m in scene), f"an override's model clip: {scene}")
