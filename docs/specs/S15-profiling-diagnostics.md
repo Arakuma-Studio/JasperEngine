@@ -610,3 +610,12 @@ alternative to what the text above asks.
   of R12). Its blit is timed by the GPU timer but left out of pass lists.
 - **The Xcode workspace** builds without the profiler (no `JASPERENGINE_PROFILER` definition, the
   macros compile out): Apple development builds go through CMake.
+- **Profiler clock.** Scopes read the CPU's counter (`rdtsc` on x86-64, `cntvct_el0` on arm64,
+  steady_clock elsewhere), converted to steady_clock nanoseconds when the main thread drains the
+  rings, with a factor refined every frame: a steady_clock read is a vDSO call costing ~30 ns on
+  the virtual build servers, which put a recording scope pair over R27's 50 ns.
+- **S13 dynamic resolution** (merged after this spec was written) is the GPU consumer of R5: while
+  it runs it holds the GPU timer (in every build, the profiler compiled in or not) and its GPU law
+  is fed the game frame's GPU time (`FrameTimes::latestGpuMs`, the newest of the last 8 frames,
+  a few frames late); `fake_gpu_ms` still takes precedence, and without a timer (WebGPU, Firefox,
+  a device without timestamps) it uses its frame law as before.
