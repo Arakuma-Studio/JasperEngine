@@ -1007,6 +1007,19 @@ std::string McpServer::busyRefusal(ToolActivity activity, Json* info, bool forAg
             return describe(job, "builds the C++ scripts in the project's build directory, which Play and builds use too");
         }
     }
+    // Play's startup took the scenes (their saves, generated sources and the snapshot Stop puts
+    // the played scene back from) and compiles from them: an edit now would be built without,
+    // or lost on Stop; another project would pull the scenes from under it
+    if ((activity == ToolActivity::Edit || activity == ToolActivity::ProjectSwitch) && appPtr) {
+        if (const Project* project = appPtr->getProject(); project && project->isPlayStarting()) {
+            if (info) *info = Json{{"job_id", nullptr}, {"kind", "play_startup"}, {"title", "Play mode startup"}, {"holds", "play_startup"}};
+            return std::string(what) + " is refused while Play mode is starting (shaders and scripts are being "
+                   "built from the scenes as Play read them)." +
+                   (forAgent ? " Wait for it: poll get_play_state until the state is playing (then change the "
+                               "running game) or stopped, or stop it with play {action: \"stop\"}, then retry."
+                             : " Wait for Play mode to start or stop it, then try again.");
+        }
+    }
     return {};
 }
 

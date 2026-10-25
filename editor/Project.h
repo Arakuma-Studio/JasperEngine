@@ -937,6 +937,22 @@ namespace jasperengine::editor{
         void finalizeStart(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene>& runtimeScenes);
         void finalizeStop(SceneProject* mainSceneProject, std::vector<PlayRuntimeScene> runtimeScenes);
         void runPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const LocalBuildSettings& buildSettings);
+        // What Play's startup reads of the scenes, taken on the main thread (preparePlayStartup)
+        // for its worker thread, which then only compiles shaders and C++ scripts
+        struct PlayStartupPrepared {
+            enum class Status { Ready, Cancelled, Failed };
+            Status status = Status::Failed;
+            std::string message;      // Failed: for the console
+            YAML::Node snapshot;      // the played scene as Stop puts it back
+            PlayPrefabState prefabState;
+            std::set<Entity> entities; // alive before Play: anything else is the game's
+            std::set<ShaderKey> shaderKeys;
+            bool hasCppScripts = false;
+        };
+        // On the main thread: the scenes' script properties, saves and generated sources, the
+        // runtime copies, the Play snapshot and the shader keys, all at one moment the editor
+        // does not change them (MCP edits, other scenes' views, a scene opened or created)
+        PlayStartupPrepared preparePlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId);
         void failPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const std::string& message,
                      const std::string& alertTitle = "", const std::string& alertMessage = "");
         bool saveSceneFile(SceneProject* sceneProject, const std::filesystem::path& path, bool stopTransientPreviews = true);
@@ -982,8 +998,10 @@ namespace jasperengine::editor{
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
         // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
-        // and cannot compile, so a variant the editor never draws with is missing there.
-        void buildStandaloneShaderCache();
+        // and cannot compile, so a variant the editor never draws with is missing there. The
+        // keys are read from the scenes (main thread), the build runs anywhere.
+        std::set<ShaderKey> collectStandaloneShaderKeys();
+        void buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys);
 
     public:
         // The C++ scripts the build compiles: every scene's and the build prefabs'
@@ -2033,6 +2051,9 @@ namespace jasperengine::editor{
         // (PLAYING) — false when paused, loading, or no session is active.
         bool isMainScenePlaying() const;
         bool isAnySceneSaving() const;
+        // Play mode is starting (its scene LOADING): the startup compiles shaders and C++
+        // scripts from the scenes as they were when it read them
+        bool isPlayStarting() const;
 
         void start(uint32_t sceneId);
         void pause(uint32_t sceneId);

@@ -3913,7 +3913,7 @@ std::vector<std::string> editor::Project::scriptsPostProcessingFields() const {
     return named;
 }
 
-void editor::Project::buildStandaloneShaderCache() {
+std::set<ShaderKey> editor::Project::collectStandaloneShaderKeys() {
     // the generated main.cpp registers every scene stack, so any of them can be loaded
     std::set<ShaderKey> shaderKeys;
     for (const auto& sceneProject : getScenes()) {
@@ -3922,7 +3922,10 @@ void editor::Project::buildStandaloneShaderCache() {
         collectSceneShaderKeys(&sceneProject, shaderKeys);
         collectRequiredShaderKeys(&sceneProject, shaderKeys);
     }
+    return shaderKeys;
+}
 
+void editor::Project::buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys) {
     ShaderBuilder builder;
     builder.buildMissingShaders(shaderKeys, this);
 }
@@ -8047,6 +8050,15 @@ bool editor::Project::isMainScenePlaying() const{
     return false;
 }
 
+bool editor::Project::isPlayStarting() const{
+    for (const auto& sceneProject : scenes) {
+        if (sceneProject.playState == ScenePlayState::LOADING) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool editor::Project::isAnySceneSaving() const{
     for (const auto& sceneProject : scenes) {
         if (sceneProject.playState == ScenePlayState::SAVING) {
@@ -8103,6 +8115,124 @@ bool editor::Project::saveSceneForPlayStartup(SceneProject* sceneProject) {
     return saveSceneFile(sceneProject, sceneProject->filepath, false);
 }
 
+// The scenes as Play starts from them, read and written on the main thread at one moment
+editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId) {
+    PlayStartupPrepared result;
+    // Stop runs on this thread too: stopped before this ran, or not at all while it runs
+    if (session->cancelled.load(std::memory_order_acquire)) {
+        result.status = PlayStartupPrepared::Status::Cancelled;
+        return result;
+    }
+
+    SceneProject* mainSceneProject = getScene(sceneId);
+    if (!mainSceneProject || !mainSceneProject->scene) {
+        result.message = "Failed to find scene to start";
+        return result;
+    }
+
+    std::vector<uint32_t> involvedMainSceneIds;
+    collectInvolvedScenes(sceneId, involvedMainSceneIds);
+
+    std::vector<editor::SceneBuildInfo> scenesToGenerate;
+    for (SceneProject& currentSceneProject : scenes) {
+        bool isInvolvedScene = std::find(involvedMainSceneIds.begin(), involvedMainSceneIds.end(), currentSceneProject.id) != involvedMainSceneIds.end();
+
+        if (currentSceneProject.opened || (isInvolvedScene && currentSceneProject.scene)) {
+            updateAllScriptsProperties(currentSceneProject.id);
+
+            if (currentSceneProject.isModified && !currentSceneProject.filepath.empty()) {
+                if (!saveSceneForPlayStartup(&currentSceneProject)) {
+                    result.message = "Failed to save modified scene before play startup";
+                    return result;
+                }
+                // involved scenes are written below
+                if (!isInvolvedScene) {
+                    writeSceneSource(&currentSceneProject);
+                }
+            } else {
+                updateSceneCppScripts(&currentSceneProject);
+                updateScenePrefabs(&currentSceneProject);
+            }
+        } else if (!currentSceneProject.scene && currentSceneProject.cppScripts.empty() && !currentSceneProject.filepath.empty()) {
+            // SceneManager can load a closed scene while playing, so its scripts must be built too;
+            // a scene never saved by the editor has no script list yet, read it from the entities
+            std::unique_ptr<SceneProject> probe;
+            try {
+                probe.reset(createRuntimeCloneFromSource(&currentSceneProject));
+                updateSceneCppScripts(probe.get());
+                currentSceneProject.cppScripts = probe->cppScripts;
+            } catch (const std::exception& e) {
+                Out::warning("Scripts of scene '%s' not collected: %s", currentSceneProject.name.c_str(), e.what());
+            }
+            if (probe) {
+                deleteSceneProject(probe.get());
+            }
+        }
+
+        if (isInvolvedScene) {
+            PlayRuntimeScene entry;
+            entry.sourceSceneId = currentSceneProject.id;
+
+            if (currentSceneProject.id == sceneId) {
+                entry.runtime = &currentSceneProject;
+                entry.ownedRuntime = false;
+            } else {
+                entry.runtime = createRuntimeCloneFromSource(&currentSceneProject);
+                entry.ownedRuntime = true;
+                assignPlayRuntimeId(entry.runtime);
+            }
+
+            if (!entry.runtime) {
+                result.message = "Failed to create runtime scene for play startup";
+                return result;
+            }
+
+            // prefabs only scripts reference or other prefabs nest get their sources too
+            loadBuildPrefabs();
+            const auto baked = bakePrefabsForExport();
+            std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
+                [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
+            generator.writeSceneSource(entry.runtime->scene, entry.runtime->id, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
+
+            {
+                std::scoped_lock lock(playSessionMutex);
+                session->runtimeScenes.push_back(entry);
+            }
+        }
+
+        bool isMain = (sceneId == currentSceneProject.id);
+        std::vector<uint32_t> involvedSceneIds;
+        std::vector<uint32_t> activeSceneIds;
+        collectInvolvedScenes(currentSceneProject.id, involvedSceneIds);
+        collectStartActiveScenes(currentSceneProject.id, activeSceneIds);
+        scenesToGenerate.push_back({currentSceneProject.id, currentSceneProject.name, involvedSceneIds, activeSceneIds, isMain});
+    }
+
+    registerSceneManager();
+    registerPrefabManager();
+
+    result.snapshot = Stream::encodeSceneProject(nullptr, mainSceneProject);
+    // with what describes its prefab instances, which Stop puts back with it
+    result.prefabState = capturePlayPrefabState(mainSceneProject);
+
+    // Play reuses the edit-time Scene, so anything alive now is authored or engine
+    // owned. Whatever appears later belongs to the play session.
+    const std::vector<Entity> aliveBeforePlay = mainSceneProject->scene->getEntityList();
+    result.entities = std::set<Entity>(aliveBeforePlay.begin(), aliveBeforePlay.end());
+
+    std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
+    std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
+    if (hasMissingSceneSources()) {
+        generatedSourcesDirty.store(true);
+    }
+
+    result.shaderKeys = collectStandaloneShaderKeys();
+    result.hasCppScripts = !mergedCppScripts.empty();
+    result.status = PlayStartupPrepared::Status::Ready;
+    return result;
+}
+
 void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session, uint32_t sceneId, const LocalBuildSettings& buildSettings) {
     auto isCancelled = [session]() {
         return session->cancelled.load(std::memory_order_acquire);
@@ -8113,12 +8243,6 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
     };
 
     try {
-        SceneProject* mainSceneProject = getScene(sceneId);
-        if (!mainSceneProject) {
-            failPlayStartup(session, sceneId, "Failed to find scene to start");
-            return;
-        }
-
         // Scripts can load any FBX by path. Its reloads land before the scenes are captured for Play,
         // once the loads in flight end, since those would bring the old file back.
         importFbxModels();
@@ -8144,135 +8268,51 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
             return;
         }
 
-        std::vector<uint32_t> involvedMainSceneIds;
-        collectInvolvedScenes(sceneId, involvedMainSceneIds);
-
-        std::vector<editor::SceneBuildInfo> scenesToGenerate;
-        for (SceneProject& currentSceneProject : scenes) {
+        // What reads or changes the scenes runs on the main thread, as one task: there MCP calls,
+        // the other scenes' views (their gizmos) and opening or creating a scene change them,
+        // and the scenes vector may grow under a reader on this thread
+        auto prepared = std::make_shared<std::promise<PlayStartupPrepared>>();
+        std::future<PlayStartupPrepared> preparedFuture = prepared->get_future();
+        editor::getEditorHost().enqueueMainThreadTask([this, session, sceneId, prepared]() {
+            PlayStartupPrepared result;
+            try {
+                result = preparePlayStartup(session, sceneId);
+            } catch (const std::exception& e) {
+                result = PlayStartupPrepared();
+                result.message = std::string("Failed to start scene: ") + e.what();
+            } catch (...) {
+                result = PlayStartupPrepared();
+                result.message = "Failed to start scene: unknown error";
+            }
+            prepared->set_value(std::move(result));
+        });
+        // Stopped meanwhile: the task does nothing if it has not run yet, and what it made
+        // for the session (runtime copies) goes with the session's cleanup
+        while (preparedFuture.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
             if (isCancelled()) {
                 markStartupDone();
                 return;
             }
-
-            bool isInvolvedScene = std::find(involvedMainSceneIds.begin(), involvedMainSceneIds.end(), currentSceneProject.id) != involvedMainSceneIds.end();
-
-            if (currentSceneProject.opened || (isInvolvedScene && currentSceneProject.scene)) {
-                updateAllScriptsProperties(currentSceneProject.id);
-
-                if (currentSceneProject.isModified && !currentSceneProject.filepath.empty()) {
-                    if (!saveSceneForPlayStartup(&currentSceneProject)) {
-                        failPlayStartup(session, sceneId, "Failed to save modified scene before play startup");
-                        return;
-                    }
-                    // involved scenes are written below
-                    if (!isInvolvedScene) {
-                        writeSceneSource(&currentSceneProject);
-                    }
-                } else {
-                    updateSceneCppScripts(&currentSceneProject);
-                    updateScenePrefabs(&currentSceneProject);
-                }
-            } else if (!currentSceneProject.scene && currentSceneProject.cppScripts.empty() && !currentSceneProject.filepath.empty()) {
-                // SceneManager can load a closed scene while playing, so its scripts must be built too;
-                // a scene never saved by the editor has no script list yet, read it from the entities
-                std::unique_ptr<SceneProject> probe;
-                try {
-                    probe.reset(createRuntimeCloneFromSource(&currentSceneProject));
-                    updateSceneCppScripts(probe.get());
-                    currentSceneProject.cppScripts = probe->cppScripts;
-                } catch (const std::exception& e) {
-                    Out::warning("Scripts of scene '%s' not collected: %s", currentSceneProject.name.c_str(), e.what());
-                }
-                if (probe) {
-                    deleteSceneProject(probe.get());
-                }
-            }
-
-            if (isInvolvedScene) {
-                PlayRuntimeScene entry;
-                entry.sourceSceneId = currentSceneProject.id;
-
-                if (currentSceneProject.id == sceneId) {
-                    entry.runtime = &currentSceneProject;
-                    entry.ownedRuntime = false;
-                } else {
-                    entry.runtime = createRuntimeCloneFromSource(&currentSceneProject);
-                    entry.ownedRuntime = true;
-                    assignPlayRuntimeId(entry.runtime);
-                }
-
-                if (!entry.runtime) {
-                    failPlayStartup(session, sceneId, "Failed to create runtime scene for play startup");
-                    return;
-                }
-
-                if (isCancelled()) {
-                    if (entry.ownedRuntime) {
-                        // never shown: nothing in the editor holds its id yet
-                        releasePlayRuntimeId(entry.runtime, entry.sourceSceneId);
-                        deleteSceneProject(entry.runtime);
-                        delete entry.runtime;
-                    }
-                    markStartupDone();
-                    return;
-                }
-
-                // prefabs only scripts reference or other prefabs nest get their sources too
-                loadBuildPrefabs();
-                const auto baked = bakePrefabsForExport();
-                std::vector<PrefabInstanceInfo> prefabInstances = generator.writePrefabSources(prefabAssets, currentSceneProject.id, getProjectPath(), getProjectInternalPath(),
-                    [this](const fs::path& path) { return getPrefabGuid(path); }, baked);
-                generator.writeSceneSource(entry.runtime->scene, entry.runtime->id, entry.runtime->name, entry.runtime->entities, getSceneCamera(entry.runtime), getProjectPath(), getProjectInternalPath(), prefabInstances, collectResourcesInRegistry(entry.runtime->scene));
-
-                {
-                    std::scoped_lock lock(playSessionMutex);
-                    session->runtimeScenes.push_back(entry);
-                }
-            }
-
-            bool isMain = (sceneId == currentSceneProject.id);
-            std::vector<uint32_t> involvedSceneIds;
-            std::vector<uint32_t> activeSceneIds;
-            collectInvolvedScenes(currentSceneProject.id, involvedSceneIds);
-            collectStartActiveScenes(currentSceneProject.id, activeSceneIds);
-            scenesToGenerate.push_back({currentSceneProject.id, currentSceneProject.name, involvedSceneIds, activeSceneIds, isMain});
         }
-
-        if (isCancelled()) {
+        PlayStartupPrepared ready = preparedFuture.get();
+        if (ready.status == PlayStartupPrepared::Status::Cancelled || isCancelled()) {
             markStartupDone();
             return;
         }
-
-        registerSceneManager();
-        registerPrefabManager();
-
-        YAML::Node playSnapshot = Stream::encodeSceneProject(nullptr, mainSceneProject);
-        // with what describes its prefab instances, which Stop puts back with it
-        PlayPrefabState playPrefabState = capturePlayPrefabState(mainSceneProject);
-
-        // Play reuses the edit-time Scene, so anything alive now is authored or engine
-        // owned. Whatever appears later belongs to the play session.
-        const std::vector<Entity> aliveBeforePlay = mainSceneProject->scene->getEntityList();
-        std::set<Entity> playEntities(aliveBeforePlay.begin(), aliveBeforePlay.end());
-
-        if (isCancelled()) {
-            markStartupDone();
+        if (ready.status == PlayStartupPrepared::Status::Failed) {
+            failPlayStartup(session, sceneId, ready.message);
             return;
         }
-
-        std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
-        std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples);
-        if (hasMissingSceneSources()) {
-            generatedSourcesDirty.store(true);
-        }
+        YAML::Node playSnapshot = std::move(ready.snapshot);
+        PlayPrefabState playPrefabState = std::move(ready.prefabState);
+        std::set<Entity> playEntities = std::move(ready.entities);
 
         // play regenerates the standalone project, so its shaders are ensured here too
-        buildStandaloneShaderCache();
+        buildStandaloneShaderCache(ready.shaderKeys);
 
         if (isCancelled()) { markStartupDone(); return; }
 
-        const bool hasCppScripts = !mergedCppScripts.empty();
+        const bool hasCppScripts = ready.hasCppScripts;
 
         if (hasCppScripts) {
             // Default needs a discoverable compatible kit; explicit kits may
