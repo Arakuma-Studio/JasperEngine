@@ -1619,6 +1619,8 @@ static int runSceneDump(int argc, char** argv, const std::string& commandName) {
     Engine::pauseGameEvents(true);
     Engine::setAsyncLoading(false);
 
+    // an analysis changes no project file (no GUID upgrade of prefabs or clips)
+    project.getAssetDatabase().setReadOnly(true);
     if (!project.loadProject(projectArg, false)) {
         return 1;
     }
@@ -2152,6 +2154,8 @@ CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vecto
     }
 
     if (shadersWanted || cppWanted) {
+        // a check changes no project file (no GUID upgrade of prefabs or clips)
+        project.getAssetDatabase().setReadOnly(true);
         if (!project.loadProject(root, false)) {
             run.fatal = "the project could not be loaded: " + root.string();
             return run;
