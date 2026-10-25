@@ -735,13 +735,13 @@ void setTerrainMapsTool(const CallPtr& call) {
             if (layers.size() <= static_cast<size_t>(index)) layers.resize(index + 1);
             TerrainSurfaceLayer& layer = layers[index];
             if (has(item, "pbr")) layer.pbr = boolOr(item, "pbr", layer.pbr);
-            if (has(item, "hexTiling")) layer.hexTiling = boolOr(item, "hexTiling", layer.hexTiling);
-            if (has(item, "hexRotation")) {
-                if (!item["hexRotation"].is_number()) {
-                    call->fail("layers[" + std::to_string(index) + "].hexRotation must be a number 0-1.");
+            if (has(item, "hex_tiling")) layer.hexTiling = boolOr(item, "hex_tiling", layer.hexTiling);
+            if (has(item, "hex_rotation")) {
+                if (!item["hex_rotation"].is_number()) {
+                    call->fail("layers[" + std::to_string(index) + "].hex_rotation must be a number 0-1.");
                     return;
                 }
-                layer.hexRotation = std::clamp(item["hexRotation"].get<float>(), 0.0f, 1.0f);
+                layer.hexRotation = std::clamp(item["hex_rotation"].get<float>(), 0.0f, 1.0f);
             }
             for (const auto& map : maps) {
                 if (!has(item, map.first)) continue;
@@ -4156,7 +4156,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Assign or generate terrain maps in one undo step. heightmap: an image path, or {generate} a 16-bit map "
         "(middle = flat 0.5, flat at base_height, random_noise, fractal_noise). blendmap: an image path, or "
         "{color} a constant map whose r,g,b weight layers 0,1,2. layers: textures per surface layer (pbr: its "
-        "normal/roughness/metallic/occlusion; hexTiling: hex tiling of its flat projection). Images under the assets dir.",
+        "normal/roughness/metallic/occlusion). Images under the assets dir.",
         object({
             {"scene", sceneRef()},
             {"entity", entityRef("Default: the only terrain.")},
@@ -4174,7 +4174,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"layers", array(object({
                 {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
                 {"pbr", boolean("")},
-                {"hexTiling", boolean("")}, {"hexRotation", number("0-1.", 0, 1)},
+                {"hex_tiling", boolean("")}, {"hex_rotation", number("", 0, 1)},
                 {"color", string("")}, {"normal", string("")}, {"roughness", string("")},
                 {"metallic", string("")}, {"occlusion", string("")}, {"height", string("Blend height only.")}
             }, {"index"}), "")}

@@ -75,8 +75,8 @@
             "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%"
         },
         "set_terrain_maps": {
-            "limit": 1882,
-            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%"
+            "limit": 1915,
+            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; S11: +33 for its layers' hex_tiling and hex_rotation"
         },
         "inspect_ui": {
             "limit": 1792,

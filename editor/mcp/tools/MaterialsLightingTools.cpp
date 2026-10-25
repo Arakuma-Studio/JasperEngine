@@ -145,7 +145,7 @@ void setLightUnitTool(const CallPtr& call){
         call->fail("unit: " + error);
         return;
     }
-    const bool preserve = args.value("preserveBrightness", true);
+    const bool preserve = args.value("preserve_brightness", true);
     const float ev100 = sceneProject->scene->getPhysicalLightEV100();
 
     auto* multi = new MultiPropertyCmd();
@@ -204,14 +204,14 @@ void registerMaterialsLightingTools(McpRegistry& registry){
         tool.title = "Set Light Unit";
         tool.description =
             "Set the intensity unit of lights: engine, lux (directional), candela or lumen (point, spot). With "
-            "preserveBrightness (default) the intensity is converted so the light stays as bright, through the scene's "
+            "preserve_brightness (default) the intensity is converted so the light stays as bright, through the scene's "
             "physical_light_ev100 (one undo step).";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"entities", array(entityRef(), "")},
             {"unit", stringEnum("", {"engine", "lux", "candela", "lumen"})},
-            {"preserveBrightness", withDefault(boolean(""), true)}
+            {"preserve_brightness", withDefault(boolean(""), true)}
         }, {"unit"});
         tool.handler = setLightUnitTool;
         registry.addTool(std::move(tool));

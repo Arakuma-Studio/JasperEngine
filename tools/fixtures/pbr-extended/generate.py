@@ -201,7 +201,7 @@ async def terrain(ed, sid, hex_tiling: bool):
         await ed.call("sync_files")
     await ed.call("set_terrain_maps", scene=sid, entity=tid, heightmap=T + "terrain_height.png",
                   blendmap={"color": [0.45, 0.35, 0.2], "resolution": 64},
-                  layers=[{"index": i, "color": T + c, "hexTiling": hex_tiling, "hexRotation": 1.0} for i, c in enumerate(colors)])
+                  layers=[{"index": i, "color": T + c, "hex_tiling": hex_tiling, "hex_rotation": 1.0} for i, c in enumerate(colors)])
     await camera(ed, sid, (0, 40, 60), (0, 0, 0))
     return tid
 

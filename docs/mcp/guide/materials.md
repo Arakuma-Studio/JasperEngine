@@ -87,7 +87,7 @@ before), `lux` (directional), `candela` or `lumen` (point, spot). Physical units
 through the scene's `physical_light_ev100` (Physical Light Exposure: Sunny 15, Overcast 12,
 Interior 7, Night 2): at EV100 15 a 100000 lx sun is about 2.5 engine units. A spot's lumens
 spread over the whole sphere, so its cone does not change its brightness.
-`set_light_unit {entity, unit, preserveBrightness=true}` changes the unit and converts the
+`set_light_unit {entity, unit, preserve_brightness=true}` changes the unit and converts the
 intensity so the light stays as bright (one undo step); setting `intensityUnit` alone keeps the
 number. A unit the type cannot take draws as its neighbour (lux and candela, the same number).
 `useColorTemperature` with `colorTemperature` (1000-20000 K, 6500 white) colours the light as
@@ -99,7 +99,8 @@ on the CPU, only when a light or the EV100 changes.
 - On a material (`pbr.hex.enabled`): every texture of UV set 0 is sampled on three randomly
   rotated and shifted copies on a hex grid, blended by the base colour's luminance
   (`contrast`); the normal map is turned back with its tile. Three taps per texture.
-- On a Terrain's painted layer (`surfaceLayers[i].hexTiling`, `hexRotation`): the layer's flat
+- On a Terrain's painted layer (`surfaceLayers[i].hexTiling`, `hexRotation`; `set_terrain_maps`
+  layers take `hex_tiling`, `hex_rotation`): the layer's flat
   projection instead of its near and far tiling; the side planes stay as they are.
 
 ## Transmission
