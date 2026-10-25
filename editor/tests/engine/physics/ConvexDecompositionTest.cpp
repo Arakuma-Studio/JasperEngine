@@ -180,6 +180,11 @@ namespace {
 
     template <typename Predicate>
     bool waitUntil(std::chrono::milliseconds limit, Predicate done) {
+    #if defined(JASPERENGINE_SANITIZE_ADDRESS) || defined(JASPERENGINE_SANITIZE_THREAD) || defined(JASPERENGINE_SANITIZE_UNDEFINED)
+        // V-HACD in a sanitizer's Debug build takes many times as long (the limits measure
+        // nothing: the quick-cancel checks keep their own budgets)
+        limit *= 10;
+    #endif
         const Clock::time_point end = Clock::now() + limit;
         while (!done()) {
             if (Clock::now() > end)

@@ -591,9 +591,11 @@ namespace jasperengine{
 		// what LatticeRender::prepare keeps between frames
 		LatticeRenderState latticeState;
 
-		bool hasLights;
-		bool hasShadows;
-		bool hasFog;
+		// (false until load() or the first light check: updateTransform reads hasLights, also
+		// for a scene whose systems never loaded, as the physics tests resolve their transforms)
+		bool hasLights = false;
+		bool hasShadows = false;
+		bool hasFog = false;
 		bool hasIBL;
 		bool hasReflectionProbes;
 		bool hasMultipleCameras;
@@ -1117,9 +1119,9 @@ namespace jasperengine{
 		// 2D light path (Light2DComponent). Deliberately independent of
 		// scene->getLightState(): the editor forces LightState::OFF in 2D scenes
 		// to keep 3D lights out, but 2D lights must still work there.
-		bool hasLights2D;
-		bool hasShadows2D;
-		int numLights2D;
+		bool hasLights2D = false;
+		bool hasShadows2D = false;
+		int numLights2D = 0;
 
 		// Directional + spot atlas keeps up to 3x3 logical slots, but its physical
 		// grid is compacted to the slots used by the current light set.
