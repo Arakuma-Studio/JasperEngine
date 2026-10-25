@@ -63,6 +63,28 @@ namespace {
         return largest;
     }
 
+    // pixels of a and b that differ by more than 1 in a channel
+    size_t differingPixels(const compat::Image& a, const compat::Image& b){
+        size_t count = 0;
+        for (size_t i = 0; i + 3 < a.rgba.size() && i + 3 < b.rgba.size(); i += 4){
+            for (size_t c = 0; c < 4; c++){
+                if (std::abs((int)a.rgba[i + c] - (int)b.rgba[i + c]) > 1){
+                    count++;
+                    break;
+                }
+            }
+        }
+        return count;
+    }
+
+    // Scenes whose nearest-filtered image has a texel boundary exactly at pixel centres: either
+    // texel is right, and the folded translation (batched) and the shader's (unbatched) round the
+    // tie differently. The scene, why, and how many pixels may differ.
+    struct TieScene { const char* id; const char* why; size_t pixels; };
+    const TieScene tieScenes[] = {
+        {"paint/object-position", "#f: object-fit cover scales the 48x24 pixelated image by 2.5, row 57.5 / 2.5 = 23 is a tie", 120},
+    };
+
 }
 
 TEST(RenderBatch, EquivalenceAllGoldenScenes){
@@ -88,6 +110,9 @@ TEST(RenderBatch, EquivalenceAllGoldenScenes){
             int x = 0, y = 0;
             const int difference = largestDifference(batched[i].image, unbatched[i].image, x, y);
             compared++;
+            size_t tiePixels = 0;
+            for (const TieScene& tie : tieScenes) if (fixture.id() == tie.id) tiePixels = tie.pixels;
+            if (difference > 1 && tiePixels > 0 && differingPixels(batched[i].image, unbatched[i].image) <= tiePixels) continue;
             if (difference > 1){
                 const std::string base = browserArtifactDirectory() + "/" + fixture.area + "/" + fixture.name + "." + std::to_string(i);
                 compat::savePng(base + ".batched.png", batched[i].image);

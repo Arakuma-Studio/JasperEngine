@@ -274,7 +274,10 @@ TEST_F(IntegrationTest, PlayStopCyclesLeakNothing){
             pipelines = SystemRender::getPipelineCacheSize();
             EXPECT_GE(screenTextures, 4u);
             EXPECT_GT(screenGeometry, 0u);
-            EXPECT_GT(textureGeometry, 0u);
+            // the texture form is an empty field and an empty label: with the S16 primitives its
+            // background is an HTMLUI_PRIM instance, not a geometry, so only the screen document
+            // is sure to hold geometry
+            if (!RmlRenderer::isSdfPrimitives()) EXPECT_GT(textureGeometry, 0u);
         }else if (cycle > 1){
             EXPECT_EQ(screenContext->getRenderer().getLiveTextureCount(), screenTextures) << "cycle " << cycle;
             EXPECT_EQ(screenContext->getRenderer().getLiveGeometryCount(), screenGeometry) << "cycle " << cycle;

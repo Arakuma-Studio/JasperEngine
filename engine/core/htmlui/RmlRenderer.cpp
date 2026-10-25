@@ -3222,6 +3222,14 @@ void RmlRenderer::getGpuHandles(std::vector<uint32_t>& buffers, std::vector<uint
     for (const std::unique_ptr<RmlTransientBuffer>& buffer : transientBuffers){
         addBuffer(buffer->buffer);
     }
+    // S16: the batched replay's gather pages and the HTMLUI_PRIM unit quad
+    for (const std::unique_ptr<GatherPage>& page : gatherPages){
+        addBuffer(page->data);
+        addBuffer(page->indices);
+    }
+    addBuffer(primQuadBuffer);
+    addBuffer(primQuadIndexBuffer);
+    addBuffer(primInstanceTemplate);
 
     uint32_t placeholder = const_cast<TextureRender&>(placeholderWhite).backend.get().id;
     if (placeholder != 0) images.push_back(placeholder);
