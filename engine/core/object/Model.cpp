@@ -356,6 +356,8 @@ void Model::setMorphWeight(int id, float value){
 
     if (id >= 0 && id < MAX_MORPHTARGETS){
         mesh.morphWeights[id] = value;
+        // set before a (async) load finishes: the load keeps it
+        mesh.morphWeightsSet = true;
     }else{
         Log::error("Retrieving non-existent morph weight '%i'", id);
     }

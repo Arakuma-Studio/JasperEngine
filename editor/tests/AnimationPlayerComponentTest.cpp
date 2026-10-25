@@ -524,3 +524,29 @@ TEST(AnimationPlayerComponent, ModelAnimationEntitiesPropertyFactoryAndPrefabOve
     EXPECT_FALSE(loaded.getComponent<ModelComponent>(loadedRoot).animationEntities);
     EXPECT_EQ(loaded.getComponent<ModelComponent>(loadedRoot).filename, "models/hero.gltf");
 }
+
+// Saved blend shape weights are the mesh's own (MeshComponent::morphWeightsSet): decoding them
+// (all zero too) sets the flag the model load reads, the exporter writes it; a mesh saved
+// without weights (an older or hand-written file) has its file's defaults on load
+TEST(AnimationPlayerComponent, SavedMorphWeightsAreKeptByTheModelLoad) {
+    MeshComponent zeros;
+    zeros.morphWeightsSet = true;
+    const YAML::Node node = Stream::encodeMeshComponent(zeros, false, false, false);
+    ASSERT_TRUE(node["morphWeights"]);
+    const MeshComponent decoded = Stream::decodeMeshComponent(node);
+    EXPECT_TRUE(decoded.morphWeightsSet);
+    EXPECT_EQ(decoded.morphWeights[0], 0.0f);
+    YAML::Node without = YAML::Clone(node);
+    without.remove("morphWeights");
+    EXPECT_FALSE(Stream::decodeMeshComponent(without).morphWeightsSet);
+
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    scene.addComponent<Transform>(entity, {});
+    scene.addComponent<MeshComponent>(entity, zeros);
+    const std::string code = Factory::createComponent(0, &scene, entity, ComponentType::MeshComponent, "", "scene", "entity");
+    EXPECT_NE(code.find("mesh.morphWeightsSet = true;\n"), std::string::npos) << code;
+    scene.getComponent<MeshComponent>(entity).morphWeightsSet = false;
+    EXPECT_EQ(Factory::createComponent(0, &scene, entity, ComponentType::MeshComponent, "", "scene", "entity").find("morphWeightsSet"),
+              std::string::npos);
+}

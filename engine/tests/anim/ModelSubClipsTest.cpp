@@ -39,6 +39,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <thread>
 
 using namespace jasperengine;
@@ -686,6 +687,99 @@ TEST(ModelSubClips, ModelFindsDuplicateAnimationNamesByTheirSubClipNames){
     model.playAnimation("Wave");
     EXPECT_TRUE(started(animations[3]));
     EXPECT_FALSE(started(animations[4]));
+}
+
+// Blend shape weights and model (re)loads (MeshComponent::morphWeightsSet): a freshly loaded model
+// gets its file's default weights; weights it holds after that (edited, all zero on purpose) or
+// read from a saved scene survive a reload of the same file; another model file takes its own
+TEST(ModelSubClips, MorphWeightsKeepTheSavedStateOverTheFileDefaults){
+    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(ANIM_FIXTURES_DIR) + "/runtime-shaders/assets/skinned_morph.gltf"));
+    ASSERT_EQ(gltf["meshes"].size(), 1u);
+    gltf["meshes"][0]["weights"] = {0.75};
+    const std::string withDefaults = animtest::writeAsset("models/morphs/defaults.gltf", gltf.dump());
+    gltf["meshes"][0]["weights"] = {0.25};
+    const std::string otherDefaults = animtest::writeAsset("models/morphs/other.gltf", gltf.dump());
+
+    Scene scene;
+    auto weightOf = [&](Entity root){
+        // the mesh with the blend shapes (the model root, or its mesh node)
+        auto meshes = scene.getComponentArray<MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); i++){
+            const Entity entity = meshes->getEntity(i);
+            if (entity == root || scene.isParentOf(root, entity)){
+                const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+                if (mesh.morphWeightsSet) return mesh.morphWeights[0];
+            }
+        }
+        return -1.0f;
+    };
+    auto setWeight = [&](Entity root, float value){
+        auto meshes = scene.getComponentArray<MeshComponent>();
+        for (size_t i = 0; i < meshes->size(); i++){
+            const Entity entity = meshes->getEntity(i);
+            if ((entity == root || scene.isParentOf(root, entity)) && meshes->getComponentFromIndex(i).morphWeightsSet){
+                meshes->getComponentFromIndex(i).morphWeights[0] = value;
+            }
+        }
+    };
+
+    // fresh: the file's defaults
+    Model model(&scene);
+    const Entity root = model.getEntity();
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, withDefaults, false, false, false));
+    EXPECT_FLOAT_EQ(weightOf(root), 0.75f);
+    // set to 0 on purpose (all weights 0), then the same file reloads: still 0
+    setWeight(root, 0.0f);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, withDefaults, false, true, false));
+    EXPECT_FLOAT_EQ(weightOf(root), 0.0f) << "a deliberate 0 survives the reload";
+    setWeight(root, 0.4f);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, withDefaults, false, true, false));
+    EXPECT_FLOAT_EQ(weightOf(root), 0.4f) << "an edited weight survives the reload";
+    // another model file: its own defaults
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, otherDefaults, false, false, false));
+    EXPECT_FLOAT_EQ(weightOf(root), 0.25f);
+
+    // a mesh decoded from a saved scene (the editor's Stream sets the flag with the weights)
+    // before its model loads keeps the saved zeros
+    ASSERT_TRUE(scene.getComponent<MeshComponent>(root).morphWeightsSet) << "the single mesh loads on the model root";
+    Model saved(&scene);
+    scene.getComponent<MeshComponent>(saved.getEntity()).morphWeightsSet = true;
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(saved.getEntity(), withDefaults, false, false, false));
+    EXPECT_FLOAT_EQ(scene.getComponent<MeshComponent>(saved.getEntity()).morphWeights[0], 0.0f) << "the saved zeros, not the file's 0.75";
+    EXPECT_FLOAT_EQ(weightOf(saved.getEntity()), 0.0f);
+}
+
+// Blend shape names per mesh (MeshComponent::morphTargetNames): a model with two meshes whose
+// targets are named differently ("Bend" on Strip, "Smile" and "Blink" on Face) keeps each mesh's
+// own names; the model's name table still finds every name
+TEST(ModelSubClips, MorphTargetNamesArePerMesh){
+    nlohmann::json gltf = nlohmann::json::parse(readFile(std::string(ANIM_FIXTURES_DIR) + "/runtime-shaders/assets/skinned_morph.gltf"));
+    nlohmann::json face = gltf["meshes"][0];
+    face["name"] = "Face";
+    face["primitives"][0]["targets"].push_back(face["primitives"][0]["targets"][0]);
+    face["weights"] = {0.0, 0.0};
+    face["extras"]["targetNames"] = {"Smile", "Blink"};
+    gltf["meshes"].push_back(face);
+    gltf["nodes"].push_back({{"name", "Face"}, {"mesh", 1}, {"skin", 0}});
+    gltf["scenes"][0]["nodes"].push_back(gltf["nodes"].size() - 1);
+    const std::string path = animtest::writeAsset("models/morphs/two_meshes.gltf", gltf.dump());
+
+    Scene scene;
+    Model model(&scene);
+    const Entity root = model.getEntity();
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(root, path, false, false, false));
+    std::map<std::string, std::vector<std::string>> byName;
+    auto meshes = scene.getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++){
+        const Entity entity = meshes->getEntity(i);
+        if (scene.isParentOf(root, entity)) byName[scene.getEntityName(entity)] = meshes->getComponentFromIndex(i).morphTargetNames;
+    }
+    ASSERT_EQ(byName.size(), 2u) << "one mesh entity per mesh node";
+    EXPECT_EQ(byName["Strip"], (std::vector<std::string>{"Bend"}));
+    EXPECT_EQ(byName["Face"], (std::vector<std::string>{"Smile", "Blink"}));
+    const ModelComponent& component = scene.getComponent<ModelComponent>(root);
+    EXPECT_EQ(component.morphNameMapping.count("Bend"), 1u);
+    EXPECT_EQ(component.morphNameMapping.count("Blink"), 1u);
 }
 
 // Builds on threads (the shader variant probe and play startup load off the main thread): from

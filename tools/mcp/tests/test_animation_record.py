@@ -516,3 +516,32 @@ async def test_blend_shape_weights_save_and_reload(ed: Editor):
     await ed.call("wait", frames=10)
     ed.check(abs(await morph_weight(ed, mesh_path) - 0.6) < 1e-4, f"the plain model's weight after reopening: {await morph_weight(ed, mesh_path)}")
     ed.check(abs(await morph_weight(ed, instance_mesh) - 0.9) < 1e-4, f"the instance's weight after reopening: {await morph_weight(ed, instance_mesh)}")
+
+
+async def test_zero_blend_shape_weights_survive_a_reload(ed: Editor):
+    """A model whose file has a default weight (0.5): a new one gets it; set to 0 on purpose, saved and
+    reopened it stays 0 (not the file default again)."""
+    gltf = json.loads(MORPH_MODEL.read_text())
+    gltf["meshes"][0]["weights"] = [0.5]
+    (ed.project / "assets/models/morph_default.gltf").write_text(json.dumps(gltf))
+    await ed.call("sync_files")
+    await ed.call("create_entity", type="model", name="Dflt", model="assets/models/morph_default.gltf")
+    await ed.call("wait", frames=6)
+    mesh_path = None
+    for candidate in ("Dflt", "Dflt/Strip"):
+        r = await ed.call_raw("get_entity", {"entity": candidate, "components": ["mesh"], "properties": ["morphWeights[0]"]})
+        if not r.is_error and harness.find_key(r.structured, "morphWeights[0]") is not None:
+            mesh_path = candidate
+            break
+    ed.check(mesh_path is not None, "the model's mesh with blend shapes")
+    ed.check(abs(await morph_weight(ed, mesh_path) - 0.5) < 1e-4, f"a new model has the file's default: {await morph_weight(ed, mesh_path)}")
+    r = await ed.call_raw("focus_window", {"window": "animation", "animation": {"morph": {"entities": [mesh_path], "index": 0, "value": 0.0}}})
+    ed.check(not r.is_error, r.text if r.is_error else "")
+    ed.check(abs(await morph_weight(ed, mesh_path)) < 1e-4, "set to 0")
+    await ed.call("save_scene", scene="Main Scene")
+    await ed.call("close_scene", scene="Main Scene")
+    await ed.call("open_scene", scene="Main Scene.scene")
+    await ed.call("wait", frames=10)
+    ed.check(abs(await morph_weight(ed, mesh_path)) < 1e-4, f"the saved 0 after reopening, not the file's 0.5: {await morph_weight(ed, mesh_path)}")
+    await ed.call("delete_entities", entities=["Dflt"])
+    await ed.call("save_scene", scene="Main Scene")

@@ -5789,12 +5789,14 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["normAdjustJoint"]) mesh.normAdjustJoint = YamlNumbers::as<float>(node["normAdjustJoint"]);
     if (node["normAdjustWeight"]) mesh.normAdjustWeight = YamlNumbers::as<float>(node["normAdjustWeight"]);
 
-    // Decode morph weights
+    // Decode morph weights: saved weights are the mesh's own, a model (re)load keeps them
+    // (MeshComponent::morphWeightsSet)
     if (node["morphWeights"]) {
         auto morphWeightsNode = node["morphWeights"];
         for(int i = 0; i < MAX_MORPHTARGETS; i++) {
             mesh.morphWeights[i] = YamlNumbers::as<float>(morphWeightsNode[i]);
         }
+        mesh.morphWeightsSet = true;
     }
 
     if (node["aabb"]) mesh.aabb = decodeAABB(node["aabb"]);

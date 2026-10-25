@@ -358,6 +358,15 @@ namespace jasperengine{
         Matrix4 mirrorViewProjection;
 
         float morphWeights[MAX_MORPHTARGETS] = {};
+        // the weights are this component's own: read from a saved scene or prefab (the editor's
+        // Stream, an exported game's factory code) or kept from an earlier load of the same model
+        // (edits, deliberate zeros). A model load gives the file's default weights only when this
+        // is false (a freshly loaded model) or when it loads another model file.
+        bool morphWeightsSet = false;
+        // the blend shape (morph target) names of this mesh in its model file (glTF
+        // extras.targetNames), index = weight; empty when the file names none. Filled by the
+        // model load (per mesh: two meshes of a model can name their targets differently), not saved.
+        std::vector<std::string> morphTargetNames;
 
         // lattice deformation (spec 2026-10-23-lattice-deformer-design.md §5): filled by
         // LatticeRender::prepare, uploaded and bound by RenderSystem

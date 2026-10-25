@@ -4674,6 +4674,10 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     scene->getSystem<RenderSystem>()->prepareMeshForDataReload(entity, mesh);
 
+    // another model file than the one loaded: its meshes take its default blend shape weights
+    const bool otherModelFile = !model.loadedFilename.empty() && model.loadedFilename != poolKey;
+    std::set<Entity> morphDefaultsApplied;
+
     destroyModel(model);
 
     model.filename = filename;
@@ -4690,6 +4694,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     mesh.normAdjustWeight = 1.0f;
     mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
     mesh.needUpdateBones = false;
+    mesh.morphTargetNames.clear();
 
     bool res = false;
 
@@ -5074,6 +5079,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             mesh.normAdjustWeight = 1.0f;
             mesh.bonesMatrix = HybridArray<Matrix4, MAX_BONES>();
             mesh.needUpdateBones = false;
+            mesh.morphTargetNames.clear();
 
             mesh.numSubmeshes = static_cast<unsigned int>(gltfmesh.primitives.size());
             if (mesh.numSubmeshes > 0 && !mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes) - 1)) {
@@ -5521,17 +5527,26 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             }
 
             if (morphTargets) {
-                // the file's default weights on a mesh whose weights are still all 0 (a new
-                // MeshComponent); weights a scene or prefab saved (the editor's Blend Shapes rows,
-                // a prefab instance override) survive the model's (re)load
-                bool weightsSet = false;
-                for (int w = 0; w < MAX_MORPHTARGETS; w++) weightsSet = weightsSet || mesh.morphWeights[w] != 0.0f;
-                for (int w = 0; !weightsSet && w < static_cast<int>(gltfmesh.weights.size()) && w < MAX_MORPHTARGETS; w++) {
-                    mesh.morphWeights[w] = gltfmesh.weights[w];
+                // the file's default weights only on a freshly loaded model, or when another model
+                // file is loaded: weights a scene or prefab saved (the editor's Blend Shapes rows, a
+                // prefab instance override, all zeros too) or an earlier load of this model left
+                // survive the (re)load (MeshComponent::morphWeightsSet). Every primitive of a mesh
+                // passes here: the defaults apply to all of them in this load.
+                if (!mesh.morphWeightsSet || otherModelFile || morphDefaultsApplied.count(meshEntity)) {
+                    for (int w = 0; w < MAX_MORPHTARGETS; w++) {
+                        mesh.morphWeights[w] = w < static_cast<int>(gltfmesh.weights.size()) ? static_cast<float>(gltfmesh.weights[w]) : 0.0f;
+                    }
+                    mesh.morphWeightsSet = true;
+                    morphDefaultsApplied.insert(meshEntity);
                 }
                 if (gltfmesh.extras.Has("targetNames") && gltfmesh.extras.Get("targetNames").IsArray()) {
-                    for (int t = 0; t < gltfmesh.extras.Get("targetNames").Size(); t++) {
-                        model.morphNameMapping[gltfmesh.extras.Get("targetNames").Get(t).Get<std::string>()] = t;
+                    // the model's table (Model:getMorphWeight by name) and this mesh's own
+                    const tinygltf::Value& targetNames = gltfmesh.extras.Get("targetNames");
+                    mesh.morphTargetNames.assign(static_cast<size_t>(targetNames.Size()), std::string());
+                    for (int t = 0; t < targetNames.Size(); t++) {
+                        const std::string name = targetNames.Get(t).IsString() ? targetNames.Get(t).Get<std::string>() : std::string();
+                        model.morphNameMapping[name] = t;
+                        mesh.morphTargetNames[static_cast<size_t>(t)] = name;
                     }
                 }
             }
