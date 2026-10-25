@@ -193,6 +193,14 @@ namespace jasperengine{
 
         // Canonical form of a model path: the same file spelled in different ways maps to one key.
         static std::string getModelFilenameKey(const std::string& filename);
+        // The key that starts the ids of the textures a model makes, which scenes store: a file
+        // in the assets directory by its path there, never this machine's absolute path
+        static std::string getModelTextureKey(const std::string& filename);
+        // A model texture id ("<model key>|...") as getModelTextureKey keys it now. Scenes saved
+        // before ids were relative carry the model's absolute path: inside assetsRoot it becomes
+        // relative; from a project since moved, the longest tail of it that names a file in
+        // assetsRoot. Any other id is returned unchanged.
+        static std::string migrateModelTextureId(const std::string& id, const std::string& assetsRoot);
 
         // Submesh edits (Submesh::overrideFields) carried across a load, keyed by the ordinal of
         // the primitive that built each one. The loaders do this themselves; it is public for the

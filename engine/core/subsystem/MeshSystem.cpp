@@ -137,11 +137,56 @@ MeshSystem::async_model_loads_t& MeshSystem::getPendingModelLoads(){
     return *loads;
 }
 
+namespace {
+    // `path` relative to `root` when it is inside it; empty otherwise
+    std::string relativeInside(const std::filesystem::path& path, const std::string& root){
+        if (root.empty())
+            return std::string();
+        const std::filesystem::path relative = path.lexically_normal().lexically_relative(std::filesystem::path(root).lexically_normal());
+        if (relative.empty() || relative == "." || *relative.begin() == "..")
+            return std::string();
+        return relative.generic_string();
+    }
+}
+
 std::string MeshSystem::getModelFilenameKey(const std::string& filename){
     // FileData resolves project-relative and asset:// paths exactly as the file
     // loader does. This keeps the model/texture pools from treating the same
     // file as separate absolute and relative resources.
     return std::filesystem::path(FileData::getSystemPath(filename)).lexically_normal().generic_string();
+}
+
+std::string MeshSystem::getModelTextureKey(const std::string& filename){
+    const std::string key = getModelFilenameKey(filename);
+    const std::string relative = relativeInside(std::filesystem::path(key), System::instance().getAssetPath());
+    return relative.empty() ? key : relative;
+}
+
+std::string MeshSystem::migrateModelTextureId(const std::string& id, const std::string& assetsRoot){
+    const size_t bar = id.find('|');
+    if (bar == std::string::npos || assetsRoot.empty())
+        return id;
+    const std::filesystem::path model(id.substr(0, bar));
+    const bool windowsAbsolute = model.native().size() > 1 && model.native()[1] == ':';
+    if (!model.is_absolute() && !windowsAbsolute && id.compare(0, 1, "/") != 0)
+        return id;
+    const std::string rest = id.substr(bar);
+    const std::string inside = relativeInside(model, assetsRoot);
+    if (!inside.empty())
+        return inside + rest;
+    // moved: the longest tail of the old path that names a file of this assets directory
+    std::vector<std::string> parts;
+    for (const auto& part : model.lexically_normal().relative_path())
+        parts.push_back(part.generic_string());
+    std::error_code ec;
+    for (size_t first = 1; first < parts.size(); first++){
+        std::filesystem::path tail;
+        for (size_t i = first; i < parts.size(); i++)
+            tail /= parts[i];
+        if (std::filesystem::is_regular_file(std::filesystem::path(assetsRoot) / tail, ec))
+            return tail.generic_string() + rest;
+    }
+    return id;
 }
 
 // Key texture storage by image source and sampler, not glTF texture index: glTF files
@@ -1192,7 +1237,7 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
 
                 // Pre-copy texture pixels on the worker thread so the main-thread build only
                 // does pool lookups, keyed to match loadGLTFTexture.
-                const std::string modelKey = getModelFilenameKey(filename);
+                const std::string modelKey = getModelTextureKey(filename);
                 const size_t textureCount = result->gltfModel->textures.size();
 
                 // One copy per dedup key, not per image source: each key is a separate
@@ -2199,7 +2244,7 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
             return true;
         }
 
-        std::string id = gltfTextureDedupKey(getModelFilenameKey(model.filename), *model.gltfModel, textureIndex);
+        std::string id = gltfTextureDedupKey(getModelTextureKey(model.filename), *model.gltfModel, textureIndex);
 
         auto existingData = TextureDataPool::get(id);
         const bool canReuse = existingData && existingData->at(0).getData() && existingData->at(0).getSize() >= imageSize;

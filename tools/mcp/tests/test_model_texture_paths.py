@@ -1,0 +1,79 @@
+"""The textures of a model in a scene (bumpy_box.gltf and its normal.png from
+tools/fixtures/runtime-shaders): the scene stores them by the model's path in the assets
+directory, never by this machine's absolute path, and the project copied to another folder (the
+harness opens a copy) draws the model with its textures as the original did. Scenes saved with
+absolute ids are migrated when they load (MeshSystem::migrateModelTextureId, the gtest suite
+ModelTextureId)."""
+
+from __future__ import annotations
+
+import shutil
+
+import harness
+import pngdiff
+from harness import Editor
+
+CI = True
+EDITOR = {"create": True, "name": "Model Texture Paths"}
+TIMEOUT = 600
+
+FIXTURE = harness.REPO / "tools" / "fixtures" / "runtime-shaders" / "assets"
+SCENE = "scenes/Models.scene"
+NORMAL = "submeshes[0].material.normalTexture"
+DISPLAY = {"show_grid_3d": False, "hide_light_icons": True, "hide_selection_outline": True,
+           "hide_camera_view": True, "hide_sound_icons": True}
+S: dict = {}
+
+
+async def shot(ed: Editor, scene) -> tuple:
+    await ed.call("set_scene_camera", scene=scene, position=[2.2, 1.6, 2.6], target=[0, 0, 0], display=DISPLAY)
+    await ed.call("wait", frames=6)
+    r = await ed.call_raw("screenshot", {"view": "scene", "scene": scene, "max_width": 480}, timeout=300)
+    ed.check(not r.is_error and r.images, f"no scene screenshot: {r.text[:300]}")
+    return pngdiff.decode(r.images[0][0])
+
+
+async def normal_texture(ed: Editor, scene, entity) -> dict:
+    got = await ed.call("get_entity", scene=scene, entity=entity, components=["mesh"], properties=[NORMAL], detail="values")
+    return next(iter(got["components"].values()))[NORMAL]
+
+
+async def test_scene_stores_no_absolute_path(ed: Editor):
+    models = ed.project / "assets" / "models"
+    models.mkdir(parents=True, exist_ok=True)
+    for name in ("bumpy_box.gltf", "normal.png"):
+        shutil.copy(FIXTURE / name, models / name)
+    made = await ed.call("create_scene", name="Models", type="3D", path=SCENE)
+    scene = made["scene"]["id"]
+    await ed.call("set_model", scene=scene, create={"name": "Box"}, path="assets/models/bumpy_box.gltf")
+    await ed.call("save_scene", scene=scene)
+    texture = await normal_texture(ed, scene, "Box")
+    # the model's path in the assets directory (this project's is its root)
+    S["id"] = texture.get("id", "")
+    ed.check(S["id"].endswith("models/bumpy_box.gltf|gltf-image|0|s0") and not S["id"].startswith("/"),
+             f"the model's normal map is named by the model's assets path: {texture}")
+    text = (ed.project / SCENE).read_text()
+    root = str(ed.project.resolve())
+    ed.check(S["id"] in text and root not in text and str(ed.scratch.root) not in text, f"the scene names no absolute path:\n{text}")
+    S["shot"] = await shot(ed, scene)
+    # the comparison below sees a model drawn without its normal map
+    await ed.call("set_properties", scene=scene, entity="Box", values={"mesh": {NORMAL: None}})
+    flat = await shot(ed, scene)
+    same, fraction, _ = pngdiff.compare(S["shot"], flat, 8, 0.002)
+    ed.check(not same, f"the normal map shows in the Scene view ({fraction * 100:.2f}% of the pixels differ without it)")
+    await ed.call("undo")
+    await ed.call("save_scene", scene=scene)
+
+
+async def test_moved_project_loads_the_model_textures(ed: Editor):
+    # the harness copies the project into a scratch folder of its own: the project moved
+    async with Editor(project=ed.project) as moved:
+        ed.check(moved.project.resolve() != ed.project.resolve(), "the copy is elsewhere")
+        opened = await moved.call("open_scene", scene=SCENE)
+        scene = opened["scene"]["id"]
+        await moved.call("get_model_info", scene=scene, entity="Box")
+        texture = await normal_texture(moved, scene, "Box")
+        moved.check_eq(texture.get("id"), S["id"], "the moved project names the same texture")
+        image = await shot(moved, scene)
+        same, fraction, _ = pngdiff.compare(S["shot"], image, 8, 0.002)
+        moved.check(same, f"the moved project draws the model as the original did ({fraction * 100:.2f}% of the pixels differ)")
