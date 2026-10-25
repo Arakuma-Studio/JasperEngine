@@ -7,6 +7,9 @@ against the new image before the update (max channel difference / mean / bad pix
 new golden after (always a pass), the category (`sdf-aa`, `analytic-clip`, `analytic-shadow`,
 `exact-scale-text`, `gpu-text-effect`), the reason, and for fixtures that
 `tools/htmlui/render-reference.mjs` can render, the mean difference against Chromium (new <= old).
+"Before" is the default compare of the old golden against the S16 image (glcore, llvmpipe);
+"n/a (engine scene)": an RML scene of the engine's suites, which the Chromium script does not
+render. The Chromium references themselves are unchanged and pass (AC2, `BrowserParityTest`).
 Updated files are committed on their own. `python3 tools/htmlui/check_golden_ledger.py` checks
 that every changed golden has its row. More than 60 updates need a separate review (a
 `Reviewed:` line).
@@ -15,6 +18,20 @@ that every changed golden has its row. More than 60 updates need a separate revi
 
 | Golden | Before (max / mean / bad) | After | Category | Reason | Chromium mean (old -> new) |
 |---|---|---|---|---|---|
+| `transform` | 130 / 0.234 / 787 | 0 / 0.000 / 0 | `exact-scale-text` | the `scale()` label is rasterized at its on-screen size (sharper), the rotated boxes' edges are antialiased by the SDF instead of the mesh's feathering | n/a (engine scene) |
+| `render_transform` | 72 / 0.074 / 156 | 0 / 0.000 / 0 | `sdf-aa` | the perspective-transformed box's edges are antialiased (the mesh's were aliased at 1 sample) | n/a (engine scene) |
+| `letterbox` | 207 / 0.110 / 746 | 0 / 0.000 / 0 | `exact-scale-text` | at the letterbox's fractional scale the label's glyphs sit on whole target pixels (moved by under a pixel) | n/a (engine scene) |
+| `p1/box_shadow` | 87 / 0.354 / 352 | 0 / 0.000 / 0 | `analytic-shadow` | box shadows are the analytic Gaussian of the rounded box instead of a blurred texture | n/a (engine scene) |
+| `p1/clip_inverse` | 65 / 0.044 / 164 | 0 / 0.000 / 0 | `sdf-aa` | the clipped boxes' rounded corners are SDF-antialiased (the inverse clip itself stays a stencil mask) | n/a (engine scene) |
+| `p1/clip_nested` | 102 / 0.043 / 99 | 0 / 0.000 / 0 | `analytic-clip` | rounded clips of one or two shapes are clipped in the shaders, antialiased, instead of an aliased stencil mask | n/a (engine scene) |
+| `p1/clip_rounded` | 86 / 0.049 / 184 | 0 / 0.000 / 0 | `analytic-clip` | the rounded `overflow: hidden` clip is antialiased in the shaders instead of the stencil's aliased curve | n/a (engine scene) |
+| `p1/clip_transform` | 61 / 0.096 / 211 | 0 / 0.000 / 0 | `analytic-clip` | the rotated rounded clip is clipped analytically under its transform, edges antialiased | n/a (engine scene) |
+| `p1/many_elements` | 36 / 1.718 / 2880 | 0 / 0.000 / 0 | `sdf-aa` | 500 small rounded buttons: corners and 1 px borders from the SDF coverage instead of the feathered meshes (max channel difference 36) | n/a (engine scene) |
+| `p1/msaa_rounded` | 83 / 0.288 / 414 | 0 / 0.000 / 0 | `sdf-aa` | rounded boxes at 4 samples: the curves' coverage is analytic, not the 4 samples of a polygon | n/a (engine scene) |
+| `p1/transforms` | 51 / 0.068 / 180 | 0 / 0.000 / 0 | `sdf-aa` | transformed boxes' edges antialiased by the SDF | n/a (engine scene) |
+| `p1/font_effects` | 233 / 1.016 / 2101 | 0 / 0.000 / 0 | `gpu-text-effect` | outline, glow and shadow drawn from distance glyphs at device resolution (crisper, R17) | n/a (engine scene) |
+| `p1/text_effects_layers` | 178 / 1.285 / 3848 | 0 / 0.000 / 0 | `gpu-text-effect` | the same effects from distance glyphs inside layers and filters | n/a (engine scene) |
+| `p1/texture_effects` | 225 / 0.914 / 752 | 0 / 0.000 / 0 | `gpu-text-effect` | the texture document's rotated label: effects from distance glyphs, its rounded box SDF-antialiased | n/a (engine scene) |
 
 ## New goldens
 

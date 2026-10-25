@@ -60,7 +60,11 @@ namespace {
 
     // the golden metric (ImageCompare's defaults) between two images
     ::testing::AssertionResult similar(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, const std::string& label){
-        const CompareOptions options;
+        // the default threshold and mean; up to 0.5 % of the pixels apart (default 0.05 %): the
+        // edge pixels, where the meshes' feathering, polygonal curves and aliased shadow textures
+        // differ from the exact coverage (spec Deviations, AC8)
+        CompareOptions options;
+        options.maxBadFraction = 0.005;
         if (a.size() != b.size() || a.empty())
             return ::testing::AssertionFailure() << label << ": sizes differ";
         size_t bad = 0;
