@@ -29,7 +29,10 @@
 
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipDocument.h"
+#include "animation/AnimationPlayerRuntime.h"
+#include "animation/ClipRecordHooks.h"
 #include "animation/ClipValidation.h"
+#include "animation/PreviewOwner.h"
 #include "ecs/Entity.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
@@ -40,9 +43,15 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine{
+    class EntityRegistry;
+}
+
 namespace jasperengine::editor{
 
     class Project;
+    struct SceneProject;
+    struct ClipUndoFocus;
 
     class AnimationClipController{
     public:
@@ -160,7 +169,32 @@ namespace jasperengine::editor{
         void setLastActionWasClipEdit(bool clipEdit);
         void sceneClosed(uint32_t sceneId);
 
+        // ---- additions (T3a) ----
+
+        // `entity` or its nearest ancestor with an Animation Player (the root clip mode binds),
+        // NULL_ENTITY when none
+        static Entity findPlayerRoot(EntityRegistry* registry, Entity entity);
+        // What the preview writes: the bound root, or for a clip opened without one the instance
+        // of its preview.model found in the selected scene when the preview started (a GameObject
+        // whose Model is that file, or an instance root of that prefab; the selected GameObject
+        // first). NULL_ENTITY / 0 while not previewing.
+        Entity getPreviewRoot() const;
+        uint32_t getPreviewSceneId() const;
+        // paths of the open clip's tracks that did not resolve in the last preview write
+        const std::vector<std::string>& getUnresolvedPaths() const;
+        // the App's undo routing (AnimationClipAppHooks::ownsUndo): the Animation window has focus
+        // and its last action was a pure clip edit, or Record is on and the Scene view or the
+        // Inspector has focus. ownsUndo(bool) above is the window's own form (it has focus).
+        bool ownsUndo(const ClipUndoFocus& focus) const;
+        // the window sets it every frame: it is focused in clip mode and handles its keys
+        // (AnimationClipAppHooks::takesKeys)
+        void setTakesKeys(bool takes);
+        bool takesKeys() const;
+        // the time key edits use (the playhead), in seconds
+        void setTime(float time);
+
     private:
+        struct Snapshot;
         Project* project = nullptr;
         uint32_t sceneId = 0;
         Entity root = NULL_ENTITY;
@@ -178,6 +212,56 @@ namespace jasperengine::editor{
         ClipData dragBase;
         std::vector<KeyRef> dragKeys;
         std::string dragMergeKey;
+
+        // ---- T3a ----
+        uint32_t previewSceneId = 0;
+        Entity previewRoot = NULL_ENTITY;
+        anim::ClipPreviewSession session;
+        // the derived state (world matrices, skinning) of the previewed hierarchy at start
+        std::unique_ptr<Snapshot> snapshot;
+        PreviewOwner::Token ownerToken = 0;
+        int documentListener = 0;
+        ClipRecordHooks::Id beforeWriteListener = 0;
+        ClipRecordHooks::Id afterWriteListener = 0;
+        ClipRecordHooks::Id recordListener = 0;
+        // a scene write changed a previewed channel's rest: the preview is applied again on update
+        bool needsApply = false;
+        // stopPreview() while the scene was being saved: update() finishes it
+        bool stopPending = false;
+        bool windowKeys = false;
+        std::vector<std::string> unresolved;
+        // the drag's dragged keys by identity (path, channel, time in dragBase)
+        struct DragIdentity{
+            std::string path;
+            ClipChannel channel = ClipChannel::Position;
+            float time = 0.0f;
+        };
+        std::vector<DragIdentity> dragIdentities;
+        uint64_t dragRevision = 0;
+        uint64_t dragSerial = 0;
+
+        SceneProject* sceneProjectOf(uint32_t id) const;
+        void setDocument(const std::shared_ptr<AnimationClipDocument>& next);
+        std::string stateOfDocument() const;
+        Entity findPreviewInstance(SceneProject* sceneProject) const;
+        // writes the open clip at the playhead (false when it can't now)
+        bool apply();
+        // the scene back to its unpreviewed state; `write` false: forget it (the scene is gone)
+        void endPreview(bool write);
+        void takeSnapshot(SceneProject* sceneProject);
+        void restoreSnapshot(SceneProject* sceneProject);
+        void writeRest(Entity entity, ClipChannel channel);
+        void beforeSceneWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
+        void afterSceneWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
+        bool recordClaims(uint32_t sceneId, Entity entity, ClipChannel channel) const;
+        void recordValue(uint32_t sceneId, Entity entity, const ClipRecordValue& value, const std::string& mergeKey);
+        // the root key values are read on (the preview root while previewing, else the bound root)
+        Entity valueRoot(SceneProject** sceneProject) const;
+        // the key value of `track` now: the bound entity's current value (relative tracks: its
+        // offset from the preview rest); false when the track's path does not resolve
+        bool currentTrackValue(const ClipTrackData& track, std::vector<float>& out) const;
+        bool editable(std::string* error) const;
+        bool commitEdit(const ClipData& data, const std::string& undoName, const std::string& mergeKey, std::string* error);
     };
 
 }

@@ -3,48 +3,143 @@
 
 #include "PreviewOwner.h"
 
-#include <set>
+#include "component/Transform.h"
+#include "registry/EntityRegistry.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
-// TODO(T3a): the owner registry. The stubs grant every request (a new valid token) and stop
-// nobody.
-
 namespace{
-    PreviewOwner::Token nextToken = 1;
-    std::set<PreviewOwner::Token> liveTokens;
+
+    struct Entry{
+        PreviewOwner::Owner owner;
+        PreviewOwner::Stop stop;
+        const void* who = nullptr;
+    };
+
+    struct Registry{
+        PreviewOwner::Token nextToken = 1;
+        std::vector<Entry> entries;
+    };
+
+    // never destroyed: owners living until static exit release into it
+    Registry& ownerRegistry(){
+        static Registry* instance = new Registry();
+        return *instance;
+    }
+
+    // `ancestor` is `entity` or one of its Transform parents
+    bool isAncestorOrSelf(EntityRegistry* registry, Entity ancestor, Entity entity){
+        if (ancestor == entity) return true;
+        if (!registry || ancestor == NULL_ENTITY || entity == NULL_ENTITY || !registry->isEntityCreated(entity)) return false;
+        Entity current = entity;
+        // a hierarchy is never deeper than the entity count; the bound only guards a broken cycle
+        for (int depth = 0; depth < 100000; depth++){
+            const Transform* transform = registry->findComponent<Transform>(current);
+            if (!transform || transform->parent == NULL_ENTITY) return false;
+            current = transform->parent;
+            if (current == ancestor) return true;
+            if (!registry->isEntityCreated(current)) return false;
+        }
+        return false;
+    }
+}
+
+bool PreviewOwner::overlaps(EntityRegistry* registry, Entity a, Entity b){
+    return isAncestorOrSelf(registry, a, b) || isAncestorOrSelf(registry, b, a);
 }
 
 PreviewOwner::Token PreviewOwner::acquire(uint32_t sceneId, Entity root, EntityRegistry* registry, const std::string& name, Stop stop){
-    (void)sceneId;
-    (void)root;
-    (void)registry;
-    (void)name;
-    (void)stop;
-    Token token = nextToken++;
-    liveTokens.insert(token);
-    return token;
+    Registry& reg = ownerRegistry();
+    // the owners in the way leave the registry first, then stop (in the order they came): a
+    // stop that releases its own token finds it gone, one that releases others finds them
+    std::vector<Entry> stopped;
+    for (auto it = reg.entries.begin(); it != reg.entries.end();){
+        if (it->owner.sceneId == sceneId && overlaps(registry, it->owner.root, root)){
+            stopped.push_back(std::move(*it));
+            it = reg.entries.erase(it);
+        }else{
+            ++it;
+        }
+    }
+    for (Entry& entry : stopped){
+        if (entry.stop) entry.stop();
+    }
+
+    Entry entry;
+    entry.owner.token = reg.nextToken++;
+    entry.owner.sceneId = sceneId;
+    entry.owner.root = root;
+    entry.owner.name = name;
+    entry.stop = std::move(stop);
+    reg.entries.push_back(std::move(entry));
+    return reg.entries.back().owner.token;
 }
 
 void PreviewOwner::release(Token token){
-    liveTokens.erase(token);
+    if (token == 0) return;
+    std::vector<Entry>& entries = ownerRegistry().entries;
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [token](const Entry& entry){ return entry.owner.token == token; }),
+                  entries.end());
 }
 
 bool PreviewOwner::owns(Token token){
-    return token != 0 && liveTokens.count(token) > 0;
+    if (token == 0) return false;
+    const std::vector<Entry>& entries = ownerRegistry().entries;
+    return std::any_of(entries.begin(), entries.end(), [token](const Entry& entry){ return entry.owner.token == token; });
 }
 
 PreviewOwner::Owner PreviewOwner::ownerOf(uint32_t sceneId, Entity root){
-    (void)sceneId;
-    (void)root;
+    for (const Entry& entry : ownerRegistry().entries){
+        if (entry.owner.sceneId == sceneId && entry.owner.root == root) return entry.owner;
+    }
     return Owner();
 }
 
 std::vector<PreviewOwner::Owner> PreviewOwner::owners(){
-    return {};
+    std::vector<Owner> out;
+    for (const Entry& entry : ownerRegistry().entries) out.push_back(entry.owner);
+    return out;
 }
 
 void PreviewOwner::releaseScene(uint32_t sceneId){
-    (void)sceneId;
+    std::vector<Entry>& entries = ownerRegistry().entries;
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [sceneId](const Entry& entry){ return entry.owner.sceneId == sceneId; }),
+                  entries.end());
+}
+
+PreviewOwner::Token PreviewOwner::acquireFor(const void* who, uint32_t sceneId, Entity root, EntityRegistry* registry,
+                                             const std::string& name, Stop stop){
+    if (!who) return acquire(sceneId, root, registry, name, std::move(stop));
+    for (Entry& entry : ownerRegistry().entries){
+        if (entry.who != who) continue;
+        if (entry.owner.sceneId == sceneId && entry.owner.root == root){
+            // still the owner of that root: nobody overlapping acquired it since
+            entry.stop = std::move(stop);
+            return entry.owner.token;
+        }
+        release(entry.owner.token);
+        break;
+    }
+    const Token token = acquire(sceneId, root, registry, name, std::move(stop));
+    for (Entry& entry : ownerRegistry().entries){
+        if (entry.owner.token == token) entry.who = who;
+    }
+    return token;
+}
+
+void PreviewOwner::releaseFor(const void* who){
+    if (!who) return;
+    std::vector<Entry>& entries = ownerRegistry().entries;
+    entries.erase(std::remove_if(entries.begin(), entries.end(), [who](const Entry& entry){ return entry.who == who; }), entries.end());
+}
+
+PreviewOwner::Token PreviewOwner::tokenOf(const void* who){
+    if (!who) return 0;
+    for (const Entry& entry : ownerRegistry().entries){
+        if (entry.who == who) return entry.owner.token;
+    }
+    return 0;
 }

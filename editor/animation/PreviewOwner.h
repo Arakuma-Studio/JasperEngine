@@ -7,10 +7,10 @@
 //   action preview, PoseEditSession) acquires the root first; acquiring stops the previous owner
 //   of that root (or of a root above or below it) first, so every snapshot is taken from the
 //   unpreviewed scene and restores happen in a safe order.
-// - Owner: T0 (API); T3a implements it, makes the Animation window acquire it and joins the Pose
-//   window (PoseEditSession::goIdle); T2c makes the Inspector's action preview acquire it
-//   (InspectorWindow.cpp is T2c's). Until T3a lands, acquire() grants every request with a new
-//   valid token and stops nobody.
+// - Owner: T0 (API); T3a implements it (the registry), makes the clip controller acquire it and
+//   joins the Pose window (PoseEditSession acquires when it first writes bones and its stop is
+//   goIdle); T2c makes the Inspector's action preview acquire it (InspectorWindow.cpp is T2c's);
+//   T3b the Animation window's entity-mode preview.
 // - Thread-safety: main thread.
 // - Invariants:
 //   * at most one owner per (scene, overlapping root); a token is released once (release of a
@@ -56,6 +56,20 @@ namespace jasperengine::editor{
         static Owner ownerOf(uint32_t sceneId, Entity root);
         static std::vector<Owner> owners();
         static void releaseScene(uint32_t sceneId);
+
+        // ---- additions (T3a) ----
+
+        // acquire() / release() keyed by the owning object, for owners with no place to keep a
+        // token (PoseEditSession): one ownership per `who`; acquiring again for the same root
+        // keeps it (nobody is stopped), for another root releases the old one first
+        static Token acquireFor(const void* who, uint32_t sceneId, Entity root, EntityRegistry* registry,
+                                const std::string& name, Stop stop);
+        static void releaseFor(const void* who);
+        // the token `who` holds, 0 when none
+        static Token tokenOf(const void* who);
+        // `a` and `b` (of one scene) are the same entity or one is an ancestor of the other by
+        // the Transform parents of `registry` (null: equality only)
+        static bool overlaps(EntityRegistry* registry, Entity a, Entity b);
     };
 
 }
