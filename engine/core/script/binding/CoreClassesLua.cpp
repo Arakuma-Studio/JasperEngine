@@ -5,6 +5,8 @@
 #include <optional>
 #include "log/Logger.h"
 
+#include <algorithm>
+
 #include "lua.hpp"
 
 #include "LuaBridge.h"
@@ -102,6 +104,45 @@ static int luaLayerMaskGetMask(lua_State* L){
     }
     lua_pushinteger(L, (lua_Integer)(int32_t)TagManager::getMask(names));
     return 1;
+}
+
+// Scene:findEntitiesWith / findChangedEntities / markChanged: component types by the name
+// they were registered with ("Transform", "MeshComponent"). False (logged) on an unknown name
+// or a value that is not a string.
+static bool luaComponentId(lua_State* L, int index, Scene* scene, const char* function, ComponentId& id){
+    if (lua_type(L, index) != LUA_TSTRING){
+        Log::error("Scene:%s: component names must be strings", function);
+        return false;
+    }
+    const std::string name = lua_tostring(L, index);
+    if (!scene->findComponentId(name, id)){
+        Log::error("Scene:%s: no component type '%s'", function, name.c_str());
+        return false;
+    }
+    return true;
+}
+
+// a Lua list of component names at `index` (nothing there: an empty list)
+static bool luaComponentIds(lua_State* L, int index, Scene* scene, const char* function, std::vector<ComponentId>& ids){
+    if (lua_isnoneornil(L, index)){
+        return true;
+    }
+    if (!lua_istable(L, index)){
+        Log::error("Scene:%s: expected a table of component names", function);
+        return false;
+    }
+    const lua_Integer count = (lua_Integer)lua_rawlen(L, index);
+    for (lua_Integer i = 1; i <= count; i++){
+        lua_rawgeti(L, index, i);
+        ComponentId id;
+        const bool ok = luaComponentId(L, -1, scene, function, id);
+        lua_pop(L, 1);
+        if (!ok){
+            return false;
+        }
+        ids.push_back(id);
+    }
+    return true;
 }
 
 // Physics and Physics2D. Layer masks are read as Unity's int and any integer is taken by
@@ -1741,6 +1782,34 @@ void LuaBinding::registerCoreClasses(lua_State *L){
                 render->setDynamicResolutionOverride(scale ? *scale : 0.0f);
         })
         .addFunction("getUISystem", [] (Scene* self, lua_State* L) { return self->getSystem<UISystem>().get(); })
+        // change tracking: the tick a change made from now on is newer than
+        .addFunction("getChangeTick", [] (Scene* self, lua_State* L) -> lua_Integer { return (lua_Integer)self->changeTick(); })
+        // findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}]): ids in the
+        // order of the first type's array (parents before children for Transform)
+        .addFunction("findEntitiesWith", [] (Scene* self, lua_State* L) -> std::vector<Entity> {
+            std::vector<ComponentId> include, exclude;
+            if (!luaComponentIds(L, 2, self, "findEntitiesWith", include) || !luaComponentIds(L, 3, self, "findEntitiesWith", exclude)){
+                return {};
+            }
+            return self->queryEntities(include, exclude);
+        })
+        // findChangedEntities("Transform", sinceTick): those whose component changed after it
+        .addFunction("findChangedEntities", [] (Scene* self, lua_State* L) -> std::vector<Entity> {
+            ComponentId id;
+            if (!luaComponentId(L, 2, self, "findChangedEntities", id)){
+                return {};
+            }
+            const Tick since = (Tick)std::max<lua_Integer>(0, luaL_optinteger(L, 3, 0));
+            return self->queryEntities({id}, {}, &since);
+        })
+        // markChanged(entity, "MeshComponent"): false when the entity has no such component
+        .addFunction("markChanged", [] (Scene* self, lua_State* L) -> bool {
+            ComponentId id;
+            if (!luaComponentId(L, 3, self, "markChanged", id)){
+                return false;
+            }
+            return self->markChanged(id, (Entity)luaL_checkinteger(L, 2));
+        })
         .endClass();
 
     // Log.*: category lua, with the calling chunk and line. debug is compiled out of release

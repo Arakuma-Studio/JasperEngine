@@ -32,6 +32,7 @@ InspectorWindow* McpContext::inspectorWindow() const { return appRef.getInspecto
 GameWindow* McpContext::gameWindow() const { return appRef.getGameWindow(); }
 AnimationWindow* McpContext::animationWindow() const { return appRef.getAnimationWindow(); }
 TerrainEditWindow* McpContext::terrainEditWindow() const { return appRef.getTerrainEditWindow(); }
+SystemsWindow* McpContext::systemsWindow() const { return appRef.getSystemsWindow(); }
 PlayInput* McpContext::playInput() const { return appRef.getPlayInput(); }
 
 bool McpContext::isPlaying() const {
