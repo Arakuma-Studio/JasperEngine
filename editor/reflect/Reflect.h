@@ -425,6 +425,17 @@ namespace jasperengine::editor::reflect {
         return value;
     }
 
+    // ---- multi-object editing (the Inspector) ------------------------------------------
+
+    struct Mixed {
+        bool any = false;                 // the values differ
+        bool lanes[4] = {};               // per lane of a vector or a colour
+        bool sizeDiffers = false;         // arrays of different lengths: their size and order read-only
+    };
+    // The values of a field on several components compared as the Inspector compares them (floats
+    // within 1e-4, vectors lane by lane, arrays by length then element by element)
+    Mixed mixedValues(const ComponentDesc& desc, const std::vector<void*>& comps, std::string_view path);
+
     // ---- MCP ----------------------------------------------------------------------------
 
     // The component's JSON Schema (Draft 2020-12): every property with type, enum tokens,

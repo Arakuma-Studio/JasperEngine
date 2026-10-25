@@ -11,6 +11,7 @@
 // Without a component an array lists one element with no index when ListTemplate.
 
 #include "reflect/Reflect.h"
+#include "reflect/TypeOps.h"
 
 #include <mutex>
 #include <unordered_map>
@@ -155,4 +156,50 @@ PropertyData reflect::property(const ComponentDesc& desc, void* comp, std::strin
 void reflect::listProperties(const ComponentDesc& desc, void* comp, std::map<std::string, PropertyData>& out) {
     listStruct(desc.body, comp, desc.body.defaults ? desc.body.defaults() : nullptr, std::string(), out);
     if (desc.extraProperties) desc.extraProperties(comp, out);
+}
+
+Mixed reflect::mixedValues(const ComponentDesc& desc, const std::vector<void*>& comps, std::string_view path) {
+    constexpr float epsilon = 1e-4f;
+    Mixed mixed;
+    std::vector<FieldRef> refs;
+    for (void* comp : comps) {
+        FieldRef ref = comp ? resolve(desc, comp, path) : FieldRef();
+        if (ref) refs.push_back(ref);
+    }
+    if (refs.size() < 2) return mixed;
+    const FieldRef& first = refs.front();
+    size_t lanes = 0;
+    switch (first.ops->kind) {
+        case Kind::Vector2: lanes = 2; break;
+        case Kind::Vector3: lanes = 3; break;
+        case Kind::Vector4: case Kind::Quat: case Kind::Rect: lanes = 4; break;
+        default: break;
+    }
+    for (size_t i = 1; i < refs.size(); i++) {
+        const FieldRef& other = refs[i];
+        if (other.ops != first.ops) {
+            mixed.any = true;
+            continue;
+        }
+        if (lanes) {
+            const float* a = static_cast<const float*>(first.ref);
+            const float* b = static_cast<const float*>(other.ref);
+            for (size_t lane = 0; lane < lanes; lane++) {
+                if (!reflect::detail::floatEquals(a[lane], b[lane], epsilon)) {
+                    mixed.lanes[lane] = true;
+                    mixed.any = true;
+                }
+            }
+            continue;
+        }
+        if (first.ops->kind == Kind::Array && !first.element && first.field->arrayOps) {
+            if (first.field->arrayOps->size(first.ref) != first.field->arrayOps->size(other.ref)) {
+                mixed.sizeDiffers = true;
+                mixed.any = true;
+                continue;
+            }
+        }
+        if (!first.ops->equals || !first.ops->equals(first.ref, other.ref, epsilon)) mixed.any = true;
+    }
+    return mixed;
 }

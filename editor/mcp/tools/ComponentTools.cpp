@@ -11,6 +11,7 @@
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
 #include "mcp/McpValues.h"
+#include "reflect/Reflect.h"
 
 #include "Out.h"
 #include "Project.h"
@@ -300,6 +301,10 @@ void getEntityTool(const CallPtr& call) {
                 entry["options"] = McpValues::enumNames(McpValues::easeOptions());
             }
             if (overridden.count(propName) || overridden.count(PrefabObjectOverrides::WHOLE_COMPONENT)) entry["overridden"] = true;
+            // what its reflection table says of it: label, unit, ranges, tooltip, read-only, asset kind, group (S08 R25)
+            if (const reflect::ComponentDesc* desc = reflect::find(type)) {
+                if (const reflect::FieldDesc* field = reflect::findField(*desc, propName)) entry.update(reflect::fieldMetadata(*field));
+            }
             props[propName] = entry;
         }
         // explicitly asked names that are not Catalog properties: the component encoding's keys
@@ -390,6 +395,12 @@ void setPropertiesTool(const CallPtr& call) {
         call->fail("Pass changes: [{component, property, value}] or values: {component: {property: value}}.");
         return;
     }
+    // aliases renamed (with a warning), read-only fields and values outside a hard range refused (S08 R26)
+    std::vector<std::string> warnings;
+    if (!McpValues::checkReflectedChanges(changes, warnings, error)) {
+        call->fail(error);
+        return;
+    }
     auto* multi = new MultiPropertyCmd();
     if (!McpValues::appendChangeCommands(project, scene, entities, changes, *multi, error)) {
         delete multi;
@@ -405,8 +416,13 @@ void setPropertiesTool(const CallPtr& call) {
     Json data = {{"scene_id", sceneId}, {"entities", Json::array()}};
     for (Entity entity : entities) data["entities"].push_back(McpRefs::entityJson(current, entity));
     data["values"] = readBack(project, current, entities[0], changes);
+    std::string warningText;
+    if (!warnings.empty()) {
+        data["warnings"] = warnings;
+        for (const std::string& warning : warnings) warningText += " Warning: " + warning + ".";
+    }
     call->ok("Set " + std::to_string(changes.size()) + " propert" + (changes.size() == 1 ? "y" : "ies") + " on " +
-             std::to_string(entities.size()) + " GameObject(s) (one undo step). New values: " + data["values"].dump(), data);
+             std::to_string(entities.size()) + " GameObject(s) (one undo step). New values: " + data["values"].dump() + warningText, data);
 }
 
 // ------------------------------------------------------------------ get_inspector_layout
@@ -899,7 +915,8 @@ void listComponentTypesTool(const CallPtr& call) {
                  std::to_string(props.size()) + " properties (indexed ones like submeshes[0].x or colliders[0].x exist per element; "
                  "see get_entity).",
                  Json{{"component", McpRefs::componentName(type)}, {"display_name", Catalog::getComponentDisplayName(type)},
-                      {"addable", ComponentAddDialog::isListed(type)}, {"properties", props}});
+                      {"addable", ComponentAddDialog::isListed(type)}, {"properties", props},
+                      {"schema", reflect::find(type) ? reflect::schema(*reflect::find(type)) : Json::object()}});
         return;
     }
     Json list = Json::array();
@@ -918,6 +935,24 @@ void listComponentTypesTool(const CallPtr& call) {
 } // namespace
 
 void registerComponentTools(McpRegistry& registry) {
+
+    // jasper://reflection: every component and enum the editor knows, with their schemas and
+    // the scene format version (S08 R27; the CLI and the scripting API description read it)
+    {
+        ResourceDef reflection;
+        reflection.uri = "jasper://reflection";
+        reflection.name = "reflection";
+        reflection.title = "Component reflection";
+        reflection.description = "Every component (key, fields with kind, YAML key, flags, range, unit, enum, JSON Schema) and enum "
+                                 "(tokens, labels), with the scene format version.";
+        reflection.mimeType = "application/json";
+        reflection.read = [](const std::string& uri) {
+            ResourceResult result;
+            result.contents.push_back({uri, "application/json", reflect::reflectionDocument().dump(), std::string()});
+            return result;
+        };
+        registry.addResource(std::move(reflection));
+    }
 
     {
         ToolDef tool;

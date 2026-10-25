@@ -746,6 +746,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
     ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorDefault.cpp
+    ${EDITOR_DIR}/window/InspectorPhysics.cpp
+    ${EDITOR_DIR}/window/InspectorAnimation.cpp
+    ${EDITOR_DIR}/window/InspectorRenderers.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
@@ -820,6 +823,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/DuplicateEntityCmd.cpp
     ${EDITOR_DIR}/command/type/PasteEntitiesCmd.cpp
     ${EDITOR_DIR}/command/type/ComponentValuesCmd.cpp
+    ${EDITOR_DIR}/command/type/ReflectedValueCmd.cpp
     ${EDITOR_DIR}/command/type/AtmospherePresetCmd.cpp
     ${EDITOR_DIR}/command/type/MoveEntityOrderCmd.cpp
     ${EDITOR_DIR}/command/type/ObjectTransformCmd.cpp

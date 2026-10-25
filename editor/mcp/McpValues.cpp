@@ -34,6 +34,7 @@
 #include "util/EntityClipboard.h"
 #include "util/Util.h"
 #include "reflect/Enums.h"
+#include "reflect/Reflect.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1980,6 +1981,76 @@ static bool isWholeValueProperty(Scene* scene, Entity entity, ComponentType comp
            (property == "stencil" || endsWith(property, ".stencil") || endsWith(property, "material.extraPass") ||
             property == "shaderUniforms" || endsWith(property, "shaderParams") || endsWith(property, "shaderTextures") ||
             endsWith(property, "shaderFeatures"));
+}
+
+namespace {
+
+    // The numbers of a value outside [min, max] (a number, or the lanes of a vector or colour)
+    bool outsideRange(const Json& value, double min, double max, double& bad) {
+        auto check = [&](const Json& number) {
+            if (!number.is_number()) return false;
+            const double v = number.get<double>();
+            if (v < min || v > max) {
+                bad = v;
+                return true;
+            }
+            return false;
+        };
+        if (value.is_number()) return check(value);
+        if (value.is_array()) {
+            for (const Json& lane : value) {
+                if (check(lane)) return true;
+            }
+        } else if (value.is_object()) {
+            for (const char* key : {"x", "y", "z", "w", "r", "g", "b", "a"}) {
+                if (value.contains(key) && check(value[key])) return true;
+            }
+        }
+        return false;
+    }
+
+    std::string rangeText(const reflect::FieldDesc& field) {
+        const bool low = std::isfinite(field.min);
+        const bool high = std::isfinite(field.max);
+        if (low && high) return "between " + Json(McpValues::number(field.min)).dump() + " and " + Json(McpValues::number(field.max)).dump();
+        if (low) return "at least " + Json(McpValues::number(field.min)).dump();
+        return "at most " + Json(McpValues::number(field.max)).dump();
+    }
+
+}
+
+bool McpValues::checkReflectedChanges(std::vector<Change>& changes, std::vector<std::string>& warnings, std::string& error) {
+    for (Change& change : changes) {
+        const reflect::ComponentDesc* desc = reflect::find(change.component);
+        if (!desc) continue;
+        bool viaAlias = false;
+        const reflect::FieldDesc* field = reflect::findField(*desc, change.property, &viaAlias);
+        if (!field) continue;
+        const std::string component = McpRefs::componentName(change.component);
+        if (viaAlias) {
+            const std::string canonical = reflect::canonicalPath(*desc, nullptr, change.property);
+            if (!canonical.empty() && canonical != change.property) {
+                warnings.push_back(std::string(desc->key) + "." + change.property + " is now " + desc->key + "." + canonical);
+                change.property = canonical;
+            }
+        }
+        if (field->flags & (reflect::ReadOnly | reflect::NoMcpWrite | reflect::Derived)) {
+            error = component + "." + change.property + " is read-only: the editor sets it.";
+            return false;
+        }
+        double bad = 0.0;
+        const bool numeric = field->kind == reflect::Kind::Float || field->kind == reflect::Kind::Double || field->kind == reflect::Kind::Int ||
+                             field->kind == reflect::Kind::UInt || field->kind == reflect::Kind::Vector2 || field->kind == reflect::Kind::Vector3 ||
+                             field->kind == reflect::Kind::Vector4;
+        const Json& value = change.op == "set" || change.op == "insert" ? change.value : Json();
+        if (numeric && reflect::hasRange(*field) && outsideRange(value, field->min, field->max, bad)) {
+            const double nearest = bad < field->min ? field->min : field->max;
+            error = component + "." + change.property + " must be " + rangeText(*field) + " (" + Json(bad).dump() + " is out of range); the nearest "
+                    "valid value is " + Json(McpValues::number(static_cast<float>(nearest))).dump() + ".";
+            return false;
+        }
+    }
+    return true;
 }
 
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
