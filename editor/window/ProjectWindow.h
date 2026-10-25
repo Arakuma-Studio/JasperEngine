@@ -45,7 +45,8 @@ namespace jasperengine::editor {
         HTML,
         CSS,
         POSE_ANIMATION,     // .poseanim (the Pose Animation window)
-        HUMANOID            // .humanoid bone-mapping sidecar (plain data)
+        HUMANOID,           // .humanoid bone-mapping sidecar (plain data)
+        ANIMATION_CLIP      // .anim (the Animation window; an icon, no thumbnail)
     };
 
     struct FileEntry {
@@ -120,6 +121,9 @@ namespace jasperengine::editor {
         // drawn by the editor (PoseThumbnails), not a bundled image
         Texture poseAnimationIcon;
         std::vector<uint8_t> poseAnimationIconPixels;
+        // drawn by the editor too: a film strip (animation clips spec 4.1, 9.R53)
+        Texture animationClipIcon;
+        std::vector<uint8_t> animationClipIconPixels;
         // Bounded cache of GPU thumbnail textures; must stay well below the
         // sokol image/sampler pool sizes (2048), which are shared with scenes
         static constexpr size_t MAX_THUMBNAIL_TEXTURES = 512;
@@ -273,6 +277,11 @@ namespace jasperengine::editor {
         const std::vector<fs::path>& treeSubdirectories(const fs::path& path);
 
         void scanDirectory(const fs::path& path);
+        // Opens a file as a double-click does (the Animation window for an .anim)
+        void openFile(const FileEntry& file, const fs::path& filePath);
+        // The Inspector shows the file clicked last (Unity's activeObject, spec 9.R30): a single
+        // file of the selection, nothing for a folder or an emptied selection
+        void updateInspectedAsset(const std::string& clickedName);
         void rebuildFileIndex();
         FileEntry makeFileEntry(const fs::directory_entry& entry, const std::string& name);
         void collectSearchResults();
@@ -354,6 +363,10 @@ namespace jasperengine::editor {
         void assetsCreateHtmlDocument();
         // Assets > Create > Pose Animation: a .poseanim with one neutral pose (Pose Animation window)
         void assetsCreatePoseAnimation();
+        // Assets > Create > Animation Clip: an empty "New Animation.anim" in the current folder,
+        // one project undo step (AnimationClipDocument::create), then renamed in place (the
+        // App's createClipAsset hook, set by this window)
+        void assetsCreateAnimationClip();
         void assetsShowInFileManager();
         void assetsOpenSelected();
         void assetsRenameSelected();

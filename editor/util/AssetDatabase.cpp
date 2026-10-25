@@ -8,6 +8,7 @@
 #include "util/SHA1.h"
 #include "util/Util.h"
 
+#include "animation/AnimationClipIO.h"
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
@@ -59,6 +60,16 @@ namespace {
         return value;
     }
 
+    // .anim clips are JSON: their GUID is the top-level "guid" member (AnimationClipIO)
+    bool isClipFile(const fs::path& path) {
+        return editor::Util::isAnimationClipFile(path.string());
+    }
+
+    // for the warnings
+    const char* kindOf(const std::string& relative) {
+        return editor::Util::isAnimationClipFile(relative) ? "Animation clip" : "Prefab";
+    }
+
     bool skippedDirectory(const std::string& name) {
         // '.jasperengine' holds generated files and the cache, '.trash' deleted files, 'build'
         // the build artifacts (the same set Project::findProjectFiles skips)
@@ -68,7 +79,7 @@ namespace {
 }
 
 bool editor::AssetDatabase::isTrackedFile(const fs::path& path) {
-    return Util::isPrefabFile(path.string());
+    return Util::isPrefabFile(path.string()) || Util::isAnimationClipFile(path.string());
 }
 
 std::string editor::AssetDatabase::generateGuid() {
@@ -99,6 +110,10 @@ bool editor::AssetDatabase::isGuid(const std::string& text) {
 }
 
 std::string editor::AssetDatabase::readGuid(const fs::path& fullPath) {
+    if (isClipFile(fullPath)) {
+        std::string text;
+        return readText(fullPath, text) ? anim::readClipGuid(text) : std::string();
+    }
     std::ifstream file(fullPath, std::ios::binary);
     if (!file) {
         return {};
@@ -122,6 +137,18 @@ bool editor::AssetDatabase::writeGuid(const fs::path& fullPath, const std::strin
     std::string text;
     if (!readText(fullPath, text)) {
         return false;
+    }
+    if (isClipFile(fullPath)) {
+        // the member replaced or inserted after "version", the rest of the text unchanged; a
+        // file that is not a clip (a Unity YAML .anim, broken JSON) is left alone
+        if (!anim::replaceClipGuid(text, guid)) {
+            return false;
+        }
+        if (!writeText(fullPath, text)) {
+            Out::warning("Could not write the GUID of %s", fullPath.string().c_str());
+            return false;
+        }
+        return true;
     }
     const std::string newline = text.find("\r\n") != std::string::npos ? "\r\n" : "\n";
     const std::string line = "guid: " + guid;
@@ -371,7 +398,7 @@ void editor::AssetDatabase::open(const fs::path& path) {
         file.guid = readGuid(projectPath / relative);
         if (!isGuid(file.guid)) {
             if (!file.guid.empty()) {
-                Out::warning("Prefab %s has an invalid GUID \"%s\", it gets a new one", relative.c_str(), file.guid.c_str());
+                Out::warning("%s %s has an invalid GUID \"%s\", it gets a new one", kindOf(relative), relative.c_str(), file.guid.c_str());
             } else {
                 file.legacy = true;
             }
@@ -415,8 +442,8 @@ void editor::AssetDatabase::open(const fs::path& path) {
         }
         for (size_t index : indices) {
             if (index != keeper) {
-                Out::warning("Prefab %s has the GUID of %s (a copy?), it gets a new one",
-                    found[index].relative.c_str(), found[keeper].relative.c_str());
+                Out::warning("%s %s has the GUID of %s (a copy?), it gets a new one",
+                    kindOf(found[index].relative), found[index].relative.c_str(), found[keeper].relative.c_str());
                 found[index].guid.clear();
             }
         }

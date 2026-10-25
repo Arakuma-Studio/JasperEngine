@@ -54,6 +54,10 @@ void editor::CopyFileCmd::moveFile(const fs::path& source, const fs::path& desti
     if (isDirectory || Util::isAssetFile(extension)) {
         project->remapAssetFilePath(source, destination);
     }
+    // clips: their GUIDs follow, documents and players learn the new path
+    if (isDirectory || Util::isAnimationClipFile(extension)) {
+        project->remapClipFilePath(source, destination);
+    }
     if (isDirectory || Util::isShaderFile(extension)) {
         project->remapShaderFilePath(source, destination);
     }
@@ -77,12 +81,17 @@ bool editor::CopyFileCmd::execute(){
                     const auto options = fs::copy_options::overwrite_existing |
                         (isDir ? fs::copy_options::recursive : fs::copy_options::none);
                     fs::copy(sourceFs, destFs, options);
-                    // copied prefabs are new assets: new GUIDs, the same ones on a redo
-                    if (project && (isDir || Util::isPrefabFile(extension))) {
+                    // copied prefabs and clips are new assets: new GUIDs, the same ones on a redo
+                    if (project && (isDir || AssetDatabase::isTrackedFile(destFs))) {
                         project->importPrefabFiles(destFs, true, &copyGuids);
                     }
                 }else{
                     moveFile(sourceFs, destFs, isDir);
+                    // clips previewing a moved model (or taken from it) name it again, in this step
+                    if (project) {
+                        std::vector<ClipHintEdit> edits = remapClipHints(project, sourceFs, destFs);
+                        clipHintEdits.insert(clipHintEdits.end(), edits.begin(), edits.end());
+                    }
                 }
             }
         } catch (const fs::filesystem_error& e) {
@@ -101,6 +110,8 @@ bool editor::CopyFileCmd::execute(){
 
 void editor::CopyFileCmd::undo(){
     bool touchedShaderSource = false;
+    restoreClipHints(project, clipHintEdits);
+    clipHintEdits.clear();
 
     for (const auto& fdata : files) {
         fs::path sourceFs = fdata.targetDirectory / fdata.filename;
@@ -122,6 +133,10 @@ void editor::CopyFileCmd::undo(){
                     // instances of the copies made since become Missing Prefabs
                     if (project && (isDir || Util::isPrefabFile(extension))) {
                         project->cleanupPrefabFilePath(sourceFs);
+                    }
+                    // references to the copied clips stay (Missing until a redo)
+                    if (project && (isDir || Util::isAnimationClipFile(extension))) {
+                        project->cleanupClipFilePath(sourceFs);
                     }
                 }else{
                     moveFile(sourceFs, destFs, isDir);

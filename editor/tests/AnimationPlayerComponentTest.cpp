@@ -359,10 +359,10 @@ TEST(AnimationPlayerComponent, ProjectUtilsAddsAndRemoves) {
 TEST(AnimationPlayerComponent, ClipReferencesNeedAProjectToResolve) {
     Scene scene;
     const Entity entity = playerEntity(scene, authoredPlayer());
-    EXPECT_FALSE(Stream::resolveAnimationPlayerClips(nullptr, &scene));
-    // no project open (no AssetDatabase): nothing changes
+    // no project open (no AssetDatabase): nothing changes (Project::resolveRegistryClipRefs, the
+    // one resolver; AnimationClipAssetsTest covers it with a project)
     Project project;
-    EXPECT_FALSE(Stream::resolveAnimationPlayerClips(&project, &scene));
+    EXPECT_FALSE(project.resolveRegistryClipRefs(&scene));
     EXPECT_EQ(scene.getComponent<AnimationPlayerComponent>(entity).clips, authoredPlayer().clips);
 }
 

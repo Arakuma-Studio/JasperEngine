@@ -474,12 +474,6 @@ namespace jasperengine::editor {
         // are cleared.
         static YAML::Node encodeAnimationPlayerComponent(const AnimationPlayerComponent& player);
         static AnimationPlayerComponent decodeAnimationPlayerComponent(const YAML::Node& node, const AnimationPlayerComponent* oldPlayer = nullptr);
-        // GUID first, path as the hint (R8): every Animation Player clip entry of the registry
-        // whose GUID the project's AssetDatabase knows takes the file's current path, and an
-        // entry without a GUID gets the one of the file at its path. True when a path changed
-        // (the scene is then saved with the new one). Main thread or play startup: the
-        // database is mutex-guarded; nothing is loaded.
-        static bool resolveAnimationPlayerClips(const Project* project, EntityRegistry* registry);
 
         static YAML::Node encodeCameraComponent(const CameraComponent& camera);
         static CameraComponent decodeCameraComponent(const YAML::Node& node, const CameraComponent* oldCamera = nullptr);
