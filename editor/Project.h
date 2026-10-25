@@ -1654,6 +1654,10 @@ namespace jasperengine::editor{
         // asset only by path (assigned since the last save) get its GUID, so they follow it
         void bindLoadedAssetRefs();
         bool resolveRegistryAssetRefs(EntityRegistry* registry, bool loading);
+        // A material about to be written to a .material file: its references that name an
+        // asset only by path (a tool's or a paste's new values) get the asset's GUID, so the
+        // file follows the asset when it moves (R13 rewrites no referrer)
+        void bindMaterialAssetRefs(Material& material) const;
         // The identity keys (guid, formerGuids) a scene, prefab or material file is written
         // with, put at the top of its root; returns the GUID (a new one for a new file)
         Guid prepareDocumentIdentity(YAML::Node& root, const std::filesystem::path& relativePath);

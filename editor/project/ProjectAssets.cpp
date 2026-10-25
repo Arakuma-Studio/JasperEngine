@@ -173,6 +173,24 @@ bool editor::Project::resolveSceneAssetRefs(SceneProject& sceneProject, bool loa
     return hintChanged;
 }
 
+void editor::Project::bindMaterialAssetRefs(Material& material) const {
+    if (!assetDatabase.isOpen()) {
+        return;
+    }
+    const AssetIndex::Roots roots = getAssetRoots();
+    AssetRefSchema::forEachMaterialRef(material, std::string(), [&](AssetRef& ref, const AssetRefSite& site) {
+        // name: in a .material file, the file itself (not a reference)
+        if (!ref.guid.isNull() || site.kind == DepEdgeKind::MeshMaterialFile) {
+            return;
+        }
+        const std::string hint = AssetIndex::toProjectRelative(roots, site.base, ref.path);
+        const AssetDatabase::Resolution found = assetDatabase.resolve(ref.guid, hint, site.expected, true, true);
+        if (found.found()) {
+            ref.guid = found.guid;
+        }
+    });
+}
+
 void editor::Project::refreshAssetHints() {
     for (SceneProject* sceneProject : getScenesAndPrefabStages()) {
         if (sceneProject->scene && resolveSceneAssetRefs(*sceneProject, false)) {
@@ -247,7 +265,9 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
 editor::SaveResult editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material,
                                                     DegradedSavePolicy policy, std::string* error) {
     const fs::path relative = normalizeToProjectRelative(relativePath);
-    YAML::Node root = Stream::encodeMaterial(material);
+    Material bound = material;
+    bindMaterialAssetRefs(bound);
+    YAML::Node root = Stream::encodeMaterial(bound);
     const Guid guid = prepareDocumentIdentity(root, relative);
     const SaveResult saved = DocumentFiles::saveMaterial(projectPath / relative, root, policy, error);
     if (saved == SaveResult::Saved) {
