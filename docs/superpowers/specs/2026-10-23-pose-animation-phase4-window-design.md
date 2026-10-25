@@ -113,7 +113,15 @@ Additions (implementation; the members above are unchanged, these are extra):
     adopted explicitly: the next apply re-captures the stepped rest as the saved state and poses again
     (no change detection: a bone the pose leaves at its rest value would look unchanged). A prefab
     override revert (`PrefabOverrideCmd` revert ops, `PrefabOverridesCmd::revertAll`) and a reparent
-    (`MoveEntityOrderCmd`, whose local transform is recomputed from the world) suspend first too.
+    (`MoveEntityOrderCmd`, whose local transform is recomputed from the world) suspend first too: the
+    move suspends when the branch holds a posed bone or the model, or the old or new parent is (or is
+    under) one (a prop held by a posed hand), and recomputes the moved GameObject's world (and the
+    non-bone GameObjects between it and the bone) from the restored rest (`suspendActiveForMove`).
+  - Saving the bones (the first apply) recomputes, parents first, the matrices of every bone (and
+    ancestor) whose Transform has an update pending (`refreshPendingTransforms`, the transform
+    system's `RenderSystem::updateTransform`): a keyboard / menu undo runs in `App::show` before the
+    session's update and before the transform system, and its bones' saved world fields would be
+    the pre-undo ones (third re-review).
   - The rig follows the model's `.humanoid` sidecar: a change on disk (Map Bones, its undo/redo, MCP
     `set_humanoid`) rebinds.
   - Global Edit stays active through window edits that keep the poses (angles, offset, hold,

@@ -100,6 +100,10 @@ namespace jasperengine::editor{
         // suspend() on the active session when `entity` of `sceneId` is one of its posed bones
         // (not the model): before a command reads and writes its Transform
         static void suspendActiveForBone(uint32_t sceneId, Entity entity);
+        // suspend() before `source` of `sceneId` moves from under `oldParent` to under `newParent`
+        // keeping its world transform, when the branch holds a posed bone or the model, or either
+        // parent is (or is under) a posed bone or the model
+        static void suspendActiveForMove(uint32_t sceneId, Entity source, Entity oldParent, Entity newParent);
         Project* project() const { return projectPtr; }
 
         bool bound() const { return rigPtr != nullptr; }
@@ -247,6 +251,8 @@ namespace jasperengine::editor{
         void notify();
         void applyPose(const pose::HumanPose& pose);
         void restoreBones();
+        // the bones (and their ancestors) with a transform update pending: matrices recomputed now
+        void refreshPendingTransforms();
         void applyCurrent();                 // what the mode shows: working pose / preview frame
         void samplePreview(pose::HumanPose& out);
         void documentChanged(int change);

@@ -513,3 +513,126 @@ async def test_copies_of_a_posed_character_get_its_rest_bones(ed: Editor):
         ed.check(close(copied, S["rest"]), f"the copy has the rest bones: {copied} vs {S['rest']}")
     finally:
         await ed.call("undo", scene="Main Scene")
+
+
+def same_file(ed: Editor, a: str, b: str, what: str) -> None:
+    """Two scene file texts are byte for byte the same (the diff's first lines otherwise)."""
+    if a == b:
+        return
+    import difflib
+    diff = list(difflib.unified_diff(a.splitlines(), b.splitlines(), lineterm="", n=0))
+    ed.check(False, f"{what}: the files differ ({len(diff)} diff lines):\n" + "\n".join(diff[:24]))
+
+
+async def save_text(ed: Editor) -> str:
+    await ed.call("wait", seconds=0.3)
+    await ed.call("save_scene", scene="Main Scene")
+    return (ed.project / SCENE_FILE).read_text(encoding="utf-8")
+
+
+async def bone_local(ed: Editor, name: str):
+    full = await ed.call("get_entity", entity=name, detail="full")
+
+    def value(key):
+        v = harness.find_key(full, key)
+        if isinstance(v, dict):
+            v = v.get("value", v)
+            v = v.get("quat", v) if isinstance(v, dict) else v
+        return v
+    return value("rotation"), value("position")
+
+
+async def test_keyboard_undo_while_posed_saves_consistent_bones(ed: Editor):
+    """Ctrl+Z with the Hierarchy focused (App::show's undo, in the frame the session then saves the
+    bones again, before the transform system ran): a save while posed and one after leaving posing
+    are what the scene saved before the edit (the bones' world matrices recomputed when saved).
+    Real key events through ImGui's queue (pose.input; re-review probe test_probe_kbd_undo.py)."""
+    bone = "mixamorig:LeftForeArm"
+    await leave_posing(ed)
+    before = await save_text(ed)
+    await pose_again(ed)
+    await ed.call("set_transform", entity=bone, rotation={"euler": [30, 0, 0]})
+    await ed.call("wait", seconds=0.3)
+    await ed.call("focus_window", window="hierarchy")
+    await ed.call("wait", seconds=0.3)
+    await focus(ed, input={"keys": [{"key": "z", "ctrl": True}]})
+    await ed.call("wait", seconds=0.5)
+    ed.check_eq((await state(ed))["mode"], "posing", "still posing after the undo")
+    posed = await save_text(ed)
+    await leave_posing(ed)
+    after = await save_text(ed)
+    same_file(ed, before, after, "the keyboard undo took the edit back")
+    same_file(ed, after, posed, "the save while posed after the keyboard undo")
+
+
+async def test_prefab_revert_of_a_posed_bone(ed: Editor):
+    """A prefab override revert on a posed bone writes its rest (the pose's restore does not put the
+    edit back), and the scene saves as the unedited instance."""
+    bone = "mixamorig:LeftForeArm"
+    await leave_posing(ed)
+    await ed.call("create_prefab", entity="Hero", path="assets/prefabs/pose_hero.prefab")
+    try:
+        rest = await bone_local(ed, bone)
+        base = await save_text(ed)
+        await pose_again(ed)
+        await ed.call("set_transform", entity=bone, rotation={"euler": [30, 0, 0]})
+        await ed.call("wait", seconds=0.3)
+        await ed.call("prefab_overrides", action="revert", entity=bone, component="transform")
+        await ed.call("wait", seconds=0.3)
+        ed.check_eq((await state(ed))["mode"], "posing", "still posing after the revert")
+        await leave_posing(ed)
+        back = await bone_local(ed, bone)
+        ed.check(close(back[0], rest[0]), f"reverted to the prefab's rest: {back} vs {rest}")
+        same_file(ed, base, await save_text(ed), "the reverted instance")
+    finally:
+        await ed.call("select_entities", entities=["Ground"])
+        await ed.call("undo", scene="Main Scene", steps=3)
+
+
+async def test_reparenting_a_posed_bone_keeps_its_rest_world(ed: Editor):
+    """Moving a posed bone in the hierarchy (MoveEntityOrderCmd, keep world: joints can only be
+    reordered among their siblings) recomputes its local transform from the rest world, as the same
+    move made without posing does: the same transform and the same saved file."""
+    bone = THIGH
+    await leave_posing(ed)
+    await ed.call("move_entity", entity=bone, before="mixamorig:LeftUpLeg")
+    idle = await bone_local(ed, bone)
+    idle_text = await save_text(ed)
+    await ed.call("undo", scene="Main Scene")
+    await pose_again(ed)
+    ed.check(not close((await bone_local(ed, bone))[0], idle[0]), "the thigh is posed")
+    await ed.call("move_entity", entity=bone, before="mixamorig:LeftUpLeg")
+    await ed.call("wait", seconds=0.3)
+    try:
+        await leave_posing(ed)
+        moved = await bone_local(ed, bone)
+        ed.check(close(moved[0], idle[0], 1e-4) and all(abs(a - b) <= 1e-4 for a, b in zip(moved[1], idle[1])),
+                 f"the local transform from the rest world: {moved} vs {idle}")
+        same_file(ed, idle_text, await save_text(ed), "the reparented bone")
+    finally:
+        await ed.call("select_entities", entities=["Ground"])
+        await ed.call("undo", scene="Main Scene")
+
+
+async def test_moving_a_prop_off_a_posed_bone_keeps_its_rest_world(ed: Editor):
+    """A GameObject held by a posed bone (a prop under the right leg, whose world the posed thigh
+    moves) reparented to the scene root keeping its world: the rest world, as without posing."""
+    await leave_posing(ed)
+    await ed.call("create_entity", name="Prop", parent="mixamorig:RightLeg", position=[0.1, 0.0, 0.0])
+    try:
+        await ed.call("move_entity", entity="Prop", parent=None)
+        idle = await bone_local(ed, "Prop")
+        idle_text = await save_text(ed)
+        await ed.call("undo", scene="Main Scene")
+        await pose_again(ed)
+        await ed.call("move_entity", entity="Prop", parent=None)
+        await ed.call("wait", seconds=0.3)
+        await leave_posing(ed)
+        moved = await bone_local(ed, "Prop")
+        ed.check(close(moved[0], idle[0], 1e-4) and all(abs(a - b) <= 1e-4 for a, b in zip(moved[1], idle[1])),
+                 f"the prop's world is the rest's: {moved} vs {idle}")
+        same_file(ed, idle_text, await save_text(ed), "the moved prop")
+        await ed.call("undo", scene="Main Scene")
+    finally:
+        await ed.call("select_entities", entities=["Ground"])
+        await ed.call("undo", scene="Main Scene")
