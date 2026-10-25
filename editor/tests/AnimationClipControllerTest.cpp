@@ -1286,3 +1286,105 @@ TEST_F(AnimationClipControllerTest, RelativeKeysModifiedKeysPendingValuesAndColl
     expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "the Arm at its rest (the direct write was no scene edit)");
     EXPECT_TRUE(s.transform(tail).rotation == Quaternion()) << "the recorded Tail back at its rest";
 }
+
+// ---- review round 2: redo routed by the newest redoable step (R5b) -------------------------
+
+namespace {
+    // the App's routing (App::show): undo and redo decided on their own by the clip hooks
+    struct Routing {
+        Project* project;
+        uint32_t sceneId;
+        ClipUndoFocus focus;
+
+        std::string undo() {
+            if (animationClipAppHooks().ownsUndo(focus)) {
+                return project->getProjectCommandHistory()->undo() ? "project" : "project (nothing)";
+            }
+            return CommandHandle::get(sceneId)->undo() ? "scene" : "scene (nothing)";
+        }
+        std::string redo() {
+            if (animationClipAppHooks().ownsRedo(focus)) {
+                return project->getProjectCommandHistory()->redo() ? "project" : "project (nothing)";
+            }
+            return CommandHandle::get(sceneId)->redo() ? "scene" : "scene (nothing)";
+        }
+    };
+}
+
+TEST_F(AnimationClipControllerTest, RedoGoesWhereTheStepUndoneLastWas) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    ASSERT_TRUE(animationClipAppHooks().ownsRedo);
+    CommandHistory* scene = CommandHandle::get(s.id);
+    Routing routing{project(), s.id, {}};
+    routing.focus.sceneView = true;
+    auto move = [&](const Vector3& to){
+        // one step per move (no merge with the move before)
+        scene->addCommandNoMerge(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", to));
+    };
+    auto armKeyAtOne = [&](){
+        AnimationClipController::KeyRef ref;
+        return AnimationClipController::findKey(c.getDocument()->data(), "Arm", ClipChannel::Position, 1.0f, ref)
+            ? c.getDocument()->data().tracks[ref.track].keys[ref.key].value : std::vector<float>();
+    };
+    AnimationClipController::KeyRef end;
+    ASSERT_TRUE(AnimationClipController::findKey(c.getDocument()->data(), "Arm", ClipChannel::Position, 1.0f, end));
+
+    // a clip commit undone, then redone: back to it
+    move(Vector3(1, 0, 0));
+    ASSERT_TRUE(c.setKeyValue(end, {0, 9, 0}, "", &error)) << error;
+    EXPECT_EQ(routing.undo(), "project");
+    EXPECT_EQ(armKeyAtOne(), (std::vector<float>{1, 2, 0}));
+    EXPECT_TRUE(c.newestRedoIsClipEdit());
+    EXPECT_FALSE(c.newestStepIsClipEdit()) << "the next undo is the scene's";
+    EXPECT_EQ(routing.redo(), "project") << "redo returns to the clip commit";
+    EXPECT_EQ(armKeyAtOne(), (std::vector<float>{0, 9, 0}));
+    EXPECT_FALSE(c.newestRedoIsClipEdit());
+
+    // a scene step undone, then redone: stays in the scene
+    move(Vector3(2, 0, 0));
+    EXPECT_EQ(routing.undo(), "scene");
+    expectNear(s.transform(s.prop).position, Vector3(1, 0, 0), "the move undone");
+    EXPECT_FALSE(c.newestRedoIsClipEdit());
+    EXPECT_EQ(routing.redo(), "scene");
+    expectNear(s.transform(s.prop).position, Vector3(2, 0, 0), "the move redone");
+
+    // interleaved: undone newest first, redone in reverse order of the undos
+    EXPECT_EQ(routing.undo(), "scene");          // the move to 2
+    EXPECT_EQ(routing.undo(), "project");        // the key (0, 9, 0)
+    EXPECT_EQ(routing.undo(), "scene");          // the move to 1
+    EXPECT_EQ(routing.redo(), "scene");          // undone last: the move to 1
+    EXPECT_EQ(routing.redo(), "project");        // then the key
+    EXPECT_EQ(armKeyAtOne(), (std::vector<float>{0, 9, 0}));
+    EXPECT_EQ(routing.redo(), "scene");          // then the move to 2
+    expectNear(s.transform(s.prop).position, Vector3(2, 0, 0), "all redone");
+    EXPECT_FALSE(c.newestRedoIsClipEdit());
+
+    // two clip commits undone around a scene undo
+    ASSERT_TRUE(c.setKeyValue(end, {0, 7, 0}, "", &error)) << error;
+    move(Vector3(3, 0, 0));
+    ASSERT_TRUE(c.setKeyValue(end, {0, 5, 0}, "", &error)) << error;
+    EXPECT_EQ(routing.undo(), "project");        // (0, 5, 0)
+    EXPECT_EQ(routing.undo(), "scene");          // the move to 3
+    EXPECT_EQ(routing.undo(), "project");        // (0, 7, 0)
+    EXPECT_EQ(armKeyAtOne(), (std::vector<float>{0, 9, 0}));
+    EXPECT_EQ(routing.redo(), "project");        // (0, 7, 0)
+    EXPECT_EQ(routing.redo(), "scene");          // the move to 3
+    EXPECT_EQ(routing.redo(), "project");        // (0, 5, 0)
+    EXPECT_EQ(armKeyAtOne(), (std::vector<float>{0, 5, 0}));
+    expectNear(s.transform(s.prop).position, Vector3(3, 0, 0), "redone");
+
+    // a clip commit undone, then a new scene edit: that edit is the newest action, Ctrl+Y does
+    // not jump back to the clip, and Ctrl+Z takes the new edit first
+    EXPECT_EQ(routing.undo(), "project");        // (0, 5, 0)
+    move(Vector3(4, 0, 0));
+    EXPECT_FALSE(c.newestRedoIsClipEdit());
+    EXPECT_EQ(routing.redo(), "scene (nothing)");
+    EXPECT_EQ(armKeyAtOne(), (std::vector<float>{0, 7, 0}));
+    EXPECT_EQ(routing.undo(), "scene");
+    expectNear(s.transform(s.prop).position, Vector3(3, 0, 0), "the move to 4 undone");
+    EXPECT_EQ(routing.redo(), "scene");          // undone last
+    expectNear(s.transform(s.prop).position, Vector3(4, 0, 0), "the move to 4 redone");
+}

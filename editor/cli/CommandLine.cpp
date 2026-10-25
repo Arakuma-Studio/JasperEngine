@@ -46,7 +46,10 @@
 #include "htmlui/effects/EffectRegistry.h"
 #include "shader/ShaderVariantCompiler.h"
 #include "util/Util.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/ModelSubClips.h"
 #include "imgui.h"
+#include "yaml-cpp/yaml.h"
 #include "command/type/RenameFileCmd.h"
 #include "command/type/DeleteFileCmd.h"
 #include "command/type/MoveEntityOrderCmd.h"
@@ -1664,6 +1667,7 @@ struct CheckOptions {
     bool cpp = false;
     bool ui = false;
     bool textures = false;
+    bool anims = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -1688,8 +1692,10 @@ void printCheckUsage(const std::string& commandName) {
         << "                           constructs, missing or remote files) with file:line:col, code and fix.\n"
         << "      --textures           Synthesized textures (PNGs with a jasper.synthesis recipe): warns when a\n"
         << "                           source changed or went missing since (regenerate them).\n"
-        << "      --all                Lua, shaders, C++, UI and textures.\n"
-        << "                           Default: --lua --shaders --ui --textures.\n"
+        << "      --anims              Animation clips (.anim): the format, with line:col for JSON errors and the\n"
+        << "                           JSON path of every dropped part, and the clips scenes and prefabs reference.\n"
+        << "      --all                Lua, shaders, C++, UI, textures and clips.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "      --format <format>    text (default) or json.\n"
@@ -1726,6 +1732,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.ui = true;
         } else if (arg == "--textures") {
             options.textures = true;
+        } else if (arg == "--anims") {
+            options.anims = true;
         } else if (arg == "--all") {
             options.all = true;
         } else if (arg == "--files") {
@@ -1816,6 +1824,7 @@ struct HookStamp {
 bool isHookTrackedFile(const std::string& rel) {
     if (Util::isLuaFile(rel) || Util::isShaderFile(rel) || Util::isHeaderFile(rel) || Util::isSourceFile(rel)) return true;
     if (ProjectChecks::isUiFile(rel)) return true;
+    if (Util::isAnimationClipFile(rel)) return true;
     const std::string ext = fs::path(rel).extension().string();
     return ext == ".c" || ext == ".inl";
 }
@@ -1823,7 +1832,7 @@ bool isHookTrackedFile(const std::string& rel) {
 std::map<std::string, HookStamp> scanHookFiles(const fs::path& root) {
     std::map<std::string, HookStamp> files;
     static const std::vector<std::string> extensions = {".lua", ".vert", ".frag", ".glsl", ".h", ".hh", ".hpp", ".hxx",
-                                                        ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css"};
+                                                        ".cpp", ".cc", ".cxx", ".c", ".inl", ".html", ".htm", ".css", ".anim"};
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, extensions)) {
         std::error_code ec;
         HookStamp stamp;
@@ -2022,6 +2031,94 @@ std::string plural(size_t count, const std::string& word) {
     return std::to_string(count) + " " + word + (count == 1 ? "" : "s");
 }
 
+// ---- --anims: animation clips (pure parsing, no engine)
+
+struct ClipCheck {
+    std::vector<ProjectChecks::Finding> findings;
+    size_t clips = 0;
+};
+
+// The clip entries ({clip, guid}) of every Animation Player in a scene or prefab file's YAML
+void collectPlayerClips(const YAML::Node& node, std::vector<std::pair<std::string, std::string>>& out, int depth = 0) {
+    if (depth > 64 || !node) return;
+    if (node.IsMap()) {
+        for (const auto& item : node) {
+            const YAML::Node value = item.second;
+            if (item.first.IsScalar() && item.first.Scalar() == "animationplayer" && value.IsMap() && value["clips"] &&
+                value["clips"].IsSequence()) {
+                for (const YAML::Node& entry : value["clips"]) {
+                    if (!entry.IsMap() || !entry["clip"] || !entry["clip"].IsScalar()) continue;
+                    out.push_back({entry["clip"].Scalar(), entry["guid"] && entry["guid"].IsScalar() ? entry["guid"].Scalar() : std::string()});
+                }
+                continue;
+            }
+            collectPlayerClips(value, out, depth + 1);
+        }
+    } else if (node.IsSequence()) {
+        for (const YAML::Node& child : node) collectPlayerClips(child, out, depth + 1);
+    }
+}
+
+// Each .anim (all of the project's when `files` is empty): parse errors with line:col, lenient
+// warnings with their JSON path; on a whole-project run also the clips the scenes and prefabs
+// reference: a missing .anim (an error; a warning when its GUID still finds the moved file) and
+// a missing model of a sub-clip
+ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& files) {
+    ClipCheck check;
+    const bool all = files.empty();
+    const std::vector<fs::path> clips = all ? ProjectChecks::findProjectFiles(root, {".anim"}) : files;
+    std::map<std::string, std::string> guids;   // guid -> project-relative path
+    for (const fs::path& file : clips) {
+        std::string text;
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        if (!ProjectChecks::readFile(file, text)) continue;
+        check.clips++;
+        const anim::ClipParseResult parsed = anim::parseClip(text);
+        if (!parsed.ok()) {
+            check.findings.push_back({"anim", rel, parsed.error.line, parsed.error.column, "error", parsed.error.message});
+            continue;
+        }
+        if (!parsed.data->guid.empty()) guids[parsed.data->guid] = rel;
+        for (const ClipWarning& warning : parsed.warnings) {
+            check.findings.push_back({"anim", rel, 0, 0, "warning", (warning.path.empty() ? "" : warning.path + ": ") + warning.message});
+        }
+    }
+    if (!all) return check;
+    const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
+        std::vector<std::pair<std::string, std::string>> entries;
+        try {
+            collectPlayerClips(YAML::LoadFile(file.string()), entries);
+        } catch (const std::exception&) {
+            continue;
+        }
+        const std::string rel = ProjectChecks::projectRelative(root, file);
+        std::set<std::string> reported;
+        for (const auto& [clip, guid] : entries) {
+            if (clip.empty() || !reported.insert(clip).second) continue;
+            anim::SubClipReference reference;
+            const bool subClip = anim::parseSubClipReference(clip, reference);
+            const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
+            std::error_code ec;
+            if (fs::is_regular_file(target, ec)) continue;
+            if (subClip) {
+                check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "' but the model '" +
+                                          reference.model + "' does not exist"});
+                continue;
+            }
+            auto found = guid.empty() ? guids.end() : guids.find(guid);
+            if (found != guids.end()) {
+                check.findings.push_back({"anim", rel, 0, 0, "warning", "an Animation Player's clip '" + clip + "' moved to '" + found->second +
+                                          "' (found by its GUID; the editor updates the path when the file is opened and saved)"});
+            } else {
+                check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "', which does not exist "
+                                          "(paths are relative to the assets folder)"});
+            }
+        }
+    }
+    return check;
+}
+
 CheckRun runChecks(int argc, char** argv, const fs::path& root, const std::vector<fs::path>& luaFiles, bool luaWanted,
                    bool shadersAll, const std::vector<std::string>& shaderFiles, bool shadersWanted, bool cppWanted) {
     CheckRun run;
@@ -2148,7 +2245,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool cpp = options.cpp || options.all;
     bool ui = options.ui || options.all;
     bool textures = options.textures || options.all;
-    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.all) lua = shaders = ui = textures = true;
+    bool anims = options.anims || options.all;
+    if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.all) {
+        lua = shaders = ui = textures = anims = true;
+    }
 
     fs::path base = CommandLine::invocationDirectory();
     std::vector<std::string> files = options.files;
@@ -2177,6 +2277,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<std::string> shaderFiles;
     std::vector<fs::path> uiFiles;
     std::vector<fs::path> textureFiles;
+    std::vector<fs::path> clipFiles;
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -2206,6 +2307,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
                 cppFiles = true;
             } else if (ProjectChecks::isUiFile(name)) {
                 if (ui) uiFiles.push_back(path);
+            } else if (Util::isAnimationClipFile(name)) {
+                if (anims) clipFiles.push_back(path);
             }
             // a synthesized PNG, or an image a synthesized texture was made from
             if (textures && Util::isImageFile(name)) textureFiles.push_back(path);
@@ -2218,6 +2321,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool cppWanted = cpp && (!fileMode || cppFiles);
     const bool uiWanted = fileMode ? !uiFiles.empty() : ui;
     const bool texturesWanted = fileMode ? !textureFiles.empty() : textures;
+    const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
 
     // The UI check is pure parsing (no engine): first, and the engine starts only for the others
     ProjectChecks::UiCheck uiCheck;
@@ -2244,6 +2348,12 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const ProjectChecks::SynthesisCheck synthesis = ProjectChecks::checkSynthesisRecipes(root, fileMode ? textureFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), synthesis.findings.begin(), synthesis.findings.end());
         run.checked.push_back({"textures", synthesis.recipes});
+    }
+    if (animsWanted) {
+        // JSON parsing (the engine's clip reader) and the scene files' YAML: no engine
+        const ClipCheck clips = checkClipFiles(root, fileMode ? clipFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), clips.findings.begin(), clips.findings.end());
+        run.checked.push_back({"anims", clips.clips});
     }
     ProjectChecks::sortFindings(run.findings);
     const size_t errors = ProjectChecks::countSeverity(run.findings, "error");
@@ -2302,7 +2412,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     if (!options.quiet) {
         std::string what;
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
-                                                          {"textures", "recipe"}};
+                                                          {"textures", "recipe"}, {"anims", "clip"}};
         for (const auto& [category, count] : run.checked) {
             what += (what.empty() ? "" : ", ") + category + " " + plural(count, units.at(category));
         }

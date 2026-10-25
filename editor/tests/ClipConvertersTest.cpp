@@ -329,7 +329,7 @@ namespace {
         return out;
     }
 
-    std::string poseAnimationText() {
+    std::string poseAnimationText(int stepRate = 0) {
         auto pose = [](const std::string& name, float raise) {
             return "{\"name\": \"" + name + "\", \"hold\": 0.3, \"grounded\": true, \"lift\": 0, \"transition\": null, "
                    "\"offset\": {\"left\": 0, \"forward\": 0}, \"angles\": {\"left_upper_arm.raise\": " + std::to_string(raise) +
@@ -338,7 +338,7 @@ namespace {
         return "{\"format\": \"jasperengine.poseanim\", \"version\": 1, \"preview_model\": \"models/hero.gltf\", "
                "\"frame_rate\": 30, \"loop\": true, "
                "\"feel\": {\"transition\": {\"curve\": \"spring\", \"duration\": 0.2, \"overshoot\": 0.25, \"anticipation\": 0.06}, "
-               "\"step_rate\": 0, \"overlap\": 0.05, \"looseness\": 0.2, \"weights\": {\"spine\": 1, \"head\": 1, \"arms\": 1, \"legs\": 1}}, "
+               "\"step_rate\": " + std::to_string(stepRate) + ", \"overlap\": 0.05, \"looseness\": 0.2, \"weights\": {\"spine\": 1, \"head\": 1, \"arms\": 1, \"legs\": 1}}, "
                "\"humanize\": {\"enabled\": false, \"joint_limits\": true, \"moving_holds\": 0.08, \"inbetweens\": 0.4, "
                "\"life\": 0.6, \"seed\": 1, \"head_follow\": 0.5, \"torso_follow\": 0.4, \"springiness\": 0.5}, "
                "\"poses\": [" + pose("Rest", 0) + ", " + pose("Raise", 70) + "]}\n";
@@ -659,6 +659,7 @@ TEST_F(ClipConverters_, ExtractKeepsTheSourceAndSwitchesThePlayer) {
     EXPECT_EQ(data.source.name, "Walk");
     EXPECT_TRUE(anim::isClipGuid(data.guid));
     EXPECT_FALSE(ClipConverters::extractModelSubClip("models/hero.gltf#Nope", data, warnings, &error));
+    EXPECT_FALSE(ClipConverters::extractModelSubClip("assets/models/missing.gltf#Walk", data, warnings, &error));
     EXPECT_FALSE(ClipConverters::extractModelSubClip("models/hero.gltf", data, warnings, &error));
 
     // the file alone: a project step
@@ -717,8 +718,12 @@ TEST_F(ClipConverters_, UseAnimationPlayer) {
     const std::vector<Entity> animations = scene->getComponent<ModelComponent>(hero).animations;
     ASSERT_EQ(animations.size(), 5u) << "the loader's entity animations";
     std::vector<Entity> tracks;
+    std::vector<Entity> targets;
     for (Entity animation : animations) {
-        for (const ActionFrame& frame : scene->getComponent<AnimationComponent>(animation).actions) tracks.push_back(frame.action);
+        for (const ActionFrame& frame : scene->getComponent<AnimationComponent>(animation).actions) {
+            tracks.push_back(frame.action);
+            targets.push_back(scene->getComponent<ActionComponent>(frame.action).target);
+        }
     }
     ASSERT_FALSE(tracks.empty());
 
@@ -728,8 +733,14 @@ TEST_F(ClipConverters_, UseAnimationPlayer) {
     EXPECT_TRUE(plan.addPlayer);
     EXPECT_FALSE(plan.reloadModel) << "an animated model loads in the node hierarchy";
     ASSERT_EQ(plan.clips.size(), 5u);
-    EXPECT_EQ(plan.clips[0].clip, "models/hero.gltf#Walk");
-    EXPECT_EQ(plan.clips[4].clip, "models/hero.gltf#Wave 2");
+    std::vector<anim::ModelClipInfo> infos;
+    ASSERT_TRUE(anim::listModelFileClips("models/hero.gltf", infos, &error)) << error;
+    ASSERT_EQ(infos.size(), 5u);
+    const std::vector<std::string> names = {"Walk", "Idle", "Animation 2", "Wave", "Wave 2"};
+    for (size_t i = 0; i < 5; i++) {
+        EXPECT_EQ(infos[i].name, names[i]);
+        EXPECT_EQ(plan.clips[i].clip, "models/hero.gltf#" + names[i]);
+    }
     EXPECT_EQ(plan.removeEntities.size(), animations.size() + tracks.size());
 
     project()->getScene(sceneId)->isModified = false;
@@ -748,6 +759,17 @@ TEST_F(ClipConverters_, UseAnimationPlayer) {
         EXPECT_EQ(player.clips[1].clip, "models/hero.gltf#Idle");
     };
     checkUsed(scene, hero);
+    {
+        const AnimationPlayerComponent& player = scene->getComponent<AnimationPlayerComponent>(hero);
+        for (size_t i = 0; i < player.clips.size(); i++) {
+            EXPECT_EQ(player.clips[i].clip, "models/hero.gltf#" + names[i]);
+            ClipData sub;
+            std::vector<ClipWarning> warnings;
+            ASSERT_TRUE(anim::buildModelSubClip(player.clips[i].clip, sub, warnings, &error)) << error;
+            ClipValidationReport report = ClipValidation::validateInScene(project(), project()->getScene(sceneId), sub, hero);
+            EXPECT_EQ(report.resolved, report.total) << player.clips[i].clip;
+        }
+    }
     for (Entity entity : animations) EXPECT_FALSE(scene->isEntityCreated(entity));
     for (Entity entity : tracks) EXPECT_FALSE(scene->isEntityCreated(entity));
     // again: nothing left to do
@@ -764,7 +786,11 @@ TEST_F(ClipConverters_, UseAnimationPlayer) {
     EXPECT_TRUE(scene->getComponent<ModelComponent>(hero).animationEntities);
     EXPECT_EQ(scene->getComponent<ModelComponent>(hero).animations, animations);
     for (Entity entity : animations) EXPECT_TRUE(scene->isEntityCreated(entity) && scene->findComponent<AnimationComponent>(entity));
-    for (Entity entity : tracks) EXPECT_TRUE(scene->isEntityCreated(entity));
+    for (size_t i = 0; i < tracks.size(); i++) {
+        ASSERT_TRUE(scene->isEntityCreated(tracks[i]));
+        EXPECT_EQ(scene->getComponent<ActionComponent>(tracks[i]).target, targets[i]) << "the track's target is back";
+        EXPECT_TRUE(scene->isEntityCreated(targets[i]));
+    }
     EXPECT_FALSE(scene->findComponent<AnimationPlayerComponent>(hero));
     EXPECT_FALSE(project()->getScene(sceneId)->isModified);
     ASSERT_TRUE(history(sceneId)->redo());
@@ -1050,4 +1076,514 @@ TEST_F(ClipConverters_, PathsAndDirectories) {
     AnimationPlayerClip entry = ClipConverters::playerEntry(project(), "assets/models/hero.gltf#Walk");
     EXPECT_EQ(entry.clip, "models/hero.gltf#Walk");
     EXPECT_TRUE(entry.guid.empty());
+}
+
+// ---- review round 1 -------------------------------------------------------------------------
+
+namespace {
+
+    // the targets' scene values, put back before each sample (relative tracks take their base and
+    // the clip preview its rest from what is there when they start)
+    struct SceneSnapshot {
+        std::vector<std::pair<Entity, Pose>> poses;
+
+        SceneSnapshot(Scene* scene, const std::vector<Entity>& targets) {
+            for (Entity target : targets) poses.push_back({target, poseOf(scene, target)});
+        }
+
+        void restore(Scene* scene) const {
+            for (const auto& entry : poses) {
+                if (Transform* t = scene->findComponent<Transform>(entry.first)) {
+                    t->position = entry.second.position;
+                    t->rotation = entry.second.rotation;
+                    t->scale = entry.second.scale;
+                    t->needUpdate = true;
+                }
+                if (LatticeComponent* lattice = scene->findComponent<LatticeComponent>(entry.first)) {
+                    lattice->offsets = entry.second.offsets;
+                    lattice->revision++;
+                }
+            }
+        }
+    };
+
+    // the entity Animation and the clip on the same targets at `times`, each sample from the scene
+    // values; `from`: the first time compared
+    void expectFreshSamplesEqual(Scene* scene, Entity animation, Entity root, const ClipData& data, const std::vector<Entity>& targets,
+                                 float from, float to, int count, const std::string& what) {
+        anim::ClipParseResult parsed = anim::parseClip(anim::writeClip(data));
+        ASSERT_TRUE(parsed.ok()) << parsed.error.toString();
+        std::shared_ptr<const AnimationClip> clip = AnimationClip::build(*parsed.data);
+        const SceneSnapshot snapshot(scene, targets);
+        for (int i = 0; i < count; i++) {
+            const float t = from + (to - from) * (float)i / (float)(count - 1);
+            snapshot.restore(scene);
+            sampleEntityAnimation(scene, animation, t);
+            std::vector<Pose> expected;
+            for (Entity target : targets) expected.push_back(poseOf(scene, target));
+            snapshot.restore(scene);
+            anim::ClipPreviewSession session;
+            sampleClip(scene, root, clip, t, session);
+            for (size_t k = 0; k < targets.size(); k++) {
+                expectSamePose(poseOf(scene, targets[k]), expected[k], what + ": " + scene->getEntityName(targets[k]) + " at " + std::to_string(t));
+            }
+            scene->getSystem<ActionSystem>()->restorePlayerPreview(session);
+        }
+        snapshot.restore(scene);
+    }
+
+    Entity positionTrack(uint32_t sceneId, Entity target, const std::vector<float>& times, const std::vector<Vector3>& values,
+                         const std::vector<EaseType>& easings = {}) {
+        Scene* scene = sceneOf(sceneId);
+        const Entity track = create(sceneId, scene->getEntityName(target) + " position", EntityCreationType::TRANSLATE_TRACKS, target);
+        KeyframeTracksComponent& keys = scene->getComponent<KeyframeTracksComponent>(track);
+        keys.times = times;
+        keys.easings = easings;
+        scene->getComponent<TranslateTracksComponent>(track).values = values;
+        return track;
+    }
+
+    // a scene command that refuses
+    class RefusingCmd : public Command {
+    public:
+        bool execute() override { return false; }
+        void undo() override {}
+    };
+
+}
+
+// I1, relative, cubic at speed 2: frames that start late, keys that start late
+TEST_F(ClipConverters_, ConvertLateFramesRelativeAndCubicTracks) {
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    const Entity arm = gameObject(sceneId, "Arm", hero);
+    const Entity leg = gameObject(sceneId, "Leg", hero);
+    const Entity head = gameObject(sceneId, "Head", hero);
+    scene->getComponent<Transform>(arm).position = Vector3(3, 0, 0);
+    scene->getComponent<Transform>(leg).position = Vector3(0, -1, 0.5f);
+    scene->getComponent<Transform>(leg).rotation = Quaternion(30, Vector3(0, 0, 1));
+    scene->getComponent<Transform>(head).scale = Vector3(1.5f, 1.5f, 1.5f);
+    const Entity animation = create(sceneId, "Late", EntityCreationType::ANIMATION, hero);
+
+    // starts at 0.5, its first key at 0.3: from 0.5 the entity shows key 0
+    const Entity late = positionTrack(sceneId, arm, {0.3f, 1.0f}, {Vector3(0, 0, 0), Vector3(0, 2, 0)});
+    // relative position and rotation from 0.4
+    const Entity relative = positionTrack(sceneId, leg, {0.0f, 0.6f}, {Vector3(0, 0, 0), Vector3(1, 1, 0)});
+    scene->getComponent<KeyframeTracksComponent>(relative).relative = true;
+    const Entity turn = create(sceneId, "Leg turn", EntityCreationType::ROTATE_TRACKS, leg);
+    scene->getComponent<KeyframeTracksComponent>(turn).times = {0.0f, 0.5f};
+    scene->getComponent<KeyframeTracksComponent>(turn).relative = true;
+    scene->getComponent<RotateTracksComponent>(turn).values = {Quaternion(), Quaternion(60, Vector3(1, 0, 0))};
+    // cubic scale at speed 2
+    const Entity cubic = create(sceneId, "Head scale", EntityCreationType::SCALE_TRACKS, head);
+    scene->getComponent<KeyframeTracksComponent>(cubic).times = {0.0f, 1.0f, 2.0f};
+    ScaleTracksComponent& scale = scene->getComponent<ScaleTracksComponent>(cubic);
+    scale.values = {Vector3(1, 1, 1), Vector3(2, 1, 1), Vector3(1, 3, 1)};
+    scale.inTangents = {Vector3(0, 0, 0), Vector3(1, 0.5f, 0), Vector3(0, 0, 0)};
+    scale.outTangents = {Vector3(0.5f, 0, 0), Vector3(-1, 2, 0), Vector3(0, 0, 0)};
+    scene->getComponent<ActionComponent>(cubic).speed = 2.0f;
+    scene->getComponent<AnimationComponent>(animation).actions = {{0.5f, 0.0f, late, 0}, {0.4f, 0.0f, relative, 1},
+                                                                    {0.4f, 0.0f, turn, 2}, {0.0f, 0.0f, cubic, 3}};
+
+    ClipData data;
+    ClipConvertReport report;
+    std::string error;
+    ASSERT_TRUE(ClipConverters::convertEntityAnimation(scene, animation, NULL_ENTITY, data, report, &error)) << error;
+    EXPECT_EQ(report.convertedTracks, 4u);
+    const ClipTrackData& armTrack = data.tracks[data.findTrack("Arm", ClipChannel::Position)];
+    ASSERT_EQ(armTrack.keys.size(), 4u) << "scene hold, key 0 from the start, the keys";
+    EXPECT_FLOAT_EQ(armTrack.keys[1].time, 0.5f);
+    EXPECT_FLOAT_EQ(armTrack.keys[2].time, 0.8f);
+    expectFreshSamplesEqual(scene, animation, hero, data, {hero, arm, leg, head}, 0.0f, 1.5f, 61, "late frames");
+}
+
+// I2: looping tracks in frames that start late (rotated cycles), and what can't be offset
+TEST_F(ClipConverters_, ConvertLoopTracksInLateFrames) {
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    const Entity a = gameObject(sceneId, "A", hero);
+    const Entity b = gameObject(sceneId, "B", hero);
+    const Entity c = gameObject(sceneId, "C", hero);
+    const Entity d = gameObject(sceneId, "D", hero);
+    const Entity animation = create(sceneId, "Loops", EntityCreationType::ANIMATION, hero);
+    // linear, cut inside a segment; a jump where the cycle restarts
+    const Entity linear = positionTrack(sceneId, a, {0.0f, 0.4f, 1.0f}, {Vector3(0, 0, 0), Vector3(0, 1, 0), Vector3(2, 1, 0)});
+    // stepped, first key after 0, at speed 2
+    const Entity stepped = positionTrack(sceneId, b, {0.2f, 0.5f, 0.9f}, {Vector3(1, 0, 0), Vector3(2, 0, 0), Vector3(3, 0, 0)},
+                                         {EaseType::STEP, EaseType::STEP});
+    scene->getComponent<ActionComponent>(stepped).speed = 2.0f;
+    // closed loop (last == first), cut at a key
+    const Entity closed = positionTrack(sceneId, c, {0.0f, 0.5f, 1.0f}, {Vector3(0, 0, 0), Vector3(0, 0, 4), Vector3(0, 0, 0)});
+    // an eased segment over the cycle point: not representable
+    const Entity eased = positionTrack(sceneId, d, {0.0f, 1.0f}, {Vector3(0, 0, 0), Vector3(1, 1, 1)}, {EaseType::CUBIC_IN_OUT});
+    for (Entity track : {linear, stepped, closed, eased}) scene->getComponent<KeyframeTracksComponent>(track).loop = true;
+    AnimationComponent& component = scene->getComponent<AnimationComponent>(animation);
+    // frames longer than the comparison: the Animation runs to its duration
+    component.actions = {{0.3f, 3.0f, linear, 0}, {0.35f, 3.0f, stepped, 1}, {0.5f, 3.0f, closed, 2}, {0.3f, 3.0f, eased, 3}};
+    component.duration = 2.5f;
+
+    ClipData data;
+    ClipConvertReport report;
+    std::string error;
+    ASSERT_TRUE(ClipConverters::convertEntityAnimation(scene, animation, NULL_ENTITY, data, report, &error)) << error;
+    EXPECT_EQ(report.convertedTracks, 3u);
+    ASSERT_EQ(report.notConverted.size(), 1u);
+    EXPECT_NE(report.notConverted[0].find("eased segment"), std::string::npos) << report.notConverted[0];
+    EXPECT_EQ(std::find(report.convertedTrackEntities.begin(), report.convertedTrackEntities.end(), eased),
+              report.convertedTrackEntities.end()) << "kept by Remove the converted tracks";
+    EXPECT_FALSE(report.warnings.empty());
+    for (const ClipTrackData& track : data.tracks) {
+        EXPECT_TRUE(track.loop);
+        EXPECT_FLOAT_EQ(track.keys.front().time, 0.0f);
+    }
+    // exact from each frame's start (the latest is 0.5), over several cycles
+    component.actions.pop_back();
+    expectFreshSamplesEqual(scene, animation, hero, data, {a, b, c}, 0.5f, 2.45f, 97, "loop tracks");
+}
+
+// I3: a looping Animation with a late frame, played continuously as the runtime plays it
+TEST_F(ClipConverters_, ConvertLoopingAnimationWithALateFrame) {
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    const Entity arm = gameObject(sceneId, "Arm", hero);
+    const Entity leg = gameObject(sceneId, "Leg", hero);
+    scene->getComponent<Transform>(arm).position = Vector3(3, 0, 0);
+    const Entity animation = create(sceneId, "Cycle", EntityCreationType::ANIMATION, hero);
+    const Entity late = positionTrack(sceneId, arm, {0.0f, 0.5f}, {Vector3(0, 0, 0), Vector3(0, 2, 0)});
+    const Entity whole = positionTrack(sceneId, leg, {0.0f, 1.2f}, {Vector3(0, 0, 0), Vector3(1, 0, 0)});
+    AnimationComponent& component = scene->getComponent<AnimationComponent>(animation);
+    component.actions = {{0.4f, 0.0f, late, 0}, {0.0f, 0.0f, whole, 1}};
+    component.loop = true;
+
+    ClipData data;
+    ClipConvertReport report;
+    std::string error;
+    ASSERT_TRUE(ClipConverters::convertEntityAnimation(scene, animation, NULL_ENTITY, data, report, &error)) << error;
+    EXPECT_EQ(data.wrap, ClipWrapMode::Loop);
+    bool warned = false;
+    for (const ClipWarning& warning : report.warnings) warned = warned || warning.message.find("looping Animation") != std::string::npos;
+    EXPECT_TRUE(warned);
+    std::shared_ptr<const AnimationClip> clip = AnimationClip::build(*anim::parseClip(anim::writeClip(data)).data);
+    const float cycle = clip->getLength();
+    EXPECT_NEAR(cycle, 1.2f, 1e-5f);
+
+    // continuous playback: 3 cycles at 120 Hz
+    std::shared_ptr<ActionSystem> actions = scene->getSystem<ActionSystem>();
+    ActionComponent& action = scene->getComponent<ActionComponent>(animation);
+    action.startTrigger = true;
+    actions->updateAnimationPreview(0.0, animation);
+    const double dt = 1.0 / 120.0;
+    double total = 0.0;
+    int compared = 0;
+    anim::ClipPreviewSession session;
+    for (int frame = 0; frame < 3 * 144; frame++) {
+        const float sampled = scene->getComponent<ActionComponent>(animation).timecount;   // what this update samples at
+        actions->updateAnimationPreview(dt, animation);
+        const Pose armPose = poseOf(scene, arm);
+        const Pose legPose = poseOf(scene, leg);
+        const double at = total;
+        total += dt;
+        // the first cycle before the late frame shows the scene value there (the warning); the
+        // update reaching the cycle's end samples the end before it wraps
+        if ((at < 0.4 + 1e-4) || sampled >= cycle - 1e-5f) continue;
+        sampleClip(scene, hero, clip, (float)at, session);
+        expectSamePose(poseOf(scene, arm), armPose, "Arm at " + std::to_string(at), 1e-3f);
+        expectSamePose(poseOf(scene, leg), legPose, "Leg at " + std::to_string(at), 1e-3f);
+        compared++;
+    }
+    actions->restorePlayerPreview(session);
+    EXPECT_GT(compared, 300);
+}
+
+TEST_F(ClipConverters_, ConvertMissingActionsAndATopLevelAnimation) {
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    const Entity arm = gameObject(sceneId, "Arm", hero);
+    const Entity leg = gameObject(sceneId, "Leg", hero);
+    // no parent: no target (M1)
+    const Entity animation = create(sceneId, "Free", EntityCreationType::ANIMATION);
+    ASSERT_EQ(scene->getComponent<ActionComponent>(animation).target, NULL_ENTITY);
+    const Entity first = positionTrack(sceneId, arm, {0.0f, 1.0f}, {Vector3(0, 0, 0), Vector3(1, 0, 0)});
+    const Entity second = positionTrack(sceneId, leg, {0.0f, 1.0f}, {Vector3(0, 0, 0), Vector3(0, 1, 0)});
+    scene->getComponent<AnimationComponent>(animation).actions = {{0.0f, 0.0f, first, 0}, {0.0f, 0.0f, second, 1},
+                                                                    {0.0f, 0.0f, (Entity)987654, 2}};
+    EXPECT_EQ(ClipConverters::defaultConvertRoot(scene, animation), hero) << "the targets' common ancestor";
+    ClipData data;
+    ClipConvertReport report;
+    std::string error;
+    ASSERT_TRUE(ClipConverters::convertEntityAnimation(scene, animation, NULL_ENTITY, data, report, &error)) << error;
+    EXPECT_GE(data.findTrack("Arm", ClipChannel::Position), 0);
+    EXPECT_GE(data.findTrack("Leg", ClipChannel::Position), 0);
+    ASSERT_EQ(report.notConverted.size(), 1u);
+    EXPECT_EQ(report.notConverted[0], "Action (missing GameObject)");
+}
+
+// Extract: the file's clip samples exactly like the model's sub-clip (named, unnamed, duplicate)
+TEST_F(ClipConverters_, ExtractedClipsSampleLikeTheSubClips) {
+    const std::string dir = folder("extractvalues");
+    for (const std::string name : {"Walk", "Animation 2", "Wave 2", "Idle"}) {
+        const std::string reference = "models/hero.gltf#" + name;
+        ClipActionResult result;
+        std::string error;
+        const std::string file = dir + "/" + name + ".anim";
+        ASSERT_TRUE(ClipSceneActions::extractSubClip(project(), 0, NULL_ENTITY, reference, file, false, result, error)) << error;
+        const ClipData written = readClipFile(root() / file);
+        ClipData sub;
+        std::vector<ClipWarning> warnings;
+        ASSERT_TRUE(anim::buildModelSubClip(reference, sub, warnings, &error)) << error;
+        EXPECT_EQ(written.source.name, name);
+        std::shared_ptr<const AnimationClip> a = AnimationClip::build(written);
+        std::shared_ptr<const AnimationClip> b = AnimationClip::build(sub);
+        ASSERT_EQ(a->getTracks().size(), b->getTracks().size());
+        EXPECT_NEAR(a->getLength(), b->getLength(), 1e-6f);
+        EXPECT_EQ(a->getWrap(), b->getWrap());
+        for (int i = 0; i < 60; i++) {
+            const float t = b->getLength() * (float)i / 59.0f;
+            std::vector<anim::TrackSample> sa, sb;
+            anim::sampleClipTracks(*a, t, sa);
+            anim::sampleClipTracks(*b, t, sb);
+            for (size_t k = 0; k < sa.size(); k++) {
+                EXPECT_EQ(a->getTracks()[k].path, b->getTracks()[k].path);
+                EXPECT_NEAR((sa[k].vector - sb[k].vector).length(), 0.0f, 1e-5f) << name << " " << a->getTracks()[k].path;
+                const Quaternion& qa = sa[k].rotation;
+                const Quaternion& qb = sb[k].rotation;
+                EXPECT_NEAR(std::fabs(qa.w * qb.w + qa.x * qb.x + qa.y * qb.y + qa.z * qb.z), 1.0f, 1e-5f) << name;
+                ASSERT_EQ(sa[k].weights.size(), sb[k].weights.size());
+                for (size_t w = 0; w < sa[k].weights.size(); w++) EXPECT_NEAR(sa[k].weights[w], sb[k].weights[w], 1e-5f);
+            }
+        }
+        ASSERT_TRUE(projectHistory()->undo());
+    }
+}
+
+// R4: a scene command refusing mid-way takes back the files (a new one removed, an existing one
+// given its content back) and the commands before it
+TEST_F(ClipConverters_, CreateClipCmdSceneCommandFailing) {
+    const std::string dir = folder("refused");
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    writeAll(root() / dir / "old.anim", "the old bytes\n");
+    std::vector<CreateClipCmd::File> files = {{root() / dir / "new.anim", "{}\n"}, {root() / dir / "old.anim", "{}\n"}};
+    std::vector<Command*> commands = {new AddComponentCmd(project(), sceneId, hero, ComponentType::AnimationPlayerComponent), new RefusingCmd()};
+    auto* command = new CreateClipCmd(project(), sceneId, files, commands);
+    auto failure = std::make_shared<std::string>();
+    command->reportFailureTo(failure);
+    const size_t steps = history(sceneId)->position();
+    EXPECT_FALSE(history(sceneId)->addCommand(command));
+    EXPECT_EQ(history(sceneId)->position(), steps);
+    EXPECT_NE(failure->find("command 2 of 2"), std::string::npos) << *failure;
+    EXPECT_FALSE(fs::exists(root() / dir / "new.anim"));
+    EXPECT_EQ(readAll(root() / dir / "old.anim"), "the old bytes\n");
+    EXPECT_FALSE(scene->findComponent<AnimationPlayerComponent>(hero));
+}
+
+// R4, the third order (I5): a redo after an undo that kept the user's edits leaves them
+TEST_F(ClipConverters_, RedoLeavesAFileTheUndoKept) {
+    const std::string dir = folder("redokept");
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    const fs::path file = root() / dir / "kept.anim";
+    ClipActionResult result;
+    std::string error;
+    ASSERT_TRUE(ClipSceneActions::createNewClip(project(), sceneId, hero, dir + "/kept.anim", result, error)) << error;
+    std::shared_ptr<AnimationClipDocument> document = AnimationClipDocument::open(project(), dir + "/kept.anim", &error);
+    ASSERT_TRUE(document) << error;
+    ClipData edited = document->data();
+    edited.tracks.push_back(track("", ClipChannel::Position, {{0, 0, 0}, {0, 3, 0}}));
+    ASSERT_TRUE(document->commit(edited, "Key", "", &error)) << error;
+    const std::string editedText = readAll(file);
+
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_EQ(readAll(file), editedText) << "kept";
+    ASSERT_TRUE(history(sceneId)->redo());
+    EXPECT_EQ(readAll(file), editedText) << "redo does not write over the edits";
+    ASSERT_EQ(scene->getComponent<AnimationPlayerComponent>(hero).clips.size(), 1u) << "the scene part is redone";
+    EXPECT_EQ(scene->getComponent<AnimationPlayerComponent>(hero).clips[0].guid, anim::readClipGuid(editedText));
+    ASSERT_TRUE(history(sceneId)->undo());
+    EXPECT_EQ(readAll(file), editedText) << "and a second undo keeps it too";
+    EXPECT_FALSE(scene->findComponent<AnimationPlayerComponent>(hero));
+    ASSERT_TRUE(projectHistory()->undo());
+    EXPECT_TRUE(document->data().tracks.empty()) << "the project history still undoes the edit";
+}
+
+// Bake to clip, stepped, and on the legacy T-pose hero vs an entity bake on the hierarchy the
+// step reloads it in (values, not only bindings)
+TEST_F(ClipConverters_, BakeToClipSteppedAndOnALegacyModelSampleLikeTheEntityBake) {
+    const std::string dir = folder("bakevalues");
+    writeAll(root() / dir / "steps.poseanim", poseAnimationText(8));
+    std::string error;
+    std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project(), dir + "/steps.poseanim", &error);
+    ASSERT_TRUE(document) << error;
+    for (const char* model : {"models/hero.gltf", "models/tpose.gltf"}) {
+        const uint32_t sceneId = newScene();
+        Scene* scene = sceneOf(sceneId);
+        const Entity hero = loadModel(sceneId, model);
+        PoseClipBakeResult clipBake;
+        ASSERT_TRUE(PoseBaker::bakeToClip(project(), sceneId, hero, *document, std::string("steps_") + (model[7] == 'h' ? "h" : "t"), "",
+                                          clipBake, error)) << error;
+        ASSERT_FALSE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty());
+        PoseBakeResult entityBake;
+        ASSERT_TRUE(PoseBaker::bake(project(), sceneId, hero, *document, "steps", entityBake, error)) << error;
+        const ClipData data = readClipFile(root() / clipBake.clip);
+        bool stepped = false;
+        for (const ClipKey& key : data.tracks[0].keys) stepped = stepped || key.ease == EaseType::STEP;
+        EXPECT_TRUE(stepped);
+        std::vector<Entity> bones;
+        for (const ActionFrame& frame : scene->getComponent<AnimationComponent>(entityBake.animation).actions) {
+            bones.push_back(scene->getComponent<ActionComponent>(frame.action).target);
+        }
+        std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data);
+        anim::ClipPreviewSession session;
+        for (int i = 0; i < 120; i++) {
+            // between the key times: exactly at a stepped key the entity sampler shows the key
+            // before, the clip sampler the key itself (a sampler boundary, reported to T1a)
+            const float t = entityBake.length * ((float)i + 0.37f) / 120.0f;
+            sampleEntityAnimation(scene, entityBake.animation, t);
+            std::vector<Pose> expected;
+            for (Entity bone : bones) expected.push_back(poseOf(scene, bone));
+            sampleClip(scene, hero, clip, t, session);
+            for (size_t k = 0; k < bones.size(); k++) {
+                expectSamePose(poseOf(scene, bones[k]), expected[k], std::string(model) + " " + scene->getEntityName(bones[k]) + " at " + std::to_string(t));
+            }
+        }
+        scene->getSystem<ActionSystem>()->restorePlayerPreview(session);
+    }
+}
+
+// I4: the layout switch of a step keeps the user's entity Animation tracks on the model's bones
+// (retargeted to the rebuilt bones; undo gives them their old bones back exactly)
+TEST_F(ClipConverters_, UserTracksOnLegacyBonesSurviveTheLayoutSwitch) {
+    const std::string dir = folder("retarget");
+    writeAll(root() / dir / "raise.poseanim", poseAnimationText());
+    std::string error;
+    std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project(), dir + "/raise.poseanim", &error);
+    ASSERT_TRUE(document) << error;
+    ASSERT_TRUE(AnimationClipDocument::create(project(), dir + "/walk.anim", ClipData(), "Create", &error)) << error;
+
+    enum class Step { ConvertKeep, Drop, CreateNewClip, Bake };
+    for (Step step : {Step::ConvertKeep, Step::Drop, Step::CreateNewClip, Step::Bake}) {
+        const uint32_t sceneId = newScene();
+        Scene* scene = sceneOf(sceneId);
+        const Entity hero = loadModel(sceneId, "models/tpose.gltf");
+        ASSERT_TRUE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty());
+        const Entity arm = scene->getComponent<ModelComponent>(hero).bonesNameMapping.at("mixamorig:LeftArm");
+        const Entity animation = create(sceneId, "Wave", EntityCreationType::ANIMATION, hero);
+        const Entity turn = create(sceneId, "Arm turn", EntityCreationType::ROTATE_TRACKS, arm);
+        scene->getComponent<KeyframeTracksComponent>(turn).times = {0.0f, 1.0f};
+        scene->getComponent<RotateTracksComponent>(turn).values = {Quaternion(), Quaternion(45, Vector3(0, 0, 1))};
+        scene->getComponent<AnimationComponent>(animation).actions = {{0.0f, 0.0f, turn, 0}};
+        ASSERT_EQ(scene->getComponent<ActionComponent>(turn).target, arm);
+
+        ClipActionResult result;
+        bool ok = false;
+        const std::string label = "step " + std::to_string((int)step);
+        switch (step) {
+            case Step::ConvertKeep:
+                ok = ClipSceneActions::convertToClip(project(), sceneId, animation, NULL_ENTITY, dir + "/wave.anim", false, result, error);
+                break;
+            case Step::Drop:
+                ok = ClipSceneActions::addClipsToPlayer(project(), sceneId, hero, {dir + "/walk.anim"}, result, error);
+                break;
+            case Step::CreateNewClip:
+                ok = ClipSceneActions::createNewClip(project(), sceneId, hero, dir + "/new.anim", result, error);
+                break;
+            case Step::Bake: {
+                PoseClipBakeResult bake;
+                ok = PoseBaker::bakeToClip(project(), sceneId, hero, *document, "raise", "", bake, error);
+                break;
+            }
+        }
+        ASSERT_TRUE(ok) << label << ": " << error;
+        const ModelComponent& model = scene->getComponent<ModelComponent>(hero);
+        ASSERT_FALSE(model.nodesIdMapping.empty()) << label << ": reloaded";
+        ASSERT_TRUE(scene->isEntityCreated(turn)) << label << ": the user's track is kept";
+        const Entity retargeted = scene->getComponent<ActionComponent>(turn).target;
+        ASSERT_TRUE(scene->isEntityCreated(retargeted)) << label;
+        EXPECT_NE(retargeted, arm) << label << ": the rebuilt bone";
+        EXPECT_EQ(scene->getEntityName(retargeted), "mixamorig:LeftArm") << label;
+        ASSERT_EQ(scene->getComponent<AnimationComponent>(animation).actions.size(), 1u);
+        EXPECT_EQ(scene->getComponent<AnimationComponent>(animation).actions[0].action, turn);
+        // it plays on the new bone
+        sampleEntityAnimation(scene, animation, 1.0f);
+        const Quaternion played = scene->getComponent<Transform>(retargeted).rotation;
+        const Quaternion keyed(45, Vector3(0, 0, 1));
+        EXPECT_NEAR(std::fabs(played.w * keyed.w + played.x * keyed.x + played.y * keyed.y + played.z * keyed.z), 1.0f, 1e-4f) << label;
+
+        ASSERT_TRUE(history(sceneId)->undo()) << label;
+        EXPECT_TRUE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty()) << label << ": legacy again";
+        ASSERT_TRUE(scene->isEntityCreated(arm)) << label << ": the old bone is back";
+        EXPECT_EQ(scene->getComponent<ActionComponent>(turn).target, arm) << label << ": its old target exactly";
+        ASSERT_TRUE(history(sceneId)->redo()) << label;
+        ASSERT_TRUE(scene->isEntityCreated(turn)) << label;
+        const Entity redone = scene->getComponent<ActionComponent>(turn).target;
+        EXPECT_TRUE(scene->isEntityCreated(redone) && redone != arm) << label;
+        EXPECT_EQ(scene->getEntityName(redone), "mixamorig:LeftArm") << label;
+        ASSERT_TRUE(history(sceneId)->undo()) << label;
+    }
+}
+
+// M4: a broken .anim is refused; a drop of clips already listed still switches a legacy model;
+// a clip that doesn't bind on the object says so
+TEST_F(ClipConverters_, DropChecksAndBindingWarnings) {
+    const std::string dir = folder("dropchecks");
+    writeAll(root() / dir / "broken.anim", "{ not json");
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = loadModel(sceneId, "models/tpose.gltf");
+    ClipActionResult result;
+    std::string error;
+    EXPECT_FALSE(ClipSceneActions::addClipsToPlayer(project(), sceneId, hero, {dir + "/broken.anim"}, result, error));
+    EXPECT_NE(error.find("not a valid animation clip"), std::string::npos) << error;
+
+    // the player written directly (as a duplicate would): legacy layout under a player
+    AnimationPlayerComponent player;
+    AnimationPlayerClip walk;
+    walk.clip = "models/hero.gltf#Walk";
+    player.clips = {walk};
+    scene->addComponent<AnimationPlayerComponent>(hero, player);
+    ASSERT_TRUE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty());
+    const size_t steps = history(sceneId)->position();
+    ASSERT_TRUE(ClipSceneActions::addClipsToPlayer(project(), sceneId, hero, {"models/hero.gltf#Walk"}, result, error)) << error;
+    EXPECT_EQ(result.appended, 0u);
+    EXPECT_EQ(result.reloadedModels, 1u);
+    EXPECT_EQ(history(sceneId)->position(), steps + 1);
+    EXPECT_FALSE(scene->getComponent<ModelComponent>(hero).nodesIdMapping.empty());
+    EXPECT_TRUE(result.warnings.empty()) << result.warnings[0].message;
+
+    // a model clip dropped onto a bone binds nothing there
+    const Entity arm = scene->getComponent<ModelComponent>(hero).bonesNameMapping.at("mixamorig:LeftArm");
+    ASSERT_TRUE(ClipSceneActions::addClipsToPlayer(project(), sceneId, arm, {"models/hero.gltf#Walk"}, result, error)) << error;
+    ASSERT_EQ(result.warnings.size(), 1u);
+    EXPECT_NE(result.warnings[0].message.find("tracks bind on"), std::string::npos) << result.warnings[0].message;
+}
+
+// M2: handlers in comments, in disabled scripts or on other tables don't count
+TEST_F(ClipConverters_, ValidationHandlerScan) {
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    const Entity hero = gameObject(sceneId, "Hero");
+    writeAll(project()->resolveLuaPath("scripts/scan.lua"),
+             "local Scan = {}\n-- function Scan:onCommented()\n--[[ function Scan:onBlock()\nend ]]\n"
+             "local s = \"-- not a comment\"\nfunction Scan:onReal()\nend\nfunction Other:onOther()\nend\nreturn Scan\n");
+    writeAll(project()->resolveLuaPath("scripts/off.lua"), "local Off = {}\nfunction Off:onDisabled()\nend\nreturn Off\n");
+    ScriptComponent scripts;
+    ScriptEntry scan;
+    scan.type = ScriptType::LUA;
+    scan.path = "scripts/scan.lua";
+    scan.className = "Scan";
+    scan.enabled = true;
+    ScriptEntry off = scan;
+    off.path = "scripts/off.lua";
+    off.className = "Off";
+    off.enabled = false;
+    scripts.scripts = {scan, off};
+    scene->addComponent<ScriptComponent>(hero, scripts);
+    const std::vector<std::string> functions = ClipValidation::scriptFunctions(project(), project()->getScene(sceneId), hero);
+    EXPECT_EQ(functions, std::vector<std::string>{"onReal"});
 }

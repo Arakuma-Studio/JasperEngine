@@ -137,7 +137,7 @@ async def test_cli_usage():
     check("--project" in r.stderr, f"says what is missing: {r.stderr}")
     r = subprocess.run(harness.editor_command() + ["check", "--help"], capture_output=True, text=True, timeout=60)
     check_eq(r.returncode, 0, "--help")
-    for option in ("--lua", "--shaders", "--cpp", "--all", "--files", "--format", "--quiet", "--hook"):
+    for option in ("--lua", "--shaders", "--cpp", "--anims", "--all", "--files", "--format", "--quiet", "--hook"):
         check(option in r.stdout, f"--help documents {option}: {r.stdout}")
     with scratch_project() as project:
         r = run_check(project, "--nope")
@@ -306,6 +306,87 @@ async def test_cli_hook_mode():
 
         r = run_check(project, "--hook", stdin="not json")
         check_eq(r.returncode, 1, f"unreadable hook input exits 1 (shown to the user, not the agent): {r.stderr}")
+
+
+# ---------------------------------------------------------------------------- CLI: animation clips
+
+CLIP_GUID = "0123456789abcdef0123456789abcdef"
+GOOD_CLIP = json.dumps({"format": "jasperengine.anim", "version": 1, "guid": CLIP_GUID, "wrap": "loop",
+                        "tracks": [{"path": "", "channel": "position", "keys": [[0, [0, 0, 0]], [1, [0, 1, 0]]]}]}, indent=2) + "\n"
+# a JSON syntax error on line 5 (a closing brace where a value belongs)
+BROKEN_CLIP = '{\n  "format": "jasperengine.anim",\n  "version": 1,\n  "tracks": [\n}\n'
+WARN_CLIP = json.dumps({"format": "jasperengine.anim", "version": 1, "wrap": "sideways", "tracks": []}, indent=2) + "\n"
+UNITY_CLIP = "%YAML 1.1\n%TAG !u! tag:unity3d.com,2011:\n--- !u!74 &7400000\nAnimationClip:\n  m_Name: Walk\n"
+# what a saved scene holds for Animation Players (Stream::encodeAnimationPlayerComponent), paths
+# relative to the assets folder (the project root in the default fixture)
+CLIP_SCENE = """name: Clips
+entities:
+  - name: Mover
+    components:
+      animationplayer:
+        clips:
+          - clip: assets/anim/good.anim
+            guid: 0123456789abcdef0123456789abcdef
+          - clip: assets/anim/missing.anim
+          - clip: assets/old/good.anim
+            guid: 0123456789abcdef0123456789abcdef
+          - clip: assets/models/none.gltf#Walk
+"""
+
+
+async def test_cli_anims():
+    with scratch_project() as project:
+        write(project, "assets/anim/good.anim", GOOD_CLIP)
+        write(project, "assets/anim/broken.anim", BROKEN_CLIP)
+        write(project, "assets/anim/warn.anim", WARN_CLIP)
+        write(project, "assets/anim/unity.anim", UNITY_CLIP)
+        write(project, "Clips.scene", CLIP_SCENE)
+        code, data = run_json(project, "--anims")
+        check_eq(code, 1, f"errors exit 1: {data}")
+        check_eq(data["checked"], {"anims": 4}, "the four clips are read (anims only)")
+        found = {}
+        for f in data["findings"]:
+            check_eq(set(f), FINDING_KEYS, "six keys")
+            check_eq(f["tool"], "anim", "tool")
+            found.setdefault(f["path"], []).append(f)
+        broken = found["assets/anim/broken.anim"]
+        check(len(broken) == 1 and broken[0]["severity"] == "error" and broken[0]["line"] == 5 and broken[0]["col"] > 0,
+              f"a JSON syntax error with line:col: {broken}")
+        warn = found["assets/anim/warn.anim"]
+        check(len(warn) == 1 and warn[0]["severity"] == "warning" and warn[0]["message"].startswith("wrap:"),
+              f"a lenient warning with its JSON path: {warn}")
+        unity = found["assets/anim/unity.anim"]
+        check(unity[0]["severity"] == "error" and "Unity .anim (YAML)" in unity[0]["message"], f"Unity YAML refused: {unity}")
+        check("assets/anim/good.anim" not in found, f"a valid clip has no findings: {found.get('assets/anim/good.anim')}")
+        scene = sorted((f["severity"], f["message"]) for f in found.get("Clips.scene", []))
+        check_eq(len(scene), 3, f"the scene's references: missing clip, moved clip, missing model: {scene}")
+        check(any(s == "error" and "assets/anim/missing.anim" in m and "does not exist" in m for s, m in scene), f"missing clip: {scene}")
+        check(any(s == "warning" and "assets/old/good.anim" in m and "moved to 'assets/anim/good.anim'" in m for s, m in scene),
+              f"a moved clip found by its GUID: {scene}")
+        check(any(s == "error" and "assets/models/none.gltf" in m for s, m in scene), f"a model clip without its model: {scene}")
+
+        # text: compiler style; the default set includes the clips
+        r = run_check(project, "--anims")
+        check("assets/anim/broken.anim:5:" in r.stdout and ": error: " in r.stdout, f"text output: {r.stdout}")
+        check("anims 4 clips" in r.stderr, f"summary counts the clips: {r.stderr}")
+
+        # --files: only the named clips, no reference scan
+        code, data = run_json(project, "--files", "assets/anim/good.anim")
+        check_eq((code, data["checked"], data["findings"]), (0, {"anims": 1}, []), "--files a valid clip")
+        code, data = run_json(project, "--files", "assets/anim/broken.anim", "assets/anim/warn.anim")
+        check_eq((code, data["checked"]["anims"], len(data["findings"])), (1, 2, 2), f"--files two clips: {data}")
+
+        # hook mode: an agent wrote a broken clip
+        hook = {"hook_event_name": "PostToolUse", "tool_name": "Write", "cwd": str(project),
+                "tool_input": {"file_path": str(project / "assets/anim/broken.anim"), "content": "..."}}
+        r = run_check(project, "--hook", stdin=json.dumps(hook))
+        check_eq(r.returncode, 2, f"a broken clip exits 2 in hook mode: {r.stderr}")
+        check("assets/anim/broken.anim:5:" in r.stderr, r.stderr)
+
+        # the default set includes the clips (last: loading the project for the shader check
+        # gives clips without a GUID one, see the T4 report)
+        code, data = run_json(project)
+        check("anims" in data["checked"], f"the default set checks clips: {data['checked']}")
 
 
 # ---------------------------------------------------------------------------- CLI: shaders

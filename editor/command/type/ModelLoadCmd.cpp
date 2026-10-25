@@ -5,6 +5,8 @@
 
 #include "Stream.h"
 #include "util/ProjectUtils.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
 #include "Engine.h"
 #include "subsystem/MeshSystem.h"
 #include "io/FileData.h"
@@ -200,6 +202,66 @@ void editor::ModelLoadCmd::recordArrangement(SceneProject* sceneProject, const M
     }
 }
 
+void editor::ModelLoadCmd::recordRetargets(Scene* scene, const ModelComponent& model) {
+    retargetedActions.clear();
+    std::unordered_map<Entity, NodeRef> modelNodes;
+    for (const auto& node : model.nodesIdMapping) {
+        modelNodes.emplace(node.second, makeNodeRef(model, node.first, scene->findComponent<BoneComponent>(node.second) != nullptr));
+    }
+    for (const auto& node : model.meshNodesMapping) {
+        modelNodes.emplace(node.second, makeNodeRef(model, node.first, false));
+    }
+    for (const auto& bone : model.bonesIdMapping) {
+        modelNodes.emplace(bone.second, makeNodeRef(model, bone.first, true));
+    }
+    if (modelNodes.empty()) return;
+
+    // the loader's own animations go with the model and come back from the file
+    std::unordered_set<Entity> generated(model.animations.begin(), model.animations.end());
+    for (Entity animation : model.animations) {
+        if (const AnimationComponent* component = scene->findComponent<AnimationComponent>(animation)) {
+            for (const ActionFrame& frame : component->actions) generated.insert(frame.action);
+        }
+    }
+    auto actions = scene->getComponentArray<ActionComponent>();
+    for (size_t i = 0; i < actions->size(); i++) {
+        const Entity action = actions->getEntity(i);
+        if (generated.count(action) || modelNodes.count(action)) continue;
+        auto node = modelNodes.find(actions->getComponentFromIndex(i).target);
+        if (node == modelNodes.end()) continue;
+        retargetedActions.push_back({action, node->first, node->second});
+    }
+}
+
+void editor::ModelLoadCmd::detachRetargets(Scene* scene) {
+    for (const RetargetedAction& retarget : retargetedActions) {
+        if (ActionComponent* action = scene->isEntityCreated(retarget.action) ? scene->findComponent<ActionComponent>(retarget.action) : nullptr) {
+            action->target = NULL_ENTITY;
+        }
+    }
+}
+
+void editor::ModelLoadCmd::applyRetargets(Scene* scene, const ModelComponent& model) {
+    for (const RetargetedAction& retarget : retargetedActions) {
+        ActionComponent* action = scene->isEntityCreated(retarget.action) ? scene->findComponent<ActionComponent>(retarget.action) : nullptr;
+        if (!action) continue;
+        const Entity node = findModelNode(model, retarget.node);
+        if (node == NULL_ENTITY) {
+            Log::warn("Node %d '%s' is no longer in '%s': '%s' has no target now", retarget.node.index, retarget.node.name.c_str(),
+                model.filename.c_str(), scene->getEntityName(retarget.action).c_str());
+        }
+        action->target = node;
+    }
+}
+
+void editor::ModelLoadCmd::restoreRetargets(Scene* scene) {
+    for (const RetargetedAction& retarget : retargetedActions) {
+        if (ActionComponent* action = scene->isEntityCreated(retarget.action) ? scene->findComponent<ActionComponent>(retarget.action) : nullptr) {
+            action->target = retarget.oldTarget;
+        }
+    }
+}
+
 void editor::ModelLoadCmd::parkEntities(SceneProject* sceneProject) {
     if (parkedEntities.empty()) return;
     Scene* scene = sceneProject->scene;
@@ -322,6 +384,7 @@ void editor::ModelLoadCmd::finalizeLoad(){
     }
 
     restoreArrangement(sceneProject, newModel);
+    applyRetargets(scene, newModel);
 
     // Put back on whichever mesh the primitive ended up in, which a merge change moves.
     scene->getSystem<MeshSystem>()->applySubmeshOverrides(savedSubmeshOverrides, entity, newModel);
@@ -502,8 +565,10 @@ bool editor::ModelLoadCmd::execute(){
     // parsed glTF to name the nodes; a redo reuses what it recorded.
     if (firstExecution && sameModelFile && !reuseHierarchy) {
         recordArrangement(sceneProject, model);
+        recordRetargets(scene, model);
     }
     parkEntities(sceneProject);
+    detachRetargets(scene);
 
     std::vector<Entity> oldSubEntityRoots;
     if (!reuseHierarchy) {
@@ -518,6 +583,7 @@ bool editor::ModelLoadCmd::execute(){
         if (!oldSubEntitiesDeleteCmd->execute()) {
             delete oldSubEntitiesDeleteCmd;
             oldSubEntitiesDeleteCmd = nullptr;
+            restoreRetargets(scene);
             unparkEntities(sceneProject);
             return false;
         }
@@ -568,6 +634,7 @@ bool editor::ModelLoadCmd::execute(){
         delete oldSubEntitiesDeleteCmd;
         oldSubEntitiesDeleteCmd = nullptr;
     }
+    restoreRetargets(scene);
     unparkEntities(sceneProject);
     if (createEntityCmd) {
         createEntityCmd->undo();
@@ -594,6 +661,7 @@ void editor::ModelLoadCmd::undo(){
     } else {
         // The attached entities sit on nodes this load created, which are removed below
         parkEntities(sceneProject);
+        detachRetargets(scene);
 
         ModelComponent& model = scene->getComponent<ModelComponent>(entity);
         std::vector<Entity> newSubEntityRoots = collectModelDeleteRoots(scene, model);
@@ -620,6 +688,7 @@ void editor::ModelLoadCmd::undo(){
         delete oldSubEntitiesDeleteCmd;
         oldSubEntitiesDeleteCmd = nullptr;
     }
+    restoreRetargets(scene);
     unparkEntities(sceneProject);
 
     sceneProject->isModified = wasModified;

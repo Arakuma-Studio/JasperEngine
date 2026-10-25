@@ -48,6 +48,10 @@ namespace jasperengine::editor{
         // its last action was a pure clip edit, or Record is on and the Scene view or Inspector has
         // focus (R4/R5)
         std::function<bool(const ClipUndoFocus& focus)> ownsUndo;
+        // (R5b, T3a round 2) the same for Ctrl/Cmd+Y / Shift+Z and Edit > Redo, decided on its own:
+        // the newest redoable step (the one undone last) across the scene and project histories
+        // is a clip commit. Unset: redo follows ownsUndo
+        std::function<bool(const ClipUndoFocus& focus)> ownsRedo;
         // the Animation window is focused and handles its keys (Space, K, R, comma/period,
         // Delete, Ctrl+D...): the main toolbar's single-key shortcuts and the scene key block stay
         // off. While only Record routes undo (the Scene view focused), the scene keys stay on

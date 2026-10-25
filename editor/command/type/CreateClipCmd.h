@@ -17,7 +17,8 @@
 //     command failing undoes the ones before it and the files, and execute returns false.
 //   * undo undoes the scene commands in reverse order, then for each file: deleted (it did not
 //     exist) or given its previous content back (it existed), but only when its bytes are still
-//     the ones this command wrote; otherwise it is kept and the mismatch logged.
+//     the ones this command wrote; otherwise it is kept and the mismatch logged, and a redo then
+//     leaves it as it is too (logged).
 //   * the scene's modified flag is set on execute and put back on undo (like CreatePrefabCmd);
 //     after execute, undo and redo the files go through AnimationClipDocument::filesChanged and
 //     the same files-written hook as document commits (AnimationClipDocument::
@@ -69,7 +70,8 @@ namespace jasperengine::editor{
         void setPlayerRoot(Entity root) { playerRoot = root; }
         // how many models the last execute reloaded in the node hierarchy
         size_t getReloadedModels() const { return layoutReloads.size(); }
-        // the files undo kept because they changed since this command wrote them
+        // the files left as they are because they changed since this command wrote them: by the
+        // last undo (not taken back) or redo (not written over, and so not taken back either)
         const std::vector<std::filesystem::path>& getKeptFiles() const { return keptFiles; }
         const std::vector<File>& getFiles() const { return files; }
 

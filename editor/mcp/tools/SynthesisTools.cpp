@@ -860,9 +860,8 @@ void registerSynthesisTools(McpRegistry& registry) {
         {"target_guide", string("guided.")},
         {"size", size},
         {"quality", withDefault(stringEnum("draft ~2x faster, high ~2x slower.", {"draft", "balanced", "high"}), "balanced")},
-        {"params", loose(object({{"nearest_neighbors", integer("", 1, 256)}, {"random_sample_locations", integer("", 1, 1024)},
-                           {"cauchy_dispersion", number("Low: hard patch edges.", 0.0001, 1)}, {"backtrack_percent", number("", 0, 0.95)},
-                           {"backtrack_stages", integer("", 0, 10)}, {"guide_alpha", number("", 0, 1)}, {"guide_decay", boolean("")}}))},
+        // the fields and their ranges: docs/mcp/guide/texture-synthesis.md (the handler checks them)
+        {"params", anyObject("Expert overrides: jasper://docs/texture-synthesis.")},
         {"border", withDefault(number("make_tileable band per edge.", 0.0001, 0.5), 0.125)},
         {"seed", [] {
              Json j;

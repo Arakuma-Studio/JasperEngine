@@ -7,7 +7,7 @@ files with its own tools, a shell, a CI job or an agent hook gets the same findi
 editor running. Both sides call the same code (`editor/util/ProjectChecks.{h,cpp}`).
 
 ```
-jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--all]
+jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cpp] [--ui] [--textures] [--anims] [--all]
                           [--files <paths...>] [--format text|json] [--quiet] [--hook]
 ```
 
@@ -19,8 +19,9 @@ jasperengine-editor check --project <dir|project.yaml> [--lua] [--shaders] [--cp
 | `--cpp` | The C++ scripts: generated sources, CMake configure and build, as Play and `compile_scripts` do (same build directory, `.jasperengine/build`, so it is incremental). Slow the first time (a configure plus a full build; about 25 s for one script here), then a few seconds to tens of seconds. |
 | `--ui` | HTML/CSS UI documents: what the engine's compatibility layer drops or rewrites lossily, missing and remote files, JavaScript, each with `file:line:col`, a stable code and a fix (see below). Pure parsing, no engine start: about 1 ms per document. |
 | `--textures` | Synthesized textures: every project PNG that carries a texture synthesis recipe (an iTXt chunk `jasper.synthesis`, written by `synthesize_texture` and Window > Texture Synthesis) whose sources changed or disappeared since it was made: a warning at the PNG (see below). Reads only the PNG chunks before the image data, and hashes sources only for PNGs with a recipe, both cached by mtime and size: milliseconds once cached. |
-| `--all` | All five. Without `--lua/--shaders/--cpp/--ui/--textures/--all`: `--lua --shaders --ui --textures` (C++ only when asked, since it builds). |
-| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
+| `--anims` | Animation clips (`.anim`): every clip read as the engine reads it (an error with `line:col` for text that is not a clip; a warning with the JSON path of each part the lenient reader drops), and the clips the project's scenes and prefabs reference: an Animation Player entry naming a missing `.anim` (an error; a warning when its GUID finds the moved file) or a model clip whose model is missing (see below). Pure parsing, no engine start. |
+| `--all` | All six. Without `--lua/--shaders/--cpp/--ui/--textures/--anims/--all`: `--lua --shaders --ui --textures --anims` (C++ only when asked, since it builds). |
+| `--files <paths...>` | Only these files: absolute, relative to the current directory, or relative to the project. Lua files are checked one by one; a `.vert`/`.frag` checks its fork (a UI effect `.frag`, the effect); a `.glsl` checks every fork and UI effect (any can include it); a C++ file (`.h .hpp .hh .hxx .cpp .cc .cxx .c .inl`) builds the scripts when `--cpp` is given and is ignored otherwise; an `.html`/`.htm` is converted as a document (its stylesheets, imports, images and fonts with it), a `.css` is checked as the project's documents that load it see it (its findings and its imports'), or on its own when no document loads it. An image is checked as a synthesized texture when it carries a recipe, and as a source otherwise: the project's synthesized textures made from it are checked (an edited example reports the textures to regenerate). An `.anim` is checked as a clip (its references from scenes are checked on whole-project runs only). Files outside the project, in hidden or `build` directories, deleted, or of other kinds are skipped; when nothing is left, the command returns at once (no engine start). |
 | `--format json` | One JSON object on stdout (below). Default `text`. |
 | `-q`, `--quiet` | No summary line on stderr. |
 | `--hook` | Agent hook mode (below). |
@@ -68,7 +69,7 @@ JSON (`--format json`):
 }
 ```
 
-`tool` is `lua`, `shader`, `cpp`, `ui` or `texture`; `path` is project-relative (absolute for a file outside the
+`tool` is `lua`, `shader`, `cpp`, `ui`, `texture` or `anim`; `path` is project-relative (absolute for a file outside the
 project, e.g. a system header warning; `engine/shaderlib/<include>` for an engine shader include;
 `""` when there is no file); `line`/`col` are 1-based, 0 when unknown; `severity` is `error` or
 `warning`. UI findings also have `code` (the compatibility layer's stable diagnostic code) and,
@@ -78,7 +79,7 @@ when there is a fix, `suggestion`; so do the shader findings of a UI effect (`co
 (`stochastic-tilted-normal-map`, `stochastic-no-effect`, below); the other findings have exactly the six keys above.
 `checked` counts what ran: Lua files, shader forks, C++ scripts, UI files (documents plus the
 stylesheets checked on their own), synthesized textures (`textures`: the PNGs with a recipe whose
-sources were checked).
+sources were checked), clips (`anims`: the `.anim` files read).
 
 Exit code: **0** no errors (warnings allowed), **1** errors, **2** usage error (bad option, no
 `project.yaml`, the project fails to load).
@@ -190,6 +191,32 @@ assets/textures/rock_tile.png: warning: synthesized from assets/textures/rock_he
   on the PNG returns `synthesis.sources` (each `unchanged`, `changed` or `missing`) and
   `synthesis.regenerate`, the `synthesize_texture` arguments to write it again.
 
+## What the clip check runs
+
+Each `.anim` goes through the engine's clip reader (`engine/core/animation/AnimationClipIO`, the
+one the editor, the game and `write_file` use):
+
+```
+assets/anim/bob.anim:5:3: error: syntax error while parsing object - unexpected '}'; expected string literal
+assets/anim/walk.anim: warning: tracks[2].keys[0].value: expected [x, y, z]
+assets/anim/old.anim: error: This is a Unity .anim (YAML). JasperEngine clips are JSON {"format": "jasperengine.anim"}: create one with Create > Animation Clip or edit_animation {clip, create}.
+Main Scene.scene: error: an Animation Player plays 'anim/run.anim', which does not exist (paths are relative to the assets folder)
+```
+
+- Tool `anim`. **Errors**: text that is not JSON (`line:col`), a root that is not an object, a
+  missing or different `format`, a missing or newer `version`, a Unity YAML clip; the clip does not
+  load at all.
+- **Warnings**: everything the lenient reader repairs or drops (a bad key, track or event, keys out
+  of order, an unknown wrap...), with the JSON path in the message; the rest of the clip loads.
+- Without `--files` (and in the default set), also every Animation Player entry of the project's
+  `.scene` and `.prefab` files: a `.anim` that does not exist is an error, or a warning when the
+  entry's GUID finds the clip somewhere else (moved outside the editor: the editor resolves it and
+  updates the path when the scene is opened and saved); a model clip (`models/hero.gltf#Walk`)
+  whose model file is missing is an error. The animation names inside models are not checked here
+  (`get_animation {clip}` in the editor reads them).
+- With `--files`, only the named `.anim` files (no reference scan). Binding paths against a
+  hierarchy are an editor check: `edit_animation`/`get_animation` with `root`.
+
 ## Examples
 
 ```sh
@@ -201,6 +228,10 @@ jasperengine-editor check --project . --files scripts/Enemy.lua shaders/Water.fr
 
 # only the HTML/CSS UI
 jasperengine-editor check --project . --ui
+
+# animation clips (after editing an .anim with your own tools: --files it)
+jasperengine-editor check --project . --anims
+jasperengine-editor check --project . --files assets/anim/bob.anim
 
 # synthesized textures whose sources changed (after repainting an example: --files it)
 jasperengine-editor check --project . --textures
@@ -219,7 +250,7 @@ So each `--hook` run checks:
 
 - the files the hook input names: Claude Code's `tool_input.file_path` / `notebook_path`, the
   `*** Add File:` / `*** Update File:` / `*** Move to:` lines of a Codex `apply_patch`;
-- and every Lua, shader, C++, `.html`, `.htm` and `.css` file of the project that changed since the
+- and every Lua, shader, C++, `.html`, `.htm`, `.css` and `.anim` file of the project that changed since the
   previous `--hook` run, whatever the tool was. The stamps (mtime, size) of those files are kept in
   `.jasperengine/check-hook-state.json`; a change is checked once, by the first run after it. The
   first run (no state yet) checks the files changed in the last 10 minutes, not the project's

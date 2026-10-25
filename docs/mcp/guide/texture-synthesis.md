@@ -43,7 +43,18 @@ when you want another size or more variation.
    (random when you gave none). Use `quality: "draft"` and a small `size` (256-512) while
    choosing the mode, the examples and the parameters.
 2. Iterate: another `seed` for another variation; `quality: "high"` for fewer seams and repeats;
-   `params` for the raw parameters when a preset is not enough.
+   `params` for the raw parameters when a preset is not enough (each one overrides the quality
+   preset's value; an unknown key or a value out of range is refused):
+
+   | `params` key | range | |
+   |---|---|---|
+   | `nearest_neighbors` | integer 1..256 | output pixels each pixel compares: larger keeps more global structure |
+   | `random_sample_locations` | integer 1..1024 | random source locations tried besides the coherent candidates |
+   | `cauchy_dispersion` | 0.0001..1 | low: hard edges between copied patches; 1: smooth |
+   | `backtrack_percent` | 0..0.95 | share of the pixels each backtracking stage resolves relative to the next |
+   | `backtrack_stages` | integer 0..10 | backtracking stages (also the blur pyramid depth) |
+   | `guide_alpha` | 0..1 | guided: weight of the target guide against the example |
+   | `guide_decay` | true / false | guided: the guide weight fades over the stages (default true) |
 3. Call again with the **same arguments, the chosen `seed` and `output`**: the synthesis is
    deterministic (same inputs, parameters and seed give identical pixels, whatever the thread
    count), so the file is exactly the preview. The outputs (primary + companions) are one undo

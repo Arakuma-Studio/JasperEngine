@@ -28,7 +28,6 @@ Mesh Filter/Renderer = MeshComponent (Primitive for box/sphere/plane...). Sprite
 SpriteComponent. Rigidbody / Rigidbody 2D = RigidbodyComponent (Jolt) / Rigidbody2DComponent
 (Box2D). Collider = an entry of the Rigidbody's colliders list, not a separate component.
 Most others: Unity's name + "Component" (AudioSourceComponent, Light2DComponent...).
-Build Settings = export; Scenes in Build = project.yaml scenes.
 
 ## Addressing
 - scene: numeric id ("12" ok), scene name, or project-relative .scene path. Omitted = the selected
@@ -175,6 +174,8 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
 - Humanoid poses (.poseanim): get_pose_animation -> edit_pose_animation ->
   render_pose_animation, its metrics; degrees from standing (arms down); mirror_pose
   (jasper://docs/pose-animation).
+- Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}; play with an Animation
+  Player (jasper://docs/animation).
 - UI (text, image, button, panel, scrollbar, progressbar, input field, layout group; HTML/CSS
   UI: below): create_ui lays out in pixels with y DOWN from the parent's top-left, in 2D scenes
   and UI scenes alike, but in a 2D scene layout groups stack bottom-up and pointer input needs a
@@ -252,8 +253,6 @@ Edit mode runs no Lua. First read jasper://docs/html-ui.
 - Unsaved scenes are lost when the editor closes; save after each working step.
 - Edits made while playing are lost when play stops (as in Unity): stop before editing
   the scene for real.
-- Use only engine APIs you have confirmed in jasper://docs or the engine API snapshot
-  (.jasperengine/engine-api); never carry over names from Unity C#, Godot or Unreal.
 - Lua: static functions use a dot (GameObject.instantiate), methods a colon (go:setScale(2)).
 )JE";
 }

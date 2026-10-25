@@ -15,6 +15,7 @@
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
+#include "animation/AnimationClipIO.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ComponentValuesCmd.h"
 #include "command/type/MeshChangeCmd.h"
@@ -39,6 +40,20 @@
 namespace jasperengine::editor::mcp {
 
 namespace {
+
+// An Animation Player entry's clips[N].wrap: Custom in Catalog (one byte), named like an enum
+bool isPlayerWrap(ComponentType type, const std::string& name) {
+    return type == ComponentType::AnimationPlayerComponent && name.compare(0, 6, "clips[") == 0 && name.size() > 6 &&
+           name.compare(name.size() - 6, 6, "].wrap") == 0;
+}
+
+Json playerWrapNames() {
+    Json names = Json::array();
+    for (ClipWrapMode wrap : {ClipWrapMode::Default, ClipWrapMode::Once, ClipWrapMode::Loop, ClipWrapMode::PingPong, ClipWrapMode::ClampForever}) {
+        names.push_back(anim::wrapName(wrap));
+    }
+    return names;
+}
 
 using namespace schema;
 
@@ -288,6 +303,10 @@ void getEntityTool(const CallPtr& call) {
                 }
             } else if (property.type == PropertyType::Ease) {
                 entry["options"] = McpValues::enumNames(McpValues::easeOptions());
+            } else if (isPlayerWrap(type, propName)) {
+                entry["type"] = "enum";
+                entry["default"] = "default";
+                entry["options"] = playerWrapNames();
             }
             if (overridden.count(propName) || overridden.count(PrefabObjectOverrides::WHOLE_COMPONENT)) entry["overridden"] = true;
             props[propName] = entry;
@@ -814,6 +833,10 @@ void listComponentTypesTool(const CallPtr& call) {
                 if (const McpValues::EnumOptions* options = McpValues::enumOptions(type, name)) entry["options"] = McpValues::enumNames(*options);
             } else if (property.type == PropertyType::Ease) {
                 entry["options"] = McpValues::enumNames(McpValues::easeOptions());
+            } else if (isPlayerWrap(type, name)) {
+                entry["type"] = "enum";
+                entry["default"] = "default";
+                entry["options"] = playerWrapNames();
             }
             props[name] = entry;
         }

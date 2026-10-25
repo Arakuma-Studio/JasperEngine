@@ -173,7 +173,12 @@ async def test_setup_and_schema(ed: Editor):
     props = schema["properties"]
     check(props["mode"]["enum"] == ["extend", "tileable", "make_tileable", "inpaint", "guided"], f"mode enum: {props['mode']}")
     check(props["quality"]["default"] == "balanced", "quality default")
-    check(props["params"]["properties"]["nearest_neighbors"]["maximum"] == 256, "params ranges")
+    # params is a free object (animation clips spec 9.R28: its fields and ranges are documented in
+    # jasper://docs/texture-synthesis and checked by the handler, test_argument_errors)
+    check(props["params"]["type"] == "object" and "jasper://docs/texture-synthesis" in props["params"].get("description", ""),
+          f"params points to the guide: {props['params']}")
+    msg = await ed.call("synthesize_texture", {**BASE, "params": {"nearest_neighbors": 257}}, expect_error=True)
+    check("nearest_neighbors" in msg and "256" in msg, f"params ranges are checked: {msg}")
     check("jasper://docs/texture-synthesis" in tool.description, "the description points to the guide")
     annotations = tool.annotations
     check(annotations is None or not annotations.read_only_hint, "writes: not read-only")

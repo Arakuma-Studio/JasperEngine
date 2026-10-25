@@ -476,6 +476,7 @@ async def test_instructions_name_real_tools(ed: Editor):
         "import_files": ["fonts", "icons", "from_document"],
         "list_ui_effects": ["name", "category", "kind"],
         "set_ui_effect_time": ["time"],
+        "edit_animation": ["clip", "create", "tracks", "path"],
     }
     for tool, names in pairs.items():
         ed.check(tool in tools, f"guide tool {tool} missing")
