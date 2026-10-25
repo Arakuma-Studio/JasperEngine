@@ -5564,9 +5564,13 @@ void editor::InspectorWindow::finishRecordRow(){
 bool editor::InspectorWindow::setMorphWeight(SceneProject* sceneProject, const std::vector<Entity>& entities, int index, float value){
     if (!sceneProject || !sceneProject->scene || index < 0 || index >= MAX_MORPHTARGETS || !std::isfinite(value)) return false;
     Scene* scene = sceneProject->scene;
+    // meshes with blend shapes (the rows show for those only)
     std::vector<Entity> meshes;
     for (Entity entity : entities){
-        if (scene->findComponent<MeshComponent>(entity)) meshes.push_back(entity);
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        bool morphs = false;
+        for (unsigned int s = 0; mesh && s < mesh->numSubmeshes; s++) morphs = morphs || mesh->submeshes[s].hasMorphTarget;
+        if (morphs) meshes.push_back(entity);
     }
     if (meshes.empty()) return false;
     // Record keys the claimed meshes (the others stay as they are)

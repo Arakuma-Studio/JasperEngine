@@ -72,6 +72,8 @@ async def transform(ed: Editor, entity: str, what: str = "position") -> list:
     value = harness.find_key(await ed.call("get_entity", entity=entity, detail="full"), what)
     if isinstance(value, dict):
         value = value.get("value", value)
+        # rotations: {"quat": [x, y, z, w], "euler": [...]}
+        value = value.get("quat", value) if isinstance(value, dict) else value
     return [float(v) for v in value]
 
 
@@ -214,9 +216,11 @@ async def test_multi_selection_and_unclaimed_edits(ed: Editor):
     ed.check(close(await transform(ed, "Robot"), S["rest_robot"]), "Robot, not under Hero, stays as it is")
     ed.check("not under Hero" in st["record_status"], f"the status says so: {st['record_status']}")
     ed.check(not await modified(ed), "no scene step")
-    # Robot alone: Record does not claim it, the drag is a scene step
+    # Robot alone (Hero still selected: selecting Robot would rebind the window and end Record):
+    # Record does not claim it, the drag is a scene step
     moved = [S["rest_robot"][0] + 0.3, S["rest_robot"][1], S["rest_robot"][2]]
-    st = await hook(ed, gizmo={"entities": ["Robot"], "tool": "move", "value": moved})
+    st = await hook(ed, entity="Hero", gizmo={"entities": ["Robot"], "tool": "move", "value": moved, "select": False})
+    ed.check(st["recording"], "still recording")
     ed.check(close(await transform(ed, "Robot"), moved), "Robot moved")
     ed.check(await modified(ed), "a scene step")
     ed.check(not st["undo_to_project"], "the scene step is the newest: Ctrl+Z goes to the scene")
@@ -273,7 +277,10 @@ async def test_record_blend_shapes(ed: Editor):
 async def test_record_lattice_drag(ed: Editor):
     cage = (await ed.call("create_entity", type="empty", name="Cage", parent="Hero"))["entity_id"]
     await ed.call("add_component", entity=cage, component="lattice")
+    # (a save stops the preview, and Record with it: 9.R6)
     await ed.call("save_scene", scene="Main Scene")
+    st = await hook(ed, frame=15, record=True)
+    ed.check(st["recording"], "Record on")
     st = await hook(ed, lattice_drag={"entity": "Hero/Cage", "points": [13], "offsets": [[0, 0.3, 0]]})
     r = row(st, "Cage", "lattice")
     ed.check(r is not None, f"the lattice drag keyed a lattice track: {[x.get('label') for x in st['rows']]}")

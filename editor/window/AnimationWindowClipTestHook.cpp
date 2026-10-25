@@ -524,11 +524,13 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         const std::string tool = drag.is_object() && drag.contains("tool") && drag["tool"].is_string() ? drag["tool"].get<std::string>() : std::string();
         if (!drag.is_object() || !drag.contains("entities") || !entitiesOf(drag["entities"], entities) || !drag.contains("value") ||
             !vectorOf(drag["value"], target) || (tool != "move" && tool != "rotate" && tool != "scale")){
-            return fail("gizmo", "{entities: [names], tool: move|rotate|scale, value: [x, y, z]}");
+            return fail("gizmo", "{entities: [names], tool: move|rotate|scale, value: [x, y, z], select?}");
         }
         SceneRender* render = sceneProject->sceneRender;
         if (!render) return fail("gizmo", "the scene has no Scene view");
-        project->replaceSelectedEntities(sceneProject->id, entities);
+        // the gizmo works on the selection (select: false keeps the current one: selecting a
+        // GameObject outside the bound hierarchy rebinds the window, which ends Record)
+        if (drag.value("select", true)) project->replaceSelectedEntities(sceneProject->id, entities);
         const GizmoSelected gizmo = tool == "move" ? GizmoSelected::TRANSLATE : tool == "rotate" ? GizmoSelected::ROTATE : GizmoSelected::SCALE;
         std::vector<Transform> start;
         for (Entity entity : entities) start.push_back(sceneProject->scene->getComponent<Transform>(entity));
@@ -605,7 +607,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         if (!inspector->setMorphWeight(sceneProject, entities, index, from + (value - from) * 0.5f) ||
             !inspector->setMorphWeight(sceneProject, entities, index, value)){
             inspector->finishMorphEdit();
-            return fail("morph", "no mesh to edit (index 0.." + std::to_string(MAX_MORPHTARGETS - 1) + ")");
+            return fail("morph", "no mesh with blend shapes to edit (index 0.." + std::to_string(MAX_MORPHTARGETS - 1) + ")");
         }
         inspector->finishMorphEdit();
     }
