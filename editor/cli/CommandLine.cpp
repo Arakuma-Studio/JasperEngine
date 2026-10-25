@@ -2142,9 +2142,10 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
             check.findings.push_back({"anim", rel, 0, 0, "warning", std::string("could not read Animation Player entries: ") + e.what()});
             continue;
         }
-        std::set<std::string> reported;
+        // once per (clip, guid): two entries of one path with different GUIDs are checked apart
+        std::set<std::pair<std::string, std::string>> reported;
         for (const auto& [clip, guid] : entries) {
-            if (clip.empty() || !reported.insert(clip).second) continue;
+            if (clip.empty() || !reported.insert({clip, guid}).second) continue;
             anim::SubClipReference reference;
             const bool subClip = anim::parseSubClipReference(clip, reference);
             const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();

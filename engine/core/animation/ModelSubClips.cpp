@@ -226,9 +226,12 @@ namespace{
 
     // The last model file withModelFile parsed itself (not in the ModelPool), so the sub-clips of
     // one library file (a player's N clips, the alias table, previews) share one parse instead of
-    // a full parse each. Read-only once cached (any thread may read it: shared ownership); dropped
-    // by dropModelFileParse (AnimationClipPool::invalidateModel and clear/clearUnused), and not
-    // used once the file's time or size changed (a .bin next to a .gltf: the editor invalidates).
+    // a full parse each. Only what sub-clips read is kept (trimToAnimations: no meshes, skins or
+    // images). Read-only once cached (any thread may read it: shared ownership); dropped by
+    // dropModelFileParse (AnimationClipPool::invalidateModel, clear and clearUnused), and not used
+    // once the time or size of a file it was read from changed: the file parsed (an FBX's imported
+    // .glb) and a .gltf's external buffers. A buffer URI with escapes (%20) is not stat'ed: the
+    // editor's model reload invalidates it.
     struct FileStamp{
         int64_t time = 0;
         uintmax_t size = 0;
@@ -249,10 +252,72 @@ namespace{
         return stamp;
     }
 
+    // the files a parse read, with their stamps when it was made
+    using FileStamps = std::vector<std::pair<std::string, FileStamp>>;
+
+    bool stampsCurrent(const FileStamps& files){
+        for (const auto& file : files){
+            if (!(fileStamp(file.first) == file.second)) return false;
+        }
+        return true;
+    }
+
+    // the file parseGLTFFile reads for `modelPath` (system path): an FBX's imported .glb
+    std::string parsedFile(const std::string& modelPath){
+        if (lower(FileData::getFilePathExtension(modelPath)) == "fbx"){
+            return FileData::getSystemPath(MeshSystem::getImportedModelPath(modelPath));
+        }
+        return MeshSystem::getModelFilenameKey(modelPath);
+    }
+
+    // Only what the sub-clip functions read: nodes, scenes and animations, the accessors (their
+    // metadata) and the buffer views of the animation samplers, whose bytes are copied into one
+    // buffer. Meshes, skins, materials, images and every other byte (a GLB's whole binary chunk,
+    // embedded textures) go. Views no sampler uses lose their buffer (reads of them fail cleanly).
+    void trimToAnimations(tinygltf::Model& model){
+        std::set<int> views;
+        for (const tinygltf::Animation& animation : model.animations){
+            for (const tinygltf::AnimationSampler& sampler : animation.samplers){
+                for (int accessor : {sampler.input, sampler.output}){
+                    if (accessor < 0 || (size_t)accessor >= model.accessors.size()) continue;
+                    const int view = model.accessors[accessor].bufferView;
+                    if (view >= 0 && (size_t)view < model.bufferViews.size()) views.insert(view);
+                }
+            }
+        }
+        tinygltf::Buffer kept;
+        for (size_t i = 0; i < model.bufferViews.size(); i++){
+            tinygltf::BufferView& view = model.bufferViews[i];
+            const bool used = views.count((int)i) && view.buffer >= 0 && (size_t)view.buffer < model.buffers.size() &&
+                              view.byteOffset <= model.buffers[view.buffer].data.size() &&
+                              view.byteLength <= model.buffers[view.buffer].data.size() - view.byteOffset;
+            if (!used){
+                view.buffer = -1;
+                continue;
+            }
+            const std::vector<unsigned char>& data = model.buffers[view.buffer].data;
+            while (kept.data.size() % 16) kept.data.push_back(0);    // the views' element alignment
+            const size_t offset = kept.data.size();
+            kept.data.insert(kept.data.end(), data.begin() + view.byteOffset, data.begin() + view.byteOffset + view.byteLength);
+            view.buffer = 0;
+            view.byteOffset = offset;
+        }
+        model.buffers.clear();
+        model.buffers.push_back(std::move(kept));
+        model.meshes.clear();
+        model.skins.clear();
+        model.materials.clear();
+        model.textures.clear();
+        model.images.clear();
+        model.samplers.clear();
+        model.cameras.clear();
+        model.lights.clear();
+    }
+
     struct ParseCache{
         std::mutex mutex;
         std::string key;
-        FileStamp stamp;
+        FileStamps files;
         std::shared_ptr<const tinygltf::Model> model;
         uint64_t epoch = 0;     // bumped by every drop: a parse that started before it is not cached
         size_t parses = 0;      // parseGLTFFile calls (test builds read it)
@@ -279,26 +344,42 @@ namespace{
             return read(*pooled);
         }
         ParseCache& cache = parseCache();
-        const FileStamp stamp = fileStamp(key);
         std::shared_ptr<const tinygltf::Model> cached;
+        FileStamps cachedFiles;
         uint64_t epoch = 0;
         {
             std::lock_guard<std::mutex> lock(cache.mutex);
-            if (cache.model && cache.key == key && cache.stamp == stamp) cached = cache.model;
+            if (cache.model && cache.key == key){
+                cached = cache.model;
+                cachedFiles = cache.files;
+            }
             epoch = cache.epoch;
         }
-        if (cached) return read(*cached);
+        // stat'ed without the lock
+        if (cached && stampsCurrent(cachedFiles)) return read(*cached);
 
-        // parsed without the lock (other files' reads go on meanwhile)
+        // parsed without the lock (other files' reads go on meanwhile); stamped before parsing, so
+        // a write during the parse is seen next time
+        const std::string mainFile = parsedFile(modelPath);
+        FileStamps files = {{mainFile, fileStamp(mainFile)}};
         std::shared_ptr<tinygltf::Model> parsed = std::make_shared<tinygltf::Model>();
         std::string parseError;
         const bool ok = MeshSystem::parseGLTFFile(modelPath, *parsed, &parseError);
+        if (ok){
+            const std::filesystem::path folder = std::filesystem::path(mainFile).parent_path();
+            for (const tinygltf::Buffer& buffer : parsed->buffers){
+                if (buffer.uri.empty() || buffer.uri.rfind("data:", 0) == 0 || buffer.uri.find('%') != std::string::npos) continue;
+                const std::string file = (folder / std::filesystem::u8path(buffer.uri)).lexically_normal().generic_string();
+                files.push_back({file, fileStamp(file)});
+            }
+            trimToAnimations(*parsed);
+        }
         {
             std::lock_guard<std::mutex> lock(cache.mutex);
             cache.parses++;
             if (ok && cache.epoch == epoch){
                 cache.key = key;
-                cache.stamp = stamp;
+                cache.files = std::move(files);
                 cache.model = parsed;
             }
         }

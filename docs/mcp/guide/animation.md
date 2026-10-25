@@ -94,7 +94,7 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 
 ## Binding paths and the root
 
-- A path is the names from the root to the target joined by `/` (`"Hips/Spine/Chest"`); `""`
+- A path is the names from the root to the target joined by `/` (`"Body/Arm/Hand"`); `""`
   is the root itself. `Name#N` is the same-named sibling that has N earlier ones (`Wheel#1` = the
   second "Wheel"), as in entity refs. Names containing `/` or ending in `#` or `#<digits>` can't
   be addressed.
@@ -123,8 +123,12 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   unresolved track is skipped; renames and reparents rebind live.
 - Fixing a missing path: rename the GameObject to match, or rename the track's path in the file.
   A `missing_path` with a nearest path carries `fix`, a `write_file` edit that renames it to
-  `nearest[0]` (`fix_with` says so): `write_file {path: "<clip>", edits: [missing[0].fix, ...]}`
-  keeps every key and tangent (check that `nearest[0]` is the bone you mean). By hand: the
+  `fix_path`: the first nearest path that is neither a track of the clip (same channel) nor
+  another fix's target, so the fixes never merge two tracks and apply together (`fix_with` says
+  so): `write_file {path: "<clip>", edits: [missing[0].fix, ...]}` keeps every key and tangent.
+  Check each `fix_path` is the bone you mean (two legs may go to one thigh's neighbour otherwise).
+  No free nearest path: `fix_conflict` instead (rename by hand). A file not in the canonical
+  layout (written by hand) gets no fixes, and `fix_with` says how to rename instead. By hand: the
   canonical file has one track per `{"path": "<old>", "channel": "rotation"` line; or read the
   track (`get_animation {clip, max_keys: 100000}`), send its keys (with their `in`/`out`) under
   the new path and `keys: []` under the old one in one edit_animation call. Either changes the
@@ -163,7 +167,9 @@ edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead
   back unchanged (same time and value, linear) keeps the tangents it had, in `replace` and
   `merge`; `merge` leaves the keys it does not touch as they are. A key you change without
   `in`/`out` in a track with tangents gets linear ones (the straight line to its neighbours; a
-  warning says so). Lattice keys have no tangents.
+  warning says so). In a rotation track with tangents, such a key keeps the quaternion sign of
+  the key it replaces (inserted: of the previous key), so `{"euler": ...}` values don't flip the
+  curve. Lattice keys have no tangents.
 
 ## Events and Lua scripts
 

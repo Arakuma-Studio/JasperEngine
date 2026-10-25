@@ -809,9 +809,10 @@ name the player lacks falls back to the entity animation of that name (the playe
 states fade out). `stopAnimations(fadeTime)` fades the player out too. Without a player,
 `playAnimation` uses the model's entity animations (glTF animations loaded as Animation
 entities), as before; `getAnimation` / `findAnimation` always return entity animations (none
-after the Inspector's Use Animation Player). Two glTF animations with the same name
-both stay named like that as entity animations (`findAnimation` finds the first), while the
-player's model clips are `"Wave"` and `"Wave 2"`.
+after the Inspector's Use Animation Player). Two glTF animations with the same name are both
+named like that as entity animations, but without a player `playAnimation` and `findAnimation`
+take the names the Inspector shows: `"Wave"` is the first one and `"Wave 2"` the second. With a
+player, its states are `"Wave"` and `"Wave 2"`.
 
 ### 4.8.1 PoseAnimator (EntityHandle)
 

@@ -441,12 +441,22 @@ entities:
 """
 
 
+# one path twice: first with its own GUID, then with other.anim's (the editor plays other.anim there)
+TWICE_SCENE = GUID_SCENE.replace("name: Guids", "name: Twice").replace(
+    "          - clip: assets/anim/other.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
+    "          - clip: assets/anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n",
+    "          - clip: assets/anim/good.anim\n            guid: 0123456789abcdef0123456789abcdef\n"
+    "          - clip: assets/anim/good.anim\n            guid: " + OTHER_GUID + "\n")
+
+
 async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
     with scratch_project() as project:
         write(project, "assets/anim/good.anim", GOOD_CLIP)
         write(project, "assets/anim/other.anim", GOOD_CLIP.replace(CLIP_GUID, OTHER_GUID))
         write(project, "Guids.scene", GUID_SCENE)
         write(project, "Broken.prefab", "name: Broken\nentities: [ {name: A\n")
+        # two entries of one path: its own GUID (fine), then another clip's GUID (verify review minor 8)
+        write(project, "Twice.scene", TWICE_SCENE)
         code, data = run_json(project, "--anims")
         found = {}
         for f in data["findings"]:
@@ -455,6 +465,9 @@ async def test_cli_anims_guid_mismatch_and_unreadable_yaml():
         check_eq(len(scene), 1, f"one finding: the entry whose GUID names another clip (the matching one is fine): {scene}")
         check(scene and scene[0][0] == "warning" and "'assets/anim/other.anim' has the GUID of 'assets/anim/good.anim'" in scene[0][1],
               f"GUID/path mismatch: {scene}")
+        twice = found.get("Twice.scene", [])
+        check(len(twice) == 1 and "'assets/anim/good.anim' has the GUID of 'assets/anim/other.anim'" in twice[0][1],
+              f"the second entry of the same path with another clip's GUID is checked too: {twice}")
         prefab = found.get("Broken.prefab", [])
         check(len(prefab) == 1 and prefab[0][0] == "warning" and "could not read Animation Player entries" in prefab[0][1],
               f"a YAML that fails to parse is reported, not skipped: {prefab}")

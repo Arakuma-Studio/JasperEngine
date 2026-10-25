@@ -45,6 +45,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <fstream>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <memory>
@@ -321,11 +323,29 @@ Json renameTrackEdit(const std::string& path, ClipChannel channel, const std::st
     return {{"old_text", "{\"path\": " + Json(path).dump() + channelText}, {"new_text", "{\"path\": " + Json(to).dump() + channelText}};
 }
 
-// {root, resolved, total, missing: [{path, channel, status, nearest, fix?, message}], ...}; `file`:
-// the clip is an .anim file (a missing path with a nearest one gets `fix`, its write_file edit)
-Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, bool file = false) {
+// The .anim file a binding report may offer rename fixes for: its data and its file
+struct FixableClip {
+    const ClipData* data = nullptr;
+    fs::path file;
+};
+
+// {root, resolved, total, missing: [{path, channel, status, nearest, fix?, fix_path?, fix_conflict?,
+// message}], ...}. With `clip` (an .anim file), a missing path gets `fix`, the write_file edit that
+// renames it to `fix_path`: the first nearest path whose (path, channel) is neither a track of the
+// clip nor another fix's target, so every fix can be applied together without two tracks merging;
+// none free: `fix_conflict`. No fix when the file is not in the canonical layout (the edit's
+// old_text is not in it).
+Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const FixableClip* clip = nullptr) {
     Json missing = Json::array();
     Json ambiguous = Json::array();
+    std::string fileText;
+    std::set<std::pair<std::string, ClipChannel>> taken;
+    if (clip && clip->data) {
+        std::ifstream in(clip->file, std::ios::binary);
+        fileText.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        for (const ClipTrackData& track : clip->data->tracks) taken.insert({track.path, track.channel});
+    }
+    bool notCanonical = false;
     for (const TrackReport& track : report.tracks) {
         if (track.status == TrackBindingStatus::Ok || track.status == TrackBindingStatus::NotSampled ||
             track.status == TrackBindingStatus::Unchecked) continue;
@@ -340,8 +360,23 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, bool 
                      {"nearest", track.nearest}};
         if (!track.badPoints.empty()) item["points"] = track.badPoints;
         if (!track.message.empty()) item["message"] = track.message;
-        if (file && track.status == TrackBindingStatus::MissingPath && !track.nearest.empty()) {
-            item["fix"] = renameTrackEdit(track.path, track.channel, track.nearest.front());
+        if (clip && clip->data && track.status == TrackBindingStatus::MissingPath && !track.nearest.empty()) {
+            const Json probe = renameTrackEdit(track.path, track.channel, track.path);
+            if (fileText.find(probe["old_text"].get<std::string>()) == std::string::npos) {
+                notCanonical = true;
+            } else {
+                auto free = std::find_if(track.nearest.begin(), track.nearest.end(), [&](const std::string& candidate) {
+                    return !taken.count({candidate, track.channel});
+                });
+                if (free != track.nearest.end()) {
+                    taken.insert({*free, track.channel});
+                    item["fix"] = renameTrackEdit(track.path, track.channel, *free);
+                    item["fix_path"] = *free;
+                } else {
+                    item["fix_conflict"] = "every nearest path already has a " + std::string(anim::channelName(track.channel)) +
+                                           " track in the clip or is another fix's target: rename by hand";
+                }
+            }
         }
         missing.push_back(item);
     }
@@ -367,8 +402,12 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, bool 
     if (unchecked) out["unchecked"] = true;
     if (!report.warnings.empty()) out["warnings"] = warningsJson(report.warnings);
     if (std::any_of(missing.begin(), missing.end(), [](const Json& m) { return m.contains("fix"); })) {
-        out["fix_with"] = "write_file {path: <clip>, edits: [missing[i].fix, ...]} renames those paths to nearest[0] in the file, keys and "
-                          "tangents kept (every user of the clip changes; copy it first with move_asset {copy: true} to keep the original)";
+        out["fix_with"] = "write_file {path: <clip>, edits: [missing[i].fix, ...]} renames those paths to their fix_path, keys and tangents "
+                          "kept; the fix targets differ from each other and from the clip's tracks, so they apply together (check each "
+                          "fix_path is the bone you mean; every user of the clip changes: copy it first with move_asset {copy: true})";
+    } else if (notCanonical) {
+        out["fix_with"] = "no fix: the file is not in the editor's canonical layout (written by hand); rename the paths with edit_animation "
+                          "(the old track's keys under the new path, keys: [] under the old one), which also rewrites the file canonically";
     }
     return out;
 }
@@ -381,7 +420,8 @@ std::string bindingsText(const Json& bindings) {
     for (const Json& m : bindings["missing"]) {
         text += "\n  " + m["path"].get<std::string>() + " : " + m["channel"].get<std::string>() + " " + m["status"].get<std::string>();
         if (!m["nearest"].empty()) text += " (did you mean \"" + m["nearest"][0].get<std::string>() + "\"?" +
-                                          (m.contains("fix") ? std::string(" fix: write_file edit missing[].fix") : std::string()) + ")";
+                                          (m.contains("fix") ? " fix: write_file edit missing[].fix -> \"" + m["fix_path"].get<std::string>() + "\""
+                                                             : m.contains("fix_conflict") ? std::string(" no fix: its targets are taken") : std::string()) + ")";
     }
     for (const Json& f : bindings["missing_handlers"]) text += "\n  event " + f.get<std::string>() + ": no script method or onEvent";
     if (bindings.contains("ambiguous")) {
@@ -398,7 +438,8 @@ std::string bindingsText(const Json& bindings) {
 }
 
 // The binding report against `root`, else against the first user of the clip in an open scene
-Json bindingsFor(Project* project, SceneProject* rootScene, Entity root, const ClipData& data, const std::vector<ClipUser>& users) {
+Json bindingsFor(Project* project, SceneProject* rootScene, Entity root, const ClipData& data, const std::vector<ClipUser>& users,
+                 const fs::path& file) {
     SceneProject* scene = rootScene;
     Entity target = root;
     if (target == NULL_ENTITY) {
@@ -412,7 +453,8 @@ Json bindingsFor(Project* project, SceneProject* rootScene, Entity root, const C
         }
     }
     if (!scene || !scene->scene || target == NULL_ENTITY) return nullptr;
-    return bindingsJson(scene, ClipValidation::validateInScene(project, scene, data, target), true);
+    FixableClip clip{&data, file};
+    return bindingsJson(scene, ClipValidation::validateInScene(project, scene, data, target), &clip);
 }
 
 // ------------------------------------------------------------------ rejections (9.R29)
@@ -663,7 +705,8 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
     }
     if (has(item, "path")) {
         if (!item["path"].is_string()) {
-            error = where + ".path must be a string: names from the root joined by '/' (\"\" = the root itself), e.g. \"Hips/Spine\".";
+            error = where + ".path must be a string: names from the root joined by '/' (\"\" = the root itself), e.g. \"Arm/Hand\", or \"Hero/mixamorig:Hips\" on a "
+                    "model (its glTF root node first).";
             return false;
         }
         path = item["path"].get<std::string>();
@@ -684,7 +727,8 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
             return false;
         }
     } else {
-        error = where + ".path is required: names from the root joined by '/' (\"\" = the root itself), e.g. \"Hips/Spine\".";
+        error = where + ".path is required: names from the root joined by '/' (\"\" = the root itself), e.g. \"Arm/Hand\", or \"Hero/mixamorig:Hips\" on a "
+                    "model (its glTF root node first).";
         return false;
     }
     std::vector<anim::PathSegment> segments;
@@ -836,6 +880,7 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
         // tangents (I4): a key's own in/out are kept; a key without them that equals the existing
         // key at its time (sent back unchanged, linear) keeps that key and its tangents
         std::vector<ClipKey> newKeys;
+        std::vector<bool> ownSign;      // per new key: its sign is the caller's (given tangents, or the stored key kept)
         size_t tangentKeys = 0;
         for (const Key& key : keys) {
             ClipKey clipKey;
@@ -845,6 +890,7 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
             auto given = std::find_if(tangents.begin(), tangents.end(), [&](const GivenTangents& g) { return !g.used && g.time == key.time; });
             if (given != tangents.end() && (channel != ClipChannel::Morph || given->in.size() == clipKey.value.size())) {
                 given->used = true;
+                ownSign.push_back(true);
                 clipKey.inTangent = given->in;
                 clipKey.outTangent = given->out;
                 // the tangents belong to the stored quaternion: the value goes to its hemisphere
@@ -859,10 +905,31 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
                 auto same = std::find_if(existing->keys.begin(), existing->keys.end(), [&](const ClipKey& k) {
                     return std::abs(k.time - clipKey.time) < MERGE_TIME && k.hasTangents() && sameKeyValue(channel, clipKey.value, k.value);
                 });
+                ownSign.push_back(same != existing->keys.end());
                 if (same != existing->keys.end()) clipKey = *same;
+            } else {
+                ownSign.push_back(false);
             }
             if (clipKey.hasTangents()) tangentKeys++;
             newKeys.push_back(clipKey);
+        }
+        // a rotation key without its own tangents written into a track with tangents keeps the sign
+        // of the key it replaces; an inserted one takes its previous key's (anim::alignQuaternionKey)
+        const bool tangentTrack = channel == ClipChannel::Rotation &&
+            (tangentKeys > 0 || (existing && std::any_of(existing->keys.begin(), existing->keys.end(), [](const ClipKey& k) { return k.hasTangents(); })));
+        std::vector<float> insertedTimes;
+        if (tangentTrack) {
+            for (size_t k = 0; k < newKeys.size(); k++) {
+                if (ownSign[k]) continue;
+                const ClipKey* replaced = nullptr;
+                if (existing) {
+                    for (const ClipKey& old : existing->keys) {
+                        if (std::abs(old.time - newKeys[k].time) < MERGE_TIME) replaced = &old;
+                    }
+                }
+                if (replaced) anim::alignQuaternionKey(newKeys[k].value, replaced->value);
+                else insertedTimes.push_back(newKeys[k].time);
+            }
         }
         if (tangentKeys > 0) ctx.changes.push_back(label + ": " + plural(tangentKeys, "key") + " with in/out tangents");
         if (merge && existing) {
@@ -875,6 +942,11 @@ bool applyTrack(EditContext& ctx, const Json& item, size_t t, ClipData& data, st
             std::stable_sort(track.keys.begin(), track.keys.end(), [](const ClipKey& a, const ClipKey& b) { return a.time < b.time; });
         } else {
             track.keys = newKeys;
+        }
+        for (size_t k = 0; k < track.keys.size(); k++) {
+            if (std::find(insertedTimes.begin(), insertedTimes.end(), track.keys[k].time) == insertedTimes.end()) continue;
+            if (k > 0) anim::alignQuaternionKey(track.keys[k].value, track.keys[k - 1].value);
+            else if (k + 1 < track.keys.size()) anim::alignQuaternionKey(track.keys[k].value, track.keys[k + 1].value);
         }
     }
 
@@ -1292,7 +1364,8 @@ void editClip(const CallPtr& call) {
             out["changes"] = ctx.changes;
             const std::vector<ClipUser> users = findClipUsers(project, relative);
             out["users"] = usersJson(project, users);
-            const Json bindings = bindingsFor(project, ctx.scene, ctx.root, AnimationClipDocument::open(project, relative, nullptr)->data(), users);
+            const Json bindings = bindingsFor(project, ctx.scene, ctx.root, AnimationClipDocument::open(project, relative, nullptr)->data(), users,
+                                              absolute);
             if (!bindings.is_null()) out["bindings"] = bindings;
             std::string summary = relative + ": created, " + plural(out["tracks"].size(), "track") + ", " + fmt(out["length"].get<double>()) + " s, " +
                                   out["wrap"].get<std::string>() + text;
@@ -1385,7 +1458,7 @@ void editClip(const CallPtr& call) {
         // players that still play the read-only model clip: edits of the file don't show there
         out["model_clip_users"] = usersJson(project, modelClipUsers);
     }
-    const Json bindings = bindingsFor(project, ctx.scene, ctx.root, document->data(), users);
+    const Json bindings = bindingsFor(project, ctx.scene, ctx.root, document->data(), users, document->absolutePath());
     if (!bindings.is_null()) out["bindings"] = bindings;
 
     std::string text = document->path() + ": " + (creating ? "created, " : "") + plural(document->data().tracks.size(), "track") + ", " +
@@ -1525,7 +1598,8 @@ void getClip(const CallPtr& call) {
         sampled = "; sampled at " + std::to_string(at.size()) + " time(s) (samples)";
     }
 
-    const Json bindings = root != NULL_ENTITY ? bindingsJson(scene, ClipValidation::validateInScene(project, scene, data, root), !document->isReadOnly())
+    FixableClip fixable{document->isReadOnly() ? nullptr : &data, document->absolutePath()};
+    const Json bindings = root != NULL_ENTITY ? bindingsJson(scene, ClipValidation::validateInScene(project, scene, data, root), &fixable)
                                               : Json(nullptr);
     if (!bindings.is_null()) out["bindings"] = bindings;
 
@@ -1562,7 +1636,8 @@ Json playersJson(Project* project, SceneProject* scene, Entity entity) {
         } else {
             state["length"] = r6(document->data().effectiveLength());
             state["clip_wrap"] = anim::wrapName(document->data().wrap);
-            Json b = bindingsJson(scene, ClipValidation::validateInScene(project, scene, document->data(), root), !document->isReadOnly());
+            FixableClip fixable{document->isReadOnly() ? nullptr : &document->data(), document->absolutePath()};
+            Json b = bindingsJson(scene, ClipValidation::validateInScene(project, scene, document->data(), root), &fixable);
             b["state"] = state["name"];
             b.erase("root");
             bindings.push_back(b);
