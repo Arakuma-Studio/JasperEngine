@@ -364,6 +364,7 @@ namespace jasperengine {
         uint64_t pagesOpened = 0;                           // Page::opened's counter
         std::unordered_set<FaceHandle*> deferredHandles;
         uint64_t deferredFrame = 0;
+        int deferredStreak = 0;                             // consecutive frames that deferred glyphs (at most 3)
         void deferGlyph(const FaceHandle& handle);
         void retryDeferredGlyphs();
 

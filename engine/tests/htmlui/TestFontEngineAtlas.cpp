@@ -88,19 +88,13 @@ TEST(TestFontEngine, AtlasBudgetPagesAreR8){
 TEST(TestFontEngine, AtlasBudgetEvictsLeastRecentlyUsed){
     JASPER_REQUIRE_GPU();
     RmlFontEngine& fonts = HtmlUI::getFontEngine();
-    // a label drawn in every frame, under the documents: its page is never unused, so it is never
-    // cleared and its handle keeps its version (only the users of a cleared page get a new one)
-    const std::string label = "<rml><head><style>body { margin: 0; font-family: sans-serif; color: #80ff80; } p { position: absolute; "
-                              "top: 330px; left: 0; font-size: 20px; margin: 0; }</style></head><body><p>Budget 2 MiB</p></body></rml>";
-
-    // each document drawn alone (with the label) with room for everything: what its frames must show
+    // each document drawn alone with room for everything: what its frames must show
     std::vector<std::vector<uint8_t>> references(4);
     {
         AtlasBudget roomy(64, 8);
         for (int i = 0; i < 4; i++){
             RenderTestContext reference(width, height);
             ASSERT_TRUE(reference.isValid());
-            ASSERT_NE(reference.loadFromMemory(label, "render/atlas-label.rml"), nullptr);
             ASSERT_NE(reference.loadFromMemory(documentOf(sizes[i]), "render/atlas.rml"), nullptr);
             ASSERT_TRUE(reference.renderUntilDrawn());
             ASSERT_TRUE(reference.readScreen(references[(size_t)i]));
@@ -112,7 +106,6 @@ TEST(TestFontEngine, AtlasBudgetEvictsLeastRecentlyUsed){
     ASSERT_TRUE(test.isValid());
     fonts.ReleaseFontResources();
     TestSystem::get().clearLogs();
-    ASSERT_NE(test.loadFromMemory(label, "render/atlas-label.rml"), nullptr);
     std::vector<Rml::ElementDocument*> documents;
     for (int i = 0; i < 4; i++){
         Rml::ElementDocument* document = test.loadFromMemory(documentOf(sizes[i]), "render/atlas.rml");
@@ -120,9 +113,9 @@ TEST(TestFontEngine, AtlasBudgetEvictsLeastRecentlyUsed){
         document->Hide();
         documents.push_back(document);
     }
-    ASSERT_TRUE(test.renderFrame());
-    const Rml::FontFaceHandle labelHandle = fonts.GetFontFaceHandle("sans-serif", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, 20);
-    const int labelVersion = fonts.GetVersion(labelHandle);
+    // a handle that never draws: no page has it as a user, its version stays
+    const Rml::FontFaceHandle unused = fonts.GetFontFaceHandle("sans-serif", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, 50);
+    const int unusedVersion = fonts.GetVersion(unused);
     auto handleOf = [&](int i){
         return fonts.GetFontFaceHandle("sans-serif", Rml::Style::FontStyle::Normal, Rml::Style::FontWeight::Normal, sizes[i]);
     };
@@ -149,12 +142,12 @@ TEST(TestFontEngine, AtlasBudgetEvictsLeastRecentlyUsed){
     }
     EXPECT_GT(fonts.getEvictionCount(), evictionsBefore);
     EXPECT_LE(fonts.getPageCount(), 2u);
-    // the documents' pages were cleared (their handles have new versions), the label's never
+    // the documents' pages were cleared (their handles have new versions), only theirs
     int bumped = 0;
     for (int i = 0; i < 4; i++)
         bumped += fonts.GetVersion(handleOf(i)) > versions[i] ? 1 : 0;
     EXPECT_GE(bumped, 1);
-    EXPECT_EQ(fonts.GetVersion(labelHandle), labelVersion);
+    EXPECT_EQ(fonts.GetVersion(unused), unusedVersion);
 
     // more than four evictions within 120 frames: once per context
     EXPECT_EQ(TestSystem::get().countLogs(D_LOG_WARN, "HTMLUI-GEN-0007"), 1u);

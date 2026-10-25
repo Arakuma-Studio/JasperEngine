@@ -265,6 +265,11 @@ const char* ElementBackgroundBorder::GetPrimitiveObstacle(Element* element, cons
 			const Vector2f radius = metrics.outer_radii[corner];
 			if (radius.x > 0.f && radius.y > 0.f && border_colors[edge0] != border_colors[edge1] && (widths[edge0] > 0.f || widths[edge1] > 0.f))
 				return "border colours on a curve";
+			// a border round a curve of under 3 px: Chromium paints the few pixels of such a corner (form
+			// controls' 2 px) as the meshes' polygon does, less than its exact coverage (S16-F1)
+			const bool bordered = (widths[edge0] > 0.f && border_colors[edge0].alpha > 0) || (widths[edge1] > 0.f && border_colors[edge1].alpha > 0);
+			if (bordered && radius.x > 0.f && radius.y > 0.f && (radius.x < 3.f || radius.y < 3.f))
+				return "small radius under a border";
 		}
 	}
 	return nullptr;

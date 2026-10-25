@@ -881,8 +881,10 @@ bool RmlFontEngine::place(PageKind kind, const unsigned char* pixels, int width,
             evicted = true;
         if (evicted && openPage())
             return true;
+        // (three frames in a row at most: text that keeps the pages it needs in use does not fit)
+        const bool streakEnds = deferredStreak >= 3 && deferredFrame + 1 >= frame && deferredFrame != frame;
         for (const std::unique_ptr<Page>& page : list){
-            if (page->bytes() > 0 && page->lastUsed() < frame)
+            if (!streakEnds && page->bytes() > 0 && page->lastUsed() < frame)
                 placeDeferred = true;
         }
         if (placeDeferred)
@@ -1499,7 +1501,10 @@ void RmlFontEngine::beginContextFrame(const Rml::RenderManager& renderManager){
 
 void RmlFontEngine::deferGlyph(const FaceHandle& handle){
     deferredHandles.insert(const_cast<FaceHandle*>(&handle));
-    deferredFrame = SystemRender::getFrameCount();
+    const uint64_t frame = SystemRender::getFrameCount();
+    if (frame != deferredFrame)
+        deferredStreak = (deferredStreak > 0 && frame == deferredFrame + 1) ? deferredStreak + 1 : 1;
+    deferredFrame = frame;
     // the next frame makes the text again (RenderManager is not const to the context that owns it)
     if (currentManager)
         const_cast<Rml::RenderManager*>(currentManager)->RequestRender();

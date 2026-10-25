@@ -134,7 +134,11 @@ void main() {
                 shape = htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c);
             }
         }
-        float alpha = (mode == 2) ? shape * (1.0 - box) : (1.0 - shape) * box;
+        // an outer shadow is cut out where the box covers its pixel's centre and beyond (coverage of
+        // the box shifted in by half a pixel): the box drawn over it then antialiases its own edge
+        // against the shadow, not against the shadow's hole (no lighter seam, as the browsers)
+        float cut = (mode == 2) ? clamp(roundedRectSDF(p, v_d, v_e, v_f) / rectEdgeFootprint(p, v_d, dpdx, dpdy), 0.0, 1.0) : box;
+        float alpha = (mode == 2) ? shape * (1.0 - cut) : (1.0 - shape) * box;
         color = v_color * alpha;
     }else{
         // a quad: the colour, times its texture by kind

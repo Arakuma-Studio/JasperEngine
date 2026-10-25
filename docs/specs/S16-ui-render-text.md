@@ -599,3 +599,10 @@ one line pointing here.
 - **Glyph placement at fractional pixel ratios.** A glyph atlas draw's translation is rounded to
   whole target pixels (`RmlRenderer::snapTextTranslation`, no element transform), so bitmap text at
   a pixel ratio of 1.37 is drawn 1:1 on target pixels (AC10).
+- **Primitive qualification and Chromium.** A border round a curve of under 3 px (the form
+  controls' 2 px) keeps the mesh path: Chromium paints such a corner with less than its exact
+  coverage, as the meshes' polygon does (`layout/button-display-*` fail AC2 with the exact
+  coverage). The rounded-rectangle distance applies every corner that reaches a point (a radius
+  may pass the middle of a side: `border-radius: 20px / 50px` on a 60 px box), and an outer shadow
+  is cut out half a pixel inside the box's edge, so the box antialiases against the shadow rather
+  than against its hole (no lighter seam; `paint/box-shadow-radius-percent`).
