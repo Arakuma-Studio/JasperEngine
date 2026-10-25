@@ -2383,6 +2383,8 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
                 benchmarkOut = CommandLine::absoluteArgPath(value);
         } else if (arg == "--gpu-passes") {
             benchmarkGpuPasses = true;
+        } else if (arg == "--profile") {
+            benchmarkProfile = true;
         } else if (arg == "--profile-capture" || arg.rfind("--profile-capture=", 0) == 0) {
             const char* value = arg.size() > 17 ? argv[i] + 18 : requireValue(i, "--profile-capture");
             if (value && value[0])
@@ -3390,6 +3392,9 @@ void editor::App::tickBenchmark() {
             benchmarkGpuPassList.clear();
             // the frames drawn from the next one on are the measured ones
             benchmarkFirstFrame = FrameTimes::currentFrame() + 1;
+            // --profile: the measured frames record (the profiler's overhead, tools/perf/profiler_overhead.py)
+            if (benchmarkProfile)
+                profiler::setEnabled(true);
             benchmarkGpuCollected = benchmarkFirstFrame - 1;
             if (!benchmarkCapturePath.empty()) {
                 if (!benchmarkGpuPasses)
@@ -3544,7 +3549,8 @@ void editor::App::finishBenchmark() {
          << "  \"avgMs\": " << (wallFps > 0.0 ? 1000.0 / wallFps : 0.0) << ",\n"
          << "  \"avgDrawCalls\": " << avgDraws << ",\n"
          << "  \"avgInstances\": " << avgInstances << ",\n"
-         << "  \"avgTriangles\": " << avgTris << ",\n";
+         << "  \"avgTriangles\": " << avgTris << ",\n"
+         << "  \"profiling\": " << (benchmarkProfile ? "true" : "false") << ",\n";
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";

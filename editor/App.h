@@ -166,6 +166,7 @@ namespace jasperengine::editor{
         // --gpu-passes: the GPU time of every pass of the measured frames (S15); --profile-capture
         // <path>: a .jetrace.json of them
         bool benchmarkGpuPasses = false;
+        bool benchmarkProfile = false;
         std::filesystem::path benchmarkCapturePath;
         uint32_t benchmarkCaptureId = 0;
         std::vector<double> benchmarkCpuMs;

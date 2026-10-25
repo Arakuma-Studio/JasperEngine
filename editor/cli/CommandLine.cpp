@@ -116,6 +116,7 @@ struct ExportCliOptions {
     bool help = false;
     bool listScenes = false;
     bool allowMissingAssets = false;
+    bool developmentBuild = false;
 };
 
 struct ShaderCliOptions {
@@ -285,6 +286,7 @@ static void printUsage(const std::string& commandName) {
         << "                              UI effects: uieffect/<name>[:Flt] (Flt: the filter form), uieffect/all.\n"
         << "      --list-scenes           Print project scenes and exit.\n"
         << "      --allow-missing-assets  Export even when the build references missing assets.\n"
+        << "      --development-build     A Development Build: the profiler and --profile in a Release game.\n"
         << "  -h, --help                  Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory; --assets and --lua\n"
         << "are relative to the project (as in project.yaml).\n"
@@ -311,6 +313,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --gpu-passes       Time every GPU pass of the measured frames: \"gpu\" in the JSON, with\n"
         << "                         the frame's and each pass label's median/p95/mean ms (docs/profiling.md).\n"
         << "      --profile-capture <path>  Write a .jetrace.json profiler capture of the measured frames.\n"
+        << "      --profile          Record the measured frames in the profiler (its overhead included).\n"
         << "  -h, --help             Show this help.\n\n"
         << "--project, --out and --profile-capture are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";
@@ -385,6 +388,8 @@ static bool parseArgs(int argc, char** argv, ExportCliOptions& options, std::str
             options.listScenes = true;
         } else if (arg == "--allow-missing-assets") {
             options.allowMissingAssets = true;
+        } else if (arg == "--development-build") {
+            options.developmentBuild = true;
         } else {
             error = "Unknown argument: " + arg;
             return false;
@@ -629,6 +634,7 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
     config.startSceneId = resolveStartSceneId(project, options.startScene);
     config.packNativeResources = project.shouldPackNativeResources();
     config.allowMissingAssets = options.allowMissingAssets;
+    config.developmentBuild = options.developmentBuild;
     config.selectedBackends   = options.backends;
     expandShaderSpecsAgain(options.shaderSpecs, options.shaderKeys);
     config.shaderKeysOverride = options.shaderKeys;
