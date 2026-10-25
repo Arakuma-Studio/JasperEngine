@@ -1514,29 +1514,30 @@ TEST_F(AnimationClipControllerTest, AReparentDuringThePreviewMovesTheRest) {
 }
 
 // Merge of main (pose suspendActiveForMove, a prop held by a posed hand) with 9.R7: a GameObject
-// the clip does not animate, held by a previewed bone, keeps its rest world when it moves out (the
-// snapshot restores the bones, MoveEntityOrderCmd::prepareReparent recomputes what hangs below
-// them before the move reads its world), and its undo puts it back under the bone at its local
+// the clip does not animate, put under a previewed bone during the preview (so not in its
+// snapshot, which restores the root's subtree as it was when the preview started), keeps its rest
+// world when it moves out: MoveEntityOrderCmd::prepareReparent stops the preview, then recomputes
+// the moved GameObject's chain from the restored rest before the move reads its world. A reorder
+// among the same siblings keeps the preview.
 TEST_F(AnimationClipControllerTest, AHeldPropMovedOutDuringThePreviewKeepsItsRestWorld) {
     ClipScene s = clipScene();
-    const Entity held = addObject(s, "Held", s.hand, Vector3(0, 0, 1));
     transformFrame(s);
     RenderSystem* render = s.scene->getSystem<RenderSystem>().get();
-    render->updateTransform(s.transform(held), held);
-    // Hero (0) > Arm (5, 5, 5) > Hand (0, 1, 0) > Held (0, 0, 1)
-    expectNear(s.transform(held).worldPosition, Vector3(5, 6, 6), "the rest world");
     AnimationClipController& c = controller();
     std::string error;
     ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
     CommandHistory* history = CommandHandle::get(s.id);
     c.seek(0.5f);
     ASSERT_TRUE(c.isPreviewing());
-    // a frame ran: Arm at (1, 1, 0), Hand scaled 1.5, Held's world from the preview
+    // a frame ran: Arm at (1, 1, 0), Hand scaled 1.5; Held added under the Hand now, its world from
+    // the preview
     transformFrame(s);
+    const Entity held = addObject(s, "Held", s.hand, Vector3(0, 0, 1));
     render->updateTransform(s.transform(held), held);
     expectNear(s.transform(held).worldPosition, Vector3(1, 2, 1.5f), "previewed world");
 
-    // out of the Hand, next to the Prop (the scene root): its world is kept, the rest's
+    // out of the Hand, next to the Prop (the scene root): its world is kept, the rest's: Hero (0) >
+    // Arm (5, 5, 5) > Hand (0, 1, 0) > Held (0, 0, 1)
     ASSERT_TRUE(history->addCommand(new MoveEntityOrderCmd(project(), s.id, held, s.prop, InsertionType::AFTER)));
     EXPECT_FALSE(c.isPreviewing()) << "the move stopped the preview first";
     EXPECT_EQ(s.transform(held).parent, NULL_ENTITY);
