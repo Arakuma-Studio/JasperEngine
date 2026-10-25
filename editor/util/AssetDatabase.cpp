@@ -36,7 +36,7 @@ using Json = nlohmann::json;
 
 namespace {
 
-    constexpr int cacheVersion = 1;
+    constexpr int databaseCacheVersion = 1;
 
     // A top-level key line: a key at column 0, which in block style YAML is a key of the
     // document's own map (a block scalar's lines are indented)
@@ -128,7 +128,7 @@ namespace {
         return fs::exists(other, ec) && fs::equivalent(projectPath, other, ec);
     }
 
-    std::string lower(std::string text) {
+    std::string lowerDatabaseKey(std::string text) {
         std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return text;
     }
@@ -382,7 +382,7 @@ fs::path editor::AssetDatabase::toRelative(const fs::path& path) const {
 }
 
 std::string editor::AssetDatabase::relativeKeyOf(const std::string& relative) const {
-    return caseInsensitive ? lower(relative) : relative;
+    return caseInsensitive ? lowerDatabaseKey(relative) : relative;
 }
 
 std::string editor::AssetDatabase::key(const fs::path& path) const {
@@ -824,12 +824,12 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::adoptOrphans(s
         fs::file_time_type time;
         uint64_t size = 0;
         statFile(relative, time, size);
-        const std::string extension = lower(fs::path(relative).extension().string());
+        const std::string extension = lowerDatabaseKey(fs::path(relative).extension().string());
         const std::string name = fs::path(relative).filename().string();
         bool fileHashed = false;
         uint64_t fileHash = 0;
         for (const auto& [metaKey, orphan] : orphans) {
-            if (lower(fs::path(orphan.assetPath).extension().string()) != extension) {
+            if (lowerDatabaseKey(fs::path(orphan.assetPath).extension().string()) != extension) {
                 continue;
             }
             auto last = orphanLast.find(relativeKeyOf(orphan.assetPath));
@@ -924,7 +924,7 @@ void editor::AssetDatabase::loadCache(std::map<std::string, Entry>& cached) cons
     std::string text;
     if (assetio::readFile(cacheFile(), text)) {
         Json root = Json::parse(text, nullptr, false);
-        if (root.is_object() && root.value("version", 0) == cacheVersion && root.contains("assets") && root["assets"].is_array()) {
+        if (root.is_object() && root.value("version", 0) == databaseCacheVersion && root.contains("assets") && root["assets"].is_array()) {
             for (const Json& item : root["assets"]) {
                 if (!item.is_object() || !item.contains("p") || !item.contains("g")) continue;
                 Entry entry;
@@ -1059,7 +1059,7 @@ void editor::AssetDatabase::writeCache(const CacheSnapshot& snapshot) {
         assets.push_back(item);
     }
     Json root;
-    root["version"] = cacheVersion;
+    root["version"] = databaseCacheVersion;
     root["caseInsensitive"] = snapshot.caseInsensitive;
     root["assets"] = assets;
     std::string error;

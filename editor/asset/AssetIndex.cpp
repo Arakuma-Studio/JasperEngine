@@ -24,9 +24,9 @@ using Json = nlohmann::json;
 
 namespace {
 
-    constexpr int cacheVersion = 1;
+    constexpr int indexCacheVersion = 1;
 
-    std::string lowerExtension(const std::string& path) {
+    std::string indexExtension(const std::string& path) {
         std::string ext = fs::path(path).extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return ext;
@@ -47,7 +47,7 @@ namespace {
         time = ec ? 0 : static_cast<int64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(stamp.time_since_epoch()).count());
     }
 
-    Json edgeJson(const DepEdge& edge) {
+    Json indexEdgeJson(const DepEdge& edge) {
         Json item;
         if (!edge.target.isNull()) item["t"] = edge.target.str();
         item["p"] = edge.targetPath;
@@ -138,7 +138,7 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::UIDocument: case AssetType::Stylesheet: case AssetType::Shader: case AssetType::Model:
             return true;
         case AssetType::Script:
-            return lowerExtension(relativePath) == ".lua";
+            return indexExtension(relativePath) == ".lua";
         default:
             return false;
     }
@@ -217,7 +217,7 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
             case AssetType::Stylesheet: {
                 std::string text;
                 if (!assetio::readFile(full, text)) break;
-                const std::vector<TextReference> references = type == AssetType::UIDocument && lowerExtension(relativePath) != ".css"
+                const std::vector<TextReference> references = type == AssetType::UIDocument && indexExtension(relativePath) != ".css"
                     ? TextReferences::scanHtml(text) : TextReferences::scanCss(text);
                 for (const TextReference& reference : references) {
                     addText(reference, besideFile(reference.target));
@@ -345,7 +345,7 @@ void AssetIndex::loadCache() {
         return;
     }
     Json root = Json::parse(text, nullptr, false);
-    if (!root.is_object() || root.value("version", 0) != cacheVersion || !root.contains("referrers")) {
+    if (!root.is_object() || root.value("version", 0) != indexCacheVersion || !root.contains("referrers")) {
         return;
     }
     std::lock_guard<std::mutex> lock(mutex);
@@ -375,13 +375,13 @@ void AssetIndex::saveCache() const {
             item["sz"] = referrer.size;
             item["mt"] = referrer.writeTime;
             Json edges = Json::array();
-            for (const DepEdge& edge : referrer.edges) edges.push_back(edgeJson(edge));
+            for (const DepEdge& edge : referrer.edges) edges.push_back(indexEdgeJson(edge));
             item["e"] = edges;
             list.push_back(item);
         }
     }
     Json root;
-    root["version"] = cacheVersion;
+    root["version"] = indexCacheVersion;
     root["referrers"] = list;
     assetio::writeFile(cacheFile(), root.dump() + "\n", assetio::Durability::Cache);
 }
