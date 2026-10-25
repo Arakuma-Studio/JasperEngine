@@ -696,3 +696,11 @@ with other streams:
     collector's environment bits for Lit Quality and the mobile tier are 23 and 24 (S10's
     `shadowsHQ` is 22). The hash list was regenerated once, from oe-port's shader library after
     S10 had changed the built-in Lit.
+16. **Compat corpus and model images.** A scene holding a model with textures stores them as ids
+    carrying the model file's absolute path (engine behaviour before S11), which a bare decode
+    cannot load; `Compat.CorpusRoundTrip` leaves such scenes out of its byte check (the
+    `pbr-extended-export` Lobes scene holds ClearCoatTest). Maps packed from a model's images
+    (`pack|...`) are never written: the model packs them again when it loads.
+17. **Other streams' goldens.** S10's and S12's render goldens (GPU unit tests, `test_shadows.py`,
+    `test_atmosphere.py`) were drawn before Lit Quality; their scenes now set Standard (the same
+    shader), since a new scene is High.
