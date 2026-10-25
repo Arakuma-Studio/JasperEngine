@@ -715,7 +715,14 @@ TEST(ModelSubClips, ModelFindsDuplicateAnimationNamesByTheirSubClipNames){
     // renaming the first entity leaves the second reachable as "Wave 2"
     scene.setEntityName(animations[3], "Dance");
     EXPECT_EQ(model.findAnimation("Wave 2").getEntity(), animations[4]);
-    EXPECT_EQ(model.findAnimation("Dance").getEntity(), animations[3]);
+    EXPECT_EQ(model.findAnimation("Dance").getEntity(), animations[3]) << "entity names are the fallback";
+    // FX4b: the file's names take precedence: "Wave" is still the Inspector's "Wave" (the renamed
+    // entity), not the entity now named "Wave"; another entity renamed "Wave" doesn't take it either
+    EXPECT_EQ(model.findAnimation("Wave").getEntity(), animations[3]);
+    scene.setEntityName(animations[0], "Wave");
+    EXPECT_EQ(model.findAnimation("Wave").getEntity(), animations[3]);
+    EXPECT_EQ(model.findAnimation("Walk").getEntity(), animations[0]);
+    scene.setEntityName(animations[0], "Walk");
     scene.setEntityName(animations[3], "Wave");
 }
 

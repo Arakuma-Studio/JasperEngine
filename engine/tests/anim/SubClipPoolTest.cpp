@@ -25,6 +25,8 @@
 #include "json.hpp"
 #include "tiny_gltf.h"
 
+#include <chrono>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <thread>
@@ -241,13 +243,29 @@ TEST_F(SubClipPool, KeptParseIsTrimmedAndStampsItsExternalBuffers){
     }
     EXPECT_EQ(getModelFileParseCount(), before + 1) << "one parse for every list and build";
 
-    // the .bin rewritten (a new time), no invalidate: read again
-    animtest::writeAsset(folder + "hero.bin", bin);
+    // the .bin rewritten, no invalidate: read again. Different bytes and an explicit time (10 s
+    // earlier), so coarse file timestamps can't hide the change (FX4b)
+    const std::string binPath = animtest::assetDir() + "/" + folder + "hero.bin";
+    const std::filesystem::file_time_type written = std::filesystem::last_write_time(binPath);
+    std::string changed = bin;
+    changed.back() = (char)(changed.back() ^ 1);
+    animtest::writeAsset(folder + "hero.bin", changed);
+    std::filesystem::last_write_time(binPath, written - std::chrono::seconds(10));
     std::vector<anim::ModelClipInfo> infos;
     ASSERT_TRUE(anim::listModelFileClips(external, infos, &error)) << error;
     EXPECT_EQ(getModelFileParseCount(), before + 2) << "the external buffer's stamp changed";
     ASSERT_TRUE(anim::listModelFileClips(external, infos, &error)) << error;
     EXPECT_EQ(getModelFileParseCount(), before + 2) << "unchanged since: the kept parse";
+
+    // FX4b: an external buffer written after the parse started (its time not before the parse's
+    // start: here in the future) keeps that parse out of the cache, so the next read parses again
+    animtest::writeAsset(folder + "hero.bin", bin);
+    std::filesystem::last_write_time(binPath, std::filesystem::file_time_type::clock::now() + std::chrono::hours(1));
+    ASSERT_TRUE(anim::listModelFileClips(external, infos, &error)) << error;
+    EXPECT_EQ(getModelFileParseCount(), before + 3);
+    ASSERT_TRUE(anim::listModelFileClips(external, infos, &error)) << error;
+    EXPECT_EQ(getModelFileParseCount(), before + 4) << "not kept: read again";
+    std::filesystem::last_write_time(binPath, written - std::chrono::seconds(20));
 }
 
 // Engine review I1: the sub-clips of a model no scene has loaded (an animation library file) share
