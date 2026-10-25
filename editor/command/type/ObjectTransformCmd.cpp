@@ -5,7 +5,26 @@
 #include "animation/ClipRecordHooks.h"
 #include "pose/PoseInspectorHooks.h"
 
+#include <algorithm>
+#include <cmath>
+#include <map>
+
 using namespace jasperengine;
+
+namespace {
+    // the command's value is the one the entity showed (a gizmo matrix decomposed again)
+    bool sameShown(const Vector3& a, const Vector3& b) {
+        for (unsigned i = 0; i < 3; i++) {
+            const float scale = std::max(1.0f, std::fabs(b[i]));
+            if (std::fabs(a[i] - b[i]) > 1e-4f * scale) return false;
+        }
+        return true;
+    }
+
+    bool sameShown(const Quaternion& a, const Quaternion& b) {
+        return std::fabs(a.dot(b)) >= 1.0f - 1e-6f;
+    }
+}
 
 editor::ObjectTransformCmd::ObjectTransformCmd(Project* project, size_t sceneId, Entity entity, Matrix4 localMatrix){
     this->project = project;
@@ -68,10 +87,25 @@ bool editor::ObjectTransformCmd::execute(){
     if (poseInspectorHooks().beforeTransformWrite){
         for (const auto& entry : props) poseInspectorHooks().beforeTransformWrite(static_cast<uint32_t>(sceneId), entry.first);
     }
+    // what the entities show now: a clip preview may be showing other values than their rest
+    std::map<Entity, Transform> shown;
+    for (const auto& entry : props){
+        if (const Transform* transform = sceneProject->scene->findComponent<Transform>(entry.first)) shown[entry.first] = *transform;
+    }
     // clip previews put a previewed Transform back to its rest (animation clips 9.R6)
     for (const auto& entry : props) ClipRecordHooks::beforeComponentWrite(static_cast<uint32_t>(sceneId), entry.first, ComponentType::Transform, "");
     for (auto& [entity, property] : props){
         if (Transform* transform = sceneProject->scene->findComponent<Transform>(entity)){
+            // A channel the preview showed (now back at its rest) that the command leaves as shown
+            // (a gizmo move carries the shown rotation and scale) is unchanged: it keeps its rest,
+            // so neither the scene nor a later redo gets the previewed value
+            auto it = shown.find(entity);
+            if (it != shown.end()){
+                const Transform& before = it->second;
+                if (transform->position != before.position && sameShown(property.newPosition, before.position)) property.newPosition = transform->position;
+                if (transform->rotation != before.rotation && sameShown(property.newRotation, before.rotation)) property.newRotation = transform->rotation;
+                if (transform->scale != before.scale && sameShown(property.newScale, before.scale)) property.newScale = transform->scale;
+            }
             if (!property.explicitOld){
                 property.oldPosition = transform->position;
                 property.oldRotation = transform->rotation;
