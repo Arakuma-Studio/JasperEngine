@@ -209,14 +209,267 @@ Rml::Rectanglei RmlRenderer::effectiveScissorTarget() const{
     return scissor;
 }
 
-const RmlRenderer::ClipParams& RmlRenderer::currentClipParams(bool coverageTexture){
+const RmlRenderer::ClipParams& RmlRenderer::currentClipParams(const HtmlUITexture* texture){
     const bool analytic = activeClipScope >= 0 && activeClipScope < (int)clipScopes.size() &&
                           clipScopes[(size_t)activeClipScope].mode == ScopeMode::ANALYTIC;
-    if (!analytic && !coverageTexture)
+    const HtmlUITexture::Sample sample = texture ? texture->sample : HtmlUITexture::Sample::RGBA;
+    if (!analytic && sample == HtmlUITexture::Sample::RGBA)
         return noClip;
     clipScratch = analytic ? clipScopes[(size_t)activeClipScope].clip : noClip;
-    clipScratch.params[1] = coverageTexture ? 1.0f : 0.0f;
+    switch (sample){
+    case HtmlUITexture::Sample::RGBA:
+        clipScratch.params[1] = 0.0f;
+        break;
+    case HtmlUITexture::Sample::COVERAGE:
+        clipScratch.params[1] = 1.0f;
+        break;
+    case HtmlUITexture::Sample::MSDF:
+        clipScratch.params[1] = 2.0f;
+        clipScratch.text[0] = texture->textEffect[0];
+        clipScratch.text[1] = texture->textEffect[1];
+        clipScratch.text[2] = texture->textEffect[2];
+        clipScratch.text[3] = texture->distanceRange;
+        break;
+    }
     return clipScratch;
+}
+
+//-------------------------------------------------------------------------------------------
+// primitives (R8-R10)
+//-------------------------------------------------------------------------------------------
+
+namespace {
+
+    std::atomic<bool> sdfPrimitivesEnabled{true};
+
+    void setColor(uint8_t out[4], Rml::ColourbPremultiplied colour){
+        out[0] = colour.red;
+        out[1] = colour.green;
+        out[2] = colour.blue;
+        out[3] = colour.alpha;
+    }
+
+    void setRect(float out[4], const Rml::Rectanglef& rect, Rml::Vector2f translation){
+        out[0] = rect.Left() + translation.x;
+        out[1] = rect.Top() + translation.y;
+        out[2] = rect.Width();
+        out[3] = rect.Height();
+    }
+
+    void setRadii(float x[4], float y[4], const Rml::Array<Rml::Vector2f, 4>& radii){
+        for (int i = 0; i < 4; i++){
+            const bool curved = radii[i].x > 0.0f && radii[i].y > 0.0f;
+            x[i] = curved ? radii[i].x : 0.0f;
+            y[i] = curved ? radii[i].y : 0.0f;
+        }
+    }
+
+    // the instance moved by the translation (positions and rectangles in document px)
+    void translateInstance(HtmlUIPrimitive& instance, Rml::Vector2f t){
+        switch ((HtmlUIPrimitive::Mode)(int)instance.params[0]){
+        case HtmlUIPrimitive::QUAD:
+            instance.a[0] += t.x;
+            instance.a[1] += t.y;
+            instance.a[2] += t.x;
+            instance.a[3] += t.y;
+            instance.b[0] += t.x;
+            instance.b[1] += t.y;
+            instance.b[2] += t.x;
+            instance.b[3] += t.y;
+            break;
+        case HtmlUIPrimitive::BOX:
+            instance.a[0] += t.x;
+            instance.a[1] += t.y;
+            break;
+        case HtmlUIPrimitive::SHADOW_OUTER:
+        case HtmlUIPrimitive::SHADOW_INSET:
+            instance.a[0] += t.x;
+            instance.a[1] += t.y;
+            instance.d[0] += t.x;
+            instance.d[1] += t.y;
+            break;
+        }
+    }
+
+    uint64_t hashBytes(uint64_t h, const void* data, size_t size){
+        const uint8_t* bytes = static_cast<const uint8_t*>(data);
+        size_t i = 0;
+        for (; i + 8 <= size; i += 8){
+            uint64_t word;
+            std::memcpy(&word, bytes + i, 8);
+            h = mix(h, word);
+        }
+        uint64_t tail = 0;
+        std::memcpy(&tail, bytes + i, size - i);
+        return mix(h, tail ^ (uint64_t)size);
+    }
+
+}
+
+void RmlRenderer::setSdfPrimitivesForTesting(bool enabled){
+    sdfPrimitivesEnabled = enabled;
+}
+
+bool RmlRenderer::isSdfPrimitives(){
+    return sdfPrimitivesEnabled;
+}
+
+bool RmlRenderer::SupportsPrimitives(){
+    return sdfPrimitivesEnabled;
+}
+
+HtmlUIPrimitive RmlRenderer::toInstance(const Rml::BoxPrimitive& primitive, Rml::Vector2f translation){
+    HtmlUIPrimitive instance;
+    std::memset(&instance, 0, sizeof(instance));
+    setRect(instance.a, primitive.border_box, translation);
+    setRadii(instance.b, instance.c, primitive.radii);
+    setColor(instance.color, primitive.fill);
+    switch (primitive.kind){
+    case Rml::BoxPrimitive::Kind::Box:
+        instance.params[0] = (float)HtmlUIPrimitive::BOX;
+        for (int side = 0; side < 4; side++){
+            instance.d[side] = std::max(primitive.border_widths[side], 0.0f);
+            instance.e[side] = std::max(primitive.fill_insets[side], 0.0f);
+            setColor(instance.border[side], primitive.border_colors[(size_t)side]);
+        }
+        break;
+    case Rml::BoxPrimitive::Kind::ShadowOuter:
+    case Rml::BoxPrimitive::Kind::ShadowInset:
+        instance.params[0] = (float)(primitive.kind == Rml::BoxPrimitive::Kind::ShadowOuter ? HtmlUIPrimitive::SHADOW_OUTER : HtmlUIPrimitive::SHADOW_INSET);
+        instance.params[1] = std::max(primitive.sigma, 0.0f);
+        setRect(instance.d, primitive.clip_box, translation);
+        setRadii(instance.e, instance.f, primitive.clip_radii);
+        break;
+    }
+    return instance;
+}
+
+bool RmlRenderer::classifyQuadList(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices, std::vector<HtmlUIPrimitive>* instances){
+    const size_t quads = vertices.size() / 4;
+    if (quads == 0 || vertices.size() != quads * 4 || indices.size() != quads * 6)
+        return false;
+    constexpr float epsilon = 1e-4f;
+    if (instances){
+        instances->clear();
+        instances->reserve(quads);
+    }
+    for (size_t q = 0; q < quads; q++){
+        // GenerateQuad's order: (0, 3, 1), (1, 3, 2)
+        const int v0 = (int)(q * 4);
+        const int* idx = indices.data() + q * 6;
+        if (idx[0] != v0 || idx[1] != v0 + 3 || idx[2] != v0 + 1 || idx[3] != v0 + 1 || idx[4] != v0 + 3 || idx[5] != v0 + 2)
+            return false;
+        const Rml::Vertex* v = vertices.data() + q * 4;
+        // a parallelogram: the diagonals share their midpoint
+        const Rml::Vector2f d = (v[0].position + v[2].position) - (v[1].position + v[3].position);
+        if (std::fabs(d.x) > epsilon || std::fabs(d.y) > epsilon)
+            return false;
+        if (v[1].colour != v[0].colour || v[2].colour != v[0].colour || v[3].colour != v[0].colour)
+            return false;
+        // uvs affine: corner 1 shares corner 0's v and corner 2's u, corner 3 the other two
+        if (v[1].tex_coord.x != v[2].tex_coord.x || v[1].tex_coord.y != v[0].tex_coord.y ||
+            v[3].tex_coord.x != v[0].tex_coord.x || v[3].tex_coord.y != v[2].tex_coord.y)
+            return false;
+        if (instances){
+            HtmlUIPrimitive instance;
+            std::memset(&instance, 0, sizeof(instance));
+            instance.a[0] = v[0].position.x;
+            instance.a[1] = v[0].position.y;
+            instance.a[2] = v[1].position.x;
+            instance.a[3] = v[1].position.y;
+            instance.b[0] = v[2].position.x;
+            instance.b[1] = v[2].position.y;
+            instance.b[2] = v[3].position.x;
+            instance.b[3] = v[3].position.y;
+            instance.d[0] = v[0].tex_coord.x;
+            instance.d[1] = v[0].tex_coord.y;
+            instance.d[2] = v[2].tex_coord.x;
+            instance.d[3] = v[2].tex_coord.y;
+            instance.params[0] = (float)HtmlUIPrimitive::QUAD;
+            setColor(instance.color, v[0].colour);
+            instances->push_back(instance);
+        }
+    }
+    return true;
+}
+
+bool RmlRenderer::isQuadList(RmlGeometry& geometry){
+    if (geometry.quadList == RmlGeometry::QuadList::UNKNOWN)
+        geometry.quadList = classifyQuadList(geometry.vertices, geometry.indices, &geometry.instances) ? RmlGeometry::QuadList::YES
+                                                                                                       : RmlGeometry::QuadList::NO;
+    return geometry.quadList == RmlGeometry::QuadList::YES;
+}
+
+void RmlRenderer::RenderPrimitives(Rml::Span<const Rml::BoxPrimitive> primitives, Rml::Vector2f translation){
+    if (primitives.empty())
+        return;
+    if (frameState == FrameState::ACTIVE)
+        stats.geometrySubmitted++;
+    if (recording){
+        Command& command = recordCommand(CommandType::PRIMITIVES);
+        command.i[0] = (int32_t)commandPrimitives.size();
+        command.i[1] = (int32_t)primitives.size();
+        command.x = translation.x;
+        command.y = translation.y;
+        const size_t first = commandPrimitives.size();
+        for (const Rml::BoxPrimitive& primitive : primitives)
+            commandPrimitives.push_back(toInstance(primitive, Rml::Vector2f(0.0f, 0.0f)));
+        const uint64_t hash = hashBytes(0x2545f4914f6cdd1dull, commandPrimitives.data() + first, primitives.size() * sizeof(HtmlUIPrimitive));
+        command.i[2] = (int32_t)(uint32_t)(hash & 0xffffffffull);
+        command.i[3] = (int32_t)(uint32_t)(hash >> 32);
+        return;
+    }
+    if (frameState != FrameState::ACTIVE)
+        return;
+    // immediate drawing: the command pool holds this call's instances only
+    commandPrimitives.clear();
+    for (const Rml::BoxPrimitive& primitive : primitives)
+        commandPrimitives.push_back(toInstance(primitive, Rml::Vector2f(0.0f, 0.0f)));
+    drawPrimitivesNow(commandPrimitives.data(), commandPrimitives.size(), translation);
+    commandPrimitives.clear();
+}
+
+void RmlRenderer::drawPrimitivesNow(const HtmlUIPrimitive* primitives, size_t count, Rml::Vector2f translation){
+    if (frameState != FrameState::ACTIVE || count == 0)
+        return;
+    if (!bindDrawLayer(false))
+        return;
+    // clipped away: sokol widens an empty scissor to 1x1 on Metal/Vulkan/WebGPU
+    const Rml::Rectanglei scissor = currentScissorTarget();
+    if (scissor.Width() <= 0 || scissor.Height() <= 0)
+        return;
+    primitiveScratch.assign(primitives, primitives + count);
+    for (HtmlUIPrimitive& instance : primitiveScratch)
+        translateInstance(instance, translation);
+    BufferRender* buffer = nullptr;
+    size_t offset = 0;
+    if (!appendTransient(primitiveScratch.data(), count * sizeof(HtmlUIPrimitive), false, buffer, offset))
+        return;
+    applyPassViewport(Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1))));
+    applyPassScissor(scissor);
+    drawInstances(*buffer, offset, (uint32_t)count, nullptr, transform, currentClipParams(nullptr), getGeometryState(BlendMode::PREMULTIPLIED));
+}
+
+bool RmlRenderer::drawInstances(BufferRender& buffer, size_t byteOffset, uint32_t count, HtmlUITexture* texture, const Rml::Matrix4f& matrix,
+                                const ClipParams& clipParams, const PipelineState& state){
+    primObject.replaceVertexBuffer(&primInstanceTemplate, &buffer, byteOffset);
+    primObject.addTexture(primTextureSlot, ShaderStageType::FRAGMENT, texture ? texture->render : &placeholderWhite);
+    stats.textureBinds++;
+    noteDrawn(texture);
+    if (!primObject.beginDraw(state))
+        return false;
+    HtmlUIPrimParams params;
+    std::memcpy(params.transform, matrix.data(), sizeof(params.transform));
+    params.viewport[0] = (float)std::max(targetSize.x, 1);
+    params.viewport[1] = (float)std::max(targetSize.y, 1);
+    params.viewport[2] = params.viewport[3] = 0.0f;
+    primObject.applyUniformBlock(primParamsSlot, sizeof(HtmlUIPrimParams), &params);
+    primObject.applyUniformBlock(primClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
+    primObject.draw(0, 6, count);
+    stats.drawCalls++;
+    stats.instancesDrawn += count;
+    noteColorWrite();
+    return true;
 }
 
 //-------------------------------------------------------------------------------------------
@@ -280,8 +533,8 @@ void RmlRenderer::planClipScopes(){
 
         ClipScope scope;
         scope.masks = (uint32_t)masks.size();
-        bool elidable = !masks.empty();
-        bool analytic = !masks.empty() && masks.size() <= 2 && masks[0].operation == Rml::ClipMaskOperation::Set &&
+        bool elidable = batching && !masks.empty();
+        bool analytic = primitivesFrame && !masks.empty() && masks.size() <= 2 && masks[0].operation == Rml::ClipMaskOperation::Set &&
                         (masks.size() == 1 || masks[1].operation == Rml::ClipMaskOperation::Intersect);
         regions.clear();
         for (const Mask& mask : masks){
@@ -330,9 +583,7 @@ void RmlRenderer::planClipScopes(){
             }
             return true;
         };
-        auto checkGeometry = [&](RmlGeometry* geometry, Rml::Vector2f translation){
-            if (!geometry || geometry->vertices.empty() || geometry->indices.empty())
-                return;
+        auto checkBounds = [&](const Rml::Rectanglef& b, Rml::Vector2f translation){
             if (analytic){
                 for (const Mask& mask : masks){
                     if (!sameMatrix(matrixOf(mask.transform), matrixOf(contentTransform)))
@@ -346,10 +597,13 @@ void RmlRenderer::planClipScopes(){
                 elidable = false;
                 return;
             }
-            const Rml::Rectanglef b = geometryBounds(*geometry);
             if (!admitted(mapRect(map, pixel, b.Left() + translation.x, b.Top() + translation.y, b.Right() + translation.x,
                                   b.Bottom() + translation.y)))
                 elidable = false;
+        };
+        auto checkGeometry = [&](RmlGeometry* geometry, Rml::Vector2f translation){
+            if (geometry && !geometry->vertices.empty() && !geometry->indices.empty())
+                checkBounds(geometryBounds(*geometry), translation);
         };
         for (; k < count && (elidable || analytic); k++){
             const Command& c = commands[k];
@@ -367,6 +621,10 @@ void RmlRenderer::planClipScopes(){
                 break;
             case CommandType::GEOMETRY:
                 checkGeometry(reinterpret_cast<RmlGeometry*>(c.a), Rml::Vector2f(c.x, c.y));
+                break;
+            case CommandType::PRIMITIVES:
+                if (c.i[1] > 0)
+                    checkBounds(primitiveBounds((uint32_t)c.i[0], (uint32_t)c.i[1]), Rml::Vector2f(c.x, c.y));
                 break;
             case CommandType::SHADER:
                 // gradients and effects draw their geometry with their own programs: no analytic clip
@@ -408,7 +666,7 @@ void RmlRenderer::planClipScopes(){
             }
         }
 
-        if (elidable){
+        if (elidable && batching){
             scope.mode = ScopeMode::ELIDED;
             // the shapes' bounds, out to whole pixels (inside them every draw lies, or the edge is on a pixel)
             float x0 = (float)full.Left(), y0 = (float)full.Top(), x1 = (float)full.Right(), y1 = (float)full.Bottom();
@@ -420,7 +678,7 @@ void RmlRenderer::planClipScopes(){
             }
             const Rml::Vector2i p0((int)x0, (int)y0);
             scope.scissor = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, Rml::Vector2i((int)x1, (int)y1)));
-        }else if (analytic){
+        }else if (analytic && primitivesFrame){
             scope.mode = ScopeMode::ANALYTIC;
             scope.clip.params[0] = (float)masks.size();
             for (size_t m = 0; m < masks.size(); m++){
@@ -458,6 +716,7 @@ void RmlRenderer::planRuns(){
 
     const Rml::Vector2f pixel = getPixelScale();
     const Rml::Rectanglei full = Rml::Rectanglei::FromSize(Rml::Vector2i(std::max(targetSize.x, 1), std::max(targetSize.y, 1)));
+    const bool instancing = primitivesFrame;
 
     // the replay's state as the plan goes
     int layer = 0;
@@ -470,7 +729,7 @@ void RmlRenderer::planRuns(){
     uint8_t ref = 0;
     int scope = -1;          // the current scope, any mode
     BatchRun* run = nullptr;
-    uint32_t chunkVerticesUsed = 0;
+    uint32_t chunkItemsUsed = 0;
 
     // the run's chunks: found in the cache or left to gather, with its final texture
     auto flush = [&](){
@@ -483,6 +742,7 @@ void RmlRenderer::planRuns(){
                 const BatchMember& member = batchMembers[m];
                 hash = mix(hash, (uint64_t)(uintptr_t)member.geometry);
                 hash = mix(hash, member.generation);
+                hash = mix(hash, member.count);
                 hash = mix(hash, floatBits(member.translation.x) | (floatBits(member.translation.y) << 32));
                 hash = mix(hash, (uint64_t)(uintptr_t)member.texture);
             }
@@ -516,10 +776,113 @@ void RmlRenderer::planRuns(){
             }
         }
         run = nullptr;
-        chunkVerticesUsed = 0;
+        chunkItemsUsed = 0;
     };
     auto emit = [&](uint32_t command){
         replayOps.push_back(ReplayOp{ReplayOp::Kind::COMMAND, command, -1});
+    };
+
+    // a geometry's vertices or a quad list's or primitives' instances into the current run (a new
+    // one when it does not join it); localBounds: document px before the translation
+    auto add = [&](RunKind kind, const BatchMember& member, const Rml::Rectanglef& localBounds, uint32_t vertices, uint32_t indices){
+        HtmlUITexture* texture = member.texture;
+        const Rml::Vector2f translation = member.translation;
+
+        // the scissor it is drawn with: clipped away, nothing to draw
+        Rml::Rectanglei own = scissorOn ? scissor : full;
+        const int analyticScope = (scope >= 0 && clipScopes[(size_t)scope].mode == ScopeMode::ANALYTIC) ? scope : -1;
+        if (scope >= 0 && clipScopes[(size_t)scope].mode == ScopeMode::ELIDED){
+            const Rml::Rectanglei clip = clipScopes[(size_t)scope].scissor;
+            const Rml::Vector2i p0 = Rml::Math::Max(own.p0, clip.p0);
+            own = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, Rml::Math::Min(own.p1, clip.p1)));
+        }
+        if (own.Width() <= 0 || own.Height() <= 0)
+            return;
+        // R4: inside its scissor (a translate/scale transform), it may share a run with another scissor
+        bool free = false;
+        RectF bounds;
+        if (transformMap.valid){
+            bounds = mapRect(transformMap, pixel, localBounds.Left() + translation.x, localBounds.Top() + translation.y,
+                             localBounds.Right() + translation.x, localBounds.Bottom() + translation.y);
+            free = insideRect(bounds, own);
+        }
+
+        auto joins = [&](){
+            if (!run || run->kind != kind || run->layer != layer || run->stencil != stencil || (stencil && run->stencilRef != ref) ||
+                run->transformId != transformId || run->scope != analyticScope)
+                return false;
+            if (texture != run->texture){
+                if (kind == RunKind::INSTANCES){
+                    // an untextured instance draws with any texture bound; a textured one takes the run's
+                    if (texture && (run->texture || !run->allUntextured))
+                        return false;
+                }else if (!texture){
+                    // untextured vertices read the run texture's white texels
+                    if (!run->texture->hasWhiteTexel)
+                        return false;
+                }else if (run->texture || !run->allUntextured || !texture->hasWhiteTexel){
+                    return false;
+                }
+            }
+            if (run->scissorSet)
+                return free ? insideRect(bounds, run->scissor) : own == run->scissor;
+            if (free)
+                return true;
+            if (!run->freeBoundsValid)
+                return true;
+            RectF u;
+            u.x0 = run->freeBounds.Left();
+            u.y0 = run->freeBounds.Top();
+            u.x1 = run->freeBounds.Right();
+            u.y1 = run->freeBounds.Bottom();
+            return insideRect(u, own);
+        };
+        if (!joins()){
+            flush();
+            batchRuns.emplace_back();
+            run = &batchRuns.back();
+            run->kind = kind;
+            run->layer = layer;
+            run->stencil = stencil;
+            run->stencilRef = ref;
+            run->scope = analyticScope;
+            run->transformId = transformId;
+            run->transform = transformIndex < 0 ? projection : projection * commandMatrices[(size_t)transformIndex];
+            run->firstChunk = (uint32_t)batchChunks.size();
+            run->firstMember = (uint32_t)batchMembers.size();
+            replayOps.push_back(ReplayOp{ReplayOp::Kind::RUN, (uint32_t)(batchRuns.size() - 1), -1});
+        }
+        if (texture){
+            run->texture = texture;
+            run->allUntextured = false;
+        }
+        if (free){
+            const Rml::Rectanglef b = Rml::Rectanglef::FromCorners(Rml::Vector2f(bounds.x0, bounds.y0), Rml::Vector2f(bounds.x1, bounds.y1));
+            run->freeBounds = run->freeBoundsValid ? run->freeBounds.Join(b) : b;
+            run->freeBoundsValid = true;
+        }else if (!run->scissorSet){
+            run->scissorSet = true;
+            run->scissor = own;
+        }
+
+        // the chunk it goes in (instances: vertices counts them)
+        if (run->chunkCount == 0 || batchChunks.back().members >= chunkMembers || chunkItemsUsed + vertices > chunkVertices){
+            batchChunks.emplace_back();
+            BatchChunk& chunk = batchChunks.back();
+            chunk.run = (uint32_t)(batchRuns.size() - 1);
+            chunk.first = (uint32_t)batchMembers.size();
+            run->chunkCount++;
+            chunkItemsUsed = 0;
+        }
+        BatchChunk& chunk = batchChunks.back();
+        chunk.members++;
+        chunk.vertices += vertices;
+        chunk.indices += indices;
+        chunk.bytes += (kind == RunKind::INSTANCES) ? vertices * (uint32_t)sizeof(HtmlUIPrimitive)
+                                                    : vertices * (uint32_t)sizeof(Rml::Vertex) + indices * 4u;
+        chunkItemsUsed += vertices;
+        batchMembers.push_back(member);
+        run->members++;
     };
 
     const size_t count = commands.size();
@@ -549,11 +912,6 @@ void RmlRenderer::planRuns(){
             const bool stencilScope = scope >= 0 && clipScopes[(size_t)scope].mode == ScopeMode::STENCIL;
             stencil = stencilScope;
             replayOps.push_back(ReplayOp{ReplayOp::Kind::COMMAND, (uint32_t)ci, scope});
-            if (scope >= 0 && !stencilScope){
-                stats.stencilClipsElided += clipScopes[(size_t)scope].masks;
-                if (clipScopes[(size_t)scope].mode == ScopeMode::ANALYTIC)
-                    stats.analyticClips++;
-            }
             break;
         }
         case CommandType::CLIP_MASK: {
@@ -582,100 +940,30 @@ void RmlRenderer::planRuns(){
                 emit((uint32_t)ci);
                 break;
             }
-            HtmlUITexture* texture = reinterpret_cast<HtmlUITexture*>(c.b);
-            const Rml::Vector2f translation(c.x, c.y);
-
-            // the scissor it is drawn with: clipped away, nothing to draw
-            Rml::Rectanglei own = scissorOn ? scissor : full;
-            const int analyticScope = (scope >= 0 && clipScopes[(size_t)scope].mode == ScopeMode::ANALYTIC) ? scope : -1;
-            if (scope >= 0 && clipScopes[(size_t)scope].mode == ScopeMode::ELIDED){
-                const Rml::Rectanglei clip = clipScopes[(size_t)scope].scissor;
-                const Rml::Vector2i p0 = Rml::Math::Max(own.p0, clip.p0);
-                own = Rml::Rectanglei::FromCorners(p0, Rml::Math::Max(p0, Rml::Math::Min(own.p1, clip.p1)));
+            BatchMember member;
+            member.geometry = geometry;
+            member.generation = geometry->generation;
+            member.translation = Rml::Vector2f(c.x, c.y);
+            member.texture = reinterpret_cast<HtmlUITexture*>(c.b);
+            const Rml::Rectanglef bounds = geometryBounds(*geometry);
+            // R10: a quad list draws as instances, joining the boxes and glyphs around it
+            if (instancing && isQuadList(*geometry)){
+                member.count = (uint32_t)geometry->instances.size();
+                add(RunKind::INSTANCES, member, bounds, member.count, 0);
+            }else{
+                add(RunKind::VERTICES, member, bounds, (uint32_t)geometry->vertices.size(), (uint32_t)geometry->indices.size());
             }
-            if (own.Width() <= 0 || own.Height() <= 0)
+            break;
+        }
+        case CommandType::PRIMITIVES: {
+            if (c.i[1] <= 0)
                 break;
-            // R4: inside its scissor (a translate/scale transform), it may share a run with another scissor
-            bool free = false;
-            RectF bounds;
-            if (transformMap.valid){
-                const Rml::Rectanglef b = geometryBounds(*geometry);
-                bounds = mapRect(transformMap, pixel, b.Left() + translation.x, b.Top() + translation.y, b.Right() + translation.x,
-                                 b.Bottom() + translation.y);
-                free = insideRect(bounds, own);
-            }
-
-            auto joins = [&](){
-                if (!run || run->kind != RunKind::VERTICES || run->layer != layer || run->stencil != stencil ||
-                    (stencil && run->stencilRef != ref) || run->transformId != transformId || run->scope != analyticScope)
-                    return false;
-                if (texture != run->texture){
-                    if (!texture){
-                        if (!run->texture->hasWhiteTexel)
-                            return false;
-                    }else if (run->texture || !run->allUntextured || !texture->hasWhiteTexel){
-                        return false;
-                    }
-                }
-                if (run->scissorSet)
-                    return free ? insideRect(bounds, run->scissor) : own == run->scissor;
-                if (free)
-                    return true;
-                if (!run->freeBoundsValid)
-                    return true;
-                RectF u;
-                u.x0 = run->freeBounds.Left();
-                u.y0 = run->freeBounds.Top();
-                u.x1 = run->freeBounds.Right();
-                u.y1 = run->freeBounds.Bottom();
-                return insideRect(u, own);
-            };
-            if (!joins()){
-                flush();
-                batchRuns.emplace_back();
-                run = &batchRuns.back();
-                run->kind = RunKind::VERTICES;
-                run->layer = layer;
-                run->stencil = stencil;
-                run->stencilRef = ref;
-                run->scope = analyticScope;
-                run->transformId = transformId;
-                run->transform = transformIndex < 0 ? projection : projection * commandMatrices[(size_t)transformIndex];
-                run->firstChunk = (uint32_t)batchChunks.size();
-                run->firstMember = (uint32_t)batchMembers.size();
-                replayOps.push_back(ReplayOp{ReplayOp::Kind::RUN, (uint32_t)(batchRuns.size() - 1), -1});
-            }
-            if (texture){
-                run->texture = texture;
-                run->allUntextured = false;
-            }
-            if (free){
-                const Rml::Rectanglef b = Rml::Rectanglef::FromCorners(Rml::Vector2f(bounds.x0, bounds.y0), Rml::Vector2f(bounds.x1, bounds.y1));
-                run->freeBounds = run->freeBoundsValid ? run->freeBounds.Join(b) : b;
-                run->freeBoundsValid = true;
-            }else if (!run->scissorSet){
-                run->scissorSet = true;
-                run->scissor = own;
-            }
-
-            // the chunk it goes in
-            const uint32_t vertices = (uint32_t)geometry->vertices.size();
-            if (run->chunkCount == 0 || batchChunks.back().members >= chunkMembers || chunkVerticesUsed + vertices > chunkVertices){
-                batchChunks.emplace_back();
-                BatchChunk& chunk = batchChunks.back();
-                chunk.run = (uint32_t)(batchRuns.size() - 1);
-                chunk.first = (uint32_t)batchMembers.size();
-                run->chunkCount++;
-                chunkVerticesUsed = 0;
-            }
-            BatchChunk& chunk = batchChunks.back();
-            chunk.members++;
-            chunk.vertices += vertices;
-            chunk.indices += (uint32_t)geometry->indices.size();
-            chunk.bytes += vertices * (uint32_t)sizeof(Rml::Vertex) + (uint32_t)geometry->indices.size() * 4u;
-            chunkVerticesUsed += vertices;
-            batchMembers.push_back(BatchMember{geometry, geometry->generation, translation, texture});
-            run->members++;
+            BatchMember member;
+            member.generation = (uint64_t)(uint32_t)c.i[2] | ((uint64_t)(uint32_t)c.i[3] << 32);
+            member.first = (uint32_t)c.i[0];
+            member.count = (uint32_t)c.i[1];
+            member.translation = Rml::Vector2f(c.x, c.y);
+            add(RunKind::INSTANCES, member, primitiveBounds(member.first, member.count), member.count, 0);
             break;
         }
         case CommandType::PUSH_LAYER:
@@ -719,6 +1007,30 @@ void RmlRenderer::planRuns(){
     std::sort(pendingChunks.begin(), pendingChunks.end());
 }
 
+Rml::Rectanglef RmlRenderer::primitiveBounds(uint32_t first, uint32_t count) const{
+    float x0 = 0.0f, y0 = 0.0f, x1 = 0.0f, y1 = 0.0f;
+    for (uint32_t i = 0; i < count; i++){
+        const HtmlUIPrimitive& p = commandPrimitives[first + i];
+        // what the instance can touch: a box its border box, an outer shadow its shape and 3 sigma
+        // of blur, an inset one its clip box
+        const float* r = (p.params[0] == (float)HtmlUIPrimitive::SHADOW_INSET) ? p.d : p.a;
+        const float reach = (p.params[0] == (float)HtmlUIPrimitive::SHADOW_OUTER) ? 3.0f * p.params[1] : 0.0f;
+        const float a0 = r[0] - reach, b0 = r[1] - reach, a1 = r[0] + r[2] + reach, b1 = r[1] + r[3] + reach;
+        if (i == 0){
+            x0 = a0;
+            y0 = b0;
+            x1 = a1;
+            y1 = b1;
+        }else{
+            x0 = std::min(x0, a0);
+            y0 = std::min(y0, b0);
+            x1 = std::max(x1, a1);
+            y1 = std::max(y1, b1);
+        }
+    }
+    return Rml::Rectanglef::FromCorners(Rml::Vector2f(x0, y0), Rml::Vector2f(x1, y1));
+}
+
 //-------------------------------------------------------------------------------------------
 // gathering
 //-------------------------------------------------------------------------------------------
@@ -735,17 +1047,18 @@ void RmlRenderer::uploadGathered(){
         }
     }
 
-    size_t current = SIZE_MAX;
+    size_t current[2] = {SIZE_MAX, SIZE_MAX};   // by run kind
     auto pageFor = [&](RunKind kind, size_t dataBytes, size_t indexBytes) -> size_t {
         auto fits = [&](const GatherPage& page){
             return page.kind == kind && page.writable && page.dataTop + dataBytes <= page.dataCapacity &&
                    page.indexTop + indexBytes <= page.indexCapacity;
         };
-        if (current != SIZE_MAX && fits(*gatherPages[current]))
-            return current;
+        size_t& last = current[kind == RunKind::INSTANCES ? 1 : 0];
+        if (last != SIZE_MAX && fits(*gatherPages[last]))
+            return last;
         for (size_t p = 0; p < gatherPages.size(); p++){
             if (fits(*gatherPages[p]))
-                return current = p;
+                return last = p;
         }
         std::unique_ptr<GatherPage> page = std::make_unique<GatherPage>();
         page->kind = kind;
@@ -768,47 +1081,68 @@ void RmlRenderer::uploadGathered(){
             }
         }
         gatherPages.push_back(std::move(page));
-        return current = gatherPages.size() - 1;
+        return last = gatherPages.size() - 1;
     };
 
     for (uint32_t c : pendingChunks){
         BatchChunk& chunk = batchChunks[c];
         const BatchRun* run = &batchRuns[chunk.run];
-        const size_t dataBytes = (size_t)chunk.vertices * sizeof(Rml::Vertex);
-        const size_t indexBytes = (size_t)chunk.indices * 4u;
+        const bool instances = run->kind == RunKind::INSTANCES;
+        const size_t dataBytes = (size_t)chunk.vertices * (instances ? sizeof(HtmlUIPrimitive) : sizeof(Rml::Vertex));
+        const size_t indexBytes = instances ? 0 : (size_t)chunk.indices * 4u;
         const size_t p = pageFor(run->kind, dataBytes, indexBytes);
         if (p == SIZE_MAX){
             chunk.count = 0;
+            chunk.dataCount = 0;
             continue;
         }
         GatherPage& page = *gatherPages[p];
         page.written = true;
-
-        // untextured members of a textured run read its white texels
-        const HtmlUITexture* white = (run->texture && run->texture->hasWhiteTexel) ? run->texture : nullptr;
-        Rml::Vertex* out = reinterpret_cast<Rml::Vertex*>(page.dataShadow.data() + page.dataTop);
-        uint32_t* indices = reinterpret_cast<uint32_t*>(page.indexShadow.data() + page.indexTop);
-        uint32_t base = (uint32_t)(page.dataTop / sizeof(Rml::Vertex));
         chunk.page = (uint32_t)p;
-        chunk.dataFirst = base;
-        chunk.firstIndex = (uint32_t)(page.indexTop / 4u);
-        for (uint32_t m = chunk.first; m < chunk.first + chunk.members; m++){
-            const BatchMember& member = batchMembers[m];
-            const Rml::Span<const Rml::Vertex> vertices = member.geometry->vertices;
-            const bool whiteUV = !member.texture && white;
-            for (size_t v = 0; v < vertices.size(); v++){
-                Rml::Vertex vertex = vertices[v];
-                vertex.position += member.translation;
-                if (whiteUV)
-                    vertex.tex_coord = Rml::Vector2f(white->whiteU, white->whiteV);
-                *out++ = vertex;
+
+        if (instances){
+            HtmlUIPrimitive* out = reinterpret_cast<HtmlUIPrimitive*>(page.dataShadow.data() + page.dataTop);
+            chunk.dataFirst = (uint32_t)(page.dataTop / sizeof(HtmlUIPrimitive));
+            chunk.firstIndex = 0;
+            for (uint32_t m = chunk.first; m < chunk.first + chunk.members; m++){
+                const BatchMember& member = batchMembers[m];
+                const HtmlUIPrimitive* in = member.geometry ? member.geometry->instances.data() : commandPrimitives.data() + member.first;
+                const float textured = member.texture ? 1.0f : 0.0f;
+                for (uint32_t i = 0; i < member.count; i++){
+                    *out = in[i];
+                    translateInstance(*out, member.translation);
+                    out->params[2] = textured;
+                    out++;
+                }
             }
-            for (int index : member.geometry->indices)
-                *indices++ = base + (uint32_t)index;
-            base += (uint32_t)vertices.size();
+            chunk.dataCount = chunk.vertices;
+            chunk.count = chunk.vertices;
+        }else{
+            // untextured members of a textured run read its white texels
+            const HtmlUITexture* white = (run->texture && run->texture->hasWhiteTexel) ? run->texture : nullptr;
+            Rml::Vertex* out = reinterpret_cast<Rml::Vertex*>(page.dataShadow.data() + page.dataTop);
+            uint32_t* indices = reinterpret_cast<uint32_t*>(page.indexShadow.data() + page.indexTop);
+            uint32_t base = (uint32_t)(page.dataTop / sizeof(Rml::Vertex));
+            chunk.dataFirst = base;
+            chunk.firstIndex = (uint32_t)(page.indexTop / 4u);
+            for (uint32_t m = chunk.first; m < chunk.first + chunk.members; m++){
+                const BatchMember& member = batchMembers[m];
+                const Rml::Span<const Rml::Vertex> vertices = member.geometry->vertices;
+                const bool whiteUV = !member.texture && white;
+                for (size_t v = 0; v < vertices.size(); v++){
+                    Rml::Vertex vertex = vertices[v];
+                    vertex.position += member.translation;
+                    if (whiteUV)
+                        vertex.tex_coord = Rml::Vector2f(white->whiteU, white->whiteV);
+                    *out++ = vertex;
+                }
+                for (int index : member.geometry->indices)
+                    *indices++ = base + (uint32_t)index;
+                base += (uint32_t)vertices.size();
+            }
+            chunk.dataCount = chunk.vertices;
+            chunk.count = chunk.indices;
         }
-        chunk.dataCount = chunk.vertices;
-        chunk.count = chunk.indices;
         page.dataTop += dataBytes;
         page.indexTop += indexBytes;
         page.liveBytes += chunk.bytes;
@@ -897,49 +1231,67 @@ void RmlRenderer::drawRun(const BatchRun& run){
         stencil.ref = run.stencilRef;
     }
     const PipelineState state = layerState(BlendMode::PREMULTIPLIED, ColorWriteMask::RGBA, stencil);
-    const bool coverage = run.texture && run.texture->sample == HtmlUITexture::Sample::COVERAGE;
     const int previousScope = activeClipScope;
     activeClipScope = run.scope;
-    const ClipParams clipParams = currentClipParams(coverage);
+    const ClipParams clipParams = currentClipParams(run.texture);
     activeClipScope = previousScope;
 
     // the run's chunks, contiguous ones of a page in one draw
     uint32_t c = run.firstChunk;
     const uint32_t end = run.firstChunk + run.chunkCount;
+    const bool instances = run.kind == RunKind::INSTANCES;
     while (c < end){
         const BatchChunk& first = batchChunks[c];
         uint32_t members = first.members;
-        uint32_t indexCount = first.count;
+        uint32_t count = first.count;
         uint32_t next = c + 1;
-        while (next < end && batchChunks[next].page == first.page && batchChunks[next].firstIndex == first.firstIndex + indexCount &&
-               batchChunks[next].count > 0){
-            indexCount += batchChunks[next].count;
+        while (next < end && batchChunks[next].page == first.page && batchChunks[next].count > 0 &&
+               (instances ? batchChunks[next].dataFirst == first.dataFirst + count : batchChunks[next].firstIndex == first.firstIndex + count)){
+            count += batchChunks[next].count;
             members += batchChunks[next].members;
             next++;
         }
         c = next;
-        if (indexCount == 0 || first.page >= gatherPages.size())
+        if (count == 0 || first.page >= gatherPages.size())
             continue;
         GatherPage& page = *gatherPages[first.page];
 
         applyPassViewport(full);
         applyPassScissor(scissor);
-        geometryObject.replaceVertexBuffer(&compositeVertexBuffer, &page.data, 0);
-        geometryObject.setIndexBuffer(&page.indices, 0);
-        geometryObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, run.texture ? run.texture->render : &placeholderWhite);
-        stats.textureBinds++;
-        if (!geometryObject.beginDraw(state))
-            return;
-        HtmlUIParams params;
-        std::memcpy(params.transform, run.transform.data(), sizeof(params.transform));
-        params.translation[0] = params.translation[1] = params.translation[2] = params.translation[3] = 0.0f;
-        geometryObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
-        geometryObject.applyUniformBlock(geometryClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
-        geometryObject.draw(first.firstIndex, indexCount, 1);
-        stats.drawCalls++;
+        if (instances){
+            if (!drawInstances(page.data, (size_t)first.dataFirst * sizeof(HtmlUIPrimitive), count, run.texture, run.transform, clipParams, state))
+                return;
+        }else{
+            geometryObject.replaceVertexBuffer(&compositeVertexBuffer, &page.data, 0);
+            geometryObject.setIndexBuffer(&page.indices, 0);
+            geometryObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, run.texture ? run.texture->render : &placeholderWhite);
+            stats.textureBinds++;
+            noteDrawn(run.texture);
+            if (!geometryObject.beginDraw(state))
+                return;
+            HtmlUIParams params;
+            std::memcpy(params.transform, run.transform.data(), sizeof(params.transform));
+            params.translation[0] = params.translation[1] = params.translation[2] = params.translation[3] = 0.0f;
+            geometryObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
+            geometryObject.applyUniformBlock(geometryClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
+            geometryObject.draw(first.firstIndex, count, 1);
+            stats.drawCalls++;
+            noteColorWrite();
+        }
         if (members > 1)
             stats.runsMerged++;
-        noteColorWrite();
+    }
+}
+
+void RmlRenderer::applyClipEnable(const Command& command, int32_t scope){
+    // a scope without stencil: no stencil test, its scissor or analytic clip instead
+    const bool stencilScope = scope < 0 || clipScopes[(size_t)scope].mode == ScopeMode::STENCIL;
+    activeClipScope = stencilScope ? -1 : scope;
+    clipMaskEnabled = command.flag != 0 && stencilScope;
+    if (!stencilScope){
+        stats.stencilClipsElided += clipScopes[(size_t)scope].masks;
+        if (clipScopes[(size_t)scope].mode == ScopeMode::ANALYTIC)
+            stats.analyticClips++;
     }
 }
 
@@ -951,12 +1303,26 @@ void RmlRenderer::executePlan(){
         }
         const Command& c = commands[op.index];
         if (c.type == CommandType::CLIP_ENABLE){
-            // a scope without stencil: no stencil test, its scissor or analytic clip instead
-            const bool stencilScope = op.scope < 0 || clipScopes[(size_t)op.scope].mode == ScopeMode::STENCIL;
-            activeClipScope = stencilScope ? -1 : op.scope;
-            clipMaskEnabled = c.flag != 0 && stencilScope;
+            applyClipEnable(c, op.scope);
             continue;
         }
+        replayCommand(c);
+    }
+    activeClipScope = -1;
+}
+
+void RmlRenderer::replayScoped(){
+    int32_t scope = -1;
+    for (size_t ci = 0; ci < commands.size(); ci++){
+        const Command& c = commands[ci];
+        if (c.type == CommandType::CLIP_ENABLE){
+            scope = c.flag ? scopeOfCommand[ci] : -1;
+            applyClipEnable(c, scope);
+            continue;
+        }
+        // the masks of a scope clipped without the stencil are not drawn
+        if (c.type == CommandType::CLIP_MASK && scope >= 0 && clipScopes[(size_t)scope].mode != ScopeMode::STENCIL)
+            continue;
         replayCommand(c);
     }
     activeClipScope = -1;

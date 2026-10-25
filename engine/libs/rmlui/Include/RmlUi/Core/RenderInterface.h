@@ -45,6 +45,8 @@ struct BoxPrimitive {
 	Rectanglef border_box;               // Box: the border box; shadows: the shadow's shape (offset and spread applied)
 	Array<Vector2f, 4> radii = {};
 	Vector4f border_widths;              // Box: top, right, bottom, left
+	Vector4f fill_insets;                // Box: the fill's edges inside border_box (top, right, bottom, left), its radii reduced
+	                                     // by them (the mesh path's background under opaque borders)
 	ColourbPremultiplied fill;
 	Array<ColourbPremultiplied, 4> border_colors = {}; // Box: top, right, bottom, left
 	float sigma = 0.f;                   // shadows: half the blur radius

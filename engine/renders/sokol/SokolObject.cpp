@@ -317,6 +317,14 @@ void SokolObject::setIndex(BufferRender* buffer, AttributeDataType dataType, siz
 }
 
 void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance){
+    addAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance, false);
+}
+
+void SokolObject::addInterleavedAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance){
+    addAttribute(slot, buffer, elements, dataType, stride, offset, normalized, perInstance, true);
+}
+
+void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset, bool normalized, bool perInstance, bool interleaved){
     if (slot != -1){
         sg_buffer vbuf = buffer->backend.get();
 
@@ -326,7 +334,7 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
         size_t bufferOffset = 0;
         size_t attrOffset = 0;
 
-        if (Engine::isOpenGL()){
+        if (Engine::isOpenGL() || interleaved){
             bufferOffset = 0;
             attrOffset = offset;
         }else{

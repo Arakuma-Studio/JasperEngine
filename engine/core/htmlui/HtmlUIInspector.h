@@ -114,11 +114,30 @@ struct InspectStyle {
     uint32_t line = 0, column = 0;
 };
 
+// How the element's box is painted (S16 R26, R27): "primitive" (SDF background, border, outline and
+// box shadows) or "mesh", with the reason it is not a primitive ("border-style", "box-shadow under
+// opacity", ...; empty when the renderer draws no primitives)
+struct InspectPaint {
+    std::string path;
+    std::string reason;
+};
+
+// How its own text was last drawn (S16 R14-R16): "bitmap" at scale device px per document px (0:
+// the context's scale, no transform-aware text), "msdf" (distance glyphs), "stretched" (a bitmap
+// of another scale, settling)
+struct InspectRaster {
+    bool hasText = false;
+    std::string mode;
+    float scale = 0;
+};
+
 struct InspectDetail {
     InspectElement element;
     InspectBoxModel box;
     std::vector<std::pair<std::string, std::string>> attributes;
     std::vector<InspectStyle> styles;
+    InspectPaint paint;
+    InspectRaster raster;
 };
 
 struct DocumentInfo {
@@ -166,6 +185,9 @@ public:
     // The same for the context the entity's document is in: a texture-mode document's own context
     // (its texture size), else the scene's
     static bool withViewport(Scene* scene, Entity entity, float width, float height, const std::function<void()>& fn, std::string& error);
+    // The last frame's render statistics of the context that draws the document (S16 R27):
+    // HtmlUIRenderStats::forEachField's names and values, in that order
+    static bool renderStats(Scene* scene, Entity entity, std::vector<std::pair<std::string, uint32_t>>& out, std::string& error);
     // Pushes the Lua table bound to data model `name` (UIDocumentSystem::pushDataModel)
     static bool pushDataModel(Scene* scene, Entity entity, const std::string& name, lua_State* L);
 };

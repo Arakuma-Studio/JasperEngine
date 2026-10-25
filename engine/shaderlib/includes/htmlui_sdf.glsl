@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Gamecrafters Guild Limited and contributors
 // SPDX-License-Identifier: MIT
-// roundedRectSDF, rectEdgeFootprint, sdfCoverage, erfApprox and the Gaussian shadow edge are
-// OpenEngine's (Engine/Modules/Rendering/Shaders/UI/sdf_functions.glsl, MIT, NOTICE.md); the
-// clip and border helpers below them are JasperEngine's (S16).
+// roundedRectSDF, rectEdgeFootprint, sdfCoverage, erfApprox and the Gaussian edge are OpenEngine's
+// (Engine/Modules/Rendering/Shaders/UI/sdf_functions.glsl, MIT, NOTICE.md); the clip, shadow,
+// border and distance-field text helpers below them are JasperEngine's (S16).
 //
 // The HTML UI's analytic shapes: rounded rectangles with elliptical corners, antialiased from the
 // screen derivatives of the position they are evaluated at (any 2D, 3D or perspective transform),
@@ -11,6 +11,17 @@
 
 #ifndef HTMLUI_SDF_GLSL
 #define HTMLUI_SDF_GLSL
+
+// The analytic clip, the texture's kind and the distance-field text parameters of a draw (S16 R6,
+// R12, R16, R17); RmlRenderer's ClipParams
+uniform u_fs_htmluiClip {
+    vec4 rect[2];       // x, y, width, height: document px before the element transform
+    vec4 radiiX[2];     // top-left, top-right, bottom-right, bottom-left
+    vec4 radiiY[2];
+    vec4 params;        // x: clip shapes (0, 1 or 2); y: texture kind (0 RGBA, 1 R8 coverage, 2 MTSDF)
+    vec4 text;          // MTSDF: x: effect (0 fill, 1 dilated, 2 blurred), y: dilation, z: blur sigma
+                        // (document px), w: the atlas distance range (texels)
+} clip;
 
 // Signed distance to a rounded rectangle with elliptical corners: positive inside, negative
 // outside, zero on the boundary. Equal semi-axes keep the exact circular distance; unequal ones
@@ -72,9 +83,112 @@ float gaussianEdge(float sd, float sigma, float pixelSigma){
     return 0.5 + 0.5 * erfApprox(sd / (max(sigmaEff, 1e-4) * 1.4142135));
 }
 
-// The analytic clip (S16 R6): the product of the coverage of up to two rounded rectangles at p
+// The analytic clip (S16 R6): the coverage of a rounded rectangle at p
 float htmluiClipShape(vec2 p, vec2 dpdx, vec2 dpdy, vec4 rect, vec4 radX, vec4 radY){
     return sdfCoverage(roundedRectSDF(p, rect, radX, radY), rectEdgeFootprint(p, rect, dpdx, dpdy));
+}
+
+// The clip of u_fs_htmluiClip at p (1 without one)
+float htmluiClipCoverage(vec2 p, vec2 dpdx, vec2 dpdy){
+    float coverage = 1.0;
+    if (clip.params.x > 0.5){
+        coverage = htmluiClipShape(p, dpdx, dpdy, clip.rect[0], clip.radiiX[0], clip.radiiY[0]);
+        if (clip.params.x > 1.5)
+            coverage *= htmluiClipShape(p, dpdx, dpdy, clip.rect[1], clip.radiiX[1], clip.radiiY[1]);
+    }
+    return coverage;
+}
+
+// The horizontal extent [left, right] of a rounded rectangle on the row y (inside its height)
+vec2 roundedRectRow(float y, vec4 rect, vec4 radX, vec4 radY){
+    float y0 = rect.y;
+    float y1 = rect.y + rect.w;
+    float left = rect.x;
+    float right = rect.x + rect.z;
+    // the corner of each side the row passes, its distance into the curve
+    float rxl = (y - y0 < radY.x) ? radX.x : ((y1 - y < radY.w) ? radX.w : 0.0);
+    float ryl = (y - y0 < radY.x) ? radY.x : ((y1 - y < radY.w) ? radY.w : 1.0);
+    float dyl = (y - y0 < radY.x) ? (radY.x - (y - y0)) : ((y1 - y < radY.w) ? (radY.w - (y1 - y)) : 0.0);
+    float rxr = (y - y0 < radY.y) ? radX.y : ((y1 - y < radY.z) ? radX.z : 0.0);
+    float ryr = (y - y0 < radY.y) ? radY.y : ((y1 - y < radY.z) ? radY.z : 1.0);
+    float dyr = (y - y0 < radY.y) ? (radY.y - (y - y0)) : ((y1 - y < radY.z) ? (radY.z - (y1 - y)) : 0.0);
+    if (rxl > 0.0 && ryl > 0.0){
+        float t = clamp(dyl / ryl, 0.0, 1.0);
+        left += rxl - rxl * sqrt(1.0 - t * t);
+    }
+    if (rxr > 0.0 && ryr > 0.0){
+        float t = clamp(dyr / ryr, 0.0, 1.0);
+        right -= rxr - rxr * sqrt(1.0 - t * t);
+    }
+    return vec2(left, right);
+}
+
+// The share of a row [left, right] blurred horizontally by sigma that reaches x
+float blurredRow(float x, vec2 row, float sigma){
+    float s = 1.0 / (sigma * 1.4142135);
+    return max(0.5 * (erfApprox((x - row.x) * s) - erfApprox((x - row.y) * s)), 0.0);
+}
+
+// The integral of a row's blur over the band [a, b] of rows, Gaussian-weighted around p.y:
+// sampled at band midpoints (a band of the curved corners, cut to 3 sigma around p.y)
+float blurredBand(vec2 p, float a, float b, float sigma, vec4 rect, vec4 radX, vec4 radY){
+    a = max(a, p.y - 3.0 * sigma);
+    b = min(b, p.y + 3.0 * sigma);
+    if (b <= a)
+        return 0.0;
+    const int SAMPLES = 6;
+    float step = (b - a) / float(SAMPLES);
+    float sum = 0.0;
+    for (int i = 0; i < SAMPLES; i++){
+        float y = a + (float(i) + 0.5) * step;
+        float t = (y - p.y) / sigma;
+        sum += exp(-0.5 * t * t) * blurredRow(p.x, roundedRectRow(y, rect, radX, radY), sigma);
+    }
+    return sum * step / (sigma * 2.5066283);
+}
+
+// A rounded rectangle's coverage blurred by a Gaussian of sigma (the CSS box-shadow blur, sigma =
+// blur radius / 2) at p: separable and exact over the rows between the corners, integrated
+// numerically over the rows of the curves
+float roundedRectShadow(vec2 p, vec4 rect, vec4 radX, vec4 radY, float sigma){
+    float y0 = rect.y;
+    float y1 = rect.y + rect.w;
+    float top = min(y0 + max(radY.x, radY.y), y1);
+    float bottom = max(y1 - max(radY.z, radY.w), top);
+    float s = 1.0 / (sigma * 1.4142135);
+    // the straight rows: their extent does not change, the vertical blur is an erf
+    vec2 row = vec2(rect.x, rect.x + rect.z);
+    float middle = blurredRow(p.x, row, sigma) * max(0.5 * (erfApprox((bottom - p.y) * s) - erfApprox((top - p.y) * s)), 0.0);
+    return clamp(middle + blurredBand(p, y0, top, sigma, rect, radX, radY) + blurredBand(p, bottom, y1, sigma, rect, radX, radY), 0.0, 1.0);
+}
+
+float htmluiMedian(float r, float g, float b){
+    return max(min(r, g), min(max(r, g), b));
+}
+
+// MTSDF text (S16 R16, R17): the glyph's coverage, or of its effect (dilated: an outline, blurred:
+// a glow, a font-effect blur or a blurred text-shadow), at the fragment. texel is the sample, uvTexels
+// its position in atlas texels, docPos the document position: their derivatives give the screen
+// size of a texel and of a document px
+float htmluiDistanceText(vec4 texel, vec2 uvTexels, vec2 docPos){
+    float range = clip.text.w;
+    vec2 texelsX = dFdx(uvTexels);
+    vec2 texelsY = dFdy(uvTexels);
+    // atlas texels per screen pixel, and document px per atlas texel
+    float texelsPerPixel = max(0.5 * (length(texelsX) + length(texelsY)), 1e-5);
+    float docPerTexel = (length(dFdx(docPos)) + length(dFdy(docPos))) / max(length(texelsX) + length(texelsY), 1e-5);
+    float effect = clip.text.x;
+    if (effect < 0.5){
+        // the glyph: the median's distance, in screen pixels
+        float sd = (htmluiMedian(texel.r, texel.g, texel.b) - 0.5) * range / texelsPerPixel;
+        return clamp(sd + 0.5, 0.0, 1.0);
+    }
+    // effects from the true distance (alpha), in document px, footprint of a screen pixel
+    float sd = (texel.a - 0.5) * range * docPerTexel + clip.text.y;
+    float pixel = texelsPerPixel * docPerTexel;
+    if (effect < 1.5)
+        return sdfCoverage(sd, pixel);
+    return gaussianEdge(sd, clip.text.z, 0.5 * pixel);
 }
 
 #endif

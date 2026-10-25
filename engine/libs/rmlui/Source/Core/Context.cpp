@@ -13,6 +13,7 @@
 #include "../../Include/RmlUi/Core/StreamMemory.h"
 #include "../../Include/RmlUi/Core/SystemInterface.h"
 #include "DataModel.h"
+#include "ElementBackgroundBorder.h"
 #include "ElementCascade.h"
 #include "EventDispatcher.h"
 #include "PluginRegistry.h"
@@ -220,6 +221,19 @@ bool Context::Update()
 	ReleaseUnloadedDocuments();
 
 	return true;
+}
+
+void Context::DirtyBackgrounds()
+{
+	Function<void(Element*)> dirty = [&dirty](Element* element) {
+		ElementBackgroundBorder* background = element->GetElementBackgroundBorder();
+		background->DirtyBackground();
+		background->DirtyBorder();
+		background->DirtyOutline();
+		for (int i = 0; i < element->GetNumChildren(true); i++)
+			dirty(element->GetChild(i));
+	};
+	dirty(root.get());
 }
 
 bool Context::Render()

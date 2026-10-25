@@ -753,7 +753,9 @@ TEST_F(IntegrationTest, RenderStatsOfACombinedScene){
     EXPECT_GT(a.passes, 1u);
     EXPECT_EQ(b.passes, 1u);
     EXPECT_EQ(b.filtersApplied, 0u);
-    EXPECT_GE(a.drawCalls, 10u);
+    EXPECT_GE(a.geometrySubmitted, 10u);
+    EXPECT_GE(b.geometrySubmitted, 1u);
+    EXPECT_GE(a.drawCalls, 1u);
     EXPECT_GE(b.drawCalls, 1u);
     EXPECT_EQ(total.pipelineCacheMisses, 0u);
     EXPECT_LE(total.pipelineApplies, total.drawCalls + total.passes * 2);

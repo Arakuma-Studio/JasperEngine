@@ -9,6 +9,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "SettingsCategoryList.h"
 #include "command/CommandHistory.h"
+#include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
 
 #include <algorithm>
@@ -985,6 +986,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
 
     m_loadingSettings = project->getLoadingSettings();
     m_threading = project->getThreadingSettings();
+    m_htmlUiRender = project->getHtmlUiRenderSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
     m_versionControlMetadata = project->hasVersionControlMetadata();
@@ -1403,9 +1405,38 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         drawComboSetting("Texture Strategy", "##TextureStrategy", textureStrategyNames, textureStrategyCount, m_textureStrategyIndex, findTextureStrategyIndex(Project::defaultTextureStrategy),
             "Only very old GPUs need power-of-two textures. Resize blurs the edges of atlas tiles. The editor applies a change when the project is reopened.");
 
+        // HTML UI: multisampling and the renderer's cost and text options (S16)
+        ImGui::SeparatorText("HTML UI");
         drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
             "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
             "Devices without MSAA draw them without it.");
+        {
+            const HtmlUiRenderSettings defaults;
+            if (projectBeginSettingsRow("Glyph Atlas Budget (MiB)", m_htmlUiRender.glyphAtlasMiB != defaults.glyphAtlasMiB)) {
+                m_htmlUiRender.glyphAtlasMiB = defaults.glyphAtlasMiB;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputInt("##HtmlUiGlyphAtlas", &m_htmlUiRender.glyphAtlasMiB);
+            if (m_htmlUiRender.glyphAtlasMiB != 0)
+                m_htmlUiRender.glyphAtlasMiB = std::clamp(m_htmlUiRender.glyphAtlasMiB, Project::minHtmlUiGlyphAtlasMiB, Project::maxHtmlUiGlyphAtlasMiB);
+            endSettingsRow("GPU memory of the HTML UI's glyph atlas: two thirds bitmap glyphs, one third distance-field glyphs. "
+                           "0 is the platform's default (24 MiB on desktop, 12 on Android, iOS and the web). When text needs "
+                           "more, pages not drawn lately are cleared and their glyphs made again.");
+
+            if (projectBeginSettingsRow("SDF Primitives", m_htmlUiRender.sdfPrimitives != defaults.sdfPrimitives)) {
+                m_htmlUiRender.sdfPrimitives = defaults.sdfPrimitives;
+            }
+            ImGui::Checkbox("##HtmlUiSdfPrimitives", &m_htmlUiRender.sdfPrimitives);
+            endSettingsRow("Draws solid backgrounds, borders, outlines and box shadows as antialiased shapes in batched draws, "
+                           "without shadow textures or layers. Off draws them as meshes, as before.");
+
+            if (projectBeginSettingsRow("Transform-Aware Text", m_htmlUiRender.transformAwareText != defaults.transformAwareText)) {
+                m_htmlUiRender.transformAwareText = defaults.transformAwareText;
+            }
+            ImGui::Checkbox("##HtmlUiTransformAwareText", &m_htmlUiRender.transformAwareText);
+            endSettingsRow("Rasterizes text at its on-screen size under scale transforms and odd pixel ratios, and draws it "
+                           "from distance fields while that size animates. Off keeps text a bitmap at the document's scale.");
+        }
 
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
         ImGui::SeparatorText("Shadows");
@@ -2231,6 +2262,10 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the reserve applies to the editor's job system at once
     if (m_threading != m_project->getThreadingSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new ThreadingSettingsCmd(m_project, m_threading));
+    }
+    // undoable: the editor's documents follow at once
+    if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new HtmlUiRenderSettingsCmd(m_project, m_htmlUiRender));
     }
 
     m_project->setPackNativeResources(m_packNativeResources);

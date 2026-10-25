@@ -39,6 +39,37 @@ namespace jasperengine {
         uint32_t atlasBytes = 0;            // glyph atlas pages (base and MSDF), one copy each
         uint32_t atlasEvictions = 0;        // atlas pages cleared to make room, this frame
 
+        // every field by its name (the MCP render_stats, Lua's UIDocument:getRenderStats, the
+        // benchmark's --ui-stats): fn(const char* name, uint32_t value)
+        template<class F>
+        void forEachField(F&& fn) const{
+            fn("passes", passes);
+            fn("drawCalls", drawCalls);
+            fn("pipelineApplies", pipelineApplies);
+            fn("pipelineCacheMisses", pipelineCacheMisses);
+            fn("textureBinds", textureBinds);
+            fn("layersPushed", layersPushed);
+            fn("filtersApplied", filtersApplied);
+            fn("compositesFused", compositesFused);
+            fn("geometryLive", geometryLive);
+            fn("geometryBytes", geometryBytes);
+            fn("geometrySubmitted", geometrySubmitted);
+            fn("runsMerged", runsMerged);
+            fn("runCacheHits", runCacheHits);
+            fn("instancesDrawn", instancesDrawn);
+            fn("verticesGathered", verticesGathered);
+            fn("stencilDraws", stencilDraws);
+            fn("stencilClipsElided", stencilClipsElided);
+            fn("analyticClips", analyticClips);
+            fn("boxShadowTextures", boxShadowTextures);
+            fn("glyphsRasterized", glyphsRasterized);
+            fn("msdfGlyphsPending", msdfGlyphsPending);
+            fn("textRegenerations", textRegenerations);
+            fn("textEffectFallbacks", textEffectFallbacks);
+            fn("atlasBytes", atlasBytes);
+            fn("atlasEvictions", atlasEvictions);
+        }
+
         // another context's stats added: its frame counters when it rendered in this frame, the
         // current values (geometry, saved-layer textures) always; the atlas is shared, its size is
         // the larger one

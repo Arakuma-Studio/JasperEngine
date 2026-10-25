@@ -159,6 +159,9 @@ namespace jasperengine::editor{
         std::vector<uint32_t> benchmarkDraws;
         std::vector<uint32_t> benchmarkInstances;
         std::vector<uint64_t> benchmarkTris;
+        // --ui-stats (S16 R29): the scene's HTML UI statistics, summed over the measured frames
+        bool benchmarkUiStats = false;
+        std::vector<std::pair<std::string, double>> benchmarkUiTotals;
         std::chrono::steady_clock::time_point benchmarkWaitStart{};
         std::chrono::steady_clock::time_point benchmarkMeasureStart{};
 

@@ -197,6 +197,18 @@ void RenderManager::ApplyClipMask(const ClipMaskGeometryList& clip_elements)
 	}
 }
 
+void RenderManager::RequestRender()
+{
+	render_requested = true;
+}
+
+bool RenderManager::ConsumeRenderRequest()
+{
+	const bool requested = render_requested;
+	render_requested = false;
+	return requested;
+}
+
 bool RenderManager::SupportsPrimitives() const
 {
 	return render_interface->SupportsPrimitives();

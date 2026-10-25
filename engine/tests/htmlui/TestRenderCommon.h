@@ -16,6 +16,7 @@
 #include "harness/TestSystem.h"
 
 #include "HtmlUI.h"
+#include "RmlFontEngine.h"
 #include "RmlRenderer.h"
 
 #include "Engine.h"
@@ -125,8 +126,16 @@ namespace jasperengine { namespace test {
                 context->Update();
                 // <video> frames chosen in the update (HtmlUIContext converts them before beginFrame)
                 renderer.runVideoConversions();
-                if (begun)
+                if (begun){
+                    // the font engine's counters of this context's frame, as HtmlUIContext::render
+                    RmlFontEngine& fonts = HtmlUI::getFontEngine();
+                    fonts.beginContextFrame(context->GetRenderManager());
                     context->Render();
+                    const RmlFontEngine::FrameCounters text = fonts.takeContextFrame(context->GetRenderManager());
+                    renderer.addTextStats(text.glyphsRasterized, text.textRegenerations, text.textEffectFallbacks, text.atlasEvictions);
+                }
+                // text settling at its on-screen scale asks for another frame (S16 R15)
+                renderRequested = context->GetRenderManager().ConsumeRenderRequest();
             }
             bool drawn = renderer.endFrame();
             if (drawn)
@@ -172,6 +181,8 @@ namespace jasperengine { namespace test {
         }
 
         Rml::Context* context = nullptr;
+        // the last frame asked for another one (HtmlUIContext keeps updatedSinceRender then)
+        bool renderRequested = false;
         RmlRenderer renderer;
         RmlRenderTarget target;
         FramebufferRender screen;

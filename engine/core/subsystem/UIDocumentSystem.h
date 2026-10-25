@@ -121,11 +121,19 @@ namespace jasperengine{
         void drawComposite(CameraComponent& camera, Transform& cameraTransform, PipelineType colorPipeline, bool flipY,
                            int msaaSamples = 1);
         const HtmlUIRenderStats& getRenderStats() const;    // last frame, summed over the scene's contexts
+        // the last frame of the context that draws the entity's document (its own in texture mode,
+        // else the screen context; empty without one)
+        HtmlUIRenderStats getRenderStats(Entity entity) const;
         // MSAA samples of every UI target (1/2/4/8, default 4): the exported entry to
         // HtmlUIContext::setPreferredSampleCount for the editor's project setting and the
         // generated game init code (neither can reach the internal HtmlUIContext)
         static void setPreferredSampleCount(int samples);
         static int getPreferredSampleCount();
+        // S16 (D1, R13): the glyph atlas budget in MiB (0: the platform's default), SDF primitives
+        // and transform-aware text; the exported entry for the project's htmlUiGlyphAtlasMiB,
+        // htmlUiSdfPrimitives and htmlUiTransformAwareText. Documents already drawn generate
+        // their backgrounds and text again
+        static void setHtmlUiRenderOptions(int glyphAtlasMiB, bool sdfPrimitives, bool transformAwareText);
 
         // --- p1-input (UIDocumentSystemInput.cpp, §3.6.2); the phase-0 pointer methods above become wrappers ---
         // world = false: the screen documents only (and a pointer a texture-mode document

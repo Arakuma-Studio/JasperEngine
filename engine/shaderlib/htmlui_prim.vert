@@ -5,11 +5,12 @@
 // baked in) mapped by `transform` (projection * element transform), so every transform, 2D, 3D
 // or perspective, draws them; the fragment stage antialiases from screen derivatives.
 //
-// Instance fields (HtmlUIPrimitive, RmlRenderer.h), by mode (i_params.x):
-//   0 QUAD, 4 MSDF_GLYPH: i_a = corners 0 and 1, i_b = corners 2 and 3 (top-left, top-right,
-//                bottom-right, bottom-left), i_d = uv rect; i_params.z = 1 when textured
+// Instance fields (HtmlUIPrimitive, RmlRendererInternal.h), by mode (i_params.x):
+//   0 QUAD:      i_a = corners 0 and 1, i_b = corners 2 and 3 (top-left, top-right, bottom-right,
+//                bottom-left), i_d = uv rect; i_params.z = 1 when textured
 //   1 BOX:       i_a = border box (x, y, w, h), i_b/i_c = its radii x/y, i_d = border widths
-//                (top, right, bottom, left), i_color = fill, i_border0..3 = border colours
+//                (top, right, bottom, left), i_e = the fill's insets, i_color = fill,
+//                i_border0..3 = border colours
 //   2 SHADOW_OUTER, 3 SHADOW_INSET: i_a = the shadow's shape, i_b/i_c = its radii, i_d = the
 //                clip box, i_e/i_f = its radii, i_params.y = sigma, i_color = the shadow colour
 
@@ -48,15 +49,15 @@ flat out vec4 v_border2;
 flat out vec4 v_border3;
 
 vec2 toScreen(vec2 p){
-    vec4 clip = prim.transform * vec4(p, 0.0, 1.0);
-    return clip.xy / max(abs(clip.w), 1e-6) * sign(clip.w) * 0.5 * prim.viewport.xy;
+    vec4 clipPos = prim.transform * vec4(p, 0.0, 1.0);
+    return clipPos.xy / max(abs(clipPos.w), 1e-6) * sign(clipPos.w) * 0.5 * prim.viewport.xy;
 }
 
 void main() {
     int mode = int(i_params.x + 0.5);
     vec2 p;
     vec2 uv = vec2(0.0);
-    if (mode == 0 || mode == 4){
+    if (mode == 0){
         // the quad's own corners: the mesh it replaces, exactly
         p = (a_position.y < 0.5) ? ((a_position.x < 0.5) ? i_a.xy : i_a.zw) : ((a_position.x < 0.5) ? i_b.zw : i_b.xy);
         uv = vec2((a_position.x < 0.5) ? i_d.x : i_d.z, (a_position.y < 0.5) ? i_d.y : i_d.w);

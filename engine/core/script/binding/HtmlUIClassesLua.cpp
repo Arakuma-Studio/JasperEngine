@@ -1511,6 +1511,12 @@ void LuaBinding::registerHtmlUIClasses(lua_State *L){
         .addFunction("getDataModel", &documentGetDataModel)
         .addFunction("removeDataModel", &UIDocument::removeDataModel)
         .addFunction("getTargetTexture", &UIDocument::getTargetTexture)
+        // S16 R28: the HtmlUIRenderStats of the last frame as a table of numbers
+        .addFunction("getRenderStats", [](const UIDocument* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            self->getRenderStats().forEachField([&table](const char* name, uint32_t value){ table[name] = (lua_Integer)value; });
+            return table;
+        })
         .addStaticFunction("setDebuggerVisible", &UIDocument::setDebuggerVisible)
         .addStaticFunction("isDebuggerVisible", &UIDocument::isDebuggerVisible)
         // diagnostics: Lua functions held by documents (listeners, data-model callbacks); 0 once

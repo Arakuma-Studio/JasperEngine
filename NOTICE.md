@@ -27,6 +27,7 @@ Libraries of the engine, the editor and the tools:
 | [HarfBuzz](https://github.com/harfbuzz/harfbuzz) | 14.3.0 | `engine/libs/harfbuzz/` (`COPYING`) | Old MIT | text shaping |
 | [SheenBidi](https://github.com/Tehreer/SheenBidi) | 3.0 | `engine/libs/sheenbidi/` (`LICENSE`) | Apache-2.0 | the Unicode bidirectional algorithm |
 | [meshoptimizer](https://github.com/zeux/meshoptimizer) | 1.2 | `engine/libs/meshoptimizer/` (`LICENSE.md`) | MIT | mesh LODs and optimisation |
+| [msdfgen](https://github.com/Chlumsky/msdfgen) | 1.13.0 (`master` at `1c106ed81178`), `core/` only; local change: `core/base.h` includes the hand-written `msdfgen-config.h` | `engine/libs/msdfgen/` (`LICENSE.txt`) | MIT | the HTML UI's MTSDF glyph atlas (scaling text, GPU text effects) |
 | [RmlUi](https://github.com/mikke89/RmlUi) | 6.3 (`ba95ffe8bfb6`), JasperEngine's fork | `engine/libs/rmlui/` (`LICENSE.txt`; Taffy's below, `LICENSE-taffy.txt`) | MIT | the HTML/CSS UI |
 | [glslang](https://github.com/KhronosGroup/glslang) | 15.1.0 | `engine/libs/shadercompiler/libs/glslang/` (`LICENSE.txt`) | BSD-3-Clause and the others `LICENSE.txt` lists | GLSL to SPIR-V in the shader compiler |
 | [SPIRV-Cross](https://github.com/KhronosGroup/SPIRV-Cross) | vendored (git history) | `engine/libs/shadercompiler/libs/spirv-cross/` (`LICENSE`, `LICENSES/`) | Apache-2.0 | SPIR-V to GLSL, HLSL and MSL in the shader compiler |
@@ -35,7 +36,7 @@ Libraries of the engine, the editor and the tools:
 | [yaml-cpp](https://github.com/jbeder/yaml-cpp) | 0.8.0 | `libs/yaml-cpp/` (`LICENSE`) | MIT | the editor's scene, project and settings files |
 | [googletest](https://github.com/google/googletest) | 1.17.0 (googletest and googlemock) | `libs/googletest/` (`LICENSE`, `README.jasper.md`) | BSD-3-Clause | the unit tests only: tests only, never shipped |
 
-`engine/libs/shadercompiler/` itself (`src/`, the CMake build) is JasperEngine's own code (MIT, like the engine). Portions of the build and test tooling are adapted from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), with that notice kept in each file: `engine/cmake/JasperSanitizers.cmake` (sanitizer flags, MSVC AddressSanitizer runtime staging), `tools/web/serve.py` and `tools/web/browser_gate.py` (the headless-Chrome web gate).
+`engine/libs/shadercompiler/` itself (`src/`, the CMake build) is JasperEngine's own code (MIT, like the engine). Portions of the build and test tooling are adapted from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, Copyright (c) 2026 Gamecrafters Guild Limited and contributors), with that notice kept in each file: `engine/cmake/JasperSanitizers.cmake` (sanitizer flags, MSVC AddressSanitizer runtime staging), `tools/web/serve.py` and `tools/web/browser_gate.py` (the headless-Chrome web gate). The rounded-rectangle distance, pixel footprint, box-filter coverage, `erf` and Gaussian edge functions of the HTML UI's shaders (`engine/shaderlib/includes/htmlui_sdf.glsl`) are OpenEngine's (`Engine/Modules/Rendering/Shaders/UI/sdf_functions.glsl`), with its notice in that file.
 
 Vector graphics of the HTML/CSS UI (all MIT):
 

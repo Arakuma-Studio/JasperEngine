@@ -1120,6 +1120,22 @@ int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
 }
 
+bool editor::Project::isValidHtmlUiGlyphAtlasMiB(int mib){
+    return mib == 0 || (mib >= minHtmlUiGlyphAtlasMiB && mib <= maxHtmlUiGlyphAtlasMiB);
+}
+
+void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings){
+    htmlUiRender = settings;
+    if (!isValidHtmlUiGlyphAtlasMiB(htmlUiRender.glyphAtlasMiB))
+        htmlUiRender.glyphAtlasMiB = std::clamp(htmlUiRender.glyphAtlasMiB, minHtmlUiGlyphAtlasMiB, maxHtmlUiGlyphAtlasMiB);
+    // the editor's documents follow at once
+    UIDocumentSystem::setHtmlUiRenderOptions(htmlUiRender.glyphAtlasMiB, htmlUiRender.sdfPrimitives, htmlUiRender.transformAwareText);
+}
+
+const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{
+    return htmlUiRender;
+}
+
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
     if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
         return;
@@ -4020,6 +4036,7 @@ void editor::Project::resetConfigs() {
     vsyncEnabled = defaultVSyncEnabled;
     playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    setHtmlUiRenderSettings(HtmlUiRenderSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
@@ -5492,7 +5509,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
+    generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender);
 }
 
 std::vector<editor::SceneScriptSource> editor::Project::prepareScriptBuild() {
@@ -7232,7 +7249,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
-        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
+        generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings, htmlUiRender);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);
         }

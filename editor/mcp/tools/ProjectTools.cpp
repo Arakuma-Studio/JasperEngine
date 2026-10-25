@@ -1295,6 +1295,49 @@ const std::vector<Setting>& settingsTable() {
             };
             add(s);
         }
+        // HTML UI rendering (S16): the glyph atlas budget, SDF primitives, transform-aware text
+        {
+            Setting s;
+            s.key = "graphics.html_ui_glyph_atlas_mib";
+            s.type = "int";
+            s.description = "GPU memory of the HTML/CSS UI glyph atlas in MiB (two thirds bitmap glyphs, one third "
+                            "distance-field glyphs); 0 = the platform's default (24 on desktop, 12 on Android, iOS and the web), "
+                            "else 4-256. Pages not drawn lately are cleared when text needs more.";
+            s.get = [](McpContext& ctx) { return Json(ctx.project()->getHtmlUiRenderSettings().glyphAtlasMiB); };
+            s.set = [](McpContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, Project::maxHtmlUiGlyphAtlasMiB, v, error)) return false;
+                if (!Project::isValidHtmlUiGlyphAtlasMiB(static_cast<int>(v))) {
+                    error = "must be 0 or 4-256";
+                    return false;
+                }
+                if (apply) {
+                    HtmlUiRenderSettings settings = ctx.project()->getHtmlUiRenderSettings();
+                    settings.glyphAtlasMiB = static_cast<int>(v);
+                    ctx.project()->setHtmlUiRenderSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+        add(boolSetting("graphics.html_ui_sdf_primitives",
+                        "HTML/CSS UI: solid backgrounds, borders, outlines and box shadows drawn as antialiased shapes in batched "
+                        "draws (no shadow textures or layers); false draws them as meshes.",
+                        [](Project& p) { return p.getHtmlUiRenderSettings().sdfPrimitives; },
+                        [](Project& p, bool b) {
+                            HtmlUiRenderSettings settings = p.getHtmlUiRenderSettings();
+                            settings.sdfPrimitives = b;
+                            p.setHtmlUiRenderSettings(settings);
+                        }));
+        add(boolSetting("graphics.html_ui_transform_aware_text",
+                        "HTML/CSS UI: text rasterized at its on-screen size under scale transforms and fractional pixel ratios, "
+                        "drawn from distance fields while that size animates; false keeps a bitmap at the document's scale.",
+                        [](Project& p) { return p.getHtmlUiRenderSettings().transformAwareText; },
+                        [](Project& p, bool b) {
+                            HtmlUiRenderSettings settings = p.getHtmlUiRenderSettings();
+                            settings.transformAwareText = b;
+                            p.setHtmlUiRenderSettings(settings);
+                        }));
         // graphics.shadow_tier.<platform>: the shadow quality tier a scene of Quality Auto renders with
         for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
             Setting s;

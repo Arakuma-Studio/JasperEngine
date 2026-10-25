@@ -50,6 +50,7 @@ namespace jasperengine::editor {
         uint32_t m_startSceneId = NULL_PROJECT_SCENE;
         LoadingSettings m_loadingSettings;
         ThreadingProjectSettings m_threading;
+        HtmlUiRenderSettings m_htmlUiRender;
         fs::path m_assetsDir;
         fs::path m_luaDir;
         std::vector<fs::path> m_scriptDirs;

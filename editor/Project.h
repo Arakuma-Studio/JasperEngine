@@ -623,6 +623,7 @@ namespace jasperengine::editor{
         bool vsyncEnabled;
         PlayerLoggingSettings playerLogging;
         int htmlUiMsaaSamples;
+        HtmlUiRenderSettings htmlUiRender;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         WindowMode windowMode;
@@ -1053,6 +1054,9 @@ namespace jasperengine::editor{
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr int defaultHtmlUiMsaaSamples = 4;
+        // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
+        static constexpr int minHtmlUiGlyphAtlasMiB = 4;
+        static constexpr int maxHtmlUiGlyphAtlasMiB = 256;
         static constexpr WindowMode defaultWindowMode = WindowMode::WINDOWED;
         static constexpr unsigned int defaultWindowWidth = defaultCanvasWidth;
         static constexpr unsigned int defaultWindowHeight = defaultCanvasHeight;
@@ -1116,6 +1120,12 @@ namespace jasperengine::editor{
         void setHtmlUiMsaaSamples(int samples);
         int getHtmlUiMsaaSamples() const;
         static bool isValidHtmlUiMsaaSamples(int samples);
+        // HTML UI rendering (S16): htmlUiGlyphAtlasMiB (clamped into its range, 0 = the
+        // platform's default), htmlUiSdfPrimitives, htmlUiTransformAwareText; applied to the
+        // editor's documents at once and written into exports
+        void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
+        const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
+        static bool isValidHtmlUiGlyphAtlasMiB(int mib);
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)

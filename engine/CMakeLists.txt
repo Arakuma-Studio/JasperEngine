@@ -791,6 +791,8 @@ endforeach()
 add_subdirectory(libs/harfbuzz)
 add_subdirectory(libs/sheenbidi)
 add_subdirectory(libs/meshoptimizer)
+# the HTML UI's MTSDF glyphs (S16)
+add_subdirectory(libs/msdfgen)
 # The RmlUi debugger (Source/Debugger, UIDocumentSystem::setDebuggerVisible): the editor, Debug
 # exports and the HTML UI tests have it; release games leave it out
 if(JASPERENGINE_SHARED OR JASPERENGINE_HTMLUI_TESTS OR CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -845,7 +847,7 @@ endif()
 
 foreach(lib IN ITEMS
     sokol lua stb soloud tinyobjloader tinygltf tinyxml2
-    harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
     dav1d dav1d_bitdepth_8 dav1d_bitdepth_16 opus webm ${JASPERENGINE_PHYSICS_LIBS})
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
 endforeach()
@@ -854,7 +856,7 @@ endforeach()
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
 # engine code) broke Wasm signatures. Most of these set a standard of their own, or none.
 jasperengine_apply_cxx_standard(
-    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer
+    sokol soloud tinyobjloader tinygltf tinyxml2 harfbuzz meshoptimizer msdfgen
     lunasvg thorvg rmlui webm ${JASPERENGINE_PHYSICS_LIBS})
 if(JASPERENGINE_RUNTIME_SHADERS)
     # shadercompiler and every glslang, SPIRV and spirv-cross target it creates
@@ -1225,7 +1227,7 @@ target_link_libraries(
 
     PUBLIC
 
-    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer lunasvg thorvg rmlui lexbor
+    sokol lua stb tinyobjloader tinygltf tinyxml2 soloud harfbuzz sheenbidi meshoptimizer msdfgen lunasvg thorvg rmlui lexbor
     dav1d opus webm
     ${JASPERENGINE_PHYSICS_LIBS}
 )

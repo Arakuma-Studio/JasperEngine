@@ -5,15 +5,8 @@
 // HTML UI primitives (S16 R8, htmlui_prim.vert): premultiplied sRGB like htmlui.frag. Boxes and
 // shadows are evaluated from rounded-rectangle distances at the fragment's document position,
 // antialiased by the box filter of its screen footprint (at any sample count); boxes return their
-// fill without any distance inside the inner rectangle (R24).
-
-// the analytic clip (R6) and the texture's kind, as htmlui.frag's
-uniform u_fs_htmluiClip {
-    vec4 rect[2];
-    vec4 radiiX[2];
-    vec4 radiiY[2];
-    vec4 params;        // x: clip shapes (0, 1 or 2), y: 1 = a coverage texture (R8)
-} clip;
+// fill without any distance inside the inner rectangle (R24). Quads sample the run's texture by
+// its kind (u_fs_htmluiClip.params.y: RGBA, R8 coverage, MTSDF glyphs) when textured.
 
 uniform texture2D u_htmluiTexture;
 uniform sampler u_htmlui_smp;
@@ -62,9 +55,9 @@ vec4 borderColor(vec2 p, vec4 outer, vec4 widths){
 // the inner shape of a border: the border box without its widths, radii reduced by them (square
 // where one of them vanishes)
 void innerShape(vec4 outer, vec4 rx, vec4 ry, vec4 widths, out vec4 rect, out vec4 irx, out vec4 iry){
-    rect = vec4(outer.xy + vec2(widths.w, widths.x), outer.zw - vec2(widths.y + widths.w, widths.x + widths.z));
-    irx = rx - vec4(widths.w, widths.y, widths.y, widths.w);
-    iry = ry - vec4(widths.x, widths.x, widths.z, widths.z);
+    rect = vec4(outer.xy + vec2(widths.w, widths.x), max(outer.zw - vec2(widths.y + widths.w, widths.x + widths.z), vec2(0.0)));
+    irx = max(rx - vec4(widths.w, widths.y, widths.y, widths.w), vec4(0.0));
+    iry = max(ry - vec4(widths.x, widths.x, widths.z, widths.z), vec4(0.0));
     for (int i = 0; i < 4; i++){
         if (irx[i] <= 0.0 || iry[i] <= 0.0){
             irx[i] = 0.0;
@@ -78,6 +71,9 @@ void main() {
     // derivatives first, in uniform control flow
     vec2 dpdx = dFdx(p);
     vec2 dpdy = dFdy(p);
+    vec4 texel = texture(sampler2D(u_htmluiTexture, u_htmlui_smp), v_local.zw);
+    vec2 uvTexels = v_local.zw * vec2(textureSize(sampler2D(u_htmluiTexture, u_htmlui_smp), 0));
+    float distanceText = htmluiDistanceText(texel, uvTexels, p);
     int mode = int(v_params.x + 0.5);
     vec4 color;
 
@@ -89,38 +85,45 @@ void main() {
         vec4 corner = max(irx, iry);
         float curve = max(max(corner.x, corner.y), max(corner.z, corner.w));
         float pixel = max(length(dpdx), length(dpdy));
-        if (q.x < -curve - pixel && q.y < -curve - pixel && rect.z > 0.0 && rect.w > 0.0){
+        if (q.x < -curve - pixel && q.y < -curve - pixel){
             // inside the inner rectangle, clear of its curves and its edge pixels
             color = v_color;
         }else{
             float outer = htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c);
             float inner = (rect.z > 0.0 && rect.w > 0.0) ? htmluiClipShape(p, dpdx, dpdy, rect, irx, iry) : 0.0;
+            // the fill's own shape: the border box, inside opaque borders by its insets
+            vec4 fillRect, frx, fry;
+            innerShape(v_a, v_b, v_c, v_e, fillRect, frx, fry);
+            float fill = (fillRect.z > 0.0 && fillRect.w > 0.0) ? htmluiClipShape(p, dpdx, dpdy, fillRect, frx, fry) : 0.0;
             vec4 border = borderColor(p, v_a, v_d) * max(outer - inner, 0.0);
-            color = border + v_color * outer * (1.0 - border.a);
+            color = border + v_color * fill * (1.0 - border.a);
         }
     }else if (mode == 2 || mode == 3){
-        // a shadow: the Gaussian edge of its shape (sigma 0: the shape's own edge), outside the
-        // border box (outer) or the padding box's inside, the shape's outside (inset)
-        float sd = roundedRectSDF(p, v_a, v_b, v_c);
-        float w = rectEdgeFootprint(p, v_a, dpdx, dpdy);
-        float shape = (v_params.y > 0.0) ? gaussianEdge(sd, v_params.y, 0.5 * w) : sdfCoverage(sd, w);
+        // a shadow: its shape blurred by sigma (none: the shape's own antialiased edge), outside the
+        // border box (outer), or the shape's outside blurred inside the padding box (inset)
+        // (the blur widened by a pixel's box filter, sigma 1/sqrt(12) px)
+        float shape;
+        if (v_params.y > 0.0)
+            shape = roundedRectShadow(p, v_a, v_b, v_c, sqrt(v_params.y * v_params.y + 0.0833333 * max(dot(dpdx, dpdx), dot(dpdy, dpdy))));
+        else
+            shape = htmluiClipShape(p, dpdx, dpdy, v_a, v_b, v_c);
         float box = htmluiClipShape(p, dpdx, dpdy, v_d, v_e, v_f);
         float alpha = (mode == 2) ? shape * (1.0 - box) : (1.0 - shape) * box;
         color = v_color * alpha;
     }else{
-        // a quad: the colour, times its texture
+        // a quad: the colour, times its texture by kind
         color = v_color;
         if (v_params.z > 0.5){
-            vec4 texel = texture(sampler2D(u_htmluiTexture, u_htmlui_smp), v_local.zw);
-            color *= (clip.params.y > 0.5) ? texel.rrrr : texel;
+            if (clip.params.y > 1.5)
+                color *= distanceText;
+            else if (clip.params.y > 0.5)
+                color *= texel.r;
+            else
+                color *= texel;
         }
     }
 
-    if (clip.params.x > 0.5){
-        float coverage = htmluiClipShape(p, dpdx, dpdy, clip.rect[0], clip.radiiX[0], clip.radiiY[0]);
-        if (clip.params.x > 1.5)
-            coverage *= htmluiClipShape(p, dpdx, dpdy, clip.rect[1], clip.radiiX[1], clip.radiiY[1]);
-        color *= coverage;
-    }
+    if (clip.params.x > 0.5)
+        color *= htmluiClipCoverage(p, dpdx, dpdy);
     g_finalColor = color;
 }

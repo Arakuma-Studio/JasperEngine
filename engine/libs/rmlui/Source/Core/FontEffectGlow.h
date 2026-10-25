@@ -22,6 +22,9 @@ public:
 
 	bool HasUniqueTexture() const override;
 
+	// Fork (S16-F3)
+	bool GetDistanceEffect(DistanceEffect& effect) const override;
+
 	bool GetGlyphMetrics(Vector2i& origin, Vector2i& dimensions, const FontGlyph& glyph) const override;
 
 	void GenerateGlyphTexture(byte* destination_data, Vector2i destination_dimensions, int destination_stride, const FontGlyph& glyph) const override;

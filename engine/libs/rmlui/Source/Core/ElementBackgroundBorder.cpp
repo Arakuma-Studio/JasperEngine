@@ -573,6 +573,10 @@ void ElementBackgroundBorder::GenerateGeometry(Element* element)
 			box.border_box = border_rect;
 			box.radii = border_radii;
 			box.fill = background_color;
+			// the fill stops a pixel inside opaque solid borders, as the mesh path's (GeometryBorderStyles::BackgroundRenderBox)
+			const EdgeSizes insets =
+				GeometryBorderStyles::BackgroundRenderBox(element->GetRenderBox(BoxArea::Border, i), padding_box, border_colors.data()).GetBorderWidths();
+			box.fill_insets = Vector4f(insets[0], insets[1], insets[2], insets[3]);
 			// the sides that paint: the others are no border at all
 			BoxPrimitive border = box;
 			border.fill = transparent;

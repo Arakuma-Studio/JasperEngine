@@ -539,7 +539,7 @@ TEST_F(RmlRendererP1GoldenTest, ManyElements){
     EXPECT_EQ(stats.passes, 1u);
     EXPECT_LE(stats.pipelineApplies, 10u);
     EXPECT_EQ(stats.pipelineCacheMisses, 0u);
-    EXPECT_GE(stats.drawCalls, 500u);
+    EXPECT_GE(stats.geometrySubmitted, 500u);
 
     std::vector<uint8_t> screen;
     ASSERT_TRUE(test.readScreen(screen));

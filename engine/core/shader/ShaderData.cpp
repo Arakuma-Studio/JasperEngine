@@ -143,6 +143,18 @@ int ShaderData::getAttrIndex(AttributeType type){
     return attrIndex;
 }
 
+int ShaderData::getAttrIndexByName(const std::string& name){
+    for (const ShaderStage& stage : stages){
+        if (stage.type != ShaderStageType::VERTEX)
+            continue;
+        for (const ShaderAttr& attribute : stage.attributes){
+            if (attribute.name == name)
+                return attribute.location;
+        }
+    }
+    return -1;
+}
+
 int ShaderData::getUniformBlockIndex(UniformBlockType type){
     std::string ustr;
     

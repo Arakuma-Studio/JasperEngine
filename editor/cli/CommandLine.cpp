@@ -304,6 +304,8 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
+        << "      --ui-stats         Add the scene's HTML UI statistics (draws, merged runs, stencil draws,\n"
+        << "                         glyph atlas, ...), averaged over the measured frames, as \"htmlUi\".\n"
         << "  -h, --help             Show this help.\n\n"
         << "--project and --out are absolute or relative to the current directory.\n"
         << "Vsync is forced off. The scene camera is used for the capture.\n";

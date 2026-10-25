@@ -2351,6 +2351,8 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--out") {
             if (const char* value = requireValue(i, "--out"))
                 benchmarkOut = CommandLine::absoluteArgPath(value);
+        } else if (arg == "--ui-stats") {
+            benchmarkUiStats = true;
         } else if (arg == "-h" || arg == "--help") {
             continue;
         } else {
@@ -3324,6 +3326,7 @@ void editor::App::tickBenchmark() {
             benchmarkDraws.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
+            benchmarkUiTotals.clear();
             benchmarkMeasureStart = std::chrono::steady_clock::now();
         }
         return;
@@ -3335,6 +3338,17 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
+        if (benchmarkUiStats) {
+            // the scene's documents (screen and texture-mode contexts), this frame
+            std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
+            const HtmlUIRenderStats ui = documents ? documents->getRenderStats() : HtmlUIRenderStats();
+            size_t field = 0;
+            ui.forEachField([this, &field](const char* name, uint32_t value) {
+                if (field == benchmarkUiTotals.size())
+                    benchmarkUiTotals.emplace_back(name, 0.0);
+                benchmarkUiTotals[field++].second += (double)value;
+            });
+        }
         if (static_cast<int>(benchmarkFps.size()) >= benchmarkMeasureFrames)
             finishBenchmark();
     }
@@ -3393,8 +3407,17 @@ void editor::App::finishBenchmark() {
          << "  \"avgMs\": " << (wallFps > 0.0 ? 1000.0 / wallFps : 0.0) << ",\n"
          << "  \"avgDrawCalls\": " << avgDraws << ",\n"
          << "  \"avgInstances\": " << avgInstances << ",\n"
-         << "  \"avgTriangles\": " << avgTris << "\n"
-         << "}\n";
+         << "  \"avgTriangles\": " << avgTris;
+    if (benchmarkUiStats) {
+        // HtmlUIRenderStats averaged over the measured frames
+        json << ",\n  \"htmlUi\": {";
+        for (size_t i = 0; i < benchmarkUiTotals.size(); i++) {
+            json << (i ? ", " : "") << "\"" << benchmarkUiTotals[i].first << "\": "
+                 << (n > 0 ? benchmarkUiTotals[i].second / static_cast<double>(n) : 0.0);
+        }
+        json << "}";
+    }
+    json << "\n}\n";
 
     const std::string text = json.str();
     std::cout << text;

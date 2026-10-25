@@ -1472,6 +1472,16 @@ bool HtmlUIInspector::hitTest(Scene* scene, Entity entity, float x, float y, std
     return true;
 }
 
+bool HtmlUIInspector::renderStats(Scene* scene, Entity entity, std::vector<std::pair<std::string, uint32_t>>& out, std::string& error){
+    out.clear();
+    Doc doc;
+    if (!open(scene, entity, doc, error))
+        return false;
+    std::shared_ptr<UIDocumentSystem> system = scene->getSystem<UIDocumentSystem>();
+    system->getRenderStats(entity).forEachField([&out](const char* name, uint32_t value){ out.emplace_back(name, value); });
+    return true;
+}
+
 bool HtmlUIInspector::detail(Scene* scene, Entity entity, const std::string& ref, const std::vector<std::string>& properties,
                              InspectDetail& out, std::string& error){
     out = InspectDetail();
@@ -1531,6 +1541,25 @@ bool HtmlUIInspector::detail(Scene* scene, Entity entity, const std::string& ref
         InspectStyle style;
         computeStyle(element, target, &sources, style);
         out.styles.push_back(std::move(style));
+    }
+
+    // S16: the box as primitives or meshes, and the raster of its own text (its first text child)
+    const char* reason = "";
+    out.paint.path = element->IsPaintedAsPrimitives(&reason) ? "primitive" : "mesh";
+    out.paint.reason = reason ? reason : "";
+    for (int i = 0; i < element->GetNumChildren(); i++){
+        Rml::ElementText* text = rmlui_dynamic_cast<Rml::ElementText*>(element->GetChild(i));
+        if (!text || text->GetText().empty())
+            continue;
+        float scale = 0.0f;
+        switch (text->GetRasterMode(scale)){
+        case Rml::ElementText::RasterMode::Bitmap: out.raster.mode = "bitmap"; break;
+        case Rml::ElementText::RasterMode::DistanceField: out.raster.mode = "msdf"; break;
+        case Rml::ElementText::RasterMode::Stretched: out.raster.mode = "stretched"; break;
+        }
+        out.raster.scale = scale;
+        out.raster.hasText = true;
+        break;
     }
     return true;
 }

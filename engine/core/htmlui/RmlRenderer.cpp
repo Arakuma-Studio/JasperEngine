@@ -9,8 +9,10 @@
 #include "RmlRenderer.h"
 #include "RmlRendererInternal.h"
 
+#include "HtmlUI.h"
 #include "HtmlUITexture.h"
 #include "RmlFilterContext.h"
+#include "RmlFontEngine.h"
 
 #include "Engine.h"
 #include "HtmlUIDependencies.h"
@@ -21,10 +23,12 @@
 #include "render/SystemRender.h"
 #include "texture/Framebuffer.h"
 #include "texture/TextureData.h"
+#include "util/GlyphAtlas.h"
 #include "compat/VirtualFiles.h"
 #include "effects/EffectRenderer.h"
 #include "effects/EffectRuntime.h"
 
+#include <RmlUi/Core/Context.h>
 #include <RmlUi/Core/DecorationTypes.h>
 #include <RmlUi/Core/Dictionary.h>
 #include <RmlUi/Core/Log.h>
@@ -33,6 +37,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstddef>
 #include <cstring>
 
 using namespace jasperengine;
@@ -380,6 +385,7 @@ RmlRenderer::~RmlRenderer(){
         delete texture;
     }
     liveTextures.clear();
+    atlasTextures.clear();
 }
 
 Rml::CompiledGeometryHandle RmlRenderer::CompileGeometry(Rml::Span<const Rml::Vertex> vertices, Rml::Span<const int> indices){
@@ -682,7 +688,7 @@ bool RmlRenderer::bindGeometry(Rml::CompiledGeometryHandle handle, ObjectRender&
 }
 
 HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, int height, const char* label, TextureFilter filter,
-                                                TextureWrap wrapU, TextureWrap wrapV){
+                                                TextureWrap wrapU, TextureWrap wrapV, ColorFormat format){
     std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
     texture->kind = HtmlUITexture::Kind::STATIC;
     texture->ownedRender = std::make_unique<TextureRender>();
@@ -700,10 +706,10 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     }
 
     void* data[1] = {const_cast<uint8_t*>(rgba)};
-    size_t size[1] = {(size_t)width * (size_t)height * 4};
+    size_t size[1] = {(size_t)width * (size_t)height * (format == ColorFormat::RED ? 1 : 4)};
     gpuCreateCount++;
     // LINEAR (or NEAREST) min filter: no mipmaps
-    if (!texture->ownedRender->createTexture(label, width, height, ColorFormat::RGBA, TextureType::TEXTURE_2D, 1, data, size,
+    if (!texture->ownedRender->createTexture(label, width, height, format, TextureType::TEXTURE_2D, 1, data, size,
                                              filter, filter, wrapU, wrapV)){
         texture->ownedRender->destroyTexture();
         texture->dead = true;
@@ -714,6 +720,95 @@ HtmlUITexture* RmlRenderer::createStaticTexture(const uint8_t* rgba, int width, 
     HtmlUITexture* result = texture.release();
     liveTextures.insert(result);
     return result;
+}
+
+Rml::TextureHandle RmlRenderer::createAtlasTexture(int width, int height, const AtlasTexture& desc){
+    const bool coverage = desc.sample == HtmlUITexture::Sample::COVERAGE;
+    HtmlUITexture* texture = nullptr;
+    if (!Engine::isViewLoaded()){
+        // no GPU yet: RmlUi makes it again once the view exists (createStaticTexture's way)
+        texture = new HtmlUITexture();
+        texture->kind = HtmlUITexture::Kind::DYNAMIC;
+        texture->width = width;
+        texture->height = height;
+        texture->dead = true;
+        texturesWithoutView = true;
+    }else{
+        // dynamic: glyphs added to the page are uploaded into the same texture
+        gpuCreateCount++;
+        std::unique_ptr<HtmlUITexture> created = HtmlUITexture::createDynamic(coverage ? "htmlui-glyph-atlas" : "htmlui-glyph-atlas-rgba",
+                                                                              width, height, coverage ? ColorFormat::RED : ColorFormat::RGBA);
+        if (!created)
+            return 0;
+        texture = created.release();
+    }
+    liveTextures.insert(texture);
+    atlasTextures.push_back(texture);
+    texture->atlas = desc.atlas;
+    texture->atlasGeneration = desc.generation;
+    texture->sample = desc.sample;
+    texture->distanceRange = desc.distanceRange;
+    texture->drawFrame = desc.drawFrame;
+    if (desc.whiteX >= 0 && desc.whiteY >= 0 && width > 0 && height > 0){
+        // the centre of the 4x4 block: every bilinear tap reads full coverage
+        texture->hasWhiteTexel = true;
+        texture->whiteU = ((float)desc.whiteX + 2.0f) / (float)width;
+        texture->whiteV = ((float)desc.whiteY + 2.0f) / (float)height;
+    }
+    return reinterpret_cast<Rml::TextureHandle>(texture);
+}
+
+Rml::TextureHandle RmlRenderer::createTextureVariant(Rml::TextureHandle baseHandle, const float textEffect[3], std::shared_ptr<uint64_t> drawFrame){
+    HtmlUITexture* base = toTexture(baseHandle);
+    if (!base)
+        return 0;
+    HtmlUITexture* texture = new HtmlUITexture();
+    texture->kind = HtmlUITexture::Kind::EXTERNAL;
+    texture->sample = base->sample;
+    texture->render = base->render;
+    texture->width = base->width;
+    texture->height = base->height;
+    texture->dead = base->dead;
+    texture->distanceRange = base->distanceRange;
+    for (int i = 0; i < 3; i++)
+        texture->textEffect[i] = textEffect[i];
+    texture->drawFrame = std::move(drawFrame);
+    liveTextures.insert(texture);
+    return reinterpret_cast<Rml::TextureHandle>(texture);
+}
+
+void RmlRenderer::noteDrawn(HtmlUITexture* texture){
+    if (!texture)
+        return;
+    if (texture->drawFrame)
+        *texture->drawFrame = SystemRender::getFrameCount();
+    // drawing at once, an atlas page not uploaded since glyphs were added (the replay uploads them all first)
+    if (texture->atlas)
+        uploadAtlasTexture(*texture);
+}
+
+void RmlRenderer::uploadAtlasTexture(HtmlUITexture& texture){
+    if (texture.dead || !texture.atlas || !texture.atlasGeneration || *texture.atlasGeneration == texture.uploadedGeneration)
+        return;
+    const std::vector<unsigned char>& pixels = texture.atlas->getPixels();
+    const size_t bytes = (size_t)texture.width * (size_t)texture.height * (texture.sample == HtmlUITexture::Sample::COVERAGE ? 1u : 4u);
+    // (a page parked by the font engine has no texels: its texture goes with its source)
+    if (pixels.size() != bytes)
+        return;
+    if (texture.update(pixels.data(), bytes))
+        texture.uploadedGeneration = *texture.atlasGeneration;
+}
+
+void RmlRenderer::updateAtlasTextures(){
+    for (HtmlUITexture* texture : atlasTextures)
+        uploadAtlasTexture(*texture);
+}
+
+void RmlRenderer::addTextStats(uint32_t glyphsRasterized, uint32_t textRegenerations, uint32_t textEffectFallbacks, uint32_t atlasEvictions){
+    stats.glyphsRasterized += glyphsRasterized;
+    stats.textRegenerations += textRegenerations;
+    stats.textEffectFallbacks += textEffectFallbacks;
+    stats.atlasEvictions += atlasEvictions;
 }
 
 Rml::TextureHandle RmlRenderer::LoadTexture(Rml::Vector2i& texture_dimensions, const Rml::String& rmlSource){
@@ -859,6 +954,8 @@ HtmlUITexture* RmlRenderer::toTexture(Rml::TextureHandle handle){
 void RmlRenderer::destroyTexture(HtmlUITexture* texture){
     if (liveTextures.erase(texture) > 0 && texture->savedLayer && stats.boxShadowTextures > 0)
         stats.boxShadowTextures--;
+    if (texture->atlas)
+        atlasTextures.erase(std::remove(atlasTextures.begin(), atlasTextures.end(), texture), atlasTextures.end());
     cancelVideoConversion(texture);
     // the destructor destroys what it owns, without GPU calls when dead
     delete texture;
@@ -1338,13 +1435,14 @@ bool RmlRenderer::drawGeometry(RmlGeometry* geometry, Rml::Vector2f translation,
     // one program for everything: untextured geometry samples white
     geometryObject.addTexture(geometryTextureSlot, ShaderStageType::FRAGMENT, texture ? texture->render : &placeholderWhite);
     stats.textureBinds++;
+    noteDrawn(texture);
     if (!geometryObject.beginDraw(state))
         return false;
     HtmlUIParams params = makeParams(transform, translation);
     geometryObject.applyUniformBlock(geometryParamsSlot, sizeof(HtmlUIParams), &params);
     // a stencil-only draw (a clip mask) is not clipped analytically
     const ClipParams& clipParams = (state.writeMask == ColorWriteMask::NONE)
-                                   ? noClip : currentClipParams(texture && texture->sample == HtmlUITexture::Sample::COVERAGE);
+                                   ? noClip : currentClipParams(texture);
     geometryObject.applyUniformBlock(geometryClipSlot, sizeof(ClipParams), const_cast<ClipParams*>(&clipParams));
     geometryObject.draw(0, indexCount, 1);
     stats.drawCalls++;
@@ -2277,7 +2375,9 @@ namespace {
 bool RmlRenderer::loadPrograms(){
     geometryShader = ShaderPool::get(ShaderType::HTMLUI, ShaderPool::getHtmlUIProperties(true));
     gradientShader = ShaderPool::get(ShaderType::HTMLUI_GRADIENT, 0);
-    bool ready = geometryShader && geometryShader->isCreated() && gradientShader && gradientShader->isCreated();
+    primShader = ShaderPool::get(ShaderType::HTMLUI_PRIM, 0);
+    bool ready = geometryShader && geometryShader->isCreated() && gradientShader && gradientShader->isCreated() && primShader &&
+                 primShader->isCreated();
     static_assert(POST_PROGRAM_COUNT == HTMLUI_POST_VARIANT_COUNT, "one post program per HTMLUI_POST variant");
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
@@ -2287,6 +2387,60 @@ bool RmlRenderer::loadPrograms(){
         ready = ready && program.shader && program.shader->isCreated();
     }
     return ready;
+}
+
+bool RmlRenderer::loadPrimObject(){
+    // the unit quad (two triangles), and one zero instance whose layout the instance buffers share
+    const float corners[8] = {0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f};
+    const uint32_t cornerIndices[6] = {0, 1, 2, 0, 2, 3};
+    HtmlUIPrimitive zero;
+    std::memset(&zero, 0, sizeof(zero));
+    gpuCreateCount += 3;
+    if (!primQuadBuffer.createBuffer(sizeof(corners), (void*)corners, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE) ||
+        !primQuadIndexBuffer.createBuffer(sizeof(cornerIndices), (void*)cornerIndices, BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE) ||
+        !primInstanceTemplate.createBuffer(sizeof(zero), &zero, BufferType::VERTEX_BUFFER, BufferUsage::IMMUTABLE))
+        return false;
+
+    ShaderData& data = primShader->shaderData;
+    primParamsSlot = data.getUniformBlockIndexByName("u_vs_htmluiPrim");
+    primClipSlot = data.getUniformBlockIndexByName("u_fs_htmluiClip");
+    primTextureSlot = data.getTextureIndexByName("u_htmluiTexture");
+    primObject.beginLoad(PrimitiveType::TRIANGLES);
+    primObject.setShader(primShader.get());
+    primObject.addAttribute(data.getAttrIndex(AttributeType::POSITION), &primQuadBuffer, 2, AttributeDataType::FLOAT, sizeof(float) * 2, 0, false, false);
+    // every instance attribute in one bind slot (more of them than sokol has vertex buffer slots)
+    struct InstanceAttribute {
+        const char* name;
+        size_t offset;
+        bool color;
+    };
+    const InstanceAttribute attributes[] = {
+        {"i_a", offsetof(HtmlUIPrimitive, a), false},
+        {"i_b", offsetof(HtmlUIPrimitive, b), false},
+        {"i_c", offsetof(HtmlUIPrimitive, c), false},
+        {"i_d", offsetof(HtmlUIPrimitive, d), false},
+        {"i_e", offsetof(HtmlUIPrimitive, e), false},
+        {"i_f", offsetof(HtmlUIPrimitive, f), false},
+        {"i_params", offsetof(HtmlUIPrimitive, params), false},
+        {"i_color", offsetof(HtmlUIPrimitive, color), true},
+        {"i_border0", offsetof(HtmlUIPrimitive, border), true},
+        {"i_border1", offsetof(HtmlUIPrimitive, border) + 4, true},
+        {"i_border2", offsetof(HtmlUIPrimitive, border) + 8, true},
+        {"i_border3", offsetof(HtmlUIPrimitive, border) + 12, true},
+    };
+    for (const InstanceAttribute& attribute : attributes){
+        const int slot = data.getAttrIndexByName(attribute.name);
+        if (slot < 0){
+            Log::error("[HTML UI] the primitive program has no attribute %s", attribute.name);
+            return false;
+        }
+        primObject.addInterleavedAttribute(slot, &primInstanceTemplate, 4, attribute.color ? AttributeDataType::UNSIGNED_BYTE : AttributeDataType::FLOAT,
+                                           sizeof(HtmlUIPrimitive), attribute.offset, attribute.color, true);
+    }
+    primObject.setIndex(&primQuadIndexBuffer, AttributeDataType::UNSIGNED_INT, 0);
+    if (primTextureSlot.first >= 0)
+        primObject.addTexture(primTextureSlot, ShaderStageType::FRAGMENT, &placeholderWhite);
+    return primObject.endLoadDynamic(PrimitiveType::TRIANGLES, IndexType::UINT32);
 }
 
 bool RmlRenderer::loadPipelines(){
@@ -2356,6 +2510,12 @@ bool RmlRenderer::loadPipelines(){
         !loadGeometryObject(geometryObject, geometryShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite) ||
         !loadGeometryObject(gradientObject, gradientShader.get(), &compositeVertexBuffer, &compositeIndexBuffer, &placeholderWhite)){
         Log::error("[HTML UI] could not load the HTML UI geometry programs");
+        destroyPipelineObjects();
+        return false;
+    }
+
+    if (!loadPrimObject()){
+        Log::error("[HTML UI] could not load the HTML UI primitive program");
         destroyPipelineObjects();
         return false;
     }
@@ -2444,8 +2604,16 @@ void RmlRenderer::replayCommands(){
     layersSize = 1;
     activeClipScope = -1;
 
+    // glyphs the recorded frame added to atlas pages, before anything draws
+    updateAtlasTextures();
     if (batching){
         replayBatched();
+        return;
+    }
+    // unbatched with SDF primitives: rounded clips the shaders can do are analytic (S16 R6)
+    if (primitivesFrame){
+        planClipScopes();
+        replayScoped();
         return;
     }
     for (const Command& c : commands)
@@ -2504,6 +2672,9 @@ void RmlRenderer::replayCommand(const Command& c){
     case CommandType::SHADER:
         renderShaderNow(c.a, c.b, Rml::Vector2f(c.x, c.y));
         break;
+    case CommandType::PRIMITIVES:
+        drawPrimitivesNow(commandPrimitives.data() + c.i[0], (size_t)c.i[1], Rml::Vector2f(c.x, c.y));
+        break;
     }
 }
 
@@ -2513,6 +2684,7 @@ void RmlRenderer::finishRecording(){
     commandFilters.clear();
     commandRects.clear();
     commandClipShapes.clear();
+    commandPrimitives.clear();
     activeClipScope = -1;
     // releases deferred while recording, in their order
     for (size_t i = 0; i < deferredReleases.size(); i++){
@@ -2605,6 +2777,10 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
     frameStartScissor = scissorRegion;
     recording = commandRecording;
     batching = recording && isBatching();
+    primitivesFrame = isSdfPrimitives();
+    // drawing at once: what the atlas pages hold now (pages are uploaded again when drawn)
+    if (!recording)
+        updateAtlasTextures();
     activeClipScope = -1;
     if (recording){
         recordLayers = 1;
@@ -2613,6 +2789,7 @@ bool RmlRenderer::beginFrame(RmlRenderTarget& renderTarget, Rml::Vector2i size){
         commandFilters.clear();
         commandRects.clear();
         commandClipShapes.clear();
+        commandPrimitives.clear();
     }
     return true;
 }
@@ -2653,6 +2830,10 @@ bool RmlRenderer::endFrame(){
     stats.pipelineCacheMisses = (uint32_t)(SystemRender::getPipelineCacheMisses() - frameMissesStart);
     stats.pipelineApplies = (uint32_t)(SystemRender::getPipelineApplies() - frameAppliesStart);
     lastFrameDrawCount = stats.drawCalls;
+    // the glyph atlas is shared by every context: its size and the distance glyphs it still makes
+    const RmlFontEngine& fonts = HtmlUI::getFontEngine();
+    stats.atlasBytes = (uint32_t)fonts.getAtlasBytes();
+    stats.msdfGlyphsPending = (uint32_t)fonts.getPendingDistanceGlyphCount();
 
     frameState = FrameState::NONE;
     target = nullptr;
@@ -2768,11 +2949,15 @@ void RmlRenderer::destroyPipelineObjects(){
     gradientObject.destroy();
     compositeObject.destroy();
     compositeMsaaObject.destroy();
+    primObject.destroy();
     for (PostProgram& program : postPrograms){
         program.object.destroy();
     }
     compositeVertexBuffer.destroyBuffer();
     compositeIndexBuffer.destroyBuffer();
+    primQuadBuffer.destroyBuffer();
+    primQuadIndexBuffer.destroyBuffer();
+    primInstanceTemplate.destroyBuffer();
     placeholderWhite.destroyTexture();
 
     // the pool destroys a shader (and its cached pipelines) once no other renderer holds it
@@ -2784,6 +2969,13 @@ void RmlRenderer::destroyPipelineObjects(){
         gradientShader.reset();
         ShaderPool::remove(ShaderType::HTMLUI_GRADIENT, 0);
     }
+    if (primShader){
+        primShader.reset();
+        ShaderPool::remove(ShaderType::HTMLUI_PRIM, 0);
+    }
+    primParamsSlot = -1;
+    primClipSlot = -1;
+    primTextureSlot = {-1, -1};
     for (int i = 0; i < HTMLUI_POST_VARIANT_COUNT; i++){
         PostProgram& program = postPrograms[i];
         if (program.shader){
@@ -2888,6 +3080,16 @@ namespace {
         return value;
     }
 
+    std::unordered_map<const Rml::RenderManager*, RmlRenderer*>& managerRenderers(){
+        static std::unordered_map<const Rml::RenderManager*, RmlRenderer*> value;
+        return value;
+    }
+
+}
+
+RmlRenderer* RmlRenderer::forRenderManager(const Rml::RenderManager* renderManager){
+    auto it = managerRenderers().find(renderManager);
+    return it == managerRenderers().end() ? nullptr : it->second;
 }
 
 RmlRenderer* RmlRenderer::forContext(const Rml::Context* context){
@@ -2896,12 +3098,23 @@ RmlRenderer* RmlRenderer::forContext(const Rml::Context* context){
 }
 
 void RmlRenderer::bindContext(const Rml::Context* context, RmlRenderer* renderer){
-    if (context && renderer)
+    if (context && renderer){
         contextRenderers()[context] = renderer;
+        managerRenderers()[&const_cast<Rml::Context*>(context)->GetRenderManager()] = renderer;
+    }
 }
 
 void RmlRenderer::unbindContext(const Rml::Context* context){
-    contextRenderers().erase(context);
+    auto it = contextRenderers().find(context);
+    if (it == contextRenderers().end())
+        return;
+    for (auto manager = managerRenderers().begin(); manager != managerRenderers().end();){
+        if (manager->second == it->second)
+            manager = managerRenderers().erase(manager);
+        else
+            ++manager;
+    }
+    contextRenderers().erase(it);
 }
 
 void RmlRenderer::queueVideoConversion(const VideoConversion& conversion){

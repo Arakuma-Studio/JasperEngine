@@ -97,6 +97,11 @@ public:
 
 	CompiledFilter SaveLayerAsMaskImage();
 
+	/// Fork (S16-F3): something drawn this frame needs another frame although nothing changed (text settling at its
+	/// on-screen scale): the application renders the context again. Taken (and cleared) by ConsumeRenderRequest.
+	void RequestRender();
+	bool ConsumeRenderRequest();
+
 private:
 	void ApplyClipMask(const ClipMaskGeometryList& clip_elements);
 
@@ -127,6 +132,7 @@ private:
 	StableVector<GeometryData> geometry_list;
 	UniquePtr<TextureDatabase> texture_database;
 
+	bool render_requested = false;
 	int compiled_filter_count = 0;
 	int compiled_shader_count = 0;
 

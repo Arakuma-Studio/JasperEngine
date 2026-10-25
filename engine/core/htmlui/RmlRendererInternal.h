@@ -7,6 +7,7 @@
 #ifndef RMLRENDERERINTERNAL_H
 #define RMLRENDERERINTERNAL_H
 
+#include "HtmlUIPrimitive.h"
 #include "render/BufferRender.h"
 
 #include <RmlUi/Core/Matrix4.h>
@@ -40,6 +41,13 @@ namespace jasperengine {
         return params;
     }
 
+    // u_vs_htmluiPrim (htmlui_prim.vert)
+    struct HtmlUIPrimParams {
+        float transform[16];
+        float viewport[4];      // xy: target px
+    };
+    static_assert(sizeof(HtmlUIPrimParams) == 80, "u_vs_htmluiPrim is 80 bytes");
+
     // A compiled RmlUi geometry. RmlUi keeps the spans valid and unchanged until
     // ReleaseGeometry (RenderInterface.h), so its data is read from them: into the frame's
     // transient buffers on the first draw, into persistent storage at the end of that frame,
@@ -53,6 +61,10 @@ namespace jasperengine {
         // the vertices' bounding box (document px, before the translation), computed on first use
         bool boundsValid = false;
         float bounds[4] = {};       // min x, min y, max x, max y
+        // S16 R10: whether it is a list of quads (RmlUi's GenerateQuad: parallelograms of one colour,
+        // uvs affine), classified on first use by the batched replay; their instances (no translation)
+        enum class QuadList : uint8_t { UNKNOWN, NO, YES } quadList = QuadList::UNKNOWN;
+        std::vector<HtmlUIPrimitive> instances;
         // persistent storage
         RmlGeometryPage* vertexPage = nullptr;
         RmlGeometryPage* indexPage = nullptr;

@@ -112,6 +112,20 @@ namespace jasperengine::editor {
         bool operator!=(const ThreadingProjectSettings& other) const{ return !(*this == other); }
     };
 
+    // Project Settings > Graphics > HTML UI (S16): the glyph atlas budget in MiB (0: the
+    // platform's default), SDF primitives and transform-aware text
+    struct HtmlUiRenderSettings {
+        int glyphAtlasMiB = 0;           // 0, or 4-256
+        bool sdfPrimitives = true;
+        bool transformAwareText = true;
+
+        bool operator==(const HtmlUiRenderSettings& other) const{
+            return glyphAtlasMiB == other.glyphAtlasMiB && sdfPrimitives == other.sdfPrimitives &&
+                   transformAwareText == other.transformAwareText;
+        }
+        bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
+    };
+
     // Layer Collision Matrix of Project Settings > Physics or Physics 2D: index = layer,
     // bit j set when that layer and layer j collide (kept symmetric)
     using LayerCollisionRows = std::array<uint32_t, MAX_LAYERS>;
@@ -214,7 +228,7 @@ namespace jasperengine::editor {
         void writeSceneSource(Scene* scene, const std::string& sceneName, const std::vector<Entity>& entities, const Entity camera, const fs::path& projectPath, const fs::path& projectInternalPath, std::vector<PrefabInstanceInfo>& prefabInstances, const SceneResources& resources);
         void clearSceneSource(const std::string& sceneName, const fs::path& projectInternalPath);
         bool hasSceneSource(const std::string& sceneName, const fs::path& projectInternalPath) const;
-        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings());
+        void configure(const std::vector<SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode = Scaling::FITWIDTH, TextureStrategy textureStrategy = TextureStrategy::NONE, unsigned int canvasWidth = 1280, unsigned int canvasHeight = 720, bool vsyncEnabled = true, const WindowSettings& windowSettings = WindowSettings(), const LoadingSettings& loadingSettings = LoadingSettings(), const TagsAndLayers& tagsAndLayers = TagsAndLayers(), int htmlUiMsaaSamples = 4, const ThreadingProjectSettings& threading = ThreadingProjectSettings(), const HtmlUiRenderSettings& htmlUiRender = HtmlUiRenderSettings());
         void build(const fs::path projectPath, const fs::path buildPath, const std::string& cCompiler = "", const std::string& cxxCompiler = "", const std::string& generator = "", unsigned int parallelJobs = 0);
         // Configures and builds on the process channel; called from a channel job (the Play
         // startup), it builds on that thread instead and returns when done.
