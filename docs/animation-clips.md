@@ -116,8 +116,8 @@ The window remembers the label column width and the Dopesheet/Curves choice in t
 
 **Add Component > Animation > Animation Player** (or Create / a drop, above). Its section shows:
 
-- **Default Clip**: the state that Play Automatically and `Model:playAnimation` use. "First Clip"
-  means the first entry.
+- **Default Clip**: the state Play Automatically plays, and the one the Animation window opens
+  first. "First Clip" means the first entry.
 - **Clips**: the count, **+ Add Clip** (an empty entry; drop `.anim` files or a model on it), and
   **Create New Clip...**. Each entry is a row named after its state:
   - a file field with a picker and a clear button. Picking a model opens a list of its animations.
@@ -474,8 +474,9 @@ With the Animation window focused (and no text field active):
 | R | Record on / off | Ctrl/Cmd+Z, Ctrl/Cmd+Y | undo / redo (clip edits: project history, see [Undo](#undo)) |
 
 Mouse: `Ctrl`+wheel (or the wheel over the ruler) zooms time at the mouse, `Shift`+wheel and the
-middle button pan, and dragging in the ruler scrubs. While the window has focus, Delete,
-Backspace, `Ctrl+D` and F2 act on the window, never on the selected GameObject.
+middle button pan, and dragging in the ruler scrubs. While the window has focus with a clip (or
+its empty state) showing, Delete, Backspace, `Ctrl+D` and F2 act on the window, never on the
+selected GameObject.
 
 ## Not in this version
 
