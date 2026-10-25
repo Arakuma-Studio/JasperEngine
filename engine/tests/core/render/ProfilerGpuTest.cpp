@@ -125,8 +125,9 @@ TEST_F(GpuTimerGpu, EveryPassIsTimed){
     // pass times fit in the frame (the GL family's frame is their sum)
     EXPECT_LE(sum, list.gpuFrameMs * 1.05 + 1e-6);
     const GpuTimingState state = SystemRender::getGpuTimingState();
-    if (state.frameIsSum)
+    if (state.frameIsSum){
         EXPECT_NEAR(sum, list.gpuFrameMs, 1e-6);
+    }
     EXPECT_GT(state.resolvedCommits, 0u);
 
     // released: the next commits issue nothing
