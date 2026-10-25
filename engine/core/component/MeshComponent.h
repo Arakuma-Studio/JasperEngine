@@ -363,6 +363,10 @@ namespace jasperengine{
         // (edits, deliberate zeros). A model load gives the file's default weights only when this
         // is false (a freshly loaded model) or when it loads another model file.
         bool morphWeightsSet = false;
+        // how many targets those weights cover: the mesh's target count at its last load (saved
+        // with them). A reload of a model file that has more targets now gives the new ones the
+        // file's defaults. Weights saved without it cover every target.
+        int morphTargetCount = 0;
         // the blend shape (morph target) names of this mesh in its model file (glTF
         // extras.targetNames), index = weight; empty when the file names none. Filled by the
         // model load (per mesh: two meshes of a model can name their targets differently), not saved.

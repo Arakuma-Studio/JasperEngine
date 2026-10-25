@@ -79,6 +79,18 @@ namespace jasperengine::anim{
     // what it changed is appended to `warnings` (JSON paths of the input)
     JASPERENGINE_API void normalize(ClipData& data, std::vector<ClipWarning>* warnings = nullptr);
 
+    // The sign of a rotation value an edit writes into a track (Record, Add Key, a key's value,
+    // MCP keys): q and -q are one rotation, but a Hermite (CUBICSPLINE) track interpolates each
+    // component, so a key on the other side of its neighbours makes the segments pass near zero
+    // (a flip). Negates `value` (x y z w) when its dot with `reference` is < 0: give the replaced
+    // key's value (its stored tangents stay valid), or the previous key's for a new key. Nothing
+    // happens unless both are 4 wide.
+    JASPERENGINE_API void alignRotationSign(std::vector<float>& value, const std::vector<float>& reference);
+    // The value `track` (a rotation track) should get for a key at `time`: `value` aligned with
+    // the key it replaces there, else with the key before `time` (the first key when none is
+    // before). Other channels: `value` unchanged.
+    JASPERENGINE_API std::vector<float> alignedRotationKeyValue(const ClipTrackData& track, float time, std::vector<float> value);
+
     // {"euler": [x, y, z]} degrees as a quaternion, in the order edit_animation uses
     // (Quaternion(x, y, z): qz * qy * qx), always in degrees: unlike Quaternion's Euler
     // constructor it does not read Engine::isUseDegrees(), so it is pure (any thread)

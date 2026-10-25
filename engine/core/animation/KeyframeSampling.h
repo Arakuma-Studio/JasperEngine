@@ -17,7 +17,11 @@
 //     LINEAR: linear). At or before the first key index is 0 (the samplers return key 0).
 //   * stepped keys (Unity's rule, both samplers): a STEP segment holds its start key's value
 //     and its end key shows its own value at its time, from 1e-6 s before it (the clip time
-//     resolution: an .anim key time is the entity key's float rounded to 1e-6).
+//     resolution: an .anim key time is the entity key's float rounded to 1e-6). The slack is
+//     1e-6 + |t|·FLT_EPSILON (about 12 µs at t = 100 s): an entity track and its clip agree
+//     exactly at key times, and can still differ in a band of at most that width just before
+//     a stepped key, where one time is past the rounded key time and the other is not (one
+//     frame shows the next key about a microsecond early; not visible).
 //   * a cursor is only a hint (a search start): results never depend on it (spec 3.3
 //     determinism); a stale cursor costs time, never correctness. The cursor walk needs
 //     sorted times (every AnimationClip track); without a cursor locateKey scans from key 0

@@ -377,3 +377,35 @@ TEST_F(PlayerModelLayoutTest, BlendShapeWeightsSurviveTheLayoutSwitch) {
     ASSERT_TRUE(stripMesh());
     EXPECT_FLOAT_EQ(stripMesh()->morphWeights[0], 0.7f) << "redo";
 }
+
+// Integration review M1: weights kept by a load cover the targets the mesh had then
+// (MeshComponent::morphTargetCount): a re-exported file with a target more gives that one its
+// default, the kept ones stay; a mesh never loaded gets every default
+TEST_F(PlayerModelLayoutTest, KeptBlendShapeWeightsCoverOnlyTheTargetsTheyHad) {
+    const fs::path source = (fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "shader-library" /
+                             "assets" / "models" / "skinned_morph.gltf").lexically_normal();
+    nlohmann::json gltf = nlohmann::json::parse(readAll(source));
+    gltf["meshes"][0]["weights"] = {0.25};
+    const fs::path file = headless().dir / "assets" / "models" / "morph_defaults.gltf";
+    std::ofstream(file, std::ios::binary) << gltf.dump(1);
+
+    const uint32_t sceneId = newScene();
+    Scene* scene = sceneOf(sceneId);
+    auto loadWith = [&](bool set, int count, float weight) {
+        CreateEntityCmd* create = new CreateEntityCmd(project(), sceneId, "Jelly", EntityCreationType::MODEL);
+        create->setQuiet(true);
+        history(sceneId)->addCommandNoMerge(create);
+        const Entity entity = create->getEntity();
+        MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        mesh.morphWeightsSet = set;
+        mesh.morphTargetCount = count;
+        mesh.morphWeights[0] = weight;
+        history(sceneId)->addCommandNoMerge(new ModelLoadCmd(project(), sceneId, entity, file.generic_string()));
+        return scene->getComponent<MeshComponent>(entity);
+    };
+    const MeshComponent fresh = loadWith(false, 0, 0.0f);
+    EXPECT_FLOAT_EQ(fresh.morphWeights[0], 0.25f) << "never loaded: the file's default";
+    EXPECT_EQ(fresh.morphTargetCount, 1);
+    EXPECT_FLOAT_EQ(loadWith(true, 1, 0.9f).morphWeights[0], 0.9f) << "the target it had: kept";
+    EXPECT_FLOAT_EQ(loadWith(true, 0, 0.9f).morphWeights[0], 0.25f) << "a target the file gained since: its default";
+}

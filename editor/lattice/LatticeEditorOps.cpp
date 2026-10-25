@@ -764,14 +764,6 @@ bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity 
     if (!lattice){
         return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");
     }
-    // the rest offsets are resampled, not a preview's (a layout change takes no shown-value
-    // merge in LatticePointsCmd): the previews of the lattice restore first (clips 9.R7)
-    PoseEditSession::suspendActiveFor(sceneId, {entity});
-    lattice = sceneProject->scene->findComponent<LatticeComponent>(entity);
-    if (!lattice){
-        return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");
-    }
-
     if (!validResolution(rx) || !validResolution(ry) || !validResolution(rz)){
         return fail(error, "resolution must be " + std::to_string(LATTICE_MIN_RESOLUTION) + ".." + std::to_string(LATTICE_MAX_RESOLUTION) +
                     " points per axis, not " + std::to_string(rx) + "x" + std::to_string(ry) + "x" + std::to_string(rz));
@@ -783,6 +775,15 @@ bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity 
                         (int)lattice->offsets.size() != oldX * oldY * oldZ;
     if (!broken && rx == lattice->resolutionX && ry == lattice->resolutionY && rz == lattice->resolutionZ){
         return true;
+    }
+
+    // the rest offsets are resampled, not a preview's (a layout change takes no shown-value
+    // merge in LatticePointsCmd): the previews of the lattice restore first (clips 9.R7), after
+    // the checks (a refused or unchanged resolution leaves a running preview and Record alone)
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
+    lattice = sceneProject->scene->findComponent<LatticeComponent>(entity);
+    if (!lattice){
+        return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");
     }
 
     // the runtime's resampling (Lattice:setResolution in Lua gives the same offsets and poses);

@@ -5540,13 +5540,25 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 // prefab instance override, all zeros too) or an earlier load of this model left
                 // survive the (re)load (MeshComponent::morphWeightsSet). Every primitive of a mesh
                 // passes here: the defaults apply to all of them in this load.
+                // Kept weights cover the targets the mesh had at its last load
+                // (MeshComponent::morphTargetCount): targets the file gained since get its defaults.
+                const int targetCount = std::min(static_cast<int>(primitive.targets.size()), MAX_MORPHTARGETS);
+                auto fileDefault = [&gltfmesh](int w) {
+                    return w < static_cast<int>(gltfmesh.weights.size()) ? static_cast<float>(gltfmesh.weights[w]) : 0.0f;
+                };
                 if (!mesh.morphWeightsSet || otherModelFile || morphDefaultsApplied.count(meshEntity)) {
                     for (int w = 0; w < MAX_MORPHTARGETS; w++) {
-                        mesh.morphWeights[w] = w < static_cast<int>(gltfmesh.weights.size()) ? static_cast<float>(gltfmesh.weights[w]) : 0.0f;
+                        mesh.morphWeights[w] = fileDefault(w);
                     }
                     mesh.morphWeightsSet = true;
-                    morphDefaultsApplied.insert(meshEntity);
+                    // (the count of this load's primitives from here on)
+                    if (morphDefaultsApplied.insert(meshEntity).second) mesh.morphTargetCount = 0;
+                } else if (targetCount > mesh.morphTargetCount) {
+                    for (int w = std::max(mesh.morphTargetCount, 0); w < targetCount; w++) {
+                        mesh.morphWeights[w] = fileDefault(w);
+                    }
                 }
+                mesh.morphTargetCount = std::max(mesh.morphTargetCount, targetCount);
                 if (gltfmesh.extras.Has("targetNames") && gltfmesh.extras.Get("targetNames").IsArray()) {
                     // the model's table (Model:getMorphWeight by name) and this mesh's own
                     const tinygltf::Value& targetNames = gltfmesh.extras.Get("targetNames");

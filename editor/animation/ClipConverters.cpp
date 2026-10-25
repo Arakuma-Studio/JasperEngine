@@ -87,6 +87,24 @@ namespace {
     // the same way: exact for a root without translation and with a uniform scale (rotation
     // keys * r⁻¹, scale keys / s; positions stay), else kept as they are with a warning.
     // `legacyRoots` receives those model entities.
+    // `entity`'s rest scale and every scale key (and tangent) of `path` in `data` are uniform
+    bool uniformScales(Scene* scene, Entity entity, const ClipData& data, const std::string& path){
+        auto uniform = [](const std::vector<float>& value){
+            if (value.size() < 3) return value.empty();
+            const float tolerance = 1e-5f * std::max(1.0f, std::fabs(value[0]));
+            return std::fabs(value[0] - value[1]) <= tolerance && std::fabs(value[0] - value[2]) <= tolerance;
+        };
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        if (!transform || !uniform({transform->scale.x, transform->scale.y, transform->scale.z})) return false;
+        for (const ClipTrackData& track : data.tracks){
+            if (track.path != path || track.channel != ClipChannel::Scale) continue;
+            for (const ClipKey& key : track.keys){
+                if (!uniform(key.value) || !uniform(key.inTangent) || !uniform(key.outTangent)) return false;
+            }
+        }
+        return true;
+    }
+
     void compensateLegacyRootKeys(Scene* scene, Entity root, ClipData& data, std::vector<ClipWarning>& warnings,
                                   std::vector<Entity>& legacyRoots){
         std::shared_ptr<MeshSystem> meshes = scene->getSystem<MeshSystem>();
@@ -104,15 +122,20 @@ namespace {
             Quaternion rotation;
             sceneRoot.decompose(position, scale, rotation);
             const float tolerance = 1e-5f * std::max(1.0f, std::fabs(scale.x));
+            // R·S·r⁻¹ = (R·r⁻¹)·S only for a uniform S: with a turned root the model entity's own
+            // scale (its rest, every scale key and tangent of the path) must be uniform too
+            const bool turned = std::fabs(std::fabs(rotation.w) - 1.0f) > 1e-6f;
             const bool exact = position.length() <= 1e-5f && scale.x > 0.0f && std::fabs(scale.x - scale.y) <= tolerance &&
-                               std::fabs(scale.x - scale.z) <= tolerance && !track.relative;
+                               std::fabs(scale.x - scale.z) <= tolerance && !track.relative &&
+                               (!turned || uniformScales(scene, entity, data, track.path));
             if (!exact || track.channel == ClipChannel::Position){
                 if (exact) continue;
                 const bool first = std::find(said.begin(), said.end(), track.path) == said.end();
                 if (first){
                     said.push_back(track.path);
                     warn(warnings, track.path, "kept as they are: the model's reload in its node hierarchy moves the file's root "
-                         "transform (translated or not uniformly scaled, or the track is relative) to its root node, so these "
+                         "transform (translated or not uniformly scaled, turned under a non-uniform scale of the model, or the "
+                         "track is relative) to its root node, so these "
                          "keys apply it twice; key them again after the reload");
                 }
                 continue;

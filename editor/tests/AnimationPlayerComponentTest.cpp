@@ -540,6 +540,25 @@ TEST(AnimationPlayerComponent, SavedMorphWeightsAreKeptByTheModelLoad) {
     without.remove("morphWeights");
     EXPECT_FALSE(Stream::decodeMeshComponent(without).morphWeightsSet);
 
+    // (integration review M1) a mesh whose model never loaded saves no weights (its file's
+    // defaults apply when it loads); a set mesh saves the target count its weights cover, and
+    // weights saved before the count existed cover every target
+    EXPECT_FALSE(Stream::encodeMeshComponent(MeshComponent(), false, false, false)["morphWeights"]) << "never loaded: none saved";
+    MeshComponent covered;
+    covered.morphWeightsSet = true;
+    covered.morphTargetCount = 2;
+    covered.morphWeights[1] = 0.4f;
+    const MeshComponent back = Stream::decodeMeshComponent(Stream::encodeMeshComponent(covered, false, false, false));
+    EXPECT_TRUE(back.morphWeightsSet);
+    EXPECT_EQ(back.morphTargetCount, 2);
+    EXPECT_FLOAT_EQ(back.morphWeights[1], 0.4f);
+    YAML::Node older = YAML::Clone(node);
+    older.remove("morphTargetCount");
+    EXPECT_EQ(Stream::decodeMeshComponent(older).morphTargetCount, MAX_MORPHTARGETS);
+    MeshComponent edited;
+    edited.morphWeights[0] = 0.5f;
+    EXPECT_TRUE(Stream::encodeMeshComponent(edited, false, false, false)["morphWeights"]) << "a weight set before any load is kept";
+
     Scene scene;
     const Entity entity = scene.createEntity();
     scene.addComponent<Transform>(entity, {});

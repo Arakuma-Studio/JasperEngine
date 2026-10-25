@@ -5703,13 +5703,20 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["normAdjustJoint"] = YamlNumbers::text(mesh.normAdjustJoint);
     node["normAdjustWeight"] = YamlNumbers::text(mesh.normAdjustWeight);
 
-    // Encode morph weights array
-    YAML::Node morphWeightsNode;
-    morphWeightsNode.SetStyle(YAML::EmitterStyle::Flow);
-    for(int i = 0; i < MAX_MORPHTARGETS; i++) {
-        morphWeightsNode[i] = YamlNumbers::text(mesh.morphWeights[i]);
+    // Encode morph weights: only the mesh's own (MeshComponent::morphWeightsSet, or a weight set
+    // before any load): a mesh saved before its model ever loaded gets the file's defaults then,
+    // and the target count the weights cover lets targets a re-export adds get theirs
+    bool anyWeight = false;
+    for (int i = 0; i < MAX_MORPHTARGETS; i++) anyWeight = anyWeight || mesh.morphWeights[i] != 0.0f;
+    if (mesh.morphWeightsSet || anyWeight) {
+        YAML::Node morphWeightsNode;
+        morphWeightsNode.SetStyle(YAML::EmitterStyle::Flow);
+        for(int i = 0; i < MAX_MORPHTARGETS; i++) {
+            morphWeightsNode[i] = YamlNumbers::text(mesh.morphWeights[i]);
+        }
+        node["morphWeights"] = morphWeightsNode;
+        node["morphTargetCount"] = mesh.morphWeightsSet ? mesh.morphTargetCount : MAX_MORPHTARGETS;
     }
-    node["morphWeights"] = morphWeightsNode;
 
     // Encode AABBs
     node["aabb"] = encodeAABB(mesh.aabb);
@@ -5797,6 +5804,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
             mesh.morphWeights[i] = YamlNumbers::as<float>(morphWeightsNode[i]);
         }
         mesh.morphWeightsSet = true;
+        // (weights saved without their count cover every target, as they did then)
+        mesh.morphTargetCount = node["morphTargetCount"] ? std::clamp(node["morphTargetCount"].as<int>(), 0, MAX_MORPHTARGETS) : MAX_MORPHTARGETS;
     }
 
     if (node["aabb"]) mesh.aabb = decodeAABB(node["aabb"]);

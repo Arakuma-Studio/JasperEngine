@@ -3433,6 +3433,10 @@ void editor::AnimationWindow::ownPreviewRoots(Scene* scene, const std::vector<En
         });
         if (token != 0) {
             previewOwnerTokens.push_back(token);
+            // what it writes: the entities its snapshot holds
+            PreviewOwner::setWrites(token, [this](Entity entity) {
+                return std::any_of(previewState.begin(), previewState.end(), [entity](const PreviewEntityState& state) { return state.entity == entity; });
+            });
         }
     }
 }

@@ -125,8 +125,19 @@ namespace jasperengine::editor::clipui{
 
     // a key at `time` on `track` (a copy of `key`'s value), replacing one within the epsilon
     // (`replaced` set); keys stay sorted. Returns the index.
-    inline size_t upsertKey(ClipTrackData& track, float time, const ClipKey& key, bool* replaced = nullptr){
+    inline size_t upsertKey(ClipTrackData& track, float time, const ClipKey& given, bool* replaced = nullptr){
         if (replaced) *replaced = false;
+        // a rotation key (with its tangents) on the side of the key it replaces or follows: a
+        // pasted or added key never makes a Hermite segment flip
+        ClipKey key = given;
+        if (track.channel == ClipChannel::Rotation && key.value.size() == 4){
+            const std::vector<float> aligned = anim::alignedRotationKeyValue(track, time, key.value);
+            if (aligned != key.value){
+                key.value = aligned;
+                for (float& v : key.inTangent) v = -v;
+                for (float& v : key.outTangent) v = -v;
+            }
+        }
         auto it = std::lower_bound(track.keys.begin(), track.keys.end(), time - kKeyEpsilon,
                                    [](const ClipKey& k, float t){ return k.time < t; });
         if (it != track.keys.end() && std::fabs(it->time - time) <= kKeyEpsilon){
@@ -141,26 +152,6 @@ namespace jasperengine::editor::clipui{
         const size_t index = (size_t)(it - track.keys.begin());
         track.keys.insert(it, inserted);
         return index;
-    }
-
-    // a time label: the frame number, or seconds
-    inline std::string formatTime(float time, float fps, bool frames){
-        char text[48];
-        if (frames){
-            std::snprintf(text, sizeof(text), "%d", (int)std::lround(time * fps));
-        }else{
-            std::snprintf(text, sizeof(text), "%.2f", time);
-        }
-        return text;
-    }
-
-    // both forms, the shown one first: "frame 21 (0.700 s)" / "0.700 s (frame 21)"
-    inline std::string formatBoth(float time, float fps, bool frames){
-        char text[64];
-        const long frame = std::lround(time * fps);
-        if (frames) std::snprintf(text, sizeof(text), "frame %ld (%.3f s)", frame, time);
-        else std::snprintf(text, sizeof(text), "%.3f s (frame %ld)", time, frame);
-        return text;
     }
 
 }

@@ -4,6 +4,7 @@
 #include "ModelLoadCmd.h"
 
 #include "Stream.h"
+#include "animation/PreviewOwner.h"
 #include "pose/PoseEditSession.h"
 #include "tiny_gltf.h"
 #include "util/ProjectUtils.h"
@@ -527,8 +528,13 @@ bool editor::ModelLoadCmd::execute(){
         SceneProject* previewed = project->getScene(sceneId);
         const ModelComponent* loaded = previewed && previewed->scene && previewed->scene->isEntityCreated(entity)
             ? previewed->scene->findComponent<ModelComponent>(entity) : nullptr;
-        // (a first load has nothing a preview shows yet: the previews go on, Record too)
-        if (loaded && !loaded->loadedFilename.empty()) PoseEditSession::suspendActiveFor(sceneId, {entity});
+        // A model with a file (loaded before, or a reload undone and redone before its async load
+        // finished) is rebuilt from the rest. A first load stops only a preview of the entity's own
+        // values (its Transform becomes oldTransform and decides the root transform): a model
+        // created under a previewed root leaves that preview and Record running.
+        if (loaded && (!loaded->filename.empty() || PreviewOwner::writes(sceneId, entity))){
+            PoseEditSession::suspendActiveFor(sceneId, {entity});
+        }
     }
     // An FBX loads from its import, created here the first time
     if (!project->prepareModelFile(modelPath)) {
@@ -721,7 +727,10 @@ void editor::ModelLoadCmd::undo(){
     SceneProject* sceneProject = project->getScene(sceneId);
     Scene* scene = sceneProject->scene;
     // the reload rebuilds (and records) the model from its rest, not from a preview (clips 9.R7)
-    if (!isNewModel && entity != NULL_ENTITY && scene->isEntityCreated(entity)) PoseEditSession::suspendActiveFor(sceneId, {entity});
+    // (a first load's undo writes oldTransform back: from the rest when the entity is previewed)
+    if (entity != NULL_ENTITY && scene->isEntityCreated(entity) && (!isNewModel || PreviewOwner::writes(sceneId, entity))){
+        PoseEditSession::suspendActiveFor(sceneId, {entity});
+    }
 
     if (asyncPending) {
         // Async load still in flight — cancel it; no sub-entities have been created yet

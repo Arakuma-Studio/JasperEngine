@@ -111,9 +111,7 @@ const char* inspectorclips::channelLabel(ClipChannel channel){
 }
 
 std::string inspectorclips::formatSeconds(float seconds){
-    char buffer[32];
-    std::snprintf(buffer, sizeof(buffer), "%.2f s", std::isfinite(seconds) ? seconds : 0.0f);
-    return buffer;
+    return clipui::formatSeconds(seconds);
 }
 
 std::string inspectorclips::usersText(size_t sceneUsers, size_t prefabUsers){
@@ -345,10 +343,14 @@ std::shared_ptr<AnimationClipDocument> inspectorclips::ClipDocumentCache::find(P
 
 std::vector<int> inspectorclips::acquirePreviewOwners(uint32_t sceneId, Scene* scene, Entity action, std::function<void()> stop){
     std::vector<int> tokens;
-    for (Entity root : topLevelEntities(scene, actionPreviewEntities(scene, action))){
+    const std::vector<Entity> written = actionPreviewEntities(scene, action);
+    auto writes = std::make_shared<std::unordered_set<Entity>>(written.begin(), written.end());
+    for (Entity root : topLevelEntities(scene, written)){
         // the roots don't overlap one another: acquiring one never stops this preview's other owners
         const PreviewOwner::Token token = PreviewOwner::acquire(sceneId, root, scene, "Inspector action preview", stop);
-        if (token != 0) tokens.push_back(token);
+        if (token == 0) continue;
+        tokens.push_back(token);
+        PreviewOwner::setWrites(token, [writes](Entity entity){ return writes->count(entity) > 0; });
     }
     return tokens;
 }

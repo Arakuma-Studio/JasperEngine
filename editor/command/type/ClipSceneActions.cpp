@@ -189,8 +189,9 @@ namespace {
             SceneProject* sceneProject = project->getScene(sceneId);
             if (!sceneProject || !sceneProject->scene || !isEntity(sceneProject->scene, animation)) return;
             Scene* scene = sceneProject->scene;
-            // what would convert, before asking anything (the scene's values, not a preview's)
-            stopPreviewsFor(sceneId, {animation, ClipConverters::defaultConvertRoot(scene, animation)});
+            // what would convert, before asking anything: only the counts are shown (they don't
+            // depend on values), so a running preview and Record go on if the dialog is cancelled;
+            // convertToClip stops them before it reads the keys
             ClipData data;
             ClipConvertReport preview;
             std::string error;
@@ -367,11 +368,12 @@ bool ClipSceneActions::createNewClip(Project* project, uint32_t sceneId, Entity 
     Scene* scene = editableScene(project, sceneId, error);
     if (!scene) return false;
     if (!isEntity(scene, root)) return fail(error, "no GameObject to animate");
-    stopPreviewsFor(sceneId, {root});
     fs::path absolute;
     if (!checkClipPath(project, clipPath, absolute, error)) return false;
     std::error_code ec;
     if (fs::exists(absolute, ec)) return fail(error, "'" + projectRelative(project, absolute) + "' already exists: a new clip never replaces a file, choose another name");
+    // (after the checks: a refused step leaves a running preview and Record alone)
+    stopPreviewsFor(sceneId, {root});
 
     ClipData data;
     if (const ModelComponent* model = scene->findComponent<ModelComponent>(root)){
@@ -399,11 +401,16 @@ bool ClipSceneActions::convertToClip(Project* project, uint32_t sceneId, Entity 
     if (root == NULL_ENTITY){
         root = ClipConverters::defaultConvertRoot(scene, animation);
     }
-    // the keys come from the scene's values (a hold key at the playhead): never a previewed one
-    stopPreviewsFor(sceneId, {animation, root});
-
     ClipData data;
     std::string failure;
+    {
+        // a dry run first: an Animation with nothing to convert leaves the previews alone
+        ClipData probe;
+        ClipConvertReport report;
+        if (!ClipConverters::convertEntityAnimation(scene, animation, root, probe, report, &failure)) return fail(error, failure);
+    }
+    // the keys come from the scene's values (a hold key at the playhead): never a previewed one
+    stopPreviewsFor(sceneId, {animation, root});
     if (!ClipConverters::convertEntityAnimation(scene, animation, root, data, result.convert, &failure)){
         return fail(error, failure);
     }
@@ -475,7 +482,6 @@ bool ClipSceneActions::extractSubClip(Project* project, uint32_t sceneId, Entity
         scene = editableScene(project, sceneId, error);
         if (!scene) return false;
         if (!isEntity(scene, model)) return fail(error, "the model GameObject is gone");
-        stopPreviewsFor(sceneId, {model});
     }
     if (!scene || exists){
         // the file alone: a project step (into an existing file: a commit, its GUID kept)
@@ -495,7 +501,9 @@ bool ClipSceneActions::extractSubClip(Project* project, uint32_t sceneId, Entity
         return true;
     }
 
-    // the model's entries of that sub-clip switch to the file (their state names kept)
+    // the model's entries of that sub-clip switch to the file (their state names kept); the
+    // previews of the player's hierarchy restore first (after the checks)
+    stopPreviewsFor(sceneId, {model});
     const std::string text = newClipText(project, data);
     const AnimationPlayerClip file = fileEntry(project, absolute, text);
     std::vector<Command*> commands;
@@ -545,10 +553,10 @@ bool ClipSceneActions::useAnimationPlayer(Project* project, uint32_t sceneId, En
     result = ClipActionResult();
     Scene* scene = editableScene(project, sceneId, error);
     if (!scene) return false;
-    if (isEntity(scene, model)) stopPreviewsFor(sceneId, {model});
     UseAnimationPlayerPlan plan;
     std::string failure;
     if (!ClipConverters::planUseAnimationPlayer(scene, model, plan, &failure)) return fail(error, failure);
+    stopPreviewsFor(sceneId, {model});
     // the stored form (a model loaded from an absolute path: asset-relative)
     for (AnimationPlayerClip& entry : plan.clips) entry = ClipConverters::playerEntry(project, entry.clip);
 
@@ -582,7 +590,6 @@ bool ClipSceneActions::addClipsToPlayer(Project* project, uint32_t sceneId, Enti
     if (!scene) return false;
     if (!isEntity(scene, target)) return fail(error, "no GameObject to add the clips to");
     if (clips.empty()) return fail(error, "no clips given");
-    stopPreviewsFor(sceneId, {target});
 
     std::vector<AnimationPlayerClip> entries;
     for (const std::string& clip : clips){
@@ -635,6 +642,7 @@ bool ClipSceneActions::addClipsToPlayer(Project* project, uint32_t sceneId, Enti
     if (commands.empty()){
         // already listed; a legacy-layout model under the player is still switched (R3)
         if (!PlayerModelLayout::modelsNeedingReload(project, sceneId, target).empty()){
+            stopPreviewsFor(sceneId, {target});
             if (!runStep(project, sceneId, {}, {}, target, result, error)) return false;
         }
         result.status = "The Animation Player of " + nameOf(scene, target) + " already lists " +
@@ -643,6 +651,8 @@ bool ClipSceneActions::addClipsToPlayer(Project* project, uint32_t sceneId, Enti
         warnBindings(project, sceneId, target, entries, result);
         return true;
     }
+    // every clip checked and something to do: the previews of the target's hierarchy restore first
+    stopPreviewsFor(sceneId, {target});
     if (!runStep(project, sceneId, {}, std::move(commands), target, result, error)) return false;
     result.status = std::string(result.addedPlayer ? "Added an Animation Player to " : "The Animation Player of ") + nameOf(scene, target) +
                     (result.addedPlayer ? " with " : " lists ") + std::to_string(result.appended) + " more clip" +
@@ -656,11 +666,11 @@ bool ClipSceneActions::reloadModelsForPlayer(Project* project, uint32_t sceneId,
     Scene* scene = editableScene(project, sceneId, error);
     if (!scene) return false;
     if (!isEntity(scene, root)) return fail(error, "no GameObject");
-    stopPreviewsFor(sceneId, {root});
     if (PlayerModelLayout::modelsNeedingReload(project, sceneId, root).empty()){
         return fail(error, "no model on or under " + nameOf(scene, root) + " needs a reload (none is in the legacy layout under an "
                     "Animation Player)");
     }
+    stopPreviewsFor(sceneId, {root});
     result.player = root;
     if (!runStep(project, sceneId, {}, {}, root, result, error)) return false;
     if (result.reloadedModels == 0){

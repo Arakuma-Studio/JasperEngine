@@ -23,6 +23,7 @@
 #include "math/AABB.h"
 #include "math/Matrix4.h"
 #include "subsystem/ActionSystem.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "util/HybridArray.h"
 
@@ -272,6 +273,25 @@ namespace{
 
     const char* const LEGACY_PART_REASON = "is part of a model in the legacy layout: reload it in its node hierarchy first "
                                            "(the Animation window's banner), or its keys would stop binding then";
+    const char* const LEGACY_ROOT_REASON = "carries its model file's root transform in the legacy layout: reload it in its node "
+                                           "hierarchy first (the Animation window's banner), or its Rotation and Scale keys "
+                                           "would apply that transform twice then";
+
+    // Why Record and Add Property leave `channel` of `entity` (under or at `root`) alone, null when
+    // they don't: a legacy model part (its path changes with the node hierarchy), or the Rotation /
+    // Scale of a legacy model entity standing in for the glTF scene root (the reload moves that
+    // root's matrix to the root node: Convert takes it off its keys, a key made here could not)
+    const char* legacyRefusal(Scene* scene, Entity root, Entity entity, ClipChannel channel){
+        if (legacyModelPart(scene, root, entity)) return LEGACY_PART_REASON;
+        if (channel != ClipChannel::Rotation && channel != ClipChannel::Scale) return nullptr;
+        const ModelComponent* model = scene->findComponent<ModelComponent>(entity);
+        std::shared_ptr<MeshSystem> meshes = scene->getSystem<MeshSystem>();
+        Matrix4 sceneRoot;
+        if (model && meshes && MeshSystem::isLegacyLayout(*model) && meshes->getLegacyRootTransform(entity, sceneRoot)){
+            return LEGACY_ROOT_REASON;
+        }
+        return nullptr;
+    }
 
     // the key of a track nearest `time` within `tolerance`, -1 when none
     int nearestKey(const ClipTrackData& track, float time, float tolerance){
@@ -289,7 +309,9 @@ namespace{
 
     // a key holding `value` at `time` (an existing key there takes the value, keeping its ease
     // and tangents' width; a new key splits the segment it falls in and keeps its ease)
-    void setKeyAt(ClipTrackData& track, float time, const std::vector<float>& value){
+    void setKeyAt(ClipTrackData& track, float time, const std::vector<float>& given){
+        // a rotation on the side of the key it replaces (or follows): no Hermite flip
+        const std::vector<float> value = anim::alignedRotationKeyValue(track, time, given);
         for (ClipKey& key : track.keys){
             if (std::fabs(key.time - time) <= anim::ANIM_TIME_EPSILON){
                 key.value = value;
@@ -805,6 +827,8 @@ bool AnimationClipController::startPreview(std::string* error){
     // one edit-mode pose owner per root: the Pose window, the Inspector's action preview or
     // another preview of this hierarchy restore their snapshots now (9.R7)
     ownerToken = PreviewOwner::acquire(targetScene, target, sceneProject->scene, PREVIEW_OWNER_NAME, [this](){ stopPreview(); });
+    // what it writes: the entities it took a rest of (a first model load under the root is not one)
+    PreviewOwner::setWrites(ownerToken, [this](Entity entity){ return previewing && session.rest.count(entity) > 0; });
 
     previewSceneId = targetScene;
     previewRoot = target;
@@ -1175,6 +1199,15 @@ void AnimationClipController::afterSceneWrite(uint32_t id, Entity entity, ClipCh
     if (!isPreviewing() || id != previewSceneId) return;
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
     if (!sceneProject || sceneProject->playState != ScenePlayState::STOPPED) return;
+    // Record on: an edit it left alone (a scene step now) says why, when the edit arrives (not
+    // for an undo or redo writing it)
+    std::string recordPath;
+    if (recording && channel != ClipChannel::Property && !timeline().stepping.count(id) && sceneProject->scene->isEntityCreated(entity) &&
+        anim::relativePath(sceneProject->scene, previewRoot, entity, recordPath)){
+        if (const char* refusal = legacyRefusal(sceneProject->scene, previewRoot, entity, channel)){
+            ClipRecordHooks::note("Record leaves '" + sceneProject->scene->getEntityName(entity) + "' alone: it " + refusal);
+        }
+    }
     const std::pair<Entity, ClipChannel> entry(entity, channel);
     std::vector<float> shown;
     bool hadShown = false;
@@ -1364,8 +1397,9 @@ bool AnimationClipController::addProperty(const std::string& path, ClipChannel c
         SceneProject* sceneProject = nullptr;
         const Entity at = valueRoot(&sceneProject);
         const Entity entity = sceneProject ? anim::resolvePath(sceneProject->scene, at, path) : NULL_ENTITY;
-        if (entity != NULL_ENTITY && legacyModelPart(sceneProject->scene, at, entity)){
-            return fail(error, "'" + path + "' " + LEGACY_PART_REASON);
+        const char* refusal = entity != NULL_ENTITY ? legacyRefusal(sceneProject->scene, at, entity, channel) : nullptr;
+        if (refusal){
+            return fail(error, "'" + (path.empty() ? sceneProject->scene->getEntityName(entity) : path) + "' " + refusal);
         }
     }
     setKeyAt(track, time, value);
@@ -1470,7 +1504,10 @@ bool AnimationClipController::setKeyValue(const KeyRef& key, const std::vector<f
         return fail(error, "a " + std::string(anim::channelName(track.channel)) + " key holds " + std::to_string(width) + " numbers");
     }
     ClipKey& edited = track.keys[key.key];
-    edited.value = value;
+    // the same rotation on the old value's side: its stored tangents stay valid (no Hermite flip)
+    std::vector<float> aligned = value;
+    if (track.channel == ClipChannel::Rotation) anim::alignRotationSign(aligned, edited.value);
+    edited.value = aligned;
     if (edited.hasTangents() && edited.inTangent.size() != value.size()){
         edited.inTangent.assign(value.size(), 0.0f);
         edited.outTangent.assign(value.size(), 0.0f);
@@ -1613,7 +1650,10 @@ bool AnimationClipController::updateKeyDrag(float totalDeltaTime, const std::vec
         for (float v : entry.value){
             if (!finite(v)) return fail(error, "a dragged key's value must be finite");
         }
-        key.value = entry.value;
+        std::vector<float> dragged = entry.value;
+        // (on the base value's side: its tangents stay valid, no Hermite flip)
+        if (data.tracks[ref.track].channel == ClipChannel::Rotation) anim::alignRotationSign(dragged, key.value);
+        key.value = dragged;
         if (data.tracks[ref.track].channel == ClipChannel::Rotation){
             float length = 0.0f;
             for (float c : key.value) length += c * c;
@@ -1787,12 +1827,9 @@ bool AnimationClipController::recordClaims(uint32_t id, Entity entity, ClipChann
     if (!anim::relativePath(sceneProject->scene, previewRoot, entity, path)) return false;
     std::vector<float> value;
     if (!anim::readChannelValue(sceneProject->scene, entity, channel, {}, value)) return false;
-    if (legacyModelPart(sceneProject->scene, previewRoot, entity)){
-        // a scene edit then, and the window says why
-        ClipRecordHooks::note("Record leaves '" + sceneProject->scene->getEntityName(entity) + "' alone: it " + LEGACY_PART_REASON);
-        return false;
-    }
-    return true;
+    // a pure check (the sources ask it every frame): the edit becomes a scene step, and the window
+    // says why when one arrives (afterSceneWrite)
+    return legacyRefusal(sceneProject->scene, previewRoot, entity, channel) == nullptr;
 }
 
 bool AnimationClipController::recordAnimates(uint32_t id, Entity entity, ClipChannel channel) const{
