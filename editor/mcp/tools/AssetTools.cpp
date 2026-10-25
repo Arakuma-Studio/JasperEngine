@@ -4,6 +4,7 @@
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "McpTools.h"
 #include "W4Shared.h"
+#include "AnimationClipTools.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
@@ -17,6 +18,7 @@
 #include "Out.h"
 #include "Project.h"
 #include "Stream.h"
+#include "animation/AnimationClipDocument.h"
 #include "animation/ModelSubClips.h"
 #include "command/CommandHandle.h"
 #include "command/CommandHistory.h"
@@ -43,6 +45,7 @@
 #include "texture/Material.h"
 #include "texture/TextureData.h"
 #include "util/Base64.h"
+#include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
@@ -871,6 +874,9 @@ void getAssetInfoTool(const CallPtr& call) {
         const uint32_t id = project->findSceneByPath(file);
         data["in_project"] = id != NULL_PROJECT_SCENE;
         if (const SceneProject* scene = project->getScene(id)) data["scene"] = McpRefs::sceneJson(project, *scene);
+    } else if (kind == "animation" && Util::isAnimationClipFile(rel)) {
+        // an .anim clip: settings, tracks, events, load warnings and the Animation Players using it
+        clip_tools::clipAssetInfo(project, file, data, text);
     }
     if (CodeEditor* editor = call->ctx().codeEditor()) {
         if (editor->isFileOpen(file.string())) data["open_in_code_editor"] = {{"unsaved", editor->isFileModified(file.string())}};
@@ -913,6 +919,11 @@ void viewAssetTool(const CallPtr& call) {
     const int maxSize = std::clamp(call->args().value("max_size", 512), 16, 2048);
     if (Util::isImageFile(rel) && extensionOf(file) != ".svg") {
         replyImage(call, file, rel, maxSize, extensionOf(file) == ".png" ? synthesisAssetInfo(project, file, false) : Json());
+        return;
+    }
+    if (Util::isAnimationClipFile(rel)) {
+        call->fail(rel + " is an animation clip (no image): see it with preview_animation {animation: <a GameObject whose Animation Player "
+                   "plays it>, action: seek, time} and a screenshot, or read its values with get_animation {clip, times}.");
         return;
     }
     // .poseanim: the middle pose on its preview model (the Project window's thumbnail)
@@ -1093,6 +1104,15 @@ void writeFileTool(const CallPtr& call) {
             return;
         }
     }
+    // Clips must stay loadable (Animation Players read them): content problems are warnings
+    std::vector<std::string> clipWarnings;
+    if (Util::isAnimationClipFile(rel)) {
+        std::string why;
+        if (!clip_tools::checkClipText(content, clipWarnings, why)) {
+            call->fail("Not a valid animation clip: " + why + ". Prefer edit_animation {clip} (the format: jasper://docs/animation).");
+            return;
+        }
+    }
     std::string error;
     if (!writeFilesUndoable(call->ctx(), {{file, content}}, error)) {
         call->fail(error);
@@ -1112,6 +1132,10 @@ void writeFileTool(const CallPtr& call) {
         }
     } else if (Util::isScriptFile(rel)) {
         text += " C++: run compile_scripts to check it.";
+    } else if (Util::isAnimationClipFile(rel)) {
+        data["warnings"] = clipWarnings;
+        text += clipWarnings.empty() ? std::string(" Valid clip.") : " Clip loads with " + std::to_string(clipWarnings.size()) + " warning(s) (the bad parts are dropped):";
+        for (size_t i = 0; i < clipWarnings.size() && i < 8; i++) text += "\n" + clipWarnings[i];
     }
     if (Util::isShaderFile(rel)) {
         std::vector<ProjectChecks::ShaderUse> forks = ProjectChecks::shaderForksUsingFiles(project, {rel});
@@ -1179,13 +1203,18 @@ public:
         if (fs::is_directory(from, ec)) fs::copy(from, to, fs::copy_options::recursive, ec);
         else fs::copy_file(from, to, ec);
         if (ec) return false;
-        if (fs::is_directory(to, ec) || Util::isPrefabFile(to.string())) project->importPrefabFiles(to, true, &copyGuids);
+        // copied prefabs and clips are new assets: new GUIDs, the same ones on a redo
+        if (fs::is_directory(to, ec) || AssetDatabase::isTrackedFile(to)) project->importPrefabFiles(to, true, &copyGuids);
         return true;
     }
     void undo() override {
         std::error_code ec;
+        const bool isDir = fs::is_directory(to, ec);
         fs::remove_all(to, ec);
         project->cleanupPrefabFilePath(to);
+        // references to the copied clips stay (Missing until a redo)
+        if (isDir || Util::isAnimationClipFile(to.string())) project->cleanupClipFilePath(to);
+        project->cleanupInspectedAsset(to);
     }
     bool affectsStructure() const override { return false; }
 
@@ -1241,7 +1270,8 @@ void moveAssetTool(const CallPtr& call) {
     if (CodeEditor* editor = call->ctx().codeEditor(); editor && !copy) editor->handleFileRename(from, to);
     syncFiles(call->ctx(), {from, to}, false);
     call->ok(std::string(copy ? "Copied " : "Moved ") + fromRel + " to " + toRel +
-             (copy ? "." : "; references in scenes, prefabs and materials follow it. Undo with scope project."),
+             (copy ? (Util::isAnimationClipFile(toRel) ? " (a new clip with its own GUID; Animation Players keep the original)." : ".")
+                   : "; references in scenes, prefabs, materials and Animation Players follow it. Undo with scope project."),
              Json{{"from", fromRel}, {"to", toRel}, {"copy", copy}});
 }
 
@@ -1275,13 +1305,24 @@ void deleteAssetTool(const CallPtr& call) {
         files.push_back(file.lexically_normal());
         deleted.push_back(rel);
     }
+    // the Animation Players using a deleted clip keep the reference (Missing; undo relinks it)
+    size_t clipUsers = 0;
+    for (const Json& rel : deleted) {
+        if (Util::isAnimationClipFile(rel.get<std::string>())) clipUsers += findClipUsers(project, rel.get<std::string>()).size();
+    }
     if (!addProjectCommand(call->ctx(), new DeleteFileCmd(project, files, project->getProjectPath()))) {
         call->fail("Couldn't delete the files.");
         return;
     }
     syncFiles(call->ctx(), files, false);
-    call->ok("Moved " + std::to_string(files.size()) + " item(s) to the project trash (undo with scope project restores them).",
-             Json{{"deleted", deleted}});
+    Json data = {{"deleted", deleted}};
+    std::string text = "Moved " + std::to_string(files.size()) + " item(s) to the project trash (undo with scope project restores them).";
+    if (clipUsers > 0) {
+        data["clip_users"] = clipUsers;
+        text += " " + std::to_string(clipUsers) + " Animation Player clip entr" + (clipUsers == 1 ? "y keeps" : "ies keep") +
+                " the reference (Missing until the clip is back; undo relinks).";
+    }
+    call->ok(text, data);
 }
 
 // The remote half of import_files (phase-4 spec §3.6.5): the HTML UI importers (network) run on a
@@ -2958,7 +2999,7 @@ void searchFilesTool(const CallPtr& call) {
 void registerAssetTools(McpRegistry& registry) {
     using namespace schema;
 
-    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "folder", "other"};
+    const std::vector<std::string> types = {"any", "texture", "model", "audio", "font", "html", "css", "script", "scene", "prefab", "material", "shader", "animation", "folder", "other"};
 
     {
         ToolDef tool;
@@ -2991,6 +3032,7 @@ void registerAssetTools(McpRegistry& registry) {
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "WAV format/duration; .material fields, "
+            ".anim clip settings, tracks, events, users; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
@@ -3039,7 +3081,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Write File";
         tool.description =
             "Create or change a project text file (undo scope project; for clients without file access) and "
-            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials parsed. content = "
+            "validate it: Lua syntax, forks using it recompiled (errors with lines), materials and .anim clips parsed. content = "
             "whole file, or edits [{old_text, new_text}] (old_text must match once unless replace_all). Refuses "
             "project.yaml, .scene, .prefab and files with unsaved code editor edits.";
         tool.inputSchema = object({
@@ -3074,7 +3116,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Move / Rename / Copy Asset";
         tool.description =
             "Rename/move a file or folder, updating references in scenes, prefabs, materials, script entries and "
-            "shader forks (as the Project window does); or copy it (a copied prefab gets a new GUID). The "
+            "shader forks, Animation Players (as the Project window does); or copy it (a copied prefab or clip gets a new GUID). The "
             "destination must not exist; its folder must.";
         tool.inputSchema = object({
             {"path", assetPath("")},

@@ -106,6 +106,8 @@ std::string assetType(const fs::path& path) {
     if (Util::isPrefabFile(p)) return "prefab";
     if (Util::isMaterialFile(p)) return "material";
     if (Util::isShaderFile(p)) return "shader";
+    // clips (.anim) and pose animations (.poseanim), spec 9.R47
+    if (Util::isAnimationClipFile(p) || Util::isPoseAnimationFile(p)) return "animation";
     return "other";
 }
 

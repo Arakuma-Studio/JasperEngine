@@ -125,6 +125,9 @@ editor/mcp/
     DocsTools.cpp         engine API docs and resources
     BuildTools.cpp        export, build and player jobs
     WorldTools.cpp        terrain, tilemaps, animation, physics, UI and audio
+    AnimationClipTools.cpp the clip-file mode of edit/get/preview_animation (.anim through
+                          AnimationClipDocument, bindings, preview through AnimationClipController),
+                          the .anim parts of get_asset_info / write_file (no tools of its own)
     LatticeTools.cpp      edit_lattice (lattice deformer cages)
     PlacementTools.cpp    physics placement (place_with_physics: drop, separate, move, snap, gather,
                           distribute in edit mode), sharing physics/PlacementSession with the Scene

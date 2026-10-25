@@ -42,6 +42,10 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
+#if __has_include("command/type/ClipSceneActions.h")
+#define JASPER_BAKE_TO_CLIP 1
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -1326,6 +1330,41 @@ void getPoseAnimationTool(const CallPtr& call) {
 
 // ------------------------------------------------------------------ edit_pose_animation
 
+// bake.clip: true (a clip named after the bake next to the pose animation) or a project-relative
+// .anim path; "" when not given
+bool readBakeClip(Project* project, const Json& bake, bool& toClip, std::string& clipPath, std::string& error) {
+    toClip = false;
+    clipPath.clear();
+    if (!bake.contains("clip") || bake["clip"].is_null() || (bake["clip"].is_boolean() && !bake["clip"].get<bool>())) return true;
+    toClip = true;
+    if (bake["clip"].is_boolean()) return true;
+    if (!bake["clip"].is_string() || lower(fs::u8path(bake["clip"].get<std::string>()).extension().string()) != ".anim") {
+        error = "bake.clip must be true (a clip next to the pose animation) or a project-relative .anim path (e.g. assets/anim/walk.anim).";
+        return false;
+    }
+    fs::path absolute;
+    if (!McpRefs::resolveProjectPath(project, bake["clip"].get<std::string>(), absolute, error, false)) {
+        error = "bake.clip: " + error;
+        return false;
+    }
+    clipPath = projectRel(project, absolute.lexically_normal());
+    return true;
+}
+
+#ifdef JASPER_BAKE_TO_CLIP
+// Bake to Animation Clip: the shared .anim and the model's Animation Player entry, one scene step
+bool bakeClip(Project* project, SceneProject* scene, Entity model, PoseAnimationDocument& document, const std::string& name,
+              const std::string& clipPath, Json& out, std::string& text, std::string& error) {
+    PoseClipBakeResult result;
+    if (!PoseBaker::bakeToClip(project, scene->id, model, document, name, clipPath, result, error)) return false;
+    out = {{"clip", result.clip}, {"name", result.name}, {"created", result.created}, {"added_player", result.addedPlayer},
+           {"entry", result.entry}, {"frames", result.frames}, {"tracks", result.tracks}, {"length", r4(result.length)}};
+    text = PoseBaker::clipBakeStatusLine(document.path(), result) + " (one scene undo step: the clip file and the Animation Player of \"" +
+           scene->scene->getEntityName(model) + "\"; undo scope scene)";
+    return true;
+}
+#endif
+
 // bake without path: the animation the model's Pose Animator plays, as its Inspector Bake button does
 void bakeAnimatorTool(const CallPtr& call) {
     const Json& args = call->args();
@@ -1336,8 +1375,14 @@ void bakeAnimatorTool(const CallPtr& call) {
         call->fail("ops and create need path: the .poseanim file to edit.");
         return;
     }
-    if (!readObject(bake, "bake", error) || !checkKeys(bake, "bake", {"model"}, error)) {
+    if (!readObject(bake, "bake", error) || !checkKeys(bake, "bake", {"model", "clip"}, error)) {
         call->fail(error + " (without path the bake uses the Pose Animator's animation and its file name; pass path to choose a name)");
+        return;
+    }
+    bool toClip = false;
+    std::string clipPath;
+    if (!readBakeClip(project, bake, toClip, clipPath, error)) {
+        call->fail(error);
         return;
     }
     if (!bake.contains("model")) {
@@ -1355,13 +1400,28 @@ void bakeAnimatorTool(const CallPtr& call) {
         call->fail("bake.model: \"" + scene->scene->getEntityName(model) + "\" has no Pose Animator with an animation; pass path.");
         return;
     }
+    // the component stores it relative to the assets folder: shown project-relative, as the tools take it
+    const std::string source = projectRel(project, project->resolveAssetPath(fs::u8path(animator->animation)).lexically_normal());
+    if (toClip) {
+#ifdef JASPER_BAKE_TO_CLIP
+        std::shared_ptr<PoseAnimationDocument> document = PoseAnimationDocument::open(project, source, &error);
+        Json baked;
+        std::string text;
+        if (!document || !bakeClip(project, scene, model, *document, "", clipPath, baked, text, error)) {
+            call->fail("bake: " + error);
+            return;
+        }
+        call->ok(text, Json{{"bake", baked}});
+#else
+        call->fail("bake.clip is not available in this build.");
+#endif
+        return;
+    }
     PoseBakeResult result;
     if (!PoseBaker::bakeAnimatorAsset(project, scene->id, model, animator->animation, result, error)) {
         call->fail("bake: " + error);
         return;
     }
-    // the component stores it relative to the assets folder: shown project-relative, as the tools take it
-    const std::string source = projectRel(project, project->resolveAssetPath(fs::u8path(animator->animation)).lexically_normal());
     Json out = {{"bake", {{"animation", McpRefs::entityJson(scene, result.animation)}, {"name", result.name},
                           {"created", result.created}, {"frames", result.frames}, {"tracks", result.tracks},
                           {"length", r4(result.length)}, {"source", source}}}};
@@ -1396,9 +1456,12 @@ void editPoseAnimationTool(const CallPtr& call) {
     SceneProject* bakeScene = nullptr;
     Entity bakeModel = NULL_ENTITY;
     std::string bakeName;
+    bool bakeToClip = false;
+    std::string bakeClipPath;
     if (args.contains("bake")) {
         const Json& bake = args["bake"];
-        if (!readObject(bake, "bake", error) || !checkKeys(bake, "bake", {"model", "name"}, error)) {
+        if (!readObject(bake, "bake", error) || !checkKeys(bake, "bake", {"model", "name", "clip"}, error) ||
+            !readBakeClip(project, bake, bakeToClip, bakeClipPath, error)) {
             call->fail(error);
             return;
         }
@@ -1564,7 +1627,23 @@ void editPoseAnimationTool(const CallPtr& call) {
     for (const std::string& warning : state.warnings) text += "\nwarning: " + warning;
     for (const Json& pose : full["poses"]) text += "\n" + poseLine(pose);
 
-    if (bakeModel != NULL_ENTITY) {
+    if (bakeModel != NULL_ENTITY && bakeToClip) {
+#ifdef JASPER_BAKE_TO_CLIP
+        Json baked;
+        std::string line;
+        if (!bakeClip(project, bakeScene, bakeModel, *document, bakeName, bakeClipPath, baked, line, error)) {
+            out["bake_error"] = error;
+            text += "\nbake failed: " + error + (changed ? " (the edits above were saved: undo them with scope project)" : "");
+            call->fail(text, out);
+            return;
+        }
+        out["bake"] = baked;
+        text += "\n" + line;
+#else
+        call->fail("bake.clip is not available in this build.");
+        return;
+#endif
+    } else if (bakeModel != NULL_ENTITY) {
         PoseBakeResult result;
         if (!PoseBaker::bake(project, bakeScene->id, bakeModel, *document, bakeName, result, error)) {
             out["bake_error"] = error;
@@ -2039,8 +2118,8 @@ void registerRenderPoseAnimation(McpRegistry& registry) {
     tool.description =
         "Contact sheet PNG of a .poseanim on its preview model (or model: a scene model), drawn offscreen: one column "
         "per key pose (mode poses) or per frame (motion: evenly spaced; times: at given seconds; the baked frames the "
-        "runtime plays), one row per view, each view one scale. Overlay: coral = the character's left limbs, cyan = "
-        "right, labels, orange floor line. Returns the image, a caption and per-column metrics (as get_pose_animation). "
+        "runtime plays), one row per view, each view one scale (overlay legend: jasper://docs/pose-animation). "
+        "Returns the image, a caption and per-column metrics (as get_pose_animation). "
         "Images cost tokens: render few cells.";
     tool.inputSchema = object({
         {"path", assetPath("")},
@@ -2087,7 +2166,7 @@ void registerPoseTools(McpRegistry& registry) {
             "A .poseanim pose animation: settings (loop, frame_rate, feel, humanize, preset), length, the rig (mapped "
             "bones, missing slots) and its key poses (name, hold, grounded, lift, transition or null = the animation's, "
             "start_time, offset {left, forward}, angles: degrees, 0 = neutral standing; see jasper://docs/pose-animation "
-            "for the DOF table) with metrics (feet height/contact, balanced, balance_margin, limit_hits). model: a scene "
+            "for the DOF table) with metrics. model: a scene "
             "model's rig instead of preview_model. templates: true (no path) lists the pose templates.";
         tool.inputSchema = object({
             {"path", assetPath("")},
@@ -2115,7 +2194,7 @@ void registerPoseTools(McpRegistry& registry) {
             "set_preview_model; set_humanoid (writes the model's .humanoid: slot -> bone, \"\" unmapped, null auto); "
             "apply_template (mode replace: settings+poses, append: poses); save_template (project template). "
             "angles: absolute degrees per DOF, add_angles: added. Clamped values are echoed in clamped. create makes the "
-            "file (template: from one); bake writes an Animation on a scene model (scene undo; without path: its Pose Animator's). Returns changes "
+            "file (template: from one); bake writes an Animation on a scene model (scene undo; without path: its Pose Animator's; clip: a shared .anim instead). Returns changes "
             "and the touched poses with metrics.";
         tool.inputSchema = object({
             {"path", assetPath("")},
@@ -2151,7 +2230,7 @@ void registerPoseTools(McpRegistry& registry) {
                 {"description", string("")},
                 {"category", string("")}
             }, {"op"}), "")},
-            {"bake", obj({{"model", entityRef()}, {"name", string("Default: the file name.")}}, {"model"})},
+            {"bake", obj({{"model", entityRef()}, {"name", string("Default: the file name.")}, {"clip", any("true or an .anim path.")}}, {"model"})},
             {"scene", sceneRef()}
         });
         tool.annotations.readOnly = false;
