@@ -7,14 +7,36 @@
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
 
+#include "json.hpp"
+
+#include <memory>
 #include <unordered_set>
 
 namespace jasperengine::editor{
+
+    class AnimationWindowClip;
 
     class AnimationWindow{
     private:
 
         Project* project;
+
+        // Clip mode (animation clips spec 4.4, 9.R31; AnimationWindowClip*.cpp): used when the
+        // selected GameObject or an ancestor has an Animation Player, the selection has neither
+        // a player nor an entity Animation (empty state), or a clip was opened from the Project
+        // window / Inspector. Entity mode (the code below) is for AnimationComponent sequences.
+        std::unique_ptr<AnimationWindowClip> clipMode;
+        bool clipModeActive = false;
+        // the scene selection last seen (the mode follows its changes, per scene)
+        uint32_t lastSelectionScene = 0;
+        std::vector<Entity> lastSelection;
+        // entity mode's preview owns its root (PreviewOwner, R7)
+        int previewOwnerToken = 0;
+        // R31: view-only lanes of the displayed Animation's frames (never written to
+        // ActionFrame::track except by an explicit move); the dragged frame's lane
+        std::vector<uint32_t> viewLanes;
+        int draggingLane = -1;
+        uint32_t laneOf(const AnimationComponent& anim, size_t frameIndex) const;
 
         // Playback state
         bool isPlaying;
@@ -133,9 +155,10 @@ namespace jasperengine::editor{
         float getAnimationDuration(const AnimationComponent& anim, Scene* scene) const;
         // Frame duration <= 0 means auto: resolved from the action's own duration.
         float effectiveFrameDuration(const ActionFrame& frame, Scene* scene) const;
-        // Re-lane frames when overlaps are found on one track (engine-created frames
-        // all default to track 0). Marks the scene modified if anything moved.
-        void autoAssignTracks(AnimationComponent& anim, SceneProject* sceneProject) const;
+        // Lanes the frames are drawn on (viewLanes): their tracks, re-laned when overlaps are
+        // found on one track (engine-created frames all default to track 0). View only: never
+        // writes ActionFrame::track nor marks the scene modified (spec 9.R31).
+        void autoAssignTracks(const AnimationComponent& anim, SceneProject* sceneProject);
         // Seek clipEntity (NULL_ENTITY = the current timeline clip) to `time`,
         // collapsing any active transition preview to that single clip.
         void seekPreview(Scene* scene, SceneProject* sceneProject, float time, Entity clipEntity = NULL_ENTITY);
@@ -152,10 +175,27 @@ namespace jasperengine::editor{
         // Crossfade the running preview clip(s) into transitionTarget over its fade time.
         void triggerTransitionPreview(Scene* scene, SceneProject* sceneProject);
 
+        // ---- clip mode (AnimationWindowClipMode.cpp) ----
+        // the mode for this frame from the selection of `sceneProject` (true: clip mode)
+        bool updateMode(SceneProject* sceneProject);
+        // the selection `selected` of `sceneProject` decides the mode (also the test hook)
+        void applySelection(SceneProject* sceneProject, const std::vector<Entity>& selected);
+        void drawClipMode(SceneProject* sceneProject);
+        void installClipHooks();
+        bool handleTestHook(const nlohmann::json& hook, nlohmann::json& out, std::string& error);
+
     public:
         static constexpr const char* WINDOW_NAME = "Animation";
 
         AnimationWindow(Project* project);
+        ~AnimationWindow();
+
+        // the Project window / Inspector open a clip (root NULL_ENTITY: target-less) or an
+        // entity Animation in the window (AnimationClipInspectorHooks::openClip /
+        // openEntityAnimation)
+        void openClip(uint32_t sceneId, Entity root, const std::string& clip);
+        void openEntityAnimation(uint32_t sceneId, Entity animation);
+        bool isClipMode() const;
 
         void show();
         void setOpen(bool open);
