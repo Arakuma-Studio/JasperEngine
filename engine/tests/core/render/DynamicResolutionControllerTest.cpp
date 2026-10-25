@@ -978,7 +978,8 @@ TEST(DynamicResolutionControllerBench, Tick){
     const double budget = 0.04 * testsupport::perfSlack();
 #endif
     std::printf("[bench] DynamicResolutionController tick: %.5f ms (budget %.3f ms)\n", perTick, budget);
-    if (budget > 0.0)
+    if (budget > 0.0) {
         EXPECT_LE(perTick, budget);
+    }
     EXPECT_GT(frameLaw.getStats().ticks + gpuLaw.getStats().ticks, 0u);
 }
