@@ -275,6 +275,8 @@ namespace jasperengine {
         static double deltatime;
         static double maxDeltatime;
         static float framerate;
+        static double framePeriod;
+        static double frameCpuTime;
         static FrameStats frameStats;
         static FrameStats currentFrameStats;
         
@@ -438,6 +440,11 @@ namespace jasperengine {
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
+        // the last frame's wall-clock period (from the frame before's start to its start) and
+        // the CPU time it took from its start to its submission (the update and the draw,
+        // without the wait to present), seconds: dynamic resolution's frame law reads them
+        static double getFramePeriod();
+        static double getFrameCpuTime();
 
         static void beginFrameStats();
         static void addDrawStats(uint32_t instances, uint64_t triangles);

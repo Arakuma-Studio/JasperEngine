@@ -64,7 +64,10 @@ LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400
 # S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
 # undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
 # focus_window's undo_history / play_mode_changes panels (35); 2170 measured on the merge with S04
-TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170
+# S13 (post FX): +1555 measured (inspect_color_lut 446, get_post_processing_status 403,
+# set_post_processing_debug 675, the presets' list in list_post_processing_presets)
+# S10 (shadows) and S12 (atmosphere), merged after S13's measurement: +2295 measured on the merge
+TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)

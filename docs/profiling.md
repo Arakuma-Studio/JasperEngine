@@ -113,8 +113,10 @@ machine and compare medians.
 | Metal | stage-boundary counter samples per render encoder (Apple GPUs) | `encoder_span`: overlapping, never sum |
 
 Results are never waited for: a frame's times arrive two to four frames later, or the frame is
-dropped with a counted reason. With nothing timing (the Profiler not recording, no agent asking)
-no query is issued. `JASPERENGINE_GPU_TIMER=off` forces "unavailable: disabled".
+dropped with a counted reason. With nothing timing (the Profiler not recording, no agent asking,
+no dynamic resolution running) no query is issued. Running dynamic resolution (S13) keeps the
+timer on in every build and steers by the game frame's GPU time (its GPU law); where the timer is
+unavailable it uses its frame law. `JASPERENGINE_GPU_TIMER=off` forces "unavailable: disabled".
 
 ## The capture format
 

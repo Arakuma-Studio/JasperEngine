@@ -132,6 +132,17 @@ FrameTimeSample FrameTimes::latest() {
     return s.count ? at(s.count - 1) : FrameTimeSample();
 }
 
+double FrameTimes::latestGpuMs(size_t window) {
+    const State& s = state();
+    const size_t n = std::min(window, s.count);
+    for (size_t i = 0; i < n; i++) {
+        const FrameTimeSample& sample = s.ring[(s.head + CAPACITY - 1 - i) % CAPACITY];
+        if (sample.gpuMs >= 0.0f)
+            return sample.gpuMs;
+    }
+    return -1.0;
+}
+
 void FrameTimes::clear() {
     State& s = state();
     s.head = 0;

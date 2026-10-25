@@ -56,6 +56,9 @@ namespace jasperengine {
         static std::vector<FrameTimeSample> snapshot(size_t newest = CAPACITY);
         // the last completed frame (a default sample before the first)
         static FrameTimeSample latest();
+        // the GPU time of the newest of the last `window` frames that has one, ms (< 0: none);
+        // GPU times arrive a few frames late (S13 dynamic resolution's GPU law)
+        static double latestGpuMs(size_t window = 8);
         static void clear();
     };
 
