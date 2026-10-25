@@ -659,7 +659,8 @@ TEST(HtmlUITemplates, CreatesDocumentAndStyleSheetWithFreeNames){
     EXPECT_EQ(references[0].path, "NewDocument.css");
     EXPECT_FALSE(references[0].missing);
 
-    // an unwritable directory fails without leaving a stylesheet behind
-    EXPECT_FALSE(HtmlUITemplates::createDocument(directory / "no" / "such" / "dir", "X", error));
+    // an unwritable directory (under a file: the atomic writer makes missing directories) fails
+    EXPECT_FALSE(HtmlUITemplates::createDocument(directory / "NewDocument.html" / "dir", "X", error));
     EXPECT_FALSE(error.empty());
+    EXPECT_FALSE(fs::exists(directory / "NewDocument.html" / "dir" / "X.css"));
 }
