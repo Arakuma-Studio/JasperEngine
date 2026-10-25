@@ -153,6 +153,13 @@ namespace {
             blend.src_factor_alpha = SG_BLENDFACTOR_DST_COLOR;
             blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             break;
+        case BlendMode::SUBTRACT_PREMULTIPLIED:
+            blend.op_rgb = SG_BLENDOP_REVERSE_SUBTRACT;
+            blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE;
+            break;
         }
         blend.enabled = true;
     }
@@ -196,8 +203,13 @@ sg_pipeline_desc SokolPipelineCache::makeDesc(const sg_pipeline_desc& base, cons
         desc.sample_count = state.target.sampleCount > 0 ? state.target.sampleCount : 1;
     }
 
-    desc.colors[0].write_mask = toColorMask(state.writeMask);
-    setBlend(desc.colors[0].blend, state.blend);
+    if (state.target.colorless && !state.target.swapchain){
+        desc.color_count = 0;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE;
+    }else{
+        desc.colors[0].write_mask = toColorMask(state.writeMask);
+        setBlend(desc.colors[0].blend, state.blend);
+    }
 
     desc.depth.compare = toCompare(state.depthCompare);
     desc.depth.write_enabled = state.depthWrite;

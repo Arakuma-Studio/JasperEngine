@@ -1610,6 +1610,7 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["hideSelectionOutline"] = ds.hideSelectionOutline;
     sceneNode["disableFaceCulling"]   = ds.disableFaceCulling;
     sceneNode["disableFog"]           = ds.disableFog;
+    sceneNode["disableClouds"]        = ds.disableClouds;
     if (ds.showPostProcessing)
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
@@ -1637,6 +1638,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["hideSelectionOutline"]) ds.hideSelectionOutline = YamlNumbers::as<bool>(node["hideSelectionOutline"]);
     if (node["disableFaceCulling"])   ds.disableFaceCulling   = YamlNumbers::as<bool>(node["disableFaceCulling"]);
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
+    if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
@@ -1659,6 +1661,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
     root["scalingMode"] = scalingModeToString(project->getScalingMode());
     root["textureStrategy"] = textureStrategyToString(project->getTextureStrategy());
     root["vsync"] = project->isVSyncEnabled();
+    if (project->getAtmosphereQuality() != Project::defaultAtmosphereQuality) {
+        YAML::Node quality;
+        quality["desktop"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[0]);
+        quality["mobile"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[1]);
+        quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
+        root["atmosphereQuality"] = quality;
+    }
     if (!(project->getPlayerLogging() == PlayerLoggingSettings())) {
         const PlayerLoggingSettings& logging = project->getPlayerLogging();
         YAML::Node loggingNode;
@@ -1668,6 +1677,20 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerLogging"] = loggingNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
+    // graphics.shadowTier.<platform>, only the platforms away from their default tier
+    {
+        YAML::Node tiers;
+        for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+            const ShadowTier tier = project->getShadowTier(platform);
+            if (tier != ShadowTiers::defaultTier(platform))
+                tiers[Project::getShadowTierPlatformName(platform)] = StreamSchema::shadowTier().toString(tier);
+        }
+        if (tiers.size() > 0){
+            YAML::Node graphics;
+            graphics["shadowTier"] = tiers;
+            root["graphics"] = graphics;
+        }
+    }
 
     root["windowMode"] = windowModeToString(project->getWindowMode());
     root["windowWidth"] = project->getWindowWidth();
@@ -2034,6 +2057,20 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
+        // omitted at the defaults; each platform group defaults on its own
+        std::array<AtmosphereQuality, 3> quality = Project::defaultAtmosphereQuality;
+        const YAML::Node qualityNode = node["atmosphereQuality"];
+        if (qualityNode.IsDefined() && qualityNode.IsMap()) {
+            const char* keys[3] = {"desktop", "mobile", "web"};
+            for (int i = 0; i < 3; i++) {
+                if (qualityNode[keys[i]].IsDefined())
+                    quality[i] = decodeEnum(qualityNode, keys[i], StreamSchema::atmosphereQuality());
+            }
+        }
+        project->setAtmosphereQuality(quality);
+    }
+
+    {
         PlayerLoggingSettings logging;
         if (node["playerLogging"].IsDefined() && node["playerLogging"].IsMap()) {
             const YAML::Node loggingNode = node["playerLogging"];
@@ -2049,6 +2086,18 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
+    }
+
+    // graphics.shadowTier.<platform>: an absent platform takes its default tier
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        ShadowTier tier = ShadowTiers::defaultTier(platform);
+        const YAML::Node graphics = node["graphics"];
+        if (graphics && graphics.IsMap() && graphics["shadowTier"] && graphics["shadowTier"].IsMap()){
+            const YAML::Node value = graphics["shadowTier"][Project::getShadowTierPlatformName(platform)];
+            if (value && value.IsScalar())
+                tier = StreamSchema::shadowTier().fromString(value.Scalar());
+        }
+        project->setShadowTier(platform, tier);
     }
 
     if (node["windowMode"]) {
@@ -2863,6 +2912,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
 
     sceneNode["backgroundColor"] = encodeVector4(scene->getBackgroundColor());
     sceneNode["shadowQuality"] = shadowQualityToString(scene->getShadowQuality());
+    // written only away from their defaults (scenes saved before them re-save unchanged)
+    if (scene->getShadowDistance() != SceneSettings().shadowDistance)
+        sceneNode["shadowDistance"] = scene->getShadowDistance();
+    if (scene->getShadowFadeFraction() != SceneSettings().shadowFadeFraction)
+        sceneNode["shadowFadeFraction"] = scene->getShadowFadeFraction();
+    if (scene->isShadowCascadeBlend() != SceneSettings().shadowCascadeBlend)
+        sceneNode["shadowCascadeBlend"] = scene->isShadowCascadeBlend();
     sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
     sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
     sceneNode["depthPrepassEnabled"] = scene->isDepthPrepassEnabled();
@@ -3007,6 +3063,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     if (node["shadowQuality"]) {
         scene->setShadowQuality(decodeEnum(node, "shadowQuality", StreamSchema::shadowQuality()));
     }
+    scene->setShadowDistance(node["shadowDistance"] ? YamlNumbers::as<float>(node["shadowDistance"]) : SceneSettings().shadowDistance);
+    scene->setShadowFadeFraction(node["shadowFadeFraction"] ? YamlNumbers::as<float>(node["shadowFadeFraction"]) : SceneSettings().shadowFadeFraction);
+    scene->setShadowCascadeBlend(node["shadowCascadeBlend"] ? YamlNumbers::as<bool>(node["shadowCascadeBlend"]) : SceneSettings().shadowCascadeBlend);
     if (node["meshLodEnabled"]) {
         scene->setMeshLodEnabled(YamlNumbers::as<bool>(node["meshLodEnabled"]));
     }
@@ -3900,6 +3959,16 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
         compNode[Catalog::getComponentName(ComponentType::FogComponent, true)] = encodeFogComponent(fog);
     }
 
+    if (signature.test(registry->getComponentId<LocalVolumetricFogComponent>())) {
+        const LocalVolumetricFogComponent& volume = registry->getComponent<LocalVolumetricFogComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::LocalVolumetricFogComponent, true)] = encodeLocalVolumetricFogComponent(volume);
+    }
+
+    if (signature.test(registry->getComponentId<VolumetricCloudsComponent>())) {
+        const VolumetricCloudsComponent& clouds = registry->getComponent<VolumetricCloudsComponent>(entity);
+        compNode[Catalog::getComponentName(ComponentType::VolumetricCloudsComponent, true)] = encodeVolumetricCloudsComponent(clouds);
+    }
+
     if (signature.test(registry->getComponentId<MirrorComponent>())) {
         const MirrorComponent& mirror = registry->getComponent<MirrorComponent>(entity);
         compNode[Catalog::getComponentName(ComponentType::MirrorComponent, true)] = encodeMirrorComponent(mirror);
@@ -4329,6 +4398,32 @@ void editor::Stream::decodeComponents(Entity entity, Entity parent, EntityRegist
             uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::FogComponent, existing, &fog);
             registry->getComponent<FogComponent>(entity) = std::move(fog);
             registry->markChanged<FogComponent>(entity);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::LocalVolumetricFogComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        LocalVolumetricFogComponent* existing = registry->findComponent<LocalVolumetricFogComponent>(entity);
+        LocalVolumetricFogComponent volume = decodeLocalVolumetricFogComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<LocalVolumetricFogComponent>())){
+            registry->addComponent<LocalVolumetricFogComponent>(entity, std::move(volume));
+            Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::LocalVolumetricFogComponent));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::LocalVolumetricFogComponent, existing, &volume);
+            registry->getComponent<LocalVolumetricFogComponent>(entity) = std::move(volume);
+            Catalog::updateEntity(registry, entity, flags);
+        }
+    });
+
+    StreamLoad::decodeComponent(ComponentType::VolumetricCloudsComponent, entity, registry, compNode, [&](const YAML::Node& componentNode) {
+        VolumetricCloudsComponent* existing = registry->findComponent<VolumetricCloudsComponent>(entity);
+        VolumetricCloudsComponent clouds = decodeVolumetricCloudsComponent(componentNode, existing);
+        if (!signature.test(registry->getComponentId<VolumetricCloudsComponent>())){
+            registry->addComponent<VolumetricCloudsComponent>(entity, std::move(clouds));
+            Catalog::updateEntity(registry, entity, Catalog::getComponentStructuralUpdateFlags(ComponentType::VolumetricCloudsComponent));
+        }else{
+            uint64_t flags = Catalog::getChangedUpdateFlags(ComponentType::VolumetricCloudsComponent, existing, &clouds);
+            registry->getComponent<VolumetricCloudsComponent>(entity) = std::move(clouds);
             Catalog::updateEntity(registry, entity, flags);
         }
     });
@@ -4870,6 +4965,8 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["lodBias"] = YamlNumbers::text(mesh.lodBias);
     node["renderInReflectionProbes"] = YamlNumbers::text(mesh.renderInReflectionProbes);
     node["shadowsBillboard"] = YamlNumbers::text(mesh.shadowsBillboard);
+    if (mesh.staticShadowCaster)
+        node["staticShadowCaster"] = YamlNumbers::text(mesh.staticShadowCaster);
     node["transparent"] = YamlNumbers::text(mesh.transparent);
     node["autoTransparency"] = YamlNumbers::text(mesh.autoTransparency);
 
@@ -4955,6 +5052,8 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
     if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = YamlNumbers::as<bool>(node["renderInReflectionProbes"]);
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = YamlNumbers::as<bool>(node["shadowsBillboard"]);
+    // omitted when false
+    mesh.staticShadowCaster = node["staticShadowCaster"] ? YamlNumbers::as<bool>(node["staticShadowCaster"]) : false;
     if (node["transparent"]) mesh.transparent = YamlNumbers::as<bool>(node["transparent"]);
     if (node["autoTransparency"]) mesh.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
 
@@ -5936,6 +6035,23 @@ YAML::Node editor::Stream::encodeLightComponent(const LightComponent& light) {
     node["numShadowCascades"] = light.numShadowCascades;
     if (light.shading != LightShading::BOTH)
         node["shading"] = lightShadingToString(light.shading);
+    // the shadow settings added with S10, written only away from their defaults (so scenes
+    // saved before them re-save unchanged)
+    const LightComponent defaults;
+    if (light.softShadows != defaults.softShadows) node["softShadows"] = light.softShadows;
+    if (light.shadowStrength != defaults.shadowStrength) node["shadowStrength"] = light.shadowStrength;
+    if (light.shadowNormalBias != defaults.shadowNormalBias) node["shadowNormalBias"] = light.shadowNormalBias;
+    if (light.cascadeSplitMode != defaults.cascadeSplitMode)
+        node["cascadeSplitMode"] = StreamSchema::cascadeSplitMode().toString(light.cascadeSplitMode);
+    if (light.cascadeSplits != defaults.cascadeSplits) node["cascadeSplits"] = encodeVector3(light.cascadeSplits);
+    if (light.shadowDistance != defaults.shadowDistance) node["shadowDistance"] = light.shadowDistance;
+    if (light.shadowAngularDiameter != defaults.shadowAngularDiameter) node["shadowAngularDiameter"] = light.shadowAngularDiameter;
+    if (light.shadowSourceRadius != defaults.shadowSourceRadius) node["shadowSourceRadius"] = light.shadowSourceRadius;
+    if (light.shadowUpdateMode != defaults.shadowUpdateMode)
+        node["shadowUpdateMode"] = StreamSchema::shadowUpdateMode().toString(light.shadowUpdateMode);
+    // the volumetric fog's share of the light (omitted at its default)
+    if (light.volumetricIntensity != LightComponent().volumetricIntensity)
+        node["volumetricIntensity"] = light.volumetricIntensity;
 
     return node;
 }
@@ -5966,6 +6082,18 @@ LightComponent editor::Stream::decodeLightComponent(const YAML::Node& node, cons
     if (node["numShadowCascades"]) light.numShadowCascades = YamlNumbers::as<unsigned int>(node["numShadowCascades"]);
     // omitted at its default, so an absent key is the default
     light.shading = node["shading"] ? decodeEnum(node, "shading", StreamSchema::lightShading()) : LightShading::BOTH;
+    // omitted at their defaults (S10), so an absent key is the default
+    const LightComponent defaults;
+    light.softShadows = node["softShadows"] ? YamlNumbers::as<bool>(node["softShadows"]) : defaults.softShadows;
+    light.shadowStrength = node["shadowStrength"] ? YamlNumbers::as<float>(node["shadowStrength"]) : defaults.shadowStrength;
+    light.shadowNormalBias = node["shadowNormalBias"] ? YamlNumbers::as<float>(node["shadowNormalBias"]) : defaults.shadowNormalBias;
+    light.cascadeSplitMode = node["cascadeSplitMode"] ? decodeEnum(node, "cascadeSplitMode", StreamSchema::cascadeSplitMode()) : defaults.cascadeSplitMode;
+    light.cascadeSplits = node["cascadeSplits"] ? decodeVector3(node["cascadeSplits"]) : defaults.cascadeSplits;
+    light.shadowDistance = node["shadowDistance"] ? YamlNumbers::as<float>(node["shadowDistance"]) : defaults.shadowDistance;
+    light.shadowAngularDiameter = node["shadowAngularDiameter"] ? YamlNumbers::as<float>(node["shadowAngularDiameter"]) : defaults.shadowAngularDiameter;
+    light.shadowSourceRadius = node["shadowSourceRadius"] ? YamlNumbers::as<float>(node["shadowSourceRadius"]) : defaults.shadowSourceRadius;
+    light.shadowUpdateMode = node["shadowUpdateMode"] ? decodeEnum(node, "shadowUpdateMode", StreamSchema::shadowUpdateMode()) : defaults.shadowUpdateMode;
+    light.volumetricIntensity = node["volumetricIntensity"] ? YamlNumbers::as<float>(node["volumetricIntensity"]) : LightComponent().volumetricIntensity;
 
     if (node["enabled"]) light.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
@@ -6061,6 +6189,27 @@ YAML::Node editor::Stream::encodeFogComponent(const FogComponent& fog) {
     node["linearStart"] = fog.linearStart;
     node["linearEnd"] = fog.linearEnd;
 
+    // the height fog's fields, omitted at their defaults: a distance fog's file is as it was
+    const FogComponent defaults;
+    if (fog.colorMode != defaults.colorMode) node["colorMode"] = StreamSchema::fogColorMode().toString(fog.colorMode);
+    if (fog.attenuationDistance != defaults.attenuationDistance) node["attenuationDistance"] = fog.attenuationDistance;
+    if (fog.baseHeight != defaults.baseHeight) node["baseHeight"] = fog.baseHeight;
+    if (fog.maximumHeight != defaults.maximumHeight) node["maximumHeight"] = fog.maximumHeight;
+    if (fog.startDistance != defaults.startDistance) node["startDistance"] = fog.startDistance;
+    if (fog.maxFogDistance != defaults.maxFogDistance) node["maxFogDistance"] = fog.maxFogDistance;
+    if (fog.maxOpacity != defaults.maxOpacity) node["maxOpacity"] = fog.maxOpacity;
+    if (fog.directionalInscattering != defaults.directionalInscattering) node["directionalInscattering"] = fog.directionalInscattering;
+    if (fog.anisotropy != defaults.anisotropy) node["anisotropy"] = fog.anisotropy;
+    if (fog.skyFill != defaults.skyFill) node["skyFill"] = fog.skyFill;
+    if (fog.skyFillAngle != defaults.skyFillAngle) node["skyFillAngle"] = fog.skyFillAngle;
+    if (fog.volumetric != defaults.volumetric) node["volumetric"] = fog.volumetric;
+    if (fog.volumetricDistance != defaults.volumetricDistance) node["volumetricDistance"] = fog.volumetricDistance;
+    if (fog.lightShafts != defaults.lightShafts) node["lightShafts"] = fog.lightShafts;
+    if (fog.noiseIntensity != defaults.noiseIntensity) node["noiseIntensity"] = fog.noiseIntensity;
+    if (fog.noiseScale != defaults.noiseScale) node["noiseScale"] = fog.noiseScale;
+    if (fog.wind != defaults.wind) node["wind"] = encodeVector3(fog.wind);
+    if (fog.qualityOverride != defaults.qualityOverride) node["qualityOverride"] = StreamSchema::atmosphereQualityOverride().toString(fog.qualityOverride);
+
     return node;
 }
 
@@ -6077,7 +6226,121 @@ FogComponent editor::Stream::decodeFogComponent(const YAML::Node& node, const Fo
     if (node["linearStart"]) fog.linearStart = YamlNumbers::as<float>(node["linearStart"]);
     if (node["linearEnd"]) fog.linearEnd = YamlNumbers::as<float>(node["linearEnd"]);
 
+    // the height fog's fields are omitted at their defaults, so an absent key is the default,
+    // not the old value (paste and play-stop restore decode over an existing component)
+    const FogComponent defaults;
+    auto readFloat = [&node](const char* key, float fallback) {
+        return node[key] ? YamlNumbers::as<float>(node[key]) : fallback;
+    };
+    auto readBool = [&node](const char* key, bool fallback) {
+        return node[key] ? YamlNumbers::as<bool>(node[key]) : fallback;
+    };
+    fog.colorMode = node["colorMode"] ? decodeEnum(node, "colorMode", StreamSchema::fogColorMode()) : defaults.colorMode;
+    fog.attenuationDistance = readFloat("attenuationDistance", defaults.attenuationDistance);
+    fog.baseHeight = readFloat("baseHeight", defaults.baseHeight);
+    fog.maximumHeight = readFloat("maximumHeight", defaults.maximumHeight);
+    fog.startDistance = readFloat("startDistance", defaults.startDistance);
+    fog.maxFogDistance = readFloat("maxFogDistance", defaults.maxFogDistance);
+    fog.maxOpacity = readFloat("maxOpacity", defaults.maxOpacity);
+    fog.directionalInscattering = readFloat("directionalInscattering", defaults.directionalInscattering);
+    fog.anisotropy = readFloat("anisotropy", defaults.anisotropy);
+    fog.skyFill = readBool("skyFill", defaults.skyFill);
+    fog.skyFillAngle = readFloat("skyFillAngle", defaults.skyFillAngle);
+    fog.volumetric = readBool("volumetric", defaults.volumetric);
+    fog.volumetricDistance = readFloat("volumetricDistance", defaults.volumetricDistance);
+    fog.lightShafts = readBool("lightShafts", defaults.lightShafts);
+    fog.noiseIntensity = readFloat("noiseIntensity", defaults.noiseIntensity);
+    fog.noiseScale = readFloat("noiseScale", defaults.noiseScale);
+    fog.wind = node["wind"] ? decodeVector3(node["wind"]) : defaults.wind;
+    fog.qualityOverride = node["qualityOverride"] ? decodeEnum(node, "qualityOverride", StreamSchema::atmosphereQualityOverride()) : defaults.qualityOverride;
+
     return fog;
+}
+
+YAML::Node editor::Stream::encodeLocalVolumetricFogComponent(const LocalVolumetricFogComponent& volume) {
+    YAML::Node node;
+
+    node["shape"] = StreamSchema::fogVolumeShape().toString(volume.shape);
+    node["size"] = encodeVector3(volume.size);
+    node["attenuationDistance"] = volume.attenuationDistance;
+    node["albedo"] = encodeVector3(volume.albedo);
+    node["blendDistance"] = volume.blendDistance;
+    node["falloff"] = StreamSchema::fogVolumeFalloff().toString(volume.falloff);
+    node["noiseIntensity"] = volume.noiseIntensity;
+    node["noiseScale"] = volume.noiseScale;
+    node["scrollSpeed"] = encodeVector3(volume.scrollSpeed);
+
+    return node;
+}
+
+LocalVolumetricFogComponent editor::Stream::decodeLocalVolumetricFogComponent(const YAML::Node& node, const LocalVolumetricFogComponent* oldVolume) {
+    LocalVolumetricFogComponent volume;
+    if (oldVolume) volume = *oldVolume;
+
+    if (node["shape"]) volume.shape = decodeEnum(node, "shape", StreamSchema::fogVolumeShape());
+    if (node["size"]) volume.size = decodeVector3(node["size"]);
+    if (node["attenuationDistance"]) volume.attenuationDistance = YamlNumbers::as<float>(node["attenuationDistance"]);
+    if (node["albedo"]) volume.albedo = decodeVector3(node["albedo"]);
+    if (node["blendDistance"]) volume.blendDistance = YamlNumbers::as<float>(node["blendDistance"]);
+    if (node["falloff"]) volume.falloff = decodeEnum(node, "falloff", StreamSchema::fogVolumeFalloff());
+    if (node["noiseIntensity"]) volume.noiseIntensity = YamlNumbers::as<float>(node["noiseIntensity"]);
+    if (node["noiseScale"]) volume.noiseScale = YamlNumbers::as<float>(node["noiseScale"]);
+    if (node["scrollSpeed"]) volume.scrollSpeed = decodeVector3(node["scrollSpeed"]);
+
+    return volume;
+}
+
+YAML::Node editor::Stream::encodeVolumetricCloudsComponent(const VolumetricCloudsComponent& clouds) {
+    YAML::Node node;
+
+    node["preset"] = StreamSchema::cloudsPreset().toString(clouds.preset);
+    node["rendering"] = StreamSchema::cloudsRendering().toString(clouds.rendering);
+    node["coverage"] = clouds.coverage;
+    node["density"] = clouds.density;
+    node["shapeScale"] = clouds.shapeScale;
+    node["shapeFactor"] = clouds.shapeFactor;
+    node["erosionFactor"] = clouds.erosionFactor;
+    node["erosionScale"] = clouds.erosionScale;
+    node["bottomAltitude"] = clouds.bottomAltitude;
+    node["altitudeRange"] = clouds.altitudeRange;
+    node["earthCurvature"] = clouds.earthCurvature;
+    node["windDirection"] = clouds.windDirection;
+    node["windSpeed"] = clouds.windSpeed;
+    node["weatherMap"] = encodeTexture(clouds.weatherMap);
+    node["weatherMapScale"] = clouds.weatherMapScale;
+    node["sunLightDimmer"] = clouds.sunLightDimmer;
+    node["ambientLightDimmer"] = clouds.ambientLightDimmer;
+    node["maxDistance"] = clouds.maxDistance;
+    node["qualityOverride"] = StreamSchema::atmosphereQualityOverride().toString(clouds.qualityOverride);
+
+    return node;
+}
+
+VolumetricCloudsComponent editor::Stream::decodeVolumetricCloudsComponent(const YAML::Node& node, const VolumetricCloudsComponent* oldClouds) {
+    VolumetricCloudsComponent clouds;
+    if (oldClouds) clouds = *oldClouds;
+
+    if (node["preset"]) clouds.preset = decodeEnum(node, "preset", StreamSchema::cloudsPreset());
+    if (node["rendering"]) clouds.rendering = decodeEnum(node, "rendering", StreamSchema::cloudsRendering());
+    if (node["coverage"]) clouds.coverage = YamlNumbers::as<float>(node["coverage"]);
+    if (node["density"]) clouds.density = YamlNumbers::as<float>(node["density"]);
+    if (node["shapeScale"]) clouds.shapeScale = YamlNumbers::as<float>(node["shapeScale"]);
+    if (node["shapeFactor"]) clouds.shapeFactor = YamlNumbers::as<float>(node["shapeFactor"]);
+    if (node["erosionFactor"]) clouds.erosionFactor = YamlNumbers::as<float>(node["erosionFactor"]);
+    if (node["erosionScale"]) clouds.erosionScale = YamlNumbers::as<float>(node["erosionScale"]);
+    if (node["bottomAltitude"]) clouds.bottomAltitude = YamlNumbers::as<float>(node["bottomAltitude"]);
+    if (node["altitudeRange"]) clouds.altitudeRange = YamlNumbers::as<float>(node["altitudeRange"]);
+    if (node["earthCurvature"]) clouds.earthCurvature = YamlNumbers::as<float>(node["earthCurvature"]);
+    if (node["windDirection"]) clouds.windDirection = YamlNumbers::as<float>(node["windDirection"]);
+    if (node["windSpeed"]) clouds.windSpeed = YamlNumbers::as<float>(node["windSpeed"]);
+    if (node["weatherMap"]) clouds.weatherMap = decodeTexture(node["weatherMap"]);
+    if (node["weatherMapScale"]) clouds.weatherMapScale = YamlNumbers::as<float>(node["weatherMapScale"]);
+    if (node["sunLightDimmer"]) clouds.sunLightDimmer = YamlNumbers::as<float>(node["sunLightDimmer"]);
+    if (node["ambientLightDimmer"]) clouds.ambientLightDimmer = YamlNumbers::as<float>(node["ambientLightDimmer"]);
+    if (node["maxDistance"]) clouds.maxDistance = YamlNumbers::as<float>(node["maxDistance"]);
+    if (node["qualityOverride"]) clouds.qualityOverride = decodeEnum(node, "qualityOverride", StreamSchema::atmosphereQualityOverride());
+
+    return clouds;
 }
 
 YAML::Node editor::Stream::encodeMirrorComponent(const MirrorComponent& mirror) {

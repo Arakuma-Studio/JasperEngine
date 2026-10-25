@@ -782,6 +782,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"hide_container_guides", &SceneDisplaySettings::hideContainerGuides},
         {"hide_selection_outline", &SceneDisplaySettings::hideSelectionOutline},
         {"disable_fog", &SceneDisplaySettings::disableFog},
+        {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
     };
     return flags;
@@ -1177,6 +1178,17 @@ void configureGameViewTool(const CallPtr& call) {
         }
         changed.push_back("simulate_touch");
     }
+    static const std::vector<std::string> atmosphereNames = {"project", "off", "low", "medium", "high"};
+    if (args.contains("atmosphere_quality")) {
+        const std::string quality = args.value("atmosphere_quality", "");
+        auto it = std::find(atmosphereNames.begin(), atmosphereNames.end(), quality);
+        if (it == atmosphereNames.end()) {
+            call->fail("atmosphere_quality must be project, off, low, medium or high.");
+            return;
+        }
+        settings.atmosphereQuality = (int)(it - atmosphereNames.begin()) - 1;
+        changed.push_back("atmosphere_quality");
+    }
     if (!changed.empty()) gw->applySettings(settings);
 
     Json data = {
@@ -1185,6 +1197,7 @@ void configureGameViewTool(const CallPtr& call) {
         {"maximize_on_play", settings.maximizeOnPlay},
         {"show_stats", settings.showStats},
         {"simulate_touch", project->isSimulateTouch()},
+        {"atmosphere_quality", atmosphereNames[std::clamp(settings.atmosphereQuality + 1, 0, 4)]},
         {"open", gw->isOpen()},
         {"visible", gw->isVisible()},
         {"view_size", {gw->getWidth(), gw->getHeight()}},
@@ -1306,7 +1319,9 @@ void registerViewTools(McpRegistry& registry) {
             {"scale", number("Zoom.", 1, 5)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
-            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")}
+            {"simulate_touch", boolean("Mouse = one finger. Not while playing.")},
+            {"atmosphere_quality", stringEnum("Preview Atmosphere Quality (project = the project's desktop tier).",
+                                              {"project", "off", "low", "medium", "high"})}
         });
         tool.annotations.idempotent = true;
         tool.handler = configureGameViewTool;

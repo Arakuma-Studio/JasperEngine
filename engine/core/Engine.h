@@ -42,10 +42,12 @@
 #define MAX_SHADOWCASCADES 4
 #endif
 
-// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map
-// (a spot light, or a single directional cascade) and maps 1:1 to a v_lightProjPos
-// vertex varying, so the slot count is bounded by GPU vertex-output limits: keep the
-// grid small (a 6x6 / 36-slot grid overflows the varyings and breaks shader compiles).
+// Projective shadow atlas (directional + spot). Each slot holds one 2D depth map (a spot
+// light, or a single directional cascade) of its own resolution, packed into the atlas by
+// ShadowSlotPlanner. Shaders compute the shadow coordinates in the fragment stage, but forks
+// written before that still write one v_lightProjPos vertex varying per slot (and every slot
+// costs 9 fragment uniform vectors), so keep the count small: a 6x6 / 36-slot count overflows
+// the varyings and breaks such shaders.
 #ifndef SHADOW_ATLAS_COLS
 #define SHADOW_ATLAS_COLS 3
 #endif
@@ -58,9 +60,9 @@
 #define MAX_SHADOW_ATLAS_SLOTS (SHADOW_ATLAS_COLS * SHADOW_ATLAS_ROWS)
 #endif
 
-// Point shadow atlas (omnidirectional). Each shadow-casting point light consumes
-// SHADOW_CUBE_FACES consecutive slots (one per cube face) and is sampled only in the
-// fragment shader, so this atlas is bounded by texture size rather than varyings.
+// Point shadow atlas (omnidirectional), a depth atlas like the projective one. Each
+// shadow-casting point light consumes SHADOW_CUBE_FACES consecutive slots (one per cube face)
+// and is sampled only in the fragment shader, so this atlas is bounded by texture size.
 #ifndef SHADOW_POINT_ATLAS_COLS
 #define SHADOW_POINT_ATLAS_COLS 6
 #endif
@@ -152,6 +154,7 @@
 #include "util/ThreadUtils.h"
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
+#include "render/AtmosphereQuality.h"
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
@@ -294,6 +297,12 @@ namespace jasperengine {
         static CursorType mouseCursorType;
         static MouseMode mouseMode;
 
+        // the atmosphere quality tier of each platform group (desktop, mobile, web) and the
+        // game's runtime override, if any
+        static AtmosphereQuality atmosphereQualityDefaults[3];
+        static bool atmosphereQualityOverridden;
+        static AtmosphereQuality atmosphereQualityOverride;
+
         static Semaphore drawSemaphore;
 
         // drawSemaphore only excludes async threads from systemDraw(). Main-thread code
@@ -411,6 +420,19 @@ namespace jasperengine {
         
         static Platform getPlatform();
         static GraphicBackend getGraphicBackend();
+
+        // Atmosphere quality (volumetric fog and clouds, docs/specs/S12-atmosphere.md): the
+        // project's tier per platform group (Project Settings > Quality; desktop High, mobile
+        // and web Low by default), which a game may override at runtime. getAtmosphereQuality
+        // is the tier in effect: the override, else this platform's default.
+        static void setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web);
+        static AtmosphereQuality getAtmosphereQualityDefault(Platform platform);
+        static AtmosphereQuality getAtmosphereQualityDefault();
+        static void setAtmosphereQuality(AtmosphereQuality quality);
+        static AtmosphereQuality getAtmosphereQuality();
+        // back to the platform default (the editor calls it when Play stops)
+        static void resetAtmosphereQuality();
+        static bool isAtmosphereQualityOverridden();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
@@ -418,6 +440,8 @@ namespace jasperengine {
         static void beginFrameStats();
         static void addDrawStats(uint32_t instances, uint64_t triangles);
         static const FrameStats& getFrameStats();
+        // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
+        static uint32_t getPendingDrawCalls();
 
         // Upper bound (in seconds) for the value returned by getDeltatime() and used by the update loop. Default 0.25.
         static float getMaxDeltatime();
@@ -509,6 +533,10 @@ namespace jasperengine {
             // the scene's post-processing applies to the camera (the Game view; the Scene view
             // has it off unless its display setting turns it on)
             bool postProcessing = true;
+            // draws without the volumetric clouds (the Scene view's Clouds toggle)
+            bool disableClouds = false;
+            // the atmosphere quality the view previews (the Game view's; -1 the project's)
+            int atmosphereQuality = -1;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

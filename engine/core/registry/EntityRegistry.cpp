@@ -77,6 +77,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<PrefabComponent>(ComponentOrder::Insertion, "PrefabComponent");
     registerComponent<ReflectionProbeComponent>(ComponentOrder::Insertion, "ReflectionProbeComponent");
     registerComponent<UIDocumentComponent>(ComponentOrder::Insertion, "UIDocumentComponent");
+    registerComponent<LocalVolumetricFogComponent>(ComponentOrder::Insertion, "LocalVolumetricFogComponent");
+    registerComponent<VolumetricCloudsComponent>(ComponentOrder::Insertion, "VolumetricCloudsComponent");
 
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());

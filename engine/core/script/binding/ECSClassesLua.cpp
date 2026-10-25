@@ -32,6 +32,8 @@
 #include "component/AudioSourceComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/FogComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 #include "component/TilemapComponent.h"
 
 using namespace jasperengine;
@@ -113,6 +115,56 @@ void LuaBinding::registerECSClasses(lua_State *L){
         .addVariable("LINEAR", FogType::LINEAR)
         .addVariable("EXPONENTIAL", FogType::EXPONENTIAL)
         .addVariable("EXPONENTIALSQUARED", FogType::EXPONENTIALSQUARED)
+        .addVariable("HEIGHT", FogType::HEIGHT)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogColorMode")
+        .addVariable("COLOR", FogColorMode::COLOR)
+        .addVariable("SKY", FogColorMode::SKY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogVolumeShape")
+        .addVariable("BOX", FogVolumeShape::BOX)
+        .addVariable("SPHERE", FogVolumeShape::SPHERE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("FogVolumeFalloff")
+        .addVariable("LINEAR", FogVolumeFalloff::LINEAR)
+        .addVariable("EXPONENTIAL", FogVolumeFalloff::EXPONENTIAL)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CloudsPreset")
+        .addVariable("CUSTOM", CloudsPreset::CUSTOM)
+        .addVariable("SPARSE", CloudsPreset::SPARSE)
+        .addVariable("CLOUDY", CloudsPreset::CLOUDY)
+        .addVariable("OVERCAST", CloudsPreset::OVERCAST)
+        .addVariable("STORMY", CloudsPreset::STORMY)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CloudsRendering")
+        .addVariable("AUTO", CloudsRendering::AUTO)
+        .addVariable("SKY_MAP", CloudsRendering::SKY_MAP)
+        .addVariable("SCREEN", CloudsRendering::SCREEN)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AtmosphereQuality")
+        .addVariable("OFF", AtmosphereQuality::OFF)
+        .addVariable("LOW", AtmosphereQuality::LOW)
+        .addVariable("MEDIUM", AtmosphereQuality::MEDIUM)
+        .addVariable("HIGH", AtmosphereQuality::HIGH)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("AtmosphereQualityOverride")
+        .addVariable("PROJECT", AtmosphereQualityOverride::PROJECT)
+        .addVariable("LOW", AtmosphereQualityOverride::LOW)
+        .addVariable("MEDIUM", AtmosphereQualityOverride::MEDIUM)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

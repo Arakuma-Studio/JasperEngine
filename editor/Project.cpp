@@ -1094,6 +1094,15 @@ bool editor::Project::isVSyncEnabled() const{
     return vsyncEnabled;
 }
 
+void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality){
+    atmosphereQuality = quality;
+    Engine::setAtmosphereQualityDefaults(quality[0], quality[1], quality[2]);
+}
+
+const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() const{
+    return atmosphereQuality;
+}
+
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
     playerLogging = settings;
 }
@@ -1118,6 +1127,34 @@ void editor::Project::setHtmlUiMsaaSamples(int samples){
 
 int editor::Project::getHtmlUiMsaaSamples() const{
     return htmlUiMsaaSamples;
+}
+
+void editor::Project::setShadowTier(int platform, ShadowTier tier){
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return;
+    shadowTiers[platform] = tier;
+    // the editor renders with the tiers at once (RenderSystem resolves them every update)
+    ShadowTiers::setPlatformTier(platform, tier);
+}
+
+ShadowTier editor::Project::getShadowTier(int platform) const{
+    if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
+        return ShadowTier::HIGH;
+    return shadowTiers[platform];
+}
+
+const char* editor::Project::getShadowTierPlatformName(int platform){
+    // Engine::Platform order
+    static const char* const names[ShadowTiers::PLATFORM_COUNT] = {"macos", "ios", "web", "android", "linux", "windows"};
+    return (platform >= 0 && platform < ShadowTiers::PLATFORM_COUNT) ? names[platform] : "";
+}
+
+int editor::Project::findShadowTierPlatform(const std::string& name){
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        if (name == getShadowTierPlatformName(platform))
+            return platform;
+    }
+    return -1;
 }
 
 void editor::Project::setWindowMode(WindowMode windowMode){
@@ -2486,10 +2523,31 @@ void editor::Project::collectSceneShaderKeys(const SceneProject* sceneProject, s
     // fixed resolution upscales with it and a scene stack is presented with it
     keys.insert(ShaderPool::getShaderKey(ShaderType::BLIT, 0));
 
+    // the atmosphere's passes: the scene's first Fog and Volumetric Clouds (RenderSystem's)
+    {
+        const FogComponent* fog = scene->findComponentFromIndex<FogComponent>(0);
+        const bool heightFog = fog && fog->type == FogType::HEIGHT;
+        const bool clouds = scene->getComponentArray<VolumetricCloudsComponent>()->size() > 0;
+        for (ShaderType type : AtmosphereRenderer::passShaderTypes(heightFog, heightFog && fog->volumetric, clouds))
+            keys.insert(ShaderPool::getShaderKey(type, 0));
+    }
+
     // HTML UI documents draw geometry, gradients and layer/filter passes (RmlRenderer)
     if (scene->isComponentRegistered<UIDocumentComponent>() && scene->getComponentArray<UIDocumentComponent>()->size() > 0) {
         for (const auto& variant : ShaderPool::getHtmlUIVariants())
             insertKeys(variant.first, variant.second, 0);
+    }
+
+    // a light casting 3D shadows copies the static shadow cache back and clears slots with the
+    // shadow cache's program (RenderSystem::renderShadowMaps)
+    {
+        auto lights = scene->getComponentArray<LightComponent>();
+        for (int i = 0; i < (int)lights->size(); i++) {
+            if (lights->getComponentFromIndex(i).shadows) {
+                keys.insert(ShaderPool::getShaderKey(ShaderType::SHADOW_CACHE, 0));
+                break;
+            }
+        }
     }
 
     // 2D lights with shadows render occluder segments through the shadow2d
@@ -2567,7 +2625,8 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
 
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
-                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>());
+                                         scriptsPost, scriptsPost ? scriptsPostProcessingFields() : std::vector<std::string>(),
+                                         scriptsSetShadowQuality());
 }
 
 bool editor::Project::scriptsMention(const char* text) const {
@@ -2588,6 +2647,12 @@ bool editor::Project::scriptsSetLightCapacity() const {
     // Scene.maxLightsPerObject (Lua) or Scene::setMaxLightsPerObject (C++): the one way the
     // light capacity tier of the lit variants changes at runtime
     return scriptsMention("axLightsPerObject");
+}
+
+bool editor::Project::scriptsSetShadowQuality() const {
+    // scene.shadowQuality (Lua) or Scene::setShadowQuality (C++): the shadow tier, and with it
+    // the High filters' variant bit, can change at runtime
+    return scriptsMention("hadowQuality");
 }
 
 bool editor::Project::scriptsSetPostProcessing() const {
@@ -3971,8 +4036,12 @@ void editor::Project::resetConfigs() {
     scalingMode = defaultScalingMode;
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
+    setAtmosphereQuality(defaultAtmosphereQuality);
     playerLogging = PlayerLoggingSettings();
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
+        setShadowTier(platform, ShadowTiers::defaultTier(platform));
+    }
     setThreadingSettings(ThreadingProjectSettings());
     windowMode = defaultWindowMode;
     windowWidth = defaultWindowWidth;
@@ -5442,6 +5511,7 @@ void editor::Project::configureGenerator() {
 
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+    generator.setAtmosphereQuality(atmosphereQuality);
     generator.configure(scenesToConfig, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
 }
 
@@ -7182,6 +7252,7 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
 
         std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
         std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
+        generator.setAtmosphereQuality(atmosphereQuality);
         generator.configure(scenesToGenerate, libName, mergedCppScripts, prefabBuildInfos, getProjectPath(), getProjectInternalPath(), getAssetsPath(), getLuaPath(), getScriptDirs(), getCxxStandard(), scalingMode, textureStrategy, canvasWidth, canvasHeight, vsyncEnabled, getWindowSettings(), loadingSettings, TagsAndLayers{tags, layerNames, layerCollisionMatrix3D, layerCollisionMatrix2D}, htmlUiMsaaSamples, threadingSettings);
         if (hasMissingSceneSources()) {
             generatedSourcesDirty.store(true);

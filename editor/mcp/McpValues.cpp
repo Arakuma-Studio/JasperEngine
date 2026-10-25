@@ -273,7 +273,71 @@ const EnumOptions& fogTypeOptions() {
     static const EnumOptions options = {
         {(int)FogType::LINEAR, "linear", "Linear"},
         {(int)FogType::EXPONENTIAL, "exponential", "Exponential"},
-        {(int)FogType::EXPONENTIALSQUARED, "exponential_squared", "Exponential Squared"}
+        {(int)FogType::EXPONENTIALSQUARED, "exponential_squared", "Exponential Squared"},
+        {(int)FogType::HEIGHT, "height", "Height"}
+    };
+    return options;
+}
+
+const EnumOptions& fogColorModeOptions() {
+    static const EnumOptions options = {
+        {(int)FogColorMode::COLOR, "color", "Constant Color"},
+        {(int)FogColorMode::SKY, "sky", "Sky Color"}
+    };
+    return options;
+}
+
+const EnumOptions& atmosphereQualityOverrideOptions() {
+    static const EnumOptions options = {
+        {(int)AtmosphereQualityOverride::PROJECT, "project", "Project"},
+        {(int)AtmosphereQualityOverride::LOW, "low", "Low"},
+        {(int)AtmosphereQualityOverride::MEDIUM, "medium", "Medium"}
+    };
+    return options;
+}
+
+const EnumOptions& atmosphereQualityOptions() {
+    static const EnumOptions options = {
+        {(int)AtmosphereQuality::OFF, "off", "Off"},
+        {(int)AtmosphereQuality::LOW, "low", "Low"},
+        {(int)AtmosphereQuality::MEDIUM, "medium", "Medium"},
+        {(int)AtmosphereQuality::HIGH, "high", "High"}
+    };
+    return options;
+}
+
+const EnumOptions& fogVolumeShapeOptions() {
+    static const EnumOptions options = {
+        {(int)FogVolumeShape::BOX, "box", "Box"},
+        {(int)FogVolumeShape::SPHERE, "sphere", "Sphere"}
+    };
+    return options;
+}
+
+const EnumOptions& fogVolumeFalloffOptions() {
+    static const EnumOptions options = {
+        {(int)FogVolumeFalloff::LINEAR, "linear", "Linear"},
+        {(int)FogVolumeFalloff::EXPONENTIAL, "exponential", "Exponential"}
+    };
+    return options;
+}
+
+const EnumOptions& cloudsPresetOptions() {
+    static const EnumOptions options = {
+        {(int)CloudsPreset::CUSTOM, "custom", "Custom"},
+        {(int)CloudsPreset::SPARSE, "sparse", "Sparse"},
+        {(int)CloudsPreset::CLOUDY, "cloudy", "Cloudy"},
+        {(int)CloudsPreset::OVERCAST, "overcast", "Overcast"},
+        {(int)CloudsPreset::STORMY, "stormy", "Stormy"}
+    };
+    return options;
+}
+
+const EnumOptions& cloudsRenderingOptions() {
+    static const EnumOptions options = {
+        {(int)CloudsRendering::AUTO, "auto", "Automatic"},
+        {(int)CloudsRendering::SKY_MAP, "sky_map", "Sky Map"},
+        {(int)CloudsRendering::SCREEN, "screen", "Screen"}
     };
     return options;
 }
@@ -528,6 +592,23 @@ const EnumOptions& lightShadingOptions() {
     return options;
 }
 
+const EnumOptions& cascadeSplitModeOptions() {
+    static const EnumOptions options = {
+        {(int)CascadeSplitMode::AUTO, "auto", "Auto"},
+        {(int)CascadeSplitMode::MANUAL, "manual", "Manual"}
+    };
+    return options;
+}
+
+const EnumOptions& shadowUpdateModeOptions() {
+    static const EnumOptions options = {
+        {(int)ShadowUpdateMode::AUTO, "auto", "Auto"},
+        {(int)ShadowUpdateMode::EVERY_FRAME, "every_frame", "Every Frame"},
+        {(int)ShadowUpdateMode::ON_DEMAND, "on_demand", "On Demand"}
+    };
+    return options;
+}
+
 const EnumOptions& primitiveTypeOptions() {
     static const EnumOptions options = {
         {(int)PrimitiveType::TRIANGLES, "triangles", "Triangles"},
@@ -613,10 +694,34 @@ const EnumOptions& lightStateOptions() {
 
 const EnumOptions& shadowQualityOptions() {
     static const EnumOptions options = {
-        {(int)ShadowQuality::NONE, "none", "None"},
+        {(int)ShadowQuality::AUTO, "auto", "Auto"},
+        {(int)ShadowQuality::NONE, "none", "Hard Only"},
         {(int)ShadowQuality::LOW, "low", "Low"},
         {(int)ShadowQuality::MEDIUM, "medium", "Medium"},
-        {(int)ShadowQuality::HIGH, "high", "High"}
+        {(int)ShadowQuality::HIGH, "high", "High"},
+        {(int)ShadowQuality::ULTRA, "ultra", "Ultra"}
+    };
+    return options;
+}
+
+const EnumOptions& shadowDebugViewOptions() {
+    static const EnumOptions options = {
+        {(int)ShadowDebugView::NONE, "none", "None"},
+        {(int)ShadowDebugView::CASCADES, "cascades", "Cascades"},
+        {(int)ShadowDebugView::SHADOW_FACTOR, "shadow_factor", "Shadow Factor"},
+        {(int)ShadowDebugView::TEXEL_DENSITY, "texel_density", "Texel Density"},
+        {(int)ShadowDebugView::CACHE, "cache", "Cache"},
+        {(int)ShadowDebugView::ATLAS, "atlas", "Atlas"}
+    };
+    return options;
+}
+
+const EnumOptions& shadowTierOptions() {
+    static const EnumOptions options = {
+        {(int)ShadowTier::LOW, "low", "Low"},
+        {(int)ShadowTier::MEDIUM, "medium", "Medium"},
+        {(int)ShadowTier::HIGH, "high", "High"},
+        {(int)ShadowTier::ULTRA, "ultra", "Ultra"}
     };
     return options;
 }
@@ -840,6 +945,8 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
     static const std::map<std::string, const EnumOptions*> tables = {
         {"light_state", &lightStateOptions()},
         {"shadow_quality", &shadowQualityOptions()},
+        {"shadow_debug_view", &shadowDebugViewOptions()},
+        {"shadow_tier", &shadowTierOptions()},
         {"scene_color_scale", &sceneColorScaleOptions()},
         {"texture_filter", &textureFilterOptions()},
         {"framebuffer_filter", &framebufferFilterOptions()},
@@ -861,6 +968,7 @@ const McpValues::EnumOptions* McpValues::enumTable(const std::string& name) {
         {"collider3d_type", &collider3DTypeOptions()},
         {"light_type", &lightTypeOptions()},
         {"camera_type", &cameraTypeOptions()},
+        {"atmosphere_quality", &atmosphereQualityOptions()},
         {"ease", &easeOptions()}
     };
     auto it = tables.find(name);
@@ -890,6 +998,8 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
         case ComponentType::LightComponent:
             if (name == "type") return &lightTypeOptions();
             if (name == "shading") return &lightShadingOptions();
+            if (name == "cascadeSplitMode") return &cascadeSplitModeOptions();
+            if (name == "shadowUpdateMode") return &shadowUpdateModeOptions();
             break;
         case ComponentType::UIComponent:
         case ComponentType::PointsComponent:
@@ -904,6 +1014,17 @@ const McpValues::EnumOptions* McpValues::enumOptions(ComponentType component, co
             break;
         case ComponentType::FogComponent:
             if (name == "type") return &fogTypeOptions();
+            if (name == "colorMode") return &fogColorModeOptions();
+            if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
+            break;
+        case ComponentType::LocalVolumetricFogComponent:
+            if (name == "shape") return &fogVolumeShapeOptions();
+            if (name == "falloff") return &fogVolumeFalloffOptions();
+            break;
+        case ComponentType::VolumetricCloudsComponent:
+            if (name == "preset") return &cloudsPresetOptions();
+            if (name == "rendering") return &cloudsRenderingOptions();
+            if (name == "qualityOverride") return &atmosphereQualityOverrideOptions();
             break;
         case ComponentType::ReflectionProbeComponent:
             if (name == "mode") return &probeModeOptions();

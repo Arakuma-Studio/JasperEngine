@@ -19,6 +19,7 @@
 #include "pool/ShaderPool.h"
 #include "shader/ShaderManifest.h"
 #include "shader/ShaderVariantCompiler.h"
+#include "render/shadow/ShadowTiers.h"
 #include "htmlui/HtmlUIDependencies.h"
 #include "htmlui/compat/CompatApi.h"
 #include "htmlui/compat/ua/UserAgentStyle.h"
@@ -3609,6 +3610,14 @@ bool editor::Exporter::buildAndSaveShaders() {
         std::string shaderStr = ShaderPool::getShaderStr(type, props, customId);
 
         for (ShaderBackend backend : backends) {
+            // a project's export cooks the High shadow filters ('Shq') only for the backends of
+            // platforms with a High tier or above; there the game renders Medium at most
+            // (RenderSystem::updateShadowTier)
+            if (project && type == ShaderType::MESH && (props & ShaderPool::getShadowsHQProperty()) &&
+                    !ShadowTiers::cooksHighFilters(static_cast<int>(backend))) {
+                current++;
+                continue;
+            }
             float shaderProgress = 0.6f + (0.3f * (float)current / (float)std::max(total, 1));
             std::string fmtStr = ShaderPool::getShaderLangStr(backend);
             setProgress("Building shader: " + shaderStr + " (" + fmtStr + ")", shaderProgress);

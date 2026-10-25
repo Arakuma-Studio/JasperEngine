@@ -106,6 +106,7 @@ void McpServer::registerAllTools() {
     registerPrefabTools(reg);
     registerPlayTools(reg);
     registerViewTools(reg);
+    registerShadowTools(reg);
     registerConsoleTools(reg);
     registerScriptTools(reg);
     registerAssetTools(reg);
@@ -116,6 +117,7 @@ void McpServer::registerAllTools() {
     registerHtmlUiTools(reg);
     registerUiEffectTools(reg);
     registerEcsTools(reg);
+    registerAtmosphereTools(reg);
 }
 
 void McpServer::stop() {

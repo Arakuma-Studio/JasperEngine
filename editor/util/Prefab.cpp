@@ -184,8 +184,10 @@ Prefab::FileHeader Prefab::loadRegistry(const YAML::Node& node, const std::strin
     StreamLoad::preserveRootKeys(registry.get(), NULL_ENTITY, node, RootKind::PrefabHeader);
 
     FileHeader header = readHeader(node);
-    const bool legacyFile = header.version < FILE_VERSION;
-    needsUpgrade = legacyFile;
+    // older than the root-GameObject layout: converted while loading; older than this editor's
+    // format either way: written again on the next save
+    const bool legacyFile = header.version < ROOT_LAYOUT_VERSION;
+    needsUpgrade = header.version < FILE_VERSION;
 
     // Stripped objects: references into the nested instances
     if (node && node.IsMap() && node["stripped"] && node["stripped"].IsSequence()) {

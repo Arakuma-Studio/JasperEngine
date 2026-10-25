@@ -5,9 +5,11 @@
 // it is MigrationsTest.cpp
 
 #include "StreamMigrations.h"
+#include "pool/ShaderPool.h"
 
 #include <gtest/gtest.h>
 
+using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
@@ -47,12 +49,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 1);
+    EXPECT_EQ(result.versionCurrent, 2);
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 1);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 2);
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -60,7 +62,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 1);
+    EXPECT_EQ(again.versionRead, 2);
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -69,8 +71,8 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 2),
-            "Written by a newer JasperEngine (scene format 2; this editor writes 1).");
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 3),
+            "Written by a newer JasperEngine (scene format 3; this editor writes 2).");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){
@@ -86,10 +88,60 @@ TEST(StreamMigrations, StampReplacesAnExistingKey){
     StreamMigrations::stampCurrentVersion(DocumentKind::Material, root);
     auto it = root.begin();
     EXPECT_EQ(it->first.Scalar(), "formatVersion");
-    EXPECT_EQ(it->second.as<int>(), 1);
+    EXPECT_EQ(it->second.as<int>(), 1);   // material: still format 1
     ++it;
     EXPECT_EQ(it->first.Scalar(), "a");
     ++it;
     EXPECT_EQ(it->first.Scalar(), "b");
     EXPECT_EQ(root.size(), 3u);
+}
+
+TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
+    // S10: a light's shadowBias was in depth units (default 0.002), it is in shadow texels now;
+    // the old default quality Low becomes Auto. Nested children and every light are reached.
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 1, scene: {shadowQuality: low}, entities: ["
+        "{name: Sun, components: {light: {type: directional, shadowBias: 0.002}}},"
+        "{name: Group, children: [{name: Lamp, components: {light: {type: spot, shadowBias: 0.01}}}]},"
+        "{name: Tuned, components: {light: {type: point, shadowBias: 1}}}]}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
+    EXPECT_EQ(result.versionRead, 1);
+    ASSERT_EQ(result.applied.size(), 1u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 2);
+    EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
+    EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
+    EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
+    EXPECT_FLOAT_EQ(root["entities"][2]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
+    // one line for the quality, one for the biases (two lights reset)
+    ASSERT_EQ(result.log.lines.size(), 2u);
+    EXPECT_NE(result.log.lines[1].find("2 lights' Bias reset to 1"), std::string::npos) << result.log.lines[1];
+
+    // an explicit quality other than Low stays
+    YAML::Node medium = YAML::Load("{formatVersion: 1, scene: {shadowQuality: medium}, entities: []}");
+    StreamMigrations::migrate(DocumentKind::Scene, medium);
+    EXPECT_EQ(medium["scene"]["shadowQuality"].as<std::string>(), "medium");
+    EXPECT_TRUE(StreamMigrations::migrate(DocumentKind::Scene, medium).applied.empty());
+}
+
+TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
+    YAML::Node root = YAML::Load(
+        "{type: Prefab, version: 3, members: [{type: Entity, entity: 1001, components: {light: {type: spot, shadowBias: 0.002}}}]}");
+    const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
+    EXPECT_TRUE(result.migrated());
+    EXPECT_EQ(root["version"].as<int>(), 4);
+    EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
+}
+
+TEST(StreamMigrations, SceneV1ToV2ClearsTheRetiredMeshBit){
+    // mesh bit 5 was the PCF filter ('Pcf') before it was retired, the High shadow filters
+    // ('Shq') since S10: an old key loses it, other types' bit 5 and the other bits stay
+    const uint32_t old = (1u << 3) | (1u << 4) | (1u << 5);
+    const ShaderKey packed = ShaderPool::getShaderKey(ShaderType::MESH, old);
+    YAML::Node root = YAML::Load(
+        "{formatVersion: 1, scene: {shadowQuality: high}, entities: [], shaderKeys: ["
+        "{type: mesh, properties: " + std::to_string(old) + "}, {type: blit, properties: 32}, " + std::to_string(packed) + "]}");
+    StreamMigrations::migrate(DocumentKind::Scene, root);
+    EXPECT_EQ(root["shaderKeys"][0]["properties"].as<uint32_t>(), (1u << 3) | (1u << 4));
+    EXPECT_EQ(root["shaderKeys"][1]["properties"].as<uint32_t>(), 32u);
+    EXPECT_EQ(root["shaderKeys"][2].as<uint64_t>(), ShaderPool::getShaderKey(ShaderType::MESH, (1u << 3) | (1u << 4)));
 }

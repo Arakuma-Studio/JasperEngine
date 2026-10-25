@@ -1,9 +1,9 @@
-formatVersion: 1
+formatVersion: 2
 id: 4100
 name: Future
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
-  shadowQuality: low
+  shadowQuality: auto
   meshLodEnabled: false
   meshLodThreshold: 1
   depthPrepassEnabled: false
@@ -78,7 +78,7 @@ entities:
         cullingMask: 4294967295
         shadows: true
         automaticShadowCamera: true
-        shadowBias: 0.002
+        shadowBias: 1
         mapResolution: 2048
         shadowCameraNearFar: [0.3, 100]
         numShadowCascades: 3
