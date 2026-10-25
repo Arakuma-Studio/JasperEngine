@@ -65,3 +65,12 @@ sokol's GL backend and GL itself make synchronous. Moving it off the frame needs
 help (a shared GL context compiling on a worker, `KHR_parallel_shader_compile`, or Vulkan
 pipeline creation off the render thread): an engine-wide change outside S11, noted for the
 integrator.
+
+### AC15: exports
+
+- `tools/smoke-test.sh tools/fixtures/pbr-extended-export` (runtime shader compilation off) passes
+  on GL core, GLES3 and Vulkan: the three scenes, no missing or runtime-compiled shader; the
+  transmission scene refracts the striped wall on GLES3.
+- `export_check.py`: the HTML5 and Android source exports carry all 63 shaders the scenes need
+  (42 of them built-in Lit lobe / Lit Quality / mobile-tier variants) in their GLSL ES 3.00
+  header; the only ones left out are S10's `Shq` shadow variants, which GLES3 builds never use.
