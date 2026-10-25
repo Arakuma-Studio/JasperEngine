@@ -106,6 +106,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | `"color3"` | `Vector3` | `{r, g, b}` |
 | `"color4"` | `Vector4` | `{r, g, b, a}` (a defaults 1) |
 | `"prefab"`, `"prefabasset"` | `PrefabAsset`, or `nil` when left None | no default (assigned in Inspector) |
+| `"asset"`, `"assetref"` (with `assetType = "texture"`, `"model"`, `"audio"`, ...) | `AssetRef`, or `nil` when left None | a path (`"textures/hero.png"`), or none |
 | `"entity"`, `"entitypointer"`, `"pointer"` | the first enabled Lua script instance on the referenced GameObject if it has one, otherwise an `EntityHandle`; `nil` if unassigned | none |
 | any other string = a wrapper class name (see list below) | an instance of that wrapper class for the referenced entity; `nil` if unassigned | none |
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
@@ -487,6 +488,24 @@ if b then GameObject.destroy(b, 2.0) end
 
 A `"Prefab"` script property left at None is `nil`: check before instantiating.
 
+### 2.7.1 Asset / AssetRef (asset identity)
+
+Every asset has a GUID that survives renames and moves (`jasper://docs/assets`). `Asset` answers
+from the editor's asset database in Play and from the build's `assetmap.bin` in exported games.
+Paths are relative to the assets directory for textures, models, audio, fonts, UI documents and
+data files, and to the project for scenes, prefabs, materials, shaders and scripts.
+
+| Name | Kind |
+|---|---|
+| `Asset.path(guid)` | static fn: the current path, or `nil` (a former GUID or a sub-asset's resolves too) |
+| `Asset.guid(path)` | static fn: the GUID, or `nil` |
+| `Asset.exists(guidOrPath)` | static fn: boolean |
+| `Asset.ref(guidOrPath)` | static fn: an `AssetRef` |
+| `guid`, `path`, `type` (`"texture"`, `"model"`, ...), `valid` | `AssetRef` ro properties |
+| `isValid()`, `==`, `tostring()` | `AssetRef` method, metamethods |
+
+Component path fields (`AudioSource.filename`, `Model.filename`...) stay plain strings in Lua.
+
 ### 2.8 SceneManager (static)
 
 `SceneManager.loadScene(idOrName)`, `addChildScene(idOrName)`, `removeChildScene(idOrName)`,
@@ -518,7 +537,7 @@ Entities are plain integers (`0` = none).
 | `backgroundColor` (Vector4, rw); `setBackgroundColor(r,g,b[,a])` | |
 | `gravity2D` (Vector2, rw); `setGravity2D(x, y)` | |
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality`, `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 
 `PhysicsSystem` (from `self.scene:getPhysicsSystem()`): `gravity` / `gravity2D` /
@@ -731,7 +750,7 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `enabled` | rw |
 | `setTexture(path)` | method |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
-| `castShadows`, `receiveShadows`, `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
+| `castShadows`, `receiveShadows`, `staticShadowCaster` (cached in the static shadow layer, `jasper://docs/shadows`), `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
 | `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods |
 | `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |
@@ -851,7 +870,7 @@ cos(pitch)cos(yaw)) * distance, then `setTarget(target)`.
 
 Light rw: `type` (`LightType.*`), `enabled`, `direction` (Vector3), `color` (Vector3),
 `range`, `intensity`, `innerConeAngle`, `outerConeAngle`, `shadows`, `cameraNear`,
-`cameraFar`, `automaticShadowCamera`, `numCascades`, `cullingMask`, `shading`
+`cameraFar`, `automaticShadowCamera`, `numCascades` (0: the quality tier's), `cullingMask`, `shading`
 (`LightShading.*`, the stage evaluating it on MIXED-lighting materials), `intensityUnit`
 (`LightUnit.ENGINE`, `LUX` for a directional light, `CANDELA` or `LUMEN` for a point or spot;
 setting the property keeps the number, which then means the new unit),
@@ -860,6 +879,12 @@ it); methods `setDirection(x,y,z)`, `setColor(r,g,b)`, `setConeAngle(a)`, `setRa
 `setIntensity(i)`, `setIntensityUnit(unit, preserveBrightness)` (true converts the intensity so
 the light stays as bright, through `scene.physicalLightEV100`), `setShadows(b)`,
 `setShadowCameraNearFar(n, f)`.
+Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`), `shadowStrength`
+(0-1), `shadowBias` and `shadowNormalBias` (shadow texels), `shadowResolution` (0: the tier's),
+`cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
+distance), `shadowDistance` (metres, 0: the scene's or the tier's), `shadowAngularDiameter`
+(degrees), `shadowSourceRadius` (metres), `shadowUpdateMode` (`ShadowUpdateMode.AUTO/EVERY_FRAME/ON_DEMAND`);
+`requestShadowUpdate()` redraws an On Demand light's maps.
 
 Light2D rw: `enabled`, `color` (Vector3), `intensity`, `range`, `falloff`, `height`,
 `shadows`, `shadowBias`, `shadowSoftness`, `mapResolution`; methods `setColor(r,g,b)`,

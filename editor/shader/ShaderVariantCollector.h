@@ -63,6 +63,12 @@ namespace jasperengine::editor {
     // variants (BLIT features) and the bloom chain's programs: the scene settings', and with
     // scripts setting post-processing the plausible ones (plausibleUberFeatures); any other a
     // script reaches compiles at runtime.
+    //
+    // The High shadow filters (S10, the 'Shq' bit of variants receiving shadows) follow the
+    // scene's shadow Quality: High and Ultra have them, Low, Medium and Hard Only not, Auto
+    // (the platform's tier) both, and so does a scene whose scripts set the quality
+    // (scriptsSetShadowQuality). An export drops them for the backends no platform of which
+    // has a High tier (ShadowTiers::cooksHighFilters).
     class ShaderVariantCollector {
     public:
         static void collectScene(Scene* scene, const ShaderVariantContent& sceneContent,
@@ -70,7 +76,8 @@ namespace jasperengine::editor {
                                  std::set<ShaderKey>& keys, const std::filesystem::path& projectRoot = {},
                                  bool allLightCapacities = false, bool scriptsSetPostProcessing = false,
                                  const std::vector<std::string>& scriptPostProcessingFields = {},
-                                 bool scriptsSetLitQuality = false, PbrTier mobilePbrTier = PbrTier::FULL);
+                                 bool scriptsSetShadowQuality = false, bool scriptsSetLitQuality = false,
+                                 PbrTier mobilePbrTier = PbrTier::FULL);
 
         // the UI effect variants of documents (asset-relative .html/.htm/.rml paths) of a project
         static void collectUiEffects(const std::vector<std::string>& documents, const std::filesystem::path& projectRoot,

@@ -417,7 +417,7 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
 
     try {
         std::string error;
-        const SaveResult saved = DocumentFiles::saveMaterial(absolutePath, Stream::encodeMaterial(material), DegradedSavePolicy::Refuse, &error);
+        const SaveResult saved = project->writeMaterialFile(entry.relativePath, material, DegradedSavePolicy::Refuse, &error);
         if (saved == SaveResult::RefusedDegraded) {
             // the editor's lossy-save modal decides (Save Anyway writes it)
             DegradedSaveRequest request;
@@ -427,9 +427,11 @@ void editor::InspectorWindow::writeDirtyMaterial(const DirtyMaterialEntry& entry
             for (const LoadIssue& issue : report.issues) {
                 if (issue.fate == LoadIssueFate::Dropped) request.dropped.push_back(issue);
             }
-            const YAML::Node encoded = Stream::encodeMaterial(material);
-            request.saveAnyway = [absolutePath, encoded]() {
-                DocumentFiles::saveMaterial(absolutePath, encoded, DegradedSavePolicy::SaveAnyway);
+            Project* owner = project;
+            const std::filesystem::path relativePath = entry.relativePath;
+            const Material copy = material;
+            request.saveAnyway = [owner, relativePath, copy]() {
+                owner->writeMaterialFile(relativePath, copy, DegradedSavePolicy::SaveAnyway);
             };
             editor::getEditorHost().confirmDegradedSave(request);
         }
@@ -590,11 +592,26 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 }
             }
             if constexpr (std::is_same_v<T, ShadowQuality>) {
-                const char* qualityNames[] = { "None", "Low", "Medium", "High" };
-                int currentItem = static_cast<int>(value);
-                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
-                if (changed) {
-                    value = static_cast<ShadowQuality>(currentItem);
+                if (propertyName == "shadows_quality") {
+                    // the 3D quality tiers, in Unity's order
+                    static const ShadowQuality qualityValues[] = { ShadowQuality::AUTO, ShadowQuality::NONE, ShadowQuality::LOW,
+                                                                   ShadowQuality::MEDIUM, ShadowQuality::HIGH, ShadowQuality::ULTRA };
+                    const char* qualityNames[] = { "Auto", "Hard Only", "Low", "Medium", "High", "Ultra" };
+                    int currentItem = 0;
+                    for (int q = 0; q < IM_ARRAYSIZE(qualityValues); q++) {
+                        if (qualityValues[q] == value) currentItem = q;
+                    }
+                    changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
+                    if (changed) {
+                        value = qualityValues[currentItem];
+                    }
+                } else {
+                    const char* qualityNames[] = { "None", "Low", "Medium", "High" };
+                    int currentItem = std::clamp(static_cast<int>(value), 0, 3);
+                    changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
+                    if (changed) {
+                        value = static_cast<ShadowQuality>(currentItem);
+                    }
                 }
             }
             if constexpr (std::is_same_v<T, LitQuality>) {
@@ -835,6 +852,10 @@ std::string editor::InspectorWindow::formatPropertyLabelValue(const PropertyData
             return std::to_string(*static_cast<Entity*>(prop.ref));
         case PropertyType::String:
             return *static_cast<std::string*>(prop.ref);
+        case PropertyType::Asset:
+            return static_cast<AssetRef*>(prop.ref)->path;
+        case PropertyType::Shader:
+            return static_cast<ShaderRef*>(prop.ref)->path;
         case PropertyType::Font:
             return static_cast<FontArray*>(prop.ref)->front();
         case PropertyType::Ease: {
@@ -3482,6 +3503,77 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
         ImGui::EndGroup();
 
+    }else if (type == RowPropertyType::Asset){
+        // an asset file reference (S04): its path, editable or dropped from the Project window,
+        // kept by GUID; a missing asset shows red with its last path and stays until cleared
+        AssetRef* value = nullptr;
+        std::map<Entity, AssetRef> eValue;
+        bool dif = false;
+        AssetRef* defArr = nullptr;
+        for (Entity& entity : entities){
+            PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
+            if (prop.type != PropertyType::Asset || !prop.ref) continue;
+            defArr = static_cast<AssetRef*>(prop.def);
+            eValue[entity] = *static_cast<AssetRef*>(prop.ref);
+            if (value && *value != eValue[entity])
+                dif = true;
+            value = &eValue[entity];
+        }
+        if (value){
+            const AssetRef current = *value;
+            if (propertyHeader(label, settings.secondColSize, defArr && current != *defArr, settings.child)){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<AssetRef>(project, sceneProject->id, entity, cpType, id, *defArr, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
+            }
+            bool missing = false;
+            std::string tooltip;
+            if (!dif && current.isSet() && project->getAssetDatabase().isOpen()){
+                const std::string hint = project->assetHintToProjectPath(current.path, AssetPathBase::Assets);
+                const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(current.guid, hint, AssetType::Unknown, true);
+                missing = !found.found();
+                tooltip = missing ? "Missing (GUID " + (current.guid.isNull() ? std::string("none") : current.guid.str()) + ")\nLast path: " + current.path
+                                  : found.path + "\nGUID " + found.guid.str();
+            }
+            std::vector<char> buffer(current.path.begin(), current.path.end());
+            buffer.resize(std::max((size_t)1024, current.path.size() + 256));
+            buffer[current.path.size()] = '\0';
+            if (missing)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+            else if (dif)
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            const bool edited = ImGui::InputText(("##input_asset_"+id).c_str(), buffer.data(), buffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+            if (missing || dif)
+                ImGui::PopStyleColor();
+            if (!tooltip.empty())
+                ImGui::SetItemTooltip("%s", tooltip.c_str());
+            AssetRef assigned;
+            bool assign = false;
+            if (edited){
+                assigned = project->makeAssetRef(std::string(buffer.data()), AssetPathBase::Assets);
+                assign = true;
+            }
+            if (ImGui::BeginDragDropTarget()){
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")){
+                    std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
+                    if (!dropped.empty() && project->isInsideAssetsPath(dropped[0])){
+                        assigned = project->makeAssetRef(project->normalizeToAssetsRelative(dropped[0]).generic_string(), AssetPathBase::Assets);
+                        assign = true;
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+            if (assign){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<AssetRef>(project, sceneProject->id, entity, cpType, id, assigned, settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
+            }
+        }
+
     }else if (type == RowPropertyType::String || type == RowPropertyType::MultilineString){
         std::string* value = nullptr;
         std::map<Entity, std::string> eValue;
@@ -3489,8 +3581,17 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         std::string* defArr = nullptr;
         for (Entity& entity : entities){
             PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, cpType, id);
-            defArr = static_cast<std::string*>(prop.def);
-            eValue[entity] = *static_cast<std::string*>(prop.ref);
+            // a reference drawn as a text row edits its path (PropertyCmd<std::string> drops the GUID)
+            if (prop.type == PropertyType::Asset) {
+                defArr = prop.def ? &static_cast<AssetRef*>(prop.def)->path : nullptr;
+                eValue[entity] = static_cast<AssetRef*>(prop.ref)->path;
+            } else if (prop.type == PropertyType::Shader) {
+                defArr = prop.def ? &static_cast<ShaderRef*>(prop.def)->path : nullptr;
+                eValue[entity] = static_cast<ShaderRef*>(prop.ref)->path;
+            } else {
+                defArr = static_cast<std::string*>(prop.def);
+                eValue[entity] = *static_cast<std::string*>(prop.ref);
+            }
             if (value){
                 if (*value != eValue[entity])
                     dif = true;
@@ -4311,19 +4412,33 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         if (texName.empty()) {
             texName = "< Not set >";
         }
+        // S04 R28: a reference whose asset is gone stays, shown red with its last path
+        std::string missingTooltip;
+        if (!isCameraTexture && !newValue.getPath(0).empty() && project->getAssetDatabase().isOpen()) {
+            const std::string hint = project->assetHintToProjectPath(newValue.getPath(0), AssetPathBase::Assets);
+            if (!project->getAssetDatabase().resolve(newValue.getPathGuid(0), hint, AssetType::Texture, true).found()) {
+                texName = "Missing (" + std::filesystem::path(newValue.getPath(0)).filename().string() + ")";
+                missingTooltip = "Missing (GUID " + (newValue.getPathGuid(0).isNull() ? std::string("none") : newValue.getPathGuid(0).str()) +
+                                 ")\nLast path: " + newValue.getPath(0);
+            }
+        }
 
         float textWidth = ImGui::CalcTextSize(texName.c_str()).x;
         float availWidth = ImGui::GetContentRegionAvail().x;
         ImGui::SetCursorPosX(availWidth - textWidth - 2);
         ImGui::SetCursorPosY(ImGui::GetStyle().FramePadding.y);
-        if (dif)
+        if (!missingTooltip.empty())
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+        else if (dif)
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
         ImGui::Text("%s", texName.c_str());
-        if (dif)
+        if (!missingTooltip.empty() || dif)
             ImGui::PopStyleColor();
 
         ImGui::EndChild();
-        if (!newValue.getId().empty()){
+        if (!missingTooltip.empty()){
+            ImGui::SetItemTooltip("%s", missingTooltip.c_str());
+        } else if (!newValue.getId().empty()){
             ImGui::SetItemTooltip("%s", newValue.getId().c_str());
         }
         ImGui::PopStyleColor();
@@ -4749,7 +4864,7 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             receiveIBL = previewMesh.receiveIBL;
             // a material without its own shader draws with the mesh's, else the scene's
             meshShader = previewMesh.customShader.empty() ? sceneProject->scene->getDefaultCustomShader(ShaderType::MESH)
-                                                          : previewMesh.customShader;
+                                                          : previewMesh.customShader.path;
         }
 
         Texture texRender = getMaterialPreview(newValue, id, receiveIBL, meshShader);
@@ -6681,6 +6796,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
 
     propertyRow(RowPropertyType::Bool, cpType, "castShadows", "Cast Shadows", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "receiveShadows", "Receive Shadows", sceneProject, entities);
+    RowSettings staticCasterSettings;
+    staticCasterSettings.help = "Cache this mesh's shadows with the other static casters: they are redrawn only when one of them changes, "
+                                "while dynamic casters move over them. Mark what does not move (level geometry). A static caster that "
+                                "does change still shadows correctly, it only costs a redraw of the static layer.";
+    propertyRow(RowPropertyType::Bool, cpType, "staticShadowCaster", "Static Shadow Caster", sceneProject, entities, staticCasterSettings);
 
     RowSettings cullingSettings;
     cullingSettings.enumEntries = &entriesCullingMode;
@@ -8092,7 +8212,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
             ImGui::EndPopup();
         }
     }else{
-        propertyRow(RowPropertyType::String, cpType, "filename", "Audio Clip", sceneProject, entities);
+        propertyRow(RowPropertyType::Asset, cpType, "filename", "Audio Clip", sceneProject, entities);
     }
 
     RowSettings stateSettings = compactSettings;
@@ -9057,51 +9177,7 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Enum, cpType, "shading", "Shading", sceneProject, entities, settingsShading);
     endTable();
 
-    ImGui::SeparatorText("Shadow settings");
-
-    RowSettings settingsBias;
-    settingsBias.stepSize = 0.000001f;
-    settingsBias.secondColSize = 6 * ImGui::GetFontSize();
-    settingsBias.format = "%.6f";
-
-    RowSettings settingsMapRes;
-    settingsMapRes.sliderValues = &po2Values;
-
-    RowSettings settingsCascade;
-    settingsCascade.sliderValues = &cascadeValues;
-
-    beginTable(cpType, getLabelSize("Map Resolution"), "shadow_settings_table");
-    propertyRow(RowPropertyType::Bool, cpType, "shadows", "Enabled", sceneProject, entities);
-    propertyRow(RowPropertyType::Float, cpType, "shadowBias", "Bias", sceneProject, entities, settingsBias);
-    propertyRow(RowPropertyType::UIntSlider, cpType, "mapResolution", "Map Resolution", sceneProject, entities, settingsMapRes);
-    propertyRow(RowPropertyType::UIntSlider, cpType, "numShadowCascades", "Num Cascades", sceneProject, entities, settingsCascade);
-
-    propertyHeader("Shadow Camera");
-    if (ImGui::Button(ICON_FA_GEAR)){
-        ImGui::OpenPopup("menusettings_shadow_camera");
-    }
-
-    ImGui::SetNextWindowSizeConstraints(ImVec2(14 * ImGui::GetFontSize(), 0), ImVec2(FLT_MAX, FLT_MAX));
-    if (ImGui::BeginPopup("menusettings_shadow_camera")){
-        ImGui::Text("Shadow camera settings");
-        ImGui::Separator();
-
-        RowSettings settingsFloat;
-        settingsFloat.secondColSize = 6 * ImGui::GetFontSize();
-
-        beginTable(cpType, getLabelSize("Camera Near"), "shadow_camera_popup");
-
-        propertyRow(RowPropertyType::Bool, cpType, "automaticShadowCamera", "Automatic", sceneProject, entities);
-        ImGui::BeginDisabled(light.automaticShadowCamera);
-        propertyRow(RowPropertyType::Float, cpType, "shadowCameraNear", "Camera Near", sceneProject, entities, settingsFloat);
-        propertyRow(RowPropertyType::Float, cpType, "shadowCameraFar", "Camera Far", sceneProject, entities, settingsFloat);
-        ImGui::EndDisabled();
-
-        endTable();
-
-        ImGui::EndPopup();
-    }
-    endTable();
+    drawLightShadows(cpType, sceneProject, entities);
 }
 
 void editor::InspectorWindow::drawLight2DComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
@@ -9421,7 +9497,7 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
         ImGui::SetItemTooltip("Load the document again, keeping scroll, focus and form values (saved files reload by themselves)");
         ImGui::EndDisabled();
     }else{
-        propertyRow(RowPropertyType::String, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
+        propertyRow(RowPropertyType::Asset, cpType, "filename", "Source", sceneProject, entities, sourceSettings);
     }
 
     propertyRow(RowPropertyType::Int, cpType, "sortOrder", "Sort Order", sceneProject, entities, sortSettings);
@@ -9623,6 +9699,100 @@ static void drawPrefabScriptProperty(editor::Project* project, editor::SceneProj
     ImGui::BeginDisabled(!mixed && value.isEmpty());
     if (ImGui::Button(ICON_FA_XMARK "##prefab_clear", ImVec2(clearWidth, 0))) {
         assign(PrefabAsset());
+    }
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+        ImGui::SetTooltip("Set to None");
+    }
+    ImGui::EndDisabled();
+    ImGui::PopID();
+}
+
+// The value of a script property of type Asset (S04): the asset's name, a drop target for a
+// file of the property's asset type, and a button back to None. Kept by GUID (the path is a
+// hint); a missing asset shows red with its last path, and stays until it is cleared (R28).
+static void drawAssetScriptProperty(editor::Project* project, editor::SceneProject* sceneProject, const std::vector<Entity>& entities,
+        editor::ComponentType cpType, const std::string& propertyId, const std::string& assetType,
+        const std::function<void()>& onValueChanged, editor::Command*& cmd, bool& finishProperty) {
+    using namespace editor;
+
+    std::vector<AssetRef*> values;
+    for (Entity entity : entities) {
+        PropertyData data = Catalog::findProperty(sceneProject->scene, entity, cpType, propertyId);
+        if (data.ref && data.type == PropertyType::Asset) {
+            values.push_back(static_cast<AssetRef*>(data.ref));
+        }
+    }
+    if (values.empty()) {
+        return;
+    }
+    bool mixed = false;
+    for (const AssetRef* value : values) {
+        mixed |= *value != *values[0];
+    }
+    const AssetRef& value = *values[0];
+    const AssetType expected = assetTypeFromName(assetType);
+    const std::string typeLabel = assetType.empty() ? std::string("Asset") : assetType;
+
+    std::string label;
+    std::string tooltip;
+    bool missing = false;
+    if (mixed) {
+        label = "-";
+    } else if (!value.isSet()) {
+        label = "None (" + typeLabel + ")";
+    } else {
+        const AssetDatabase::Resolution found = project->getAssetDatabase().resolve(value.guid, value.path, expected, true);
+        if (!found.found()) {
+            missing = true;
+            label = "Missing (" + fs::path(value.path).filename().string() + ")";
+            tooltip = "Missing (GUID " + value.guid.str() + ")\nLast path: " + value.path;
+        } else {
+            label = fs::path(found.path).filename().string();
+            tooltip = found.path + "\nGUID " + found.guid.str();
+        }
+    }
+
+    auto assign = [&](const AssetRef& newValue) {
+        for (Entity entity : entities) {
+            cmd = new PropertyCmd<AssetRef>(project, sceneProject->id, entity, cpType, propertyId, newValue, onValueChanged);
+            CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+        }
+        finishProperty = true;
+    };
+
+    const float clearWidth = ImGui::GetFrameHeight();
+    const float fieldWidth = std::max(1.0f, ImGui::GetContentRegionAvail().x - clearWidth - ImGui::GetStyle().ItemSpacing.x);
+    ImGui::PushID(propertyId.c_str());
+    if (missing) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.35f, 0.35f, 1.0f));
+    }
+    ImGui::Button((std::string(ICON_FA_FILE " ") + label + "##asset_field").c_str(), ImVec2(fieldWidth, 0));
+    if (missing) {
+        ImGui::PopStyleColor();
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", tooltip.empty() ? ("Drag a " + typeLabel + " here from the Project window").c_str() : tooltip.c_str());
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("resource_files")) {
+            std::vector<std::string> dropped = Util::getStringsFromPayload(payload);
+            if (!dropped.empty()) {
+                const std::string relative = project->normalizeToProjectRelative(dropped[0]).generic_string();
+                const AssetDatabase::Resolution found = project->getAssetDatabase().lookupPath(relative);
+                if (found.found() && (expected == AssetType::Unknown || found.type == expected)) {
+                    assign(AssetRef(relative, found.guid));
+                    ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
+                } else {
+                    Out::warning("Only a %s asset of this project can go in this property", typeLabel.c_str());
+                }
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!mixed && !value.isSet());
+    if (ImGui::Button(ICON_FA_XMARK "##asset_clear", ImVec2(clearWidth, 0))) {
+        assign(AssetRef());
     }
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
         ImGui::SetTooltip("Set to None");
@@ -10168,6 +10338,13 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                         propertyHeader(displayName, -1, false, false);
                         prefabRowProperty.clear();
                         drawPrefabScriptProperty(project, sceneProject, entities, cpType, propertyId, propSettings.onValueChanged, cmd, finishProperty);
+                        continue;
+                    }
+                    if (prop.type == ScriptPropertyType::Asset) {
+                        prefabRowProperty = propertyId;
+                        propertyHeader(displayName, -1, false, false);
+                        prefabRowProperty.clear();
+                        drawAssetScriptProperty(project, sceneProject, entities, cpType, propertyId, prop.assetType, propSettings.onValueChanged, cmd, finishProperty);
                         continue;
                     }
 
@@ -14696,21 +14873,7 @@ void editor::InspectorWindow::show(){
                 }
 
                 ImGui::SeparatorText("Shadows");
-
-                if (ImGui::BeginTable("scene_shadow_settings_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, shadowQualityLabelColWidth);
-                    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
-
-                    drawScenePropertyRow<ShadowQuality>(sceneProject, "shadows_quality", "Filter Quality", ScenePropertyInputType::Combo, shadowQualityComboWidth, 0.0f, 1.0f,
-                        "Smoothness of shadow edges (PCF size):\n"
-                        "- None: 1 sample, hard edges\n"
-                        "- Low: 3x3 samples\n"
-                        "- Medium: 5x5 samples\n"
-                        "- High: 7x7 samples\n"
-                        "Higher values cost more per shadowed pixel.");
-
-                    ImGui::EndTable();
-                }
+                drawSceneShadows(sceneProject);
 
                 ImGui::SeparatorText("Mesh Detail (LOD)");
 
@@ -14973,3 +15136,8 @@ void editor::InspectorWindow::show(){
         setOpen(false);
     }
 }
+
+// the rows InspectorShadows.cpp draws
+template void editor::InspectorWindow::drawScenePropertyRow<float>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<bool>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);
+template void editor::InspectorWindow::drawScenePropertyRow<ShadowQuality>(SceneProject*, const std::string&, const char*, ScenePropertyInputType, float, float, float, const std::string&);

@@ -11,6 +11,7 @@
 #include "util/FileUtils.h"
 #include "util/ShellEnv.h"
 #include "util/Util.h"
+#include "render/shadow/ShadowTiers.h"
 #include "engine_lua_stubs.h"
 #include "util/ProjectChecks.h"
 #include "util/HtmlUiExamples.h"
@@ -1301,6 +1302,7 @@ std::string luaPropertyType(const ScriptProperty& prop, const std::map<std::stri
         case ScriptPropertyType::Vector4:
         case ScriptPropertyType::Color4: return "Vector4";
         case ScriptPropertyType::Prefab: return "PrefabAsset";
+        case ScriptPropertyType::Asset: return "AssetRef";
         case ScriptPropertyType::EntityReference: break;
     }
     // "entity": the GameObject's first Lua script instance, else an EntityHandle
@@ -2061,6 +2063,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "#ifdef JASPERENGINE_PROJECT_PATH\n";
     mainContent += "#include \"shader/ShaderManifest.h\"\n";
     mainContent += "#include \"shader/ShaderVariantCompiler.h\"\n";
+    mainContent += "#include \"render/shadow/ShadowTiers.h\"\n";
     mainContent += "#include <fstream>\n";
     mainContent += "#include <iterator>\n";
     mainContent += "#endif\n";
@@ -2252,6 +2255,17 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     // Reduced is the engine's default, desktop always draws them all
     if (mobilePbrTier != PbrTier::REDUCED)
         mainContent += "    MaterialPbr::setMobileTier(PbrTier::FULL);\n";
+
+    // the shadow quality tiers of the platforms (Project Settings > Graphics > Shadows), the
+    // editor's own: a scene of Quality Auto renders with its platform's
+    static const char* const tierNames[] = {"LOW", "MEDIUM", "HIGH", "ULTRA"};
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+        const ShadowTier tier = ShadowTiers::getPlatformTier(platform);
+        if (tier != ShadowTiers::defaultTier(platform)) {
+            mainContent += "    ShadowTiers::setPlatformTier(" + std::to_string(platform) + ", ShadowTier::" +
+                tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
+        }
+    }
 
     // Tags and Layers, before any scene or script can ask for them
     if (!tagsAndLayers.tags.empty()) {

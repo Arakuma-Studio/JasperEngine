@@ -7,6 +7,7 @@
 #include "render/Render.h"
 #include "shader/ShaderUniforms.h"
 #include "texture/Texture.h"
+#include "asset/AssetRef.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
@@ -21,15 +22,30 @@ namespace jasperengine{
         AUTO
     };
 
-    // PCF filter quality of shadow edges, uniform-driven (no shader rebuild).
-    // 3D shadows (shadowQuality): NONE = 1 tap, LOW = 3x3, MEDIUM = 5x5, HIGH = 7x7.
-    // 2D shadows (shadow2DQuality): NONE = 1 tap, LOW = 5, MEDIUM = 9, HIGH = 13 taps
-    // along the 1D polar map, smoothing the penumbra set by Light2D shadowSoftness.
+    // Shadow quality, uniform-driven (no shader rebuild). Stored as ints: append only.
+    // 3D shadows (shadowQuality) pick the quality tier (ShadowTiers.h): AUTO the platform's
+    // (project graphics.shadowTier.<platform>), LOW, MEDIUM, HIGH, ULTRA that tier, NONE ("Hard
+    // Only") the platform's tier with every light's shadows hard.
+    // 2D shadows (shadow2DQuality): NONE = 1 tap, LOW = 5, MEDIUM = 9, HIGH (and ULTRA) = 13 taps
+    // along the 1D polar map, smoothing the penumbra set by Light2D shadowSoftness (AUTO = LOW).
     enum class ShadowQuality {
-        NONE,   // 1 tap, no filtering (hard edges)
+        NONE,   // 3D: Hard Only; 2D: 1 tap, no filtering (hard edges)
         LOW,
         MEDIUM,
-        HIGH
+        HIGH,
+        AUTO,
+        ULTRA
+    };
+
+    // The Scene view's shadow debug views (editor only, never saved): what the shading of lit
+    // surfaces is replaced with
+    enum class ShadowDebugView {
+        NONE,
+        CASCADES,       // the cascade of each pixel tinted, the blend band hatched
+        SHADOW_FACTOR,  // the main light's lit fraction, grey
+        TEXEL_DENSITY,  // a checker of its shadow texels
+        CACHE,          // green skipped, yellow restored, red redrawn this frame
+        ATLAS           // the shadow atlases and static caches drawn over the view
     };
 
     // Shading quality of the built-in Lit (docs/specs/S11-materials-lighting.md). STANDARD is the
@@ -93,7 +109,7 @@ namespace jasperengine{
         Vector3 lift = Vector3(0.0f, 0.0f, 0.0f);
         Vector3 gamma = Vector3(1.0f, 1.0f, 1.0f);
         Vector3 gain = Vector3(1.0f, 1.0f, 1.0f);
-        std::string lutTexture;
+        AssetRef lutTexture;
         float lutContribution = 1.0f;
         // size of the engine's colour LUT (16 or 32 per side): 16 is lighter on low-end GPUs and
         // bands under strong grades
@@ -175,7 +191,7 @@ namespace jasperengine{
 
         // the field table (name, type, accessor) every consumer iterates: serialization,
         // exported scene code, the editor's Catalog paths (post_processing.<snake name>) and MCP
-        enum class FieldType { Bool, Int, Float, Vector3, Enum, String };
+        enum class FieldType { Bool, Int, Float, Vector3, Enum, String, Asset };
         struct Field {
             const char* name;       // camelCase, the member and YAML key
             const char* snakeName;  // snake_case, the Catalog path after "post_processing."
@@ -204,7 +220,7 @@ namespace jasperengine{
     struct PostProcessPass {
         // a project fork base path, "library:<name>" (a library post-process shader,
         // @shader postprocess), or empty: the built-in passthrough
-        std::string shader;
+        ShaderRef shader;
         bool enabled = true;
         ShaderUniformValues uniforms;
         // the shader's textures by uniform (its manifest's @texture, or any it declares when it
@@ -235,7 +251,13 @@ namespace jasperengine{
     // and reset "default" values without building a full Scene (which owns a physics runtime).
     struct SceneSettings {
         Vector4 backgroundColor = Vector4(0.0, 0.0, 0.0, 1.0); // sRGB
-        ShadowQuality shadowQuality = ShadowQuality::LOW;
+        ShadowQuality shadowQuality = ShadowQuality::AUTO;
+        // directional shadows end this far from the camera (metres; 0: the quality tier's), fading
+        // to lit over its last shadowFadeFraction; cascades blend into each other over a band
+        // before each split (dithered on the Low tier) unless shadowCascadeBlend is off
+        float shadowDistance = 0.0f;
+        float shadowFadeFraction = 0.1f;
+        bool shadowCascadeBlend = true;
 
         // off builds no levels at all; a detail level is drawn once its error projects below this many pixels
         bool meshLodEnabled = false;
@@ -297,11 +319,11 @@ namespace jasperengine{
 
         // scene-wide custom shaders, used when a component's customShader is empty
         // (project-relative base or "a.vert|b.frag"; empty = engine built-in)
-        std::string defaultMeshShader;
-        std::string defaultUIShader;
-        std::string defaultSkyShader;
-        std::string defaultPointsShader;
-        std::string defaultLinesShader;
+        ShaderRef defaultMeshShader;
+        ShaderRef defaultUIShader;
+        ShaderRef defaultSkyShader;
+        ShaderRef defaultPointsShader;
+        ShaderRef defaultLinesShader;
 
         // ordered user post-process chain (main camera only), applied after SSR
         std::vector<PostProcessPass> postProcess;

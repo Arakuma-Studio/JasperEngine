@@ -727,6 +727,7 @@ include_directories(shaders)
 
 include_directories(core)
 include_directories(core/action)
+include_directories(core/asset)
 include_directories(core/buffer)
 include_directories(core/component)
 include_directories(core/ecs)
@@ -974,6 +975,8 @@ set(JASPERENGINE_SRCS
     core/htmlui/effects/EffectSimulator.cpp
     core/htmlui/effects/EffectSyntax.cpp
     core/htmlui/effects/EffectValue.cpp
+    core/asset/AssetMap.cpp
+    core/asset/Guid.cpp
     core/io/AssetIOService.cpp
     core/io/Data.cpp
     core/io/File.cpp
@@ -1054,6 +1057,12 @@ set(JASPERENGINE_SRCS
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/render/shadow/CascadeFit.cpp
+    core/render/shadow/ShadowCache.cpp
+    core/render/shadow/ShadowCasterRegistry.cpp
+    core/render/shadow/ShadowSlotPlanner.cpp
+    core/render/shadow/ShadowTiers.cpp
+    core/render/shadow/ShadowTypes.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
     core/script/LuaScript.cpp
@@ -1084,6 +1093,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/MeshSystemGltfPbr.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/RenderSystem.cpp
+    core/subsystem/RenderSystemShadows.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UIDocumentSystem.cpp
     core/subsystem/UIDocumentSystemRender.cpp

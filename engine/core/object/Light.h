@@ -97,6 +97,33 @@ namespace jasperengine{
 
         void setNumCascades(unsigned int numCascades);
         float getNumCascades() const;
+
+        // Shadows (docs/rendering/shadows.md): Unity's Shadow Type (NONE, HARD, SOFT)
+        void setShadowType(ShadowType type);
+        ShadowType getShadowType() const;
+        void setShadowStrength(float strength);
+        float getShadowStrength() const;
+        // in shadow texels (1 by default)
+        void setShadowNormalBias(float bias);
+        float getShadowNormalBias() const;
+        void setCascadeSplitMode(CascadeSplitMode mode);
+        CascadeSplitMode getCascadeSplitMode() const;
+        // MANUAL: the first three splits as fractions of the shadow distance
+        void setCascadeSplits(Vector3 splits);
+        Vector3 getCascadeSplits() const;
+        // metres of directional shadows; 0: the scene's, else the quality tier's
+        void setShadowDistance(float distance);
+        float getShadowDistance() const;
+        // degrees of a directional light's disc
+        void setShadowAngularDiameter(float degrees);
+        float getShadowAngularDiameter() const;
+        // metres, spot and point lights
+        void setShadowSourceRadius(float radius);
+        float getShadowSourceRadius() const;
+        void setShadowUpdateMode(ShadowUpdateMode mode);
+        ShadowUpdateMode getShadowUpdateMode() const;
+        // redraws the light's shadow maps (On Demand lights)
+        void requestShadowUpdate();
     };
 }
 

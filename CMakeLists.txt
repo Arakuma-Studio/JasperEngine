@@ -576,6 +576,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrides.cpp
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
+    ${EDITOR_DIR}/project/ProjectAssets.cpp
     ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
@@ -616,6 +617,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/TerrainMaps.cpp
     ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
+    ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
     ${EDITOR_DIR}/mcp/McpDataSafety.cpp
     ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
@@ -627,6 +629,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
     ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
     ${EDITOR_DIR}/mcp/tools/WorldTools.cpp
@@ -644,6 +647,18 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/BackgroundRelease.cpp
     ${EDITOR_DIR}/util/YamlFootprint.cpp
     ${EDITOR_DIR}/util/AssetDatabase.cpp
+    ${EDITOR_DIR}/asset/AssetFileWrite.cpp
+    ${EDITOR_DIR}/asset/AssetIndex.cpp
+    ${EDITOR_DIR}/asset/AssetOps.cpp
+    ${EDITOR_DIR}/asset/AssetRefEditor.cpp
+    ${EDITOR_DIR}/asset/AssetMeta.cpp
+    ${EDITOR_DIR}/asset/AssetRefSchema.cpp
+    ${EDITOR_DIR}/asset/AssetTypes.cpp
+    ${EDITOR_DIR}/asset/ContentHash.cpp
+    ${EDITOR_DIR}/asset/DepEdge.cpp
+    ${EDITOR_DIR}/asset/MissingAssetTracker.cpp
+    ${EDITOR_DIR}/asset/ModelSubAssets.cpp
+    ${EDITOR_DIR}/asset/TextReferences.cpp
     ${EDITOR_DIR}/util/Prefab.cpp
     ${EDITOR_DIR}/util/ProjectUtils.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
@@ -689,6 +704,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorShaderLibrary.cpp
     ${EDITOR_DIR}/window/InspectorMaterialPbr.cpp
     ${EDITOR_DIR}/window/InspectorPostProcessing.cpp
+    ${EDITOR_DIR}/window/InspectorShadows.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabRows.cpp
     ${EDITOR_DIR}/window/ConsoleWindow.cpp
@@ -702,6 +718,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HierarchyWindow.cpp
     ${EDITOR_DIR}/window/HierarchyPrefabMode.cpp
     ${EDITOR_DIR}/window/ProjectWindow.cpp
+    ${EDITOR_DIR}/window/AssetPanels.cpp
     ${EDITOR_DIR}/window/ImageViewerWindow.cpp
     ${EDITOR_DIR}/window/CodeEditor.cpp
     ${EDITOR_DIR}/window/AnimationWindow.cpp
@@ -772,6 +789,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ModelLoadCmd.cpp
     ${EDITOR_DIR}/command/type/ModelClearCmd.cpp
     ${EDITOR_DIR}/command/type/SceneNameCmd.cpp
+    ${EDITOR_DIR}/command/type/AssetRefCmds.cpp
     ${EDITOR_DIR}/command/type/SelectionCmd.cpp
     ${EDITOR_DIR}/command/type/SetAssetMetaCmd.cpp
     ${EDITOR_DIR}/command/type/CopyFileCmd.cpp

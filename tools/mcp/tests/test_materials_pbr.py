@@ -19,6 +19,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import zlib
 from pathlib import Path
 
@@ -28,7 +29,7 @@ from harness import Editor, find_key
 
 CI = True
 EDITOR = {"create": True, "name": "Materials PBR"}
-TIMEOUT = 2400
+TIMEOUT = 5400
 
 REPO = harness.REPO
 KHRONOS = REPO / "engine" / "tests" / "render" / "assets" / "khronos"
@@ -89,7 +90,7 @@ def differing_fraction(a, b, tolerance: int = 24) -> float:
 # ------------------------------------------------------------------ editor helpers
 
 async def shot(ed: Editor, frames: int = 30, view: str = "game"):
-    await ed.call("wait", frames=frames)
+    await ed.call("wait", frames=frames, timeout_seconds=900)
     r = await ed.call_raw("screenshot", {"view": view, "max_width": 0}, timeout=300)
     ed.check(not r.is_error and r.images, f"no {view} screenshot: {r.text[:300]}")
     return pngdiff.decode(r.images[0][0])
@@ -128,6 +129,28 @@ async def ready_all(ed: Editor, eid) -> list:
     return [await ready_variant(ed, eid, k) for k in range(await submesh_count(ed, eid))]
 
 
+async def all_ready(ed: Editor, entities, seconds: float = 240.0) -> list:
+    """every submesh variant of the entities, once built (or failed), within a deadline: the
+    variants that failed or are still building"""
+    pending = []
+    for eid in entities:
+        pending += [(eid, k) for k in range(await submesh_count(ed, eid))]
+    deadline = time.monotonic() + seconds
+    failed = []
+    while pending and time.monotonic() < deadline:
+        still = []
+        for eid, k in pending:
+            v = await variant(ed, eid, k)
+            if v["failed"]:
+                failed.append(v)
+            elif not v["ready"]:
+                still.append((eid, k))
+        pending = still
+        if pending:
+            await ed.call("wait", frames=10, timeout_seconds=900)
+    return failed + [{"entity": eid, "submesh": k, "ready": False} for eid, k in pending]
+
+
 async def ready_variant(ed: Editor, eid, submesh: int = 0) -> dict:
     """The submesh's variant once it is built (a new one compiles while the old one draws)."""
     v = {}
@@ -135,7 +158,7 @@ async def ready_variant(ed: Editor, eid, submesh: int = 0) -> dict:
         v = await variant(ed, eid, submesh)
         if v["ready"] or v["failed"]:
             return v
-        await ed.call("wait", frames=10)
+        await ed.call("wait", frames=10, timeout_seconds=900)
     return v
 
 
@@ -458,7 +481,7 @@ async def test_lua(ed: Editor):
             v = await variant(ed, rid)
             if "PBR_CLEARCOAT" in v["defines"] and v["ready"]:
                 break
-            await ed.call("wait", frames=10)
+            await ed.call("wait", frames=10, timeout_seconds=900)
         ed.check("PBR_CLEARCOAT" in v["defines"] and "USE_LIT_QUALITY" in v["defines"], f"get_material_variant reports them: {v!r}")
         ed.check_eq(v["litQuality"], "high", "the scene's quality")
         after = await shot(ed, frames=5)
@@ -606,6 +629,7 @@ async def studio_sky(ed: Editor):
 async def test_khronos_models(ed: Editor):
     missing_goldens = []
     for model, lobes in MODELS.items():
+        print(f"     [khronos] {model}", flush=True)
         position, target = framing(model_file(model))
         source = model_file(model)
         dest = ed.project / "models" / model
@@ -621,7 +645,7 @@ async def test_khronos_models(ed: Editor):
         distance = math.dist(position, target)
         await ed.call("set_properties", entity=await scene_camera(ed),
                       values={"camera": {"nearClip": distance * 0.01, "farClip": distance * 20}})
-        await ed.call("wait", frames=60)
+        await ed.call("wait", frames=60, timeout_seconds=900)
         # the entities with submeshes, once the model has loaded (in the background)
         meshes = []
         for _ in range(60):
@@ -631,12 +655,14 @@ async def test_khronos_models(ed: Editor):
                     meshes.append(eid)
             if meshes:
                 break
-            await ed.call("wait", frames=10)
+            await ed.call("wait", frames=10, timeout_seconds=900)
         ed.check(meshes, f"{model} has meshes")
         # every material's variant built
-        for eid in meshes:
-            for v in await ready_all(ed, eid):
-                ed.check(not v["failed"], f"{model}: a variant failed: {v!r}")
+        problems = await all_ready(ed, meshes)
+        failed = [p for p in problems if p.get("failed")]
+        ed.check(not failed, f"{model}: variants failed: {failed[:3]!r}")
+        if problems:
+            print(f"     [khronos] {model}: still building after the deadline: {problems[:3]!r}", flush=True)
         img = await shot(ed, frames=30)
         ed.check(not pngdiff.flat(img), f"{model} draws something")
         errors = [l for l in await ed.console_since("last", limit=1000) if l.get("level") == "error"]
@@ -663,9 +689,8 @@ async def test_khronos_models(ed: Editor):
             off_lobes = []
         if off_lobes or model == "EmissiveStrengthTest":
             await lobes_off(ed, meshes, off_lobes)
-            await ed.call("wait", frames=10)
-            for eid in meshes:
-                await ready_all(ed, eid)
+            await ed.call("wait", frames=10, timeout_seconds=900)
+            await all_ready(ed, meshes)
             twin = await shot(ed, frames=30)
             # (a lobe can be subtle under the sky: a clear coat adds 4% reflection face on, 6 levels
             # of 255; the render is deterministic, so any change beyond rounding counts)

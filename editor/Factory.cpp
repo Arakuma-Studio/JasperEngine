@@ -640,7 +640,9 @@ std::string editor::Factory::formatShadowQuality(ShadowQuality quality) {
         case ShadowQuality::LOW: return "ShadowQuality::LOW";
         case ShadowQuality::MEDIUM: return "ShadowQuality::MEDIUM";
         case ShadowQuality::HIGH: return "ShadowQuality::HIGH";
-        default: return "ShadowQuality::LOW";
+        case ShadowQuality::AUTO: return "ShadowQuality::AUTO";
+        case ShadowQuality::ULTRA: return "ShadowQuality::ULTRA";
+        default: return "ShadowQuality::AUTO";
     }
 }
 
@@ -891,6 +893,10 @@ std::string editor::Factory::formatPostProcessing(int indentSpaces, const PostPr
             case FieldType::String:
                 if (*(const std::string*)value != *(const std::string*)def) text = formatString(*(const std::string*)value);
                 break;
+            case FieldType::Asset:
+                // the game loads by path (an AssetRef assigned a path)
+                if (((const AssetRef*)value)->path != ((const AssetRef*)def)->path) text = formatString(((const AssetRef*)value)->path);
+                break;
             case FieldType::Enum:
                 if (*(const int*)value != *(const int*)def)
                     text = std::string(field.enumType) + "::" + field.enumValues[*(const int*)value];
@@ -945,6 +951,7 @@ std::string editor::Factory::formatScriptPropertyType(ScriptPropertyType type) {
         case ScriptPropertyType::Color4: return "ScriptPropertyType::Color4";
         case ScriptPropertyType::EntityReference: return "ScriptPropertyType::EntityReference";
         case ScriptPropertyType::Prefab: return "ScriptPropertyType::Prefab";
+        case ScriptPropertyType::Asset: return "ScriptPropertyType::Asset";
         default: return "ScriptPropertyType::Bool";
     }
 }
@@ -972,6 +979,10 @@ std::string editor::Factory::formatScriptPropertyValue(const ScriptPropertyValue
         // found by GUID in PrefabManager, as in Play
         const auto& prefab = std::get<PrefabAsset>(value);
         return "PrefabAsset(" + formatString(prefab.getGuid()) + ", " + formatString(prefab.getPath()) + ")";
+    } else if (std::holds_alternative<AssetRef>(value)) {
+        // the path resolved at export; the GUID for Asset.guid / AssetRef.guid in scripts
+        const auto& ref = std::get<AssetRef>(value);
+        return "AssetRef(" + formatString(ref.path) + ", Guid::parse(" + formatString(ref.guid.str()) + "))";
     }
     return "ScriptPropertyValue{}";
 }
@@ -1157,6 +1168,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
     code << ind << "mesh.castShadows = " << formatBool(mesh.castShadows) << ";\n";
     code << ind << "mesh.receiveShadows = " << formatBool(mesh.receiveShadows) << ";\n";
     code << ind << "mesh.shadowsBillboard = " << formatBool(mesh.shadowsBillboard) << ";\n";
+    if (mesh.staticShadowCaster)
+        code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
     code << ind << "mesh.renderInReflectionProbes = " << formatBool(mesh.renderInReflectionProbes) << ";\n";
@@ -1823,6 +1836,18 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
     code << ind << "light.shadowCameraNearFar.x = " << formatFloat(light.shadowCameraNearFar.x) << ";\n";
     code << ind << "light.shadowCameraNearFar.y = " << formatFloat(light.shadowCameraNearFar.y) << ";\n";
     code << ind << "light.numShadowCascades = " << formatUInt(light.numShadowCascades) << ";\n";
+    code << ind << "light.softShadows = " << formatBool(light.softShadows) << ";\n";
+    code << ind << "light.shadowStrength = " << formatFloat(light.shadowStrength) << ";\n";
+    code << ind << "light.shadowNormalBias = " << formatFloat(light.shadowNormalBias) << ";\n";
+    code << ind << "light.cascadeSplitMode = " << (light.cascadeSplitMode == CascadeSplitMode::MANUAL ? "CascadeSplitMode::MANUAL" : "CascadeSplitMode::AUTO") << ";\n";
+    code << ind << "light.cascadeSplits = " << formatVector3(light.cascadeSplits) << ";\n";
+    code << ind << "light.shadowDistance = " << formatFloat(light.shadowDistance) << ";\n";
+    code << ind << "light.shadowAngularDiameter = " << formatFloat(light.shadowAngularDiameter) << ";\n";
+    code << ind << "light.shadowSourceRadius = " << formatFloat(light.shadowSourceRadius) << ";\n";
+    if (light.shadowUpdateMode == ShadowUpdateMode::EVERY_FRAME)
+        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::EVERY_FRAME;\n";
+    else if (light.shadowUpdateMode == ShadowUpdateMode::ON_DEMAND)
+        code << ind << "light.shadowUpdateMode = ShadowUpdateMode::ON_DEMAND;\n";
     if (light.shading == LightShading::PIXEL)
         code << ind << "light.shading = LightShading::PIXEL;\n";
     else if (light.shading == LightShading::VERTEX)
@@ -3128,6 +3153,12 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << "\n";
     out << ind2 << "scene->setBackgroundColor(" << formatVector4(scene->getBackgroundColor()) << ");\n";
     out << ind2 << "scene->setShadowQuality(" << formatShadowQuality(scene->getShadowQuality()) << ");\n";
+    if (scene->getShadowDistance() != SceneSettings().shadowDistance)
+        out << ind2 << "scene->setShadowDistance(" << formatFloat(scene->getShadowDistance()) << ");\n";
+    if (scene->getShadowFadeFraction() != SceneSettings().shadowFadeFraction)
+        out << ind2 << "scene->setShadowFadeFraction(" << formatFloat(scene->getShadowFadeFraction()) << ");\n";
+    if (scene->isShadowCascadeBlend() != SceneSettings().shadowCascadeBlend)
+        out << ind2 << "scene->setShadowCascadeBlend(" << formatBool(scene->isShadowCascadeBlend()) << ");\n";
     out << ind2 << "scene->setMeshLodEnabled(" << formatBool(scene->isMeshLodEnabled()) << ");\n";
     out << ind2 << "scene->setMeshLodThreshold(" << formatFloat(scene->getMeshLodThreshold()) << ");\n";
     out << ind2 << "scene->setDepthPrepassEnabled(" << formatBool(scene->isDepthPrepassEnabled()) << ");\n";

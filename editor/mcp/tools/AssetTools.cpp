@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 // W4: assets, import, materials, shaders, text files, placeholder art
+#include "asset/AssetOps.h"
+#include "asset/AssetTypes.h"
 #include "McpTools.h"
 #include "mcp/McpDataSafety.h"
 #include "DocumentFile.h"
@@ -656,9 +658,12 @@ bool loadMaterialFile(const fs::path& file, Material& material, std::string& err
     }
 }
 
-// formatVersion first, the existing file's unknown root keys kept (docs/data-safety.md)
-std::string materialFileContent(const Material& material, const fs::path& file) {
-    return DocumentFiles::materialText(Stream::encodeMaterial(material), file) + "\n";
+// The file's text with its identity (S04: the GUID it has, or a new one for a new file),
+// formatVersion first and the existing file's unknown root keys kept (docs/data-safety.md)
+std::string materialFileContent(Project* project, const fs::path& file, const Material& material) {
+    YAML::Node root = Stream::encodeMaterial(material);
+    project->prepareDocumentIdentity(root, file);
+    return DocumentFiles::materialText(root, file) + "\n";
 }
 
 // A material file that did not load completely is written only with allow_data_loss: false
@@ -720,6 +725,8 @@ void listAssetsTool(const CallPtr& call) {
         const fs::path& path = entry.path();
         const bool isDir = entry.is_directory(ec);
         const std::string rel = projectRelative(project, path);
+        // the asset .meta sidecars go with their assets (S04): not listed
+        if (!isDir && AssetTypes::isMetaFile(path)) return;
         const std::string kind = isDir ? "folder" : assetType(path);
         if (!type.empty() && type != "any" && kind != type) return;
         if (!query.empty() && lowerCase(path.filename().string()).find(query) == std::string::npos) return;
@@ -730,6 +737,10 @@ void listAssetsTool(const CallPtr& call) {
         total++;
         if (entries.size() >= limit) return;
         Json item = {{"path", rel}, {"type", kind}};
+        if (!isDir) {
+            const Guid guid = project->getAssetDatabase().getAssetGuid(rel);
+            if (!guid.isNull()) item["guid"] = guid.str();
+        }
         if (!isDir && details) {
             item["size"] = entry.file_size(ec);
             if (kind == "texture" && extensionOf(path) != ".svg") {
@@ -795,6 +806,24 @@ void getAssetInfoTool(const CallPtr& call) {
         return;
     }
     data["size"] = fs::file_size(file, ec);
+    // its identity (S04): GUID, former GUIDs, a model's sub-assets
+    AssetDatabase::AssetInfo identity;
+    if (project->getAssetDatabase().getInfo(fs::path(rel), identity)) {
+        data["guid"] = identity.guid.str();
+        text += " (GUID " + identity.guid.str() + ")";
+        if (!identity.formerGuids.empty()) {
+            Json former = Json::array();
+            for (const Guid& guid : identity.formerGuids) former.push_back(guid.str());
+            data["former_guids"] = former;
+        }
+        if (!identity.subAssets.empty()) {
+            Json subAssets = Json::array();
+            for (const AssetDatabase::SubAsset& sub : identity.subAssets) {
+                subAssets.push_back({{"key", sub.key}, {"guid", sub.guid.str()}, {"name", sub.name}, {"kind", subAssetKindName(sub.kind)}});
+            }
+            data["sub_assets"] = subAssets;
+        }
+    }
     if (kind != "script" && kind != "shader" && kind != "material" && kind != "scene" && kind != "prefab" && kind != "other") {
         data["inside_assets_dir"] = project->isInsideAssetsPath(file);
         if (!project->isInsideAssetsPath(file)) {
@@ -1153,22 +1182,18 @@ void createFolderTool(const CallPtr& call) {
     call->ok("Created folder " + projectRelative(project, dir) + ".", Json{{"path", projectRelative(project, dir)}});
 }
 
-// Copies a file or folder to an exact destination; undo deletes the copy
+// Copies a file or folder to an exact destination; undo deletes the copy. The copy and its
+// meta get new GUIDs (the same ones again on a redo)
 class CopyAsCmd : public Command {
 public:
-    CopyAsCmd(Project* project, fs::path from, fs::path to) : project(project), from(std::move(from)), to(std::move(to)) {}
+    CopyAsCmd(Project* project, fs::path from, fs::path to, std::shared_ptr<AssetOps::Result> report)
+        : project(project), from(std::move(from)), to(std::move(to)), report(std::move(report)) {}
     bool execute() override {
-        std::error_code ec;
-        if (fs::is_directory(from, ec)) fs::copy(from, to, fs::copy_options::recursive, ec);
-        else fs::copy_file(from, to, ec);
-        if (ec) return false;
-        if (fs::is_directory(to, ec) || Util::isPrefabFile(to.string())) project->importPrefabFiles(to, true, &copyGuids);
-        return true;
+        *report = AssetOps::copy(*project, from, to, &copyGuids);
+        return report->ok;
     }
     void undo() override {
-        std::error_code ec;
-        fs::remove_all(to, ec);
-        project->cleanupPrefabFilePath(to);
+        AssetOps::removeCopy(*project, to);
     }
     bool affectsStructure() const override { return false; }
 
@@ -1188,7 +1213,46 @@ private:
     fs::path from;
     fs::path to;
     std::map<std::string, std::string> copyGuids;
+    std::shared_ptr<AssetOps::Result> report;
 };
+
+// Moves or renames a file or folder to an exact destination with its meta (S04 AssetOps):
+// GUIDs kept, no referrer written, the loaded references' hints refreshed
+class MoveAsCmd : public Command {
+public:
+    MoveAsCmd(Project* project, fs::path from, fs::path to, std::shared_ptr<AssetOps::Result> report)
+        : project(project), from(std::move(from)), to(std::move(to)), report(std::move(report)) {}
+    bool execute() override {
+        *report = AssetOps::move(*project, from, to);
+        return report->ok;
+    }
+    void undo() override {
+        const AssetOps::Result back = AssetOps::move(*project, to, from);
+        if (!back.ok) Out::error("Couldn't undo the move of %s: %s", from.filename().string().c_str(), back.error.c_str());
+    }
+    std::string describe() const override {
+        if (from.parent_path() == to.parent_path()) {
+            return CommandNames::clip("Rename File " + CommandNames::file(from) + CommandNames::ARROW + CommandNames::file(to));
+        }
+        return CommandNames::clip("Move " + CommandNames::file(from));
+    }
+    const char* typeName() const override { return "MoveAsCmd"; }
+
+private:
+    Project* project;
+    fs::path from;
+    fs::path to;
+    std::shared_ptr<AssetOps::Result> report;
+};
+
+Json textReferencesJson(const std::vector<AssetOps::TextReference>& references) {
+    Json list = Json::array();
+    for (const AssetOps::TextReference& reference : references) {
+        list.push_back({{"referrer", reference.referrer}, {"line", reference.line}, {"target", reference.target},
+                        {"kind", depEdgeKindName(reference.kind)}});
+    }
+    return list;
+}
 
 void moveAssetTool(const CallPtr& call) {
     fs::path from, to;
@@ -1215,28 +1279,26 @@ void moveAssetTool(const CallPtr& call) {
         return;
     }
     const bool copy = call->args().value("copy", false);
-    Command* cmd = nullptr;
-    if (copy) {
-        cmd = new CopyAsCmd(project, from, to);
-    } else if (from.parent_path() == to.parent_path()) {
-        cmd = new RenameFileCmd(project, from.filename().string(), to.filename().string(), from.parent_path().string());
-    } else {
-        auto* multi = new MultiPropertyCmd();
-        multi->addCommand(std::make_unique<CopyFileCmd>(project, std::vector<std::string>{from.string()}, to.parent_path().string(), false));
-        if (from.filename() != to.filename()) {
-            multi->addCommand(std::make_unique<RenameFileCmd>(project, from.filename().string(), to.filename().string(), to.parent_path().string()));
-        }
-        cmd = multi;
-    }
+    auto report = std::make_shared<AssetOps::Result>();
+    Command* cmd = copy ? static_cast<Command*>(new CopyAsCmd(project, from, to, report))
+                        : static_cast<Command*>(new MoveAsCmd(project, from, to, report));
     if (!addProjectCommand(call->ctx(), cmd)) {
-        call->fail("Couldn't " + std::string(copy ? "copy " : "move ") + fromRel + " to " + toRel + ".");
+        call->fail("Couldn't " + std::string(copy ? "copy " : "move ") + fromRel + " to " + toRel +
+                   (report->error.empty() ? "." : ": " + report->error));
         return;
     }
     if (CodeEditor* editor = call->ctx().codeEditor(); editor && !copy) editor->handleFileRename(from, to);
     syncFiles(call->ctx(), {from, to}, false);
-    call->ok(std::string(copy ? "Copied " : "Moved ") + fromRel + " to " + toRel +
-             (copy ? "." : "; references in scenes, prefabs and materials follow it. Undo with scope project."),
-             Json{{"from", fromRel}, {"to", toRel}, {"copy", copy}});
+    Json data{{"from", fromRel}, {"to", toRel}, {"copy", copy}, {"files_written", report->filesWritten},
+              {"text_references_broken", textReferencesJson(report->textReferencesBroken)}};
+    const Guid guid = project->getAssetDatabase().getAssetGuid(toRel);
+    if (!guid.isNull()) data["guid"] = guid.str();
+    std::string text = std::string(copy ? "Copied " : "Moved ") + fromRel + " to " + toRel +
+        (copy ? " (new GUIDs)." : "; references follow it by GUID and no referrer file was written. Undo with scope project.");
+    for (const AssetOps::TextReference& broken : report->textReferencesBroken) {
+        text += "\nStill names the old path: " + broken.referrer + ":" + std::to_string(broken.line) + " (" + broken.target + ")";
+    }
+    call->ok(text, data);
 }
 
 void deleteAssetTool(const CallPtr& call) {
@@ -1267,15 +1329,25 @@ void deleteAssetTool(const CallPtr& call) {
             }
         }
         files.push_back(file.lexically_normal());
-        deleted.push_back(rel);
+        Json entry = {{"path", rel}};
+        const Guid guid = project->getAssetDatabase().getAssetGuid(rel);
+        if (!guid.isNull()) entry["guid"] = guid.str();
+        deleted.push_back(entry);
+    }
+    // what will reference the deleted files: GUID references become Missing (list_missing_assets),
+    // text ones (Lua require, HTML/CSS, shader #include) break
+    std::vector<AssetOps::TextReference> broken;
+    for (const fs::path& file : files) {
+        for (const AssetOps::TextReference& reference : AssetOps::textReferencesInto(*project, file)) broken.push_back(reference);
     }
     if (!addProjectCommand(call->ctx(), new DeleteFileCmd(project, files, project->getProjectPath()))) {
         call->fail("Couldn't delete the files.");
         return;
     }
     syncFiles(call->ctx(), files, false);
-    call->ok("Moved " + std::to_string(files.size()) + " item(s) to the project trash (undo with scope project restores them).",
-             Json{{"deleted", deleted}});
+    call->ok("Moved " + std::to_string(files.size()) + " item(s) to the project trash; references to them stay and show as missing "
+             "(undo with scope project restores the files and resolves them again).",
+             Json{{"deleted", deleted}, {"text_references_broken", textReferencesJson(broken)}});
 }
 
 // The remote half of import_files (phase-4 spec §3.6.5): the HTML UI importers (network) run on a
@@ -1358,7 +1430,9 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
             return false;
         }
     }
-    if (!addProjectCommand(call->ctx(), new CopyFileCmd(project, sources, target.string(), true))) {
+    auto* copyCmd = new CopyFileCmd(project, sources, target.string(), true);
+    copyCmd->setOverwrite(args.value("overwrite", false));
+    if (!addProjectCommand(call->ctx(), copyCmd)) {
         call->fail("Copying the files failed.");
         return false;
     }
@@ -1366,6 +1440,12 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     for (const Json& rel : imported) changed.push_back(project->getProjectPath() / FileUtils::pathFromUtf8(rel.get<std::string>()));
     syncFiles(call->ctx(), changed, false);
     data["imported"] = imported;
+    Json importedGuids = Json::object();
+    for (const Json& rel : imported) {
+        const Guid guid = project->getAssetDatabase().getAssetGuid(rel.get<std::string>());
+        if (!guid.isNull()) importedGuids[rel.get<std::string>()] = guid.str();
+    }
+    data["imported_guids"] = importedGuids;
     text = "Imported " + std::to_string(imported.size()) + " item(s) into " + projectRelative(project, target) + ".";
     if (!project->isInsideAssetsPath(target)) {
         text += " Note: outside the assets directory (" + projectRelative(project, project->getAssetsPath()) + "), components can't reference them.";
@@ -1683,7 +1763,7 @@ void createMaterialTool(const CallPtr& call) {
     }
     material.name = rel;
     if (!materialWriteAllowed(call, file, rel)) return;
-    if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(material, file)}}, error)) {
+    if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(call->ctx().project(), file, material)}}, error)) {
         call->fail(error);
         return;
     }
@@ -1725,7 +1805,7 @@ void updateMaterialTool(const CallPtr& call) {
     }
     material.name = rel;
     if (!materialWriteAllowed(call, file, rel)) return;
-    if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(material, file)}}, error)) {
+    if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(call->ctx().project(), file, material)}}, error)) {
         call->fail(error);
         return;
     }
@@ -1795,7 +1875,8 @@ void linkMaterialTool(const CallPtr& call) {
         return;
     }
     call->ok("Linked " + rel + " to submesh " + std::to_string(submesh) + " of " + McpRefs::entityPath(sceneProject, entity) + ".",
-             Json{{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", submesh}, {"material", rel}});
+             Json{{"entity", McpRefs::entityJson(sceneProject, entity)}, {"submesh", submesh}, {"material", rel},
+                  {"material_guid", project->getAssetDatabase().getAssetGuid(rel).str()}});
 }
 
 // ------------------------------------------------------------------ material presets
@@ -1862,7 +1943,7 @@ void applyMaterialPresetTool(const CallPtr& call) {
         material = applyMaterialPreset(*preset, material);
         material.name = rel;
         if (!materialWriteAllowed(call, file, rel)) return;
-        if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(material, file)}}, error)) {
+        if (!writeFilesUndoable(call->ctx(), {{file, materialFileContent(call->ctx().project(), file, material)}}, error)) {
             call->fail(error);
             return;
         }
@@ -2544,6 +2625,10 @@ void checkShaderTool(const CallPtr& call) {
             }
         }
         for (const ProjectChecks::Finding& finding : stateFindings) text += "\nerror: " + finding.message;
+        for (const Json& finding : findings) {
+            if (finding.value("severity", std::string()) == "warning")
+                text += "\nwarning: " + finding.value("path", std::string()) + ": " + finding.value("message", std::string());
+        }
         call->ok((failed ? std::to_string(failed) + " shader(s) failed to compile:" : std::string("All shaders compile:")) + text,
                  Json{{"results", results}, {"failed", failed}, {"findings", findings}});
     });

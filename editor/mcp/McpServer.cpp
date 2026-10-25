@@ -106,10 +106,12 @@ void McpServer::registerAllTools() {
     registerPrefabTools(reg);
     registerPlayTools(reg);
     registerViewTools(reg);
+    registerShadowTools(reg);
     registerConsoleTools(reg);
     registerScriptTools(reg);
     registerAssetTools(reg);
     registerMaterialsLightingTools(reg);
+    registerAssetIdentityTools(reg);
     registerDocsTools(reg);
     registerBuildTools(reg);
     registerWorldTools(reg);

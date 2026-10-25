@@ -144,6 +144,7 @@ SokolTexture::SokolTexture(){
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
     streamBytes = 0;
+    aliasImage = false;
 }
 
 SokolTexture::SokolTexture(const SokolTexture& rhs) = default;
@@ -691,6 +692,30 @@ bool SokolTexture::createFramebufferTexture(
     return false;
 }
 
+bool SokolTexture::createAliasView(const SokolTexture& source, const char* label){
+    destroyTexture();
+    if (source.image.id == SG_INVALID_ID)
+        return false;
+
+    sg_sampler_desc samplerDesc = {};
+    samplerDesc.min_filter = SG_FILTER_NEAREST;
+    samplerDesc.mag_filter = SG_FILTER_NEAREST;
+    samplerDesc.mipmap_filter = SG_FILTER_NEAREST;
+    samplerDesc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+    samplerDesc.label = label;
+
+    image = source.image;
+    aliasImage = true;
+    if (Engine::isAsyncThread()){
+        sampler = SokolCmdQueue::add_command_make_sampler(samplerDesc);
+    }else{
+        sampler = sg_make_sampler(samplerDesc);
+    }
+    createTextureView(label);
+    return sampler.id != SG_INVALID_ID && view.id != SG_INVALID_ID;
+}
+
 void SokolTexture::destroyTexture(){
     if (view.id != SG_INVALID_ID && sg_isvalid()){
         if (Engine::isAsyncThread()){
@@ -699,9 +724,9 @@ void SokolTexture::destroyTexture(){
             sg_destroy_view(view);
         }
     }
-    if (image.id != SG_INVALID_ID)
+    if (image.id != SG_INVALID_ID && !aliasImage)
         untrackImage(image);
-    if (image.id != SG_INVALID_ID && sg_isvalid()){
+    if (image.id != SG_INVALID_ID && !aliasImage && sg_isvalid()){
         if (Engine::isAsyncThread()){
             SokolCmdQueue::add_command_destroy_image(image);
         }else{
@@ -720,6 +745,7 @@ void SokolTexture::destroyTexture(){
     sampler.id = SG_INVALID_ID;
     view.id = SG_INVALID_ID;
     streamBytes = 0;
+    aliasImage = false;
 }
 
 uint32_t SokolTexture::getGLHandler() const{

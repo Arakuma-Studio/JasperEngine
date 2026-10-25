@@ -7,6 +7,20 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5E0A1E00000000000000000F /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
+		5E0A1E000000000000000010 /* CascadeFit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000001 /* CascadeFit.cpp */; };
+		5E0A1E000000000000000011 /* ShadowCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000003 /* ShadowCache.cpp */; };
+		5E0A1E000000000000000012 /* ShadowCache.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000003 /* ShadowCache.cpp */; };
+		5E0A1E000000000000000013 /* ShadowCasterRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000005 /* ShadowCasterRegistry.cpp */; };
+		5E0A1E000000000000000014 /* ShadowCasterRegistry.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000005 /* ShadowCasterRegistry.cpp */; };
+		5E0A1E000000000000000015 /* ShadowSlotPlanner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000007 /* ShadowSlotPlanner.cpp */; };
+		5E0A1E000000000000000016 /* ShadowSlotPlanner.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000007 /* ShadowSlotPlanner.cpp */; };
+		5E0A1E000000000000000017 /* ShadowTiers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000009 /* ShadowTiers.cpp */; };
+		5E0A1E000000000000000018 /* ShadowTiers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E000000000000000009 /* ShadowTiers.cpp */; };
+		5E0A1E000000000000000019 /* ShadowTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E00000000000000000B /* ShadowTypes.cpp */; };
+		5E0A1E00000000000000001A /* ShadowTypes.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E00000000000000000B /* ShadowTypes.cpp */; };
+		5E0A1E00000000000000001B /* RenderSystemShadows.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E00000000000000000D /* RenderSystemShadows.cpp */; };
+		5E0A1E00000000000000001C /* RenderSystemShadows.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5E0A1E00000000000000000D /* RenderSystemShadows.cpp */; };
 		533039212E9B8AAACBFB34F6 /* Logger.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039216521ECDD878DDF6B /* Logger.cpp */; };
 		53303921BD7DD6D8CC5A2CCC /* LogFormat.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 533039211A410107AC9F4C35 /* LogFormat.cpp */; };
 		533039213F13EC274DF9D1B1 /* Backtrace.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53303921D4F4BC762EB04EE5 /* Backtrace.cpp */; };
@@ -81,6 +95,10 @@
 		1787AD952F6C333300DB1D75 /* PrefabManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD902F6C333300DB1D75 /* PrefabManager.cpp */; };
 		A6E1266199635F3E1FC4BE40 /* ObjectManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E1D2EDCBF9952FE408726B /* ObjectManager.cpp */; };
 		A6E194178770F0B6D75DF7EE /* PrefabAsset.cpp in Sources */ = {isa = PBXBuildFile; fileRef = A6E15C1F52135CB13CCC38B7 /* PrefabAsset.cpp */; };
+		C5A54E00000005104A55E708 /* Guid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C5A54E00000005104A55E702 /* Guid.cpp */; };
+		C5A54E00000005104A55E709 /* Guid.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C5A54E00000005104A55E702 /* Guid.cpp */; };
+		C5A54E00000005104A55E70A /* AssetMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C5A54E00000005104A55E705 /* AssetMap.cpp */; };
+		C5A54E00000005104A55E70B /* AssetMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C5A54E00000005104A55E705 /* AssetMap.cpp */; };
 		1787AD962F6C333300DB1D75 /* SceneManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD912F6C333300DB1D75 /* SceneManager.h */; };
 		1787AD972F6C333300DB1D75 /* PrefabManager.h in Headers */ = {isa = PBXBuildFile; fileRef = 1787AD8F2F6C333300DB1D75 /* PrefabManager.h */; };
 		1787AD982F6C333300DB1D75 /* SceneManager.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1787AD922F6C333300DB1D75 /* SceneManager.cpp */; };
@@ -3592,6 +3610,20 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		5E0A1E000000000000000001 /* CascadeFit.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = CascadeFit.cpp; sourceTree = "<group>"; };
+		5E0A1E000000000000000002 /* CascadeFit.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CascadeFit.h; sourceTree = "<group>"; };
+		5E0A1E000000000000000003 /* ShadowCache.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShadowCache.cpp; sourceTree = "<group>"; };
+		5E0A1E000000000000000004 /* ShadowCache.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowCache.h; sourceTree = "<group>"; };
+		5E0A1E000000000000000005 /* ShadowCasterRegistry.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShadowCasterRegistry.cpp; sourceTree = "<group>"; };
+		5E0A1E000000000000000006 /* ShadowCasterRegistry.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowCasterRegistry.h; sourceTree = "<group>"; };
+		5E0A1E000000000000000007 /* ShadowSlotPlanner.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShadowSlotPlanner.cpp; sourceTree = "<group>"; };
+		5E0A1E000000000000000008 /* ShadowSlotPlanner.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowSlotPlanner.h; sourceTree = "<group>"; };
+		5E0A1E000000000000000009 /* ShadowTiers.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShadowTiers.cpp; sourceTree = "<group>"; };
+		5E0A1E00000000000000000A /* ShadowTiers.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowTiers.h; sourceTree = "<group>"; };
+		5E0A1E00000000000000000B /* ShadowTypes.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ShadowTypes.cpp; sourceTree = "<group>"; };
+		5E0A1E00000000000000000C /* ShadowTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShadowTypes.h; sourceTree = "<group>"; };
+		5E0A1E00000000000000000D /* RenderSystemShadows.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemShadows.cpp; sourceTree = "<group>"; };
+		5E0A1E00000000000000000E /* RenderSystemShared.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RenderSystemShared.h; sourceTree = "<group>"; };
 		53303921B039D6604F0F7143 /* Logger.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Logger.h; sourceTree = "<group>"; };
 		533039216521ECDD878DDF6B /* Logger.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Logger.cpp; sourceTree = "<group>"; };
 		533039212BEB38E5A55A3E83 /* LogCategory.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LogCategory.h; sourceTree = "<group>"; };
@@ -3655,6 +3687,13 @@
 		A6E122E3AD000EAC13F329C0 /* PrefabAsset.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PrefabAsset.h; sourceTree = "<group>"; };
 		A6E1D2EDCBF9952FE408726B /* ObjectManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ObjectManager.cpp; sourceTree = "<group>"; };
 		A6E15C1F52135CB13CCC38B7 /* PrefabAsset.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = PrefabAsset.cpp; sourceTree = "<group>"; };
+		C5A54E00000005104A55E705 /* AssetMap.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = AssetMap.cpp; sourceTree = "<group>"; };
+		C5A54E00000005104A55E704 /* AssetMap.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AssetMap.h; sourceTree = "<group>"; };
+		C5A54E00000005104A55E703 /* AssetRef.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AssetRef.h; sourceTree = "<group>"; };
+		C5A54E00000005104A55E706 /* AssetType.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AssetType.h; sourceTree = "<group>"; };
+		C5A54E00000005104A55E702 /* Guid.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = Guid.cpp; sourceTree = "<group>"; };
+		C5A54E00000005104A55E701 /* Guid.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Guid.h; sourceTree = "<group>"; };
+		C5A54E00000005104A55E707 /* SubAssetKeys.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SubAssetKeys.h; sourceTree = "<group>"; };
 		1787AD912F6C333300DB1D75 /* SceneManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SceneManager.h; sourceTree = "<group>"; };
 		1787AD922F6C333300DB1D75 /* SceneManager.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SceneManager.cpp; sourceTree = "<group>"; };
 		1789660A2F1D764600E89E52 /* ShaderDataSerializer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShaderDataSerializer.h; sourceTree = "<group>"; };
@@ -6880,6 +6919,39 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5E0A1E00000000000000001D /* shadow */ = {
+			isa = PBXGroup;
+			children = (
+				5E0A1E000000000000000001 /* CascadeFit.cpp */,
+				5E0A1E000000000000000002 /* CascadeFit.h */,
+				5E0A1E000000000000000003 /* ShadowCache.cpp */,
+				5E0A1E000000000000000004 /* ShadowCache.h */,
+				5E0A1E000000000000000005 /* ShadowCasterRegistry.cpp */,
+				5E0A1E000000000000000006 /* ShadowCasterRegistry.h */,
+				5E0A1E000000000000000007 /* ShadowSlotPlanner.cpp */,
+				5E0A1E000000000000000008 /* ShadowSlotPlanner.h */,
+				5E0A1E000000000000000009 /* ShadowTiers.cpp */,
+				5E0A1E00000000000000000A /* ShadowTiers.h */,
+				5E0A1E00000000000000000B /* ShadowTypes.cpp */,
+				5E0A1E00000000000000000C /* ShadowTypes.h */,
+			);
+			path = shadow;
+			sourceTree = "<group>";
+		};
+		C5A54E00000005104A55E700 /* asset */ = {
+			isa = PBXGroup;
+			children = (
+				C5A54E00000005104A55E705 /* AssetMap.cpp */,
+				C5A54E00000005104A55E704 /* AssetMap.h */,
+				C5A54E00000005104A55E703 /* AssetRef.h */,
+				C5A54E00000005104A55E706 /* AssetType.h */,
+				C5A54E00000005104A55E702 /* Guid.cpp */,
+				C5A54E00000005104A55E701 /* Guid.h */,
+				C5A54E00000005104A55E707 /* SubAssetKeys.h */,
+			);
+			path = asset;
+			sourceTree = "<group>";
+		};
 		53303921A04E50219FF75728 /* log */ = {
 			isa = PBXGroup;
 			children = (
@@ -7746,6 +7818,7 @@
 				7162FC2F25962A0E0075B97D /* io */,
 				7162FC6925962A0E0075B97D /* Log.h */,
 				7162FC2C25962A0E0075B97D /* Log.cpp */,
+				C5A54E00000005104A55E700 /* asset */,
 				53303921A04E50219FF75728 /* log */,
 				1787AD932F6C333300DB1D75 /* manager */,
 				7162FC4825962A0E0075B97D /* math */,
@@ -7850,6 +7923,7 @@
 		7162FC3825962A0E0075B97D /* render */ = {
 			isa = PBXGroup;
 			children = (
+				5E0A1E00000000000000001D /* shadow */,
 				7162FC4125962A0E0075B97D /* BufferRender.cpp */,
 				7162FC3F25962A0E0075B97D /* BufferRender.h */,
 				71CC839926B8C4FD00EEBB93 /* FramebufferRender.cpp */,
@@ -8030,6 +8104,8 @@
 		7162FC6F25962A0E0075B97D /* subsystem */ = {
 			isa = PBXGroup;
 			children = (
+				5E0A1E00000000000000000D /* RenderSystemShadows.cpp */,
+				5E0A1E00000000000000000E /* RenderSystemShared.h */,
 				71451BBC270CA16200712643 /* ActionSystem.cpp */,
 				71451BBD270CA16200712643 /* ActionSystem.h */,
 				717AD96B290B661A007D7DB5 /* AudioSystem.cpp */,
@@ -13343,6 +13419,15 @@
 				1787AD952F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
 				A6E1266199635F3E1FC4BE40 /* ObjectManager.cpp in Sources */,
 				A6E194178770F0B6D75DF7EE /* PrefabAsset.cpp in Sources */,
+				5E0A1E00000000000000000F /* CascadeFit.cpp in Sources */,
+				5E0A1E000000000000000011 /* ShadowCache.cpp in Sources */,
+				5E0A1E000000000000000013 /* ShadowCasterRegistry.cpp in Sources */,
+				5E0A1E000000000000000015 /* ShadowSlotPlanner.cpp in Sources */,
+				5E0A1E000000000000000017 /* ShadowTiers.cpp in Sources */,
+				5E0A1E000000000000000019 /* ShadowTypes.cpp in Sources */,
+				5E0A1E00000000000000001B /* RenderSystemShadows.cpp in Sources */,
+				C5A54E00000005104A55E708 /* Guid.cpp in Sources */,
+				C5A54E00000005104A55E70A /* AssetMap.cpp in Sources */,
 				713D8295259D307F00567F9F /* UserSettings.cpp in Sources */,
 				53303346AD54911B3920A4A9 /* ScopedFileLock.cpp in Sources */,
 				5330334691A83E230FB5ECB5 /* AtomicFile.cpp in Sources */,
@@ -13745,6 +13830,15 @@
 				1787AD992F6C333300DB1D75 /* PrefabManager.cpp in Sources */,
 				A6E1BBB0C286C20E302F0AE0 /* ObjectManager.cpp in Sources */,
 				A6E16455A1CC719DB7052664 /* PrefabAsset.cpp in Sources */,
+				5E0A1E000000000000000010 /* CascadeFit.cpp in Sources */,
+				5E0A1E000000000000000012 /* ShadowCache.cpp in Sources */,
+				5E0A1E000000000000000014 /* ShadowCasterRegistry.cpp in Sources */,
+				5E0A1E000000000000000016 /* ShadowSlotPlanner.cpp in Sources */,
+				5E0A1E000000000000000018 /* ShadowTiers.cpp in Sources */,
+				5E0A1E00000000000000001A /* ShadowTypes.cpp in Sources */,
+				5E0A1E00000000000000001C /* RenderSystemShadows.cpp in Sources */,
+				C5A54E00000005104A55E709 /* Guid.cpp in Sources */,
+				C5A54E00000005104A55E70B /* AssetMap.cpp in Sources */,
 				7162FE102596A5BE0075B97D /* SokolCamera.cpp in Sources */,
 				71A41CB529AC3D7C006953D3 /* SokolCmdQueue.cpp in Sources */,
 				503152450000000000000002 /* SokolPipelineCache.cpp in Sources */,

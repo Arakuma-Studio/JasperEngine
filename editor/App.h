@@ -19,6 +19,7 @@
 #include "window/CodeEditor.h"
 #include "window/AnimationWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "window/AssetPanels.h"
 #include "window/GameWindow.h"
 #include "window/MainToolbar.h"
 #include "window/PlayInput.h"
@@ -177,6 +178,8 @@ namespace jasperengine::editor{
         AnimationWindow* animationWindow;
         TerrainEditWindow* terrainEditWindow;
         mcp::McpActivityWindow* mcpActivityWindow;
+        MissingAssetsWindow* missingAssetsWindow;
+        AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
         UndoHistoryWindow* undoHistoryWindow;
         PlayModeChangesWindow* playModeChangesWindow;
@@ -422,6 +425,9 @@ namespace jasperengine::editor{
         GameWindow* getGameWindow() const;
         SceneWindow* getSceneWindow() const;
         ConsoleWindow* getConsoleWindow() const;
+        MissingAssetsWindow* getMissingAssetsWindow() const { return missingAssetsWindow; }
+        void migrateAssetReferences();
+        AssetReferencesWindow* getAssetReferencesWindow() const { return assetReferencesWindow; }
         // Preferences (Edit > Preferences), for the MCP focus_window tool
         EditorSettingsWindow& getEditorSettingsWindow() { return editorSettingsWindow; }
         PlayInput* getPlayInput() const;

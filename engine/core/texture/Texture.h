@@ -9,6 +9,7 @@
 #include "texture/TextureData.h"
 #include "pool/TexturePool.h"
 #include "pool/TextureDataPool.h"
+#include "asset/Guid.h"
 #include <string>
 #include <memory>
 
@@ -29,6 +30,8 @@ namespace jasperengine{
             std::string id;
 
             std::string paths[6];
+            // the asset GUID of each source path (the editor's reference identity, S04)
+            Guid pathGuids[6];
             std::shared_ptr<std::array<TextureData,6>> data = NULL;
 
             size_t numFaces;
@@ -92,6 +95,10 @@ namespace jasperengine{
 
             TextureRender* getRender(TextureRender* fallBackTexture = NULL);
             std::string getPath(size_t index = 0) const;
+            // The asset GUID of a source path: the editor resolves texture references by it
+            // and keeps the path as a hint. A new path in a slot drops its GUID.
+            const Guid& getPathGuid(size_t index = 0) const;
+            void setPathGuid(size_t index, const Guid& guid);
             TextureData& getData(size_t index = 0) const;
             // True when the backing data array exists, so getData() can be dereferenced.
             // A present-but-unloaded or load-failed texture (empty file, missing path)

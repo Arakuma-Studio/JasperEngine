@@ -84,6 +84,7 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | Code | Location | Used for |
 |---|---|---|
 | `Engine/Modules/Types/Include/Types/NearestName.h` (copied, namespace changed) | `editor/util/NearestName.h` | "did you mean" suggestions of the scene load report (S03) |
+| `Engine/Modules/AssetCore/Source/GUID.cpp`: `GUID::Derive`, `FnvHash`, `SplitMix64` (adapted) | `engine/core/asset/Guid.cpp` (`Guid::derive`) | deterministic sub-asset GUIDs (asset identity, S04) |
 | `Modules/Memory` (`Arena`, `ScratchScope`, `ObjectPool`, `RangeAllocator`, `SerialUseCheck`, `AddressSanitizer`), adapted | `engine/core/memory/` | the allocators, adapted to our naming and stats registry (S06) |
 | `Modules/JobSystem` (`ParallelForCore`, `ParallelAlgorithms`, `JobCounter`, `JobChannel`, the `WorkStealingThreadPool` lane contracts), adapted | `engine/core/jobs/` | parallelFor, counters, blocking channels; the scheduler itself is our own (S06) |
 | `AssetDecodeGate`, `AssetIOService`, adapted | `engine/core/jobs/BackgroundGate.*`, `engine/core/io/AssetIOService.*` | frame protection and the asset readers (S06) |
@@ -93,6 +94,10 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/Rendering/Shaders/Includes/terrain_material_albedo.glsl` (the colour-slotted hex lattice), adapted with an integer hash | `engine/shaderlib/includes/hex_tiling.glsl` | hex tiling of materials and terrain layers (S11) |
 | `Engine/Modules/Rendering/Shaders/Includes/standard_pbr.glsl` (anisotropic GGX, Charlie visibility, the sheen albedo fit), adapted | `engine/shaderlib/includes/pbr_ext.glsl` | the extended lobes of the built-in Lit (S11) |
 | `Engine/Include/Components/Rendering/LightPhotometry.h` (black body fit, lumen to candela), adapted | `engine/core/util/LightPhotometry.h` | photometric light units and colour temperature (S11) |
+| `Source/Engine/Rendering/ShadowMapRenderFeature.cpp` (`SliceBoundingSphereRadius`, `CascadeLightUp`, `GetCascadeFitTuning`), adapted | `engine/core/render/shadow/CascadeFit.*` | the cascades' bounding-sphere fit, the near-vertical light basis and the fit freeze bands (S10) |
+| `PointShadowAtlasPlanner` (importance ranking, sticky slots, challenge margin and cooldown), adapted | `engine/core/render/shadow/ShadowSlotPlanner.cpp` | shadow slots by importance (S10) |
+| Shader includes `shadow_receiver_plane.glsl`, `shadow_filter.glsl` (`GE_VogelDisk`), `shadow_sampling.glsl` (`GE_PoissonRotation`), `shadow_cascade_blend.glsl`, `shadow_distance_fade.glsl`, `shadow_pcss_decisions.glsl`, adapted with every depth comparison inverted | `engine/shaderlib/includes/shadow_sampling.glsl`, `engine/shaderlib/includes/shadow_pcss_decisions.glsl` | the receiver-plane bias, the Vogel filter, the cascade blend and fade, PCSS (S10) |
+| `ShadowPcssDecisionTests`, ported | `engine/tests/core/render/PcssDecisionTest.cpp` | the PCSS decision tests (tests only, never shipped) |
 
 The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
 
