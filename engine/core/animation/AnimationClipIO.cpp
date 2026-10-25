@@ -1587,3 +1587,12 @@ bool anim::isLuaIdentifier(const std::string& name){
     }
     return true;
 }
+
+void anim::alignQuaternionKey(std::vector<float>& value, const std::vector<float>& reference){
+    if (value.size() != 4 || reference.size() != 4) return;
+    float dot = 0.0f;
+    for (size_t i = 0; i < 4; i++) dot += value[i] * reference[i];
+    if (dot < 0.0f){
+        for (float& component : value) component = -component;
+    }
+}

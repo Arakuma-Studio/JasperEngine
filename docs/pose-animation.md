@@ -59,7 +59,7 @@ and `render_pose_animation` (see [docs/mcp/guide/pose-animation.md](mcp/guide/po
    - **Pose Animator** (live): add **Add Component > Animation > Pose Animator** to the model's
      GameObject and set its Animation, Autoplay, Speed and Weight. It plays in play mode and in the
      built game, and Lua controls it (below). Its **Open** button opens the asset in the window,
-     **Bake** bakes it into the scene (the entity Animation below).
+     **Bake** opens the same menu (Bake to Animation Clip / Bake into Scene, below).
    - **Bake**: the window's **Bake** button opens a menu. The name comes from the field next to
      it (by default the file name). Either way the bake is one scene undo step, and baking again
      updates the same result.

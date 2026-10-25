@@ -111,6 +111,8 @@ async def test_tools_and_schema(ed: Editor):
     for name in ("clip", "create", "root", "events", "events_mode", "wrap", "frame_rate", "length"):
         ed.check_in(name, props, "edit_animation clip-mode argument")
     ed.check_in("path", props["tracks"]["items"]["properties"], "tracks[].path")
+    key_item = props["tracks"]["items"]["properties"]["keys"]["items"]
+    ed.check(key_item.get("additionalProperties", True) is not False, f"keys items allow in/out (tangents): {key_item}")
     ed.check("jasper://docs/animation" in ed.tool("edit_animation").description, "the description points to the guide")
     get = ed.tool("get_animation").input_schema
     for name in ("clip", "times", "root", "entity"):
@@ -418,6 +420,34 @@ async def test_bindings_hero_robot(ed: Editor):
     moved = next(t for t in after["tracks"] if t["path"] == "Robot/pelvis/spine" and t["channel"] == "rotation")
     ed.check_eq(moved["keys"], keys_before, "every key kept")
     ed.check(not any(m["path"] == spine["path"] for m in after["bindings"]["missing"]), "no longer missing")
+    # FX4 (verify review A): every fix applied together merges no tracks and loses no key
+    await ed.call("move_asset", path="assets/anim/walk.anim", to="assets/anim/walk_all.anim", copy=True)
+    full = await ed.call("get_animation", clip="assets/anim/walk_all.anim", root="Robot", max_keys=100000)
+    misses = full["bindings"]["missing"]
+    fixes = [m for m in misses if "fix" in m]
+    ed.check(len(fixes) > 2, f"several fixes: {len(fixes)}")
+    existing = {(t["path"], t["channel"]) for t in full["tracks"]}
+    targets = [(m["fix_path"], m["channel"]) for m in fixes]
+    ed.check_eq(len(set(targets)), len(targets), f"no two fixes share a target: {targets}")
+    ed.check(not set(targets) & existing, f"no fix targets a track the clip has: {set(targets) & existing}")
+    legs = [m for m in misses if m["channel"] == "rotation" and m["path"].endswith(("mixamorig:LeftUpLeg", "mixamorig:RightUpLeg"))]
+    ed.check_eq(len(legs), 2, f"both legs are missing on Robot: {[m['path'] for m in legs]}")
+    ed.check(all("fix" in m or "fix_conflict" in m for m in legs) and
+             len({m.get("fix_path") for m in legs if "fix" in m}) == sum("fix" in m for m in legs),
+             f"the two legs never get the same thigh: {[(m['path'], m.get('fix_path'), m.get('fix_conflict')) for m in legs]}")
+    ed.check("apply together" in full["bindings"]["fix_with"], full["bindings"]["fix_with"])
+    keys_by_path = {(t["path"], t["channel"]): t["keys"] for t in full["tracks"]}
+    r = await ed.call_raw("write_file", {"path": "assets/anim/walk_all.anim", "edits": [m["fix"] for m in fixes]})
+    ed.check(not r.is_error, f"every fix applies in one write_file: {r.text[:500]}")
+    applied = await ed.call("get_animation", clip="assets/anim/walk_all.anim", root="Robot", max_keys=100000)
+    ed.check_eq(len(applied["tracks"]), len(full["tracks"]), "no track merged into another")
+    ed.check(not any("merged" in w for w in applied["warnings"]), f"no merge warning: {applied['warnings']}")
+    after_by_path = {(t["path"], t["channel"]): t["keys"] for t in applied["tracks"]}
+    for m in fixes:
+        ed.check_eq(after_by_path.get((m["fix_path"], m["channel"])), keys_by_path[(m["path"], m["channel"])],
+                    f"{m['path']} -> {m['fix_path']} keeps its keys")
+    ed.check_eq(sum(len(k) for k in after_by_path.values()), sum(len(k) for k in keys_by_path.values()), "no key lost")
+    ed.check_eq(applied["bindings"]["resolved"], full["bindings"]["resolved"] + len(fixes), "each fixed track binds")
     # a bone's bound transform in the preview is the sampled value
     r = await ed.call_raw("preview_animation", {"animation": "Hero", "action": "seek", "time": 0.3})
     ed.check(not r.is_error and r.structured["bound_total"] >= len(r.structured["bound"]) and 0 < len(r.structured["bound"]) <= 8,
@@ -817,6 +847,28 @@ TANGENT_CLIP = {"format": "jasperengine.anim", "version": 1, "tracks": [
         {"time": 1, "value": [0, 0.382683, 0, 0.92388], "in": [0, 0.3, 0, -0.1], "out": [0, 0, 0, 0]}]}]}
 
 
+async def test_fix_conflicts_and_hand_written_files(ed: Editor):
+    """FX4 (verify review A, minor 2): a fix never targets a track the clip has (fix_conflict when no
+    nearest path is free); a hand-written file (not canonical) gets no fix and fix_with says why."""
+    rig = (await ed.call("create_entity", type="empty", name="FixRig", position=[0, 0, 12]))["entity_id"]
+    await ed.call("create_entity", type="empty", name="FixLimb", parent=rig)
+    keys = [{"time": 0, "value": [0, 0, 0]}, {"time": 1, "value": [0, 1, 0]}]
+    out, _ = await edit(ed, clip="assets/anim/fixrig.anim", create={}, root=rig,
+                        tracks=[{"path": "FixLimb", "channel": "position", "keys": keys}, {"path": "FixLimbs", "channel": "position", "keys": keys}])
+    miss = next(m for m in out["bindings"]["missing"] if m["path"] == "FixLimbs")
+    ed.check("FixLimb" in miss["nearest"], f"FixLimb is a nearest path: {miss}")
+    ed.check(("fix" in miss and miss["fix_path"] != "FixLimb") or "fix_conflict" in miss,
+             f"no fix renames FixLimbs onto the clip's own FixLimb track: {miss}")
+    hand = {"format": "jasperengine.anim", "version": 1, "tracks": [{"path": "FixLimbs", "channel": "rotation", "keys": [[0, [0, 0, 0, 1]]]}]}
+    r = await ed.call_raw("write_file", {"path": "assets/anim/handwritten.anim", "content": json.dumps(hand, indent=2)})
+    ed.check(not r.is_error, r.text)
+    got = await ed.call("get_animation", clip="assets/anim/handwritten.anim", root=rig)
+    b = got["bindings"]
+    ed.check(b["missing"] and not any("fix" in m for m in b["missing"]) and "canonical" in b.get("fix_with", ""),
+             f"no fix for a non-canonical file, fix_with says why: {json.dumps(b)[:600]}")
+    await ed.call("delete_entities", entities=[rig])
+
+
 async def test_tangents_survive_edits(ed: Editor):
     """agents review I4: keys sent back with their in/out, or unchanged without them, keep their
     tangents in replace and merge; a changed key without them gets linear tangents."""
@@ -852,6 +904,63 @@ async def test_tangents_survive_edits(ed: Editor):
                   "in and out go together")
     await refused(ed, "edit_animation", {"clip": path, "tracks": [{"path": "", "keys": [{"time": 0, "value": [0, 0, 0], "in": [0, 0], "out": [0, 0]}]}]},
                   "arrays of 3 numbers")
+    # FX4 (verify review minor 7): stored rotations with w < 0 keep their hemisphere and tangents,
+    # sent back as read ({quat, euler}: euler -> the other hemisphere, flipped back) or euler only (±q)
+    neg = {"format": "jasperengine.anim", "version": 1, "tracks": [{"path": "", "channel": "rotation", "keys": [
+        {"time": 0, "value": [0, -0.382683, 0, -0.92388], "in": [0, 0.1, 0, 0.2], "out": [0, -0.3, 0, 0.1]},
+        {"time": 1, "value": [0, -0.5, 0, -0.866025], "in": [0, -0.2, 0, 0.1], "out": [0, 0, 0, 0]}]}]}
+    r = await ed.call_raw("write_file", {"path": "assets/anim/negw.anim", "content": json.dumps(neg, indent=2)})
+    ed.check(not r.is_error, r.text)
+    read = (await ed.call("get_animation", clip="assets/anim/negw.anim"))["tracks"][0]["keys"]
+    stored = [(k["value"]["quat"], k["in"], k["out"]) for k in read]
+    ed.check(stored[0][0][3] < 0, f"read as stored (w < 0): {stored}")
+    out, _ = await edit(ed, clip="assets/anim/negw.anim", tracks=[{"path": "", "channel": "rotation", "keys": read}])
+    ed.check_eq([(k["value"]["quat"], k["in"], k["out"]) for k in out["tracks"][0]["keys"]], stored,
+                "keys sent back as read keep the stored hemisphere and tangents")
+    eulers = [{"time": k["time"], "value": {"euler": k["value"]["euler"]}} for k in read]
+    out, _ = await edit(ed, clip="assets/anim/negw.anim", tracks=[{"path": "", "channel": "rotation", "keys": eulers}])
+    ed.check_eq([(k["value"]["quat"], k["in"], k["out"]) for k in out["tracks"][0]["keys"]], stored,
+                "euler-only keys equal to the stored ones (as -q) keep the stored keys")
+    # FX4 (final review I1): a changed rotation given as +q next to stored -q keys of a tangent track
+    # keeps their sign (replaced: the old key's; inserted: the previous key's): the samples don't flip
+    flip = {"format": "jasperengine.anim", "version": 1, "tracks": [{"path": "", "channel": "rotation", "keys": [
+        {"time": 0, "value": [0, -0.2, 0, -0.979796], "in": [0, 0, 0, 0], "out": [0, 0, 0, 0]},
+        {"time": 1, "value": [0, -0.6, 0, -0.8], "in": [0, -0.1, 0, 0.05], "out": [0, -0.1, 0, 0.05]},
+        {"time": 2, "value": [0, -0.8, 0, -0.6], "in": [0, 0, 0, 0], "out": [0, 0, 0, 0]}]}]}
+    r = await ed.call_raw("write_file", {"path": "assets/anim/flip.anim", "content": json.dumps(flip, indent=2)})
+    ed.check(not r.is_error, r.text)
+    times = [0.25, 0.5, 0.75, 1.25, 1.5, 1.75]
+
+    async def samples():
+        got = await ed.call("get_animation", clip="assets/anim/flip.anim", times=times)
+        return [v["quat"] for v in got["samples"]["tracks"][0]["values"]]
+
+    def same_rotation(a, b, eps):
+        return abs(sum(x * y for x, y in zip(a, b))) > 1 - eps
+
+    def file_key(time):
+        for k in file_json(ed, "assets/anim/flip.anim")["tracks"][0]["keys"]:
+            t, v = (k["time"], k["value"]) if isinstance(k, dict) else (k[0], k[1])
+            if abs(t - time) < 1e-6:
+                return v
+        return None
+
+    before = await samples()
+    await edit(ed, clip="assets/anim/flip.anim", tracks=[{"path": "", "channel": "rotation", "mode": "merge",
+                                                          "keys": [{"time": 1, "value": [0, 0.6, 0, 0.8]}]}])
+    after = await samples()
+    ed.check(all(same_rotation(a, b, 1e-6) for a, b in zip(before, after)), f"the same rotation as +q: samples unchanged: {before} vs {after}")
+    ed.check(file_key(1)[3] < 0, f"the replaced key keeps its sign: {file_key(1)}")
+    # a slightly different rotation as +q (euler): the samples move a little, never through zero
+    await edit(ed, clip="assets/anim/flip.anim", tracks=[{"path": "", "channel": "rotation", "mode": "merge",
+                                                          "keys": [{"time": 1, "value": {"euler": [0, 75, 0]}}]}])
+    moved = await samples()
+    ed.check(file_key(1)[3] < 0, f"an euler key keeps the replaced key's sign: {file_key(1)}")
+    ed.check(all(same_rotation(a, b, 2e-2) for a, b in zip(before, moved)), f"a small change stays a small change (its tangents become linear): {before} vs {moved}")
+    # inserted between -q keys as +q: aligned with the previous key
+    await edit(ed, clip="assets/anim/flip.anim", tracks=[{"path": "", "channel": "rotation", "mode": "merge",
+                                                          "keys": [{"time": 1.5, "value": [0, 0.707107, 0, 0.707107]}]}])
+    ed.check(file_key(1.5)[3] < 0, f"the inserted key takes its previous key's sign: {file_key(1.5)}")
 
 
 async def test_paste_into_a_player_rebinds_the_preview(ed: Editor):
@@ -908,7 +1017,7 @@ async def test_guide_names_exist(ed: Editor):
     known |= {"missing_component", "lattice_index_out_of_range", "morph_index_out_of_range", "legacy_model_layout",
               "unaddressable_name", "duplicate_sibling_name", "missing_path", "quad_out", "in_out", "external_changes", "frame_rate",
               # results of calls this test does not repeat: create {from}, an extract, a missing path with a fix, > 50 users
-              "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total"}
+              "added_player", "removed_tracks", "model_clip_users", "fix_with", "users_total", "fix_path", "fix_conflict"}
     words = set(re.findall(r"(?<![\w./:-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(])", text))
     unknown = sorted(w for w in words if w not in known)
     ed.check(not unknown, f"the guide names unknown things: {unknown}")

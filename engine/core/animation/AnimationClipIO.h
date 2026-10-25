@@ -109,6 +109,14 @@ namespace jasperengine::anim{
     JASPERENGINE_API const char* easeName(EaseType ease);
     JASPERENGINE_API bool easeFromName(const std::string& name, EaseType& out);
 
+    // The sign of a rotation key value an editor writes into a track (x, y, z, w): negated when
+    // its dot product with `reference` is < 0. The reference is the key it replaces, or the previous
+    // key when it is inserted. Normalize leaves the signs of a track with tangents as they are (a
+    // per-component Hermite spline), so an edit that flips a key's sign (an euler converted to +q
+    // next to stored -q keys) would make the segments into and out of it pass near zero; aligned,
+    // the same rotation samples the same. No-op unless both have 4 values.
+    JASPERENGINE_API void alignQuaternionKey(std::vector<float>& value, const std::vector<float>& reference);
+
     // the event function rule: a Lua identifier that is not a keyword ("end", "function"...);
     // the loader drops other events
     JASPERENGINE_API bool isLuaIdentifier(const std::string& name);

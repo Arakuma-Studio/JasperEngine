@@ -124,11 +124,12 @@ hips, one key per frame at the frame times, step keys when `step_rate` > 0; its 
 `undo {scope: "scene"}`; baking again rewrites the keys of the same tracks). Play it with
 `Model:playAnimation(name)`; names are per model (the Hero and the Robot can both have "walk"). `bake`
 alone (no ops) re-bakes after edits; `bake` without `path` bakes what the model's Pose Animator plays
-(the Inspector's Bake button). `bake {model, clip: true}` (or `clip: "assets/anim/walk.anim"`)
+(the Inspector's Bake > Bake into Scene). `bake {model, clip: true}` (or `clip: "assets/anim/walk.anim"`)
 writes a shared `.anim` instead: the mapped bones' rotations and the hips' position, by path from
 the model. `true` writes `<name>.anim` next to the `.poseanim`. It lists the clip in the model's
 Animation Player (adding one), as one scene step (`undo {scope: "scene"}`). Baking again rewrites
-the clip it baked before (GUID kept); an explicit path to another existing file is refused. Prefer
+the clip it baked before (GUID kept); another file of that name makes it take a free one
+(`walk 2.anim`), and an explicit path that exists is refused. Prefer
 it for characters: every rig with the same bone names plays it. To play it live instead, attach a
 Pose Animator:
 `add_component {entity: "Hero", component: "poseanimator", values: {poseanimator: {animation:

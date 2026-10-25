@@ -4747,10 +4747,14 @@ void registerWorldTools(McpRegistry& registry) {
     // ---------------------------------------------------------------- animation
     // (clip: the .anim mode of AnimationClipTools.cpp; grammar, tween fields and the two-way
     // argument table in docs/mcp/guide/animation.md)
+    // a key item without additionalProperties: keys read back from a result carry in/out (tangents),
+    // which clip mode takes; the handler checks the fields
+    Json openKeyItem = object({{"time", number("")}, {"value", any("")}, {"points", any("")}, {"ease", string("")}}, {"time"});
+    openKeyItem.erase("additionalProperties");
     add("edit_animation", "Edit Animation",
         "Keyframes in seconds. clip (.anim): a shared clip file, tracks by path from the GameObject whose "
         "Animation Player plays it; create {from?: entity Animation or \"model.gltf#Walk\"}; root checks paths "
-        "(bindings); a project undo step (from an Animation: scene). Without clip: an entity Animation (creates one under target), tweens, "
+        "(bindings); a project undo step (from an Animation, or a model clip with root: scene). Without clip: an entity Animation (creates one under target), tweens, "
         "actions; a scene step. tracks: keys {time, value|points, ease} of local position/scale, rotation "
         "(quaternion or euler; > 180 degrees needs middle keys), morph weights or lattice points; the same "
         "path|target+channel replaces or merges; relative: offsets from the pose when it starts. "
@@ -4765,7 +4769,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"name", string("")},
             {"tracks", array(object({
                 {"channel", stringEnum("", {"position", "rotation", "scale", "morph", "lattice"})},
-                {"keys", array(object({{"time", number("")}, {"value", any("")}, {"points", any("")}, {"ease", string("")}}, {"time"}), "")},
+                {"keys", array(openKeyItem, "")},
                 {"path", string("")},
                 {"target", entityRef("Default: target.")},
                 {"start_time", number("")},
