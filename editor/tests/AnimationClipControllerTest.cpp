@@ -22,7 +22,15 @@
 #include "animation/ClipRecordHooks.h"
 #include "animation/PreviewOwner.h"
 #include "command/CommandHandle.h"
+#include "command/type/DeleteEntityCmd.h"
+#include "command/type/DuplicateEntityCmd.h"
+#include "command/type/ObjectTransformCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/LatticeComponent.h"
+#include "component/MeshComponent.h"
+#include "util/EntityClipboard.h"
+
+#include "imgui.h"
 #include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/PoseAnimationDocument.h"
@@ -225,8 +233,23 @@ namespace {
         return h;
     }
 
-    Project* project() { return headless().project.get(); }
+    bool headlessStarted = false;
+
+    Project* project() {
+        headlessStarted = true;
+        return headless().project.get();
+    }
     fs::path assets() { return project()->getAssetsPath(); }
+
+    // the temporary project and config go when the run ends (the engine stays: other suites share it)
+    struct TempProjectCleanup : public ::testing::Environment {
+        void TearDown() override {
+            if (!headlessStarted) return;
+            std::error_code ec;
+            fs::remove_all(headless().dir.parent_path(), ec);
+        }
+    };
+    [[maybe_unused]] ::testing::Environment* const tempProjectCleanup = ::testing::AddGlobalTestEnvironment(new TempProjectCleanup);
 
     void writeAll(const fs::path& path, const std::string& content) {
         fs::create_directories(path.parent_path());
@@ -286,11 +309,8 @@ namespace {
         Transform transform;
         transform.position = position;
         s.scene->addComponent<Transform>(entity, transform);
-        if (parent != NULL_ENTITY) {
-            s.scene->addEntityChild(parent, entity, false);
-        } else {
-            s.sceneProject->entities.push_back(entity);
-        }
+        if (parent != NULL_ENTITY) s.scene->addEntityChild(parent, entity, false);
+        s.sceneProject->entities.push_back(entity);
         return entity;
     }
 
@@ -533,13 +553,11 @@ TEST_F(AnimationClipControllerTest, KeyingCommitsAreProjectStepsAndADragIsOneSte
     EXPECT_EQ(projectHistory->position(), start + 1) << "one project step";
     EXPECT_EQ(sceneHistory->position(), sceneSteps) << "no scene step";
     EXPECT_FALSE(s.sceneProject->isModified);
-    EXPECT_TRUE(c.ownsUndo(false)) << "the window's last action was a clip edit";
+    // R5b: the newest undoable step is the clip commit, whatever window has focus
+    EXPECT_TRUE(c.ownsUndo(false));
     ClipUndoFocus focus;
-    focus.animationWindow = true;
-    EXPECT_TRUE(animationClipAppHooks().ownsUndo(focus));
-    focus.animationWindow = false;
     focus.sceneView = true;
-    EXPECT_FALSE(animationClipAppHooks().ownsUndo(focus)) << "only while Record is on";
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo(focus));
 
     // K with the Arm moved: keys every bound track at the playhead with the current values
     s.transform(s.arm).position = Vector3(4, 4, 4);
@@ -840,4 +858,431 @@ TEST_F(AnimationClipControllerTest, PoseWindowAndClipPreviewInEveryOrderLeaveThe
     }
     EXPECT_TRUE(PreviewOwner::ownerOf(s.id, model).token == 0) << "both released their ownership";
     session.unbind();
+}
+
+// ---- review round 1 -------------------------------------------------------------------------
+
+// A whole-Transform write of a previewed entity (the translate gizmo: the command carries the
+// shown rotation and scale) changes only what the user changed; a redo after the preview
+// writes no clip pose (C1)
+TEST_F(AnimationClipControllerTest, AWholeTransformWriteDuringThePreviewKeepsTheUntouchedChannels) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(0.5f);
+    expectNear(s.transform(s.hand).scale, Vector3(1.5f, 1.5f, 1.5f), "previewed scale");
+    CommandHistory* history = CommandHandle::get(s.id);
+
+    const Transform shown = s.transform(s.hand);
+    ASSERT_TRUE(history->addCommand(new ObjectTransformCmd(project(), s.id, s.hand, Vector3(0, 3, 0), shown.rotation, shown.scale)));
+    expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "the untouched scale keeps its rest");
+    c.update(0.0);
+    expectNear(s.transform(s.hand).scale, Vector3(1.5f, 1.5f, 1.5f), "previewed again");
+    c.stopPreview();
+    expectNear(s.transform(s.hand).position, Vector3(0, 3, 0), "the moved position");
+    expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "the rest scale");
+
+    // the matrix form the gizmo builds (decomposed again: not bit-equal)
+    c.seek(1.0f);
+    {
+        Transform& hand = s.transform(s.hand);
+        const Matrix4 m = Matrix4::translateMatrix(Vector3(0, 4, 0)) * hand.rotation.getRotationMatrix() * Matrix4::scaleMatrix(hand.scale);
+        history->addCommandNoMerge(new ObjectTransformCmd(project(), s.id, s.hand, m));
+    }
+    c.stopPreview();
+    expectNear(s.transform(s.hand).position, Vector3(0, 4, 0), "moved again");
+    expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "the rest scale, not the previewed 2");
+
+    // undo and redo with no preview: never the clip pose
+    ASSERT_TRUE(history->undo());
+    ASSERT_TRUE(history->undo());
+    expectNear(s.transform(s.hand).position, Vector3(0, 1, 0), "undone");
+    ASSERT_TRUE(history->redo());
+    ASSERT_TRUE(history->redo());
+    expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "a redo writes no previewed scale");
+    expectNear(s.transform(s.hand).position, Vector3(0, 4, 0), "redone");
+}
+
+// The controller's own net: a write of exactly the previewed value is no edit of the rest (C1)
+TEST_F(AnimationClipControllerTest, WritingThePreviewedValueBackKeepsTheRest) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    c.seek(1.0f);
+    const Vector3 previewed = s.transform(s.hand).scale;
+    ASSERT_TRUE(CommandHandle::get(s.id)->addCommand(
+        new PropertyCmd<Vector3>(project(), s.id, s.hand, ComponentType::Transform, "scale", previewed)));
+    c.stopPreview();
+    expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "the rest");
+}
+
+// Copying, duplicating and deleting the previewed hierarchy stop the preview first, so what
+// is copied or kept for undo is the rest (C2: PoseEditSession::suspendActive* stop it)
+TEST_F(AnimationClipControllerTest, CopiesDuplicatesAndDeletesTakeTheRestNotThePreview) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+
+    // Duplicate
+    c.seek(1.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    auto* duplicate = new DuplicateEntityCmd(project(), s.id, {s.hero});
+    ASSERT_TRUE(history->addCommand(duplicate));
+    EXPECT_FALSE(c.isPreviewing()) << "the duplicate stopped the preview first";
+    Entity copyRoot = NULL_ENTITY;
+    for (Entity created : duplicate->getCreatedEntities()){
+        if (s.transform(created).parent == NULL_ENTITY) copyRoot = created;
+    }
+    ASSERT_NE(copyRoot, NULL_ENTITY);
+    const Entity copyArm = anim::resolvePath(s.scene, copyRoot, "Arm");
+    ASSERT_NE(copyArm, NULL_ENTITY);
+    expectNear(s.transform(copyArm).position, Vector3(5, 5, 5), "the copy's Arm at rest");
+    ASSERT_TRUE(history->undo());
+
+    // Copy (the clipboard text goes through ImGui)
+    ImGuiContext* imgui = ImGui::CreateContext();
+    c.seek(1.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    ASSERT_TRUE(EntityClipboard::copyGameObjects(project(), s.id, {s.arm}));
+    EXPECT_FALSE(c.isPreviewing()) << "copying a previewed child stopped the preview";
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "copied at rest");
+
+    // a copy elsewhere in the scene leaves the preview alone
+    c.seek(1.0f);
+    ASSERT_TRUE(EntityClipboard::copyGameObjects(project(), s.id, {s.prop}));
+    EXPECT_TRUE(c.isPreviewing());
+    ImGui::DestroyContext(imgui);
+
+    // Delete the previewed root, then undo: it comes back at rest
+    ASSERT_TRUE(history->addCommand(new DeleteEntityCmd(project(), s.id, s.hero)));
+    EXPECT_FALSE(c.isPreviewing());
+    c.update(0.0);
+    ASSERT_TRUE(history->undo());
+    const Entity hero = s.scene->findEntity("Hero");
+    ASSERT_NE(hero, NULL_ENTITY);
+    const Entity arm = anim::resolvePath(s.scene, hero, "Arm");
+    ASSERT_NE(arm, NULL_ENTITY);
+    expectNear(s.transform(arm).position, Vector3(5, 5, 5), "the undone delete brings the rest back");
+
+    // the prefab sites (create, apply, revert) call these two: a scene-wide stop and a rooted one
+    ASSERT_TRUE(c.bindRoot(s.id, hero, &error)) << error;
+    c.seek(1.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    PoseEditSession::suspendActiveFor(s.id, {s.prop});
+    EXPECT_TRUE(c.isPreviewing()) << "not under the given roots";
+    PoseEditSession::suspendActiveFor(s.id, {hero});
+    EXPECT_FALSE(c.isPreviewing());
+    c.seek(1.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    PoseEditSession::suspendActive();
+    EXPECT_FALSE(c.isPreviewing());
+    expectNear(s.transform(arm).position, Vector3(5, 5, 5), "restored");
+}
+
+// R5b: Ctrl+Z / Ctrl+Y go to the project history only while the newest undoable step is a clip
+// commit (I1)
+TEST_F(AnimationClipControllerTest, UndoGoesToTheClipOnlyWhileItsCommitIsTheNewestStep) {
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    CommandHistory* history = CommandHandle::get(s.id);
+    ClipUndoFocus sceneView;
+    sceneView.sceneView = true;
+    ClipUndoFocus window;
+    window.animationWindow = true;
+
+    // a scene step made before: the scene's
+    ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(1, 1, 1))));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo(window));
+
+    // Record on, the Hand recorded: the project's, from any window
+    c.setTime(0.5f);
+    c.setRecording(true);
+    ClipRecordValue value;
+    value.channel = ClipChannel::Position;
+    value.value = {0, 2, 0};
+    ASSERT_TRUE(ClipRecordHooks::record(s.id, s.hand, value, ClipRecordHooks::beginDrag()));
+    ClipRecordHooks::endDrag();
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView));
+    EXPECT_TRUE(c.newestStepIsClipEdit());
+
+    // the Prop moved (not recorded: a scene step): the scene's again, even with Record on
+    ASSERT_FALSE(ClipRecordHooks::claims(s.id, s.prop, ClipChannel::Position));
+    ASSERT_TRUE(history->addCommand(new PropertyCmd<Vector3>(project(), s.id, s.prop, ComponentType::Transform, "position", Vector3(7, 7, 7))));
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo(sceneView)) << "Record never steals a scene undo";
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo(window));
+
+    // that move undone: the record commit is the newest undoable step again
+    ASSERT_TRUE(history->undo());
+    EXPECT_TRUE(animationClipAppHooks().ownsUndo(sceneView));
+    // and once the record commit is undone, the older scene step is the newest one
+    ASSERT_TRUE(project()->getProjectCommandHistory()->undo());
+    EXPECT_FALSE(animationClipAppHooks().ownsUndo(window));
+    // another project step that is no clip commit: not routed by the clip mode
+    c.setRecording(false);
+    c.stopPreview();
+}
+
+// A suspended Pose window (a save, a copy) keeps the model: a clip preview started then puts it
+// to Idle instead of being stopped by the pose's next update (I3)
+TEST_F(AnimationClipControllerTest, ASuspendedPoseWindowYieldsTheModelToAClipPreview) {
+    fs::create_directories(assets() / "models");
+    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+                  "models" / "hero_tpose.gltf", assets() / "models/hero.gltf", fs::copy_options::overwrite_existing);
+    ClipScene s = clipScene();
+    Model heroModel(s.scene);
+    const Entity model = heroModel.getEntity();
+    s.scene->setEntityName(model, "Character");
+    s.sceneProject->entities.push_back(model);
+    ASSERT_TRUE(s.scene->getSystem<MeshSystem>()->loadGLTF(model, (assets() / "models/hero.gltf").string(), false, false, false));
+    s.scene->getComponent<ModelComponent>(model).filename = "models/hero.gltf";
+    std::string armPath;
+    for (const auto& entry : anim::descendantPaths(s.scene, model)){
+        const std::string name = s.scene->getEntityName(entry.second);
+        if (name.size() >= 7 && name.compare(name.size() - 7, 7, "LeftArm") == 0) armPath = entry.first;
+    }
+    ASSERT_FALSE(armPath.empty());
+    ClipData turn;
+    ClipTrackData rotation;
+    rotation.path = armPath;
+    rotation.channel = ClipChannel::Rotation;
+    std::vector<float> quarter(4);
+    quaternionToXYZW(Quaternion(0.7071068f, 0.0f, 0.0f, 0.7071068f), quarter.data());
+    rotation.keys = {key(0.0f, quarter)};
+    turn.tracks = {rotation};
+    writeClip("anim/turn.anim", turn);
+    AnimationPlayerComponent player;
+    AnimationPlayerClip entry;
+    entry.clip = "anim/turn.anim";
+    player.clips = {entry};
+    s.scene->addComponent<AnimationPlayerComponent>(model, player);
+    pose::PoseAnimationData poseData;
+    pose::PoseKey down;
+    for (size_t i = 0; i < down.body.angles.size(); i++) down.body.angles[i] = (i % 3 == 0) ? 20.0f : 0.0f;
+    poseData.poses = {down};
+    std::string error;
+    fs::remove(assets() / "pose/down.poseanim");
+    ASSERT_TRUE(PoseAnimationDocument::create(project(), "assets/pose/down.poseanim", poseData, "Create", nullptr, &error)) << error;
+
+    PoseEditSession session(project());
+    PoseEditSession::setActive(&session);
+    ASSERT_TRUE(session.bind(s.scene, s.id, model, &error)) << error;
+    ASSERT_TRUE(session.open("assets/pose/down.poseanim", &error)) << error;
+    session.startPosing();
+    ASSERT_TRUE(session.bonesApplied());
+    PoseEditSession::suspendActive();
+    EXPECT_FALSE(session.bonesApplied());
+    EXPECT_EQ(PreviewOwner::ownerOf(s.id, model).name, "Pose Animation") << "suspended, still the owner";
+
+    AnimationClipController& c = controller();
+    ASSERT_TRUE(c.bindRoot(s.id, model, &error)) << error;
+    c.seek(0.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    EXPECT_EQ(session.mode(), PoseEditSession::Mode::Idle) << "the clip preview put the pose to Idle";
+    session.update(0.016f);
+    EXPECT_TRUE(c.isPreviewing()) << "the pose's next update does not take the model back";
+    EXPECT_FALSE(session.bonesApplied());
+    c.stopPreview();
+    PoseEditSession::setActive(nullptr);
+    session.unbind();
+}
+
+// A deferred stop while the scene is saved, a scene tab switch and a deleted root (I2)
+TEST_F(AnimationClipControllerTest, StopsDeferredBySavingOnSceneSwitchAndOnADeletedRoot) {
+    ClipScene other = clipScene();
+    ASSERT_TRUE(project()->saveSceneToPath(other.id, "OtherClips.scene"));
+    ClipScene s = clipScene();
+    ASSERT_NE(s.id, other.id);
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+
+    // a stop while a thread saves the scene waits for the save
+    c.seek(1.0f);
+    s.sceneProject->playState = ScenePlayState::SAVING;
+    c.stopPreview();
+    EXPECT_FALSE(c.isPreviewing());
+    expectNear(s.transform(s.arm).position, Vector3(1, 2, 0), "nothing written under the save");
+    c.update(0.0);
+    expectNear(s.transform(s.arm).position, Vector3(1, 2, 0), "still saving");
+    s.sceneProject->playState = ScenePlayState::STOPPED;
+    c.update(0.0);
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "restored once saved");
+
+    // another scene tab: the preview ends (also without update: the next write stops it)
+    c.seek(1.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    project()->setSelectedSceneId(other.id);
+    c.seek(0.5f);
+    EXPECT_FALSE(c.isPreviewing());
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "restored on the switch");
+    EXPECT_FALSE(c.startPreview(&error)) << "only in the selected scene";
+    project()->setSelectedSceneId(s.id);
+
+    // the previewed root destroyed without a command: the next update ends the preview
+    c.seek(1.0f);
+    ASSERT_TRUE(c.isPreviewing());
+    s.scene->destroyEntity(s.hand);
+    s.scene->destroyEntity(s.arm);
+    s.scene->destroyEntity(s.hero);
+    c.update(0.0);
+    EXPECT_FALSE(c.isPreviewing());
+    EXPECT_EQ(c.getRoot(), NULL_ENTITY);
+}
+
+// Sub-clips are read-only (I2)
+TEST_F(AnimationClipControllerTest, AModelsAnimationIsReadOnly) {
+    fs::create_directories(assets() / "models");
+    fs::copy_file(fs::path(JASPER_EDITOR_TEST_FIXTURES) / ".." / ".." / ".." / "tools" / "fixtures" / "pose-animation" / "assets" /
+                  "models" / "hero_animated.gltf", assets() / "models/hero_animated.gltf", fs::copy_options::overwrite_existing);
+    ClipScene s = clipScene();
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    ASSERT_TRUE(c.openClip("assets/models/hero_animated.gltf#Walk", &error)) << error;
+    EXPECT_TRUE(c.isReadOnly());
+    const size_t steps = project()->getProjectCommandHistory()->position();
+    EXPECT_FALSE(c.keyAll(0.0f, &error));
+    EXPECT_NE(error.find("Extract to .anim"), std::string::npos) << error;
+    EXPECT_FALSE(c.addProperty("Arm", ClipChannel::Rotation, nullptr, &error));
+    EXPECT_FALSE(c.commit(c.getDocument()->data(), "Edit", "", &error));
+    EXPECT_NE(error.find("read-only"), std::string::npos) << error;
+    c.setRecording(true);
+    EXPECT_FALSE(c.isRecording()) << "nothing to record into";
+    EXPECT_EQ(project()->getProjectCommandHistory()->position(), steps);
+}
+
+// Blend shapes and lattices: keyed, recorded, previewed and restored (I2)
+TEST_F(AnimationClipControllerTest, BlendShapeAndLatticeChannels) {
+    ClipScene s = clipScene();
+    const Entity face = addObject(s, "Face", s.hero, Vector3(0, 0, 0));
+    s.scene->addComponent<MeshComponent>(face, {});
+    const Entity cage = addObject(s, "Cage", s.hero, Vector3(0, 0, 0));
+    s.scene->addComponent<LatticeComponent>(cage, {});
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+
+    // Add Property keys the current weights, as wide as they need (here: one zero weight)
+    c.setTime(0.0f);
+    size_t morph = 0;
+    ASSERT_TRUE(c.addProperty("Face", ClipChannel::Morph, &morph, &error)) << error;
+    EXPECT_EQ(c.getDocument()->data().tracks[morph].keys[0].value, std::vector<float>{0.0f});
+    // a key at 1 s with the second weight up
+    s.scene->getComponent<MeshComponent>(face).morphWeights[1] = 0.5f;
+    std::vector<AnimationClipController::KeyRef> keyed;
+    morph = (size_t)c.getDocument()->data().findTrack("Face", ClipChannel::Morph);
+    ASSERT_TRUE(c.keyTracks({morph}, 1.0f, "", &keyed, &error)) << error;
+    ASSERT_EQ(keyed.size(), 1u);
+    EXPECT_EQ(c.getDocument()->data().tracks[keyed[0].track].keys[keyed[0].key].value, (std::vector<float>{0.0f, 0.5f}));
+    s.scene->getComponent<MeshComponent>(face).morphWeights[1] = 0.0f;
+    c.seek(0.5f);
+    EXPECT_NEAR(s.scene->getComponent<MeshComponent>(face).morphWeights[1], 0.25f, 1e-5f) << "previewed weight";
+
+    // Record a lattice point, then another: one track on the union of the points
+    c.setRecording(true);
+    ASSERT_TRUE(c.isRecording());
+    ClipRecordValue point;
+    point.channel = ClipChannel::Lattice;
+    point.points = {4};
+    point.value = {0, 1, 0};
+    ASSERT_TRUE(ClipRecordHooks::record(s.id, cage, point, ""));
+    point.points = {2};
+    point.value = {1, 0, 0};
+    ASSERT_TRUE(ClipRecordHooks::record(s.id, cage, point, ""));
+    const int lattice = c.getDocument()->data().findTrack("Cage", ClipChannel::Lattice);
+    ASSERT_GE(lattice, 0);
+    const ClipTrackData& track = c.getDocument()->data().tracks[(size_t)lattice];
+    EXPECT_EQ(track.points, (std::vector<int>{2, 4}));
+    ASSERT_EQ(track.keys.size(), 1u);
+    EXPECT_EQ(track.keys[0].value, (std::vector<float>{1, 0, 0, 0, 1, 0}));
+    expectNear(s.scene->getComponent<LatticeComponent>(cage).offsets[4], Vector3(0, 1, 0), "the live point");
+
+    c.stopPreview();
+    EXPECT_FLOAT_EQ(s.scene->getComponent<MeshComponent>(face).morphWeights[1], 0.0f);
+    expectNear(s.scene->getComponent<LatticeComponent>(cage).offsets[4], Vector3(0, 0, 0), "the cage at rest");
+    expectNear(s.scene->getComponent<LatticeComponent>(cage).offsets[2], Vector3(0, 0, 0), "the cage at rest");
+}
+
+// Relative tracks key offsets; Shift+K keys only what differs; Record of an entity the preview
+// never wrote; the inline (pink) value; a drag collapsing two keys (I2, M1, M3, M10)
+TEST_F(AnimationClipControllerTest, RelativeKeysModifiedKeysPendingValuesAndCollapsedDrags) {
+    ClipData relative = armClip();
+    relative.tracks[0].relative = true;
+    relative.tracks[0].keys = {key(0.0f, {0, 0, 0}), key(1.0f, {0, 1, 0})};
+    writeClip("anim/arm.anim", relative);
+    AnimationClipDocument::checkDiskChanges(project());
+    ClipScene s = clipScene();
+    const Entity tail = addObject(s, "Tail", s.hero, Vector3(0, -1, 0));
+    AnimationClipController& c = controller();
+    std::string error;
+    ASSERT_TRUE(c.bindRoot(s.id, s.hero, &error)) << error;
+    ASSERT_TRUE(c.getDocument()->data().tracks[0].relative);
+    c.seek(1.0f);
+    expectNear(s.transform(s.arm).position, Vector3(5, 6, 5), "rest + offset");
+
+    // Shift+K with the Arm moved: only the Arm's track, keyed as an offset from the rest
+    s.transform(s.arm).position = Vector3(5, 8, 5);
+    std::vector<AnimationClipController::KeyRef> keyed;
+    ASSERT_TRUE(c.keyModified(1.0f, &keyed, &error)) << error;
+    ASSERT_EQ(keyed.size(), 1u);
+    const ClipTrackData& arm = c.getDocument()->data().tracks[keyed[0].track];
+    EXPECT_EQ(arm.path, "Arm");
+    const std::vector<float>& offset = arm.keys[keyed[0].key].value;
+    ASSERT_EQ(offset.size(), 3u);
+    EXPECT_NEAR(offset[1], 3.0f, 1e-5f);
+    EXPECT_FALSE(c.keyModified(1.0f, &keyed, &error)) << "nothing differs now";
+
+    // the inline value: shown until the playhead moves, keyed by K
+    const size_t hand = (size_t)c.getDocument()->data().findTrack("Arm/Hand", ClipChannel::Scale);
+    ASSERT_FALSE(c.setPendingValue(hand, {1, 2}, &error)) << "three numbers";
+    ASSERT_TRUE(c.setPendingValue(hand, {3, 3, 3}, &error)) << error;
+    EXPECT_TRUE(c.hasPendingValue(hand));
+    c.update(0.0);
+    expectNear(s.transform(s.hand).scale, Vector3(3, 3, 3), "pending over the clip");
+    ASSERT_TRUE(c.keyTracks({hand}, 1.0f, "", &keyed, &error)) << error;
+    EXPECT_FALSE(c.hasPendingValue(hand));
+    EXPECT_EQ(c.getDocument()->data().tracks[keyed[0].track].keys[keyed[0].key].value, (std::vector<float>{3, 3, 3}));
+    ASSERT_TRUE(c.setPendingValue(hand, {4, 4, 4}, &error)) << error;
+    c.seek(0.0f);
+    EXPECT_FALSE(c.hasPendingValue(hand)) << "the playhead moved";
+    expectNear(s.transform(s.hand).scale, Vector3(1, 1, 1), "the clip at 0");
+
+    // Record of an entity no track had: its rest is the value before the live write
+    c.setRecording(true);
+    ClipRecordValue value;
+    value.channel = ClipChannel::Rotation;
+    value.value = {0, 0.7071068f, 0, 0.7071068f};
+    ASSERT_TRUE(ClipRecordHooks::record(s.id, tail, value, ""));
+    EXPECT_GE(c.getDocument()->data().findTrack("Tail", ClipChannel::Rotation), 0);
+
+    // two keys of one track dragged onto one time: one key, one ref, a warning
+    const int armTrack = c.getDocument()->data().findTrack("Arm", ClipChannel::Position);
+    ASSERT_GE(armTrack, 0);
+    ASSERT_EQ(c.getDocument()->data().tracks[(size_t)armTrack].keys.size(), 2u);
+    ASSERT_TRUE(c.beginKeyDrag({{(size_t)armTrack, 0}}, &error)) << error;
+    std::vector<AnimationClipController::KeyRef> moved;
+    ASSERT_TRUE(c.updateKeyDrag(1.0f, nullptr, &moved, &error)) << error;
+    c.endKeyDrag();
+    EXPECT_EQ(c.getDocument()->data().tracks[(size_t)c.getDocument()->data().findTrack("Arm", ClipChannel::Position)].keys.size(), 1u);
+    EXPECT_EQ(moved.size(), 1u);
+    EXPECT_FALSE(c.getLastWarnings().empty()) << "the collapse is reported";
+
+    // a vertical drag of a rotation key keeps it a unit quaternion
+    const int tailTrack = c.getDocument()->data().findTrack("Tail", ClipChannel::Rotation);
+    ASSERT_TRUE(c.beginKeyDrag({{(size_t)tailTrack, 0}}, &error)) << error;
+    const std::vector<float> lift = {0.5f, 0.0f, 0.0f, 0.0f};
+    ASSERT_TRUE(c.updateKeyDrag(0.0f, &lift, &moved, &error)) << error;
+    c.endKeyDrag();
+    const std::vector<float>& q = c.getDocument()->data().tracks[(size_t)c.getDocument()->data().findTrack("Tail", ClipChannel::Rotation)].keys[0].value;
+    EXPECT_NEAR(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3], 1.0f, 1e-4f);
+
+    c.stopPreview();
+    expectNear(s.transform(s.arm).position, Vector3(5, 5, 5), "the Arm at its rest (the direct write was no scene edit)");
+    EXPECT_TRUE(s.transform(tail).rotation == Quaternion()) << "the recorded Tail back at its rest";
 }
