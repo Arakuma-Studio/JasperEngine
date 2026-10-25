@@ -95,6 +95,12 @@ namespace jasperengine::editor{
         // The generated mesh entities are destroyed before the load, so their submesh edits are
         // taken aside here. Empty when the asset itself changed.
         MeshSystem::SubmeshOverrides savedSubmeshOverrides;
+        // The blend shape weights of the mesh parts by glTF node, carried across a layout switch
+        // (R3): its rebuild makes new mesh entities (a legacy model entity's own mesh moves to its
+        // node's entity). Taken on the first run, put back after every load of it.
+        std::map<int, std::vector<float>> savedMorphWeights;
+        void recordMorphWeights(Scene* scene, const ModelComponent& model);
+        void restoreMorphWeights(Scene* scene, const ModelComponent& model);
 
         static std::vector<Entity> collectModelDeleteRoots(Scene* scene, const ModelComponent& model);
         static bool isMappedMeshNode(const ModelComponent& model, Entity entity);

@@ -25,9 +25,10 @@ bool editor::PrefabOverrideCmd::isApply() const{
 
 bool editor::PrefabOverrideCmd::execute(){
     std::vector<std::filesystem::path> targets;
+    // a posed or previewed object applies, records or reverts from its rest, never from the
+    // pose; a revert's value is not written back over by the preview's stop (clips 9.R7)
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
     if (isApply()){
-        // a posed bone applies its rest transform, not the pose
-        PoseEditSession::suspendActiveFor(sceneId, {entity});
         if (!project->canApplyPrefabOverrides()){
             return false;
         }
@@ -65,5 +66,6 @@ bool editor::PrefabOverrideCmd::execute(){
 }
 
 void editor::PrefabOverrideCmd::undo(){
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
     project->restorePrefabUndoState(before);
 }

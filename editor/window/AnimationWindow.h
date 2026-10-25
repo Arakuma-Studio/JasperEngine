@@ -30,8 +30,13 @@ namespace jasperengine::editor{
         // the scene selection last seen (the mode follows its changes, per scene)
         uint32_t lastSelectionScene = 0;
         std::vector<Entity> lastSelection;
-        // entity mode's preview owns its root (PreviewOwner, R7)
-        int previewOwnerToken = 0;
+        // entity mode's preview owns every root it writes (PreviewOwner, R7): the previewed
+        // Animations', their targets' and their tracks' (inspectorclips::actionPreviewEntities)
+        std::vector<int> previewOwnerTokens;
+        // owns the roots `animations` write (the previous tokens released first): the owners in
+        // the way stop before this preview snapshots anything
+        void ownPreviewRoots(Scene* scene, const std::vector<Entity>& animations);
+        void releasePreviewOwners();
         // R31: view-only lanes of the displayed Animation's frames (never written to
         // ActionFrame::track except by an explicit move); the dragged frame's lane
         std::vector<uint32_t> viewLanes;
@@ -221,7 +226,7 @@ namespace jasperengine::editor{
         void seekPreviewExternal(Scene* scene, SceneProject* sceneProject, float time);
 
         // Restores the entity-mode preview's snapshot before a save, play, scene switch or close
-        // (animation clips spec 9.R6); App::stopTransientPreviews calls it. TODO(T3b): stub.
+        // (animation clips spec 9.R6); App::stopTransientPreviews calls it.
         void stopTransientPreviews();
     };
 

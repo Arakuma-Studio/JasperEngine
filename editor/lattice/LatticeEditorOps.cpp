@@ -14,6 +14,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
 #include "lattice/LatticeSolver.h"
+#include "pose/PoseEditSession.h"
 #include "render/SceneRender.h"
 #include "subsystem/LatticeSystem.h"
 #include "component/LatticeFollowerComponent.h"
@@ -753,6 +754,13 @@ bool LatticeEditorOps::setResolution(Project* project, uint32_t sceneId, Entity 
     if (entity == NULL_ENTITY || !sceneProject->scene->isEntityCreated(entity)){
         return fail(error, "entity " + std::to_string(entity) + " does not exist in this scene");
     }
+    lattice = sceneProject->scene->findComponent<LatticeComponent>(entity);
+    if (!lattice){
+        return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");
+    }
+    // the rest offsets are resampled, not a preview's (a layout change takes no shown-value
+    // merge in LatticePointsCmd): the previews of the lattice restore first (clips 9.R7)
+    PoseEditSession::suspendActiveFor(sceneId, {entity});
     lattice = sceneProject->scene->findComponent<LatticeComponent>(entity);
     if (!lattice){
         return fail(error, entityLabel(sceneProject->scene, entity) + " is not a lattice (it has no Lattice component)");

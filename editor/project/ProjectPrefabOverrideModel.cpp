@@ -11,6 +11,7 @@
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
+#include "pose/PoseEditSession.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
@@ -1268,6 +1269,9 @@ bool editor::Project::reimportPrefabInstance(SceneProject* sceneProject, Entity 
         return false;
     }
     Scene* scene = sceneProject->scene;
+    // the instance is rewritten from the prefab (same entity ids, no channel notification): a
+    // preview of it restores first, or its stop would write the old values back (clips 9.R7)
+    PoseEditSession::suspendActiveFor(sceneProject->id, {root});
     std::filesystem::path path;
     Prefab::Instance* instance = instanceRootedAt(this, scene, sceneProject->id, root, &path);
     if (!instance) {
