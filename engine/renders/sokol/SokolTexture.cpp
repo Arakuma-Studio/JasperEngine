@@ -103,10 +103,73 @@ namespace {
         switch (format){
             case SG_PIXELFORMAT_R8: return 1;
             case SG_PIXELFORMAT_R16: return 2;
+            case SG_PIXELFORMAT_R16F: return 2;
             case SG_PIXELFORMAT_RGBA16F: return 8;
             case SG_PIXELFORMAT_RGBA32F: return 16;
             default: return 4;
         }
+    }
+
+    // A 16-bit single-channel image (ColorFormat::RED16: terrain heightmaps) as the GPU can
+    // sample and filter it. GLES3 and WebGL2 have no 16-bit unorm textures (R16), so there it
+    // goes up as R32F where floats filter (exact), else as R16F, which filters everywhere
+    // (11 significant bits: steps of 1/2048 of the height range at the top)
+    sg_pixel_format red16PixelFormat(){
+        const sg_pixelformat_info r16 = sg_query_pixelformat(SG_PIXELFORMAT_R16);
+        if (r16.sample && r16.filter)
+            return SG_PIXELFORMAT_R16;
+        const sg_pixelformat_info r32f = sg_query_pixelformat(SG_PIXELFORMAT_R32F);
+        if (r32f.sample && r32f.filter)
+            return SG_PIXELFORMAT_R32F;
+        return SG_PIXELFORMAT_R16F;
+    }
+
+    // IEEE half of a float in 0..1 (round to nearest even, subnormals kept)
+    uint16_t halfFromFloat(float value){
+        uint32_t bits;
+        std::memcpy(&bits, &value, sizeof(bits));
+        const uint32_t sign = (bits >> 16) & 0x8000u;
+        const int32_t exponent = (int32_t)((bits >> 23) & 0xffu) - 127 + 15;
+        uint32_t mantissa = bits & 0x7fffffu;
+        if (exponent >= 31)
+            return (uint16_t)(sign | 0x7c00u);
+        uint32_t half;
+        uint32_t rest;
+        uint32_t halfway;
+        if (exponent <= 0){
+            if (exponent < -10)
+                return (uint16_t)sign;
+            mantissa |= 0x800000u;
+            const uint32_t shift = (uint32_t)(14 - exponent);
+            half = mantissa >> shift;
+            rest = mantissa & ((1u << shift) - 1u);
+            halfway = 1u << (shift - 1u);
+        }else{
+            half = ((uint32_t)exponent << 10) | (mantissa >> 13);
+            rest = mantissa & 0x1fffu;
+            halfway = 0x1000u;
+        }
+        if (rest > halfway || (rest == halfway && (half & 1u)))
+            half++;
+        return (uint16_t)(sign | half);
+    }
+
+    // RED16 texels (uint16) as `format`'s (R32F or R16F); malloc'd, the caller frees it
+    void* convertRed16(const void* data, size_t size, sg_pixel_format format, size_t& convertedSize){
+        const size_t count = size / sizeof(uint16_t);
+        const uint16_t* source = static_cast<const uint16_t*>(data);
+        if (format == SG_PIXELFORMAT_R32F){
+            convertedSize = count * sizeof(float);
+            float* out = static_cast<float*>(std::malloc(convertedSize));
+            for (size_t i = 0; i < count; i++)
+                out[i] = (float)source[i] / 65535.0f;
+            return out;
+        }
+        convertedSize = count * sizeof(uint16_t);
+        uint16_t* out = static_cast<uint16_t*>(std::malloc(convertedSize));
+        for (size_t i = 0; i < count; i++)
+            out[i] = halfFromFloat((float)source[i] / 65535.0f);
+        return out;
     }
 
     // a full mip chain is ~4/3 of the base level
@@ -343,7 +406,7 @@ bool SokolTexture::createTexture(
     }else if (colorFormat == ColorFormat::RED){
         pixelFormat = SG_PIXELFORMAT_R8;
     }else if (colorFormat == ColorFormat::RED16){
-        pixelFormat = SG_PIXELFORMAT_R16;
+        pixelFormat = red16PixelFormat();
     }else{
         Log::error("Renders only support 8bpp, 16bpp and 32bpp textures");
     }
@@ -362,6 +425,17 @@ bool SokolTexture::createTexture(
     sampler_desc.mipmap_filter = getFilterMipmap(minFilter);
     sampler_desc.wrap_u = getWrap(wrapU);
     sampler_desc.wrap_v = getWrap(wrapV);
+
+    // a heightmap where R16 cannot be sampled: its texels as floats (freed with the upload)
+    void* convertedData[6] = {};
+    size_t convertedSize[6] = {};
+    if (colorFormat == ColorFormat::RED16 && pixelFormat != SG_PIXELFORMAT_R16 && numFaces <= 6){
+        for (int f = 0; f < numFaces; f++){
+            convertedData[f] = convertRed16(data[f], size[f], pixelFormat, convertedSize[f]);
+        }
+        data = convertedData;
+        size = convertedSize;
+    }
 
     // all faces of a mip level must be in one contiguous memory block
     unsigned char* combined = NULL;
@@ -397,6 +471,11 @@ bool SokolTexture::createTexture(
     // frees immediately, and the data is only consumed inside sg_make_image
     if (combined){
         SystemRender::scheduleCleanup(std::free, combined);
+    }
+    for (void* converted : convertedData){
+        if (converted){
+            SystemRender::scheduleCleanup(std::free, converted);
+        }
     }
     if (Engine::isAsyncThread()){
         sampler = SokolCmdQueue::add_command_make_sampler(sampler_desc);
