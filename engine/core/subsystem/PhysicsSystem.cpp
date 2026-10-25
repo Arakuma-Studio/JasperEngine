@@ -307,6 +307,16 @@ PhysicsSystem::PhysicsSystem(Scene* scene): SubSystem(scene){
 #ifdef JASPERENGINE_PHYSICS_2D
 	signature.set(scene->getComponentId<Rigidbody2DComponent>());
 #endif
+	// the types onComponentRemoved handles
+	declareNoHookTypes();
+#ifdef JASPERENGINE_PHYSICS_2D
+	declareHookType(scene->getComponentId<Rigidbody2DComponent>());
+	declareHookType(scene->getComponentId<Joint2DComponent>());
+#endif
+#ifdef JASPERENGINE_PHYSICS_3D
+	declareHookType(scene->getComponentId<RigidbodyComponent>());
+	declareHookType(scene->getComponentId<Joint3DComponent>());
+#endif
 
 	this->scene = scene;
 
@@ -3035,7 +3045,11 @@ void PhysicsSystem::fixedUpdate(double dt){
         if (bodies2d->size() > 0){
             int32_t subSteps = 4;
             steppingWorld2D = true;
-            b2World_Step(world2D, fixedStep, subSteps);
+            {
+                // what the PreSolve and filter callbacks destroy goes after the step
+                StructuralDeferScope deferScope(*scene);
+                b2World_Step(world2D, fixedStep, subSteps);
+            }
             steppingWorld2D = false;
         }
 
@@ -3079,7 +3093,11 @@ void PhysicsSystem::fixedUpdate(double dt){
             }
         }
 
-        Box2DAux::manageEvents(scene, world2D);
+        {
+            // contact and sensor callbacks: what they destroy goes after the last of them
+            StructuralDeferScope deferScope(*scene);
+            Box2DAux::manageEvents(scene, world2D);
+        }
     }
 #endif
 
@@ -3151,6 +3169,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 		};
 
 		StepScope stepScope(this);
+		// the contact listener runs on Jolt's threads, serialized by getCallbackMutex3D, while
+		// this one waits: what its callbacks destroy goes after the step
+		StructuralDeferScope deferScope(*scene, true);
 		world3D.Update(fixedStep, cCollisionSteps, temp_allocator, job_system);
 	}
 

@@ -38,6 +38,7 @@ void Terrain::setHeightMap(const std::string& path){
     terrain.heightMap.setPath(path);
 
     terrain.needUpdateTexture = true;
+    markChanged<TerrainComponent>();
 }
 
 void Terrain::setHeightMap(Framebuffer* framebuffer){
@@ -46,6 +47,7 @@ void Terrain::setHeightMap(Framebuffer* framebuffer){
     terrain.heightMap.setFramebuffer(framebuffer);
 
     terrain.needUpdateTexture = true;
+    markChanged<TerrainComponent>();
 }
 
 void Terrain::setBlendMap(const std::string& path){
@@ -61,6 +63,7 @@ void Terrain::setBlendMap(Framebuffer* framebuffer){
     terrain.blendMaps[0].setFramebuffer(framebuffer);
 
     terrain.needUpdateTexture = true;
+    markChanged<TerrainComponent>();
 }
 
 void Terrain::setBlendMap(unsigned int index, const std::string& path){
@@ -76,6 +79,7 @@ void Terrain::setBlendMap(unsigned int index, const std::string& path){
     terrain.blendMaps[index].setPath(path);
 
     terrain.needUpdateTexture = true;
+    markChanged<TerrainComponent>();
 }
 
 void Terrain::setTextureLayer(unsigned int index, const std::string& path){
@@ -91,6 +95,7 @@ void Terrain::setTextureLayer(unsigned int index, const std::string& path){
     terrain.surfaceLayers[index].colorTexture.setPath(path);
 
     terrain.needUpdateTexture = true;
+    markChanged<TerrainComponent>();
 }
 
 void Terrain::setSurfaceLayer(unsigned int index, const TerrainSurfaceLayer& layer){
@@ -106,6 +111,7 @@ void Terrain::setSurfaceLayer(unsigned int index, const TerrainSurfaceLayer& lay
     terrain.surfaceLayers[index] = layer;
 
     terrain.needUpdateTexture = true;
+    markChanged<TerrainComponent>();
 }
 
 TerrainSurfaceLayer Terrain::getSurfaceLayer(unsigned int index) const{
@@ -139,6 +145,7 @@ void Terrain::removeSurfaceLayer(unsigned int index){
     terrain.surfaceLayers.erase(terrain.surfaceLayers.begin() + index);
 
     terrain.needUpdateTexture = true;
+    markChanged<TerrainComponent>();
 }
 
 unsigned int Terrain::getNumLayers() const{
@@ -168,7 +175,9 @@ void Terrain::setSize(float size){
         terrain.terrainSize = size;
 
         terrain.needUpdateTerrain = true;
+        markChanged<TerrainComponent>();
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -184,6 +193,7 @@ void Terrain::setMaxHeight(float maxHeight){
     if (terrain.maxHeight != maxHeight){
         terrain.maxHeight = maxHeight;
         terrain.needUpdateTerrain = true;
+        markChanged<TerrainComponent>();
     }
 }
 
@@ -202,8 +212,10 @@ void Terrain::setResolution(int resolution){
         terrain.resolution = resolution;
 
         terrain.needUpdateTerrain = true;
+        markChanged<TerrainComponent>();
         mesh.needReload = true;
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -246,8 +258,10 @@ void Terrain::setRootGridSize(int rootGridSize){
         terrain.rootGridSize = rootGridSize;
 
         terrain.needUpdateTerrain = true;
+        markChanged<TerrainComponent>();
         mesh.needReload = true;
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -266,8 +280,10 @@ void Terrain::setLevels(int levels){
         terrain.levels = levels;
 
         terrain.needUpdateTerrain = true;
+        markChanged<TerrainComponent>();
         mesh.needReload = true;
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 

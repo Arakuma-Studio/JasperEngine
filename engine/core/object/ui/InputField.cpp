@@ -98,6 +98,7 @@ void InputField::setDisabled(bool disabled){
     tecomp.disabled = disabled;
 
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
 }
 
 bool InputField::getDisabled() const{
@@ -118,6 +119,7 @@ void InputField::setText(const std::string& text){
         tecomp.selectionAnchor = tecomp.cursorIndex;
         tecomp.scrollOffset = 0;
         tecomp.needUpdateInputField = true;
+        markChanged<InputFieldComponent>();
     }
 }
 
@@ -166,6 +168,7 @@ void InputField::setTextFont(const std::string& font){
     getTextObject().setFont(font);
 
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
 }
 
 std::string InputField::getTextFont() const{
@@ -186,6 +189,7 @@ void InputField::setFontSize(unsigned int fontSize){
     getTextObject().setFontSize(fontSize);
 
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
 }
 
 unsigned int InputField::getFontSize() const{
@@ -214,6 +218,7 @@ void InputField::setPlaceholder(const std::string& placeholder){
     if (tecomp.placeholder != placeholder){
         tecomp.placeholder = placeholder;
         tecomp.needUpdateInputField = true;
+        markChanged<InputFieldComponent>();
     }
 }
 
@@ -226,6 +231,7 @@ void InputField::setPlaceholderColor(Vector4 color){
     InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     tecomp.placeholderColor = Color::sRGBToLinear(color);
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
 }
 
 void InputField::setPlaceholderColor(const float red, const float green, const float blue, const float alpha){
@@ -246,6 +252,7 @@ void InputField::setPassword(bool password){
     if (tecomp.password != password){
         tecomp.password = password;
         tecomp.needUpdateInputField = true;
+        markChanged<InputFieldComponent>();
     }
 }
 
@@ -259,6 +266,7 @@ void InputField::setPasswordChar(char passwordChar){
     if (tecomp.passwordChar != passwordChar){
         tecomp.passwordChar = passwordChar;
         tecomp.needUpdateInputField = true;
+        markChanged<InputFieldComponent>();
     }
 }
 
@@ -272,6 +280,7 @@ void InputField::setCursorIndex(int cursorIndex){
     tecomp.cursorIndex = cursorIndex;
     tecomp.selectionAnchor = cursorIndex;
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
 }
 
 int InputField::getCursorIndex() const{
@@ -284,6 +293,7 @@ void InputField::setSelection(int anchor, int focus){
     tecomp.selectionAnchor = anchor;
     tecomp.cursorIndex = focus;
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
 }
 
 int InputField::getSelectionAnchor() const{
@@ -313,6 +323,7 @@ void InputField::setCursorWidth(float cursorWidth){
     if (tecomp.cursorWidth != cursorWidth){
         tecomp.cursorWidth = cursorWidth;
         tecomp.needUpdateInputField = true;
+        markChanged<InputFieldComponent>();
     }
 }
 
@@ -325,6 +336,7 @@ float InputField::getCursorWidth() const{
 void InputField::setCursorColor(Vector4 color){
     InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
     tecomp.cursorColor = Color::sRGBToLinear(color);
 }
 
@@ -345,6 +357,7 @@ void InputField::setSelectionColor(Vector4 color){
     InputFieldComponent& tecomp = getComponent<InputFieldComponent>();
     tecomp.selectionColor = Color::sRGBToLinear(color);
     tecomp.needUpdateInputField = true;
+    markChanged<InputFieldComponent>();
 }
 
 void InputField::setSelectionColor(const float red, const float green, const float blue, const float alpha){

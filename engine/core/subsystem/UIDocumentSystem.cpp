@@ -41,6 +41,8 @@ namespace {
 
 UIDocumentSystem::UIDocumentSystem(Scene* scene): SubSystem(scene){
     signature.set(scene->getComponentId<UIDocumentComponent>());
+    // the type onComponentAdded/onComponentRemoved handle
+    declareHookType(scene->getComponentId<UIDocumentComponent>());
 }
 
 UIDocumentSystem::~UIDocumentSystem(){

@@ -241,6 +241,8 @@ HtmlUIInputState& UIDocumentSystem::getInputState(){
 }
 
 bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, float y, int mods, bool touch, bool world){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::DOWN, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
@@ -277,6 +279,8 @@ bool UIDocumentSystem::eventOnPointerDown(int pointer, int button, float x, floa
 }
 
 bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float y, int mods, bool touch, bool world){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (isWorldPointerCaptured(pointer, button, touch)) return dispatchWorldPointer(pointer, button, x, y, mods, PointerPhase::UP, touch);
     HtmlUIInputState& state = getInputState();
     std::set<int>& captures = touch ? state.capturedTouches : state.capturedButtons;
@@ -311,6 +315,8 @@ bool UIDocumentSystem::eventOnPointerUp(int pointer, int button, float x, float 
 }
 
 bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mods, bool touch, bool world){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (isWorldPointerCaptured(pointer, -1, touch)) return dispatchWorldPointer(pointer, -1, x, y, mods, PointerPhase::MOVE, touch);
     HtmlUIInputState& state = getInputState();
     bool consumed = false;
@@ -336,6 +342,8 @@ bool UIDocumentSystem::eventOnPointerMove(int pointer, float x, float y, int mod
 }
 
 bool UIDocumentSystem::eventOnTouchCancel(int pointer){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     HtmlUIInputState& state = getInputState();
     const bool captured = state.capturedTouches.erase(pointer) > 0;
 
@@ -346,6 +354,8 @@ bool UIDocumentSystem::eventOnTouchCancel(int pointer){
 }
 
 bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!hasVisibleDocument())
         return dispatchWorldWheel(dx, dy, mods);
 
@@ -355,12 +365,16 @@ bool UIDocumentSystem::eventOnWheel(float dx, float dy, int mods){
 }
 
 void UIDocumentSystem::eventOnMouseLeave(){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (getContext())
         getContext()->processMouseLeave();
     textureMouseLeave();
 }
 
 bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     (void)repeat;   // RmlUi has no repeat flag: every repeat is a key down, as in a browser
     HtmlUIContext* keys = keyContext();   // p1-rtt: the screen's, or the texture document that took the last press
     if (!keys){
@@ -398,6 +412,8 @@ bool UIDocumentSystem::eventOnKeyDown(int key, bool repeat, int mods){
 }
 
 bool UIDocumentSystem::eventOnKeyUp(int key, int mods){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     bool consumed = false;
     if (inputState && key >= 0 && key <= D_KEY_LAST){
         consumed = inputState->consumedKeys.test(key);
@@ -411,6 +427,8 @@ bool UIDocumentSystem::eventOnKeyUp(int key, int mods){
 }
 
 bool UIDocumentSystem::eventOnTextInput(const std::string& utf8){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!hasFocusedTextInput())
         return false;
 
@@ -445,6 +463,8 @@ bool UIDocumentSystem::eventOnTextInput(const std::string& utf8){
 }
 
 bool UIDocumentSystem::eventOnImeComposition(const std::string& utf8, int cursor){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!hasFocusedTextInput())
         return false;
 
@@ -452,6 +472,8 @@ bool UIDocumentSystem::eventOnImeComposition(const std::string& utf8, int cursor
 }
 
 void UIDocumentSystem::eventOnImeCancel(){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (getContext())
         getContext()->getTextInputHandler().cancelComposition();
     if (HtmlUIContext* keys = keyContext())
@@ -485,6 +507,8 @@ CursorType UIDocumentSystem::getPointerCursor() const{
 }
 
 bool UIDocumentSystem::eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool repeat){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     HtmlUIContext* keys = keyContext();   // the context keys go to (a texture document's after its press)
     if (!keys || key == GamepadUIKey::COUNT)
         return false;
@@ -562,6 +586,8 @@ bool UIDocumentSystem::eventOnGamepadKeyDown(int gamepad, GamepadUIKey key, bool
 }
 
 bool UIDocumentSystem::eventOnGamepadKeyUp(int gamepad, GamepadUIKey key){
+    // what the event handlers destroy goes when the dispatch is over
+    StructuralDeferScope deferScope(*scene);
     if (!inputState)
         return false;
     HtmlUIInputState& state = *inputState;

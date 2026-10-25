@@ -51,6 +51,7 @@ void Text::setFixedSize(bool fixedSize){
         textcomp.fixedHeight = fixedSize;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -61,6 +62,7 @@ void Text::setFixedWidth(bool fixedWidth){
         textcomp.fixedWidth = fixedWidth;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -77,6 +79,7 @@ void Text::setFixedHeight(bool fixedHeight){
         textcomp.fixedHeight = fixedHeight;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -95,6 +98,7 @@ void Text::setMaxTextSize(unsigned int maxTextSize){
 
         textcomp.needReloadAtlas = true;
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
         ui.needReload = true;
     }
 }
@@ -111,6 +115,7 @@ void Text::setText(const std::string &text){
     if (textcomp.text != text){
         textcomp.text = text;
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -137,6 +142,7 @@ void Text::setFont(unsigned int index, const std::string &font){
 
         textcomp.needReloadAtlas = true;
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -163,6 +169,7 @@ void Text::setFontSize(unsigned int fontSize){
 
     textcomp.needReloadAtlas = true;
     textcomp.needUpdateText = true;
+    markChanged<TextComponent>();
 }
 
 unsigned int Text::getFontSize() const{
@@ -176,6 +183,7 @@ void Text::setMultiline(bool multiline){
 
     textcomp.multiline = multiline;
     textcomp.needUpdateText = true;
+    markChanged<TextComponent>();
 }
 
 bool Text::getMultiline() const{
@@ -283,6 +291,7 @@ void Text::setFlipY(bool flipY){
         ui.flipY = flipY;
 
         textcomp.needUpdateText = true;
+        markChanged<TextComponent>();
     }
 }
 
@@ -297,6 +306,7 @@ void Text::setPivotBaseline(bool pivotBaseline){
 
     textcomp.pivotBaseline = pivotBaseline;
     textcomp.needUpdateText = true;
+    markChanged<TextComponent>();
 }
 
 bool Text::isPivotBaseline() const{
@@ -310,6 +320,7 @@ void Text::setPivotCentered(bool pivotCentered){
 
     textcomp.pivotCentered = pivotCentered;
     textcomp.needUpdateText = true;
+    markChanged<TextComponent>();
 }
 
 bool Text::isPivotCentered() const{
@@ -349,8 +360,10 @@ std::string Text::getCustomShader() const{
 void Text::setShaderUniform(const std::string& name, const Vector4& value){
     UIComponent& ui = getComponent<UIComponent>();
 
-    if (ShaderUniforms::set(ui.shaderUniforms, name, value))
+    if (ShaderUniforms::set(ui.shaderUniforms, name, value)){
         ui.needUpdateShaderUniforms = true;
+        markChanged<UIComponent>();
+    }
 }
 
 void Text::setShaderUniform(const std::string& name, const Vector3& value){
@@ -378,6 +391,7 @@ bool Text::removeShaderUniform(const std::string& name){
         return false;
 
     ui.needUpdateShaderUniforms = true;
+    markChanged<UIComponent>();
     return true;
 }
 

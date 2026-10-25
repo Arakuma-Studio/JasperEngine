@@ -96,9 +96,9 @@ namespace jasperengine {
 
     class JASPERENGINE_API ShaderData {
     public:
-        // initialised: an empty ShaderData (a ShaderBuildResult of a compile still Loading) is
-        // copied, and copying an indeterminate bool is undefined (UBSan stopped the core tests)
-        ShaderLang lang = ShaderLang::GLSL;
+        // initialized: a default ShaderData (a failed build) is copied, and copying an
+        // indeterminate bool is undefined (UBSan stops the sanitizer editor there)
+        ShaderLang lang{};
         unsigned int version = 0;
         bool es = false;
         std::vector<ShaderStage> stages;
