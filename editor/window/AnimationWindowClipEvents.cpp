@@ -329,7 +329,7 @@ void AnimationWindowClip::drawEventEditor(SceneProject* sceneProject){
         AnimationEventArg& arg = event.args[i];
         const char* types[] = {"Number", "String", "Bool"};
         int type = (int)arg.index();
-        ImGui::SetNextItemWidth(Theme::dpi(66.0f));
+        ImGui::SetNextItemWidth(Theme::dpi(80.0f));
         if (ImGui::Combo("##type", &type, types, 3)){
             if (type == 0) arg = AnimationEvent::numberArg(0.0);
             if (type == 1) arg = AnimationEvent::stringArg("");

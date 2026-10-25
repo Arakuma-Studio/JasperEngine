@@ -139,6 +139,7 @@ bool editor::AnimationWindow::handleTestHook(const nlohmann::json& hook, nlohman
         error = "an object {entity, clip, root, state, time, preview, select, drag, ...} (see test_animation_window.py)";
         return false;
     }
+    if (!AnimationWindowClip::checkHookKeys(hook, true, error)) return false;
     SceneProject* sceneProject = project->getSelectedScene();
     if (!sceneProject || !sceneProject->scene){
         error = "no scene is open";
@@ -207,6 +208,7 @@ bool editor::AnimationWindow::handleTestHook(const nlohmann::json& hook, nlohman
             return false;
         }
     }else{
+        if (!AnimationWindowClip::checkHookKeys(hook, false, error)) return false;
         out = clipMode->stateJson(sceneProject);
         // entity mode: the clip state is not shown; name the entity Animation
         out["mode"] = "entity";

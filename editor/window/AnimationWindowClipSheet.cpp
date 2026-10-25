@@ -57,6 +57,7 @@ namespace {
         float indent;
         float keyRadius;
         float keyHit;
+        float timePad;      // time 0 sits this far right of the key area edge
         float playheadHalf;
     };
 
@@ -67,11 +68,12 @@ namespace {
         m.rulerHeight = 22.0f * s;
         m.eventsHeight = 18.0f * s;
         m.rowHeight = ImGui::GetFrameHeight() + 2.0f * s;
-        m.labelWidth = 300.0f * s;
+        m.labelWidth = 320.0f * s;
         m.valueWidth = 104.0f * s;
         m.indent = 14.0f * s;
-        m.keyRadius = 5.0f * s;
-        m.keyHit = 6.5f * s;
+        m.keyRadius = 6.0f * s;
+        m.timePad = 12.0f * s;
+        m.keyHit = 7.5f * s;
         m.playheadHalf = 5.0f * s;
         return m;
     }
@@ -1377,7 +1379,7 @@ void AnimationWindowClip::drawRuler(ImDrawList* drawList, ImVec2 origin, float w
     const float start = std::floor((scrollX / pixelsPerSecond) / step) * step;
     const float end = (scrollX + width) / pixelsPerSecond;
     for (float t = std::max(0.0f, start); t <= end + step; t += step){
-        const float x = origin.x + t * pixelsPerSecond - scrollX;
+        const float x = origin.x + m.timePad + t * pixelsPerSecond - scrollX;
         if (x < origin.x - 1.0f || x > origin.x + width + 1.0f) continue;
         drawList->AddLine(ImVec2(x, origin.y + height * 0.45f), ImVec2(x, origin.y + height), IM_COL32(150, 150, 150, 255));
         const std::string label = formatTime(t, fps, showFrames);
@@ -1431,11 +1433,25 @@ void AnimationWindowClip::drawRowLabel(const Row& row, size_t index, ImVec2 pos,
             const ImGuiIO& io = ImGui::GetIO();
             selectKeys(keys, io.KeyShift || io.KeyCtrl);
         }
-        if (!row.message.empty()) ImGui::SetItemTooltip("%s", row.message.c_str());
+        // a long path shows its end ("…/Spine : Rotation"), the whole label in the tooltip
+        // (a missing row starts with the warning icon, so it reads as missing even when cut)
+        const std::string icon = row.missing ? std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") : std::string();
+        const float room = width - m.indent - m.valueWidth - 8.0f * m.s - ImGui::CalcTextSize(icon.c_str()).x;
+        std::string shown = row.label;
+        if (ImGui::CalcTextSize(shown.c_str()).x > room && track.path.find('/') != std::string::npos){
+            std::string tail = row.label.substr(track.path.size());
+            std::string path = track.path;
+            while (ImGui::CalcTextSize(("..." + path + tail).c_str()).x > room && path.find('/') != std::string::npos){
+                path = path.substr(path.find('/') + 1);
+            }
+            shown = ".../" + path + tail;
+        }
+        if (!row.message.empty()) ImGui::SetItemTooltip("%s\n%s", row.label.c_str(), row.message.c_str());
+        else if (shown != row.label) ImGui::SetItemTooltip("%s", row.label.c_str());
         ImGui::PopID();
         drawList->PushClipRect(ImVec2(pos.x, pos.y), ImVec2(pos.x + width - m.valueWidth - 2.0f * m.s, pos.y + height), true);
         drawList->AddText(ImVec2(pos.x + m.indent + 4.0f * m.s, textY),
-                          row.missing ? color(Theme::Colors::WarningText) : ImGui::GetColorU32(ImGuiCol_Text), row.label.c_str());
+                          row.missing ? color(Theme::Colors::WarningText) : ImGui::GetColorU32(ImGuiCol_Text), (icon + shown).c_str());
         drawList->PopClipRect();
         return;
     }
@@ -1528,8 +1544,9 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     const float keyAreaX = origin.x + m.labelWidth;
     const float keyAreaWidth = std::max(1.0f, avail.x - m.labelWidth);
     const float headerHeight = m.rulerHeight + m.eventsHeight;
-    auto timeAt = [&](float x){ return (x - keyAreaX + scrollX) / pixelsPerSecond; };
-    auto xAt = [&](float t){ return keyAreaX + t * pixelsPerSecond - scrollX; };
+    const float timeX = keyAreaX + m.timePad;
+    auto timeAt = [&](float x){ return (x - timeX + scrollX) / pixelsPerSecond; };
+    auto xAt = [&](float t){ return timeX + t * pixelsPerSecond - scrollX; };
 
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     // header: the column title, the ruler (scrub) and the events lane
@@ -1541,7 +1558,7 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
         seek(snapToFrame(std::max(0.0f, timeAt(io.MousePos.x))));
     }
     const bool rulerHovered = ImGui::IsItemHovered();
-    drawEventsLane(drawList, ImVec2(keyAreaX, origin.y + m.rulerHeight), keyAreaWidth, m.eventsHeight, keyAreaX);
+    drawEventsLane(drawList, ImVec2(keyAreaX, origin.y + m.rulerHeight), keyAreaWidth, m.eventsHeight, timeX);
     const bool eventsHovered = ImGui::IsItemHovered();
     ImGui::SetCursorScreenPos(ImVec2(origin.x + 4.0f * m.s, origin.y + (m.rulerHeight - ImGui::GetFrameHeight()) * 0.5f));
     ImGui::BeginDisabled(doc->isReadOnly());
@@ -1557,7 +1574,7 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     if (overSheet && io.MouseWheel != 0.0f && (io.KeyCtrl || rulerHovered || eventsHovered)){
         const float anchor = timeAt(io.MousePos.x);
         pixelsPerSecond = std::clamp(pixelsPerSecond * (1.0f + io.MouseWheel * 0.1f), 10.0f, 4000.0f);
-        scrollX = std::max(0.0f, anchor * pixelsPerSecond - (io.MousePos.x - keyAreaX));
+        scrollX = std::max(0.0f, anchor * pixelsPerSecond - (io.MousePos.x - timeX));
     }else if (overSheet && (io.MouseWheelH != 0.0f || (io.KeyShift && io.MouseWheel != 0.0f))){
         const float wheel = io.MouseWheelH != 0.0f ? io.MouseWheelH : io.MouseWheel;
         scrollX = std::max(0.0f, scrollX - wheel * 60.0f * m.s);
@@ -1591,7 +1608,6 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     }
 
     // keys of a row
-    struct RowKeys{ std::vector<std::pair<size_t, size_t>> keys; };
     auto keysOf = [&](const Row& row){
         std::vector<std::pair<size_t, size_t>> out;
         for (size_t t = 0; t < data.tracks.size(); t++){
@@ -1791,12 +1807,10 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     ImGui::ScrollbarEx(barRect, ImGui::GetID("##clip_hscroll"), ImGuiAxis_X, &scrollValue, visibleValue, contentValue);
     scrollX = std::max(0.0f, (float)scrollValue);
     ImGui::Dummy(ImVec2(avail.x, scrollbarHeight));
-    (void)RowKeys{};
 }
 
 void AnimationWindowClip::drawKeyContextMenu(){
     if (!ImGui::BeginPopup("##clip_key_menu")) return;
-    AnimationClipController& c = controller();
     std::shared_ptr<AnimationClipDocument> doc = document();
     const bool editable = doc && !doc->isReadOnly();
     const std::vector<Row> rows = buildRows();
@@ -1836,7 +1850,6 @@ void AnimationWindowClip::drawKeyContextMenu(){
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Move Playhead Here")) seek(contextTime);
-    (void)c;
     ImGui::EndPopup();
 }
 

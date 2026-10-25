@@ -84,6 +84,9 @@ namespace jasperengine::editor{
         // MCP focus_window {window: "animation", animation: {...}} (AnimationWindowClipTestHook.cpp)
         bool testHook(SceneProject* sceneProject, const nlohmann::json& hook, nlohmann::json& out, std::string& error);
         nlohmann::json stateJson(SceneProject* sceneProject);
+        // the hook's keys are known ones; `clipActions` false (entity mode): only the window's
+        // (entity, entity_animation, clip, root)
+        static bool checkHookKeys(const nlohmann::json& hook, bool clipActions, std::string& error);
 
     private:
         struct Row{

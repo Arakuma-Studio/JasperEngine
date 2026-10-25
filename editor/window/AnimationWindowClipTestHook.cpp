@@ -19,6 +19,7 @@
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
+#include "animation/ClipBinding.h"
 #include "component/AnimationPlayerComponent.h"
 
 #include <cmath>
@@ -33,7 +34,7 @@ namespace {
         "entity", "entity_animation", "clip", "root", "state", "time", "frame", "preview", "play", "expand", "select", "add",
         "box", "drag", "ease", "delete", "copy", "paste", "duplicate", "key", "add_key", "add_property", "set_value",
         "remove_track", "rebind", "frame_rate", "snap_keys", "time_format", "preview_model", "add_event", "select_event",
-        "event", "drag_event", "delete_event", "create_clip", "extract", "input"};
+        "event", "drag_event", "delete_event", "create_clip", "extract", "input", "list_paths"};
 
     Json argJson(const AnimationEventArg& arg){
         if (std::holds_alternative<double>(arg)) return std::get<double>(arg);
@@ -154,7 +155,7 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject){
     return out;
 }
 
-bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook, Json& out, std::string& error){
+bool AnimationWindowClip::checkHookKeys(const Json& hook, bool clipActions, std::string& error){
     for (auto it = hook.begin(); it != hook.end(); ++it){
         bool known = false;
         for (const char* key : KNOWN_KEYS) known = known || it.key() == key;
@@ -164,7 +165,16 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             error = it.key() + ": unknown key (valid: " + valid + ")";
             return false;
         }
+        const bool windowKey = it.key() == "entity" || it.key() == "entity_animation" || it.key() == "clip" || it.key() == "root";
+        if (!clipActions && !windowKey){
+            error = it.key() + ": the window is in entity mode (select a GameObject with an Animation Player, or open a clip)";
+            return false;
+        }
     }
+    return true;
+}
+
+bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook, Json& out, std::string& error){
     AnimationClipController& c = controller();
     auto fail = [&](const std::string& key, const std::string& message){
         error = key + ": " + message;
@@ -441,5 +451,14 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         }
     }
     out = stateJson(sceneProject);
+    if (hook.value("list_paths", false)){
+        // what Add Property offers: the addressable paths under the bound (or previewed) root
+        Json paths = Json::array();
+        Scene* scene = valueScene();
+        if (scene && valueRoot() != NULL_ENTITY){
+            for (const auto& entry : anim::descendantPaths(scene, valueRoot())) paths.push_back(entry.first);
+        }
+        out["paths"] = paths;
+    }
     return true;
 }
