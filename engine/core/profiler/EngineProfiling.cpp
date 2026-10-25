@@ -177,7 +177,7 @@ namespace {
         if (now < slowMonitorsAt)
             return;
         slowMonitorsAt = now + std::chrono::milliseconds(250);
-        const gpumem::Report vram = gpumem::report(false);
+        const gpumem::Report vram = gpumem::report(false, false);
         counter("VRAM estimated", (double)vram.totalBytes, MonitorUnit::Memory);
         // per category, for the GPU Memory module's chart
         for (size_t c = 0; c < gpumem::CATEGORY_COUNT; c++){

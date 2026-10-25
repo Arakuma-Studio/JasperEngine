@@ -76,6 +76,9 @@ namespace {
     }
 
     thread_local ScopeState threadScope;
+    // the owner of the innermost scope, interned only when something is made in it (most scopes
+    // run every frame around code that makes nothing: interning is a lock and a string)
+    thread_local std::string_view pendingOwner;
 
 }
 
@@ -100,23 +103,36 @@ std::string gpumem::ownerName(uint32_t owner){
 }
 
 ScopeState gpumem::currentScope(){
+    if (!pendingOwner.empty()){
+        threadScope.owner = internOwner(pendingOwner);
+        pendingOwner = std::string_view();
+    }
     return threadScope;
 }
 
 Scope::Scope(Category category, const char* owner): Scope(category, std::string_view(owner ? owner : "")){
 }
 
-Scope::Scope(Category category, std::string_view owner): saved(threadScope){
+Scope::Scope(Category category, std::string_view owner): saved(threadScope), savedOwner(pendingOwner){
     threadScope.category = (uint8_t)category;
-    threadScope.owner = internOwner(owner);
+    threadScope.owner = 0;
+    pendingOwner = owner;
 }
 
-Scope::Scope(ScopeState state): saved(threadScope){
+Scope::Scope(Category category, std::string&& owner): saved(threadScope), savedOwner(pendingOwner){
+    threadScope.category = (uint8_t)category;
+    threadScope.owner = internOwner(owner);
+    pendingOwner = std::string_view();
+}
+
+Scope::Scope(ScopeState state): saved(threadScope), savedOwner(pendingOwner){
     threadScope = state;
+    pendingOwner = std::string_view();
 }
 
 Scope::~Scope(){
     threadScope = saved;
+    pendingOwner = savedOwner;
 }
 
 void gpumem::track(const Entry& entry, bool image){
@@ -181,7 +197,7 @@ void gpumem::setDriverQuery(DriverQuery query){
     t.driver = query;
 }
 
-Report gpumem::report(bool withAllocations){
+Report gpumem::report(bool withAllocations, bool withDriver){
     Report out;
     DriverQuery driver = nullptr;
     {
@@ -227,7 +243,7 @@ Report gpumem::report(bool withAllocations){
     std::sort(out.allocations.begin(), out.allocations.end(), [](const Allocation& a, const Allocation& b){
         return a.bytes != b.bytes ? a.bytes > b.bytes : a.id < b.id;
     });
-    if (driver)
+    if (driver && withDriver)
         out.driver = driver();
     return out;
 }

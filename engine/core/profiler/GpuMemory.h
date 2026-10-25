@@ -72,13 +72,17 @@ namespace jasperengine::gpumem {
     class JASPERENGINE_API Scope {
     public:
         Scope(Category category, const char* owner);
+        // the owner is interned when something is made in the scope: it must outlive the scope
+        // (a literal, a named string); a temporary string is interned at once
         Scope(Category category, std::string_view owner);
+        Scope(Category category, std::string&& owner);
         explicit Scope(ScopeState state);
         ~Scope();
         Scope(const Scope&) = delete;
         Scope& operator=(const Scope&) = delete;
     private:
         ScopeState saved;
+        std::string_view savedOwner;   // the enclosing scope's owner, not interned yet
     };
 
     // one tracked resource (≤ 128 bytes, R29)
@@ -162,7 +166,8 @@ namespace jasperengine::gpumem {
         std::vector<Allocation> allocations;    // largest first
         DriverMemory driver;
     };
-    JASPERENGINE_API Report report(bool withAllocations = true);
+    // withDriver: also ask the driver for its own figure (a graphics API call; the monitors do not)
+    JASPERENGINE_API Report report(bool withAllocations = true, bool withDriver = true);
     // the allocations grouped by owner, largest first
     JASPERENGINE_API std::vector<Group> groupByOwner(const Report& report);
 
