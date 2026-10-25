@@ -83,6 +83,13 @@ named by undo_name). undo/redo scope "timeline" = the human's Ctrl+Z/Ctrl+Y; exp
 undoes only your own last step. Play-time edits roll back at play stop and are offered back
 (get_play_changes). More: jasper://docs/undo.
 
+## Component reference
+list_component_types {component}: its properties with types, defaults and enum options, and a
+JSON Schema (ranges, units, read-only fields, older names as x-aliases); jasper://reflection:
+every component and enum. set_properties refuses a value outside a field's range and a
+read-only field, and applies an older field name with a warning. get_inspector_layout: the
+rows the Inspector drew for the selection (labels, groups, mixed values).
+
 ## Code (Lua, C++, shaders, materials)
 The project is a normal folder (`editor_status`: project.path). Work in it and read, edit,
 grep and git its scripts, shaders and .material files with your own tools. Engine API to grep: .jasperengine/engine-api/ (C++ headers) and its lua/

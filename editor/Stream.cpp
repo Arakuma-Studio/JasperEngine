@@ -3876,6 +3876,10 @@ YAML::Node editor::Stream::encodeComponentsLive(const Entity entity, const Entit
 
 namespace {
 
+    namespace reflect = jasperengine::editor::reflect;
+    using jasperengine::editor::Catalog;
+    using jasperengine::editor::ComponentType;
+
     // One component decoded over the entity's own (or a default one) and stored: a new one with
     // its structural update flags, an existing one with the flags of what changed (or marked
     // changed only, DecodeApply::MarkOnly)

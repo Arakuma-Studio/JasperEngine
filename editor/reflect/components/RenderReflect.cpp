@@ -368,7 +368,7 @@ namespace {
         nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, false, nullptr, &detail::customSchema};
 
     constexpr FieldDesc kScriptFields[] = {
-        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden | NoMcpWrite),
+        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden),
     };
 
     // A script property's value and its default (the script's declared one)

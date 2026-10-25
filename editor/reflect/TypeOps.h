@@ -558,6 +558,7 @@ namespace jasperengine::editor::reflect {
 
     template<typename T>
     struct ReflectTraits<std::vector<T>, std::void_t<decltype(ReflectTraits<T>::ops)>> {
+        using Element = T;
         static constexpr const TypeOps* ops = &ops::Array<T>;
         static constexpr const TypeOps* elementOps = ReflectTraits<T>::ops;
         static constexpr const ArrayOps* arrayOps = &ops::VectorArray<T>;
@@ -565,6 +566,7 @@ namespace jasperengine::editor::reflect {
 
     template<typename T, size_t N>
     struct ReflectTraits<T[N], std::void_t<decltype(ReflectTraits<T>::ops)>> {
+        using Element = T;
         static constexpr const TypeOps* ops = &ops::Fixed<T, N>;
         static constexpr const TypeOps* elementOps = ReflectTraits<T>::ops;
         static constexpr const ArrayOps* arrayOps = &ops::FixedArray<T, N>;
@@ -572,6 +574,7 @@ namespace jasperengine::editor::reflect {
 
     template<typename T, size_t N>
     struct ReflectTraits<HybridArray<T, N>, std::void_t<decltype(ReflectTraits<T>::ops)>> {
+        using Element = T;
         static constexpr const TypeOps* ops = &ops::Hybrid<T, N>;
         static constexpr const TypeOps* elementOps = ReflectTraits<T>::ops;
         static constexpr const ArrayOps* arrayOps = &ops::HybridArrayOps<T, N>;

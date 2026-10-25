@@ -73,7 +73,7 @@ namespace jasperengine::editor::reflect {
                 if constexpr (requires { Traits::arrayOps; }) {
                     desc.arrayOps = Traits::arrayOps;
                     desc.elementOps = Traits::elementOps;
-                    using Element = std::remove_cvref_t<decltype(*std::begin(std::declval<M&>()))>;
+                    using Element = typename Traits::Element;
                     if constexpr (requires { ReflectTraits<Element>::structDesc; }) {
                         desc.structDesc = ReflectTraits<Element>::structDesc;
                     }
