@@ -3,13 +3,32 @@
 
 #include "AnimationPlayer.h"
 
+#include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
+#include "subsystem/ActionSystem.h"
+#include "Scene.h"
+#include "Log.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
-// AnimationState (TODO(T1b): every accessor)
+// AnimationState: a (GameObject, state name) handle, looked up on every access
+
+namespace {
+
+    // the state of the handle, null when the GameObject, its player or the name is gone
+    anim::PlayerStateRuntime* findState(Scene* scene, Entity entity, const std::string& name){
+        if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return nullptr;
+        AnimationPlayerComponent* player = scene->findComponent<AnimationPlayerComponent>(entity);
+        if (!player) return nullptr;
+        anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(*player);
+        int index = runtime.findState(name);
+        return index >= 0 ? &runtime.states[(size_t)index] : nullptr;
+    }
+
+}
 
 AnimationState::AnimationState(){
 }
@@ -19,7 +38,7 @@ AnimationState::AnimationState(Scene* scene, Entity entity, const std::string& n
 }
 
 bool AnimationState::isValid() const{
-    return false;
+    return findState(scene, entity, name) != nullptr;
 }
 
 std::string AnimationState::getName() const{
@@ -27,59 +46,95 @@ std::string AnimationState::getName() const{
 }
 
 std::string AnimationState::getClip() const{
-    return "";
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state ? state->clip : std::string();
 }
 
 void AnimationState::setTime(float time){
-    (void)time;
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)){
+        anim::setStateTime(*state, time);
+    }
 }
 
 float AnimationState::getTime() const{
-    return 0.0f;
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state ? anim::stateClipTime(*state) : 0.0f;
 }
 
 void AnimationState::setNormalizedTime(float normalizedTime){
-    (void)normalizedTime;
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)){
+        anim::setStateTime(*state, normalizedTime * anim::stateLength(*state));
+    }
 }
 
 float AnimationState::getNormalizedTime() const{
-    return 0.0f;
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    if (!state) return 0.0f;
+    const float length = anim::stateLength(*state);
+    return length > 0.0f ? anim::stateClipTime(*state) / length : 0.0f;
 }
 
 void AnimationState::setSpeed(float speed){
-    (void)speed;
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)){
+        state->speed = std::isfinite(speed) ? speed : 0.0f;
+    }
 }
 
 float AnimationState::getSpeed() const{
-    return 1.0f;
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state ? state->speed : 1.0f;
 }
 
 void AnimationState::setWeight(float weight){
-    (void)weight;
+    if (anim::PlayerStateRuntime* state = findState(scene, entity, name)){
+        weight = std::isfinite(weight) ? std::max(0.0f, weight) : 0.0f;
+        state->weight = weight;
+        state->targetWeight = weight;
+        state->fadeSpeed = 0.0f;
+        state->stopOnFadeOut = false;
+    }
 }
 
 float AnimationState::getWeight() const{
-    return 0.0f;
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state ? state->weight : 0.0f;
 }
 
 float AnimationState::getLength() const{
-    return 0.0f;
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state ? anim::stateLength(*state) : 0.0f;
 }
 
 void AnimationState::setWrap(const std::string& wrap){
-    (void)wrap;
+    anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    if (!state) return;
+    ClipWrapMode mode;
+    if (!anim::wrapFromName(wrap, mode)){
+        Log::warn("AnimationState '%s': unknown wrap '%s' (once, loop, ping_pong, clamp_forever or default)", name.c_str(), wrap.c_str());
+        return;
+    }
+    // keeps the time in the clip across the change of stored form
+    const float time = anim::stateClipTime(*state);
+    state->wrapOverride = mode;
+    anim::setStateTime(*state, time);
 }
 
 std::string AnimationState::getWrap() const{
-    return "once";
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return anim::wrapName(state ? anim::stateWrap(*state) : ClipWrapMode::Once);
 }
 
 void AnimationState::setEnabled(bool enabled){
-    (void)enabled;
+    anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    if (!state) return;
+    // Unity: a disabled state keeps its time (paused) until enabled again
+    state->enabled = enabled;
+    if (enabled) state->playing = true;
 }
 
 bool AnimationState::isEnabled() const{
-    return false;
+    const anim::PlayerStateRuntime* state = findState(scene, entity, name);
+    return state && state->enabled;
 }
 
 // AnimationPlayer
@@ -98,70 +153,69 @@ AnimationPlayer& AnimationPlayer::operator=(const AnimationPlayer& rhs) = defaul
 AnimationPlayer::AnimationPlayer(AnimationPlayer&& rhs) noexcept = default;
 AnimationPlayer& AnimationPlayer::operator=(AnimationPlayer&& rhs) noexcept = default;
 
-// TODO(T1b): the playback calls below
+// playback (anim:: playback functions; the system update loads, binds and samples)
 
 void AnimationPlayer::play(const std::string& name){
-    (void)name;
+    anim::playState(getComponent<AnimationPlayerComponent>(), name, 0.0f, getName());
 }
 
 void AnimationPlayer::play(const std::string& name, float fade){
-    (void)name;
-    (void)fade;
+    anim::playState(getComponent<AnimationPlayerComponent>(), name, fade, getName());
 }
 
 void AnimationPlayer::crossFade(const std::string& name){
-    (void)name;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    anim::playState(player, name, player.defaultFadeTime, getName());
 }
 
 void AnimationPlayer::crossFade(const std::string& name, float fade){
-    (void)name;
-    (void)fade;
+    anim::playState(getComponent<AnimationPlayerComponent>(), name, fade, getName());
 }
 
 void AnimationPlayer::blend(const std::string& name, float weight){
-    (void)name;
-    (void)weight;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    anim::blendState(player, name, weight, player.defaultFadeTime, getName());
 }
 
 void AnimationPlayer::blend(const std::string& name, float weight, float fade){
-    (void)name;
-    (void)weight;
-    (void)fade;
+    anim::blendState(getComponent<AnimationPlayerComponent>(), name, weight, fade, getName());
 }
 
 void AnimationPlayer::queue(const std::string& name){
-    (void)name;
+    anim::queueState(getComponent<AnimationPlayerComponent>(), name, 0.0f, getName());
 }
 
 void AnimationPlayer::queue(const std::string& name, float fade){
-    (void)name;
-    (void)fade;
+    anim::queueState(getComponent<AnimationPlayerComponent>(), name, fade, getName());
 }
 
 void AnimationPlayer::stop(){
+    anim::stopStates(getComponent<AnimationPlayerComponent>(), nullptr, getName());
 }
 
 void AnimationPlayer::stop(const std::string& name){
-    (void)name;
+    anim::stopStates(getComponent<AnimationPlayerComponent>(), &name, getName());
 }
 
 void AnimationPlayer::rewind(){
+    anim::rewindStates(getComponent<AnimationPlayerComponent>(), nullptr, getName());
 }
 
 void AnimationPlayer::rewind(const std::string& name){
-    (void)name;
+    anim::rewindStates(getComponent<AnimationPlayerComponent>(), &name, getName());
 }
 
 void AnimationPlayer::sample(){
+    getComponent<AnimationPlayerComponent>();
+    scene->getSystem<ActionSystem>()->samplePlayer(entity);
 }
 
 bool AnimationPlayer::isPlaying() const{
-    return false;
+    return anim::isStatePlaying(getComponent<AnimationPlayerComponent>(), nullptr);
 }
 
 bool AnimationPlayer::isPlaying(const std::string& name) const{
-    (void)name;
-    return false;
+    return anim::isStatePlaying(getComponent<AnimationPlayerComponent>(), &name);
 }
 
 AnimationState AnimationPlayer::getState(const std::string& name) const{
@@ -169,8 +223,35 @@ AnimationState AnimationPlayer::getState(const std::string& name) const{
 }
 
 AnimationStateInfo AnimationPlayer::getStateInfo(const std::string& name) const{
-    (void)name;
-    return AnimationStateInfo();
+    AnimationStateInfo info;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
+    int index = runtime.findState(name);
+    if (index < 0) return info;
+    const anim::PlayerStateRuntime& state = runtime.states[(size_t)index];
+    info.name = state.name;
+    info.clip = state.clip;
+    info.loaded = state.bindings.clip != nullptr;
+    info.error = state.error;
+    info.time = anim::stateClipTime(state);
+    info.length = anim::stateLength(state);
+    info.normalizedTime = info.length > 0.0f ? info.time / info.length : 0.0f;
+    info.speed = state.speed;
+    info.weight = state.weight;
+    info.targetWeight = state.targetWeight;
+    info.wrap = anim::stateWrap(state);
+    info.enabled = state.enabled;
+    info.playing = state.playing;
+    for (const anim::QueuedState& queued : runtime.queue){
+        if (queued.state == (size_t)index) info.queued = true;
+    }
+    info.boundTracks = state.bindings.resolvedCount;
+    if (state.bindings.clip){
+        for (const AnimationClip::Track& track : state.bindings.clip->getTracks()){
+            if (track.isSampled()) info.trackCount++;
+        }
+    }
+    return info;
 }
 
 // authored fields (complete): a clip list change sets needsLoad
@@ -254,7 +335,12 @@ bool AnimationPlayer::isEnabled() const{
 }
 
 bool AnimationPlayer::isLoaded() const{
-    return false;
+    AnimationPlayerComponent& player = getComponent<AnimationPlayerComponent>();
+    if (!player.runtime || player.needsLoad) return false;
+    for (const anim::PlayerStateRuntime& state : player.runtime->states){
+        if (!state.bindings.clip || !state.bindings.resolved) return false;
+    }
+    return true;
 }
 
 FunctionSubscribe<void(const AnimationEvent&)>& AnimationPlayer::getOnEvent(){

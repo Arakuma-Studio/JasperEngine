@@ -17,6 +17,7 @@ namespace jasperengine{
     class Rigidbody;
     class Contact3D;
     class CollideShapeResult3D;
+    struct AnimationEvent;
 
     // the base function wrapper class
     class LuaFunctionBase{
@@ -56,6 +57,8 @@ namespace jasperengine{
         void push_value(lua_State *vm, Rigidbody o);
         void push_value(lua_State *vm, Contact3D o);
         void push_value(lua_State *vm, CollideShapeResult3D o);
+        // a copy of the event (its args read as a 1-based table: AnimationEvent.args)
+        void push_value(lua_State *vm, const AnimationEvent &o);
 
         template <typename T>
         static T get_value(lua_State *vm);

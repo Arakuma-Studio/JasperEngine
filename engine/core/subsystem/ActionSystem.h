@@ -41,7 +41,11 @@ namespace jasperengine{
 	class AnimationClip;
 	namespace anim{
 		class ClipPreviewSession;
+		class AnimationPlayerRuntime;
 		struct TrackSample;
+		struct ChannelRest;
+		struct ClipBindings;
+		struct PlayerStateRuntime;
 	}
 
 	class JASPERENGINE_API ActionSystem : public SubSystem {
@@ -63,10 +67,21 @@ namespace jasperengine{
 			Quaternion rotationRef;
 			bool hasRotationRef = false;
 			float rotationWeight = 0.0f;
+			// an Animation Player's rest value of the channel (animation clips spec 9.R1): when the
+			// total weight W of every contributor is < 1, (1 - W) * rest joins the average. Never
+			// set by entity animations (their output is unchanged).
+			bool hasRestPosition = false;
+			bool hasRestRotation = false;
+			bool hasRestScale = false;
+			Vector3 restPosition = Vector3(0, 0, 0);
+			Quaternion restRotation;
+			Vector3 restScale = Vector3(1, 1, 1);
 		};
 		struct MorphBlendAccum {
 			float sums[MAX_MORPHTARGETS] = {0};
 			float weights[MAX_MORPHTARGETS] = {0};
+			bool hasRest[MAX_MORPHTARGETS] = {false};
+			float rest[MAX_MORPHTARGETS] = {0};
 		};
 		// Per lattice point of the target (sized to its point count when first touched in a
 		// frame). Entries survive clearPoseBlend() with active = false so the vectors keep
@@ -75,6 +90,9 @@ namespace jasperengine{
 			std::vector<Vector3> sums;
 			std::vector<float> weights;
 			bool active = false;
+			// per point, as TransformBlendAccum's rest (empty when no player registered one)
+			std::vector<char> hasRest;
+			std::vector<Vector3> rest;
 		};
 		std::unordered_map<Entity, TransformBlendAccum> transformBlend;
 		std::unordered_map<Entity, MorphBlendAccum> morphBlend;
@@ -184,6 +202,24 @@ namespace jasperengine{
 		void updatePlayers(double dt);
 		void dispatchPlayerCallbacks();
 
+		// players with events or finished states to dispatch
+		std::vector<Entity> playersWithCallbacks;
+		// AnimationClipPool::revision() seen by the last player update (a change: compare generations)
+		uint64_t playerPoolRevision = 0;
+		// update() is between its clearPoseBlend and flushPoseBlend (samplePlayer then waits for it)
+		bool poseBlendScope = false;
+
+		// loads the states' clips, follows models and the hierarchy (rebinding); false while
+		// waiting for a model under the root to load (R10)
+		bool preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged);
+		void advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt);
+		void samplePlayerStates(AnimationPlayerComponent& player);
+		// one clip at `clipTime` with `weight` into the pose blend, rest values from `rest` (taken
+		// there on the first write of an entity); `written` (optional) gets the entries written
+		void accumulateClip(const AnimationClip& clip, anim::ClipBindings& bindings, float clipTime, float weight,
+		                    std::unordered_map<Entity, anim::ChannelRest>& rest,
+		                    std::vector<std::pair<Entity, ClipChannel>>* written);
+
 	public:
 		ActionSystem(Scene* scene);
 
@@ -242,6 +278,9 @@ namespace jasperengine{
 		// Back to the starting state (playAutomatically decided again, clips loaded again, rest
 		// forgotten): the editor calls it when Play stops (Project.cpp, next to resetAnimators)
 		void resetPlayers();
+		// AnimationPlayer::sample(): the player's states at their current times written once now
+		// (inside this system's update the running pass does it). Main thread.
+		void samplePlayer(Entity entity);
 
 		void updateAnimationPreview(double dt, Entity entity);
 		void updateAnimationPreview(double dt, const std::vector<Entity>& entities);

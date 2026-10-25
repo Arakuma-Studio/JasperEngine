@@ -31,6 +31,8 @@
 #include "Bone.h"
 #include "Model.h"
 #include "PoseAnimator.h"
+#include "AnimationPlayer.h"
+#include "animation/AnimationEvent.h"
 #include "MeshPolygon.h"
 #include "Points.h"
 #include "LineRenderer.h"
@@ -510,6 +512,20 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("removeRigidbody", &GameObject::removeRigidbody)
 #endif
         .addFunction("getRay", &GameObject::getRay)
+        // the Animation Player of the GameObject, nil when it has none (Unity's GetComponent)
+        .addFunction("getAnimationPlayer", +[](GameObject* self) -> std::optional<AnimationPlayer> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<AnimationPlayerComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return AnimationPlayer(scene, self->getEntity());
+        })
+        .addFunction("hasAnimationPlayer", +[](GameObject* self) -> bool {
+            Scene* scene = self->getScene();
+            return scene && scene->isEntityCreated(self->getEntity()) &&
+                   scene->findComponent<AnimationPlayerComponent>(self->getEntity()) != nullptr;
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1733,6 +1749,94 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         // a function called when a one-shot animation ends
         .addProperty("onFinish", [] (PoseAnimator* self, lua_State* L) { return &self->getOnFinish(); }, [] (PoseAnimator* self, lua_State* L) { self->getOnFinish() = L; })
         .addFunction("getPoseAnimatorComponent", &PoseAnimator::getComponent<PoseAnimatorComponent>)
+        .endClass();
+
+    // a clip event as onEvent subscribers receive it (a copy)
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimationEvent>("AnimationEvent")
+        .addProperty("functionName", &AnimationEvent::functionName)
+        .addProperty("state", &AnimationEvent::state)
+        .addProperty("time", &AnimationEvent::time)
+        // the event's args: a 1-based table of numbers, strings and booleans
+        .addProperty("args", +[](const AnimationEvent* self, lua_State* L) -> luabridge::LuaRef {
+            luabridge::LuaRef table = luabridge::newTable(L);
+            for (size_t i = 0; i < self->args.size(); i++){
+                const AnimationEventArg& arg = self->args[i];
+                if (const double* number = std::get_if<double>(&arg)){
+                    table[(int)i + 1] = *number;
+                }else if (const std::string* text = std::get_if<std::string>(&arg)){
+                    table[(int)i + 1] = *text;
+                }else{
+                    table[(int)i + 1] = std::get<bool>(arg);
+                }
+            }
+            return table;
+        })
+        .addFunction("getArgCount", &AnimationEvent::getArgCount)
+        .addFunction("getArgType", &AnimationEvent::getArgType)
+        .addFunction("getNumberArg", &AnimationEvent::getNumberArg)
+        .addFunction("getStringArg", &AnimationEvent::getStringArg)
+        .addFunction("getBoolArg", &AnimationEvent::getBoolArg)
+        .endClass();
+
+    luabridge::getGlobalNamespace(L)
+        .beginClass<AnimationState>("AnimationState")
+        .addFunction("isValid", &AnimationState::isValid)
+        .addProperty("name", &AnimationState::getName)
+        .addProperty("clip", &AnimationState::getClip)
+        .addProperty("time", &AnimationState::getTime, &AnimationState::setTime)
+        .addProperty("normalizedTime", &AnimationState::getNormalizedTime, &AnimationState::setNormalizedTime)
+        .addProperty("speed", &AnimationState::getSpeed, &AnimationState::setSpeed)
+        .addProperty("weight", &AnimationState::getWeight, &AnimationState::setWeight)
+        .addProperty("length", &AnimationState::getLength)
+        .addProperty("wrap", &AnimationState::getWrap, &AnimationState::setWrap)
+        .addProperty("enabled", &AnimationState::isEnabled, &AnimationState::setEnabled)
+        .endClass();
+
+    // Unity's legacy Animation component: clips played with fades, blends and queues
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<AnimationPlayer, EntityHandle>("AnimationPlayer")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        .addFunction("play",
+            luabridge::overload<const std::string&>(&AnimationPlayer::play),
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::play))
+        .addFunction("crossFade",
+            luabridge::overload<const std::string&>(&AnimationPlayer::crossFade),
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::crossFade))
+        .addFunction("blend",
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::blend),
+            luabridge::overload<const std::string&, float, float>(&AnimationPlayer::blend))
+        .addFunction("queue",
+            luabridge::overload<const std::string&>(&AnimationPlayer::queue),
+            luabridge::overload<const std::string&, float>(&AnimationPlayer::queue))
+        .addFunction("stop",
+            luabridge::overload<>(&AnimationPlayer::stop),
+            luabridge::overload<const std::string&>(&AnimationPlayer::stop))
+        .addFunction("rewind",
+            luabridge::overload<>(&AnimationPlayer::rewind),
+            luabridge::overload<const std::string&>(&AnimationPlayer::rewind))
+        .addFunction("sample", &AnimationPlayer::sample)
+        .addFunction("isPlaying",
+            luabridge::constOverload<>(&AnimationPlayer::isPlaying),
+            luabridge::constOverload<const std::string&>(&AnimationPlayer::isPlaying))
+        .addFunction("getState", &AnimationPlayer::getState)
+        .addFunction("addClip",
+            luabridge::overload<const std::string&>(&AnimationPlayer::addClip),
+            luabridge::overload<const std::string&, const std::string&>(&AnimationPlayer::addClip))
+        .addFunction("removeClip", &AnimationPlayer::removeClip)
+        .addFunction("getClipCount", &AnimationPlayer::getClipCount)
+        .addFunction("getClipName", &AnimationPlayer::getClipName)
+        .addProperty("speed", &AnimationPlayer::getSpeed, &AnimationPlayer::setSpeed)
+        .addProperty("defaultClip", &AnimationPlayer::getDefaultClip, &AnimationPlayer::setDefaultClip)
+        .addProperty("defaultFadeTime", &AnimationPlayer::getDefaultFadeTime, &AnimationPlayer::setDefaultFadeTime)
+        .addProperty("playAutomatically", &AnimationPlayer::isPlayAutomatically, &AnimationPlayer::setPlayAutomatically)
+        .addProperty("enabled", &AnimationPlayer::isEnabled, &AnimationPlayer::setEnabled)
+        .addFunction("isLoaded", &AnimationPlayer::isLoaded)
+        // a function called with an AnimationEvent when a clip event fires
+        .addProperty("onEvent", [] (AnimationPlayer* self, lua_State*) { return &self->getOnEvent(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnEvent() = L; })
+        // a function called with the state name when a once state ends (or a clamp_forever one first reaches its end)
+        .addProperty("onFinish", [] (AnimationPlayer* self, lua_State*) { return &self->getOnFinish(); }, [] (AnimationPlayer* self, lua_State* L) { self->getOnFinish() = L; })
+        .addFunction("getAnimationPlayerComponent", &AnimationPlayer::getComponent<AnimationPlayerComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
