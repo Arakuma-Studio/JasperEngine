@@ -96,11 +96,11 @@ namespace jasperengine::editor::mcp::w3 {
     inline Json screenshotArgSchema() {
         return Json{
             {"description", "Also return an image (true: game)."},
-            {"oneOf", Json::array({Json{{"type", "boolean"}}, Json{{"type", "string"}, {"enum", {"game", "scene", "editor"}}}})}
+            {"anyOf", Json::array({Json{{"type", "boolean"}}, Json{{"type", "string"}, {"enum", {"game", "scene", "editor"}}}})}
         };
     }
     inline Json maxWidthArgSchema(int maximum, int defaultWidth) {
-        return Json{{"type", "integer"}, {"description", "0 = full size."},
+        return Json{{"type", "integer"},
                     {"minimum", 0}, {"maximum", maximum}, {"default", defaultWidth}};
     }
 
