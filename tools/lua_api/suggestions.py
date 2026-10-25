@@ -64,6 +64,9 @@ def symbols(api):
                 (events if prp['event'] else consts).append((prp['name'], 'Event' if prp['event'] else 'Constant', detail, name))
             else:
                 props.append((prp['name'], 'Property', detail, name))
+        # Class.Table enum tables (AABB.BoxType, Plane.Side): a constant of the class
+        for t in c['enumTables']:
+            consts.append((t['name'], 'Constant', f'{name}.{t["name"]}', name))
         for m in c['cppOnlyMethods']:
             detail = f'{name}::{m["name"]}({_cpp_params(m["params"])})'
             if m['returns'] and m['returns'] != 'void':

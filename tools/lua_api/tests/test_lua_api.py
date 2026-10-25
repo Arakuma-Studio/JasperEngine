@@ -115,9 +115,22 @@ class Emitters(unittest.TestCase):
             self.assertIn('stubFiles[]', header)
             self.assertIn('entityHandleClasses[]', header)
 
+    # What the regex parser listed wrongly, so the one parser has it differently or not at all:
+    #  - static properties bound with a lambda (Input.KEY_A, AABB.BoxType) were 'Event's; they are
+    #    constants ('Constant'), the one parser's real events stay 'Event';
+    #  - its C++ methods came from the first C++ class of the same name in any header: the Lua
+    #    AssetRef is ScriptAssetRef (not asset/AssetRef.h), Image and Text are the scene UI classes
+    #    (not htmlui's DecoratorCommon Image or CssAst Text).
+    REGEX_FALSE_CPP_METHODS = {
+        'AssetRef': {'clear', 'empty', 'isSet', 'path', 'set'},
+        'Image': {'colour', 'hasIntrinsicSize', 'intrinsicSize', 'isSvg', 'texture', 'tintsWithColor'},
+        'Text': {'compare', 'str', 'substr'},
+    }
+
     def test_suggestions_keep_what_the_regex_parser_knew(self):
         """generate_api_suggestions.py's symbols at its deletion (fixtures/regex_symbols.txt: kind
-        parent name): the one parser's completion has every one of them"""
+        parent name): the one parser's completion has every one of them, but for the regex
+        parser's mistakes above"""
         new = {(k, parent, name) for name, k, _, parent in suggestions.symbols(api())}
         missing = []
         with open(os.path.join(FIXTURES, 'regex_symbols.txt'), encoding='utf-8') as f:
@@ -126,8 +139,13 @@ class Emitters(unittest.TestCase):
                 if not line or line.startswith('#'):
                     continue
                 kind, parent, name = line.split('\t')
-                if (kind, parent, name) not in new:
-                    missing.append(line)
+                if (kind, parent, name) in new:
+                    continue
+                if kind == 'Event' and ('Constant', parent, name) in new:
+                    continue
+                if kind == 'CppMethod' and name in self.REGEX_FALSE_CPP_METHODS.get(parent, ()):
+                    continue
+                missing.append(line)
         self.assertEqual(missing, [], 'symbols the regex parser listed and the one parser does not')
 
     def test_suggestions_header(self):
