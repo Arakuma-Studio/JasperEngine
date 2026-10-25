@@ -37,7 +37,8 @@ async def wait_for(ed: Editor, sid: int, what: str, ok, seconds: float) -> tuple
         await ed.call("wait", frames=3)
         got = await status(ed, sid)
     elapsed = time.monotonic() - start
-    ed.check(ok(got), f"{what} within {seconds} s (after {elapsed:.2f} s): {got['dynamic_resolution']}")
+    ed.check(ok(got), f"{what} within {seconds} s (after {elapsed:.2f} s): scene {got['scene_id']}, playing {got['playing']}, "
+                      f"{got['dynamic_resolution']}")
     return got, elapsed
 
 
@@ -55,8 +56,13 @@ def log_length(ed: Editor) -> int:
 async def test_dynamic_resolution_in_play(ed: Editor):
     ed.require_tools("create_scene", "create_entity", "set_scene_settings", "play", "wait", "get_post_processing_status",
                      "set_post_processing_debug")
-    sid = (await ed.call("create_scene", name="Adaptive", type="3d"))["scene"]["id"]
-    await ed.call("create_entity", name="Ball", type="sphere")
+    # the project's start scene: Play runs it (a scene made here would not be the one playing)
+    scenes = (await ed.call("list_scenes"))["scenes"]
+    start = [s for s in scenes if s.get("start_scene")]
+    ed.check(start, f"a start scene: {scenes}")
+    sid = start[0]["id"]
+    await ed.call("select_scene", scene=sid)
+    await ed.call("create_entity", scene=sid, name="Ball", type="sphere")
 
     # off by default: nothing runs, the settings' scale applies
     got = await status(ed, sid)
@@ -79,7 +85,7 @@ async def test_dynamic_resolution_in_play(ed: Editor):
                  f"edit mode keeps scale 1: {got['dynamic_resolution']}")
     await ed.call("set_post_processing_debug", scene=sid, fake_gpu_ms=None)
 
-    await ed.call("play", action="start", scene=sid)  # (the project's start scene is another one)
+    await ed.call("play", action="start", scene=sid)
     try:
         await ed.call("wait", frames=30)
         got, _ = await wait_for(ed, sid, "running", lambda s: s["dynamic_resolution"]["running"], 5)
