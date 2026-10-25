@@ -576,3 +576,7 @@ in `tools/mcp/tests/`.
   `retarget_asset_references`, `clear_asset_references`, through their module row in
   `buildToolRegistry`. S04 had registered them into core and raised the limit in
   `test_html_ui_tools.py`; its `import_files` and `build_project` parameters stay in core.
+- **S10's tools are in `rendering_fx`** (`get_shadow_stats`, `set_shadow_debug`; §6.4 names no
+  group for S10, and the group's description now names shadow statistics and debug views), and
+  S10's guide paragraph became its own `## Shadows` digest: appended to "Shaders and materials"
+  it took that section over the 1,500-byte section limit.

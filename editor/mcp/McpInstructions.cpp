@@ -196,6 +196,12 @@ Post-processing (main camera only): apply_post_processing_preset, then set_scene
 post_processing.<field>. Mobile: in-shader colour, low render scale, few passes
 (jasper://docs/post-processing).
 
+## Shadows
+A light's shadows, softShadows, shadowStrength, shadowBias/shadowNormalBias (in shadow texels,
+1 is right almost always), mapResolution (0: the tier's); the scene's shadows_quality (auto:
+the platform's tier), shadow_distance; meshes that never move: staticShadowCaster true (cached).
+Verify with get_shadow_stats and the shadows_debug_view setting (jasper://docs/shadows).
+
 ## Build and ship
 Scenes in Build order and the start scene live in project.yaml (project tools). Export
 (Build Settings, build_project) makes a CMake project or players per platform (a long job).

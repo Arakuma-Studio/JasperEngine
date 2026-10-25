@@ -20,7 +20,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"diagnostics", "Jobs, memory, ECS, logging and crash/hang diagnostics."},
         {"editor_ux", "Undo history, command palette, layouts, search, bookmarks and Scene view tools."},
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
-        {"rendering_fx", "Fog, clouds and post effects beyond the core set."},
+        {"rendering_fx", "Shadow statistics and debug views, fog, clouds and post effects beyond the core set."},
         {"splines", "Splines and what is built on them: roads, walls, placement, terrain and water."},
         {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps and sampling."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},

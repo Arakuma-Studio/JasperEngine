@@ -32,6 +32,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerPrefabTools, "Prefabs", ""},
     {registerPlayTools, "Play mode and input", ""},
     {registerViewTools, "Views and screenshots", ""},
+    {registerShadowTools, "Shadows", "rendering_fx"},   // S10
     {registerConsoleTools, "Console", ""},
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},

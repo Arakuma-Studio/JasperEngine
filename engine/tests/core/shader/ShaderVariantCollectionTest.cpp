@@ -40,11 +40,23 @@ TEST(ShaderKey, CustomShadersAreInterned){
 }
 
 TEST(ShaderKey, NormalizeDropsRetiredPropertyBits){
-    const uint32_t valid = ShaderPool::getValidPropertyMask(ShaderType::MESH);
-    EXPECT_EQ(valid & (1u << 5), 0u);    // the retired 'Pcf' bit
-    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::MESH, 0xFFFFFFFFu, 2);
+    const uint32_t valid = ShaderPool::getValidPropertyMask(ShaderType::DEPTH);
+    const ShaderKey key = ShaderPool::getShaderKey(ShaderType::DEPTH, 0xFFFFFFFFu, 2);
+    EXPECT_NE(valid, 0xFFFFFFFFu);
     EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(key)), valid);
     EXPECT_EQ(ShaderPool::getCustomIdFromKey(ShaderPool::normalizeKey(key)), 2u);
+}
+
+TEST(ShaderKey, ShadowsHQNeedsShadows){
+    // bit 5 ('Shq', S10) was the retired 'Pcf': a key keeps it only with 'Shw' (bit 4)
+    const uint32_t hq = ShaderPool::getShadowsHQProperty();
+    EXPECT_EQ(hq, 1u << 5);
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 5, true), "Shq");
+    EXPECT_NE(ShaderPool::getValidPropertyMask(ShaderType::MESH) & hq, 0u);
+    const ShaderKey shadowed = ShaderPool::getShaderKey(ShaderType::MESH, 0x8 | (1u << 4) | hq);
+    EXPECT_EQ(ShaderPool::normalizeKey(shadowed), shadowed);
+    const ShaderKey unshadowed = ShaderPool::getShaderKey(ShaderType::MESH, 0x8 | hq);
+    EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(unshadowed)), 0x8u);
 }
 
 TEST(ShaderKey, SpecsNameTypeAndProperties){

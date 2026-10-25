@@ -751,7 +751,7 @@ void setMainCameraTool(const CallPtr& call) {
 // ------------------------------------------------------------------ scene settings
 
 enum class SettingKind { Bool, Int, Float, Vector2, Vector3, Vector4, String, ShadowQuality, SceneColorScale, LightState, Filter, PostProcess,
-                         PostProcessing, PostProcessingField };
+                         PostProcessing, PostProcessingField, ShadowDebugView };
 
 struct SceneSetting {
     std::string name;
@@ -770,10 +770,16 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"global_illumination_color", SettingKind::Vector3, "ambient light color [r,g,b] (sRGB)"},
         {"global_illumination_intensity", SettingKind::Float, "ambient light intensity"},
         {"max_lights_per_object", SettingKind::Int, "lights each object is lit by, 1-16 (the rest reaching it fold into its ambient)"},
-        {"shadows_quality", SettingKind::ShadowQuality, "3D shadow edge filtering: none, low, medium, high"},
+        {"shadows_quality", SettingKind::ShadowQuality,
+         "3D shadow quality tier: auto (the project's tier of the platform), none (that tier, every light hard), low, medium, high, ultra (PCSS)"},
+        {"shadow_distance", SettingKind::Float, "metres of directional shadows from the camera (0: the quality tier's; a light's own overrides it)"},
+        {"shadow_fade_fraction", SettingKind::Float, "last fraction of the shadow distance over which directional shadows fade out (0..1)"},
+        {"shadow_cascade_blend", SettingKind::Bool, "blend (dither on Low) between shadow cascades over a band before each split"},
+        {"shadows_debug_view", SettingKind::ShadowDebugView,
+         "Scene view shadow debug view (editor only, never saved, no undo step): none, cascades, shadow_factor, texel_density, cache, atlas"},
         {"ambient_light_2d_color", SettingKind::Vector3, "2D ambient light color [r,g,b] (sRGB)"},
         {"ambient_light_2d_intensity", SettingKind::Float, "2D ambient light intensity"},
-        {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high"},
+        {"shadows_2d_quality", SettingKind::ShadowQuality, "2D shadow edge filtering: none, low, medium, high (auto reads as low, ultra as high)"},
         {"physics_gravity_2d", SettingKind::Vector2, "2D gravity [x,y]"},
         {"physics_gravity_3d", SettingKind::Vector3, "3D gravity [x,y,z]"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
@@ -971,6 +977,7 @@ const char* kindName(SettingKind kind) {
         case SettingKind::ShadowQuality:
         case SettingKind::SceneColorScale:
         case SettingKind::LightState:
+        case SettingKind::ShadowDebugView:
         case SettingKind::Filter: return "enum";
         case SettingKind::PostProcess: return "post_process";
         case SettingKind::PostProcessing: return "post_processing";
@@ -982,6 +989,7 @@ const char* kindName(SettingKind kind) {
 const McpValues::EnumOptions* settingOptions(SettingKind kind) {
     switch (kind) {
         case SettingKind::ShadowQuality: return McpValues::enumTable("shadow_quality");
+        case SettingKind::ShadowDebugView: return McpValues::enumTable("shadow_debug_view");
         case SettingKind::SceneColorScale: return McpValues::enumTable("scene_color_scale");
         case SettingKind::LightState: return McpValues::enumTable("light_state");
         case SettingKind::Filter: return McpValues::enumTable("framebuffer_filter");
@@ -1040,6 +1048,10 @@ Json settingValue(Scene* scene, const SceneSetting& setting, bool defaults = fal
         case SettingKind::ShadowQuality:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<ShadowQuality>(setting.name)
                                                         : Catalog::getSceneProperty<ShadowQuality>(scene, setting.name)),
+                                         *settingOptions(setting.kind));
+        case SettingKind::ShadowDebugView:
+            return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<ShadowDebugView>(setting.name)
+                                                        : Catalog::getSceneProperty<ShadowDebugView>(scene, setting.name)),
                                          *settingOptions(setting.kind));
         case SettingKind::SceneColorScale:
             return McpValues::enumToJson((int)(defaults ? Catalog::getScenePropertyDefault<SceneColorScale>(setting.name)
@@ -1166,6 +1178,8 @@ Command* buildSettingCommand(Project* project, SceneProject* scene, const SceneS
         case SettingKind::PostProcessing:
         case SettingKind::PostProcessingField:
             break; // setSceneSettingsTool gathers them (applyPostProcessingSetting)
+        case SettingKind::ShadowDebugView:
+            break; // editor state, applied by setSceneSettingsTool without an undo step
         case SettingKind::PostProcess: {
             if (!value.is_array()) return expect("an array of {shader, enabled, uniforms, textures, scale}");
             std::vector<PostProcessPass> passes;
@@ -1341,6 +1355,17 @@ void setSceneSettingsTool(const CallPtr& call) {
             postProcessingSet = true;
             continue;
         }
+        if (setting->kind == SettingKind::ShadowDebugView) {
+            // editor state, not a setting: applied at once, no undo step, never saved
+            int parsed = 0;
+            if (!McpValues::enumFromJson(it.value(), *settingOptions(setting->kind), parsed, error)) {
+                delete multi;
+                call->fail(it.key() + ": " + error);
+                return;
+            }
+            scene->scene->setShadowDebugView((ShadowDebugView)parsed);
+            continue;
+        }
         Command* cmd = buildSettingCommand(project, scene, *setting, it.value(), error);
         if (!cmd) {
             delete multi;
@@ -1354,7 +1379,9 @@ void setSceneSettingsTool(const CallPtr& call) {
     }
     const uint32_t id = scene->id;
     std::string error;
-    if (!runSceneCommand(id, multi, error)) {
+    if (multi->empty()) {
+        delete multi;
+    }else if (!runSceneCommand(id, multi, error)) {
         call->fail(error);
         return;
     }
@@ -1363,7 +1390,9 @@ void setSceneSettingsTool(const CallPtr& call) {
     for (auto it = args["settings"].begin(); it != args["settings"].end(); ++it) {
         values[it.key()] = settingValue(updated->scene, *findSetting(it.key()), false, project);
     }
-    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step).",
+    const bool debugView = args["settings"].contains("shadows_debug_view");
+    call->ok("Set " + std::to_string(values.size()) + " scene setting(s) (one undo step" +
+             (debugView ? std::string("; shadows_debug_view takes none).") : std::string(").")),
              Json{{"scene_id", id}, {"settings", values}});
 }
 
