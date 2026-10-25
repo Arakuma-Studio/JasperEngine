@@ -42,6 +42,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
     {registerHtmlUiTools, "HTML/CSS UI", ""},
     {registerUiEffectTools, "HTML/CSS UI", ""},
+    {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
 };
 
 // JASPER_MCP_SELFTEST_GROUP: one tool in the test-only group "selftest", for the tests of

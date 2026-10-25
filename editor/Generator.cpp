@@ -2250,6 +2250,19 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         case TextureStrategy::NONE:   mainContent += "    Engine::setTextureStrategy(TextureStrategy::NONE);\n"; break;
     }
 
+    // Atmosphere Quality per platform group (Project Settings > Quality), before any scene draws
+    auto qualityName = [](AtmosphereQuality quality) -> std::string {
+        switch (quality) {
+            case AtmosphereQuality::OFF: return "AtmosphereQuality::OFF";
+            case AtmosphereQuality::LOW: return "AtmosphereQuality::LOW";
+            case AtmosphereQuality::MEDIUM: return "AtmosphereQuality::MEDIUM";
+            case AtmosphereQuality::HIGH: return "AtmosphereQuality::HIGH";
+        }
+        return "AtmosphereQuality::LOW";
+    };
+    mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
+                   qualityName(atmosphereQuality[2]) + ");\n";
+
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
 

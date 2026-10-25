@@ -59,10 +59,13 @@ struct GameViewSettings {
     float scale = 1.0f;          // zoom of the game image
     bool maximizeOnPlay = false;
     bool showStats = false;
+    // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
+    int atmosphereQuality = -1;
 
     bool operator==(const GameViewSettings& other) const {
         return aspect == other.aspect && scale == other.scale
-            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats;
+            && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
+            && atmosphereQuality == other.atmosphereQuality;
     }
     bool operator!=(const GameViewSettings& other) const { return !(*this == other); }
 };

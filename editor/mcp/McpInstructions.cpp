@@ -152,6 +152,13 @@ compile_scripts reports errors without playing. More: jasper://docs/cpp-scriptin
   top-left. Put HUDs and menus in a UI scene attached as a child scene (set_child_scene): in a
   2D scene layout groups stack bottom-up and pointer input needs a UI camera.
 
+## Atmosphere
+A Fog of type "height" is physically based height fog (volumetric: true adds light shafts and
+Local Volumetric Fog volumes near the camera); create_entity volumetric_clouds adds clouds.
+apply_atmosphere_preset sets a look (list_atmosphere_presets); get_atmosphere_info says what
+ran (tier, passes, resolution). Atmosphere Quality is per platform (project settings
+quality.atmosphere_quality_*). More: jasper://docs/atmosphere.
+
 ## Physics
 - Add a body and its collider to the SAME GameObject in one step (edit_colliders with
   body_type + add). A Rigidbody without a Collider does not collide. Dynamic for

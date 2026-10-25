@@ -579,4 +579,6 @@ in `tools/mcp/tests/`.
 - **S10's tools are in `rendering_fx`** (`get_shadow_stats`, `set_shadow_debug`; §6.4 names no
   group for S10, and the group's description now names shadow statistics and debug views), and
   S10's guide paragraph became its own `## Shadows` digest: appended to "Shaders and materials"
-  it took that section over the 1,500-byte section limit.
+  it took that section over the 1,500-byte section limit. S12's tools
+  (`list_atmosphere_presets`, `apply_atmosphere_preset`, `get_atmosphere_info`) are in
+  `rendering_fx` as §6.4 says, and its guide bullet became an `## Atmosphere` digest the same way.

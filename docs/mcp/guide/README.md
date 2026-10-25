@@ -15,6 +15,7 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 | [undo.md](undo.md) | `jasper://docs/undo` | an agent's undo steps (`undo` {id, name}, undo_name), the timeline scope, expect_top_id, get_undo_history, play-time changes |
 | [physics.md](physics.md) | `jasper://docs/physics` | bodies and colliders, mass and density, forces, teleporting, layers, ray casts |
 | [shaders.md](shaders.md) | `jasper://docs/shaders` | library shaders (list_shaders, material shader values and render state), forking built-in shaders, editing rules, the custom uniform block |
+| [atmosphere.md](atmosphere.md) | `jasper://docs/atmosphere` | height fog, volumetric fog (light shafts, Local Volumetric Fog), volumetric clouds (Sky Map, Screen), quality tiers per platform, presets, budgets, the agent tools (`get_atmosphere_info`, `apply_atmosphere_preset`), limits |
 | [post-processing.md](post-processing.md) | `jasper://docs/post-processing` | the main camera's post-processing: cost tiers, presets (list/apply_post_processing_preset), the cost readout, mobile advice, limits, fields, custom passes (`post_process`), Lua `scene.postProcessing` |
 | [prefabs.md](prefabs.md) | `jasper://docs/prefabs` | overrides, Apply/Revert, Prefab Mode, variants, Instantiate/Destroy, the build's prefabs |
 | [assets.md](assets.md) | `jasper://docs/assets` | asset GUIDs and .meta files, references by GUID, renames and moves, Missing Assets, Find References, the Asset Lua API, migration |

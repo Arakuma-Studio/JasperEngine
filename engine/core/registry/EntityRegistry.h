@@ -18,6 +18,8 @@
 #include "component/BoneComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/FogComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 #include "component/MirrorComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/UIDocumentComponent.h"

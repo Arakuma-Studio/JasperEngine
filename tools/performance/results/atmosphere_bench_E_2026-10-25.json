@@ -1,0 +1,251 @@
+{
+  "platform": "desktop",
+  "relative": true,
+  "runs": 3,
+  "frames": 300,
+  "passed": false,
+  "results": {
+    "none": {
+      "frame_ms": 248.81831081662918,
+      "passes": [],
+      "vram_mb": 1.375,
+      "vram_screen_mb": 0.0,
+      "tier": "high",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        248.23091301665653,
+        250.13937644998805,
+        248.81831081662918
+      ]
+    },
+    "linear_fog": {
+      "frame_ms": 251.99988371665918,
+      "passes": [],
+      "vram_mb": 1.375,
+      "vram_screen_mb": 0.0,
+      "tier": "high",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        253.39512708336164,
+        251.93360186664603,
+        251.99988371665918
+      ]
+    },
+    "height_fog": {
+      "frame_ms": 252.85355875003006,
+      "passes": [],
+      "vram_mb": 1.375,
+      "vram_screen_mb": 0.0,
+      "tier": "high",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        253.99297648327774,
+        252.5198962167148,
+        252.85355875003006
+      ]
+    },
+    "sky_composite": {
+      "frame_ms": 254.3116481000349,
+      "passes": [
+        {
+          "label": "Atmosphere/SkyComposite"
+        }
+      ],
+      "vram_mb": 1.375,
+      "vram_screen_mb": 0.0,
+      "tier": "high",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        255.64644544998978,
+        254.22964433334224,
+        254.3116481000349
+      ]
+    },
+    "volumetric_low": {
+      "frame_ms": 299.42810703335755,
+      "passes": [
+        {
+          "label": "Atmosphere/DepthDownsample"
+        },
+        {
+          "label": "Atmosphere/VolumetricFog"
+        },
+        {
+          "label": "Atmosphere/Denoise"
+        },
+        {
+          "label": "Atmosphere/SkyComposite"
+        },
+        {
+          "label": "Atmosphere/VolumetricComposite"
+        }
+      ],
+      "vram_mb": 2.3664398193359375,
+      "vram_screen_mb": 0.9914398193359375,
+      "tier": "low",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        300.3876808333492,
+        299.42810703335755,
+        299.19674356672965
+      ]
+    },
+    "volumetric_medium": {
+      "frame_ms": 407.8643857333494,
+      "passes": [
+        {
+          "label": "Atmosphere/DepthDownsample"
+        },
+        {
+          "label": "Atmosphere/VolumetricFog"
+        },
+        {
+          "label": "Atmosphere/Denoise"
+        },
+        {
+          "label": "Atmosphere/SkyComposite"
+        },
+        {
+          "label": "Atmosphere/VolumetricComposite"
+        }
+      ],
+      "vram_mb": 3.6837615966796875,
+      "vram_screen_mb": 2.3087615966796875,
+      "tier": "medium",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        410.2491129500171,
+        407.8643857333494,
+        407.7112399500038
+      ]
+    },
+    "volumetric_high": {
+      "frame_ms": 522.4958758499876,
+      "passes": [
+        {
+          "label": "Atmosphere/DepthDownsample"
+        },
+        {
+          "label": "Atmosphere/VolumetricFog"
+        },
+        {
+          "label": "Atmosphere/Denoise"
+        },
+        {
+          "label": "Atmosphere/SkyComposite"
+        },
+        {
+          "label": "Atmosphere/VolumetricComposite"
+        }
+      ],
+      "vram_mb": 3.6837615966796875,
+      "vram_screen_mb": 2.3087615966796875,
+      "tier": "high",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        525.7030356833031,
+        522.4958758499876,
+        521.8224287667302
+      ]
+    },
+    "clouds_low": {
+      "frame_ms": 262.2046828166276,
+      "passes": [
+        {
+          "label": "Atmosphere/CloudsSkyMap"
+        },
+        {
+          "label": "Atmosphere/SkyComposite"
+        }
+      ],
+      "vram_mb": 2.875,
+      "vram_screen_mb": 0.0,
+      "tier": "low",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        264.58996433332993,
+        262.12738451667974,
+        262.2046828166276
+      ]
+    },
+    "clouds_medium": {
+      "frame_ms": 361.78819149996946,
+      "passes": [
+        {
+          "label": "Atmosphere/CloudsSkyMap"
+        },
+        {
+          "label": "Atmosphere/SkyComposite"
+        }
+      ],
+      "vram_mb": 7.375,
+      "vram_screen_mb": 0.0,
+      "tier": "medium",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        362.1389377833111,
+        361.3589386333236,
+        361.78819149996946
+      ]
+    },
+    "clouds_high": {
+      "frame_ms": 312.0377221333305,
+      "passes": [
+        {
+          "label": "Atmosphere/DepthDownsample"
+        },
+        {
+          "label": "Atmosphere/CloudsScreen"
+        },
+        {
+          "label": "Atmosphere/Denoise"
+        },
+        {
+          "label": "Atmosphere/SkyComposite"
+        },
+        {
+          "label": "Atmosphere/VolumetricComposite"
+        }
+      ],
+      "vram_mb": 1.9267578125,
+      "vram_screen_mb": 0.5517578125,
+      "tier": "high",
+      "render_size": [
+        904,
+        509
+      ],
+      "runs_ms": [
+        313.76947438335867,
+        311.9751625999925,
+        312.0377221333305
+      ]
+    }
+  }
+}

@@ -207,7 +207,8 @@ SPEC_GROUPS = {
     "data_safety": ["get_load_report", "list_scene_backups", "discard_scene_backup"],      # S03
     "terrain": ["sculpt_terrain", "set_terrain_maps", "sample_terrain"],                   # S31 (budget)
     "editor_ux": ["get_undo_history", "get_play_changes", "apply_play_changes", "discard_play_changes"],  # S24
-    "rendering_fx": ["get_shadow_stats", "set_shadow_debug"],                              # S10
+    "rendering_fx": ["get_shadow_stats", "set_shadow_debug",                               # S10
+                     "list_atmosphere_presets", "apply_atmosphere_preset", "get_atmosphere_info"],  # S12
     "assets_pipeline": ["resolve_asset", "find_references", "get_asset_dependencies", "list_missing_assets",  # S04
                         "retarget_asset_references", "clear_asset_references"],
 }
