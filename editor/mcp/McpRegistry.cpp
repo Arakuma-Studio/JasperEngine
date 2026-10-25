@@ -4,12 +4,23 @@
 #include "McpRegistry.h"
 
 #include "McpCall.h"
+#include "McpToolGroups.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 
 using namespace jasperengine::editor::mcp;
 
 void McpRegistry::addTool(ToolDef def) {
+#ifndef NDEBUG
+    // A typo in a group name would hide the tool from every listing for good
+    if (!findToolGroup(def.group)) {
+        std::fprintf(stderr, "MCP tool %s is registered into the unknown group \"%s\" (editor/mcp/McpToolGroups.cpp)\n",
+                     def.name.c_str(), def.group.c_str());
+        std::abort();
+    }
+#endif
     if (def.inputSchema.is_null()) {
         def.inputSchema = Json{{"type", "object"}, {"properties", Json::object()}};
     }
@@ -145,5 +156,24 @@ Json McpRegistry::toolToJson(const ToolDef& def) {
     };
     if (!def.title.empty()) annotations["title"] = def.title;
     tool["annotations"] = annotations;
+    // for clients and the CLI's help; _meta is not part of what the budget measures
+    tool["_meta"] = Json{{"jasper/group", groupOf(def)}, {"jasper/module", def.module},
+                         {"jasper/while_playing", def.allowedWhilePlaying}};
     return tool;
+}
+
+const std::string& McpRegistry::groupOf(const ToolDef& def) {
+    static const std::string core = CORE_TOOL_GROUP;
+    return def.group.empty() ? core : def.group;
+}
+
+size_t McpRegistry::toolChars(const ToolDef& def) {
+    const Json listed = toolToJson(def);
+    const std::string text = def.name + def.description + listed["inputSchema"].dump(-1, ' ', false, Json::error_handler_t::replace);
+    // code points, as Python's len() counts them
+    size_t count = 0;
+    for (const char c : text) {
+        if ((static_cast<unsigned char>(c) & 0xC0) != 0x80) count++;
+    }
+    return count;
 }

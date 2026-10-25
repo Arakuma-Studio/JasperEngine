@@ -173,6 +173,7 @@ private:
     static bool mcpHttpEnabled;
     static int mcpHttpPort;
     static std::string mcpHttpToken;
+    static std::string mcpToolGroups;
 
     // HTML UI (phase-2 §3.13.4): imports of remote resources when documents load; Info
     // diagnostics logged one by one
@@ -295,6 +296,12 @@ public:
     static bool getMcpHttpEnabled();
     static int getMcpHttpPort();
     static std::string getMcpHttpToken();
+    // mcp.tool_groups: the tool groups MCP sessions list besides core ("a,b" or "all")
+    static std::string getMcpToolGroups();
+    // The per-user config directory (settings.yaml of a desktop start, the MCP instance
+    // registry): %APPDATA%/JasperEngine, ~/Library/Application Support/JasperEngine,
+    // $XDG_CONFIG_HOME/jasperengine or ~/.config/jasperengine
+    static std::filesystem::path getUserConfigDirectory();
     static void setMcpHttp(bool enabled, int port);
 
     // HTML UI: download the remote resources (Google Fonts, stylesheets, images, Lottie) a

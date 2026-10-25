@@ -134,6 +134,7 @@ ProfilerSettings AppSettings::profilerSettings;
 bool AppSettings::mcpHttpEnabled = false;
 int AppSettings::mcpHttpPort = 47615;
 std::string AppSettings::mcpHttpToken;
+std::string AppSettings::mcpToolGroups;
 bool AppSettings::htmlUiAutoImport = true;
 bool AppSettings::assetAutoRefresh = true;
 std::string AppSettings::assetWatcher = "auto";
@@ -381,6 +382,16 @@ bool AppSettings::applySettings(const YAML::Node& node) {
             if (mcpNode["http_enabled"]) mcpHttpEnabled = mcpNode["http_enabled"].as<bool>();
             if (mcpNode["http_port"]) mcpHttpPort = mcpNode["http_port"].as<int>();
             if (mcpNode["http_token"]) mcpHttpToken = mcpNode["http_token"].as<std::string>();
+            // "a,b", "all" or a list of group names
+            if (mcpNode["tool_groups"]) {
+                const YAML::Node groups = mcpNode["tool_groups"];
+                mcpToolGroups.clear();
+                if (groups.IsSequence()) {
+                    for (const auto& item : groups) mcpToolGroups += (mcpToolGroups.empty() ? "" : ",") + item.as<std::string>();
+                } else {
+                    mcpToolGroups = groups.as<std::string>();
+                }
+            }
         }
 
         if (settingsData["asset_pipeline"]) {
@@ -574,6 +585,7 @@ bool AppSettings::saveSettings() {
         mcpNode["http_enabled"] = mcpHttpEnabled;
         mcpNode["http_port"] = mcpHttpPort;
         if (!mcpHttpToken.empty()) mcpNode["http_token"] = mcpHttpToken;
+        if (!mcpToolGroups.empty()) mcpNode["tool_groups"] = mcpToolGroups;
         settingsData["mcp"] = mcpNode;
 
         YAML::Node assetNode;
@@ -1030,6 +1042,14 @@ int AppSettings::getMcpHttpPort() {
 
 std::string AppSettings::getMcpHttpToken() {
     return mcpHttpToken;
+}
+
+std::string AppSettings::getMcpToolGroups() {
+    return mcpToolGroups;
+}
+
+std::filesystem::path AppSettings::getUserConfigDirectory() {
+    return userConfigDirectory();
 }
 
 void AppSettings::setMcpHttp(bool enabled, int port) {

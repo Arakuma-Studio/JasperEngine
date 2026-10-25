@@ -43,37 +43,11 @@ S: dict = {}
 LIBRARY = harness.REPO / "docs" / "mcp" / "guide" / "html-ui-examples"
 MANIFEST = json.loads((LIBRARY / "examples.json").read_text(encoding="utf-8"))
 
-# §3.6.7: measured on html-ui before this package (40f403609) with tools/mcp/tool_budget.py
-SEND_INPUT_BEFORE = 1780
-IMPORT_FILES_BEFORE = 452
-# phase 5 (p5-tooling, spec 3.13): the effects tools within their caps, inspect_ui's `effects`
-# within +150 of its size before (1806), the total raised by what they measure (+837:
-# list_ui_effects 559, set_ui_effect_time 269, inspect_ui +9)
-INSPECT_UI_BEFORE_P5 = 1806
-LIMITS = {"inspect_ui": min(2300, INSPECT_UI_BEFORE_P5 + 150), "assert_ui": 2400, "create_ui_document": 1300,
-          "send_input": SEND_INPUT_BEFORE + 250, "import_files": IMPORT_FILES_BEFORE + 600,
-          "list_ui_effects": 900, "set_ui_effect_time": 500}
-# S03 (data safety, R37/R38): +1479 for get_load_report (225), discard_scene_backup (146),
-# list_scene_backups (144), allow_data_loss on nine writing tools and open_scene's recovery
-# S04 (asset identity, measured with tools/mcp/tool_budget.py): +2603 for retarget_asset_references
-# (598), resolve_asset (522), find_references (434), list_missing_assets (319),
-# clear_asset_references (311), get_asset_dependencies (293), import_files' overwrite and
-# build_project's allow_missing_assets
-# S06 (jobs & memory, merged after S04's measurement): +914 measured on the merge
-# S09 (logging, events, scheduler, merged after S04): +2633 measured on the merge
-# S24 (undo, R36-R39): +2164 for get_undo_history (561), get/apply/discard_play_changes (776),
-# undo/redo scope timeline, to_id and expect_top_id, batch undo_name, play keep_changes and
-# focus_window's undo_history / play_mode_changes panels (35); 2170 measured on the merge with S04
-# S13 (post FX): +1555 measured (inspect_color_lut 446, get_post_processing_status 403,
-# set_post_processing_debug 675, the presets' list in list_post_processing_presets)
-# S10 (shadows) and S12 (atmosphere), merged after S13's measurement: +2295 measured on the merge
-# S05 (file watcher, R29/R31/R32): +395 for sync_files' wait, rebuild_models and auto_refresh,
-# and editor_status' file_watcher and frame_ms
-# S15 (profiling): +4700 measured with tool_budget.py on the merge with oe-port e92501e14 (118986):
-# capture_pass_output 1005, get_cpu_profile 663, get_gpu_passes 638, profiler_capture 629,
-# get_frame_times 623, get_render_stats 490, get_vram_report 475, focus_window's profiler and
-# frame_debugger windows and profiler.load (177); the profiling group once S31 lands
-TOTAL_LIMIT = 99800 + 837 + 1479 + 2603 + 914 + 2633 + 2170 + 1555 + 2295 + 395 + 4700
+# §3.6.7 and phase 5 (spec 3.13): the HTML UI tools' caps. The limits themselves live in
+# tools/mcp/budget.json (S31 R21), the single source of the tool budget: its exceptions entries
+# for these tools record the caps of the HTML UI specs, the default listing its total.
+HTML_UI_TOOLS = ("inspect_ui", "assert_ui", "create_ui_document", "send_input", "import_files",
+                 "list_ui_effects", "set_ui_effect_time")
 
 CYAN = (0x00, 0xC8, 0xFF)
 RED = (0xFF, 0x3B, 0x30)
@@ -393,13 +367,17 @@ async def test_tools_listed_with_annotations(ed: Editor):
 
 
 async def test_budget(ed: Editor):
+    budget = tool_budget.load_budget()
     rows = {t.name: tool_budget.measure(t, False) for t in ed.tool_list}
-    for name, limit in LIMITS.items():
+    for name in HTML_UI_TOOLS:
+        limit = tool_budget.tool_limit(budget, name)
         ed.check(rows[name]["total"] <= limit, f"{name}: {rows[name]['total']} chars, over its limit {limit}")
-    total = sum(r["total"] for r in rows.values())
-    print(f"     [budget] {len(rows)} tools, {total} chars; " +
-          ", ".join(f"{n} {rows[n]['total']}" for n in LIMITS))
-    ed.check(total <= TOTAL_LIMIT, f"the tool definitions total {total} chars, over {TOTAL_LIMIT}")
+    core = [r for r in rows.values() if r["group"] == "core"]
+    total = sum(r["total"] for r in core)
+    limit = budget["default_listing"]["chars"]
+    print(f"     [budget] {len(core)} core tools, {total} chars; " +
+          ", ".join(f"{n} {rows[n]['total']}" for n in HTML_UI_TOOLS))
+    ed.check(total <= limit, f"the default listing totals {total} chars, over {limit} (tools/mcp/budget.json)")
     ed.check(len(ed.tool("inspect_ui").description) <= 520 and len(ed.tool("assert_ui").description) <= 520 and
              len(ed.tool("create_ui_document").description) <= 480, "description caps (§3.6.1-3.6.3)")
 

@@ -8,9 +8,11 @@ not served; `jasper://docs` lists the served documents. The guide refers to them
 
 | File | Resource | Contents |
 |---|---|---|
+| [lua-scripting.md](lua-scripting.md) | `jasper://docs/lua-scripting` | writing a Lua script: a complete script, property types, events, properties vs methods, time, what Lua lacks (the guide's Lua section is its digest) |
 | [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls (checked against `engine/core/script/binding/*`) |
 | [cpp-scripting.md](cpp-scripting.md) | `jasper://docs/cpp-scripting` | C++ script kinds, DPROPERTY, event macros, includes, script dirs, ProjectBuild.cmake |
 | [data-safety.md](data-safety.md) | `jasper://docs/data-safety` | atomic saves, load reports (preserved/dropped issues, did-you-mean), the degraded_document save refusal and allow_data_loss, Auto Save backups and open_scene recovery, the project lock |
+| [undo.md](undo.md) | `jasper://docs/undo` | an agent's undo steps (`undo` {id, name}, undo_name), the timeline scope, expect_top_id, get_undo_history, play-time changes |
 | [physics.md](physics.md) | `jasper://docs/physics` | bodies and colliders, mass and density, forces, teleporting, layers, ray casts |
 | [shaders.md](shaders.md) | `jasper://docs/shaders` | library shaders (list_shaders, material shader values and render state), forking built-in shaders, editing rules, the custom uniform block |
 | [atmosphere.md](atmosphere.md) | `jasper://docs/atmosphere` | height fog, volumetric fog (light shafts, Local Volumetric Fog), volumetric clouds (Sky Map, Screen), quality tiers per platform, presets, budgets, the agent tools (`get_atmosphere_info`, `apply_atmosphere_preset`), limits |

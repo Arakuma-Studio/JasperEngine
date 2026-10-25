@@ -554,10 +554,9 @@ alternative to what the text above asks.
 
 - **MCP parameter names are snake_case** (S31 R20): `min_frame_ms`, `capture_id`, `deep_lua`,
   `save_path`, `include_draws`, `max_draws`, `max_rows`, `group_by`, `max_width`. Result keys are
-  snake_case too (`gpu_ms`, `frame_ms`, `spike_interval_frames`). S31's tool groups have not landed
-  on `oe-port`, so the eight tools are in the default listing and their size is added to the
-  existing budget (`test_html_ui_tools.py` `TOTAL_LIMIT`, measured with `tool_budget.py`); they
-  move to the `profiling` group when S31 lands.
+  snake_case too (`gpu_ms`, `frame_ms`, `spike_interval_frames`). The seven tools are in S31's
+  `profiling` group (4,523 of its 7,000 characters, `tools/mcp/budget.json`); `focus_window`'s
+  `profiler` and `frame_debugger` windows stay in core (+177).
 - **An eighth MCP entry point.** §6.6 lists seven tools; `capture_pass_output` is one of them, and
   `focus_window` gained `profiler` and `frame_debugger` (the UI tests open the panels with it).
 - **The view parameter's default** is the engine's frame (the running game while playing, else

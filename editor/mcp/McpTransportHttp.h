@@ -19,8 +19,9 @@ namespace jasperengine::editor::mcp {
     //  - binds 127.0.0.1 only; rejects an Origin or Host that is not localhost (DNS rebinding)
     //  - optional bearer token (Editor Settings / settings.yaml mcp.http_token)
     //  - POST /mcp: one JSON-RPC message. Requests answer application/json, or
-    //    text/event-stream (progress notifications, then the response) when the client
-    //    accepts it and sent a progressToken. Notifications/responses answer 202.
+    //    text/event-stream (notifications such as progress or tools/list_changed, then the
+    //    response) when the client accepts it and a notification comes before the answer.
+    //    Notifications/responses answer 202.
     //  - GET /mcp: 405 (no server-initiated stream). DELETE /mcp ends the session.
     //  - Mcp-Session-Id is issued at initialize and required afterwards.
     class McpTransportHttp {

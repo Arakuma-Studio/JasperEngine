@@ -5,6 +5,9 @@ Analysis > Profiler** and **Window > Analysis > Frame Debugger** for a human.
 
 ## The tools
 
+They are the `profiling` tool group: `tool_groups` lists it in the session's tools, and each
+tool is callable by name without it.
+
 | Tool | What it answers |
 |---|---|
 | `get_render_stats` | the last frame of a view: draws, instances, triangles, passes, pipelines and bindings applied, uniform and upload bytes, alive resources, pipeline cache, `cpu_ms`, `fps`, `gpu {available, reason, frame_ms, semantics}` (also `jasper://stats`) |
