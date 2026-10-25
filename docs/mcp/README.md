@@ -152,7 +152,18 @@ For HTTP, use `{"mcpServers": {"jasper": {"url": "http://127.0.0.1:47615/mcp"}}}
 VS Code reads `.vscode/mcp.json` and uses a `servers` key with
 `"type": "stdio"` or `"type": "http"`.
 
+### From a shell: `jasperengine-editor call`
+
+Without an MCP client (CI scripts, hooks, a terminal), run any tool through the editor binary:
+`jasperengine-editor call --project <dir> create_entity --name Box --type box`. It attaches to
+the editor that has the project open (or `--port N`), else starts a one-shot headless one.
+Flags, `--help` and validation come from each tool's schema; `--json` prints one envelope per
+call; exit codes 0 ok, 1 tool error, 2 usage, 3 connection, 4 internal. See [cli.md](cli.md).
+
 ### Developing JasperEngine itself
+
+Agents working on the engine read the repository's `AGENTS.md` and `CLAUDE.md` (build, test,
+run an isolated editor, land a change); a game project has its own, generated `AGENTS.md`.
 
 The repository root has a `.mcp.json` that runs the editor from your build output:
 
@@ -246,12 +257,20 @@ no effect there.
 ## Tool reference
 
 The tool list is generated: [TOOLS.md](TOOLS.md) is written by `tools/mcp/gen_tool_docs.py`
-from the editor's `tools/list`, grouped by module, with each tool's description and
-parameters. Regenerate it after you change tools:
+from the editor's `tools/list` (every group), in sections by module, with each tool's group,
+description and parameters. Regenerate it after you change tools (`--check` tells whether
+it is stale):
 
 ```sh
 uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/gen_tool_docs.py
 ```
+
+**Tool groups.** `tools/list` shows the `core` tools plus the groups a session enabled. The
+`tool_groups` tool lists the groups and enables or disables them for the session; the
+editor then sends `notifications/tools/list_changed`. A hidden tool is still callable by
+name, directly or inside `batch`, so a client that ignores the notification loses nothing.
+`jasperengine-editor mcp --tool-groups a,b|all` and the Editor Settings key
+`mcp.tool_groups` choose the groups sessions start with.
 
 Main ideas:
 
@@ -277,13 +296,16 @@ Main ideas:
   See [../jobs-memory.md](../jobs-memory.md).
 
 Tool definitions (name, description, input schema) are sent to the agent in every session,
-so keep them lean: `tools/mcp/tool_budget.py` prints each tool's size and the total (target:
-under ~100K characters, about 25K tokens; the HTML UI tools brought it to ~99K and the UI effects
-tools of phase 5 to ~99.8K: new tools must pay for themselves by trimming). Shared conventions (scene/entity references, value
-shapes, undo) belong in the server instructions (`McpInstructions.cpp`), not in every tool.
+so keep them lean. [conventions.md](conventions.md) has the rules every tool follows (names,
+schemas, groups) and the budget: the default listing (`core`) stays within 100,000 characters
+(about 25K tokens) and 150 tools, each group within 15,000 characters and 12 tools, each tool
+within 1,500 characters; `tools/mcp/budget.json` holds the limits and `tool_budget.py --check`
+gates them. Shared conventions (scene/entity references, value shapes, undo) belong in the
+server instructions (`McpInstructions.cpp`), not in every tool.
 
 ```sh
-uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py [--top 20]
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py [--top 20] [--groups all]
+uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/tool_budget.py --check tools/mcp/budget.json
 ```
 
 ## Troubleshooting

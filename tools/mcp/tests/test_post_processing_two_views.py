@@ -83,8 +83,8 @@ DockSpace       ID=0xFB305400 Window=0x1BBC0F80 Pos=0,54 Size=1600,825 Split=X
 _make = Scratch.make.__func__
 
 
-def _make_with_layout(cls, project=None, create=False, prefix="jasper-mcp-"):
-    scratch = _make(cls, project, create, prefix)
+def _make_with_layout(cls, *args, **kwargs):
+    scratch = _make(cls, *args, **kwargs)
     (scratch.root / "editor_layout_v2.ini").write_text(LAYOUT)
     return scratch
 
