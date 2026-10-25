@@ -330,6 +330,7 @@ namespace jasperengine::htmlui {
         int active = -1;
         int anchor = -1;
         bool focusRowWanted = false;
+        bool focusRowFromView = false;   // the view took the focus: its active row takes it at the next update
 
         // pending scroll
         int pendingScrollIndex = -1;

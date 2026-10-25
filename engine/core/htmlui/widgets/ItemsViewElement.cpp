@@ -1008,6 +1008,16 @@ void ItemsViewElement::OnUpdate(){
     Rml::Element::OnUpdate();
     ensureStructure();
 
+    if (focusRowFromView){
+        focusRowFromView = false;
+        Rml::Context* context = GetContext();
+        Rml::Element* row = rowOf(active);
+        if (context && row && context->GetFocusElement() == this){
+            focusRowWanted = false;
+            row->Focus(true);
+        }
+    }
+
     if (model && GetDataModel() != model)
         unbindModel();
     if (!model && !providerSet && !itemsExpression.empty())
@@ -1586,11 +1596,11 @@ void ItemsViewElement::ProcessDefaultAction(Rml::Event& event){
             break;
         }
         case Rml::EventId::Focus:
-            // the view's tab stop gives the focus to the active row
-            if (event.GetTargetElement() == this && active >= 0 && rowOf(active)){
-                focusRowWanted = false;
-                rowOf(active)->Focus(true);
-            }
+            // the view's tab stop gives the focus to the active row, at the next update: a focus
+            // change from inside this one would send the view its focus event again (the context
+            // commits the new focus chain after its events), without end
+            if (event.GetTargetElement() == this && active >= 0 && rowOf(active))
+                focusRowFromView = true;
             break;
         default:
             break;
