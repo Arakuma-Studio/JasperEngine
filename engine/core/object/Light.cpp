@@ -3,6 +3,8 @@
 
 #include "Light.h"
 
+#include <algorithm>
+
 #include "util/Angle.h"
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
@@ -33,7 +35,6 @@ void Light::setType(LightType type){
 
         lightcomp.needUpdateShadowCamera = true;
         lightcomp.needUpdateShadowMap = true;
-        scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 
@@ -224,7 +225,6 @@ void Light::setShadowMapSize(unsigned int size){
         lightcomp.mapResolution = size;
 
         lightcomp.needUpdateShadowMap = true;
-        scene->getSystem<RenderSystem>()->needReloadMeshVariants();
     }
 }
 
@@ -309,6 +309,88 @@ float Light::getNumCascades() const{
     LightComponent& lightcomp = getComponent<LightComponent>();
 
     return lightcomp.numShadowCascades;
+}
+
+void Light::setShadowType(ShadowType type){
+    LightComponent& lightcomp = getComponent<LightComponent>();
+    const bool hadShadows = lightcomp.shadows;
+    lightcomp.setShadowType(type);
+    if (hadShadows != lightcomp.shadows){
+        lightcomp.needUpdateShadowCamera = true;
+        scene->getSystem<RenderSystem>()->needReloadMeshVariants();
+    }
+}
+
+ShadowType Light::getShadowType() const{
+    return getComponent<LightComponent>().getShadowType();
+}
+
+void Light::setShadowStrength(float strength){
+    getComponent<LightComponent>().shadowStrength = std::clamp(strength, 0.0f, 1.0f);
+}
+
+float Light::getShadowStrength() const{
+    return getComponent<LightComponent>().shadowStrength;
+}
+
+void Light::setShadowNormalBias(float bias){
+    getComponent<LightComponent>().shadowNormalBias = std::max(bias, 0.0f);
+}
+
+float Light::getShadowNormalBias() const{
+    return getComponent<LightComponent>().shadowNormalBias;
+}
+
+void Light::setCascadeSplitMode(CascadeSplitMode mode){
+    getComponent<LightComponent>().cascadeSplitMode = mode;
+}
+
+CascadeSplitMode Light::getCascadeSplitMode() const{
+    return getComponent<LightComponent>().cascadeSplitMode;
+}
+
+void Light::setCascadeSplits(Vector3 splits){
+    getComponent<LightComponent>().cascadeSplits = splits;
+}
+
+Vector3 Light::getCascadeSplits() const{
+    return getComponent<LightComponent>().cascadeSplits;
+}
+
+void Light::setShadowDistance(float distance){
+    getComponent<LightComponent>().shadowDistance = std::max(distance, 0.0f);
+}
+
+float Light::getShadowDistance() const{
+    return getComponent<LightComponent>().shadowDistance;
+}
+
+void Light::setShadowAngularDiameter(float degrees){
+    getComponent<LightComponent>().shadowAngularDiameter = std::clamp(degrees, 0.0f, 90.0f);
+}
+
+float Light::getShadowAngularDiameter() const{
+    return getComponent<LightComponent>().shadowAngularDiameter;
+}
+
+void Light::setShadowSourceRadius(float radius){
+    getComponent<LightComponent>().shadowSourceRadius = std::max(radius, 0.0f);
+}
+
+float Light::getShadowSourceRadius() const{
+    return getComponent<LightComponent>().shadowSourceRadius;
+}
+
+void Light::setShadowUpdateMode(ShadowUpdateMode mode){
+    getComponent<LightComponent>().shadowUpdateMode = mode;
+}
+
+ShadowUpdateMode Light::getShadowUpdateMode() const{
+    return getComponent<LightComponent>().shadowUpdateMode;
+}
+
+void Light::requestShadowUpdate(){
+    getComponent<LightComponent>().shadowUpdateRequested = true;
 }
 
 void Light::setEnabled(bool enabled){

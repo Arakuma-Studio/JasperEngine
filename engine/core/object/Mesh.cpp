@@ -315,6 +315,14 @@ bool Mesh::isCastShadows() const{
     return mesh.castShadows;
 }
 
+void Mesh::setStaticShadowCaster(bool staticShadowCaster){
+    getComponent<MeshComponent>().staticShadowCaster = staticShadowCaster;
+}
+
+bool Mesh::isStaticShadowCaster() const{
+    return getComponent<MeshComponent>().staticShadowCaster;
+}
+
 void Mesh::setLodEnabled(bool lodEnabled){
     MeshComponent& mesh = getComponent<MeshComponent>();
 

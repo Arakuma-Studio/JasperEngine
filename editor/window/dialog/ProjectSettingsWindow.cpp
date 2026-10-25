@@ -152,7 +152,7 @@ static const settingsui::Category projectCategories[] = {
                    "fullscreen mode screen width height resizable window title start scene splash loading async publishing "
                    "threading worker threads reserved frame workers asset io threads web pump budget multithreaded "
                    "native resource pack windows macos linux ios android web company bundle identifier package favicon"},
-    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants "
+    {"Graphics", "", "canvas width height scaling mode texture strategy reference resolution runtime shader compilation variants shadows shadow tier quality "
                      "html ui msaa anti-aliasing antialiasing"},
     {"Quality", "", "vsync"},
     {"Physics", "", "3d physics jolt rigidbody"},
@@ -886,6 +886,9 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_vsyncEnabled = project->isVSyncEnabled();
     m_playerLogging = project->getPlayerLogging();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+        m_shadowTiers[platform] = static_cast<int>(project->getShadowTier(platform));
+    }
     m_windowModeIndex = findWindowModeIndex(project->getWindowMode());
     m_windowWidth = (int)project->getWindowWidth();
     m_windowHeight = (int)project->getWindowHeight();
@@ -1403,6 +1406,23 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
         drawComboSetting("HTML UI MSAA", "##HtmlUiMsaa", htmlUiMsaaNames, htmlUiMsaaCount, m_htmlUiMsaaIndex, findHtmlUiMsaaIndex(Project::defaultHtmlUiMsaaSamples),
             "Multisampling of the HTML/CSS UI documents: smoother rounded corners, thin borders and rotated edges. "
             "Devices without MSAA draw them without it.");
+
+        // Shadows: the quality tier a scene of Quality Auto renders with, per platform
+        ImGui::SeparatorText("Shadows");
+        {
+            static const char* const tierNames[] = {"Low", "Medium", "High", "Ultra"};
+            static const char* const platformLabels[] = {"macOS", "iOS", "Web", "Android", "Linux", "Windows"};
+            static const int platformOrder[] = {5, 4, 0, 2, 3, 1};   // Windows, Linux, macOS, Web, Android, iOS
+            for (int platform : platformOrder) {
+                const std::string label = std::string(platformLabels[platform]) + " Shadow Tier";
+                const std::string id = std::string("##ShadowTier") + platformLabels[platform];
+                drawComboSetting(label.c_str(), id.c_str(), tierNames, 4, m_shadowTiers[platform],
+                    static_cast<int>(ShadowTiers::defaultTier(platform)),
+                    "The shadow quality tier of this platform's builds (and of the editor running on it) for scenes whose shadow "
+                    "Quality is Auto: cascades, resolution, distance, filter and the memory budget (docs/rendering/shadows.md). "
+                    "Ultra adds PCSS contact hardening.");
+            }
+        }
 
         if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
             m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
@@ -2080,6 +2100,9 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setHtmlUiMsaaSamples(htmlUiMsaaValues[m_htmlUiMsaaIndex]);
+    for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) {
+        m_project->setShadowTier(platform, static_cast<ShadowTier>(m_shadowTiers[platform]));
+    }
     m_project->setWindowMode(windowModeValues[m_windowModeIndex]);
     m_project->setWindowSize(m_windowWidth, m_windowHeight);
     m_project->setWindowResizable(m_windowResizable);
