@@ -231,8 +231,13 @@ namespace jasperengine{
         // Drops a preloaded model and its images from the pools, unless a scene uses them
         static void releasePreloadedModel(const std::string& filename);
         // Drops the cached parse and images of a file that changed on disk, even while in use
-        // (and the file's sub-clips in AnimationClipPool)
+        // (and the file's sub-clips in AnimationClipPool), for a reload of the entities using it
+        // that follows (their images are gone from the pools)
         static void invalidateModelFile(const std::string& filename);
+        // Drops only the cached parse and the file's sub-clips: they are built again from the file
+        // (animation clips spec 9.R13) while the entities that use it, not reloaded, keep showing
+        // their images. A later invalidateModelFile still drops those images.
+        static void invalidateModelParse(const std::string& filename);
 
         // Loads of a pooled tinygltf::Model take turns under this mutex: loadGLTF appends
         // synthetic buffers to it, so a reader of the shared model (the sub-clip builder) holds it too

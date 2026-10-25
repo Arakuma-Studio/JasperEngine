@@ -31,7 +31,9 @@
 #include <filesystem>
 #include <functional>
 #include <limits>
+#include <map>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -1608,20 +1610,57 @@ void MeshSystem::cancelPreloadModel(const std::string& filename){
     cancelAsyncModelLoadByKey(getAsyncModelLoadKey(nullptr, filename));
 }
 
+// The texture ids of parses invalidateModelParse dropped, by pool key: the images stay (entities
+// show them), invalidateModelFile still finds them without the parse
+static std::mutex& getDroppedParseTexturesMutex(){
+    static std::mutex* mutex = new std::mutex();
+    return *mutex;
+}
+
+static std::map<std::string, std::set<std::string>>& getDroppedParseTextures(){
+    static std::map<std::string, std::set<std::string>>* textures = new std::map<std::string, std::set<std::string>>();
+    return *textures;
+}
+
 void MeshSystem::invalidateModelFile(const std::string& filename){
     const std::string poolKey = getModelFilenameKey(filename);
+    std::set<std::string> textureIds;
+    {
+        std::lock_guard<std::mutex> lock(getDroppedParseTexturesMutex());
+        auto dropped = getDroppedParseTextures().find(poolKey);
+        if (dropped != getDroppedParseTextures().end()){
+            textureIds = std::move(dropped->second);
+            getDroppedParseTextures().erase(dropped);
+        }
+    }
     std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey);
     if (model){
         for (size_t i = 0; i < model->textures.size(); i++){
             if (model->textures[i].source >= 0){
-                const std::string id = gltfTextureDedupKey(poolKey, *model, static_cast<int>(i));
-                TextureDataPool::invalidate(id);
-                TexturePool::invalidate(id);
+                textureIds.insert(gltfTextureDedupKey(poolKey, *model, static_cast<int>(i)));
+            }
+        }
+    }
+    for (const std::string& id : textureIds){
+        TextureDataPool::invalidate(id);
+        TexturePool::invalidate(id);
+    }
+    ModelPool::invalidate(poolKey);
+    // the sub-clips built from the old parse (spec 9.R13)
+    AnimationClipPool::invalidateModel(filename);
+}
+
+void MeshSystem::invalidateModelParse(const std::string& filename){
+    const std::string poolKey = getModelFilenameKey(filename);
+    if (std::shared_ptr<tinygltf::Model> model = ModelPool::getGLTF(poolKey)){
+        std::lock_guard<std::mutex> lock(getDroppedParseTexturesMutex());
+        for (size_t i = 0; i < model->textures.size(); i++){
+            if (model->textures[i].source >= 0){
+                getDroppedParseTextures()[poolKey].insert(gltfTextureDedupKey(poolKey, *model, static_cast<int>(i)));
             }
         }
     }
     ModelPool::invalidate(poolKey);
-    // the sub-clips built from the old parse (spec 9.R13)
     AnimationClipPool::invalidateModel(filename);
 }
 
