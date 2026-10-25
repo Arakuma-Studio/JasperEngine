@@ -60,7 +60,8 @@ namespace {
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
     // bits 0-31 and bit 32, the lattice deformer ('Ltc')
-    const uint64_t meshValidMask = 0x1FFFFFFFFULL;
+    // (bit 32 the lattice deformer, bit 33 S10's high shadow filters 'Shq')
+    const uint64_t meshValidMask = 0x3FFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -279,13 +280,17 @@ TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
         for (uint64_t properties : propertySets) {
             const ShaderKey key = ShaderPool::getShaderKey(type, properties, 5);
             const ShaderKey normalized = ShaderPool::normalizeKey(key);
-            EXPECT_EQ(ShaderPool::getPropertiesFromKey(normalized), properties & valid);
+            uint64_t expected = properties & valid;
+            // the high shadow filters ('Shq') only with shadows ('Shw')
+            if (type == ShaderType::MESH && !(expected & shaderPropertyBit(4)))
+                expected &= ~ShaderPool::getShadowsHQProperty();
+            EXPECT_EQ(ShaderPool::getPropertiesFromKey(normalized), expected);
             EXPECT_EQ(ShaderPool::getShaderTypeFromKey(normalized), type);
             EXPECT_EQ(ShaderPool::getCustomIdFromKey(normalized), 5);
             EXPECT_EQ(ShaderPool::normalizeKey(normalized), normalized);
         }
     }
-    // MESH: every bit past 32 (the lattice's) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 33 (S10's 'Shq') goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
@@ -492,12 +497,14 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(33) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(34) | shaderPropertyBit(63), "mesh_UltNor"},
+        // bit 33, S10's high shadow filters
+        {ShaderType::MESH, 0x51 | shaderPropertyBit(33), "mesh_UltShwNorShq"},
         // bit 32, the first past the 32 older keys use, is the lattice deformer
         {ShaderType::MESH, 0x41 | shaderPropertyBit(32), "mesh_UltNorLtc"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtc"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShq"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
