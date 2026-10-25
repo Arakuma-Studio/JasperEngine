@@ -678,7 +678,6 @@ bool AnimationWindowClip::dropClips(SceneProject* sceneProject, Entity fallback,
         if (error) *error = failure;
         return false;
     }
-    c.setLastActionWasClipEdit(false);
     if (!open(sceneProject->id, result.player, clips.front(), error)) return false;
     std::string status = result.status;
     for (const ClipWarning& warning : result.warnings) status += "; " + warning.message;
