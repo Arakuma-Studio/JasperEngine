@@ -488,14 +488,15 @@ per-file header, so we add the OE copyright line to each copied file.
 Run on build server B unless noted; the benchmarks on the benchmark server E.
 
 - AC1-AC10: `jasperengine-core-tests` `CubeLut.*`, `PostColorLut.*`, `DynamicResolutionController.*`
-  (OE's tests ported plus the frame law's), `PostProcessingTiers.*`: pass (754 core tests, the
-  one failure on the loaded server B being `CubeLutBench.Bake32`'s 10 ms budget, see AC22).
+  (OE's tests ported plus the frame law's), `PostProcessingTiers.*`: pass (on the merge with oe-port
+  8d78ae763: 829 of 830 core tests, the one failure on the loaded server B being
+  `CubeLutBench.Bake32`'s 10 ms budget, a timing gate that passes on E, see AC22).
 - AC11: `jasperengine-editor-tests` `UberVariants.CompileForEveryBackend` (GLSL 410, GLSL 300 es,
-  HLSL 5, MSL macOS / iOS, SPIR-V): pass (319 editor tests).
+  HLSL 5, MSL macOS / iOS, SPIR-V): pass (330 editor tests on the merge).
 - AC12: `UberBudget.SampleCounts`: VHS 9 texture reads (base 1), halation 3 (2 more), film damage
   and the grain types 1 (none more); every bit on: 6 textures, 6 samplers, 320 parameter bytes.
-- AC13-AC15: `test_post_fx_golden.py` (11 goldens incl. the pre-S13 `defaults.png` matched at
-  tolerance 0; pass counts: halation with bloom +0, alone +2, VHS / damage / grain types +0).
+- AC13-AC15: `test_post_fx_golden.py` (11 goldens incl. `defaults.png`, captured on oe-port
+  8d78ae763 without S13, matched at tolerance 0; pass counts: halation with bloom +0, alone +2, VHS / damage / grain types +0).
   Vulkan and GLES3: the exported fixture's halation, display and log `.cube` frames match GL's
   (`tools/smoke-test.sh`, SMOKE_BACKEND=vulkan / gles3, pngdiff tolerance 24, 1 %).
 - AC16, AC18: `test_post_fx_settings.py`; AC17: `test_dynamic_resolution.py` (40 ms: min scale
