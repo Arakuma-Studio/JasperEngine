@@ -92,6 +92,10 @@ async def test_old_scene_resaves_byte_identical(ed: Editor):
     await ed.call("set_properties", scene=sid, entity=quad, values={"mesh": {M + "shaderFeatures": ["NORMAL_MAP"]}})
     await ed.call("save_scene", scene=sid)
     resaved = (ed.project / SCENE_FILE).read_bytes()
+    # a scene written before format versions gains its formatVersion line on the first save
+    # (docs/data-safety.md, S03 R20/R21) and nothing else
+    if not original.startswith(b"formatVersion:") and resaved.startswith(b"formatVersion: "):
+        resaved = resaved.split(b"\n", 1)[1]
     if resaved != original:
         a, b = original.decode().splitlines(), resaved.decode().splitlines()
         diff = [f"{i + 1}: {x!r} -> {y!r}" for i, (x, y) in enumerate(zip(a, b)) if x != y][:10]
