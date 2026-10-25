@@ -20,6 +20,7 @@
 #include "animation/AnimationClipIO.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/ComponentValuesCmd.h"
+#include "command/type/CreateClipCmd.h"
 #include "command/type/MeshChangeCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/ObjectTransformCmd.h"
@@ -593,7 +594,19 @@ void addComponentTool(const CallPtr& call) {
                  Json{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}, {"reloaded", reloaded}});
         return;
     }
-    for (Entity entity : reloadPlayers) skipped.push_back(Json{{"entity", entity}, {"component", "animationplayer"}});
+    // with other components or values the reload is part of the same step: the legacy models
+    // under each such player reload after the additions (CreateClipCmd's player-root reload, as
+    // ClipSceneActions::reloadModelsForPlayer runs it)
+    std::vector<std::pair<Entity, std::vector<Entity>>> legacyModels;
+    for (Entity entity : reloadPlayers) {
+        legacyModels.push_back({entity, PlayerModelLayout::modelsNeedingReload(project, sceneId, entity)});
+        steps->addStep([project, sceneId, entity](std::string& why) -> Command* {
+            why = "Could not reload the models under the Animation Player in the node hierarchy.";
+            auto* reload = new CreateClipCmd(project, sceneId, {}, {});
+            reload->setPlayerRoot(entity);
+            return reload;
+        });
+    }
     if (added.empty() && changes.empty()) {
         delete steps;
         call->fail("Every GameObject has that component already (set its values with set_properties).",
@@ -614,9 +627,24 @@ void addComponentTool(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    Json reloaded = Json::array();
+    size_t reloadedCount = 0;
+    Scene* after = project->getScene(sceneId)->scene;
+    for (const auto& [entity, models] : legacyModels) {
+        size_t count = 0;
+        for (Entity model : models) {
+            const ModelComponent* component = after->isEntityCreated(model) ? after->findComponent<ModelComponent>(model) : nullptr;
+            if (component && !component->nodesIdMapping.empty()) count++;
+        }
+        reloaded.push_back(Json{{"entity", entity}, {"models", count}});
+        reloadedCount += count;
+    }
+    Json result{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}};
+    if (!legacyModels.empty()) result["reloaded"] = reloaded;
     call->ok("Added " + std::to_string(added.size()) + " component(s)" +
-             (skipped.empty() ? "" : ", " + std::to_string(skipped.size()) + " already there") + " (one undo step).",
-             Json{{"scene_id", sceneId}, {"added", added}, {"skipped", skipped}});
+             (skipped.empty() ? "" : ", " + std::to_string(skipped.size()) + " already there") +
+             (legacyModels.empty() ? "" : ", reloaded " + std::to_string(reloadedCount) + " model(s) under the Animation Player in the node hierarchy") +
+             " (one undo step).", result);
 }
 
 void removeComponentTool(const CallPtr& call) {

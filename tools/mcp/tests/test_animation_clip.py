@@ -699,6 +699,18 @@ async def test_binding_report_extras(ed: Editor):
     ed.check_eq((await ed.call("get_animation", entity=rig))["players"][0]["speed"], 2, "the player's settings are kept")
     await ed.call("undo", scope="scene")
     ed.check((await ed.call("get_animation", clip="assets/anim/rig.anim", root=rig))["bindings"].get("legacy_models"), "one undo step")
+    # with another component in the same call (and values) the reload is part of that one step
+    r = await ed.call_raw("add_component", {"entity": rig, "component": ["animationplayer", "audiosource"],
+                                            "values": {"animationplayer": {"speed": 3}}})
+    ed.check(not r.is_error and r.structured["reloaded"][0]["models"] == 1 and "reloaded 1 model" in r.text, r.text)
+    ed.check_eq([a["component"] for a in r.structured["added"]], ["audiosource"], "the player is not added twice")
+    b = (await ed.call("get_animation", clip="assets/anim/rig.anim", root=rig))["bindings"]
+    ed.check("legacy_models" not in b and b["resolved"] == 1, f"bound after the reload with another component: {b}")
+    ed.check_eq((await ed.call("get_animation", entity=rig))["players"][0]["speed"], 3, "the values apply")
+    await ed.call("undo", scope="scene")
+    b = (await ed.call("get_animation", clip="assets/anim/rig.anim", root=rig))["bindings"]
+    ed.check(b.get("legacy_models"), f"one undo step: the reload, the component and the values: {b}")
+    ed.check_eq((await ed.call("get_animation", entity=rig))["players"][0]["speed"], 2, "speed back")
 
 
 async def test_wrap_of_the_player_entry(ed: Editor):

@@ -48,6 +48,8 @@
 #include "util/Util.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ModelSubClips.h"
+#include "json.hpp"
+#include "tiny_gltf.h"
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
 #include "command/type/RenameFileCmd.h"
@@ -2061,10 +2063,53 @@ void collectPlayerClips(const YAML::Node& node, std::vector<std::pair<std::strin
     }
 }
 
+// The glTF animation names of a model file, read from its JSON without the engine: a .gltf's
+// text, a .glb's JSON chunk, and for an .fbx the .glb the editor imported it to (none yet:
+// false, nothing to compare with). Empty names stay empty (subClipNames names them).
+bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const fs::path& model,
+                             std::vector<std::string>& names) {
+    fs::path file = model;
+    std::string extension = model.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    if (extension == ".fbx") {
+        // MeshSystem::getImportedModelPath: the project's import folder mirrors the assets folder
+        file = root / ".jasperengine" / "imported" / (model.lexically_relative(assets).generic_string() + ".glb");
+        extension = ".glb";
+    }
+    std::string bytes;
+    if (!ProjectChecks::readFile(file, bytes)) return false;
+    std::string text;
+    if (extension == ".glb") {
+        // header (magic, version, length), then the first chunk: length, type "JSON", data
+        auto word = [&](size_t at) {
+            uint32_t value = 0;
+            for (int i = 3; i >= 0; i--) value = (value << 8) | (unsigned char)bytes[at + (size_t)i];
+            return value;
+        };
+        if (bytes.size() < 20 || bytes.compare(0, 4, "glTF") != 0 || word(16) != 0x4E4F534Au) return false;
+        const size_t length = word(12);
+        if (length > bytes.size() - 20) return false;
+        text = bytes.substr(20, length);
+    } else {
+        text = std::move(bytes);
+    }
+    const nlohmann::json json = nlohmann::json::parse(text, nullptr, false);
+    if (json.is_discarded() || !json.is_object()) return false;
+    names.clear();
+    const auto animations = json.find("animations");
+    if (animations == json.end() || !animations->is_array()) return true;
+    for (const nlohmann::json& animation : *animations) {
+        const auto name = animation.is_object() ? animation.find("name") : animation.end();
+        names.push_back(animation.is_object() && name != animation.end() && name->is_string() ? name->get<std::string>() : std::string());
+    }
+    return true;
+}
+
 // Each .anim (all of the project's when `files` is empty): parse errors with line:col, lenient
 // warnings with their JSON path; on a whole-project run also the clips the scenes and prefabs
-// reference: a missing .anim (an error; a warning when its GUID still finds the moved file) and
-// a missing model of a sub-clip
+// reference (the entries of their Animation Players, prefab-instance overrides included): a
+// missing .anim (an error; a warning when its GUID still finds the moved file), a missing model
+// of a sub-clip, and a sub-clip name the model has no animation for
 ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& files) {
     ClipCheck check;
     const bool all = files.empty();
@@ -2087,6 +2132,7 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
     }
     if (!all) return check;
     const fs::path assets = ProjectChecks::assetsRootFromProjectFile(root);
+    std::map<std::string, std::pair<bool, std::vector<std::string>>> modelNames;   // model file -> (read, animation names)
     for (const fs::path& file : ProjectChecks::findProjectFiles(root, {".scene", ".prefab"})) {
         std::vector<std::pair<std::string, std::string>> entries;
         try {
@@ -2102,7 +2148,28 @@ ClipCheck checkClipFiles(const fs::path& root, const std::vector<fs::path>& file
             const bool subClip = anim::parseSubClipReference(clip, reference);
             const fs::path target = (assets / fs::u8path(subClip ? reference.model : clip)).lexically_normal();
             std::error_code ec;
-            if (fs::is_regular_file(target, ec)) continue;
+            if (fs::is_regular_file(target, ec)) {
+                if (!subClip) continue;
+                // the animation the name (or index) selects, by the sub-clip naming rule
+                auto known = modelNames.find(target.generic_string());
+                if (known == modelNames.end()) {
+                    std::vector<std::string> names;
+                    const bool read = readModelAnimationNames(root, assets, target, names);
+                    known = modelNames.emplace(target.generic_string(), std::make_pair(read, names)).first;
+                }
+                if (!known->second.first) continue;   // not readable here (an FBX not imported yet)
+                tinygltf::Model listed;
+                listed.animations.resize(known->second.second.size());
+                for (size_t i = 0; i < listed.animations.size(); i++) listed.animations[i].name = known->second.second[i];
+                if (anim::findModelClip(listed, reference.clip) >= 0) continue;
+                const std::vector<std::string> available = anim::subClipNames(known->second.second);
+                std::string list;
+                for (const std::string& name : available) list += (list.empty() ? "'" : ", '") + name + "'";
+                check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "' but the model '" +
+                                          reference.model + "' has no animation '" + reference.clip + "' (" +
+                                          (available.empty() ? std::string("it has none") : "its animations: " + list) + ")"});
+                continue;
+            }
             if (subClip) {
                 check.findings.push_back({"anim", rel, 0, 0, "error", "an Animation Player plays '" + clip + "' but the model '" +
                                           reference.model + "' does not exist"});

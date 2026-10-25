@@ -331,17 +331,48 @@ entities:
           - clip: assets/old/good.anim
             guid: 0123456789abcdef0123456789abcdef
           - clip: assets/models/none.gltf#Walk
+          - clip: assets/models/hero_animated.gltf#Walk
+          - clip: assets/models/hero_animated.gltf#Wave 2
+          - clip: assets/models/hero_animated.gltf#2
+          - clip: assets/models/hero_animated.gltf#Run
+  - name: Instance
+    components:
+      transform:
+        position: [0, 0, 0]
+    prefabInstance:
+      overrides:
+        - registryEntity: 3
+          properties:
+            animationplayer: [clips]
+          components:
+            animationplayer:
+              clips:
+                - clip: assets/anim/override_missing.anim
+                - clip: assets/models/hero_animated.gltf#Jump
 """
+HERO_ANIMATED = harness.REPO / "tools" / "fixtures" / "pose-animation" / "assets" / "models" / "hero_animated.gltf"
 
 
 async def test_cli_anims():
     with scratch_project() as project:
-        write(project, "assets/anim/good.anim", GOOD_CLIP)
-        write(project, "assets/anim/broken.anim", BROKEN_CLIP)
-        write(project, "assets/anim/warn.anim", WARN_CLIP)
-        write(project, "assets/anim/unity.anim", UNITY_CLIP)
+        clips = {"assets/anim/good.anim": GOOD_CLIP, "assets/anim/broken.anim": BROKEN_CLIP,
+                 "assets/anim/warn.anim": WARN_CLIP, "assets/anim/unity.anim": UNITY_CLIP}
+        for rel, text in clips.items():
+            write(project, rel, text)
         write(project, "Clips.scene", CLIP_SCENE)
+        (project / "assets/models").mkdir(parents=True, exist_ok=True)
+        shutil.copy(HERO_ANIMATED, project / "assets/models/hero_animated.gltf")
+
+        # the default set first: it loads the project for the shader check, which changes no clip
+        # (read-only loads: no GUID written into the clips without one), and finds what --anims finds
+        code, everything = run_json(project)
+        check("anims" in everything["checked"], f"the default set checks clips: {everything['checked']}")
+        for rel, text in clips.items():
+            check_eq((project / rel).read_text(), text, f"{rel} is unchanged by the check")
         code, data = run_json(project, "--anims")
+        anim_findings = sorted(json.dumps(f, sort_keys=True) for f in everything["findings"] if f["tool"] == "anim")
+        check_eq(anim_findings, sorted(json.dumps(f, sort_keys=True) for f in data["findings"]),
+                 "the default set's clip findings are --anims' (whatever runs first)")
         check_eq(code, 1, f"errors exit 1: {data}")
         check_eq(data["checked"], {"anims": 4}, "the four clips are read (anims only)")
         found = {}
@@ -359,11 +390,20 @@ async def test_cli_anims():
         check(unity[0]["severity"] == "error" and "Unity .anim (YAML)" in unity[0]["message"], f"Unity YAML refused: {unity}")
         check("assets/anim/good.anim" not in found, f"a valid clip has no findings: {found.get('assets/anim/good.anim')}")
         scene = sorted((f["severity"], f["message"]) for f in found.get("Clips.scene", []))
-        check_eq(len(scene), 3, f"the scene's references: missing clip, moved clip, missing model: {scene}")
+        check_eq(len(scene), 6, f"the scene's references: missing clip, moved clip, missing model, two unknown model "
+                                f"animations, the override's missing clip: {scene}")
         check(any(s == "error" and "assets/anim/missing.anim" in m and "does not exist" in m for s, m in scene), f"missing clip: {scene}")
         check(any(s == "warning" and "assets/old/good.anim" in m and "moved to 'assets/anim/good.anim'" in m for s, m in scene),
               f"a moved clip found by its GUID: {scene}")
         check(any(s == "error" and "assets/models/none.gltf" in m for s, m in scene), f"a model clip without its model: {scene}")
+        # model#name: the names the Inspector shows (duplicates numbered, an index), read from the model file
+        run = [m for s, m in scene if "#Run" in m]
+        check(len(run) == 1 and "has no animation 'Run'" in run[0] and "'Walk', 'Idle', 'Animation 2', 'Wave', 'Wave 2'" in run[0],
+              f"an unknown animation name lists the model's: {run}")
+        check(not any("#Walk" in m or "#Wave 2" in m or "#2'" in m for s, m in scene), f"known names and an index pass: {scene}")
+        # the clip entries of a prefab instance's overrides are checked too
+        check(any(s == "error" and "override_missing.anim" in m for s, m in scene), f"an override's missing clip: {scene}")
+        check(any(s == "error" and "#Jump" in m and "has no animation 'Jump'" in m for s, m in scene), f"an override's model clip: {scene}")
 
         # text: compiler style; the default set includes the clips
         r = run_check(project, "--anims")
@@ -382,11 +422,8 @@ async def test_cli_anims():
         r = run_check(project, "--hook", stdin=json.dumps(hook))
         check_eq(r.returncode, 2, f"a broken clip exits 2 in hook mode: {r.stderr}")
         check("assets/anim/broken.anim:5:" in r.stderr, r.stderr)
-
-        # the default set includes the clips (last: loading the project for the shader check
-        # gives clips without a GUID one, see the T4 report)
-        code, data = run_json(project)
-        check("anims" in data["checked"], f"the default set checks clips: {data['checked']}")
+        for rel, text in clips.items():
+            check_eq((project / rel).read_text(), text, f"{rel} is unchanged after every run")
 
 
 # ---------------------------------------------------------------------------- CLI: shaders
