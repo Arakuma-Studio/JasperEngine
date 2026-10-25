@@ -45,9 +45,23 @@ Each lobe-off twin (lobes disabled over MCP) differs from its golden by more tha
 | Check | Result |
 |---|---|
 | 1. ClearCoatTest submesh: Advanced Surface shows Clear Coat with its map | `builtin:lit#PBR_CLEARCOAT,PBR_CLEARCOAT_MAP,USE_LIT_QUALITY`, maps used `clearcoat` |
-| 2. Toggle off: *Compiling* then *Ready*, no stall > 50 ms | the plain variant draws while the new one builds (no blocking compile); the longest one-frame wait was 2.2 s against 117 ms before, on a host at load average ~90 with llvmpipe: the driver links the new program on the main thread when it swaps in. Not met as measured; to be repeated on a GPU host |
+| 2. Toggle off: *Compiling* then *Ready*, no stall > 50 ms | not met on llvmpipe; see below |
 | 3. Ctrl+Z restores it | clear coat and its map back |
 | 4. Three meshes, Sheen Roughness | 0.8 on all three, one undo step `Set Sheen Roughness (3 Objects)` restores 0 |
 | 5. Four maps | `Extension maps 3 / 3`: clear coat, specular, transmission bound, sheen dropped |
 | 6. Light Engine to Lux | 0.000% of the pixels change; with a colour temperature the colour row reads Filter |
 | 7. Car Paint preset | clear coat on (and the preset's sheen) |
+
+Check 2 in detail (`JASPER_SHADER_TIMING=1`, the editor's own frame times from `editor_status`
+`frame_ms`, server A): idle frames are 190 ms median there (llvmpipe on a loaded host), so no
+frame meets 50 ms. Toggling a lobe on (a variant never built before) gives one frame of 3.9 s:
+the variant's GLSL/SPIR-V build runs on a job (S06, `shader-build`, Background/Heavy) while the
+plain variant keeps drawing, and is swapped in when ready; the frame that swaps it pays
+`sg_make_shader` (GL compile and link, 1.2-1.3 s) and llvmpipe's JIT of the program at its first
+draw (the rest). Toggling back to, or onto, a variant built before costs nothing (190-215 ms,
+as idle). The same 1.2 s link is paid by every new lit variant without S11 (the plain
+`mesh_lit_Lq_PucShwShqNorVc4`: 1176 ms): it is the GL driver's work on the GL thread, which
+sokol's GL backend and GL itself make synchronous. Moving it off the frame needs driver-side
+help (a shared GL context compiling on a worker, `KHR_parallel_shader_compile`, or Vulkan
+pipeline creation off the render thread): an engine-wide change outside S11, noted for the
+integrator.
