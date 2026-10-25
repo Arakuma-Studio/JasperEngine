@@ -456,10 +456,10 @@ subfolder). Use it for shared helper modules.
 
 ```lua
 GameObject.instantiate(original)                              -- -> GameObject or nil
-GameObject.instantiate(original, parent [, worldSpace])       -- parent: GameObject or a script self
-GameObject.instantiate(original, position, rotation [, parent]) -- Vector3, Quaternion (world)
-GameObject.instantiate(prefab, scene [, position, rotation])  -- prefab into a given scene
-GameObject.destroy(obj [, delaySeconds])                      -- deferred to end of frame
+GameObject.instantiate(original, parent --[[, worldSpace]])    -- parent: GameObject or a script self
+GameObject.instantiate(original, position, rotation --[[, parent]]) -- Vector3, Quaternion (world)
+GameObject.instantiate(prefab, scene --[[, position, rotation]]) -- prefab into a given scene
+GameObject.destroy(obj --[[, delaySeconds]])                   -- deferred to end of frame
 GameObject.destroyImmediate(obj)
 ```
 
@@ -591,7 +591,7 @@ or `(r,g,b,a)`.
 ```lua
 local h = Timer.after(2.0, function() self:explode() end, { owner = self })   -- once, in 2 s of game time
 Timer.every(0.5, function() self:blink() end, { count = 10, owner = self })    -- 10 times
-Timer.nextFrame(fn [, opts]);  Timer.afterFrames(3, fn [, opts]);  Timer.afterFixedSteps(1, fn [, opts])
+Timer.nextFrame(fn --[[, opts]]);  Timer.afterFrames(3, fn --[[, opts]]);  Timer.afterFixedSteps(1, fn --[[, opts]])
 local co = Timer.run(function()              -- a coroutine the scheduler drives
     Timer.wait(1.0)                          -- game seconds (or the run's clock)
     Timer.waitRealtime(0.5)                  -- wall-clock seconds, even while paused
