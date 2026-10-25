@@ -434,12 +434,14 @@ bool EntityRegistry::isParentOf(Entity parent, Entity child) const {
         return false;
     }
 
-    for (int i = index - 1; i >= 0; i--){
-        Entity entity = transforms->getEntity(i);
-        Transform& transform = transforms->getComponentFromIndex(i);
-        if (entity == lastParent){
-            lastParent = transform.parent;
-
+    int i = index - 1;
+    while (i >= 0){
+        // Walk adjacent bone chains directly, without hashing each parent.
+        for (; i >= 0; i--){
+            if (transforms->getEntity(i) != lastParent){
+                break;
+            }
+            lastParent = transforms->getComponentFromIndex(i).parent;
             if (lastParent == parent){
                 return true;
             }
@@ -447,6 +449,20 @@ bool EntityRegistry::isParentOf(Entity parent, Entity child) const {
                 return false;
             }
         }
+        if (i < 0){
+            break;
+        }
+        // Skip unrelated branches between a child and a more distant parent.
+        if (!transforms->hasEntity(lastParent)){
+            return false;
+        }
+        size_t parentIndex = transforms->getIndex(lastParent);
+        // Keep the old backwards-only traversal, including its behavior for
+        // malformed hierarchy order and cycles.
+        if (parentIndex >= static_cast<size_t>(i)){
+            return false;
+        }
+        i = static_cast<int>(parentIndex);
     }
 
     return false;
