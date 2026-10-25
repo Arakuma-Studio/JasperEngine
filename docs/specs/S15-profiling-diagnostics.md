@@ -630,7 +630,8 @@ alternative to what the text above asks.
   [+0.21, +0.59]. The mean is within 0.5 %; the interval's top is not, on a device whose frame
   is software rasterisation on the same four cores (a round's own spread is about 1 %). What is
   left on the idle path per frame is the scopes' relaxed load and branch, sokol's counters and the
-  pass recorder's per-pass record.
+  pass recorder's per-pass record. The idle figure is to be measured again on the real-GPU
+  benchmark machine in the GPU performance campaign, where the CPU does not also rasterise.
 - **`jasperengine-editor benchmark` is no longer throttled when unfocused**: an X server without a
   window manager focuses no window, and the editor's unfocused frame-period sleep held every
   benchmark at 16.3 ms (60 fps) whatever its work.
