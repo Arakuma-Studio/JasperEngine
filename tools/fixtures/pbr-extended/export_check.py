@@ -40,7 +40,8 @@ async def main() -> int:
     async with Editor(FIXTURE) as ed:
         for platform in ("web", "android"):
             info = await ed.call("get_build_info", include_shaders=True)
-            names = sorted({s["name"] for s in info.get("shaders", [])})
+            # the variant names the exported headers hold (ShaderPool::getShaderStr)
+            names = sorted({s["shader"] for s in info.get("shaders", [])})
             lit = [n for n in names if n.startswith("mesh_lit_")]
             out = Path(tempfile.mkdtemp(prefix=f"pbx-{platform}-"))
             raw = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": platform,
