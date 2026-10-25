@@ -708,9 +708,10 @@ AnimationClipDocument::ReloadResult AnimationClipDocument::reloadContent(){
     std::string newText;
     if (readOnly){
         // the model changed: the sub-clip is built again, from a new parse of the file (the
-        // pooled tinygltf parse and the pool's sub-clips of it are dropped first)
+        // pooled tinygltf parse and the pool's sub-clips of it are dropped first; the images of
+        // the entities showing the model stay, nothing reloads them here)
         if (stampChanged()){
-            MeshSystem::invalidateModelFile(statPath.generic_string());
+            MeshSystem::invalidateModelParse(statPath.generic_string());
         }
         std::string buildError;
         if (!anim::buildModelSubClip(subClipReference, data, newWarnings, &buildError)){
@@ -836,13 +837,15 @@ void AnimationClipDocument::filesChanged(const std::vector<fs::path>& givenPaths
             paths.insert(paths.end(), models.begin(), models.end());
         }
     }
-    // a changed model: its pooled parse goes first (MeshSystem::invalidateModelFile drops it
-    // and its "<model>#*" sub-clips), so the documents below and the players rebuild from the file
+    // a changed model: its pooled parse goes first (MeshSystem::invalidateModelParse drops it
+    // and its "<model>#*" sub-clips), so the documents below and the players rebuild from the file.
+    // Only the parse: the entities showing the model are not reloaded here, so their images stay
+    // in the pools (a file the editor wrote and loaded itself, a bake, is picked up here too)
     std::set<std::string> modelsDropped;
     for (const fs::path& path : paths){
         const fs::path normal = path.lexically_normal();
         if (Util::isModelFile(normal.string()) && modelsDropped.insert(keyOf(normal)).second){
-            MeshSystem::invalidateModelFile(normal.generic_string());
+            MeshSystem::invalidateModelParse(normal.generic_string());
         }
     }
 

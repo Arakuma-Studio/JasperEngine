@@ -28,6 +28,9 @@
 #include "command/type/RenameFileCmd.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimationClipPoolTesting.h"
+#include "pool/ModelPool.h"
+#include "pool/TextureDataPool.h"
+#include "subsystem/MeshSystem.h"
 #include "Stream.h"
 #include "util/AssetDatabase.h"
 #include "util/Util.h"
@@ -888,6 +891,59 @@ TEST_F(AnimationClipAssets, AnOverwrittenModelRebuildsItsSubClips) {
     ASSERT_TRUE(third) << error;
     EXPECT_FLOAT_EQ(lastKeyY(third->toData()), 5.0f);
     AnimationClipPool::invalidate(gltf.generic_string());
+}
+
+namespace {
+
+    // An indexed one-triangle glTF with a 2x2 PNG base color texture (buffer and image in data URIs)
+    std::string texturedTriangleGltf() {
+        const float data[15] = {0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f,   // POSITION
+                                0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f};                     // TEXCOORD_0
+        const uint16_t indices[3] = {0, 1, 2};
+        std::vector<uint8_t> bytes(sizeof(data) + sizeof(indices));
+        std::memcpy(bytes.data(), data, sizeof(data));
+        std::memcpy(bytes.data() + sizeof(data), indices, sizeof(indices));
+        const std::string png = "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR4nGP4z8AAQv8ZYAwAQ84H+VjtZqAAAAAASUVORK5CYII=";
+        return std::string("{\"asset\": {\"version\": \"2.0\"}, \"scene\": 0, \"scenes\": [{\"nodes\": [0]}], \"nodes\": [{\"name\": \"Tri\", \"mesh\": 0}],") +
+               "\"meshes\": [{\"primitives\": [{\"attributes\": {\"POSITION\": 0, \"TEXCOORD_0\": 1}, \"indices\": 2, \"material\": 0}]}]," +
+               "\"materials\": [{\"pbrMetallicRoughness\": {\"baseColorTexture\": {\"index\": 0}}}]," +
+               "\"textures\": [{\"source\": 0}], \"images\": [{\"uri\": \"data:image/png;base64," + png + "\"}]," +
+               "\"buffers\": [{\"byteLength\": 66, \"uri\": \"data:application/octet-stream;base64," + base64(bytes) + "\"}]," +
+               "\"bufferViews\": [{\"buffer\": 0, \"byteOffset\": 0, \"byteLength\": 36}, {\"buffer\": 0, \"byteOffset\": 36, \"byteLength\": 24}," +
+               "{\"buffer\": 0, \"byteOffset\": 60, \"byteLength\": 6}]," +
+               "\"accessors\": [{\"bufferView\": 0, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC3\", \"min\": [0, 0, 0], \"max\": [1, 1, 0]}," +
+               "{\"bufferView\": 1, \"componentType\": 5126, \"count\": 3, \"type\": \"VEC2\"}," +
+               "{\"bufferView\": 2, \"componentType\": 5123, \"count\": 3, \"type\": \"SCALAR\"}]}\n";
+    }
+
+}
+
+// A model reported changed (auto-sync picks up every written model, a bake's new .glb that the
+// editor already loaded included; sync_files; the poll): the parse is dropped so its sub-clips
+// rebuild, but the entities showing it are not reloaded, so the images they show stay in the pools
+// (they were invalidated with the parse: the baked Ball drew without its texture). A reload's
+// MeshSystem::invalidateModelFile (an FBX reimport) still drops them afterwards.
+TEST_F(AnimationClipAssets, AChangedModelKeepsTheImagesOfTheEntitiesShowingIt) {
+    const std::string dir = folder("textured");
+    const fs::path gltf = root() / dir / "tri.gltf";
+    writeAll(gltf, texturedTriangleGltf());
+    Scene scene;
+    Model model(&scene);
+    ASSERT_TRUE(scene.getSystem<MeshSystem>()->loadGLTF(model.getEntity(), gltf.string()));
+    const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
+    ASSERT_GE(mesh.numSubmeshes, 1u);
+    const std::string id = mesh.submeshes[0].material.baseColorTexture.getId();
+    ASSERT_FALSE(id.empty());
+    ASSERT_TRUE(TextureDataPool::get(id)) << "the load pooled the image";
+    const std::string key = MeshSystem::getModelFilenameKey(gltf.string());
+    ASSERT_TRUE(ModelPool::getGLTF(key));
+
+    AnimationClipDocument::filesChanged({gltf}, project());
+    EXPECT_FALSE(ModelPool::getGLTF(key)) << "the parse is dropped: sub-clips are built again from the file";
+    EXPECT_TRUE(TextureDataPool::get(id)) << "the image the Model shows stays";
+
+    MeshSystem::invalidateModelFile(gltf.string());
+    EXPECT_FALSE(TextureDataPool::get(id)) << "a reload's invalidation still finds and drops it without the parse";
 }
 
 // ---- review round 1 ----------------------------------------------------------------------
