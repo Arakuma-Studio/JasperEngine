@@ -631,6 +631,7 @@ async def test_relative_tracks(ed: Editor):
     ed.check(by["position"]["relative"] and approx(by["position"]["values"][0], [0, 1, 0]), f"times: the offset: {by['position']}")
     ed.check(approx(by["scale"]["values"][0], [2, 2, 2]), f"times: the factor: {by['scale']}")
     r = await ed.call_raw("preview_animation", {"animation": rel, "action": "seek", "time": 0.5})
+    ed.check(not r.is_error, r.text)
     bound = r.structured["bound"][0]
     ed.check(approx(bound["position"], [7, 1, 0], 1e-3) and approx(bound["scale"], [2, 2, 2], 1e-3), f"the preview: rest + offset, rest x factor: {bound}")
     await ed.call("preview_animation", animation=rel, action="stop")

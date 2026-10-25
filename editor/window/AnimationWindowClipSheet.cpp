@@ -284,7 +284,8 @@ void AnimationWindowClip::update(double dt, bool clipModeShown, bool focused){
     if (!notice.empty() && ImGui::GetTime() - noticeAt > 6.0) notice.clear();
     if (!controllerUsed) return;
     AnimationClipController& c = controller();
-    c.update(dt);
+    // once per frame: the App's per-frame hook (AnimationClipAppHooks::frame) updates it too
+    c.update(dt, ImGui::GetFrameCount());
     c.setTakesKeys(clipModeShown && focused);
 }
 

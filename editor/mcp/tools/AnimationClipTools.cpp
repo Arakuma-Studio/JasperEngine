@@ -1465,7 +1465,14 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
                 return true;
             }
         }
-    } else if (!controller.getDocument()) {
+    } else if (!controller.getDocument() || controller.getStateName().empty()) {
+        // bound before this GameObject had its clips (the Animation window binds on selection):
+        // open the default clip now
+        const AnimationPlayerComponent& player = engineScene->getComponent<AnimationPlayerComponent>(root);
+        const std::string state = std::find(names.begin(), names.end(), player.defaultClip) != names.end() ? player.defaultClip : names.front();
+        controller.openState(state, nullptr);
+    }
+    if (!controller.getDocument()) {
         call->fail("\"" + engineScene->getEntityName(root) + "\"'s clip \"" + controller.getStateName() +
                    "\" can't be opened (missing file?): pass state, or fix clips with set_properties.");
         return true;
