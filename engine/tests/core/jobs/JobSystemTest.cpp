@@ -615,6 +615,37 @@ TEST(JobsChannel, BlockingThreadsNeverRunComputeJobs){
     EXPECT_EQ(blockingName.get(), "blocking");
 }
 
+// compile_scripts' shape: the build goes to one channel, then a job of another channel waits
+// for it. With one blocking thread idle (another busy), both submits found that thread idle and
+// only woke it; it took the waiter, and nothing ran the build: the waiter waited for good. A
+// fresh system each round, so each starts with exactly that one idle thread.
+TEST(JobsChannel, AJobWaitingOnAnotherChannelsJobNeverStrandsIt){
+    int stranded = 0;
+    for (int round = 0; round < 60; round++){
+        JobSystem system(configFor(2));
+        JobChannel busy("tests-busy", 1, &system);
+        JobChannel builds("tests-builds", 1, &system);
+        JobChannel watch("tests-watch", 1, &system);
+        Event release;
+        Task<void> hold = busy.submit([&]{ release.wait(); });
+        Task<void> warm = builds.submit([]{});
+        ASSERT_TRUE(testsupport::spinUntil([&]{ return warm.isReady(); }, 5000.0));
+        // the thread that ran it waits for work again
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+
+        std::atomic<bool> built{false};
+        Task<void> build = builds.submit([&]{ built = true; });
+        Task<bool> waiter = watch.submit([&]{ return testsupport::spinUntil([&]{ return built.load(); }, 500.0); });
+        ASSERT_TRUE(testsupport::spinUntil([&]{ return waiter.isReady(); }, 5000.0));
+        if (!waiter.get())
+            stranded++;
+        ASSERT_TRUE(testsupport::spinUntil([&]{ return build.isReady(); }, 5000.0));
+        release.set();
+        hold.wait();
+    }
+    EXPECT_EQ(stranded, 0) << "rounds whose build no thread ran while its waiter waited";
+}
+
 // ---- postToMain and identity
 
 TEST(JobsMain, PostToMainRunsOnDrain){

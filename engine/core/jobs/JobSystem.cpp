@@ -1645,11 +1645,19 @@ void Scheduler::channelSubmit(ChannelState* channel, TaskState* task){
     channel->queued++;
     if (singleThread)
         return;
+    // A thread for each job that can start now and no idle thread is there for. An idle thread
+    // stays counted until it wakes, so two submits in a row both found the same one: it took one
+    // job, and the other waited for a thread to free up, for good when the job it took waits for
+    // it (compile_scripts: the build on the process channel, its watcher on a channel of its own)
     uint32_t sumCaps = 0;
-    for (ChannelState* registered : channels)
+    size_t runnable = 0;
+    for (ChannelState* registered : channels){
         sumCaps += registered->cap;
+        const uint32_t freeSlots = registered->running < registered->cap ? registered->cap - registered->running : 0;
+        runnable += std::min(registered->queued, freeSlots);
+    }
     const size_t limit = (size_t)std::min<int>(blockingBudget, (int)sumCaps);
-    if (blockingIdleThreads == 0 && blockingThreads.size() < limit && channel->running < channel->cap){
+    if (runnable > (size_t)blockingIdleThreads && blockingThreads.size() < limit){
         const int index = (int)blockingThreads.size();
         blockingThreads.emplace_back([this, index](){ blockingThreadMain(index); });
     }else{
