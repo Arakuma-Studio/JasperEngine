@@ -15,7 +15,6 @@
 #include "mcp/McpContext.h"
 #include "mcp/McpRegistry.h"
 #include "mcp/McpSchema.h"
-#include "tools/PlayViewCommon.h"
 
 #include "App.h"
 #include "Project.h"
