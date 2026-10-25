@@ -8,9 +8,15 @@
 // - Files: AnimationWindowClipSheet.cpp (toolbar, dropdown, empty state, banners, binding rows,
 //   value column, keys, Add Property, Rebind, shortcuts), AnimationWindowClipEvents.cpp (events
 //   lane and event editor), AnimationWindowClipTestHook.cpp (focus_window `animation` hook),
-//   AnimationWindowClipMode.cpp (the AnimationWindow side: mode switch, hooks).
-// - Extension points (T3c): View::Curves (the Dopesheet / Curves toggle at the bottom left; drawCurves
-//   in AnimationWindowClipCurves.cpp) and the Record button after Preview (reserved, disabled).
+//   AnimationWindowClipMode.cpp (the AnimationWindow side: mode switch, hooks),
+//   AnimationWindowClipCurves.cpp (the curves view, T3c), AnimationWindowClipRecord.cpp (Record and
+//   the window's saved settings, T3c).
+// - Curves view (View::Curves, the Dopesheet / Curves toggle at the bottom left): per bound channel
+//   component the curve the runtime sampler gives (AnimationWindowClipCurves.h), key points dragged
+//   in time and value through the controller's key drag API (one merge key per drag).
+// - Record (the red button after Preview, R): the record sources (Scene view gizmo, Inspector rows,
+//   lattice drags; ClipRecordHooks) key edits of the bound hierarchy at the playhead; leaving Record
+//   stops the preview (the scene goes back to its snapshot).
 // - Every clip edit is one AnimationClipDocument commit on the project history (the controller);
 //   scene steps (Create New Clip, Extract switching the player) are CreateClipCmd composites. The
 //   window never writes a scene's modified flag. Main thread.
@@ -46,7 +52,7 @@ namespace jasperengine::editor{
 
     class AnimationWindowClip{
     public:
-        // Dopesheet now; Curves is T3c's (AnimationWindowClipCurves.cpp)
+        // the key rows or the curves (AnimationWindowClipCurves.cpp)
         enum class View{ Dopesheet, Curves };
 
         // a key by identity (stable across commits)
@@ -136,7 +142,7 @@ namespace jasperengine::editor{
             uint64_t version = 0;
         };
 
-        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event, Splitter };
+        enum class Drag{ None, PendingKeys, Keys, Box, Scrub, PendingEvent, Event, Splitter, PendingCurve, CurveKeys, CurveBox, CurvePan };
         enum class EntityModeRequest{ None, State, Create };
 
         Project* project = nullptr;
@@ -238,6 +244,35 @@ namespace jasperengine::editor{
         EntityModeRequest entityModeRequest = EntityModeRequest::None;
         std::string entityModeState;
 
+        // ---- curves view (T3c) ----
+        // hidden curves: "path|channel#component"
+        std::set<std::string> hiddenCurves;
+        // the value range shown (value units: Euler degrees for rotations), framed on a new clip
+        float curveMin = -1.0f;
+        float curveMax = 1.0f;
+        std::string curveRangeClip;
+        // the key point grabbed (its track and component) and the drag's state
+        int curveGrabTrack = -1;
+        int curveGrabComponent = -1;
+        float curveGrabValue = 0.0f;
+        float curveDragTime = 0.0f;
+        float curveDragValue = 0.0f;
+        bool curveValueLocked = false;
+        // a rotation key's Euler and quaternion when its drag began, the grabbed keys' value width
+        Vector3 curveDragEuler = Vector3(0, 0, 0);
+        std::vector<float> curveDragQuaternion;
+        size_t curveDragWidth = 0;
+        // the rotation tracks' continuous key Eulers, per document revision (trackEulers)
+        mutable std::vector<std::vector<Vector3>> curveEulerCache;
+        mutable std::vector<char> curveEulerValid;
+        mutable uint64_t curveEulerRevision = ~uint64_t(0);
+        mutable std::weak_ptr<AnimationClipDocument> curveEulerDocument;
+        float curvePixelsPerValue = 1.0f;   // the graph's scale in the last frame
+        float curveGraphHeight = 1.0f;
+
+        // ---- Record and the saved settings (T3c, AnimationWindowClipRecord.cpp) ----
+        bool settingsLoaded = false;
+
         // the CPU time of draw() (test hook: large clips stay responsive)
         double drawMs = 0.0;
         double drawMsMax = 0.0;
@@ -317,6 +352,33 @@ namespace jasperengine::editor{
         bool setComponentValue(size_t track, int component, float value, bool newEdit, std::string* error);
         bool setPreviewModel(const std::string& model, std::string* error);
         void frameKeys(bool selectedOnly, float width);
+
+        // ---- curves view (AnimationWindowClipCurves.cpp) ----
+        // draws the curves in place of the key rows: the curve list (labels, visibility) on the
+        // left, the graph (value axis, curves, key points, tangents) on the right
+        void drawCurves(SceneProject* sceneProject, ImVec2 origin, float labelW, float width, float height);
+        // F / A: the time range (frameKeys) and the value range of the selected keys / all curves
+        void frameCurveValues(bool selectedOnly);
+        bool curveVisible(const ClipTrackData& track, int component) const;
+        // a rotation track's continuous key Eulers (clipcurves::keyEulers, cached per revision)
+        const std::vector<Vector3>& trackEulers(size_t track) const;
+        void setCurveVisible(const ClipTrackData& track, int component, bool visible);
+        // a drag of the selected keys from the grabbed point (time frame snapped; value on the
+        // grabbed component: of one property's keys, or of one rotation key, else time only)
+        bool beginCurveDrag(int track, int component, std::string* error);
+        bool updateCurveDrag(float rawTimeDelta, float valueDelta, std::string* error);
+        // the curves list for the test hook: {track, component, label, visible}
+        nlohmann::json curvesJson() const;
+
+        // ---- Record and settings (AnimationWindowClipRecord.cpp) ----
+        // Record on (starts the preview) / off (stops it: the scene goes back to its snapshot)
+        bool setRecording(SceneProject* sceneProject, bool on, std::string* error);
+        // the bottom status while recording ("" when not recording)
+        std::string recordStatus() const;
+        // the label column width and the view, kept in the editor layout ini (an ImGui settings
+        // handler): loaded on the first frame, saved when they change
+        void loadSettings();
+        void saveSettings();
 
         // ---- events (AnimationWindowClipEvents.cpp) ----
         void drawEventsLane(ImDrawList* drawList, ImVec2 origin, float width, float height, float keyAreaX);

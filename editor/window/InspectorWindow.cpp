@@ -83,6 +83,7 @@
 #include "pose/PoseInspectorHooks.h"
 #include "pose/PoseEditSession.h"
 #include "animation/PreviewOwner.h"
+#include "animation/ClipRecordHooks.h"
 #include "window/InspectorWindowClips.h"
 #include "component/AnimationPlayerComponent.h"
 #include "action/Action.h"
@@ -124,6 +125,94 @@ static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType
     if (componentType == editor::ComponentType::SkyboxComponent) {
         scene->getComponent<SkyboxComponent>(entity).needUpdateTexture = true;
     }
+}
+
+// Record (animation clips 9.R5): a row value as ClipRecordValue lays it out
+static std::vector<float> vector3Value(const Vector3& value) {
+    return {value.x, value.y, value.z};
+}
+
+static std::vector<float> rotationValue(const Quaternion& value) {
+    std::vector<float> out(4);
+    quaternionToXYZW(value, out.data());
+    return out;
+}
+
+namespace {
+
+    // The Blend Shapes rows' scene command: the morph weights of several GameObjects' meshes, one
+    // undo step per slider drag (mergeWith). Its writes notify the channel write listeners
+    // (ClipRecordHooks::before/afterComponentWrite, animation clips 9.R6): a clip preview puts the
+    // weights back to their rest first and takes the new weights as its rest after.
+    class MorphWeightsCmd : public editor::Command {
+    public:
+        using Weights = std::array<float, MAX_MORPHTARGETS>;
+        struct Target {
+            Entity entity = NULL_ENTITY;
+            Weights before{};
+            Weights after{};
+        };
+
+        MorphWeightsCmd(editor::Project* project, uint32_t sceneId, std::vector<Target> targets)
+            : project(project), sceneId(sceneId), targets(std::move(targets)) {}
+
+        bool execute() override {
+            editor::SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject || !sceneProject->scene) return false;
+            if (!executed) wasModified = sceneProject->isModified;
+            write(sceneProject, false);
+            executed = true;
+            sceneProject->isModified = true;
+            return true;
+        }
+
+        void undo() override {
+            editor::SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject || !sceneProject->scene) return;
+            write(sceneProject, true);
+            sceneProject->isModified = wasModified;
+        }
+
+        bool mergeWith(editor::Command* other) override {
+            MorphWeightsCmd* older = dynamic_cast<MorphWeightsCmd*>(other);
+            if (!older || older->sceneId != sceneId || older->targets.size() != targets.size()) return false;
+            for (size_t i = 0; i < targets.size(); i++) {
+                if (older->targets[i].entity != targets[i].entity) return false;
+            }
+            // the older command holds the weights a single undo restores
+            for (size_t i = 0; i < targets.size(); i++) targets[i].before = older->targets[i].before;
+            wasModified = older->wasModified;
+            return true;
+        }
+
+        bool affectsStructure() const override { return false; }
+
+    private:
+        editor::Project* project;
+        uint32_t sceneId;
+        std::vector<Target> targets;
+        bool wasModified = false;
+        bool executed = false;
+
+        void write(editor::SceneProject* sceneProject, bool toBefore) {
+            Scene* scene = sceneProject->scene;
+            for (const Target& target : targets) {
+                editor::ClipRecordHooks::beforeComponentWrite(sceneId, target.entity, editor::ComponentType::MeshComponent, "");
+            }
+            for (Target& target : targets) {
+                MeshComponent* mesh = scene->findComponent<MeshComponent>(target.entity);
+                if (!mesh) continue;
+                // the first execute reads what it replaces (after a preview put its rest back)
+                if (!toBefore && !executed) std::copy(mesh->morphWeights, mesh->morphWeights + MAX_MORPHTARGETS, target.before.begin());
+                const Weights& value = toBefore ? target.before : target.after;
+                std::copy(value.begin(), value.end(), mesh->morphWeights);
+            }
+            for (const Target& target : targets) {
+                editor::ClipRecordHooks::afterComponentWrite(sceneId, target.entity, editor::ComponentType::MeshComponent, "");
+            }
+        }
+    };
+
 }
 
 static std::vector<editor::EnumEntry> entriesPrimitiveType = {
@@ -2941,11 +3030,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             defChanged = compareVectorFloat((float*)&newValue, defArr, 3, compThreshold);
         }
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                finishProperty = true;
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ (void)entity; return vector3Value(static_cast<Vector3>(defArr)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, static_cast<Vector3>(defArr), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
             }
+            finishProperty = true;
         }
 
         ImGui::BeginGroup();
@@ -3016,9 +3109,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImVec2 inputPosX = ImGui::GetCursorScreenPos();
 
         if (ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, min, max, settings.format)){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(newValue.x, eValue[entity].y, eValue[entity].z), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(newValue.x, eValue[entity].y, eValue[entity].z)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(newValue.x, eValue[entity].y, eValue[entity].z), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3047,9 +3143,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImVec2 inputPosY = ImGui::GetCursorScreenPos();
 
         if (ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, min, max, settings.format)){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, newValue.y, eValue[entity].z), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(eValue[entity].x, newValue.y, eValue[entity].z)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, newValue.y, eValue[entity].z), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3078,9 +3177,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImVec2 inputPosZ = ImGui::GetCursorScreenPos();
 
         if (ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, min, max, settings.format)){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, newValue.z), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return vector3Value(Vector3(eValue[entity].x, eValue[entity].y, newValue.z)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Vector3>(project, sceneProject->id, entity, cpType, id, Vector3(eValue[entity].x, eValue[entity].y, newValue.z), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3315,11 +3417,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             defChanged = compareVectorFloat((float*)&qValue, defArr, 4, compThreshold);
         }
         if (propertyHeader(label, settings.secondColSize, defChanged, settings.child, settings.indent)){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, static_cast<Quaternion>(defArr), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
-                finishProperty = true;
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ (void)entity; return rotationValue(static_cast<Quaternion>(defArr)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, static_cast<Quaternion>(defArr), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                    finishProperty = true;
+                }
             }
+            finishProperty = true;
         }
 
         ImGui::BeginGroup();
@@ -3343,9 +3449,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImVec2 inputPosX = ImGui::GetCursorScreenPos();
 
         if (ImGui::DragFloat(("##input_x_"+id).c_str(), &(newValue.x), settings.stepSize, 0.0f, 0.0f, (std::string(settings.format) + "°").c_str())){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(newValue.x, eValue[entity].y, eValue[entity].z, order), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(newValue.x, eValue[entity].y, eValue[entity].z, order)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(newValue.x, eValue[entity].y, eValue[entity].z, order), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3374,9 +3483,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImVec2 inputPosY = ImGui::GetCursorScreenPos();
 
         if (ImGui::DragFloat(("##input_y_"+id).c_str(), &(newValue.y), settings.stepSize, 0.0f, 0.0f, "%.2f°")){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, newValue.y, eValue[entity].z, order), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(eValue[entity].x, newValue.y, eValue[entity].z, order)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, newValue.y, eValue[entity].z, order), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -3405,9 +3517,12 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         ImVec2 inputPosZ = ImGui::GetCursorScreenPos();
 
         if (ImGui::DragFloat(("##input_z_"+id).c_str(), &(newValue.z), settings.stepSize, 0.0f, 0.0f, "%.2f°")){
-            for (Entity& entity : entities){
-                cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, eValue[entity].y, newValue.z, order), settings.onValueChanged);
-                CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+            // Record keys a claimed Transform channel instead (animation clips 9.R5)
+            if (!recordRowEdit(sceneProject, cpType, id, entities, [&](Entity entity){ return rotationValue(Quaternion(eValue[entity].x, eValue[entity].y, newValue.z, order)); })){
+                for (Entity& entity : entities){
+                    cmd = new PropertyCmd<Quaternion>(project, sceneProject->id, entity, cpType, id, Quaternion(eValue[entity].x, eValue[entity].y, newValue.z, order), settings.onValueChanged);
+                    CommandHandle::get(project->getSelectedSceneId())->addCommand(cmd);
+                }
             }
         }
 
@@ -5410,9 +5525,145 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             cmd = nullptr;
         }
         finishProperty = false;
+        // a recorded edit: one key edit per row edit
+        finishRecordRow();
     }
 
     return result;
+}
+
+// ---- Record sources (animation clips 9.R5) ----
+
+bool editor::InspectorWindow::recordRowEdit(SceneProject* sceneProject, ComponentType cpType, const std::string& id,
+                                            const std::vector<Entity>& entities, const std::function<std::vector<float>(Entity)>& valueOf){
+    if (!sceneProject || cpType != ComponentType::Transform) return false;
+    const std::vector<ClipChannel> channels = ClipRecordHooks::channelsOf(cpType, id);
+    if (channels.size() != 1) return false;
+    const ClipChannel channel = channels.front();
+    if (!ClipRecordHooks::claimsAny(sceneProject->id, entities, channel)) return false;
+    bool opened = false;
+    const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
+    recordRowOpen = recordRowOpen || opened;
+    for (Entity entity : entities){
+        // the selection's GameObjects Record does not key stay as they are
+        if (!ClipRecordHooks::claims(sceneProject->id, entity, channel)) continue;
+        ClipRecordValue value;
+        value.channel = channel;
+        value.value = valueOf(entity);
+        ClipRecordHooks::record(sceneProject->id, entity, value, mergeKey);
+    }
+    return true;
+}
+
+void editor::InspectorWindow::finishRecordRow(){
+    if (!recordRowOpen) return;
+    recordRowOpen = false;
+    ClipRecordHooks::endDrag();
+}
+
+bool editor::InspectorWindow::setMorphWeight(SceneProject* sceneProject, const std::vector<Entity>& entities, int index, float value){
+    if (!sceneProject || !sceneProject->scene || index < 0 || index >= MAX_MORPHTARGETS || !std::isfinite(value)) return false;
+    Scene* scene = sceneProject->scene;
+    // meshes with blend shapes (the rows show for those only)
+    std::vector<Entity> meshes;
+    for (Entity entity : entities){
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        bool morphs = false;
+        for (unsigned int s = 0; mesh && s < mesh->numSubmeshes; s++) morphs = morphs || mesh->submeshes[s].hasMorphTarget;
+        if (morphs) meshes.push_back(entity);
+    }
+    if (meshes.empty()) return false;
+    // Record keys the claimed meshes (the others stay as they are)
+    if (ClipRecordHooks::claimsAny(sceneProject->id, meshes, ClipChannel::Morph)){
+        bool opened = false;
+        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
+        recordRowOpen = recordRowOpen || opened;
+        for (Entity entity : meshes){
+            if (!ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Morph)) continue;
+            const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+            ClipRecordValue record;
+            record.channel = ClipChannel::Morph;
+            record.value.assign(mesh.morphWeights, mesh.morphWeights + MAX_MORPHTARGETS);
+            record.value[(size_t)index] = value;
+            ClipRecordHooks::record(sceneProject->id, entity, record, mergeKey);
+        }
+        return true;
+    }
+    std::vector<MorphWeightsCmd::Target> targets;
+    for (Entity entity : meshes){
+        const MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
+        MorphWeightsCmd::Target target;
+        target.entity = entity;
+        std::copy(mesh.morphWeights, mesh.morphWeights + MAX_MORPHTARGETS, target.after.begin());
+        target.after[(size_t)index] = value;
+        targets.push_back(target);
+    }
+    Command* command = new MorphWeightsCmd(project, sceneProject->id, targets);
+    if (!CommandHandle::get(sceneProject->id)->addCommand(command)) return false;
+    morphCmd = command;
+    return true;
+}
+
+void editor::InspectorWindow::finishMorphEdit(){
+    if (morphCmd){
+        morphCmd->setNoMerge();
+        morphCmd = nullptr;
+    }
+    finishRecordRow();
+}
+
+void editor::InspectorWindow::drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities){
+    Scene* scene = sceneProject->scene;
+    // meshes with morph targets only
+    std::vector<Entity> meshes;
+    for (Entity entity : entities){
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        bool morphs = false;
+        for (unsigned int s = 0; mesh && s < mesh->numSubmeshes; s++) morphs = morphs || mesh->submeshes[s].hasMorphTarget;
+        if (morphs) meshes.push_back(entity);
+    }
+    if (meshes.empty() || meshes.size() != entities.size()) return;
+
+    // the target names of the first mesh's model (the ModelComponent on it or an ancestor)
+    std::map<int, std::string> names;
+    Entity owner = meshes.front();
+    for (int depth = 0; owner != NULL_ENTITY && depth < 256; depth++){
+        if (const ModelComponent* model = scene->findComponent<ModelComponent>(owner)){
+            for (const auto& entry : model->morphNameMapping) names[entry.second] = entry.first;
+            break;
+        }
+        const Transform* transform = scene->findComponent<Transform>(owner);
+        owner = transform ? transform->parent : NULL_ENTITY;
+    }
+    int count = MAX_MORPHTARGETS;
+    if (!names.empty()) count = std::min(MAX_MORPHTARGETS, names.rbegin()->first + 1);
+
+    if (!ImGui::TreeNodeEx("Blend Shapes##mesh_blend_shapes", ImGuiTreeNodeFlags_SpanAvailWidth)) return;
+    const bool recording = ClipRecordHooks::claimsAny(sceneProject->id, meshes, ClipChannel::Morph);
+    beginTable(ComponentType::MeshComponent, getLabelSize("Blend Shape 00"), "mesh_blend_shapes");
+    for (int i = 0; i < count; i++){
+        float value = scene->getComponent<MeshComponent>(meshes.front()).morphWeights[i];
+        bool mixed = false;
+        for (Entity entity : meshes){
+            mixed = mixed || std::fabs(scene->getComponent<MeshComponent>(entity).morphWeights[i] - value) > 1e-5f;
+        }
+        auto it = names.find(i);
+        const std::string label = it != names.end() && !it->second.empty() ? it->second : "Weight " + std::to_string(i);
+        propertyHeader(label);
+        ImGui::PushID(i);
+        // Unity tints the fields Record keys
+        if (recording) ImGui::PushStyleColor(ImGuiCol_FrameBg, ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.55f));
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##weight", &value, 0.0f, 1.0f, mixed ? "--" : "%.3f")){
+            setMorphWeight(sceneProject, meshes, i, value);
+        }
+        if (recording) ImGui::PopStyleColor();
+        if (ImGui::IsItemDeactivated()) finishMorphEdit();
+        ImGui::SetItemTooltip("%s", recording ? "Record keys this weight at the playhead" : "The blend shape's weight (0 to 1)");
+        ImGui::PopID();
+    }
+    endTable();
+    ImGui::TreePop();
 }
 
 bool editor::InspectorWindow::propertyRowWithAutoButton(RowPropertyType propType, ComponentType cpType, std::string id, std::string label, std::string autoId, std::string autoLabel, SceneProject* sceneProject, std::vector<Entity> entities, RowSettings settings) {
@@ -5625,16 +5876,41 @@ void editor::InspectorWindow::drawTransform(ComponentType cpType, SceneProject* 
         }
     }
 
+    // Record (animation clips 9.R5): the rows it keys are tinted red (Unity); GameObjects of the
+    // selection it does not key stay as they are
+    bool recorded[3] = {false, false, false};
+    const ClipChannel recordChannels[3] = {ClipChannel::Position, ClipChannel::Rotation, ClipChannel::Scale};
+    size_t unrecorded = 0;
+    if (sceneProject) {
+        for (int channel = 0; channel < 3; channel++) recorded[channel] = ClipRecordHooks::claimsAny(sceneProject->id, entities, recordChannels[channel]);
+        if (recorded[0]) {
+            for (Entity entity : entities) {
+                if (!ClipRecordHooks::claims(sceneProject->id, entity, ClipChannel::Position)) unrecorded++;
+            }
+        }
+    }
+    if (unrecorded > 0) {
+        ImGui::TextColored(Theme::Colors::WarningText, "Record keys %zu of the %zu selected; the others stay as they are",
+                           entities.size() - unrecorded, entities.size());
+    }
+    const ImVec4 recordTint = ImLerp(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.55f);
+
     beginTable(cpType, getLabelSize("billboard"));
 
     ImGui::BeginDisabled(posedBones || drivenChannel[0]);
+    if (recorded[0]) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
     propertyRow(RowPropertyType::Vector3, cpType, "position", "Position", sceneProject, entities, settingsPos);
+    if (recorded[0]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
     ImGui::BeginDisabled(posedBones || drivenChannel[1]);
+    if (recorded[1]) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
     propertyRow(RowPropertyType::Quat, cpType, "rotation", "Rotation", sceneProject, entities);
+    if (recorded[1]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
     ImGui::BeginDisabled(posedBones || drivenChannel[2]);
+    if (recorded[2]) ImGui::PushStyleColor(ImGuiCol_FrameBg, recordTint);
     propertyRow(RowPropertyType::Vector3, cpType, "scale", "Scale", sceneProject, entities);
+    if (recorded[2]) ImGui::PopStyleColor();
     ImGui::EndDisabled();
     propertyRow(RowPropertyType::Bool, cpType, "visible", "Visible", sceneProject, entities);
     propertyRow(RowPropertyType::Bool, cpType, "billboard", "Billboard", sceneProject, entities);
@@ -6781,6 +7057,9 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "transparent", "Transparent", "autoTransparency", "Auto Transparency", sceneProject, entities, transparencySettings);
 
     endTable();
+
+    // the morph target weights (Record keys them, animation clips 9.R5)
+    drawBlendShapes(sceneProject, entities);
 
     drawCustomShaderRow(cpType, ShaderType::MESH, sceneProject, entities);
 
@@ -14814,7 +15093,11 @@ void editor::InspectorWindow::drawLatticeComponent(ComponentType cpType, ScenePr
         }
         if (ImGui::IsItemDeactivatedAfterEdit() && latticeOffsetPending.isValid()){
             std::string error;
+            // Record keys the point when it claims the lattice (a record gesture of its own)
+            bool recordOpened = false;
+            if (ClipRecordHooks::claims(sceneId, entity, ClipChannel::Lattice)) ClipRecordHooks::gestureMergeKey(&recordOpened);
             reportLatticeEdit(LatticeEditorOps::setOffsets(project, sceneId, entity, {index}, {latticeOffsetPending}, &error), error);
+            if (recordOpened) ClipRecordHooks::endDrag();
         }
         if (ImGui::IsItemDeactivated()){
             latticeOffsetEditing = false;

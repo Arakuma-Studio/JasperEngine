@@ -8,20 +8,35 @@
 // order: state, time / frame, preview, play, expand, select / box, drag, ease, delete, copy,
 // paste, duplicate, key, add_key, add_property, set_value, remove_track, rebind, frame_rate,
 // snap_keys, time_format, preview_model, add_event, select_event, event, drag_event,
-// delete_event, create_clip, extract, input. The result (`viewport_input` of focus_window) is
-// stateJson(): mode, clip, state, rows, missing, selection, time, preview, events...
+// delete_event, create_clip, extract, view, curve_visible, frame_curves, curve_drag, record,
+// gizmo, inspector, morph, lattice_drag, input. The result (`viewport_input` of focus_window) is
+// stateJson(): mode, clip, state, rows, missing, selection, time, preview, events, view, curves,
+// recording...
 // `input` queues real key events (Space, K, comma...) handled by the focused window on the next
-// frame.
+// frame. T3c: the record sources run through the same code as the Scene view and the Inspector:
+// `gizmo` through SceneRender::recordGizmoTransform (else the ObjectTransformCmd the drag builds),
+// `inspector` / `morph` through the Inspector's Transform / Blend Shapes row functions, and
+// `lattice_drag` through LatticeEditorOps' continuous edit (the Scene view's lattice point drag).
 
 #include "AnimationWindowClip.h"
 #include "AnimationWindowClipUtil.h"
 
+#include "AnimationWindowClipCurves.h"
+#include "App.h"
+#include "Backend.h"
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/ClipBinding.h"
 #include "component/AnimationPlayerComponent.h"
+#include "command/CommandHandle.h"
+#include "command/type/ObjectTransformCmd.h"
+#include "command/type/PropertyCmd.h"
+#include "lattice/LatticeEditorOps.h"
+#include "render/SceneRender.h"
+#include "util/EntityPath.h"
+#include "window/InspectorWindow.h"
 
 #include <cmath>
 
@@ -36,7 +51,8 @@ namespace {
         "box", "drag", "ease", "delete", "copy", "paste", "duplicate", "key", "add_key", "add_property", "set_value",
         "remove_track", "rebind", "frame_rate", "snap_keys", "time_format", "preview_model", "add_event", "select_event",
         "event", "drag_event", "delete_event", "create_clip", "extract", "input", "list_paths", "event_editor", "entity_play",
-        "entity_mode_entries", "entity_move_frame", "brief"};
+        "entity_mode_entries", "entity_move_frame", "brief", "view", "curve_visible", "frame_curves", "curve_drag", "record",
+        "gizmo", "inspector", "morph", "lattice_drag"};
 
     Json argJson(const AnimationEventArg& arg){
         if (std::holds_alternative<double>(arg)) return std::get<double>(arg);
@@ -166,6 +182,15 @@ Json AnimationWindowClip::stateJson(SceneProject* sceneProject, bool brief){
     }
     out["selection"] = selected;
     out["clipboard"] = clipboard.size();
+    // T3c: the view, the curves (in the curves view), Record
+    out["view"] = view == View::Curves ? "curves" : "dopesheet";
+    out["label_width"] = labelWidth;
+    if (view == View::Curves){
+        out["curves"] = curvesJson();
+        out["curve_range"] = {curveMin, curveMax};
+    }
+    out["recording"] = c.isRecording();
+    out["record_status"] = recordStatus();
     return out;
 }
 
@@ -447,6 +472,208 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         if (!hook["extract"].is_string()) return fail("extract", "the new .anim path (project-relative)");
         if (!extract(sceneProject, hook["extract"].get<std::string>(), &failure)) return fail("extract", failure);
     }
+    // ---- T3c: curves view, Record and the record sources ----
+    Json extra = Json::object();
+    auto entitiesOf = [&](const Json& json, std::vector<Entity>& out) -> bool{
+        out.clear();
+        std::vector<Json> names;
+        if (json.is_string()) names.push_back(json);
+        else if (json.is_array()) names.assign(json.begin(), json.end());
+        else return false;
+        for (const Json& name : names){
+            if (!name.is_string()) return false;
+            const std::vector<Entity> found = EntityPath::resolve(*sceneProject, name.get<std::string>());
+            if (found.size() != 1) return false;
+            out.push_back(found.front());
+        }
+        return !out.empty();
+    };
+    auto vectorOf = [](const Json& json, Vector3& out) -> bool{
+        if (!json.is_array() || json.size() != 3) return false;
+        for (const Json& v : json) if (!v.is_number()) return false;
+        out = Vector3(json[0].get<float>(), json[1].get<float>(), json[2].get<float>());
+        return true;
+    };
+    if (hook.contains("view")){
+        const std::string name = hook["view"].is_string() ? hook["view"].get<std::string>() : std::string();
+        if (name != "curves" && name != "dopesheet") return fail("view", "\"dopesheet\" or \"curves\"");
+        view = name == "curves" ? View::Curves : View::Dopesheet;
+        saveSettings();
+    }
+    if (hook.contains("curve_visible")){
+        // a curve's visibility toggle: {track, component, visible}
+        const Json& toggle = hook["curve_visible"];
+        int track = -1;
+        if (!toggle.is_object() || !toggle.contains("track") || !trackIndex(toggle["track"], track) || !toggle.contains("component") ||
+            !toggle["component"].is_number_integer() || !toggle.contains("visible") || !toggle["visible"].is_boolean()){
+            return fail("curve_visible", "{track, component, visible}");
+        }
+        setCurveVisible(document()->data().tracks[(size_t)track], toggle["component"].get<int>(), toggle["visible"].get<bool>());
+    }
+    if (hook.contains("record")){
+        if (!hook["record"].is_boolean()) return fail("record", "true starts Record (and the preview), false stops it");
+        if (!setRecording(sceneProject, hook["record"].get<bool>(), &failure)) return fail("record", failure);
+    }
+    if (hook.contains("gizmo")){
+        // a transform gizmo drag in 4 steps from the current local value to the given one:
+        // {entities, tool: move|rotate|scale, value: [x, y, z] (rotate: Euler degrees)}; each step
+        // goes through SceneRender::recordGizmoTransform, else the ObjectTransformCmd the drag builds
+        const Json& drag = hook["gizmo"];
+        std::vector<Entity> entities;
+        Vector3 target;
+        const std::string tool = drag.is_object() && drag.contains("tool") && drag["tool"].is_string() ? drag["tool"].get<std::string>() : std::string();
+        if (!drag.is_object() || !drag.contains("entities") || !entitiesOf(drag["entities"], entities) || !drag.contains("value") ||
+            !vectorOf(drag["value"], target) || (tool != "move" && tool != "rotate" && tool != "scale")){
+            return fail("gizmo", "{entities: [names], tool: move|rotate|scale, value: [x, y, z], select?}");
+        }
+        SceneRender* render = sceneProject->sceneRender;
+        if (!render) return fail("gizmo", "the scene has no Scene view");
+        // the gizmo works on the selection (select: false keeps the current one: selecting a
+        // GameObject outside the bound hierarchy rebinds the window, which ends Record)
+        if (drag.value("select", true)) project->replaceSelectedEntities(sceneProject->id, entities);
+        const GizmoSelected gizmo = tool == "move" ? GizmoSelected::TRANSLATE : tool == "rotate" ? GizmoSelected::ROTATE : GizmoSelected::SCALE;
+        std::vector<Transform> start;
+        for (Entity entity : entities) start.push_back(sceneProject->scene->getComponent<Transform>(entity));
+        Command* last = nullptr;
+        for (int step = 1; step <= 4; step++){
+            const float f = (float)step / 4.0f;
+            for (size_t i = 0; i < entities.size(); i++){
+                Vector3 position = start[i].position, scale = start[i].scale;
+                Quaternion rotation = start[i].rotation;
+                if (gizmo == GizmoSelected::TRANSLATE) position = start[i].position + (target - start[i].position) * f;
+                if (gizmo == GizmoSelected::SCALE) scale = start[i].scale + (target - start[i].scale) * f;
+                if (gizmo == GizmoSelected::ROTATE){
+                    const std::vector<float> xyzw = clipui::xyzwOf(target);
+                    rotation = Quaternion::slerp(f, start[i].rotation, quaternionFromXYZW(xyzw.data()));
+                }
+                const Matrix4 local = Matrix4::translateMatrix(position) * rotation.getRotationMatrix() * Matrix4::scaleMatrix(scale);
+                if (!render->recordGizmoTransform(sceneProject->id, entities[i], local, gizmo, entities)){
+                    Command* command = new ObjectTransformCmd(project, sceneProject->id, entities[i], local);
+                    if (CommandHandle::get(sceneProject->id)->addCommand(command)) last = command;
+                }
+            }
+        }
+        // the release
+        if (last) last->setNoMerge();
+        render->endGizmoRecord();
+    }
+    if (hook.contains("inspector")){
+        // an Inspector Transform row edit: {entities, property: position|rotation|scale, value: [x, y, z]
+        // (rotation: Euler degrees)}, through the rows' Record path, else their PropertyCmd
+        const Json& edit = hook["inspector"];
+        std::vector<Entity> entities;
+        Vector3 value;
+        const std::string property = edit.is_object() && edit.contains("property") && edit["property"].is_string() ? edit["property"].get<std::string>() : std::string();
+        if (!edit.is_object() || !edit.contains("entities") || !entitiesOf(edit["entities"], entities) || !edit.contains("value") ||
+            !vectorOf(edit["value"], value) || (property != "position" && property != "rotation" && property != "scale")){
+            return fail("inspector", "{entities: [names], property: position|rotation|scale, value: [x, y, z]}");
+        }
+        InspectorWindow* inspector = Backend::getApp().getInspectorWindow();
+        if (!inspector) return fail("inspector", "no Inspector");
+        const Quaternion rotation(value.x, value.y, value.z, RotationOrder::ZYX);
+        auto valueOf = [&](Entity){
+            if (property != "rotation") return std::vector<float>{value.x, value.y, value.z};
+            std::vector<float> xyzw(4);
+            quaternionToXYZW(rotation, xyzw.data());
+            return xyzw;
+        };
+        if (!inspector->recordRowEdit(sceneProject, ComponentType::Transform, property, entities, valueOf)){
+            Command* last = nullptr;
+            for (Entity entity : entities){
+                Command* command = property == "rotation"
+                    ? (Command*)new PropertyCmd<Quaternion>(project, sceneProject->id, entity, ComponentType::Transform, property, rotation)
+                    : (Command*)new PropertyCmd<Vector3>(project, sceneProject->id, entity, ComponentType::Transform, property, value);
+                if (CommandHandle::get(sceneProject->id)->addCommand(command)) last = command;
+            }
+            if (last) last->setNoMerge();
+        }
+        inspector->finishRecordRow();
+    }
+    if (hook.contains("morph")){
+        // a Blend Shapes row (MeshComponent morph weight) let go at `value`: {entities, index, value}
+        const Json& edit = hook["morph"];
+        std::vector<Entity> entities;
+        if (!edit.is_object() || !edit.contains("entities") || !entitiesOf(edit["entities"], entities) || !edit.contains("index") ||
+            !edit["index"].is_number_integer() || !edit.contains("value") || !edit["value"].is_number()){
+            return fail("morph", "{entities: [names], index, value}");
+        }
+        InspectorWindow* inspector = Backend::getApp().getInspectorWindow();
+        if (!inspector) return fail("morph", "no Inspector");
+        // a slider drag: two steps, then the release
+        const int index = edit["index"].get<int>();
+        const float value = edit["value"].get<float>();
+        const MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entities.front());
+        const float from = mesh && index >= 0 && index < MAX_MORPHTARGETS ? mesh->morphWeights[index] : 0.0f;
+        if (!inspector->setMorphWeight(sceneProject, entities, index, from + (value - from) * 0.5f) ||
+            !inspector->setMorphWeight(sceneProject, entities, index, value)){
+            inspector->finishMorphEdit();
+            return fail("morph", "no mesh with blend shapes to edit (index 0.." + std::to_string(MAX_MORPHTARGETS - 1) + ")");
+        }
+        inspector->finishMorphEdit();
+    }
+    if (hook.contains("lattice_drag")){
+        // a Scene view drag of lattice points in 4 steps: {entity, points: [i...], offsets: [[x, y, z]...]},
+        // through LatticeEditorOps' continuous edit and its end (the drag's release)
+        const Json& drag = hook["lattice_drag"];
+        std::vector<Entity> entities;
+        if (!drag.is_object() || !drag.contains("entity") || !entitiesOf(drag["entity"], entities) || entities.size() != 1 ||
+            !drag.contains("points") || !drag["points"].is_array() || !drag.contains("offsets") || !drag["offsets"].is_array() ||
+            drag["points"].size() != drag["offsets"].size()){
+            return fail("lattice_drag", "{entity, points: [index...], offsets: [[x, y, z]...]}");
+        }
+        const LatticeComponent* lattice = sceneProject->scene->findComponent<LatticeComponent>(entities.front());
+        if (!lattice) return fail("lattice_drag", "the GameObject has no Lattice");
+        std::vector<int> points;
+        std::vector<Vector3> targets, starts;
+        for (size_t i = 0; i < drag["points"].size(); i++){
+            Vector3 offset;
+            if (!drag["points"][i].is_number_integer() || !vectorOf(drag["offsets"][i], offset)) return fail("lattice_drag", "points are indices, offsets [x, y, z]");
+            const int point = drag["points"][i].get<int>();
+            points.push_back(point);
+            targets.push_back(offset);
+            starts.push_back(point >= 0 && (size_t)point < lattice->offsets.size() ? lattice->offsets[(size_t)point] : Vector3(0, 0, 0));
+        }
+        for (int step = 1; step <= 4; step++){
+            std::vector<Vector3> offsets;
+            for (size_t i = 0; i < points.size(); i++) offsets.push_back(starts[i] + (targets[i] - starts[i]) * ((float)step / 4.0f));
+            if (!LatticeEditorOps::setOffsetsContinuous(project, sceneProject->id, entities.front(), points, offsets, &failure)){
+                LatticeEditorOps::endContinuousEdit(sceneProject->id);
+                return fail("lattice_drag", failure);
+            }
+        }
+        LatticeEditorOps::endContinuousEdit(sceneProject->id);
+    }
+    if (hook.contains("curve_drag")){
+        // a mouse drag of a key point in the curves view: {track, time, component, time_delta?,
+        // value_delta?} (the point is selected first unless it is, as a click; 4 pointer steps)
+        const Json& drag = hook["curve_drag"];
+        KeyId id;
+        int track = -1;
+        if (!drag.is_object() || !drag.contains("track") || !trackIndex(drag["track"], track) || !keyIdOf(drag, id) ||
+            !drag.contains("component") || !drag["component"].is_number_integer()){
+            return fail("curve_drag", "{track, time, component, time_delta?, value_delta?}");
+        }
+        refreshSelection();
+        AnimationClipController::KeyRef ref;
+        AnimationClipController::findKey(document()->data(), id.path, id.channel, id.time, ref);
+        if (!isSelected(ref.track, ref.key)) selectKeys({id}, false);
+        dragGrabTime = id.time;
+        if (!beginCurveDrag(track, drag["component"].get<int>(), &failure)) return fail("curve_drag", failure);
+        const float timeDelta = drag.value("time_delta", 0.0f);
+        const float valueDelta = drag.value("value_delta", 0.0f);
+        for (int step = 1; step <= 4; step++){
+            if (!updateCurveDrag(timeDelta * (float)step / 4.0f, valueDelta * (float)step / 4.0f, &failure)) return fail("curve_drag", failure);
+        }
+        endDrag();
+        extra["value_locked"] = curveValueLocked;
+    }
+    if (hook.contains("frame_curves")){
+        // F / A in the curves view: "selected" or "all"
+        const std::string which = hook["frame_curves"].is_string() ? hook["frame_curves"].get<std::string>() : std::string();
+        if (which != "selected" && which != "all") return fail("frame_curves", "\"selected\" (F) or \"all\" (A)");
+        frameKeys(which == "selected", 800.0f);
+        frameCurveValues(which == "selected");
+    }
     if (hook.contains("input")){
         // real key events: [{key: "space"|"k"|"comma"|"period"|"delete"|"c"|"v"|"d"|"f"|"a", shift?, ctrl?, alt?}]
         const Json& input = hook["input"];
@@ -469,6 +696,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
             else if (name == "y") key = ImGuiKey_Y;
             else if (name == "backspace") key = ImGuiKey_Backspace;
             else if (name == "f2") key = ImGuiKey_F2;
+            else if (name == "r") key = ImGuiKey_R;
             else return fail("input", "unknown key '" + name + "'");
             const bool ctrl = event.value("ctrl", false), shift = event.value("shift", false), alt = event.value("alt", false);
             if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, true);
@@ -482,6 +710,7 @@ bool AnimationWindowClip::testHook(SceneProject* sceneProject, const Json& hook,
         }
     }
     out = stateJson(sceneProject, hook.value("brief", false));
+    for (auto it = extra.begin(); it != extra.end(); ++it) out[it.key()] = it.value();
     if (hook.value("list_paths", false)){
         // what Add Property offers: the addressable paths under the bound (or previewed) root
         Json paths = Json::array();

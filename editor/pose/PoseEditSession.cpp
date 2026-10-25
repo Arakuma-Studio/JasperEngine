@@ -101,6 +101,12 @@ void editor::PoseEditSession::suspendActiveForBone(uint32_t sceneId, Entity enti
     }
 }
 
+void editor::PoseEditSession::beforeChannelWrite(uint32_t sceneId, Entity entity, ClipChannel channel){
+    if (channel == ClipChannel::Position || channel == ClipChannel::Rotation || channel == ClipChannel::Scale){
+        suspendActiveForBone(sceneId, entity);
+    }
+}
+
 void editor::PoseEditSession::suspendActiveFor(uint32_t sceneId, const std::vector<Entity>& roots){
     // a clip preview of (or under, or above) the copied entities restores first (9.R7)
     if (!roots.empty()) PreviewOwner::stopFor(sceneId, roots, nullptr, activeSession);

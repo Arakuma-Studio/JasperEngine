@@ -5,6 +5,7 @@
 
 #include "AppSettings.h"
 #include "Project.h"
+#include "animation/ClipRecordHooks.h"
 #include "command/CommandHandle.h"
 #include "command/type/AddComponentCmd.h"
 #include "command/type/CreateEntityCmd.h"
@@ -125,6 +126,34 @@ namespace{
         return CommandHandle::get(sceneId)->addCommand(command);
     }
 
+    // a Record gesture this file opened (a continuous edit: endContinuousEdit ends it)
+    bool recordGestureOpen = false;
+
+    // Record (animation clips 9.R5): a claimed lattice's edit from the Scene view's drag (a
+    // continuous edit) or from an Inspector row (which opens a record gesture first) writes the
+    // live offsets and keys the changed points at the playhead, with no command. Discrete edits
+    // without a gesture (MCP edit_lattice, menus) stay scene steps.
+    bool recordOffsets(uint32_t sceneId, Entity entity, const LatticeComponent& lattice,
+                       const std::vector<Vector3>& offsets, bool continuous){
+        if (!continuous && ClipRecordHooks::currentMergeKey().empty()) return false;
+        if (!ClipRecordHooks::claims(sceneId, entity, ClipChannel::Lattice)) return false;
+        ClipRecordValue value;
+        value.channel = ClipChannel::Lattice;
+        for (size_t i = 0; i < offsets.size(); i++){
+            const Vector3 before = i < lattice.offsets.size() ? lattice.offsets[i] : Vector3(0, 0, 0);
+            if (offsets[i] == before) continue;
+            value.points.push_back((int)i);
+            value.value.insert(value.value.end(), {offsets[i].x, offsets[i].y, offsets[i].z});
+        }
+        if (value.points.empty()) return true;
+        bool opened = false;
+        const std::string mergeKey = ClipRecordHooks::gestureMergeKey(&opened);
+        if (opened && continuous) recordGestureOpen = true;
+        ClipRecordHooks::record(sceneId, entity, value, mergeKey);
+        if (opened && !continuous) ClipRecordHooks::endDrag();
+        return true;
+    }
+
     bool pushOffsets(Project* project, uint32_t sceneId, Entity entity, const LatticeComponent& lattice,
                      const std::vector<Vector3>& offsets, bool continuous, std::string* error){
         for (const Vector3& offset : offsets){
@@ -134,6 +163,9 @@ namespace{
         }
         if (offsets == lattice.offsets){
             return true; // nothing changes: no undo step
+        }
+        if (recordOffsets(sceneId, entity, lattice, offsets, continuous)){
+            return true;
         }
         Command* command = new LatticePointsCmd(project, sceneId, entity, offsets, continuous);
         bool added = continuous ? CommandHandle::get(sceneId)->addCommand(command) : push(sceneId, command);
@@ -621,6 +653,11 @@ bool LatticeEditorOps::setOffsetsContinuous(Project* project, uint32_t sceneId, 
 
 void LatticeEditorOps::endContinuousEdit(uint32_t sceneId){
     CommandHandle::get(sceneId)->mark();
+    // a recorded drag: one key edit per drag
+    if (recordGestureOpen){
+        recordGestureOpen = false;
+        ClipRecordHooks::endDrag();
+    }
 }
 
 bool LatticeEditorOps::transformPoints(Project* project, uint32_t sceneId, Entity entity,

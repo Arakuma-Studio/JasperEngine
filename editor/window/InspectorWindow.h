@@ -162,6 +162,11 @@ namespace jasperengine::editor{
 
         std::map<std::string, bool> textureCubeSingleMode;
 
+        // Record (animation clips 9.R5): a row edit opened a record gesture (its deactivation ends
+        // it) and the morph weight rows' scene command being dragged
+        bool recordRowOpen = false;
+        Command* morphCmd = nullptr;
+
         // Lattice inspector state (edits apply through LatticeEditorOps when a field is let go)
         int latticeResolutionPending[3] = {3, 3, 3};
         int latticeResolutionAxis = -1;      // axis field being edited, -1 none
@@ -581,6 +586,8 @@ namespace jasperengine::editor{
         void drawShaderFilesPopup(const std::string& popupName, const std::function<void(const std::string&)>& setShader, const std::string& currentVert, const std::string& currentFrag);
         void drawTransform(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // the morph target weights of a mesh with blend shapes (names from its model)
+        void drawBlendShapes(SceneProject* sceneProject, const std::vector<Entity>& entities);
         void drawModelComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawUIComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawButtonComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
@@ -663,6 +670,23 @@ namespace jasperengine::editor{
         void requestAddComponent();
         // true once after Add Tag... or Add Layer...: the App opens Project Settings on Tags and Layers
         bool consumeTagsAndLayersRequest();
+
+        // ---- Record sources (animation clips 9.R5; the rows and the window test hook call them) ----
+
+        // A Transform position / rotation / scale row edit of `entities` (`valueOf`: an entity's
+        // new value, x y z or rotation x y z w): when Record claims the channel for some of them,
+        // the claimed ones are recorded (live value + key at the playhead, one merge key until the
+        // row is let go: finishRecordRow) and the others stay as they are; false: Record does not
+        // take it (the row builds its PropertyCmd)
+        bool recordRowEdit(SceneProject* sceneProject, ComponentType cpType, const std::string& id,
+                           const std::vector<Entity>& entities, const std::function<std::vector<float>(Entity)>& valueOf);
+        // the row was let go (deactivated): its record gesture ends
+        void finishRecordRow();
+        // The Blend Shapes rows (MeshComponent morph weights): weight `index` of `entities` set to
+        // `value`; recorded when Record claims the channel, else one scene step per drag (the
+        // command notifies the channel write listeners); finishMorphEdit when the slider is let go
+        bool setMorphWeight(SceneProject* sceneProject, const std::vector<Entity>& entities, int index, float value);
+        void finishMorphEdit();
     private:
         bool addComponentRequested = false;
     };

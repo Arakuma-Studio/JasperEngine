@@ -80,6 +80,8 @@ namespace {
 void AnimationWindowClip::draw(SceneProject* sceneProject, bool focused){
     const auto started = std::chrono::steady_clock::now();
     ImGui::PushID("clip_mode");
+    // the label width and the view saved with the editor layout (first frame)
+    if (!settingsLoaded) loadSettings();
     // the window handles its keys while focused (App: AnimationClipAppHooks::takesKeys)
     controller().setTakesKeys(focused);
     refreshBinding();
@@ -128,14 +130,29 @@ void AnimationWindowClip::drawToolbar(SceneProject* sceneProject){
                                        : "Preview the clip at the playhead in the Scene view (the scene is not changed)");
         }
     }
-    // the Record slot (the Record mode fills it)
+    // Record: edits of the bound hierarchy (Scene view gizmo, Inspector rows, lattice points) key
+    // the clip at the playhead (red timeline); leaving it restores the scene
     ImGui::SameLine();
-    ImGui::BeginDisabled(true);
-    ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
-    ImGui::Button(ICON_FA_CIRCLE "##clip_record");
-    ImGui::PopStyleColor();
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Record: not available yet");
+    {
+        const bool on = c.isRecording();
+        const bool editableClip = doc && !doc->isReadOnly();
+        ImGui::BeginDisabled(!on && (!editableClip || !blocker.empty() || !stopped));
+        if (on) ImGui::PushStyleColor(ImGuiCol_Button, mix(Theme::Colors::ErrorText, ImVec4(0, 0, 0, 1), 0.45f));
+        ImGui::PushStyleColor(ImGuiCol_Text, on ? ImVec4(1, 1, 1, 1) : Theme::Colors::ErrorText);
+        if (ImGui::Button(ICON_FA_CIRCLE "##clip_record")){
+            std::string error;
+            if (!setRecording(sceneProject, !on, &error)) setNotice(error, true);
+        }
+        ImGui::PopStyleColor(on ? 2 : 1);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)){
+            ImGui::SetTooltip("%s", on ? "Stop recording (R): the scene goes back to how it was before"
+                                    : !doc ? "Record: open a clip first"
+                                    : doc->isReadOnly() ? "Record: the clip is read-only (extract it to edit it)"
+                                    : !blocker.empty() ? blocker.c_str()
+                                    : "Record (R): moving the bound GameObject or its children (Scene view, Inspector) keys the clip at the playhead");
+        }
+    }
     ImGui::SameLine();
     ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
     ImGui::SameLine();
@@ -704,6 +721,10 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     // header: Add Property over the labels, the ruler (scrub); the "Events" caption, the lane
     drawList->AddRectFilled(origin, ImVec2(keyAreaX, origin.y + headerHeight), color(Theme::Colors::ToolbarBackground));
     drawRuler(drawList, ImVec2(keyAreaX, origin.y), keyAreaWidth, m.rulerHeight);
+    // the ruler turns red while recording (Unity)
+    if (c.isRecording()){
+        drawList->AddRectFilled(ImVec2(keyAreaX, origin.y), ImVec2(keyAreaX + keyAreaWidth, origin.y + m.rulerHeight), color(Theme::Colors::ErrorText, 0.3f));
+    }
     ImGui::SetCursorScreenPos(ImVec2(keyAreaX, origin.y));
     ImGui::InvisibleButton("##clip_ruler", ImVec2(keyAreaWidth, m.rulerHeight));
     if (ImGui::IsItemActive() && (ImGui::IsItemActivated() || io.MouseDelta.x != 0.0f)){
@@ -730,6 +751,8 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     if (ImGui::IsItemActive()){
         labelWidth = std::clamp(dragStartLabelWidth + ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x / m.s, 160.0f, 900.0f);
     }
+    // the width is kept with the editor layout
+    if (ImGui::IsItemDeactivated()) saveSettings();
     ImGui::SetItemTooltip("Drag to resize the property column");
 
     // zoom and pan with the wheel (over the header, or Ctrl: zoom at the mouse; Shift: pan)
@@ -746,233 +769,239 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     }
     if (overSheet && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) scrollX = std::max(0.0f, scrollX - io.MouseDelta.x);
 
-    // the rows: labels + value column on the left, keys on the right (scrolls vertically)
-    ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + headerHeight));
-    ImGuiWindowFlags childFlags = (io.KeyCtrl || io.KeyShift) ? ImGuiWindowFlags_NoScrollWithMouse : ImGuiWindowFlags_None;
-    ImGui::BeginChild("##clip_rows", ImVec2(avail.x, sheetHeight - headerHeight), ImGuiChildFlags_None, childFlags);
-    ImDrawList* rowsList = ImGui::GetWindowDrawList();
-    const ImVec2 top = ImGui::GetCursorScreenPos();
-    const float contentHeight = std::max((float)rows.size() * m.rowHeight + m.rowHeight, ImGui::GetContentRegionAvail().y);
-    const ImVec2 clipMin = ImGui::GetWindowPos();
-    const ImVec2 clipMax = ImVec2(clipMin.x + ImGui::GetWindowSize().x, clipMin.y + ImGui::GetWindowSize().y);
-
-    // backgrounds: the timeline is blue while previewing (Unity)
-    const ImU32 keyBackground = c.isPreviewing() ? color(Theme::Colors::Selection, 0.28f) : color(ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
-    rowsList->AddRectFilled(ImVec2(keyAreaX, clipMin.y), ImVec2(keyAreaX + keyAreaWidth, clipMax.y), keyBackground);
-    const float clipEnd = xAt(data.effectiveLength());
-    if (clipEnd < keyAreaX + keyAreaWidth){
-        rowsList->AddRectFilled(ImVec2(std::max(keyAreaX, clipEnd), clipMin.y), ImVec2(keyAreaX + keyAreaWidth, clipMax.y), IM_COL32(0, 0, 0, 60));
-    }
-    // the visible time range (keys outside it are not visited)
-    const float visibleFrom = std::max(0.0f, timeAt(keyAreaX) - m.keyHit / pixelsPerSecond);
-    const float visibleTo = timeAt(keyAreaX + keyAreaWidth) + m.keyHit / pixelsPerSecond;
-    // frame grid lines when frames are wide enough
-    if (pixelsPerSecond / fps >= 8.0f * m.s){
-        const long first = (long)std::floor(visibleFrom * fps);
-        const long last = (long)std::ceil(visibleTo * fps);
-        for (long f = std::max(0L, first); f <= last; f++){
-            const float x = xAt((float)f / fps);
-            rowsList->AddLine(ImVec2(x, clipMin.y), ImVec2(x, clipMax.y), IM_COL32(255, 255, 255, 14));
-        }
-    }
-
-    // the keys of track `t` in the visible range
-    auto visibleKeys = [&](size_t t, size_t& begin, size_t& end){
-        const std::vector<ClipKey>& keys = data.tracks[t].keys;
-        begin = (size_t)(std::lower_bound(keys.begin(), keys.end(), visibleFrom, [](const ClipKey& k, float time){ return k.time < time; }) - keys.begin());
-        end = (size_t)(std::upper_bound(keys.begin(), keys.end(), visibleTo, [](float time, const ClipKey& k){ return time < k.time; }) - keys.begin());
-    };
-    struct Visible{ float time; size_t track; size_t key; };
-
-    int hoveredRow = -1;
-    hoveredKeyIds.clear();
-    const ImVec4 selectedColor = selectedKeyColor();
-    const float keyAlpha = readOnly ? 0.5f : 1.0f;
-    for (size_t r = 0; r < rows.size(); r++){
-        const Row& row = rows[r];
-        const ImVec2 rowPos(top.x, top.y + (float)r * m.rowHeight);
-        if (rowPos.y + m.rowHeight < clipMin.y || rowPos.y > clipMax.y) continue;
-        if (r % 2 == 1){
-            rowsList->AddRectFilled(ImVec2(origin.x, rowPos.y), ImVec2(keyAreaX, rowPos.y + m.rowHeight), color(Theme::Colors::RowBackgroundAlt));
-        }
-        if (row.kind == Row::Kind::Summary){
-            rowsList->AddRectFilled(ImVec2(keyAreaX, rowPos.y), ImVec2(keyAreaX + keyAreaWidth, rowPos.y + m.rowHeight), IM_COL32(0, 0, 0, 45));
-        }
-        rowsList->AddLine(ImVec2(origin.x, rowPos.y + m.rowHeight), ImVec2(keyAreaX + keyAreaWidth, rowPos.y + m.rowHeight), IM_COL32(0, 0, 0, 70));
-        drawRowLabel(row, r, rowPos, labelW, m.rowHeight);
-        drawValueField(row, rowPos, labelW, m.rowHeight);
-
-        // the visible keys: one diamond per time (the summary row merges every track's times)
-        std::vector<Visible> keys;
-        if (row.kind == Row::Kind::Summary){
-            for (size_t t = 0; t < data.tracks.size(); t++){
-                size_t b = 0, e = 0;
-                visibleKeys(t, b, e);
-                for (size_t k = b; k < e; k++) keys.push_back({data.tracks[t].keys[k].time, t, k});
-            }
-            std::sort(keys.begin(), keys.end(), [](const Visible& a, const Visible& b){ return a.time < b.time; });
-        }else{
-            size_t b = 0, e = 0;
-            visibleKeys((size_t)row.track, b, e);
-            for (size_t k = b; k < e; k++) keys.push_back({data.tracks[(size_t)row.track].keys[k].time, (size_t)row.track, k});
-        }
-        rowsList->PushClipRect(ImVec2(keyAreaX, clipMin.y), ImVec2(keyAreaX + keyAreaWidth, clipMax.y), true);
-        const float cy = rowPos.y + m.rowHeight * 0.5f;
-        const bool rowHovered = ImGui::IsWindowHovered() && io.MousePos.y >= rowPos.y && io.MousePos.y < rowPos.y + m.rowHeight &&
-                                io.MousePos.x >= keyAreaX;
-        float lastX = -1e9f;
-        bool lastSelected = false;
-        for (size_t i = 0; i < keys.size();){
-            const float t = keys[i].time;
-            size_t j = i;
-            bool selected = true;
-            while (j < keys.size() && std::fabs(keys[j].time - t) <= kKeyEpsilon){
-                selected = selected && isSelected(keys[j].track, keys[j].key);
-                j++;
-            }
-            const float x = xAt(t);
-            // keys closer than a pixel to the last one drawn (zoomed out on a dense clip) share its diamond
-            if (x - lastX < 1.0f * m.s && selected == lastSelected && !(rowHovered && std::fabs(io.MousePos.x - x) <= m.keyHit)){
-                i = j;
-                continue;
-            }
-            lastX = x;
-            lastSelected = selected;
-            const float radius = row.kind == Row::Kind::Component ? m.keyRadius * 0.8f : m.keyRadius;
-            ImVec4 fill = selected ? selectedColor : keyColor();
-            if (!selected && row.missing) fill = Theme::Colors::WarningText;
-            if (!selected && row.kind == Row::Kind::Summary) fill = Theme::Colors::SubtleText;
-            const ImVec2 pts[4] = {ImVec2(x, cy - radius), ImVec2(x + radius, cy), ImVec2(x, cy + radius), ImVec2(x - radius, cy)};
-            rowsList->AddConvexPolyFilled(pts, 4, color(fill, fill.w * keyAlpha));
-            rowsList->AddPolyline(pts, 4, IM_COL32(20, 20, 20, (int)(255 * keyAlpha)), ImDrawFlags_Closed, 1.0f * m.s);
-            if (rowHovered && std::fabs(io.MousePos.x - x) <= m.keyHit){
-                hoveredRow = (int)r;
-                hoveredTime = t;
-                hoveredKeyIds.clear();
-                for (size_t k = i; k < j; k++){
-                    const ClipTrackData& track = data.tracks[keys[k].track];
-                    hoveredKeyIds.push_back({track.path, track.channel, keys[k].time});
-                }
-            }
-            i = j;
-        }
-        rowsList->PopClipRect();
-    }
-
-    // the key area's input: click / Shift / Ctrl select, box select, drag, right-click menu
-    ImGui::SetCursorScreenPos(ImVec2(keyAreaX, top.y));
-    ImGui::InvisibleButton("##clip_keys", ImVec2(keyAreaWidth, contentHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-    const int mouseRow = (int)std::floor((io.MousePos.y - top.y) / m.rowHeight);
-    auto allSelected = [&](const std::vector<KeyId>& ids){
-        // selection membership by identity (the mask is per revision)
-        for (const KeyId& id : ids){
-            bool found = false;
-            for (const AnimationClipController::KeyRef& ref : selectedRefs){
-                const ClipTrackData& track = data.tracks[ref.track];
-                if (track.channel == id.channel && std::fabs(track.keys[ref.key].time - id.time) <= kKeyEpsilon && track.path == id.path){
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) return false;
-        }
-        return true;
-    };
-    if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
-        const bool additive = io.KeyShift || io.KeyCtrl;
-        dragStart = io.MousePos;
-        if (!hoveredKeyIds.empty()){
-            const bool already = allSelected(hoveredKeyIds);
-            if (io.KeyCtrl && already){
-                // Ctrl toggles
-                std::vector<KeyId> kept;
-                for (const KeyId& id : selection){
-                    bool hit = false;
-                    for (const KeyId& other : hoveredKeyIds){
-                        hit = hit || (other.path == id.path && other.channel == id.channel && std::fabs(other.time - id.time) <= kKeyEpsilon);
-                    }
-                    if (!hit) kept.push_back(id);
-                }
-                selection = kept;
-                refreshSelection();
-                drag = Drag::None;
-            }else{
-                if (!already) selectKeys(hoveredKeyIds, additive);
-                dragGrabTime = hoveredTime;
-                dragAdditive = additive;
-                drag = Drag::PendingKeys;
-            }
-        }else{
-            if (!additive){
-                selection.clear();
-                selectEvent(-1);
-                refreshSelection();
-            }
-            dragAdditive = additive;
-            drag = Drag::Box;
-        }
-    }
-    if (ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left)){
-        if (drag == Drag::PendingKeys && std::fabs(io.MousePos.x - dragStart.x) > 3.0f * m.s){
-            std::string error;
-            if (!readOnly && beginDrag(&error)){
-                drag = Drag::Keys;
-            }else{
-                setNotice(readOnly ? std::string("Read-only clip: extract it to edit it") : error, true);
-                drag = Drag::None;
-            }
-        }
-        if (drag == Drag::Keys){
-            std::string error;
-            if (!updateDrag((io.MousePos.x - dragStart.x) / pixelsPerSecond, &error) && !error.empty()) setNotice(error, true);
-            ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-        }
-        if (drag == Drag::Box){
-            const ImVec2 a(std::min(dragStart.x, io.MousePos.x), std::min(dragStart.y, io.MousePos.y));
-            const ImVec2 b(std::max(dragStart.x, io.MousePos.x), std::max(dragStart.y, io.MousePos.y));
-            rowsList->AddRectFilled(a, b, color(Theme::Colors::Selection, 0.25f));
-            rowsList->AddRect(a, b, color(Theme::Colors::Selection, 0.9f));
-        }
-    }
-    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && (drag == Drag::Keys || drag == Drag::Box || drag == Drag::PendingKeys)){
-        if (drag == Drag::Keys){
-            endDrag();
-        }else if (drag == Drag::Box){
-            if (std::fabs(io.MousePos.x - dragStart.x) > 2.0f * m.s || std::fabs(io.MousePos.y - dragStart.y) > 2.0f * m.s){
-                const int rowA = (int)std::floor((dragStart.y - top.y) / m.rowHeight);
-                const int rowB = (int)std::floor((io.MousePos.y - top.y) / m.rowHeight);
-                boxSelect(rowA, rowB, timeAt(dragStart.x), timeAt(io.MousePos.x), dragAdditive);
-            }
-        }else if (drag == Drag::PendingKeys && !dragAdditive && !hoveredKeyIds.empty()){
-            // a click (no drag) on one of several selected keys selects only those
-            selectKeys(hoveredKeyIds, false);
-        }
-        drag = Drag::None;
-    }
-    if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && drag == Drag::None){
-        contextRow = mouseRow;
-        contextTime = snapToFrame(std::max(0.0f, timeAt(io.MousePos.x)));
-        if (!hoveredKeyIds.empty()){
-            if (!allSelected(hoveredKeyIds)) selectKeys(hoveredKeyIds, false);
-            contextTime = hoveredTime;
-        }
-        ImGui::OpenPopup("##clip_key_menu");
-    }
-    if (ImGui::IsItemHovered() && hoveredRow >= 0 && drag == Drag::None){
-        ImGui::SetTooltip("%s", formatBoth(hoveredTime, fps, showFrames).c_str());
-    }
-    drawKeyContextMenu();
-    drawRowMenu();
-
-    // the playhead
     const float playX = xAt(c.getTime());
     const ImU32 playheadColour = color(playheadColor());
-    if (playX >= keyAreaX && playX <= keyAreaX + keyAreaWidth){
-        rowsList->AddLine(ImVec2(playX, clipMin.y), ImVec2(playX, clipMax.y), playheadColour, 1.5f * m.s);
+    if (view == View::Curves){
+        // the curves of the bound channels in place of the key rows (AnimationWindowClipCurves.cpp)
+        drawCurves(sceneProject, ImVec2(origin.x, origin.y + headerHeight), labelW, avail.x, sheetHeight - headerHeight);
+    }else{
+        // the rows: labels + value column on the left, keys on the right (scrolls vertically)
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, origin.y + headerHeight));
+        ImGuiWindowFlags childFlags = (io.KeyCtrl || io.KeyShift) ? ImGuiWindowFlags_NoScrollWithMouse : ImGuiWindowFlags_None;
+        ImGui::BeginChild("##clip_rows", ImVec2(avail.x, sheetHeight - headerHeight), ImGuiChildFlags_None, childFlags);
+        ImDrawList* rowsList = ImGui::GetWindowDrawList();
+        const ImVec2 top = ImGui::GetCursorScreenPos();
+        const float contentHeight = std::max((float)rows.size() * m.rowHeight + m.rowHeight, ImGui::GetContentRegionAvail().y);
+        const ImVec2 clipMin = ImGui::GetWindowPos();
+        const ImVec2 clipMax = ImVec2(clipMin.x + ImGui::GetWindowSize().x, clipMin.y + ImGui::GetWindowSize().y);
+
+        // backgrounds: the timeline is red while recording, blue while previewing (Unity)
+        const ImU32 keyBackground = c.isRecording() ? color(Theme::Colors::ErrorText, 0.22f)
+                                  : c.isPreviewing() ? color(Theme::Colors::Selection, 0.28f) : color(ImVec4(0.15f, 0.15f, 0.15f, 1.0f));
+        rowsList->AddRectFilled(ImVec2(keyAreaX, clipMin.y), ImVec2(keyAreaX + keyAreaWidth, clipMax.y), keyBackground);
+        const float clipEnd = xAt(data.effectiveLength());
+        if (clipEnd < keyAreaX + keyAreaWidth){
+            rowsList->AddRectFilled(ImVec2(std::max(keyAreaX, clipEnd), clipMin.y), ImVec2(keyAreaX + keyAreaWidth, clipMax.y), IM_COL32(0, 0, 0, 60));
+        }
+        // the visible time range (keys outside it are not visited)
+        const float visibleFrom = std::max(0.0f, timeAt(keyAreaX) - m.keyHit / pixelsPerSecond);
+        const float visibleTo = timeAt(keyAreaX + keyAreaWidth) + m.keyHit / pixelsPerSecond;
+        // frame grid lines when frames are wide enough
+        if (pixelsPerSecond / fps >= 8.0f * m.s){
+            const long first = (long)std::floor(visibleFrom * fps);
+            const long last = (long)std::ceil(visibleTo * fps);
+            for (long f = std::max(0L, first); f <= last; f++){
+                const float x = xAt((float)f / fps);
+                rowsList->AddLine(ImVec2(x, clipMin.y), ImVec2(x, clipMax.y), IM_COL32(255, 255, 255, 14));
+            }
+        }
+
+        // the keys of track `t` in the visible range
+        auto visibleKeys = [&](size_t t, size_t& begin, size_t& end){
+            const std::vector<ClipKey>& keys = data.tracks[t].keys;
+            begin = (size_t)(std::lower_bound(keys.begin(), keys.end(), visibleFrom, [](const ClipKey& k, float time){ return k.time < time; }) - keys.begin());
+            end = (size_t)(std::upper_bound(keys.begin(), keys.end(), visibleTo, [](float time, const ClipKey& k){ return time < k.time; }) - keys.begin());
+        };
+        struct Visible{ float time; size_t track; size_t key; };
+
+        int hoveredRow = -1;
+        hoveredKeyIds.clear();
+        const ImVec4 selectedColor = selectedKeyColor();
+        const float keyAlpha = readOnly ? 0.5f : 1.0f;
+        for (size_t r = 0; r < rows.size(); r++){
+            const Row& row = rows[r];
+            const ImVec2 rowPos(top.x, top.y + (float)r * m.rowHeight);
+            if (rowPos.y + m.rowHeight < clipMin.y || rowPos.y > clipMax.y) continue;
+            if (r % 2 == 1){
+                rowsList->AddRectFilled(ImVec2(origin.x, rowPos.y), ImVec2(keyAreaX, rowPos.y + m.rowHeight), color(Theme::Colors::RowBackgroundAlt));
+            }
+            if (row.kind == Row::Kind::Summary){
+                rowsList->AddRectFilled(ImVec2(keyAreaX, rowPos.y), ImVec2(keyAreaX + keyAreaWidth, rowPos.y + m.rowHeight), IM_COL32(0, 0, 0, 45));
+            }
+            rowsList->AddLine(ImVec2(origin.x, rowPos.y + m.rowHeight), ImVec2(keyAreaX + keyAreaWidth, rowPos.y + m.rowHeight), IM_COL32(0, 0, 0, 70));
+            drawRowLabel(row, r, rowPos, labelW, m.rowHeight);
+            drawValueField(row, rowPos, labelW, m.rowHeight);
+
+            // the visible keys: one diamond per time (the summary row merges every track's times)
+            std::vector<Visible> keys;
+            if (row.kind == Row::Kind::Summary){
+                for (size_t t = 0; t < data.tracks.size(); t++){
+                    size_t b = 0, e = 0;
+                    visibleKeys(t, b, e);
+                    for (size_t k = b; k < e; k++) keys.push_back({data.tracks[t].keys[k].time, t, k});
+                }
+                std::sort(keys.begin(), keys.end(), [](const Visible& a, const Visible& b){ return a.time < b.time; });
+            }else{
+                size_t b = 0, e = 0;
+                visibleKeys((size_t)row.track, b, e);
+                for (size_t k = b; k < e; k++) keys.push_back({data.tracks[(size_t)row.track].keys[k].time, (size_t)row.track, k});
+            }
+            rowsList->PushClipRect(ImVec2(keyAreaX, clipMin.y), ImVec2(keyAreaX + keyAreaWidth, clipMax.y), true);
+            const float cy = rowPos.y + m.rowHeight * 0.5f;
+            const bool rowHovered = ImGui::IsWindowHovered() && io.MousePos.y >= rowPos.y && io.MousePos.y < rowPos.y + m.rowHeight &&
+                                    io.MousePos.x >= keyAreaX;
+            float lastX = -1e9f;
+            bool lastSelected = false;
+            for (size_t i = 0; i < keys.size();){
+                const float t = keys[i].time;
+                size_t j = i;
+                bool selected = true;
+                while (j < keys.size() && std::fabs(keys[j].time - t) <= kKeyEpsilon){
+                    selected = selected && isSelected(keys[j].track, keys[j].key);
+                    j++;
+                }
+                const float x = xAt(t);
+                // keys closer than a pixel to the last one drawn (zoomed out on a dense clip) share its diamond
+                if (x - lastX < 1.0f * m.s && selected == lastSelected && !(rowHovered && std::fabs(io.MousePos.x - x) <= m.keyHit)){
+                    i = j;
+                    continue;
+                }
+                lastX = x;
+                lastSelected = selected;
+                const float radius = row.kind == Row::Kind::Component ? m.keyRadius * 0.8f : m.keyRadius;
+                ImVec4 fill = selected ? selectedColor : keyColor();
+                if (!selected && row.missing) fill = Theme::Colors::WarningText;
+                if (!selected && row.kind == Row::Kind::Summary) fill = Theme::Colors::SubtleText;
+                const ImVec2 pts[4] = {ImVec2(x, cy - radius), ImVec2(x + radius, cy), ImVec2(x, cy + radius), ImVec2(x - radius, cy)};
+                rowsList->AddConvexPolyFilled(pts, 4, color(fill, fill.w * keyAlpha));
+                rowsList->AddPolyline(pts, 4, IM_COL32(20, 20, 20, (int)(255 * keyAlpha)), ImDrawFlags_Closed, 1.0f * m.s);
+                if (rowHovered && std::fabs(io.MousePos.x - x) <= m.keyHit){
+                    hoveredRow = (int)r;
+                    hoveredTime = t;
+                    hoveredKeyIds.clear();
+                    for (size_t k = i; k < j; k++){
+                        const ClipTrackData& track = data.tracks[keys[k].track];
+                        hoveredKeyIds.push_back({track.path, track.channel, keys[k].time});
+                    }
+                }
+                i = j;
+            }
+            rowsList->PopClipRect();
+        }
+
+        // the key area's input: click / Shift / Ctrl select, box select, drag, right-click menu
+        ImGui::SetCursorScreenPos(ImVec2(keyAreaX, top.y));
+        ImGui::InvisibleButton("##clip_keys", ImVec2(keyAreaWidth, contentHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
+        const int mouseRow = (int)std::floor((io.MousePos.y - top.y) / m.rowHeight);
+        auto allSelected = [&](const std::vector<KeyId>& ids){
+            // selection membership by identity (the mask is per revision)
+            for (const KeyId& id : ids){
+                bool found = false;
+                for (const AnimationClipController::KeyRef& ref : selectedRefs){
+                    const ClipTrackData& track = data.tracks[ref.track];
+                    if (track.channel == id.channel && std::fabs(track.keys[ref.key].time - id.time) <= kKeyEpsilon && track.path == id.path){
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) return false;
+            }
+            return true;
+        };
+        if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
+            const bool additive = io.KeyShift || io.KeyCtrl;
+            dragStart = io.MousePos;
+            if (!hoveredKeyIds.empty()){
+                const bool already = allSelected(hoveredKeyIds);
+                if (io.KeyCtrl && already){
+                    // Ctrl toggles
+                    std::vector<KeyId> kept;
+                    for (const KeyId& id : selection){
+                        bool hit = false;
+                        for (const KeyId& other : hoveredKeyIds){
+                            hit = hit || (other.path == id.path && other.channel == id.channel && std::fabs(other.time - id.time) <= kKeyEpsilon);
+                        }
+                        if (!hit) kept.push_back(id);
+                    }
+                    selection = kept;
+                    refreshSelection();
+                    drag = Drag::None;
+                }else{
+                    if (!already) selectKeys(hoveredKeyIds, additive);
+                    dragGrabTime = hoveredTime;
+                    dragAdditive = additive;
+                    drag = Drag::PendingKeys;
+                }
+            }else{
+                if (!additive){
+                    selection.clear();
+                    selectEvent(-1);
+                    refreshSelection();
+                }
+                dragAdditive = additive;
+                drag = Drag::Box;
+            }
+        }
+        if (ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left)){
+            if (drag == Drag::PendingKeys && std::fabs(io.MousePos.x - dragStart.x) > 3.0f * m.s){
+                std::string error;
+                if (!readOnly && beginDrag(&error)){
+                    drag = Drag::Keys;
+                }else{
+                    setNotice(readOnly ? std::string("Read-only clip: extract it to edit it") : error, true);
+                    drag = Drag::None;
+                }
+            }
+            if (drag == Drag::Keys){
+                std::string error;
+                if (!updateDrag((io.MousePos.x - dragStart.x) / pixelsPerSecond, &error) && !error.empty()) setNotice(error, true);
+                ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+            }
+            if (drag == Drag::Box){
+                const ImVec2 a(std::min(dragStart.x, io.MousePos.x), std::min(dragStart.y, io.MousePos.y));
+                const ImVec2 b(std::max(dragStart.x, io.MousePos.x), std::max(dragStart.y, io.MousePos.y));
+                rowsList->AddRectFilled(a, b, color(Theme::Colors::Selection, 0.25f));
+                rowsList->AddRect(a, b, color(Theme::Colors::Selection, 0.9f));
+            }
+        }
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) && (drag == Drag::Keys || drag == Drag::Box || drag == Drag::PendingKeys)){
+            if (drag == Drag::Keys){
+                endDrag();
+            }else if (drag == Drag::Box){
+                if (std::fabs(io.MousePos.x - dragStart.x) > 2.0f * m.s || std::fabs(io.MousePos.y - dragStart.y) > 2.0f * m.s){
+                    const int rowA = (int)std::floor((dragStart.y - top.y) / m.rowHeight);
+                    const int rowB = (int)std::floor((io.MousePos.y - top.y) / m.rowHeight);
+                    boxSelect(rowA, rowB, timeAt(dragStart.x), timeAt(io.MousePos.x), dragAdditive);
+                }
+            }else if (drag == Drag::PendingKeys && !dragAdditive && !hoveredKeyIds.empty()){
+                // a click (no drag) on one of several selected keys selects only those
+                selectKeys(hoveredKeyIds, false);
+            }
+            drag = Drag::None;
+        }
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right) && drag == Drag::None){
+            contextRow = mouseRow;
+            contextTime = snapToFrame(std::max(0.0f, timeAt(io.MousePos.x)));
+            if (!hoveredKeyIds.empty()){
+                if (!allSelected(hoveredKeyIds)) selectKeys(hoveredKeyIds, false);
+                contextTime = hoveredTime;
+            }
+            ImGui::OpenPopup("##clip_key_menu");
+        }
+        if (ImGui::IsItemHovered() && hoveredRow >= 0 && drag == Drag::None){
+            ImGui::SetTooltip("%s", formatBoth(hoveredTime, fps, showFrames).c_str());
+        }
+        drawKeyContextMenu();
+        drawRowMenu();
+
+        // the playhead
+        if (playX >= keyAreaX && playX <= keyAreaX + keyAreaWidth){
+            rowsList->AddLine(ImVec2(playX, clipMin.y), ImVec2(playX, clipMax.y), playheadColour, 1.5f * m.s);
+        }
+        ImGui::SetCursorScreenPos(top);
+        ImGui::Dummy(ImVec2(avail.x, contentHeight));
+        ImGui::EndChild();
     }
-    ImGui::SetCursorScreenPos(top);
-    ImGui::Dummy(ImVec2(avail.x, contentHeight));
-    ImGui::EndChild();
 
     if (playX >= keyAreaX && playX <= keyAreaX + keyAreaWidth){
         drawList->AddLine(ImVec2(playX, origin.y), ImVec2(playX, origin.y + headerHeight), playheadColour, 1.5f * m.s);
@@ -986,19 +1015,31 @@ void AnimationWindowClip::drawSheet(SceneProject* sceneProject, bool focused){
     const ImVec2 bottom = ImGui::GetCursorScreenPos();
     ImGui::SetCursorScreenPos(ImVec2(origin.x + 2.0f * m.s, bottom.y));
     ImGui::PushStyleColor(ImGuiCol_Button, view == View::Dopesheet ? Theme::Colors::ButtonActivated : ImGui::GetStyleColorVec4(ImGuiCol_Button));
-    if (ImGui::SmallButton("Dopesheet")) view = View::Dopesheet;
+    if (ImGui::SmallButton("Dopesheet") && view != View::Dopesheet){
+        view = View::Dopesheet;
+        saveSettings();
+    }
     ImGui::PopStyleColor();
+    ImGui::SetItemTooltip("The keys of every property in rows");
     ImGui::SameLine(0.0f, 2.0f * m.s);
-    ImGui::BeginDisabled(true);
-    ImGui::SmallButton("Curves");
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Curves view: not available yet");
+    ImGui::PushStyleColor(ImGuiCol_Button, view == View::Curves ? Theme::Colors::ButtonActivated : ImGui::GetStyleColorVec4(ImGuiCol_Button));
+    if (ImGui::SmallButton("Curves") && view != View::Curves){
+        view = View::Curves;
+        saveSettings();
+    }
+    ImGui::PopStyleColor();
+    ImGui::SetItemTooltip("The curves of the properties: drag key points in time and value; the wheel zooms the values,\n"
+                          "right-click a key or a curve for its interpolation; F frames the selected keys, A all");
     ImGui::SameLine();
-    if (!notice.empty()){
+    // the notice, else what Record does now
+    const std::string recording = notice.empty() ? recordStatus() : std::string();
+    if (!notice.empty() || !recording.empty()){
+        const std::string& text = notice.empty() ? recording : notice;
         const float room = keyAreaX - ImGui::GetCursorScreenPos().x - 6.0f * m.s;
-        const std::string shown = elideMiddle(notice, std::max(10.0f, room));
-        ImGui::TextColored(noticeWarning ? Theme::Colors::WarningText : Theme::Colors::SubtleText, "%s", shown.c_str());
-        if (shown != notice) ImGui::SetItemTooltip("%s", notice.c_str());
+        const std::string shown = elideMiddle(text, std::max(10.0f, room));
+        const ImVec4 colour = !notice.empty() ? (noticeWarning ? Theme::Colors::WarningText : Theme::Colors::SubtleText) : Theme::Colors::ErrorText;
+        ImGui::TextColored(colour, "%s", shown.c_str());
+        if (shown != text) ImGui::SetItemTooltip("%s", text.c_str());
     }
     const float contentWidth = std::max(keyAreaWidth, (std::max(viewLength(), c.getTime()) + 1.0f) * pixelsPerSecond);
     const float barY = bottom.y + (bottomHeight - ImGui::GetStyle().ScrollbarSize) * 0.5f;
@@ -1311,6 +1352,18 @@ void AnimationWindowClip::handleShortcuts(){
         if (ImGui::IsKeyPressed(ImGuiKey_D, false)) report(duplicateSelected(&error));
     }
     const float width = std::max(1.0f, ImGui::GetWindowWidth() - scaledLabelWidth());
-    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F, false)) frameKeys(true, width);
-    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)) frameKeys(false, width);
+    // F / A: the time range, and in the curves view the value range too
+    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_F, false)){
+        frameKeys(true, width);
+        if (view == View::Curves) frameCurveValues(true);
+    }
+    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_A, false)){
+        frameKeys(false, width);
+        if (view == View::Curves) frameCurveValues(false);
+    }
+    // R: Record on / off
+    if (plain && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_R, false)){
+        if (!setRecording(project->getSelectedScene(), !c.isRecording(), &error)) report(false);
+        error.clear();
+    }
 }

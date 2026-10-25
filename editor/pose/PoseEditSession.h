@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "animation/ClipTypes.h"
 #include "ecs/Entity.h"
 #include "component/MeshComponent.h"
 #include "math/AABB.h"
@@ -102,6 +103,11 @@ namespace jasperengine::editor{
         // suspend() on the active session when `entity` of `sceneId` is one of its posed bones
         // (not the model): before a command reads and writes its Transform
         static void suspendActiveForBone(uint32_t sceneId, Entity entity);
+        // The Pose window's ClipRecordHooks::beforeChannelWrite listener (animation clips 9.R5,
+        // it replaced poseInspectorHooks().beforeTransformWrite): a scene command, undo or redo is
+        // about to write `channel` of `entity`; a Transform channel of a posed bone suspends the
+        // pose first, so the command records and edits the rest pose, never the posed values
+        static void beforeChannelWrite(uint32_t sceneId, Entity entity, ClipChannel channel);
         Project* project() const { return projectPtr; }
 
         bool bound() const { return rigPtr != nullptr; }

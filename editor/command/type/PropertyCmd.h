@@ -10,7 +10,6 @@
 #include "ecs/Entity.h"
 #include "component/Transform.h"
 #include "Catalog.h"
-#include "pose/PoseInspectorHooks.h"
 #include "animation/ClipRecordHooks.h"
 #include <functional>
 #include <type_traits>
@@ -128,10 +127,8 @@ namespace jasperengine::editor{
             if (!sceneProject){
                 return false;
             }
-            if (type == ComponentType::Transform && poseInspectorHooks().beforeTransformWrite){
-                for (const auto& entry : values) poseInspectorHooks().beforeTransformWrite(sceneId, entry.first);
-            }
-            // clip previews put a previewed channel back to its rest (animation clips 9.R6)
+            // a posed bone (Pose window) or a previewed channel (clip preview) goes back to its rest
+            // first: the command records and edits the rest (animation clips 9.R5/R6)
             for (const auto& entry : values) ClipRecordHooks::beforeComponentWrite(sceneId, entry.first, type, propertyName);
             for (auto& [entity, value] : values){
                 PropertyData prop = Catalog::findProperty(sceneProject->scene, entity, type, propertyName);
