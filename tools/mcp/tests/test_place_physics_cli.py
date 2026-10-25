@@ -499,12 +499,20 @@ async def test_save_writes_the_scene():
     # tooling files on a first save; no other scene and no project.yaml change
     after_save = tree_bytes(proj)
     changed = sorted(k for k, v in others.items() if after_save.get(k) != v)
-    # a project.yaml written before format versions gets its formatVersion on the first save
-    # (S03 R20/R21), and nothing else
-    if "project.yaml" in changed:
-        old, new = yaml.safe_load(others["project.yaml"]), yaml.safe_load(after_save["project.yaml"])
-        if "formatVersion" not in old and new.pop("formatVersion", None) is not None and new == old:
-            changed.remove("project.yaml")
+    # a document written before format versions gets its formatVersion on the first save (S03
+    # R20/R21), and one written before asset identity its GUID when the project opens (S04):
+    # nothing else
+    def identity_only(name):
+        if not (name.endswith(".scene") or name == "project.yaml"):
+            return False
+        old, new = yaml.safe_load(others[name]), yaml.safe_load(after_save[name])
+        if not isinstance(old, dict) or not isinstance(new, dict):
+            return False
+        for key in ("formatVersion", "guid", "formerGuids"):
+            if key not in old:
+                new.pop(key, None)
+        return new == old
+    changed = [k for k in changed if not (k in after_save and identity_only(k))]
     check(not changed, f"--save changed {changed}")
     # the saved poses are where the next run starts, and they stay put
     again = place(proj, "TableCrate", CRATE_BOXES)

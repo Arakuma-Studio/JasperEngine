@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 import struct
 import time
 import zlib
@@ -103,8 +104,8 @@ async def test_asset_info_does_not_convert(ed: Editor):
     ed.check_in("Not converted yet", info.get("error", ""))
     glb = ed.project / ".jasperengine" / "imported" / "unlisted" / "fresh.fbx.glb"
     ed.check(not glb.exists(), "get_asset_info wrote no conversion")
-    fresh.unlink()
-    fresh.parent.rmdir()
+    # (with its asset identity's .meta sidecar, S04)
+    shutil.rmtree(fresh.parent)
 
 
 async def test_set_model_loads_the_fbx(ed: Editor):
