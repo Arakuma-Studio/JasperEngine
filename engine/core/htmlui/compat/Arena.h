@@ -43,8 +43,6 @@ namespace jasperengine::htmlui::compat {
         static bool keep(size_t previous, size_t bytes);
         // a spare of `bytes` is taken back into use (no longer kept)
         static void take(size_t bytes);
-        // the bytes the thread keeps (tests)
-        static size_t kept();
     };
 
     class JASPERENGINE_API Arena {

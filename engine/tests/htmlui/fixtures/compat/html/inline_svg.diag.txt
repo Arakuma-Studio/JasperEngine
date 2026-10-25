@@ -1,4 +1,0 @@
-compat/html/inline_svg.html:5:22: error: 'onclick' (JavaScript) is not run [HTMLUI-HTML-0005]
-compat/html/inline_svg.html:6:1: warning: <foreignObject> content inside an SVG is not drawn (the SVG renderer has no HTML) (fix: place the HTML over the SVG with CSS positioning) [HTMLUI-SVG-0002]
-compat/html/inline_svg.html:7:1: warning: an <svg> nested inside an inline SVG is drawn as a <g> (its viewBox, size and position are ignored) (fix: use <g transform="..."> or <symbol>/<use>) [HTMLUI-SVG-0002]
-compat/html/inline_svg.html:9:1: warning: <math> cannot be drawn by the engine; a placeholder box of its default size is shown (fix: use an image or SVG of the formula) [HTMLUI-HTML-0002]

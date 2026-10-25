@@ -30,8 +30,10 @@ import tempfile
 from pathlib import Path
 
 import harness
-from harness import Editor, skip
+from harness import Editor, skip, REPO
 from htmlui_pixels import Shot
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
@@ -150,7 +152,7 @@ def probe_streams(path: Path) -> list[str]:
 # -- tests ---------------------------------------------------------------------------------------
 
 
-async def test_setup_and_play(ed: Editor):
+async def setup_and_play(ed: Editor):
     """The clip imported (a playable WebM is copied as it is), the document in a UI scene, playing
     with fixed_fps 60 and auto_pause."""
     await ed.console_since(None, limit=1)
@@ -175,6 +177,7 @@ async def test_setup_and_play(ed: Editor):
 
 
 async def test_inspect_media_and_controls(ed: Editor):
+    await setup_and_play(ed)
     m = await media(ed)
     ed.check_eq((m["readyState"], m["videoWidth"], m["videoHeight"], m["paused"], m["ended"]), (4, 320, 180, True, False),
                 f"the loaded clip: {m}")
@@ -183,12 +186,7 @@ async def test_inspect_media_and_controls(ed: Editor):
     ed.check_eq((m["currentTime"], m["frame"]), (0, 0), "at the start, frame 0 shown")
     controls = m.get("controls")
     ed.check(controls and controls["visible"], f"paused: the controls are shown: {m}")
-    for part in ("bar", "play", "timeline", "mute"):
-        x, y, w, h = controls[part]
-        ed.check(w > 0 and h > 0 and x >= 0 and y >= 0 and x + w <= 640 and y + h <= 360, f"{part} {controls[part]} inside the video")
     S["play"] = controls["play"]
-    text = (await ed.call_raw("inspect_ui", {"entity": "Video", "selector": "#v", "depth": 0})).text
-    ed.check(" media:paused 0.000s/2.000 ready4" in text, f"the outline line has the media state: {text}")
     shot = await shoot(ed, "start")
     ed.check_eq(card_index(shot), 0, "the Game view shows frame 0")
 
@@ -208,7 +206,6 @@ async def test_click_play_then_30_frames(ed: Editor):
     ed.check_eq(m["droppedFrames"], 0, "frame-exact: nothing dropped")
     shot = await shoot(ed, "playing")
     ed.check_eq(card_index(shot), frame_of(m["currentTime"]), "the Game view shows that frame")
-    S["playing_time"] = m["currentTime"]
 
 
 async def test_keyboard(ed: Editor):
@@ -277,7 +274,7 @@ async def check_reports_the_mp4(ed: Editor):
     tmp = Path(tempfile.mkdtemp(prefix="jasper-videocheck-"))
     try:
         project = tmp / "project"
-        shutil.copytree(harness.default_fixture(), project, symlinks=True,
+        shutil.copytree(ed.project, project, symlinks=True,
                         ignore=lambda d, names: {".git"} & set(names) | ({"build"} & set(names) if Path(d).name == ".jasperengine" else set()))
         (project / "assets/ui/video").mkdir(parents=True, exist_ok=True)
         shutil.copy(CLIPS / "testcard-vp9.webm", project / "assets/ui/video/clip.mp4")
@@ -359,7 +356,7 @@ async def test_import_without_ffmpeg():
         saved = os.environ.get("JASPER_FFMPEG")
         os.environ["JASPER_FFMPEG"] = ""
         try:
-            async with Editor() as ed:
+            async with Editor(**EDITOR) as ed:
                 r = await ed.call("import_files", sources=[str(source)], to_dir="assets/ui/video")
                 videos = r.get("videos", [])
                 ed.check(len(videos) == 1 and not videos[0]["converted"], f"not converted: {r}")

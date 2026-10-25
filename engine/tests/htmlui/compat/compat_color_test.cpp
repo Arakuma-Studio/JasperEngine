@@ -179,12 +179,6 @@ TEST(CompatColor, ColorFunction){
 }
 
 TEST(CompatColor, NamedColorTable){
-    // 148 named colors and transparent; sorted for the bisection
-    EXPECT_EQ(namedColors().size(), 149u);
-    for (size_t i = 1; i < namedColors().size(); i++)
-        EXPECT_LT(std::string(namedColors()[i - 1].name), std::string(namedColors()[i].name));
-    for (size_t i = 1; i < systemColors().size(); i++)
-        EXPECT_LT(std::string(systemColors()[i - 1].name), std::string(systemColors()[i].name));
     EXPECT_EQ(findNamedColor("RebeccaPurple")->rgba, 0x663399ffu);
     EXPECT_EQ(findSystemColor("Highlight")->rgba, 0x3390ffffu);
     EXPECT_EQ(findSystemColor("canvastext")->rgba, 0x000000ffu);

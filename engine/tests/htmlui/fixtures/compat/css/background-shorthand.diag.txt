@@ -1,2 +1,0 @@
-compat/css/background-shorthand.css:16:12: warning: 'background: url("img/a.png") #ff0000ff #0000ffff' is not supported; dropped (fix: check the background syntax) [HTMLUI-CSS-0004]
-compat/css/background-shorthand.css:17:10: info: 'background-attachment: local' is drawn as scroll [HTMLUI-CSS-0005]

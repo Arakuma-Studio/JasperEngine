@@ -87,21 +87,11 @@ namespace jasperengine::editor{
         // bones leaves posing. A raw hit on the model counts as on it. True when it left.
         bool clicked(Entity picked, Entity rawHit = NULL_ENTITY);
 
-        // the joint whose rings show (HumanBone::Count: none); false when the rig lacks it
-        bool setActiveJoint(pose::HumanBone bone);
-        pose::HumanBone getActiveJoint() const { return activeJoint; }
-
-        // What the view shows (MCP state, tests): handle positions in view pixels
-        struct HandleView{
-            std::string name;          // slot name ("left_hand", "hips", ...), ring_l/u/f/free for rings
-            std::string kind;          // hand, foot, hips, joint, ring
-            Vector2 position;
-            bool visible = false;
-        };
+        // Observable Scene-view state reported by MCP.
         struct State{
             bool posing = false;
             bool previewing = false;
-            std::vector<HandleView> handles;
+            int visibleHandles = 0;
             std::string activeJoint;
             std::vector<std::string> ghosts;     // previous, next, preview, global_edit
             bool floor = false;
@@ -112,19 +102,6 @@ namespace jasperengine::editor{
             int viewHeight = 0;
         };
         State getState() const;
-
-        // How independent each ghost is of the model (the MCP test hook's ghost_check): its own
-        // copy of every skeleton bone, no reference from its model copy to the model's
-        // GameObjects, and its slot bones turned where its pose differs from the model's pose
-        struct GhostCheck{
-            std::string kind;
-            int bones = 0;                       // skeleton bones of the rig
-            int ownBones = 0;                    // ... the ghost has its own copy of
-            int foreignReferences = 0;           // ghost model/bone references to GameObjects outside the ghost
-            int differing = 0;                   // slots whose ghost rotation differs from the model's (as expected)
-            int mismatched = 0;                  // slots where that is not as the two poses say
-        };
-        std::vector<GhostCheck> checkGhosts() const;
 
         // hides everything, drops the ghosts and ends a drag without committing it
         void clear();

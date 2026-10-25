@@ -138,7 +138,7 @@ cancels.
   flies or orbits (right or middle mouse held, a camera drag running: W A S D Q E move it).
 - Handles make no edits while the session is not `editable()` (a sync or async save, play mode).
 - MCP: `focus_window` pose_animation's state has `viewport` {posing, previewing, handle_count,
-  active_joint, ghosts, floor, contacts, balanced, global_edit, view}. With `JASPER_MCP_TEST_HOOKS=1`
-  (set by `tools/mcp/harness.py` only) it also has `handles` (Scene view pixels) and `pose.viewport`
-  is a test hook driving the same SceneRender mouse calls as SceneWindow (send_input only reaches a
-  running game), plus onion/ghost-during-preview switches, a click and closing the window.
+  active_joint, ghosts, floor, contacts, balanced, global_edit, view}. (The earlier test-only hooks,
+  `JASPER_MCP_TEST_HOOKS` with `handles` and `pose.viewport`, were removed upstream with the test
+  prune of 2026-10-25; viewport behaviour is covered by the `PoseViewportLogic` unit tests and the
+  remaining MCP window tests.)

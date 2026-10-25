@@ -51,7 +51,6 @@ namespace {
     }
 
     const HumanBone END_BONES[4] = {HumanBone::LeftHand, HumanBone::RightHand, HumanBone::LeftFoot, HumanBone::RightFoot};
-    const char* RING_NAMES[4] = {"ring_l", "ring_u", "ring_f", "ring_free"};
     const uint32_t RING_COLORS[4] = {poseview::RING_L_COLOR, poseview::RING_U_COLOR, poseview::RING_F_COLOR, poseview::RING_FREE_COLOR};
 
     // the ghost look: the library Hologram shader alpha blended, without scanlines or flicker,
@@ -67,16 +66,7 @@ namespace {
     constexpr float GHOST_DEPTH_FACTOR = 1.0f;
     constexpr float GHOST_DEPTH_UNITS = 4.0f;
 
-    const char* kindName(HandleKind kind){
-        switch (kind){
-            case HandleKind::Hand: return "hand";
-            case HandleKind::Foot: return "foot";
-            case HandleKind::Hips: return "hips";
-            case HandleKind::Joint: return "joint";
-            case HandleKind::Ring: return "ring";
-            default: return "none";
-        }
-    }
+
 
     std::string titleOf(HumanBone bone){
         std::string name = pose::humanBoneName(bone);
@@ -350,17 +340,7 @@ bool editor::PoseViewport::grounded() const{
     return primary < 0 || primary >= static_cast<int>(data.poses.size()) || data.poses[primary].grounded;
 }
 
-bool editor::PoseViewport::setActiveJoint(HumanBone bone){
-    PoseEditSession* session = posedSession();
-    if (bone != HumanBone::Count && (!session || !session->rig()->has(bone))) return false;
-    activeJoint = bone;
-    if (session && session->project()){
-        if (SceneProject* sceneProject = session->project()->getScene(session->sceneId())){
-            sceneProject->needUpdateRender = true;
-        }
-    }
-    return true;
-}
+
 
 // ---- per frame ----
 
@@ -1172,58 +1152,6 @@ void editor::PoseViewport::clear(){
 
 // ---- state ----
 
-std::vector<editor::PoseViewport::GhostCheck> editor::PoseViewport::checkGhosts() const{
-    std::vector<GhostCheck> checks;
-    PoseEditSession* session = posedSession();
-    if (!session || !session->rig() || !session->rigInfo()) return checks;
-    const pose::PoseRig& rig = *session->rig();
-    const std::vector<Entity>& modelBones = session->rigInfo()->boneEntities;
-    const pose::HumanPose& shown = session->displayed();
-    auto degreesBetween = [](const Quaternion& a, const Quaternion& b){
-        const float dot = std::min(1.0f, std::fabs(a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z));
-        return static_cast<float>(pose::radToDeg(2.0 * std::acos(static_cast<double>(dot))));
-    };
-    for (const Ghost& ghost : ghosts){
-        GhostCheck check;
-        check.kind = ghost.kind;
-        const std::unordered_set<Entity> own(ghost.entities.begin(), ghost.entities.end());
-        auto reference = [&](Entity entity){
-            if (entity != NULL_ENTITY && !own.count(entity)) check.foreignReferences++;
-        };
-        if (const ModelComponent* model = scene->findComponent<ModelComponent>(ghost.root)){
-            reference(model->skeleton);
-            for (const auto& entry : model->bonesNameMapping) reference(entry.second);
-            for (const auto& entry : model->bonesIdMapping) reference(entry.second);
-            for (const auto& entry : model->meshNodesMapping) reference(entry.second);
-            for (const auto& entry : model->nodesIdMapping) reference(entry.second);
-            for (const ModelSkinBinding& binding : model->skinBindings){
-                reference(binding.mesh);
-                for (Entity joint : binding.joints) reference(joint);
-            }
-        }
-        for (size_t i = 0; i < modelBones.size(); i++){
-            if (modelBones[i] == NULL_ENTITY) continue;
-            check.bones++;
-            const Entity copy = i < ghost.bones.size() ? ghost.bones[i] : NULL_ENTITY;
-            if (copy == NULL_ENTITY || copy == modelBones[i] || !own.count(copy) || !scene->isEntityCreated(copy)) continue;
-            check.ownBones++;
-            if (const BoneComponent* bone = scene->findComponent<BoneComponent>(copy)) reference(bone->model);
-            const int slot = rig.slotOfBone(static_cast<int>(i));
-            if (slot < 0) continue;
-            const Transform* ghostTransform = scene->findComponent<Transform>(copy);
-            const Transform* modelTransform = scene->findComponent<Transform>(modelBones[i]);
-            if (!ghostTransform || !modelTransform) continue;
-            // (a dead zone between "same" and "different")
-            const float poses = degreesBetween(ghost.pose.rotations[static_cast<size_t>(slot)], shown.rotations[static_cast<size_t>(slot)]);
-            const float bones = degreesBetween(ghostTransform->rotation, modelTransform->rotation);
-            if (poses > 0.5f && bones > 0.25f) check.differing++;
-            if ((poses > 0.5f && bones <= 0.25f) || (poses < 0.05f && bones > 0.25f)) check.mismatched++;
-        }
-        checks.push_back(check);
-    }
-    return checks;
-}
-
 editor::PoseViewport::State editor::PoseViewport::getState() const{
     State state;
     PoseEditSession* session = posedSession();
@@ -1234,29 +1162,19 @@ editor::PoseViewport::State editor::PoseViewport::getState() const{
     if (state.posing && updated){
         for (const poseview::Handle& handle : handles){
             if (handle.kind == HandleKind::None) continue;
-            HandleView view;
-            view.name = pose::humanBoneName(handle.bone);
-            view.kind = kindName(handle.kind);
-            view.visible = poseview::projectToView(viewProjection, handle.center, static_cast<float>(width), static_cast<float>(height),
-                                                   view.position);
-            state.handles.push_back(view);
+            Vector2 position;
+            if (poseview::projectToView(viewProjection, handle.center, static_cast<float>(width), static_cast<float>(height), position))
+                state.visibleHandles++;
         }
         const float w = static_cast<float>(width);
         const float h = static_cast<float>(height);
         const float tolerance = rings.empty() ? 0.0f : pixelsToWorld(rings.front().center, poseview::RING_PICK_PX);
         for (size_t r = 0; r < rings.size(); r++){
-            // a point of the ring's drawn part that a click there picks (no handle over it, no
-            // other ring nearer): of those, the farthest from the ring's projected centre
+            // Count a ring when its drawn part contains a point that can be picked.
             const poseview::Ring& ring = rings[r];
             const Vector3 toCamera = orthographic ? -viewDirection : (cameraPosition - ring.center).normalized();
             std::vector<std::pair<Vector3, Vector3>> segments;
             poseview::ringSegments(ring, toCamera, poseview::RING_SEGMENTS, segments);
-            HandleView view;
-            view.name = RING_NAMES[r];
-            view.kind = "ring";
-            Vector2 c;
-            poseview::projectToView(viewProjection, ring.center, w, h, c);
-            float best = -1.0f;
             for (const auto& s : segments){
                 const Vector3 mid = (s.first + s.second) * 0.5f;
                 Vector2 p;
@@ -1269,14 +1187,9 @@ editor::PoseViewport::State editor::PoseViewport::getState() const{
                         static_cast<int>(r)){
                     continue;
                 }
-                const float score = (p - c).length();
-                if (score > best){
-                    best = score;
-                    view.position = p;
-                    view.visible = true;
-                }
+                state.visibleHandles++;
+                break;
             }
-            state.handles.push_back(view);
         }
     }
     state.activeJoint = activeJoint == HumanBone::Count ? "" : pose::humanBoneName(activeJoint);

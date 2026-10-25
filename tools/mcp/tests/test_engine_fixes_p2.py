@@ -4,13 +4,20 @@ of the saved scene shows (it used to change only after a reload or in an export)
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from harness import Editor, find_key
 
-sys.path.insert(0, str(Path(__file__).parent))
-from test_runtime_regressions import image_difference  # noqa: E402
+from htmlui_pixels import decode_png
+
+EDITOR = {"create": True, "name": "Live Sky Order"}
+
+
+def image_difference(a: bytes, b: bytes) -> float:
+    """Mean RGB difference; every capture contains the same scene and camera."""
+    wa, ha, ca, ra = decode_png(a)
+    wb, hb, cb, rb = decode_png(b)
+    assert (wa, ha) == (wb, hb), "scene captures differ in size"
+    return sum(abs(ra[y][x * ca + c] - rb[y][x * cb + c])
+               for y in range(ha) for x in range(wa) for c in range(3)) / (wa * ha * 3)
 
 TIMEOUT = 600
 
@@ -25,9 +32,8 @@ async def make(ed: Editor, name: str, type_: str):
 
 
 async def settled_shot(ed: Editor) -> bytes:
-    # the sky (and the meshes lit by it) load over a few frames
-    await ed.call("wait", frames=30)
-    shot = await ed.call_raw("screenshot", {"view": "scene"})
+    # The screenshot tool waits for loaded assets and a freshly rendered scene.
+    shot = await ed.call_raw("screenshot", {"view": "scene", "max_width": 320})
     ed.check(not shot.is_error and shot.images, f"no screenshot: {shot.text[:300]}")
     return shot.images[0][0]
 

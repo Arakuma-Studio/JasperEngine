@@ -1,5 +1,0 @@
-compat/css/font-shorthand.css:5:6: info: 'small-caps, condensed' in the font shorthand is dropped (no font-variant / font-stretch) [HTMLUI-CSS-0005]
-compat/css/font-shorthand.css:7:6: info: system font 'caption' is written as 13.333px system-ui [HTMLUI-CSS-0005]
-compat/css/font-shorthand.css:8:6: info: system font 'menu' is written as 13.333px system-ui [HTMLUI-CSS-0005]
-compat/css/font-shorthand.css:9:6: warning: 'font: bold' is not supported; declaration dropped (fix: write font: [style] [weight] <size>[/<line-height>] <family>) [HTMLUI-CSS-0004]
-compat/css/font-shorthand.css:10:6: warning: 'font' with var() cannot be split into longhands; written as is (fix: set font-size and font-family separately) [HTMLUI-CSS-0012]

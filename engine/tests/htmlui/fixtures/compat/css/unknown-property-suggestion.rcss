@@ -1,9 +1,0 @@
-#htmlui-root .d {
-decorator: none;
-font-effect: none;
-image-color: #ffffffff;
--rmlui-direction: rtl;
--rmlui-language: en;
-fill-image: "x";
-scrollbar-margin: 2px;
-}

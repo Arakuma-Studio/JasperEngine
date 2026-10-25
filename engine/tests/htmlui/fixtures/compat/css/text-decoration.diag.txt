@@ -1,7 +1,0 @@
-compat/css/text-decoration.css:3:9: info: text-decoration 'dotted #ff0000ff 2px' is dropped (color, style and thickness follow the text) [HTMLUI-CSS-0005]
-compat/css/text-decoration.css:3:61: info: only the first decoration line 'underline' is drawn [HTMLUI-CSS-0005]
-compat/css/text-decoration.css:4:52: info: 'text-decoration-style' is not supported; dropped (fix: draw a custom line with border-bottom (and padding-bottom) or a box-shadow) [HTMLUI-CSS-0002]
-compat/css/text-decoration.css:4:92: info: 'text-decoration-color' is not supported; dropped (fix: draw a custom line with border-bottom (and padding-bottom) or a box-shadow) [HTMLUI-CSS-0002]
-compat/css/text-decoration.css:5:14: info: 'text-decoration-thickness' is not supported; dropped (fix: draw a custom line with border-bottom (and padding-bottom) or a box-shadow) [HTMLUI-CSS-0002]
-compat/css/text-decoration.css:5:46: info: 'text-underline-offset' is not supported; dropped (fix: draw a custom line with border-bottom (and padding-bottom) or a box-shadow) [HTMLUI-CSS-0002]
-compat/css/text-decoration.css:5:85: info: text-decoration 'blink' is dropped (only the line keyword is drawn) [HTMLUI-CSS-0005]

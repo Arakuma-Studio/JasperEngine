@@ -12,6 +12,8 @@
 
 #include <gtest/gtest.h>
 
+#include <map>
+
 using namespace posetest;
 using H = HumanBone;
 
@@ -79,12 +81,17 @@ TEST(PoseLoopSeam, ContinuousAcrossEveryWrapForEveryPreset){
                                              << " jumps at t = " << all.worstAt[b] << " (len " << length << ")";
             }
             EXPECT_LT(all.hips, 2e-3 * rig.humanScale()) << preset.name;
+            // Each window checks every bone; reuse it when several checks ask for the same times.
+            std::map<double, Steps> windows;
             // around each bone's wrap time and around 0 / len, finer still
             for (H bone : {H::LeftUpperArm, H::LeftLowerArm, H::LeftHand, H::Head, H::Spine}){
                 const HumanBoneInfo& info = humanBoneInfo(bone);
                 const double delay = data.settings.overlap * data.settings.weights[static_cast<int>(info.group)] * info.depth;
                 for (double at : {delay, delay + length, 0.0, length}){
-                    const Steps near = denseSteps(rig, input, at - 0.001, at + 0.001, 1e-5);
+                    auto [it, inserted] = windows.try_emplace(at);
+                    if (inserted)
+                        it->second = denseSteps(rig, input, at - 0.001, at + 0.001, 1e-5);
+                    const Steps& near = it->second;
                     EXPECT_LT(near.worst[boneIndex(bone)], 0.1) << preset.name << " " << humanBoneName(bone) << " at " << at;
                 }
             }

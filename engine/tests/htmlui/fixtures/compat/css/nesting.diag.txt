@@ -1,4 +1,0 @@
-compat/css/nesting.css:4:3: info: nested rules are flattened (& replaced by the parent selector) [HTMLUI-AT-0008]
-compat/css/nesting.css:13:3: warning: invalid selector '&__elem' (unexpected '__elem' in a selector); the rule is dropped (fix: fix the selector syntax) [HTMLUI-SEL-0007]
-compat/css/nesting.css:20:16: info: @supports (display: flex) is true: its rules apply [HTMLUI-AT-0003]
-compat/css/nesting.css:22:3: warning: nested selectors expand to more than 256 selectors; the rule is dropped (fix: flatten the nesting or use fewer selectors in the parent list) [HTMLUI-SEL-0005]

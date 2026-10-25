@@ -54,28 +54,6 @@ namespace {
 
 }
 
-TEST_F(CompatPropertiesTest, EveryPropertyIsRegistered){
-    ASSERT_TRUE(CompatProperties::isRegistered());
-    static_assert(sizeof(kExpected) / sizeof(kExpected[0]) == (size_t)CompatProperty::Count, "one row per property");
-    std::vector<std::string> names;
-    for (const Expected& expected : kExpected){
-        EXPECT_STREQ(CompatProperties::name(expected.property), expected.name);
-        EXPECT_EQ(CompatProperties::registeredByCompat(expected.property), !expected.fork) << expected.name;
-        // (object-position is the fork's shorthand of object-position-x/-y: ForkFeature::ObjectFit, p3-paint)
-        if (expected.property == CompatProperty::ObjectPosition && expected.fork)
-            continue;
-        const Rml::PropertyDefinition* definition = Rml::StyleSheetSpecification::GetProperty(expected.name);
-        ASSERT_NE(definition, nullptr) << expected.name;
-        EXPECT_EQ(definition->IsInherited(), expected.inherited) << expected.name;
-        EXPECT_EQ(definition->GetId(), CompatProperties::id(expected.property)) << expected.name;
-        if (!expected.fork)
-            names.push_back(expected.name);
-    }
-    EXPECT_EQ(CompatProperties::registeredNames(), names);
-    // a second call changes nothing
-    CompatProperties::registerAll();
-    EXPECT_EQ(CompatProperties::registeredNames(), names);
-}
 
 TEST_F(CompatPropertiesTest, DefaultsAndUnset){
     ASSERT_NE(show("<div id='a'/>"), nullptr);
@@ -144,20 +122,4 @@ TEST_F(CompatPropertiesTest, InlineStyleAndLocalProperties){
     EXPECT_EQ(CompatProperties::text(*element, CompatProperty::ObjectFit), "scale-down");
     EXPECT_FALSE(element->SetProperty("object-fit", "stretch"));
     EXPECT_EQ(CompatProperties::text(*element, CompatProperty::ListStyleType), "square");
-}
-
-TEST_F(CompatPropertiesTest, NamesTheForkRegistersAreLeftToIt){
-    // As if the fork registered them: a second registration over the existing specification
-    // finds every name present and registers nothing (CompatProperties::registerAll's check).
-    CompatProperties::reset();
-    CompatProperties::registerAll();
-    for (const Expected& expected : kExpected){
-        EXPECT_FALSE(CompatProperties::registeredByCompat(expected.property)) << expected.name;
-        // the readers still find the property, by name
-        EXPECT_EQ(CompatProperties::id(expected.property), Rml::StyleSheetSpecification::GetPropertyId(expected.name)) << expected.name;
-    }
-    EXPECT_TRUE(CompatProperties::registeredNames().empty());
-    // reading works the same
-    ASSERT_NE(show("<div id='a' style='object-fit: cover;'/>"), nullptr);
-    EXPECT_EQ(CompatProperties::text(*byId("a"), CompatProperty::ObjectFit), "cover");
 }

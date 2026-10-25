@@ -17,7 +17,6 @@ Runs in a new empty project; the tests share one editor and run in order (state 
 """
 
 import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -487,34 +486,32 @@ async def test_save_reload_round_trip(ed: Editor):
     expected = await tracks_of(ed, S["squash_track"])
     fill = await tracks_of(ed, lattice_action(await ed.call("get_animation", scene=sid, entity=S["fill"]))["action"]["id"])
 
-    copy = ed.project.parent / "lattice-anim-reload"
-    if copy.exists():
-        shutil.rmtree(copy)
-    shutil.copytree(ed.project, copy)
-    try:
-        async with Editor(project=copy, label="lattice-anim-reload") as ed2:
-            opened = await ed2.call("open_scene", scene="scenes/LatticeAnim.scene")
-            sid2 = opened["scene"]["id"]
-            got = await tracks_of(ed2, S["squash_track"], scene=sid2)
-            ed2.check_eq(got["points"], expected["points"], "points reloaded")
-            ed2.check_eq(got["times"], expected["times"], "times reloaded")
-            check_close(ed2, got["values"], expected["values"], "values reloaded")
-            anim = await ed2.call("get_animation", scene=sid2, entity=S["fill"])
-            got = await tracks_of(ed2, lattice_action(anim)["action"]["id"], scene=sid2)
-            ed2.check_eq(got["easings"], fill["easings"], "easings reloaded")
-            check_close(ed2, got["values"], fill["values"], "filled values reloaded")
-            # the reloaded clip plays (preview) and the re-save writes the same bytes
-            await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="seek", time=1.0)
-            off = await offsets(ed2, S["cage"], scene=sid2)
-            ed2.check(off[4][1] > 0.35, f"the reloaded clip evaluates: {off[4]}")
-            await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="stop")
-            await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.5}})
-            await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.25}})
-            await ed2.call("save_scene", scene=sid2)
-            resaved = (copy / "scenes/LatticeAnim.scene").read_text()
-            if resaved != text:
-                import difflib
-                diff = "".join(list(difflib.unified_diff(text.splitlines(True), resaved.splitlines(True)))[:60])
-                ed2.fail("re-save is not byte-identical:\n" + diff)
-    finally:
-        shutil.rmtree(copy, ignore_errors=True)
+    async with Editor(project=ed.project, label="lattice-anim-reload") as ed2:
+        opened = await ed2.call("open_scene", scene="scenes/LatticeAnim.scene")
+        sid2 = opened["scene"]["id"]
+        got = await tracks_of(ed2, S["squash_track"], scene=sid2)
+        ed2.check_eq(got["points"], expected["points"], "points reloaded")
+        ed2.check_eq(got["times"], expected["times"], "times reloaded")
+        check_close(ed2, got["values"], expected["values"], "values reloaded")
+        anim = await ed2.call("get_animation", scene=sid2, entity=S["fill"])
+        got = await tracks_of(ed2, lattice_action(anim)["action"]["id"], scene=sid2)
+        ed2.check_eq(got["easings"], fill["easings"], "easings reloaded")
+        check_close(ed2, got["values"], fill["values"], "filled values reloaded")
+        await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.5}})
+        await ed2.call("set_properties", scene=sid2, entity=S["cage"], values={"lattice": {"fadeDistance": 0.25}})
+        # Verify an unmodified re-save before preview deliberately changes the
+        # keyframe evaluation progress (which is part of the legacy scene format).
+        scene_file = ed2.project / "scenes/LatticeAnim.scene"
+        scene_file.write_text("")
+        await ed2.call("save_scene", scene=sid2)
+        resaved = scene_file.read_text()
+        if resaved != text:
+            import difflib
+            diff = "".join(list(difflib.unified_diff(text.splitlines(True), resaved.splitlines(True)))[:60])
+            ed2.fail("re-save is not byte-identical:\n" + diff)
+
+        # Separately, the reloaded clip must still evaluate its authored keys.
+        await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="seek", time=1.0)
+        off = await offsets(ed2, S["cage"], scene=sid2)
+        ed2.check(off[4][1] > 0.35, f"the reloaded clip evaluates: {off[4]}")
+        await ed2.call("preview_animation", scene=sid2, animation=S["squash"], action="stop")

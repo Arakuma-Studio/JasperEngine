@@ -9,7 +9,6 @@
 #include "stb_image.h"
 
 #include <algorithm>
-#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -171,13 +170,11 @@ namespace {
         return true;
     }
 
-    std::atomic<size_t> inflations{0};
 
     const Pack& pack(){
         static Pack instance;
         static std::once_flag once;
         std::call_once(once, [](){
-            inflations++;
             if (embedded::lucidePackSize == 0){
                 Log::warn("[HTML UI] this build has no Lucide icon pack (engine/libs/lucide/lucide.pack was not embedded)");
                 return;
@@ -384,15 +381,6 @@ std::optional<std::string> LucideIcons::svgMarkup(std::string_view name, const s
     markup += *shapes;
     markup += "</svg>";
     return markup;
-}
-
-size_t LucideIcons::inflateCount(){
-    return inflations.load();
-}
-
-bool LucideIcons::validatePack(const unsigned char* data, size_t size, std::string* error){
-    Pack scratch;
-    return parsePack(data, size, scratch, error);
 }
 
 std::string LucideIcons::buildEmbeddedHeader(const unsigned char* data, size_t size){

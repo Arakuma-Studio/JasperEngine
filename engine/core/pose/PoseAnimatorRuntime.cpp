@@ -212,7 +212,6 @@ std::shared_ptr<const PoseAnimationBuild> PoseBuildCache::get(const std::string&
     std::shared_ptr<const PoseAnimationBuild> made = build(data, *rig, error);
     if (!made) return nullptr;
     std::lock_guard<std::mutex> lock(mutex);
-    builds++;
     // another thread built the same meanwhile: theirs is shared
     if (std::shared_ptr<const PoseAnimationBuild> found = findLocked(path, source, rig)) return found;
     entries.push_back({path, source, rig, made});
@@ -229,15 +228,7 @@ void PoseBuildCache::clear(){
     entries.clear();
 }
 
-size_t PoseBuildCache::size() const{
-    std::lock_guard<std::mutex> lock(mutex);
-    return entries.size();
-}
 
-uint64_t PoseBuildCache::buildCount() const{
-    std::lock_guard<std::mutex> lock(mutex);
-    return builds;
-}
 
 const std::vector<HumanPose>& PoseAnimatorRuntime::keys() const{
     static const std::vector<HumanPose> none;
@@ -327,12 +318,35 @@ bool PoseAnimatorRuntime::startPending(){
 }
 
 float PoseAnimatorRuntime::transitionSettleTime() const{
+    // Left/right pairs and bones with zero looseness share the same spring.
+    // Its expensive settling scan depends only on overshoot and anticipation;
+    // duration and overlap are applied below. Keep the cache within this call
+    // so edited settings never reuse an earlier transition's result.
+    struct SpringSettle {
+        float overshoot;
+        float anticipation;
+        float x;
+    };
+    std::array<SpringSettle, HUMAN_BONE_COUNT> springs;
+    size_t springCount = 0;
     float settle = 0.0f;
     for (int b = 0; b < HUMAN_BONE_COUNT; b++){
         float delay = 0.0f;
         Transition tr;
         boneTransition(data.settings, transition, b, delay, tr);
-        settle = std::max(settle, delay + settleX(tr) * std::max(tr.duration, 1e-4f));
+        float x = 1.0f;
+        if (tr.curve == TransitionCurve::Spring){
+            size_t i = 0;
+            while (i < springCount && !(springs[i].overshoot == tr.overshoot &&
+                                       springs[i].anticipation == tr.anticipation)){
+                i++;
+            }
+            if (i == springCount){
+                springs[springCount++] = {tr.overshoot, tr.anticipation, settleX(tr)};
+            }
+            x = springs[i].x;
+        }
+        settle = std::max(settle, delay + x * std::max(tr.duration, 1e-4f));
     }
     return settle;
 }

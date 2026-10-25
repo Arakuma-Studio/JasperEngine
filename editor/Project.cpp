@@ -5829,6 +5829,12 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
                 }
             }
 
+            // Fresh projects resolve fork manifests through the same project-relative
+            // reader as opened projects, including after the assets directory changes.
+            ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
+                return readShaderFile(relativePath, content);
+            });
+
             modelLoaded = true;
             assetDatabase.open(projectPath);
             saveProject();

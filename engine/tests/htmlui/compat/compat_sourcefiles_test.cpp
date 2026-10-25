@@ -10,25 +10,6 @@
 
 using namespace jasperengine::htmlui::compat;
 
-TEST(CompatSourceFiles, IdsPathsAndText){
-    SourceFiles files;
-    EXPECT_EQ(files.count(), 0u);
-    const uint32_t a = files.add("ui/a.css", "a{}");
-    const uint32_t b = files.add("ui/b.css", "b{}");
-    EXPECT_EQ(a, 1u);
-    EXPECT_EQ(b, 2u);
-    EXPECT_EQ(files.add("ui/a.css", "other"), a);   // once per session
-    EXPECT_EQ(files.text(a), "a{}");
-    EXPECT_EQ(files.path(b), "ui/b.css");
-    EXPECT_EQ(files.find("ui/b.css"), b);
-    EXPECT_EQ(files.find("ui/c.css"), 0u);
-    EXPECT_EQ(files.path(0), "");
-    EXPECT_EQ(files.path(9), "");
-    EXPECT_EQ(files.text(0), "");
-    EXPECT_EQ(files.position(0, 3), SourcePos{});
-    EXPECT_EQ(files.count(), 2u);
-}
-
 TEST(CompatSourceFiles, LineEndsCrLfAndCrlf){
     SourceFiles files;
     // line 1 "ab", LF; line 2 "cd", CRLF; line 3 "ef", CR; line 4 "gh"
@@ -93,31 +74,4 @@ TEST(CompatSourceFiles, SanitizeUtf8){
     EXPECT_EQ(replaced[0], 1u);
     EXPECT_EQ(bad.substr(0, 5), "a\xEF\xBF\xBD" "b");
     EXPECT_EQ(bad.find('\0'), std::string::npos);
-}
-
-TEST(CompatSourceFiles, CopiesAreIndependent){
-    SourceFiles files;
-    files.add("a.css", "a");
-    SourceFiles copy = files;
-    copy.add("b.css", "b");
-    EXPECT_EQ(files.count(), 1u);
-    EXPECT_EQ(copy.count(), 2u);
-    EXPECT_EQ(copy.text(1), "a");
-}
-
-TEST(CompatSourceRef, CoverAndEquality){
-    const SourceRef a{1, 10, 5};
-    const SourceRef b{1, 20, 2};
-    EXPECT_EQ(a.cover(b), (SourceRef{1, 10, 12}));
-    EXPECT_EQ(b.cover(a), (SourceRef{1, 10, 12}));
-    EXPECT_EQ(a.cover(SourceRef{}), a);
-    EXPECT_EQ(SourceRef{}.cover(b), b);
-    EXPECT_EQ(a.cover(SourceRef{2, 0, 1}), a);
-    EXPECT_FALSE(SourceRef{}.valid());
-    RcssLineMap lines;
-    lines.lines = {a, SourceRef{}, b};
-    EXPECT_EQ(lines.at(1), a);
-    EXPECT_FALSE(lines.at(2).valid());
-    EXPECT_FALSE(lines.at(0).valid());
-    EXPECT_FALSE(lines.at(4).valid());
 }

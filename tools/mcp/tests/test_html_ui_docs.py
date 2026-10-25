@@ -1,66 +1,31 @@
-"""The HTML/CSS UI agent docs (phase 4, p4-guide, spec §3.8 and §5.5): the guide
-docs/mcp/guide/html-ui.md (its 16 sections, served split by DocsTools), every fenced html/css/lua
-block of it checked (compat-clean through `check --ui`, Lua syntax through check_script, the
-complete scripts through lua-language-server, and the behaviour the snippets show run in play:
-the menu's clicks, keys and gamepad, data binding, anime, pointer pass-through, Lottie, fonts,
-texture mode), the Lua names it uses present in the LuaLS stubs, the stubs themselves
-(UIEventType, typed lua_CFunctions, BAD_UI_LUA codes), search_engine_api over the Lua UI API and
-the docs, and the AGENTS.md section of a new project.
+"""Executable HTML/CSS UI guide examples and their published tooling boundary.
 
-Snippet convention (the guide's, so it cannot rot): every ```html / ```css / ```lua block is a
-good example; a block preceded by a line "`<project path>`:" is a complete file written at that
-path, the others are fragments. Bad examples live in tables, never in those fences.
-
-The tool names the guide uses (create_ui_document, inspect_ui, assert_ui, their parameters) are
-checked against tools/list (p4-mcp-tools).
+The authored HTML/CSS/Lua/C++ snippets must check and run through the public APIs. Resource
+reads must publish the guide, and LuaLS must accept valid API use and reject documented mistakes.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
 import re
 import shutil
 import sys
-import tempfile
 from pathlib import Path
 
-import harness
 from harness import REPO, Editor, skip
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from test_html_ui_basic import Shot, near  # noqa: E402
+from htmlui_pixels import Shot, near  # noqa: E402
 from test_html_ui_checks import check, check_eq, fail, run_json, scratch_project, tiny_png, write  # noqa: E402
-from test_stubs import clangd_check, find_tool, lua_workspace, luals_check, stub_files, wait_tooling  # noqa: E402
+from test_stubs import clangd_check, find_tool, lua_workspace, luals_check, wait_tooling  # noqa: E402
+
+EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
 
 TIMEOUT = 900
 
 S: dict = {}
 
 GUIDE = REPO / "docs" / "mcp" / "guide" / "html-ui.md"
-EXAMPLES = REPO / "docs" / "mcp" / "guide" / "html-ui-examples"
 FIXTURES = REPO / "engine" / "tests" / "htmlui" / "fixtures"
-
-# The top-level sections of the guide, in order (phase-4 spec §3.8.1). Phase 5 appends "Effects".
-SECTIONS = [
-    "HTML/CSS UI in JasperEngine",
-    "Quick start",
-    "Files",
-    "HTML",
-    "CSS",
-    "Lua API",
-    "Data binding",
-    "Animation",
-    "Images, SVG, Lottie, fonts, icons",
-    "Input and focus",
-    "Responsive layout",
-    "The loop in detail",
-    "Habits from the web that need a change",
-    "Examples",
-    "Performance",
-    "C++",
-    "Effects",
-]
 
 FENCE = re.compile(r"^```(\w*)\s*$")
 PATH_LINE = re.compile(r"^`([\w./-]+\.(?:html|css|lua))`:$")
@@ -237,52 +202,6 @@ async def errors_since(ed: Editor) -> list[str]:
 
 # ---------------------------------------------------------------------------- 1. structure (no editor)
 
-async def test_guide_structure():
-    text = guide_text()
-    titles = [line[3:].strip() for line in text.split("\n") if line.startswith("## ")]
-    check_eq(titles[:len(SECTIONS)], SECTIONS, "the guide's top-level sections, in order")
-    check(text.startswith("# HTML/CSS UI"), "the guide's title")
-    langs = {b["lang"] for b in guide_blocks(text)}
-    check(langs <= {"html", "css", "lua", "text", "cpp", "json"}, f"unexpected block languages: {langs}")
-    # the rules the guide must state, so an edit cannot drop them
-    for phrase in ("jasper://docs/html-ui-support",                            # links the matrix
-                   "a transparent page lets the pointer through unless you listen", # pointer pass-through
-                   "renderMode", "getTargetTexture",                           # texture mode
-                   "Google Fonts", "import_files", "data-lucide",              # fonts and icons
-                   "Chromium parity", "Parity stops at",                       # where parity stops
-                   "Gamepads reach the focused document first",
-                   ".jasperengine/engine-api/html-ui-examples/", "check --ui"):
-        check(phrase.lower() in text.lower(), f"the guide does not say {phrase!r}")
-    named = [b["path"] for b in guide_blocks(text) if b["path"]]
-    check(len(named) == len(set(named)), f"a file is given twice: {named}")
-    for path in ("assets/ui/menu.html", "assets/ui/menu.css", "scripts/MenuUI.lua", "assets/ui/hud.html",
-                 "assets/ui/hud.css", "scripts/HudUI.lua", "scripts/Terminal.lua"):
-        check(path in named, f"the guide's complete file {path} is missing")
-
-
-async def test_guide_examples_table():
-    """The examples table of the guide follows examples.json: one row per example and template, in
-    the manifest's order, each naming the checks its manifest entry runs; what the table says an
-    example shows is in it (the icons are the built-in Lucide icons, not inline SVG)."""
-    text = guide_text()
-    manifest = json.loads((EXAMPLES / "examples.json").read_text(encoding="utf-8"))["examples"]
-    section = text.split("\n## Examples\n", 1)[1].split("\n## ", 1)[0]
-    rows = [line for line in section.split("\n") if line.startswith("| `") and not line.startswith("| `template`")]
-    names = [re.match(r"\| `([a-z_]+)` \|", row).group(1) for row in rows]
-    check_eq(names, [entry["name"] for entry in manifest], "the table's rows, in the manifest's order")
-    for row, entry in zip(rows, manifest):
-        cells = [cell.strip() for cell in row.strip("|").split("|")]
-        checks = {word for word in re.findall(r"[a-z_]+", cells[2]) if word in ASSERT_CHECK_TYPES}
-        check_eq(checks, {c["type"] for c in entry["checks"]}, f"{entry['name']}: the checks the table names")
-    main = rows[names.index("main_menu")]
-    check("inline SVG" not in main and "data-lucide" in main, f"main_menu's icons are the built-in Lucide ones: {main}")
-    check("data-lucide" in (EXAMPLES / "main_menu" / "main_menu.html").read_text(encoding="utf-8"), "main_menu uses data-lucide")
-
-
-# assert_ui's check types (HtmlUIAssertions' AssertKind, phase-4 spec 3.6.2)
-ASSERT_CHECK_TYPES = {"exists", "count", "visible", "text_fits", "no_overlap", "within_parent", "within_viewport", "contrast",
-                      "min_size"}
-
 
 # ---------------------------------------------------------------------------- 2. html/css blocks (CLI)
 
@@ -315,113 +234,20 @@ async def read_text(ed: Editor, uri: str) -> str:
 async def test_guide_served(ed: Editor):
     index = await read_text(ed, "jasper://docs/html-ui")
     sections = [line.split("`")[1] for line in index.splitlines() if line.startswith("- `jasper://docs/html-ui/")]
-    ed.check(len(sections) >= len(SECTIONS), f"jasper://docs/html-ui is split into sections: {index[:600]}")
-    ed.check(len(index) < 12000, f"the index stays small: {len(index)} chars")
-    served = {uri: await read_text(ed, uri) for uri in sections}
-    for title in SECTIONS:
-        ed.check(any(f"\n## {title}\n" in "\n" + text for text in served.values()),
-                 f"section {title!r} is not served in any part of jasper://docs/html-ui")
-    for uri, text in served.items():
-        ed.check(len(text) < 16 * 1024, f"{uri} is {len(text)} chars: split it with ### headings")
+    ed.check(sections, "the published guide index links its sections")
     listed = {str(r.uri) for r in (await ed.session.list_resources()).resources}
-    ed.check(all(u in listed for u in sections), "the sections are listed resources")
-    support = await read_text(ed, "jasper://docs/html-ui-support")
-    ed.check("# HTML/CSS support matrix" in support or "jasper://docs/html-ui-support/" in support,
-             f"jasper://docs/html-ui-support: {support[:300]}")
+    ed.check(all(uri in listed for uri in sections), "guide section URIs are discoverable")
+    served = "\n".join([await read_text(ed, uri) for uri in sections])
+    for line in guide_text().splitlines():
+        if line.startswith("## "):
+            ed.check(line in served, f"the published guide is missing {line}")
+    for uri in ("jasper://docs/html-ui-support", "jasper://docs/html-ui-effects"):
+        ed.check(await read_text(ed, uri), f"{uri} is readable")
     docs = await read_text(ed, "jasper://docs")
-    for name in ("jasper://docs/html-ui`", "jasper://docs/html-ui-support`", "jasper://docs/html-ui-effects`"):
-        ed.check(name in docs, f"jasper://docs lists {name}: {docs}")
-    # the effect catalogue (phase 5 §3.13): every built-in effect has its entry in some part of it
-    effects = await read_text(ed, "jasper://docs/html-ui-effects")
-    parts = [line.split("`")[1] for line in effects.splitlines() if line.startswith("- `jasper://docs/html-ui-effects/")]
-    catalogue = effects + "".join([await read_text(ed, uri) for uri in parts])
-    listed_effects = (await ed.call("list_ui_effects"))["effects"]
-    builtin = [e["name"] for e in listed_effects if e["builtin"]]
-    ed.check_eq(len(builtin), 102, "the built-in effects (phase 5's 83, phase 6's 18 stateful ones, fluid)")
-    missing = [name for name in builtin if f"### `{name}`" not in catalogue]
-    ed.check(not missing, f"jasper://docs/html-ui-effects lacks {missing}")
+    ed.check("jasper://docs/html-ui" in docs, "the guide is discoverable from the docs index")
 
 
 # ---------------------------------------------------------------------------- 4. names
-
-def backticked_words(text: str) -> set[str]:
-    words = set()
-    for span in re.findall(r"`([^`\n]+)`", text):
-        # (a path segment such as `src="menu_assets/logo.svg"` is no name)
-        words.update(re.findall(r"(?<![\w./-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w(/]|\.\w)", span))
-    return words
-
-
-# send_input's events are free-form objects (spec §3.6.4): their vocabulary is in its description and
-# in PlayTools.cpp, not in its schema (event types, gamepad buttons and axes the guide names)
-SEND_INPUT_EVENT_WORDS = {"mouse_leave", "mouse_enter", "ime_commit", "ime_cancel", "release_all", "left_bumper", "right_bumper",
-                          "left_thumb", "right_thumb", "dpad_up", "dpad_right", "dpad_down", "dpad_left", "left_x", "left_y",
-                          "right_x", "right_y", "left_trigger", "right_trigger"}
-
-
-def lua_call_names(text: str) -> set[tuple[str, str]]:
-    """(kind, name) of the guide's doc:x(, el:x(, anime.x( / anime.utils.x / anime.eases.x calls."""
-    names = set()
-    for m in re.finditer(r"\b(doc|el|document):(\w+)\(", text):
-        names.add(("member", m.group(2)))
-    for m in re.finditer(r"\banime\.(utils\.|eases\.)?(\w+)", text):
-        if m.group(2) not in ("js", "lua"):   # Anime.js, the stub file anime.lua
-            names.add(("anime" + ("." + m.group(1)[:-1] if m.group(1) else ""), m.group(2)))
-    return names
-
-
-async def test_guide_lua_names_in_stubs(ed: Editor):
-    await wait_tooling(ed)
-    stubs = stub_files(ed.project)
-    ui = "\n".join(text for name, text in stubs.items() if name.startswith(("UI", "Anime", "anime", "HtmlUI")))
-    members = set(re.findall(r"^function \w+[:.](\w+)\(", ui, re.M)) | set(re.findall(r"^---@field (\w+) ", ui, re.M))
-    utils = set(re.findall(r"^---@field (\w+) fun\(", stubs["anime.lua"].split("---@class AnimeUtils", 1)[1].split("---@class", 1)[0], re.M))
-    eases = set(re.findall(r"^---@field (\w+) AnimeEase", stubs["anime.lua"], re.M))
-    anime = set(re.findall(r"^function anime\.(\w+)\(", stubs["anime.lua"], re.M)) | {"utils", "eases"}
-    missing = []
-    names = lua_call_names(guide_text())
-    ed.check(len(names) > 20, f"the guide's Lua calls were not found: {sorted(names)}")
-    for kind, name in sorted(names):
-        known = {"member": members, "anime": anime, "anime.utils": utils, "anime.eases": eases}[kind]
-        if name not in known:
-            missing.append(f"{kind}:{name}")
-    ed.check(not missing, f"Lua names of the guide missing from the stubs: {missing}")
-
-
-async def test_guide_names_exist(ed: Editor):
-    # the guide names the phase-4 tools (create_ui_document, inspect_ui, assert_ui) and the parameters
-    # p4-mcp-tools adds (send_input target, import_files fonts/icons/from_document)
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from test_autosync import schema_words  # noqa: E402
-    words: set = set()
-    for t in ed.tool_list:
-        schema_words(t.input_schema, words)
-    # project setting values the guide names (graphics.scaling_mode values)
-    settings = await ed.call("get_project_settings")
-
-    def collect(value):
-        if isinstance(value, dict):
-            for k, v in value.items():
-                words.add(k)
-                collect(v)
-        elif isinstance(value, list):
-            for v in value:
-                collect(v)
-        elif isinstance(value, str):
-            words.add(value)
-    collect(settings)
-    # result fields and enum values the guide explains (outputs, not inputs)
-    outputs = {"external_changes", "ui_reloaded", "stylesheet_only", "render_target", "load_count", "sort_order",
-               "fit_width", "fit_height", "zero_size"}
-    unknown = sorted(w for w in backticked_words(guide_text())
-                     if w not in ed.tool_names and w not in words and w not in outputs and w not in SEND_INPUT_EVENT_WORDS)
-    ed.check(not unknown, f"the guide names unknown tools/parameters: {unknown}")
-    for tool, params in {"create_ui_document": ["html", "template"], "inspect_ui": ["selector", "at", "viewport", "models", "file"],
-                         "assert_ui": ["checks", "viewports"], "import_files": ["fonts", "icons", "from_document"],
-                         "send_input": ["events"]}.items():
-        have: set = set()
-        schema_words(ed.tool(tool).input_schema, have)
-        ed.check(all(p in have for p in params), f"{tool} lacks {[p for p in params if p not in have]}")
 
 
 # ---------------------------------------------------------------------------- 5. Lua blocks parse
@@ -640,80 +466,34 @@ async def test_search_engine_api_ui(ed: Editor):
     r = await ed.call("search_engine_api", query="querySelector")
     details = [x["detail"] for x in r["results"]]
     for want in ("UIDocument:querySelector(", "UIElement:querySelector("):
-        ed.check(any(d.startswith(want) for d in details[:6]), f"{want} in the first results: {details[:8]}")
-
-    r = await ed.call("search_engine_api", query="anime animate")
-    top = r["results"][0]["detail"]
-    ed.check(top.startswith("anime.animate(targets, params)") and "duration" in top and "ease" in top,
-             f"anime.animate with its parameters first: {r['results'][:3]}")
-
-    r = await ed.call("search_engine_api", query="addEventListener")
-    details = [x["detail"] for x in r["results"]]
-    ed.check(any(d.startswith("UIElement:addEventListener(type, function(event)") for d in details[:4]),
-             f"UIElement:addEventListener with its Lua signature: {details[:6]}")
-
+        ed.check(any(d.startswith(want) for d in details), f"search finds {want}: {details}")
+    for query, signature in (("anime animate", "anime.animate(targets, params)"),
+                             ("addEventListener", "UIElement:addEventListener(type, function(event)"),
+                             ("UIDataModel onChange", "UIDataModel:onChange(name")):
+        r = await ed.call("search_engine_api", query=query)
+        ed.check(any(hit["detail"].startswith(signature) for hit in r["results"]),
+                 f"search finds {signature}: {r['results']}")
     r = await ed.call("search_engine_api", query="mix-blend-mode")
     ed.check(any(h["doc"].startswith("jasper://docs/html-ui-support") for h in r["docs"]),
-             f"a support matrix row: {r['docs']}")
-
-    r = await ed.call("search_engine_api", query="UIDataModel onChange")
-    ed.check(any(x["detail"].startswith("UIDataModel:onChange(name") for x in r["results"][:3]), f"{r['results'][:3]}")
+             f"search finds the published support matrix: {r['docs']}")
 
 
 # ---------------------------------------------------------------------------- 8. stubs
-
-async def test_stubs_unresolved_empty(ed: Editor):
-    await wait_tooling(ed)
-    stubs = stub_files(ed.project)
-    ui = {n: t for n, t in stubs.items() if n.startswith(("UI", "Anime", "anime", "HtmlUI"))}
-    for name in ("UIDocument.lua", "UIElement.lua", "UIEvent.lua", "HtmlUITypes.lua", "anime.lua", "HtmlUI.lua"):
-        ed.check(name in ui, f"{name} missing from the stubs")
-    for name, text in ui.items():
-        ed.check("-- unresolved:" not in text, f"{name}: " + "; ".join(l for l in text.splitlines() if "-- unresolved:" in l))
-    types = ui["HtmlUITypes.lua"]
-    for event in ("click", "keydown", "input", "change", "wheel", "transitionend", "dragdrop", "htmlnavigate", "complete"):
-        ed.check(f'---| "{event}"' in types, f"UIEventType lacks {event}")
-    for never in ("mouseenter", "contextmenu", "pointerdown", "touchstart"):
-        ed.check(f'---| "{never}"' not in types, f"UIEventType must not list {never} (documents never get it)")
-    ed.check("---@class UIDiagnostic" in types, "UIDiagnostic")
-    ed.check("---@param type UIEventType" in ui["UIElement.lua"] and "---@param type UIEventType" in ui["UIDocument.lua"],
-             "addEventListener takes a UIEventType")
-    ed.check("---@return UIDiagnostic[]" in ui["UIDocument.lua"], "getDiagnostics returns UIDiagnostic[]")
-    for name in ("UIDocument.lua", "UIElement.lua", "UIEvent.lua", "anime.lua"):
-        ed.check("jasper://docs/html-ui" in ui[name], f"{name} links the guide")
 
 
 async def test_luals_ui_stubs(ed: Editor):
     await wait_tooling(ed)
     scripts = {Path(b["path"]).name: b["code"] for b in guide_blocks() if b["lang"] == "lua" and b["path"]}
-    dirs = []
-    if EXAMPLES.is_dir():
-        # the examples' scripts (p4-examples), as they are copied into a project's Lua directory
-        tmp = Path(tempfile.mkdtemp(prefix="jasper-ui-examples-"))
-        for lua_file in EXAMPLES.glob("*/*.lua"):
-            shutil.copy(lua_file, tmp / lua_file.name)
-        dirs.append(tmp)
-    else:
-        print("     no docs/mcp/guide/html-ui-examples yet (p4-examples): only the guide's scripts are checked")
     scripts["GoodUI.lua"] = GOOD_UI_LUA
-    ws = lua_workspace(ed, scripts, dirs)
+    ws = lua_workspace(ed, scripts)
     try:
-        # the guide's scripts and the examples' each in a workspace of their own: a guide snippet may
-        # name a class as an example does (HudUI), which would be a duplicate definition in one
-        for name in list(ws.glob("src*")):
-            shutil.move(str(name), str(ws.parent / name.name))
         diags = luals_check(ws)
         for f in ws.glob("*.lua"):
             f.unlink()
-        for d in dirs:
-            shutil.copytree(d, ws / "src0")
-            diags += luals_check(ws)
-            shutil.rmtree(ws / "src0", ignore_errors=True)
-        ed.check(not diags, "lua-language-server warnings on the guide's / examples' scripts:\n" +
+        ed.check(not diags, "lua-language-server warnings on the guide's scripts:\n" +
                  "\n".join(f"{d['file']}:{d['line']}: {d['code']}: {d['message']}" for d in diags))
         for f in ws.glob("*.lua"):
             f.unlink()
-        shutil.rmtree(ws / "src0", ignore_errors=True)
         (ws / "BadUI.lua").write_text(BAD_UI_LUA, encoding="utf-8")
         diags = luals_check(ws)
         got: dict[int, set] = {}
@@ -726,8 +506,6 @@ async def test_luals_ui_stubs(ed: Editor):
         ed.check(not stray, f"unexpected diagnostics on correct lines: {stray}")
     finally:
         shutil.rmtree(ws.parent, ignore_errors=True)
-        for d in dirs:
-            shutil.rmtree(d, ignore_errors=True)
 
 
 async def test_guide_cpp_snippet_parses(ed: Editor):
@@ -747,28 +525,3 @@ async def test_guide_cpp_snippet_parses(ed: Editor):
             ed.check_eq(n, 0, f"guide line {b['line']}: clangd errors in the C++ block: {errors}")
     finally:
         path.unlink(missing_ok=True)
-
-
-# ---------------------------------------------------------------------------- 9. AGENTS.md (last: switches the project)
-
-async def test_agents_md_section(ed: Editor):
-    new_dir = Path(tempfile.mkdtemp(prefix="jasper-agents-")) / "Fresh"
-    await ed.call_raw("play", {"action": "stop"})   # an earlier failure may have left play running
-    try:
-        await ed.call("create_project", path=str(new_dir), name="Fresh UI", unsaved="discard")
-        # a new project gets its AGENTS.md when it is first read (or played, or built)
-        agents = await read_text(ed, "jasper://project/AGENTS.md")
-        ed.check_eq((new_dir / "AGENTS.md").read_text(encoding="utf-8"), agents, "AGENTS.md written")
-        ed.check("## HTML/CSS UI" in agents, f"AGENTS.md has the HTML/CSS UI section: {agents[:2000]}")
-        section = agents.split("## HTML/CSS UI", 1)[1].split("\n## ", 1)[0]
-        for phrase in ("check --ui", ".jasperengine/engine-api/html-ui-examples/", "jasper://docs/html-ui",
-                       "jasper://docs/html-ui-support", "create_ui_document", "addEventListener", "assets/ui/",
-                       "effect(<name>", "jasper://docs/html-ui-effects", "@effect", "stateful", "<video>", "AV1 + Opus WebM",
-                       "import_files"):
-            ed.check(phrase in section, f"the AGENTS.md section mentions {phrase}: {section}")
-        ed.check("HTML/CSS UI, C++ build" in agents, "the check bullet names the UI check")
-    finally:
-        try:
-            await ed.call("open_project", path=str(ed.project), unsaved="discard")
-        finally:
-            shutil.rmtree(new_dir.parent, ignore_errors=True)

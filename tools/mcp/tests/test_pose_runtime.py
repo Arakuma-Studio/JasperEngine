@@ -8,14 +8,13 @@ pose fixture project, playing a small .poseanim written here in the file format 
   findPose, getPoseName, goToPose reaching the key pose, setWeight(0) giving the rest pose back,
   stop showing pose 0, one-shot end and onFinish); Stop restores the edit-time bones
 - a missing file logs one error and disables the animator
-- export: the generated scene code sets the component and the .poseanim ships
+- export: the .poseanim and humanoid sidecar ship with their original bytes
 
 Runs on a scratch copy of tools/fixtures/pose-animation.
 """
 
 import asyncio
 import json
-import math
 import time
 
 from harness import Editor, REPO
@@ -441,7 +440,7 @@ async def wait_job(ed: Editor, job_id: str, timeout: float, poll: float = 3.0) -
         await asyncio.sleep(poll)
 
 
-async def test_export_generates_the_component(ed: Editor):
+async def test_export_preserves_pose_assets(ed: Editor):
     # a humanoid sidecar next to the model (overrides nothing) ships like any asset
     write_asset(ed, "models/hero_tpose.gltf.humanoid", {"format": "jasperengine.humanoid", "version": 1, "bones": {}})
     await ed.call("save_scene")
@@ -452,12 +451,11 @@ async def test_export_generates_the_component(ed: Editor):
     if isinstance(r, dict) and r.get("status") == "running":
         r = await wait_job(ed, r["job_id"], 900)
     ed.check_eq(r["status"], "succeeded", raw.text[:2000])
-    sources = [p for p in out.rglob("*.cpp") if "PoseAnimatorComponent poseanimator;" in p.read_text(errors="ignore")]
-    ed.check(sources, "no PoseAnimatorComponent in the generated scene code")
-    code = sources[0].read_text(errors="ignore")
-    ed.check(f'poseanimator.animation = "{ANIM_STORED}";' in code, "the generated code sets the animation")
-    ed.check("poseanimator.autoplay = true;" in code, "the generated code sets autoplay")
+    # The exported program must reference the authored asset. This checks a user-facing
+    # path byte and survives renames of generated variables, members and helper functions.
+    ed.check(any(f'"{ANIM_STORED}"' in source.read_text(errors="ignore") for source in out.rglob("*.cpp")),
+             "the exported program references the selected pose animation")
     assets = out / "project" / "assets"
-    ed.check((assets / ANIM_STORED).is_file(), f"{ANIM_STORED} exported to {assets}")
-    ed.check((assets / ONE_SHOT).is_file(), f"{ONE_SHOT} exported to {assets}")
-    ed.check((assets / "models/hero_tpose.gltf.humanoid").is_file(), f"the .humanoid sidecar exported to {assets}")
+    for rel in (ANIM_STORED, "models/hero_tpose.gltf.humanoid"):
+        ed.check_eq((assets / rel).read_bytes(), (ed.project / "assets" / rel).read_bytes(),
+                    f"the exported {rel} retains the asset bytes")

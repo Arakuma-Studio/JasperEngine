@@ -52,7 +52,6 @@
 #endif
 
 #include <algorithm>
-#include <cstdlib>
 #include <chrono>
 #include <cmath>
 #include <fstream>
@@ -978,338 +977,15 @@ void frameEntityTool(const CallPtr& call) {
 }
 
 // The Scene view of the posed scene and its pose handles (phase 5), null when not posing there
-PoseViewport* posedViewport(Project* project, PoseEditSession& session, SceneRender** render = nullptr) {
+PoseViewport* posedViewport(Project* project, PoseEditSession& session) {
     if (!session.bound()) return nullptr;
     SceneProject* sp = project->getScene(session.sceneId());
     if (!sp || !sp->sceneRender) return nullptr;
-    if (render) *render = sp->sceneRender;
     return sp->sceneRender->getPoseViewport();
 }
 
-// The MCP test harness's hooks (JASPER_MCP_TEST_HOOKS=1, set by tools/mcp/harness.py): the Scene
-// view pose handles in pixels and pose.viewport below. Off for agents and users.
-bool mcpTestHooks() {
-    static const bool on = [] {
-        const char* value = std::getenv("JASPER_MCP_TEST_HOOKS");
-        return value && std::string(value) == "1";
-    }();
-    return on;
-}
-
-// pose.viewport (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): drives the
-// posing Scene view through the same calls as the mouse in SceneWindow. {onion: {previous, next,
-// opacity}, ghost_during_preview, joint: slot or "" (the rings shown), handle: slot or
-// ring_l/u/f/free | press: [x, y] (view px), drag: [[x, y], ...], shift, ctrl, release (true),
-// click: [x, y] (a click the handles do not take: what SceneWindow does on release; the result
-// names the selection pick and the raw hit; collapsed_parent: a GameObject whose collapsed Hierarchy
-// row holds the model, for this click), global_edit: begin | apply_all | apply_selected |
-// cancel (after the drag), ghost_check: true (each ghost's independence of the model),
-// close_window: true (last)}
-bool poseViewportHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
-    if (!mcpTestHooks()) {
-        call->fail("pose.viewport: unknown key (valid: entity, path, index, play, tab).");
-        return false;
-    }
-    if (!hook.is_object()) {
-        call->fail("pose.viewport must be an object.");
-        return false;
-    }
-    PoseEditSession& hookSession = window->getSession();
-    if (hook.contains("onion") && hook["onion"].is_object()) {
-        const Json& onion = hook["onion"];
-        if (onion.contains("previous")) hookSession.onion().previous = onion["previous"].get<bool>();
-        if (onion.contains("next")) hookSession.onion().next = onion["next"].get<bool>();
-        if (onion.contains("opacity")) hookSession.onion().opacity = onion["opacity"].get<float>();
-    }
-    if (hook.contains("ghost_during_preview")) hookSession.view().ghostDuringPreview = hook["ghost_during_preview"].get<bool>();
-    if (hook.value("close_window", false) && !hook.contains("handle") && !hook.contains("press") && !hook.contains("click") &&
-            !hook.contains("global_edit")) {
-        window->setOpen(false);
-        out["closed"] = true;
-        return true;
-    }
-    Project* project = call->ctx().project();
-    PoseEditSession& session = window->getSession();
-    SceneRender* render = nullptr;
-    PoseViewport* viewport = posedViewport(project, session, &render);
-    if (!viewport || !render) {
-        call->fail("pose.viewport: bind a character in a 3D scene first.");
-        return false;
-    }
-    const bool shift = hook.value("shift", false);
-    const bool ctrl = hook.value("ctrl", false);
-    if (hook.contains("joint")) {
-        const std::string name = hook["joint"].is_string() ? hook["joint"].get<std::string>() : std::string();
-        pose::HumanBone bone = pose::HumanBone::Count;
-        if (!name.empty() && !poseview::boneFromName(name.c_str(), bone)) {
-            call->fail("pose.viewport.joint: a slot name (left_upper_arm...) or \"\".");
-            return false;
-        }
-        if (!viewport->setActiveJoint(bone)) {
-            call->fail("pose.viewport.joint: the rig has no " + name + ".");
-            return false;
-        }
-    }
-    float x = 0.0f, y = 0.0f;
-    bool pressed = false;
-    if (hook.contains("handle") || hook.contains("press")) {
-        if (hook.contains("handle")) {
-            const std::string name = hook["handle"].is_string() ? hook["handle"].get<std::string>() : std::string();
-            bool found = false;
-            for (const PoseViewport::HandleView& handle : viewport->getState().handles) {
-                if (handle.name == name && handle.visible) {
-                    x = handle.position.x;
-                    y = handle.position.y;
-                    found = true;
-                }
-            }
-            if (!found) {
-                call->fail("pose.viewport.handle: no visible handle " + name + " (is the Scene view posing?).");
-                return false;
-            }
-        } else {
-            const Json& p = hook["press"];
-            if (!p.is_array() || p.size() != 2 || !p[0].is_number() || !p[1].is_number()) {
-                call->fail("pose.viewport.press: [x, y] in Scene view pixels.");
-                return false;
-            }
-            x = p[0].get<float>();
-            y = p[1].get<float>();
-        }
-        pressed = render->poseMouseDown(x, y, shift, ctrl);
-        out["pressed"] = pressed;
-        out["at"] = Json::array({x, y});
-    }
-    if (hook.contains("drag")) {
-        const Json& points = hook["drag"];
-        if (!points.is_array()) {
-            call->fail("pose.viewport.drag: [[x, y], ...] in Scene view pixels.");
-            return false;
-        }
-        for (const Json& p : points) {
-            if (!p.is_array() || p.size() != 2 || !p[0].is_number() || !p[1].is_number()) {
-                call->fail("pose.viewport.drag: [[x, y], ...] in Scene view pixels.");
-                return false;
-            }
-            const float px = p[0].get<float>();
-            const float py = p[1].get<float>();
-            render->mouseDragEvent(px, py, x, y, project, session.sceneId(), project->getSelectedEntities(session.sceneId()), true, ctrl, shift);
-        }
-    }
-    if ((pressed || render->isPoseDragging()) && hook.value("release", true)) {
-        render->mouseReleaseEvent(x, y);
-    }
-    if (hook.contains("click")) {
-        const Json& p = hook["click"];
-        if (!p.is_array() || p.size() != 2 || !p[0].is_number() || !p[1].is_number()) {
-            call->fail("pose.viewport.click: [x, y] in Scene view pixels.");
-            return false;
-        }
-        const float cx = p[0].get<float>();
-        const float cy = p[1].get<float>();
-        // as SceneWindow: the handles first, then what the click picks (the same rule: the
-        // selection pick and the raw hit)
-        const bool took = render->poseMouseDown(cx, cy, false, false);
-        if (took) render->mouseReleaseEvent(cx, cy);
-        SceneWindow* sceneWindow = call->ctx().sceneWindow();
-        if (hook.contains("collapsed_parent") && sceneWindow) {
-            // the Hierarchy row of this GameObject collapsed over the posed model (what the
-            // Hierarchy tells the Scene view each frame for its collapsed rows)
-            std::string error;
-            SceneProject* sp = project->getScene(session.sceneId());
-            const Entity parent = sp ? w3::resolveLiveEntity(project, sp, hook["collapsed_parent"], error) : NULL_ENTITY;
-            if (parent == NULL_ENTITY) {
-                call->fail("pose.viewport.collapsed_parent: " + error);
-                return false;
-            }
-            sceneWindow->setStructureSelectionParent(session.sceneId(), session.model(), parent);
-        }
-        Entity picked = NULL_ENTITY, raw = NULL_ENTITY;
-        out["click_took_handle"] = took;
-        out["left_posing"] = !took && sceneWindow && sceneWindow->poseClick(session.sceneId(), cx, cy, &picked, &raw);
-        // the GameObjects the click picked: as selection resolves it, and the raw hit
-        Scene* scene = session.scene();
-        auto nameOf = [scene](Entity e) { return e != NULL_ENTITY && scene && scene->isEntityCreated(e) ? Json(scene->getEntityName(e)) : Json(); };
-        out["click_picked"] = nameOf(picked);
-        out["click_hit"] = nameOf(raw);
-    }
-    if (hook.contains("global_edit")) {
-        const std::string action = hook["global_edit"].is_string() ? hook["global_edit"].get<std::string>() : std::string();
-        bool ok = true;
-        if (action == "begin") {
-            session.beginGlobalEdit();
-            ok = session.globalEditActive();
-        } else if (action == "apply_all") {
-            ok = session.applyGlobalEdit({});
-        } else if (action == "apply_selected") {
-            std::vector<int> others;
-            for (int i : session.selection()) if (i != session.primary()) others.push_back(i);
-            ok = session.applyGlobalEdit(others);
-        } else if (action == "cancel") {
-            session.cancelGlobalEdit();
-        } else {
-            call->fail("pose.viewport.global_edit: begin, apply_all, apply_selected or cancel.");
-            return false;
-        }
-        out["global_edit"] = ok;
-    }
-    if (hook.value("ghost_check", false)) {
-        // each ghost's independence of the model (PoseViewport::checkGhosts)
-        Json checks = Json::array();
-        for (const PoseViewport::GhostCheck& check : viewport->checkGhosts()) {
-            checks.push_back({{"kind", check.kind}, {"bones", check.bones}, {"own_bones", check.ownBones},
-                              {"foreign_references", check.foreignReferences}, {"differing", check.differing},
-                              {"mismatched", check.mismatched}});
-        }
-        out["ghost_check"] = checks;
-    }
-    if (hook.value("close_window", false)) {
-        window->setOpen(false);
-        out["closed"] = true;
-    }
-    return true;
-}
-
-// pose.templates (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): the
-// Templates tab's actions through the window's own functions (the ones its cards, menu and dialogs
-// call). {category, search (the filter), create: {name, path ("" = the save dialog's default)},
-// apply: {name, mode: replace | append}, save: {name, description, category}, show: name,
-// delete: name}; the result has the default path of create's template.
-bool poseTemplatesHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
-    if (!mcpTestHooks()) {
-        call->fail("pose.templates: unknown key (valid: entity, path, index, play, tab).");
-        return false;
-    }
-    if (!hook.is_object()) {
-        call->fail("pose.templates must be an object.");
-        return false;
-    }
-    auto text = [&hook](const Json& object, const char* key) {
-        return object.contains(key) && object[key].is_string() ? object[key].get<std::string>() : std::string();
-    };
-    if (hook.contains("category") || hook.contains("search")) {
-        window->setTemplateFilter(text(hook, "category"), text(hook, "search"));
-    }
-    std::string error;
-    Json result = Json::object();
-    if (hook.contains("create")) {
-        const Json& create = hook["create"];
-        const std::string name = text(create, "name");
-        result["default_path"] = window->templateAnimationPath(name);
-        if (!window->createFromTemplate(name, text(create, "path"), &error)) {
-            call->fail("pose.templates.create: " + error);
-            return false;
-        }
-    }
-    if (hook.contains("apply")) {
-        const Json& apply = hook["apply"];
-        const std::string mode = text(apply, "mode");
-        if (mode != "replace" && mode != "append") {
-            call->fail("pose.templates.apply.mode: replace or append.");
-            return false;
-        }
-        if (!window->applyTemplate(text(apply, "name"), mode == "append" ? PoseTemplateApply::Append : PoseTemplateApply::Replace,
-                                   &error)) {
-            call->fail("pose.templates.apply: " + error);
-            return false;
-        }
-    }
-    if (hook.contains("save")) {
-        const Json& save = hook["save"];
-        if (!window->saveAsTemplate(text(save, "name"), text(save, "description"), text(save, "category"), &error)) {
-            call->fail("pose.templates.save: " + error);
-            return false;
-        }
-    }
-    if (hook.contains("show") && !window->showTemplateInProject(text(hook, "show"), &error)) {
-        call->fail("pose.templates.show: " + error);
-        return false;
-    }
-    if (hook.contains("delete") && !window->deleteTemplate(text(hook, "delete"), &error)) {
-        call->fail("pose.templates.delete: " + error);
-        return false;
-    }
-    out["templates"] = result;
-    return true;
-}
-
-// pose.input (test hook, JASPER_MCP_TEST_HOOKS=1 only, not in the tool description): real input
-// through ImGui's event queue, as the platform backend sends it (ImGui trickles it over the next
-// frames); focus_window then neither fronts nor focuses the window. {right_click: {card: pose
-// index} | {template: name}}: the pointer on the card as last drawn, the right button pressed and
-// released (the state's `menu` says which context menu opened); focus_scene: true focuses the
-// Scene view of the bound character (the window stays where it is, e.g. behind another tab);
-// keys: [{key: "a".."z" | "delete", ctrl, shift}] pressed and released in order.
-bool poseInputHook(const CallPtr& call, PoseAnimationWindow* window, const Json& hook, Json& out) {
-    if (!mcpTestHooks()) {
-        call->fail("pose.input: unknown key (valid: entity, path, index, play, tab).");
-        return false;
-    }
-    if (!hook.is_object()) {
-        call->fail("pose.input: {right_click: {card: index} | {template: name}, focus_scene, keys}.");
-        return false;
-    }
-    ImGuiIO& io = ImGui::GetIO();
-    if (hook.contains("right_click")) {
-        const Json& target = hook["right_click"];
-        ImVec2 at;
-        bool found = false;
-        if (target.is_object() && target.contains("card") && target["card"].is_number_integer()) {
-            found = window->cardCenter(target["card"].get<int>(), at);
-        } else if (target.is_object() && target.contains("template") && target["template"].is_string()) {
-            found = window->templateCardCenter(target["template"].get<std::string>(), at);
-        } else {
-            call->fail("pose.input.right_click: {card: index} or {template: name}.");
-            return false;
-        }
-        if (!found) {
-            call->fail("pose.input.right_click: that card is not on screen (show its tab first).");
-            return false;
-        }
-        io.AddMousePosEvent(at.x, at.y);
-        io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
-        io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
-        out["right_click"] = Json::array({at.x - ImGui::GetMainViewport()->Pos.x, at.y - ImGui::GetMainViewport()->Pos.y});
-    }
-    if (hook.value("focus_scene", false)) {
-        PoseEditSession& session = window->getSession();
-        if (!session.bound()) {
-            call->fail("pose.input.focus_scene: bind a character first.");
-            return false;
-        }
-        ImGui::SetWindowFocus(sceneTabName(call->ctx().project(), session.sceneId()).c_str());
-        out["focused"] = "scene";
-    }
-    if (hook.contains("keys")) {
-        if (!hook["keys"].is_array()) {
-            call->fail("pose.input.keys: [{key, ctrl, shift}].");
-            return false;
-        }
-        for (const Json& press : hook["keys"]) {
-            const std::string name = press.is_object() ? press.value("key", std::string()) : std::string();
-            ImGuiKey key = ImGuiKey_None;
-            if (name.size() == 1 && name[0] >= 'a' && name[0] <= 'z') key = static_cast<ImGuiKey>(ImGuiKey_A + (name[0] - 'a'));
-            else if (name == "delete") key = ImGuiKey_Delete;
-            if (key == ImGuiKey_None) {
-                call->fail("pose.input.keys[].key: a..z or delete.");
-                return false;
-            }
-            const bool ctrl = press.value("ctrl", false);
-            const bool shift = press.value("shift", false);
-            if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, true);
-            if (shift) io.AddKeyEvent(ImGuiMod_Shift, true);
-            io.AddKeyEvent(key, true);
-            io.AddKeyEvent(key, false);
-            if (shift) io.AddKeyEvent(ImGuiMod_Shift, false);
-            if (ctrl) io.AddKeyEvent(ImGuiMod_Ctrl, false);
-        }
-        out["keys"] = hook["keys"].size();
-    }
-    return true;
-}
-
 // focus_window pose_animation's `pose` object: {entity, path, index, play}, applied in that order
-bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& hookResult) {
+bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window) {
     const Json& args = call->args();
     const Json& pose = args["pose"];
     if (!pose.is_object()) {
@@ -1318,8 +994,7 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
     }
     for (auto it = pose.begin(); it != pose.end(); ++it) {
         const std::string& key = it.key();
-        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab" && key != "viewport" &&
-                key != "templates" && key != "input") {
+        if (key != "entity" && key != "path" && key != "index" && key != "play" && key != "tab") {
             call->fail("pose." + key + ": unknown key (valid: entity, path, index, play, tab).");
             return false;
         }
@@ -1384,15 +1059,6 @@ bool focusPoseAnimation(const CallPtr& call, PoseAnimationWindow* window, Json& 
             window->selectTab(tab);
         }
     }
-    if (pose.contains("viewport") && !poseViewportHook(call, window, pose["viewport"], hookResult)) {
-        return false;
-    }
-    if (pose.contains("templates") && !poseTemplatesHook(call, window, pose["templates"], hookResult)) {
-        return false;
-    }
-    if (pose.contains("input") && !poseInputHook(call, window, pose["input"], hookResult)) {
-        return false;
-    }
     return true;
 }
 
@@ -1423,21 +1089,12 @@ Json poseWindowState(const CallPtr& call) {
     PoseEditSession& session = call->ctx().app().getPoseAnimationWindow()->getSession();
     if (PoseViewport* viewport = posedViewport(call->ctx().project(), session)) {
         const PoseViewport::State view = viewport->getState();
-        int shownHandles = 0;
-        Json handles = Json::object();
-        for (const PoseViewport::HandleView& handle : view.handles) {
-            if (!handle.visible) continue;
-            shownHandles++;
-            if (mcpTestHooks()) handles[handle.name] = Json::array({handle.position.x, handle.position.y});
-        }
-        data["viewport"] = {{"posing", view.posing}, {"previewing", view.previewing}, {"handle_count", shownHandles},
+        data["viewport"] = {{"posing", view.posing}, {"previewing", view.previewing}, {"handle_count", view.visibleHandles},
                             {"active_joint", view.activeJoint.empty() ? Json() : Json(view.activeJoint)},
                             {"ghosts", view.ghosts}, {"floor", view.floor}, {"contacts", view.contacts},
                             {"balanced", view.balanceShown ? Json(view.balanced) : Json()},
                             {"global_edit", session.globalEditActive()},
                             {"view", Json::array({view.viewWidth, view.viewHeight})}};
-        // the pixel position of every handle: the test harness only
-        if (mcpTestHooks()) data["viewport"]["handles"] = handles;
     }
     return data;
 }
@@ -1449,7 +1106,6 @@ void focusWindowTool(const CallPtr& call) {
     Project* project = ctx.project();
     const std::string window = args.value("window", "");
     std::string imguiName;
-    Json hookResult = Json::object();
 
     if (window == "game") {
         ctx.gameWindow()->requestFocus();
@@ -1484,10 +1140,9 @@ void focusWindowTool(const CallPtr& call) {
         imguiName = McpActivityWindow::WINDOW_NAME;
     } else if (window == "pose_animation") {
         PoseAnimationWindow* pw = app.getPoseAnimationWindow();
-        // real input (test hook) goes where the editor's focus is: the window is not fronted
-        if (!(args.contains("pose") && args["pose"].is_object() && args["pose"].contains("input"))) pw->requestFocus();
+        pw->requestFocus();
         imguiName = PoseAnimationWindow::WINDOW_NAME;
-        if (args.contains("pose") && !focusPoseAnimation(call, pw, hookResult)) return;
+        if (args.contains("pose") && !focusPoseAnimation(call, pw)) return;
     } else if (window == "texture_synthesis") {
         app.getTextureSynthesisWindow()->open();
         imguiName = TextureSynthesisWindow::WINDOW_NAME;
@@ -1500,12 +1155,10 @@ void focusWindowTool(const CallPtr& call) {
         call->fail("pose: only for window \"pose_animation\".");
         return;
     }
-    // A window opened just now exists after its next draw (real input given to the pose window
-    // keeps the focus where its click puts it: focusing would close the menu it opened)
-    const bool keepFocus = window == "pose_animation" && args.contains("pose") && args["pose"].is_object() && args["pose"].contains("input");
-    call->afterFrames(1, [call, imguiName, window, hookResult, keepFocus]() {
-        if (window != "game" && !keepFocus) ImGui::SetWindowFocus(imguiName.c_str());
-        call->afterFrames(2, [call, imguiName, window, hookResult]() {
+    // A window opened just now exists after its next draw.
+    call->afterFrames(1, [call, imguiName, window]() {
+        if (window != "game") ImGui::SetWindowFocus(imguiName.c_str());
+        call->afterFrames(2, [call, imguiName, window]() {
             ImGuiWindow* w = ImGui::FindWindowByName(imguiName.c_str());
             const bool shown = w && w->WasActive && !w->Hidden;
             Json data = {{"window", window}, {"shown", shown}};
@@ -1514,7 +1167,6 @@ void focusWindowTool(const CallPtr& call) {
                 data["state"] = poseWindowState(call);
                 if (w) data["pos"] = {w->Pos.x - ImGui::GetMainViewport()->Pos.x, w->Pos.y - ImGui::GetMainViewport()->Pos.y};
             }
-            if (!hookResult.empty()) data["viewport_input"] = hookResult;
             if (!w) {
                 call->fail("The " + window + " window does not exist (closed panel?).", data);
                 return;

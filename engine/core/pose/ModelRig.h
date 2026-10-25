@@ -87,13 +87,9 @@ namespace jasperengine::pose {
         bool get(const std::string& modelPath, const std::string& sidecarStamp, const std::shared_ptr<const void>& source,
                  const Skeleton& skeleton, const HumanoidOverrides& overrides,
                  const std::function<std::shared_ptr<PoseSkin>()>& skinFactory, ModelRigInfo& out, std::string* error);
-        bool get(const std::string& modelPath, const std::string& sidecarStamp, const Skeleton& skeleton,
-                 const HumanoidOverrides& overrides, const std::function<std::shared_ptr<PoseSkin>()>& skinFactory,
-                 ModelRigInfo& out, std::string* error);
 
         void prune();
         void clear();
-        size_t size() const;
 
     private:
         struct Entry {

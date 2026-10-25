@@ -125,12 +125,12 @@ async def measure(ed: Editor, what: str, ball: int, moves: int = 30) -> None:
         await ed.call("set_transform", entity=ball, position=[0.2 * (i % 3), 0, 0])
         await ed.call("wait", frames=2)
     lines: list[dict] = []
-    deadline = time.time() + 30
-    while time.time() < deadline:
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
         lines = stats_lines(ed, start)
         if len([x for x in lines if x["view"] == 0]) >= 20 and len([x for x in lines if x["view"] != 0]) >= 20:
             break
-        time.sleep(1)
+        await ed.call("wait", frames=1)
     frame_lines = [x for x in lines if x["view"] == 0 and x["uber"]]
     view_lines = [x for x in lines if x["view"] != 0 and x["uber"]]
     ed.check(len(frame_lines) >= 20 and len(view_lines) >= 20,

@@ -4,13 +4,8 @@ in-shader colour (monochrome: a T0 effect) and the uber pass (CRT: a T1 effect) 
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 from harness import Editor
-
-sys.path.insert(0, str(Path(__file__).parent))
-from test_runtime_regressions import decode_png, image_difference  # noqa: E402
+from htmlui_pixels import decode_png, image_difference
 
 EDITOR = {"create": True, "name": "Post Processing Views"}
 TIMEOUT = 600

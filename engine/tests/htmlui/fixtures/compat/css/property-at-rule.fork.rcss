@@ -1,4 +1,0 @@
-#htmlui-root .spin {
-transform: rotate(var(--angle));
-color: var(--brand);
-}

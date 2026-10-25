@@ -81,6 +81,7 @@ namespace {
             GpuEnvironment::setView(640, 360, 640, 360, Scaling::FITWIDTH);
             fixture.reset(new SceneFixture());
             UIDocument& ui = fixture->add<UIDocument>();
+            uiDocument = &ui;
             ASSERT_TRUE(ui.load("p1/input/input.rml"));
             document = rmlContext(scene())->GetDocument(0);
             ASSERT_NE(document, nullptr);
@@ -93,6 +94,7 @@ namespace {
             Engine::onKeyUp.add(callbackTag, std::function<void(int, bool, int)>([this](int, bool, int){ keyUps++; }));
             Engine::onCharInput.add(callbackTag, std::function<void(wchar_t)>([this](wchar_t c){ chars.push_back((uint32_t)c); }));
             Engine::onTouchStart.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchStarts++; }));
+            Engine::onTouchEnd.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchEnds++; }));
             Engine::onTouchCancel.add(callbackTag, std::function<void(int, float, float)>([this](int, float, float){ touchCancels++; }));
             TestSystem::get().clearLogs();
         }
@@ -104,6 +106,7 @@ namespace {
             Engine::onKeyUp.remove(callbackTag);
             Engine::onCharInput.remove(callbackTag);
             Engine::onTouchStart.remove(callbackTag);
+            Engine::onTouchEnd.remove(callbackTag);
             Engine::onTouchCancel.remove(callbackTag);
             Engine::systemTouchCancel();
             Engine::setIgnoreEventsHandledByUI(true);
@@ -135,8 +138,9 @@ namespace {
         }
 
         std::unique_ptr<SceneFixture> fixture;
+        UIDocument* uiDocument = nullptr;
         Rml::ElementDocument* document = nullptr;
-        int mouseDowns = 0, scrolls = 0, keyDowns = 0, keyUps = 0, touchStarts = 0, touchCancels = 0;
+        int mouseDowns = 0, scrolls = 0, keyDowns = 0, keyUps = 0, touchStarts = 0, touchEnds = 0, touchCancels = 0;
         std::vector<uint32_t> chars;
     };
 
@@ -305,8 +309,15 @@ TEST_F(InputTest, SurrogatePairsReachDocumentsCombined){
 // ---- pointer consume rules ----
 
 TEST_F(InputTest, PointerConsumeRules){
-    // a button is the document's
-    click(buttonX, buttonY);
+    // A button takes pointer state and input; all mouse buttons obey the same rule.
+    Engine::systemMouseMove(buttonX, buttonY, 0);
+    EXPECT_TRUE(element("button")->IsPseudoClassSet("hover"));
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, buttonX, buttonY, 0);
+    EXPECT_TRUE(element("button")->IsPseudoClassSet("active"));
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, buttonX, buttonY, 0);
+    EXPECT_FALSE(element("button")->IsPseudoClassSet("active"));
+    Engine::systemMouseDown(D_MOUSE_BUTTON_RIGHT, buttonX, buttonY, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_RIGHT, buttonX, buttonY, 0);
     EXPECT_EQ(mouseDowns, 0);
 
     // the transparent body is the game's
@@ -322,6 +333,11 @@ TEST_F(InputTest, PointerConsumeRules){
     click(buttonX, buttonY);
     EXPECT_EQ(mouseDowns, 3);
     Engine::setIgnoreEventsHandledByUI(true);
+
+    uiDocument->hide();
+    updateDocuments(scene());
+    click(buttonX, buttonY);
+    EXPECT_EQ(mouseDowns, 4) << "a hidden document takes no input";
 }
 
 TEST_F(InputTest, OpaqueDocumentBlocksLikeACanvas){
@@ -467,7 +483,7 @@ TEST_F(InputTest, MultiTouch){
     Rml::Element* a = element("touchA");
     Rml::Element* b = element("touchB");
 
-    Engine::systemTouchStart(3, touchAX, touchAY);
+    Engine::systemTouchStart(0, touchAX, touchAY);
     Engine::systemTouchStart(7, touchBX, touchBY);
     EXPECT_TRUE(a->IsPseudoClassSet("active"));
     EXPECT_TRUE(b->IsPseudoClassSet("active"));
@@ -476,8 +492,11 @@ TEST_F(InputTest, MultiTouch){
     // a finger on the body is the game's
     Engine::systemTouchStart(9, bodyX, bodyY);
     EXPECT_EQ(touchStarts, 1);
+    Engine::systemTouchEnd(9, bodyX, bodyY);
+    EXPECT_EQ(touchEnds, 1);
 
-    // cancel clears both, without a click, and the game hears only its own finger
+    Engine::systemTouchStart(9, bodyX, bodyY);
+    // Cancel clears both, without a click, and the game hears only its own finger.
     Engine::systemTouchCancel();
     EXPECT_FALSE(a->IsPseudoClassSet("active"));
     EXPECT_FALSE(b->IsPseudoClassSet("active"));
@@ -487,6 +506,7 @@ TEST_F(InputTest, MultiTouch){
     Engine::systemTouchStart(4, touchAX, touchAY);
     Engine::systemTouchEnd(4, touchAX, touchAY);
     EXPECT_FALSE(a->IsPseudoClassSet("active"));
+    EXPECT_EQ(touchEnds, 1) << "a document-owned release does not reach the game";
 }
 
 TEST_F(InputTest, MouseLeaveClearsHover){

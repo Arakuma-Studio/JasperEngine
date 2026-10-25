@@ -2750,8 +2750,9 @@ list says where each wave-2 package plugs in without editing p2-core's files.
   `sha256Hex` (manifest checksums), `collectRemoteReferences` (stylesheets now, documents once
   p2-html lands), the CSS parser for Google Fonts CSS.
 - **Diagnostic codes:** a new code is a row in `DiagnosticCodes.cpp` plus a `codes::`
-  constant in `DiagnosticCodes.h` (the next free number of its area); `compat_codes_test.cpp`
-  scans `engine/core/htmlui/compat` and `editor/htmlui` for unregistered ids and constants.
+  constant in `DiagnosticCodes.h` (the next free number of its area). `compat_codes_test.cpp`
+  checks independently specified code identities/severities; emitted diagnostics are checked
+  at the public API and runtime boundaries. The former source/constant inventory scan was removed.
 
 ### p2-html (wave 2): HTML stage, loader, engine hooks
 
@@ -2764,8 +2765,9 @@ list says where each wave-2 package plugs in without editing p2-core's files.
 - **Deliverables:** 3.7, 3.8 (HTML side), 3.12 complete; `checkDocument` implemented;
   `<script type="text/lua">` execution; templates; `fragmentToRml`; source map attribute and
   `locateElement`; cache and invalidation; viewport restyle.
-- **Tests:** `compat_html_test.cpp` (golden: `fixtures/compat/html/<case>.html` →
-  `<case>.rml` and `<case>.diag.txt`, cases in 5.2), `compat_html5lib_test.cpp` (the
+- **Tests:** `compat_html_test.cpp` (bounded parsing, original source locations and inert
+  runtime fragments; generated RML snapshots were removed during test cleanup),
+  `compat_html5lib_test.cpp` (the
   html5lib tree-construction `.dat` files (MIT) vendored under `fixtures/compat/html5lib/`:
   every element created from a start tag has an offset that points at `<` + its tag name;
   implied elements have none; attributes point at their names),
@@ -2868,8 +2870,8 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
 - **Phase-0/1 fixtures** written in RML dialect (`<div/>`, RCSS) were renamed `.rml` (they test
   the renderer and the RML path); the editor's *Create > HTML Document* template is standard
   HTML/CSS now.
-- **Tests:** `compat_html_test.cpp` (25 golden cases in `fixtures/compat/html/`, the `.rml` golden
-  also lists templates, virtual sheets and Lua chunks), `compat_html5lib_test.cpp` (html5lib
+- **Tests:** `compat_html_test.cpp` (bounded parsing, source locations and inert fragments),
+  `compat_html5lib_test.cpp` (html5lib
   tree-construction corpus at its last commit before the move to WPT), `compat_sourcemap_test.cpp`,
   `compat_loader_test.cpp`, `compat_lua_test.cpp`, `compat_perf_test.cpp` (CPU time, scaled by
   `JASPER_HTMLUI_PERF_SLACK` on loaded hosts), `CompatApi.CheckDocumentCompilesTheDocument`.
@@ -2884,9 +2886,10 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
 - **Depends on:** p2-core.
 - **Deliverables:** 3.9 complete, every `RewriteId` implemented, both fork-feature states
   for every `Fallback` row; `rewriteSelector`, `rewriteDeclarations`.
-- **Tests:** `compat_css_golden_test.cpp` over `fixtures/compat/css/<case>.css` →
-  `<case>.rcss` + `<case>.diag.txt` (and `<case>.fork.rcss` for cases that differ with all
-  fork features on). Required cases (one file each, several declarations per file):
+- **Tests:** `compat_css_rmlui_accepts_test.cpp` parses the output for every
+  `fixtures/compat/css/<case>.css` through actual RmlUi in both feature states. Generated
+  RCSS/English-diagnostic snapshots were removed during test cleanup; dedicated CSS behavior
+  tests and Chromium parity own semantic outcomes. The original input matrix (one file each):
   colors (every syntax of 3.9.6 step 4, invalid colors), named-colors (all 148), system
   colors, current-color (same rule, companion, borders without color), times-and-angles,
   units (each Appendix E row), vmin-vmax (media duplication), calc-static (folds, viewport,
@@ -2929,9 +2932,9 @@ Built by p2-html (October 2026). Where the code differs from or adds to the text
   cases is parsed by the real RmlUi with a capturing log interface: zero warnings and errors
   (the sentinel message excepted). `compat_color_test.cpp` runs css-parsing-tests
   `color_*.json` through `ColorValue`. `compat_easing_test.cpp` checks the keyword table and
-  `nearestTween` against brute force. `compat_media_test.cpp`, `compat_selector_test.cpp`
-  table-driven. `compat_rewrite_registry_test.cpp`: every `RewriteId` used by a table row
-  has a registered function and every function is used. `compat_css_perf_test.cpp` CSS rows
+  independently specified easing curves. `compat_media_test.cpp`, `compat_selector_test.cpp`
+  are table-driven. Internal rewrite-registry inventories were removed during test cleanup;
+  actual native/fallback CSS outputs remain checked. `compat_css_perf_test.cpp` CSS rows
   (named apart from p2-html's `compat_perf_test.cpp`).
 
 #### p2-css as implemented
@@ -2946,9 +2949,9 @@ interfaces other packages rely on and the deviations.
   passed on) and `css/props/Rewriters.*` (the `RewriteId` → function registry). Fixtures:
   `fixtures/compat/css/<case>.css` (87 cases; a first-line comment
   `/* htmlui-test: kind=style-attribute|inline root-id=… root-class=… root-attr=… dir=…
-  viewport=WxH touch dp=… */` sets the inputs), shared runner `CssCaseRunner.h`, stand-ins
-  for the p2-runtime properties and decorators in `CompatRuntimeStandIns.h` (skipped when the
-  real ones are registered).
+  viewport=WxH touch dp=… */` sets the inputs), shared runner `CssCaseRunner.h`. Acceptance
+  uses the actual runtime property/decorator registrations from `HtmlUI::acquire`; obsolete
+  registration stand-ins were removed during test cleanup.
 - **`RewriteContext::rootAttributes`** (new field next to p2-html's `rootId`/`rootDirection`;
   `DocumentLoader` fills it with the `<html>` attributes except the reserved `id` and
   `data-html-id`): `html`/`:root` map to `body#htmlui-root` in author sheets (`body` in the UA
@@ -3113,7 +3116,7 @@ sections above keep the design, this list records the interfaces and the deviati
   `engine/tests/htmlui/fixtures/compat/pages/` (all golden pages and their assets),
   `engine/tests/htmlui/golden/compat/` (references and engine goldens), the comparison
   helpers `engine/tests/htmlui/compat/BrowserCompare.{h,cpp}`,
-  `tools/mcp/tests/test_html_ui_compat.py`, and the user-facing doc section "Writing
+  the compat runtime integration tests, and the user-facing doc section "Writing
   HTML/CSS for the engine" in `docs/mcp/guide/html-ui.md` (what works, what is rewritten,
   how to read diagnostics, imports; phase 4 adds the generated matrix).
 - **Depends on:** p2-core; final calibration needs all wave-2 packages merged.
@@ -3389,12 +3392,11 @@ What changed:
   first run reported. A hit therefore never carries a diagnostic: a declaration that reports
   is processed every time. `CssRewriter::setDeclarationMemo(On|Off|Check)` (default from
   `JASPER_HTMLUI_CSS_MEMO=off|check`): Check runs the pipeline for every hit as well and
-  counts the hits whose output differs. `CompatCssMemo.*` (in the normal suite) rewrites
-  every CSS fixture case in the three fork states, the user-agent sheet, a sheet that repeats
-  declarations of every kind and every HTML fixture and golden page without the memo, with it
-  and in Check mode, and compares the sheets, the line maps, every field of every diagnostic
-  in order and the font, dependency and keyframe lists: a rewrite that reads its rule without
-  counting fails there (removing the count from `RuleRef` fails two of the three tests).
+  counts the hits whose output differs. At implementation time, differential memo tests
+  compared every fixture with the memo off, on and in Check mode. Those tests were removed
+  during test cleanup because the expected result came from another implementation mode;
+  the authored CSS cases, source-map tests and runtime/browser parity remain the regression
+  owners. The diagnostic environment modes remain available.
 - **Reads moved to where they are needed**, so that more declarations depend on their text
   alone: the rule's font size is asked when a value resolves a font-relative unit
   (`NormalizeContext::ruleFontSize`), not for every value with a function, and its static
@@ -3512,7 +3514,8 @@ What changed:
   big lists and of the writer's output for its next session, as it keeps the arena's blocks:
   at most `kSpareKeptBytes` (4 MB) for all of them together, next to the arena's
   `kArenaKeptBytes` (4 MB) in `Arena.h`; a list that would exceed the cap is freed with its
-  session (`SpareStorage::kept()` for tests; `CompatCssSpares.KeptStorageStaysWithinTheCap`).
+  session. The former test-only spare-byte accessor and internal-cap test were removed;
+  the compiled-document memory gate in §3.14 remains.
 - **Cold compile**: a diagnostic of a linked style sheet counted the columns of the `<link>`'s
   line for its origin ("linked by page.html:1"), on a one-line 50 KB page a fifth of the
   compile: `SourceFiles::line` gives the line alone, and columns are counted eight bytes at a
@@ -3552,10 +3555,10 @@ than `perf stat`):
 
 Listed per package in section 4. Conventions:
 
-- Text goldens (`.rml`, `.rcss`, `.diag.txt`) are compared exactly; regenerate with
-  `JASPER_HTMLUI_UPDATE_GOLDEN=1` and review every diff before committing.
-- `.diag.txt` holds `toText()` lines, sorted, so a test fails when a diagnostic appears,
-  disappears or moves.
+- Generated HTML/RML and CSS/RCSS text snapshots were removed during test cleanup: private
+  wrappers, formatting and English diagnostic text are not stable behavioral oracles. Use
+  the authored semantic cases, structured diagnostic/source-position checks and Chromium
+  reference comparisons. Browser image/diagnostic reference handling remains in §5.3.
 - Every rewrite case also asserts `RmlUiAcceptsOutput` (zero RmlUi warnings).
 - Fork-dependent cases run twice (`ForkFeatures::present()` with every flag off, then on);
   with flags on, the output must contain the CSS feature unchanged and no `Fallback`
@@ -3565,7 +3568,8 @@ Listed per package in section 4. Conventions:
 
 ### 5.2 HTML parse cases
 
-`fixtures/compat/html/` (each `.html` → `.rml` + `.diag.txt`): doctype and quirks;
+The original HTML snapshot matrix (historical; the unconsumed snapshots and their private
+input fixtures were removed during test cleanup) covered: doctype and quirks;
 void elements without slash; unquoted and single-quoted attributes; boolean attributes;
 uppercase tags; implied html/head/body; `p` and `li` auto-close; table without `tbody`;
 foster-parented text and elements; mis-nested formatting (`<b><i></b></i>`); named
@@ -3772,13 +3776,12 @@ Start 2P TTF, `OFL.txt` files and a manifest entry.
 
 ### 5.5 MCP end-to-end
 
-`tools/mcp/tests/test_html_ui_compat.py` (p2-ua): copies the fixture project, adds a scene
-object with a `UIDocumentComponent` pointing at `main-menu.html` (pages copied into the
-fixture's `assets/ui/compat/`), plays, takes a screenshot (inspected by the implementer),
-reads the Console through the existing log tools and asserts the `[HTML UI] ui/compat/main-menu.html:
-0 errors` summary line; edits the CSS file through the existing file tools and asserts the
-document reloads (hot reload through dependencies) with the new color visible in the next
-screenshot. Also run, per BRIEF: `test_protocol.py`, `test_ui_anchors.py`.
+The original MCP main-menu screenshot/CSS-reload smoke test was consolidated into
+`CompatGoldenPages.MatchesChromium` and `CompatHotReloadTest.*`. The former writes engine
+images, heat maps and metrics while comparing the rendered page with Chromium; the latter
+verifies that image, font, linked CSS and imported CSS changes reach the loaded document.
+These tests exercise the behavior through the runtime interfaces used by the editor.
+MCP transport and tool dispatch remain covered by `test_protocol.py`.
 
 ### 5.6 Commands
 
@@ -3786,7 +3789,7 @@ screenshot. Also run, per BRIEF: `test_protocol.py`, `test_ui_anchors.py`.
 JOBS=3 tools/build.sh linux
 HTMLUI_TEST_ARGS="--gtest_filter=Compat*:compat*" JOBS=3 tools/build.sh htmlui-tests    # phase 0's runner (Docker, Xvfb)
 JOBS=3 tools/build.sh htmlui-editor-tests      # p2-importers adds this target: builds jasperengine-htmlui-editor-tests in build/linux/editor, runs it under xvfb
-tools/mcp/run-tests.sh tools/mcp/tests/test_html_ui_compat.py
+HTMLUI_TEST_ARGS="--gtest_filter=CompatGolden/*:CompatHotReloadTest.*" JOBS=3 tools/build.sh htmlui-tests
 tools/mcp/run-tests.sh tools/mcp/tests/test_protocol.py
 tools/mcp/run-tests.sh tools/mcp/tests/test_ui_anchors.py
 JOBS=3 tools/build.sh web && JOBS=3 tools/build.sh android      # compile check of lexbor + compat
@@ -3807,8 +3810,8 @@ New test files in `engine/tests/htmlui/compat/` need one glob line in
 - [ ] `DocumentLoader::load` is the only way `UIDocumentSystem` loads documents; plain
       `.html` written for a browser loads; the RML shape matches 3.2.
 - [ ] Every row of Appendices A–E is implemented as its status says, with the listed
-      diagnostics; table lint, codes lint and completeness tests pass (every CSS property in
-      the committed W3C index and every RmlUi property has a row).
+      diagnostics; public support lookups and code/severity contracts pass, and every CSS
+      property in the committed W3C index has support information.
 - [ ] Every RCSS the rewriter produces in the test corpus and the UA sheet loads in RmlUi
       with zero warnings (sentinel excepted).
 - [ ] Fork-dependent rewrites switch off per feature; tests pass with all flags off and all
@@ -3844,8 +3847,8 @@ New test files in `engine/tests/htmlui/compat/` need one glob line in
 - [ ] No new compiler warnings; no GPU object leaks across document load/unload/reload
       (phase-0 leak checks extended to compat decorators and callback textures).
 - [ ] `NOTICE.md` lists lexbor and Lucide; `docs/mcp/guide/html-ui.md` has the "Writing
-      HTML/CSS for the engine" section; `test_protocol.py`, `test_ui_anchors.py`,
-      `test_html_ui_compat.py` pass.
+      HTML/CSS for the engine" section; `test_protocol.py`, `test_ui_anchors.py`
+      and the compat golden-page/hot-reload integration tests pass.
 
 ## Appendix A. Property table (initial content)
 

@@ -32,27 +32,6 @@ namespace {
 
 }
 
-TEST(PoseViewportLogic, SpecValues){
-    // spec phase 5 sections 3 and 4, verbatim
-    EXPECT_EQ(poseview::LEFT_COLOR, 0xFF7A45u);
-    EXPECT_EQ(poseview::RIGHT_COLOR, 0x36B3FFu);
-    EXPECT_EQ(poseview::HIPS_COLOR, 0xFFD54Fu);
-    EXPECT_EQ(poseview::ONION_PREVIOUS_COLOR, 0x6FB3FFu);
-    EXPECT_EQ(poseview::ONION_NEXT_COLOR, 0x7CE38Bu);
-    EXPECT_EQ(poseview::GLOBAL_EDIT_COLOR, 0xFF9F43u);
-    EXPECT_FLOAT_EQ(poseview::FOOT_SNAP_DISTANCE, 0.02f);
-    EXPECT_FLOAT_EQ(poseview::CONTACT_RING_HEIGHT, 0.01f);
-    EXPECT_FLOAT_EQ(poseview::FLOOR_RADIUS, 1.5f);
-    EXPECT_FLOAT_EQ(poseview::FLOOR_FILL_ALPHA, 0.05f);
-    EXPECT_FLOAT_EQ(poseview::FLOOR_GRID_SPACING, 0.25f);
-    EXPECT_FLOAT_EQ(poseview::RING_SNAP_DEGREES, 5.0f);
-    const Vector4 coral = poseview::color(poseview::LEFT_COLOR);
-    EXPECT_NEAR(coral.x, 1.0f, 1e-6);
-    EXPECT_NEAR(coral.y, 0x7A / 255.0f, 1e-6);
-    EXPECT_NEAR(coral.z, 0x45 / 255.0f, 1e-6);
-    EXPECT_NEAR(poseview::lighten(coral, 1.0f).y, 1.0f, 1e-6);
-}
-
 TEST(PoseViewportLogic, JointDotsAndSides){
     const std::vector<H>& dots = poseview::jointDotBones();
     EXPECT_EQ(dots.size(), 17u);

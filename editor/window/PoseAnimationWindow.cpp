@@ -584,38 +584,6 @@ editor::PoseAnimationWindow::State editor::PoseAnimationWindow::getState(){
     return state;
 }
 
-void editor::PoseAnimationWindow::noteCardSpot(int index, const std::string& name){
-    // the item just drawn (the card's invisible button), when it is on screen
-    if (!ImGui::IsItemVisible()) return;
-    const int frame = ImGui::GetFrameCount();
-    cardSpots.erase(std::remove_if(cardSpots.begin(), cardSpots.end(), [&](const CardSpot& spot){
-        return spot.frame < frame - 1 || (spot.index == index && spot.name == name);
-    }), cardSpots.end());
-    const ImVec2 min = ImGui::GetItemRectMin();
-    const ImVec2 max = ImGui::GetItemRectMax();
-    cardSpots.push_back({frame, index, name, ImVec2((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f)});
-}
-
-bool editor::PoseAnimationWindow::cardCenter(int index, ImVec2& out) const{
-    for (const CardSpot& spot : cardSpots){
-        if (spot.index == index && spot.name.empty() && spot.frame >= ImGui::GetFrameCount() - 1){
-            out = spot.centre;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool editor::PoseAnimationWindow::templateCardCenter(const std::string& name, ImVec2& out) const{
-    for (const CardSpot& spot : cardSpots){
-        if (spot.index < 0 && spot.name == name && spot.frame >= ImGui::GetFrameCount() - 1){
-            out = spot.centre;
-            return true;
-        }
-    }
-    return false;
-}
-
 // ---- transport ----
 
 void editor::PoseAnimationWindow::selectPose(int index){
@@ -1504,7 +1472,6 @@ void editor::PoseAnimationWindow::drawCard(int index, const ImVec2& pos, float c
     ImGui::SetCursorScreenPos(pos);
     ImGui::PushID(index);
     ImGui::InvisibleButton("##card", ImVec2(cardWidth, cardHeight), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
-    noteCardSpot(index, "");
     const bool hovered = ImGui::IsItemHovered();
     if (ImGui::IsItemActivated() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
         pressedCard = index;
