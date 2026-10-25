@@ -58,6 +58,8 @@ namespace jasperengine::editor {
         std::string cmakeGenerator;
         unsigned int buildJobs = 0;          // 0 = automatic
         std::string buildType = "Release";
+        // Development Build: the profiler and --profile in a Release game (Debug always has them)
+        bool developmentBuild = false;
         // Desktop/Web: value passed to the exported CMake GRAPHIC_BACKEND
         // setting (glcore, gles3, d3d11, metal, or vulkan).
         std::string graphicBackend;

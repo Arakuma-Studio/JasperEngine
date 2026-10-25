@@ -95,6 +95,8 @@
 #include <vector>
 #include <memory>
 
+#include "profiler/Profile.h"
+
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <execinfo.h>
 #include <unistd.h>
@@ -331,7 +333,55 @@ std::string LuaBinding::getLuaStackErrorString(lua_State* L, int index) {
     return std::string("(") + luaL_typename(L, index) + " error value)";
 }
 
+#if JASPERENGINE_PROFILER
+namespace {
+    // A Lua call in the profiler: the outermost one in a "Lua" scope (the CPU chart's Scripts),
+    // and with Deep Profile Lua every callback in a scope named by its chunk and line
+    class LuaProfileScope {
+    public:
+        LuaProfileScope(lua_State* L, int function){
+            if (!profiler::isEnabled())
+                return;
+            static profiler::ScopeSite luaSite{"Lua", __FILE__, (uint32_t)__LINE__};
+            if (depth()++ == 0){
+                const uint32_t id = luaSite.id.load(std::memory_order_relaxed);
+                outer = profiler::beginScope(id ? id : profiler::registerSite(luaSite));
+            }
+            counted = true;
+            if (profiler::isDeepLua() && lua_isfunction(L, function)){
+                lua_Debug info;
+                lua_pushvalue(L, function);
+                if (lua_getinfo(L, ">S", &info)){
+                    char name[160];
+                    std::snprintf(name, sizeof(name), "Lua %s:%d", info.short_src, info.linedefined);
+                    deep = profiler::beginScope(profiler::internName(name));
+                }
+            }
+        }
+        ~LuaProfileScope(){
+            if (deep)
+                profiler::endScope();
+            if (counted && --depth() == 0 && outer)
+                profiler::endScope();
+        }
+        LuaProfileScope(const LuaProfileScope&) = delete;
+        LuaProfileScope& operator=(const LuaProfileScope&) = delete;
+    private:
+        bool counted = false;
+        bool outer = false;
+        bool deep = false;
+        static int& depth(){
+            thread_local int value = 0;
+            return value;
+        }
+    };
+}
+#endif
+
 int LuaBinding::pcallWithTraceback(lua_State* L, int nargs, int nresults){
+#if JASPERENGINE_PROFILER
+    LuaProfileScope profile(L, lua_gettop(L) - nargs);
+#endif
     //message handler goes below the function and its arguments
     int base = lua_gettop(L) - nargs;
     lua_pushcfunction(L, handleLuaError);
@@ -344,6 +394,9 @@ int LuaBinding::pcallWithTraceback(lua_State* L, int nargs, int nresults){
 }
 
 void LuaBinding::luaCallback(int nargs, int nresults, int msgh){
+#if JASPERENGINE_PROFILER
+    LuaProfileScope profile(luastate, lua_gettop(luastate) - nargs);
+#endif
     int status = lua_pcall(luastate, nargs, nresults, msgh);
     if (status != 0){
         logLuaError("Lua Error: %s", getLuaStackErrorString(luastate, -1).c_str());
@@ -666,6 +719,7 @@ void LuaBinding::registerClasses(lua_State *L){
     registerMathClasses(L); 
     registerUtilClasses(L);
     registerThreadClasses(L);
+    registerProfilerClasses(L);
     registerHtmlUIClasses(L);
     registerHtmlUIAnimeClasses(L);
     registerHtmlUIVectorClasses(L);

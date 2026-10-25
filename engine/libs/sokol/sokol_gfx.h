@@ -16231,6 +16231,7 @@ _SOKOL_PRIVATE void _sg_mtl_begin_render_pass(const sg_pass* pass, const _sg_att
     // render command encoder is also returned in a minimized window
     // ===
     // create a render command encoder, this might return nil if window is minimized
+    if (_sg_jasper_hooks.mtl_begin_render_pass) { _sg_jasper_hooks.mtl_begin_render_pass((__bridge void*)pass_desc); }  // JasperEngine: gpu timer hook
     _sg.mtl.render_cmd_encoder = [_sg.mtl.cmd_buffer renderCommandEncoderWithDescriptor:pass_desc];
     if (nil == _sg.mtl.render_cmd_encoder) {
         _sg.cur_pass.valid = false;
@@ -25531,6 +25532,7 @@ SOKOL_API_IMPL void sg_begin_pass(const sg_pass* pass) {
         return;
     }
     _sg_begin_pass(&pass_def, &atts_ptrs);
+    if (_sg_jasper_hooks.begin_pass) { _sg_jasper_hooks.begin_pass(pass_def.label); }  // JasperEngine: gpu timer hook
 }
 
 SOKOL_API_IMPL void sg_apply_viewport(int x, int y, int width, int height, bool origin_top_left) {
@@ -25764,6 +25766,7 @@ SOKOL_API_IMPL void sg_end_pass(void) {
     // NOTE: don't exit early if !_sg.cur_pass.valid
     if (!_sg.cur_pass.swapchain.invalid) {
         const _sg_attachments_ptrs_t atts_ptrs = _sg_attachments_ptrs(&_sg.cur_pass.atts);
+        if (_sg_jasper_hooks.end_pass) { _sg_jasper_hooks.end_pass(); }  // JasperEngine: gpu timer hook
         _sg_end_pass(&atts_ptrs);
     }
     _sg.cur_pip = _sg_pipeline_ref(0);
@@ -25774,6 +25777,7 @@ SOKOL_API_IMPL void sg_commit(void) {
     SOKOL_ASSERT(_sg.valid);
     SOKOL_ASSERT(!_sg.cur_pass.valid);
     SOKOL_ASSERT(!_sg.cur_pass.in_pass);
+    if (_sg_jasper_hooks.commit) { _sg_jasper_hooks.commit(); }  // JasperEngine: gpu timer hook
     _sg_commit();
     _sg_update_stats();
     _sg_notify_commit_listeners();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "HtmlUITexture.h"
+#include "profiler/Profile.h"
 
 #include "Log.h"
 #include "render/SystemRender.h"
@@ -23,6 +24,7 @@ std::unique_ptr<HtmlUITexture> HtmlUITexture::createDynamic(const std::string& l
     std::unique_ptr<HtmlUITexture> texture = std::make_unique<HtmlUITexture>();
     texture->kind = Kind::DYNAMIC;
     texture->ownedRender = std::make_unique<TextureRender>();
+    JE_GPU_ALLOC_SCOPE(UI, label);
     if (!texture->ownedRender->createDynamicTexture(label, width, height, format, filter)){
         Log::error("[HTML UI] could not create the %i x %i dynamic texture '%s'", width, height, label.c_str());
         return nullptr;

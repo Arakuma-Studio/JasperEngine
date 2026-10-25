@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "IBLEnvironment.h"
+#include "profiler/Profile.h"
 
 #include "Log.h"
 #include "render/SystemRender.h"
@@ -448,6 +449,7 @@ bool IBLEnvironment::generate(const std::string& label, std::array<TextureData,6
     }
 
     // ---- create GPU textures ----
+    JE_GPU_ALLOC_SCOPE(Textures, "IBL environment");
     bool irrCreated = irradianceMap.createTexture(
             label + "|irradiance", IRRADIANCE_SIZE, IRRADIANCE_SIZE,
             ColorFormat::RGBA, TextureType::TEXTURE_CUBE, 6, irrData, irrSize,
