@@ -42,6 +42,7 @@ void Mesh::setTexture(const std::string& path){
     mesh.submeshes[0].material.baseColorTexture.setPath(path);
 
     mesh.submeshes[0].needUpdateTexture = true;
+    markChanged<MeshComponent>();
 }
 
 void Mesh::setTexture(const std::string& id, TextureData data){
@@ -50,6 +51,7 @@ void Mesh::setTexture(const std::string& id, TextureData data){
     mesh.submeshes[0].material.baseColorTexture.setData(id, data);
 
     mesh.submeshes[0].needUpdateTexture = true;
+    markChanged<MeshComponent>();
 }
 
 void Mesh::setTexture(Framebuffer* framebuffer){
@@ -58,6 +60,7 @@ void Mesh::setTexture(Framebuffer* framebuffer){
     mesh.submeshes[0].material.baseColorTexture.setFramebuffer(framebuffer);
 
     mesh.submeshes[0].needUpdateTexture = true;
+    markChanged<MeshComponent>();
 }
 
 void Mesh::setColor(Vector4 color){
@@ -130,10 +133,13 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
 
         mesh.submeshes[submesh].material = material;
         mesh.submeshes[submesh].needUpdateTexture = true;
+        markChanged<MeshComponent>();
         if (reload)
             mesh.needReload = true;
-        if (paramsChanged)
+        if (paramsChanged){
             mesh.needUpdateShaderUniforms = true;
+            markChanged<MeshComponent>();
+        }
     }
 }
 
@@ -460,8 +466,10 @@ std::string Mesh::getCustomDepthShader() const{
 void Mesh::setShaderUniform(const std::string& name, const Vector4& value){
     MeshComponent& mesh = getComponent<MeshComponent>();
 
-    if (ShaderUniforms::set(mesh.shaderUniforms, name, value))
+    if (ShaderUniforms::set(mesh.shaderUniforms, name, value)){
         mesh.needUpdateShaderUniforms = true;
+        markChanged<MeshComponent>();
+    }
 }
 
 void Mesh::setShaderUniform(const std::string& name, const Vector3& value){
@@ -489,6 +497,7 @@ bool Mesh::removeShaderUniform(const std::string& name){
         return false;
 
     mesh.needUpdateShaderUniforms = true;
+    markChanged<MeshComponent>();
     return true;
 }
 
@@ -541,6 +550,7 @@ void Mesh::setInstancedBillboard(bool billboard, bool cylindrical){
     instmesh.instancedCylindricalBillboard = cylindrical;
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 void Mesh::setInstancedBillboard(bool billboard){
@@ -551,6 +561,7 @@ void Mesh::setInstancedBillboard(bool billboard){
         instmesh.instancedBillboard = billboard;
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }
 }
 
@@ -572,6 +583,7 @@ void Mesh::setInstancedCylindricalBillboard(bool cylindricalBillboard){
         instmesh.instancedCylindricalBillboard = cylindricalBillboard;
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }
 }
 
@@ -727,6 +739,7 @@ void Mesh::addInstance(InstanceData instance){
     }
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 void Mesh::addInstance(Vector3 position){
@@ -788,6 +801,7 @@ void Mesh::updateInstance(size_t index, InstanceData instance){
     instmesh.instances.at(index) = instance;
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 void Mesh::updateInstance(size_t index, Vector3 position){
@@ -841,6 +855,7 @@ void Mesh::removeInstance(size_t index){
     instmesh.instances.erase(instmesh.instances.begin() + index);
 
     instmesh.needUpdateInstances = true;
+    markChanged<InstancedMeshComponent>();
 }
 
 bool Mesh::isInstanceVisible(size_t index){
@@ -861,6 +876,7 @@ void Mesh::setInstanceVisible(size_t index, bool visible) const{
             instmesh.instances.at(index).visible = visible;
 
             instmesh.needUpdateInstances = true;
+            markChanged<InstancedMeshComponent>();
         }
     }else{
         Log::error("There is no instanced mesh component in this mesh");
@@ -872,6 +888,7 @@ void Mesh::updateInstances(){
         InstancedMeshComponent& instmesh = getComponent<InstancedMeshComponent>();
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }else{
         Log::error("There is no instanced mesh component in this mesh");
     }
@@ -894,6 +911,7 @@ void Mesh::clearInstances(){
         instmesh.instances.clear();
 
         instmesh.needUpdateInstances = true;
+        markChanged<InstancedMeshComponent>();
     }else{
         Log::error("There is no instanced mesh component in this mesh");
     }

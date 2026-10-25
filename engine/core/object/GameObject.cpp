@@ -84,6 +84,7 @@ void GameObject::setPosition(Vector3 position){
         transform.position = position;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -112,6 +113,7 @@ void GameObject::setRotation(Quaternion rotation){
         transform.rotation = rotation;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -140,6 +142,7 @@ void GameObject::setScale(Vector3 scale){
         transform.scale = scale;
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -161,6 +164,7 @@ void GameObject::setVisible(bool visible){
     if (transform.visible != visible || !visible){
         transform.visible = visible;
         transform.needUpdateChildVisibility = true;
+        markChanged<Transform>();
     }
 }
 
@@ -200,6 +204,7 @@ void GameObject::setBillboardRotation(Quaternion rotation){
     if (transform.billboardRotation != rotation){
         transform.billboardRotation = rotation;
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 
@@ -250,6 +255,7 @@ void GameObject::setLocalMatrix(Matrix4 localMatrix){
         }
 
         transform.needUpdate = true;
+        markChanged<Transform>();
     }
 }
 

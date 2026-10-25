@@ -187,6 +187,7 @@ namespace jasperengine::editor{
                     *overrideMask |= propertyFields;
                 }
 
+                Catalog::markChanged(sceneProject->scene, entity, type);
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
                 project->recordPrefabEdit(sceneId, entity, type, {propertyName});
@@ -240,6 +241,7 @@ namespace jasperengine::editor{
                     }
                 }
 
+                Catalog::markChanged(sceneProject->scene, entity, type);
                 Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
             }
             prefabUndo.restore(project, sceneId);

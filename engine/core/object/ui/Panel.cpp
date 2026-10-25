@@ -123,6 +123,7 @@ void Panel::setTitleAnchorPreset(AnchorPreset titleAnchorPreset){
 
     titlelayout.anchorPreset = titleAnchorPreset;
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 AnchorPreset Panel::getTitleAnchorPreset() const{
@@ -167,6 +168,7 @@ void Panel::setTitleFont(const std::string& font){
     getHeaderTextObject().setFont(font);
 
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 std::string Panel::getTitleFont() const{
@@ -187,6 +189,7 @@ void Panel::setTitleFontSize(unsigned int fontSize){
     getHeaderTextObject().setFontSize(fontSize);
 
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 unsigned int Panel::getTitleFontSize() const{
@@ -240,6 +243,7 @@ void Panel::setHeaderMargin(int left, int top, int right, int bottom){
 
     panelcomp.defaultHeaderMargin = false;
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 void Panel::setHeaderMarginLeft(int left){
@@ -249,6 +253,7 @@ void Panel::setHeaderMarginLeft(int left){
 
     panelcomp.defaultHeaderMargin = false;
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 int Panel::getHeaderMarginLeft() const{
@@ -264,6 +269,7 @@ void Panel::setHeaderMarginTop(int top){
 
     panelcomp.defaultHeaderMargin = false;
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 int Panel::getHeaderMarginTop() const{
@@ -279,6 +285,7 @@ void Panel::setHeaderMarginRight(int right){
 
     panelcomp.defaultHeaderMargin = false;
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 int Panel::getHeaderMarginRight() const{
@@ -294,6 +301,7 @@ void Panel::setHeaderMarginBottom(int bottom){
 
     panelcomp.defaultHeaderMargin = false;
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 int Panel::getHeaderMarginBottom() const{
@@ -309,6 +317,7 @@ void Panel::setMinSize(int minWidth, int minHeight){
     panelcomp.minHeight = minHeight;
 
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 void Panel::setMinWidth(int minWidth){
@@ -317,6 +326,7 @@ void Panel::setMinWidth(int minWidth){
     panelcomp.minWidth = minWidth;
 
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 void Panel::setMinHeight(int minHeight){
@@ -325,6 +335,7 @@ void Panel::setMinHeight(int minHeight){
     panelcomp.minHeight = minHeight;
 
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 int Panel::getMinWidth() const{
@@ -345,6 +356,7 @@ void Panel::setResizeMargin(int resizeMargin){
     panelcomp.resizeMargin = resizeMargin;
 
     panelcomp.needUpdatePanel = true;
+    markChanged<PanelComponent>();
 }
 
 int Panel::getResizeMargin() const{

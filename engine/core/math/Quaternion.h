@@ -28,9 +28,10 @@ namespace jasperengine {
 
         static const Quaternion IDENTITY;
 
-        Quaternion();
-        Quaternion (const Quaternion& rhs);
-        Quaternion( const float fW, const float fX, const float fY, const float fZ );
+        // inline and trivially copyable, as Vector3 (S07 R25)
+        Quaternion(): w(1), x(0), y(0), z(0) {}
+        Quaternion (const Quaternion& rhs) = default;
+        Quaternion( const float fW, const float fX, const float fY, const float fZ ): w(fW), x(fX), y(fY), z(fZ) {}
         explicit Quaternion( float* const r );
         Quaternion(const float xAngle, const float yAngle, const float zAngle);
         Quaternion(const float xAngle, const float yAngle, const float zAngle, const RotationOrder& order);
@@ -47,7 +48,7 @@ namespace jasperengine {
         float* ptr();
         const float* ptr() const;
 
-        Quaternion& operator = ( const Quaternion& rhs );
+        Quaternion& operator = ( const Quaternion& rhs ) = default;
         bool operator == ( const Quaternion& rhs ) const;
         bool operator != ( const Quaternion& rhs ) const;
         bool equals(const Quaternion& rhs) const;
