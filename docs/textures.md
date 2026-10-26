@@ -203,9 +203,9 @@ Times (R19, R20):
 
 | | measured | budget |
 |---|---|---|
-| load of a 2048² BC7 KTX2 with mips: loader thread (read + zstd) | 3.05 ms | 12 ms |
-| the same: main-thread upload | 0.428 ms | 0.5 ms |
-| PNG decode + mip generation + upload of the same image | 70.1 ms (20.2× the KTX2) | ≥ 3× |
+| load of a 2048² BC7 KTX2 with mips: loader thread (read + zstd) | 3.29 ms | 12 ms |
+| the same: main-thread upload | 0.342 ms (0.33–0.43 over runs) | 0.5 ms |
+| PNG decode + mip generation + upload of the same image | 50.5 ms (13.9× the KTX2) | ≥ 3× |
 | cold 2048² cook, desktop BC1 | 1.10 s | 3 s |
 | cold 2048² cook, mobile ASTC 6x6 (normal effort) | 1.30 s | 6 s |
 | cold 2048² cook, web UASTC λ1 | 9.57 s | 12 s |

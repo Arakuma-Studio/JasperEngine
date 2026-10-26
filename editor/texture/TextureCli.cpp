@@ -8,6 +8,7 @@
 #include "texture/TextureExport.h"
 #include "texture/TexturePrepare.h"
 
+#include "io/AtomicFile.h"
 #include "stb_image_write.h"
 
 #include <algorithm>
@@ -87,10 +88,13 @@ namespace {
         }else{
             return false;
         }
-        std::error_code ec;
-        if (path.has_parent_path())
-            fs::create_directories(path.parent_path(), ec);
-        return stbi_write_png(path.string().c_str(), width, height, components, out.data(), width * components) != 0;
+        std::string png;
+        auto append = [](void* context, void* data, int size){
+            static_cast<std::string*>(context)->append(static_cast<const char*>(data), (size_t)size);
+        };
+        if (!stbi_write_png_to_func(append, &png, width, height, components, out.data(), width * components))
+            return false;
+        return io::writeFileAtomic(path, png).ok();
     }
 
 }
@@ -267,12 +271,7 @@ int TextureCli::cook(Project& project, const TextureCliOptions& options){
         }, nullptr);
     std::cout << TextureCookReport::toText(result.rows);
     if (!options.report.empty()){
-        std::error_code ec;
-        if (options.report.has_parent_path())
-            fs::create_directories(options.report.parent_path(), ec);
-        std::ofstream out(options.report, std::ios::binary);
-        out << TextureCookReport::toJson(result.rows).dump(1) << "\n";
-        if (!out){
+        if (!io::writeFileAtomic(options.report, TextureCookReport::toJson(result.rows).dump(1) + "\n").ok()){
             std::cerr << "cook-textures: cannot write " << options.report.string() << "\n";
             return 1;
         }
