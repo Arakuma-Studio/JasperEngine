@@ -48,6 +48,7 @@
 #include "Generator.h"
 #include "Log.h"
 #include "subsystem/MeshSystem.h"
+#include "render/SystemRender.h"
 #include "util/FileDialogs.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
@@ -201,11 +202,25 @@ editor::ProjectWindow::ProjectWindow(Project* project, CodeEditor* codeEditor, I
 }
 
 editor::ProjectWindow::~ProjectWindow() {
-    cancelThumbnailWork();
-    stopThumbnailThread = true;
     // the steps capture this window
+    stopThumbnailWork();
+}
+
+void editor::ProjectWindow::stopThumbnailWork(){
+    stopThumbnailThread = true;
     thumbnails.cancelPending();
-    thumbnails.waitIdle();
+    // A running step can wait in Engine::endAsyncThread for the main thread to execute the
+    // batch committed before its own, so the main thread keeps executing the render queue
+    // until the step ends; its own batch is executed last. A batch nobody executes would
+    // block SokolSystem::shutdown's flush for good.
+    while (thumbnails.pendingCount() > 0) {
+        if (Engine::isViewLoaded())
+            SystemRender::executeQueue();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    if (Engine::isViewLoaded())
+        SystemRender::executeQueue();
+    cancelThumbnailWork();
 }
 
 bool editor::ProjectWindow::isFocused() const{

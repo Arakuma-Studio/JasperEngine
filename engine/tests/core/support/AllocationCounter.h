@@ -48,8 +48,9 @@ namespace testsupport {
         uint64_t start;
     };
 
-    // How much slower the build server may be than the performance budgets (JASPER_TEST_PERF_SLACK,
-    // default 1); 0 under a sanitizer, where budgets are only printed
+    // The factor wall-clock budgets are enforced with: JASPER_TEST_PERF_SLACK, set by the
+    // benchmark run on the benchmark server (docs/testing.md). 0 when it is not set, and under a
+    // sanitizer: the budgets are only printed, since a shared builder's load alone can miss them.
     double perfSlack();
 
 }

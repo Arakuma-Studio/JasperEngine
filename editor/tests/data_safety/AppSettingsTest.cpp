@@ -6,14 +6,24 @@
 
 #include "AppSettings.h"
 #include "support/TestTempDir.h"
+#include "util/FileUtils.h"
 
 #include <gtest/gtest.h>
 
 #include "yaml-cpp/yaml.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <vector>
+
 #if !defined(_WIN32)
+    #include <spawn.h>
     #include <sys/wait.h>
     #include <unistd.h>
+
+    extern char** environ;
 #endif
 
 namespace fs = std::filesystem;
@@ -22,9 +32,30 @@ using namespace jasperengine::editor;
 using jasperengine::test::TestTempDir;
 
 #if !defined(_WIN32)
-// A loads, B loads (the fork), B adds a recent project and saves, A changes the window width and
-// saves: the file has both
+namespace {
+    // Set for process B: "<settings file>|<project>". B is this test binary started again with
+    // this test filtered, as a second editor is another process. (A fork() child of this process,
+    // which has job workers and the logger's drain thread, may only call async-signal-safe
+    // functions: a lock another thread held at the fork stays held in it, as the logger's did in
+    // AppSettings::applySettings under ASan, and the child waited for good.)
+    constexpr const char* processBEnv = "JE_APPSETTINGS_TEST_PROCESS_B";
+}
+
+// A loads, B loads, B adds a recent project and saves, A changes the window width and saves: the
+// file has both
 TEST(AppSettings, MergeConcurrent) {
+    if (const char* processB = std::getenv(processBEnv)) {
+        const std::string spec = processB;
+        const size_t bar = spec.find('|');
+        bool saved = AppSettings::initializeWithFile(spec.substr(0, bar));
+        if (saved) {
+            AppSettings::addToRecentProjects(spec.substr(bar + 1), false);
+            saved = AppSettings::saveSettings();
+        }
+        std::fflush(nullptr);
+        ::_exit(saved ? 0 : 1);
+    }
+
     TestTempDir dir("settings");
     const fs::path file = dir / "settings.yaml";
     const fs::path projectA = dir / "ProjectA";
@@ -36,15 +67,19 @@ TEST(AppSettings, MergeConcurrent) {
     ASSERT_TRUE(AppSettings::initializeWithFile(file));
     ASSERT_EQ(AppSettings::getWindowWidth(), 1280);
 
-    const pid_t child = ::fork();
-    ASSERT_GE(child, 0);
-    if (child == 0) {
-        // process B
-        AppSettings::addToRecentProjects(projectB, false);
-        ::_exit(AppSettings::saveSettings() ? 0 : 1);
-    }
+    // process B
+    const std::string self = (editor::FileUtils::getExecutableDir() / "jasperengine-editor-tests").string();
+    const std::string filter = "--gtest_filter=AppSettings.MergeConcurrent";
+    const std::string bEnv = std::string(processBEnv) + "=" + file.string() + "|" + projectB.string();
+    std::vector<char*> args = {const_cast<char*>(self.c_str()), const_cast<char*>(filter.c_str()), nullptr};
+    std::vector<char*> env;
+    for (char** entry = environ; *entry; entry++) env.push_back(*entry);
+    env.push_back(const_cast<char*>(bEnv.c_str()));
+    env.push_back(nullptr);
+    pid_t child = 0;
+    ASSERT_EQ(::posix_spawn(&child, self.c_str(), nullptr, nullptr, args.data(), env.data()), 0) << self;
     int status = 0;
-    ::waitpid(child, &status, 0);
+    ASSERT_EQ(::waitpid(child, &status, 0), child);
     ASSERT_TRUE(WIFEXITED(status));
     ASSERT_EQ(WEXITSTATUS(status), 0);
 

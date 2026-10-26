@@ -3722,6 +3722,9 @@ void editor::App::shutdownBackgroundWork() {
 
 void editor::App::engineViewDestroyed(){
     imageViewerWindow->closeAll();
+    // no thumbnail step renders off the main thread (and commits to the render queue) from
+    // here on, nor touches the scenes the view's destruction removes
+    projectWindow->stopThumbnailWork();
     // Closing during project loading can leave uploads committed before any scene frame
     // consumes them. Drain that batch before shutdown waits to flush the queue.
     SystemRender::executeQueue();

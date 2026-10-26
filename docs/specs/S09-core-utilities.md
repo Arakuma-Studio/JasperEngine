@@ -597,3 +597,9 @@ Land S09 early in wave 1 so the others build on it.
   the `je_log_crash_helper` executable (`jasperengine-editor-tests`), and
   `tools/mcp/tests/test_core_utilities.py`. Benchmarks are the `*Bench` suites, with
   `JASPER_TEST_PERF_SLACK`.
+- **Wall-clock budgets are enforced on the benchmark server only** (bug fix after the merge).
+  `SchedulerTest.Process10kUnder2ms` and the `*Bench` suites failed ordinary unit test runs on
+  loaded shared builders (10k timers in 20 ms against the 2 ms budget). Their budgets now apply
+  when `JASPER_TEST_PERF_SLACK` is set: the benchmark run on server E
+  (`env JASPER_TEST_PERF_SLACK=1 ... --gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms`,
+  docs/testing.md). Other runs print the `[bench]` lines and check the results only.

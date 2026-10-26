@@ -7,6 +7,9 @@
 // (--wrap=malloc, calloc, realloc: tests/core/CMakeLists.txt); the aligned forms, which the
 // job system's slabs and the arenas use, are replaced here. GNU ld only
 // (JE_TEST_COUNTS_ALLOCATIONS): elsewhere countsAllocations() is false and the tests skip.
+// Under ASan, whose allocator serves operator new itself (ThorVG's replacement is off there),
+// so that new never reaches malloc, every allocation is counted at ASan's allocator instead,
+// through its malloc hook, and the wrappers above only forward.
 
 #include "AllocationCounter.h"
 
@@ -21,6 +24,13 @@
 #include <new>
 
 #include <execinfo.h>
+
+#if defined(JASPERENGINE_SANITIZE_ADDRESS)
+// libasan's allocator hook (compiler-rt's sanitizer/allocator_interface.h, which not every
+// toolchain installs): called for each allocation and free of the program
+extern "C" int __sanitizer_install_malloc_and_free_hooks(void (*mallocHook)(const volatile void*, std::size_t),
+                                                         void (*freeHook)(const volatile void*));
+#endif
 
 namespace{
     std::atomic<uint64_t> allocations{0};
@@ -55,8 +65,18 @@ namespace{
         }
     }
 
+#if defined(JASPERENGINE_SANITIZE_ADDRESS)
+    // every allocation, whatever its entry point, reaches the sanitizer's allocator
+    constexpr bool countAtWrappers = false;
+    void onAllocate(const volatile void*, std::size_t){ count(); }
+    void onFree(const volatile void*){}
+    [[maybe_unused]] const int hooksInstalled = __sanitizer_install_malloc_and_free_hooks(onAllocate, onFree);
+#else
+    constexpr bool countAtWrappers = true;
+#endif
+
     void* alignedCounted(std::size_t bytes, std::size_t alignment){
-        count();
+        if (countAtWrappers) count();
         void* memory = nullptr;
         if (posix_memalign(&memory, alignment < sizeof(void*) ? sizeof(void*) : alignment, bytes ? bytes : 1) != 0)
             return nullptr;
@@ -70,17 +90,17 @@ extern "C" {
     void* __real_realloc(void* memory, std::size_t bytes);
 
     void* __wrap_malloc(std::size_t bytes){
-        count();
+        if (countAtWrappers) count();
         return __real_malloc(bytes);
     }
 
     void* __wrap_calloc(std::size_t items, std::size_t bytes){
-        count();
+        if (countAtWrappers) count();
         return __real_calloc(items, bytes);
     }
 
     void* __wrap_realloc(void* memory, std::size_t bytes){
-        count();
+        if (countAtWrappers) count();
         return __real_realloc(memory, bytes);
     }
 }
@@ -162,8 +182,8 @@ namespace testsupport {
         return 0.0;
     #else
         const char* value = std::getenv("JASPER_TEST_PERF_SLACK");
-        const double slack = value ? std::atof(value) : 1.0;
-        return slack > 0.0 ? slack : 1.0;
+        const double slack = value ? std::atof(value) : 0.0;
+        return slack > 0.0 ? slack : 0.0;
     #endif
     }
 

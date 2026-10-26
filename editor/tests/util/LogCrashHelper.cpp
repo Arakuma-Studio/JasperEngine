@@ -22,8 +22,14 @@ using namespace jasperengine;
 namespace {
 
     void crash() {
+#if defined(JASPERENGINE_SANITIZE_UNDEFINED)
+        // UBSan stops at a null store (undefined behaviour) before the crash handler sees the
+        // fault: the same signal, raised
+        std::raise(SIGSEGV);
+#else
         volatile int* nothing = nullptr;
         *nothing = 1;
+#endif
     }
 
 }
