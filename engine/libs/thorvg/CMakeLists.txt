@@ -3,6 +3,10 @@
 # loaders lottie (without jerryscript: no expressions), png, jpg, raw and sfnt (TTF/OTF text
 # layers). The SVG loader is not vendored: SVG goes through LunaSVG (libs/lunasvg). Upstream
 # builds with meson; this file and config/config.h replace it.
+# Local patch: src/renderer/tvgInitializer.cpp and src/common/tvgCommon.h no longer replace the
+# global operator new / delete (upstream maps them to malloc / free for the whole program: here
+# that covered the engine library without its sized delete, broke `new`'s bad_alloc contract and
+# made AddressSanitizer report alloc-dealloc mismatches). Keep it when updating ThorVG.
 
 set(THORVG_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
