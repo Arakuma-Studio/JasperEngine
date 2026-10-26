@@ -17,7 +17,7 @@
 //   or 256 bitmap glyphs, one regeneration per label after the settle, then a static context.
 // - B5 text-effects: 50 labels with text-shadow, outline and glow: no layer pushed for them once
 //   their distance glyphs exist.
-// - B6: B2 at 1024 x 1024, a texture-mode document's own context: B2's draw budgets.
+// - B6: B2 at 1024 x 1024, a texture-mode document's own context: B2's draw and CPU budgets.
 // - B7 virtual-list: an S17 <list-view> of 10 000 rows scrolled 100 px a frame (its rows recycle):
 //   <= 16 draws, no stencil draw, the engine's CPU time <= baseline + 5 %.
 // - Gathering: <= 0.2 ms per 10 000 gathered vertices (the first frame of B2, everything new).
@@ -285,17 +285,17 @@ TEST(HtmlUIRenderPerf, B2List500){
     JASPER_REQUIRE_GPU();
     const double slack = compat::perfSlack();
     BenchRun baseline, s16;
-    both("fixtures/bench/list-500.html", 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 1.05 * slack + 0.05; });
+    both("fixtures/bench/list-500.html", 1280, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 0.5 * slack; });
     record("B2 list-500", baseline, s16);
     EXPECT_LE(s16.maxDraws, 16u);
     EXPECT_EQ(s16.maxStencilDraws, 0u);
     EXPECT_EQ(s16.maxBoxShadowTextures, 0u);
     // the animating card regathers its chunk only, everything else comes from the run cache
     EXPECT_GT(s16.last.runCacheHits, 0u);
-    // R22's "<= 50 % of the baseline" holds for the replay, the part S16 changes; the whole engine
-    // time is mostly RmlUi's update and paint traversal (record), the same both ways (spec Deviations)
+    // R22: the engine time <= 50 % of the baseline (the replay batched, the paint traversal passing
+    // over the cards outside the list's scissor: S16-F4, S16-F6)
     EXPECT_LE(s16.replayMs, baseline.replayMs * 0.5 * slack);
-    EXPECT_LE(s16.engineMs, baseline.engineMs * 1.05 * slack + 0.05);
+    EXPECT_LE(s16.engineMs, baseline.engineMs * 0.5 * slack);
     // R23: the stream and the run cache within twice what the frame gathers
     EXPECT_LE(s16.gatherCapacity, std::max<size_t>(2 * s16.gatherLive, 512 * 1024));
 }
@@ -371,8 +371,10 @@ TEST(HtmlUIRenderPerf, B5TextEffects){
 TEST(HtmlUIRenderPerf, B6TextureList500){
     JASPER_REQUIRE_GPU();
     BenchRun baseline, s16;
-    both("fixtures/bench/list-500.html", 1024, baseline, s16);
+    const double slack = compat::perfSlack();
+    both("fixtures/bench/list-500.html", 1024, baseline, s16, [&](const BenchRun& b){ return b.engineMs * 0.5 * slack; });
     record("B6 list-500 texture", baseline, s16);
+    EXPECT_LE(s16.engineMs, baseline.engineMs * 0.5 * slack);
     EXPECT_LE(s16.maxDraws, 16u);
     EXPECT_EQ(s16.maxStencilDraws, 0u);
     EXPECT_EQ(s16.maxBoxShadowTextures, 0u);
