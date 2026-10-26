@@ -287,6 +287,10 @@ b2Vec2 CharacterController2DSystem::slide(const Capsule& capsule, b2Vec2 center,
 bool CharacterController2DSystem::tryStep(const Capsule& capsule, b2Vec2& center, float horizontal, float blockingTop){
     if (capsule.stepOffset <= 0.0f || horizontal == 0.0f)
         return false;
+    // what stopped it is no higher than a step over the ground it stands on
+    const float ground = center.y - capsule.halfSegment - capsule.radius - capsule.skin;
+    if (blockingTop > ground + capsule.stepOffset + 0.5f * capsule.skin + LINEAR_SLOP)
+        return false;
     const float direction = horizontal > 0.0f ? 1.0f : -1.0f;
 
     // up, as far as the step or a ceiling lets it

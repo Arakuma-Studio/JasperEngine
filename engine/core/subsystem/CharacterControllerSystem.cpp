@@ -331,8 +331,8 @@ int CharacterControllerSystem::moveBy(Runtime& runtime, CharacterControllerCompo
     const float stepOffset = std::max(0.0f, controller.stepOffset) * scaleY;
 
     // Jolt's ExtendedUpdate (CharacterVirtual.cpp), step by step, with OpenEngine's stair
-    // settings (their JoltPhysicsBackend.cpp) and two checks of ours on a stair walk: it rises no
-    // more than stepOffset, and ends above what stopped it, so a riser taller than stepOffset is
+    // settings (their JoltPhysicsBackend.cpp) and two checks of ours on a stair walk: what stopped
+    // it is no higher than stepOffset, and it ends above it, so a riser taller than stepOffset is
     // neither climbed by sliding the round bottom up its edge nor by perching on it. Stick-to-
     // floor also slides down a nosing too steep to stand on (Jolt's sweeps straight down onto it).
     const JPH::Vec3 up = JPH::Vec3::sAxisY();
@@ -398,7 +398,10 @@ int CharacterControllerSystem::moveBy(Runtime& runtime, CharacterControllerCompo
                                          broadPhaseFilter, objectFilter, bodyFilter, shapeFilter, *physics->temp_allocator)){
                     const float foot = (float)character.GetPosition().GetY();
                     const float tolerance = character.GetCharacterPadding() + 0.01f;
-                    if (foot - (float)blocked.GetY() > stepOffset + tolerance || blockingTop > foot + tolerance){
+                    // a step over what stopped it: no higher than stepOffset over the ground it
+                    // left, and below the feet after (the round bottom slides up walkable edges
+                    // in the forward move, so the rise itself may be more)
+                    if (blockingTop > (float)blocked.GetY() + stepOffset + tolerance || blockingTop > foot + tolerance){
                         character.SetPosition(blocked);
                         character.RefreshContacts(broadPhaseFilter, objectFilter, bodyFilter, shapeFilter, *physics->temp_allocator);
                     }
@@ -744,5 +747,6 @@ void CharacterControllerSystem::clear(){
 }
 
 #endif
+
 
 

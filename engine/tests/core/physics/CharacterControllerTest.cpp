@@ -184,6 +184,19 @@ TEST_F(CharacterControllerTest, Stairs){
     EXPECT_NEAR(foot(short_), 0.0f, 0.05f);
 }
 
+TEST_F(CharacterControllerTest, StairsWithTheDefaultCapsule){
+    // Unity's default capsule (r 0.5, h 2, stepOffset 0.3) up the same stairs
+    floor();
+    stairs(this, [this](Vector3 p, Vector3 s, BodyType t){ return body(p, s, t); });
+    const Entity walker = controller(Vector3(-1.0f, 0.0f, 0.0f), 0.5f, 2.0f, 0.3f);
+    CharacterController cc(scene.get(), walker);
+    steps(30);
+    steps(240, [&](){ cc.simpleMove(Vector3(2.0f, 0.0f, 0.0f)); });
+    EXPECT_NEAR(foot(walker), 1.2f, 0.05f);
+    EXPECT_TRUE(cc.isGrounded());
+    EXPECT_GT(position(walker).x, 1.8f);
+}
+
 TEST_F(CharacterControllerTest, Slopes){
     floor(80.0f);
     // a 30 degree ramp rising along +X from x = 0
