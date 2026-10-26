@@ -760,6 +760,16 @@ void RmlRenderer::planClipScopes(){
 
 void RmlRenderer::planRuns(){
     runBreaks.fill(0);
+    effectCounts = EffectCounts();
+    for (const Command& c : commands){
+        if (c.type == CommandType::SHADER)
+            effectCounts.shaders++;
+        else if (c.type == CommandType::COMPOSITE){
+            effectCounts.composites++;
+            effectCounts.filters += (uint32_t)std::max(c.i[3], 0);
+        }else if (c.type == CommandType::CLIP_MASK)
+            effectCounts.clipMasks++;
+    }
     batchRuns.clear();
     batchChunks.clear();
     batchMembers.clear();

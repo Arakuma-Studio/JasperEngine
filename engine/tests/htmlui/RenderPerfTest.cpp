@@ -88,6 +88,7 @@ namespace {
         size_t gatherLive = 0, gatherCapacity = 0;
         std::array<uint32_t, (size_t)RmlRenderer::RunBreak::COUNT> runBreaks{};   // the last frame's
         size_t basePages = 0, distancePages = 0;   // the font engine's atlas pages after the run
+        RmlRenderer::EffectCounts effects;          // the last frame's
     };
 
     double median(std::vector<double> values){
@@ -135,6 +136,7 @@ namespace {
             const HtmlUIRenderStats& stats = runner.renderer()->getStats();
             run.last = stats;
             run.runBreaks = runner.renderer()->getLastRunBreaks();
+            run.effects = runner.renderer()->getLastEffectCounts();
             run.maxDraws = std::max(run.maxDraws, stats.drawCalls);
             run.maxStencilDraws = std::max(run.maxStencilDraws, stats.stencilDraws);
             run.maxLayers = std::max(run.maxLayers, stats.layersPushed);
@@ -214,6 +216,10 @@ namespace {
         std::printf("[ ui-bench ] %-24s runs after a command %u, kind %u, clip/layer %u, transform %u, texture %u, scissor %u\n", "",
                     b[(size_t)RB::COMMAND], b[(size_t)RB::KIND], b[(size_t)RB::CLIP], b[(size_t)RB::TRANSFORM], b[(size_t)RB::TEXTURE],
                     b[(size_t)RB::SCISSOR]);
+        std::printf("[ ui-bench ] %-24s effects: %u gradient/effect shader draws, %u composites, %u filters, %u clip masks\n", "",
+                    s16.effects.shaders, s16.effects.composites, s16.effects.filters, s16.effects.clipMasks);
+        results()[name]["s16"]["effects"] = {{"shaders", s16.effects.shaders}, {"composites", s16.effects.composites},
+                                             {"filters", s16.effects.filters}, {"clipMasks", s16.effects.clipMasks}};
         results()[name]["s16"]["runBreaks"] = {{"command", b[(size_t)RB::COMMAND]}, {"kind", b[(size_t)RB::KIND]}, {"clip", b[(size_t)RB::CLIP]},
                                                {"transform", b[(size_t)RB::TRANSFORM]}, {"texture", b[(size_t)RB::TEXTURE]},
                                                {"scissor", b[(size_t)RB::SCISSOR]}};

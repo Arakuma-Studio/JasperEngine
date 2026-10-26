@@ -325,6 +325,10 @@ namespace jasperengine {
         // instances), another clip or layer, transform, texture, or a scissor it cannot share
         enum class RunBreak : uint8_t { NONE, COMMAND, KIND, CLIP, TRANSFORM, TEXTURE, SCISSOR, COUNT };
         const std::array<uint32_t, (size_t)RunBreak::COUNT>& getLastRunBreaks() const { return runBreaks; }
+        // the last batched frame's gradient and effect shader draws, layer composites and filter
+        // passes asked for (benchmarks: what the draws that are not runs are)
+        struct EffectCounts { uint32_t shaders = 0, composites = 0, filters = 0, clipMasks = 0; };
+        EffectCounts getLastEffectCounts() const { return effectCounts; }
         // the font engine's per-frame text counters, added to this frame's statistics
         void addTextStats(uint32_t glyphsRasterized, uint32_t textRegenerations, uint32_t textEffectFallbacks, uint32_t atlasEvictions);
         // sokol ids of every buffer and image the renderer owns right now
@@ -682,6 +686,7 @@ namespace jasperengine {
         std::unordered_map<uint64_t, CachedChunk> runCache, nextRunCache;
         std::vector<std::unique_ptr<GatherPage>> gatherPages;
         std::array<uint32_t, (size_t)RunBreak::COUNT> runBreaks{};   // the last plan's new runs, by why
+        EffectCounts effectCounts;
         int activeClipScope = -1;            // the replay's current non-stencil scope (-1: none)
         ClipParams noClip;
         ClipParams clipScratch;
