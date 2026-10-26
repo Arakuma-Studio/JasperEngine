@@ -318,6 +318,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
+        << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --name <label>     Label written into the JSON result.\n"
         << "      --out <path>       Write JSON to this file in addition to stdout.\n"
         << "      --gpu-passes       Time every GPU pass of the measured frames: \"gpu\" in the JSON, with\n"
@@ -678,16 +679,21 @@ int CommandLine::runExportCommand(int argc, char** argv, const char* executableN
 // Markdown reference (ShaderLibraryDoc) instead.
 static int runLibraryShaderMatrix(const ShaderCliOptions& options, const std::string& commandName) {
     std::vector<std::string> names;
+    // the built-in Lit's own matrix (its extended lobes, hex tiling, Lit Quality): with all, or by name
+    bool builtinLit = false;
     for (const std::string& requested : options.libraryShaders) {
         if (requested == "all") {
             for (const std::string& name : ShaderManifests::getLibraryShaderNames()) names.push_back(name);
+            builtinLit = true;
+        } else if (requested == ShaderLibraryMatrix::BUILTIN_LIT_NAME) {
+            builtinLit = true;
         } else {
             names.push_back(requested);
         }
     }
     std::sort(names.begin(), names.end());
     names.erase(std::unique(names.begin(), names.end()), names.end());
-    if (names.empty()) {
+    if (names.empty() && !builtinLit) {
         std::cerr << commandName << " shaders: this build has no library shader\n";
         return 1;
     }
@@ -717,8 +723,11 @@ static int runLibraryShaderMatrix(const ShaderCliOptions& options, const std::st
     const std::vector<ShaderBackend> backends(options.backends.begin(), options.backends.end());
     bool failed = false;
     size_t totalCompiled = 0;
+    if (builtinLit)
+        names.push_back(ShaderLibraryMatrix::BUILTIN_LIT_NAME);
     for (const std::string& name : names) {
-        const ShaderLibraryMatrix::Result result = ShaderLibraryMatrix::run(name, backends);
+        const ShaderLibraryMatrix::Result result = name == ShaderLibraryMatrix::BUILTIN_LIT_NAME
+            ? ShaderLibraryMatrix::runBuiltinLit(backends) : ShaderLibraryMatrix::run(name, backends);
         bool errors = result.failed > 0;
         for (const ShaderLibraryMatrix::Problem& problem : result.problems) {
             std::cerr << problem.file << ":" << problem.line << ": " << (problem.error ? "error" : "warning") << ": " << problem.message << "\n";

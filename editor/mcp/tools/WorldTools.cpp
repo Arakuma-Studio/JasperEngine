@@ -735,6 +735,14 @@ void setTerrainMapsTool(const CallPtr& call) {
             if (layers.size() <= static_cast<size_t>(index)) layers.resize(index + 1);
             TerrainSurfaceLayer& layer = layers[index];
             if (has(item, "pbr")) layer.pbr = boolOr(item, "pbr", layer.pbr);
+            if (has(item, "hex_tiling")) layer.hexTiling = boolOr(item, "hex_tiling", layer.hexTiling);
+            if (has(item, "hex_rotation")) {
+                if (!item["hex_rotation"].is_number()) {
+                    call->fail("layers[" + std::to_string(index) + "].hex_rotation must be a number 0-1.");
+                    return;
+                }
+                layer.hexRotation = std::clamp(item["hex_rotation"].get<float>(), 0.0f, 1.0f);
+            }
             for (const auto& map : maps) {
                 if (!has(item, map.first)) continue;
                 if (!texturePath(item[map.first], "layers[" + std::to_string(index) + "]." + map.first, layer.*map.second)) {
@@ -4166,6 +4174,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"layers", array(object({
                 {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
                 {"pbr", boolean("")},
+                {"hex_tiling", boolean("")}, {"hex_rotation", number("", 0, 1)},
                 {"color", string("")}, {"normal", string("")}, {"roughness", string("")},
                 {"metallic", string("")}, {"occlusion", string("")}, {"height", string("Blend height only.")}
             }, {"index"}), "")}

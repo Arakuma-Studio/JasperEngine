@@ -174,6 +174,12 @@ namespace jasperengine::editor::mcp {
         static Json materialToJson(Project* project, SceneProject* scene, const Material& material, const std::string& linkedFile = {});
         // Inline values onto `out` (holding the current material); "file" is not handled here
         static bool materialFromJson(Project* project, SceneProject* scene, const Json& value, Material& out, std::string& error);
+        // Material::pbr, the built-in Lit's extended lobes and hex tiling (docs/mcp/guide/materials.md):
+        // {"<lobe>": {"<field>": value}} with every lobe away from its defaults, each with all its
+        // fields; a write merges a partial object into `out` (null clears a map) and checks each
+        // value against its range, an error naming the field ("pbr.clearcoat.roughness: ...")
+        static Json materialPbrToJson(Project* project, SceneProject* scene, const MaterialPbrExtensions& pbr);
+        static bool materialPbrFromJson(Project* project, SceneProject* scene, const Json& value, MaterialPbrExtensions& out, std::string& error);
 
         // ShaderUniformValues (shaderUniforms, post-process pass uniforms): {name: [x,y,z,w]};
         // writes also take a number or 1-3 numbers per uniform (the rest 0)

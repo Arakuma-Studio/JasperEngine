@@ -26,6 +26,28 @@ jasperengine_add_test_target(jasperengine-core-tests
     LINK zstd
 )
 
+# HexTilingTest compiles the hex lattice block of the shader library as C++: the lines between
+# HEX_LATTICE_BEGIN and HEX_LATTICE_END of includes/hex_tiling.glsl, extracted at configure time
+# (a change of the shader configures again)
+set(HEX_TILING_GLSL ${CMAKE_CURRENT_SOURCE_DIR}/../../shaderlib/includes/hex_tiling.glsl)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${HEX_TILING_GLSL})
+file(READ ${HEX_TILING_GLSL} HEX_TILING_SOURCE)
+string(FIND "${HEX_TILING_SOURCE}" "// HEX_LATTICE_BEGIN" HEX_LATTICE_BEGIN)
+string(FIND "${HEX_TILING_SOURCE}" "// HEX_LATTICE_END" HEX_LATTICE_END)
+if(HEX_LATTICE_BEGIN EQUAL -1 OR HEX_LATTICE_END EQUAL -1)
+    message(FATAL_ERROR "includes/hex_tiling.glsl lost its HEX_LATTICE_BEGIN/END markers (HexTilingTest)")
+endif()
+math(EXPR HEX_LATTICE_LENGTH "${HEX_LATTICE_END} - ${HEX_LATTICE_BEGIN}")
+string(SUBSTRING "${HEX_TILING_SOURCE}" ${HEX_LATTICE_BEGIN} ${HEX_LATTICE_LENGTH} HEX_LATTICE_BLOCK)
+set(HEX_LATTICE_INL ${CMAKE_CURRENT_BINARY_DIR}/generated/hex_lattice_block.inl)
+set(HEX_LATTICE_OLD "")
+if(EXISTS ${HEX_LATTICE_INL})
+    file(READ ${HEX_LATTICE_INL} HEX_LATTICE_OLD)
+endif()
+if(NOT HEX_LATTICE_OLD STREQUAL HEX_LATTICE_BLOCK)
+    file(WRITE ${HEX_LATTICE_INL} "${HEX_LATTICE_BLOCK}")
+endif()
+target_include_directories(jasperengine-core-tests PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/generated)
 # a unit of its own: it redefines JASPERENGINE_PROFILER to 0 before the profiling macros
 jasperengine_skip_unity_build(
     REASON "ProfilerCompileOutTest compiles the profiling macros with the profiler off"

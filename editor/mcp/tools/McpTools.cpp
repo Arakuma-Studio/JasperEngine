@@ -36,6 +36,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerConsoleTools, "Console", ""},
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
+    {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerTextureTools, "Textures: import settings and cooks", "assets_pipeline"},   // S14
     {registerDocsTools, "Docs", ""},

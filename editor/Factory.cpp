@@ -399,6 +399,46 @@ std::string editor::Factory::formatMaterialPass(int indentSpaces, const Material
     return code.str();
 }
 
+std::string editor::Factory::formatMaterialPbr(int indentSpaces, const Material& material, const std::string& target, const fs::path& projectPath) {
+    const std::string ind = indentation(indentSpaces);
+    std::ostringstream code;
+    if (material.emissiveStrength != 1.0f)
+        code << ind << target << ".emissiveStrength = " << formatFloat(material.emissiveStrength) << ";\n";
+    if (material.pbr == MaterialPbrExtensions())
+        return code.str();
+    static const MaterialPbrExtensions defaults;
+    MaterialPbrExtensions& values = const_cast<MaterialPbrExtensions&>(material.pbr.get());
+    MaterialPbrExtensions& defaultValues = const_cast<MaterialPbrExtensions&>(defaults);
+    // the struct's members carry the table's names (MaterialPbr::getFields)
+    for (const PbrField& field : MaterialPbr::getFields()) {
+        const std::string member = target + ".pbr.edit()." + MaterialPbr::getLobe(field.lobe).name + "." + field.name;
+        const void* value = field.ref(values);
+        const void* def = field.ref(defaultValues);
+        switch (field.type) {
+            case PbrFieldType::Bool:
+                if (*(const bool*)value != *(const bool*)def) code << ind << member << " = " << formatBool(*(const bool*)value) << ";\n";
+                break;
+            case PbrFieldType::Float:
+                if (*(const float*)value != *(const float*)def && std::isfinite(*(const float*)value))
+                    code << ind << member << " = " << formatFloat(*(const float*)value) << ";\n";
+                break;
+            case PbrFieldType::Vector2:
+                if (*(const Vector2*)value != *(const Vector2*)def) code << ind << member << " = " << formatVector2(*(const Vector2*)value) << ";\n";
+                break;
+            case PbrFieldType::Color:
+                if (*(const Vector3*)value != *(const Vector3*)def) code << ind << member << " = " << formatVector3(*(const Vector3*)value) << ";\n";
+                break;
+            case PbrFieldType::Texture:
+                code << formatTexture(indentSpaces, *(const Texture*)value, member, projectPath);
+                break;
+            case PbrFieldType::TexCoord:
+                if (*(const int*)value != *(const int*)def) code << ind << member << " = " << formatInt(*(const int*)value) << ";\n";
+                break;
+        }
+    }
+    return code.str();
+}
+
 std::string editor::Factory::formatMaterialShaderLibrary(int indentSpaces, const Material& material, const std::string& target, const fs::path& projectPath) {
     std::ostringstream code;
     const std::string ind = indentation(indentSpaces);
@@ -1193,6 +1233,7 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
             code << ind << "mesh.submeshes[" << idx << "].material.normalTexCoord = " << formatInt(submeshMaterial.normalTexCoord) << ";\n";
         // shader library: the shader, its values and the render state, when set
         code << formatMaterialShaderLibrary(indentSpaces, submeshMaterial, "mesh.submeshes[" + idx + "].material", projectPath);
+        code << formatMaterialPbr(indentSpaces, submeshMaterial, "mesh.submeshes[" + idx + "].material", projectPath);
 
         code << ind << "mesh.submeshes[" << idx << "].primitiveType = " << formatPrimitiveType(mesh.submeshes[s].primitiveType) << ";\n";
         code << ind << "mesh.submeshes[" << idx << "].vertexCount = " << formatUInt(mesh.submeshes[s].vertexCount) << ";\n";
@@ -1202,7 +1243,9 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
 
         // The model load puts these fields back over the ones the file gives the new submesh.
         if (mesh.submeshes[s].overrideFields != 0){
-            code << ind << "mesh.submeshes[" << idx << "].overrideFields = " << formatUInt(mesh.submeshes[s].overrideFields) << ";\n";
+            // the bits past 31 (the extended lobes) need a 64-bit literal
+            const uint64_t fields = mesh.submeshes[s].overrideFields;
+            code << ind << "mesh.submeshes[" << idx << "].overrideFields = " << (fields > 0xFFFFFFFFull ? std::to_string(fields) + "ull" : formatUInt((unsigned int)fields)) << ";\n";
         }
 
         if (hasModel){ // the load rebuilds the attributes
@@ -1719,6 +1762,12 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
         code << ind << var << ".occlusionStrength = " << formatFloat(layer.occlusionStrength) << ";\n";
         code << ind << var << ".uvScale = " << formatVector2(layer.uvScale) << ";\n";
         code << ind << var << ".uvOffset = " << formatVector2(layer.uvOffset) << ";\n";
+        if (layer.hexTiling){
+            code << ind << var << ".hexTiling = true;\n";
+        }
+        if (layer.hexRotation != TerrainSurfaceLayer().hexRotation){
+            code << ind << var << ".hexRotation = " << formatFloat(layer.hexRotation) << ";\n";
+        }
     }
     code << ind << "terrain.autoSetRanges = " << formatBool(terrain.autoSetRanges) << ";\n";
     code << ind << "terrain.offset = " << formatVector2(terrain.offset) << ";\n";
@@ -1806,6 +1855,16 @@ std::string editor::Factory::createLightComponent(int indentSpaces, EntityRegist
         code << ind << "light.shading = LightShading::PIXEL;\n";
     else if (light.shading == LightShading::VERTEX)
         code << ind << "light.shading = LightShading::VERTEX;\n";
+    if (light.intensityUnit == LightUnit::LUX)
+        code << ind << "light.intensityUnit = LightUnit::LUX;\n";
+    else if (light.intensityUnit == LightUnit::CANDELA)
+        code << ind << "light.intensityUnit = LightUnit::CANDELA;\n";
+    else if (light.intensityUnit == LightUnit::LUMEN)
+        code << ind << "light.intensityUnit = LightUnit::LUMEN;\n";
+    if (light.useColorTemperature)
+        code << ind << "light.useColorTemperature = true;\n";
+    if (light.colorTemperature != LightComponent().colorTemperature)
+        code << ind << "light.colorTemperature = " << formatFloat(light.colorTemperature) << ";\n";
     if (!light.enabled) code << ind << "light.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "LightComponent", "light", assignExisting);
     return code.str();
@@ -3192,6 +3251,10 @@ std::string editor::Factory::createScene(int indentSpaces, Scene* scene, std::st
     out << ind2 << "scene->setGlobalIllumination(" << formatVector3(scene->getGlobalIlluminationColor()) << ");\n";
     if (scene->getMaxLightsPerObject() != SceneSettings().maxLightsPerObject)
         out << ind2 << "scene->setMaxLightsPerObject(" << scene->getMaxLightsPerObject() << ");\n";
+    // always written: a Scene made in code is High, a scene saved before Lit Quality is Standard
+    out << ind2 << "scene->setLitQuality(" << (scene->getLitQuality() == LitQuality::HIGH ? "LitQuality::HIGH" : "LitQuality::STANDARD") << ");\n";
+    if (scene->getPhysicalLightEV100() != SceneSettings().physicalLightEV100)
+        out << ind2 << "scene->setPhysicalLightEV100(" << formatFloat(scene->getPhysicalLightEV100()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatFloat(scene->getAmbientLight2DIntensity()) << ");\n";
     out << ind2 << "scene->setAmbientLight2D(" << formatVector3(scene->getAmbientLight2DColor()) << ");\n";
     out << ind2 << "scene->setShadow2DQuality(" << formatShadowQuality(scene->getShadow2DQuality()) << ");\n";

@@ -104,6 +104,11 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Modules/JobSystem` (`ParallelForCore`, `ParallelAlgorithms`, `JobCounter`, `JobChannel`, the `WorkStealingThreadPool` lane contracts), adapted | `engine/core/jobs/` | parallelFor, counters, blocking channels; the scheduler itself is our own (S06) |
 | `AssetDecodeGate`, `AssetIOService`, adapted | `engine/core/jobs/BackgroundGate.*`, `engine/core/io/AssetIOService.*` | frame protection and the asset readers (S06) |
 | Tests (`ParallelAlgorithmsTests`, `AssetDecodeGateTests`, `AssetIOServiceTests`, Memory tests, `MemoryBench`), ported | `engine/tests/core/` | test cases and benchmark loops (tests only, never shipped) |
+| `Engine/Modules/Rendering/Shaders/Includes/specular_aa.glsl`, adapted | `engine/shaderlib/includes/specular_aa.glsl` | geometric specular anti-aliasing of the High Lit Quality (S11) |
+| `Engine/Modules/Rendering/Shaders/Includes/iridescence.glsl`, adapted | `engine/shaderlib/includes/iridescence.glsl` | the thin-film Fresnel of KHR_materials_iridescence (S11) |
+| `Engine/Modules/Rendering/Shaders/Includes/terrain_material_albedo.glsl` (the colour-slotted hex lattice), adapted with an integer hash | `engine/shaderlib/includes/hex_tiling.glsl` | hex tiling of materials and terrain layers (S11) |
+| `Engine/Modules/Rendering/Shaders/Includes/standard_pbr.glsl` (anisotropic GGX, Charlie visibility, the sheen albedo fit), adapted | `engine/shaderlib/includes/pbr_ext.glsl` | the extended lobes of the built-in Lit (S11) |
+| `Engine/Include/Components/Rendering/LightPhotometry.h` (black body fit, lumen to candela), adapted | `engine/core/util/LightPhotometry.h` | photometric light units and colour temperature (S11) |
 | `Engine/Modules/Rendering/Source/Common/CubeLutFileParser.cpp`, `CubeLutColorDomain.cpp` and the curves and gamut matrices of `Shaders/Includes/cube_lut.glsl` (ported to C++) | `engine/core/util/CubeLut.*` | `.cube` LUT parsing, the input encoding proposal and the scene-stage colour maths (S13) |
 | `Engine/Source/Engine/Rendering/DynamicResolutionController.cpp` and its header (adapted) | `engine/core/render/DynamicResolutionController.*` | the GPU law of dynamic resolution (S13) |
 | `Engine/Modules/Rendering/Shaders/vhs.frag`, `vhs_interference.frag`, `vhs_signal_glitches.frag` (adapted, with the punikonta notice below) | `engine/shaderlib/includes/post_vhs.glsl` | the uber pass's VHS tape (S13) |
@@ -120,6 +125,20 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/UI/Source/Parsers/` (`MarkdownParser`, `MarkdownInlineParser`, `MarkdownDocument.h`, `MarkdownSyntax.h`), copied and adapted (nested lists, link and image URL hooks); `Tests/MarkdownParserTests.cpp` (ported) | `engine/core/htmlui/widgets/Markdown/`, `engine/tests/htmlui/widgets/MarkdownParserTest.cpp` | the `<markdown>` element and `data-markdown` (S17) |
 | `Engine/Modules/UI`: `Interaction/TooltipOverlay` (delay, hop window, hide triggers), `Layout/DropdownPopupPlacement` and `Tests/TooltipPlacementTests.cpp`, `Interaction/DragDropManager` (typed payloads, accepted operations), `UIHotReload` matching and `Tests/UIHotReloadTests.cpp`: rules re-implemented, test cases ported | `engine/core/htmlui/widgets/{TooltipManager,PopupPlacement,DragDropSession}.*`, `engine/core/htmlui/compat/TreeReconcile.*`, `engine/tests/htmlui/widgets/{PopupPlacementTest,TreeReconcileTest}.cpp` | tooltips, popup placement, HTML5 drag and drop and the in-place hot reload of HTML documents (S17) |
 | `Engine/Source/Assets/Textures/BC7TransparentEndpointRepair.cpp`, `Engine/Include/Assets/Textures/BC7TransparentEndpointRepair.h` (copied, namespace and integer types changed); `Engine/Tests/BC7TransparentEndpointRepairTests.cpp` (ported) | `editor/texture/BC7TransparentEndpointRepair.*`, `editor/tests/texture/BC7TransparentEndpointRepairTest.cpp` | transparent texels of BC7 cooks stay at alpha 0 (S14) |
+
+The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
+
+Test assets (never shipped: `engine/tests/` stays out of the editor install and of exports): the [Khronos glTF Sample Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) models of `engine/tests/render/assets/khronos/`, each with its `LICENSE.md` and `metadata.json`. The CC-BY-4.0 ones are credited here:
+
+| Model | Location | License | Credit |
+|---|---|---|---|
+| ClearCoatTest | `engine/tests/render/assets/khronos/ClearCoatTest/` (a copy in the test fixture `tools/fixtures/pbr-extended-export/assets/models/ClearCoatTest/`) | CC-BY-4.0 | Ed Mackey, © 2020 Analytical Graphics, Inc. |
+| AnisotropyRotationTest | `engine/tests/render/assets/khronos/AnisotropyRotationTest/` | CC-BY-4.0 | Ed Mackey, © 2023 Analytical Graphics, Inc. |
+| TransmissionRoughnessTest | `engine/tests/render/assets/khronos/TransmissionRoughnessTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
+| AttenuationTest | `engine/tests/render/assets/khronos/AttenuationTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
+| SpecularTest | `engine/tests/render/assets/khronos/SpecularTest/` | CC-BY-4.0 | Ed Mackey, © 2021 Analytical Graphics, Inc. |
+| EmissiveStrengthTest | `engine/tests/render/assets/khronos/EmissiveStrengthTest/` | CC-BY-4.0 | Ed Mackey, © 2022 AGI |
+| SheenTestGrid, AnisotropyStrengthTest, IridescenceDielectricSpheres, IridescenceMetallicSpheres, TransmissionTest, IORTestGrid, MetalRoughSpheresNoTextures | `engine/tests/render/assets/khronos/` | CC0-1.0 | Eric Chadwick, Ed Mackey, Khronos, UX3D, Adobe, Krill Gavrilov (their `metadata.json`) |
 
 The VHS tape of the uber pass (`engine/shaderlib/includes/post_vhs.glsl`, S13) is adapted from
 OpenEngine's port of punikonta's Godot VHS shader ([godot-shader-crt-vhs](https://github.com/punikonta/godot-shader-crt-vhs),

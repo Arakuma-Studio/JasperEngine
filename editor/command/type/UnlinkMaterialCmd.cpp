@@ -49,8 +49,8 @@ bool editor::UnlinkMaterialCmd::execute(){
             Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
             // The material the mesh keeps is the user's now, not the model file's.
-            uint32_t propertyFields = 0;
-            if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+            uint64_t propertyFields = 0;
+            if (uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
                 data.oldOverrideFields = *overrideMask;
                 *overrideMask |= propertyFields;
             }
@@ -82,8 +82,8 @@ void editor::UnlinkMaterialCmd::undo(){
             *matRef = data.oldMaterial;
             Catalog::updateEntity(sceneProject->scene, entity, prop.updateFlags);
 
-            uint32_t propertyFields = 0;
-            if (uint32_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
+            uint64_t propertyFields = 0;
+            if (uint64_t* overrideMask = Catalog::getSubmeshOverrideMask(sceneProject->scene, entity, componentType, propertyName, propertyFields)) {
                 *overrideMask = data.oldOverrideFields;
             }
         }

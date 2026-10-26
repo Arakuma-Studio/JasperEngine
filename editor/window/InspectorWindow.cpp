@@ -44,6 +44,8 @@
 #include "command/type/ForkShaderCmd.h"
 #include "shader/ShaderManifest.h"
 #include "command/type/ScenePropertyCmd.h"
+#include "util/Color.h"
+#include "util/LightPhotometry.h"
 #include "render/SceneRender2D.h"
 #include "window/ProjectWindow.h"
 #include "window/HierarchyWindow.h"
@@ -644,6 +646,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     if (changed) {
                         value = static_cast<ShadowQuality>(currentItem);
                     }
+                }
+            }
+            if constexpr (std::is_same_v<T, LitQuality>) {
+                const char* qualityNames[] = { "Standard", "High" };
+                int currentItem = static_cast<int>(value);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, qualityNames, IM_ARRAYSIZE(qualityNames));
+                if (changed) {
+                    value = static_cast<LitQuality>(currentItem);
                 }
             }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
@@ -7152,10 +7162,14 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             propertyRow(RowPropertyType::Float_0_1, cpType, "submeshes["+std::to_string(s)+"].material.roughnessFactor", "Roughness Factor", sceneProject, entities, settingsFactor);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.metallicRoughnessTexture", "Met. Roug. Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Color3L, cpType, "submeshes["+std::to_string(s)+"].material.emissiveFactor", "Emissive Factor", sceneProject, entities, settingsMaterial);
+            RowSettings settingsEmission = settingsFactor;
+            settingsEmission.help = "Multiplies the Emissive Factor (KHR_materials_emissive_strength): above 1 for emission brighter than the base colour range.";
+            propertyRow(RowPropertyType::FloatPositive, cpType, "submeshes["+std::to_string(s)+"].material.emissiveStrength", "Emission Intensity", sceneProject, entities, settingsEmission);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.emissiveTexture", "Emissive Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.occlusionTexture", "Occlusion Texture", sceneProject, entities, settingsMaterial);
             propertyRow(RowPropertyType::Texture, cpType, "submeshes["+std::to_string(s)+"].material.normalTexture", "Normal Texture", sceneProject, entities, settingsMaterial);
             endTable();
+            drawMaterialAdvancedSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
             }
 
             ImGui::SeparatorText("Surface");
@@ -9086,6 +9100,15 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
             // Tiling rides on every layer, PBR or not
             propertyRow(RowPropertyType::Vector2, cpType, property + ".uvScale", "UV Scale", sceneProject, entities, settingsLayerFloat);
             propertyRow(RowPropertyType::Vector2, cpType, property + ".uvOffset", "UV Offset", sceneProject, entities, settingsLayerFloat);
+            // anti-repetition of the flat projection (the side planes stay planar)
+            RowSettings settingsHex = settingsLayerFloat;
+            settingsHex.help = "Samples the layer's flat projection on three randomly rotated copies on a hex grid, which hides the tiling "
+                               "a repeated texture shows from a distance (three taps per map instead of the near and far tiling).";
+            propertyRow(RowPropertyType::Bool, cpType, property + ".hexTiling", "Hex Tiling", sceneProject, entities, settingsHex);
+            if (terrain.surfaceLayers[i].hexTiling){
+                settingsHex.help = "How far a tile may turn: 1 a full turn, 0 none (copies only shifted).";
+                propertyRow(RowPropertyType::Float_0_1, cpType, property + ".hexRotation", "Rotation", sceneProject, entities, settingsHex);
+            }
             endTable();
             ImGui::PopID();
             ImGui::TreePop();
@@ -9147,6 +9170,142 @@ void editor::InspectorWindow::drawTerrainComponent(ComponentType cpType, ScenePr
     }
 }
 
+void editor::InspectorWindow::drawLightIntensityRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                    const RowSettings& settingsFloat){
+    Scene* scene = sceneProject->scene;
+    const LightComponent& light = scene->getComponent<LightComponent>(entities[0]);
+    // the unit as it is drawn: one the type cannot take reads as its neighbour (lux and candela,
+    // the same number), LightPhotometry::validUnit
+    const LightUnit unit = LightPhotometry::validUnit(light.intensityUnit, light.type);
+    bool sameUnit = true;
+    for (Entity entity : entities){
+        const LightComponent& other = scene->getComponent<LightComponent>(entity);
+        sameUnit = sameUnit && LightPhotometry::validUnit(other.intensityUnit, other.type) == unit && other.type == light.type;
+    }
+
+    RowSettings settings = settingsFloat;
+    if (unit != LightUnit::ENGINE)
+        settings.help = std::string("In ") + LightPhotometry::getUnitName(unit) + ", drawn through the scene's Physical Light Exposure (EV100, Lighting settings): " +
+                        "a 100000 lx sun at EV100 15 is about 2.5 engine units." + (unit == LightUnit::LUMEN ? " A spot's lumens spread over the whole sphere, so its cone does not change its brightness." : "");
+    propertyRow(RowPropertyType::Float, cpType, "intensity", "Intensity", sceneProject, entities, settings);
+
+    // the unit, among those of the type; a change keeps the light as bright (its value converted)
+    propertyHeader("Unit", -1, unit != LightUnit::ENGINE, false);
+    std::vector<LightUnit> units = {LightUnit::ENGINE};
+    if (light.type == LightType::DIRECTIONAL){
+        units.push_back(LightUnit::LUX);
+    }else{
+        units.push_back(LightUnit::CANDELA);
+        units.push_back(LightUnit::LUMEN);
+    }
+    ImGui::SetNextItemWidth(settingsFloat.secondColSize > 0 ? settingsFloat.secondColSize : 6 * ImGui::GetFontSize());
+    if (ImGui::BeginCombo("##light_unit", sameUnit ? LightPhotometry::getUnitName(unit) : "---")){
+        for (LightUnit option : units){
+            if (ImGui::Selectable(LightPhotometry::getUnitName(option), sameUnit && option == unit)){
+                const float ev100 = scene->getPhysicalLightEV100();
+                auto* multi = new MultiPropertyCmd();
+                for (Entity entity : entities){
+                    LightComponent converted = scene->getComponent<LightComponent>(entity);
+                    LightPhotometry::setIntensityUnit(converted, option, true, ev100);
+                    multi->addPropertyCmd<int>(project, sceneProject->id, entity, cpType, "intensityUnit", (int)converted.intensityUnit);
+                    multi->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "intensity", converted.intensity);
+                }
+                CommandHandle::get(sceneProject->id)->addCommandNoMerge(multi);
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine(); helpMarker("Engine: the engine's own intensity, drawn as it is. Lux (directional), Candela and Lumen (point, spot): "
+                                  "physical units, converted on the CPU through the scene's Physical Light Exposure. Changing the unit keeps "
+                                  "the light as bright.");
+}
+
+void editor::InspectorWindow::drawLightTemperatureRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities){
+    Scene* scene = sceneProject->scene;
+    const LightComponent& light = scene->getComponent<LightComponent>(entities[0]);
+
+    RowSettings settingsUse;
+    settingsUse.help = "Colour the light as a black body of the temperature below (Kelvin); its Color then filters that colour.";
+    propertyRow(RowPropertyType::Bool, cpType, "useColorTemperature", "Use Color Temperature", sceneProject, entities, settingsUse);
+    if (!light.useColorTemperature)
+        return;
+
+    RowSettings settingsKelvin;
+    settingsKelvin.stepSize = 10.0f;
+    settingsKelvin.format = "%.0f K";
+    settingsKelvin.secondColSize = 6 * ImGui::GetFontSize();
+    propertyRow(RowPropertyType::FloatPositive, cpType, "colorTemperature", "Temperature", sceneProject, entities, settingsKelvin);
+
+    // the black body gradient, 1000 to 20000 K, the light's own marked
+    propertyHeader("", -1, false, false);
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const float width = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
+    const float height = ImGui::GetFrameHeight() * 0.6f;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const int segments = 48;
+    auto colorAt = [](float kelvin){
+        const Vector3 linear = LightPhotometry::kelvinToLinearRGB(kelvin);
+        const Vector3 srgb = Color::linearTosRGB(linear);
+        return ImGui::ColorConvertFloat4ToU32(ImVec4(srgb.x, srgb.y, srgb.z, 1.0f));
+    };
+    auto kelvinAt = [](float t){
+        return LightPhotometry::MIN_TEMPERATURE + t * (LightPhotometry::MAX_TEMPERATURE - LightPhotometry::MIN_TEMPERATURE);
+    };
+    for (int i = 0; i < segments; i++){
+        const float x0 = origin.x + width * (float)i / segments;
+        const float x1 = origin.x + width * (float)(i + 1) / segments;
+        const ImU32 left = colorAt(kelvinAt((float)i / segments));
+        const ImU32 right = colorAt(kelvinAt((float)(i + 1) / segments));
+        drawList->AddRectFilledMultiColor(ImVec2(x0, origin.y), ImVec2(x1, origin.y + height), left, right, right, left);
+    }
+    const float t = std::clamp((light.colorTemperature - LightPhotometry::MIN_TEMPERATURE) /
+                               (LightPhotometry::MAX_TEMPERATURE - LightPhotometry::MIN_TEMPERATURE), 0.0f, 1.0f);
+    const float markerX = origin.x + width * t;
+    drawList->AddRectFilled(ImVec2(markerX - 1.5f, origin.y - 2.0f), ImVec2(markerX + 1.5f, origin.y + height + 2.0f), IM_COL32(20, 20, 20, 255));
+    ImGui::Dummy(ImVec2(width, height));
+
+    // Unity's presets
+    struct KelvinPreset { const char* name; float kelvin; };
+    static const KelvinPreset presets[] = {
+        {"Candle", 1900.0f}, {"Tungsten", 2700.0f}, {"Halogen", 3200.0f},
+        {"Daylight", 5600.0f}, {"Overcast", 6500.0f}, {"Blue Sky", 10000.0f}
+    };
+    propertyHeader("Presets", -1, false, false);
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##kelvin_presets", "Choose...")){
+        for (const KelvinPreset& preset : presets){
+            if (ImGui::Selectable((std::string(preset.name) + " (" + std::to_string((int)preset.kelvin) + " K)").c_str())){
+                auto* multi = new MultiPropertyCmd();
+                for (Entity entity : entities)
+                    multi->addPropertyCmd<float>(project, sceneProject->id, entity, cpType, "colorTemperature", preset.kelvin);
+                CommandHandle::get(sceneProject->id)->addCommandNoMerge(multi);
+            }
+        }
+        ImGui::EndCombo();
+    }
+}
+
+void editor::InspectorWindow::drawPhysicalLightExposureRow(SceneProject* sceneProject){
+    drawScenePropertyRow<float>(sceneProject, "physical_light_ev100", "Physical Light Exposure", ScenePropertyInputType::DragFloat, 5 * ImGui::GetFontSize(), -6.0f, 24.0f,
+        "The camera exposure (EV100) lights in physical units (lux, candela, lumen) are drawn at: it affects only them. "
+        "Lights in Engine units are drawn as they are. Sunny 15, Overcast 12, Interior 7, Night 2.");
+    // Sunny 16 and its neighbours
+    struct ExposurePreset { const char* name; float ev100; };
+    static const ExposurePreset presets[] = {{"Sunny", 15.0f}, {"Overcast", 12.0f}, {"Interior", 7.0f}, {"Night", 2.0f}};
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(1);
+    for (const ExposurePreset& preset : presets){
+        if (ImGui::SmallButton((std::string(preset.name) + "##ev100").c_str())){
+            Command* command = new ScenePropertyCmd<float>(project, sceneProject->id, "physical_light_ev100", preset.ev100);
+            CommandHandle::get(sceneProject->id)->addCommandNoMerge(command);
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("EV100 %.0f", preset.ev100);
+        ImGui::SameLine();
+    }
+    ImGui::NewLine();
+}
+
 void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     LightComponent& light = sceneProject->scene->getComponent<LightComponent>(entities[0]);
 
@@ -9162,9 +9321,11 @@ void editor::InspectorWindow::drawLightComponent(ComponentType cpType, SceneProj
 
     beginTable(cpType, std::max(getLabelSize("Volumetric Intensity"), getLabelSize("Culling Mask")));
     propertyRow(RowPropertyType::Enum, cpType, "type", "Type", sceneProject, entities, settingsLightType);
-    propertyRow(RowPropertyType::Float, cpType, "intensity", "Intensity", sceneProject, entities, settingsFloat);
+    drawLightIntensityRows(cpType, sceneProject, entities, settingsFloat);
     propertyRow(RowPropertyType::Float, cpType, "range", "Range", sceneProject, entities, settingsFloat);
-    propertyRow(RowPropertyType::Color3L, cpType, "color", "Color", sceneProject, entities);
+    // with a colour temperature, the colour filters the black body's (Unity's Filter)
+    propertyRow(RowPropertyType::Color3L, cpType, "color", light.useColorTemperature ? "Filter" : "Color", sceneProject, entities);
+    drawLightTemperatureRows(cpType, sceneProject, entities);
     if (light.type != LightType::POINT){
         propertyRow(RowPropertyType::Direction, cpType, "direction", "Direction", sceneProject, entities);
     }
@@ -15213,6 +15374,13 @@ void editor::InspectorWindow::show(){
                         "takes the ones that reach it and give it the most light, and the others reaching it are folded into "
                         "its ambient light (spherical harmonics), so they still brighten it without popping. More costs more "
                         "per lit pixel; 4, 8 and 16 are the shader tiers.");
+                    drawScenePropertyRow<LitQuality>(sceneProject, "lit_quality", "Lit Quality", ScenePropertyInputType::Combo, 7 * ImGui::GetFontSize(), 0.0f, 1.0f,
+                        "How the built-in Lit shades (and forks of it):\n"
+                        "- Standard: as it always has\n"
+                        "- High: specular anti-aliasing (no shimmering highlights on dense normal maps or fine curves) and the "
+                        "energy rough metals lose under direct lights given back. A few percent more per lit pixel.\n"
+                        "New scenes are High; a scene saved before Lit Quality existed loads as Standard.");
+                    drawPhysicalLightExposureRow(sceneProject);
 
                     ImGui::EndTable();
                 }

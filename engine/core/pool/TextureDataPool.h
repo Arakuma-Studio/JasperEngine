@@ -120,6 +120,7 @@ namespace jasperengine{
         // reloads (their result replaces the entry, never shown half-loaded)
         static std::unordered_map<std::string, PendingTexture> backgroundBuilds;
         static std::vector<std::shared_ptr<BasisJob>> basisJobs;
+        static std::unordered_map<std::string, std::function<TextureData()>> generators;
         static std::mutex cacheMutex;
         static std::atomic<bool> shutdownRequested;
 
@@ -156,6 +157,15 @@ namespace jasperengine{
         static void put(const std::string& id, std::shared_ptr<std::array<TextureData,6>> data);
 
         static TextureLoadResult loadFromFile(const std::string& id, const std::array<std::string, 6>& paths, size_t numFaces, bool fixAlphaBorder = false);
+
+        // Pixels made by a function instead of read from a file (a material lobe's map packed
+        // from two glTF images, TexturePack). setGenerator registers it under the id;
+        // loadGenerated runs it once as a Heavy Background job (never on the main thread) and
+        // is Loading until it is done, NotStarted for an id without one. The generator returns
+        // a one-face TextureData whose pixels it hands over (not owned: the pool's copy owns
+        // them); an empty one fails the load.
+        static void setGenerator(const std::string& id, std::function<TextureData()> generator);
+        static TextureLoadResult loadGenerated(const std::string& id);
 
         static void requestShutdown();
         // re-allows async loads after a recreated view

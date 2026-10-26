@@ -2184,7 +2184,7 @@ bool editor::Generator::hasSceneSource(const std::string& sceneName, const fs::p
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, PbrTier mobilePbrTier){
     const fs::path generatedPath = getGeneratedPath(projectInternalPath);
 
     // The editor used to emit a GLFW application host into every project. It is
@@ -2415,6 +2415,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
 
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
+    // the lobes a mobile or web build draws (Project Settings > Graphics > Mobile PBR Tier);
+    // Reduced is the engine's default, desktop always draws them all
+    if (mobilePbrTier != PbrTier::REDUCED)
+        mainContent += "    MaterialPbr::setMobileTier(PbrTier::FULL);\n";
 
     // the shadow quality tiers of the platforms (Project Settings > Graphics > Shadows), the
     // editor's own: a scene of Quality Auto renders with its platform's

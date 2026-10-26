@@ -330,6 +330,7 @@ namespace jasperengine{
 		Vector4 screenParams;          // screen UV (y up) = fragment coordinate * xy + zw
 		Vector4 colorParams;           // colour copy v = uv.y * x + y, zw = 1 / copy size
 		Vector4 depthParams;           // depth texture uv = screen uv * xy + zw
+		Matrix4 viewProjection;        // world -> clip, unflipped (SCENE_VIEW_PROJECTION: the built-in Lit's transmission)
 	} scene_inputs_t;
 
 	typedef struct vs_points_params_t {
@@ -365,6 +366,11 @@ namespace jasperengine{
 		// the post-processing colour (phase 4, USE_POST_COLOR): one global bit, see
 		// RenderSystem::getPostProcessingTiers
 		bool postColor = false;
+		// the scene's Lit Quality is High (SceneSettings::litQuality): every lit variant of the
+		// built-in Lit, and of forks of it, takes USE_LIT_QUALITY (in its builtin:lit reference)
+		bool litQualityHigh = false;
+		// the lobes the build draws (MaterialPbr::getRuntimeTier; the exporter: the target's)
+		PbrTier pbrTier = PbrTier::FULL;
 		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
 		// fog, volumetric clouds)
 		bool atmosphereDepth = false;
@@ -483,6 +489,15 @@ namespace jasperengine{
 		// the manifest's defines the material enables (ShaderReference::getEnabledFeatures),
 		// which decide its feature= @require inputs; empty: the unconditional ones only
 		std::vector<std::string> features;
+		// the built-in Lit's extended lobes and hex tiling (MaterialPbr::getPbrVariant): the
+		// submesh's material while the inputs are used, null for none (an extra pass, a shader
+		// with a manifest)
+		const Material* material = nullptr;
+		// the material's transmission lobe on a shader without a manifest: drawn in the
+		// transparent queue after the scene colour copy it refracts (no SSAO there)
+		bool pbrTransmission = false;
+		// a painted layer of the Terrain hex tiles (TERRAIN_HEX_TILING)
+		bool terrainHex = false;
 	};
 
 	// The shaders one submesh draws with
@@ -493,6 +508,12 @@ namespace jasperengine{
 		uint32_t depthProperties = 0;   // ShaderType::DEPTH
 		bool gbuffer = false;           // drawn into the SSR G-buffer
 		uint32_t gbufferProperties = 0; // ShaderType::GBUFFER
+		// The built-in Lit's defines beyond the property bits, sorted: the material's lobes,
+		// maps and hex tiling (pbr), TERRAIN_HEX_TILING and USE_LIT_QUALITY. They travel in the
+		// "builtin:lit#..." reference (a fork's "<fork>#..."), getSubmeshShaderReference; none:
+		// the variant it always was (customId 0)
+		std::vector<std::string> litDefines;
+		PbrVariant pbr;
 	};
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
@@ -1360,6 +1381,9 @@ namespace jasperengine{
 		int lightListCap;
 		// capacity tier the meshes loaded their variants with
 		int lightCapacityTier;
+		// the Lit Quality and the lobe tier the meshes loaded their variants with
+		LitQuality loadedLitQuality;
+		PbrTier loadedPbrTier;
 		// per-draw scratch of drawMesh
 		object_lights_t objectLightsBlock;
 		fs_lighting_t legacyLightingBlock;
@@ -1823,6 +1847,16 @@ namespace jasperengine{
 		bool checkPBRFrabebufferUpdate(Material& material);
 		bool checkPBRTextures(Material& material, bool receiveLights);
 		bool loadPBRTextures(Material& material, ShaderData& shaderData, ObjectRender& render, bool receiveLights);
+		// whether the loaded variant has the lobes, maps and hex tiling the material asks for now
+		bool pbrVariantMatches(const Submesh& submesh) const;
+		// LightComponent::resolvedColor and resolvedIntensity of every light (photometric units,
+		// colour temperature, the scene's EV100), where they changed
+		void resolveLights();
+		// the extension maps the submesh's variant binds (Submesh::pbrMaps), false while one loads
+		bool loadPbrExtTextures(Submesh& submesh, ShaderData& shaderData, ObjectRender& render);
+		// u_fs_pbrParams of a lit variant: the material's prefix, the emissive factor times
+		// Material::emissiveStrength
+		static void applyLitMaterialBlock(ObjectRender& render, int slot, const Material& material);
 		void loadShadowTextures(ShaderData& shaderData, ObjectRender& render, bool receiveLights, bool receiveShadow);
 		void updateShadowBindings();
 		bool loadDepthTexture(Material& material, ShaderData& shaderData, ObjectRender& render);
@@ -2189,6 +2223,13 @@ namespace jasperengine{
 		// the depth pass alpha-tests the submesh (MASK, or the legacy AUTO + textureShadow);
 		// the editor derives export keys from it, so the rule lives in one place
 		static bool usesAlphaMask(const Material& material, bool textureShadow);
+		// a material drawn by the built-in Lit (or a fork of it) with the transmission lobe: in
+		// the transparent queue, opaque over the scene colour copy it refracts
+		static bool usesPbrTransmission(const Material& material);
+		// The extended lobes, maps and hex tiling the submesh's material asks for with the
+		// lighting of its loaded variant (unlit: hex tiling only), for a tier: what the
+		// inspector and get_material_variant report (the maps it binds, the dropped ones)
+		static PbrVariant getLoadedPbrVariant(const Submesh& submesh, PbrTier tier);
 
 		// Shader variants, derived the same way by loadMesh and by the editor collecting the
 		// variants a build needs (from content, without loading anything on the GPU).
@@ -2222,7 +2263,12 @@ namespace jasperengine{
 		// pass draws with the library shader's @depth program, else the mesh's depth fork.
 		// A colour variant of a shader with a manifest also carries its resolved blend
 		// mode's BLEND_* define (ShaderReference::getColorVariantReference).
+		// The colour variant's reference takes the built-in Lit's own defines too (litDefines, a
+		// SubmeshShaderVariant's): "builtin:lit#..." for the built-in shader, "<fork>#..." for a
+		// fork of it. Without them: the reference of the shader the material names.
 		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
+		static std::string getSubmeshShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader,
+		                                             const std::vector<std::string>& litDefines);
 		static std::string getSubmeshDepthShaderReference(const MeshComponent& mesh, const Submesh& submesh, const std::string& sceneMeshShader);
 		// ---- shader library phase 2 (docs/superpowers/specs/2026-10-10-shader-library-phase2-design.md)
 		// Whether the submesh draws an extra pass: its material names one (a non-empty

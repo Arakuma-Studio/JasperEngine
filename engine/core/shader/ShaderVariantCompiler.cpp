@@ -7,6 +7,7 @@
 #include "pool/ShaderPool.h"
 #include "component/TerrainComponent.h"
 #include "shader/ShaderManifest.h"
+#include "texture/MaterialPbr.h"
 
 #include <algorithm>
 #include <cctype>
@@ -861,6 +862,31 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
         appendSignaturePart(signatureInput, "define", define);
     }
 
+    // the built-in Lit with the defines its property bits have no room for (MaterialPbr)
+    if (ShaderReference::isBuiltin(base)){
+        if (base != ShaderReference::BUILTIN_LIT || shaderType != ShaderType::MESH){
+            result.error = "Unknown built-in shader: " + customShader;
+            return result;
+        }
+        for (const std::string& define : result.defines){
+            if (!MaterialPbr::isBuiltinLitDefine(define)){
+                result.error = "The built-in Lit has no define '" + define + "' (" + customShader + ")";
+                return result;
+            }
+        }
+        result.library = true;
+        result.vertFile = "mesh.vert";
+        result.fragFile = "mesh.frag";
+        if (!getLibrarySources().count(result.vertFile) || !getLibrarySources().count(result.fragFile)){
+            result.error = "This build has no engine shader library to compile " + base + " from";
+            return result;
+        }
+        appendSignaturePart(signatureInput, "library-hash", std::to_string(getLibraryHash()));
+        result.signature = signatureInput;
+        result.valid = true;
+        return result;
+    }
+
     if (ShaderReference::isLibrary(base)){
         result.library = true;
         result.manifest = true;
@@ -976,68 +1002,62 @@ CustomShaderSources ShaderVariantCompiler::resolveCustomShaderSources(const std:
     return result;
 }
 
-bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
-                                    ShaderData& out, std::string* error, std::string* log,
-                                    const ProgressFn& progress, const std::function<bool()>& cancelled){
-    auto fail = [&](const std::string& message) {
-        if (error)
-            *error = message;
-        return false;
-    };
-    auto report = [&](float value) {
-        if (progress)
-            progress(value);
-    };
-    auto stopped = [&]() {
-        return cancelled && cancelled();
-    };
-
 #ifdef JASPERENGINE_RUNTIME_SHADERS
-    if (!isAvailable())
-        return fail("This build has no shader library to compile from");
+namespace {
 
-    retainCompilerProcess();
-
+// The compiler arguments of one variant for a backend: entry points, sources and #defines
+// (compile and preprocess). False with an error when the key or its sources are unusable.
+bool prepareVariantArgs(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
+                        shadercompiler::args_t& args, std::string& error){
     const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
     const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
     const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
 
-    shadercompiler::args_t args = shadercompiler::initialize_args();
+    args = shadercompiler::initialize_args();
     args.useBuffers = true;
-    args.fileBuffers = getLibrarySources();
+    args.fileBuffers = ShaderVariantCompiler::getLibrarySources();
     applyShaderBackend(args, backend);
-
-    std::string compileLog;
-    args.error_output = &compileLog;
 
     // Built-in entry-point files + property #defines (the variant system is identical
     // for forked shaders)
-    if (!setupShaderArgs(args, shaderType, properties))
-        return fail("Unknown shader type");
+    if (!setupShaderArgs(args, shaderType, properties)){
+        error = "Unknown shader type";
+        return false;
+    }
 
     if (args.lang == shadercompiler::LANG_GLSL &&
             (shaderType == ShaderType::MESH || shaderType == ShaderType::DEPTH ||
              shaderType == ShaderType::GBUFFER))
         args.defines.push_back({"SKINNING_TEXTURE", "1"});
 
-    if (shaderType == ShaderType::UI_EFFECT && customId == 0)
-        return fail("A UI effect shader needs its effect (the custom shader id)");
+    if (shaderType == ShaderType::UI_EFFECT && customId == 0){
+        error = "A UI effect shader needs its effect (the custom shader id)";
+        return false;
+    }
 
     if (ShaderPool::isLibraryCustomShader(customId)) {
         // an effect of the engine library ("@effects/<name>"): its sources are built in
         const std::string custom = ShaderPool::getCustomShaderName(customId);
         const std::string prefix = "@effects/";
-        if (shaderType != ShaderType::UI_EFFECT || custom.rfind(prefix, 0) != 0)
-            return fail("Unknown library shader: " + custom);
+        if (shaderType != ShaderType::UI_EFFECT || custom.rfind(prefix, 0) != 0){
+            error = "Unknown library shader: " + custom;
+            return false;
+        }
         const std::string fragFile = "effects/" + custom.substr(prefix.size()) + ".frag";
-        if (!args.fileBuffers.count(fragFile))
-            return fail("Unknown UI effect: " + custom.substr(prefix.size()));
+        if (!args.fileBuffers.count(fragFile)){
+            error = "Unknown UI effect: " + custom.substr(prefix.size());
+            return false;
+        }
         args.frag_file = fragFile;
     } else if (customId != 0) {
-        if (!customSources)
-            return fail("Custom shader requested without its sources");
-        if (!customSources->valid)
-            return fail(customSources->error.empty() ? "Could not resolve custom shader sources" : customSources->error);
+        if (!customSources){
+            error = "Custom shader requested without its sources";
+            return false;
+        }
+        if (!customSources->valid){
+            error = customSources->error.empty() ? "Could not resolve custom shader sources" : customSources->error;
+            return false;
+        }
 
         // Overlay the fork's entry points and every project include they reach onto the
         // engine library. Resolution order is the entry point's own directory, the
@@ -1069,6 +1089,110 @@ bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const 
         if (source != args.fileBuffers.end())
             addUiEffectStateDefinitions(source->second, args);
     }
+    return true;
+}
+
+} // namespace
+#endif // JASPERENGINE_RUNTIME_SHADERS
+
+bool ShaderVariantCompiler::preprocess(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
+                                       std::string& vertexSource, std::string& fragmentSource, std::string* error){
+    vertexSource.clear();
+    fragmentSource.clear();
+    auto fail = [&](const std::string& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+
+#ifdef JASPERENGINE_RUNTIME_SHADERS
+    if (!isAvailable())
+        return fail("This build has no shader library to preprocess");
+
+    retainCompilerProcess();
+
+    shadercompiler::args_t args;
+    std::string setupError;
+    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+        return fail(setupError);
+    std::string log;
+    args.error_output = &log;
+
+    std::vector<shadercompiler::input_t> inputs;
+    if (!shadercompiler::load_input(inputs, args))
+        return fail("Error loading shader input");
+
+    std::vector<std::string> outputs;
+    if (!shadercompiler::preprocess(outputs, inputs, args))
+        return fail("Error preprocessing: " + log);
+
+    for (size_t i = 0; i < inputs.size(); i++)
+        (inputs[i].stage_type == shadercompiler::STAGE_VERTEX ? vertexSource : fragmentSource) = outputs[i];
+    return true;
+#else
+    (void)key; (void)backend; (void)customSources;
+    return fail("This build has no runtime shader compiler (JASPERENGINE_RUNTIME_SHADERS is off)");
+#endif
+}
+
+std::string ShaderVariantCompiler::normalizePreprocessed(const std::string& source){
+    std::string normalized;
+    normalized.reserve(source.size());
+    size_t start = 0;
+    while (start < source.size()){
+        size_t end = source.find('\n', start);
+        if (end == std::string::npos)
+            end = source.size();
+        size_t first = start;
+        while (first < end && (source[first] == ' ' || source[first] == '\t' || source[first] == '\r'))
+            first++;
+        size_t last = end;
+        while (last > first && (source[last - 1] == ' ' || source[last - 1] == '\t' || source[last - 1] == '\r'))
+            last--;
+        // a #line directive only numbers what follows: an added comment or a guarded-out
+        // block moves it without changing the program
+        if (last > first && source.compare(first, 5, "#line") != 0){
+            normalized.append(source, first, last - first);
+            normalized += '\n';
+        }
+        start = end + 1;
+    }
+    return normalized;
+}
+
+bool ShaderVariantCompiler::compile(ShaderKey key, ShaderBackend backend, const CustomShaderSources* customSources,
+                                    ShaderData& out, std::string* error, std::string* log,
+                                    const ProgressFn& progress, const std::function<bool()>& cancelled){
+    auto fail = [&](const std::string& message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    auto report = [&](float value) {
+        if (progress)
+            progress(value);
+    };
+    auto stopped = [&]() {
+        return cancelled && cancelled();
+    };
+
+#ifdef JASPERENGINE_RUNTIME_SHADERS
+    if (!isAvailable())
+        return fail("This build has no shader library to compile from");
+
+    retainCompilerProcess();
+
+    const ShaderType shaderType = ShaderPool::getShaderTypeFromKey(key);
+    const uint32_t properties = ShaderPool::getPropertiesFromKey(key);
+    const uint16_t customId = ShaderPool::getCustomIdFromKey(key);
+
+    shadercompiler::args_t args;
+    std::string setupError;
+    if (!prepareVariantArgs(key, backend, customSources, args, setupError))
+        return fail(setupError);
+
+    std::string compileLog;
+    args.error_output = &compileLog;
 
     if (stopped())
         return fail("Cancelled");

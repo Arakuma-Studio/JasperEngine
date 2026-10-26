@@ -24,10 +24,16 @@ vec4 getVertexColor(){
 // the renderer supplies u_fs_texCoordSets telling each texture which set to sample
 // (0 = v_uv1, 1 = v_uv2). Without a second set everything samples v_uv1.
 #ifdef HAS_UV_SET2
+    #ifdef PBR_EXT
+        // carried by the extended lobes' block (includes/pbr_ext_slots.glsl)
+        struct PbrTexCoordSets { ivec4 set0; ivec4 set1; };
+        #define texCoordSets PbrTexCoordSets(ivec4(pbrExt.set0), ivec4(pbrExt.set1))
+    #else
     uniform u_fs_texCoordSets {
         ivec4 set0; // x=baseColor, y=metallicRoughness, z=occlusion, w=emissive
         ivec4 set1; // x=normal
     } texCoordSets;
+    #endif
 
     vec2 selectUV(int set)        { return (set == 1) ? v_uv2 : v_uv1; }
     vec2 getBaseColorUV()         { return selectUV(texCoordSets.set0.x); }
@@ -35,17 +41,34 @@ vec4 getVertexColor(){
     vec2 getOcclusionUV()         { return selectUV(texCoordSets.set0.z); }
     vec2 getEmissiveUV()          { return selectUV(texCoordSets.set0.w); }
     vec2 getNormalUV()            { return selectUV(texCoordSets.set1.x); }
+    // hex tiling (includes/pbr_ext_slots.glsl): a texture of UV set 0 is hex sampled
+    #ifdef PBR_HEX_ACTIVE
+        #define PBR_HEX_BASECOLOR (texCoordSets.set0.x == 0)
+        #define PBR_HEX_METALLICROUGHNESS (texCoordSets.set0.y == 0)
+        #define PBR_HEX_OCCLUSION (texCoordSets.set0.z == 0)
+        #define PBR_HEX_EMISSIVE (texCoordSets.set0.w == 0)
+        #define PBR_HEX_NORMALMAP (texCoordSets.set1.x == 0)
+    #endif
 #elif defined(HAS_UV_SET1)
     vec2 getBaseColorUV()         { return v_uv1; }
     vec2 getMetallicRoughnessUV() { return v_uv1; }
     vec2 getOcclusionUV()         { return v_uv1; }
     vec2 getEmissiveUV()          { return v_uv1; }
     vec2 getNormalUV()            { return v_uv1; }
+    #ifdef PBR_HEX_ACTIVE
+        #define PBR_HEX_BASECOLOR true
+        #define PBR_HEX_METALLICROUGHNESS true
+        #define PBR_HEX_OCCLUSION true
+        #define PBR_HEX_EMISSIVE true
+        #define PBR_HEX_NORMALMAP true
+    #endif
 #endif
 
 vec4 getBaseColor(){
     vec4 baseColor = pbrParams.baseColorFactor;
-    #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
+    #if defined(PBR_HEX_ACTIVE)
+        baseColor *= sRGBToLinear(pbrHexBaseColor(getBaseColorUV(), PBR_HEX_BASECOLOR));
+    #elif defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
         baseColor *= sRGBToLinear(texture(sampler2D(u_baseColorTexture, u_baseColor_smp), getBaseColorUV()));
     #endif
     return baseColor * getVertexColor();
@@ -57,7 +80,11 @@ vec4 getBaseColor(){
         // Roughness is stored in the 'g' channel, metallic is stored in the 'b' channel.
         // This layout intentionally reserves the 'r' channel for (optional) occlusion map data
         #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
+            #ifdef PBR_HEX_ACTIVE
+                vec4 mrSample = PBR_HEX_TEXTURE(u_metallicRoughnessTexture, u_metallicRoughness_smp, getMetallicRoughnessUV(), PBR_HEX_METALLICROUGHNESS);
+            #else
             vec4 mrSample = texture(sampler2D(u_metallicRoughnessTexture, u_metallicRoughness_smp), getMetallicRoughnessUV());
+            #endif
             info.perceptualRoughness *= mrSample.g;
             info.metallic *= mrSample.b;
         #endif
@@ -70,13 +97,21 @@ vec4 getBaseColor(){
 
     #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
         vec4 getOcclusionTexture(){
+            #ifdef PBR_HEX_ACTIVE
+                return PBR_HEX_TEXTURE(u_occlusionTexture, u_occlusion_smp, getOcclusionUV(), PBR_HEX_OCCLUSION);
+            #else
             return texture(sampler2D(u_occlusionTexture, u_occlusion_smp), getOcclusionUV());
+            #endif
         }
 
         // (mesh.frag leaves the texture out of a painted terrain with the post-processing colour)
         #ifndef NO_EMISSIVE_TEXTURE
             vec4 getEmissiveTexture(){
+                #ifdef PBR_HEX_ACTIVE
+                    return PBR_HEX_TEXTURE(u_emissiveTexture, u_emissive_smp, getEmissiveUV(), PBR_HEX_EMISSIVE);
+                #else
                 return texture(sampler2D(u_emissiveTexture, u_emissive_smp), getEmissiveUV());
+                #endif
             }
         #endif
     #endif
@@ -115,7 +150,11 @@ NormalInfo getNormalInfo(){
     // Compute pertubed normals (a normal map needs a UV set to sample it by: a terrain
     // without blend maps or textures has none)
     #if defined(HAS_NORMAL_MAP) && (defined(HAS_UV_SET1) || defined(HAS_UV_SET2))
+        #ifdef PBR_HEX_ACTIVE
+            n = PBR_HEX_NORMAL(u_normalTexture, u_normal_smp, getNormalUV(), PBR_HEX_NORMALMAP);
+        #else
         n = decodeNormalMap(texture(sampler2D(u_normalTexture, u_normal_smp), getNormalUV()));
+        #endif
         n *= vec3(normalScale, normalScale, 1.0);
         n = mat3(t, b, ng) * normalize(n);
     #else
