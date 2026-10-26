@@ -22,6 +22,10 @@ namespace Rml {
 
 static ImageSourceHandler* image_source_handler = nullptr;
 
+static bool MakeGradientTiles(RenderManager& render_manager, Element* element, BoxArea clip_area, int box_index, int num_boxes,
+	const Rectanglef* canvas, const LayerTiles& tiles, const Rectanglef& clip_rect, const CompiledShader& shader, byte alpha,
+	Vector<BoxPrimitive>& out);
+
 ImageSourceHandler::~ImageSourceHandler() {}
 
 void SetImageSourceHandler(ImageSourceHandler* handler)

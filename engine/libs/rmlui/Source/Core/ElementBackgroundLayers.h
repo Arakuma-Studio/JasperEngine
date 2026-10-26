@@ -2,6 +2,7 @@
 
 #include "../../Include/RmlUi/Core/CompiledFilterShader.h"
 #include "../../Include/RmlUi/Core/Geometry.h"
+#include "../../Include/RmlUi/Core/RenderInterface.h"
 #include "../../Include/RmlUi/Core/Texture.h"
 #include "../../Include/RmlUi/Core/Types.h"
 #include "BackgroundLayerValues.h"
