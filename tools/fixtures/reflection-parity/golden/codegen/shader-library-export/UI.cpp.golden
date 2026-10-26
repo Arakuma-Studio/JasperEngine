@@ -727,11 +727,11 @@ void create_UI(Scene* scene){
     camera.target = Vector3(0.000000f, 0.000000f, 0.000000f);
     camera.up = Vector3(0.000000f, 1.000000f, 0.000000f);
     camera.leftClip = 0.000000f;
-    camera.rightClip = 1280.000000f;
+    camera.rightClip = 10.000000f;
     camera.bottomClip = 0.000000f;
-    camera.topClip = 661.000000f;
+    camera.topClip = 10.000000f;
     camera.yfov = 0.750000f;
-    camera.aspect = 1.936460f;
+    camera.aspect = 1.000000f;
     camera.nearClip = -10.000000f;
     camera.farClip = 10.000000f;
     camera.renderToTexture = false;

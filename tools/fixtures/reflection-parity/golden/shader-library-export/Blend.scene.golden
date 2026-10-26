@@ -37,7 +37,7 @@ maxValues:
   maxSubmeshes: 1
   maxTilemapTilesRect: 0
   maxTilemapTiles: 0
-  maxExternalBuffers: 0
+  maxExternalBuffers: 5
   maxSpriteFrames: 0
   maxBones: 128
   maxColliders2D: 0

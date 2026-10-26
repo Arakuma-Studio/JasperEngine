@@ -228,7 +228,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -333,7 +333,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -440,7 +440,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -508,7 +508,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -586,7 +586,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -682,7 +682,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -751,7 +751,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -820,7 +820,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -889,7 +889,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -967,7 +967,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1054,7 +1054,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1123,7 +1123,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1210,7 +1210,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1279,7 +1279,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1339,7 +1339,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1417,7 +1417,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1513,7 +1513,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1582,7 +1582,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1651,7 +1651,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1729,7 +1729,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1845,7 +1845,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1952,7 +1952,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2020,7 +2020,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2098,7 +2098,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2194,7 +2194,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2263,7 +2263,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2332,7 +2332,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2401,7 +2401,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2479,7 +2479,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2566,7 +2566,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2635,7 +2635,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2722,7 +2722,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2791,7 +2791,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2851,7 +2851,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2929,7 +2929,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3025,7 +3025,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3094,7 +3094,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3163,7 +3163,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3241,7 +3241,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3357,7 +3357,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3464,7 +3464,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3532,7 +3532,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3610,7 +3610,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3706,7 +3706,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3775,7 +3775,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3844,7 +3844,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3913,7 +3913,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3991,7 +3991,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4078,7 +4078,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4147,7 +4147,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4234,7 +4234,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4303,7 +4303,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4363,7 +4363,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4441,7 +4441,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4537,7 +4537,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4606,7 +4606,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4675,7 +4675,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4753,7 +4753,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4869,7 +4869,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -4976,7 +4976,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5044,7 +5044,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5122,7 +5122,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5218,7 +5218,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5287,7 +5287,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5356,7 +5356,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5425,7 +5425,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5503,7 +5503,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5590,7 +5590,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5659,7 +5659,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5746,7 +5746,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5815,7 +5815,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5875,7 +5875,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -5953,7 +5953,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6049,7 +6049,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6118,7 +6118,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6187,7 +6187,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6265,7 +6265,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6381,7 +6381,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6488,7 +6488,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6556,7 +6556,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6634,7 +6634,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6730,7 +6730,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6799,7 +6799,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6868,7 +6868,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -6937,7 +6937,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7015,7 +7015,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7102,7 +7102,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7171,7 +7171,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7258,7 +7258,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7327,7 +7327,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7387,7 +7387,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7465,7 +7465,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7561,7 +7561,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7630,7 +7630,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7699,7 +7699,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7777,7 +7777,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7893,7 +7893,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -7952,7 +7952,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -8058,7 +8058,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -8126,7 +8126,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -8194,7 +8194,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -8262,7 +8262,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 425;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -8339,7 +8339,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -8407,7 +8407,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -8475,7 +8475,7 @@ void create_Blend(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);

@@ -63,11 +63,11 @@ entities:
         position: [250, 60, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 0, 0]
+        worldPosition: [250, 60, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [250, 60, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [250, 60, 0, 1]]
         normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
@@ -105,13 +105,13 @@ entities:
             primitiveType: triangles
             vertexCount: 6
             faceCulling: false
-            textureShadow: false
-            hasTexCoord1: false
+            textureShadow: true
+            hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
-            hasTangent: false
+            hasTangent: true
             hasVertexColor3: false
-            hasVertexColor4: false
+            hasVertexColor4: true
             hasTextureRect: true
             hasSkinning: false
             hasMorphTarget: false
@@ -121,14 +121,14 @@ entities:
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
         aabb:
-          min: [0, 0, 0]
-          max: [0, 0, 0]
+          min: [-200, 0, 0]
+          max: [200, 60, 0]
         verticesAABB:
-          min: [0, 0, 0]
-          max: [0, 0, 0]
+          min: [-200, 0, 0]
+          max: [200, 60, 0]
         worldAABB:
-          min: [0, 0, 0]
-          max: [0, 0, 0]
+          min: [50, 60, 0]
+          max: [450, 120, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: false
@@ -158,11 +158,11 @@ entities:
             position: [0, 0, 0]
             rotation: [1, 0, 0, 0]
             scale: [1, 1, 1]
-            worldPosition: [0, 0, 0]
+            worldPosition: [250, 60, 0]
             worldRotation: [1, 0, 0, 0]
             worldScale: [1, 1, 1]
             localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [250, 60, 0, 1]]
             normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
@@ -182,11 +182,11 @@ entities:
             position: [0, 60, 0]
             rotation: [1, 0, 0, 0]
             scale: [1, 1, 1]
-            worldPosition: [0, 0, 0]
+            worldPosition: [250, 120, 0]
             worldRotation: [1, 0, 0, 0]
             worldScale: [1, 1, 1]
-            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+            localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 60, 0, 1]]
+            modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [250, 120, 0, 1]]
             normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
             visible: true
             billboardRotation: [1, 0, 0, 0]
@@ -224,13 +224,13 @@ entities:
                 primitiveType: triangles
                 vertexCount: 6
                 faceCulling: false
-                textureShadow: false
-                hasTexCoord1: false
+                textureShadow: true
+                hasTexCoord1: true
                 hasTexCoord2: false
                 hasNormalMap: false
-                hasTangent: false
+                hasTangent: true
                 hasVertexColor3: false
-                hasVertexColor4: false
+                hasVertexColor4: true
                 hasTextureRect: true
                 hasSkinning: false
                 hasMorphTarget: false
@@ -240,14 +240,14 @@ entities:
             normAdjustWeight: 1
             morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
             aabb:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
+              min: [-60, 0, 0]
+              max: [60, 260, 0]
             verticesAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
+              min: [-60, 0, 0]
+              max: [60, 260, 0]
             worldAABB:
-              min: [0, 0, 0]
-              max: [0, 0, 0]
+              min: [190, 120, 0]
+              max: [310, 380, 0]
             receiveLights: false
             receiveIBL: false
             castShadows: false
@@ -277,11 +277,11 @@ entities:
                 position: [0, -20, 0]
                 rotation: [1, 0, 0, 0]
                 scale: [1, 1, 1]
-                worldPosition: [0, 0, 0]
+                worldPosition: [250, 100, 0]
                 worldRotation: [1, 0, 0, 0]
                 worldScale: [1, 1, 1]
-                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -20, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [250, 100, 0, 1]]
                 normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
@@ -319,13 +319,13 @@ entities:
                     primitiveType: triangles
                     vertexCount: 6
                     faceCulling: false
-                    textureShadow: false
-                    hasTexCoord1: false
+                    textureShadow: true
+                    hasTexCoord1: true
                     hasTexCoord2: false
                     hasNormalMap: false
-                    hasTangent: false
+                    hasTangent: true
                     hasVertexColor3: false
-                    hasVertexColor4: false
+                    hasVertexColor4: true
                     hasTextureRect: true
                     hasSkinning: false
                     hasMorphTarget: false
@@ -335,14 +335,14 @@ entities:
                 normAdjustWeight: 1
                 morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                 aabb:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
+                  min: [-40, 0, 0]
+                  max: [40, 40, 0]
                 verticesAABB:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
+                  min: [-40, 0, 0]
+                  max: [40, 40, 0]
                 worldAABB:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
+                  min: [210, 100, 0]
+                  max: [290, 140, 0]
                 receiveLights: false
                 receiveIBL: false
                 castShadows: false
@@ -371,11 +371,11 @@ entities:
                 position: [-60, 100, 0]
                 rotation: [1, 0, 0, 0]
                 scale: [1, 1, 1]
-                worldPosition: [0, 0, 0]
+                worldPosition: [190, 220, 0]
                 worldRotation: [1, 0, 0, 0]
                 worldScale: [1, 1, 1]
-                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-60, 100, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [190, 220, 0, 1]]
                 normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
@@ -390,11 +390,11 @@ entities:
                 position: [40, 20, 0]
                 rotation: [1, 0, 0, 0]
                 scale: [1, 1, 1]
-                worldPosition: [0, 0, 0]
+                worldPosition: [290, 140, 0]
                 worldRotation: [1, 0, 0, 0]
                 worldScale: [1, 1, 1]
-                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [40, 20, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [290, 140, 0, 1]]
                 normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
@@ -423,11 +423,11 @@ entities:
                 position: [120, 150, 0]
                 rotation: [1, 0, 0, 0]
                 scale: [1, 1, 1]
-                worldPosition: [0, 0, 0]
+                worldPosition: [370, 270, 0]
                 worldRotation: [1, 0, 0, 0]
                 worldScale: [1, 1, 1]
-                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [120, 150, 0, 1]]
+                modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [370, 270, 0, 1]]
                 normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                 visible: true
                 billboardRotation: [1, 0, 0, 0]
@@ -465,13 +465,13 @@ entities:
                     primitiveType: triangles
                     vertexCount: 6
                     faceCulling: false
-                    textureShadow: false
-                    hasTexCoord1: false
+                    textureShadow: true
+                    hasTexCoord1: true
                     hasTexCoord2: false
                     hasNormalMap: false
-                    hasTangent: false
+                    hasTangent: true
                     hasVertexColor3: false
-                    hasVertexColor4: false
+                    hasVertexColor4: true
                     hasTextureRect: true
                     hasSkinning: false
                     hasMorphTarget: false
@@ -481,14 +481,14 @@ entities:
                 normAdjustWeight: 1
                 morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                 aabb:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
+                  min: [-30, 0, 0]
+                  max: [30, 140, 0]
                 verticesAABB:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
+                  min: [-30, 0, 0]
+                  max: [30, 140, 0]
                 worldAABB:
-                  min: [0, 0, 0]
-                  max: [0, 0, 0]
+                  min: [340, 270, 0]
+                  max: [400, 410, 0]
                 receiveLights: false
                 receiveIBL: false
                 castShadows: false
@@ -518,11 +518,11 @@ entities:
                     position: [60, 40, 0]
                     rotation: [1, 0, 0, 0]
                     scale: [1, 1, 1]
-                    worldPosition: [0, 0, 0]
+                    worldPosition: [430, 310, 0]
                     worldRotation: [1, 0, 0, 0]
                     worldScale: [1, 1, 1]
-                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [60, 40, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [430, 310, 0, 1]]
                     normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                     visible: true
                     billboardRotation: [1, 0, 0, 0]
@@ -560,13 +560,13 @@ entities:
                         primitiveType: triangles
                         vertexCount: 6
                         faceCulling: false
-                        textureShadow: false
-                        hasTexCoord1: false
+                        textureShadow: true
+                        hasTexCoord1: true
                         hasTexCoord2: false
                         hasNormalMap: false
-                        hasTangent: false
+                        hasTangent: true
                         hasVertexColor3: false
-                        hasVertexColor4: false
+                        hasVertexColor4: true
                         hasTextureRect: true
                         hasSkinning: false
                         hasMorphTarget: false
@@ -576,14 +576,14 @@ entities:
                     normAdjustWeight: 1
                     morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                     aabb:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [-15, 0, 0]
+                      max: [15, 80, 0]
                     verticesAABB:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [-15, 0, 0]
+                      max: [15, 80, 0]
                     worldAABB:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [415, 310, 0]
+                      max: [445, 390, 0]
                     receiveLights: false
                     receiveIBL: false
                     castShadows: false
@@ -612,11 +612,11 @@ entities:
                     position: [-80, 40, 0]
                     rotation: [1, 0, 0, 0]
                     scale: [1, 1, 1]
-                    worldPosition: [0, 0, 0]
+                    worldPosition: [290, 310, 0]
                     worldRotation: [1, 0, 0, 0]
                     worldScale: [1, 1, 1]
-                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-80, 40, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [290, 310, 0, 1]]
                     normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                     visible: true
                     billboardRotation: [1, 0, 0, 0]
@@ -654,13 +654,13 @@ entities:
                         primitiveType: triangles
                         vertexCount: 6
                         faceCulling: false
-                        textureShadow: false
-                        hasTexCoord1: false
+                        textureShadow: true
+                        hasTexCoord1: true
                         hasTexCoord2: false
                         hasNormalMap: false
-                        hasTangent: false
+                        hasTangent: true
                         hasVertexColor3: false
-                        hasVertexColor4: false
+                        hasVertexColor4: true
                         hasTextureRect: true
                         hasSkinning: false
                         hasMorphTarget: false
@@ -670,14 +670,14 @@ entities:
                     normAdjustWeight: 1
                     morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                     aabb:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [-60, 0, 0]
+                      max: [60, 40, 0]
                     verticesAABB:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [-60, 0, 0]
+                      max: [60, 40, 0]
                     worldAABB:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [230, 310, 0]
+                      max: [350, 350, 0]
                     receiveLights: false
                     receiveIBL: false
                     castShadows: false
@@ -706,11 +706,11 @@ entities:
                     position: [-30, 20, 0]
                     rotation: [1, 0, 0, 0]
                     scale: [1, 1, 1]
-                    worldPosition: [0, 0, 0]
+                    worldPosition: [340, 290, 0]
                     worldRotation: [1, 0, 0, 0]
                     worldScale: [1, 1, 1]
-                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-30, 20, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [340, 290, 0, 1]]
                     normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                     visible: true
                     billboardRotation: [1, 0, 0, 0]
@@ -739,11 +739,11 @@ entities:
                     position: [0, 180, 0]
                     rotation: [1, 0, 0, 0]
                     scale: [1, 1, 1]
-                    worldPosition: [0, 0, 0]
+                    worldPosition: [370, 450, 0]
                     worldRotation: [1, 0, 0, 0]
                     worldScale: [1, 1, 1]
-                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                    localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 180, 0, 1]]
+                    modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [370, 450, 0, 1]]
                     normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                     visible: true
                     billboardRotation: [1, 0, 0, 0]
@@ -781,13 +781,13 @@ entities:
                         primitiveType: triangles
                         vertexCount: 6
                         faceCulling: false
-                        textureShadow: false
-                        hasTexCoord1: false
+                        textureShadow: true
+                        hasTexCoord1: true
                         hasTexCoord2: false
                         hasNormalMap: false
-                        hasTangent: false
+                        hasTangent: true
                         hasVertexColor3: false
-                        hasVertexColor4: false
+                        hasVertexColor4: true
                         hasTextureRect: true
                         hasSkinning: false
                         hasMorphTarget: false
@@ -797,14 +797,14 @@ entities:
                     normAdjustWeight: 1
                     morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                     aabb:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [-44, 0, 0]
+                      max: [44, 73, 0]
                     verticesAABB:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [-44, 0, 0]
+                      max: [44, 73, 0]
                     worldAABB:
-                      min: [0, 0, 0]
-                      max: [0, 0, 0]
+                      min: [326, 450, 0]
+                      max: [414, 523, 0]
                     receiveLights: false
                     receiveIBL: false
                     castShadows: false
@@ -834,11 +834,11 @@ entities:
                         position: [60, 0, 0]
                         rotation: [1, 0, 0, 0]
                         scale: [1, 1, 1]
-                        worldPosition: [0, 0, 0]
+                        worldPosition: [430, 450, 0]
                         worldRotation: [1, 0, 0, 0]
                         worldScale: [1, 1, 1]
-                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [60, 0, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [430, 450, 0, 1]]
                         normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                         visible: true
                         billboardRotation: [1, 0, 0, 0]
@@ -876,13 +876,13 @@ entities:
                             primitiveType: triangles
                             vertexCount: 6
                             faceCulling: false
-                            textureShadow: false
-                            hasTexCoord1: false
+                            textureShadow: true
+                            hasTexCoord1: true
                             hasTexCoord2: false
                             hasNormalMap: false
-                            hasTangent: false
+                            hasTangent: true
                             hasVertexColor3: false
-                            hasVertexColor4: false
+                            hasVertexColor4: true
                             hasTextureRect: true
                             hasSkinning: false
                             hasMorphTarget: false
@@ -892,14 +892,14 @@ entities:
                         normAdjustWeight: 1
                         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                         aabb:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [-15, 0, 0]
+                          max: [15, 60, 0]
                         verticesAABB:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [-15, 0, 0]
+                          max: [15, 60, 0]
                         worldAABB:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [415, 450, 0]
+                          max: [445, 510, 0]
                         receiveLights: false
                         receiveIBL: false
                         castShadows: false
@@ -928,11 +928,11 @@ entities:
                         position: [-60, 0, 0]
                         rotation: [1, 0, 0, 0]
                         scale: [1, 1, 1]
-                        worldPosition: [0, 0, 0]
+                        worldPosition: [310, 450, 0]
                         worldRotation: [1, 0, 0, 0]
                         worldScale: [1, 1, 1]
-                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [-60, 0, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [310, 450, 0, 1]]
                         normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                         visible: true
                         billboardRotation: [1, 0, 0, 0]
@@ -970,13 +970,13 @@ entities:
                             primitiveType: triangles
                             vertexCount: 6
                             faceCulling: false
-                            textureShadow: false
-                            hasTexCoord1: false
+                            textureShadow: true
+                            hasTexCoord1: true
                             hasTexCoord2: false
                             hasNormalMap: false
-                            hasTangent: false
+                            hasTangent: true
                             hasVertexColor3: false
-                            hasVertexColor4: false
+                            hasVertexColor4: true
                             hasTextureRect: true
                             hasSkinning: false
                             hasMorphTarget: false
@@ -986,14 +986,14 @@ entities:
                         normAdjustWeight: 1
                         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                         aabb:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [-10, 0, 0]
+                          max: [10, 40, 0]
                         verticesAABB:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [-10, 0, 0]
+                          max: [10, 40, 0]
                         worldAABB:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [300, 450, 0]
+                          max: [320, 490, 0]
                         receiveLights: false
                         receiveIBL: false
                         castShadows: false
@@ -1027,11 +1027,11 @@ entities:
                         position: [0, -40, 0]
                         rotation: [1, 0, 0, 0]
                         scale: [1, 1, 1]
-                        worldPosition: [0, 0, 0]
+                        worldPosition: [370, 410, 0]
                         worldRotation: [1, 0, 0, 0]
                         worldScale: [1, 1, 1]
-                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, -40, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [370, 410, 0, 1]]
                         normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                         visible: true
                         billboardRotation: [1, 0, 0, 0]
@@ -1069,13 +1069,13 @@ entities:
                             primitiveType: triangles
                             vertexCount: 6
                             faceCulling: false
-                            textureShadow: false
-                            hasTexCoord1: false
+                            textureShadow: true
+                            hasTexCoord1: true
                             hasTexCoord2: false
                             hasNormalMap: false
-                            hasTangent: false
+                            hasTangent: true
                             hasVertexColor3: false
-                            hasVertexColor4: false
+                            hasVertexColor4: true
                             hasTextureRect: true
                             hasSkinning: false
                             hasMorphTarget: false
@@ -1085,14 +1085,14 @@ entities:
                         normAdjustWeight: 1
                         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
                         aabb:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [-10, 0, 0]
+                          max: [10, 30, 0]
                         verticesAABB:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [-10, 0, 0]
+                          max: [10, 30, 0]
                         worldAABB:
-                          min: [0, 0, 0]
-                          max: [0, 0, 0]
+                          min: [360, 410, 0]
+                          max: [380, 440, 0]
                         receiveLights: false
                         receiveIBL: false
                         castShadows: false
@@ -1121,11 +1121,11 @@ entities:
                         position: [0, 0, 0]
                         rotation: [1, 0, 0, 0]
                         scale: [1, 1, 1]
-                        worldPosition: [0, 0, 0]
+                        worldPosition: [370, 450, 0]
                         worldRotation: [1, 0, 0, 0]
                         worldScale: [1, 1, 1]
                         localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+                        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [370, 450, 0, 1]]
                         normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
                         visible: true
                         billboardRotation: [1, 0, 0, 0]
@@ -1139,9 +1139,9 @@ entities:
                         target: [0, 0, 0]
                         up: [0, 1, 0]
                         leftClip: 0
-                        rightClip: 10
+                        rightClip: 256
                         bottomClip: 0
-                        topClip: 10
+                        topClip: 256
                         yfov: 0.75
                         aspect: 1
                         nearClip: -10
@@ -1180,11 +1180,11 @@ entities:
         position: [900, 30, 0]
         rotation: [1, 0, 0, 0]
         scale: [1, 1, 1]
-        worldPosition: [0, 0, 0]
+        worldPosition: [900, 30, 0]
         worldRotation: [1, 0, 0, 0]
         worldScale: [1, 1, 1]
-        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+        localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [900, 30, 0, 1]]
+        modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [900, 30, 0, 1]]
         normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
         visible: true
         billboardRotation: [1, 0, 0, 0]
@@ -1222,13 +1222,13 @@ entities:
             primitiveType: triangles
             vertexCount: 6
             faceCulling: false
-            textureShadow: false
-            hasTexCoord1: false
+            textureShadow: true
+            hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
-            hasTangent: false
+            hasTangent: true
             hasVertexColor3: false
-            hasVertexColor4: false
+            hasVertexColor4: true
             hasTextureRect: true
             hasSkinning: false
             hasMorphTarget: false
@@ -1238,14 +1238,14 @@ entities:
         normAdjustWeight: 1
         morphWeights: [0, 0, 0, 0, 0, 0, 0, 0]
         aabb:
-          min: [0, 0, 0]
-          max: [0, 0, 0]
+          min: [-150, 0, 0]
+          max: [150, 30, 0]
         verticesAABB:
-          min: [0, 0, 0]
-          max: [0, 0, 0]
+          min: [-150, 0, 0]
+          max: [150, 30, 0]
         worldAABB:
-          min: [0, 0, 0]
-          max: [0, 0, 0]
+          min: [750, 30, 0]
+          max: [1050, 60, 0]
         receiveLights: false
         receiveIBL: false
         castShadows: false

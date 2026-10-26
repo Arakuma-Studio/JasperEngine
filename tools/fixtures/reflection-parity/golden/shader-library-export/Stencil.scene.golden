@@ -822,7 +822,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: false
+        transparent: true
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
@@ -1909,7 +1909,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: false
+        transparent: true
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
@@ -2012,7 +2012,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: false
+        transparent: true
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
@@ -2625,7 +2625,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: false
+        transparent: true
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
@@ -2823,7 +2823,7 @@ entities:
         lodBias: 1
         renderInReflectionProbes: true
         shadowsBillboard: true
-        transparent: false
+        transparent: true
         autoTransparency: true
         cullingMode: back
         windingOrder: ccw
@@ -2958,11 +2958,11 @@ entities:
         target: [0, 2, 0]
         up: [0, 1, 0]
         leftClip: 0
-        rightClip: 1280
+        rightClip: 10
         bottomClip: 0
-        topClip: 661
+        topClip: 10
         yfov: 0.75
-        aspect: 1.9364599
+        aspect: 1.8546169
         nearClip: 0.2
         farClip: 200
         renderToTexture: false

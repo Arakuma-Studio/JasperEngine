@@ -165,7 +165,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -260,7 +260,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -376,7 +376,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 703;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1288,7 +1288,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1405,7 +1405,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1522,7 +1522,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1639,7 +1639,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1756,7 +1756,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 24;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -1873,7 +1873,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 703;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -2785,7 +2785,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 703;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3697,7 +3697,7 @@ void create_Saved(Scene* scene){
         mesh.autoTransparency = true;
         mesh.cullingMode = CullingMode::BACK;
         mesh.windingOrder = WindingOrder::CCW;
-        mesh.vertexCount = 0;
+        mesh.vertexCount = 4;
         mesh.numSubmeshes = 1;
         mesh.submeshes[0].material.name = "";
         mesh.submeshes[0].material.baseColorFactor = Vector4(1.000000f, 1.000000f, 1.000000f, 1.000000f);
@@ -3719,6 +3719,58 @@ void create_Saved(Scene* scene){
         mesh.submeshes[0].textureShadow = true;
         mesh.submeshes[0].textureRect = Rect(0.000000f, 0.000000f, 1.000000f, 1.000000f);
         mesh.submeshes[0].overrideFields = 65664;
+        mesh.buffer.clearAll();
+        mesh.buffer.addAttribute(AttributeType::POSITION, 3);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setOffset(0);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::POSITION)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::TEXCOORD1, 2);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setOffset(12);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::TEXCOORD1)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::NORMAL, 3);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setOffset(20);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::NORMAL)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::TANGENT, 4);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setOffset(32);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::TANGENT)->setNormalized(true);
+        mesh.buffer.addAttribute(AttributeType::COLOR, 4);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setDataType(AttributeDataType::FLOAT);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setOffset(48);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setCount(4);
+        mesh.buffer.getAttribute(AttributeType::COLOR)->setNormalized(true);
+        mesh.buffer.setVertexSize(64);
+        mesh.buffer.setUsage(BufferUsage::DYNAMIC);
+        {
+            static const unsigned char data[] = {
+                0x0, 0x0, 0x0, 0xc2, 0x0, 0x0, 0x0, 0xc2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0xbf, 0x0, 0x0, 
+                0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x42, 0x0, 0x0, 0x0, 0xc2, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0xbf, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x42, 0x0, 0x0, 0x0, 0x42, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0xbf, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0xc2, 0x0, 0x0, 0x0, 0x42, 
+                0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x80, 0xbf, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, 0x0, 0x0, 
+                0x80, 0x3f, 0x0, 0x0, 0x80, 0x3f, };
+            mesh.buffer.importData(data, sizeof(data));
+        }
+        mesh.buffer.setStride(64);
+        mesh.buffer.setCount(4);
+        mesh.indices.clearAll();
+        {
+            static const unsigned char data[] = {
+                0x0, 0x0, 0x1, 0x0, 0x2, 0x0, 0x0, 0x0, 0x2, 0x0, 0x3, 0x0, };
+            mesh.indices.importData(data, sizeof(data));
+        }
+        mesh.indices.getAttribute(AttributeType::INDEX)->setDataType(AttributeDataType::UNSIGNED_SHORT);
+        mesh.indices.getAttribute(AttributeType::INDEX)->setOffset(0);
+        mesh.indices.getAttribute(AttributeType::INDEX)->setCount(6);
+        mesh.indices.getAttribute(AttributeType::INDEX)->setNormalized(true);
+        mesh.indices.setStride(2);
+        mesh.indices.setCount(6);
         scene->addComponent<MeshComponent>(1014, std::move(*meshStorage));
 
         SpriteComponent sprite;

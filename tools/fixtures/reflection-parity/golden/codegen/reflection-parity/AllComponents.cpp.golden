@@ -268,11 +268,6 @@ void create_AllComponents(Scene* scene){
         pointscomp.autoTransparency = false;
         pointscomp.blendMode = MaterialBlendMode::MULTIPLY;
         pointscomp.depthWrite = MaterialDepthWrite::DISABLED;
-        pointscomp.texture.setPath("textures/parity.png");
-        pointscomp.texture.setMinFilter(TextureFilter::LINEAR);
-        pointscomp.texture.setMagFilter(TextureFilter::LINEAR);
-        pointscomp.texture.setWrapU(TextureWrap::REPEAT);
-        pointscomp.texture.setWrapV(TextureWrap::REPEAT);
         pointscomp.enabled = false;
         scene->addComponent<PointsComponent>(1007, pointscomp);
 
@@ -295,11 +290,6 @@ void create_AllComponents(Scene* scene){
 
         // Entity components initialization
         SkyboxComponent sky;
-        sky.texture.setPath("textures/parity.png");
-        sky.texture.setMinFilter(TextureFilter::LINEAR);
-        sky.texture.setMagFilter(TextureFilter::LINEAR);
-        sky.texture.setWrapU(TextureWrap::REPEAT);
-        sky.texture.setWrapV(TextureWrap::REPEAT);
         sky.color = Vector4(0.688889f, 0.233333f, 0.288889f, 1.000000f);
         sky.rotation = 5.000000f;
         sky.visible = false;
@@ -381,7 +371,7 @@ void create_AllComponents(Scene* scene){
 
         // Entity components initialization
         Transform transform;
-        transform.position = Vector3(10.000000f, 0.000000f, 0.000000f);
+        transform.position = Vector3(5.900000f, 3.300000f, 0.000000f);
         transform.rotation = Quaternion(1.000000f, 0.000000f, 0.000000f, 0.000000f);
         transform.scale = Vector3(1.000000f, 1.000000f, 1.000000f);
         transform.visible = true;
@@ -393,16 +383,16 @@ void create_AllComponents(Scene* scene){
         scene->addComponent<Transform>(1011, transform);
 
         RectTransformComponent layout;
-        layout.width = 0;
-        layout.height = 0;
-        layout.anchorPointLeft = 1.700000f;
-        layout.anchorPointTop = 5.400000f;
-        layout.anchorPointRight = 1.600000f;
-        layout.anchorPointBottom = 8.400000f;
-        layout.anchorOffsetLeft = 2;
-        layout.anchorOffsetTop = 6;
-        layout.anchorOffsetRight = 2;
-        layout.anchorOffsetBottom = 3;
+        layout.width = 1280;
+        layout.height = 720;
+        layout.anchorPointLeft = 0.000000f;
+        layout.anchorPointTop = 0.000000f;
+        layout.anchorPointRight = 1.000000f;
+        layout.anchorPointBottom = 1.000000f;
+        layout.anchorOffsetLeft = 0;
+        layout.anchorOffsetTop = 0;
+        layout.anchorOffsetRight = 0;
+        layout.anchorOffsetBottom = 0;
         layout.positionOffset = Vector2(5.900000f, 3.300000f);
         layout.pivot = Vector2(7.500000f, 2.100000f);
         layout.anchorPreset = AnchorPreset::FULL_LAYOUT;
@@ -557,8 +547,8 @@ void create_AllComponents(Scene* scene){
 #ifdef JASPERENGINE_PHYSICS_2D
         Rigidbody2DComponent rigidbody2d;
         rigidbody2d.type = BodyType::DYNAMIC;
-        rigidbody2d.needReloadBody = true;
-        rigidbody2d.needUpdateColliders = true;
+        rigidbody2d.needReloadBody = false;
+        rigidbody2d.needUpdateColliders = false;
         rigidbody2d.newBody = true;
         rigidbody2d.numColliders = 0;
         rigidbody2d.enabled = false;
@@ -598,7 +588,7 @@ void create_AllComponents(Scene* scene){
         rigidbody.newBody = true;
         rigidbody.overrideMassProperties = false;
         rigidbody.solidBoxSize = Vector3(0.000000f, 0.000000f, 0.000000f);
-        rigidbody.solidBoxDensity = 0.000000f;
+        rigidbody.solidBoxDensity = 3017640893487272930836480.000000f;
         rigidbody.numColliders = 0;
         rigidbody.enabled = false;
         scene->addComponent<RigidbodyComponent>(1018, std::move(*rigidbodyStorage));
@@ -1752,11 +1742,6 @@ void create_AllComponents(Scene* scene){
         clouds.earthCurvature = 3.700000f;
         clouds.windDirection = 3.800000f;
         clouds.windSpeed = 3.900000f;
-        clouds.weatherMap.setPath("textures/parity.png");
-        clouds.weatherMap.setMinFilter(TextureFilter::LINEAR);
-        clouds.weatherMap.setMagFilter(TextureFilter::LINEAR);
-        clouds.weatherMap.setWrapU(TextureWrap::REPEAT);
-        clouds.weatherMap.setWrapV(TextureWrap::REPEAT);
         clouds.weatherMapScale = 3.900000f;
         clouds.sunLightDimmer = 1.400000f;
         clouds.ambientLightDimmer = 4.100000f;
@@ -1786,11 +1771,11 @@ void create_AllComponents(Scene* scene){
     camera.target = Vector3(0.000000f, 0.000000f, 0.000000f);
     camera.up = Vector3(0.000000f, 1.000000f, 0.000000f);
     camera.leftClip = 0.000000f;
-    camera.rightClip = 1000.000000f;
+    camera.rightClip = 944.000000f;
     camera.bottomClip = 0.000000f;
-    camera.topClip = 480.000000f;
+    camera.topClip = 488.000000f;
     camera.yfov = 0.750000f;
-    camera.aspect = 2.083333f;
+    camera.aspect = 1.934426f;
     camera.nearClip = 0.300000f;
     camera.farClip = 4000.000000f;
     camera.renderToTexture = false;
@@ -1861,11 +1846,6 @@ SceneResources resources_AllComponents(){
     }
     {
         Texture texture;
-        texture.setPath("textures/parity.png");
-        texture.setMinFilter(TextureFilter::LINEAR);
-        texture.setMagFilter(TextureFilter::LINEAR);
-        texture.setWrapU(TextureWrap::REPEAT);
-        texture.setWrapV(TextureWrap::REPEAT);
         resources.textures.push_back(texture);
     }
     return resources;
