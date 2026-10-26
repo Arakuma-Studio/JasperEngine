@@ -429,3 +429,43 @@ TEST(RenderBatch, InstancesMergeQuadsAndBoxes){
     test.renderer.ReleaseGeometry(plain.handle);
     test.renderer.ReleaseTexture(texture);
 }
+
+// quads of up to four textures share a run (HTMLUI_PRIM's texture slots), a fifth starts another;
+// the image is the unbatched one
+TEST(RenderBatch, InstancesTakeFourTextures){
+    JASPER_REQUIRE_GPU();
+    PrimitivesMode instances(true);
+    RenderTestContext test(320, 180);
+    ASSERT_TRUE(test.isValid());
+
+    std::vector<Rml::TextureHandle> textures;
+    for (int i = 0; i < 5; i++){
+        std::vector<Rml::byte> rgba(4 * 4 * 4);
+        for (size_t p = 0; p < rgba.size(); p += 4){
+            rgba[p] = (Rml::byte)(40 * i + 60);
+            rgba[p + 1] = (Rml::byte)(200 - 30 * i);
+            rgba[p + 2] = (Rml::byte)(30 * i);
+            rgba[p + 3] = 255;
+        }
+        textures.push_back(test.renderer.GenerateTexture(rgba, Rml::Vector2i(4, 4)));
+        ASSERT_NE(textures.back(), 0u);
+    }
+    Quad textured(test.renderer, 0, 0, 16, 16, Rml::ColourbPremultiplied(255, 255, 255, 255), Rml::Vector2f(0.0f, 0.0f), Rml::Vector2f(1.0f, 1.0f));
+    auto draw = [&](int count){
+        for (int i = 0; i < 20; i++){
+            const float x = (float)(i % 10) * 30.0f, y = (float)(i / 10) * 30.0f;
+            test.renderer.RenderGeometry(textured.handle, Rml::Vector2f(x + 4, y + 4), textures[(size_t)(i % count)]);
+        }
+    };
+    const Pair four = drawBoth(test, [&](){ draw(4); });
+    EXPECT_TRUE(sameImages(four.batched, four.unbatched, test.targetSize.x));
+    EXPECT_EQ(four.batchedStats.drawCalls, 1u);
+    // the fifth texture does not fit the run's four slots: a run for every fifth quad and the next four
+    const Pair five = drawBoth(test, [&](){ draw(5); });
+    EXPECT_TRUE(sameImages(five.batched, five.unbatched, test.targetSize.x));
+    EXPECT_EQ(five.batchedStats.drawCalls, 5u);
+
+    test.renderer.ReleaseGeometry(textured.handle);
+    for (Rml::TextureHandle texture : textures)
+        test.renderer.ReleaseTexture(texture);
+}
