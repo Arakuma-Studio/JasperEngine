@@ -536,3 +536,40 @@ The initial full normal run's two `CrashHook.*` failures were a real report-hook
 reentrancy deadlock; this branch fixes it, and both refreshed normal and sanitizer focused
 runs pass them. Fatal helper processes deliberately print sanitizer signal diagnostics after
 our report; those are expected evidence that the saved sanitizer handler is still chained.
+
+### Merged branch gate (`feat/s28-robustness` after merging oe-port and `feat/s28-native-crash`)
+
+All through `je-remote/rb.sh`; merge commit b8808a966 plus the fixes after it.
+
+- Server A: `WERROR=1 tools/build.sh linux` passes. `WERROR=1 tools/build.sh unit-tests`: 1,078 core
+  and 392 editor tests, 0 failed.
+- Server A, `SANITIZE=address,undefined tools/build.sh unit-tests`: core 1,078 ran, 2 failed:
+  `ToolchainFingerprint.CompareNamesEachDifferingField` (the known Debug fixture value) and
+  `Backends/FileWatchServiceTests.PumpBudget/Native` (wall clock: 44 ms against its 20 ms sanitizer
+  limit on the loaded host; S05's file watcher). Editor 392 ran, 1 failed:
+  `NumericExpression.EvaluationWithinBudget` (wall clock, known). The run's container log was
+  lost when its local wrapper stopped (the results come from its gtest XML), so its leak
+  summary is not recorded here; the native branch's sanitizer record above lists the known
+  leaks of other streams.
+- MCP (A): `test_crash.py` 6/6 (`test_runaway_lua` included; the third start of the two notice
+  tests now checks the dismissed report itself, since the harness kills an editor slower than
+  2 s to exit and that session is rightly reported as abnormal) and `test_protocol.py` 12/12;
+  `test_tool_budget`, `test_tool_conventions`, `test_tool_coverage`, `test_docs`, `test_autosync`,
+  `test_tool_groups`, `test_lua_api_json` pass.
+- Web (A): `tools/build.sh web` + `web-gate` PASS; `WEB_PROJECT=crash-diagnostics` build +
+  `GATE=crash-diagnostics` PASS (ready line, then `JASPERENGINE CRASH:`, `onCrash` with stack and
+  log tail, the overlay).
+- Android (A): `tools/build.sh android` passes; `ANDROID_PROJECT=crash-diagnostics` APK on the API 34
+  emulator with `--expect-native-crash --expect 'JASPERENGINE CRASH:'`: PASS (engine report and
+  debuggerd tombstone, `F/JasperEngine: JASPERENGINE CRASH: SIGSEGV (invalid memory access)`).
+- Smoke (A): `tools/smoke-test.sh tools/fixtures/post-processing` PASS, no `JASPERENGINE HANG:` line.
+- Server E, `je-bench-diag`: heartbeat 2.25 ns (<= 5), 120-byte ring write 11.2 ns (<= 150),
+  install 0.58 ms (<= 3), idle watchdog 0.056 % of a core (<= 0.1): every budget holds.
+
+Owner review of the native handlers (reported to the integrator, not changed here): a second
+thread that faults while the first is still writing its report chains at once (POSIX
+`entry == 1` with a default disposition, Windows `submit` returning), which can end the process
+before the first report is complete; it should wait, bounded, for `reportDone` when another
+thread is reporting. Minor: POSIX frames carry no `[symbol]` and list the handler's own frames
+after `#0`; the Windows report has no thread name. `symbolicate.py` now places frames of
+libraries loaded after install (`module?+0x<address>`) through the report's maps copy.
