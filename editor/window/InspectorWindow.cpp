@@ -122,34 +122,34 @@ static void markTextureUpdate(Scene* scene, Entity entity, editor::ComponentType
 
 // the dropdowns of the component enums: their reflection tables' labels and Inspector order
 // (editor/reflect/Enums.cpp)
-static std::vector<editor::EnumEntry>& entriesPrimitiveType = *editor::InspectorWindow::enumEntries(reflect::enums::kPrimitiveType);
-static std::vector<editor::EnumEntry>& entriesMaterialAlphaMode = *editor::InspectorWindow::enumEntries(reflect::enums::kMaterialAlphaMode);
-static std::vector<editor::EnumEntry>& entriesPivotPreset = *editor::InspectorWindow::enumEntries(reflect::enums::kPivotPreset);
-static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWindow::enumEntries(reflect::enums::kLightType);
-static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(reflect::enums::kShadowCaster2DShape);
-static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(reflect::enums::kLightShading);
-static std::vector<editor::EnumEntry>& entriesCullingMode = *editor::InspectorWindow::enumEntries(reflect::enums::kCullingMode);
-static std::vector<editor::EnumEntry>& entriesFogType = *editor::InspectorWindow::enumEntries(reflect::enums::kFogType);
-static std::vector<editor::EnumEntry>& entriesFogColorMode = *editor::InspectorWindow::enumEntries(reflect::enums::kFogColorMode);
-static std::vector<editor::EnumEntry>& entriesAtmosphereQualityOverride = *editor::InspectorWindow::enumEntries(reflect::enums::kAtmosphereQualityOverride);
-static std::vector<editor::EnumEntry>& entriesCloudsRendering = *editor::InspectorWindow::enumEntries(reflect::enums::kCloudsRendering);
-static std::vector<editor::EnumEntry>& entriesReflectionProbeMode = *editor::InspectorWindow::enumEntries(reflect::enums::kReflectionProbeMode);
-static std::vector<editor::EnumEntry>& entriesReflectionProbeUpdateMode = *editor::InspectorWindow::enumEntries(reflect::enums::kReflectionProbeUpdateMode);
-static std::vector<editor::EnumEntry>& entriesCameraType = *editor::InspectorWindow::enumEntries(reflect::enums::kCameraType);
+static std::vector<editor::EnumEntry>& entriesPrimitiveType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kPrimitiveType);
+static std::vector<editor::EnumEntry>& entriesMaterialAlphaMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kMaterialAlphaMode);
+static std::vector<editor::EnumEntry>& entriesPivotPreset = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kPivotPreset);
+static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightType);
+static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowCaster2DShape);
+static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightShading);
+static std::vector<editor::EnumEntry>& entriesCullingMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCullingMode);
+static std::vector<editor::EnumEntry>& entriesFogType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogType);
+static std::vector<editor::EnumEntry>& entriesFogColorMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogColorMode);
+static std::vector<editor::EnumEntry>& entriesAtmosphereQualityOverride = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAtmosphereQualityOverride);
+static std::vector<editor::EnumEntry>& entriesCloudsRendering = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCloudsRendering);
+static std::vector<editor::EnumEntry>& entriesReflectionProbeMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kReflectionProbeMode);
+static std::vector<editor::EnumEntry>& entriesReflectionProbeUpdateMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kReflectionProbeUpdateMode);
+static std::vector<editor::EnumEntry>& entriesCameraType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCameraType);
 // render-target framebuffers have no mipmaps, so only the non-mipmap filters apply
-static std::vector<editor::EnumEntry>& entriesTextureFilter = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureFilter, reflect::enums::bit((int)TextureFilter::NEAREST) | reflect::enums::bit((int)TextureFilter::LINEAR));
+static std::vector<editor::EnumEntry>& entriesTextureFilter = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTextureFilter, editor::reflect::enums::bit((int)TextureFilter::NEAREST) | editor::reflect::enums::bit((int)TextureFilter::LINEAR));
 // full filter set for a texture's minification (mipmap variants trigger mipmap generation)
-static std::vector<editor::EnumEntry>& entriesTextureMinFilter = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureFilter);
-static std::vector<editor::EnumEntry>& entriesTextureWrap = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureWrap);
-static std::vector<editor::EnumEntry>& entriesTextureAlphaBorder = *editor::InspectorWindow::enumEntries(reflect::enums::kTextureAlphaBorder);
-static std::vector<editor::EnumEntry>& entriesAudioAttenuation = *editor::InspectorWindow::enumEntries(reflect::enums::kAudioSourceAttenuation);
-static std::vector<editor::EnumEntry>& entriesUIDocumentRenderMode = *editor::InspectorWindow::enumEntries(reflect::enums::kUIDocumentRenderMode);
-static std::vector<editor::EnumEntry>& entriesAudioState = *editor::InspectorWindow::enumEntries(reflect::enums::kAudioSourceState);
+static std::vector<editor::EnumEntry>& entriesTextureMinFilter = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTextureFilter);
+static std::vector<editor::EnumEntry>& entriesTextureWrap = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTextureWrap);
+static std::vector<editor::EnumEntry>& entriesTextureAlphaBorder = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTextureAlphaBorder);
+static std::vector<editor::EnumEntry>& entriesAudioAttenuation = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAudioSourceAttenuation);
+static std::vector<editor::EnumEntry>& entriesUIDocumentRenderMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kUIDocumentRenderMode);
+static std::vector<editor::EnumEntry>& entriesAudioState = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAudioSourceState);
 static std::vector<int> cascadeValues = { 1, 2, 3, 4, 5, 6 };
 // reflection probe captures are clamped to [16, 1024] in RenderSystem
 static std::vector<int> probeResolutionValues = { 16, 32, 64, 128, 256, 512, 1024 };
 
-static std::vector<editor::EnumEntry>& entriesEaseType = *editor::InspectorWindow::enumEntries(reflect::enums::kEaseType);
+static std::vector<editor::EnumEntry>& entriesEaseType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kEaseType);
 std::vector<editor::InspectorWindow::DirtyMaterialEntry> editor::InspectorWindow::dirtyMaterials;
 
 bool editor::InspectorWindow::lastHeaderRowClicked() {
