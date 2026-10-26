@@ -76,13 +76,39 @@ Information (not budgeted): `ref_10k` 0.25 ms per tick and 0.15 ms prep (2 threa
 The scalar kernels are the correctness reference (and the build without SIMD on the web): they
 emulate four lanes element by element, which is why they are so far behind.
 
+### Web
+
+The web rows of R21, R22 and R24, measured by the particles test project
+(`tools/test-projects/particles`, `?particles_bench=1`) in headless Chrome on the same server E:
+the reference stack at 30 000 live particles on the page's one thread, a Release build with
+simd128 and one without (`WASM_SIMD=0`). The simd128 build gates R21/R22 (an error line when a
+budget is missed); `tools/perf/check_web_particles.py` compares the two builds' ticks for R24
+(within one build the scalar kernels are auto-vectorized for simd128, so a browser without
+simd128, which runs the scalar build, is the honest reference).
+
+```sh
+BUILD_TYPE=Release WEB_PROJECT=particles tools/build.sh web
+BUILD_TYPE=Release WASM_SIMD=0 WEB_PROJECT=particles tools/build.sh web
+GATE=particles GATE_ARGS='--query=particles_bench=1 --expect=particles_web_budgets=pass' tools/build.sh web-gate
+WASM_SIMD=0 GATE=particles GATE_ARGS='--query=particles_bench=1 --expect=particles_web_budgets=scalar' tools/build.sh web-gate
+python3 tools/perf/check_web_particles.py build/test-results/web/particles.log build/test-results/web/particles-scalar.log
+```
+
+| Metric | simd128 | scalar build | Budget |
+|---|---|---|---|
+| Reference stack, 30 k, one tick | 2.07 ms | 12.99 ms | ≤ 3.0 ms (R21) |
+| Without Noise | 0.39 ms | 0.94 ms | ≤ 1.5 ms (R21) |
+| Render prep, 30 k | 0.77 ms | 1.44 ms | ≤ 1.2 ms (R22) |
+| SIMD against scalar, the reference tick | 6.3 x | | ≥ 2 x (R24) |
+| SIMD against scalar, the Noise kernel | 7.2 x | | ≥ 2.5 x (R24) |
+
 ### Not measured here
 
 - **Mobile (R21-R23)** and **GPU (R23)** rows: manual sign-off on the named reference devices
   with the `particles_perf` sample scene (Android GPU timings through the S15 pass timers). The
-  CPU paths are the NEON instantiation of the same kernels.
-- **Web**: the kernels build with `-msimd128` (`JASPERENGINE_WASM_SIMD=ON`, default) or scalar;
-  the web gate runs the engine in headless Chrome.
+  CPU paths are the NEON instantiation of the same kernels; the Android emulator run
+  (`ANDROID_PROJECT=particles`, `tools/test-projects/particles/android-expect.txt`) checks they
+  run, not their speed.
 
 ## Comparison
 

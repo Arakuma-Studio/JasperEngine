@@ -634,6 +634,14 @@ What the implementation does differently from the text above, and why.
   keeps the same shader features and parameters instead.
 - **Benchmarks**: the benchmark server has 2 cores, so the 8-worker budgets of R21/R22 are
   checked as `single thread / (9 x 0.6)` with the parallel efficiency gated as measured
-  (docs/perf/particles.md). The sorted-view budget is checked on one thread. Mobile, GPU (R23)
-  and web rows are manual sign-offs on the named devices. OpenEngine and Unity are compared at
-  the design level only (neither is runnable on the servers).
+  (docs/perf/particles.md). The sorted-view budget is checked on one thread. The web rows run
+  in the particles test project's page (`?particles_bench=1`) rather than a wasm build of
+  je-bench-particles, and R24's web speedups compare the simd128 build with the scalar build
+  (inside one build the scalar kernels are auto-vectorized for simd128). Mobile and GPU (R23)
+  rows are manual sign-offs on the named devices. OpenEngine and Unity are compared at the
+  design level only (neither is runnable on the servers).
+- **Ribbons** with several strips use a fixed stride per strip (the effect's Max Particles over
+  its ribbon count), so their triangles are made once at load; a single ribbon packs only its
+  live particles.
+- **Immediate calls** (seek, step, the editor's preview) work out a moved GameObject's matrices
+  before they simulate, instead of using the last frame's.
