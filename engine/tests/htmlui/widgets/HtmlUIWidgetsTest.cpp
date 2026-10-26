@@ -93,7 +93,7 @@ TEST_F(HtmlUIWidgets, ListPoolBound){
     EXPECT_EQ(state.source, "model:inv");
     EXPECT_LE(state.pool, 13 + 8 + 8);
     EXPECT_GT(state.pool, 13);
-    EXPECT_EQ(state.poolBound, 13 + 8 + 8);
+    EXPECT_EQ(state.poolBound, 13 + 1 + 8 + 8);   // (the bound counts a line cut at each end)
     EXPECT_FLOAT_EQ(state.totalHeight, 10000 * 48.0f);
     EXPECT_EQ(rowText(list, 1), "Item 0");
     EXPECT_EQ(rowText(list, 2, ".n"), "1");

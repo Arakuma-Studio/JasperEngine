@@ -573,3 +573,7 @@ doc.onReload = function(report) print(report.updated, report.fallbackReason) end
   R41's.
 - **`assert_ui`'s `virtual_window` takes `max`, not `max_pool` (R40).** The check's existing `max`
   says the most rows; a key of its own did not fit the tool's S31 budget (2,170 characters).
+- **The pool bound counts one line more (R2).** A view shows a line cut at its top and one at its
+  bottom at once, so a window of `ceil(viewport / row height)` lines can need one more;
+  `virtual_window`'s default bound is `ceil(viewport / min row height) + 1 + 2 overscan + 8` lines
+  (AC2's 10k list still pools at most 13 + 8 + 8 rows).

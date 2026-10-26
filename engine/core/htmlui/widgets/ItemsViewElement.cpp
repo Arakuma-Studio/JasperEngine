@@ -1645,7 +1645,8 @@ ItemsViewElement::State ItemsViewElement::getState() const{
     state.last = range.second;
     state.pool = (int)pool.size();
     const float minHeight = std::max(kMinLineHeight, std::min(heights.estimate(), minLineHeight > 0.0f ? minLineHeight : heights.estimate()));
-    state.poolBound = ((int)std::ceil(viewportHeight() / minHeight) + 2 * overscan + VirtualWindowCore::kShrinkSlackLines) * std::max(1, lanes);
+    // (+1: a line cut at the top and one at the bottom show together)
+    state.poolBound = ((int)std::ceil(viewportHeight() / minHeight) + 1 + 2 * overscan + VirtualWindowCore::kShrinkSlackLines) * std::max(1, lanes);
     state.overscan = overscan;
     state.lanes = lanes;
     state.selection = selectionMode;
