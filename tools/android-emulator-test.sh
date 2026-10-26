@@ -216,10 +216,11 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
             # package and faulting thread can be checked against our saved report.
             adb pull /data/tombstones "$OUT/tombstones" >/dev/null 2>&1 || true
             if grep -q "JASPERENGINE CRASH:" "$OUT/logcat.txt" && grep -q "signal:" "$OUT/crash-report.txt" &&
+               grep -q "^#0 libjasperengine-android.so+0x" "$OUT/crash-report.txt" &&
                grep -R -q "$PACKAGE" "$OUT/tombstones"; then
                 echo "found        engine report and debuggerd tombstone" >> "$OUT/result.txt"
             else
-                echo "MISSING      engine report or matching debuggerd tombstone" >> "$OUT/result.txt"
+                echo "MISSING      engine report, game-module frame or matching debuggerd tombstone" >> "$OUT/result.txt"
                 result=1
             fi
         elif [[ -n "$crashes" ]]; then
