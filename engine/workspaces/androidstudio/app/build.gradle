@@ -8,6 +8,17 @@ def jasperengineRoot = "../../.."
 def projectSourceRootAbs = file(projectSourceRoot).toString()
 def jasperengineRootAbs = file(jasperengineRoot).toString()
 
+// The assets the APK packs: the project's, without the cooked textures desktop and web load
+// (S14 R9: assets/je-cooked/<family>), synced into the build directory before every build
+def jasperengineAssetsDir = layout.buildDirectory.dir("jasperengine-assets").get().asFile.toString()
+tasks.register('jasperengineSyncAssets', Sync) {
+    from(projectSourceRootAbs + '/assets') {
+        exclude 'je-cooked/desktop/**', 'je-cooked/web/**'
+    }
+    into jasperengineAssetsDir
+}
+tasks.matching { it.name == 'preBuild' }.configureEach { dependsOn 'jasperengineSyncAssets' }
+
 android {
     compileSdk 36
     // The NDK AGP 9.4.1 installs by default, pinned: its Clang (19) is above the C++20 floor
@@ -59,7 +70,8 @@ android {
     sourceSets {
         main {
             java.srcDirs = [jasperengineRootAbs+'/platform/android/java']
-            assets.srcDirs = [projectSourceRootAbs+'/assets',projectSourceRootAbs+'/lua']
+            // the project's assets without the cooked textures other platforms load (S14 R9)
+            assets.srcDirs = [jasperengineAssetsDir,projectSourceRootAbs+'/lua']
         }
     }
 

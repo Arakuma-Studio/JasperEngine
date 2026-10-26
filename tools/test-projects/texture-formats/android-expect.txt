@@ -1,0 +1,4 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the texture-formats project logs on
+# Android (`logcat -v tag`): the mobile family (ASTC), loaded and drawn.
+I/JasperEngine: [gate] texture family mobile
+I/JasperEngine: [gate] textures loaded 4 compressed yes

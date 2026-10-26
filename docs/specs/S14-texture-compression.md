@@ -530,3 +530,59 @@ The fixture corpus is `tools/fixtures/textures/` (CC0 or generated):
    frame afterwards. When `EMSCRIPTEN_THREAD_SUPPORT=ON`, transcodes run on the pool instead.
 9. **Lua scripts that read pixels of cooked textures.** *Default:* the R3 one-time error that names the
    Read/Write flag. `shipSource` exists for scripts that parse the raw file.
+
+## Deviations
+
+What the implementation does differently from the text above, and why (IMPLEMENTING.md: the best
+alternative, recorded here).
+
+1. **Settings key (R1, R30).** S04's sidecar reserves the top-level `import:` section for importers,
+   so the settings live at `import.textureImporter` (`version: 1`) rather than a top-level
+   `textureImporter:`. Writes go through `SetAssetMetaCmd`, which now rewrites only its own
+   section and keeps S04's lines (and S25's labels) byte for byte.
+2. **R1 fields added.** `shape: 2d|cube` (a single-file cross is a cube map; six files stay six 2D
+   textures), `shipSource` (R9 names it without listing it), `inferredFrom` (R2's reason, written
+   with the inferred type and shown in the inspector). `mipLimit` is the most levels kept (0 = all).
+   `streamable` defaults to on, except for sprite/ui (R12) and textures without mips.
+3. **Progressive tail (R12).** KTX2 stores levels smallest first, so the ≤ 64 px tail sits right after
+   the metadata: the first read is of the file's first bytes, not its end. Same effect, one read.
+4. **Sources read from their file (R9).** HTML UI images, terrain surface layers and a glTF's
+   external images are read from the source file by their consumers (RmlUi, the terrain detail
+   array, tinygltf). A texture whose every reference is one of those is not cooked and ships as
+   it is; a texture with one such reference and others is cooked and its source ships too
+   (`readsSource`, like an implicit `shipSource`). `.svg` (rasterised at load at the requested
+   scale) and `.ktx2` sources load as they are. `.pic`/`.pnm` (stb formats the asset table knows)
+   cook like the R1 list.
+5. **R3 CPU readers.** Spot light masks join terrain height/density maps and LUTs: their pixels are
+   read on the CPU. Terrain blend maps are inferred as linear data (splat weights).
+6. **HDR storage (D7).** HDR textures are stored display-encoded (`pow(1/2.2)` in float) because
+   every shader decodes with `sRGBToLinear()` and the raw path's stb `.hdr` → LDR conversion does the
+   same; the cook's relative RMSE is measured in linear light on [0, 16] as AC4 asks.
+7. **ASTC profile (D7).** ASTC is encoded with the LDR (linear) profile on sRGB data, matching the
+   UNORM upload and the shader-side decode; the sRGB flag still travels in the DFD.
+8. **BC1** is opaque-only (no 3-colour punch-through mode); textures with alpha use BC7 per R5.
+   Opaque sprite/ui BC7 uses the opaque mode-6 encoding at every quality (their alpha is 255).
+9. **R6 on the web.** Basis files transcode to BC/ETC2 on most devices, so web cooks follow the
+   multiple-of-4 rule too. A rescale is a warning in the report and the inspector; only the
+   sprite/ui uncompressed fallback and an explicit format that cannot hold the data are
+   warning-level problems for `cook-textures --check` / `check --textures`, so a 65² height map
+   does not fail a project.
+10. **Key ISA (D11).** bc7enc_rdo (scalar float) and basisu are not proven ISA-invariant, so their keys
+    carry the host ISA; astcenc (invariance build) and the raw writer do not. Key numbers are printed
+    without the locale.
+11. **sokol patch (R14).** Upstream submission is not possible from this environment; the patch is in
+    `engine/libs/sokol/PATCHES.md`, marked to be offered upstream.
+12. **Basis build.** The v2.50 transcoder does not compile with XUASTC off (its BC7 decoder needs it),
+    so the transcoder keeps it; the other unused targets are compiled out. `.exr` sources are read
+    through basisu's bundled tinyexr (editor only).
+13. **Web normal maps** are UASTC with the RG channel layout and transcoded from channels 0 and 1
+    (basisu's BC5/EAC defaults read R and A).
+14. **Game view simulation (R26).** The family the editor renders cooked textures with is one
+    setting for every view (the texture pool is shared), set from the Game view's toolbar.
+15. **Reports.** MCP and the CLI report project-relative paths and add each cook's cache `key` (the
+    file under `.jasperengine/cache/textures/v1`) and a `source` status for files that are not
+    cooked; `check` gains a `--textures` category, on by default.
+16. **Batch cooks.** The export and `cook-textures` share `TextureBatchCook` (plain threads up to
+    `--jobs`, the same working-memory budget); the editor's background cooks, which MCP's
+    `reimport_textures` waits on, stay on S06's Background lane (`TextureCookQueue`). Encoders always
+    fork their bands on the job system.
