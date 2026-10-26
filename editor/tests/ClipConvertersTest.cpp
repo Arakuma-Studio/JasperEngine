@@ -525,6 +525,28 @@ TEST_F(ClipConverters_, ValidationEventHandlersAndCppScripts) {
     EXPECT_FALSE(ClipValidation::isScriptLifecycleMethod("onStep"));
 }
 
+// F2b: the side a bone name says (the binding report's path fixes never cross sides), by words:
+// separators and camelCase boundaries, never inside a word
+TEST(ClipValidationSides, BoneSideReadsWholeWords) {
+    EXPECT_EQ(ClipValidation::boneSide("Hero/mixamorig:Hips/mixamorig:LeftUpLeg"), 'L');
+    EXPECT_EQ(ClipValidation::boneSide("Hero/mixamorig:RightArm"), 'R');
+    EXPECT_EQ(ClipValidation::boneSide("Robot/pelvis/thigh.L"), 'L');
+    EXPECT_EQ(ClipValidation::boneSide("Robot/pelvis/thigh.R/shin.R"), 'R');
+    EXPECT_EQ(ClipValidation::boneSide("Hand_R"), 'R');
+    EXPECT_EQ(ClipValidation::boneSide("l_foot"), 'L');
+    EXPECT_EQ(ClipValidation::boneSide("upper arm l"), 'L');
+    EXPECT_EQ(ClipValidation::boneSide("LArm"), 'L');
+    EXPECT_EQ(ClipValidation::boneSide("ArmR"), 'R');
+    EXPECT_EQ(ClipValidation::boneSide("ARM_L"), 'L');
+    // inside words: no side
+    EXPECT_EQ(ClipValidation::boneSide("Bright"), 0);
+    EXPECT_EQ(ClipValidation::boneSide("upright"), 0);
+    EXPECT_EQ(ClipValidation::boneSide("Lefty"), 0);
+    EXPECT_EQ(ClipValidation::boneSide("Robot/pelvis/spine.001"), 0);
+    EXPECT_EQ(ClipValidation::boneSide("Left/Spine"), 0) << "the last segment only";
+    EXPECT_EQ(ClipValidation::boneSide("LeftRight"), 0) << "both: none";
+}
+
 // The T-pose hero alone loads in the legacy layout; a player added by a path that does not
 // switch it (here: the component written directly, as a duplicate would) leaves it so: the
 // report says so instead of N missing paths, and its fix reloads it as one scene step

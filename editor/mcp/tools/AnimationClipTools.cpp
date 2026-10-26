@@ -330,30 +330,6 @@ struct FixableClip {
     fs::path file;
 };
 
-// the side a bone name says ('L' or 'R', 0 when none): "LeftLeg", "mixamorig:RightArm", "thigh.L",
-// "Hand_R", "l_foot" (its last path segment)
-char boneSide(const std::string& path) {
-    std::string leaf = path.substr(path.rfind('/') == std::string::npos ? 0 : path.rfind('/') + 1);
-    for (char& c : leaf) c = (char)std::tolower((unsigned char)c);
-    const bool left = leaf.find("left") != std::string::npos;
-    const bool right = leaf.find("right") != std::string::npos;
-    if (left != right) return left ? 'L' : 'R';
-    if (left) return 0;
-    // a lone "l" / "r" between separators (".L", "_R", "l_")
-    char side = 0;
-    size_t start = 0;
-    for (size_t i = 0; i <= leaf.size(); i++) {
-        if (i < leaf.size() && std::isalnum((unsigned char)leaf[i])) continue;
-        if (i - start == 1 && (leaf[start] == 'l' || leaf[start] == 'r')) {
-            const char found = leaf[start] == 'l' ? 'L' : 'R';
-            if (side && side != found) return 0;
-            side = found;
-        }
-        start = i + 1;
-    }
-    return side;
-}
-
 // The angle (degrees) between the clip's first rotation key of `path` and the rest rotation of the
 // GameObject `candidate` names under `root`; negative when the clip has no rotation track there or
 // the candidate is not found. Rotation keys are absolute local rotations: a bone of another rig
@@ -420,14 +396,14 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
             if (fileText.find(probe["old_text"].get<std::string>()) == std::string::npos) {
                 notCanonical = true;
             } else {
-                const char side = boneSide(track.path);
+                const char side = ClipValidation::boneSide(track.path);
                 bool otherSide = false;
                 std::string restReason;
                 // a rest far from the clip's rotation means another rig: no further (less near) path
                 // is tried, it would be a wrong bone that happens to rest like this one
                 auto free = std::find_if(track.nearest.begin(), track.nearest.end(), [&](const std::string& candidate) {
                     if (!restReason.empty() || taken.count({candidate, track.channel})) return false;
-                    const char candidateSide = boneSide(candidate);
+                    const char candidateSide = ClipValidation::boneSide(candidate);
                     if (side && candidateSide && side != candidateSide) {
                         otherSide = true;
                         return false;
@@ -436,8 +412,9 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
                     if (angle > REST_MISMATCH_DEGREES) {
                         if (restReason.empty()) {
                             restReason = "the clip's first rotation of " + track.path + " is " + std::to_string((int)std::lround(angle)) +
-                                         " degrees from the rest of " + candidate + ": another rig (other rest orientations), "
-                                         "which a renamed path would mangle; bake the animation on that model instead";
+                                         " degrees from the rest of " + candidate + ": the rest pose differs a lot (likely "
+                                         "another rig, which a renamed path would turn wrong). Give that model its own clip, or "
+                                         "rename the path by hand if it is the bone you mean";
                         }
                         return false;
                     }
@@ -483,10 +460,11 @@ Json bindingsJson(SceneProject* scene, const ClipValidationReport& report, const
     if (!report.warnings.empty()) out["warnings"] = warningsJson(report.warnings);
     if (restMismatch) {
         // agents review I1: renaming fits renamed or reparented objects of the same rig
-        out["rig_mismatch"] = "rest_mismatch paths: the clip was made for another rig (rotation keys are absolute local rotations "
-                              "and this rig's rest orientations differ), so renaming its paths mangles the character. Use a clip "
-                              "made on this rig: bake the .poseanim on this model (edit_pose_animation {path, bake: {model, "
-                              "clip: true}}), or key a new clip on it";
+        out["rig_mismatch"] = "rest_mismatch paths: the clip's rotations are far from these bones' rest (rotation keys are "
+                              "absolute local rotations). Likely a clip made for another rig, whose renamed paths would turn "
+                              "this character wrong: use a clip made on this rig (bake the .poseanim on this model: "
+                              "edit_pose_animation {path, bake: {model, clip: true}}, or key a new clip on it). A path of the "
+                              "same rig (a bone or prop posed far from its rest) can still be renamed by hand";
     }
     if (std::any_of(missing.begin(), missing.end(), [](const Json& m) { return m.contains("fix"); })) {
         out["fix_with"] = "write_file {path: <clip>, edits: [missing[i].fix, ...]} renames those paths to their fix_path, keys and tangents "
@@ -512,7 +490,7 @@ std::string bindingsText(const Json& bindings) {
         text += "\n  " + m["path"].get<std::string>() + " : " + m["channel"].get<std::string>() + " " + m["status"].get<std::string>();
         if (!m["nearest"].empty()) text += " (did you mean \"" + m["nearest"][0].get<std::string>() + "\"?" +
                                           (m.contains("fix") ? " fix: write_file edit missing[].fix -> \"" + m["fix_path"].get<std::string>() + "\""
-                                           : m.contains("rest_mismatch") ? std::string(" no fix: another rig's rest pose")
+                                           : m.contains("rest_mismatch") ? std::string(" no fix: rest pose differs a lot")
                                            : m.contains("fix_conflict") ? std::string(m["fix_conflict"].get<std::string>().find("other side") != std::string::npos
                                                                                   ? " no fix: the other side" : " no fix: its targets are taken")
                                            : std::string()) + ")";
@@ -1499,8 +1477,25 @@ void editClip(const CallPtr& call) {
         anim::normalize(normalized, &warnings);
     }
     const uint64_t before = document ? document->revision() : 0;
+    // the folders made for the clip go again when it can't be written (nothing left behind by a
+    // failed call); kept once the file is there
+    struct MadeFolders {
+        std::vector<fs::path> folders;      // deepest first
+        bool keep = false;
+        ~MadeFolders() {
+            if (keep) return;
+            for (const fs::path& folder : folders) {
+                std::error_code ignored;
+                if (fs::is_directory(folder, ignored) && fs::is_empty(folder, ignored)) fs::remove(folder, ignored);
+            }
+        }
+    } madeFolders;
     if (makeFolder) {
         std::error_code folderError;
+        for (fs::path folder = absolute.parent_path(); !folder.empty() && !fs::exists(folder, folderError); folder = folder.parent_path()) {
+            madeFolders.folders.push_back(folder);
+            if (folder == folder.parent_path()) break;
+        }
         fs::create_directories(absolute.parent_path(), folderError);
         if (!fs::is_directory(absolute.parent_path(), folderError)) {
             call->fail("create: cannot make the folder " + projectRel(project, absolute.parent_path()) +
@@ -1549,6 +1544,7 @@ void editClip(const CallPtr& call) {
         call->fail(error);
         return;
     }
+    madeFolders.keep = true;
     const bool changed = creating || document->revision() != before;
 
     const std::vector<ClipUser> users = findClipUsers(project, relative);

@@ -6,7 +6,10 @@
 # Local patch: src/renderer/tvgInitializer.cpp and src/common/tvgCommon.h no longer replace the
 # global operator new / delete (upstream maps them to malloc / free for the whole program: here
 # that covered the engine library without its sized delete, broke `new`'s bad_alloc contract and
-# made AddressSanitizer report alloc-dealloc mismatches). Keep it when updating ThorVG.
+# made AddressSanitizer report alloc-dealloc mismatches). Without it a tvg::malloc/calloc block
+# must be freed with tvg::free and a `new` object deleted: src/renderer/cpu_engine/tvgSwRle.cpp
+# rleRender allocates its SwRle with `new` (upstream: tvg::calloc, while rleFree deletes it).
+# Keep both when updating ThorVG.
 
 set(THORVG_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 

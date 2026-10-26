@@ -110,6 +110,11 @@ namespace jasperengine::editor{
         static std::vector<std::string> nearestPaths(EntityRegistry* registry, Entity root, const std::string& path, size_t max = 3);
         // "Arm/Hand : Position" (window rows, tool texts)
         static std::string trackLabel(const ClipTrackData& track);
+        // The side a bone name says, 'L' or 'R' (0 when none or both), from the last path segment's
+        // words: split at separators (. _ - space :) and camelCase boundaries, a word "Left" /
+        // "Right" or a lone "L" / "R" ("mixamorig:LeftLeg", "thigh.L", "Hand_R", "l_foot", "LArm");
+        // never inside a word ("Bright", "upright", "Lefty")
+        static char boneSide(const std::string& path);
         // a method the engine calls on Lua scripts by itself (init, onDestroy) or an engine event
         // name (onUpdate...): an event of that function calls it again (validate warns)
         static bool isScriptLifecycleMethod(const std::string& function);

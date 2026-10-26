@@ -32,13 +32,11 @@ S: dict = {}
 # ---------------------------------------------------------------------------- helpers
 
 def bone_side(path: str):
-    """The side a bone name says ("L", "R" or None): Left/Right, or a lone l / r between separators."""
-    leaf = path.rsplit("/", 1)[-1].lower()
-    if ("left" in leaf) != ("right" in leaf):
-        return "L" if "left" in leaf else "R"
-    if "left" in leaf:
-        return None
-    sides = {t.upper() for t in re.split(r"[^a-z0-9]+", leaf) if t in ("l", "r")}
+    """The side a bone name says ("L", "R" or None), as ClipValidation::boneSide: the last segment's
+    words (separators and camelCase), a word Left / Right or a lone L / R."""
+    leaf = path.rsplit("/", 1)[-1]
+    words = re.findall(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+", leaf)
+    sides = {"L" if w.lower() in ("left", "l") else "R" for w in words if w.lower() in ("left", "l", "right", "r")}
     return sides.pop() if len(sides) == 1 else None
 
 
@@ -260,6 +258,10 @@ async def test_file_mode_rejections(ed: Editor):
     (ed.project / "assets" / "nofolder.anim").write_text("")
     await refused(ed, "edit_animation", {"clip": "assets/nofolder.anim/x.anim", "create": {}}, "is a file, not a folder")
     (ed.project / "assets" / "nofolder.anim").unlink()
+    # a write that fails (a file name over the file system's 255 bytes) leaves no folder behind
+    r = await ed.call_raw("edit_animation", {"clip": "assets/failfolder/deeper/" + "x" * 300 + ".anim", "create": {}})
+    ed.check(r.is_error, f"the write fails: {r.text[:300]}")
+    ed.check(not (ed.project / "assets" / "failfolder").exists(), f"the folders made for it are removed: {r.text[:300]}")
     await refused(ed, "edit_animation", {"clip": WALK_SUB, "wrap": "loop"}, "read-only")
     # all or nothing: a valid track and a bad event change nothing
     await refused(ed, "edit_animation", {"clip": BOB, "tracks": [{"path": "Arm", "channel": "scale", "keys": [{"time": 0, "value": [2, 2, 2]}]}],
@@ -440,7 +442,8 @@ async def test_bindings_hero_robot(ed: Editor):
             ed.check(bone_side(m["path"]) is None or bone_side(m["fix_path"]) in (None, bone_side(m["path"])),
                      f"a fix keeps its side: {m['path']} -> {m['fix_path']}")
     text = (await ed.call_raw("get_animation", {"clip": "assets/anim/walk.anim", "root": "Robot"})).text
-    ed.check("no fix: another rig's rest pose" in text and "another rig" in text, f"the text says it too: {text[:900]}")
+    ed.check("no fix: rest pose differs a lot" in text and "another rig" in text and "by hand" in text,
+             f"the text says it too: {text[:900]}")
 
     # path fixes are for renamed or reparented objects of the same rig: Hero's glTF root node renamed,
     # every track misses, each gets a fix (the rig's own rest), and the fixes apply together

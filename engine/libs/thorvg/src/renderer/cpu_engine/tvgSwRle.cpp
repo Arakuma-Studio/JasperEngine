@@ -865,7 +865,9 @@ SwRle* rleRender(SwRle* rle, const SwOutline* outline, const RenderRegion& bbox,
 
 SwRle* rleRender(const RenderRegion* bbox)
 {
-    auto rle = tvg::calloc<SwRle>(sizeof(SwRle), 1);
+    // JasperEngine patch: `new`, as the outline rleRender allocates one, since rleFree deletes it (upstream's
+    // tvg::calloc only paired with delete through its global operator replacement, removed here)
+    auto rle = new SwRle;
     rle->spans.reserve(bbox->h());
     rle->spans.count = bbox->h();
 

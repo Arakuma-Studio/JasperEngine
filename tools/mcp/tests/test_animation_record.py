@@ -34,13 +34,13 @@ S: dict = {}
 # ---------------------------------------------------------------------------- helpers
 
 def xdo(ed: Editor, *args: str) -> str:
-    if not shutil.which("xdotool"):
-        # agents review M5: these tests carry the window's real-input coverage (no editor test hook):
-        # a host without xdotool fails them instead of skipping quietly
-        raise harness.TestFailure("xdotool is not installed: the Animation window's real-input tests need it with the "
-                                  "harness' Xvfb (install xdotool, e.g. apt install xdotool)")
     if not getattr(ed, "_xvfb", None) or not ed._xvfb.display:
         harness.skip("needs the harness' Xvfb (xvfb='harness')")
+    if not shutil.which("xdotool"):
+        # agents review M5: these tests carry the window's real-input coverage (no editor test hook):
+        # with the harness' Xvfb, a host without xdotool fails them instead of skipping quietly
+        raise harness.TestFailure("xdotool is not installed: the Animation window's real-input tests need it with the "
+                                  "harness' Xvfb (install xdotool, e.g. apt install xdotool)")
     env = dict(os.environ, DISPLAY=ed._xvfb.display)
     return subprocess.run(["xdotool", *args], env=env, capture_output=True, text=True, timeout=20).stdout
 

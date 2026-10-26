@@ -133,9 +133,11 @@ sorted by path then channel, events by time). Writing the same data twice gives 
   so): `write_file {path: "<clip>", edits: [missing[0].fix, ...]}` keeps every key and tangent.
   Check each `fix_path` is the bone you mean. A nearest path whose name says the other side
   (Left/Right vs .L/.R) is skipped, and so is one whose rest rotation is more than 90 degrees from
-  the clip's first rotation key of the path: no fix then, but `rest_mismatch` (another rig, and
-  `rig_mismatch` says what to do) or, when no free nearest path is left, `fix_conflict` (rename
-  by hand). A file not in the canonical
+  the clip's first rotation key of the path: no fix then, but `rest_mismatch` (the rest pose
+  differs a lot, most likely another rig; `rig_mismatch` says what to do) or, when no free
+  nearest path is left, `fix_conflict` (rename by hand). A same-rig clip whose first rotation key
+  turns a bone (or a renamed prop) more than 90 degrees from its rest also gets `rest_mismatch`:
+  renaming the path by hand (below) still works there. A file not in the canonical
   layout (written by hand) gets no fixes, and `fix_with` says how to rename instead. By hand: the
   canonical file has one track per `{"path": "<old>", "channel": "rotation"` line; or read the
   track (`get_animation {clip, max_keys: 100000}`), send its keys (with their `in`/`out`) under

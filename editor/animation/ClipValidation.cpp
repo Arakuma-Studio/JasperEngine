@@ -701,6 +701,42 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
     return report;
 }
 
+char ClipValidation::boneSide(const std::string& path){
+    const size_t slash = path.rfind('/');
+    const std::string leaf = slash == std::string::npos ? path : path.substr(slash + 1);
+    // the words: separators split, and camelCase ("LeftUpLeg", "LArm": an upper case letter after a
+    // lower case one, or before a lower case one after another upper case one)
+    std::vector<std::string> words;
+    std::string word;
+    for (size_t i = 0; i < leaf.size(); i++){
+        const unsigned char c = (unsigned char)leaf[i];
+        if (!std::isalnum(c)){
+            if (!word.empty()) words.push_back(word);
+            word.clear();
+            continue;
+        }
+        if (!word.empty() && std::isupper(c)){
+            const unsigned char previous = (unsigned char)leaf[i - 1];
+            const bool nextLower = i + 1 < leaf.size() && std::islower((unsigned char)leaf[i + 1]);
+            if (std::islower(previous) || std::isdigit(previous) || (std::isupper(previous) && nextLower)){
+                words.push_back(word);
+                word.clear();
+            }
+        }
+        word += (char)c;
+    }
+    if (!word.empty()) words.push_back(word);
+    char side = 0;
+    for (std::string& w : words){
+        for (char& c : w) c = (char)std::tolower((unsigned char)c);
+        const char found = (w == "left" || w == "l") ? 'L' : (w == "right" || w == "r") ? 'R' : 0;
+        if (!found) continue;
+        if (side && side != found) return 0;
+        side = found;
+    }
+    return side;
+}
+
 bool ClipValidation::isScriptLifecycleMethod(const std::string& function){
     // LuaBinding calls init / onDestroy by name; RegisterEngineEvent's names (lua-api 1.3)
     static const char* const names[] = {
