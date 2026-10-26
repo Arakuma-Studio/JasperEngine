@@ -37,8 +37,11 @@ namespace {
         char where[128];
         describe(L, where, sizeof(where));
         interruptRaised.store(true, std::memory_order_release);
-        luaL_error(L, "script interrupted: %s ran for %.1f s without returning (hang watchdog)",
-                   where[0] ? where : "a function", static_cast<double>(interruptStalledMs.load()) / 1000.0);
+        // lua_pushfstring knows no precision: the text is made here
+        char message[256];
+        std::snprintf(message, sizeof(message), "script interrupted: %s ran for %.1f s without returning (hang watchdog)",
+                      where[0] ? where : "a function", static_cast<double>(interruptStalledMs.load()) / 1000.0);
+        luaL_error(L, "%s", message);
     }
 
     // Only when no one else hooks the state; ours replace each other

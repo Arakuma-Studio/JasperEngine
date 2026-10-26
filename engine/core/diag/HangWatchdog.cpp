@@ -75,6 +75,8 @@ namespace je_hang {
         std::atomic<bool> armed{false};
         std::atomic<bool> inStall{false};
         std::atomic<uint64_t> lastBeatNs{0};
+        // the beat count the watchdog last saw: health() treats a later beat as alive
+        std::atomic<uint64_t> polledBeats{0};
         std::atomic<uint32_t> reports{0};
 
         // the watchdog thread's own
@@ -339,6 +341,7 @@ namespace je_hang {
     void tick(Shared& s, std::unique_lock<std::mutex>& lock) {
         const uint64_t now = nowNs(s);
         const uint64_t beats = s.beats.load(std::memory_order_relaxed);
+        s.polledBeats.store(beats, std::memory_order_relaxed);
         if (s.paused.load(std::memory_order_relaxed)) {
             s.seenBeats = beats;
             s.armed.store(false, std::memory_order_relaxed);
@@ -427,6 +430,7 @@ void diag::watchdog::start(const WatchdogConfig& input) {
     s.phase.store(nullptr, std::memory_order_relaxed);
     s.scopeDepth.store(0, std::memory_order_relaxed);
     s.seenBeats = s.beats.load(std::memory_order_relaxed);
+    s.polledBeats.store(s.seenBeats, std::memory_order_relaxed);
     s.stallIndex = 0;
     s.notices.clear();
     s.watched = std::this_thread::get_id();
@@ -477,6 +481,8 @@ HealthSnapshot diag::watchdog::health() {
     const std::vector<ScopeView> scopes = readScopes(s);
     for (const ScopeView& scope : scopes) out.busyScopes.push_back(scope.label);
     if (!out.enabled || !s.armed.load(std::memory_order_relaxed) || s.paused.load(std::memory_order_relaxed)) return out;
+    // the main thread beat since the last poll: alive, whatever the stall the watchdog last saw
+    if (s.beats.load(std::memory_order_relaxed) != s.polledBeats.load(std::memory_order_relaxed)) return out;
     // never the config's clock: health is asked from any thread, the clock is the watchdog's
     const uint64_t now = s.config.clock ? 0 : steadyNs();
     const uint64_t lastBeat = s.lastBeatNs.load(std::memory_order_relaxed);

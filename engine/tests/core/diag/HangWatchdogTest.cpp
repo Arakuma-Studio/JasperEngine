@@ -365,3 +365,22 @@ TEST(HangWatchdog, DisabledByEnvironmentStartsNoThread) {
     EXPECT_FALSE(running);
     EXPECT_FALSE(watchdog::health().enabled);
 }
+
+TEST(HangWatchdog, HealthSeesABeatBeforeTheNextPoll) {
+    WatchdogConfig config;
+    config.thresholdMs = 200;
+    config.pollMs = 0;
+    watchdog::start(config);
+    heartbeat();
+    watchdog::poll();
+    stallFunctionOfTheTest(300);
+    watchdog::poll();
+    const HealthSnapshot stalled = watchdog::health();
+    heartbeat();
+    const HealthSnapshot alive = watchdog::health();
+    watchdog::stop();
+    EXPECT_FALSE(stalled.responsive);
+    EXPECT_GE(stalled.stalledMs, 200u);
+    EXPECT_TRUE(alive.responsive) << "the main thread beat again: alive before the watchdog polls";
+    EXPECT_EQ(alive.stalledMs, 0u);
+}

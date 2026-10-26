@@ -109,7 +109,12 @@ async def test_runaway_lua():
             found = await ed.console_since(contains="script interrupted", limit=10)
             if not found:
                 await asyncio.sleep(0.5)
-        ed.check(found, "the Console has the script interrupted error")
+        if not found:
+            health = await ed.call("get_editor_health")
+            frames = (await ed.call("eval_lua", code="return runawayFrames"))["values"]
+            recent = [e.get("message", "")[:300] for e in await ed.console_since(None, limit=40)]
+            ed.fail(f"no script interrupted error; health {health}, runawayFrames {frames}, console {recent}, "
+                    f"stderr {ed.stderr_text()[-3000:]}")
         message = found[0].get("message", "")
         ed.check("ran for" in message and "hang watchdog" in message, f"the message: {message}")
         health = await ed.call("get_editor_health")
@@ -171,4 +176,5 @@ async def test_notice_after_abnormal_exit():
     async with Editor(create=True, name="Crash Notice CI 3", env=env) as ed:
         reports = await ed.call("get_crash_reports")
         ed.check(not reports["notice_open"], f"no notice after the clean exit and the dismissed report: {reports}")
-        ed.check(not [r for r in reports["reports"] if not r["handled"]], "no unhandled report")
+        unhandled = [r for r in reports["reports"] if not r["handled"]]
+        ed.check(not unhandled, f"no unhandled report: {unhandled}")
