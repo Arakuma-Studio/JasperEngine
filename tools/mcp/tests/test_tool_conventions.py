@@ -21,6 +21,7 @@ rule, not checked here.
 from __future__ import annotations
 
 CI = True
+EDITOR = {"create": True, "name": "Tool Conventions CI"}
 
 import re
 

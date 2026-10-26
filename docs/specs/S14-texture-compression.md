@@ -599,3 +599,13 @@ alternative, recorded here).
     up to whole 6×6 blocks (a 512² level is 86² blocks, the small levels one block each), so a
     512² chain measures 4.83 bpt. `TextureEncodeSize` holds non-dividing block sizes to R17
     × 1.025, the padding of a power-of-two chain, and every other format to R17 exactly.
+20. **AC14 record.** The manual check is automated: `tools/mcp/tests/test_texture_importer_ui.py`
+    drives the Inspector with real input (xdotool) on the textures fixture and keeps a screenshot
+    of each step in `build/test-results/texture-importer-ui/`, instead of `tools/editor-shot.sh`
+    stills taken by hand.
+21. **AC8 backends.** The format test runs on Linux GL 3.3 (CI) and Vulkan on lavapipe (nightly);
+    the repository's Windows and macOS jobs run the CPU suites only (no GPU on their runners), so
+    D3D11 and Metal are covered by the R11 fallback tests and the texture smoke runs, and GLES3 by
+    the nightly GLES3 smoke set (the textures fixture), the Android emulator run of
+    `tools/test-projects/texture-formats` (SwiftShader GLES3, the mobile family) and the WebGL2
+    browser gate of the same project.
